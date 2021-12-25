@@ -1,36 +1,69 @@
-import llvm from 'llvm-bindings';
+import * as child_process from 'child_process';
+import {
+  APInt,
+  BasicBlock,
+  ConstantInt,
+  Function,
+  FunctionType,
+  IRBuilder,
+  LLVMContext,
+  Module,
+  verifyFunction,
+  verifyModule,
+} from 'llvm-bindings';
+import { promisify } from 'util';
 
-function main(): void {
-  const context = new llvm.LLVMContext();
-  const module = new llvm.Module('demo', context);
-  const builder = new llvm.IRBuilder(context);
+const exec = promisify(child_process.exec);
 
-  const returnType = builder.getInt32Ty();
-  const paramTypes = [builder.getInt32Ty(), builder.getInt32Ty()];
-  const functionType = llvm.FunctionType.get(returnType, paramTypes, false);
-  const func = llvm.Function.Create(
-    functionType,
-    llvm.Function.LinkageTypes.ExternalLinkage,
-    'add',
+async function main() {
+  const context = new LLVMContext();
+  const module = new Module('top', context);
+  const builder = new IRBuilder(context);
+
+  module.setTargetTriple('x86_64-pc-linux-gnu');
+
+  // create main function
+  const funcType = FunctionType.get(builder.getInt32Ty(), false);
+  const mainFunc = Function.Create(
+    funcType,
+    Function.LinkageTypes.ExternalLinkage,
+    'main',
     module,
   );
+  const entry = BasicBlock.Create(context, 'entrypoint', mainFunc);
+  builder.SetInsertPoint(entry);
 
-  const entryBB = llvm.BasicBlock.Create(context, 'entry', func);
-  builder.SetInsertPoint(entryBB);
-  const a = func.getArg(0);
-  const b = func.getArg(1);
-  const result = builder.CreateAdd(a, b);
-  builder.CreateRet(result);
+  // // string constant
+  const helloWorldStr = builder.CreateGlobalStringPtr('Hello World!');
 
-  if (llvm.verifyFunction(func)) {
+  // create "puts" function
+  const putsArgs = [builder.getInt8PtrTy()];
+  const putsType = FunctionType.get(builder.getInt32Ty(), putsArgs, false);
+  const putsFunc = module.getOrInsertFunction('puts', putsType);
+
+  // invoke it
+  builder.CreateCall(putsFunc, [helloWorldStr]);
+
+  // return zero
+  builder.CreateRet(ConstantInt.get(context, new APInt(32, 0)));
+
+  if (verifyFunction(mainFunc)) {
     console.error('Verifying function failed');
     return;
   }
-  if (llvm.verifyModule(module)) {
+
+  if (verifyModule(module)) {
     console.error('Verifying module failed');
     return;
   }
-  module.print();
+
+  module.print('output.ll');
+
+  await compileLlvmIR('output.ll', 'output');
+}
+
+async function compileLlvmIR(inputFile: string, outputFile = 'output') {
+  await exec(`clang-13 -O3 -o ${outputFile} ${inputFile}`);
 }
 
 main();
