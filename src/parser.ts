@@ -7,14 +7,13 @@ import {
   EOF,
   lazy,
   map,
-  oneOrMany,
+  Nothing,
+  optional,
   Parser,
   pattern,
+  separatedBy,
   skip,
-  zeroOrMany,
 } from './combinator-parser';
-
-// TODO: support comments
 
 export type SExpr = string | SExpr[];
 type Pos = { line: number; col: number };
@@ -60,29 +59,38 @@ function getPosAtIndex(input: string, index: number): Pos {
   return pos;
 }
 
-const whitespace = map(pattern(/\s*/), (c) => c.length);
+const literallyWhitespace = skip(pattern(/\s*/));
+const comment = map(pattern(/^;[^\n]*\n/), (c) => c.slice(1, -1));
+const whitespace = skip(
+  chain([
+    literallyWhitespace,
+    optional(separatedBy(comment, literallyWhitespace)),
+    literallyWhitespace,
+  ] as const),
+);
 const atom = either([
   pattern(/^[^()\d"][\w\/-]*/), // symbol
   pattern(/^\d[\d_]*(?:\.[\d_]*)?/), // number
   pattern(/^"(?:[^"\\]|\\.)*"/), // string
 ]);
-const exprThenWhitespace: Parser<SExpr> = lazy(() =>
-  map(chain([expr, skip(whitespace)] as const), ([expr]) => expr),
-);
-const list = map(
-  chain([
-    skip(char('(')),
-    skip(whitespace),
-    zeroOrMany(exprThenWhitespace),
-    skip(char(')')),
-  ] as const),
-  ([content]) => content as SExpr,
+const list: Parser<SExpr> = lazy(() =>
+  map(
+    chain([
+      skip(char('(')),
+      whitespace,
+      optional(separatedBy(expr, whitespace)),
+      whitespace,
+      skip(char(')')),
+    ] as const),
+    ([content]) => (content === Nothing ? [] : content),
+  ),
 );
 const expr = either([atom, list]);
 const script = map(
   chain([
-    skip(whitespace),
-    oneOrMany(map(chain([list, skip(whitespace)] as const), ([expr]) => expr)),
+    whitespace,
+    separatedBy(list, whitespace),
+    whitespace,
     skip(char(EOF)),
   ] as const),
   ([exprs]) => exprs,

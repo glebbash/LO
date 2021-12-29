@@ -16,6 +16,8 @@ type OmitItems<Items, O> = Items extends readonly []
   : never;
 
 export const EOF = undefined;
+export const Skip = Symbol('Skip');
+export const Nothing = Symbol('Nothing');
 
 const MAP_TO_SELF = <T>(value: T) => value;
 
@@ -31,7 +33,15 @@ export const lazy = <T>(init: () => Parser<T>): Parser<T> => {
   };
 };
 
-export const Skip = Symbol('Skip');
+export const emit = <T>(value: T): Parser<T> => {
+  return (input) => {
+    return { ok: true, value, remaining: input };
+  };
+};
+
+export const optional = <T>(parse: Parser<T>): Parser<T | typeof Nothing> => {
+  return either<T | typeof Nothing>([parse, emit(Nothing)]);
+};
 
 export const skip = <T>(parse: Parser<T>): Parser<typeof Skip> =>
   map(parse, () => Skip);
@@ -101,6 +111,22 @@ export const zeroOrMany =
 
     return result;
   };
+
+export const separatedBy = <T>(
+  parse: Parser<T>,
+  separator: Parser<typeof Skip>,
+): Parser<T[]> => {
+  return map(
+    chain([
+      parse,
+      zeroOrMany(
+        map(chain([separator, parse] as const), ([item]) => item as T),
+      ),
+    ] as const),
+    ([required, other]) =>
+      other === undefined ? (required as T[]) : [required as T, ...other],
+  );
+};
 
 export const oneOrMany = <T>(parse: Parser<T>): Parser<T[]> =>
   map(chain([parse, zeroOrMany(parse)] as const), ([required, other]) =>

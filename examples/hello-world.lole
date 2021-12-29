@@ -1,11 +1,13 @@
+;; Hello World example
+
 (llvm/target-triple "x86_64-pc-linux-gnu")
 
 (llvm/extern-fn puts (&i8) i32)
 
-(llvm/define-string-ptr helloWorldStr "Hello World!")
+(llvm/define-string-ptr hello-world "Hello World!")
 
 (llvm/fn main () i32
   (llvm/insert-point "entrypoint")
-  (llvm/call puts (helloWorldStr))
+  (llvm/call puts (hello-world))
   (llvm/ret (i32 0))
 )

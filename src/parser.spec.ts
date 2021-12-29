@@ -37,6 +37,23 @@ describe('parser', () => {
     expect(res).toStrictEqual([['abc1', '123', '"string\\"s"']]);
   });
 
+  it('skips whitespace and comments', () => {
+    const res = parse(m`
+      (a             b               c) ;comment
+      ; comment
+      (
+        1 ; comment
+        2 ; comment ; comment ; comment
+        3 ;; comment
+      )
+      `);
+
+    expect(res).toStrictEqual([
+      ['a', 'b', 'c'],
+      ['1', '2', '3'],
+    ]);
+  });
+
   it('parses complex expressions', () => {
     const res = parse('(a (b (c () d e f (g h)))) (i) (j k (l m n))');
 
@@ -49,31 +66,33 @@ describe('parser', () => {
 
   it('parses llvm hello world', () => {
     const res = parse(m`
+      ;; Hello World example
+
       (llvm/target-triple "x86_64-pc-linux-gnu")
 
-      (llvm/extern-fn puts (llvm/i8-ptr-ty) llvm/i32-ty)
+      (llvm/extern-fn puts (&i8) i32)
 
-      (llvm/define-string-ptr helloWorldStr "Hello World!")
+      (llvm/define-string-ptr hello-world "Hello World!")
 
-      (llvm/fn main () (llvm/i32-ty)
+      (llvm/fn main () i32
         (llvm/insert-point "entrypoint")
-        (llvm/call puts (helloWorldStr))
-        (llvm/ret (llvm/i32 0))
+        (llvm/call puts (hello-world))
+        (llvm/ret (i32 0))
       )
       `);
 
     expect(res).toStrictEqual([
       ['llvm/target-triple', '"x86_64-pc-linux-gnu"'],
-      ['llvm/extern-fn', 'puts', ['llvm/i8-ptr-ty'], 'llvm/i32-ty'],
-      ['llvm/define-string-ptr', 'helloWorldStr', '"Hello World!"'],
+      ['llvm/extern-fn', 'puts', ['&i8'], 'i32'],
+      ['llvm/define-string-ptr', 'hello-world', '"Hello World!"'],
       [
         'llvm/fn',
         'main',
         [],
-        ['llvm/i32-ty'],
+        'i32',
         ['llvm/insert-point', '"entrypoint"'],
-        ['llvm/call', 'puts', ['helloWorldStr']],
-        ['llvm/ret', ['llvm/i32', '0']],
+        ['llvm/call', 'puts', ['hello-world']],
+        ['llvm/ret', ['i32', '0']],
       ],
     ]);
   });
