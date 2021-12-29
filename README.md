@@ -24,7 +24,7 @@ You will also need:
 ## Running compiler
 
 ```bash
-ts-node src/main.ts \
+npx ts-node src/main.ts \
   --src="examples/hello-world.lole" \ # source file
   --out-ir="output.ll" \              # LLVM IR output file
   --out="output" \                    # Binary output file
