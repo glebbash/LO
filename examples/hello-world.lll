@@ -1,0 +1,11 @@
+(llvm/target-triple "x86_64-pc-linux-gnu")
+
+(llvm/extern-fn puts (llvm/i8-ptr-ty) llvm/i32-ty)
+
+(llvm/define-string-ptr helloWorldStr "Hello World!")
+
+(llvm/fn main () (llvm/i32-ty)
+  (llvm/insert-point "entrypoint")
+  (llvm/call puts (helloWorldStr))
+  (llvm/ret (llvm/i32 0))
+)
