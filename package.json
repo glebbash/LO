@@ -38,6 +38,7 @@
     "typescript": "^4.5.4"
   },
   "dependencies": {
-    "llvm-bindings": "^0.3.3"
+    "llvm-bindings": "^0.3.3",
+    "panic-fn": "^1.0.3"
   }
 }
