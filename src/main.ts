@@ -1,103 +1,54 @@
 import * as child_process from 'child_process';
-import { unlink } from 'fs/promises';
-import {
-  BasicBlock,
-  Function as LLVMFunction,
-  FunctionCallee,
-  FunctionType,
-  IRBuilder,
-  LLVMContext,
-  Module,
-  verifyFunction,
-  verifyModule,
-} from 'llvm-bindings';
+import { readFile, unlink } from 'fs/promises';
 import { promisify } from 'util';
+
+import { compile } from './compiler';
+import { parse } from './parser';
 
 const exec = promisify(child_process.exec);
 
-async function main(mode: 'compile' | 'interpret' = 'compile') {
-  const context = new LLVMContext();
+async function main() {
+  const args = process.argv;
 
-  const module = buildMainModule(context);
+  const mode = args.includes('-r') ? 'interpret' : 'compile';
+  const inputFile = getArg(args, 'src') ?? 'input.lll';
+  const outputIRFile = getArg(args, 'out-ir') ?? 'output.ll';
+  const outputBinaryFile = getArg(args, 'out') ?? 'output';
 
-  const llvmIRFile = 'output.ll';
-  module.print(llvmIRFile);
+  const inputFileContent = await readFile(inputFile, { encoding: 'utf-8' });
+  const exprs = parse(inputFileContent);
+
+  compile(exprs, outputIRFile);
 
   if (mode === 'compile') {
-    await compileLlvmIR(llvmIRFile, 'output');
-    await unlink(llvmIRFile);
+    await compileIR(outputIRFile, outputBinaryFile);
+    await unlink(outputIRFile);
   } else {
-    await interpretLlvmIR(llvmIRFile);
+    await interpretIR(outputIRFile);
   }
 }
 
-function buildMainModule(context: LLVMContext): Module {
-  const module = new Module('top', context);
-  const builder = new IRBuilder(context);
+function getArg(args: string[], name: string): string | undefined {
+  const argumentStart = `--${name}=`;
 
-  module.setTargetTriple('x86_64-pc-linux-gnu');
-
-  buildMainFunction(context, module, builder);
-
-  if (verifyModule(module)) {
-    console.error('Verifying module failed');
-    process.exit(1);
-  }
-
-  return module;
+  return args
+    .find((a) => a.startsWith(argumentStart))
+    ?.slice(argumentStart.length);
 }
 
-function buildMainFunction(
-  context: LLVMContext,
-  module: Module,
-  builder: IRBuilder,
-): LLVMFunction {
-  const funcType = FunctionType.get(builder.getInt32Ty(), false);
-  const mainFunc = LLVMFunction.Create(
-    funcType,
-    LLVMFunction.LinkageTypes.ExternalLinkage,
-    'main',
-    module,
-  );
-
-  const entry = BasicBlock.Create(context, 'entrypoint', mainFunc);
-  builder.SetInsertPoint(entry);
-
-  // string constant
-  const helloWorldStr = builder.CreateGlobalStringPtr('Hello World!');
-
-  const putsFunc = defineExternPuts(builder, module);
-  builder.CreateCall(putsFunc, [helloWorldStr]);
-
-  // return zero
-  builder.CreateRet(builder.getInt32(0));
-
-  if (verifyFunction(mainFunc)) {
-    console.error('Verifying function failed');
-    process.exit(1);
-  }
-
-  return mainFunc;
+async function compileIR(inputFile: string, outputFile = 'output') {
+  await run(`clang-13 -O3 -o ${outputFile} ${inputFile}`);
 }
 
-function defineExternPuts(builder: IRBuilder, module: Module): FunctionCallee {
-  const putsArgs = [builder.getInt8PtrTy()];
-  const putsType = FunctionType.get(builder.getInt32Ty(), putsArgs, false);
-  return module.getOrInsertFunction('puts', putsType);
+async function interpretIR(inputFile: string) {
+  await run(`lli-13 ${inputFile}`);
 }
 
-async function compileLlvmIR(inputFile: string, outputFile = 'output') {
-  const res = await exec(`clang-13 -O3 -o ${outputFile} ${inputFile}`);
+async function run(command: string): Promise<void> {
+  const res = await exec(command);
 
   if (res.stderr) console.error(res.stderr.slice(0, -1));
   if (res.stdout) console.log(res.stdout.slice(0, -1));
 }
 
-async function interpretLlvmIR(inputFile: string) {
-  const res = await exec(`lli-13 ${inputFile}`);
-
-  if (res.stderr) console.error(res.stderr.slice(0, -1));
-  if (res.stdout) console.log(res.stdout.slice(0, -1));
-}
-
-main('interpret');
+main();
