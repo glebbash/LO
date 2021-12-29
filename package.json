@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "llvm-bindings": "^0.3.3",
-    "panic-fn": "^1.0.3"
+    "panic-fn": "^1.0.3",
+    "tempy": "^1.0.1"
   }
 }

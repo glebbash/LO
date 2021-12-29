@@ -1,3 +1,4 @@
+import { readFile } from 'fs/promises';
 import {
   BasicBlock,
   Function as LLVMFunction,
@@ -11,10 +12,10 @@ import {
   verifyModule,
 } from 'llvm-bindings';
 import { panic } from 'panic-fn';
+import tempy from 'tempy';
 
 import { SExpr } from './parser';
 
-// TODO: add tests
 // TODO: pass expression locations to compiler for better error messages
 
 const STRING_START = ['"'];
@@ -29,12 +30,15 @@ type ModuleContext = {
 
 type FunctionContext = ModuleContext & { fn: LLVMFunction };
 
-export function compile(exprs: SExpr[], outputIRFile: string) {
+export async function compile(exprs: SExpr[]): Promise<string> {
   const context = new LLVMContext();
 
   const module = buildModule(context, exprs);
 
-  module.print(outputIRFile);
+  return tempy.file.task((tmpFile) => {
+    module.print(tmpFile);
+    return readFile(tmpFile, { encoding: 'utf-8' });
+  });
 }
 
 function buildModule(context: LLVMContext, exprs: SExpr[]): Module {
