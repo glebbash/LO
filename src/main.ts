@@ -11,7 +11,7 @@ async function main() {
   const args = process.argv;
 
   const mode = args.includes('-r') ? 'interpret' : 'compile';
-  const inputFile = getArg(args, 'src') ?? 'examples/hello-world.lll';
+  const inputFile = getArg(args, 'src') ?? 'examples/hello-world.lole';
   const outputIRFile = getArg(args, 'out-ir') ?? 'output.ll';
   const outputBinaryFile = getArg(args, 'out') ?? 'output';
 
