@@ -18,8 +18,18 @@ npm install
 ```
 
 You will also need:
- - llvm
- - cmake
+ - [LLVM](#LLVM-installation-(Ubuntu-only))
+ - CMake 3.17+
+
+## Running compiler
+
+```bash
+ts-node src/main.ts \
+  --src="examples/hello-world.lole" \ # source file
+  --out-ir="output.ll" \              # LLVM IR output file
+  --out="output" \                    # Binary output file
+  -r                                  # to interpret instead of compiling
+```
 
 ### LLVM installation (Ubuntu only)
 
@@ -33,7 +43,7 @@ sudo ./llvm.sh 13
 sudo apt-get install cmake
 ```
 
-Note: cmake 3.17+ is required. You can follow [this](https://askubuntu.com/questions/355565/how-do-i-install-the-latest-version-of-cmake-from-the-command-line) to update.
+Note: CMake 3.17+ is required. You can follow [this](https://askubuntu.com/questions/355565/how-do-i-install-the-latest-version-of-cmake-from-the-command-line) to update.
 
 Note installation may fail with
 ```
