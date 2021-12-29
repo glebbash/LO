@@ -1,3 +1,5 @@
+import { panic } from 'panic-fn';
+
 import {
   chain,
   char,
@@ -11,6 +13,8 @@ import {
   skip,
   zeroOrMany,
 } from './combinator-parser';
+
+// TODO: support comments
 
 export type SExpr = string | SExpr[];
 type Pos = { line: number; col: number };
@@ -27,13 +31,13 @@ export function parse(input: string): SExpr[] {
   if (!res.ok) {
     const pos = getPosAtIndex(input, input.length - res.remaining.length);
 
-    throw new ParseError(res.error, pos);
+    panic(new ParseError(res.error, pos));
   }
 
   if (res.remaining.length > 0) {
     const pos = getPosAtIndex(input, input.length - res.remaining.length);
 
-    throw new ParseError(`Unexpected character '${res.remaining[0]}'`, pos);
+    panic(new ParseError(`Unexpected character '${res.remaining[0]}'`, pos));
   }
 
   return res.value;
