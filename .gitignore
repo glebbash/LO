@@ -1,3 +1,8 @@
+# default lole compilation artifacts
+
+/output.ll
+/output
+
 # Logs
 logs
 *.log
