@@ -20,12 +20,12 @@ const NUMBER_START = '0123456789'.split('');
 export function compile(exprs: SExpr[], outputIRFile: string) {
   const context = new LLVMContext();
 
-  const module = buildMainModule(context, exprs);
+  const module = buildModule(context, exprs);
 
   module.print(outputIRFile);
 }
 
-function buildMainModule(context: LLVMContext, exprs: SExpr[]): Module {
+function buildModule(context: LLVMContext, exprs: SExpr[]): Module {
   const module = new Module('top', context);
   const builder = new IRBuilder(context);
 
