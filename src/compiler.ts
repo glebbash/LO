@@ -14,6 +14,7 @@ import { panic } from 'panic-fn';
 
 import { SExpr } from './parser';
 
+// TODO: add tests
 // TODO: pass expression locations to compiler for better error messages
 
 const STRING_START = ['"'];
