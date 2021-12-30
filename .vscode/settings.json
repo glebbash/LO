@@ -1,5 +1,8 @@
 {
   "files.associations": {
     "*.lole": "clojure"
-  }
+  },
+  "cSpell.words": [
+    "tempy"
+  ]
 }

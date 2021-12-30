@@ -2,12 +2,12 @@ import * as child_process from 'child_process';
 import { readFile, unlink, writeFile } from 'fs/promises';
 import { promisify } from 'util';
 
-import { compile } from './compiler';
-import { parse } from './parser';
+import { compile } from './compiler/compiler';
+import { parse } from './parser/parser';
 
 const exec = promisify(child_process.exec);
 
-// TODO: try to move to ESM modules (again): https://gist.github.com/sindresorhus/a39789f98801d908bbc7ff3ecc99d99c
+// TODO: consider moving to ESM modules (again): https://gist.github.com/sindresorhus/a39789f98801d908bbc7ff3ecc99d99c
 
 async function main() {
   const args = process.argv;
@@ -21,7 +21,6 @@ async function main() {
   const exprs = parse(inputFileContent);
 
   const llvmIR = await compile(exprs);
-
   await writeFile(outputIRFile, llvmIR);
 
   if (mode === 'compile') {

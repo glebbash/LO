@@ -76,7 +76,7 @@ describe('parser', () => {
 
       (llvm/fn main () i32
         (llvm/insert-point "entrypoint")
-        (llvm/call puts (hello-world))
+        (puts hello-world)
         (llvm/ret (i32 0))
       )
       `);
@@ -91,7 +91,7 @@ describe('parser', () => {
         [],
         'i32',
         ['llvm/insert-point', '"entrypoint"'],
-        ['llvm/call', 'puts', ['hello-world']],
+        ['puts', 'hello-world'],
         ['llvm/ret', ['i32', '0']],
       ],
     ]);
