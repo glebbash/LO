@@ -1,5 +1,5 @@
 import * as child_process from 'child_process';
-import { readFile, unlink, writeFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 import { promisify } from 'util';
 
 import { compile } from './compiler/compiler';
@@ -25,7 +25,6 @@ async function main() {
 
   if (mode === 'compile') {
     await compileIR(outputIRFile, outputBinaryFile);
-    await unlink(outputIRFile);
   } else {
     await interpretIR(outputIRFile);
   }
@@ -39,19 +38,21 @@ function getArg(args: string[], name: string): string | undefined {
     ?.slice(argumentStart.length);
 }
 
-async function compileIR(inputFile: string, outputFile = 'output') {
-  await run(`clang-13 -O3 -o ${outputFile} ${inputFile}`);
+async function compileIR(llvmIRFile: string, outputBinaryFile: string) {
+  await run(
+    `clang-13 -O3 -o ${outputBinaryFile} ${llvmIRFile} -Wno-override-module`,
+  );
 }
 
-async function interpretIR(inputFile: string) {
-  await run(`lli-13 ${inputFile}`);
+async function interpretIR(llvmIRFile: string) {
+  await run(`lli-13 ${llvmIRFile}`);
 }
 
 async function run(command: string): Promise<void> {
   const res = await exec(command);
 
-  if (res.stderr) console.error(res.stderr.slice(0, -1));
-  if (res.stdout) console.log(res.stdout.slice(0, -1));
+  if (res.stderr) process.stderr.write(res.stderr);
+  if (res.stdout) process.stdout.write(res.stdout);
 }
 
 main();
