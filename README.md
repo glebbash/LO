@@ -1,6 +1,10 @@
 # lole-lisp
 Low level LISP-like programming language using LLVM backend
 
+## Docs
+
+Docs are available in the **[wiki](https://github.com/glebbash/lole-lisp/wiki)**.
+
 ## Setup
 
 Before developing, you need to set up the correct version of NodeJS, which you can find in `.nvmrc`.
