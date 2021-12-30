@@ -1,12 +1,16 @@
 import { readFile } from 'fs/promises';
 import {
   BasicBlock,
+  CallInst,
+  Constant,
   Function as LLVMFunction,
   FunctionType,
   IRBuilder,
   LLVMContext,
   Module,
+  ReturnInst,
   Type,
+  UndefValue,
   Value,
   verifyFunction,
   verifyModule,
@@ -23,6 +27,7 @@ import {
   expectNumber,
   expectString,
   expectSymbol,
+  isString,
   isSymbol,
 } from './assertions';
 
@@ -71,7 +76,7 @@ function buildModule(context: LLVMContext, exprs: SExpr[]): Module {
   return ctx.module;
 }
 
-function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext) {
+function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): Value {
   const [command, ...args] = expr;
   expectSymbol(command);
 
@@ -81,7 +86,7 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext) {
 
     ctx.module.setTargetTriple(getStringValue(targetTriple));
 
-    return;
+    return buildVoid(ctx);
   }
 
   if (command === 'llvm/extern-fn') {
@@ -90,7 +95,7 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext) {
     expectList(argTypes);
     expectSymbol(returnType);
 
-    return ctx.module.getOrInsertFunction(
+    ctx.module.getOrInsertFunction(
       fnName,
       FunctionType.get(
         getType(returnType, ctx.builder),
@@ -102,21 +107,8 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext) {
         false,
       ),
     );
-  }
 
-  if (command === 'llvm/define-string-ptr') {
-    const [stringName, stringContent] = expectArgsLength(2, args, command);
-    expectSymbol(stringName);
-    expectString(stringContent);
-
-    ctx.values[stringName] = ctx.builder.CreateGlobalStringPtr(
-      getStringValue(stringContent),
-      stringName,
-      0,
-      ctx.module,
-    );
-
-    return;
+    return buildVoid(ctx);
   }
 
   if (command === 'llvm/fn') {
@@ -160,9 +152,10 @@ function buildFunction(
     ),
   };
 
-  for (const expr of exprs) {
-    buildValueInFunctionContext(expr, ctx);
-  }
+  ctx.builder.SetInsertPoint(BasicBlock.Create(ctx.context, 'entry', ctx.fn));
+
+  const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
+  insertImplicitReturnLastValue(values, ctx);
 
   if (verifyFunction(ctx.fn)) {
     panic(`Function verification failed: ${ctx.fn.getName()}`);
@@ -171,20 +164,31 @@ function buildFunction(
   return ctx.fn;
 }
 
+function insertImplicitReturnLastValue(
+  values: Value[],
+  ctx: FunctionContext,
+): ReturnInst {
+  const lastValue = values.at(-1);
+
+  if (lastValue instanceof ReturnInst) {
+    return lastValue;
+  }
+
+  const returnValue = lastValue ?? buildVoid(ctx);
+
+  // TODO: add check for return type (`returnValue.getType()` throws 'TypeError: Illegal invocation')
+  // if (!Type.isSameType(ctx.fn.getReturnType(), returnValue.getType())) {
+  //   panic(
+  //     `Function ${ctx.fn.getName()} must return ${ctx.fn.getReturnType()} but ${returnValue.getType()} was found`,
+  //   );
+  // }
+
+  return ctx.builder.CreateRet(returnValue);
+}
+
 function buildValueInFunctionContext(expr: SExpr, ctx: FunctionContext): Value {
   const [command, ...args] = expr;
   expectSymbol(command);
-
-  if (command === 'llvm/insert-point') {
-    const [entryName] = expectArgsLength(1, args, command);
-    expectString(entryName);
-
-    ctx.builder.SetInsertPoint(
-      BasicBlock.Create(ctx.context, getStringValue(entryName), ctx.fn),
-    );
-
-    return ctx.builder.getFalse();
-  }
 
   if (command === 'llvm/ret') {
     const [returnExpr] = expectArgsLength(1, args, command);
@@ -198,6 +202,10 @@ function buildValueInFunctionContext(expr: SExpr, ctx: FunctionContext): Value {
 function buildValue(expr: SExpr, ctx: ModuleContext): Value {
   if (isSymbol(expr)) {
     return buildConstant(expr, ctx);
+  }
+
+  if (isString(expr)) {
+    return buildString(expr, ctx);
   }
 
   expectList(expr);
@@ -217,7 +225,7 @@ function buildValue(expr: SExpr, ctx: ModuleContext): Value {
   return buildFunctionCall(command, args, ctx);
 }
 
-function buildConstant(name: string, ctx: ModuleContext) {
+function buildConstant(name: string, ctx: ModuleContext): Value {
   const constant = ctx.values[name];
 
   if (!constant) {
@@ -227,11 +235,15 @@ function buildConstant(name: string, ctx: ModuleContext) {
   return constant;
 }
 
+function buildString(expr: string, ctx: ModuleContext): Constant {
+  return ctx.builder.CreateGlobalStringPtr(getStringValue(expr));
+}
+
 function buildFunctionCall(
   fnName: string,
   args: SExpr[],
   ctx: ModuleContext,
-): Value {
+): CallInst {
   const callee = ctx.module.getFunction(fnName);
 
   if (!callee) {
@@ -242,6 +254,10 @@ function buildFunctionCall(
     callee,
     args.map((arg) => buildValue(arg, ctx)),
   );
+}
+
+function buildVoid(ctx: ModuleContext): UndefValue {
+  return UndefValue.get(ctx.builder.getVoidTy());
 }
 
 function getType(typeName: string, builder: IRBuilder): Type {
