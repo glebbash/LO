@@ -155,7 +155,7 @@ function buildFunction(
   ctx.builder.SetInsertPoint(BasicBlock.Create(ctx.context, 'entry', ctx.fn));
 
   const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
-  insertImplicitReturnLastValue(values, ctx);
+  insertImplicitReturnOfLastValue(values, ctx);
 
   if (verifyFunction(ctx.fn)) {
     panic(`Function verification failed: ${ctx.fn.getName()}`);
@@ -164,7 +164,7 @@ function buildFunction(
   return ctx.fn;
 }
 
-function insertImplicitReturnLastValue(
+function insertImplicitReturnOfLastValue(
   values: Value[],
   ctx: FunctionContext,
 ): ReturnInst {
