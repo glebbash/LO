@@ -33,12 +33,6 @@ export function parse(input: string): SExpr[] {
     panic(new ParseError(res.error, pos));
   }
 
-  if (res.remaining.length > 0) {
-    const pos = getPosAtIndex(input, input.length - res.remaining.length);
-
-    panic(new ParseError(`Unexpected character '${res.remaining[0]}'`, pos));
-  }
-
   return res.value;
 }
 
@@ -71,7 +65,7 @@ const whitespace = skip(
 const atom = either([
   pattern(/^[^()\d"][\w\/-]*/), // symbol
   pattern(/^\d[\d_]*(?:\.[\d_]*)?/), // number
-  pattern(/^"(?:[^"\\]|\\.)*"/), // string
+  pattern(/^"(?:[^"\\\n]|\\.)*"/), // string
 ]);
 const list: Parser<SExpr> = lazy(() =>
   map(
