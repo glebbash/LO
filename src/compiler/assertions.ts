@@ -14,6 +14,15 @@ const checkSymbol = (expr: SExpr) =>
     ? 'Symbol expected, found: number'
     : true;
 
+const checkString = (expr: SExpr) =>
+  typeof expr !== 'string'
+    ? 'String expected, found: list'
+    : NUMBER_START.includes(expr[0])
+    ? 'String expected, found: number'
+    : !STRING_START.includes(expr[0])
+    ? 'String expected, found: symbol'
+    : true;
+
 export function isSymbol(expr: SExpr): expr is string {
   return checkSymbol(expr) === true;
 }
@@ -23,18 +32,13 @@ export function expectSymbol(expr: SExpr): asserts expr is string {
   err !== true && panic(err);
 }
 
+export function isString(expr: SExpr): expr is string {
+  return checkString(expr) === true;
+}
+
 export function expectString(expr: SExpr): asserts expr is string {
-  if (typeof expr !== 'string') {
-    panic('Symbol expected, found: list');
-  }
-
-  if (NUMBER_START.includes(expr[0])) {
-    panic('String expected, found: number');
-  }
-
-  if (!STRING_START.includes(expr[0])) {
-    panic('String expected, found: symbol');
-  }
+  const err = checkString(expr);
+  err !== true && panic(err);
 }
 
 export function expectNumber(expr: SExpr): asserts expr is string {
