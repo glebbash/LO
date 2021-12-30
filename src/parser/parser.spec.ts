@@ -70,9 +70,9 @@ describe('parser', () => {
 
       (llvm/target-triple "x86_64-pc-linux-gnu") ; optional
 
-      (llvm/extern-fn puts (&i8) i32)
+      (external-fn puts (&i8) i32)
 
-      (llvm/fn main () i32
+      (fn main () i32
         (puts "Hello World!")
         (i32 0)
       )
@@ -80,8 +80,8 @@ describe('parser', () => {
 
     expect(res).toStrictEqual([
       ['llvm/target-triple', '"x86_64-pc-linux-gnu"'],
-      ['llvm/extern-fn', 'puts', ['&i8'], 'i32'],
-      ['llvm/fn', 'main', [], 'i32', ['puts', '"Hello World!"'], ['i32', '0']],
+      ['external-fn', 'puts', ['&i8'], 'i32'],
+      ['fn', 'main', [], 'i32', ['puts', '"Hello World!"'], ['i32', '0']],
     ]);
   });
 
@@ -102,7 +102,7 @@ describe('parser', () => {
 
   it('reports errors in multiline sources', () => {
     const src = m`
-      (llvm/fn main () i32
+      (fn main () i32
         (puts "Hello World!)
         (i32 0)
       )

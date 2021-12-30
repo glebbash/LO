@@ -12,9 +12,9 @@ describe('compiler', () => {
 
       (llvm/target-triple "x86_64-pc-linux-gnu") ; optional
 
-      (llvm/extern-fn puts (&i8) i32)
+      (external-fn puts (&i8) i32)
 
-      (llvm/fn main () i32
+      (fn main () i32
         (puts "Hello World!")
         (i32 0)
       )

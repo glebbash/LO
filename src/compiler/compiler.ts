@@ -89,7 +89,7 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): Value {
     return buildVoid(ctx);
   }
 
-  if (command === 'llvm/extern-fn') {
+  if (command === 'external-fn') {
     const [fnName, argTypes, returnType] = expectArgsLength(3, args, command);
     expectSymbol(fnName);
     expectList(argTypes);
@@ -111,7 +111,7 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): Value {
     return buildVoid(ctx);
   }
 
-  if (command === 'llvm/fn') {
+  if (command === 'fn') {
     return buildFunction(command, args, ctx);
   }
 
