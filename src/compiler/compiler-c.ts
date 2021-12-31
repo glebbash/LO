@@ -1,5 +1,4 @@
 import { readFile } from 'fs/promises';
-import llvm from 'llvm-bindings';
 import { panic } from 'panic-fn';
 import tempy from 'tempy';
 
@@ -167,11 +166,7 @@ function buildFunction(
   const entry = llvm.appendBasicBlockInContext(ctx.context, ctx.fn, 'entry');
   llvm.positionBuilderAtEnd(ctx.builder, entry);
 
-  // TODO: implement this
-  // const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
-  const values: LLVMValue[] = [
-    llvm.constInt(llvm.i32TypeInContext(ctx.context), 0),
-  ];
+  const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
   insertImplicitReturnOfLastValue(values, ctx);
 
   if (!llvm.verifyFunction(ctx.fn).ok) {
@@ -201,78 +196,87 @@ function insertImplicitReturnOfLastValue(
   return llvm.buildRet(ctx.builder, returnValue);
 }
 
-// function buildValueInFunctionContext(
-//   expr: SExpr,
-//   ctx: FunctionContext,
-// ): LLVMValue {
-//   const [command, ...args] = expr;
-//   expectSymbol(command);
+function buildValueInFunctionContext(
+  expr: SExpr,
+  ctx: FunctionContext,
+): LLVMValue {
+  const { llvm } = ctx;
 
-//   if (command === 'llvm/ret') {
-//     const [returnExpr] = expectArgsLength(1, args, command);
+  const [command, ...args] = expr;
+  expectSymbol(command);
 
-//     return ctx.builder.CreateRet(buildValue(returnExpr, ctx));
-//   }
+  if (command === 'llvm/ret') {
+    const [returnExpr] = expectArgsLength(1, args, command);
 
-//   return buildValue(expr, ctx);
-// }
+    return llvm.buildRet(ctx.builder, buildValue(returnExpr, ctx));
+  }
 
-// function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
-//   if (isSymbol(expr)) {
-//     return buildConstant(expr, ctx);
-//   }
+  return buildValue(expr, ctx);
+}
 
-//   if (isString(expr)) {
-//     return buildString(expr, ctx);
-//   }
+function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
+  const { llvm } = ctx;
 
-//   expectList(expr);
-//   const [command, ...args] = expr;
-//   expectSymbol(command);
+  if (isSymbol(expr)) {
+    return buildConstant(expr, ctx);
+  }
 
-//   if (command === 'i32') {
-//     const [value] = expectArgsLength(1, args, command);
-//     expectNumber(value);
+  if (isString(expr)) {
+    return buildString(expr, ctx);
+  }
 
-//     const i32Value = getNumberValue(value);
-//     expectI32(i32Value);
+  expectList(expr);
+  const [command, ...args] = expr;
+  expectSymbol(command);
 
-//     return ctx.builder.getInt32(i32Value);
-//   }
+  if (command === 'i32') {
+    const [value] = expectArgsLength(1, args, command);
+    expectNumber(value);
 
-//   return buildFunctionCall(command, args, ctx);
-// }
+    const i32Value = getNumberValue(value);
+    expectI32(i32Value);
 
-// function buildConstant(name: string, ctx: ModuleContext): LLVMValue {
-//   const constant = ctx.values[name];
+    return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
+  }
 
-//   if (!constant) {
-//     panic(`Constant is not defined ${name}`);
-//   }
+  return buildFunctionCall(command, args, ctx);
+}
 
-//   return constant;
-// }
+function buildConstant(name: string, ctx: ModuleContext): LLVMValue {
+  const constant = ctx.values[name];
 
-// function buildString(expr: string, ctx: ModuleContext): Constant {
-//   return ctx.builder.CreateGlobalStringPtr(getStringValue(expr));
-// }
+  if (!constant) {
+    panic(`Constant is not defined ${name}`);
+  }
 
-// function buildFunctionCall(
-//   fnName: string,
-//   args: SExpr[],
-//   ctx: ModuleContext,
-// ): CallInst {
-//   const callee = ctx.module.getFunction(fnName);
+  return constant;
+}
 
-//   if (!callee) {
-//     panic(`Function ${fnName} is not defined`);
-//   }
+function buildString(expr: string, ctx: ModuleContext): LLVMValue {
+  const { llvm } = ctx;
 
-//   return ctx.builder.CreateCall(
-//     callee,
-//     args.map((arg) => buildValue(arg, ctx)),
-//   );
-// }
+  return llvm.buildGlobalStringPtr(ctx.builder, getStringValue(expr));
+}
+
+function buildFunctionCall(
+  fnName: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const callee = llvm.getNamedFunction(ctx.module, fnName);
+
+  if (callee.value.isNull()) {
+    panic(`Function ${fnName} is not defined`);
+  }
+
+  return llvm.buildCall(
+    ctx.builder,
+    callee,
+    args.map((arg) => buildValue(arg, ctx)),
+  );
+}
 
 function buildVoid(ctx: ModuleContext): LLVMValue {
   const { llvm } = ctx;

@@ -89,7 +89,7 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       wrap:
         (call) =>
         (returnType: LLVMType, argTypes: LLVMType[], isVarArg = false) => {
-          // TODO: check if argTypes should be disposed
+          // TODO: check if argTypesRef should be disposed somehow
           const argTypesRef = new LLVMTypeArray(argTypes.length);
           for (const index in argTypes) {
             argTypesRef[index] = argTypes[index].value;
@@ -121,6 +121,12 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       wrap: (call) => (module: LLVMModule, fnName: string, type: LLVMType) =>
         new LLVMValue(call(module.value, fnName, type.value)),
     }),
+    getNamedFunction: fn({
+      name: 'LLVMGetNamedFunction',
+      type: [LLVMValue.TYPE, [LLVMModule.TYPE, 'string']],
+      wrap: (call) => (module: LLVMModule, fnName: string) =>
+        new LLVMValue(call(module.value, fnName)),
+    }),
 
     appendBasicBlockInContext: fn({
       name: 'LLVMAppendBasicBlockInContext',
@@ -135,11 +141,44 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       wrap: (call) => (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
         call(builder.value, block.value),
     }),
+    buildGlobalStringPtr: fn({
+      name: 'LLVMBuildGlobalStringPtr',
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, 'string', 'string']],
+      wrap:
+        (call) =>
+        (builder: LLVMIRBuilder, content: string, name = 'str') =>
+          new LLVMValue(call(builder.value, content, name)),
+    }),
     buildRet: fn({
       name: 'LLVMBuildRet',
       type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMValue.TYPE]],
       wrap: (call) => (builder: LLVMIRBuilder, value: LLVMValue) =>
         new LLVMValue(call(builder.value, value.value)),
+    }),
+    buildCall: fn({
+      name: 'LLVMBuildCall',
+      type: [
+        LLVMValue.TYPE,
+        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValueArray, 'int', 'string'],
+      ],
+      wrap:
+        (call) =>
+        (
+          builder: LLVMIRBuilder,
+          fn: LLVMValue,
+          args: LLVMValue[],
+          name = 'i',
+        ) => {
+          // TODO: check if argsRef should be disposed somehow
+          const argsRef = new LLVMValueArray(args.length);
+          for (const index in args) {
+            argsRef[index] = args[index].value;
+          }
+
+          return new LLVMValue(
+            call(builder.value, fn.value, argsRef, args.length, name),
+          );
+        },
     }),
 
     verifyFunction: fn({
@@ -246,3 +285,4 @@ export class LLVMBasicBlock extends UniqueType<Pointer<void>> {
 }
 
 const LLVMTypeArray = arrayRef(LLVMType.TYPE);
+const LLVMValueArray = arrayRef(LLVMValue.TYPE);
