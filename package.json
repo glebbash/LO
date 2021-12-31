@@ -38,8 +38,12 @@
     "typescript": "^4.5.4"
   },
   "dependencies": {
+    "@types/ffi-napi": "^4.0.5",
+    "ffi-napi": "^4.0.3",
     "llvm-bindings": "^0.3.3",
     "panic-fn": "^1.0.3",
+    "ref-array-di": "^1.2.2",
+    "ref-napi": "^3.0.3",
     "tempy": "^1.0.1"
   }
 }

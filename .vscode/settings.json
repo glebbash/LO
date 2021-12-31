@@ -3,6 +3,8 @@
     "*.lole": "clojure"
   },
   "cSpell.words": [
+    "deref",
+    "LLVMIR",
     "tempy"
   ]
 }
