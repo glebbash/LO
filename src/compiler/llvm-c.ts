@@ -106,14 +106,47 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       type: [LLVMValue.TYPE, [LLVMType.TYPE]],
       wrap: (call) => (type: LLVMType) => new LLVMValue(call(type.value)),
     }),
+    constInt: fn({
+      name: 'LLVMConstInt',
+      type: [LLVMValue.TYPE, [LLVMType.TYPE, 'int', 'bool']],
+      wrap:
+        (call) =>
+        (type: LLVMType, value: number, signExtend = false) =>
+          new LLVMValue(call(type.value, value, signExtend)),
+    }),
 
     addFunction: fn({
       name: 'LLVMAddFunction',
       type: [LLVMValue.TYPE, [LLVMModule.TYPE, 'string', LLVMType.TYPE]],
       wrap: (call) => (module: LLVMModule, fnName: string, type: LLVMType) =>
-        call(module.value, fnName, type.value),
+        new LLVMValue(call(module.value, fnName, type.value)),
     }),
 
+    appendBasicBlockInContext: fn({
+      name: 'LLVMAppendBasicBlockInContext',
+      type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, LLVMValue.TYPE, 'string']],
+      wrap: (call) => (ctx: LLVMContext, fn: LLVMValue, name: string) =>
+        new LLVMBasicBlock(call(ctx.value, fn.value, name)),
+    }),
+
+    positionBuilderAtEnd: fn({
+      name: 'LLVMPositionBuilderAtEnd',
+      type: ['void', [LLVMIRBuilder.TYPE, LLVMBasicBlock.TYPE]],
+      wrap: (call) => (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
+        call(builder.value, block.value),
+    }),
+    buildRet: fn({
+      name: 'LLVMBuildRet',
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMValue.TYPE]],
+      wrap: (call) => (builder: LLVMIRBuilder, value: LLVMValue) =>
+        new LLVMValue(call(builder.value, value.value)),
+    }),
+
+    verifyFunction: fn({
+      name: 'LLVMVerifyFunction',
+      type: ['bool', [LLVMValue.TYPE, 'int']],
+      wrap: (call) => (fn: LLVMValue) => ({ ok: !call(fn.value, 2) }),
+    }),
     verifyModule: fn({
       name: 'LLVMVerifyModule',
       type: ['bool', [LLVMModule.TYPE, 'int', stringRef]],
@@ -206,7 +239,7 @@ export class LLVMType extends UniqueType<Pointer<void>> {
   private __name = this;
 }
 
-export class LLVMFunction extends UniqueType<Pointer<void>> {
+export class LLVMBasicBlock extends UniqueType<Pointer<void>> {
   static TYPE = refType('void');
 
   private __name = this;

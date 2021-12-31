@@ -1,4 +1,5 @@
 import { readFile } from 'fs/promises';
+import llvm from 'llvm-bindings';
 import { panic } from 'panic-fn';
 import tempy from 'tempy';
 
@@ -17,13 +18,12 @@ import {
 import {
   LibLLVM,
   LLVMContext,
-  LLVMFunction,
   LLVMIRBuilder,
   LLVMModule,
   LLVMType,
   LLVMValue,
 } from './llvm-c';
-import { getStringValue } from './transformers';
+import { getNumberValue, getStringValue } from './transformers';
 
 // TODO: add expression types and values in parser: symbol | string | number | list
 // TODO: pass expression locations to compiler for better error messages
@@ -39,7 +39,7 @@ type ModuleContext = CodeGenContext & {
   values: Record<string, LLVMValue>;
 };
 
-type FunctionContext = ModuleContext & { fn: LLVMFunction };
+type FunctionContext = ModuleContext & { fn: LLVMValue };
 
 export async function compile(llvm: LibLLVM, exprs: SExpr[]): Promise<string> {
   const ctx: CodeGenContext = {
@@ -124,82 +124,82 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return buildVoid(ctx);
   }
 
-  // if (command === 'fn') {
-  //   return buildFunction(command, args, ctx);
-  // }
+  if (command === 'fn') {
+    return buildFunction(command, args, ctx);
+  }
 
   // return buildValue(expr, ctx);
 
   panic('//TODO: implement this');
 }
 
-// function buildFunction(
-//   command: string,
-//   args: SExpr[],
-//   moduleCtx: ModuleContext,
-// ): LLVMFunction {
-//   const [fnName, argTypes, returnType, ...exprs] = expectArgsLengthAtLeast(
-//     3,
-//     args,
-//     command,
-//   );
-//   expectSymbol(fnName);
-//   expectList(argTypes);
-//   expectSymbol(returnType);
+function buildFunction(
+  command: string,
+  args: SExpr[],
+  moduleCtx: ModuleContext,
+): LLVMValue {
+  const { llvm } = moduleCtx;
 
-//   const fnType = FunctionType.get(
-//     getType(returnType, moduleCtx.builder),
-//     argTypes.map((argType) => {
-//       expectSymbol(argType);
+  const [fnName, argTypes, returnType, ...exprs] = expectArgsLengthAtLeast(
+    3,
+    args,
+    command,
+  );
+  expectSymbol(fnName);
+  expectList(argTypes);
+  expectSymbol(returnType);
 
-//       return getType(argType, ctx.builder);
-//     }),
-//     false,
-//   );
+  const fnType = llvm.functionType(
+    getType(returnType, moduleCtx),
+    argTypes.map((argType) => {
+      expectSymbol(argType);
 
-//   const ctx: FunctionContext = {
-//     ...moduleCtx,
-//     fn: LLVMFunction.Create(
-//       fnType,
-//       LLVMFunction.LinkageTypes.ExternalLinkage,
-//       fnName,
-//       moduleCtx.module,
-//     ),
-//   };
+      return getType(argType, moduleCtx);
+    }),
+  );
 
-//   ctx.builder.SetInsertPoint(BasicBlock.Create(ctx.context, 'entry', ctx.fn));
+  const ctx: FunctionContext = {
+    ...moduleCtx,
+    // TODO: check if and how LLVMFunction.LinkageTypes.ExternalLinkage should be added
+    fn: llvm.addFunction(moduleCtx.module, fnName, fnType),
+  };
 
-//   const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
-//   insertImplicitReturnOfLastValue(values, ctx);
+  const entry = llvm.appendBasicBlockInContext(ctx.context, ctx.fn, 'entry');
+  llvm.positionBuilderAtEnd(ctx.builder, entry);
 
-//   if (verifyFunction(ctx.fn)) {
-//     panic(`Function verification failed: ${ctx.fn.getName()}`);
-//   }
+  // TODO: implement this
+  // const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
+  const values: LLVMValue[] = [
+    llvm.constInt(llvm.i32TypeInContext(ctx.context), 0),
+  ];
+  insertImplicitReturnOfLastValue(values, ctx);
 
-//   return ctx.fn;
-// }
+  if (!llvm.verifyFunction(ctx.fn).ok) {
+    panic(`Function verification failed: ${fnName}`);
+  }
 
-// function insertImplicitReturnOfLastValue(
-//   values: LLVMValue[],
-//   ctx: FunctionContext,
-// ): ReturnInst {
-//   const lastValue = values.at(-1);
+  return ctx.fn;
+}
 
-//   if (lastValue instanceof ReturnInst) {
-//     return lastValue;
-//   }
+function insertImplicitReturnOfLastValue(
+  values: LLVMValue[],
+  ctx: FunctionContext,
+): LLVMValue {
+  const { llvm } = ctx;
 
-//   const returnValue = lastValue ?? buildVoid(ctx);
+  const lastValue = values.at(-1);
 
-//   // TODO: add check for return type (`returnValue.getType()` throws 'TypeError: Illegal invocation')
-//   // if (!Type.isSameType(ctx.fn.getReturnType(), returnValue.getType())) {
-//   //   panic(
-//   //     `Function ${ctx.fn.getName()} must return ${ctx.fn.getReturnType()} but ${returnValue.getType()} was found`,
-//   //   );
-//   // }
+  const returnValue = lastValue ?? buildVoid(ctx);
 
-//   return ctx.builder.CreateRet(returnValue);
-// }
+  // TODO: add check for return type (`returnValue.getType()` throws 'TypeError: Illegal invocation')
+  // if (!Type.isSameType(ctx.fn.getReturnType(), returnValue.getType())) {
+  //   panic(
+  //     `Function ${ctx.fn.getName()} must return ${ctx.fn.getReturnType()} but ${returnValue.getType()} was found`,
+  //   );
+  // }
+
+  return llvm.buildRet(ctx.builder, returnValue);
+}
 
 // function buildValueInFunctionContext(
 //   expr: SExpr,
