@@ -20,6 +20,7 @@ import {
   LLVMFunction,
   LLVMIRBuilder,
   LLVMModule,
+  LLVMType,
   LLVMValue,
 } from './llvm-c';
 import { getStringValue } from './transformers';
@@ -61,8 +62,8 @@ export async function compile(llvm: LibLLVM, exprs: SExpr[]): Promise<string> {
 
 function buildModule(parentCtx: CodeGenContext, exprs: SExpr[]): LLVMModule {
   const { llvm } = parentCtx;
-  const moduleName = 'main';
 
+  const moduleName = 'main';
   const ctx: ModuleContext = {
     ...parentCtx,
     builder: llvm.createBuilderInContext(parentCtx.context),
@@ -101,36 +102,35 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return buildVoid(ctx);
   }
 
-  panic('//TODO: implement this');
+  if (command === 'external-fn') {
+    const [fnName, argTypes, returnType] = expectArgsLength(3, args, command);
+    expectSymbol(fnName);
+    expectList(argTypes);
+    expectSymbol(returnType);
 
-  // if (command === 'external-fn') {
-  //   const [fnName, argTypes, returnType] = expectArgsLength(3, args, command);
-  //   expectSymbol(fnName);
-  //   expectList(argTypes);
-  //   expectSymbol(returnType);
+    llvm.addFunction(
+      ctx.module,
+      fnName,
+      llvm.functionType(
+        getType(returnType, ctx),
+        argTypes.map((argType) => {
+          expectSymbol(argType);
 
-  //   llvm.addFunction(
-  //     ctx.module,
-  //     fnName,
-  //     FunctionType.get(
-  //       getType(returnType, ctx.builder),
-  //       argTypes.map((argType) => {
-  //         expectSymbol(argType);
+          return getType(argType, ctx);
+        }),
+      ),
+    );
 
-  //         return getType(argType, ctx.builder);
-  //       }),
-  //       false,
-  //     ),
-  //   );
-
-  //   return buildVoid(ctx);
-  // }
+    return buildVoid(ctx);
+  }
 
   // if (command === 'fn') {
   //   return buildFunction(command, args, ctx);
   // }
 
   // return buildValue(expr, ctx);
+
+  panic('//TODO: implement this');
 }
 
 // function buildFunction(
@@ -276,16 +276,19 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
 
 function buildVoid(ctx: ModuleContext): LLVMValue {
   const { llvm } = ctx;
+
   return llvm.getUndef(llvm.voidTypeInContext(ctx.context));
 }
 
-// function getType(typeName: string, builder: LLVMIRBuilder): Type {
-//   switch (typeName) {
-//     case 'i32':
-//       return builder.getInt32Ty();
-//     case '&i8':
-//       return builder.getInt8PtrTy();
-//     default:
-//       panic(`Unknown type: ${typeName}`);
-//   }
-// }
+function getType(typeName: string, ctx: ModuleContext): LLVMType {
+  const { llvm } = ctx;
+
+  switch (typeName) {
+    case 'i32':
+      return llvm.i32TypeInContext(ctx.context);
+    case '&i8':
+      return llvm.pointerType(llvm.i8TypeInContext(ctx.context));
+    default:
+      panic(`Unknown type: ${typeName}`);
+  }
+}

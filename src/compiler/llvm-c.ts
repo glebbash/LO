@@ -6,7 +6,10 @@ import {
   LibraryObjectDefinitionInferenceMarker,
   LibraryObjectDefinitionToLibraryDefinition,
 } from 'ffi-napi';
-import { allocCString, NULL, Pointer, ref, refType } from 'ref-napi';
+import arrayRefLib from 'ref-array-di';
+import refLib, { allocCString, NULL, Pointer, ref, refType } from 'ref-napi';
+
+const arrayRef = arrayRefLib(refLib);
 
 const stringRef = refType('string');
 const nullRef = refType('void');
@@ -60,10 +63,42 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
         call(module.value, targetTriple),
     }),
 
+    pointerType: fn({
+      name: 'LLVMPointerType',
+      type: [LLVMType.TYPE, [LLVMType.TYPE, 'int']],
+      wrap: (call) => (type: LLVMType) => new LLVMType(call(type.value, 0)),
+    }),
     voidTypeInContext: fn({
       name: 'LLVMVoidTypeInContext',
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
+    }),
+    i8TypeInContext: fn({
+      name: 'LLVMInt8TypeInContext',
+      type: [LLVMType.TYPE, [LLVMContext.TYPE]],
+      wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
+    }),
+    i32TypeInContext: fn({
+      name: 'LLVMInt32TypeInContext',
+      type: [LLVMType.TYPE, [LLVMContext.TYPE]],
+      wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
+    }),
+    functionType: fn({
+      name: 'LLVMFunctionType',
+      type: [LLVMType.TYPE, [LLVMType.TYPE, LLVMTypeArray, 'int', 'bool']],
+      wrap:
+        (call) =>
+        (returnType: LLVMType, argTypes: LLVMType[], isVarArg = false) => {
+          // TODO: check if argTypes should be disposed
+          const argTypesRef = new LLVMTypeArray(argTypes.length);
+          for (const index in argTypes) {
+            argTypesRef[index] = argTypes[index].value;
+          }
+
+          return new LLVMType(
+            call(returnType.value, argTypesRef, argTypes.length, isVarArg),
+          );
+        },
     }),
 
     getUndef: fn({
@@ -78,13 +113,6 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       wrap: (call) => (module: LLVMModule, fnName: string, type: LLVMType) =>
         call(module.value, fnName, type.value),
     }),
-
-    // functionType: fn({
-    //   name: 'LLVMAddFunction',
-    //   type: [LLVMType.TYPE, [LLVMType.TYPE, LLVMType.TYPE, 'int', 'bool']],
-    //   wrap: (call) => (module: LLVMModule, fnName: string, type: LLVMType) =>
-    //     call(module.value, fnName, type.value),
-    // }),
 
     verifyModule: fn({
       name: 'LLVMVerifyModule',
@@ -183,3 +211,5 @@ export class LLVMFunction extends UniqueType<Pointer<void>> {
 
   private __name = this;
 }
+
+const LLVMTypeArray = arrayRef(LLVMType.TYPE);
