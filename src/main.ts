@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { promisify } from 'util';
 
 import { compile } from './compiler/compiler';
+import { loadLibLLVM } from './compiler/llvm-c';
 import { parse } from './parser/parser';
 
 const exec = promisify(child_process.exec);
@@ -20,7 +21,8 @@ async function main() {
   const inputFileContent = await readFile(inputFile, { encoding: 'utf-8' });
   const exprs = parse(inputFileContent);
 
-  const llvmIR = await compile(exprs);
+  const llvm = loadLibLLVM();
+  const llvmIR = await compile(exprs, llvm);
   await writeFile(outputIRFile, llvmIR);
 
   if (mode === 'compile') {

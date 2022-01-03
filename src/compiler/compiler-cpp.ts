@@ -1,4 +1,20 @@
 import { readFile } from 'fs/promises';
+import {
+  BasicBlock,
+  CallInst,
+  Constant,
+  Function as LLVMFunction,
+  FunctionType,
+  IRBuilder,
+  LLVMContext,
+  Module,
+  ReturnInst,
+  Type,
+  UndefValue,
+  Value,
+  verifyFunction,
+  verifyModule,
+} from 'llvm-bindings';
 import { panic } from 'panic-fn';
 import tempy from 'tempy';
 
@@ -14,81 +30,53 @@ import {
   isString,
   isSymbol,
 } from './assertions';
-import {
-  LibLLVM,
-  LLVMContext,
-  LLVMIRBuilder,
-  LLVMModule,
-  LLVMType,
-  LLVMValue,
-} from './llvm-c';
-import { getNumberValue, getStringValue } from './transformers';
 
 // TODO: add expression types and values in parser: symbol | string | number | list
 // TODO: pass expression locations to compiler for better error messages
 
-type CodeGenContext = {
-  llvm: LibLLVM;
+type ModuleContext = {
   context: LLVMContext;
+  builder: IRBuilder;
+  module: Module;
+  values: Record<string, Value>;
 };
 
-type ModuleContext = CodeGenContext & {
-  builder: LLVMIRBuilder;
-  module: LLVMModule;
-  values: Record<string, LLVMValue>;
-};
+type FunctionContext = ModuleContext & { fn: LLVMFunction };
 
-type FunctionContext = ModuleContext & { fn: LLVMValue };
+export async function compile(exprs: SExpr[]): Promise<string> {
+  const context = new LLVMContext();
 
-export async function compile(llvm: LibLLVM, exprs: SExpr[]): Promise<string> {
-  const ctx: CodeGenContext = {
-    llvm,
-    context: llvm.contextCreate(),
-  };
+  const module = buildModule(context, exprs);
 
-  const module = buildModule(ctx, exprs);
-
-  const llvmIRFile = await tempy.file.task((tmpFile) => {
-    llvm.printModuleToFile(module, tmpFile);
+  return tempy.file.task((tmpFile) => {
+    module.print(tmpFile);
     return readFile(tmpFile, { encoding: 'utf-8' });
   });
-
-  llvm.disposeModule(module);
-  llvm.contextDispose(ctx.context);
-
-  return llvmIRFile;
 }
 
-function buildModule(parentCtx: CodeGenContext, exprs: SExpr[]): LLVMModule {
-  const { llvm } = parentCtx;
-
-  const moduleName = 'main';
+function buildModule(context: LLVMContext, exprs: SExpr[]): Module {
   const ctx: ModuleContext = {
-    ...parentCtx,
-    builder: llvm.createBuilderInContext(parentCtx.context),
-    module: llvm.moduleCreateWithNameInContext(moduleName, parentCtx.context),
+    context,
+    builder: new IRBuilder(context),
+    module: new Module('main', context),
     values: {},
   };
+
+  ctx.values['true'] = ctx.builder.getTrue();
+  ctx.values['false'] = ctx.builder.getFalse();
 
   for (const expr of exprs) {
     buildValueInModuleContext(expr, ctx);
   }
 
-  const res = llvm.verifyModule(ctx.module);
-
-  if (!res.ok) {
-    console.error(res.message);
-    panic(`Verifying module failed: ${moduleName}`);
+  if (verifyModule(ctx.module)) {
+    panic(`Verifying module failed: ${ctx.module.getName()}`);
   }
-
-  llvm.disposeBuilder(ctx.builder);
 
   return ctx.module;
 }
 
-function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
-  const { llvm } = ctx;
-
+function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): Value {
   const [command, ...args] = expr;
   expectSymbol(command);
 
@@ -96,7 +84,7 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
     const [targetTriple] = expectArgsLength(1, args, command);
     expectString(targetTriple);
 
-    llvm.setTarget(ctx.module, getStringValue(targetTriple));
+    ctx.module.setTargetTriple(getStringValue(targetTriple));
 
     return buildVoid(ctx);
   }
@@ -107,16 +95,16 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
     expectList(argTypes);
     expectSymbol(returnType);
 
-    llvm.addFunction(
-      ctx.module,
+    ctx.module.getOrInsertFunction(
       fnName,
-      llvm.functionType(
-        getType(returnType, ctx),
+      FunctionType.get(
+        getType(returnType, ctx.builder),
         argTypes.map((argType) => {
           expectSymbol(argType);
 
-          return getType(argType, ctx);
+          return getType(argType, ctx.builder);
         }),
+        false,
       ),
     );
 
@@ -127,18 +115,14 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return buildFunction(command, args, ctx);
   }
 
-  // return buildValue(expr, ctx);
-
-  panic('//TODO: implement this');
+  return buildValue(expr, ctx);
 }
 
 function buildFunction(
   command: string,
   args: SExpr[],
   moduleCtx: ModuleContext,
-): LLVMValue {
-  const { llvm } = moduleCtx;
-
+): LLVMFunction {
   const [fnName, argTypes, returnType, ...exprs] = expectArgsLengthAtLeast(
     3,
     args,
@@ -148,41 +132,47 @@ function buildFunction(
   expectList(argTypes);
   expectSymbol(returnType);
 
-  const fnType = llvm.functionType(
-    getType(returnType, moduleCtx),
+  const fnType = FunctionType.get(
+    getType(returnType, moduleCtx.builder),
     argTypes.map((argType) => {
       expectSymbol(argType);
 
-      return getType(argType, moduleCtx);
+      return getType(argType, ctx.builder);
     }),
+    false,
   );
 
   const ctx: FunctionContext = {
     ...moduleCtx,
-    // TODO: check if and how LLVMFunction.LinkageTypes.ExternalLinkage should be added
-    fn: llvm.addFunction(moduleCtx.module, fnName, fnType),
+    fn: LLVMFunction.Create(
+      fnType,
+      LLVMFunction.LinkageTypes.ExternalLinkage,
+      fnName,
+      moduleCtx.module,
+    ),
   };
 
-  const entry = llvm.appendBasicBlockInContext(ctx.context, ctx.fn, 'entry');
-  llvm.positionBuilderAtEnd(ctx.builder, entry);
+  ctx.builder.SetInsertPoint(BasicBlock.Create(ctx.context, 'entry', ctx.fn));
 
   const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
   insertImplicitReturnOfLastValue(values, ctx);
 
-  if (!llvm.verifyFunction(ctx.fn).ok) {
-    panic(`Function verification failed: ${fnName}`);
+  if (verifyFunction(ctx.fn)) {
+    panic(`Function verification failed: ${ctx.fn.getName()}`);
   }
 
   return ctx.fn;
 }
 
 function insertImplicitReturnOfLastValue(
-  values: LLVMValue[],
+  values: Value[],
   ctx: FunctionContext,
-): LLVMValue {
-  const { llvm } = ctx;
-
+): ReturnInst {
   const lastValue = values.at(-1);
+
+  if (lastValue instanceof ReturnInst) {
+    return lastValue;
+  }
 
   const returnValue = lastValue ?? buildVoid(ctx);
 
@@ -193,30 +183,23 @@ function insertImplicitReturnOfLastValue(
   //   );
   // }
 
-  return llvm.buildRet(ctx.builder, returnValue);
+  return ctx.builder.CreateRet(returnValue);
 }
 
-function buildValueInFunctionContext(
-  expr: SExpr,
-  ctx: FunctionContext,
-): LLVMValue {
-  const { llvm } = ctx;
-
+function buildValueInFunctionContext(expr: SExpr, ctx: FunctionContext): Value {
   const [command, ...args] = expr;
   expectSymbol(command);
 
   if (command === 'llvm/ret') {
     const [returnExpr] = expectArgsLength(1, args, command);
 
-    return llvm.buildRet(ctx.builder, buildValue(returnExpr, ctx));
+    return ctx.builder.CreateRet(buildValue(returnExpr, ctx));
   }
 
   return buildValue(expr, ctx);
 }
 
-function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
-  const { llvm } = ctx;
-
+function buildValue(expr: SExpr, ctx: ModuleContext): Value {
   if (isSymbol(expr)) {
     return buildConstant(expr, ctx);
   }
@@ -236,13 +219,13 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
     const i32Value = getNumberValue(value);
     expectI32(i32Value);
 
-    return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
+    return ctx.builder.getInt32(i32Value);
   }
 
   return buildFunctionCall(command, args, ctx);
 }
 
-function buildConstant(name: string, ctx: ModuleContext): LLVMValue {
+function buildConstant(name: string, ctx: ModuleContext): Value {
   const constant = ctx.values[name];
 
   if (!constant) {
@@ -252,47 +235,51 @@ function buildConstant(name: string, ctx: ModuleContext): LLVMValue {
   return constant;
 }
 
-function buildString(expr: string, ctx: ModuleContext): LLVMValue {
-  const { llvm } = ctx;
-
-  return llvm.buildGlobalStringPtr(ctx.builder, getStringValue(expr));
+function buildString(expr: string, ctx: ModuleContext): Constant {
+  return ctx.builder.CreateGlobalStringPtr(getStringValue(expr), 'str');
 }
 
 function buildFunctionCall(
   fnName: string,
   args: SExpr[],
   ctx: ModuleContext,
-): LLVMValue {
-  const { llvm } = ctx;
+): CallInst {
+  const callee = ctx.module.getFunction(fnName);
 
-  const callee = llvm.getNamedFunction(ctx.module, fnName);
-
-  if (callee.value.isNull()) {
+  if (!callee) {
     panic(`Function ${fnName} is not defined`);
   }
 
-  return llvm.buildCall(
-    ctx.builder,
+  return ctx.builder.CreateCall(
     callee,
     args.map((arg) => buildValue(arg, ctx)),
+    'i',
   );
 }
 
-function buildVoid(ctx: ModuleContext): LLVMValue {
-  const { llvm } = ctx;
-
-  return llvm.getUndef(llvm.voidTypeInContext(ctx.context));
+function buildVoid(ctx: ModuleContext): UndefValue {
+  return UndefValue.get(ctx.builder.getVoidTy());
 }
 
-function getType(typeName: string, ctx: ModuleContext): LLVMType {
-  const { llvm } = ctx;
-
+function getType(typeName: string, builder: IRBuilder): Type {
   switch (typeName) {
     case 'i32':
-      return llvm.i32TypeInContext(ctx.context);
+      return builder.getInt32Ty();
     case '&i8':
-      return llvm.pointerType(llvm.i8TypeInContext(ctx.context));
+      return builder.getInt8PtrTy();
     default:
       panic(`Unknown type: ${typeName}`);
   }
+}
+
+function getStringValue(value: string): string {
+  return value
+    .slice(1, -1)
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, '\n')
+    .replace(/\\\\/g, '\\');
+}
+
+function getNumberValue(value: string): number {
+  return parseFloat(value.replace(/_/g, ''));
 }
