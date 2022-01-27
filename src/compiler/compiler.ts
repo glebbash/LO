@@ -215,6 +215,15 @@ function buildValueInFunctionContext(
     return llvm.buildRet(ctx.builder, buildValue(returnExpr, ctx));
   }
 
+  if (command === 'let') {
+    const [name, expr] = expectArgsLength(2, args, command);
+    expectSymbol(name);
+
+    const value = buildValue(expr, ctx);
+    ctx.values[name] = value;
+    return value;
+  }
+
   return buildValue(expr, ctx);
 }
 
