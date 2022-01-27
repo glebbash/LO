@@ -163,12 +163,7 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       ],
       wrap:
         (call) =>
-        (
-          builder: LLVMIRBuilder,
-          fn: LLVMValue,
-          args: LLVMValue[],
-          name = 'i',
-        ) => {
+        (builder: LLVMIRBuilder, fn: LLVMValue, args: LLVMValue[]) => {
           // TODO: check if argsRef should be disposed somehow
           const argsRef = new LLVMValueArray(args.length);
           for (const index in args) {
@@ -176,7 +171,7 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
           }
 
           return new LLVMValue(
-            call(builder.value, fn.value, argsRef, args.length, name),
+            call(builder.value, fn.value, argsRef, args.length, ''),
           );
         },
     }),
@@ -192,7 +187,7 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       wrap: (call) => (module: LLVMModule) => {
         const messageRef = ref(allocCString(' '.repeat(2048)));
         const err = call(module.value, 2, messageRef);
-        const message = messageRef.deref();
+        const message = messageRef.deref().toString();
 
         return { ok: !err, message };
       },
