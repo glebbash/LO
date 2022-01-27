@@ -296,6 +296,8 @@ function getType(typeName: string, ctx: ModuleContext): LLVMType {
       return llvm.i32TypeInContext(ctx.context);
     case '&i8':
       return llvm.pointerType(llvm.i8TypeInContext(ctx.context));
+    case 'void':
+      return llvm.voidTypeInContext(ctx.context);
     default:
       panic(`Unknown type: ${typeName}`);
   }
