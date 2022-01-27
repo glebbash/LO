@@ -243,6 +243,12 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
   }
 
+  if (command === 'void') {
+    expectArgsLength(0, args, command);
+
+    return buildVoid(ctx);
+  }
+
   return buildFunctionCall(command, args, ctx);
 }
 
