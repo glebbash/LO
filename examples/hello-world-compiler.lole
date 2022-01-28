@@ -11,11 +11,11 @@
 
 (external-fn LLVMInt32TypeInContext (&i8) &i8)
 (external-fn LLVMInt8TypeInContext (&i8) &i8)
-(external-fn LLVMFunctionType (&i8 &i8 i32 i32) &i8)
+(external-fn LLVMFunctionType (&i8 &&i8 i32 i32) &i8)
 (external-fn LLVMPointerType (&i8 i32) &i8)
 
 (external-fn LLVMAddFunction (&i8 &i8 &i8) &i8)
-(external-fn LLVMBuildCall (&i8 &i8 &i8 i32 &i8) &i8)
+(external-fn LLVMBuildCall (&i8 &i8 &&i8 i32 &i8) &i8)
 
 (external-fn LLVMAppendBasicBlockInContext (&i8 &i8 &i8) &i8)
 (external-fn LLVMPositionBuilderAtEnd (&i8 &i8) &i8)
@@ -32,7 +32,6 @@
 
 (fn main () i32
   (let false (i32 0))
-  (let nullptr "")
 
   (let context (LLVMContextCreate))
   (let module (LLVMModuleCreateWithNameInContext "module" context))
@@ -42,7 +41,7 @@
   (let int_8_type_ptr (LLVMPointerType int_8_type (i32 0)))
   (let int_32_type (LLVMInt32TypeInContext context))
 
-  (let main_function_type (LLVMFunctionType int_32_type nullptr (i32 0) false))
+  (let main_function_type (LLVMFunctionType int_32_type (nullptr &&i8) (i32 0) false))
   (let main_function (LLVMAddFunction module "main" main_function_type))
 
   (let entry (LLVMAppendBasicBlockInContext context main_function "entry"))
@@ -59,7 +58,7 @@
 
   (LLVMBuildRet builder (LLVMConstInt int_32_type (i32 0) false))
 
-  (LLVMPrintModuleToFile module "output2.ll" nullptr)
+  (LLVMPrintModuleToFile module "output2.ll" (nullptr &i8))
   (system "clang-13 -O3 -o output2 output2.ll -Wno-override-module")
 
   (LLVMDisposeBuilder builder)
