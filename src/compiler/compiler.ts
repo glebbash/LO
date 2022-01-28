@@ -212,6 +212,10 @@ function buildValueInFunctionContext(
     const [name, expr] = expectArgsLength(2, args, command);
     expectSymbol(name);
 
+    if (ctx.values[name]) {
+      panic(`Constant ${name} is already defined`);
+    }
+
     const value = buildValue(expr, ctx);
     ctx.values[name] = value;
     return value;
