@@ -34,7 +34,7 @@
     "jest": "^27.4.5",
     "multiline-str": "^1.0.2",
     "prettier": "^2.5.1",
-    "tempy": "^2.0.0",
+    "tempy": "^1.0.1",
     "ts-jest": "^27.1.2",
     "ts-node": "^10.4.0",
     "typescript": "^4.5.4"
