@@ -118,6 +118,11 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
         (type: LLVMType, value: number, signExtend = false) =>
           new LLVMValue(call(type.value, value, signExtend)),
     }),
+    constPointerNull: fn({
+      name: 'LLVMConstPointerNull',
+      type: [LLVMValue.TYPE, [LLVMType.TYPE]],
+      wrap: (call) => (type: LLVMType) => new LLVMValue(call(type.value)),
+    }),
 
     addFunction: fn({
       name: 'LLVMAddFunction',

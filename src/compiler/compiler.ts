@@ -253,6 +253,14 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
   }
 
+  if (command === 'nullptr') {
+    const [typeName] = expectArgsLength(1, args, command);
+    expectSymbol(typeName);
+
+    const type = getType(typeName, ctx);
+    return llvm.constPointerNull(type);
+  }
+
   if (command === 'array') {
     const [elementTypeName, valueExprs] = expectArgsLength(2, args, command);
     expectSymbol(elementTypeName);
