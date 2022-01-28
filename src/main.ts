@@ -1,5 +1,5 @@
 import * as child_process from 'child_process';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { promisify } from 'util';
 
 import { compile } from './compiler/compiler';
@@ -22,8 +22,7 @@ async function main() {
   const exprs = parse(inputFileContent);
 
   const llvm = loadLibLLVM();
-  const llvmIR = await compile(exprs, llvm);
-  await writeFile(outputIRFile, llvmIR);
+  compile(exprs, outputIRFile, llvm);
 
   if (mode === 'compile') {
     await compileIR(outputIRFile, outputBinaryFile);

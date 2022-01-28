@@ -1,6 +1,4 @@
-import { readFile } from 'fs/promises';
 import { panic } from 'panic-fn';
-import tempy from 'tempy';
 
 import { SExpr } from '../parser/parser';
 import {
@@ -41,26 +39,21 @@ type ModuleContext = CodeGenContext & {
 
 type FunctionContext = ModuleContext & { fn: LLVMValue };
 
-export async function compile(
+export function compile(
   exprs: SExpr[],
+  outputIRFile: string,
   llvm = loadLibLLVM(),
-): Promise<string> {
+) {
   const ctx: CodeGenContext = {
     llvm,
     context: llvm.contextCreate(),
   };
 
   const module = buildModule(ctx, exprs);
-
-  const llvmIRFile = await tempy.file.task((tmpFile) => {
-    llvm.printModuleToFile(module, tmpFile);
-    return readFile(tmpFile, { encoding: 'utf-8' });
-  });
+  llvm.printModuleToFile(module, outputIRFile);
 
   llvm.disposeModule(module);
   llvm.contextDispose(ctx.context);
-
-  return llvmIRFile;
 }
 
 function buildModule(parentCtx: CodeGenContext, exprs: SExpr[]): LLVMModule {

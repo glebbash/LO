@@ -1,7 +1,9 @@
+import { readFile } from 'fs/promises';
 import { m } from 'multiline-str';
+import tempy from 'tempy';
 
-import { parse } from '../parser/parser';
-import { compile } from './compiler'; // switch to compiler-cpp to see performance boost
+import { parse, SExpr } from '../parser/parser';
+import { compile } from './compiler';
 
 // TODO: add smaller tests
 
@@ -19,9 +21,9 @@ describe('compiler', () => {
         (i32 0)
       )
       `;
-    const exprs = parse(source);
 
-    const llvmIR = await compile(exprs);
+    const exprs = parse(source);
+    const llvmIR = await compileToString(exprs);
 
     expect(llvmIR).toBe(m`
       ; ModuleID = 'main'
@@ -34,10 +36,17 @@ describe('compiler', () => {
 
       define i32 @main() {
       entry:
-        %i = call i32 @puts(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @str, i32 0, i32 0))
+        %0 = call i32 @puts(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @str, i32 0, i32 0))
         ret i32 0
       }
 
       `);
   });
 });
+
+async function compileToString(exprs: SExpr[]): Promise<string> {
+  return tempy.file.task((tmpFile) => {
+    compile(exprs, tmpFile);
+    return readFile(tmpFile, { encoding: 'utf-8' });
+  });
+}
