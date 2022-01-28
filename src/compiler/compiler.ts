@@ -39,6 +39,8 @@ type ModuleContext = CodeGenContext & {
 
 type FunctionContext = ModuleContext & { fn: LLVMValue };
 
+const VERIFICATION_ENABLED = false;
+
 export function compile(
   exprs: SExpr[],
   outputIRFile: string,
@@ -71,11 +73,13 @@ function buildModule(parentCtx: CodeGenContext, exprs: SExpr[]): LLVMModule {
     buildValueInModuleContext(expr, ctx);
   }
 
-  const res = llvm.verifyModule(ctx.module);
+  if (VERIFICATION_ENABLED) {
+    const res = llvm.verifyModule(ctx.module);
 
-  if (!res.ok) {
-    console.error(res.message);
-    panic(`Verifying module failed: ${moduleName}`);
+    if (!res.ok) {
+      console.error(res.message);
+      panic(`Verifying module failed: ${moduleName}`);
+    }
   }
 
   llvm.disposeBuilder(ctx.builder);
@@ -166,7 +170,7 @@ function buildFunction(
   const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
   insertImplicitReturnOfLastValue(values, ctx);
 
-  if (!llvm.verifyFunction(ctx.fn).ok) {
+  if (VERIFICATION_ENABLED && !llvm.verifyFunction(ctx.fn).ok) {
     panic(`Function verification failed: ${fnName}`);
   }
 
@@ -249,6 +253,38 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
   }
 
+  if (command === 'array') {
+    const [elementTypeName, valueExprs] = expectArgsLength(2, args, command);
+    expectSymbol(elementTypeName);
+    expectList(valueExprs);
+
+    const elementType = getType(elementTypeName, ctx);
+    const arrayType = llvm.arrayType(elementType, valueExprs.length);
+    const array = llvm.buildAlloca(ctx.builder, arrayType);
+
+    if (valueExprs.length === 0) {
+      return array; // TODO: check if this should be null pointer
+    }
+
+    const values = valueExprs.map((expr) => buildValue(expr, ctx));
+    const [firstValue, ...otherValues] = values;
+
+    const zero = llvm.constInt(llvm.i32TypeInContext(ctx.context), 0);
+    const firstElementPointer = llvm.buildGEP(ctx.builder, array, [zero, zero]);
+    llvm.buildStore(ctx.builder, firstValue, firstElementPointer);
+
+    let elementPointer = firstElementPointer;
+    for (let index = 0; index < otherValues.length; index++) {
+      const value = otherValues[index];
+      elementPointer = llvm.buildGEP(ctx.builder, elementPointer, [
+        llvm.constInt(llvm.i32TypeInContext(ctx.context), 1),
+      ]);
+      llvm.buildStore(ctx.builder, value, elementPointer);
+    }
+
+    return firstElementPointer;
+  }
+
   return buildFunctionCall(command, args, ctx);
 }
 
@@ -302,6 +338,10 @@ function getType(typeName: string, ctx: ModuleContext): LLVMType {
       return llvm.i32TypeInContext(ctx.context);
     case '&i8':
       return llvm.pointerType(llvm.i8TypeInContext(ctx.context));
+    case '&&i8':
+      return llvm.pointerType(
+        llvm.pointerType(llvm.i8TypeInContext(ctx.context)),
+      );
     case 'void':
       return llvm.voidTypeInContext(ctx.context);
     default:
