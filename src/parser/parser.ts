@@ -63,7 +63,7 @@ const whitespace = skip(
   ] as const),
 );
 const atom = either([
-  pattern(/^[^()\d"][\w\/-]*/), // symbol
+  pattern(/^[^()\d"][&\w\/-]*/), // symbol
   pattern(/^\d[\d_]*(?:\.[\d_]*)?/), // number
   pattern(/^"(?:[^"\\\n]|\\.)*"/), // string
 ]);
