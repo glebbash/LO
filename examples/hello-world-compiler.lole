@@ -12,15 +12,18 @@
 (external-fn LLVMInt32TypeInContext (&i8) &i8)
 (external-fn LLVMInt8TypeInContext (&i8) &i8)
 (external-fn LLVMFunctionType (&i8 &i8 i32 i32) &i8)
-(external-fn LLVMPointerType (&i8 &i8) &i8)
+(external-fn LLVMPointerType (&i8 i32) &i8)
 
 (external-fn LLVMAddFunction (&i8 &i8 &i8) &i8)
+(external-fn LLVMBuildCall (&i8 &i8 &i8 i32 &i8) &i8)
 
 (external-fn LLVMAppendBasicBlockInContext (&i8 &i8 &i8) &i8)
 (external-fn LLVMPositionBuilderAtEnd (&i8 &i8) &i8)
 
 (external-fn LLVMBuildRet (&i8 &i8) void)
 (external-fn LLVMConstInt (&i8 i32 i32) &i8)
+
+(external-fn LLVMBuildGlobalStringPtr (&i8 &i8 &i8) &i8)
 
 (external-fn system (&i8) i32)
 
@@ -36,7 +39,7 @@
   (let builder (LLVMCreateBuilderInContext context))
 
   (let int_8_type (LLVMInt8TypeInContext context))
-  (let int_8_type (LLVMPointerType int_8_type (i32 0)))
+  (let int_8_type_ptr (LLVMPointerType int_8_type (i32 0)))
   (let int_32_type (LLVMInt32TypeInContext context))
 
   (let main_function_type (LLVMFunctionType int_32_type nullptr (i32 0) false))
@@ -45,22 +48,14 @@
   (let entry (LLVMAppendBasicBlockInContext context main_function "entry"))
   (LLVMPositionBuilderAtEnd builder entry)
 
-  ;; LLVMTypeRef puts_function_args_type[] {
-  ;;     int_8_type_ptr
-  ;; };
-  ;; TODO: replace with args array ^
-  (let puts_function_args_type nullptr)
+  (let puts_function_args_type (array &i8 (int_8_type_ptr)))
   (let puts_function_type (LLVMFunctionType int_32_type puts_function_args_type (i32 1) false))
   (let puts_function (LLVMAddFunction module "puts" puts_function_type))
 
-  ;; LLVMValueRef puts_function_args[] = {
-  ;;     LLVMBuildPointerCast(builder,
-  ;;             LLVMBuildGlobalString(builder, "Hello, World!", "hello"),
-  ;;             int_8_type_ptr, "0")
-  ;; };
-  ;; TODO: replace with args array ^
-  (let puts_function_args nullptr)
-  (LLVMBuildCall buidler puts_function puts_function_args (i32 1) "i")
+  (let puts_function_args (array &i8 (
+    (LLVMBuildGlobalStringPtr builder "Hello, World!" "str")
+  )))
+  (LLVMBuildCall builder puts_function puts_function_args (i32 1) "i")
 
   (LLVMBuildRet builder (LLVMConstInt int_32_type (i32 0) false))
 
