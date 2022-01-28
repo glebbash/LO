@@ -6,7 +6,7 @@ import {
   LibraryObjectDefinitionInferenceMarker,
   LibraryObjectDefinitionToLibraryDefinition,
 } from 'ffi-napi';
-import arrayRefLib from 'ref-array-di';
+import arrayRefLib, { ArrayType, TypedArray } from 'ref-array-di';
 import refLib, { allocCString, NULL, Pointer, ref, refType } from 'ref-napi';
 
 const arrayRef = arrayRefLib(refLib);
@@ -88,17 +88,21 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       type: [LLVMType.TYPE, [LLVMType.TYPE, LLVMTypeArray, 'int', 'bool']],
       wrap:
         (call) =>
-        (returnType: LLVMType, argTypes: LLVMType[], isVarArg = false) => {
-          // TODO: check if argTypesRef should be disposed somehow
-          const argTypesRef = new LLVMTypeArray(argTypes.length);
-          for (const index in argTypes) {
-            argTypesRef[index] = argTypes[index].value;
-          }
-
-          return new LLVMType(
-            call(returnType.value, argTypesRef, argTypes.length, isVarArg),
-          );
-        },
+        (returnType: LLVMType, argTypes: LLVMType[], isVarArg = false) =>
+          new LLVMType(
+            call(
+              returnType.value,
+              buildArray(LLVMTypeArray, argTypes),
+              argTypes.length,
+              isVarArg,
+            ),
+          ),
+    }),
+    arrayType: fn({
+      name: 'LLVMArrayType',
+      type: [LLVMType.TYPE, [LLVMType.TYPE, 'int']],
+      wrap: (call) => (type: LLVMType, length: number) =>
+        new LLVMType(call(type.value, length)),
     }),
 
     getUndef: fn({
@@ -163,15 +167,58 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       ],
       wrap:
         (call) =>
-        (builder: LLVMIRBuilder, fn: LLVMValue, args: LLVMValue[]) => {
-          // TODO: check if argsRef should be disposed somehow
-          const argsRef = new LLVMValueArray(args.length);
-          for (const index in args) {
-            argsRef[index] = args[index].value;
-          }
-
+        (builder: LLVMIRBuilder, fn: LLVMValue, args: LLVMValue[], name = '') =>
+          new LLVMValue(
+            call(
+              builder.value,
+              fn.value,
+              buildArray(LLVMValueArray, args),
+              args.length,
+              name,
+            ),
+          ),
+    }),
+    buildAlloca: fn({
+      name: 'LLVMBuildAlloca',
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, 'string']],
+      wrap:
+        (call) =>
+        (builder: LLVMIRBuilder, type: LLVMType, name = '') =>
+          new LLVMValue(call(builder.value, type.value, name)),
+    }),
+    buildStore: fn({
+      name: 'LLVMBuildStore',
+      type: [
+        LLVMValue.TYPE,
+        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE],
+      ],
+      wrap:
+        (call) =>
+        (builder: LLVMIRBuilder, value: LLVMValue, pointer: LLVMValue) =>
+          new LLVMValue(call(builder.value, value.value, pointer.value)),
+    }),
+    buildGEP: fn({
+      name: 'LLVMBuildGEP',
+      type: [
+        LLVMValue.TYPE,
+        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValueArray, 'int', 'string'],
+      ],
+      wrap:
+        (call) =>
+        (
+          builder: LLVMIRBuilder,
+          pointer: LLVMValue,
+          indices: LLVMValue[],
+          name = '',
+        ) => {
           return new LLVMValue(
-            call(builder.value, fn.value, argsRef, args.length, ''),
+            call(
+              builder.value,
+              pointer.value,
+              buildArray(LLVMValueArray, indices),
+              indices.length,
+              name,
+            ),
           );
         },
     }),
@@ -281,3 +328,14 @@ export class LLVMBasicBlock extends UniqueType<Pointer<void>> {
 
 const LLVMTypeArray = arrayRef(LLVMType.TYPE);
 const LLVMValueArray = arrayRef(LLVMValue.TYPE);
+
+function buildArray<T extends UniqueType<Pointer<void>>>(
+  type: ArrayType<T['value']>,
+  values: T[],
+): TypedArray<T['value']> {
+  const ref = new type(values.length);
+  for (const index in values) {
+    ref[index] = values[index].value;
+  }
+  return ref;
+}
