@@ -28,7 +28,6 @@
 (external-fn system (&i8) i32)
 
 ;; TODO: add boolean type
-;; TODO: add nullptr value
 
 (fn main () i32
   (let false (i32 0))
