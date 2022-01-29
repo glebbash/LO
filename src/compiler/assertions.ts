@@ -92,13 +92,6 @@ export function expectArgsLengthAtLeast(
   return args;
 }
 
-// TODO: add bound checks
-export function expectI32(value: number) {
-  if (!Number.isInteger(value)) {
-    panic(`i32 can not hold ${value}`);
-  }
-}
-
 function assert(check: (expr: SExpr) => true | string, expr: SExpr) {
   const err = check(expr);
   err !== true && panic(`${err}, checking ${expr}`);
