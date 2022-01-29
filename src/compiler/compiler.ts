@@ -260,6 +260,15 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
   const [command, ...args] = expr;
   expectSymbol(command);
 
+  if (command === 'i8') {
+    const [value] = expectArgsLength(1, args, command);
+    expectNumber(value);
+
+    const i8Value = getNumberValue(value);
+
+    return llvm.constInt(llvm.i8TypeInContext(ctx.context), i8Value);
+  }
+
   if (command === 'i32') {
     const [value] = expectArgsLength(1, args, command);
     expectNumber(value);
@@ -268,6 +277,15 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
     expectI32(i32Value);
 
     return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
+  }
+
+  if (command === 'i64') {
+    const [value] = expectArgsLength(1, args, command);
+    expectNumber(value);
+
+    const i64Value = getNumberValue(value);
+
+    return llvm.constInt(llvm.i64TypeInContext(ctx.context), i64Value);
   }
 
   if (command === 'nullptr') {
@@ -410,6 +428,8 @@ function getType(typeName: string, ctx: ModuleContext): LLVMType {
   switch (typeName) {
     case 'i32':
       return llvm.i32TypeInContext(ctx.context);
+    case 'i64':
+      return llvm.i64TypeInContext(ctx.context);
     case '&i8':
       return llvm.pointerType(llvm.i8TypeInContext(ctx.context));
     case '&&i8':

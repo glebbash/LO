@@ -83,6 +83,11 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
     }),
+    i64TypeInContext: fn({
+      name: 'LLVMInt64TypeInContext',
+      type: [LLVMType.TYPE, [LLVMContext.TYPE]],
+      wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
+    }),
     functionType: fn({
       name: 'LLVMFunctionType',
       type: [LLVMType.TYPE, [LLVMType.TYPE, LLVMTypeArray, 'int', 'bool']],
