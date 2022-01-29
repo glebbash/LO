@@ -4,7 +4,6 @@ import { SExpr } from '../parser/parser';
 import {
   expectArgsLength,
   expectArgsLengthAtLeast,
-  expectI32,
   expectList,
   expectNumber,
   expectString,
@@ -23,9 +22,6 @@ import {
   loadLibLLVM,
 } from './llvm-c';
 import { getNumberValue, getStringValue } from './transformers';
-
-// TODO: add expression types and values in parser: symbol | string | number | list
-// TODO: pass expression locations to compiler for better error messages
 
 type BasicCodegenContext = {
   llvm: LibLLVM;
@@ -89,56 +85,7 @@ function buildModule(
   return ctx.module;
 }
 
-function buildValueInModuleContext(
-  expr: SExpr,
-  ctx: CodegenContext,
-): LLVMValue {
-  const { llvm } = ctx;
-
-  const [command, ...args] = expr;
-  expectSymbol(command);
-
-  if (command === 'llvm/target-triple') {
-    const [targetTriple] = expectArgsLength(1, args, command);
-    expectString(targetTriple);
-
-    llvm.setTarget(ctx.module, getStringValue(targetTriple));
-
-    return buildVoid(ctx);
-  }
-
-  if (command === 'external-fn') {
-    const [fnName, argTypes, returnType] = expectArgsLength(3, args, command);
-    expectSymbol(fnName);
-    expectList(argTypes);
-    expectSymbol(returnType);
-
-    llvm.addFunction(
-      ctx.module,
-      fnName,
-      llvm.functionType(
-        getType(returnType, ctx),
-        argTypes.map((argType) => {
-          expectSymbol(argType);
-
-          return getType(argType, ctx);
-        }),
-      ),
-    );
-
-    return buildVoid(ctx);
-  }
-
-  if (command === 'fn') {
-    return buildFunction(command, args, ctx);
-  }
-
-  // return buildValue(expr, ctx);
-
-  panic('//TODO: implement this');
-}
-
-function buildFunction(
+function buildFn(
   command: string,
   args: SExpr[],
   moduleCtx: CodegenContext,
@@ -179,7 +126,6 @@ function buildFunction(
 
   const ctx: CodegenContext = {
     ...moduleCtx,
-    // TODO: check if and how LLVMFunction.LinkageTypes.ExternalLinkage should be added
     values: { ...moduleCtx.values },
   };
 
@@ -203,6 +149,253 @@ function buildFunction(
   return fn;
 }
 
+function buildValueInModuleContext(
+  expr: SExpr,
+  ctx: CodegenContext,
+): LLVMValue {
+  const [command, ...args] = expr;
+  expectSymbol(command);
+
+  switch (command) {
+    case 'llvm/target-triple':
+      return buildTargetTriple(command, args, ctx);
+    case 'external-fn':
+      return buildExternalFn(command, args, ctx);
+    case 'fn':
+      return buildFn(command, args, ctx);
+    default:
+      panic('Only functions and externs are allowed at top level');
+  }
+}
+
+function buildValueInFunctionContext(
+  expr: SExpr,
+  ctx: CodegenContext,
+): LLVMValue {
+  if (!isList(expr)) {
+    return buildValue(expr, ctx);
+  }
+
+  const [command, ...args] = expr;
+  expectSymbol(command);
+
+  switch (command) {
+    case 'let':
+      return buildLet(command, args, ctx);
+    default:
+      return buildValue(expr, ctx);
+  }
+}
+
+function buildValue(expr: SExpr, ctx: CodegenContext): LLVMValue {
+  if (isSymbol(expr)) {
+    return buildConstantAccess(expr, ctx);
+  }
+
+  if (isString(expr)) {
+    return buildString(expr, ctx);
+  }
+
+  return buildConstruct(expr, ctx);
+}
+
+function buildConstruct(expr: SExpr, ctx: CodegenContext): LLVMValue {
+  expectList(expr);
+
+  const [command, ...args] = expr;
+  expectSymbol(command);
+
+  switch (command) {
+    case 'i8':
+      return buildI8(command, args, ctx);
+    case 'i32':
+      return buildI32(command, args, ctx);
+    case 'i64':
+      return buildI64(command, args, ctx);
+    case '+':
+      return buildAdd(command, args, ctx);
+    case 'nullptr':
+      return buildNullPtr(command, args, ctx);
+    case 'array':
+      return buildArray(command, args, ctx);
+    case 'get':
+      return buildGet(command, args, ctx);
+    case 'set':
+      return buildSet(command, args, ctx);
+    case 'i8':
+      return buildI8(command, args, ctx);
+    default:
+      return buildFunctionCall(command, args, ctx);
+  }
+}
+
+function buildArray(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const valueExprs = expectArgsLengthAtLeast(1, args, command);
+
+  if (valueExprs.length === 0) {
+    panic('Empty arrays are not allowed');
+  }
+
+  const values = valueExprs.map((expr) => buildValue(expr, ctx));
+  const [firstValue, ...otherValues] = values;
+
+  const elementType = llvm.typeOf(firstValue);
+  const arrayType = llvm.arrayType(elementType, valueExprs.length);
+  const array = llvm.buildAlloca(ctx.builder, arrayType);
+
+  const zero = llvm.constInt(llvm.i32TypeInContext(ctx.context), 0);
+  const firstElementPointer = llvm.buildGEP(ctx.builder, array, [zero, zero]);
+  llvm.buildStore(ctx.builder, firstValue, firstElementPointer);
+
+  let elementPointer = firstElementPointer;
+  for (let index = 0; index < otherValues.length; index++) {
+    const value = otherValues[index];
+    elementPointer = llvm.buildGEP(ctx.builder, elementPointer, [
+      llvm.constInt(llvm.i32TypeInContext(ctx.context), 1),
+    ]);
+    llvm.buildStore(ctx.builder, value, elementPointer);
+  }
+
+  return firstElementPointer;
+}
+
+function buildAdd(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [lhs, rhs] = expectArgsLength(2, args, command);
+
+  return llvm.buildAdd(ctx.builder, buildValue(lhs, ctx), buildValue(rhs, ctx));
+}
+
+function buildNullPtr(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [typeName] = expectArgsLength(1, args, command);
+  expectSymbol(typeName);
+
+  const type = getType(typeName, ctx);
+  return llvm.constPointerNull(type);
+}
+
+function buildI64(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [value] = expectArgsLength(1, args, command);
+  expectNumber(value);
+
+  const i64Value = getNumberValue(value);
+
+  return llvm.constInt(llvm.i64TypeInContext(ctx.context), i64Value);
+}
+
+function buildI32(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [value] = expectArgsLength(1, args, command);
+  expectNumber(value);
+
+  const i32Value = getNumberValue(value);
+
+  return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
+}
+
+function buildI8(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [value] = expectArgsLength(1, args, command);
+  expectNumber(value);
+
+  const i8Value = getNumberValue(value);
+
+  return llvm.constInt(llvm.i32TypeInContext(ctx.context), i8Value);
+}
+
+function buildLet(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const [name, expr] = expectArgsLength(2, args, command);
+  expectSymbol(name);
+
+  if (ctx.values[name]) {
+    panic(`Constant ${name} is already defined`);
+  }
+
+  const value = buildValue(expr, ctx);
+  ctx.values[name] = value;
+  return value;
+}
+
+function buildExternalFn(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [fnName, argTypes, returnType] = expectArgsLength(3, args, command);
+  expectSymbol(fnName);
+  expectList(argTypes);
+  expectSymbol(returnType);
+
+  llvm.addFunction(
+    ctx.module,
+    fnName,
+    llvm.functionType(
+      getType(returnType, ctx),
+      argTypes.map((argType) => {
+        expectSymbol(argType);
+
+        return getType(argType, ctx);
+      }),
+    ),
+  );
+
+  return buildVoid(ctx);
+}
+
+function buildTargetTriple(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [targetTriple] = expectArgsLength(1, args, command);
+  expectString(targetTriple);
+
+  llvm.setTarget(ctx.module, getStringValue(targetTriple));
+
+  return buildVoid(ctx);
+}
+
 function insertImplicitReturnOfLastValue(
   values: LLVMValue[],
   ctx: CodegenContext,
@@ -223,136 +416,11 @@ function insertImplicitReturnOfLastValue(
   return llvm.buildRet(ctx.builder, returnValue);
 }
 
-function buildValueInFunctionContext(
-  expr: SExpr,
+function buildGet(
+  command: string,
+  args: SExpr[],
   ctx: CodegenContext,
 ): LLVMValue {
-  if (!isList(expr)) {
-    return buildValue(expr, ctx);
-  }
-
-  const [command, ...args] = expr;
-  expectSymbol(command);
-
-  if (command === 'let') {
-    const [name, expr] = expectArgsLength(2, args, command);
-    expectSymbol(name);
-
-    if (ctx.values[name]) {
-      panic(`Constant ${name} is already defined`);
-    }
-
-    const value = buildValue(expr, ctx);
-    ctx.values[name] = value;
-    return value;
-  }
-
-  return buildValue(expr, ctx);
-}
-
-function buildValue(expr: SExpr, ctx: CodegenContext): LLVMValue {
-  const { llvm } = ctx;
-
-  if (isSymbol(expr)) {
-    return buildConstantAccess(expr, ctx);
-  }
-
-  if (isString(expr)) {
-    return buildString(expr, ctx);
-  }
-
-  expectList(expr);
-  const [command, ...args] = expr;
-  expectSymbol(command);
-
-  if (command === 'i8') {
-    const [value] = expectArgsLength(1, args, command);
-    expectNumber(value);
-
-    const i8Value = getNumberValue(value);
-
-    return llvm.constInt(llvm.i8TypeInContext(ctx.context), i8Value);
-  }
-
-  if (command === 'i32') {
-    const [value] = expectArgsLength(1, args, command);
-    expectNumber(value);
-
-    const i32Value = getNumberValue(value);
-    expectI32(i32Value);
-
-    return llvm.constInt(llvm.i32TypeInContext(ctx.context), i32Value);
-  }
-
-  if (command === 'i64') {
-    const [value] = expectArgsLength(1, args, command);
-    expectNumber(value);
-
-    const i64Value = getNumberValue(value);
-
-    return llvm.constInt(llvm.i64TypeInContext(ctx.context), i64Value);
-  }
-
-  if (command === 'nullptr') {
-    const [typeName] = expectArgsLength(1, args, command);
-    expectSymbol(typeName);
-
-    const type = getType(typeName, ctx);
-    return llvm.constPointerNull(type);
-  }
-
-  if (command === '+') {
-    const [lhs, rhs] = expectArgsLength(2, args, command);
-
-    return llvm.buildAdd(
-      ctx.builder,
-      buildValue(lhs, ctx),
-      buildValue(rhs, ctx),
-    );
-  }
-
-  if (command === 'array') {
-    const valueExprs = expectArgsLengthAtLeast(1, args, command);
-
-    if (valueExprs.length === 0) {
-      panic('Empty arrays are not allowed');
-    }
-
-    const values = valueExprs.map((expr) => buildValue(expr, ctx));
-    const [firstValue, ...otherValues] = values;
-
-    const elementType = llvm.typeOf(firstValue);
-    const arrayType = llvm.arrayType(elementType, valueExprs.length);
-    const array = llvm.buildAlloca(ctx.builder, arrayType);
-
-    const zero = llvm.constInt(llvm.i32TypeInContext(ctx.context), 0);
-    const firstElementPointer = llvm.buildGEP(ctx.builder, array, [zero, zero]);
-    llvm.buildStore(ctx.builder, firstValue, firstElementPointer);
-
-    let elementPointer = firstElementPointer;
-    for (let index = 0; index < otherValues.length; index++) {
-      const value = otherValues[index];
-      elementPointer = llvm.buildGEP(ctx.builder, elementPointer, [
-        llvm.constInt(llvm.i32TypeInContext(ctx.context), 1),
-      ]);
-      llvm.buildStore(ctx.builder, value, elementPointer);
-    }
-
-    return firstElementPointer;
-  }
-
-  if (command === 'get') {
-    return buildGet(command, args, ctx);
-  }
-
-  if (command === 'set') {
-    return buildSet(command, args, ctx);
-  }
-
-  return buildFunctionCall(command, args, ctx);
-}
-
-function buildGet(command: string, args: SExpr[], ctx: CodegenContext) {
   const { llvm } = ctx;
 
   const [sourcePtrExpr, ...indices] = expectArgsLengthAtLeast(2, args, command);
@@ -369,11 +437,11 @@ function buildGet(command: string, args: SExpr[], ctx: CodegenContext) {
   return llvm.buildLoad(ctx.builder, elementPointer);
 }
 
-// function buildX(command: string, args: SExpr[], ctx: ModuleContext) {
-//   const { llvm } = ctx;
-// }
-
-function buildSet(command: string, args: SExpr[], ctx: CodegenContext) {
+function buildSet(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
   const { llvm } = ctx;
 
   const [sourcePtrExpr, ...indicesAndValue] = expectArgsLengthAtLeast(
