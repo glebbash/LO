@@ -23,6 +23,9 @@ const checkString = (expr: SExpr) =>
     ? 'String expected, found: symbol'
     : true;
 
+const checkList = (expr: SExpr) =>
+  typeof expr === 'string' ? 'List expected, found: atom' : true;
+
 export function isSymbol(expr: SExpr): expr is string {
   return checkSymbol(expr) === true;
 }
@@ -55,10 +58,13 @@ export function expectNumber(expr: SExpr): asserts expr is string {
   }
 }
 
+export function isList(expr: SExpr): expr is SExpr[] {
+  return checkList(expr) === true;
+}
+
 export function expectList(expr: SExpr): asserts expr is SExpr[] {
-  if (typeof expr === 'string') {
-    panic('List expected, found: atom');
-  }
+  const err = checkList(expr);
+  err !== true && panic(err);
 }
 
 export function expectArgsLength(
