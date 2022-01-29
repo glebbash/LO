@@ -17,6 +17,25 @@ const nullRef = refType('void');
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
 
+export enum LLVMRealPredicate {
+  LLVMRealPredicateFalse /**< Always false (always folded) */,
+  LLVMRealOEQ /**< True if ordered and equal */,
+  LLVMRealOGT /**< True if ordered and greater than */,
+  LLVMRealOGE /**< True if ordered and greater than or equal */,
+  LLVMRealOLT /**< True if ordered and less than */,
+  LLVMRealOLE /**< True if ordered and less than or equal */,
+  LLVMRealONE /**< True if ordered and operands are unequal */,
+  LLVMRealORD /**< True if ordered (no nans) */,
+  LLVMRealUNO /**< True if unordered: isnan(X) | isnan(Y) */,
+  LLVMRealUEQ /**< True if unordered or equal */,
+  LLVMRealUGT /**< True if unordered or greater than */,
+  LLVMRealUGE /**< True if unordered, greater than, or equal */,
+  LLVMRealULT /**< True if unordered or less than */,
+  LLVMRealULE /**< True if unordered, less than, or equal */,
+  LLVMRealUNE /**< True if unordered or not equal */,
+  LLVMRealPredicateTrue /**< Always true (always folded) */,
+}
+
 function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
   const fn = wrapLib(DynamicLibrary(libFile));
 
@@ -263,6 +282,25 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
         (call) =>
         (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue, name = '') =>
           new LLVMValue(call(builder.value, lhs.value, rhs.value, name)),
+    }),
+    buildFCmp: fn({
+      name: 'LLVMBuildFCmp',
+      type: [
+        LLVMValue.TYPE,
+        [LLVMIRBuilder.TYPE, 'int', LLVMValue.TYPE, LLVMValue.TYPE, 'string'],
+      ],
+      wrap:
+        (call) =>
+        (
+          builder: LLVMIRBuilder,
+          predicate: LLVMRealPredicate,
+          lhs: LLVMValue,
+          rhs: LLVMValue,
+          name = '',
+        ) =>
+          new LLVMValue(
+            call(builder.value, predicate, lhs.value, rhs.value, name),
+          ),
     }),
 
     verifyFunction: fn({
