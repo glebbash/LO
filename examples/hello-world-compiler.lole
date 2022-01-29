@@ -27,8 +27,6 @@
 
 (external-fn system (&i8) i32)
 
-;; TODO: add boolean type
-
 (fn main () i32
   (let false (i32 0))
 
@@ -46,13 +44,13 @@
   (let entry (LLVMAppendBasicBlockInContext context main_function "entry"))
   (LLVMPositionBuilderAtEnd builder entry)
 
-  (let puts_function_args_type (array &i8 (int_8_type_ptr)))
+  (let puts_function_args_type (array int_8_type_ptr))
   (let puts_function_type (LLVMFunctionType int_32_type puts_function_args_type (i32 1) false))
   (let puts_function (LLVMAddFunction module "puts" puts_function_type))
 
-  (let puts_function_args (array &i8 (
+  (let puts_function_args (array
     (LLVMBuildGlobalStringPtr builder "Hello, World!" "str")
-  )))
+  ))
   (LLVMBuildCall builder puts_function puts_function_args (i32 1) "i")
 
   (LLVMBuildRet builder (LLVMConstInt int_32_type (i32 0) false))
