@@ -27,18 +27,16 @@ import { getNumberValue, getStringValue } from './transformers';
 // TODO: add expression types and values in parser: symbol | string | number | list
 // TODO: pass expression locations to compiler for better error messages
 
-type CodeGenContext = {
+type BasicCodegenContext = {
   llvm: LibLLVM;
   context: LLVMContext;
 };
 
-type ModuleContext = CodeGenContext & {
+type CodegenContext = BasicCodegenContext & {
   builder: LLVMIRBuilder;
   module: LLVMModule;
   values: Record<string, LLVMValue>;
 };
-
-type FunctionContext = ModuleContext & { fn: LLVMValue };
 
 const VERIFICATION_ENABLED = false;
 
@@ -47,7 +45,7 @@ export function compile(
   outputIRFile: string,
   llvm = loadLibLLVM(),
 ) {
-  const ctx: CodeGenContext = {
+  const ctx: BasicCodegenContext = {
     llvm,
     context: llvm.contextCreate(),
   };
@@ -59,11 +57,14 @@ export function compile(
   llvm.contextDispose(ctx.context);
 }
 
-function buildModule(parentCtx: CodeGenContext, exprs: SExpr[]): LLVMModule {
+function buildModule(
+  parentCtx: BasicCodegenContext,
+  exprs: SExpr[],
+): LLVMModule {
   const { llvm } = parentCtx;
 
   const moduleName = 'main';
-  const ctx: ModuleContext = {
+  const ctx: CodegenContext = {
     ...parentCtx,
     builder: llvm.createBuilderInContext(parentCtx.context),
     module: llvm.moduleCreateWithNameInContext(moduleName, parentCtx.context),
@@ -88,7 +89,10 @@ function buildModule(parentCtx: CodeGenContext, exprs: SExpr[]): LLVMModule {
   return ctx.module;
 }
 
-function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
+function buildValueInModuleContext(
+  expr: SExpr,
+  ctx: CodegenContext,
+): LLVMValue {
   const { llvm } = ctx;
 
   const [command, ...args] = expr;
@@ -137,7 +141,7 @@ function buildValueInModuleContext(expr: SExpr, ctx: ModuleContext): LLVMValue {
 function buildFunction(
   command: string,
   args: SExpr[],
-  moduleCtx: ModuleContext,
+  moduleCtx: CodegenContext,
 ): LLVMValue {
   const { llvm } = moduleCtx;
 
@@ -173,34 +177,35 @@ function buildFunction(
 
   const fnType = llvm.functionType(getType(returnType, moduleCtx), paramTypes);
 
-  const ctx: FunctionContext = {
+  const ctx: CodegenContext = {
     ...moduleCtx,
     // TODO: check if and how LLVMFunction.LinkageTypes.ExternalLinkage should be added
-    fn: llvm.addFunction(moduleCtx.module, fnName, fnType),
     values: { ...moduleCtx.values },
   };
 
+  const fn = llvm.addFunction(moduleCtx.module, fnName, fnType);
+
   for (let index = 0; index < paramNames.length; index++) {
     const paramName = paramNames[index];
-    ctx.values[paramName] = llvm.getParam(ctx.fn, index);
+    ctx.values[paramName] = llvm.getParam(fn, index);
   }
 
-  const entry = llvm.appendBasicBlockInContext(ctx.context, ctx.fn, 'entry');
+  const entry = llvm.appendBasicBlockInContext(ctx.context, fn, 'entry');
   llvm.positionBuilderAtEnd(ctx.builder, entry);
 
   const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
   insertImplicitReturnOfLastValue(values, ctx);
 
-  if (VERIFICATION_ENABLED && !llvm.verifyFunction(ctx.fn).ok) {
+  if (VERIFICATION_ENABLED && !llvm.verifyFunction(fn).ok) {
     panic(`Function verification failed: ${fnName}`);
   }
 
-  return ctx.fn;
+  return fn;
 }
 
 function insertImplicitReturnOfLastValue(
   values: LLVMValue[],
-  ctx: FunctionContext,
+  ctx: CodegenContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -220,7 +225,7 @@ function insertImplicitReturnOfLastValue(
 
 function buildValueInFunctionContext(
   expr: SExpr,
-  ctx: FunctionContext,
+  ctx: CodegenContext,
 ): LLVMValue {
   if (!isList(expr)) {
     return buildValue(expr, ctx);
@@ -245,7 +250,7 @@ function buildValueInFunctionContext(
   return buildValue(expr, ctx);
 }
 
-function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
+function buildValue(expr: SExpr, ctx: CodegenContext): LLVMValue {
   const { llvm } = ctx;
 
   if (isSymbol(expr)) {
@@ -337,50 +342,62 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
   }
 
   if (command === 'get') {
-    const [sourcePtrExpr, ...indices] = expectArgsLengthAtLeast(
-      2,
-      args,
-      command,
-    );
-
-    const sourcePointer = buildValue(sourcePtrExpr, ctx);
-    const indicesValues = indices.map((index) => buildValue(index, ctx));
-
-    const elementPointer = llvm.buildGEP(
-      ctx.builder,
-      sourcePointer,
-      indicesValues,
-    );
-
-    return llvm.buildLoad(ctx.builder, elementPointer);
+    return buildGet(command, args, ctx);
   }
 
   if (command === 'set') {
-    const [sourcePtrExpr, ...indicesAndValue] = expectArgsLengthAtLeast(
-      3,
-      args,
-      command,
-    );
-
-    const sourcePointer = buildValue(sourcePtrExpr, ctx);
-    const value = buildValue(indicesAndValue[indicesAndValue.length - 1], ctx);
-    const indicesValues = indicesAndValue
-      .slice(0, -1)
-      .map((index) => buildValue(index, ctx));
-
-    const elementPointer = llvm.buildGEP(
-      ctx.builder,
-      sourcePointer,
-      indicesValues,
-    );
-
-    return llvm.buildStore(ctx.builder, value, elementPointer);
+    return buildSet(command, args, ctx);
   }
 
   return buildFunctionCall(command, args, ctx);
 }
 
-function buildConstantAccess(name: string, ctx: ModuleContext): LLVMValue {
+function buildGet(command: string, args: SExpr[], ctx: CodegenContext) {
+  const { llvm } = ctx;
+
+  const [sourcePtrExpr, ...indices] = expectArgsLengthAtLeast(2, args, command);
+
+  const sourcePointer = buildValue(sourcePtrExpr, ctx);
+  const indicesValues = indices.map((index) => buildValue(index, ctx));
+
+  const elementPointer = llvm.buildGEP(
+    ctx.builder,
+    sourcePointer,
+    indicesValues,
+  );
+
+  return llvm.buildLoad(ctx.builder, elementPointer);
+}
+
+// function buildX(command: string, args: SExpr[], ctx: ModuleContext) {
+//   const { llvm } = ctx;
+// }
+
+function buildSet(command: string, args: SExpr[], ctx: CodegenContext) {
+  const { llvm } = ctx;
+
+  const [sourcePtrExpr, ...indicesAndValue] = expectArgsLengthAtLeast(
+    3,
+    args,
+    command,
+  );
+
+  const sourcePointer = buildValue(sourcePtrExpr, ctx);
+  const value = buildValue(indicesAndValue[indicesAndValue.length - 1], ctx);
+  const indicesValues = indicesAndValue
+    .slice(0, -1)
+    .map((index) => buildValue(index, ctx));
+
+  const elementPointer = llvm.buildGEP(
+    ctx.builder,
+    sourcePointer,
+    indicesValues,
+  );
+
+  return llvm.buildStore(ctx.builder, value, elementPointer);
+}
+
+function buildConstantAccess(name: string, ctx: CodegenContext): LLVMValue {
   const constant = ctx.values[name];
 
   if (!constant) {
@@ -390,7 +407,7 @@ function buildConstantAccess(name: string, ctx: ModuleContext): LLVMValue {
   return constant;
 }
 
-function buildString(expr: string, ctx: ModuleContext): LLVMValue {
+function buildString(expr: string, ctx: CodegenContext): LLVMValue {
   const { llvm } = ctx;
 
   return llvm.buildGlobalStringPtr(ctx.builder, getStringValue(expr));
@@ -399,7 +416,7 @@ function buildString(expr: string, ctx: ModuleContext): LLVMValue {
 function buildFunctionCall(
   fnName: string,
   args: SExpr[],
-  ctx: ModuleContext,
+  ctx: CodegenContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -416,13 +433,13 @@ function buildFunctionCall(
   );
 }
 
-function buildVoid(ctx: ModuleContext): LLVMValue {
+function buildVoid(ctx: CodegenContext): LLVMValue {
   const { llvm } = ctx;
 
   return llvm.getUndef(llvm.voidTypeInContext(ctx.context));
 }
 
-function getType(typeName: string, ctx: ModuleContext): LLVMType {
+function getType(typeName: string, ctx: CodegenContext): LLVMType {
   const { llvm } = ctx;
 
   switch (typeName) {
