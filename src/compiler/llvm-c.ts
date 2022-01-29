@@ -257,11 +257,12 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       name: 'LLVMBuildAdd',
       type: [
         LLVMValue.TYPE,
-        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE],
+        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE, 'string'],
       ],
       wrap:
-        (call) => (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue) =>
-          new LLVMValue(call(builder.value, lhs.value, rhs.value)),
+        (call) =>
+        (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue, name = '') =>
+          new LLVMValue(call(builder.value, lhs.value, rhs.value, name)),
     }),
 
     verifyFunction: fn({
