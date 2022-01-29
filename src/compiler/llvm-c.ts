@@ -110,6 +110,13 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       type: [LLVMValue.TYPE, [LLVMType.TYPE]],
       wrap: (call) => (type: LLVMType) => new LLVMValue(call(type.value)),
     }),
+    getParam: fn({
+      name: 'LLVMGetParam',
+      type: [LLVMValue.TYPE, [LLVMValue.TYPE, 'int']],
+      wrap: (call) => (fn: LLVMValue, index: number) =>
+        new LLVMValue(call(fn.value, index)),
+    }),
+
     constInt: fn({
       name: 'LLVMConstInt',
       type: [LLVMValue.TYPE, [LLVMType.TYPE, 'int', 'bool']],
