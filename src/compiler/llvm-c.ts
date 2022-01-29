@@ -157,6 +157,7 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       wrap: (call) => (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
         call(builder.value, block.value),
     }),
+
     buildGlobalStringPtr: fn({
       name: 'LLVMBuildGlobalStringPtr',
       type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, 'string', 'string']],
@@ -233,6 +234,16 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
             ),
           );
         },
+    }),
+    buildAdd: fn({
+      name: 'LLVMBuildAdd',
+      type: [
+        LLVMValue.TYPE,
+        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE],
+      ],
+      wrap:
+        (call) => (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue) =>
+          new LLVMValue(call(builder.value, lhs.value, rhs.value)),
     }),
 
     verifyFunction: fn({

@@ -278,6 +278,16 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return llvm.constPointerNull(type);
   }
 
+  if (command === '+') {
+    const [lhs, rhs] = expectArgsLength(2, args, command);
+
+    return llvm.buildAdd(
+      ctx.builder,
+      buildValue(lhs, ctx),
+      buildValue(rhs, ctx),
+    );
+  }
+
   if (command === 'array') {
     const [elementTypeName, valueExprs] = expectArgsLength(2, args, command);
     expectSymbol(elementTypeName);
