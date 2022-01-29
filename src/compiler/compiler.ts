@@ -9,6 +9,7 @@ import {
   expectNumber,
   expectString,
   expectSymbol,
+  isList,
   isString,
   isSymbol,
 } from './assertions';
@@ -140,29 +141,49 @@ function buildFunction(
 ): LLVMValue {
   const { llvm } = moduleCtx;
 
-  const [fnName, argTypes, returnType, ...exprs] = expectArgsLengthAtLeast(
+  const [fnName, params, returnType, ...exprs] = expectArgsLengthAtLeast(
     3,
     args,
     command,
   );
   expectSymbol(fnName);
-  expectList(argTypes);
+  expectList(params);
   expectSymbol(returnType);
 
-  const fnType = llvm.functionType(
-    getType(returnType, moduleCtx),
-    argTypes.map((argType) => {
-      expectSymbol(argType);
+  const paramInfos = params.map((paramInfo) => {
+    expectList(paramInfo);
 
-      return getType(argType, moduleCtx);
-    }),
-  );
+    if (paramInfo.length !== 2) {
+      panic('Arguments in argument list must have name and type');
+    }
+
+    const [paramName, paramType] = paramInfo;
+    expectSymbol(paramName);
+    expectSymbol(paramType);
+
+    return { name: paramName, type: getType(paramType, moduleCtx) };
+  });
+
+  const paramTypes = paramInfos.map((info) => info.type);
+  const paramNames = paramInfos.map((info) => info.name);
+
+  if (new Set(paramNames).size !== paramNames.length) {
+    panic('Parameter names must be unique');
+  }
+
+  const fnType = llvm.functionType(getType(returnType, moduleCtx), paramTypes);
 
   const ctx: FunctionContext = {
     ...moduleCtx,
     // TODO: check if and how LLVMFunction.LinkageTypes.ExternalLinkage should be added
     fn: llvm.addFunction(moduleCtx.module, fnName, fnType),
+    values: { ...moduleCtx.values },
   };
+
+  for (let index = 0; index < paramNames.length; index++) {
+    const paramName = paramNames[index];
+    ctx.values[paramName] = llvm.getParam(ctx.fn, index);
+  }
 
   const entry = llvm.appendBasicBlockInContext(ctx.context, ctx.fn, 'entry');
   llvm.positionBuilderAtEnd(ctx.builder, entry);
@@ -201,6 +222,10 @@ function buildValueInFunctionContext(
   expr: SExpr,
   ctx: FunctionContext,
 ): LLVMValue {
+  if (!isList(expr)) {
+    return buildValue(expr, ctx);
+  }
+
   const [command, ...args] = expr;
   expectSymbol(command);
 
