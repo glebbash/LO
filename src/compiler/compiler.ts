@@ -320,6 +320,47 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
     return firstElementPointer;
   }
 
+  if (command === 'get') {
+    const [sourcePtrExpr, ...indices] = expectArgsLengthAtLeast(
+      2,
+      args,
+      command,
+    );
+
+    const sourcePointer = buildValue(sourcePtrExpr, ctx);
+    const indicesValues = indices.map((index) => buildValue(index, ctx));
+
+    const elementPointer = llvm.buildGEP(
+      ctx.builder,
+      sourcePointer,
+      indicesValues,
+    );
+
+    return llvm.buildLoad(ctx.builder, elementPointer);
+  }
+
+  if (command === 'set') {
+    const [sourcePtrExpr, ...indicesAndValue] = expectArgsLengthAtLeast(
+      3,
+      args,
+      command,
+    );
+
+    const sourcePointer = buildValue(sourcePtrExpr, ctx);
+    const value = buildValue(indicesAndValue[indicesAndValue.length - 1], ctx);
+    const indicesValues = indicesAndValue
+      .slice(0, -1)
+      .map((index) => buildValue(index, ctx));
+
+    const elementPointer = llvm.buildGEP(
+      ctx.builder,
+      sourcePointer,
+      indicesValues,
+    );
+
+    return llvm.buildStore(ctx.builder, value, elementPointer);
+  }
+
   return buildFunctionCall(command, args, ctx);
 }
 
