@@ -201,16 +201,8 @@ function buildValueInFunctionContext(
   expr: SExpr,
   ctx: FunctionContext,
 ): LLVMValue {
-  const { llvm } = ctx;
-
   const [command, ...args] = expr;
   expectSymbol(command);
-
-  if (command === 'llvm/ret') {
-    const [returnExpr] = expectArgsLength(1, args, command);
-
-    return llvm.buildRet(ctx.builder, buildValue(returnExpr, ctx));
-  }
 
   if (command === 'let') {
     const [name, expr] = expectArgsLength(2, args, command);
