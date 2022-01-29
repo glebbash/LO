@@ -224,7 +224,7 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
   const { llvm } = ctx;
 
   if (isSymbol(expr)) {
-    return buildConstant(expr, ctx);
+    return buildConstantAccess(expr, ctx);
   }
 
   if (isString(expr)) {
@@ -288,7 +288,7 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
   return buildFunctionCall(command, args, ctx);
 }
 
-function buildConstant(name: string, ctx: ModuleContext): LLVMValue {
+function buildConstantAccess(name: string, ctx: ModuleContext): LLVMValue {
   const constant = ctx.values[name];
 
   if (!constant) {
