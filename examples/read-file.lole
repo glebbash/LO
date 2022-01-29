@@ -1,0 +1,41 @@
+(external-fn fopen (&i8 &i8) &i8)
+(external-fn fseek (&i8 i64 i32) i32)
+(external-fn ftell (&i8) i64)
+(external-fn malloc (i64) &i8)
+(external-fn fread (&i8 i64 i64 &i8) i64)
+(external-fn fclose (&i8) i32)
+
+(external-fn puts (&i8) void)
+(external-fn strtok (&i8 &i8) &i8)
+
+(fn read_file ((file_name &i8)) &i8
+  (let SEEK_END (i32 2))
+  (let SEEK_SET (i32 0))
+
+  (let f (fopen file_name "rb"))
+  (fseek f (i64 0) SEEK_END)
+  (let fsize (ftell f))
+  (fseek f (i64 0) SEEK_SET)
+
+  (let string (malloc (+ fsize (i64 1))))
+  (fread string fsize (i64 1) f)
+  (fclose f)
+
+  (set string fsize (i8 0))
+  string
+)
+
+(fn main () i32
+  (let source (read_file "examples/read-file.lole"))
+  (puts source)
+
+  (puts "first line: ")
+  (let first_line (strtok source "\n"))
+  (puts first_line)
+
+  (puts "second line: ")
+  (let second_line (strtok (nullptr &i8) "\n"))
+  (puts second_line)
+
+  (i32 0)
+)
