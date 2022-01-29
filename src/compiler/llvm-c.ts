@@ -104,6 +104,11 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
       wrap: (call) => (type: LLVMType, length: number) =>
         new LLVMType(call(type.value, length)),
     }),
+    typeOf: fn({
+      name: 'LLVMTypeOf',
+      type: [LLVMType.TYPE, [LLVMValue.TYPE]],
+      wrap: (call) => (value: LLVMValue) => new LLVMType(call(value.value)),
+    }),
 
     getUndef: fn({
       name: 'LLVMGetUndef',

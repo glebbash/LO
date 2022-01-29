@@ -289,20 +289,18 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
   }
 
   if (command === 'array') {
-    const [elementTypeName, valueExprs] = expectArgsLength(2, args, command);
-    expectSymbol(elementTypeName);
-    expectList(valueExprs);
-
-    const elementType = getType(elementTypeName, ctx);
-    const arrayType = llvm.arrayType(elementType, valueExprs.length);
-    const array = llvm.buildAlloca(ctx.builder, arrayType);
+    const valueExprs = expectArgsLengthAtLeast(1, args, command);
 
     if (valueExprs.length === 0) {
-      return array; // TODO: check if this should be null pointer
+      panic('Empty arrays are not allowed');
     }
 
     const values = valueExprs.map((expr) => buildValue(expr, ctx));
     const [firstValue, ...otherValues] = values;
+
+    const elementType = llvm.typeOf(firstValue);
+    const arrayType = llvm.arrayType(elementType, valueExprs.length);
+    const array = llvm.buildAlloca(ctx.builder, arrayType);
 
     const zero = llvm.constInt(llvm.i32TypeInContext(ctx.context), 0);
     const firstElementPointer = llvm.buildGEP(ctx.builder, array, [zero, zero]);
