@@ -31,8 +31,7 @@ export function isSymbol(expr: SExpr): expr is string {
 }
 
 export function expectSymbol(expr: SExpr): asserts expr is string {
-  const err = checkSymbol(expr);
-  err !== true && panic(err);
+  assert(checkSymbol, expr);
 }
 
 export function isString(expr: SExpr): expr is string {
@@ -40,8 +39,7 @@ export function isString(expr: SExpr): expr is string {
 }
 
 export function expectString(expr: SExpr): asserts expr is string {
-  const err = checkString(expr);
-  err !== true && panic(err);
+  assert(checkString, expr);
 }
 
 export function expectNumber(expr: SExpr): asserts expr is string {
@@ -63,8 +61,7 @@ export function isList(expr: SExpr): expr is SExpr[] {
 }
 
 export function expectList(expr: SExpr): asserts expr is SExpr[] {
-  const err = checkList(expr);
-  err !== true && panic(err);
+  assert(checkList, expr);
 }
 
 export function expectArgsLength(
@@ -100,4 +97,9 @@ export function expectI32(value: number) {
   if (!Number.isInteger(value)) {
     panic(`i32 can not hold ${value}`);
   }
+}
+
+function assert(check: (expr: SExpr) => true | string, expr: SExpr) {
+  const err = check(expr);
+  err !== true && panic(`${err}, checking ${expr}`);
 }
