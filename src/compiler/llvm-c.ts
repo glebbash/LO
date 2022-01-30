@@ -5,8 +5,7 @@ const LLVMBlockArrayType = "pointer";
 const LLVMTypeArrayType = "pointer";
 const StringType = "pointer";
 const BoolType = "i8";
-// TODO: test this
-const NULL = 0;
+const NULL = null;
 
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
@@ -118,7 +117,7 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
               returnType.value,
               buildPointerArray(argTypes),
               argTypes.length,
-              isVarArg,
+              buildBool(isVarArg),
             ),
           ),
     }),
@@ -152,7 +151,7 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
       type: [LLVMValue.TYPE, [LLVMType.TYPE, "i32", BoolType]],
       wrap: (call) =>
         (type: LLVMType, value: number, signExtend = false) =>
-          new LLVMValue(call(type.value, value, signExtend)),
+          new LLVMValue(call(type.value, value, buildBool(signExtend))),
     }),
     constPointerNull: fn({
       name: "LLVMConstPointerNull",
@@ -411,7 +410,8 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
     verifyFunction: fn({
       name: "LLVMVerifyFunction",
       type: [BoolType, [LLVMValue.TYPE, "i32"]],
-      wrap: (call) => (fn: LLVMValue) => ({ ok: !call(fn.value, 2) }),
+      wrap: (call) =>
+        (fn: LLVMValue) => ({ ok: !unBuildBool(call(fn.value, 2)) }),
     }),
     // TODO: test this
     verifyModule: fn({
@@ -420,7 +420,7 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
       wrap: (call) =>
         (module: LLVMModule) => {
           const messageRef = new Int8Array(2048);
-          const err = call(module.value, 2, messageRef);
+          const err = unBuildBool(call(module.value, 2, messageRef));
           const message = messageRef.toString();
 
           return { ok: !err, message };
@@ -456,8 +456,8 @@ function wrap<T extends Record<string, ExternalFunctionConfig<Function>>>(
 
   const wrappedFunctions = Object.fromEntries(
     Object.entries(lib).map((
-      [fnName, { name }],
-    ) => [fnName, dynLib.symbols[name]]),
+      [fnName, { name, wrap }],
+    ) => [fnName, wrap((dynLib as any).symbols[name])]),
   );
 
   return {
@@ -532,5 +532,17 @@ function buildPointerArray(pointers: Pointer[]): Int32Array {
 }
 
 function buildStringPtr(str: string): unknown {
-  return str;
+  return Int8Array.from(toCharCodes(str + "\0"));
+}
+
+function toCharCodes(str: string): number[] {
+  return [...str].map((_, i) => str.charCodeAt(i));
+}
+
+function buildBool(bool: boolean): number {
+  return bool ? 1 : 0;
+}
+
+function unBuildBool(num: number): boolean {
+  return num !== 0;
 }
