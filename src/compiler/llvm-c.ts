@@ -17,23 +17,17 @@ const nullRef = refType('void');
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
 
-export enum LLVMRealPredicate {
-  LLVMRealPredicateFalse /**< Always false (always folded) */,
-  LLVMRealOEQ /**< True if ordered and equal */,
-  LLVMRealOGT /**< True if ordered and greater than */,
-  LLVMRealOGE /**< True if ordered and greater than or equal */,
-  LLVMRealOLT /**< True if ordered and less than */,
-  LLVMRealOLE /**< True if ordered and less than or equal */,
-  LLVMRealONE /**< True if ordered and operands are unequal */,
-  LLVMRealORD /**< True if ordered (no nans) */,
-  LLVMRealUNO /**< True if unordered: isnan(X) | isnan(Y) */,
-  LLVMRealUEQ /**< True if unordered or equal */,
-  LLVMRealUGT /**< True if unordered or greater than */,
-  LLVMRealUGE /**< True if unordered, greater than, or equal */,
-  LLVMRealULT /**< True if unordered or less than */,
-  LLVMRealULE /**< True if unordered, less than, or equal */,
-  LLVMRealUNE /**< True if unordered or not equal */,
-  LLVMRealPredicateTrue /**< Always true (always folded) */,
+export enum LLVMIntPredicate {
+  LLVMIntEQ = 32 /**< equal */,
+  LLVMIntNE /**< not equal */,
+  LLVMIntUGT /**< unsigned greater than */,
+  LLVMIntUGE /**< unsigned greater or equal */,
+  LLVMIntULT /**< unsigned less than */,
+  LLVMIntULE /**< unsigned less or equal */,
+  LLVMIntSGT /**< signed greater than */,
+  LLVMIntSGE /**< signed greater or equal */,
+  LLVMIntSLT /**< signed less than */,
+  LLVMIntSLE /**< signed less or equal */,
 }
 
 function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
@@ -89,6 +83,11 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
     }),
     voidTypeInContext: fn({
       name: 'LLVMVoidTypeInContext',
+      type: [LLVMType.TYPE, [LLVMContext.TYPE]],
+      wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
+    }),
+    i1TypeInContext: fn({
+      name: 'LLVMInt1TypeInContext',
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
     }),
@@ -283,8 +282,8 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
         (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue, name = '') =>
           new LLVMValue(call(builder.value, lhs.value, rhs.value, name)),
     }),
-    buildFCmp: fn({
-      name: 'LLVMBuildFCmp',
+    buildICmp: fn({
+      name: 'LLVMBuildICmp',
       type: [
         LLVMValue.TYPE,
         [LLVMIRBuilder.TYPE, 'int', LLVMValue.TYPE, LLVMValue.TYPE, 'string'],
@@ -293,7 +292,7 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
         (call) =>
         (
           builder: LLVMIRBuilder,
-          predicate: LLVMRealPredicate,
+          predicate: LLVMIntPredicate,
           lhs: LLVMValue,
           rhs: LLVMValue,
           name = '',

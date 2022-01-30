@@ -15,6 +15,7 @@ import {
 import {
   LibLLVM,
   LLVMContext,
+  LLVMIntPredicate,
   LLVMIRBuilder,
   LLVMModule,
   LLVMType,
@@ -214,6 +215,8 @@ function buildConstruct(expr: SExpr, ctx: CodegenContext): LLVMValue {
       return buildI64(command, args, ctx);
     case '+':
       return buildAdd(command, args, ctx);
+    case '<':
+      return buildLess(command, args, ctx);
     case 'nullptr':
       return buildNullPtr(command, args, ctx);
     case 'array':
@@ -275,6 +278,25 @@ function buildAdd(
   const [lhs, rhs] = expectArgsLength(2, args, command);
 
   return llvm.buildAdd(ctx.builder, buildValue(lhs, ctx), buildValue(rhs, ctx));
+}
+
+function buildLess(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [lhs, rhs] = expectArgsLength(2, args, command);
+
+  const res = llvm.buildICmp(
+    ctx.builder,
+    LLVMIntPredicate.LLVMIntSLT,
+    buildValue(lhs, ctx),
+    buildValue(rhs, ctx),
+  );
+
+  return res;
 }
 
 function buildNullPtr(
@@ -511,6 +533,8 @@ function getType(typeName: string, ctx: CodegenContext): LLVMType {
   const { llvm } = ctx;
 
   switch (typeName) {
+    case 'i1':
+      return llvm.i1TypeInContext(ctx.context);
     case 'i32':
       return llvm.i32TypeInContext(ctx.context);
     case 'i64':
