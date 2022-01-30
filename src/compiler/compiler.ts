@@ -303,7 +303,6 @@ function buildIf(
   llvm.positionBuilderAtEnd(ctx.builder, mergeBlock);
 
   const phi = llvm.buildPhi(ctx.builder, llvm.typeOf(ifTrueValue));
-
   llvm.addIncoming(phi, [ifTrueValue], [ifTrueBlock]);
   llvm.addIncoming(phi, [ifFalseValue], [ifFalseBlock]);
 

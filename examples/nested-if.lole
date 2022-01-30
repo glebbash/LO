@@ -1,0 +1,27 @@
+(external-fn printf (&i8 &i8) i32)
+
+(fn main () i32
+  (let zer (i32 0))
+  (let one (i32 1))
+
+  (let cmp
+    (if (< zer one)
+      (if (< zer one)
+        (if (< zer one)
+          (if (< zer one)
+            (if (< zer one)
+              "f"
+              "e"
+            )
+            "d"
+          )
+          "c"
+        )
+        "b"
+      )
+      "a"
+    )
+  )
+  (printf "cmp: %s\n" cmp)
+  (i32 0)
+)
