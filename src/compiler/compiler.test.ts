@@ -46,11 +46,7 @@ Deno.test("it compiles hello world example", async () => {
 });
 
 async function compileToString(exprs: SExpr[]): Promise<string> {
-  const dir = tmpDir();
-  if (!dir) {
-    throw new Error("Cannot access temporary directory");
-  }
-  const tmpFile = `${dir}/${crypto.randomUUID()}.ll`;
+  const tmpFile = `${crypto.randomUUID()}.ll`;
 
   compile(exprs, tmpFile);
 

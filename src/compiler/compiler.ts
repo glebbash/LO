@@ -50,6 +50,7 @@ export function compile(
 
   llvm.disposeModule(module);
   llvm.contextDispose(ctx.context);
+  llvm.close();
 }
 
 function buildModule(
