@@ -172,11 +172,39 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
         new LLVMValue(call(module.value, fnName)),
     }),
 
+    createBasicBlockInContext: fn({
+      name: 'LLVMCreateBasicBlockInContext',
+      type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, 'string']],
+      wrap:
+        (call) =>
+        (ctx: LLVMContext, name = '') =>
+          new LLVMBasicBlock(call(ctx.value, name)),
+    }),
     appendBasicBlockInContext: fn({
       name: 'LLVMAppendBasicBlockInContext',
       type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, LLVMValue.TYPE, 'string']],
-      wrap: (call) => (ctx: LLVMContext, fn: LLVMValue, name: string) =>
-        new LLVMBasicBlock(call(ctx.value, fn.value, name)),
+      wrap:
+        (call) =>
+        (ctx: LLVMContext, fn: LLVMValue, name = '') =>
+          new LLVMBasicBlock(call(ctx.value, fn.value, name)),
+    }),
+    insertExistingBasicBlockAfterInsertBlock: fn({
+      name: 'LLVMInsertExistingBasicBlockAfterInsertBlock',
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMBasicBlock.TYPE]],
+      wrap: (call) => (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
+        new LLVMValue(call(builder.value, block.value)),
+    }),
+    getInsertBlock: fn({
+      name: 'LLVMGetInsertBlock',
+      type: [LLVMBasicBlock.TYPE, [LLVMIRBuilder.TYPE]],
+      wrap: (call) => (builder: LLVMIRBuilder) =>
+        new LLVMBasicBlock(call(builder.value)),
+    }),
+    getBasicBlockParent: fn({
+      name: 'LLVMGetBasicBlockParent',
+      type: [LLVMValue.TYPE, [LLVMBasicBlock.TYPE]],
+      wrap: (call) => (block: LLVMBasicBlock) =>
+        new LLVMValue(call(block.value)),
     }),
 
     positionBuilderAtEnd: fn({
@@ -301,6 +329,57 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
             call(builder.value, predicate, lhs.value, rhs.value, name),
           ),
     }),
+    buildCondBr: fn({
+      name: 'LLVMBuildCondBr',
+      type: [
+        LLVMValue.TYPE,
+        [
+          LLVMIRBuilder.TYPE,
+          LLVMValue.TYPE,
+          LLVMBasicBlock.TYPE,
+          LLVMBasicBlock.TYPE,
+        ],
+      ],
+      wrap:
+        (call) =>
+        (
+          builder: LLVMIRBuilder,
+          cond: LLVMValue,
+          ifTrue: LLVMBasicBlock,
+          ifFalse: LLVMBasicBlock,
+        ) =>
+          new LLVMValue(
+            call(builder.value, cond.value, ifTrue.value, ifFalse.value),
+          ),
+    }),
+    buildBr: fn({
+      name: 'LLVMBuildBr',
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMBasicBlock.TYPE]],
+      wrap: (call) => (builder: LLVMIRBuilder, dest: LLVMBasicBlock) =>
+        new LLVMValue(call(builder.value, dest.value)),
+    }),
+    buildPhi: fn({
+      name: 'LLVMBuildPhi',
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, 'string']],
+      wrap:
+        (call) =>
+        (builder: LLVMIRBuilder, type: LLVMType, name = '') =>
+          new LLVMValue(call(builder.value, type.value, name)),
+    }),
+
+    addIncoming: fn({
+      name: 'LLVMAddIncoming',
+      type: ['void', [LLVMValue.TYPE, LLVMValueArray, LLVMBlockArray, 'int']],
+      wrap:
+        (call) =>
+        (phi: LLVMValue, values: LLVMValue[], blocks: LLVMBasicBlock[]) =>
+          call(
+            phi.value,
+            buildArray(LLVMValueArray, values),
+            buildArray(LLVMBlockArray, blocks),
+            values.length,
+          ),
+    }),
 
     verifyFunction: fn({
       name: 'LLVMVerifyFunction',
@@ -407,6 +486,7 @@ export class LLVMBasicBlock extends UniqueType<Pointer<void>> {
 
 const LLVMTypeArray = arrayRef(LLVMType.TYPE);
 const LLVMValueArray = arrayRef(LLVMValue.TYPE);
+const LLVMBlockArray = arrayRef(LLVMBasicBlock.TYPE);
 
 function buildArray<T extends UniqueType<Pointer<void>>>(
   type: ArrayType<T['value']>,

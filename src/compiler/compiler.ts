@@ -217,6 +217,8 @@ function buildConstruct(expr: SExpr, ctx: CodegenContext): LLVMValue {
       return buildAdd(command, args, ctx);
     case '<':
       return buildLess(command, args, ctx);
+    case 'if':
+      return buildIf(command, args, ctx);
     case 'nullptr':
       return buildNullPtr(command, args, ctx);
     case 'array':
@@ -266,6 +268,46 @@ function buildArray(
   }
 
   return firstElementPointer;
+}
+
+function buildIf(
+  command: string,
+  args: SExpr[],
+  ctx: CodegenContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [cond, ifTrue, ifFalse] = expectArgsLength(3, args, command);
+
+  const fn = llvm.getBasicBlockParent(llvm.getInsertBlock(ctx.builder));
+
+  let ifTrueBlock = llvm.appendBasicBlockInContext(ctx.context, fn);
+  let ifFalseBlock = llvm.createBasicBlockInContext(ctx.context);
+  const mergeBlock = llvm.createBasicBlockInContext(ctx.context);
+
+  const condValue = buildValue(cond, ctx);
+  llvm.buildCondBr(ctx.builder, condValue, ifTrueBlock, ifFalseBlock);
+
+  llvm.positionBuilderAtEnd(ctx.builder, ifTrueBlock);
+  const ifTrueValue = buildValue(ifTrue, ctx);
+  llvm.buildBr(ctx.builder, mergeBlock);
+  ifTrueBlock = llvm.getInsertBlock(ctx.builder);
+
+  llvm.insertExistingBasicBlockAfterInsertBlock(ctx.builder, ifFalseBlock);
+  llvm.positionBuilderAtEnd(ctx.builder, ifFalseBlock);
+  const ifFalseValue = buildValue(ifFalse, ctx);
+  llvm.buildBr(ctx.builder, mergeBlock);
+  ifFalseBlock = llvm.getInsertBlock(ctx.builder);
+
+  llvm.insertExistingBasicBlockAfterInsertBlock(ctx.builder, mergeBlock);
+  llvm.positionBuilderAtEnd(ctx.builder, mergeBlock);
+
+  const phi = llvm.buildPhi(ctx.builder, llvm.typeOf(ifTrueValue));
+
+  llvm.addIncoming(phi, [ifTrueValue], [ifTrueBlock]);
+  llvm.addIncoming(phi, [ifFalseValue], [ifFalseBlock]);
+
+  return phi;
 }
 
 function buildAdd(
