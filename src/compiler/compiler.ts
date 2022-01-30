@@ -551,7 +551,7 @@ function buildFunctionCall(
 
   const callee = llvm.getNamedFunction(ctx.module, fnName);
 
-  if (callee.value.isNull()) {
+  if (callee.isNull()) {
     throw new Error(`Function ${fnName} is not defined`);
   }
 
