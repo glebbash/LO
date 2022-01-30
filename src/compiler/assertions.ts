@@ -1,30 +1,28 @@
-import { panic } from 'panic-fn';
-
-import { SExpr } from '../parser/parser';
+import { SExpr } from "../parser/parser.ts";
 
 const STRING_START = ['"'];
-const NUMBER_START = '0123456789'.split('');
+const NUMBER_START = "0123456789".split("");
 
 const checkSymbol = (expr: SExpr) =>
-  typeof expr !== 'string'
-    ? 'Symbol expected, found: list'
+  typeof expr !== "string"
+    ? "Symbol expected, found: list"
     : STRING_START.includes(expr[0])
-    ? 'Symbol expected, found: string'
+    ? "Symbol expected, found: string"
     : NUMBER_START.includes(expr[0])
-    ? 'Symbol expected, found: number'
+    ? "Symbol expected, found: number"
     : true;
 
 const checkString = (expr: SExpr) =>
-  typeof expr !== 'string'
-    ? 'String expected, found: list'
+  typeof expr !== "string"
+    ? "String expected, found: list"
     : NUMBER_START.includes(expr[0])
-    ? 'String expected, found: number'
+    ? "String expected, found: number"
     : !STRING_START.includes(expr[0])
-    ? 'String expected, found: symbol'
+    ? "String expected, found: symbol"
     : true;
 
 const checkList = (expr: SExpr) =>
-  typeof expr === 'string' ? 'List expected, found: atom' : true;
+  typeof expr === "string" ? "List expected, found: atom" : true;
 
 export function isSymbol(expr: SExpr): expr is string {
   return checkSymbol(expr) === true;
@@ -43,16 +41,16 @@ export function expectString(expr: SExpr): asserts expr is string {
 }
 
 export function expectNumber(expr: SExpr): asserts expr is string {
-  if (typeof expr !== 'string') {
-    panic('Number expected, found: list');
+  if (typeof expr !== "string") {
+    throw new Error("Number expected, found: list");
   }
 
   if (STRING_START.includes(expr[0])) {
-    panic('Number expected, found: string');
+    throw new Error("Number expected, found: string");
   }
 
   if (!NUMBER_START.includes(expr[0])) {
-    panic('Number expected, found: symbol');
+    throw new Error("Number expected, found: symbol");
   }
 }
 
@@ -70,7 +68,7 @@ export function expectArgsLength(
   command: string,
 ): SExpr[] {
   if (args.length !== argsLength) {
-    panic(
+    throw new Error(
       `Command ${command} expects ${argsLength} argument(s) but ${args.length} was given`,
     );
   }
@@ -84,7 +82,7 @@ export function expectArgsLengthAtLeast(
   command: string,
 ): SExpr[] {
   if (args.length < argsLength) {
-    panic(
+    throw new Error(
       `Command ${command} expects at least ${argsLength} argument(s) but ${args.length} was given`,
     );
   }
@@ -94,5 +92,8 @@ export function expectArgsLengthAtLeast(
 
 function assert(check: (expr: SExpr) => true | string, expr: SExpr) {
   const err = check(expr);
-  err !== true && panic(`${err}, checking ${expr}`);
+
+  if (err !== true) {
+    throw new Error(`${err}, checking ${expr}`);
+  }
 }
