@@ -22,6 +22,7 @@ import {
 } from "./llvm-c.ts";
 import { getNumberValue, getStringValue } from "./transformers.ts";
 import { dirname, resolve } from "https://deno.land/std/path/mod.ts";
+import { expand } from "../expand/expand.ts";
 
 type ModuleContext = {
   path: string;
@@ -98,7 +99,7 @@ function verifyModule(ctx: ModuleContext) {
 function includeFile(ctx: ModuleContext, filePath: string) {
   const fullFilePath = resolve(ctx.path, filePath);
   const fileContent = Deno.readTextFileSync(fullFilePath);
-  const exprs = parse(fileContent);
+  const exprs = expand(parse(fileContent));
 
   const path = dirname(fullFilePath);
   const fileCtx: ModuleContext = { ...ctx, path };
