@@ -413,15 +413,14 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
       wrap: (call) =>
         (fn: LLVMValue) => ({ ok: !unBuildBool(call(fn.value, 2)) }),
     }),
-    // TODO: test this
     verifyModule: fn({
       name: "LLVMVerifyModule",
       type: [BoolType, [LLVMModule.TYPE, "i32", StringPtrType]],
       wrap: (call) =>
         (module: LLVMModule) => {
-          const messageRef = new Int8Array(2048);
+          const messageRef = new Uint8Array(2048);
           const err = unBuildBool(call(module.value, 2, messageRef));
-          const message = messageRef.toString();
+          const message = new TextDecoder().decode(messageRef);
 
           return { ok: !err, message };
         },
@@ -530,7 +529,7 @@ function buildPointerArray(pointers: Pointer[]): BigInt64Array {
 }
 
 function buildStringPtr(str: string): unknown {
-  return Int8Array.from(toCharCodes(str + "\0"));
+  return Uint8Array.from(toCharCodes(str + "\0"));
 }
 
 function toCharCodes(str: string): number[] {
