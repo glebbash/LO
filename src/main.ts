@@ -1,4 +1,4 @@
-import { compile } from "./compiler/compiler.ts";
+import { compileExprs, compileFile } from "./compiler/compiler.ts";
 import { loadLibLLVM } from "./compiler/llvm-c.ts";
 import { parse } from "./parser/parser.ts";
 
@@ -10,11 +10,7 @@ async function main() {
   const outputIRFile = getArg(args, "out-ir") ?? "output.ll";
   const outputBinaryFile = getArg(args, "out") ?? "output";
 
-  const inputFileContent = await Deno.readTextFile(inputFile);
-  const exprs = parse(inputFileContent);
-
-  const llvm = loadLibLLVM();
-  compile(exprs, outputIRFile, llvm);
+  compileFile(inputFile, outputIRFile);
 
   if (mode === "compile") {
     await compileIR(outputIRFile, outputBinaryFile);

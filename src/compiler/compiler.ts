@@ -1,4 +1,4 @@
-import { SExpr } from "../parser/parser.ts";
+import { parse, SExpr } from "../parser/parser.ts";
 import {
   expectArgsLength,
   expectArgsLengthAtLeast,
@@ -21,74 +21,101 @@ import {
   loadLibLLVM,
 } from "./llvm-c.ts";
 import { getNumberValue, getStringValue } from "./transformers.ts";
+import { dirname, resolve } from "https://deno.land/std/path/mod.ts";
 
-type BasicCodegenContext = {
+type ModuleContext = {
+  path: string;
   llvm: LibLLVM;
   context: LLVMContext;
-};
-
-type CodegenContext = BasicCodegenContext & {
   builder: LLVMIRBuilder;
   module: LLVMModule;
+  moduleName: string;
   values: Record<string, LLVMValue>;
 };
 
 const VERIFICATION_ENABLED = false;
 
-export function compile(
+export function compileExprs(
   exprs: SExpr[],
   outputIRFile: string,
   llvm = loadLibLLVM(),
 ) {
-  const ctx: BasicCodegenContext = {
-    llvm,
-    context: llvm.contextCreate(),
-  };
+  const ctx = createContext("main", llvm);
+  insertExprs(ctx, exprs);
+  verifyModule(ctx);
+  emitLLVMIR(ctx, outputIRFile);
+  disposeContext(ctx);
+}
 
-  const module = buildModule(ctx, exprs);
-  llvm.printModuleToFile(module, outputIRFile);
+export function compileFile(
+  fileName: string,
+  outputIRFileName: string,
+  llvm = loadLibLLVM(),
+) {
+  const ctx = createContext("main", llvm);
+  includeFile(ctx, fileName);
+  verifyModule(ctx);
+  emitLLVMIR(ctx, outputIRFileName);
+  disposeContext(ctx);
+}
 
-  llvm.disposeModule(module);
+function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
+  const context = llvm.contextCreate();
+  const builder = llvm.createBuilderInContext(context);
+  const module = llvm.moduleCreateWithNameInContext(moduleName, context);
+
+  return { path: ".", llvm, context, builder, moduleName, module, values: {} };
+}
+
+function disposeContext(ctx: ModuleContext): void {
+  const { llvm } = ctx;
+
+  llvm.disposeModule(ctx.module);
+  llvm.disposeBuilder(ctx.builder);
   llvm.contextDispose(ctx.context);
   llvm.close();
 }
 
-function buildModule(
-  parentCtx: BasicCodegenContext,
-  exprs: SExpr[],
-): LLVMModule {
-  const { llvm } = parentCtx;
+function emitLLVMIR(ctx: ModuleContext, outputIRFile: string): void {
+  const { llvm } = ctx;
 
-  const moduleName = "main";
-  const ctx: CodegenContext = {
-    ...parentCtx,
-    builder: llvm.createBuilderInContext(parentCtx.context),
-    module: llvm.moduleCreateWithNameInContext(moduleName, parentCtx.context),
-    values: {},
-  };
+  llvm.printModuleToFile(ctx.module, outputIRFile);
+}
 
-  for (const expr of exprs) {
-    buildValueInModuleContext(expr, ctx);
-  }
+function verifyModule(ctx: ModuleContext) {
+  const { llvm } = ctx;
 
   if (VERIFICATION_ENABLED) {
     const res = llvm.verifyModule(ctx.module);
 
     if (!res.ok) {
       console.error(res.message);
-      throw new Error(`Verifying module failed: ${moduleName}`);
+      throw new Error(`Verifying module failed: ${ctx.moduleName}`);
     }
   }
+}
 
-  llvm.disposeBuilder(ctx.builder);
+function includeFile(ctx: ModuleContext, filePath: string) {
+  const fullFilePath = resolve(ctx.path, filePath);
+  const fileContent = Deno.readTextFileSync(fullFilePath);
+  const exprs = parse(fileContent);
 
-  return ctx.module;
+  const path = dirname(fullFilePath);
+  const fileCtx: ModuleContext = { ...ctx, path };
+
+  insertExprs(fileCtx, exprs);
+}
+
+function insertExprs(ctx: ModuleContext, exprs: SExpr[]) {
+  for (const expr of exprs) {
+    buildValueInModuleContext(expr, ctx);
+  }
 }
 
 function buildFn(
   command: string,
   args: SExpr[],
-  moduleCtx: CodegenContext,
+  moduleCtx: ModuleContext,
 ): LLVMValue {
   const { llvm } = moduleCtx;
 
@@ -124,7 +151,7 @@ function buildFn(
 
   const fnType = llvm.functionType(getType(returnType, moduleCtx), paramTypes);
 
-  const ctx: CodegenContext = {
+  const ctx: ModuleContext = {
     ...moduleCtx,
     values: { ...moduleCtx.values },
   };
@@ -151,12 +178,14 @@ function buildFn(
 
 function buildValueInModuleContext(
   expr: SExpr,
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const [command, ...args] = expr;
   expectSymbol(command);
 
   switch (command) {
+    case "include":
+      return buildInclude(command, args, ctx);
     case "llvm/target-triple":
       return buildTargetTriple(command, args, ctx);
     case "external-fn":
@@ -170,7 +199,7 @@ function buildValueInModuleContext(
 
 function buildValueInFunctionContext(
   expr: SExpr,
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   if (!isList(expr)) {
     return buildValue(expr, ctx);
@@ -187,7 +216,7 @@ function buildValueInFunctionContext(
   }
 }
 
-function buildValue(expr: SExpr, ctx: CodegenContext): LLVMValue {
+function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
   if (isSymbol(expr)) {
     return buildConstantAccess(expr, ctx);
   }
@@ -199,7 +228,7 @@ function buildValue(expr: SExpr, ctx: CodegenContext): LLVMValue {
   return buildConstruct(expr, ctx);
 }
 
-function buildConstruct(expr: SExpr, ctx: CodegenContext): LLVMValue {
+function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVMValue {
   expectList(expr);
 
   const [command, ...args] = expr;
@@ -233,10 +262,24 @@ function buildConstruct(expr: SExpr, ctx: CodegenContext): LLVMValue {
   }
 }
 
+function buildInclude(
+  command: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMValue {
+  const [fileNameStr] = expectArgsLength(1, args, command);
+  expectString(fileNameStr);
+  const fileName = getStringValue(fileNameStr);
+
+  includeFile(ctx, fileName);
+
+  return buildVoid(ctx);
+}
+
 function buildArray(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -272,7 +315,7 @@ function buildArray(
 function buildIf(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -311,7 +354,7 @@ function buildIf(
 function buildAdd(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -323,7 +366,7 @@ function buildAdd(
 function buildLess(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -342,7 +385,7 @@ function buildLess(
 function buildNullPtr(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -356,7 +399,7 @@ function buildNullPtr(
 function buildI64(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -371,7 +414,7 @@ function buildI64(
 function buildI32(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -386,7 +429,7 @@ function buildI32(
 function buildI8(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -401,7 +444,7 @@ function buildI8(
 function buildLet(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const [name, expr] = expectArgsLength(2, args, command);
   expectSymbol(name);
@@ -418,7 +461,7 @@ function buildLet(
 function buildExternalFn(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -446,7 +489,7 @@ function buildExternalFn(
 function buildTargetTriple(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -460,7 +503,7 @@ function buildTargetTriple(
 
 function insertImplicitReturnOfLastValue(
   values: LLVMValue[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -481,7 +524,7 @@ function insertImplicitReturnOfLastValue(
 function buildGet(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -502,7 +545,7 @@ function buildGet(
 function buildSet(
   command: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -527,7 +570,7 @@ function buildSet(
   return llvm.buildStore(ctx.builder, value, elementPointer);
 }
 
-function buildConstantAccess(name: string, ctx: CodegenContext): LLVMValue {
+function buildConstantAccess(name: string, ctx: ModuleContext): LLVMValue {
   const constant = ctx.values[name];
 
   if (!constant) {
@@ -537,7 +580,7 @@ function buildConstantAccess(name: string, ctx: CodegenContext): LLVMValue {
   return constant;
 }
 
-function buildString(expr: string, ctx: CodegenContext): LLVMValue {
+function buildString(expr: string, ctx: ModuleContext): LLVMValue {
   const { llvm } = ctx;
 
   return llvm.buildGlobalStringPtr(ctx.builder, getStringValue(expr));
@@ -546,7 +589,7 @@ function buildString(expr: string, ctx: CodegenContext): LLVMValue {
 function buildFunctionCall(
   fnName: string,
   args: SExpr[],
-  ctx: CodegenContext,
+  ctx: ModuleContext,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -563,13 +606,13 @@ function buildFunctionCall(
   );
 }
 
-function buildVoid(ctx: CodegenContext): LLVMValue {
+function buildVoid(ctx: ModuleContext): LLVMValue {
   const { llvm } = ctx;
 
   return llvm.getUndef(llvm.voidTypeInContext(ctx.context));
 }
 
-function getType(typeName: string, ctx: CodegenContext): LLVMType {
+function getType(typeName: string, ctx: ModuleContext): LLVMType {
   const { llvm } = ctx;
 
   switch (typeName) {
