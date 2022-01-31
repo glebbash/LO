@@ -525,9 +525,8 @@ export class LLVMBasicBlock extends Pointer {
   private __name = this;
 }
 
-// TODO: check if this works
-function buildPointerArray(pointers: Pointer[]): Int32Array {
-  return Int32Array.from(pointers.map((p) => Number(p.value.value)));
+function buildPointerArray(pointers: Pointer[]): BigInt64Array {
+  return BigInt64Array.from(pointers.map((p) => p.value.value));
 }
 
 function buildStringPtr(str: string): unknown {

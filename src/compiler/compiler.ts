@@ -395,7 +395,7 @@ function buildI8(
 
   const i8Value = getNumberValue(value);
 
-  return llvm.constInt(llvm.i32TypeInContext(ctx.context), i8Value);
+  return llvm.constInt(llvm.i8TypeInContext(ctx.context), i8Value);
 }
 
 function buildLet(
