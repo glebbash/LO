@@ -1,5 +1,3 @@
-import { panic } from 'panic-fn';
-
 import {
   chain,
   char,
@@ -13,7 +11,7 @@ import {
   pattern,
   separatedBy,
   skip,
-} from './combinator-parser';
+} from "./combinator-parser.ts";
 
 export type SExpr = string | SExpr[];
 type Pos = { line: number; col: number };
@@ -30,7 +28,7 @@ export function parse(input: string): SExpr[] {
   if (!res.ok) {
     const pos = getPosAtIndex(input, input.length - res.remaining.length);
 
-    panic(new ParseError(res.error, pos));
+    throw new ParseError(res.error, pos);
   }
 
   return res.value;
@@ -42,7 +40,7 @@ function getPosAtIndex(input: string, index: number): Pos {
   for (let i = 0; i < index; i++) {
     const char = input[i];
 
-    if (char === '\n') {
+    if (char === "\n") {
       pos.line++;
       pos.col = 0;
     }
@@ -56,11 +54,13 @@ function getPosAtIndex(input: string, index: number): Pos {
 const literallyWhitespace = skip(pattern(/\s*/));
 const comment = map(pattern(/^;[^\n]*\n/), (c) => c.slice(1, -1));
 const whitespace = skip(
-  chain([
-    literallyWhitespace,
-    optional(separatedBy(comment, literallyWhitespace)),
-    literallyWhitespace,
-  ] as const),
+  chain(
+    [
+      literallyWhitespace,
+      optional(separatedBy(comment, literallyWhitespace)),
+      literallyWhitespace,
+    ] as const,
+  ),
 );
 const atom = either([
   pattern(/^[^()\d"][&\w\/-]*/), // symbol
@@ -69,23 +69,27 @@ const atom = either([
 ]);
 const list: Parser<SExpr> = lazy(() =>
   map(
-    chain([
-      skip(char('(')),
-      whitespace,
-      optional(separatedBy(expr, whitespace)),
-      whitespace,
-      skip(char(')')),
-    ] as const),
+    chain(
+      [
+        skip(char("(")),
+        whitespace,
+        optional(separatedBy(expr, whitespace)),
+        whitespace,
+        skip(char(")")),
+      ] as const,
+    ),
     ([content]) => (content === Nothing ? [] : content),
-  ),
+  )
 );
 const expr = either([atom, list]);
 const script = map(
-  chain([
-    whitespace,
-    separatedBy(list, whitespace),
-    whitespace,
-    skip(char(EOF)),
-  ] as const),
+  chain(
+    [
+      whitespace,
+      separatedBy(list, whitespace),
+      whitespace,
+      skip(char(EOF)),
+    ] as const,
+  ),
   ([exprs]) => exprs,
 );

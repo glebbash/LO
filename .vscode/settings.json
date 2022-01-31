@@ -2,9 +2,9 @@
   "files.associations": {
     "*.lole": "clojure"
   },
+  "deno.enable": true,
+  "deno.unstable": true,
   "cSpell.words": [
-    "deref",
-    "LLVMIR",
-    "tempy"
-  ]
+    "LLVMIR"
+  ],
 }

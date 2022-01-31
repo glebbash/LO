@@ -1,6 +1,4 @@
-import { panic } from 'panic-fn';
-
-import { SExpr } from '../parser/parser';
+import { SExpr } from "../parser/parser.ts";
 import {
   expectArgsLength,
   expectArgsLengthAtLeast,
@@ -11,7 +9,7 @@ import {
   isList,
   isString,
   isSymbol,
-} from './assertions';
+} from "./assertions.ts";
 import {
   LibLLVM,
   LLVMContext,
@@ -21,8 +19,8 @@ import {
   LLVMType,
   LLVMValue,
   loadLibLLVM,
-} from './llvm-c';
-import { getNumberValue, getStringValue } from './transformers';
+} from "./llvm-c.ts";
+import { getNumberValue, getStringValue } from "./transformers.ts";
 
 type BasicCodegenContext = {
   llvm: LibLLVM;
@@ -52,6 +50,7 @@ export function compile(
 
   llvm.disposeModule(module);
   llvm.contextDispose(ctx.context);
+  llvm.close();
 }
 
 function buildModule(
@@ -60,7 +59,7 @@ function buildModule(
 ): LLVMModule {
   const { llvm } = parentCtx;
 
-  const moduleName = 'main';
+  const moduleName = "main";
   const ctx: CodegenContext = {
     ...parentCtx,
     builder: llvm.createBuilderInContext(parentCtx.context),
@@ -77,7 +76,7 @@ function buildModule(
 
     if (!res.ok) {
       console.error(res.message);
-      panic(`Verifying module failed: ${moduleName}`);
+      throw new Error(`Verifying module failed: ${moduleName}`);
     }
   }
 
@@ -106,7 +105,7 @@ function buildFn(
     expectList(paramInfo);
 
     if (paramInfo.length !== 2) {
-      panic('Arguments in argument list must have name and type');
+      throw new Error("Arguments in argument list must have name and type");
     }
 
     const [paramName, paramType] = paramInfo;
@@ -120,7 +119,7 @@ function buildFn(
   const paramNames = paramInfos.map((info) => info.name);
 
   if (new Set(paramNames).size !== paramNames.length) {
-    panic('Parameter names must be unique');
+    throw new Error("Parameter names must be unique");
   }
 
   const fnType = llvm.functionType(getType(returnType, moduleCtx), paramTypes);
@@ -137,14 +136,14 @@ function buildFn(
     ctx.values[paramName] = llvm.getParam(fn, index);
   }
 
-  const entry = llvm.appendBasicBlockInContext(ctx.context, fn, 'entry');
+  const entry = llvm.appendBasicBlockInContext(ctx.context, fn, "entry");
   llvm.positionBuilderAtEnd(ctx.builder, entry);
 
   const values = exprs.map((expr) => buildValueInFunctionContext(expr, ctx));
   insertImplicitReturnOfLastValue(values, ctx);
 
   if (VERIFICATION_ENABLED && !llvm.verifyFunction(fn).ok) {
-    panic(`Function verification failed: ${fnName}`);
+    throw new Error(`Function verification failed: ${fnName}`);
   }
 
   return fn;
@@ -158,14 +157,14 @@ function buildValueInModuleContext(
   expectSymbol(command);
 
   switch (command) {
-    case 'llvm/target-triple':
+    case "llvm/target-triple":
       return buildTargetTriple(command, args, ctx);
-    case 'external-fn':
+    case "external-fn":
       return buildExternalFn(command, args, ctx);
-    case 'fn':
+    case "fn":
       return buildFn(command, args, ctx);
     default:
-      panic('Only functions and externs are allowed at top level');
+      throw new Error("Only functions and externs are allowed at top level");
   }
 }
 
@@ -181,7 +180,7 @@ function buildValueInFunctionContext(
   expectSymbol(command);
 
   switch (command) {
-    case 'let':
+    case "let":
       return buildLet(command, args, ctx);
     default:
       return buildValue(expr, ctx);
@@ -207,27 +206,27 @@ function buildConstruct(expr: SExpr, ctx: CodegenContext): LLVMValue {
   expectSymbol(command);
 
   switch (command) {
-    case 'i8':
+    case "i8":
       return buildI8(command, args, ctx);
-    case 'i32':
+    case "i32":
       return buildI32(command, args, ctx);
-    case 'i64':
+    case "i64":
       return buildI64(command, args, ctx);
-    case '+':
+    case "+":
       return buildAdd(command, args, ctx);
-    case '<':
+    case "<":
       return buildLess(command, args, ctx);
-    case 'if':
+    case "if":
       return buildIf(command, args, ctx);
-    case 'nullptr':
+    case "nullptr":
       return buildNullPtr(command, args, ctx);
-    case 'array':
+    case "array":
       return buildArray(command, args, ctx);
-    case 'get':
+    case "get":
       return buildGet(command, args, ctx);
-    case 'set':
+    case "set":
       return buildSet(command, args, ctx);
-    case 'i8':
+    case "i8":
       return buildI8(command, args, ctx);
     default:
       return buildFunctionCall(command, args, ctx);
@@ -244,7 +243,7 @@ function buildArray(
   const valueExprs = expectArgsLengthAtLeast(1, args, command);
 
   if (valueExprs.length === 0) {
-    panic('Empty arrays are not allowed');
+    throw new Error("Empty arrays are not allowed");
   }
 
   const values = valueExprs.map((expr) => buildValue(expr, ctx));
@@ -396,7 +395,7 @@ function buildI8(
 
   const i8Value = getNumberValue(value);
 
-  return llvm.constInt(llvm.i32TypeInContext(ctx.context), i8Value);
+  return llvm.constInt(llvm.i8TypeInContext(ctx.context), i8Value);
 }
 
 function buildLet(
@@ -408,7 +407,7 @@ function buildLet(
   expectSymbol(name);
 
   if (ctx.values[name]) {
-    panic(`Constant ${name} is already defined`);
+    throw new Error(`Constant ${name} is already defined`);
   }
 
   const value = buildValue(expr, ctx);
@@ -471,7 +470,7 @@ function insertImplicitReturnOfLastValue(
 
   // TODO: add check for return type (`returnValue.getType()` throws 'TypeError: Illegal invocation')
   // if (!Type.isSameType(ctx.fn.getReturnType(), returnValue.getType())) {
-  //   panic(
+  //   throw new Error(
   //     `Function ${ctx.fn.getName()} must return ${ctx.fn.getReturnType()} but ${returnValue.getType()} was found`,
   //   );
   // }
@@ -532,7 +531,7 @@ function buildConstantAccess(name: string, ctx: CodegenContext): LLVMValue {
   const constant = ctx.values[name];
 
   if (!constant) {
-    panic(`Constant is not defined ${name}`);
+    throw new Error(`Constant is not defined ${name}`);
   }
 
   return constant;
@@ -553,8 +552,8 @@ function buildFunctionCall(
 
   const callee = llvm.getNamedFunction(ctx.module, fnName);
 
-  if (callee.value.isNull()) {
-    panic(`Function ${fnName} is not defined`);
+  if (callee.isNull()) {
+    throw new Error(`Function ${fnName} is not defined`);
   }
 
   return llvm.buildCall(
@@ -574,21 +573,21 @@ function getType(typeName: string, ctx: CodegenContext): LLVMType {
   const { llvm } = ctx;
 
   switch (typeName) {
-    case 'i1':
+    case "i1":
       return llvm.i1TypeInContext(ctx.context);
-    case 'i32':
+    case "i32":
       return llvm.i32TypeInContext(ctx.context);
-    case 'i64':
+    case "i64":
       return llvm.i64TypeInContext(ctx.context);
-    case '&i8':
+    case "&i8":
       return llvm.pointerType(llvm.i8TypeInContext(ctx.context));
-    case '&&i8':
+    case "&&i8":
       return llvm.pointerType(
         llvm.pointerType(llvm.i8TypeInContext(ctx.context)),
       );
-    case 'void':
+    case "void":
       return llvm.voidTypeInContext(ctx.context);
     default:
-      panic(`Unknown type: ${typeName}`);
+      throw new Error(`Unknown type: ${typeName}`);
   }
 }

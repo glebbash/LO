@@ -1,336 +1,359 @@
-import {
-  DynamicLibrary,
-  ForeignFunction,
-  LibraryObject,
-  LibraryObjectDefinitionBase,
-  LibraryObjectDefinitionInferenceMarker,
-  LibraryObjectDefinitionToLibraryDefinition,
-} from 'ffi-napi';
-import arrayRefLib, { ArrayType, TypedArray } from 'ref-array-di';
-import refLib, { allocCString, NULL, Pointer, ref, refType } from 'ref-napi';
-
-const arrayRef = arrayRefLib(refLib);
-
-const stringRef = refType('string');
-const nullRef = refType('void');
+const StringPtrType = "pointer";
+const NullPtrType = "pointer";
+const LLVMValueArrayType = "pointer";
+const LLVMBlockArrayType = "pointer";
+const LLVMTypeArrayType = "pointer";
+const StringType = "pointer";
+const BoolType = "i8";
+const NULL = null;
 
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
 
 export enum LLVMIntPredicate {
-  LLVMIntEQ = 32 /**< equal */,
-  LLVMIntNE /**< not equal */,
-  LLVMIntUGT /**< unsigned greater than */,
-  LLVMIntUGE /**< unsigned greater or equal */,
-  LLVMIntULT /**< unsigned less than */,
-  LLVMIntULE /**< unsigned less or equal */,
-  LLVMIntSGT /**< signed greater than */,
-  LLVMIntSGE /**< signed greater or equal */,
-  LLVMIntSLT /**< signed less than */,
-  LLVMIntSLE /**< signed less or equal */,
+  LLVMIntEQ = 32, /**< equal */
+  LLVMIntNE, /**< not equal */
+  LLVMIntUGT, /**< unsigned greater than */
+  LLVMIntUGE, /**< unsigned greater or equal */
+  LLVMIntULT, /**< unsigned less than */
+  LLVMIntULE, /**< unsigned less or equal */
+  LLVMIntSGT, /**< signed greater than */
+  LLVMIntSGE, /**< signed greater or equal */
+  LLVMIntSLT, /**< signed less than */
+  LLVMIntSLE, /**< signed less or equal */
 }
 
-function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
-  const fn = wrapLib(DynamicLibrary(libFile));
+function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
+  const fn = <T extends Function>(options: ExternalFunctionConfig<T>) =>
+    options;
 
-  return {
+  const lib = {
     contextCreate: fn({
-      name: 'LLVMContextCreate',
+      name: "LLVMContextCreate",
       type: [LLVMContext.TYPE, []],
       wrap: (call) => () => new LLVMContext(call()),
     }),
     contextDispose: fn({
-      name: 'LLVMContextDispose',
-      type: ['void', [LLVMContext.TYPE]],
+      name: "LLVMContextDispose",
+      type: ["void", [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => call(ctx.value),
     }),
 
     moduleCreateWithNameInContext: fn({
-      name: 'LLVMModuleCreateWithNameInContext',
-      type: [LLVMModule.TYPE, ['string', LLVMContext.TYPE]],
-      wrap: (call) => (moduleName: string, ctx: LLVMContext) =>
-        new LLVMModule(call(moduleName, ctx.value)),
+      name: "LLVMModuleCreateWithNameInContext",
+      type: [LLVMModule.TYPE, [StringType, LLVMContext.TYPE]],
+      wrap: (call) =>
+        (moduleName: string, ctx: LLVMContext) =>
+          new LLVMModule(call(buildStringPtr(moduleName), ctx.value)),
     }),
     disposeModule: fn({
-      name: 'LLVMDisposeModule',
-      type: ['void', [LLVMModule.TYPE]],
+      name: "LLVMDisposeModule",
+      type: ["void", [LLVMModule.TYPE]],
       wrap: (call) => (module: LLVMModule) => call(module.value),
     }),
 
     createBuilderInContext: fn({
-      name: 'LLVMCreateBuilderInContext',
+      name: "LLVMCreateBuilderInContext",
       type: [LLVMIRBuilder.TYPE, [LLVMContext.TYPE]],
 
       wrap: (call) => (ctx: LLVMContext) => new LLVMIRBuilder(call(ctx.value)),
     }),
     disposeBuilder: fn({
-      name: 'LLVMDisposeBuilder',
-      type: ['void', [LLVMIRBuilder.TYPE]],
+      name: "LLVMDisposeBuilder",
+      type: ["void", [LLVMIRBuilder.TYPE]],
       wrap: (call) => (builder: LLVMIRBuilder) => call(builder.value),
     }),
 
     setTarget: fn({
-      name: 'LLVMSetTarget',
-      type: ['void', [LLVMModule.TYPE, 'string']],
-      wrap: (call) => (module: LLVMModule, targetTriple: string) =>
-        call(module.value, targetTriple),
+      name: "LLVMSetTarget",
+      type: ["void", [LLVMModule.TYPE, StringType]],
+      wrap: (call) =>
+        (module: LLVMModule, targetTriple: string) =>
+          call(module.value, buildStringPtr(targetTriple)),
     }),
 
     pointerType: fn({
-      name: 'LLVMPointerType',
-      type: [LLVMType.TYPE, [LLVMType.TYPE, 'int']],
+      name: "LLVMPointerType",
+      type: [LLVMType.TYPE, [LLVMType.TYPE, "i32"]],
       wrap: (call) => (type: LLVMType) => new LLVMType(call(type.value, 0)),
     }),
     voidTypeInContext: fn({
-      name: 'LLVMVoidTypeInContext',
+      name: "LLVMVoidTypeInContext",
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
     }),
     i1TypeInContext: fn({
-      name: 'LLVMInt1TypeInContext',
+      name: "LLVMInt1TypeInContext",
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
     }),
     i8TypeInContext: fn({
-      name: 'LLVMInt8TypeInContext',
+      name: "LLVMInt8TypeInContext",
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
     }),
     i32TypeInContext: fn({
-      name: 'LLVMInt32TypeInContext',
+      name: "LLVMInt32TypeInContext",
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
     }),
     i64TypeInContext: fn({
-      name: 'LLVMInt64TypeInContext',
+      name: "LLVMInt64TypeInContext",
       type: [LLVMType.TYPE, [LLVMContext.TYPE]],
       wrap: (call) => (ctx: LLVMContext) => new LLVMType(call(ctx.value)),
     }),
     functionType: fn({
-      name: 'LLVMFunctionType',
-      type: [LLVMType.TYPE, [LLVMType.TYPE, LLVMTypeArray, 'int', 'bool']],
-      wrap:
-        (call) =>
+      name: "LLVMFunctionType",
+      type: [LLVMType.TYPE, [
+        LLVMType.TYPE,
+        LLVMTypeArrayType,
+        "i32",
+        BoolType,
+      ]],
+      wrap: (call) =>
         (returnType: LLVMType, argTypes: LLVMType[], isVarArg = false) =>
           new LLVMType(
             call(
               returnType.value,
-              buildArray(LLVMTypeArray, argTypes),
+              buildPointerArray(argTypes),
               argTypes.length,
-              isVarArg,
+              buildBool(isVarArg),
             ),
           ),
     }),
     arrayType: fn({
-      name: 'LLVMArrayType',
-      type: [LLVMType.TYPE, [LLVMType.TYPE, 'int']],
-      wrap: (call) => (type: LLVMType, length: number) =>
-        new LLVMType(call(type.value, length)),
+      name: "LLVMArrayType",
+      type: [LLVMType.TYPE, [LLVMType.TYPE, "i32"]],
+      wrap: (call) =>
+        (type: LLVMType, length: number) =>
+          new LLVMType(call(type.value, length)),
     }),
     typeOf: fn({
-      name: 'LLVMTypeOf',
+      name: "LLVMTypeOf",
       type: [LLVMType.TYPE, [LLVMValue.TYPE]],
       wrap: (call) => (value: LLVMValue) => new LLVMType(call(value.value)),
     }),
 
     getUndef: fn({
-      name: 'LLVMGetUndef',
+      name: "LLVMGetUndef",
       type: [LLVMValue.TYPE, [LLVMType.TYPE]],
       wrap: (call) => (type: LLVMType) => new LLVMValue(call(type.value)),
     }),
     getParam: fn({
-      name: 'LLVMGetParam',
-      type: [LLVMValue.TYPE, [LLVMValue.TYPE, 'int']],
-      wrap: (call) => (fn: LLVMValue, index: number) =>
-        new LLVMValue(call(fn.value, index)),
+      name: "LLVMGetParam",
+      type: [LLVMValue.TYPE, [LLVMValue.TYPE, "i32"]],
+      wrap: (call) =>
+        (fn: LLVMValue, index: number) => new LLVMValue(call(fn.value, index)),
     }),
 
     constInt: fn({
-      name: 'LLVMConstInt',
-      type: [LLVMValue.TYPE, [LLVMType.TYPE, 'int', 'bool']],
-      wrap:
-        (call) =>
+      name: "LLVMConstInt",
+      type: [LLVMValue.TYPE, [LLVMType.TYPE, "i32", BoolType]],
+      wrap: (call) =>
         (type: LLVMType, value: number, signExtend = false) =>
-          new LLVMValue(call(type.value, value, signExtend)),
+          new LLVMValue(call(type.value, value, buildBool(signExtend))),
     }),
     constPointerNull: fn({
-      name: 'LLVMConstPointerNull',
+      name: "LLVMConstPointerNull",
       type: [LLVMValue.TYPE, [LLVMType.TYPE]],
       wrap: (call) => (type: LLVMType) => new LLVMValue(call(type.value)),
     }),
 
     addFunction: fn({
-      name: 'LLVMAddFunction',
-      type: [LLVMValue.TYPE, [LLVMModule.TYPE, 'string', LLVMType.TYPE]],
-      wrap: (call) => (module: LLVMModule, fnName: string, type: LLVMType) =>
-        new LLVMValue(call(module.value, fnName, type.value)),
+      name: "LLVMAddFunction",
+      type: [LLVMValue.TYPE, [LLVMModule.TYPE, StringType, LLVMType.TYPE]],
+      wrap: (call) =>
+        (module: LLVMModule, fnName: string, type: LLVMType) =>
+          new LLVMValue(call(module.value, buildStringPtr(fnName), type.value)),
     }),
     getNamedFunction: fn({
-      name: 'LLVMGetNamedFunction',
-      type: [LLVMValue.TYPE, [LLVMModule.TYPE, 'string']],
-      wrap: (call) => (module: LLVMModule, fnName: string) =>
-        new LLVMValue(call(module.value, fnName)),
+      name: "LLVMGetNamedFunction",
+      type: [LLVMValue.TYPE, [LLVMModule.TYPE, StringType]],
+      wrap: (call) =>
+        (module: LLVMModule, fnName: string) =>
+          new LLVMValue(call(module.value, buildStringPtr(fnName))),
     }),
 
     createBasicBlockInContext: fn({
-      name: 'LLVMCreateBasicBlockInContext',
-      type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, 'string']],
-      wrap:
-        (call) =>
-        (ctx: LLVMContext, name = '') =>
-          new LLVMBasicBlock(call(ctx.value, name)),
+      name: "LLVMCreateBasicBlockInContext",
+      type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, StringType]],
+      wrap: (call) =>
+        (ctx: LLVMContext, name = "") =>
+          new LLVMBasicBlock(call(ctx.value, buildStringPtr(name))),
     }),
     appendBasicBlockInContext: fn({
-      name: 'LLVMAppendBasicBlockInContext',
-      type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, LLVMValue.TYPE, 'string']],
-      wrap:
-        (call) =>
-        (ctx: LLVMContext, fn: LLVMValue, name = '') =>
-          new LLVMBasicBlock(call(ctx.value, fn.value, name)),
+      name: "LLVMAppendBasicBlockInContext",
+      type: [LLVMBasicBlock.TYPE, [
+        LLVMContext.TYPE,
+        LLVMValue.TYPE,
+        StringType,
+      ]],
+      wrap: (call) =>
+        (ctx: LLVMContext, fn: LLVMValue, name = "") =>
+          new LLVMBasicBlock(call(ctx.value, fn.value, buildStringPtr(name))),
     }),
     insertExistingBasicBlockAfterInsertBlock: fn({
-      name: 'LLVMInsertExistingBasicBlockAfterInsertBlock',
+      name: "LLVMInsertExistingBasicBlockAfterInsertBlock",
       type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMBasicBlock.TYPE]],
-      wrap: (call) => (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
-        new LLVMValue(call(builder.value, block.value)),
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
+          new LLVMValue(call(builder.value, block.value)),
     }),
     getInsertBlock: fn({
-      name: 'LLVMGetInsertBlock',
+      name: "LLVMGetInsertBlock",
       type: [LLVMBasicBlock.TYPE, [LLVMIRBuilder.TYPE]],
-      wrap: (call) => (builder: LLVMIRBuilder) =>
-        new LLVMBasicBlock(call(builder.value)),
+      wrap: (call) =>
+        (builder: LLVMIRBuilder) => new LLVMBasicBlock(call(builder.value)),
     }),
     getBasicBlockParent: fn({
-      name: 'LLVMGetBasicBlockParent',
+      name: "LLVMGetBasicBlockParent",
       type: [LLVMValue.TYPE, [LLVMBasicBlock.TYPE]],
-      wrap: (call) => (block: LLVMBasicBlock) =>
-        new LLVMValue(call(block.value)),
+      wrap: (call) =>
+        (block: LLVMBasicBlock) => new LLVMValue(call(block.value)),
     }),
 
     positionBuilderAtEnd: fn({
-      name: 'LLVMPositionBuilderAtEnd',
-      type: ['void', [LLVMIRBuilder.TYPE, LLVMBasicBlock.TYPE]],
-      wrap: (call) => (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
-        call(builder.value, block.value),
+      name: "LLVMPositionBuilderAtEnd",
+      type: ["void", [LLVMIRBuilder.TYPE, LLVMBasicBlock.TYPE]],
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, block: LLVMBasicBlock) =>
+          call(builder.value, block.value),
     }),
 
     buildGlobalStringPtr: fn({
-      name: 'LLVMBuildGlobalStringPtr',
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, 'string', 'string']],
-      wrap:
-        (call) =>
-        (builder: LLVMIRBuilder, content: string, name = 'str') =>
-          new LLVMValue(call(builder.value, content, name)),
+      name: "LLVMBuildGlobalStringPtr",
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, StringType, StringType]],
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, content: string, name = "str") =>
+          new LLVMValue(
+            call(builder.value, buildStringPtr(content), buildStringPtr(name)),
+          ),
     }),
     buildRet: fn({
-      name: 'LLVMBuildRet',
+      name: "LLVMBuildRet",
       type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMValue.TYPE]],
-      wrap: (call) => (builder: LLVMIRBuilder, value: LLVMValue) =>
-        new LLVMValue(call(builder.value, value.value)),
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, value: LLVMValue) =>
+          new LLVMValue(call(builder.value, value.value)),
     }),
     buildCall: fn({
-      name: 'LLVMBuildCall',
+      name: "LLVMBuildCall",
       type: [
         LLVMValue.TYPE,
-        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValueArray, 'int', 'string'],
+        [
+          LLVMIRBuilder.TYPE,
+          LLVMValue.TYPE,
+          LLVMValueArrayType,
+          "i32",
+          StringType,
+        ],
       ],
-      wrap:
-        (call) =>
-        (builder: LLVMIRBuilder, fn: LLVMValue, args: LLVMValue[], name = '') =>
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, fn: LLVMValue, args: LLVMValue[], name = "") =>
           new LLVMValue(
             call(
               builder.value,
               fn.value,
-              buildArray(LLVMValueArray, args),
+              buildPointerArray(args),
               args.length,
-              name,
+              buildStringPtr(name),
             ),
           ),
     }),
     buildAlloca: fn({
-      name: 'LLVMBuildAlloca',
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, 'string']],
-      wrap:
-        (call) =>
-        (builder: LLVMIRBuilder, type: LLVMType, name = '') =>
-          new LLVMValue(call(builder.value, type.value, name)),
+      name: "LLVMBuildAlloca",
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, StringType]],
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, type: LLVMType, name = "") =>
+          new LLVMValue(call(builder.value, type.value, buildStringPtr(name))),
     }),
     buildLoad: fn({
-      name: 'LLVMBuildLoad',
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMValue.TYPE, 'string']],
-      wrap:
-        (call) =>
-        (builder: LLVMIRBuilder, pointer: LLVMValue, name = '') =>
-          new LLVMValue(call(builder.value, pointer.value, name)),
+      name: "LLVMBuildLoad",
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMValue.TYPE, StringType]],
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, pointer: LLVMValue, name = "") =>
+          new LLVMValue(
+            call(builder.value, pointer.value, buildStringPtr(name)),
+          ),
     }),
     buildStore: fn({
-      name: 'LLVMBuildStore',
+      name: "LLVMBuildStore",
       type: [
         LLVMValue.TYPE,
         [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE],
       ],
-      wrap:
-        (call) =>
+      wrap: (call) =>
         (builder: LLVMIRBuilder, value: LLVMValue, pointer: LLVMValue) =>
           new LLVMValue(call(builder.value, value.value, pointer.value)),
     }),
     buildGEP: fn({
-      name: 'LLVMBuildGEP',
+      name: "LLVMBuildGEP",
       type: [
         LLVMValue.TYPE,
-        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValueArray, 'int', 'string'],
+        [
+          LLVMIRBuilder.TYPE,
+          LLVMValue.TYPE,
+          LLVMValueArrayType,
+          "i32",
+          StringType,
+        ],
       ],
-      wrap:
-        (call) =>
+      wrap: (call) =>
         (
           builder: LLVMIRBuilder,
           pointer: LLVMValue,
           indices: LLVMValue[],
-          name = '',
+          name = "",
         ) => {
           return new LLVMValue(
             call(
               builder.value,
               pointer.value,
-              buildArray(LLVMValueArray, indices),
+              buildPointerArray(indices),
               indices.length,
-              name,
+              buildStringPtr(name),
             ),
           );
         },
     }),
     buildAdd: fn({
-      name: 'LLVMBuildAdd',
+      name: "LLVMBuildAdd",
       type: [
         LLVMValue.TYPE,
-        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE, 'string'],
+        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE, StringType],
       ],
-      wrap:
-        (call) =>
-        (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue, name = '') =>
-          new LLVMValue(call(builder.value, lhs.value, rhs.value, name)),
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue, name = "") =>
+          new LLVMValue(
+            call(builder.value, lhs.value, rhs.value, buildStringPtr(name)),
+          ),
     }),
     buildICmp: fn({
-      name: 'LLVMBuildICmp',
+      name: "LLVMBuildICmp",
       type: [
         LLVMValue.TYPE,
-        [LLVMIRBuilder.TYPE, 'int', LLVMValue.TYPE, LLVMValue.TYPE, 'string'],
+        [LLVMIRBuilder.TYPE, "i32", LLVMValue.TYPE, LLVMValue.TYPE, StringType],
       ],
-      wrap:
-        (call) =>
+      wrap: (call) =>
         (
           builder: LLVMIRBuilder,
           predicate: LLVMIntPredicate,
           lhs: LLVMValue,
           rhs: LLVMValue,
-          name = '',
+          name = "",
         ) =>
           new LLVMValue(
-            call(builder.value, predicate, lhs.value, rhs.value, name),
+            call(
+              builder.value,
+              predicate,
+              lhs.value,
+              rhs.value,
+              buildStringPtr(name),
+            ),
           ),
     }),
     buildCondBr: fn({
-      name: 'LLVMBuildCondBr',
+      name: "LLVMBuildCondBr",
       type: [
         LLVMValue.TYPE,
         [
@@ -340,8 +363,7 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
           LLVMBasicBlock.TYPE,
         ],
       ],
-      wrap:
-        (call) =>
+      wrap: (call) =>
         (
           builder: LLVMIRBuilder,
           cond: LLVMValue,
@@ -353,148 +375,171 @@ function loadLibLLVMInternal(libFile = '/usr/lib/llvm-13/lib/libLLVM.so') {
           ),
     }),
     buildBr: fn({
-      name: 'LLVMBuildBr',
+      name: "LLVMBuildBr",
       type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMBasicBlock.TYPE]],
-      wrap: (call) => (builder: LLVMIRBuilder, dest: LLVMBasicBlock) =>
-        new LLVMValue(call(builder.value, dest.value)),
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, dest: LLVMBasicBlock) =>
+          new LLVMValue(call(builder.value, dest.value)),
     }),
     buildPhi: fn({
-      name: 'LLVMBuildPhi',
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, 'string']],
-      wrap:
-        (call) =>
-        (builder: LLVMIRBuilder, type: LLVMType, name = '') =>
-          new LLVMValue(call(builder.value, type.value, name)),
+      name: "LLVMBuildPhi",
+      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, StringType]],
+      wrap: (call) =>
+        (builder: LLVMIRBuilder, type: LLVMType, name = "") =>
+          new LLVMValue(call(builder.value, type.value, buildStringPtr(name))),
     }),
 
     addIncoming: fn({
-      name: 'LLVMAddIncoming',
-      type: ['void', [LLVMValue.TYPE, LLVMValueArray, LLVMBlockArray, 'int']],
-      wrap:
-        (call) =>
+      name: "LLVMAddIncoming",
+      type: ["void", [
+        LLVMValue.TYPE,
+        LLVMValueArrayType,
+        LLVMBlockArrayType,
+        "i32",
+      ]],
+      wrap: (call) =>
         (phi: LLVMValue, values: LLVMValue[], blocks: LLVMBasicBlock[]) =>
           call(
             phi.value,
-            buildArray(LLVMValueArray, values),
-            buildArray(LLVMBlockArray, blocks),
+            buildPointerArray(values),
+            buildPointerArray(blocks),
             values.length,
           ),
     }),
 
     verifyFunction: fn({
-      name: 'LLVMVerifyFunction',
-      type: ['bool', [LLVMValue.TYPE, 'int']],
-      wrap: (call) => (fn: LLVMValue) => ({ ok: !call(fn.value, 2) }),
+      name: "LLVMVerifyFunction",
+      type: [BoolType, [LLVMValue.TYPE, "i32"]],
+      wrap: (call) =>
+        (fn: LLVMValue) => ({ ok: !unBuildBool(call(fn.value, 2)) }),
     }),
     verifyModule: fn({
-      name: 'LLVMVerifyModule',
-      type: ['bool', [LLVMModule.TYPE, 'int', stringRef]],
-      wrap: (call) => (module: LLVMModule) => {
-        const messageRef = ref(allocCString(' '.repeat(2048)));
-        const err = call(module.value, 2, messageRef);
-        const message = messageRef.deref().toString();
+      name: "LLVMVerifyModule",
+      type: [BoolType, [LLVMModule.TYPE, "i32", StringPtrType]],
+      wrap: (call) =>
+        (module: LLVMModule) => {
+          const messageRef = new Uint8Array(2048);
+          const err = unBuildBool(call(module.value, 2, messageRef));
+          const message = new TextDecoder().decode(messageRef);
 
-        return { ok: !err, message };
-      },
+          return { ok: !err, message };
+        },
     }),
 
     printModuleToFile: fn({
-      name: 'LLVMPrintModuleToFile',
-      type: ['void', [LLVMModule.TYPE, 'string', nullRef]],
-      wrap: (call) => (module: LLVMModule, fileName: string) =>
-        call(module.value, fileName, NULL as never),
+      name: "LLVMPrintModuleToFile",
+      type: ["void", [LLVMModule.TYPE, StringType, NullPtrType]],
+      wrap: (call) =>
+        (module: LLVMModule, fileName: string) =>
+          call(module.value, buildStringPtr(fileName), NULL),
     }),
   };
+
+  return wrap(lib, libFile);
 }
 
-type ValueOf<R> = R extends Record<string, infer V> ? V : never;
+function wrap<T extends Record<string, ExternalFunctionConfig<Function>>>(
+  lib: T,
+  libPath: string,
+): WrappedLib<T> {
+  const foreignFunctions = Object.fromEntries(
+    Object.values(lib).map((
+      { name, type: [result, parameters] },
+    ): [string, Deno.ForeignFunction] => [name, {
+      parameters,
+      result,
+    }]),
+  );
 
-type FunctionType<
-  T extends
-    | ValueOf<LibraryObjectDefinitionBase>
-    | ValueOf<LibraryObjectDefinitionInferenceMarker>,
-> = (
-  value: T,
-) => LibraryObject<LibraryObjectDefinitionToLibraryDefinition<{ k: T }>>['k'];
+  const dynLib = Deno.dlopen(libPath, foreignFunctions);
 
-type WrapFunctionParams<
-  W,
-  T extends
-    | ValueOf<LibraryObjectDefinitionBase>
-    | ValueOf<LibraryObjectDefinitionInferenceMarker>,
-> = {
+  const wrappedFunctions = Object.fromEntries(
+    Object.entries(lib).map((
+      [fnName, { name, wrap }],
+    ) => [fnName, wrap((dynLib as any).symbols[name])]),
+  );
+
+  return {
+    ...wrappedFunctions,
+    close: () => dynLib.close(),
+  } as unknown as WrappedLib<T>;
+}
+
+type WrappedLib<T extends Record<string, ExternalFunctionConfig<Function>>> =
+  & {
+    [P in keyof T]: GetWrappedFunction<T[P]>;
+  }
+  & { close: () => void };
+
+type GetWrappedFunction<T> = T extends ExternalFunctionConfig<infer T> ? T
+  : never;
+
+type ExternalFunctionConfig<T extends Function> = {
   name: string;
-  type: T;
-  wrap: (fn: ReturnType<FunctionType<T>>) => W;
+  type: [Deno.NativeType, Deno.NativeType[]];
+  wrap: (call: (...args: unknown[]) => any) => T;
 };
 
-function wrapLib(lib: DynamicLibrary) {
-  return <
-    W,
-    T extends
-      | ValueOf<LibraryObjectDefinitionBase>
-      | ValueOf<LibraryObjectDefinitionInferenceMarker>,
-  >({
-    name,
-    type: [returnType, argTypes],
-    wrap,
-  }: WrapFunctionParams<W, T>) => {
-    // TODO: try to not use `as never`
-    return wrap(ForeignFunction(lib.get(name), returnType, argTypes) as never);
-  };
+class Pointer {
+  constructor(public readonly value: Deno.UnsafePointer) {}
 }
 
-class UniqueType<T> {
-  constructor(public readonly value: T) {}
-}
-
-export class LLVMContext extends UniqueType<Pointer<void>> {
-  static TYPE = refType('void');
+export class LLVMContext extends Pointer {
+  static TYPE = "pointer" as const;
 
   private __name = this;
 }
 
-export class LLVMIRBuilder extends UniqueType<Pointer<void>> {
-  static TYPE = refType('void');
+export class LLVMIRBuilder extends Pointer {
+  static TYPE = "pointer" as const;
 
   private __name = this;
 }
 
-export class LLVMModule extends UniqueType<Pointer<void>> {
-  static TYPE = refType('void');
+export class LLVMModule extends Pointer {
+  static TYPE = "pointer" as const;
 
   private __name = this;
 }
 
-export class LLVMValue extends UniqueType<Pointer<void>> {
-  static TYPE = refType('void');
+export class LLVMValue extends Pointer {
+  static TYPE = "pointer" as const;
 
   private __name = this;
-}
 
-export class LLVMType extends UniqueType<Pointer<void>> {
-  static TYPE = refType('void');
-
-  private __name = this;
-}
-
-export class LLVMBasicBlock extends UniqueType<Pointer<void>> {
-  static TYPE = refType('void');
-
-  private __name = this;
-}
-
-const LLVMTypeArray = arrayRef(LLVMType.TYPE);
-const LLVMValueArray = arrayRef(LLVMValue.TYPE);
-const LLVMBlockArray = arrayRef(LLVMBasicBlock.TYPE);
-
-function buildArray<T extends UniqueType<Pointer<void>>>(
-  type: ArrayType<T['value']>,
-  values: T[],
-): TypedArray<T['value']> {
-  const ref = new type(values.length);
-  for (const index in values) {
-    ref[index] = values[index].value;
+  isNull() {
+    return this.value.value === 0n;
   }
-  return ref;
+}
+
+export class LLVMType extends Pointer {
+  static TYPE = "pointer" as const;
+
+  private __name = this;
+}
+
+export class LLVMBasicBlock extends Pointer {
+  static TYPE = "pointer" as const;
+
+  private __name = this;
+}
+
+function buildPointerArray(pointers: Pointer[]): BigInt64Array {
+  return BigInt64Array.from(pointers.map((p) => p.value.value));
+}
+
+function buildStringPtr(str: string): unknown {
+  return Uint8Array.from(toCharCodes(str + "\0"));
+}
+
+function toCharCodes(str: string): number[] {
+  return [...str].map((_, i) => str.charCodeAt(i));
+}
+
+function buildBool(bool: boolean): number {
+  return bool ? 1 : 0;
+}
+
+function unBuildBool(num: number): boolean {
+  return num !== 0;
 }
