@@ -508,7 +508,6 @@ export class LLVMValue extends Pointer {
 
   private __name = this;
 
-  // TODO: test this
   isNull() {
     return this.value.value === 0n;
   }
