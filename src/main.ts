@@ -1,6 +1,4 @@
-import { compileExprs, compileFile } from "./compiler/compiler.ts";
-import { loadLibLLVM } from "./compiler/llvm-c.ts";
-import { parse } from "./parser/parser.ts";
+import { compileFile } from "./compiler/compiler.ts";
 
 async function main() {
   const args = Deno.args;
