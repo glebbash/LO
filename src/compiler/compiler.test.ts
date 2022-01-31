@@ -1,5 +1,4 @@
 import { m } from "https://raw.githubusercontent.com/glebbash/multiline-str/master/src/multiline-str.ts";
-import tmpDir from "https://deno.land/x/tmp_dir/mod.ts";
 
 import { parse, SExpr } from "../parser/parser.ts";
 import { compile } from "./compiler.ts";
