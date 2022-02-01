@@ -38,26 +38,27 @@ const VERIFICATION_ENABLED = false;
 
 export function compileExprs(
   exprs: SExpr[],
-  outputIRFile: string,
   llvm = loadLibLLVM(),
-) {
+): string {
   const ctx = createContext("main", llvm);
   insertExprs(ctx, exprs);
-  verifyModule(ctx);
-  emitLLVMIR(ctx, outputIRFile);
-  disposeContext(ctx);
+  return compileAndDispose(ctx);
 }
 
 export function compileFile(
   fileName: string,
-  outputIRFileName: string,
   llvm = loadLibLLVM(),
-) {
+): string {
   const ctx = createContext("main", llvm);
   includeFile(ctx, fileName);
+  return compileAndDispose(ctx);
+}
+
+function compileAndDispose(ctx: ModuleContext): string {
   verifyModule(ctx);
-  emitLLVMIR(ctx, outputIRFileName);
+  const llvmIR = buildLLVMIR(ctx);
   disposeContext(ctx);
+  return llvmIR;
 }
 
 function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
@@ -77,10 +78,14 @@ function disposeContext(ctx: ModuleContext): void {
   llvm.close();
 }
 
-function emitLLVMIR(ctx: ModuleContext, outputIRFile: string): void {
+function buildLLVMIR(ctx: ModuleContext): string {
   const { llvm } = ctx;
 
-  llvm.printModuleToFile(ctx.module, outputIRFile);
+  const message = llvm.printModuleToString(ctx.module);
+  const llvmIR = message.stringValue();
+  llvm.disposeMessage(message);
+
+  return llvmIR;
 }
 
 function verifyModule(ctx: ModuleContext) {

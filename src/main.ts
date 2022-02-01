@@ -8,7 +8,9 @@ async function main() {
   const outputIRFile = getArg(args, "out-ir") ?? "output.ll";
   const outputBinaryFile = getArg(args, "out") ?? "output";
 
-  compileFile(inputFile, outputIRFile);
+  const llvmIR = compileFile(inputFile);
+
+  await Deno.writeTextFile(outputIRFile, llvmIR);
 
   if (mode === "compile") {
     await compileIR(outputIRFile, outputBinaryFile);
