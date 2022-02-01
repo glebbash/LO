@@ -3,19 +3,22 @@ import { compileFile } from "./compiler/compiler.ts";
 async function main() {
   const args = Deno.args;
 
-  const mode = args.includes("-r") ? "interpret" : "compile";
   const inputFile = getArg(args, "src") ?? "examples/hello-world.lole";
-  const outputIRFile = getArg(args, "out-ir") ?? "output.ll";
-  const outputBinaryFile = getArg(args, "out") ?? "output";
-
   const llvmIR = compileFile(inputFile);
 
-  if (mode === "compile") {
+  const outputIRFile = getArg(args, "ir");
+  if (outputIRFile !== undefined) {
     await Deno.writeTextFile(outputIRFile, llvmIR);
-    await compileIR(outputIRFile, outputBinaryFile);
-  } else {
-    await interpretIR(llvmIR);
   }
+
+  const mode = args.includes("-r") ? "interpret" : "compile";
+  if (mode === "interpret") {
+    await interpretIR(llvmIR);
+    return;
+  }
+
+  const outputBinaryFile = getArg(args, "out") ?? "output";
+  await compileIR(llvmIR, outputBinaryFile);
 }
 
 function getArg(args: string[], name: string): string | undefined {
@@ -26,17 +29,23 @@ function getArg(args: string[], name: string): string | undefined {
     ?.slice(argumentStart.length);
 }
 
-async function compileIR(llvmIRFile: string, outputBinaryFile: string) {
-  await Deno.run({
+async function compileIR(llvmIR: string, outputBinaryFile: string) {
+  const clang = Deno.run({
     cmd: [
       "clang-13",
       "-O3",
       "-o",
       outputBinaryFile,
-      llvmIRFile,
       "-Wno-override-module",
+      "-x",
+      "ir",
+      "-",
     ],
-  }).status();
+    stdin: "piped",
+  });
+  clang.stdin?.write(new TextEncoder().encode(llvmIR));
+  clang.stdin.close();
+  await clang.status();
 }
 
 async function interpretIR(llvmIR: string) {
