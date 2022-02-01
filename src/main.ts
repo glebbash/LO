@@ -10,12 +10,11 @@ async function main() {
 
   const llvmIR = compileFile(inputFile);
 
-  await Deno.writeTextFile(outputIRFile, llvmIR);
-
   if (mode === "compile") {
+    await Deno.writeTextFile(outputIRFile, llvmIR);
     await compileIR(outputIRFile, outputBinaryFile);
   } else {
-    await interpretIR(outputIRFile);
+    await interpretIR(llvmIR);
   }
 }
 
@@ -28,8 +27,8 @@ function getArg(args: string[], name: string): string | undefined {
 }
 
 async function compileIR(llvmIRFile: string, outputBinaryFile: string) {
-  await run(
-    [
+  await Deno.run({
+    cmd: [
       "clang-13",
       "-O3",
       "-o",
@@ -37,15 +36,14 @@ async function compileIR(llvmIRFile: string, outputBinaryFile: string) {
       llvmIRFile,
       "-Wno-override-module",
     ],
-  );
+  }).status();
 }
 
-async function interpretIR(llvmIRFile: string) {
-  await run(["lli-13", llvmIRFile]);
-}
-
-async function run(cmd: string[]): Promise<void> {
-  await Deno.run({ cmd }).status();
+async function interpretIR(llvmIR: string) {
+  const lli = Deno.run({ cmd: ["lli-13"], stdin: "piped" });
+  lli.stdin?.write(new TextEncoder().encode(llvmIR));
+  lli.stdin.close();
+  await lli.status();
 }
 
 main();
