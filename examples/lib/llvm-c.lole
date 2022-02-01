@@ -6,9 +6,9 @@
 (alias &type &any)
 (alias &value &any)
 (alias &block &any)
-(alias bool &i32)
-(alias &type[] &&i8)
-(alias &value[] &&i8)
+(alias bool i32)
+(alias &&type &&i8)
+(alias &&value &&i8)
 
 (external-fn LLVMContextCreate () &context)
 (external-fn LLVMContextDispose (&context) void)
@@ -23,11 +23,11 @@
 
 (external-fn LLVMInt32TypeInContext (&context) &type)
 (external-fn LLVMInt8TypeInContext (&context) &type)
-(external-fn LLVMFunctionType (&type &type[] i32 bool) &type)
+(external-fn LLVMFunctionType (&type &&type i32 bool) &type)
 (external-fn LLVMPointerType (&type i32) &type)
 
 (external-fn LLVMAddFunction (&module &str &type) &value)
-(external-fn LLVMBuildCall (&builder &value &value[] i32 &str) &value)
+(external-fn LLVMBuildCall (&builder &value &&value i32 &str) &value)
 
 (external-fn LLVMAppendBasicBlockInContext (&context &value &str) &block)
 (external-fn LLVMPositionBuilderAtEnd (&builder &block) void)
