@@ -426,12 +426,16 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
         },
     }),
 
-    printModuleToFile: fn({
-      name: "LLVMPrintModuleToFile",
-      type: ["void", [LLVMModule.TYPE, StringType, NullPtrType]],
+    printModuleToString: fn({
+      name: "LLVMPrintModuleToString",
+      type: ["pointer", [LLVMModule.TYPE]],
       wrap: (call) =>
-        (module: LLVMModule, fileName: string) =>
-          call(module.value, buildStringPtr(fileName), NULL),
+        (module: LLVMModule) => new LLVMMessage(call(module.value)),
+    }),
+    disposeMessage: fn({
+      name: "LLVMDisposeMessage",
+      type: ["void", ["pointer"]],
+      wrap: (call) => (message: LLVMMessage): void => call(message.value),
     }),
   };
 
@@ -522,6 +526,16 @@ export class LLVMBasicBlock extends Pointer {
   static TYPE = "pointer" as const;
 
   private __name = this;
+}
+
+export class LLVMMessage extends Pointer {
+  static TYPE = "pointer" as const;
+
+  private __name = this;
+
+  stringValue() {
+    return new Deno.UnsafePointerView(this.value).getCString();
+  }
 }
 
 function buildPointerArray(pointers: Pointer[]): BigInt64Array {

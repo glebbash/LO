@@ -2,6 +2,9 @@
   "files.associations": {
     "*.lole": "clojure"
   },
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
   "deno.enable": true,
   "deno.unstable": true,
   "cSpell.words": [

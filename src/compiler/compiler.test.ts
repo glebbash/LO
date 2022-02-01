@@ -20,8 +20,7 @@ Deno.test("it compiles hello world example", async () => {
     )
     `;
 
-  const exprs = parse(source);
-  const llvmIR = await compileToString(exprs);
+  const llvmIR = compileExprs(parse(source));
 
   assertEquals(
     llvmIR,
@@ -43,14 +42,3 @@ Deno.test("it compiles hello world example", async () => {
     `,
   );
 });
-
-async function compileToString(exprs: SExpr[]): Promise<string> {
-  const tmpFile = `${crypto.randomUUID()}.ll`;
-
-  compileExprs(exprs, tmpFile);
-
-  const content = await Deno.readTextFile(tmpFile);
-  await Deno.remove(tmpFile);
-
-  return content;
-}
