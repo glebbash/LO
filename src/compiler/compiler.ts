@@ -21,11 +21,8 @@ import {
   loadLibLLVM,
 } from "./llvm-c.ts";
 import { getNumberValue, getStringValue } from "./transformers.ts";
-import { dirname, resolve } from "https://deno.land/std/path/mod.ts";
-import { expand } from "../expand/expand.ts";
 
 type ModuleContext = {
-  path: string;
   llvm: LibLLVM;
   context: LLVMContext;
   builder: LLVMIRBuilder;
@@ -36,21 +33,16 @@ type ModuleContext = {
 
 const VERIFICATION_ENABLED = false;
 
-export function compileExprs(
+export function compile(
   exprs: SExpr[],
   llvm = loadLibLLVM(),
 ): string {
   const ctx = createContext("main", llvm);
-  insertExprs(ctx, exprs);
-  return compileAndDispose(ctx);
-}
 
-export function compileFile(
-  fileName: string,
-  llvm = loadLibLLVM(),
-): string {
-  const ctx = createContext("main", llvm);
-  includeFile(ctx, fileName);
+  for (const expr of exprs) {
+    buildValueInModuleContext(expr, ctx);
+  }
+
   return compileAndDispose(ctx);
 }
 
@@ -66,7 +58,7 @@ function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
   const builder = llvm.createBuilderInContext(context);
   const module = llvm.moduleCreateWithNameInContext(moduleName, context);
 
-  return { path: ".", llvm, context, builder, moduleName, module, values: {} };
+  return { llvm, context, builder, moduleName, module, values: {} };
 }
 
 function disposeContext(ctx: ModuleContext): void {
@@ -98,23 +90,6 @@ function verifyModule(ctx: ModuleContext) {
       console.error(res.message);
       throw new Error(`Verifying module failed: ${ctx.moduleName}`);
     }
-  }
-}
-
-function includeFile(ctx: ModuleContext, filePath: string) {
-  const fullFilePath = resolve(ctx.path, filePath);
-  const fileContent = Deno.readTextFileSync(fullFilePath);
-  const exprs = expand(parse(fileContent));
-
-  const path = dirname(fullFilePath);
-  const fileCtx: ModuleContext = { ...ctx, path };
-
-  insertExprs(fileCtx, exprs);
-}
-
-function insertExprs(ctx: ModuleContext, exprs: SExpr[]) {
-  for (const expr of exprs) {
-    buildValueInModuleContext(expr, ctx);
   }
 }
 
@@ -190,8 +165,6 @@ function buildValueInModuleContext(
   expectSymbol(command);
 
   switch (command) {
-    case "include":
-      return buildInclude(command, args, ctx);
     case "llvm/target-triple":
       return buildTargetTriple(command, args, ctx);
     case "external-fn":
@@ -266,20 +239,6 @@ function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVMValue {
     default:
       return buildFunctionCall(command, args, ctx);
   }
-}
-
-function buildInclude(
-  command: string,
-  args: SExpr[],
-  ctx: ModuleContext,
-): LLVMValue {
-  const [fileNameStr] = expectArgsLength(1, args, command);
-  expectString(fileNameStr);
-  const fileName = getStringValue(fileNameStr);
-
-  includeFile(ctx, fileName);
-
-  return buildVoid(ctx);
 }
 
 function buildArray(

@@ -1,12 +1,19 @@
+import { dirname, resolve } from "https://deno.land/std@0.123.0/path/mod.ts";
 import {
   expectArgsLength,
+  expectString,
   expectSymbol,
   isList,
   isSymbol,
 } from "../compiler/assertions.ts";
-import { SExpr } from "../parser/parser.ts";
+import { getStringValue } from "../compiler/transformers.ts";
+import { parse, SExpr } from "../parser/parser.ts";
 
-type ExpandContext = { aliases: Record<string, SExpr>; level: number };
+type ExpandContext = {
+  path: string;
+  aliases: Record<string, SExpr>;
+  level: number;
+};
 
 type ExprInContext = {
   expr: SExpr;
@@ -18,10 +25,13 @@ type ResultInContext = {
   ctx: ExpandContext;
 };
 
-export function expand(exprs: SExpr[]): SExpr[] {
-  return expandExpr({ expr: exprs, ctx: { aliases: {}, level: 0 } })
-    .result
-    .flat();
+export function expandFile(filePath: string): SExpr[] {
+  return expandExprs([["include", `"${filePath}"`]]);
+}
+
+export function expandExprs(exprs: SExpr[]): SExpr[] {
+  const ctx: ExpandContext = { aliases: {}, level: 0, path: "." };
+  return expandExpr({ ctx, expr: exprs }).result.flat();
 }
 
 function expandExpr(
@@ -39,23 +49,16 @@ function expandExpr(
   if (isList(expr)) {
     const [command, ...args] = expr;
 
-    if (ctx.level === 1 && command === "alias") {
-      const [name, value] = expectArgsLength(2, args, command);
-      expectSymbol(name);
-
-      return {
-        result: [],
-        ctx: { ...ctx, aliases: { ...ctx.aliases, [name]: value } },
-      };
+    if (command === "alias") {
+      return processAlias(ctx, command, args);
     }
 
-    const res = expr.reduce(
-      (acc, expr) => {
-        const { ctx, result } = expandExpr({ ctx: acc.ctx, expr });
-        return { ctx, result: [...acc.result, result] };
-      },
-      { result: [] as SExpr[], ctx: { ...ctx, level: ctx.level + 1 } },
-    );
+    if (command === "include") {
+      return processInclude(ctx, command, args);
+    }
+
+    const nestedCtx: ExpandContext = { ...ctx, level: ctx.level + 1 };
+    const res = expandList(nestedCtx, expr);
 
     return {
       result: [res.result.flat()],
@@ -64,4 +67,56 @@ function expandExpr(
   }
 
   return { result: [expr], ctx };
+}
+
+function processAlias(
+  ctx: ExpandContext,
+  command: string,
+  args: SExpr[],
+): ResultInContext {
+  const [name, value] = expectArgsLength(2, args, command);
+  expectSymbol(name);
+
+  return {
+    result: [],
+    ctx: { ...ctx, aliases: { ...ctx.aliases, [name]: value } },
+  };
+}
+
+function processInclude(
+  ctx: ExpandContext,
+  command: string,
+  args: SExpr[],
+): ResultInContext {
+  const [fileNameStr] = expectArgsLength(1, args, command);
+  expectString(fileNameStr);
+
+  if (ctx.level !== 1) {
+    throw new Error("include can only be used at top level");
+  }
+
+  const filePath = getStringValue(fileNameStr);
+  const fullFilePath = resolve(ctx.path, filePath);
+
+  const fileContent = Deno.readTextFileSync(fullFilePath);
+  const exprs = parse(fileContent);
+
+  const path = dirname(fullFilePath);
+  const fileCtx: ExpandContext = { ...ctx, path };
+  const res = expandList(fileCtx, exprs);
+
+  return {
+    result: res.result.flat(),
+    ctx: res.ctx,
+  };
+}
+
+function expandList(ctx: ExpandContext, exprs: SExpr[]): ResultInContext {
+  return exprs.reduce(
+    (acc, expr) => {
+      const { ctx, result } = expandExpr({ ctx: acc.ctx, expr });
+      return { ctx, result: [...acc.result, result] };
+    },
+    { result: [] as SExpr[], ctx },
+  );
 }

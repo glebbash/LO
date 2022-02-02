@@ -1,7 +1,7 @@
 import { m } from "https://raw.githubusercontent.com/glebbash/multiline-str/master/src/multiline-str.ts";
 
-import { parse, SExpr } from "../parser/parser.ts";
-import { compileExprs } from "./compiler.ts";
+import { parse } from "../parser/parser.ts";
+import { compile } from "./compiler.ts";
 import { assertEquals } from "https://deno.land/std@0.123.0/testing/asserts.ts";
 
 // TODO: add smaller tests
@@ -20,7 +20,7 @@ Deno.test("it compiles hello world example", async () => {
     )
     `;
 
-  const llvmIR = compileExprs(parse(source));
+  const llvmIR = compile(parse(source));
 
   assertEquals(
     llvmIR,
