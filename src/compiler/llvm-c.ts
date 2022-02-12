@@ -1,11 +1,9 @@
 const StringPtrType = "pointer";
-const NullPtrType = "pointer";
 const LLVMValueArrayType = "pointer";
 const LLVMBlockArrayType = "pointer";
 const LLVMTypeArrayType = "pointer";
 const StringType = "pointer";
 const BoolType = "i8";
-const NULL = null;
 
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
