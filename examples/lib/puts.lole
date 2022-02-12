@@ -1,0 +1,1 @@
+(external-fn puts (&i8) i32)

@@ -1,0 +1,4 @@
+(alias &any &i8)
+(alias &str &any)
+(alias &&any &&i8)
+(alias &&str &&any)
