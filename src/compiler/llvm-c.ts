@@ -126,6 +126,20 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
         (type: LLVMType, length: number) =>
           new LLVMType(call(type.value, length)),
     }),
+    structTypeInContext: fn({
+      name: "LLVMStructTypeInContext",
+      type: [LLVMType.TYPE, [
+        LLVMContext.TYPE,
+        LLVMTypeArrayType,
+        "i32",
+        BoolType,
+      ]],
+      wrap: (call) =>
+        (ctx: LLVMContext, elementTypes: LLVMType[], packed = true) =>
+          new LLVMType(
+            call(ctx, buildPointerArray(elementTypes), buildBool(packed)),
+          ),
+    }),
     typeOf: fn({
       name: "LLVMTypeOf",
       type: [LLVMType.TYPE, [LLVMValue.TYPE]],
