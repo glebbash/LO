@@ -137,7 +137,12 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
       wrap: (call) =>
         (ctx: LLVMContext, elementTypes: LLVMType[], packed = true) =>
           new LLVMType(
-            call(ctx, buildPointerArray(elementTypes), buildBool(packed)),
+            call(
+              ctx.value,
+              buildPointerArray(elementTypes),
+              elementTypes.length,
+              buildBool(packed),
+            ),
           ),
     }),
     typeOf: fn({
