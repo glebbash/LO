@@ -151,6 +151,34 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
       wrap: (call) => (value: LLVMValue) => new LLVMType(call(value.value)),
     }),
 
+    structCreateNamed: fn({
+      name: "LLVMStructCreateNamed",
+      type: [LLVMType.TYPE, [
+        LLVMContext.TYPE,
+        StringType,
+      ]],
+      wrap: (call) =>
+        (ctx: LLVMContext, name: string) =>
+          new LLVMType(call(ctx.value, buildStringPtr(name))),
+    }),
+    structSetBody: fn({
+      name: "LLVMStructSetBody",
+      type: ["void", [
+        LLVMType.TYPE,
+        LLVMTypeArrayType,
+        "i32",
+        BoolType,
+      ]],
+      wrap: (call) =>
+        (structType: LLVMType, elementTypes: LLVMType[], packed = true): void =>
+          call(
+            structType.value,
+            buildPointerArray(elementTypes),
+            elementTypes.length,
+            buildBool(packed),
+          ),
+    }),
+
     getUndef: fn({
       name: "LLVMGetUndef",
       type: [LLVMValue.TYPE, [LLVMType.TYPE]],

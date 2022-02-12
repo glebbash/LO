@@ -1,4 +1,4 @@
-import { parse, SExpr } from "../parser/parser.ts";
+import { SExpr } from "../parser/parser.ts";
 import {
   expectArgsLength,
   expectArgsLengthAtLeast,
@@ -29,6 +29,7 @@ type ModuleContext = {
   module: LLVMModule;
   moduleName: string;
   values: Record<string, LLVMValue>;
+  types: Record<string, LLVMType>;
 };
 
 const VERIFICATION_ENABLED = false;
@@ -58,7 +59,19 @@ function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
   const builder = llvm.createBuilderInContext(context);
   const module = llvm.moduleCreateWithNameInContext(moduleName, context);
 
-  return { llvm, context, builder, moduleName, module, values: {} };
+  const ctx: ModuleContext = {
+    llvm,
+    context,
+    builder,
+    moduleName,
+    module,
+    values: {},
+    types: {},
+  };
+
+  defineDefaultTypes(ctx);
+
+  return ctx;
 }
 
 function disposeContext(ctx: ModuleContext): void {
@@ -171,6 +184,8 @@ function buildValueInModuleContext(
       return buildExternalFn(command, args, ctx);
     case "fn":
       return buildFn(command, args, ctx);
+    case "struct":
+      return buildStruct(command, args, ctx);
     default:
       throw new Error("Only functions and externs are allowed at top level");
   }
@@ -230,6 +245,8 @@ function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVMValue {
       return buildNullPtr(command, args, ctx);
     case "array":
       return buildArray(command, args, ctx);
+    case "new":
+      return buildNew(command, args, ctx);
     case "get":
       return buildGet(command, args, ctx);
     case "set":
@@ -241,6 +258,68 @@ function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVMValue {
   }
 }
 
+function buildStruct(
+  command: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [structName, ...fields] = expectArgsLengthAtLeast(2, args, command);
+  expectSymbol(structName);
+
+  if (ctx.types[structName]) {
+    throw new Error(`Redefinition of type ${structName}`);
+  }
+
+  const fieldTypes = fields.map((p, index) => {
+    expectList(p);
+    if (p.length !== 2) {
+      throw new Error("Struct field definitions must have name and type only");
+    }
+
+    const [fieldName, fieldType] = p;
+    expectSymbol(fieldName);
+    expectSymbol(fieldType);
+
+    defineValue(
+      ctx,
+      `${structName}/${fieldName}`,
+      llvm.constInt(
+        llvm.i32TypeInContext(ctx.context),
+        index,
+      ),
+    );
+
+    return getType(fieldType, ctx);
+  });
+
+  const structType = llvm.structCreateNamed(ctx.context, structName);
+  llvm.structSetBody(structType, fieldTypes);
+  defineType(ctx, structName, structType);
+  defineType(ctx, `&${structName}`, llvm.pointerType(structType));
+
+  return buildVoid(ctx);
+}
+
+function buildNew(
+  command: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [structName] = expectArgsLength(1, args, command);
+  expectSymbol(structName);
+
+  const structType = ctx.types[structName];
+  if (!structName) {
+    throw new Error(`Struct ${structName} is not defined`);
+  }
+
+  return llvm.buildAlloca(ctx.builder, structType);
+}
+
 function buildArray(
   command: string,
   args: SExpr[],
@@ -248,11 +327,7 @@ function buildArray(
 ): LLVMValue {
   const { llvm } = ctx;
 
-  const valueExprs = expectArgsLengthAtLeast(1, args, command);
-
-  if (valueExprs.length === 0) {
-    throw new Error("Empty arrays are not allowed");
-  }
+  const valueExprs = expectArgsLengthAtLeast(2, args, command);
 
   const values = valueExprs.map((expr) => buildValue(expr, ctx));
   const [firstValue, ...otherValues] = values;
@@ -414,12 +489,9 @@ function buildLet(
   const [name, expr] = expectArgsLength(2, args, command);
   expectSymbol(name);
 
-  if (ctx.values[name]) {
-    throw new Error(`Constant ${name} is already defined`);
-  }
-
   const value = buildValue(expr, ctx);
-  ctx.values[name] = value;
+  defineValue(ctx, name, value);
+
   return value;
 }
 
@@ -577,25 +649,47 @@ function buildVoid(ctx: ModuleContext): LLVMValue {
   return llvm.getUndef(llvm.voidTypeInContext(ctx.context));
 }
 
-function getType(typeName: string, ctx: ModuleContext): LLVMType {
+function defineValue(ctx: ModuleContext, name: string, value: LLVMValue): void {
+  if (ctx.values[name]) {
+    throw new Error(`Constant ${name} is already defined`);
+  }
+
+  ctx.values[name] = value;
+}
+
+function defineType(ctx: ModuleContext, name: string, type: LLVMType): void {
+  if (ctx.types[name]) {
+    throw new Error(`Type ${name} is already defined`);
+  }
+
+  ctx.types[name] = type;
+}
+
+function defineDefaultTypes(ctx: ModuleContext): void {
   const { llvm } = ctx;
 
-  switch (typeName) {
-    case "i1":
-      return llvm.i1TypeInContext(ctx.context);
-    case "i32":
-      return llvm.i32TypeInContext(ctx.context);
-    case "i64":
-      return llvm.i64TypeInContext(ctx.context);
-    case "&i8":
-      return llvm.pointerType(llvm.i8TypeInContext(ctx.context));
-    case "&&i8":
-      return llvm.pointerType(
-        llvm.pointerType(llvm.i8TypeInContext(ctx.context)),
-      );
-    case "void":
-      return llvm.voidTypeInContext(ctx.context);
-    default:
-      throw new Error(`Unknown type: ${typeName}`);
+  defineType(ctx, "void", llvm.i64TypeInContext(ctx.context));
+
+  defineType(ctx, "i1", llvm.voidTypeInContext(ctx.context));
+  defineType(ctx, "i32", llvm.i32TypeInContext(ctx.context));
+  defineType(ctx, "i64", llvm.i64TypeInContext(ctx.context));
+
+  defineType(ctx, "&i8", llvm.pointerType(llvm.i8TypeInContext(ctx.context)));
+  defineType(
+    ctx,
+    "&&i8",
+    llvm.pointerType(
+      llvm.pointerType(llvm.i8TypeInContext(ctx.context)),
+    ),
+  );
+  defineType(ctx, "&i32", llvm.pointerType(llvm.i32TypeInContext(ctx.context)));
+}
+
+function getType(typeName: string, ctx: ModuleContext): LLVMType {
+  const type = ctx.types[typeName];
+  if (!type) {
+    throw new Error(`Unknown type: ${typeName}`);
   }
+
+  return type;
 }
