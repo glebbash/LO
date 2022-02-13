@@ -7,6 +7,7 @@ import {
   expectString,
   expectSymbol,
   isList,
+  isNumber,
   isString,
   isSymbol,
 } from "./assertions.ts";
@@ -223,6 +224,10 @@ function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
 }
 
 function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVMValue {
+  if (isNumber(expr)) {
+    return buildI32("i32", [expr], ctx);
+  }
+
   expectList(expr);
 
   const [command, ...args] = expr;

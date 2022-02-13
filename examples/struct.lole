@@ -7,25 +7,22 @@
 
 (fn print_list ((list &List) (index i32)) i32
   ;; TODO: fix this bug
-  ;; (printf "%d" (get list (i32 0) List/items index))
+  ;; (printf "%d" (get list 0 List/items index))
 
   ;; TODO: find a way to remove first zero index
-  (let items (get list (i32 0) List/items))
+  (let items (get list 0 List/items))
   (printf "%d\n" (get items index))
 
-  (if (< (+ index (i32 1)) (get list (i32 0) List/size))
-    (print_list list (+ index (i32 1)))
-    (i32 0)
+  (if (< (+ index 1) (get list 0 List/size))
+    (print_list list (+ index 1))
+    0
   )
-  (i32 0)
 )
 
 (fn main () i32
   (let x (new List))
-  (set x (i32 0) List/size (i32 3))
-  (set x (i32 0) List/items (array (i32 1) (i32 2) (i32 3)))
+  (set x 0 List/size 3)
+  (set x 0 List/items (array 1 2 3))
 
-  (print_list x (i32 0))
-
-  (i32 0)
+  (print_list x 0)
 )

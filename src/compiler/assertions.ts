@@ -3,63 +3,38 @@ import { SExpr } from "../parser/parser.ts";
 const STRING_START = ['"'];
 const NUMBER_START = "0123456789".split("");
 
-const checkSymbol = (expr: SExpr) =>
-  typeof expr !== "string"
-    ? "Symbol expected, found: list"
-    : STRING_START.includes(expr[0])
-    ? "Symbol expected, found: string"
-    : NUMBER_START.includes(expr[0])
-    ? "Symbol expected, found: number"
-    : true;
-
-const checkString = (expr: SExpr) =>
-  typeof expr !== "string"
-    ? "String expected, found: list"
-    : NUMBER_START.includes(expr[0])
-    ? "String expected, found: number"
-    : !STRING_START.includes(expr[0])
-    ? "String expected, found: symbol"
-    : true;
-
-const checkList = (expr: SExpr) =>
-  typeof expr === "string" ? "List expected, found: atom" : true;
-
-export function isSymbol(expr: SExpr): expr is string {
-  return checkSymbol(expr) === true;
-}
-
-export function expectSymbol(expr: SExpr): asserts expr is string {
-  assert(checkSymbol, expr);
-}
+type SExprType = "string" | "number" | "symbol" | "list";
 
 export function isString(expr: SExpr): expr is string {
-  return checkString(expr) === true;
+  return getType(expr) === "string";
 }
 
-export function expectString(expr: SExpr): asserts expr is string {
-  assert(checkString, expr);
+export function isNumber(expr: SExpr): expr is string {
+  return getType(expr) === "number";
 }
 
-export function expectNumber(expr: SExpr): asserts expr is string {
-  if (typeof expr !== "string") {
-    throw new Error("Number expected, found: list");
-  }
-
-  if (STRING_START.includes(expr[0])) {
-    throw new Error("Number expected, found: string");
-  }
-
-  if (!NUMBER_START.includes(expr[0])) {
-    throw new Error("Number expected, found: symbol");
-  }
+export function isSymbol(expr: SExpr): expr is string {
+  return getType(expr) === "symbol";
 }
 
 export function isList(expr: SExpr): expr is SExpr[] {
-  return checkList(expr) === true;
+  return getType(expr) === "list";
+}
+
+export function expectString(expr: SExpr): asserts expr is string {
+  assert("string", expr);
+}
+
+export function expectNumber(expr: SExpr): asserts expr is string {
+  assert("number", expr);
+}
+
+export function expectSymbol(expr: SExpr): asserts expr is string {
+  assert("symbol", expr);
 }
 
 export function expectList(expr: SExpr): asserts expr is SExpr[] {
-  assert(checkList, expr);
+  assert("list", expr);
 }
 
 export function expectArgsLength(
@@ -90,10 +65,28 @@ export function expectArgsLengthAtLeast(
   return args;
 }
 
-function assert(check: (expr: SExpr) => true | string, expr: SExpr) {
-  const err = check(expr);
+function assert(expectedType: SExprType, expr: SExpr) {
+  const exprType = getType(expr);
 
-  if (err !== true) {
-    throw new Error(`${err}, checking ${expr}`);
+  if (exprType !== expectedType) {
+    throw new Error(
+      `${expectedType} expected but ${exprType} was found, checking ${expr}`,
+    );
   }
+}
+
+function getType(expr: SExpr): SExprType {
+  if (typeof expr !== "string") {
+    return "list";
+  }
+
+  if (STRING_START.includes(expr[0])) {
+    return "string";
+  }
+
+  if (NUMBER_START.includes(expr[0])) {
+    return "number";
+  }
+
+  return "symbol";
 }
