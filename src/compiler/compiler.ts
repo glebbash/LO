@@ -549,17 +549,7 @@ function insertImplicitReturnOfLastValue(
 ): LLVMValue {
   const { llvm } = ctx;
 
-  const lastValue = values.at(-1);
-
-  const returnValue = lastValue ?? buildVoid(ctx);
-
-  // TODO: add check for return type (`returnValue.getType()` throws 'TypeError: Illegal invocation')
-  // if (!Type.isSameType(ctx.fn.getReturnType(), returnValue.getType())) {
-  //   throw new Error(
-  //     `Function ${ctx.fn.getName()} must return ${ctx.fn.getReturnType()} but ${returnValue.getType()} was found`,
-  //   );
-  // }
-
+  const returnValue = values.at(-1) ?? buildVoid(ctx);
   return llvm.buildRet(ctx.builder, returnValue);
 }
 
