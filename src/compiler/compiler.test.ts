@@ -6,7 +6,7 @@ import { assertEquals } from "https://deno.land/std@0.123.0/testing/asserts.ts";
 
 // TODO: add smaller tests
 
-Deno.test("it compiles hello world example", async () => {
+Deno.test("it compiles hello world example", () => {
   const source = m`
     ;; Hello World example
 
@@ -16,7 +16,7 @@ Deno.test("it compiles hello world example", async () => {
 
     (fn main () i32
       (puts "Hello World!")
-      (i32 0)
+      0
     )
     `;
 

@@ -2,13 +2,13 @@
 
 (fn rec ((i i32)) i32
   (printf "%d\n" i)
-  (if (< i (i32 1000))
-    (rec (+ i (i32 1)))
+  (if (< i 1000)
+    (rec (+ i 1))
     i
   )
 )
 
 (fn main () i32
-  (rec (i32 1))
-  (i32 0)
+  (rec 1)
+  0
 )

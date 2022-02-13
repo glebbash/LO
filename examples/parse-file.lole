@@ -15,5 +15,5 @@
   (let second_line (strtok (nullptr &i8) "\n"))
   (puts second_line)
 
-  (i32 0)
+  0
 )

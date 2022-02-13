@@ -4,5 +4,5 @@
 
 (fn main () i32
   (puts "Hello World!")
-  (i32 0)
+  0
 )

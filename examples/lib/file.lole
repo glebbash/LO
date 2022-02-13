@@ -10,8 +10,8 @@
 (external-fn fclose (&file) i32)
 
 (fn read_file ((file_name &str)) &str
-  (let SEEK_END (i32 2))
-  (let SEEK_SET (i32 0))
+  (let SEEK_END 2)
+  (let SEEK_SET 0)
 
   (let f (fopen file_name "rb"))
   (fseek f (i64 0) SEEK_END)

@@ -78,14 +78,14 @@ Deno.test("it parses llvm hello world", () => {
 
       (fn main () i32
         (puts "Hello World!")
-        (i32 0)
+        0
       )
       `);
 
   assertEquals(res, [
     ["llvm/target-triple", '"x86_64-pc-linux-gnu"'],
     ["external-fn", "puts", ["&i8"], "i32"],
-    ["fn", "main", [], "i32", ["puts", '"Hello World!"'], ["i32", "0"]],
+    ["fn", "main", [], "i32", ["puts", '"Hello World!"'], "0"],
   ]);
 });
 
@@ -116,7 +116,7 @@ Deno.test("it reports errors in multiline sources", () => {
   const src = m`
       (fn main () i32
         (puts "Hello World!)
-        (i32 0)
+        0
       )
       `;
 

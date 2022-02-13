@@ -7,12 +7,12 @@
 
 (fn print_strings ((items &&any) (item_count i32) (index i32)) i32
   (puts (get items index))
-  (if (< (+ index (i32 1)) item_count)
-    (print_strings items item_count (+ index (i32 1)))
-    (i32 0)
+  (if (< (+ index 1) item_count)
+    (print_strings items item_count (+ index 1))
+    0
   )
 )
 
 (fn main ((argc i32) (argv &&str)) i32
-  (print_strings argv argc (i32 0))
+  (print_strings argv argc 0)
 )

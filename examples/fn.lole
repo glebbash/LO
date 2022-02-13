@@ -5,7 +5,7 @@
 )
 
 (fn main () i32
-  (let res (add (i32 2) (i32 2)))
+  (let res (add 2 2))
   (printf "Number: %d\n" res)
-  (i32 0)
+  0
 )
