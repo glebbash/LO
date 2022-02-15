@@ -433,6 +433,30 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
         (builder: LLVMIRBuilder, type: LLVMType, name = "") =>
           new LLVMValue(call(builder.value, type.value, buildStringPtr(name))),
     }),
+    buildBitCast: fn({
+      name: "LLVMBuildBitCast",
+      type: [LLVMValue.TYPE, [
+        LLVMIRBuilder.TYPE,
+        LLVMValue.TYPE,
+        LLVMType.TYPE,
+        StringType,
+      ]],
+      wrap: (call) =>
+        (
+          builder: LLVMIRBuilder,
+          value: LLVMValue,
+          newType: LLVMType,
+          name = "",
+        ) =>
+          new LLVMValue(
+            call(
+              builder.value,
+              value.value,
+              newType.value,
+              buildStringPtr(name),
+            ),
+          ),
+    }),
 
     addIncoming: fn({
       name: "LLVMAddIncoming",
