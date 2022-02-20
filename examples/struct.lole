@@ -2,18 +2,17 @@
 
 (struct List
   (size i32)
-  (items &i32)
+  (items &i32[])
 )
 
 (fn print_list ((list &List) (index i32)) i32
-  ;; TODO: fix this bug
-  ;; (printf "%d" (get list 0 List/items index))
+  ;; TODO: try to make this work
+  ;; (printf "%d\n" (get list List/items index))
 
-  ;; TODO: find a way to remove first zero index
-  (let items (get list 0 List/items))
+  (let items (get list List/items))
   (printf "%d\n" (get items index))
 
-  (if (< (+ index 1) (get list 0 List/size))
+  (if (< (+ index 1) (get list List/size))
     (print_list list (+ index 1))
     0
   )
@@ -21,8 +20,8 @@
 
 (fn main () i32
   (let x (new List))
-  (set x 0 List/size 3)
-  (set x 0 List/items (array 1 2 3))
+  (set x List/size 3)
+  (set x List/items (array 1 2 3))
 
   (print_list x 0)
 )

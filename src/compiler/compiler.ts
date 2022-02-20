@@ -256,8 +256,8 @@ function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVMValue {
       return buildGet(command, args, ctx);
     case "set":
       return buildSet(command, args, ctx);
-    case "i8":
-      return buildI8(command, args, ctx);
+    case "cast":
+      return buildCast(command, args, ctx);
     default:
       return buildFunctionCall(command, args, ctx);
   }
@@ -332,7 +332,7 @@ function buildArray(
 ): LLVMValue {
   const { llvm } = ctx;
 
-  const valueExprs = expectArgsLengthAtLeast(2, args, command);
+  const valueExprs = expectArgsLengthAtLeast(1, args, command);
 
   const values = valueExprs.map((expr) => buildValue(expr, ctx));
   const [firstValue, ...otherValues] = values;
@@ -354,7 +354,28 @@ function buildArray(
     llvm.buildStore(ctx.builder, value, elementPointer);
   }
 
-  return firstElementPointer;
+  return llvm.buildBitCast(
+    ctx.builder,
+    array,
+    llvm.pointerType(llvm.arrayType(elementType, 0)),
+  );
+}
+
+function buildCast(
+  command: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [valueExpr, type] = expectArgsLength(2, args, command);
+  expectSymbol(type);
+
+  return llvm.buildBitCast(
+    ctx.builder,
+    buildValue(valueExpr, ctx),
+    getType(type, ctx),
+  );
 }
 
 function buildIf(
@@ -560,7 +581,7 @@ function buildGet(
 ): LLVMValue {
   const { llvm } = ctx;
 
-  const [sourcePtrExpr, ...indices] = expectArgsLengthAtLeast(2, args, command);
+  const [sourcePtrExpr, ...indices] = expectArgsLengthAtLeast(1, args, command);
 
   const sourcePointer = buildValue(sourcePtrExpr, ctx);
   const indicesValues = indices.map((index) => buildValue(index, ctx));
@@ -568,7 +589,7 @@ function buildGet(
   const elementPointer = llvm.buildGEP(
     ctx.builder,
     sourcePointer,
-    indicesValues,
+    [buildI32("i32", ["0"], ctx), ...indicesValues],
   );
 
   return llvm.buildLoad(ctx.builder, elementPointer);
@@ -582,7 +603,7 @@ function buildSet(
   const { llvm } = ctx;
 
   const [sourcePtrExpr, ...indicesAndValue] = expectArgsLengthAtLeast(
-    3,
+    2,
     args,
     command,
   );
@@ -596,7 +617,7 @@ function buildSet(
   const elementPointer = llvm.buildGEP(
     ctx.builder,
     sourcePointer,
-    indicesValues,
+    [buildI32("i32", ["0"], ctx), ...indicesValues],
   );
 
   return llvm.buildStore(ctx.builder, value, elementPointer);
@@ -670,6 +691,8 @@ function defineDefaultTypes(ctx: ModuleContext): void {
   defineType(ctx, "i64", llvm.i64TypeInContext(ctx.context));
 
   defineType(ctx, "&i8", llvm.pointerType(llvm.i8TypeInContext(ctx.context)));
+  defineType(ctx, "&i32", llvm.pointerType(llvm.i32TypeInContext(ctx.context)));
+
   defineType(
     ctx,
     "&&i8",
@@ -677,7 +700,26 @@ function defineDefaultTypes(ctx: ModuleContext): void {
       llvm.pointerType(llvm.i8TypeInContext(ctx.context)),
     ),
   );
-  defineType(ctx, "&i32", llvm.pointerType(llvm.i32TypeInContext(ctx.context)));
+
+  defineType(
+    ctx,
+    "&[i32]",
+    llvm.pointerType(llvm.arrayType(llvm.i32TypeInContext(ctx.context), 0)),
+  );
+  defineType(
+    ctx,
+    "&[&i8]",
+    llvm.pointerType(
+      llvm.arrayType(llvm.pointerType(llvm.i8TypeInContext(ctx.context)), 0),
+    ),
+  );
+  defineType(
+    ctx,
+    "&[i8]",
+    llvm.pointerType(
+      llvm.arrayType(llvm.i8TypeInContext(ctx.context), 0),
+    ),
+  );
 }
 
 function getType(typeName: string, ctx: ModuleContext): LLVMType {

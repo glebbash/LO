@@ -13,7 +13,7 @@
   (let int_8_type_ptr (LLVMPointerType int_8_type 0))
   (let int_32_type (LLVMInt32TypeInContext context))
 
-  (let main_function_type (LLVMFunctionType int_32_type (nullptr &&i8) 0 false))
+  (let main_function_type (LLVMFunctionType int_32_type (nullptr &[&type]) 0 false))
   (let main_function (LLVMAddFunction module "main" main_function_type))
 
   (let entry (LLVMAppendBasicBlockInContext context main_function "entry"))

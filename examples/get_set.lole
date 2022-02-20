@@ -1,0 +1,44 @@
+(external-fn printf (&i8 i32) i32)
+
+(struct User
+  (id i32)
+  (name &i8)
+)
+
+(fn get_first ((items &i32[])) i32
+  (get items 0)
+)
+
+(fn print_int_from_ptr ((p &i32)) i32
+  (printf "%d\n" (get p))
+  0
+)
+
+(fn main () i32
+  (let p (new i32))
+  (set p 1)
+  (printf "%d\n" (get p))
+  (set p 2)
+  (printf "%d\n" (get p))
+  (print_int_from_ptr p)
+
+  (let bob (new User))
+  (set bob User/id 1)
+  (set bob User/name "Bob")
+  (printf "Bob's id is %d\n" (get bob User/id))
+
+  (let arr (array 1 2 3 4))
+  (printf "%d\n" (get arr 0))
+  (printf "%d\n" (get_first arr))
+
+  (let arr2 (array
+    (array 1 2 3)
+    (array 4 5 6)
+    (array 7 8 9)
+  ))
+  (let l1 (get arr2 2))
+  (printf "%d\n" (get l1 2))
+  ;; (printf "%d\n" (get arr2 2 2))
+
+  0
+)
