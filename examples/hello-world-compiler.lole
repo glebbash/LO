@@ -1,6 +1,6 @@
 (include "./lib/llvm-c.lole")
 
-(external-fn system (&i8) i32)
+(external-fn system ((& i8)) i32)
 
 (fn main () i32
   (let false 0)

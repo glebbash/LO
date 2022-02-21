@@ -1,25 +1,25 @@
-(external-fn printf (&i8 i32) i32)
+(external-fn printf ((& i8) i32) i32)
 
 (struct User
   (id i32)
-  (name &i8)
+  (name (& i8))
 )
 
-(fn get_first ((items &i32[])) i32
+(fn get_first ((items (& ([] i32)))) i32
   (get items 0)
 )
 
-(fn print_int_from_ptr ((p &i32)) i32
-  (printf "%d\n" (get p))
+(fn print_int_from_ptr ((p (& i32))) i32
+  (printf "Pointer value in function: %d\n" (get p))
   0
 )
 
 (fn main () i32
   (let p (new i32))
   (set p 1)
-  (printf "%d\n" (get p))
+  (printf "Pointer value: %d\n" (get p))
   (set p 2)
-  (printf "%d\n" (get p))
+  (printf "Pointer value: %d\n" (get p))
   (print_int_from_ptr p)
 
   (let bob (new User))
@@ -28,16 +28,16 @@
   (printf "Bob's id is %d\n" (get bob User/id))
 
   (let arr (array 1 2 3 4))
-  (printf "%d\n" (get arr 0))
-  (printf "%d\n" (get_first arr))
+  (printf "First element: %d\n" (get arr 0))
+  (printf "First element with helper: %d\n" (get_first arr))
 
   (let arr2 (array
     (array 1 2 3)
     (array 4 5 6)
     (array 7 8 9)
   ))
-  (let l1 (get arr2 2))
-  (printf "%d\n" (get l1 2))
+  (let last_row (get arr2 2))
+  (printf "Bottom-right matrix element: %d\n" (get last_row 2))
   ;; (printf "%d\n" (get arr2 2 2))
 
   0

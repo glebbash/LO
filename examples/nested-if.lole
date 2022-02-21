@@ -1,4 +1,4 @@
-(external-fn printf (&i8 &i8) i32)
+(external-fn printf ((& i8) (& i8)) i32)
 
 (fn main () i32
   (let cmp

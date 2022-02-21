@@ -1,11 +1,11 @@
-(external-fn printf (&i8 i32) i32)
+(external-fn printf ((& i8) i32) i32)
 
 (struct List
   (size i32)
-  (items &i32[])
+  (items (& ([] i32)))
 )
 
-(fn print_list ((list &List) (index i32)) i32
+(fn print_list ((list (& List)) (index i32)) i32
   ;; TODO: try to make this work
   ;; (printf "%d\n" (get list List/items index))
 
