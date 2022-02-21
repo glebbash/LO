@@ -114,14 +114,13 @@ function buildFn(
 ): LLVMValue {
   const { llvm } = moduleCtx;
 
-  const [fnName, params, returnType, ...exprs] = expectArgsLengthAtLeast(
+  const [fnName, params, returnTypeExpr, ...exprs] = expectArgsLengthAtLeast(
     3,
     args,
     command,
   );
   expectSymbol(fnName);
   expectList(params);
-  expectSymbol(returnType);
 
   const paramInfos = params.map((paramInfo) => {
     expectList(paramInfo);
@@ -130,11 +129,10 @@ function buildFn(
       throw new Error("Arguments in argument list must have name and type");
     }
 
-    const [paramName, paramType] = paramInfo;
+    const [paramName, paramTypeExpr] = paramInfo;
     expectSymbol(paramName);
-    expectSymbol(paramType);
 
-    return { name: paramName, type: getType(paramType, moduleCtx) };
+    return { name: paramName, type: getType(paramTypeExpr, moduleCtx) };
   });
 
   const paramTypes = paramInfos.map((info) => info.type);
@@ -144,7 +142,10 @@ function buildFn(
     throw new Error("Parameter names must be unique");
   }
 
-  const fnType = llvm.functionType(getType(returnType, moduleCtx), paramTypes);
+  const fnType = llvm.functionType(
+    getType(returnTypeExpr, moduleCtx),
+    paramTypes,
+  );
 
   const ctx: ModuleContext = {
     ...moduleCtx,
@@ -283,9 +284,8 @@ function buildStruct(
       throw new Error("Struct field definitions must have name and type only");
     }
 
-    const [fieldName, fieldType] = p;
+    const [fieldName, fieldTypeExpr] = p;
     expectSymbol(fieldName);
-    expectSymbol(fieldType);
 
     defineValue(
       ctx,
@@ -296,7 +296,7 @@ function buildStruct(
       ),
     );
 
-    return getType(fieldType, ctx);
+    return getType(fieldTypeExpr, ctx);
   });
 
   const structType = llvm.structCreateNamed(ctx.context, structName);
@@ -368,13 +368,12 @@ function buildCast(
 ): LLVMValue {
   const { llvm } = ctx;
 
-  const [valueExpr, type] = expectArgsLength(2, args, command);
-  expectSymbol(type);
+  const [valueExpr, typeExpr] = expectArgsLength(2, args, command);
 
   return llvm.buildBitCast(
     ctx.builder,
     buildValue(valueExpr, ctx),
-    getType(type, ctx),
+    getType(typeExpr, ctx),
   );
 }
 
@@ -455,10 +454,9 @@ function buildNullPtr(
 ): LLVMValue {
   const { llvm } = ctx;
 
-  const [typeName] = expectArgsLength(1, args, command);
-  expectSymbol(typeName);
+  const [typeExpr] = expectArgsLength(1, args, command);
 
-  const type = getType(typeName, ctx);
+  const type = getType(typeExpr, ctx);
   return llvm.constPointerNull(type);
 }
 
@@ -528,21 +526,16 @@ function buildExternalFn(
 ): LLVMValue {
   const { llvm } = ctx;
 
-  const [fnName, argTypes, returnType] = expectArgsLength(3, args, command);
+  const [fnName, argTypes, returnTypeExpr] = expectArgsLength(3, args, command);
   expectSymbol(fnName);
   expectList(argTypes);
-  expectSymbol(returnType);
 
   llvm.addFunction(
     ctx.module,
     fnName,
     llvm.functionType(
-      getType(returnType, ctx),
-      argTypes.map((argType) => {
-        expectSymbol(argType);
-
-        return getType(argType, ctx);
-      }),
+      getType(returnTypeExpr, ctx),
+      argTypes.map((argTypeExpr) => getType(argTypeExpr, ctx)),
     ),
   );
 
@@ -687,6 +680,7 @@ function defineDefaultTypes(ctx: ModuleContext): void {
   defineType(ctx, "void", llvm.i64TypeInContext(ctx.context));
 
   defineType(ctx, "i1", llvm.voidTypeInContext(ctx.context));
+  defineType(ctx, "i8", llvm.i8TypeInContext(ctx.context));
   defineType(ctx, "i32", llvm.i32TypeInContext(ctx.context));
   defineType(ctx, "i64", llvm.i64TypeInContext(ctx.context));
 
@@ -722,11 +716,53 @@ function defineDefaultTypes(ctx: ModuleContext): void {
   );
 }
 
-function getType(typeName: string, ctx: ModuleContext): LLVMType {
-  const type = ctx.types[typeName];
+function getType(typeExpr: SExpr, ctx: ModuleContext): LLVMType {
+  if (!isSymbol(typeExpr)) {
+    return getTypeConstruct(typeExpr, ctx);
+  }
+
+  const type = ctx.types[typeExpr];
   if (!type) {
-    throw new Error(`Unknown type: ${typeName}`);
+    throw new Error(`Unknown type: ${typeExpr}`);
   }
 
   return type;
+}
+
+function getTypeConstruct(typeExpr: SExpr[], ctx: ModuleContext): LLVMType {
+  const [command, ...args] = typeExpr;
+  expectSymbol(command);
+
+  switch (command) {
+    case "&":
+      return buildPtrType(command, args, ctx);
+    case "[]":
+      return buildArrayType(command, args, ctx);
+    default:
+      throw new Error(`Unknown type: ${typeExpr}`);
+  }
+}
+
+function buildPtrType(
+  command: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMType {
+  const { llvm } = ctx;
+
+  const [typeExpr] = expectArgsLength(1, args, command);
+
+  return llvm.pointerType(getType(typeExpr, ctx));
+}
+
+function buildArrayType(
+  command: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMType {
+  const { llvm } = ctx;
+
+  const [typeExpr] = expectArgsLength(1, args, command);
+
+  return llvm.arrayType(getType(typeExpr, ctx), 0);
 }
