@@ -11,4 +11,9 @@
   "cSpell.words": [
     "LLVMIR"
   ],
+  "deno.codeLens.testArgs": [
+    "--allow-all",
+    "--no-check",
+    "--unstable"
+  ],
 }
