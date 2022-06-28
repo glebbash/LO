@@ -24,7 +24,7 @@
   (let puts_function (LLVMAddFunction module "puts" puts_function_type))
 
   (let puts_function_args (array
-    (LLVMBuildGlobalStringPtr builder "Hello, World!" "str")
+    (LLVMBuildGlobalStringPtr builder "Hello World!" "str")
   ))
   (LLVMBuildCall builder puts_function puts_function_args 1 "i")
 
