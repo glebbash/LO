@@ -1,5 +1,4 @@
-(include "../lib/aliases.lole")
-(include "../lib/puts.lole")
+(include "../lib/std.lole")
 
 ;; (fn get_arg ((arg_name &str) (argc i32) (argv &&str)) &str
 

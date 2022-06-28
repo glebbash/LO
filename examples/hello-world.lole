@@ -1,6 +1,4 @@
-;; Hello World example
-
-(external-fn puts ((& i8)) i32)
+(include "./lib/std.lole")
 
 (fn main () i32
   (puts "Hello World!")
