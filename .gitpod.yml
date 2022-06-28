@@ -2,10 +2,6 @@
 image:
   file: .gitpod.Dockerfile
 
-tasks:
-  - command: |
-      deno task start
-
 vscode:
   extensions:
     - "denoland.vscode-deno"
