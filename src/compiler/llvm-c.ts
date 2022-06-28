@@ -1,3 +1,5 @@
+import { ExternalFunctionConfig, wrap } from "./utils/ffi-lib.ts";
+
 const StringPtrType = "pointer";
 const LLVMValueArrayType = "pointer";
 const LLVMBlockArrayType = "pointer";
@@ -511,95 +513,41 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
   return wrap(lib, libFile);
 }
 
-function wrap<T extends Record<string, ExternalFunctionConfig<Function>>>(
-  lib: T,
-  libPath: string,
-): WrappedLib<T> {
-  const foreignFunctions = Object.fromEntries(
-    Object.values(lib).map((
-      { name, type: [result, parameters] },
-    ): [string, Deno.ForeignFunction] => [name, {
-      parameters,
-      result,
-    }]),
-  );
-
-  const dynLib = Deno.dlopen(libPath, foreignFunctions);
-
-  const wrappedFunctions = Object.fromEntries(
-    Object.entries(lib).map((
-      [fnName, { name, wrap }],
-    ) => [fnName, wrap((dynLib as any).symbols[name])]),
-  );
-
-  return {
-    ...wrappedFunctions,
-    close: () => dynLib.close(),
-  } as unknown as WrappedLib<T>;
-}
-
-type WrappedLib<T extends Record<string, ExternalFunctionConfig<Function>>> =
-  & {
-    [P in keyof T]: GetWrappedFunction<T[P]>;
-  }
-  & { close: () => void };
-
-type GetWrappedFunction<T> = T extends ExternalFunctionConfig<infer T> ? T
-  : never;
-
-type ExternalFunctionConfig<T extends Function> = {
-  name: string;
-  type: [Deno.NativeType, Deno.NativeType[]];
-  wrap: (call: (...args: unknown[]) => any) => T;
-};
-
-class Pointer {
-  constructor(public readonly value: Deno.UnsafePointer) {}
-}
-
-export class LLVMContext extends Pointer {
+class TypedPointer {
   static TYPE = "pointer" as const;
 
+  constructor(public readonly value: bigint) {}
+}
+
+export class LLVMContext extends TypedPointer {
   private __name = this;
 }
 
-export class LLVMIRBuilder extends Pointer {
-  static TYPE = "pointer" as const;
-
+export class LLVMIRBuilder extends TypedPointer {
   private __name = this;
 }
 
-export class LLVMModule extends Pointer {
-  static TYPE = "pointer" as const;
-
+export class LLVMModule extends TypedPointer {
   private __name = this;
 }
 
-export class LLVMValue extends Pointer {
-  static TYPE = "pointer" as const;
-
+export class LLVMValue extends TypedPointer {
   private __name = this;
 
   isNull() {
-    return this.value.value === 0n;
+    return this.value === 0n;
   }
 }
 
-export class LLVMType extends Pointer {
-  static TYPE = "pointer" as const;
-
+export class LLVMType extends TypedPointer {
   private __name = this;
 }
 
-export class LLVMBasicBlock extends Pointer {
-  static TYPE = "pointer" as const;
-
+export class LLVMBasicBlock extends TypedPointer {
   private __name = this;
 }
 
-export class LLVMMessage extends Pointer {
-  static TYPE = "pointer" as const;
-
+export class LLVMMessage extends TypedPointer {
   private __name = this;
 
   stringValue() {
@@ -607,8 +555,10 @@ export class LLVMMessage extends Pointer {
   }
 }
 
-function buildPointerArray(pointers: Pointer[]): BigInt64Array {
-  return BigInt64Array.from(pointers.map((p) => p.value.value));
+function buildPointerArray(pointers: TypedPointer[]) {
+  return Deno.UnsafePointer.of(
+    BigInt64Array.from(pointers.map((p) => p.value)),
+  );
 }
 
 function buildStringPtr(str: string): unknown {
