@@ -33,7 +33,7 @@ function getArg(args: string[], name: string): string | undefined {
 async function compileIR(llvmIR: string, outputBinaryFile: string) {
   const clang = Deno.run({
     cmd: [
-      "clang-13",
+      "clang-14",
       "-O3",
       "-o",
       outputBinaryFile,
@@ -50,7 +50,7 @@ async function compileIR(llvmIR: string, outputBinaryFile: string) {
 }
 
 async function interpretIR(llvmIR: string) {
-  const lli = Deno.run({ cmd: ["lli-13"], stdin: "piped" });
+  const lli = Deno.run({ cmd: ["lli-14"], stdin: "piped" });
   lli.stdin?.write(new TextEncoder().encode(llvmIR));
   lli.stdin.close();
   await lli.status();

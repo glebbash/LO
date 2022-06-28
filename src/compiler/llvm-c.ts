@@ -23,7 +23,7 @@ export enum LLVMIntPredicate {
   LLVMIntSLE, /**< signed less or equal */
 }
 
-function loadLibLLVMInternal(libFile = "/usr/lib/llvm-13/lib/libLLVM.so") {
+function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
   const fn = <T extends Function>(options: ExternalFunctionConfig<T>) =>
     options;
 

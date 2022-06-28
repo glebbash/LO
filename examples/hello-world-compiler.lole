@@ -31,7 +31,7 @@
   (LLVMBuildRet builder (LLVMConstInt int_32_type 0 false))
 
   (LLVMPrintModuleToFile module "output2.ll" (nullptr &i8))
-  (system "clang-13 -O3 -o output2 output2.ll -Wno-override-module")
+  (system "clang-14 -O3 -o output2 output2.ll -Wno-override-module")
 
   (LLVMDisposeBuilder builder)
   (LLVMDisposeModule module)
