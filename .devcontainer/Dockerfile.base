@@ -7,5 +7,6 @@ ENV PATH=${DENO_INSTALL}/bin:${PATH} \
     DENO_DIR=${DENO_INSTALL}/.cache/deno
 
 # install llvm
+RUN sudo apt install lsb-release software-properties-common
 RUN sudo wget https://apt.llvm.org/llvm.sh
 RUN sudo chmod +x llvm.sh && sudo ./llvm.sh 14
