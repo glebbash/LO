@@ -1,0 +1,7 @@
+# syntax = edrevo/dockerfile-plus
+
+FROM --platform=linux/amd64 mcr.microsoft.com/vscode/devcontainers/base:0-bullseye
+
+USER vscode
+
+INCLUDE+ Dockerfile.base
