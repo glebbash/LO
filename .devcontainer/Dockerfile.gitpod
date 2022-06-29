@@ -3,6 +3,7 @@
 FROM gitpod/workspace-full
 
 USER gitpod
+ENV HOME=/home/gitpod
 
 INCLUDE+ Dockerfile.base
 
