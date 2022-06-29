@@ -1,5 +1,5 @@
 (alias &any (& i8))
-(alias &str &any)
+(alias &str (& i8))
 (alias &&any (& &i8))
 (alias &&str (& &any))
 
