@@ -1,5 +1,5 @@
 # install deno
-ENV DENO_INSTALL=/deno
+ENV DENO_INSTALL=~/.deno
 RUN mkdir -p /deno \
     && curl -fsSL https://deno.land/x/install/install.sh | sh
 
