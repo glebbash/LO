@@ -1,0 +1,35 @@
+(include "./lib/std.lole")
+
+(struct Person
+  (id i32)
+  (name &str)
+)
+
+;; (def-struct Person i32 &str)
+;; (def Person/id 0 0)
+;; (def Person/name 0 1)
+
+(fn main () i32
+  ;; (def x i32)
+  ;; (save x 1)
+  ;; (let x 1)
+  ;; (def x i32)
+  ;; (set x 1)
+
+  ;; (def p Person)
+  ;; (set p 0 Person/id 1)
+  ;; (set p 0 Person/name "John")
+  ;; (set g )
+
+  ;; (def p Person)
+  ;; (let p (new Person))
+  ;; (set p 0 Person/name "John")
+
+  ;; (let raw (get p 0))
+  ;; (let x 0)
+  ;; (set x 0)
+
+  ;; (let tmp (get raw Person/name))
+  ;; (let first_letter (get tmp 0))
+  0
+)

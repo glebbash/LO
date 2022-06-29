@@ -205,6 +205,8 @@ function buildValueInFunctionContext(
   expectSymbol(command);
 
   switch (command) {
+    case "def":
+      return buildDef(command, args, ctx);
     case "let":
       return buildLet(command, args, ctx);
     default:
@@ -505,18 +507,38 @@ function buildI8(
   return llvm.constInt(llvm.i8TypeInContext(ctx.context), i8Value);
 }
 
+function buildDef(
+  command: string,
+  args: SExpr[],
+  ctx: ModuleContext,
+): LLVMValue {
+  const { llvm } = ctx;
+
+  const [name, type] = expectArgsLength(2, args, command);
+  expectSymbol(name);
+
+  const place = llvm.buildAlloca(ctx.builder, getType(type, ctx));
+  defineValue(ctx, name, place);
+
+  return place;
+}
+
 function buildLet(
   command: string,
   args: SExpr[],
   ctx: ModuleContext,
 ): LLVMValue {
+  const { llvm } = ctx;
+
   const [name, expr] = expectArgsLength(2, args, command);
   expectSymbol(name);
 
   const value = buildValue(expr, ctx);
-  defineValue(ctx, name, value);
 
-  return value;
+  const place = llvm.buildAlloca(ctx.builder, llvm.typeOf(value));
+  defineValue(ctx, name, place);
+
+  return llvm.buildStore(ctx.builder, value, place);
 }
 
 function buildExternalFn(
@@ -582,7 +604,7 @@ function buildGet(
   const elementPointer = llvm.buildGEP(
     ctx.builder,
     sourcePointer,
-    [buildI32("i32", ["0"], ctx), ...indicesValues],
+    indicesValues,
   );
 
   return llvm.buildLoad(ctx.builder, elementPointer);
@@ -610,7 +632,7 @@ function buildSet(
   const elementPointer = llvm.buildGEP(
     ctx.builder,
     sourcePointer,
-    [buildI32("i32", ["0"], ctx), ...indicesValues],
+    indicesValues,
   );
 
   return llvm.buildStore(ctx.builder, value, elementPointer);

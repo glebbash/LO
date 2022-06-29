@@ -1,6 +1,6 @@
 (external-fn printf ((& i8) (& i8)) i32)
 
-(fn main ((argc i32) (argv (& ([] (& i8))))) i32
+(fn main ((argc i32) (argv (& (& i8)))) i32
   (let program_name (get argv 0))
   (printf "Program name: %s\n" program_name)
   0
