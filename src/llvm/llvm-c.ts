@@ -495,9 +495,11 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
       type: [BoolType, [LLVMModule.TYPE, "i32", StringPtrType]],
       wrap: (call) =>
         (module: LLVMModule) => {
-          const messageRef = new Uint8Array(2048);
+          const messageRef = new BigUint64Array(1);
+
           const err = unBuildBool(call(module.value, 2, messageRef));
-          const message = new TextDecoder().decode(messageRef);
+          const message = new Deno.UnsafePointerView(messageRef[0])
+            .getCString();
 
           return { ok: !err, message };
         },
