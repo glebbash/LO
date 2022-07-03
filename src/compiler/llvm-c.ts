@@ -24,6 +24,7 @@ export enum LLVMIntPredicate {
 }
 
 function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
+  // deno-lint-ignore ban-types
   const fn = <T extends Function>(options: ExternalFunctionConfig<T>) =>
     options;
 
