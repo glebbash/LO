@@ -1,4 +1,4 @@
-import { ExternalFunctionConfig, wrap } from "./utils/ffi-lib.ts";
+import { ExternalFunctionConfig, wrap } from "./ffi-lib.ts";
 
 const StringPtrType = "pointer";
 const LLVMValueArrayType = "pointer";
@@ -24,6 +24,7 @@ export enum LLVMIntPredicate {
 }
 
 function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
+  // deno-lint-ignore ban-types
   const fn = <T extends Function>(options: ExternalFunctionConfig<T>) =>
     options;
 
@@ -151,6 +152,11 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
       name: "LLVMTypeOf",
       type: [LLVMType.TYPE, [LLVMValue.TYPE]],
       wrap: (call) => (value: LLVMValue) => new LLVMType(call(value.value)),
+    }),
+    printTypeToString: fn({
+      name: "LLVMPrintTypeToString",
+      type: [StringType, [LLVMType.TYPE]],
+      wrap: (call) => (value: LLVMType) => new LLVMMessage(call(value.value)),
     }),
 
     structCreateNamed: fn({
