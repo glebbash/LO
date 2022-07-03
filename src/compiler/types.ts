@@ -1,7 +1,7 @@
+import { LLVMType } from "../llvm/llvm-c.ts";
 import { SExpr } from "../parser/parser.ts";
 import { expectArgsLength, expectSymbol, isSymbol } from "./assertions.ts";
 import { ModuleContext } from "./compiler.ts";
-import { LLVMType } from "./llvm-c.ts";
 
 export function defineType(
   ctx: ModuleContext,

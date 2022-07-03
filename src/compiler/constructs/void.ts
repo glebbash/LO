@@ -1,5 +1,5 @@
 import { ModuleContext } from "../compiler.ts";
-import { LLVMValue } from "../llvm-c.ts";
+import { LLVMValue } from "../../llvm/llvm-c.ts";
 
 export function buildVoid(ctx: ModuleContext): LLVMValue {
   const { llvm } = ctx;

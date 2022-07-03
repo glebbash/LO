@@ -1,5 +1,5 @@
 import { ModuleContext } from "../compiler.ts";
-import { LLVMValue } from "../llvm-c.ts";
+import { LLVMValue } from "../../llvm/llvm-c.ts";
 import { getStringValue } from "../transformers.ts";
 
 export function buildString(expr: string, ctx: ModuleContext): LLVMValue {

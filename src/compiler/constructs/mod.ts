@@ -8,7 +8,7 @@ import {
   isSymbol,
 } from "../assertions.ts";
 import { ModuleContext } from "../compiler.ts";
-import { LLVMValue } from "../llvm-c.ts";
+import { LLVMValue } from "../../llvm/llvm-c.ts";
 import { buildAdd } from "./arithmetic.ts";
 import { buildArray } from "./array.ts";
 import { buildCast } from "./cast.ts";

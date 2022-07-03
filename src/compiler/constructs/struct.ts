@@ -6,7 +6,7 @@ import {
   expectSymbol,
 } from "../assertions.ts";
 import { ModuleContext } from "../compiler.ts";
-import { LLVMValue } from "../llvm-c.ts";
+import { LLVMValue } from "../../llvm/llvm-c.ts";
 import { defineType, getType } from "../types.ts";
 import { defineValue } from "./variables.ts";
 import { buildVoid } from "./void.ts";

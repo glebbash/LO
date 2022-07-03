@@ -1,3 +1,5 @@
+// deno-lint-ignore-file ban-types no-explicit-any
+
 export function wrap<
   T extends Record<string, ExternalFunctionConfig<Function>>,
 >(
