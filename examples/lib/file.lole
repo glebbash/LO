@@ -22,6 +22,7 @@
   (fread string fsize (i64 1) f)
   (fclose f)
 
-  (set (cast string &[i8]) fsize (i8 0))
+  ; Not sure why cast is needed here, but it works.
+  (set (cast string &[i8]) 0 fsize (i8 0))
   string
 )

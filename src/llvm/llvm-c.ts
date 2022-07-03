@@ -153,6 +153,11 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
       type: [LLVMType.TYPE, [LLVMValue.TYPE]],
       wrap: (call) => (value: LLVMValue) => new LLVMType(call(value.value)),
     }),
+    printTypeToString: fn({
+      name: "LLVMPrintTypeToString",
+      type: [StringType, [LLVMType.TYPE]],
+      wrap: (call) => (value: LLVMType) => new LLVMMessage(call(value.value)),
+    }),
 
     structCreateNamed: fn({
       name: "LLVMStructCreateNamed",

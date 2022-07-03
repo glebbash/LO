@@ -27,7 +27,6 @@ import {
   buildLet,
   buildSet,
 } from "./variables.ts";
-import { buildPrintType } from "./print-type.ts";
 
 export function buildValue(expr: SExpr, ctx: ModuleContext): LLVMValue {
   if (isSymbol(expr)) {
@@ -118,8 +117,6 @@ export function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVMValue {
       return buildSet(command, args, ctx);
     case "cast":
       return buildCast(command, args, ctx);
-    case "print-type":
-      return buildPrintType(command, args, ctx);
     default:
       return buildFunctionCall(command, args, ctx);
   }

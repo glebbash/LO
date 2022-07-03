@@ -1,0 +1,7 @@
+(external-fn printf ((& i8) i32) i32)
+
+(fn main () i32
+  (def y i32)
+  (set y 69)
+  (printf "%d\n" (get y))
+)
