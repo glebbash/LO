@@ -1,6 +1,6 @@
+(include "./lib/std.lole")
 (include "./lib/file.lole")
 
-(external-fn puts ((& i8)) void)
 (external-fn strtok ((& i8) (& i8)) (& i8))
 
 (fn main () i32

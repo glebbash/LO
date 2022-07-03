@@ -107,7 +107,7 @@ function processInclude(
 
   return {
     result: res.result.flat(),
-    ctx: res.ctx,
+    ctx: { ...ctx, aliases: res.ctx.aliases },
   };
 }
 
