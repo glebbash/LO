@@ -74,6 +74,8 @@ export function buildValueInModuleContext(
       return buildTargetTriple(command, args, ctx);
     case "external-fn":
       return buildExternalFn(command, args, ctx);
+    case "external-fn-vararg":
+      return buildExternalFn(command, args, ctx, true);
     case "fn":
       return buildFn(command, args, ctx);
     case "struct":

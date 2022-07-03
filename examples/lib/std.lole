@@ -3,4 +3,5 @@
 (alias &&any (& &i8))
 (alias &&str (& &any))
 
-(include "./puts.lole")
+(external-fn puts ((& i8)) i32)
+(external-fn-vararg printf ((& i8)) i32)

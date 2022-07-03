@@ -1,4 +1,4 @@
-(external-fn printf ((& i8) i32) i32)
+(include "./lib/std.lole")
 
 (fn rec ((i i32)) i32
   (printf "%d\n" i)

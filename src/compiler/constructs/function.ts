@@ -80,6 +80,7 @@ export function buildExternalFn(
   command: string,
   args: SExpr[],
   ctx: ModuleContext,
+  isVarArg = false,
 ): LLVMValue {
   const { llvm } = ctx;
 
@@ -93,6 +94,7 @@ export function buildExternalFn(
     llvm.functionType(
       getType(returnTypeExpr, ctx),
       argTypes.map((argTypeExpr) => getType(argTypeExpr, ctx)),
+      isVarArg,
     ),
   );
 
