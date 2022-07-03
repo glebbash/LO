@@ -1,4 +1,4 @@
-import { ExternalFunctionConfig, wrap } from "./utils/ffi-lib.ts";
+import { ExternalFunctionConfig, wrap } from "./ffi-lib.ts";
 
 const StringPtrType = "pointer";
 const LLVMValueArrayType = "pointer";

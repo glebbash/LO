@@ -8,7 +8,7 @@ import {
   LLVMType,
   LLVMValue,
   loadLibLLVM,
-} from "./llvm-c.ts";
+} from "../llvm/llvm-c.ts";
 import { defineDefaultTypes } from "./types.ts";
 
 export type ModuleContext = {
@@ -33,13 +33,11 @@ export function compile(
     buildValueInModuleContext(expr, ctx);
   }
 
-  return compileAndDispose(ctx);
-}
-
-function compileAndDispose(ctx: ModuleContext): string {
   verifyModule(ctx);
   const llvmIR = buildLLVMIR(ctx);
+
   disposeContext(ctx);
+
   return llvmIR;
 }
 
