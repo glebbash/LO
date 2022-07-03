@@ -27,6 +27,18 @@ export function compile(
   exprs: SExpr[],
   llvm = loadLibLLVM(),
 ): string {
+  const ctx = compileToModule(exprs, llvm);
+  const llvmIR = buildLLVMIR(ctx);
+
+  disposeContext(ctx);
+
+  return llvmIR;
+}
+
+export function compileToModule(
+  exprs: SExpr[],
+  llvm = loadLibLLVM(),
+): ModuleContext {
   const ctx = createContext("main", llvm);
 
   for (const expr of exprs) {
@@ -34,11 +46,8 @@ export function compile(
   }
 
   verifyModule(ctx);
-  const llvmIR = buildLLVMIR(ctx);
 
-  disposeContext(ctx);
-
-  return llvmIR;
+  return ctx;
 }
 
 function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
@@ -61,7 +70,7 @@ function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
   return ctx;
 }
 
-function disposeContext(ctx: ModuleContext): void {
+export function disposeContext(ctx: ModuleContext): void {
   const { llvm } = ctx;
 
   llvm.disposeModule(ctx.module);

@@ -6,6 +6,7 @@ const LLVMBlockArrayType = "pointer";
 const LLVMTypeArrayType = "pointer";
 const StringType = "pointer";
 const BoolType = "i8";
+const FunctionType = "pointer";
 
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
@@ -495,12 +496,100 @@ function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
       type: [BoolType, [LLVMModule.TYPE, "i32", StringPtrType]],
       wrap: (call) =>
         (module: LLVMModule) => {
-          const messageRef = new Uint8Array(2048);
+          const messageRef = new BigUint64Array(1);
+
           const err = unBuildBool(call(module.value, 2, messageRef));
-          const message = new TextDecoder().decode(messageRef);
+          const message = new Deno.UnsafePointerView(messageRef[0])
+            .getCString();
 
           return { ok: !err, message };
         },
+    }),
+    linkInMCJIT: fn({
+      name: "LLVMLinkInMCJIT",
+      type: ["void", []],
+      wrap: (call) => () => call(),
+    }),
+    initializeX86Target: fn({
+      name: "LLVMInitializeX86Target",
+      type: [BoolType, []],
+      wrap: (call) => () => call(),
+    }),
+    initializeX86AsmPrinter: fn({
+      name: "LLVMInitializeX86AsmPrinter",
+      type: [BoolType, []],
+      wrap: (call) => () => call(),
+    }),
+    initializeX86AsmParser: fn({
+      name: "LLVMInitializeX86AsmParser",
+      type: [BoolType, []],
+      wrap: (call) => () => call(),
+    }),
+    initializeX86TargetMC: fn({
+      name: "LLVMInitializeX86TargetMC",
+      type: [BoolType, []],
+      wrap: (call) => () => call(),
+    }),
+    createJITCompilerForModule: fn({
+      name: "LLVMCreateJITCompilerForModule",
+      type: [BoolType, [
+        LLVMExecutionEngine.TYPE,
+        LLVMModule.TYPE,
+        "i32",
+        StringPtrType,
+      ]],
+      wrap: (call) =>
+        (module: LLVMModule) => {
+          const enginePtr = new BigUint64Array(1);
+          const messageRef = new BigUint64Array(1);
+
+          const err = unBuildBool(call(enginePtr, module.value, 2, messageRef));
+          const message = new Deno.UnsafePointerView(messageRef[0])
+            .getCString();
+
+          if (err) {
+            return { ok: false, message } as const;
+          } else {
+            return {
+              ok: true,
+              engine: new LLVMExecutionEngine(enginePtr[0]),
+            } as const;
+          }
+        },
+    }),
+    getFunctionAddress: fn({
+      name: "LLVMGetFunctionAddress",
+      type: [FunctionType, [LLVMExecutionEngine.TYPE, StringPtrType]],
+      wrap: (call) =>
+        <Fn extends Deno.ForeignFunction>(
+          engine: LLVMExecutionEngine,
+          fnName: string,
+          fnType: Fn,
+        ) => new Deno.UnsafeFnPointer(call(engine.value, fnName), fnType),
+    }),
+    dumpModule: fn({
+      name: "LLVMDumpModule",
+      type: ["void", []],
+      wrap: (call) => (module: LLVMModule) => call(module),
+    }),
+    removeModule: fn({
+      name: "LLVMRemoveModule",
+      type: [BoolType, []],
+      wrap: (call) =>
+        (engine: LLVMExecutionEngine, module: LLVMModule) => {
+          const messageRef = new BigUint64Array(1);
+
+          const ok = unBuildBool(call(engine, module, module, messageRef));
+          const message = new Deno.UnsafePointerView(messageRef[0])
+            .getCString();
+
+          return { ok, message };
+        },
+    }),
+    disposeExecutionEngine: fn({
+      name: "LLVMDisposeExecutionEngine",
+      type: ["void", [LLVMExecutionEngine.TYPE]],
+      wrap: (call) => (engine: LLVMExecutionEngine) => call(engine),
     }),
 
     printModuleToString: fn({
@@ -559,6 +648,10 @@ export class LLVMMessage extends TypedPointer {
   stringValue() {
     return new Deno.UnsafePointerView(this.value).getCString();
   }
+}
+
+export class LLVMExecutionEngine extends TypedPointer {
+  private __name = this;
 }
 
 function buildPointerArray(pointers: TypedPointer[]) {
