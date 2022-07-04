@@ -4,7 +4,7 @@ import {
   expectArgsLengthAtLeast,
   expectList,
   expectSymbol,
-} from "../assertions.ts";
+} from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
 import { LLVMValue } from "../../llvm/llvm-c.ts";
 import { defineType, getType } from "../types.ts";

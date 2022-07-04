@@ -6,7 +6,7 @@ import {
   isNumber,
   isString,
   isSymbol,
-} from "../assertions.ts";
+} from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
 import { LLVMValue } from "../../llvm/llvm-c.ts";
 import { buildAdd } from "./arithmetic.ts";

@@ -1,6 +1,6 @@
 import { compile } from "./compiler/compiler.ts";
 import { expandFile } from "./expand/expand.ts";
-import { compileIR, interpretIR } from "./llvm-backend.ts";
+import { compileIR, interpretIR } from "./compiler/utils.ts";
 
 async function main() {
   const args = Deno.args;

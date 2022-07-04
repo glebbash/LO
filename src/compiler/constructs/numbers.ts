@@ -1,8 +1,8 @@
 import { SExpr } from "../../parser/parser.ts";
-import { expectArgsLength, expectNumber } from "../assertions.ts";
+import { expectArgsLength, expectNumber } from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
 import { LLVMValue } from "../../llvm/llvm-c.ts";
-import { getNumberValue } from "../transformers.ts";
+import { getNumberValue } from "../../s-expr/transformers.ts";
 
 export function buildI8(
   command: string,

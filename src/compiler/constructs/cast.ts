@@ -1,5 +1,5 @@
 import { SExpr } from "../../parser/parser.ts";
-import { expectArgsLength } from "../assertions.ts";
+import { expectArgsLength } from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
 import { LLVMValue } from "../../llvm/llvm-c.ts";
 import { getType } from "../types.ts";
