@@ -120,11 +120,6 @@ Deno.test("it reports errors in multiline sources", () => {
       )
       `;
 
-  /*
-      TODO: make parser not back off too much.
-      This error should have something like:
-        Unexpected character '\n' at end of line 2
-    */
   assertThrows(
     () => parse(src),
     Error,
