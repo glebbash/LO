@@ -1,12 +1,13 @@
-import { compile } from "./compiler/compiler.ts";
+import { buildIR, compileIR, interpretIR } from "./compiler/compiler.ts";
 import { expandFile } from "./expand/expand.ts";
-import { compileIR, interpretIR } from "./compiler/utils.ts";
 
 async function main() {
   const args = Deno.args;
 
   const inputFile = getArg(args, "src") ?? "examples/hello-world.lole";
-  const llvmIR = compile(expandFile(inputFile));
+  const exprs = expandFile(inputFile);
+
+  const llvmIR = buildIR(exprs);
 
   const outputIRFile = getArg(args, "ir");
   if (outputIRFile !== undefined) {
