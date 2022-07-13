@@ -1,5 +1,7 @@
 import { ExternalFunctionConfig, wrap } from "./ffi-lib.ts";
 
+const LLVMC_LIB_PATH = "/usr/lib/llvm-14/lib/libLLVM.so";
+
 const StringPtrType = "pointer";
 const LLVMValueArrayType = "pointer";
 const LLVMBlockArrayType = "pointer";
@@ -24,7 +26,7 @@ export enum LLVMIntPredicate {
   LLVMIntSLE, /**< signed less or equal */
 }
 
-function loadLibLLVMInternal(libFile = "/usr/lib/llvm-14/lib/libLLVM.so") {
+function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
   // deno-lint-ignore ban-types
   const fn = <T extends Function>(options: ExternalFunctionConfig<T>) =>
     options;
