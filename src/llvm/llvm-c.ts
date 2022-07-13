@@ -8,7 +8,7 @@ const LLVMBlockArrayType = "pointer";
 const LLVMTypeArrayType = "pointer";
 const StringType = "pointer";
 const BoolType = "i8";
-const FunctionType = "pointer";
+const FunctionPtrType = "pointer";
 
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
@@ -559,20 +559,51 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
           }
         },
     }),
+    createExecutionEngineForModule: fn({
+      name: "LLVMCreateExecutionEngineForModule",
+      type: [BoolType, [
+        LLVMExecutionEngine.TYPE,
+        LLVMModule.TYPE,
+        StringPtrType,
+      ]],
+      wrap: (call) =>
+        (module: LLVMModule) => {
+          const enginePtr = new BigUint64Array(1);
+          const messageRef = new BigUint64Array(1);
+
+          const err = unBuildBool(call(enginePtr, module.value, messageRef));
+
+          if (err) {
+            const message = new Deno.UnsafePointerView(messageRef[0])
+              .getCString();
+
+            return { ok: false, message } as const;
+          }
+
+          return {
+            ok: true,
+            engine: new LLVMExecutionEngine(enginePtr[0]),
+          } as const;
+        },
+    }),
     getFunctionAddress: fn({
       name: "LLVMGetFunctionAddress",
-      type: [FunctionType, [LLVMExecutionEngine.TYPE, StringPtrType]],
+      type: [FunctionPtrType, [LLVMExecutionEngine.TYPE, StringPtrType]],
       wrap: (call) =>
         <Fn extends Deno.ForeignFunction>(
           engine: LLVMExecutionEngine,
           fnName: string,
           fnType: Fn,
-        ) => new Deno.UnsafeFnPointer(call(engine.value, fnName), fnType),
+        ) =>
+          new Deno.UnsafeFnPointer(
+            call(engine.value, buildStringPtr(fnName)),
+            fnType,
+          ),
     }),
     dumpModule: fn({
       name: "LLVMDumpModule",
-      type: ["void", []],
-      wrap: (call) => (module: LLVMModule) => call(module),
+      type: ["void", [LLVMModule.TYPE]],
+      wrap: (call) => (module: LLVMModule) => call(module.value),
     }),
     removeModule: fn({
       name: "LLVMRemoveModule",
