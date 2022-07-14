@@ -13,8 +13,6 @@ async function main() {
   const mode = args.includes("-r") ? "interpret" : "compile";
   if (mode === "interpret") {
     interpret(inputFile);
-    // const llvmIR = compile(expandFile(inputFile));
-    // await interpretIR(llvmIR);
     return;
   }
 
@@ -60,14 +58,20 @@ function interpret(inputFile: string) {
   const llvm = loadLibLLVM();
 
   llvm.linkInMCJIT();
+  llvm.linkInInterpreter();
   llvm.initializeX86Target();
-  llvm.initializeX86AsmPrinter();
-  llvm.initializeX86AsmParser();
   llvm.initializeX86TargetMC();
+  llvm.initializeX86AsmParser();
+  llvm.initializeX86AsmPrinter();
+
+  const triple = llvm.getDefaultTargetTriple();
+
+  const res = llvm.getTargetFromTriple(triple.stringValue());
+  console.log(res);
 
   const moduleCtx = compileToModule(expandFile(inputFile), llvm);
 
-  const { ok, message, engine } = llvm.createJITCompilerForModule(
+  const { ok, message, engine } = llvm.createExecutionEngineForModule(
     moduleCtx.module,
   );
 
@@ -83,18 +87,12 @@ function interpret(inputFile: string) {
 
   llvm.dumpModule(moduleCtx.module);
 
+  console.log(fn);
   fn.call();
 
   llvm.removeModule(engine, moduleCtx.module);
   llvm.disposeExecutionEngine(engine);
   disposeContext(moduleCtx);
-}
-
-async function interpretIR(llvmIR: string) {
-  const lli = Deno.run({ cmd: ["lli-14"], stdin: "piped" });
-  lli.stdin?.write(new TextEncoder().encode(llvmIR));
-  lli.stdin.close();
-  await lli.status();
 }
 
 main();

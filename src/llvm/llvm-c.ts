@@ -6,9 +6,8 @@ const StringPtrType = "pointer";
 const LLVMValueArrayType = "pointer";
 const LLVMBlockArrayType = "pointer";
 const LLVMTypeArrayType = "pointer";
-const StringType = "pointer";
 const BoolType = "i8";
-const FunctionPtrType = "pointer";
+const FunctionPtrType = "function";
 
 export type LibLLVM = ReturnType<typeof loadLibLLVMInternal>;
 export const loadLibLLVM: (libFile?: string) => LibLLVM = loadLibLLVMInternal;
@@ -45,7 +44,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
 
     moduleCreateWithNameInContext: fn({
       name: "LLVMModuleCreateWithNameInContext",
-      type: [LLVMModule.TYPE, [StringType, LLVMContext.TYPE]],
+      type: [LLVMModule.TYPE, [StringPtrType, LLVMContext.TYPE]],
       wrap: (call) =>
         (moduleName: string, ctx: LLVMContext) =>
           new LLVMModule(call(buildStringPtr(moduleName), ctx.value)),
@@ -70,10 +69,40 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
 
     setTarget: fn({
       name: "LLVMSetTarget",
-      type: ["void", [LLVMModule.TYPE, StringType]],
+      type: ["void", [LLVMModule.TYPE, StringPtrType]],
       wrap: (call) =>
         (module: LLVMModule, targetTriple: string) =>
           call(module.value, buildStringPtr(targetTriple)),
+    }),
+    getDefaultTargetTriple: fn({
+      name: "LLVMGetDefaultTargetTriple",
+      type: [StringPtrType, []],
+      wrap: (call) => () => new LLVMMessage(call()),
+    }),
+    getTargetFromTriple: fn({
+      name: "LLVMGetTargetFromTriple",
+      type: [BoolType, [StringPtrType, LLVMTarget.TYPE, StringPtrType]],
+      wrap: (call) =>
+        (triple: string) => {
+          const targetPtr = new BigUint64Array(1);
+          const messagePtr = new BigUint64Array(1);
+
+          const err = unBuildBool(
+            call(buildStringPtr(triple), targetPtr, messagePtr),
+          );
+
+          if (err) {
+            const message = new Deno.UnsafePointerView(messagePtr[0])
+              .getCString();
+
+            return { ok: false, message } as const;
+          }
+
+          return {
+            ok: true,
+            target: new LLVMTarget(targetPtr[0]),
+          } as const;
+        },
     }),
 
     pointerType: fn({
@@ -158,7 +187,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
     }),
     printTypeToString: fn({
       name: "LLVMPrintTypeToString",
-      type: [StringType, [LLVMType.TYPE]],
+      type: [StringPtrType, [LLVMType.TYPE]],
       wrap: (call) => (value: LLVMType) => new LLVMMessage(call(value.value)),
     }),
 
@@ -166,7 +195,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
       name: "LLVMStructCreateNamed",
       type: [LLVMType.TYPE, [
         LLVMContext.TYPE,
-        StringType,
+        StringPtrType,
       ]],
       wrap: (call) =>
         (ctx: LLVMContext, name: string) =>
@@ -217,14 +246,14 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
 
     addFunction: fn({
       name: "LLVMAddFunction",
-      type: [LLVMValue.TYPE, [LLVMModule.TYPE, StringType, LLVMType.TYPE]],
+      type: [LLVMValue.TYPE, [LLVMModule.TYPE, StringPtrType, LLVMType.TYPE]],
       wrap: (call) =>
         (module: LLVMModule, fnName: string, type: LLVMType) =>
           new LLVMValue(call(module.value, buildStringPtr(fnName), type.value)),
     }),
     getNamedFunction: fn({
       name: "LLVMGetNamedFunction",
-      type: [LLVMValue.TYPE, [LLVMModule.TYPE, StringType]],
+      type: [LLVMValue.TYPE, [LLVMModule.TYPE, StringPtrType]],
       wrap: (call) =>
         (module: LLVMModule, fnName: string) =>
           new LLVMValue(call(module.value, buildStringPtr(fnName))),
@@ -232,7 +261,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
 
     createBasicBlockInContext: fn({
       name: "LLVMCreateBasicBlockInContext",
-      type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, StringType]],
+      type: [LLVMBasicBlock.TYPE, [LLVMContext.TYPE, StringPtrType]],
       wrap: (call) =>
         (ctx: LLVMContext, name = "") =>
           new LLVMBasicBlock(call(ctx.value, buildStringPtr(name))),
@@ -242,7 +271,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
       type: [LLVMBasicBlock.TYPE, [
         LLVMContext.TYPE,
         LLVMValue.TYPE,
-        StringType,
+        StringPtrType,
       ]],
       wrap: (call) =>
         (ctx: LLVMContext, fn: LLVMValue, name = "") =>
@@ -278,7 +307,11 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
 
     buildGlobalStringPtr: fn({
       name: "LLVMBuildGlobalStringPtr",
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, StringType, StringType]],
+      type: [LLVMValue.TYPE, [
+        LLVMIRBuilder.TYPE,
+        StringPtrType,
+        StringPtrType,
+      ]],
       wrap: (call) =>
         (builder: LLVMIRBuilder, content: string, name = "str") =>
           new LLVMValue(
@@ -301,7 +334,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
           LLVMValue.TYPE,
           LLVMValueArrayType,
           "i32",
-          StringType,
+          StringPtrType,
         ],
       ],
       wrap: (call) =>
@@ -318,14 +351,22 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
     }),
     buildAlloca: fn({
       name: "LLVMBuildAlloca",
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, StringType]],
+      type: [LLVMValue.TYPE, [
+        LLVMIRBuilder.TYPE,
+        LLVMType.TYPE,
+        StringPtrType,
+      ]],
       wrap: (call) =>
         (builder: LLVMIRBuilder, type: LLVMType, name = "") =>
           new LLVMValue(call(builder.value, type.value, buildStringPtr(name))),
     }),
     buildLoad: fn({
       name: "LLVMBuildLoad",
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMValue.TYPE, StringType]],
+      type: [LLVMValue.TYPE, [
+        LLVMIRBuilder.TYPE,
+        LLVMValue.TYPE,
+        StringPtrType,
+      ]],
       wrap: (call) =>
         (builder: LLVMIRBuilder, pointer: LLVMValue, name = "") =>
           new LLVMValue(
@@ -351,7 +392,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
           LLVMValue.TYPE,
           LLVMValueArrayType,
           "i32",
-          StringType,
+          StringPtrType,
         ],
       ],
       wrap: (call) =>
@@ -376,7 +417,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
       name: "LLVMBuildAdd",
       type: [
         LLVMValue.TYPE,
-        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE, StringType],
+        [LLVMIRBuilder.TYPE, LLVMValue.TYPE, LLVMValue.TYPE, StringPtrType],
       ],
       wrap: (call) =>
         (builder: LLVMIRBuilder, lhs: LLVMValue, rhs: LLVMValue, name = "") =>
@@ -388,7 +429,13 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
       name: "LLVMBuildICmp",
       type: [
         LLVMValue.TYPE,
-        [LLVMIRBuilder.TYPE, "i32", LLVMValue.TYPE, LLVMValue.TYPE, StringType],
+        [
+          LLVMIRBuilder.TYPE,
+          "i32",
+          LLVMValue.TYPE,
+          LLVMValue.TYPE,
+          StringPtrType,
+        ],
       ],
       wrap: (call) =>
         (
@@ -439,7 +486,11 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
     }),
     buildPhi: fn({
       name: "LLVMBuildPhi",
-      type: [LLVMValue.TYPE, [LLVMIRBuilder.TYPE, LLVMType.TYPE, StringType]],
+      type: [LLVMValue.TYPE, [
+        LLVMIRBuilder.TYPE,
+        LLVMType.TYPE,
+        StringPtrType,
+      ]],
       wrap: (call) =>
         (builder: LLVMIRBuilder, type: LLVMType, name = "") =>
           new LLVMValue(call(builder.value, type.value, buildStringPtr(name))),
@@ -450,7 +501,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
         LLVMIRBuilder.TYPE,
         LLVMValue.TYPE,
         LLVMType.TYPE,
-        StringType,
+        StringPtrType,
       ]],
       wrap: (call) =>
         (
@@ -512,25 +563,30 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
       type: ["void", []],
       wrap: (call) => () => call(),
     }),
+    linkInInterpreter: fn({
+      name: "LLVMLinkInInterpreter",
+      type: ["void", []],
+      wrap: (call) => () => call(),
+    }),
     initializeX86Target: fn({
       name: "LLVMInitializeX86Target",
       type: [BoolType, []],
-      wrap: (call) => () => call(),
+      wrap: (call) => () => unBuildBool(call()),
     }),
     initializeX86AsmPrinter: fn({
       name: "LLVMInitializeX86AsmPrinter",
       type: [BoolType, []],
-      wrap: (call) => () => call(),
+      wrap: (call) => () => unBuildBool(call()),
     }),
     initializeX86AsmParser: fn({
       name: "LLVMInitializeX86AsmParser",
       type: [BoolType, []],
-      wrap: (call) => () => call(),
+      wrap: (call) => () => unBuildBool(call()),
     }),
     initializeX86TargetMC: fn({
       name: "LLVMInitializeX86TargetMC",
       type: [BoolType, []],
-      wrap: (call) => () => call(),
+      wrap: (call) => () => unBuildBool(call()),
     }),
     createJITCompilerForModule: fn({
       name: "LLVMCreateJITCompilerForModule",
@@ -569,12 +625,12 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
       wrap: (call) =>
         (module: LLVMModule) => {
           const enginePtr = new BigUint64Array(1);
-          const messageRef = new BigUint64Array(1);
+          const messagePtr = new BigUint64Array(1);
 
-          const err = unBuildBool(call(enginePtr, module.value, messageRef));
+          const err = unBuildBool(call(enginePtr, module.value, messagePtr));
 
           if (err) {
-            const message = new Deno.UnsafePointerView(messageRef[0])
+            const message = new Deno.UnsafePointerView(messagePtr[0])
               .getCString();
 
             return { ok: false, message } as const;
@@ -684,6 +740,10 @@ export class LLVMMessage extends TypedPointer {
 }
 
 export class LLVMExecutionEngine extends TypedPointer {
+  private __name = this;
+}
+
+export class LLVMTarget extends TypedPointer {
   private __name = this;
 }
 
