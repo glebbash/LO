@@ -1,6 +1,6 @@
 // deno-lint-ignore-file
 
-import { Opaque } from "./utils.ts";
+import { Opaque } from "./safe-ffi.ts";
 
 // ./llvm-c/Types.h:28:13
 export const LLVMBool: Opaque<"i32", "LLVMBool"> = "i32" as never;
@@ -409,3 +409,4 @@ export const LLVMOrcLLJITRef: Opaque<"pointer", "LLVMOrcLLJITRef"> = "pointer" a
 
 // ./llvm-c/Comdat.h:38:3
 export const LLVMComdatSelectionKind: Opaque<"i32", "LLVMComdatSelectionKind"> = "i32" as never;
+

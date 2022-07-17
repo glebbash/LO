@@ -26,96 +26,6 @@ export const LLVMViewFunctionCFGOnly = {
   result: "void"
 } as const;
 
-// /usr/include/llvm/Config/Targets.def:26:1 <Spelling=<scratch space>:53:1>
-export const LLVMInitializeAArch64TargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:27:1 <Spelling=<scratch space>:55:1>
-export const LLVMInitializeAMDGPUTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:28:1 <Spelling=<scratch space>:57:1>
-export const LLVMInitializeARMTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:29:1 <Spelling=<scratch space>:59:1>
-export const LLVMInitializeAVRTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:30:1 <Spelling=<scratch space>:61:1>
-export const LLVMInitializeBPFTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:31:1 <Spelling=<scratch space>:63:1>
-export const LLVMInitializeHexagonTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:32:1 <Spelling=<scratch space>:65:1>
-export const LLVMInitializeLanaiTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:33:1 <Spelling=<scratch space>:67:1>
-export const LLVMInitializeMipsTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:34:1 <Spelling=<scratch space>:69:1>
-export const LLVMInitializeMSP430TargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:35:1 <Spelling=<scratch space>:71:1>
-export const LLVMInitializeNVPTXTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:36:1 <Spelling=<scratch space>:73:1>
-export const LLVMInitializePowerPCTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:37:1 <Spelling=<scratch space>:75:1>
-export const LLVMInitializeRISCVTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:38:1 <Spelling=<scratch space>:77:1>
-export const LLVMInitializeSparcTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:39:1 <Spelling=<scratch space>:79:1>
-export const LLVMInitializeSystemZTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:40:1 <Spelling=<scratch space>:81:1>
-export const LLVMInitializeVETargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
 // /usr/include/llvm/Config/Targets.def:41:1 <Spelling=<scratch space>:83:1>
 export const LLVMInitializeWebAssemblyTargetInfo = {
   parameters: [],
@@ -124,102 +34,6 @@ export const LLVMInitializeWebAssemblyTargetInfo = {
 
 // /usr/include/llvm/Config/Targets.def:42:1 <Spelling=<scratch space>:85:1>
 export const LLVMInitializeX86TargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:43:1 <Spelling=<scratch space>:87:1>
-export const LLVMInitializeXCoreTargetInfo = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:26:1 <Spelling=<scratch space>:89:1>
-export const LLVMInitializeAArch64Target = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:27:1 <Spelling=<scratch space>:91:1>
-export const LLVMInitializeAMDGPUTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:28:1 <Spelling=<scratch space>:93:1>
-export const LLVMInitializeARMTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:29:1 <Spelling=<scratch space>:95:1>
-export const LLVMInitializeAVRTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:30:1 <Spelling=<scratch space>:97:1>
-export const LLVMInitializeBPFTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:31:1 <Spelling=<scratch space>:99:1>
-export const LLVMInitializeHexagonTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:32:1 <Spelling=<scratch space>:101:1>
-export const LLVMInitializeLanaiTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:33:1 <Spelling=<scratch space>:103:1>
-export const LLVMInitializeMipsTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:34:1 <Spelling=<scratch space>:105:1>
-export const LLVMInitializeMSP430Target = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:35:1 <Spelling=<scratch space>:107:1>
-export const LLVMInitializeNVPTXTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:36:1 <Spelling=<scratch space>:109:1>
-export const LLVMInitializePowerPCTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:37:1 <Spelling=<scratch space>:111:1>
-export const LLVMInitializeRISCVTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:38:1 <Spelling=<scratch space>:113:1>
-export const LLVMInitializeSparcTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:39:1 <Spelling=<scratch space>:115:1>
-export const LLVMInitializeSystemZTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:40:1 <Spelling=<scratch space>:117:1>
-export const LLVMInitializeVETarget = {
   parameters: [],
   result: "void"
 } as const;
@@ -236,102 +50,6 @@ export const LLVMInitializeX86Target = {
   result: "void"
 } as const;
 
-// /usr/include/llvm/Config/Targets.def:43:1 <Spelling=<scratch space>:123:1>
-export const LLVMInitializeXCoreTarget = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:26:1 <Spelling=<scratch space>:125:1>
-export const LLVMInitializeAArch64TargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:27:1 <Spelling=<scratch space>:127:1>
-export const LLVMInitializeAMDGPUTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:28:1 <Spelling=<scratch space>:129:1>
-export const LLVMInitializeARMTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:29:1 <Spelling=<scratch space>:131:1>
-export const LLVMInitializeAVRTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:30:1 <Spelling=<scratch space>:133:1>
-export const LLVMInitializeBPFTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:31:1 <Spelling=<scratch space>:135:1>
-export const LLVMInitializeHexagonTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:32:1 <Spelling=<scratch space>:137:1>
-export const LLVMInitializeLanaiTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:33:1 <Spelling=<scratch space>:139:1>
-export const LLVMInitializeMipsTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:34:1 <Spelling=<scratch space>:141:1>
-export const LLVMInitializeMSP430TargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:35:1 <Spelling=<scratch space>:143:1>
-export const LLVMInitializeNVPTXTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:36:1 <Spelling=<scratch space>:145:1>
-export const LLVMInitializePowerPCTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:37:1 <Spelling=<scratch space>:147:1>
-export const LLVMInitializeRISCVTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:38:1 <Spelling=<scratch space>:149:1>
-export const LLVMInitializeSparcTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:39:1 <Spelling=<scratch space>:151:1>
-export const LLVMInitializeSystemZTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:40:1 <Spelling=<scratch space>:153:1>
-export const LLVMInitializeVETargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
 // /usr/include/llvm/Config/Targets.def:41:1 <Spelling=<scratch space>:155:1>
 export const LLVMInitializeWebAssemblyTargetMC = {
   parameters: [],
@@ -340,102 +58,6 @@ export const LLVMInitializeWebAssemblyTargetMC = {
 
 // /usr/include/llvm/Config/Targets.def:42:1 <Spelling=<scratch space>:157:1>
 export const LLVMInitializeX86TargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Targets.def:43:1 <Spelling=<scratch space>:159:1>
-export const LLVMInitializeXCoreTargetMC = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:27:1 <Spelling=<scratch space>:161:1>
-export const LLVMInitializeAArch64AsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:28:1 <Spelling=<scratch space>:163:1>
-export const LLVMInitializeAMDGPUAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:29:1 <Spelling=<scratch space>:165:1>
-export const LLVMInitializeARMAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:30:1 <Spelling=<scratch space>:167:1>
-export const LLVMInitializeAVRAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:31:1 <Spelling=<scratch space>:169:1>
-export const LLVMInitializeBPFAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:32:1 <Spelling=<scratch space>:171:1>
-export const LLVMInitializeHexagonAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:33:1 <Spelling=<scratch space>:173:1>
-export const LLVMInitializeLanaiAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:34:1 <Spelling=<scratch space>:175:1>
-export const LLVMInitializeMipsAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:35:1 <Spelling=<scratch space>:177:1>
-export const LLVMInitializeMSP430AsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:36:1 <Spelling=<scratch space>:179:1>
-export const LLVMInitializeNVPTXAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:37:1 <Spelling=<scratch space>:181:1>
-export const LLVMInitializePowerPCAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:38:1 <Spelling=<scratch space>:183:1>
-export const LLVMInitializeRISCVAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:39:1 <Spelling=<scratch space>:185:1>
-export const LLVMInitializeSparcAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:40:1 <Spelling=<scratch space>:187:1>
-export const LLVMInitializeSystemZAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmPrinters.def:41:1 <Spelling=<scratch space>:189:1>
-export const LLVMInitializeVEAsmPrinter = {
   parameters: [],
   result: "void"
 } as const;
@@ -452,96 +74,6 @@ export const LLVMInitializeX86AsmPrinter = {
   result: "void"
 } as const;
 
-// /usr/include/llvm/Config/AsmPrinters.def:44:1 <Spelling=<scratch space>:6:1>
-export const LLVMInitializeXCoreAsmPrinter = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:27:1 <Spelling=<scratch space>:8:1>
-export const LLVMInitializeAArch64AsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:28:1 <Spelling=<scratch space>:10:1>
-export const LLVMInitializeAMDGPUAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:29:1 <Spelling=<scratch space>:12:1>
-export const LLVMInitializeARMAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:30:1 <Spelling=<scratch space>:14:1>
-export const LLVMInitializeAVRAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:31:1 <Spelling=<scratch space>:16:1>
-export const LLVMInitializeBPFAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:32:1 <Spelling=<scratch space>:18:1>
-export const LLVMInitializeHexagonAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:33:1 <Spelling=<scratch space>:20:1>
-export const LLVMInitializeLanaiAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:34:1 <Spelling=<scratch space>:22:1>
-export const LLVMInitializeMipsAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:35:1 <Spelling=<scratch space>:24:1>
-export const LLVMInitializeMSP430AsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:36:1 <Spelling=<scratch space>:26:1>
-export const LLVMInitializePowerPCAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:37:1 <Spelling=<scratch space>:28:1>
-export const LLVMInitializeRISCVAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:38:1 <Spelling=<scratch space>:30:1>
-export const LLVMInitializeSparcAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:39:1 <Spelling=<scratch space>:32:1>
-export const LLVMInitializeSystemZAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/AsmParsers.def:40:1 <Spelling=<scratch space>:34:1>
-export const LLVMInitializeVEAsmParser = {
-  parameters: [],
-  result: "void"
-} as const;
-
 // /usr/include/llvm/Config/AsmParsers.def:41:1 <Spelling=<scratch space>:36:1>
 export const LLVMInitializeWebAssemblyAsmParser = {
   parameters: [],
@@ -554,90 +86,6 @@ export const LLVMInitializeX86AsmParser = {
   result: "void"
 } as const;
 
-// /usr/include/llvm/Config/Disassemblers.def:27:1 <Spelling=<scratch space>:40:1>
-export const LLVMInitializeAArch64Disassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:28:1 <Spelling=<scratch space>:42:1>
-export const LLVMInitializeAMDGPUDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:29:1 <Spelling=<scratch space>:44:1>
-export const LLVMInitializeARMDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:30:1 <Spelling=<scratch space>:46:1>
-export const LLVMInitializeAVRDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:31:1 <Spelling=<scratch space>:48:1>
-export const LLVMInitializeBPFDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:32:1 <Spelling=<scratch space>:50:1>
-export const LLVMInitializeHexagonDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:33:1 <Spelling=<scratch space>:52:1>
-export const LLVMInitializeLanaiDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:34:1 <Spelling=<scratch space>:54:1>
-export const LLVMInitializeMipsDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:35:1 <Spelling=<scratch space>:56:1>
-export const LLVMInitializeMSP430Disassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:36:1 <Spelling=<scratch space>:58:1>
-export const LLVMInitializePowerPCDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:37:1 <Spelling=<scratch space>:60:1>
-export const LLVMInitializeRISCVDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:38:1 <Spelling=<scratch space>:62:1>
-export const LLVMInitializeSparcDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:39:1 <Spelling=<scratch space>:64:1>
-export const LLVMInitializeSystemZDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:40:1 <Spelling=<scratch space>:66:1>
-export const LLVMInitializeVEDisassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
 // /usr/include/llvm/Config/Disassemblers.def:41:1 <Spelling=<scratch space>:68:1>
 export const LLVMInitializeWebAssemblyDisassembler = {
   parameters: [],
@@ -646,12 +94,6 @@ export const LLVMInitializeWebAssemblyDisassembler = {
 
 // /usr/include/llvm/Config/Disassemblers.def:42:1 <Spelling=<scratch space>:70:1>
 export const LLVMInitializeX86Disassembler = {
-  parameters: [],
-  result: "void"
-} as const;
-
-// /usr/include/llvm/Config/Disassemblers.def:43:1 <Spelling=<scratch space>:72:1>
-export const LLVMInitializeXCoreDisassembler = {
   parameters: [],
   result: "void"
 } as const;
@@ -2096,12 +1538,6 @@ export const LLVMOrcObjectLayerAddObjectFile = {
   result: types.LLVMErrorRef
 } as const;
 
-// ./llvm-c/Orc.h:1095:1
-export const LLVMOrcObjectLayerAddObjectFileWithRT = {
-  parameters: [types.LLVMOrcObjectLayerRef, types.LLVMOrcResourceTrackerRef, types.LLVMMemoryBufferRef],
-  result: types.LLVMErrorRef
-} as const;
-
 // ./llvm-c/Orc.h:1105:6
 export const LLVMOrcObjectLayerEmit = {
   parameters: [types.LLVMOrcObjectLayerRef, types.LLVMOrcMaterializationResponsibilityRef, types.LLVMMemoryBufferRef],
@@ -2856,12 +2292,6 @@ export const LLVMRemarkParserGetErrorMessage = {
 export const LLVMRemarkParserDispose = {
   parameters: [types.LLVMRemarkParserRef],
   result: "void"
-} as const;
-
-// ./llvm-c/Remarks.h:336:17
-export const LLVMRemarkVersion = {
-  parameters: [],
-  result: "u32"
 } as const;
 
 // ./llvm-c/ErrorHandling.h:36:6
@@ -7669,3 +7099,4 @@ export const LLVMParseIRInContext = {
   parameters: [types.LLVMContextRef, types.LLVMMemoryBufferRef, "pointer", "pointer"],
   result: types.LLVMBool
 } as const;
+

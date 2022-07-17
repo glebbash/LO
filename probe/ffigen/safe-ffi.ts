@@ -9,8 +9,6 @@ namespace Symbols {
   export declare const brand: unique symbol;
 }
 
-/* Safe FFI */
-
 export interface SafeDynamicLibrary<S extends SafeForeignLibraryInterface> {
   /** All of the registered library along with functions for calling them */
   symbols: StaticForeignLibraryInterface<S>;
