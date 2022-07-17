@@ -1,8 +1,8 @@
 import { SExpr } from "../../parser/parser.ts";
-import { expectArgsLength, expectString } from "../assertions.ts";
+import { expectArgsLength, expectString } from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
 import { LLVMValue } from "../../llvm/llvm-c.ts";
-import { getStringValue } from "../transformers.ts";
+import { getStringValue } from "../../s-expr/transformers.ts";
 import { buildVoid } from "./void.ts";
 
 export function buildTargetTriple(

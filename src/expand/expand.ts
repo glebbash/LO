@@ -5,8 +5,8 @@ import {
   expectSymbol,
   isList,
   isSymbol,
-} from "../compiler/assertions.ts";
-import { getStringValue } from "../compiler/transformers.ts";
+} from "../s-expr/assertions.ts";
+import { getStringValue } from "../s-expr/transformers.ts";
 import { parse, SExpr } from "../parser/parser.ts";
 
 type ExpandContext = {
