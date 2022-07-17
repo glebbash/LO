@@ -1,4 +1,4 @@
-import { compile, compileToModule } from "./compiler/compiler.ts";
+import { buildIR, compileToModule } from "./compiler/compiler.ts";
 import { expandFile } from "./expand/expand.ts";
 import { loadLibLLVM } from "./llvm/llvm-c.ts";
 
@@ -13,7 +13,7 @@ async function main() {
   }
 
   const outputIRFile = getArg(args, "ir");
-  const llvmIR = compile(expandFile(inputFile));
+  const llvmIR = buildIR(expandFile(inputFile));
 
   if (outputIRFile !== undefined) {
     await Deno.writeTextFile(outputIRFile, llvmIR);
