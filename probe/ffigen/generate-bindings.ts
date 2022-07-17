@@ -12,6 +12,7 @@ export async function generateBindings(
   symbolsFile: string,
   exposedFunctions: string[],
   outputFolder: string,
+  libName: string,
 ) {
   const allSymbols: CSymbol[] = JSON.parse(
     Deno.readTextFileSync(symbolsFile),
@@ -25,6 +26,7 @@ export async function generateBindings(
   const enumsGen = buildEnums(llvmSymbols);
   const structsGen = buildStructs(llvmSymbols);
   const functionsGen = buildFunctions(llvmSymbols, exposedFunctions, typeDefs);
+  const modGen = buildMod(libName);
 
   await Deno.mkdir(outputFolder, { recursive: true }).catch();
   await Deno.copyFile(`ffigen/safe-ffi.ts`, `${outputFolder}/safe-ffi.ts`);
@@ -32,6 +34,22 @@ export async function generateBindings(
   await Deno.writeTextFile(`${outputFolder}/enums.ts`, enumsGen);
   await Deno.writeTextFile(`${outputFolder}/structs.ts`, structsGen);
   await Deno.writeTextFile(`${outputFolder}/functions.ts`, functionsGen);
+  await Deno.writeTextFile(`${outputFolder}/mod.ts`, modGen);
+}
+
+function buildMod(libName: string): string {
+  return `import { SafeDynamicLibrary } from "./safe-ffi.ts";
+import * as functions from "./functions.ts";
+
+export type ${libName} = typeof load${libName};
+
+export function load${libName}(path: string) {
+  const lib = Deno.dlopen(path, functions) as SafeDynamicLibrary<
+    typeof functions
+  >;
+
+  return { ...lib.symbols, close: () => lib.close() };
+}`;
 }
 
 function buildTypes(

@@ -37,7 +37,8 @@ exposed symbols of `input/libLLVM-15git.so`.
 deno run -A ffigen/mod.ts \
   input/llvm-c.json \
   input/llvm-c-exposed.txt \
-  output
+  llvm-c \
+  LibLLVM
 ```
 
 Using `input/llvm-c.json` and `input/llvm-c-exposed.txt` as inputs. Bindings are
@@ -45,8 +46,9 @@ generated for LLVM-C.
 
 Generated files are:
 
-- `ffigen-output/enums.ts` - Enum definitions
-- `ffigen-output/functions.ts` - Function definitions
-- `ffigen-output/structs.ts` - Struct definitions including alignment info
-- `ffigen-output/types.ts` - Types definitions
-- `ffigen-output/safe-ffi.ts` - Type utils for Safe FFI library
+- `llvm-c/enums.ts` - Enum definitions
+- `llvm-c/functions.ts` - Function definitions
+- `llvm-c/structs.ts` - Struct definitions including alignment info
+- `llvm-c/types.ts` - Types definitions
+- `llvm-c/safe-ffi.ts` - Type utils for Safe FFI library
+- `llvm-c/mod.ts` - Bindings entry that also dlopens the shared lib
