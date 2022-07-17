@@ -159,7 +159,7 @@ const typeDefMap = new Map(
     // return JSON.stringify({ parameters: parameterTypes, returnType }, null, 2);
     return "{\n  parameters: [" +
       parameterTypes.map((p) => `"${p}"`).join(", ") + "],\n" +
-      '  returnType: "' + returnType + '"\n} as const;';
+      '  result: "' + returnType + '"\n} as const;';
   };
 
   // TODO: implement functions
