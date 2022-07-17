@@ -23,7 +23,7 @@ async function runProgram(path: string): Promise<string> {
       "run",
       "-A",
       "--unstable",
-      "src/main.ts",
+      "src/main-wasm.ts",
       `--src=${path}`,
       "-r",
     ],
