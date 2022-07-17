@@ -1,4 +1,4 @@
-export const LLVM_SYMBOLS = [
+export const LLVM_C_FUNCTIONS = [
   "LLVMABIAlignmentOfType",
   "LLVMABISizeOfType",
   "LLVMAddAddDiscriminatorsPass",
@@ -1184,5 +1184,5 @@ export const LLVM_SYMBOLS = [
   "LLVMX86FP80Type",
   "LLVMX86FP80TypeInContext",
   "LLVMX86MMXType",
-  "LLVMX86MMXTypeInContext",
-] as const;
+  "LLVMX86MMXTypeInContext"
+];

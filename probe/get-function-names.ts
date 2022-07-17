@@ -16,9 +16,11 @@ const allFunctions = publicSymbols
   .filter((s) => !s.includes(".localalias"))
   .map((s) => getName(s).replace("@@LLVM_15", ""));
 
-const uniqueFunctions = Array.from(new Set(allFunctions));
+const uniqueFunctions = Array.from(new Set(allFunctions)).sort();
 
 Deno.writeTextFileSync(
-  "llvmc-functions.txt",
-  uniqueFunctions.sort().join("\n"),
+  "llvm-c-functions.ts",
+  `export const LLVM_C_FUNCTIONS = ${
+    JSON.stringify(uniqueFunctions, null, 2)
+  };`,
 );

@@ -1,3 +1,5 @@
+import { LLVM_C_FUNCTIONS } from "./llvm-c-functions.ts";
+
 type CSymbol = CTypeDef | CEnum | CStruct | CFunction;
 
 type CTypeDef = {
@@ -80,12 +82,17 @@ const typeDefMap = new Map(
   console.log("Total type definitions:", typeDefs.length);
 
   const typeDefGen = typeDefs.map((t) => {
-    return "// " + cleanupLocation(t.location) + "\n" +
-      "export const " + t.name + " = '" + getTypeDefTypeName(t.type) + "';" +
-      "\n";
+    const typeName = getTypeDefTypeName(t.type);
+    return `// ${cleanupLocation(t.location)}\n` +
+      `export const ${t.name}: Opaque<${typeName}, "${t.name}">` +
+      ` = ${typeName} as never;\n`;
   }).join("\n");
 
-  Deno.writeTextFileSync("ffigen-output/types.ts", typeDefGen);
+  const imports = `// deno-lint-ignore-file
+
+import { Opaque } from "./utils.ts";\n\n`;
+
+  Deno.writeTextFileSync("ffigen-output/types.ts", imports + typeDefGen);
 }
 
 {
@@ -143,23 +150,19 @@ const typeDefMap = new Map(
   const allFunctions = llvmSymbols.filter((s): s is CFunction =>
     s.tag === "function"
   );
-  const functions = uniqueByKey(allFunctions, "name");
+  const uniqueFunctions = uniqueByKey(allFunctions, "name");
+  const nonInlinedFunctions = uniqueFunctions.filter((f) => !f.inline);
+  const functions = nonInlinedFunctions.filter((f) =>
+    LLVM_C_FUNCTIONS.includes(f.name as never)
+  );
   console.log("Total functions:", functions.length);
 
   const generateFunctionDef = (f: CFunction) => {
-    if (f.inline) {
-      return `{\n  type: "inline"\n} as const;`;
-    }
-
-    const parameterTypes = f.parameters.map((p) => {
-      return getTypeDefTypeName(p.type);
-    });
+    const parameterTypes = f.parameters.map((p) => getTypeDefTypeName(p.type));
     const returnType = getReturnTypeName(f["return-type"]);
 
-    // return JSON.stringify({ parameters: parameterTypes, returnType }, null, 2);
-    return "{\n  parameters: [" +
-      parameterTypes.map((p) => `"${p}"`).join(", ") + "],\n" +
-      '  result: "' + returnType + '"\n} as const;';
+    return "{\n  parameters: [" + parameterTypes.join(", ") + "],\n" +
+      "  result: " + returnType + "\n} as const;";
   };
 
   // TODO: implement functions
@@ -171,7 +174,11 @@ const typeDefMap = new Map(
       "\n";
   }).join("\n");
 
-  Deno.writeTextFileSync("ffigen-output/functions.ts", functionsGen);
+  const imports = `// deno-lint-ignore-file
+
+import * as types from "./types.ts";\n\n`;
+
+  Deno.writeTextFileSync("ffigen-output/functions.ts", imports + functionsGen);
 }
 
 function uniqueByKey<T>(values: T[], key: keyof T): T[] {
@@ -205,11 +212,11 @@ function getReturnTypeName(type: CReturnType): string {
   const typeName = getBasicTypeName(type as never);
 
   if (typeName) {
-    return typeName;
+    return wrapTypeName(typeName);
   }
 
   if (type.tag === ":void") {
-    return "void";
+    return `"void"`;
   }
 
   throw new Error("Unknown type: " + JSON.stringify(type));
@@ -222,7 +229,15 @@ function getTypeDefTypeName(type: CTypeDefType): string {
     throw new Error("Unknown type: " + JSON.stringify(type));
   }
 
-  return typeName;
+  return wrapTypeName(typeName);
+}
+
+function wrapTypeName(typeName: string) {
+  if (typeName.startsWith("types.")) {
+    return typeName;
+  }
+
+  return `"${typeName}"`;
 }
 
 function getBasicTypeName(type: CTypeDefType): string | null {
@@ -289,7 +304,7 @@ function getBasicTypeName(type: CTypeDefType): string | null {
   }
 
   if (typeDefMap.has(type.tag)) {
-    return typeDefMap.get(type.tag)!;
+    return `types.${type.tag}`;
   }
 
   return null;
