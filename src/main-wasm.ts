@@ -3,7 +3,7 @@ import {
   emitWasm,
   emitWAT,
   interpret,
-} from "./compiler/compiler.ts";
+} from "./compiler-wasm/compiler.ts";
 import { expandFile } from "./expand/expand.ts";
 
 async function main() {
