@@ -41,7 +41,7 @@ function buildMod(libName: string): string {
   return `import { SafeDynamicLibrary } from "./safe-ffi.ts";
 import * as functions from "./functions.ts";
 
-export type ${libName} = typeof load${libName};
+export type ${libName} = ReturnType<typeof load${libName}>;
 
 export function load${libName}(path: string) {
   const lib = Deno.dlopen(path, functions) as SafeDynamicLibrary<
@@ -54,7 +54,7 @@ export function load${libName}(path: string) {
 
 function buildTypes(
   llvmSymbols: CSymbol[],
-): { typeDefs: Map<string, string>; typeDefsSource: string } {
+): { typeDefs: Set<string>; typeDefsSource: string } {
   const typeDefs = llvmSymbols.filter((s): s is CTypeDef =>
     s.tag === "typedef"
   );
@@ -63,17 +63,15 @@ function buildTypes(
   const typeDefGen = typeDefs.map((t) => {
     const typeName = getTypeNameWithoutAliases(t.type);
     return `// ${cleanupLocation(t.location)}\n` +
-      `export const ${t.name}: Opaque<${typeName}, "${t.name}">` +
-      ` = ${typeName} as never;\n`;
-  }).join("\n");
+      `export type ${t.name} = Opaque<${getJsType(typeName)}, "${t.name}">;\n` +
+      `export const ${t.name}_: Opaque<${typeName}, "${t.name}"> = ${typeName} as never;`;
+  }).join("\n\n");
 
   const imports = `// deno-lint-ignore-file\n\n` +
     `import { Opaque } from "./safe-ffi.ts";\n\n`;
 
   return {
-    typeDefs: new Map(
-      typeDefs.map((t) => [t.name, getTypeNameWithoutAliases(t.type)]),
-    ),
+    typeDefs: new Set(typeDefs.map((t) => t.name)),
     typeDefsSource: imports + typeDefGen + "\n",
   };
 }
@@ -130,7 +128,7 @@ function buildStructs(llvmSymbols: CSymbol[]) {
 function buildFunctions(
   llvmSymbols: CSymbol[],
   exposedFunctions: string[],
-  typeDefs: Map<string, string>,
+  typeDefs: Set<string>,
 ): string {
   const allFunctions = llvmSymbols.filter((s): s is CFunction =>
     s.tag === "function"
@@ -205,7 +203,7 @@ function getTypeNameWithoutAliases(type: CType): string {
 
 function getTypeName(
   type: CType,
-  typeDefs: Map<string, string>,
+  typeDefs: Set<string>,
 ): string {
   const typeName = getBasicTypeName(type);
 
@@ -214,7 +212,7 @@ function getTypeName(
   }
 
   if (typeDefs.has(type.tag)) {
-    return `types.${type.tag}`;
+    return `types.${type.tag}_`;
   }
 
   throw new Error("Unknown type: " + JSON.stringify(type));
@@ -222,7 +220,7 @@ function getTypeName(
 
 function getReturnTypeName(
   type: CReturnType,
-  typeDefs: Map<string, string>,
+  typeDefs: Set<string>,
 ): string {
   const typeName = getBasicTypeName(type as never);
 
@@ -235,7 +233,7 @@ function getReturnTypeName(
   }
 
   if (typeDefs.has(type.tag)) {
-    return `types.${type.tag}`;
+    return `types.${type.tag}_`;
   }
 
   throw new Error("Unknown type: " + JSON.stringify(type));
@@ -313,4 +311,23 @@ function wrapTypeName(typeName: string) {
   }
 
   return `"${typeName}"`;
+}
+
+const NUMBER_TYPES = [
+  `"u8"`,
+  `"i8"`,
+  `"u16"`,
+  `"i16"`,
+  `"u32"`,
+  `"i32"`,
+  `"f32"`,
+  `"f64"`,
+];
+
+function getJsType(nativeType: string) {
+  if (NUMBER_TYPES.includes(nativeType)) {
+    return "number";
+  }
+
+  return "bigint";
 }
