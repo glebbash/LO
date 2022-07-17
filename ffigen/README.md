@@ -46,9 +46,7 @@ generated for LLVM-C.
 
 Generated files are:
 
-- `llvm-c/enums.ts` - Enum definitions
-- `llvm-c/functions.ts` - Function definitions
-- `llvm-c/structs.ts` - Struct definitions including alignment info
-- `llvm-c/types.ts` - Types definitions
-- `llvm-c/safe-ffi.ts` - Type utils for Safe FFI library
 - `llvm-c/mod.ts` - Bindings entry that also dlopens the shared lib
+- `llvm-c/types.ts` - Namespace with all type/enum/function definitions
+- `llvm-c/symbols.ts` - Exports object with lib definition for `Deno.dlopen`
+- `llvm-c/safe-ffi.ts` - Type utils for making pointer typesafe
