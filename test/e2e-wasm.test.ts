@@ -22,6 +22,7 @@ async function runProgram(path: string): Promise<string> {
       "deno",
       "run",
       "-A",
+      "--unstable",
       "src/main.ts",
       `--src=${path}`,
       "-r",
