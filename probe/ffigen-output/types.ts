@@ -146,10 +146,10 @@ export const LLVMErrorRef = 'pointer';
 export const LLVMErrorTypeId = 'pointer';
 
 // ./llvm-c/Orc.h:46:18
-export const LLVMOrcJITTargetAddress = 'pointer';
+export const LLVMOrcJITTargetAddress = 'u64';
 
 // ./llvm-c/Orc.h:51:18
-export const LLVMOrcExecutorAddress = 'pointer';
+export const LLVMOrcExecutorAddress = 'u64';
 
 // ./llvm-c/Orc.h:61:3
 export const LLVMJITSymbolGenericFlags = 'i32';

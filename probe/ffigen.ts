@@ -37,16 +37,28 @@ type CFunction = {
   tag: "function";
   name: string;
   location: string;
+  inline: boolean;
+  parameters: { name: string; type: CTypeDefType }[];
+  "return-type": CReturnType;
 };
+
+type CReturnType = CTypeDefType | { tag: ":void" };
 
 type CTypeDefType =
   | { tag: ":int"; "bit-size": number; "bit-alignment": number }
   | { tag: ":unsigned-int"; "bit-size": number; "bit-alignment": number }
+  | { tag: ":unsigned-long-long"; "bit-size": number; "bit-alignment": number }
+  | { tag: ":long-long"; "bit-size": number; "bit-alignment": number }
+  | { tag: ":double"; "bit-size": number; "bit-alignment": number }
+  | { tag: ":char"; "bit-size": number; "bit-alignment": number }
   | { tag: ":function-pointer" }
   | { tag: ":pointer" }
   | { tag: "struct" }
   | { tag: ":enum" }
+  | { tag: "size_t" }
+  | { tag: "int64_t" }
   | { tag: "uint64_t" }
+  | { tag: "uint32_t" }
   | { tag: "uint8_t" };
 
 const llvmC: CSymbol[] = JSON.parse(Deno.readTextFileSync("./llvm-c.json"));
@@ -55,6 +67,11 @@ const llvmSymbols = llvmC.filter((s: { name: string }) =>
   s.name.startsWith("LLVM")
 );
 console.log("Total symbols:", llvmSymbols.length);
+
+const typeDefMap = new Map(
+  llvmSymbols.filter((t): t is CTypeDef => t.tag === "typedef")
+    .map((t) => [t.name, getTypeDefTypeName(t.type)]),
+);
 
 {
   const typeDefs = llvmSymbols.filter((s): s is CTypeDef =>
@@ -92,7 +109,7 @@ console.log("Total symbols:", llvmSymbols.length);
   const structs = llvmSymbols.filter((s): s is CStruct => s.tag === "struct");
   console.log("Total structs:", structs.length);
 
-  // TODO:
+  // TODO: figure out better struct representation
   const generateStructDef = (
     struct: CStruct,
   ) => {
@@ -123,16 +140,34 @@ console.log("Total symbols:", llvmSymbols.length);
 }
 
 {
-  const functions = llvmSymbols.filter((s): s is CFunction =>
+  const allFunctions = llvmSymbols.filter((s): s is CFunction =>
     s.tag === "function"
   );
-  const uniqueFunctions = uniqueByKey(functions, "name");
-  console.log("Total functions:", uniqueFunctions.length);
+  const functions = uniqueByKey(allFunctions, "name");
+  console.log("Total functions:", functions.length);
+
+  const generateFunctionDef = (f: CFunction) => {
+    if (f.inline) {
+      return `{\n  type: "inline"\n};`;
+    }
+
+    const parameterTypes = f.parameters.map((p) => {
+      return getTypeDefTypeName(p.type);
+    });
+    const returnType = getReturnTypeName(f["return-type"]);
+
+    // return JSON.stringify({ parameters: parameterTypes, returnType }, null, 2);
+    return "{\n  parameters: [" +
+      parameterTypes.map((p) => `"${p}"`).join(", ") + "],\n" +
+      '  returnType: "' + returnType + '"\n} as const;';
+  };
 
   // TODO: implement functions
-  const functionsGen = uniqueFunctions.map((f) => {
+  const functionsGen = functions.map((f) => {
+    const functionDef = generateFunctionDef(f);
+
     return "// " + cleanupLocation(f.location) + "\n" +
-      "export const " + f.name + " = " + JSON.stringify(f, null, 2) + ";" +
+      "export const " + f.name + " = " + functionDef +
       "\n";
   }).join("\n");
 
@@ -166,7 +201,31 @@ function cleanupLocation(location: string): string {
   return location;
 }
 
+function getReturnTypeName(type: CReturnType): string {
+  const typeName = getBasicTypeName(type as never);
+
+  if (typeName) {
+    return typeName;
+  }
+
+  if (type.tag === ":void") {
+    return "void";
+  }
+
+  throw new Error("Unknown type: " + JSON.stringify(type));
+}
+
 function getTypeDefTypeName(type: CTypeDefType): string {
+  const typeName = getBasicTypeName(type);
+
+  if (!typeName) {
+    throw new Error("Unknown type: " + JSON.stringify(type));
+  }
+
+  return typeName;
+}
+
+function getBasicTypeName(type: CTypeDefType): string | null {
   if (type.tag === ":pointer") {
     return "pointer";
   }
@@ -183,6 +242,27 @@ function getTypeDefTypeName(type: CTypeDefType): string {
     return "u32";
   }
 
+  if (type.tag === ":unsigned-long-long" && type["bit-size"] === 64) {
+    return "u64";
+  }
+
+  if (type.tag === ":long-long" && type["bit-size"] === 64) {
+    return "i64";
+  }
+
+  if (type.tag === ":double" && type["bit-size"] === 64) {
+    return "i64";
+  }
+
+  if (type.tag === ":char" && type["bit-size"] === 8) {
+    return "u8";
+  }
+
+  // TODO: unhardcode this
+  if (type.tag === "size_t") {
+    return "u64";
+  }
+
   if (type.tag === "struct") {
     return "pointer";
   }
@@ -192,14 +272,25 @@ function getTypeDefTypeName(type: CTypeDefType): string {
     return "i32";
   }
 
+  if (type.tag === "int64_t") {
+    return "i64";
+  }
+
   if (type.tag === "uint64_t") {
-    // TODO: this is not the best idea
-    return "pointer";
+    return "u64";
+  }
+
+  if (type.tag === "uint32_t") {
+    return "u32";
   }
 
   if (type.tag === "uint8_t") {
     return "u8";
   }
 
-  throw new Error("Unknown type: " + JSON.stringify(type));
+  if (typeDefMap.has(type.tag)) {
+    return typeDefMap.get(type.tag)!;
+  }
+
+  return null;
 }
