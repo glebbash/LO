@@ -568,6 +568,11 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
       type: ["void", []],
       wrap: (call) => () => call(),
     }),
+    initializeX86TargetInfo: fn({
+      name: "LLVMInitializeX86TargetInfo",
+      type: [BoolType, []],
+      wrap: (call) => () => unBuildBool(call()),
+    }),
     initializeX86Target: fn({
       name: "LLVMInitializeX86Target",
       type: [BoolType, []],
@@ -663,12 +668,14 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
     }),
     removeModule: fn({
       name: "LLVMRemoveModule",
-      type: [BoolType, []],
+      type: [BoolType, ["pointer", "pointer", "pointer", "pointer"]],
       wrap: (call) =>
         (engine: LLVMExecutionEngine, module: LLVMModule) => {
           const messageRef = new BigUint64Array(1);
 
-          const ok = unBuildBool(call(engine, module, module, messageRef));
+          const ok = unBuildBool(
+            call(engine.value, module.value, module, messageRef),
+          );
           const message = new Deno.UnsafePointerView(messageRef[0])
             .getCString();
 
@@ -678,7 +685,7 @@ function loadLibLLVMInternal(libFile = LLVMC_LIB_PATH) {
     disposeExecutionEngine: fn({
       name: "LLVMDisposeExecutionEngine",
       type: ["void", [LLVMExecutionEngine.TYPE]],
-      wrap: (call) => (engine: LLVMExecutionEngine) => call(engine),
+      wrap: (call) => (engine: LLVMExecutionEngine) => call(engine.value),
     }),
 
     printModuleToString: fn({

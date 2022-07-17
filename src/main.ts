@@ -1,8 +1,4 @@
-import {
-  compile,
-  compileToModule,
-  disposeContext,
-} from "./compiler/compiler.ts";
+import { compile, compileToModule } from "./compiler/compiler.ts";
 import { expandFile } from "./expand/expand.ts";
 import { loadLibLLVM } from "./llvm/llvm-c.ts";
 
@@ -58,16 +54,10 @@ function interpret(inputFile: string) {
   const llvm = loadLibLLVM();
 
   llvm.linkInMCJIT();
-  llvm.linkInInterpreter();
+  llvm.initializeX86TargetInfo();
   llvm.initializeX86Target();
   llvm.initializeX86TargetMC();
-  llvm.initializeX86AsmParser();
   llvm.initializeX86AsmPrinter();
-
-  const triple = llvm.getDefaultTargetTriple();
-
-  const res = llvm.getTargetFromTriple(triple.stringValue());
-  console.log(res);
 
   const moduleCtx = compileToModule(expandFile(inputFile), llvm);
 
@@ -85,14 +75,11 @@ function interpret(inputFile: string) {
     result: "i32",
   });
 
-  llvm.dumpModule(moduleCtx.module);
-
-  console.log(fn);
   fn.call();
 
-  llvm.removeModule(engine, moduleCtx.module);
+  // llvm.removeModule(engine, moduleCtx.module);
   llvm.disposeExecutionEngine(engine);
-  disposeContext(moduleCtx);
+  // disposeContext(moduleCtx);
 }
 
 main();
