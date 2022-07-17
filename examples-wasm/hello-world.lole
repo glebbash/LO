@@ -1,0 +1,19 @@
+(#include "./lib/std.lole")
+
+(#def MESSAGE_OFFSET 8)
+(#def MESSAGE_LENGTH 13)
+
+(memory
+  (MESSAGE_OFFSET "Hello World!\n")
+)
+
+(#main
+  (i32/store 0 MESSAGE_OFFSET)
+  (i32/store 4 MESSAGE_LENGTH)
+
+  (#def iovs_offset 0)
+  (#def iovs_length 1)
+  (#def nwritten_ptr 24)
+
+  (#print iovs_offset iovs_length nwritten_ptr)
+)
