@@ -1,6 +1,6 @@
 # lole-lisp
 
-Low level LISP-like programming language compiled to WASM
+Low level LISP-like programming language with LLVM and WASM(binaryen) backends
 
 ## Docs
 
