@@ -1,6 +1,6 @@
 import { ExternalFunctionConfig, wrap } from "./ffi-lib.ts";
 
-const LLVMC_LIB_PATH = "./libLLVM-15git.so";
+const LLVMC_LIB_PATH = "/usr/lib/llvm-14/lib/libLLVM.so";
 
 const StringPtrType = "pointer";
 const LLVMValueArrayType = "pointer";
