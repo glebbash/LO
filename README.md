@@ -1,6 +1,6 @@
 # lole-lisp
 
-Low level LISP-like programming language using LLVM backend
+Low level LISP-like programming language compiled to WASM
 
 ## Docs
 
@@ -15,7 +15,7 @@ You will also need:
 
 - [LLVM](#LLVM-installation-(Ubuntu-only))
 
-### Running compiler
+### Running compiler (LLVM backend)
 
 ```bash
 deno run src/main.ts --allow-all --unstable \
@@ -23,6 +23,28 @@ deno run src/main.ts --allow-all --unstable \
   --out-ir="output.ll" \              # LLVM IR output file
   --out="output" \                    # Binary output file
   -r                                  # to run instead of compiling
+```
+
+### Running compiler (WASM backend)
+
+```bash
+deno run src/main-wasm.ts -A \
+  --src="examples/hello-world.lole" \ # source file
+  --out="output.wasm" \               # WASM output file
+  --wat="output.wat" \                # WAT output file
+  -r                                  # to run instead of compiling
+```
+
+Or with a shortcut:
+
+```bash
+./exec.sh examples/hello-world.lole
+```
+
+### Running tests
+
+```bash
+deno task test
 ```
 
 ### LLVM installation (Ubuntu instructions only)

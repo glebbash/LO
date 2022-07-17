@@ -1,0 +1,20 @@
+(#def FD_STDOUT 1)
+
+(#fn #main (:other exprs)
+  (:: main () void)
+  (fn main ()
+    (#unfold exprs)
+  )
+  (export main _start)
+)
+
+(:: fd_write (i32 i32 i32 i32) i32)
+(import fd_write :from wasi_snapshot_preview1)
+
+(:: fd_sync (i32) i32)
+(import fd_sync :from wasi_snapshot_preview1)
+
+(#fn #print (iovs_offset iovs_length nwritten_ptr)
+  (fd_write FD_STDOUT iovs_offset iovs_length nwritten_ptr)
+  (fd_sync FD_STDOUT)
+)

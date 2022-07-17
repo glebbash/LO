@@ -1,0 +1,33 @@
+;; std.lole
+(#type fd_write (i32 i32 i32 i32) i32)
+(import fd_write :from wasi_snapshot_preview1)
+
+(#type fd_sync (i32) i32)
+(import fd_sync :from wasi_snapshot_preview1)
+
+
+(fn #print (message)
+  (#doc "Prints a string to stdout")
+
+  (#expect-string message)
+
+  (#mem-static-string msg_segment message)
+
+  (#mem n_written :: i32)
+  (#mem iov (struct
+    (#mem-offset msg_segment)
+    (#mem-length msg_segment)
+  ))
+
+  (#def iovs_length 1)
+
+  (fd_write STDOUT (#mem-offset iov) iovs_length (#mem-offset n_written))
+  (fd_sync STDOUT)
+)
+
+;; main.lole
+(#include "./std.lole")
+
+(#main ()
+  (#print "Hello World!\n")
+)

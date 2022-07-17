@@ -70,17 +70,17 @@ Deno.test("it parses complex expressions", () => {
 
 Deno.test("it parses llvm hello world", () => {
   const res = parse(m`
-      ;; Hello World example
+    ;; Hello World example
 
-      (llvm/target-triple "x86_64-pc-linux-gnu") ; optional
+    (llvm/target-triple "x86_64-pc-linux-gnu") ; optional
 
-      (external-fn puts (&i8) i32)
+    (external-fn puts (&i8) i32)
 
-      (fn main () i32
-        (puts "Hello World!")
-        0
-      )
-      `);
+    (fn main () i32
+      (puts "Hello World!")
+      0
+    )
+    `);
 
   assertEquals(res, [
     ["llvm/target-triple", '"x86_64-pc-linux-gnu"'],
