@@ -655,52 +655,52 @@ export const LLVMInitializeXCoreDisassembler = {
 // ./llvm-c/Target.h:76:20
 export const LLVMInitializeAllTargetInfos = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:85:20
 export const LLVMInitializeAllTargets = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:94:20
 export const LLVMInitializeAllTargetMCs = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:103:20
 export const LLVMInitializeAllAsmPrinters = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:112:20
 export const LLVMInitializeAllAsmParsers = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:121:20
 export const LLVMInitializeAllDisassemblers = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:131:24
 export const LLVMInitializeNativeTarget = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:146:24
 export const LLVMInitializeNativeAsmParser = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:158:24
 export const LLVMInitializeNativeAsmPrinter = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:170:24
 export const LLVMInitializeNativeDisassembler = {
   type: "inline"
-};
+} as const;
 
 // ./llvm-c/Target.h:186:19
 export const LLVMGetModuleDataLayout = {

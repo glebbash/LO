@@ -148,7 +148,7 @@ const typeDefMap = new Map(
 
   const generateFunctionDef = (f: CFunction) => {
     if (f.inline) {
-      return `{\n  type: "inline"\n};`;
+      return `{\n  type: "inline"\n} as const;`;
     }
 
     const parameterTypes = f.parameters.map((p) => {
