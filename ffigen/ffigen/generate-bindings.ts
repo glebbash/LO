@@ -1,12 +1,6 @@
-import {
-  CEnum,
-  CFunction,
-  CReturnType,
-  CStruct,
-  CSymbol,
-  CType,
-  CTypeDef,
-} from "./types.ts";
+import { CEnum, CFunction, CSymbol, CType, CTypeDef } from "./types.ts";
+
+// TODO: unhardcode LLVM related stuff
 
 export async function generateBindings(
   symbolsFile: string,
@@ -18,119 +12,131 @@ export async function generateBindings(
     Deno.readTextFileSync(symbolsFile),
   );
 
-  const llvmSymbols = allSymbols.filter((s: { name: string }) =>
-    s.name.startsWith("LLVM")
+  const rawLibSymbols = allSymbols.filter((s: CSymbol) =>
+    s.name.startsWith("LLVM") || (s.name === "" && s.tag === "enum")
   );
 
-  const { typeDefs, typeDefsSource } = buildTypes(llvmSymbols);
-  const enumsGen = buildEnums(llvmSymbols);
-  const structsGen = buildStructs(llvmSymbols);
-  const functionsGen = buildFunctions(llvmSymbols, exposedFunctions, typeDefs);
+  const libSymbols = routeTypeDefs(rawLibSymbols);
+
+  const { typesSource } = buildTypes(libSymbols);
+  const { enumsSource } = buildEnums(libSymbols);
+  const { functionsInfo, functionsSource } = buildFunctions(
+    libSymbols,
+    exposedFunctions,
+  );
+  const symbolsSource = buildSymbols(functionsInfo, libName);
   const modGen = buildMod(libName);
 
   await Deno.mkdir(outputFolder, { recursive: true }).catch();
   await Deno.copyFile(`ffigen/safe-ffi.ts`, `${outputFolder}/safe-ffi.ts`);
-  await Deno.writeTextFile(`${outputFolder}/types.ts`, typeDefsSource);
-  await Deno.writeTextFile(`${outputFolder}/enums.ts`, enumsGen);
-  await Deno.writeTextFile(`${outputFolder}/structs.ts`, structsGen);
-  await Deno.writeTextFile(`${outputFolder}/functions.ts`, functionsGen);
+
+  const allTypesSource = `// deno-lint-ignore-file\n` +
+    `import { Opaque, Pointer, FnPointer, StructPointer } from "./safe-ffi.ts";\n\n` +
+    `export namespace ${libName} {\n` +
+    typesSource + "\n\n" +
+    enumsSource + "\n\n" +
+    functionsSource + "\n\n" +
+    "  export declare function close(): void;" +
+    "\n}\n";
+
+  await Deno.writeTextFile(`${outputFolder}/types.ts`, allTypesSource);
+  await Deno.writeTextFile(`${outputFolder}/symbols.ts`, symbolsSource);
   await Deno.writeTextFile(`${outputFolder}/mod.ts`, modGen);
 }
 
-function buildMod(libName: string): string {
-  return `import { SafeDynamicLibrary } from "./safe-ffi.ts";
-import * as functions from "./functions.ts";
+function buildSymbols(functionsInfo: FunctionsInfo, libName: string) {
+  const symbolsInfo = [...functionsInfo.entries()];
+  const symbolsGen = symbolsInfo.map(([name, info]) => {
+    return `  ${info.name}: {\n` +
+      `    name: "${name}",\n` +
+      `    parameters: [${
+        info.parameters.map((p) => `"${p}"`).join(", ")
+      }],\n` +
+      `    result: "${info.result}"\n  }`;
+  }).join(",\n");
 
-export type ${libName} = ReturnType<typeof load${libName}>;
+  const symbolsSource = `export const ${libName}_SYMBOLS = {\n` +
+    symbolsGen +
+    "\n} as const;\n";
 
-export function load${libName}(path: string) {
-  const lib = Deno.dlopen(path, functions) as SafeDynamicLibrary<
-    typeof functions
-  >;
-
-  return { ...lib.symbols, close: () => lib.close() };
-}`;
+  return symbolsSource;
 }
+
+function buildMod(libName: string): string {
+  return `import { ${libName} } from "./types.ts";
+import { ${libName}_SYMBOLS } from "./symbols.ts";
+
+export type ${libName} = typeof ${libName};
+
+export function load${libName}(path: string): ${libName} {
+  const lib = Deno.dlopen(path, ${libName}_SYMBOLS);
+
+  return { ...lib.symbols, close: () => lib.close() } as never;
+}\n`;
+}
+
+type TypesInfo = Map<string, {
+  location: string;
+  type: { tsType: string; nativeType: string };
+}>;
 
 function buildTypes(
-  llvmSymbols: CSymbol[],
-): { typeDefs: Set<string>; typeDefsSource: string } {
-  const typeDefs = llvmSymbols.filter((s): s is CTypeDef =>
-    s.tag === "typedef"
-  );
+  libSymbols: CSymbol[],
+): { typesInfo: TypesInfo; typesSource: string } {
+  const typeDefs = libSymbols.filter((s): s is CTypeDef => s.tag === "typedef");
   console.log("Total types:", typeDefs.length);
 
-  const typeDefGen = typeDefs.map((t) => {
-    const typeName = getTypeNameWithoutAliases(t.type);
-    return `// ${cleanupLocation(t.location)}\n` +
-      `export type ${t.name} = Opaque<${getJsType(typeName)}, "${t.name}">;\n` +
-      `export const ${t.name}_: Opaque<${typeName}, "${t.name}"> = ${typeName} as never;`;
+  const typesInfo = new Map(typeDefs.map((t) => {
+    const name = t.name.slice("LLVM".length);
+    return [name, {
+      location: cleanUpLocation(t.location),
+      type: getTypeInfo(t.type, name),
+    }];
+  }));
+
+  const typesSource = [...typesInfo.entries()].map(([name, info]) => {
+    return `  /** ${info.location} */\n` +
+      `  export type ${name} = ${info.type.tsType};`;
   }).join("\n\n");
 
-  const imports = `// deno-lint-ignore-file\n\n` +
-    `import { Opaque } from "./safe-ffi.ts";\n\n`;
-
-  return {
-    typeDefs: new Set(typeDefs.map((t) => t.name)),
-    typeDefsSource: imports + typeDefGen + "\n",
-  };
+  return { typesInfo, typesSource };
 }
 
-function buildEnums(llvmSymbols: CSymbol[]): string {
-  const enums = llvmSymbols.filter((s): s is CEnum => s.tag === "enum");
+function buildEnums(
+  libSymbols: CSymbol[],
+): { enumsInfo: Set<string>; enumsSource: string } {
+  const enums = libSymbols.filter((s): s is CEnum => s.tag === "enum");
   console.log("Total enums:", enums.length);
 
-  const enumsGen = enums.map((e) => {
-    const fieldsGen = e.fields.map((f) => `  ${f.name} = ${f.value}`)
+  const enumsInfo = new Set(enums.map((e) => e.name.slice("LLVM".length)));
+
+  const enumsSource = enums.map((e) => {
+    const fieldsGen = e.fields
+      .map((f) => `    ${f.name} = ${f.value}`)
       .join(",\n");
 
-    return `// ${cleanupLocation(e.location)}\n` +
-      `export enum ${e.name} {\n${fieldsGen}\n}`;
-  }).join("\n\n") + "\n";
+    return `  /** ${cleanUpLocation(e.location)} */\n` +
+      `  export enum ${e.name.slice("LLVM".length)} {\n` +
+      `${fieldsGen},\n` +
+      `  }`;
+  }).join("\n\n");
 
-  return enumsGen;
+  return { enumsInfo, enumsSource };
 }
 
-function buildStructs(llvmSymbols: CSymbol[]) {
-  const structs = llvmSymbols.filter((s): s is CStruct => s.tag === "struct");
-  console.log("Total structs:", structs.length);
-
-  // TODO: figure out better struct representation
-  const generateStructDef = (
-    struct: CStruct,
-  ) => {
-    if (struct.fields.length === 0) {
-      return '{ type: "opaque" }';
-    }
-
-    const structDef = {
-      "bit-size": struct["bit-size"],
-      "bit-alignment": struct["bit-alignment"],
-      fields: Object.fromEntries(
-        struct.fields.map(({ tag: _, name, ...data }) => [name, data]),
-      ),
-    };
-
-    return JSON.stringify(structDef, null, 2) + " as const";
-  };
-
-  const structsGen = structs.map((s) => {
-    const fieldsGen = generateStructDef(s);
-
-    return "// " + cleanupLocation(s.location) + "\n" +
-      "export const " + s.name + " = " + fieldsGen + ";" +
-      "\n";
-  }).join("\n");
-
-  return structsGen;
-}
+type FunctionsInfo = Map<string, {
+  name: string;
+  location: string;
+  tsType: string;
+  parameters: string[];
+  result: string;
+}>;
 
 function buildFunctions(
-  llvmSymbols: CSymbol[],
+  libSymbols: CSymbol[],
   exposedFunctions: string[],
-  typeDefs: Set<string>,
-): string {
-  const allFunctions = llvmSymbols.filter((s): s is CFunction =>
+): { functionsInfo: FunctionsInfo; functionsSource: string } {
+  const allFunctions = libSymbols.filter((s): s is CFunction =>
     s.tag === "function"
   );
   const uniqueFunctions = uniqueByKey(allFunctions, "name");
@@ -140,28 +146,35 @@ function buildFunctions(
   );
   console.log("Total functions:", functions.length);
 
-  const generateFunctionDef = (f: CFunction) => {
-    const parameterTypes = f.parameters.map((p) =>
-      getTypeName(p.type, typeDefs)
-    );
-    const returnType = getReturnTypeName(f["return-type"], typeDefs);
+  const functionsInfo = new Map(functions.map((f) => {
+    const resultType = getTypeInfo(f["return-type"], f.name);
+    const parametersInfo = f.parameters.map((p, index) => {
+      return {
+        name: p.name || "_" + index,
+        type: getTypeInfo(p.type, p.name),
+      };
+    });
 
-    return "{\n  parameters: [" + parameterTypes.join(", ") + "],\n" +
-      "  result: " + returnType + "\n} as const;";
-  };
+    return [
+      f.name,
+      {
+        name: f.name.slice("LLVM".length),
+        location: cleanUpLocation(f.location),
+        tsType: `export declare function ${f.name.slice("LLVM".length)}(${
+          parametersInfo.map((p) => `${p.name}: ${p.type.tsType}`).join(", ")
+        }): ${resultType.tsType};`,
+        parameters: parametersInfo.map((p) => p.type.nativeType),
+        result: resultType.nativeType,
+      },
+    ];
+  }));
 
-  const functionsGen = functions.map((f) => {
-    const functionDef = generateFunctionDef(f);
+  const functionsSource = [...functionsInfo.entries()].map(([, info]) => {
+    return `  /** ${info.location} */\n` +
+      `  ${info.tsType}`;
+  }).join("\n\n");
 
-    return "// " + cleanupLocation(f.location) + "\n" +
-      "export const " + f.name + " = " + functionDef +
-      "\n";
-  }).join("\n");
-
-  const imports = `// deno-lint-ignore-file\n\n` +
-    `import * as types from "./types.ts";\n\n`;
-
-  return imports + functionsGen + "\n";
+  return { functionsInfo, functionsSource };
 }
 
 function uniqueByKey<T>(values: T[], key: keyof T): T[] {
@@ -179,7 +192,9 @@ function uniqueByKey<T>(values: T[], key: keyof T): T[] {
   return result;
 }
 
-function cleanupLocation(location: string): string {
+function cleanUpLocation(location: string): string {
+  location = location.split(" <Spelling=")[0];
+
   if (location.startsWith("/usr/include/llvm-c")) {
     return "./" + location.substring("/usr/include/".length);
   }
@@ -191,143 +206,108 @@ function cleanupLocation(location: string): string {
   return location;
 }
 
-function getTypeNameWithoutAliases(type: CType): string {
-  const typeName = getBasicTypeName(type);
+function routeTypeDefs(symbols: CSymbol[]): CSymbol[] {
+  const result: CSymbol[] = [];
+  const symbolsById = new Map<number, CSymbol>();
 
-  if (typeName) {
-    return wrapTypeName(typeName);
+  for (const symbol of symbols) {
+    if (symbol.tag === "enum" && symbol.name === "") {
+      symbolsById.set(symbol.id, symbol);
+      continue;
+    }
+
+    if (symbol.tag === "typedef" && symbol.type.tag === ":enum") {
+      const enumSymbol = symbolsById.get(symbol.type.id);
+      if (!enumSymbol) {
+        throw new Error(`Enum not found: ${symbol.type.id}`);
+      }
+      enumSymbol.name = symbol.name;
+      result.push(enumSymbol);
+      continue;
+    }
+
+    result.push(symbol);
   }
 
-  throw new Error("Unknown type: " + JSON.stringify(type));
+  return result;
 }
 
-function getTypeName(
+function getTypeInfo(
   type: CType,
-  typeDefs: Set<string>,
-): string {
-  const typeName = getBasicTypeName(type);
-
-  if (typeName) {
-    return wrapTypeName(typeName);
-  }
-
-  if (typeDefs.has(type.tag)) {
-    return `types.${type.tag}_`;
-  }
-
-  throw new Error("Unknown type: " + JSON.stringify(type));
-}
-
-function getReturnTypeName(
-  type: CReturnType,
-  typeDefs: Set<string>,
-): string {
-  const typeName = getBasicTypeName(type as never);
-
-  if (typeName) {
-    return wrapTypeName(typeName);
-  }
-
+  name: string,
+): { tsType: string; nativeType: string } {
   if (type.tag === ":void") {
-    return `"void"`;
+    return { tsType: "void", nativeType: "void" };
   }
 
-  if (typeDefs.has(type.tag)) {
-    return `types.${type.tag}_`;
-  }
-
-  throw new Error("Unknown type: " + JSON.stringify(type));
-}
-
-function getBasicTypeName(type: CType): string | null {
   if (type.tag === ":pointer") {
-    return "pointer";
+    return { tsType: `Pointer<"${name}">`, nativeType: "pointer" };
   }
 
   if (type.tag === ":function-pointer") {
-    return "function";
-  }
-
-  if (type.tag === ":int" && type["bit-size"] === 32) {
-    return "i32";
-  }
-
-  if (type.tag === ":unsigned-int" && type["bit-size"] === 32) {
-    return "u32";
-  }
-
-  if (type.tag === ":unsigned-long-long" && type["bit-size"] === 64) {
-    return "u64";
-  }
-
-  if (type.tag === ":long-long" && type["bit-size"] === 64) {
-    return "i64";
-  }
-
-  if (type.tag === ":double" && type["bit-size"] === 64) {
-    return "i64";
-  }
-
-  if (type.tag === ":char" && type["bit-size"] === 8) {
-    return "u8";
-  }
-
-  // TODO: unhardcode this
-  if (type.tag === "size_t") {
-    return "u64";
+    return { tsType: `FnPointer<"${name}">`, nativeType: "function" };
   }
 
   if (type.tag === "struct") {
-    return "pointer";
+    // TODO: handle structs
+    return { tsType: `StructPointer<"${name}">`, nativeType: "pointer" };
   }
 
-  // TODO: link typedefs and enums somehow
+  if (type.tag === "size_t") {
+    // TODO: unhardcode this
+    return { tsType: `Opaque<number, "${name}">`, nativeType: "u64" };
+  }
+
+  if (
+    type.tag === "uint8_t" ||
+    (type.tag === ":char" && type["bit-size"] === 8)
+  ) {
+    return { tsType: `Opaque<number, "${name}">`, nativeType: "u8" };
+  }
+
+  if (type.tag === ":int" && type["bit-size"] === 32) {
+    return { tsType: `Opaque<number, "${name}">`, nativeType: "i32" };
+  }
+
+  if (
+    type.tag === "uint32_t" ||
+    (type.tag === ":unsigned-int" && type["bit-size"] === 32)
+  ) {
+    return { tsType: `Opaque<number, "${name}">`, nativeType: "u32" };
+  }
+
+  if (
+    (type.tag === "int64_t") ||
+    (type.tag === ":long-long" && type["bit-size"] === 64)
+  ) {
+    return { tsType: `Opaque<bigint, "${name}">`, nativeType: "i64" };
+  }
+
+  if (type.tag === ":double" && type["bit-size"] === 64) {
+    return { tsType: `Opaque<bigint, "${name}">`, nativeType: "f64" };
+  }
+
+  if (
+    type.tag === "uint64_t" ||
+    (type.tag === ":unsigned-long-long" && type["bit-size"] === 64)
+  ) {
+    return { tsType: `Opaque<bigint, "${name}">`, nativeType: "u64" };
+  }
+
   if (type.tag === ":enum") {
-    return "i32";
+    return {
+      tsType: `LLVM.${type.name.substring("LLVM".length)}`,
+      nativeType: "i32",
+    };
   }
 
-  if (type.tag === "int64_t") {
-    return "i64";
+  if (type.tag.startsWith("LLVM")) {
+    // FIXME: update native type
+    return {
+      tsType: `LLVM.${type.tag.substring("LLVM".length)}`,
+      nativeType: "pointer",
+    };
   }
 
-  if (type.tag === "uint64_t") {
-    return "u64";
-  }
-
-  if (type.tag === "uint32_t") {
-    return "u32";
-  }
-
-  if (type.tag === "uint8_t") {
-    return "u8";
-  }
-
-  return null;
-}
-
-function wrapTypeName(typeName: string) {
-  if (typeName.startsWith("types.")) {
-    return typeName;
-  }
-
-  return `"${typeName}"`;
-}
-
-const NUMBER_TYPES = [
-  `"u8"`,
-  `"i8"`,
-  `"u16"`,
-  `"i16"`,
-  `"u32"`,
-  `"i32"`,
-  `"f32"`,
-  `"f64"`,
-];
-
-function getJsType(nativeType: string) {
-  if (NUMBER_TYPES.includes(nativeType)) {
-    return "number";
-  }
-
-  return "bigint";
+  throw new Error(`Unknown type ${JSON.stringify({ type, name })}`);
 }

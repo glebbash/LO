@@ -39,12 +39,11 @@ export type CFunction = {
   location: string;
   inline: boolean;
   parameters: { name: string; type: CType }[];
-  "return-type": CReturnType;
+  "return-type": CType;
 };
 
-export type CReturnType = CType | { tag: ":void" };
-
 export type CType =
+  | { tag: ":void" }
   | { tag: ":int"; "bit-size": number; "bit-alignment": number }
   | { tag: ":unsigned-int"; "bit-size": number; "bit-alignment": number }
   | { tag: ":unsigned-long-long"; "bit-size": number; "bit-alignment": number }
@@ -54,7 +53,7 @@ export type CType =
   | { tag: ":function-pointer" }
   | { tag: ":pointer" }
   | { tag: "struct" }
-  | { tag: ":enum" }
+  | { tag: ":enum"; id: number; name: string }
   | { tag: "size_t" }
   | { tag: "int64_t" }
   | { tag: "uint64_t" }

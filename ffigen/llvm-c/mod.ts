@@ -1,12 +1,10 @@
-import { SafeDynamicLibrary } from "./safe-ffi.ts";
-import * as functions from "./functions.ts";
+import { LLVM } from "./types.ts";
+import { LLVM_SYMBOLS } from "./symbols.ts";
 
-export type LibLLVM = ReturnType<typeof loadLibLLVM>;
+export type LLVM = typeof LLVM;
 
-export function loadLibLLVM(path: string) {
-  const lib = Deno.dlopen(path, functions) as SafeDynamicLibrary<
-    typeof functions
-  >;
+export function loadLLVM(path: string): LLVM {
+  const lib = Deno.dlopen(path, LLVM_SYMBOLS);
 
-  return { ...lib.symbols, close: () => lib.close() };
+  return { ...lib.symbols, close: () => lib.close() } as never;
 }
