@@ -89,7 +89,7 @@ function buildTypes(
   const typesInfo = new Map(typeDefs.map((t) => {
     const name = t.name.slice("LLVM".length);
     return [name, {
-      location: cleanUpLocation(t.location),
+      location: linkLocationToSource(t.location),
       type: getTypeInfo(t.type, name),
     }];
   }));
@@ -115,7 +115,7 @@ function buildEnums(
       .map((f) => `    ${f.name} = ${f.value}`)
       .join(",\n");
 
-    return `  /** ${cleanUpLocation(e.location)} */\n` +
+    return `  /** ${linkLocationToSource(e.location)} */\n` +
       `  export enum ${e.name.slice("LLVM".length)} {\n` +
       `${fieldsGen},\n` +
       `  }`;
@@ -159,7 +159,7 @@ function buildFunctions(
       f.name,
       {
         name: f.name.slice("LLVM".length),
-        location: cleanUpLocation(f.location),
+        location: linkLocationToSource(f.location),
         tsType: `export declare function ${f.name.slice("LLVM".length)}(${
           parametersInfo.map((p) => `${p.name}: ${p.type.tsType}`).join(", ")
         }): ${resultType.tsType};`,
@@ -192,18 +192,27 @@ function uniqueByKey<T>(values: T[], key: keyof T): T[] {
   return result;
 }
 
-function cleanUpLocation(location: string): string {
-  location = location.split(" <Spelling=")[0];
+const BASE_SOURCE_PATH =
+  "https://github.com/llvm/llvm-project/blob/315072/llvm/include/";
 
-  if (location.startsWith("/usr/include/llvm-c")) {
-    return "./" + location.substring("/usr/include/".length);
+function linkLocationToSource(location: string): string {
+  location = location.split(" <Spelling=")[0];
+  location = fixLine(location);
+
+  if (location.startsWith("/usr/include/")) {
+    return BASE_SOURCE_PATH + location.slice("/usr/include/".length);
   }
 
   if (location.startsWith("/data/./llvm-c")) {
-    return location.substring("/data/".length);
+    return BASE_SOURCE_PATH + location.slice("/data/./".length);
   }
 
   return location;
+}
+
+function fixLine(str: string): string {
+  const [path, line] = str.split(":");
+  return path + "#L" + line;
 }
 
 function routeTypeDefs(symbols: CSymbol[]): CSymbol[] {
