@@ -2,7 +2,13 @@ import { generateBindings } from "./generate-bindings.ts";
 import { getFunctionsFromSharedLib } from "./get-functions-from-shared-lib.ts";
 
 if (import.meta.main) {
-  const [allSymbolsFile, exposedSymbolsFile, outputFolder, libName] = Deno.args;
+  const [
+    allSymbolsFile,
+    exposedSymbolsFile,
+    outputFolder,
+    libName,
+    baseSourcePath,
+  ] = Deno.args;
 
   const exposedFunctions = await getFunctionsFromSharedLib(
     exposedSymbolsFile,
@@ -13,5 +19,6 @@ if (import.meta.main) {
     exposedFunctions,
     outputFolder,
     libName,
+    baseSourcePath,
   );
 }

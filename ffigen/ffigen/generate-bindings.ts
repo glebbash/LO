@@ -1,28 +1,30 @@
 import { CEnum, CFunction, CSymbol, CType, CTypeDef } from "./types.ts";
 
-// TODO: unhardcode LLVM related stuff
-
 export async function generateBindings(
   symbolsFile: string,
   exposedFunctions: string[],
   outputFolder: string,
   libName: string,
+  baseSourcePath: string,
+  libPrefix = libName,
 ) {
   const allSymbols: CSymbol[] = JSON.parse(
     Deno.readTextFileSync(symbolsFile),
   );
 
   const rawLibSymbols = allSymbols.filter((s: CSymbol) =>
-    s.name.startsWith("LLVM") || (s.name === "" && s.tag === "enum")
+    s.name.startsWith(libPrefix) || (s.name === "" && s.tag === "enum")
   );
 
   const libSymbols = routeTypeDefs(rawLibSymbols);
 
-  const { typesSource } = buildTypes(libSymbols);
-  const { enumsSource } = buildEnums(libSymbols);
+  const { typesSource } = buildTypes(libSymbols, libPrefix, baseSourcePath);
+  const { enumsSource } = buildEnums(libSymbols, libPrefix, baseSourcePath);
   const { functionsInfo, functionsSource } = buildFunctions(
     libSymbols,
     exposedFunctions,
+    libPrefix,
+    baseSourcePath,
   );
   const symbolsSource = buildSymbols(functionsInfo, libName);
   const modGen = buildMod(libName);
@@ -82,15 +84,17 @@ type TypesInfo = Map<string, {
 
 function buildTypes(
   libSymbols: CSymbol[],
+  libPrefix: string,
+  baseSourcePath: string,
 ): { typesInfo: TypesInfo; typesSource: string } {
   const typeDefs = libSymbols.filter((s): s is CTypeDef => s.tag === "typedef");
   console.log("Total types:", typeDefs.length);
 
   const typesInfo = new Map(typeDefs.map((t) => {
-    const name = t.name.slice("LLVM".length);
+    const name = t.name.slice(libPrefix.length);
     return [name, {
-      location: linkLocationToSource(t.location),
-      type: getTypeInfo(t.type, name),
+      location: linkLocationToSource(t.location, baseSourcePath),
+      type: getTypeInfo(t.type, name, libPrefix),
     }];
   }));
 
@@ -104,19 +108,21 @@ function buildTypes(
 
 function buildEnums(
   libSymbols: CSymbol[],
+  libPrefix: string,
+  baseSourcePath: string,
 ): { enumsInfo: Set<string>; enumsSource: string } {
   const enums = libSymbols.filter((s): s is CEnum => s.tag === "enum");
   console.log("Total enums:", enums.length);
 
-  const enumsInfo = new Set(enums.map((e) => e.name.slice("LLVM".length)));
+  const enumsInfo = new Set(enums.map((e) => e.name.slice(libPrefix.length)));
 
   const enumsSource = enums.map((e) => {
     const fieldsGen = e.fields
       .map((f) => `    ${f.name} = ${f.value}`)
       .join(",\n");
 
-    return `  /** ${linkLocationToSource(e.location)} */\n` +
-      `  export enum ${e.name.slice("LLVM".length)} {\n` +
+    return `  /** ${linkLocationToSource(e.location, baseSourcePath)} */\n` +
+      `  export enum ${e.name.slice(libPrefix.length)} {\n` +
       `${fieldsGen},\n` +
       `  }`;
   }).join("\n\n");
@@ -135,6 +141,8 @@ type FunctionsInfo = Map<string, {
 function buildFunctions(
   libSymbols: CSymbol[],
   exposedFunctions: string[],
+  libPrefix: string,
+  baseSourcePath: string,
 ): { functionsInfo: FunctionsInfo; functionsSource: string } {
   const allFunctions = libSymbols.filter((s): s is CFunction =>
     s.tag === "function"
@@ -147,20 +155,20 @@ function buildFunctions(
   console.log("Total functions:", functions.length);
 
   const functionsInfo = new Map(functions.map((f) => {
-    const resultType = getTypeInfo(f["return-type"], f.name);
+    const resultType = getTypeInfo(f["return-type"], f.name, libPrefix);
     const parametersInfo = f.parameters.map((p, index) => {
       return {
         name: p.name || "_" + index,
-        type: getTypeInfo(p.type, p.name),
+        type: getTypeInfo(p.type, p.name, libPrefix),
       };
     });
 
     return [
       f.name,
       {
-        name: f.name.slice("LLVM".length),
-        location: linkLocationToSource(f.location),
-        tsType: `export declare function ${f.name.slice("LLVM".length)}(${
+        name: f.name.slice(libPrefix.length),
+        location: linkLocationToSource(f.location, baseSourcePath),
+        tsType: `export declare function ${f.name.slice(libPrefix.length)}(${
           parametersInfo.map((p) => `${p.name}: ${p.type.tsType}`).join(", ")
         }): ${resultType.tsType};`,
         parameters: parametersInfo.map((p) => p.type.nativeType),
@@ -192,19 +200,19 @@ function uniqueByKey<T>(values: T[], key: keyof T): T[] {
   return result;
 }
 
-const BASE_SOURCE_PATH =
-  "https://github.com/llvm/llvm-project/blob/315072/llvm/include/";
-
-function linkLocationToSource(location: string): string {
+function linkLocationToSource(
+  location: string,
+  baseSourcePath: string,
+): string {
   location = location.split(" <Spelling=")[0];
   location = fixLine(location);
 
   if (location.startsWith("/usr/include/")) {
-    return BASE_SOURCE_PATH + location.slice("/usr/include/".length);
+    return baseSourcePath + location.slice("/usr/include/".length);
   }
 
-  if (location.startsWith("/data/./llvm-c")) {
-    return BASE_SOURCE_PATH + location.slice("/data/./".length);
+  if (location.startsWith("/data/./")) {
+    return baseSourcePath + location.slice("/data/./".length);
   }
 
   return location;
@@ -244,6 +252,7 @@ function routeTypeDefs(symbols: CSymbol[]): CSymbol[] {
 function getTypeInfo(
   type: CType,
   name: string,
+  libPrefix: string,
 ): { tsType: string; nativeType: string } {
   if (type.tag === ":void") {
     return { tsType: "void", nativeType: "void" };
@@ -305,15 +314,15 @@ function getTypeInfo(
 
   if (type.tag === ":enum") {
     return {
-      tsType: `LLVM.${type.name.substring("LLVM".length)}`,
+      tsType: `${libPrefix}.${type.name.substring(libPrefix.length)}`,
       nativeType: "i32",
     };
   }
 
-  if (type.tag.startsWith("LLVM")) {
+  if (type.tag.startsWith(libPrefix)) {
     // FIXME: update native type
     return {
-      tsType: `LLVM.${type.tag.substring("LLVM".length)}`,
+      tsType: `${libPrefix}.${type.tag.substring(libPrefix.length)}`,
       nativeType: "pointer",
     };
   }

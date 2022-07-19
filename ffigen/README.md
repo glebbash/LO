@@ -38,7 +38,8 @@ deno run -A ffigen/mod.ts \
   input/llvm-c.json \
   input/llvm-c-exposed.txt \
   llvm-c \
-  LLVM
+  LLVM \
+  "https://github.com/llvm/llvm-project/blob/315072/llvm/include/"
 ```
 
 Using `input/llvm-c.json` and `input/llvm-c-exposed.txt` as inputs. Bindings are
