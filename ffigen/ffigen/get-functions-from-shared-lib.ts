@@ -1,18 +1,20 @@
 export async function getFunctionsFromSharedLib(
   exposedSymbolsFile: string,
+  libPrefix?: string,
 ): Promise<string[]> {
   const output = await Deno.readTextFile(exposedSymbolsFile);
 
   const lines = output.split("\n");
   const usefulLines = lines.slice(4, -1);
 
-  const publicSymbols = usefulLines.filter((l) => !getName(l).startsWith("_"));
+  const functionsOfInterest = libPrefix
+    ? usefulLines.filter((def) => getName(def).startsWith(libPrefix))
+    : usefulLines;
 
-  const allFunctions = publicSymbols
-    .filter((s) => getName(s).startsWith("LLVM"))
+  const allFunctions = functionsOfInterest
     .filter((s) => s.includes(" FUNC "))
     .filter((s) => !s.includes(".localalias"))
-    .map((s) => getName(s).replace("@@LLVM_15", ""));
+    .map(getName);
 
   return Array.from(new Set(allFunctions)).sort();
 }
