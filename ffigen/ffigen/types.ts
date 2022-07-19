@@ -50,10 +50,10 @@ export type CType =
   | { tag: ":long-long"; "bit-size": number; "bit-alignment": number }
   | { tag: ":double"; "bit-size": number; "bit-alignment": number }
   | { tag: ":char"; "bit-size": number; "bit-alignment": number }
+  | { tag: ":enum"; id: number; name: string }
   | { tag: ":function-pointer" }
   | { tag: ":pointer" }
   | { tag: "struct" }
-  | { tag: ":enum"; id: number; name: string }
   | { tag: "size_t" }
   | { tag: "int64_t" }
   | { tag: "uint64_t" }
