@@ -1,13 +1,13 @@
 export const LLVM_SYMBOLS = {
   VerifyModule: {
     name: "LLVMVerifyModule",
-    parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    parameters: ["pointer", "i32", "pointer"],
+    result: "i32"
   },
   VerifyFunction: {
     name: "LLVMVerifyFunction",
-    parameters: ["pointer", "pointer"],
-    result: "pointer"
+    parameters: ["pointer", "i32"],
+    result: "i32"
   },
   ViewFunctionCFG: {
     name: "LLVMViewFunctionCFG",
@@ -22,42 +22,42 @@ export const LLVM_SYMBOLS = {
   ParseBitcode: {
     name: "LLVMParseBitcode",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ParseBitcode2: {
     name: "LLVMParseBitcode2",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ParseBitcodeInContext: {
     name: "LLVMParseBitcodeInContext",
     parameters: ["pointer", "pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ParseBitcodeInContext2: {
     name: "LLVMParseBitcodeInContext2",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetBitcodeModuleInContext: {
     name: "LLVMGetBitcodeModuleInContext",
     parameters: ["pointer", "pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetBitcodeModuleInContext2: {
     name: "LLVMGetBitcodeModuleInContext2",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetBitcodeModule: {
     name: "LLVMGetBitcodeModule",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetBitcodeModule2: {
     name: "LLVMGetBitcodeModule2",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   WriteBitcodeToFile: {
     name: "LLVMWriteBitcodeToFile",
@@ -97,16 +97,16 @@ export const LLVM_SYMBOLS = {
   GetComdatSelectionKind: {
     name: "LLVMGetComdatSelectionKind",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetComdatSelectionKind: {
     name: "LLVMSetComdatSelectionKind",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   InstallFatalErrorHandler: {
     name: "LLVMInstallFatalErrorHandler",
-    parameters: ["pointer"],
+    parameters: ["function"],
     result: "void"
   },
   ResetFatalErrorHandler: {
@@ -151,13 +151,13 @@ export const LLVM_SYMBOLS = {
   },
   ContextSetDiagnosticHandler: {
     name: "LLVMContextSetDiagnosticHandler",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "pointer"],
     result: "void"
   },
   ContextGetDiagnosticHandler: {
     name: "LLVMContextGetDiagnosticHandler",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "function"
   },
   ContextGetDiagnosticContext: {
     name: "LLVMContextGetDiagnosticContext",
@@ -166,17 +166,17 @@ export const LLVM_SYMBOLS = {
   },
   ContextSetYieldCallback: {
     name: "LLVMContextSetYieldCallback",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "pointer"],
     result: "void"
   },
   ContextShouldDiscardValueNames: {
     name: "LLVMContextShouldDiscardValueNames",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ContextSetDiscardValueNames: {
     name: "LLVMContextSetDiscardValueNames",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   ContextDispose: {
@@ -192,7 +192,7 @@ export const LLVM_SYMBOLS = {
   GetDiagInfoSeverity: {
     name: "LLVMGetDiagInfoSeverity",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetMDKindIDInContext: {
     name: "LLVMGetMDKindIDInContext",
@@ -257,17 +257,17 @@ export const LLVM_SYMBOLS = {
   IsEnumAttribute: {
     name: "LLVMIsEnumAttribute",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   IsStringAttribute: {
     name: "LLVMIsStringAttribute",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   IsTypeAttribute: {
     name: "LLVMIsTypeAttribute",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetTypeByName2: {
     name: "LLVMGetTypeByName2",
@@ -352,7 +352,7 @@ export const LLVM_SYMBOLS = {
   ModuleFlagEntriesGetFlagBehavior: {
     name: "LLVMModuleFlagEntriesGetFlagBehavior",
     parameters: ["pointer", "u32"],
-    result: "pointer"
+    result: "i32"
   },
   ModuleFlagEntriesGetKey: {
     name: "LLVMModuleFlagEntriesGetKey",
@@ -371,7 +371,7 @@ export const LLVM_SYMBOLS = {
   },
   AddModuleFlag: {
     name: "LLVMAddModuleFlag",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer"],
+    parameters: ["pointer", "i32", "pointer", "u64", "pointer"],
     result: "void"
   },
   DumpModule: {
@@ -382,7 +382,7 @@ export const LLVM_SYMBOLS = {
   PrintModuleToFile: {
     name: "LLVMPrintModuleToFile",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   PrintModuleToString: {
     name: "LLVMPrintModuleToString",
@@ -406,7 +406,7 @@ export const LLVM_SYMBOLS = {
   },
   GetInlineAsm: {
     name: "LLVMGetInlineAsm",
-    parameters: ["pointer", "pointer", "u64", "pointer", "u64", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "u64", "pointer", "u64", "i32", "i32", "i32", "i32"],
     result: "pointer"
   },
   GetModuleContext: {
@@ -527,12 +527,12 @@ export const LLVM_SYMBOLS = {
   GetTypeKind: {
     name: "LLVMGetTypeKind",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   TypeIsSized: {
     name: "LLVMTypeIsSized",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetTypeContext: {
     name: "LLVMGetTypeContext",
@@ -696,13 +696,13 @@ export const LLVM_SYMBOLS = {
   },
   FunctionType: {
     name: "LLVMFunctionType",
-    parameters: ["pointer", "pointer", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "u32", "i32"],
     result: "pointer"
   },
   IsFunctionVarArg: {
     name: "LLVMIsFunctionVarArg",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetReturnType: {
     name: "LLVMGetReturnType",
@@ -721,12 +721,12 @@ export const LLVM_SYMBOLS = {
   },
   StructTypeInContext: {
     name: "LLVMStructTypeInContext",
-    parameters: ["pointer", "pointer", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "u32", "i32"],
     result: "pointer"
   },
   StructType: {
     name: "LLVMStructType",
-    parameters: ["pointer", "u32", "pointer"],
+    parameters: ["pointer", "u32", "i32"],
     result: "pointer"
   },
   StructCreateNamed: {
@@ -741,7 +741,7 @@ export const LLVM_SYMBOLS = {
   },
   StructSetBody: {
     name: "LLVMStructSetBody",
-    parameters: ["pointer", "pointer", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "u32", "i32"],
     result: "void"
   },
   CountStructElementTypes: {
@@ -762,17 +762,17 @@ export const LLVM_SYMBOLS = {
   IsPackedStruct: {
     name: "LLVMIsPackedStruct",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   IsOpaqueStruct: {
     name: "LLVMIsOpaqueStruct",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   IsLiteralStruct: {
     name: "LLVMIsLiteralStruct",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetElementType: {
     name: "LLVMGetElementType",
@@ -882,7 +882,7 @@ export const LLVM_SYMBOLS = {
   GetValueKind: {
     name: "LLVMGetValueKind",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetValueName2: {
     name: "LLVMGetValueName2",
@@ -912,17 +912,17 @@ export const LLVM_SYMBOLS = {
   IsConstant: {
     name: "LLVMIsConstant",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   IsUndef: {
     name: "LLVMIsUndef",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   IsPoison: {
     name: "LLVMIsPoison",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   IsAArgument: {
     name: "LLVMIsAArgument",
@@ -1447,7 +1447,7 @@ export const LLVM_SYMBOLS = {
   IsNull: {
     name: "LLVMIsNull",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ConstPointerNull: {
     name: "LLVMConstPointerNull",
@@ -1456,7 +1456,7 @@ export const LLVM_SYMBOLS = {
   },
   ConstInt: {
     name: "LLVMConstInt",
-    parameters: ["pointer", "u64", "pointer"],
+    parameters: ["pointer", "u64", "i32"],
     result: "pointer"
   },
   ConstIntOfArbitraryPrecision: {
@@ -1506,18 +1506,18 @@ export const LLVM_SYMBOLS = {
   },
   ConstStringInContext: {
     name: "LLVMConstStringInContext",
-    parameters: ["pointer", "pointer", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "u32", "i32"],
     result: "pointer"
   },
   ConstString: {
     name: "LLVMConstString",
-    parameters: ["pointer", "u32", "pointer"],
+    parameters: ["pointer", "u32", "i32"],
     result: "pointer"
   },
   IsConstantString: {
     name: "LLVMIsConstantString",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetAsString: {
     name: "LLVMGetAsString",
@@ -1526,12 +1526,12 @@ export const LLVM_SYMBOLS = {
   },
   ConstStructInContext: {
     name: "LLVMConstStructInContext",
-    parameters: ["pointer", "pointer", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "u32", "i32"],
     result: "pointer"
   },
   ConstStruct: {
     name: "LLVMConstStruct",
-    parameters: ["pointer", "u32", "pointer"],
+    parameters: ["pointer", "u32", "i32"],
     result: "pointer"
   },
   ConstArray: {
@@ -1557,7 +1557,7 @@ export const LLVM_SYMBOLS = {
   GetConstOpcode: {
     name: "LLVMGetConstOpcode",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   AlignOf: {
     name: "LLVMAlignOf",
@@ -1711,12 +1711,12 @@ export const LLVM_SYMBOLS = {
   },
   ConstICmp: {
     name: "LLVMConstICmp",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["i32", "pointer", "pointer"],
     result: "pointer"
   },
   ConstFCmp: {
     name: "LLVMConstFCmp",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["i32", "pointer", "pointer"],
     result: "pointer"
   },
   ConstShl: {
@@ -1841,7 +1841,7 @@ export const LLVM_SYMBOLS = {
   },
   ConstIntCast: {
     name: "LLVMConstIntCast",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "i32"],
     result: "pointer"
   },
   ConstFPCast: {
@@ -1886,7 +1886,7 @@ export const LLVM_SYMBOLS = {
   },
   ConstInlineAsm: {
     name: "LLVMConstInlineAsm",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "i32", "i32"],
     result: "pointer"
   },
   GetGlobalParent: {
@@ -1897,16 +1897,16 @@ export const LLVM_SYMBOLS = {
   IsDeclaration: {
     name: "LLVMIsDeclaration",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetLinkage: {
     name: "LLVMGetLinkage",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetLinkage: {
     name: "LLVMSetLinkage",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetSection: {
@@ -1922,31 +1922,31 @@ export const LLVM_SYMBOLS = {
   GetVisibility: {
     name: "LLVMGetVisibility",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetVisibility: {
     name: "LLVMSetVisibility",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetDLLStorageClass: {
     name: "LLVMGetDLLStorageClass",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetDLLStorageClass: {
     name: "LLVMSetDLLStorageClass",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetUnnamedAddress: {
     name: "LLVMGetUnnamedAddress",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetUnnamedAddress: {
     name: "LLVMSetUnnamedAddress",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GlobalGetValueType: {
@@ -1957,11 +1957,11 @@ export const LLVM_SYMBOLS = {
   HasUnnamedAddr: {
     name: "LLVMHasUnnamedAddr",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetUnnamedAddr: {
     name: "LLVMSetUnnamedAddr",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetAlignment: {
@@ -2062,41 +2062,41 @@ export const LLVM_SYMBOLS = {
   IsThreadLocal: {
     name: "LLVMIsThreadLocal",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetThreadLocal: {
     name: "LLVMSetThreadLocal",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   IsGlobalConstant: {
     name: "LLVMIsGlobalConstant",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetGlobalConstant: {
     name: "LLVMSetGlobalConstant",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetThreadLocalMode: {
     name: "LLVMGetThreadLocalMode",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetThreadLocalMode: {
     name: "LLVMSetThreadLocalMode",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   IsExternallyInitialized: {
     name: "LLVMIsExternallyInitialized",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetExternallyInitialized: {
     name: "LLVMSetExternallyInitialized",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   AddAlias: {
@@ -2152,7 +2152,7 @@ export const LLVM_SYMBOLS = {
   HasPersonalityFn: {
     name: "LLVMHasPersonalityFn",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetPersonalityFn: {
     name: "LLVMGetPersonalityFn",
@@ -2202,7 +2202,7 @@ export const LLVM_SYMBOLS = {
   IntrinsicIsOverloaded: {
     name: "LLVMIntrinsicIsOverloaded",
     parameters: ["u32"],
-    result: "pointer"
+    result: "i32"
   },
   GetFunctionCallConv: {
     name: "LLVMGetFunctionCallConv",
@@ -2226,37 +2226,37 @@ export const LLVM_SYMBOLS = {
   },
   AddAttributeAtIndex: {
     name: "LLVMAddAttributeAtIndex",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "u32", "pointer"],
     result: "void"
   },
   GetAttributeCountAtIndex: {
     name: "LLVMGetAttributeCountAtIndex",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "u32"],
     result: "u32"
   },
   GetAttributesAtIndex: {
     name: "LLVMGetAttributesAtIndex",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "u32", "pointer"],
     result: "void"
   },
   GetEnumAttributeAtIndex: {
     name: "LLVMGetEnumAttributeAtIndex",
-    parameters: ["pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "u32"],
     result: "pointer"
   },
   GetStringAttributeAtIndex: {
     name: "LLVMGetStringAttributeAtIndex",
-    parameters: ["pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "pointer", "u32"],
     result: "pointer"
   },
   RemoveEnumAttributeAtIndex: {
     name: "LLVMRemoveEnumAttributeAtIndex",
-    parameters: ["pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "u32"],
     result: "void"
   },
   RemoveStringAttributeAtIndex: {
     name: "LLVMRemoveStringAttributeAtIndex",
-    parameters: ["pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "pointer", "u32"],
     result: "void"
   },
   AddTargetDependentFunctionAttr: {
@@ -2422,7 +2422,7 @@ export const LLVM_SYMBOLS = {
   ValueIsBasicBlock: {
     name: "LLVMValueIsBasicBlock",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ValueAsBasicBlock: {
     name: "LLVMValueAsBasicBlock",
@@ -2592,17 +2592,17 @@ export const LLVM_SYMBOLS = {
   GetInstructionOpcode: {
     name: "LLVMGetInstructionOpcode",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetICmpPredicate: {
     name: "LLVMGetICmpPredicate",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetFCmpPredicate: {
     name: "LLVMGetFCmpPredicate",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   InstructionClone: {
     name: "LLVMInstructionClone",
@@ -2631,42 +2631,42 @@ export const LLVM_SYMBOLS = {
   },
   SetInstrParamAlignment: {
     name: "LLVMSetInstrParamAlignment",
-    parameters: ["pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "u32"],
     result: "void"
   },
   AddCallSiteAttribute: {
     name: "LLVMAddCallSiteAttribute",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "u32", "pointer"],
     result: "void"
   },
   GetCallSiteAttributeCount: {
     name: "LLVMGetCallSiteAttributeCount",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "u32"],
     result: "u32"
   },
   GetCallSiteAttributes: {
     name: "LLVMGetCallSiteAttributes",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "u32", "pointer"],
     result: "void"
   },
   GetCallSiteEnumAttribute: {
     name: "LLVMGetCallSiteEnumAttribute",
-    parameters: ["pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "u32"],
     result: "pointer"
   },
   GetCallSiteStringAttribute: {
     name: "LLVMGetCallSiteStringAttribute",
-    parameters: ["pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "pointer", "u32"],
     result: "pointer"
   },
   RemoveCallSiteEnumAttribute: {
     name: "LLVMRemoveCallSiteEnumAttribute",
-    parameters: ["pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "u32"],
     result: "void"
   },
   RemoveCallSiteStringAttribute: {
     name: "LLVMRemoveCallSiteStringAttribute",
-    parameters: ["pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "u32", "pointer", "u32"],
     result: "void"
   },
   GetCalledFunctionType: {
@@ -2682,11 +2682,11 @@ export const LLVM_SYMBOLS = {
   IsTailCall: {
     name: "LLVMIsTailCall",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetTailCall: {
     name: "LLVMSetTailCall",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetNormalDest: {
@@ -2727,7 +2727,7 @@ export const LLVM_SYMBOLS = {
   IsConditional: {
     name: "LLVMIsConditional",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetCondition: {
     name: "LLVMGetCondition",
@@ -2752,11 +2752,11 @@ export const LLVM_SYMBOLS = {
   IsInBounds: {
     name: "LLVMIsInBounds",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetIsInBounds: {
     name: "LLVMSetIsInBounds",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetGEPSourceElementType: {
@@ -2997,11 +2997,11 @@ export const LLVM_SYMBOLS = {
   IsCleanup: {
     name: "LLVMIsCleanup",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetCleanup: {
     name: "LLVMSetCleanup",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   AddHandler: {
@@ -3171,7 +3171,7 @@ export const LLVM_SYMBOLS = {
   },
   BuildBinOp: {
     name: "LLVMBuildBinOp",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "i32", "pointer", "pointer", "pointer"],
     result: "pointer"
   },
   BuildNeg: {
@@ -3297,41 +3297,41 @@ export const LLVM_SYMBOLS = {
   GetVolatile: {
     name: "LLVMGetVolatile",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetVolatile: {
     name: "LLVMSetVolatile",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetWeak: {
     name: "LLVMGetWeak",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetWeak: {
     name: "LLVMSetWeak",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetOrdering: {
     name: "LLVMGetOrdering",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetOrdering: {
     name: "LLVMSetOrdering",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetAtomicRMWBinOp: {
     name: "LLVMGetAtomicRMWBinOp",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetAtomicRMWBinOp: {
     name: "LLVMSetAtomicRMWBinOp",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   BuildTrunc: {
@@ -3416,7 +3416,7 @@ export const LLVM_SYMBOLS = {
   },
   BuildCast: {
     name: "LLVMBuildCast",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "i32", "pointer", "pointer", "pointer"],
     result: "pointer"
   },
   BuildPointerCast: {
@@ -3426,7 +3426,7 @@ export const LLVM_SYMBOLS = {
   },
   BuildIntCast2: {
     name: "LLVMBuildIntCast2",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "i32", "pointer"],
     result: "pointer"
   },
   BuildFPCast: {
@@ -3441,12 +3441,12 @@ export const LLVM_SYMBOLS = {
   },
   BuildICmp: {
     name: "LLVMBuildICmp",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "i32", "pointer", "pointer", "pointer"],
     result: "pointer"
   },
   BuildFCmp: {
     name: "LLVMBuildFCmp",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "i32", "pointer", "pointer", "pointer"],
     result: "pointer"
   },
   BuildPhi: {
@@ -3526,17 +3526,17 @@ export const LLVM_SYMBOLS = {
   },
   BuildFence: {
     name: "LLVMBuildFence",
-    parameters: ["pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "i32", "i32", "pointer"],
     result: "pointer"
   },
   BuildAtomicRMW: {
     name: "LLVMBuildAtomicRMW",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "i32", "pointer", "pointer", "i32", "i32"],
     result: "pointer"
   },
   BuildAtomicCmpXchg: {
     name: "LLVMBuildAtomicCmpXchg",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "pointer", "i32", "i32", "i32"],
     result: "pointer"
   },
   GetNumMaskElements: {
@@ -3557,31 +3557,31 @@ export const LLVM_SYMBOLS = {
   IsAtomicSingleThread: {
     name: "LLVMIsAtomicSingleThread",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetAtomicSingleThread: {
     name: "LLVMSetAtomicSingleThread",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetCmpXchgSuccessOrdering: {
     name: "LLVMGetCmpXchgSuccessOrdering",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetCmpXchgSuccessOrdering: {
     name: "LLVMSetCmpXchgSuccessOrdering",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   GetCmpXchgFailureOrdering: {
     name: "LLVMGetCmpXchgFailureOrdering",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   SetCmpXchgFailureOrdering: {
     name: "LLVMSetCmpXchgFailureOrdering",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   CreateModuleProviderForExistingModule: {
@@ -3597,16 +3597,16 @@ export const LLVM_SYMBOLS = {
   CreateMemoryBufferWithContentsOfFile: {
     name: "LLVMCreateMemoryBufferWithContentsOfFile",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateMemoryBufferWithSTDIN: {
     name: "LLVMCreateMemoryBufferWithSTDIN",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateMemoryBufferWithMemoryRange: {
     name: "LLVMCreateMemoryBufferWithMemoryRange",
-    parameters: ["pointer", "u64", "pointer", "pointer"],
+    parameters: ["pointer", "u64", "pointer", "i32"],
     result: "pointer"
   },
   CreateMemoryBufferWithMemoryRangeCopy: {
@@ -3652,22 +3652,22 @@ export const LLVM_SYMBOLS = {
   RunPassManager: {
     name: "LLVMRunPassManager",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   InitializeFunctionPassManager: {
     name: "LLVMInitializeFunctionPassManager",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   RunFunctionPassManager: {
     name: "LLVMRunFunctionPassManager",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   FinalizeFunctionPassManager: {
     name: "LLVMFinalizeFunctionPassManager",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   DisposePassManager: {
     name: "LLVMDisposePassManager",
@@ -3677,7 +3677,7 @@ export const LLVM_SYMBOLS = {
   StartMultithreaded: {
     name: "LLVMStartMultithreaded",
     parameters: [],
-    result: "pointer"
+    result: "i32"
   },
   StopMultithreaded: {
     name: "LLVMStopMultithreaded",
@@ -3687,7 +3687,7 @@ export const LLVM_SYMBOLS = {
   IsMultithreaded: {
     name: "LLVMIsMultithreaded",
     parameters: [],
-    result: "pointer"
+    result: "i32"
   },
   DebugMetadataVersion: {
     name: "LLVMDebugMetadataVersion",
@@ -3702,7 +3702,7 @@ export const LLVM_SYMBOLS = {
   StripModuleDebugInfo: {
     name: "LLVMStripModuleDebugInfo",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateDIBuilderDisallowUnresolved: {
     name: "LLVMCreateDIBuilderDisallowUnresolved",
@@ -3731,7 +3731,7 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateCompileUnit: {
     name: "LLVMDIBuilderCreateCompileUnit",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "u64", "pointer", "pointer", "u64", "u32", "pointer", "u64", "pointer", "u32", "pointer", "pointer", "pointer", "u64", "pointer", "u64"],
+    parameters: ["pointer", "i32", "pointer", "pointer", "u64", "i32", "pointer", "u64", "u32", "pointer", "u64", "i32", "u32", "i32", "i32", "pointer", "u64", "pointer", "u64"],
     result: "pointer"
   },
   DIBuilderCreateFile: {
@@ -3746,12 +3746,12 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateNameSpace: {
     name: "LLVMDIBuilderCreateNameSpace",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "i32"],
     result: "pointer"
   },
   DIBuilderCreateFunction: {
     name: "LLVMDIBuilderCreateFunction",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u64", "pointer", "u32", "pointer", "pointer", "pointer", "u32", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u64", "pointer", "u32", "pointer", "i32", "i32", "u32", "i32", "i32"],
     result: "pointer"
   },
   DIBuilderCreateLexicalBlock: {
@@ -3836,12 +3836,12 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateSubroutineType: {
     name: "LLVMDIBuilderCreateSubroutineType",
-    parameters: ["pointer", "pointer", "pointer", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u32", "i32"],
     result: "pointer"
   },
   DIBuilderCreateMacro: {
     name: "LLVMDIBuilderCreateMacro",
-    parameters: ["pointer", "pointer", "u32", "pointer", "pointer", "u64", "pointer", "u64"],
+    parameters: ["pointer", "pointer", "u32", "i32", "pointer", "u64", "pointer", "u64"],
     result: "pointer"
   },
   DIBuilderCreateTempMacroFile: {
@@ -3851,7 +3851,7 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateEnumerator: {
     name: "LLVMDIBuilderCreateEnumerator",
-    parameters: ["pointer", "pointer", "u64", "i64", "pointer"],
+    parameters: ["pointer", "pointer", "u64", "i64", "i32"],
     result: "pointer"
   },
   DIBuilderCreateEnumerationType: {
@@ -3861,7 +3861,7 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateUnionType: {
     name: "LLVMDIBuilderCreateUnionType",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "pointer", "pointer", "u32", "u32", "pointer", "u64"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "i32", "pointer", "u32", "u32", "pointer", "u64"],
     result: "pointer"
   },
   DIBuilderCreateArrayType: {
@@ -3881,7 +3881,7 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateBasicType: {
     name: "LLVMDIBuilderCreateBasicType",
-    parameters: ["pointer", "pointer", "u64", "u64", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "u64", "u64", "u32", "i32"],
     result: "pointer"
   },
   DIBuilderCreatePointerType: {
@@ -3891,27 +3891,27 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateStructType: {
     name: "LLVMDIBuilderCreateStructType",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "pointer", "pointer", "pointer", "u32", "u32", "pointer", "pointer", "u64"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "i32", "pointer", "pointer", "u32", "u32", "pointer", "pointer", "u64"],
     result: "pointer"
   },
   DIBuilderCreateMemberType: {
     name: "LLVMDIBuilderCreateMemberType",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "u64", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "u64", "i32", "pointer"],
     result: "pointer"
   },
   DIBuilderCreateStaticMemberType: {
     name: "LLVMDIBuilderCreateStaticMemberType",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "pointer", "i32", "pointer", "u32"],
     result: "pointer"
   },
   DIBuilderCreateMemberPointerType: {
     name: "LLVMDIBuilderCreateMemberPointerType",
-    parameters: ["pointer", "pointer", "pointer", "u64", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "u32", "i32"],
     result: "pointer"
   },
   DIBuilderCreateObjCIVar: {
     name: "LLVMDIBuilderCreateObjCIVar",
-    parameters: ["pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "u64", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "u64", "i32", "pointer", "pointer"],
     result: "pointer"
   },
   DIBuilderCreateObjCProperty: {
@@ -3946,7 +3946,7 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateInheritance: {
     name: "LLVMDIBuilderCreateInheritance",
-    parameters: ["pointer", "pointer", "pointer", "u64", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "u32", "i32"],
     result: "pointer"
   },
   DIBuilderCreateForwardDecl: {
@@ -3956,17 +3956,17 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateReplaceableCompositeType: {
     name: "LLVMDIBuilderCreateReplaceableCompositeType",
-    parameters: ["pointer", "u32", "pointer", "u64", "pointer", "pointer", "u32", "u32", "u64", "u32", "pointer", "pointer", "u64"],
+    parameters: ["pointer", "u32", "pointer", "u64", "pointer", "pointer", "u32", "u32", "u64", "u32", "i32", "pointer", "u64"],
     result: "pointer"
   },
   DIBuilderCreateBitFieldMemberType: {
     name: "LLVMDIBuilderCreateBitFieldMemberType",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u64", "u64", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u64", "u64", "i32", "pointer"],
     result: "pointer"
   },
   DIBuilderCreateClassType: {
     name: "LLVMDIBuilderCreateClassType",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "u64", "pointer", "pointer", "pointer", "u32", "pointer", "pointer", "pointer", "u64"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "u64", "u32", "u64", "i32", "pointer", "pointer", "u32", "pointer", "pointer", "pointer", "u64"],
     result: "pointer"
   },
   DIBuilderCreateArtificialType: {
@@ -4002,7 +4002,7 @@ export const LLVM_SYMBOLS = {
   DITypeGetFlags: {
     name: "LLVMDITypeGetFlags",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   DIBuilderGetOrCreateSubrange: {
     name: "LLVMDIBuilderGetOrCreateSubrange",
@@ -4026,7 +4026,7 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateGlobalVariableExpression: {
     name: "LLVMDIBuilderCreateGlobalVariableExpression",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u64", "pointer", "u32", "pointer", "pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u64", "pointer", "u32", "pointer", "i32", "pointer", "pointer", "u32"],
     result: "pointer"
   },
   DIGlobalVariableExpressionGetVariable: {
@@ -4071,7 +4071,7 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateTempGlobalVariableFwdDecl: {
     name: "LLVMDIBuilderCreateTempGlobalVariableFwdDecl",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u64", "pointer", "u32", "pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u64", "pointer", "u32", "pointer", "i32", "pointer", "u32"],
     result: "pointer"
   },
   DIBuilderInsertDeclareBefore: {
@@ -4096,12 +4096,12 @@ export const LLVM_SYMBOLS = {
   },
   DIBuilderCreateAutoVariable: {
     name: "LLVMDIBuilderCreateAutoVariable",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "pointer", "pointer", "pointer", "u32"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "u32", "pointer", "i32", "i32", "u32"],
     result: "pointer"
   },
   DIBuilderCreateParameterVariable: {
     name: "LLVMDIBuilderCreateParameterVariable",
-    parameters: ["pointer", "pointer", "pointer", "u64", "u32", "pointer", "u32", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "u32", "pointer", "u32", "pointer", "i32", "i32"],
     result: "pointer"
   },
   GetSubprogram: {
@@ -4132,21 +4132,21 @@ export const LLVM_SYMBOLS = {
   GetMetadataKind: {
     name: "LLVMGetMetadataKind",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "u32"
   },
   CreateDisasm: {
     name: "LLVMCreateDisasm",
-    parameters: ["pointer", "pointer", "i32", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "i32", "function", "function"],
     result: "pointer"
   },
   CreateDisasmCPU: {
     name: "LLVMCreateDisasmCPU",
-    parameters: ["pointer", "pointer", "pointer", "i32", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "i32", "function", "function"],
     result: "pointer"
   },
   CreateDisasmCPUFeatures: {
     name: "LLVMCreateDisasmCPUFeatures",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "i32", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "pointer", "i32", "function", "function"],
     result: "pointer"
   },
   SetDisasmOptions: {
@@ -4847,7 +4847,7 @@ export const LLVM_SYMBOLS = {
   GetTargetFromTriple: {
     name: "LLVMGetTargetFromTriple",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetTargetName: {
     name: "LLVMGetTargetName",
@@ -4862,21 +4862,21 @@ export const LLVM_SYMBOLS = {
   TargetHasJIT: {
     name: "LLVMTargetHasJIT",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   TargetHasTargetMachine: {
     name: "LLVMTargetHasTargetMachine",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   TargetHasAsmBackend: {
     name: "LLVMTargetHasAsmBackend",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateTargetMachine: {
     name: "LLVMCreateTargetMachine",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "pointer", "i32", "i32", "i32"],
     result: "pointer"
   },
   DisposeTargetMachine: {
@@ -4911,18 +4911,18 @@ export const LLVM_SYMBOLS = {
   },
   SetTargetMachineAsmVerbosity: {
     name: "LLVMSetTargetMachineAsmVerbosity",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   TargetMachineEmitToFile: {
     name: "LLVMTargetMachineEmitToFile",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
-    result: "pointer"
+    parameters: ["pointer", "pointer", "pointer", "i32", "pointer"],
+    result: "i32"
   },
   TargetMachineEmitToMemoryBuffer: {
     name: "LLVMTargetMachineEmitToMemoryBuffer",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
-    result: "pointer"
+    parameters: ["pointer", "pointer", "i32", "pointer", "pointer"],
+    result: "i32"
   },
   GetDefaultTargetTriple: {
     name: "LLVMGetDefaultTargetTriple",
@@ -4961,7 +4961,7 @@ export const LLVM_SYMBOLS = {
   },
   CreateGenericValueOfInt: {
     name: "LLVMCreateGenericValueOfInt",
-    parameters: ["pointer", "u64", "pointer"],
+    parameters: ["pointer", "u64", "i32"],
     result: "pointer"
   },
   CreateGenericValueOfPointer: {
@@ -4981,7 +4981,7 @@ export const LLVM_SYMBOLS = {
   },
   GenericValueToInt: {
     name: "LLVMGenericValueToInt",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "u64"
   },
   GenericValueToPointer: {
@@ -5002,17 +5002,17 @@ export const LLVM_SYMBOLS = {
   CreateExecutionEngineForModule: {
     name: "LLVMCreateExecutionEngineForModule",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateInterpreterForModule: {
     name: "LLVMCreateInterpreterForModule",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateJITCompilerForModule: {
     name: "LLVMCreateJITCompilerForModule",
     parameters: ["pointer", "pointer", "u32", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   InitializeMCJITCompilerOptions: {
     name: "LLVMInitializeMCJITCompilerOptions",
@@ -5022,7 +5022,7 @@ export const LLVM_SYMBOLS = {
   CreateMCJITCompilerForModule: {
     name: "LLVMCreateMCJITCompilerForModule",
     parameters: ["pointer", "pointer", "pointer", "u64", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   DisposeExecutionEngine: {
     name: "LLVMDisposeExecutionEngine",
@@ -5062,12 +5062,12 @@ export const LLVM_SYMBOLS = {
   RemoveModule: {
     name: "LLVMRemoveModule",
     parameters: ["pointer", "pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   FindFunction: {
     name: "LLVMFindFunction",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   RecompileAndRelinkFunction: {
     name: "LLVMRecompileAndRelinkFunction",
@@ -5107,11 +5107,11 @@ export const LLVM_SYMBOLS = {
   ExecutionEngineGetErrMsg: {
     name: "LLVMExecutionEngineGetErrMsg",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateSimpleMCJITMemoryManager: {
     name: "LLVMCreateSimpleMCJITMemoryManager",
-    parameters: ["pointer", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "function", "function", "function"],
     result: "pointer"
   },
   DisposeMCJITMemoryManager: {
@@ -5142,7 +5142,7 @@ export const LLVM_SYMBOLS = {
   ParseIRInContext: {
     name: "LLVMParseIRInContext",
     parameters: ["pointer", "pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   InitializeTransformUtils: {
     name: "LLVMInitializeTransformUtils",
@@ -5206,7 +5206,7 @@ export const LLVM_SYMBOLS = {
   },
   OrcExecutionSessionSetErrorReporter: {
     name: "LLVMOrcExecutionSessionSetErrorReporter",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "pointer"],
     result: "void"
   },
   OrcExecutionSessionGetSymbolStringPool: {
@@ -5266,7 +5266,7 @@ export const LLVM_SYMBOLS = {
   },
   OrcCreateCustomMaterializationUnit: {
     name: "LLVMOrcCreateCustomMaterializationUnit",
-    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "pointer", "u64", "pointer", "function", "function", "function"],
     result: "pointer"
   },
   OrcAbsoluteSymbols: {
@@ -5401,17 +5401,17 @@ export const LLVM_SYMBOLS = {
   },
   OrcCreateCustomCAPIDefinitionGenerator: {
     name: "LLVMOrcCreateCustomCAPIDefinitionGenerator",
-    parameters: ["pointer", "pointer"],
+    parameters: ["function", "pointer"],
     result: "pointer"
   },
   OrcCreateDynamicLibrarySearchGeneratorForProcess: {
     name: "LLVMOrcCreateDynamicLibrarySearchGeneratorForProcess",
-    parameters: ["pointer", "u8", "pointer", "pointer"],
+    parameters: ["pointer", "u8", "function", "pointer"],
     result: "pointer"
   },
   OrcCreateDynamicLibrarySearchGeneratorForPath: {
     name: "LLVMOrcCreateDynamicLibrarySearchGeneratorForPath",
-    parameters: ["pointer", "pointer", "u8", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "u8", "function", "pointer"],
     result: "pointer"
   },
   OrcCreateStaticLibrarySearchGeneratorForPath: {
@@ -5446,7 +5446,7 @@ export const LLVM_SYMBOLS = {
   },
   OrcThreadSafeModuleWithModuleDo: {
     name: "LLVMOrcThreadSafeModuleWithModuleDo",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "pointer"],
     result: "pointer"
   },
   OrcJITTargetMachineBuilderDetectHost: {
@@ -5496,12 +5496,12 @@ export const LLVM_SYMBOLS = {
   },
   OrcIRTransformLayerSetTransform: {
     name: "LLVMOrcIRTransformLayerSetTransform",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "pointer"],
     result: "void"
   },
   OrcObjectTransformLayerSetTransform: {
     name: "LLVMOrcObjectTransformLayerSetTransform",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "pointer"],
     result: "void"
   },
   OrcCreateLocalIndirectStubsManager: {
@@ -5516,7 +5516,7 @@ export const LLVM_SYMBOLS = {
   },
   OrcCreateLocalLazyCallThroughManager: {
     name: "LLVMOrcCreateLocalLazyCallThroughManager",
-    parameters: ["pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "u64", "pointer"],
     result: "pointer"
   },
   OrcDisposeLazyCallThroughManager: {
@@ -5556,7 +5556,7 @@ export const LLVM_SYMBOLS = {
   },
   OrcLLJITBuilderSetObjectLinkingLayerCreator: {
     name: "LLVMOrcLLJITBuilderSetObjectLinkingLayerCreator",
-    parameters: ["pointer", "pointer", "pointer"],
+    parameters: ["pointer", "function", "pointer"],
     result: "void"
   },
   OrcCreateLLJIT: {
@@ -5642,7 +5642,7 @@ export const LLVM_SYMBOLS = {
   LinkModules2: {
     name: "LLVMLinkModules2",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateBinary: {
     name: "LLVMCreateBinary",
@@ -5662,7 +5662,7 @@ export const LLVM_SYMBOLS = {
   BinaryGetType: {
     name: "LLVMBinaryGetType",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   MachOUniversalBinaryCopyObjectForArch: {
     name: "LLVMMachOUniversalBinaryCopyObjectForArch",
@@ -5677,7 +5677,7 @@ export const LLVM_SYMBOLS = {
   ObjectFileIsSectionIteratorAtEnd: {
     name: "LLVMObjectFileIsSectionIteratorAtEnd",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ObjectFileCopySymbolIterator: {
     name: "LLVMObjectFileCopySymbolIterator",
@@ -5687,7 +5687,7 @@ export const LLVM_SYMBOLS = {
   ObjectFileIsSymbolIteratorAtEnd: {
     name: "LLVMObjectFileIsSymbolIteratorAtEnd",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   DisposeSectionIterator: {
     name: "LLVMDisposeSectionIterator",
@@ -5737,7 +5737,7 @@ export const LLVM_SYMBOLS = {
   GetSectionContainsSymbol: {
     name: "LLVMGetSectionContainsSymbol",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetRelocations: {
     name: "LLVMGetRelocations",
@@ -5752,7 +5752,7 @@ export const LLVM_SYMBOLS = {
   IsRelocationIteratorAtEnd: {
     name: "LLVMIsRelocationIteratorAtEnd",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   MoveToNextRelocation: {
     name: "LLVMMoveToNextRelocation",
@@ -5817,7 +5817,7 @@ export const LLVM_SYMBOLS = {
   IsSectionIteratorAtEnd: {
     name: "LLVMIsSectionIteratorAtEnd",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   GetSymbols: {
     name: "LLVMGetSymbols",
@@ -5827,7 +5827,7 @@ export const LLVM_SYMBOLS = {
   IsSymbolIteratorAtEnd: {
     name: "LLVMIsSymbolIteratorAtEnd",
     parameters: ["pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   OrcCreateRTDyldObjectLinkingLayerWithSectionMemoryManager: {
     name: "LLVMOrcCreateRTDyldObjectLinkingLayerWithSectionMemoryManager",
@@ -5947,7 +5947,7 @@ export const LLVM_SYMBOLS = {
   RemarkParserHasError: {
     name: "LLVMRemarkParserHasError",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   RemarkParserGetErrorMessage: {
     name: "LLVMRemarkParserGetErrorMessage",
@@ -5962,7 +5962,7 @@ export const LLVM_SYMBOLS = {
   LoadLibraryPermanently: {
     name: "LLVMLoadLibraryPermanently",
     parameters: ["pointer"],
-    result: "pointer"
+    result: "i32"
   },
   ParseCommandLineOptions: {
     name: "LLVMParseCommandLineOptions",
@@ -6006,17 +6006,17 @@ export const LLVM_SYMBOLS = {
   },
   PassManagerBuilderSetDisableUnitAtATime: {
     name: "LLVMPassManagerBuilderSetDisableUnitAtATime",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassManagerBuilderSetDisableUnrollLoops: {
     name: "LLVMPassManagerBuilderSetDisableUnrollLoops",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassManagerBuilderSetDisableSimplifyLibCalls: {
     name: "LLVMPassManagerBuilderSetDisableSimplifyLibCalls",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassManagerBuilderUseInlinerWithThreshold: {
@@ -6036,7 +6036,7 @@ export const LLVM_SYMBOLS = {
   },
   PassManagerBuilderPopulateLTOPassManager: {
     name: "LLVMPassManagerBuilderPopulateLTOPassManager",
-    parameters: ["pointer", "pointer", "pointer", "pointer"],
+    parameters: ["pointer", "pointer", "i32", "i32"],
     result: "void"
   },
   AddCoroEarlyPass: {
@@ -6161,37 +6161,37 @@ export const LLVM_SYMBOLS = {
   },
   PassBuilderOptionsSetVerifyEach: {
     name: "LLVMPassBuilderOptionsSetVerifyEach",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetDebugLogging: {
     name: "LLVMPassBuilderOptionsSetDebugLogging",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetLoopInterleaving: {
     name: "LLVMPassBuilderOptionsSetLoopInterleaving",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetLoopVectorization: {
     name: "LLVMPassBuilderOptionsSetLoopVectorization",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetSLPVectorization: {
     name: "LLVMPassBuilderOptionsSetSLPVectorization",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetLoopUnrolling: {
     name: "LLVMPassBuilderOptionsSetLoopUnrolling",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetForgetAllSCEVInLoopUnroll: {
     name: "LLVMPassBuilderOptionsSetForgetAllSCEVInLoopUnroll",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetLicmMssaOptCap: {
@@ -6206,12 +6206,12 @@ export const LLVM_SYMBOLS = {
   },
   PassBuilderOptionsSetCallGraphProfile: {
     name: "LLVMPassBuilderOptionsSetCallGraphProfile",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   PassBuilderOptionsSetMergeFunctions: {
     name: "LLVMPassBuilderOptionsSetMergeFunctions",
-    parameters: ["pointer", "pointer"],
+    parameters: ["pointer", "i32"],
     result: "void"
   },
   DisposePassBuilderOptions: {
