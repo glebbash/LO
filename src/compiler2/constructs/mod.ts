@@ -20,20 +20,19 @@ import { buildI32, buildI64, buildI8 } from "./numbers.ts";
 import { buildString } from "./string.ts";
 // import { buildNew, buildStruct } from "./struct.ts";
 // import { buildTargetTriple } from "./target-triple.ts";
-// import {
-//   buildConstantAccess,
-//   buildDef,
-//   buildGet,
-//   buildLet,
-//   buildSet,
-// } from "./variables.ts";
+import {
+  buildConstantAccess,
+  buildDef,
+  buildGet,
+  buildLet,
+  buildSet,
+} from "./variables.ts";
 // import { buildPrintType } from "./print-type.ts";
 
 export function buildValue(expr: SExpr, ctx: ModuleContext): LLVM.ValueRef {
-  // TODO: implement this
-  // if (isSymbol(expr)) {
-  //   return buildConstantAccess(expr, ctx);
-  // }
+  if (isSymbol(expr)) {
+    return buildConstantAccess(expr, ctx);
+  }
 
   if (isString(expr)) {
     return buildString(expr, ctx);
