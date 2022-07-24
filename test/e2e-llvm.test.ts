@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.123.0/testing/asserts.ts";
 
-const exampleProgramsDir = "examples/";
-const expectedOutputsDir = "examples/_expected_outputs";
+const exampleProgramsDir = "examples/llvm/";
+const expectedOutputsDir = "examples/llvm/_expected_outputs";
 
 for await (const test of Deno.readDir(expectedOutputsDir)) {
   if (!test.isFile) continue;

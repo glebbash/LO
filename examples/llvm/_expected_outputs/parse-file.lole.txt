@@ -4,7 +4,7 @@
 (external-fn strtok ((& i8) (& i8)) (& i8))
 
 (fn main () i32
-  (let source (read_file "examples/parse-file.lole"))
+  (let source (read_file "examples/llvm/parse-file.lole"))
   (puts source)
 
   (puts "----------------------------")
