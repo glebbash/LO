@@ -18,7 +18,7 @@ import { buildExternalFn, buildFn, buildFunctionCall } from "./function.ts";
 // import { buildNullPtr } from "./null-ptr.ts";
 import { buildI32, buildI64, buildI8 } from "./numbers.ts";
 import { buildString } from "./string.ts";
-// import { buildNew, buildStruct } from "./struct.ts";
+import { buildNew, buildStruct } from "./struct.ts";
 import { buildTargetTriple } from "./target-triple.ts";
 import {
   buildConstantAccess,
@@ -79,9 +79,8 @@ export function buildValueInModuleContext(
       return buildExternalFn(command, args, ctx, true);
     case "fn":
       return buildFn(command, args, ctx);
-    // TODO: implement this
-    // case "struct":
-    //   return buildStruct(command, args, ctx);
+    case "struct":
+      return buildStruct(command, args, ctx);
     default:
       throw new Error(
         "Only functions and externs are allowed at top level, found: " +
