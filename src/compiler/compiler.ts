@@ -19,7 +19,7 @@ export type ModuleContext = {
   moduleName: string;
   values: Record<string, LLVMValue>;
   types: Record<string, LLVMType>;
-  close: () => void;
+  dispose: () => void;
 };
 
 export const VERIFICATION_ENABLED = false;
@@ -67,9 +67,6 @@ export function interpret(moduleCtx: ModuleContext) {
   // TODO: check if this is necessary
   // llvm.removeModule(engine, moduleCtx.module);
   llvm.disposeExecutionEngine(engine);
-
-  // TODO: implement this
-  // disposeContext(moduleCtx);
 }
 
 export async function compileIR(llvmIR: string, outputBinaryFile: string) {
@@ -104,7 +101,7 @@ function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
     module,
     values: {},
     types: {},
-    close: () => {
+    dispose: () => {
       llvm.disposeBuilder(builder);
       llvm.disposeModule(module);
       llvm.contextDispose(context);

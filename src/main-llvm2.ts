@@ -40,4 +40,7 @@ export async function mainLLVM2(args: ReturnType<typeof parse>) {
 
   const outputBinaryFile = args.out ?? "output";
   await compileIR(llvmIR, outputBinaryFile);
+
+  module.dispose();
+  llvm.close();
 }
