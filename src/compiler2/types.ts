@@ -7,7 +7,7 @@ import {
 } from "../s-expr/assertions.ts";
 import { ModuleContext } from "./compiler.ts";
 
-const DEFAULT_ADDR_SPACE = 0;
+export const DEFAULT_ADDR_SPACE = 0;
 
 export function defineType(
   ctx: ModuleContext,

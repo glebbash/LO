@@ -9,13 +9,13 @@ import {
 } from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
 import { LLVM } from "../../llvm-c-14/llvm-c/mod.ts";
-// import { buildAdd } from "./arithmetic.ts";
-// import { buildArray } from "./array.ts";
-// import { buildCast } from "./cast.ts";
-// import { buildLess } from "./comparison.ts";
+import { buildAdd } from "./arithmetic.ts";
+import { buildArray } from "./array.ts";
+import { buildCast } from "./cast.ts";
+import { buildLess } from "./comparison.ts";
 import { buildExternalFn, buildFn, buildFunctionCall } from "./function.ts";
-// import { buildIf } from "./if.ts";
-// import { buildNullPtr } from "./null-ptr.ts";
+import { buildIf } from "./if.ts";
+import { buildNullPtr } from "./null-ptr.ts";
 import { buildI32, buildI64, buildI8 } from "./numbers.ts";
 import { buildString } from "./string.ts";
 import { buildNew, buildStruct } from "./struct.ts";
@@ -27,7 +27,7 @@ import {
   buildLet,
   buildSet,
 } from "./variables.ts";
-// import { buildPrintType } from "./print-type.ts";
+import { buildPrintType } from "./print-type.ts";
 
 export function buildValue(expr: SExpr, ctx: ModuleContext): LLVM.ValueRef {
   if (isSymbol(expr)) {
@@ -105,27 +105,26 @@ export function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVM.ValueRef {
       return buildI32(command, args, ctx);
     case "i64":
       return buildI64(command, args, ctx);
-    // TODO: implement this
-    // case "+":
-    //   return buildAdd(command, args, ctx);
-    // case "<":
-    //   return buildLess(command, args, ctx);
-    // case "if":
-    //   return buildIf(command, args, ctx);
-    // case "nullptr":
-    //   return buildNullPtr(command, args, ctx);
-    // case "array":
-    //   return buildArray(command, args, ctx);
-    // case "new":
-    //   return buildNew(command, args, ctx);
-    // case "get":
-    //   return buildGet(command, args, ctx);
-    // case "set":
-    //   return buildSet(command, args, ctx);
-    // case "cast":
-    //   return buildCast(command, args, ctx);
-    // case "print-type":
-    //   return buildPrintType(command, args, ctx);
+    case "+":
+      return buildAdd(command, args, ctx);
+    case "<":
+      return buildLess(command, args, ctx);
+    case "if":
+      return buildIf(command, args, ctx);
+    case "nullptr":
+      return buildNullPtr(command, args, ctx);
+    case "array":
+      return buildArray(command, args, ctx);
+    case "new":
+      return buildNew(command, args, ctx);
+    case "get":
+      return buildGet(command, args, ctx);
+    case "set":
+      return buildSet(command, args, ctx);
+    case "cast":
+      return buildCast(command, args, ctx);
+    case "print-type":
+      return buildPrintType(command, args, ctx);
     default:
       return buildFunctionCall(command, args, ctx);
   }
