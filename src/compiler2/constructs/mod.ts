@@ -19,7 +19,7 @@ import { buildExternalFn, buildFn, buildFunctionCall } from "./function.ts";
 import { buildI32, buildI64, buildI8 } from "./numbers.ts";
 import { buildString } from "./string.ts";
 // import { buildNew, buildStruct } from "./struct.ts";
-// import { buildTargetTriple } from "./target-triple.ts";
+import { buildTargetTriple } from "./target-triple.ts";
 import {
   buildConstantAccess,
   buildDef,
@@ -71,9 +71,8 @@ export function buildValueInModuleContext(
   expectSymbol(command);
 
   switch (command) {
-    // TODO: implement this
-    // case "llvm/target-triple":
-    //   return buildTargetTriple(command, args, ctx);
+    case "llvm/target-triple":
+      return buildTargetTriple(command, args, ctx);
     case "external-fn":
       return buildExternalFn(command, args, ctx);
     case "external-fn-vararg":
