@@ -1,4 +1,4 @@
-import { LLVM } from "../../../ffigen/llvm-c/mod.ts";
+import { LLVM } from "../../llvm-c-14/llvm-c/mod.ts";
 import { SExpr } from "../../parser/parser.ts";
 import {
   expectArgsLength,
@@ -15,7 +15,6 @@ import {
   NULL_PTR,
   nullPtr,
   toCString,
-  value,
 } from "../utils.ts";
 import { buildValue, buildValueInFunctionContext } from "./mod.ts";
 import { buildVoid } from "./void.ts";
@@ -58,7 +57,7 @@ export function buildFn(
   const fnType = llvm.FunctionType(
     getType(returnTypeExpr, moduleCtx),
     buildArrayPtr(paramTypes),
-    value(paramTypes.length),
+    paramTypes.length,
     BOOL_FALSE,
   );
 
@@ -71,7 +70,7 @@ export function buildFn(
 
   for (let index = 0; index < paramNames.length; index++) {
     const paramName = paramNames[index];
-    ctx.values[paramName] = llvm.GetParam(fn, value(index));
+    ctx.values[paramName] = llvm.GetParam(fn, index);
   }
 
   const entry = llvm.AppendBasicBlockInContext(
@@ -116,7 +115,7 @@ export function buildExternalFn(
     llvm.FunctionType(
       getType(returnTypeExpr, ctx),
       buildArrayPtr(argTypes.map((argTypeExpr) => getType(argTypeExpr, ctx))),
-      value(argTypes.length),
+      argTypes.length,
       isVarArg ? BOOL_TRUE : BOOL_FALSE,
     ),
   );
@@ -141,7 +140,7 @@ export function buildFunctionCall(
     ctx.builder,
     callee,
     buildArrayPtr(args.map((arg) => buildValue(arg, ctx))),
-    value(args.length),
+    args.length,
     nullPtr(),
   );
 }

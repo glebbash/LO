@@ -1,5 +1,4 @@
-import { LLVM } from "../../ffigen/llvm-c/mod.ts";
-import { Opaque } from "../../ffigen/llvm-c/safe-ffi.ts";
+import { LLVM } from "../llvm-c-14/llvm-c/mod.ts";
 import { SExpr } from "../parser/parser.ts";
 import {
   expectArgsLength,
@@ -8,9 +7,7 @@ import {
 } from "../s-expr/assertions.ts";
 import { ModuleContext } from "./compiler.ts";
 
-// TODO(ffigen): do not make number defs opaque
-const DEFAULT_ADDR_SPACE = 0 as Opaque<number, "AddressSpace">;
-const elementCount = (count: number) => count as Opaque<number, "ElementCount">;
+const DEFAULT_ADDR_SPACE = 0;
 
 export function defineType(
   ctx: ModuleContext,
@@ -58,7 +55,7 @@ export function defineDefaultTypes(ctx: ModuleContext): void {
     ctx,
     "&[i32]",
     llvm.PointerType(
-      llvm.ArrayType(llvm.Int32TypeInContext(ctx.context), elementCount(0)),
+      llvm.ArrayType(llvm.Int32TypeInContext(ctx.context), 0),
       DEFAULT_ADDR_SPACE,
     ),
   );
@@ -71,7 +68,7 @@ export function defineDefaultTypes(ctx: ModuleContext): void {
           llvm.Int8TypeInContext(ctx.context),
           DEFAULT_ADDR_SPACE,
         ),
-        elementCount(0),
+        0,
       ),
       DEFAULT_ADDR_SPACE,
     ),
@@ -80,7 +77,7 @@ export function defineDefaultTypes(ctx: ModuleContext): void {
     ctx,
     "&[i8]",
     llvm.PointerType(
-      llvm.ArrayType(llvm.Int8TypeInContext(ctx.context), elementCount(0)),
+      llvm.ArrayType(llvm.Int8TypeInContext(ctx.context), 0),
       DEFAULT_ADDR_SPACE,
     ),
   );
@@ -137,5 +134,5 @@ export function buildArrayType(
 
   const [typeExpr] = expectArgsLength(1, args, command);
 
-  return llvm.ArrayType(getType(typeExpr, ctx), elementCount(0));
+  return llvm.ArrayType(getType(typeExpr, ctx), 0);
 }

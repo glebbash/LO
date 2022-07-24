@@ -2,8 +2,8 @@ import { SExpr } from "../../parser/parser.ts";
 import { expectArgsLength, expectNumber } from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
 import { getNumberValue } from "../../s-expr/transformers.ts";
-import { LLVM } from "../../../ffigen/llvm-c/mod.ts";
-import { BOOL_FALSE, value as valueOf } from "../utils.ts";
+import { BOOL_FALSE } from "../utils.ts";
+import { LLVM } from "../../llvm-c-14/llvm-c/mod.ts";
 
 export function buildI8(
   command: string,
@@ -19,8 +19,7 @@ export function buildI8(
 
   return llvm.ConstInt(
     llvm.Int8TypeInContext(ctx.context),
-    // TODO(ffigen): fix this
-    valueOf(i8Value) as never,
+    BigInt(i8Value),
     BOOL_FALSE,
   );
 }
@@ -39,8 +38,7 @@ export function buildI32(
 
   return llvm.ConstInt(
     llvm.Int32TypeInContext(ctx.context),
-    // TODO(ffigen): fix this
-    valueOf(i32Value) as never,
+    BigInt(i32Value),
     BOOL_FALSE,
   );
 }
@@ -59,8 +57,7 @@ export function buildI64(
 
   return llvm.ConstInt(
     llvm.Int64TypeInContext(ctx.context),
-    // TODO(ffigen): fix this
-    valueOf(i64Value) as never,
+    BigInt(i64Value),
     BOOL_FALSE,
   );
 }

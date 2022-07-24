@@ -8,7 +8,7 @@ import {
   isSymbol,
 } from "../../s-expr/assertions.ts";
 import { ModuleContext } from "../compiler.ts";
-import { LLVM } from "../../../ffigen/llvm-c/mod.ts";
+import { LLVM } from "../../llvm-c-14/llvm-c/mod.ts";
 // import { buildAdd } from "./arithmetic.ts";
 // import { buildArray } from "./array.ts";
 // import { buildCast } from "./cast.ts";

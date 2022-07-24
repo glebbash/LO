@@ -1,9 +1,9 @@
-import { LLVM } from "../../ffigen/llvm-c/mod.ts";
-import { Pointer } from "../../ffigen/llvm-c/safe-ffi.ts";
+import { LLVM } from "../llvm-c-14/llvm-c/mod.ts";
+import { Pointer } from "../llvm-c-14/llvm-c/safe-ffi.ts";
 import { SExpr } from "../parser/parser.ts";
 import { buildValueInModuleContext } from "./constructs/mod.ts";
 import { defineDefaultTypes } from "./types.ts";
-import { allocPtr, readCString, toCString } from "./utils.ts";
+import { allocPtr, derefRef, readCString, toCString } from "./utils.ts";
 
 export type ModuleContext = {
   llvm: typeof LLVM;
@@ -61,11 +61,10 @@ export function interpret(ctx: ModuleContext) {
   llvm.InitializeX86TargetMC();
   llvm.InitializeX86AsmPrinter();
 
-  const engineRef = allocPtr<"ExecutionEngineRef">();
-  const errorRef = allocPtr<"OutError">();
+  const engineRefRef = allocPtr<LLVM.ExecutionEngineRef>();
+  const errorRef = allocPtr<Pointer<number>>();
   const res = llvm.CreateExecutionEngineForModule(
-    // TODO(ffigen): update type casts here
-    engineRef as never,
+    engineRefRef,
     ctx.module,
     errorRef,
   );
@@ -75,6 +74,8 @@ export function interpret(ctx: ModuleContext) {
       "Failed to create execution engine: " + readCString(errorRef),
     );
   }
+
+  const engineRef = derefRef(engineRefRef);
 
   const fnPtr = llvm.GetFunctionAddress(engineRef, toCString("main"));
 
@@ -121,8 +122,7 @@ export function buildLLVMIR(ctx: ModuleContext): string {
 
   const messageRef = llvm.PrintModuleToString(ctx.module);
   const llvmIR = readCString(messageRef);
-  // TODO(ffigen): update type casts here
-  llvm.DisposeMessage(messageRef as unknown as Pointer<"Message">);
+  llvm.DisposeMessage(messageRef);
 
   return llvmIR;
 }
@@ -131,7 +131,7 @@ function verifyModule(ctx: ModuleContext) {
   const { llvm } = ctx;
 
   if (VERIFICATION_ENABLED) {
-    const messageRef = allocPtr<"OutMessage">();
+    const messageRef = allocPtr<Pointer<number>>();
     const res = llvm.VerifyModule(
       ctx.module,
       llvm.VerifierFailureAction.LLVMReturnStatusAction,

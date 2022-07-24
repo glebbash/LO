@@ -1,4 +1,4 @@
-import { LLVM } from "../../../ffigen/llvm-c/mod.ts";
+import { LLVM } from "../../llvm-c-14/llvm-c/mod.ts";
 import { ModuleContext } from "../compiler.ts";
 
 export function buildVoid(ctx: ModuleContext): LLVM.ValueRef {

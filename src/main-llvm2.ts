@@ -7,9 +7,9 @@ import {
   interpret,
 } from "./compiler2/compiler.ts";
 import { expandFile } from "./expand-2/expand.ts";
-import { loadLLVM } from "../ffigen/llvm-c/mod.ts";
+import { loadLLVM } from "./llvm-c-14/llvm-c/mod.ts";
 
-const LLVM_PATH = "./ffigen/input/libLLVM-15git.so";
+const LLVM_PATH = "/usr/lib/llvm-14/lib/libLLVM.so";
 
 if (import.meta.main) {
   mainLLVM2(parse(Deno.args));

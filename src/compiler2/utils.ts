@@ -1,9 +1,9 @@
-import { LLVM } from "../../ffigen/llvm-c/mod.ts";
-import { Opaque, Pointer } from "../../ffigen/llvm-c/safe-ffi.ts";
+import { LLVM } from "../llvm-c-14/llvm-c/mod.ts";
+import { Pointer } from "../llvm-c-14/llvm-c/safe-ffi.ts";
 
 export const NULL_PTR = 0n;
-export const BOOL_TRUE: LLVM.Bool = 0 as never;
-export const BOOL_FALSE: LLVM.Bool = 0 as never;
+export const BOOL_TRUE: LLVM.Bool = 0;
+export const BOOL_FALSE: LLVM.Bool = 0;
 
 export const ref = Deno.UnsafePointer.of;
 
@@ -11,30 +11,28 @@ export function nullPtr<T>(): Pointer<T> {
   return null as unknown as Pointer<T>;
 }
 
-// TODO: this should not be necessary
-export function value<T extends string>(number: number) {
-  return number as unknown as Opaque<number, T>;
-}
-
-export function buildArrayPtr<E extends string, R extends string>(
-  ptrs: Pointer<E>[],
+export function buildArrayPtr<T extends bigint>(
+  ptrs: T[],
 ) {
-  return Deno.UnsafePointer.of(new BigUint64Array(ptrs)) as Pointer<R>;
+  return Deno.UnsafePointer.of(new BigUint64Array(ptrs)) as Pointer<T>;
 }
 
-export function allocPtr<T extends string>(): Pointer<T> {
+export function allocPtr<T>(): Pointer<T> {
   return ref(new BigUint64Array(1)) as Pointer<T>;
+}
+
+export function derefRef<T>(ref: Pointer<T>): T {
+  return new Deno.UnsafePointerView(ref).getUint32(0) as never;
 }
 
 export function readCString(message: bigint) {
   return new Deno.UnsafePointerView(message).getCString();
 }
 
-// TODO(ffigen): update type casts here
-export function toCString<T extends string>(str: string): Pointer<T> {
+export function toCString(str: string) {
   return ref(
     Uint8Array.from(toCharCodes(str + "\0")),
-  ) as Pointer<T>;
+  ) as Pointer<number>;
 }
 
 function toCharCodes(str: string): number[] {
