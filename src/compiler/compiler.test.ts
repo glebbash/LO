@@ -1,8 +1,9 @@
 import { m } from "https://raw.githubusercontent.com/glebbash/multiline-str/master/src/multiline-str.ts";
 
 import { parse } from "../parser/parser.ts";
-import { buildIR } from "./compiler.ts";
+import { buildLLVMIR, compileToModule } from "./compiler.ts";
 import { assertEquals } from "https://deno.land/std@0.123.0/testing/asserts.ts";
+import { loadLibLLVM } from "../llvm/llvm-c.ts";
 
 Deno.test("it compiles hello world example", () => {
   const source = m`
@@ -18,7 +19,12 @@ Deno.test("it compiles hello world example", () => {
     )
     `;
 
-  const llvmIR = buildIR(parse(source));
+  const llvm = loadLibLLVM();
+  const module = compileToModule(parse(source), llvm);
+  const llvmIR = buildLLVMIR(module);
+
+  module.dispose();
+  llvm.close();
 
   assertEquals(
     llvmIR,

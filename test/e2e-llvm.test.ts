@@ -20,14 +20,13 @@ async function runProgram(path: string): Promise<string> {
   const program = Deno.run({
     cmd: [
       "deno",
+      "task",
       "run",
-      "--allow-all",
-      "--unstable",
-      "src/main-llvm.ts",
-      `--src=${path}`,
+      path,
       "-r",
     ],
     stdout: "piped",
+    stderr: "null",
   });
 
   await program.status();

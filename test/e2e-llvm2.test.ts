@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.123.0/testing/asserts.ts";
 
-const exampleProgramsDir = "examples/wasm/";
-const expectedOutputsDir = "examples/wasm/_expected_outputs";
+const exampleProgramsDir = "examples/llvm2/";
+const expectedOutputsDir = "examples/llvm2/_expected_outputs";
 
 for await (const test of Deno.readDir(expectedOutputsDir)) {
   if (!test.isFile) continue;
@@ -22,7 +22,7 @@ async function runProgram(path: string): Promise<string> {
       "deno",
       "task",
       "run",
-      "--target=wasm",
+      "--target=llvm2",
       path,
       "-r",
     ],
