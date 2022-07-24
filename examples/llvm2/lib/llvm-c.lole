@@ -1,0 +1,38 @@
+(#def &any &i8)
+(#def &str &any)
+(#def &context &any)
+(#def &module &any)
+(#def &builder &any)
+(#def &type &any)
+(#def &value &any)
+(#def &block &any)
+(#def bool i32)
+(#def &[&type] &[&i8])
+(#def &[&value] &[&i8])
+
+(external-fn LLVMContextCreate () &context)
+(external-fn LLVMContextDispose (&context) void)
+
+(external-fn LLVMModuleCreateWithNameInContext (&str &context) &module)
+(external-fn LLVMDisposeModule (&module) void)
+
+(external-fn LLVMPrintModuleToFile (&module &str &any) void)
+
+(external-fn LLVMCreateBuilderInContext (&context) &builder)
+(external-fn LLVMDisposeBuilder (&builder) void)
+
+(external-fn LLVMInt32TypeInContext (&context) &type)
+(external-fn LLVMInt8TypeInContext (&context) &type)
+(external-fn LLVMFunctionType (&type &[&type] i32 bool) &type)
+(external-fn LLVMPointerType (&type i32) &type)
+
+(external-fn LLVMAddFunction (&module &str &type) &value)
+(external-fn LLVMBuildCall (&builder &value &[&value] i32 &str) &value)
+
+(external-fn LLVMAppendBasicBlockInContext (&context &value &str) &block)
+(external-fn LLVMPositionBuilderAtEnd (&builder &block) void)
+
+(external-fn LLVMBuildRet (&builder &value) &value)
+(external-fn LLVMConstInt (&type i32 bool) &value)
+
+(external-fn LLVMBuildGlobalStringPtr (&builder &str &str) &value)

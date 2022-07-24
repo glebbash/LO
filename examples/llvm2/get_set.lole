@@ -1,0 +1,44 @@
+(#include "./lib/std.lole")
+
+(struct User
+  (id i32)
+  (name (& i8))
+)
+
+(fn get_first ((items (& ([] i32)))) i32
+  (get items 0 0)
+)
+
+(fn print_int_from_ptr ((p (& i32))) i32
+  (printf "Pointer value in function: %d\n" (get p))
+  0
+)
+
+(fn main () i32
+  (def p i32)
+  (set p 1)
+  (printf "Pointer value: %d\n" (get p))
+  (set p 2)
+  (printf "Pointer value: %d\n" (get p))
+  (print_int_from_ptr p)
+
+  (def bob User)
+  (set bob 0 User/id 1)
+  (set bob 0 User/name "Bob")
+  (printf "Bob's id is %d\n" (get bob 0 User/id))
+
+  (let arr (array 1 2 3 4))
+  (printf "First element: %d\n" (get arr 0 0))
+  (printf "First element with helper: %d\n" (get_first arr))
+
+  (let arr2 (array
+    (array 1 2 3)
+    (array 4 5 6)
+    (array 7 8 9)
+  ))
+  (printf "Bottom-right matrix element: %d\n"
+    (get (get arr2 0 2) 0 2)
+  )
+
+  0
+)

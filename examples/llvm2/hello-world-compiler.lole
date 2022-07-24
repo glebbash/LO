@@ -1,0 +1,40 @@
+(#include "./lib/llvm-c.lole")
+
+(external-fn system ((& i8)) i32)
+
+(fn main () i32
+  (let false 0)
+
+  (let context (LLVMContextCreate))
+  (let module (LLVMModuleCreateWithNameInContext "module" context))
+  (let builder (LLVMCreateBuilderInContext context))
+
+  (let int_8_type (LLVMInt8TypeInContext context))
+  (let int_8_type_ptr (LLVMPointerType int_8_type 0))
+  (let int_32_type (LLVMInt32TypeInContext context))
+
+  (let main_function_type (LLVMFunctionType int_32_type (nullptr &[&type]) 0 false))
+  (let main_function (LLVMAddFunction module "main" main_function_type))
+
+  (let entry (LLVMAppendBasicBlockInContext context main_function "entry"))
+  (LLVMPositionBuilderAtEnd builder entry)
+
+  (let puts_function_args_type (array int_8_type_ptr))
+  (let puts_function_type (LLVMFunctionType int_32_type puts_function_args_type 1 false))
+  (let puts_function (LLVMAddFunction module "puts" puts_function_type))
+
+  (let puts_function_args (array
+    (LLVMBuildGlobalStringPtr builder "Hello World!" "str")
+  ))
+  (LLVMBuildCall builder puts_function puts_function_args 1 "i")
+
+  (LLVMBuildRet builder (LLVMConstInt int_32_type 0 false))
+
+  (LLVMPrintModuleToFile module "/dev/stdout" (nullptr &i8))
+
+  (LLVMDisposeBuilder builder)
+  (LLVMDisposeModule module)
+  (LLVMContextDispose context)
+
+  0
+)
