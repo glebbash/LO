@@ -1,3 +1,5 @@
+import { parse } from "https://deno.land/std@0.149.0/flags/mod.ts";
+
 import {
   buildModule,
   emitWasm,
@@ -6,15 +8,21 @@ import {
 } from "./compiler-wasm/compiler.ts";
 import { expandFile } from "./expand-2/expand.ts";
 
-async function main() {
-  const args = Deno.args;
+if (import.meta.main) {
+  mainWasm(parse(Deno.args));
+}
 
-  const inputFile = getArg(args, "src") ?? "examples/hello-world.lole";
+export async function mainWasm(args: ReturnType<typeof parse>) {
+  const inputFile = (args._[0] as string) ?? args.src;
+  if (inputFile === undefined) {
+    throw new Error("No input file specified");
+  }
+
   const exprs = expandFile(inputFile);
 
   const module = buildModule(exprs);
 
-  const outputWATFile = getArg(args, "wat");
+  const outputWATFile = args.wat;
   if (outputWATFile !== undefined) {
     const wat = emitWAT(module);
     await Deno.writeTextFile(outputWATFile, wat);
@@ -26,17 +34,7 @@ async function main() {
     return;
   }
 
-  const outputBinaryFile = getArg(args, "out") ?? "output.wasm";
+  const outputBinaryFile = args.out ?? "output.wasm";
   const wasm = emitWasm(module);
   await Deno.writeFile(outputBinaryFile, wasm);
 }
-
-function getArg(args: string[], name: string): string | undefined {
-  const argumentStart = `--${name}=`;
-
-  return args
-    .find((a) => a.startsWith(argumentStart))
-    ?.slice(argumentStart.length);
-}
-
-main();

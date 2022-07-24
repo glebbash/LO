@@ -18,8 +18,8 @@ You will also need:
 ### Running compiler (LLVM backend)
 
 ```bash
-deno run src/main.ts --allow-all --unstable \
-  --src="examples/hello-world.lole" \ # source file
+deno task run \
+  examples/hello-world.lole \         # source file
   --out-ir="output.ll" \              # LLVM IR output file
   --out="output" \                    # Binary output file
   -r                                  # to run instead of compiling
@@ -28,17 +28,11 @@ deno run src/main.ts --allow-all --unstable \
 ### Running compiler (WASM backend)
 
 ```bash
-deno run src/main-wasm.ts -A \
-  --src="examples/hello-world.lole" \ # source file
+deno task run --target=wasm \
+  examples/hello-world.lole \         # source file
   --out="output.wasm" \               # WASM output file
   --wat="output.wat" \                # WAT output file
   -r                                  # to run instead of compiling
-```
-
-Or with a shortcut:
-
-```bash
-./exec.sh examples/hello-world.lole
 ```
 
 ### Running tests

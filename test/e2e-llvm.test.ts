@@ -23,7 +23,7 @@ async function runProgram(path: string): Promise<string> {
       "run",
       "--allow-all",
       "--unstable",
-      "src/main.ts",
+      "src/main-llvm.ts",
       `--src=${path}`,
       "-r",
     ],
