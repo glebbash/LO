@@ -1,7 +1,0 @@
-(alias &any (& i8))
-(alias &str (& i8))
-(alias &&any (& &i8))
-(alias &&str (& &any))
-
-(external-fn puts ((& i8)) i32)
-(external-fn-vararg printf ((& i8)) i32)

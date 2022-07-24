@@ -1,7 +1,0 @@
-Pointer value: 1
-Pointer value: 2
-Pointer value in function: 2
-Bob's id is 1
-First element: 1
-First element with helper: 1
-Bottom-right matrix element: 9

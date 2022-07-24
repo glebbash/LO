@@ -1,7 +1,0 @@
-(include "./lib/std.lole")
-
-(fn main () i32
-  (def y i32)
-  (set y 69)
-  (printf "%d\n" (get y))
-)

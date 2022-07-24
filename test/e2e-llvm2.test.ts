@@ -22,7 +22,6 @@ async function runProgram(path: string): Promise<string> {
       "deno",
       "task",
       "run",
-      "--target=llvm2",
       path,
       "-r",
     ],
