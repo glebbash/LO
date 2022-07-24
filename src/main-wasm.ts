@@ -28,7 +28,7 @@ export async function mainWasm(args: ReturnType<typeof parse>) {
     await Deno.writeTextFile(outputWATFile, wat);
   }
 
-  const mode = args.includes("-r") ? "interpret" : "compile";
+  const mode = args.r ? "interpret" : "compile";
   if (mode === "interpret") {
     await interpret(module);
     return;

@@ -19,21 +19,10 @@ export type ModuleContext = {
   moduleName: string;
   values: Record<string, LLVMValue>;
   types: Record<string, LLVMType>;
+  close: () => void;
 };
 
 export const VERIFICATION_ENABLED = false;
-
-export function buildIR(
-  exprs: SExpr[],
-  llvm = loadLibLLVM(),
-): string {
-  const ctx = compileToModule(exprs, llvm);
-  const llvmIR = buildLLVMIR(ctx);
-
-  disposeContext(ctx);
-
-  return llvmIR;
-}
 
 export function compileToModule(
   exprs: SExpr[],
@@ -48,6 +37,39 @@ export function compileToModule(
   verifyModule(ctx);
 
   return ctx;
+}
+
+export function interpret(moduleCtx: ModuleContext) {
+  const { llvm } = moduleCtx;
+
+  llvm.linkInMCJIT();
+  llvm.initializeX86TargetInfo();
+  llvm.initializeX86Target();
+  llvm.initializeX86TargetMC();
+  llvm.initializeX86AsmPrinter();
+
+  const { ok, message, engine } = llvm.createExecutionEngineForModule(
+    moduleCtx.module,
+  );
+
+  if (!ok) {
+    console.error("Error during JIT compilation:", message);
+    Deno.exit(1);
+  }
+
+  const fn = llvm.getFunctionAddress(engine, "main", {
+    parameters: [],
+    result: "i32",
+  });
+
+  fn.call();
+
+  // TODO: check if this is necessary
+  // llvm.removeModule(engine, moduleCtx.module);
+  llvm.disposeExecutionEngine(engine);
+
+  // TODO: implement this
+  // disposeContext(moduleCtx);
 }
 
 export async function compileIR(llvmIR: string, outputBinaryFile: string) {
@@ -69,13 +91,6 @@ export async function compileIR(llvmIR: string, outputBinaryFile: string) {
   await clang.status();
 }
 
-export async function interpretIR(llvmIR: string) {
-  const lli = Deno.run({ cmd: ["lli-14"], stdin: "piped" });
-  lli.stdin?.write(new TextEncoder().encode(llvmIR));
-  lli.stdin.close();
-  await lli.status();
-}
-
 function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
   const context = llvm.contextCreate();
   const builder = llvm.createBuilderInContext(context);
@@ -89,6 +104,11 @@ function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
     module,
     values: {},
     types: {},
+    close: () => {
+      llvm.disposeBuilder(builder);
+      llvm.disposeModule(module);
+      llvm.contextDispose(context);
+    },
   };
 
   defineDefaultTypes(ctx);
@@ -96,16 +116,7 @@ function createContext(moduleName: string, llvm: LibLLVM): ModuleContext {
   return ctx;
 }
 
-export function disposeContext(ctx: ModuleContext): void {
-  const { llvm } = ctx;
-
-  llvm.disposeModule(ctx.module);
-  llvm.disposeBuilder(ctx.builder);
-  llvm.contextDispose(ctx.context);
-  llvm.close();
-}
-
-function buildLLVMIR(ctx: ModuleContext): string {
+export function buildLLVMIR(ctx: ModuleContext): string {
   const { llvm } = ctx;
 
   const message = llvm.printModuleToString(ctx.module);
