@@ -1,6 +1,6 @@
 import { ModuleContext } from "../compiler.ts";
 import { getStringValue } from "../../s-expr/transformers.ts";
-import { nullPtr, toCString } from "../utils.ts";
+import { toCString } from "../utils.ts";
 import { LLVM } from "../../llvm-c-14/llvm-c/mod.ts";
 
 export function buildString(expr: string, ctx: ModuleContext): LLVM.ValueRef {
@@ -9,6 +9,6 @@ export function buildString(expr: string, ctx: ModuleContext): LLVM.ValueRef {
   return llvm.BuildGlobalStringPtr(
     ctx.builder,
     toCString(getStringValue(expr)),
-    nullPtr(),
+    toCString(""),
   );
 }

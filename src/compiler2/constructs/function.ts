@@ -13,7 +13,6 @@ import {
   BOOL_TRUE,
   buildArrayPtr,
   NULL_PTR,
-  nullPtr,
   toCString,
 } from "../utils.ts";
 import { buildValue, buildValueInFunctionContext } from "./mod.ts";
@@ -141,7 +140,7 @@ export function buildFunctionCall(
     callee,
     buildArrayPtr(args.map((arg) => buildValue(arg, ctx))),
     args.length,
-    nullPtr(),
+    toCString(""),
   );
 }
 

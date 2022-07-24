@@ -50,20 +50,18 @@ export function buildValueInFunctionContext(
     return buildValue(expr, ctx);
   }
 
-  return undefined as never;
+  const [command, ...args] = expr;
+  expectSymbol(command);
 
-  // TODO: implement this
-  // const [command, ...args] = expr;
-  // expectSymbol(command);
-
-  // switch (command) {
-  //   case "def":
-  //     return buildDef(command, args, ctx);
-  //   case "let":
-  //     return buildLet(command, args, ctx);
-  //   default:
-  //     return buildValue(expr, ctx);
-  // }
+  switch (command) {
+    // TODO: implement this
+    // case "def":
+    //   return buildDef(command, args, ctx);
+    // case "let":
+    //   return buildLet(command, args, ctx);
+    default:
+      return buildValue(expr, ctx);
+  }
 }
 
 export function buildValueInModuleContext(
@@ -105,13 +103,13 @@ export function buildConstruct(expr: SExpr, ctx: ModuleContext): LLVM.ValueRef {
   expectSymbol(command);
 
   switch (command) {
+    case "i8":
+      return buildI8(command, args, ctx);
+    case "i32":
+      return buildI32(command, args, ctx);
+    case "i64":
+      return buildI64(command, args, ctx);
     // TODO: implement this
-    // case "i8":
-    //   return buildI8(command, args, ctx);
-    // case "i32":
-    //   return buildI32(command, args, ctx);
-    // case "i64":
-    //   return buildI64(command, args, ctx);
     // case "+":
     //   return buildAdd(command, args, ctx);
     // case "<":

@@ -7,13 +7,7 @@ export const BOOL_FALSE: LLVM.Bool = 0;
 
 export const ref = Deno.UnsafePointer.of;
 
-export function nullPtr<T>(): Pointer<T> {
-  return null as unknown as Pointer<T>;
-}
-
-export function buildArrayPtr<T extends bigint>(
-  ptrs: T[],
-) {
+export function buildArrayPtr<T extends bigint>(ptrs: T[]) {
   return Deno.UnsafePointer.of(new BigUint64Array(ptrs)) as Pointer<T>;
 }
 
@@ -21,8 +15,8 @@ export function allocPtr<T>(): Pointer<T> {
   return ref(new BigUint64Array(1)) as Pointer<T>;
 }
 
-export function derefRef<T>(ref: Pointer<T>): T {
-  return new Deno.UnsafePointerView(ref).getUint32(0) as never;
+export function derefRef<T extends bigint>(ref: Pointer<T>): T {
+  return new Deno.UnsafePointerView(ref).getBigUint64(0) as T;
 }
 
 export function readCString(message: bigint) {

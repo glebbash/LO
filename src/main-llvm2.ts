@@ -21,19 +21,9 @@ export async function mainLLVM2(args: ReturnType<typeof parse>) {
     throw new Error("No input file specified");
   }
 
-  // TODO: remove proxy
-  const llvmOriginal = loadLLVM(LLVM_PATH);
-  const calledFunctions = new Set<string>();
-  const llvm = new Proxy(llvmOriginal, {
-    get(target, propKey) {
-      calledFunctions.add(String(propKey));
-      return target[propKey as keyof typeof target];
-    },
-  });
+  const llvm = loadLLVM(LLVM_PATH);
 
   const module = compileToModule(expandFile(inputFile), llvm);
-
-  console.log({ calledFunctions });
 
   const mode = args.r ? "interpret" : "compile";
   if (mode === "interpret") {
@@ -42,7 +32,6 @@ export async function mainLLVM2(args: ReturnType<typeof parse>) {
   }
 
   const llvmIR = buildLLVMIR(module);
-  console.log("LLVM IR:", llvmIR);
 
   const outputIRFile = args.ir;
   if (outputIRFile !== undefined) {
