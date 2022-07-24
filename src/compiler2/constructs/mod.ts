@@ -53,11 +53,10 @@ export function buildValueInFunctionContext(
   expectSymbol(command);
 
   switch (command) {
-    // TODO: implement this
-    // case "def":
-    //   return buildDef(command, args, ctx);
-    // case "let":
-    //   return buildLet(command, args, ctx);
+    case "def":
+      return buildDef(command, args, ctx);
+    case "let":
+      return buildLet(command, args, ctx);
     default:
       return buildValue(expr, ctx);
   }
