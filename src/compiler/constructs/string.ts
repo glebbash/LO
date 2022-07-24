@@ -9,6 +9,6 @@ export function buildString(expr: string, ctx: ModuleContext): LLVM.ValueRef {
   return llvm.BuildGlobalStringPtr(
     ctx.builder,
     toCString(getStringValue(expr)),
-    toCString(""),
+    toCString("str"),
   );
 }

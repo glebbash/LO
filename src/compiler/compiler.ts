@@ -5,6 +5,8 @@ import { buildValueInModuleContext } from "./constructs/mod.ts";
 import { defineDefaultTypes } from "./types.ts";
 import { allocPtr, derefRef, readCString, toCString } from "./utils.ts";
 
+export const LLVM_PATH = "/usr/lib/llvm-14/lib/libLLVM.so";
+
 export type ModuleContext = {
   llvm: typeof LLVM;
   context: LLVM.ContextRef;
