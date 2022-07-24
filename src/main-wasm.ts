@@ -6,7 +6,7 @@ import {
   emitWAT,
   interpret,
 } from "./compiler-wasm/compiler.ts";
-import { expandFile } from "./expand-2/expand.ts";
+import { expandFile } from "./expand/expand.ts";
 
 if (import.meta.main) {
   mainWasm(parse(Deno.args));

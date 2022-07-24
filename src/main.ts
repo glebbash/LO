@@ -1,6 +1,6 @@
 import { parse } from "https://deno.land/std@0.149.0/flags/mod.ts";
 
-import { mainLLVM2 } from "./main-llvm2.ts";
+import { mainLLVM2 } from "./main-llvm.ts";
 import { mainWasm } from "./main-wasm.ts";
 
 function main() {

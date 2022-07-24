@@ -5,8 +5,8 @@ import {
   compileIR,
   compileToModule,
   interpret,
-} from "./compiler2/compiler.ts";
-import { expandFile } from "./expand-2/expand.ts";
+} from "./compiler/compiler.ts";
+import { expandFile } from "./expand/expand.ts";
 import { loadLLVM } from "./llvm-c-14/llvm-c/mod.ts";
 
 const LLVM_PATH = "/usr/lib/llvm-14/lib/libLLVM.so";
