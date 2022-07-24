@@ -362,7 +362,7 @@ export const LLVM_SYMBOLS = {
   CreateExecutionEngineForModule: {
     name: "LLVMCreateExecutionEngineForModule",
     parameters: ["pointer", "pointer", "pointer"],
-    result: "pointer"
+    result: "i32"
   },
   CreateInterpreterForModule: {
     name: "LLVMCreateInterpreterForModule",
@@ -2506,7 +2506,7 @@ export const LLVM_SYMBOLS = {
   },
   FunctionType: {
     name: "LLVMFunctionType",
-    parameters: ["pointer", "pointer", "u32", "pointer"],
+    parameters: ["pointer", "pointer", "u32", "i32"],
     result: "pointer"
   },
   IsFunctionVarArg: {
@@ -3276,7 +3276,7 @@ export const LLVM_SYMBOLS = {
   },
   ConstInt: {
     name: "LLVMConstInt",
-    parameters: ["pointer", "u64", "pointer"],
+    parameters: ["pointer", "u64", "i32"],
     result: "pointer"
   },
   ConstIntOfArbitraryPrecision: {

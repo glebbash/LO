@@ -1,0 +1,6 @@
+(#include "./lib/std.lole")
+
+(fn main () i32
+  (puts "Hello World!")
+  0
+)

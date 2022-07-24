@@ -3,6 +3,7 @@ import { Pointer } from "../../ffigen/llvm-c/safe-ffi.ts";
 import { SExpr } from "../parser/parser.ts";
 import { buildValueInModuleContext } from "./constructs/mod.ts";
 import { defineDefaultTypes } from "./types.ts";
+import { allocPtr, readCString, toCString } from "./utils.ts";
 
 export type ModuleContext = {
   llvm: typeof LLVM;
@@ -142,25 +143,4 @@ function verifyModule(ctx: ModuleContext) {
       throw new Error(`Verifying module failed: ${ctx.moduleName}`);
     }
   }
-}
-
-const ref = Deno.UnsafePointer.of;
-
-function allocPtr<T extends string>(): Pointer<T> {
-  return ref(new BigUint64Array(1)) as Pointer<T>;
-}
-
-function readCString(message: bigint) {
-  return new Deno.UnsafePointerView(message).getCString();
-}
-
-// TODO(ffigen): update type casts here
-function toCString<T extends string>(str: string): Pointer<T> {
-  return ref(
-    Uint8Array.from(toCharCodes(str + "\0")),
-  ) as Pointer<T>;
-}
-
-function toCharCodes(str: string): number[] {
-  return [...str].map((_, i) => str.charCodeAt(i));
 }
