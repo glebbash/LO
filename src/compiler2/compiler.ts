@@ -1,8 +1,8 @@
 import { LLVM } from "../../ffigen/llvm-c/mod.ts";
 import { Pointer } from "../../ffigen/llvm-c/safe-ffi.ts";
 import { SExpr } from "../parser/parser.ts";
-// import { buildValueInModuleContext } from "./constructs/mod.ts";
-// import { defineDefaultTypes } from "./types.ts";
+import { buildValueInModuleContext } from "./constructs/mod.ts";
+import { defineDefaultTypes } from "./types.ts";
 
 export type ModuleContext = {
   llvm: typeof LLVM;
@@ -23,10 +23,9 @@ export function compileToModule(
 ): ModuleContext {
   const ctx = createContext("main", llvm);
 
-  // TODO: implement
-  // for (const expr of exprs) {
-  //   buildValueInModuleContext(expr, ctx);
-  // }
+  for (const expr of exprs) {
+    buildValueInModuleContext(expr, ctx);
+  }
 
   verifyModule(ctx);
 
@@ -61,26 +60,31 @@ export function interpret(ctx: ModuleContext) {
   llvm.InitializeX86TargetMC();
   llvm.InitializeX86AsmPrinter();
 
-  // TODO: implement this
-  // const moduleCtx = compileToModule(expandFile(inputFile), llvm);
+  const engineRef = allocPtr<"ExecutionEngineRef">();
+  const errorRef = allocPtr<"OutError">();
+  const res = llvm.CreateExecutionEngineForModule(
+    // TODO(ffigen): update type casts here
+    engineRef as never,
+    ctx.module,
+    errorRef,
+  );
 
-  // const { ok, message, engine } = llvm.createExecutionEngineForModule(
-  //   moduleCtx.module,
-  // );
+  if (res !== 0) {
+    throw new Error(
+      "Failed to create execution engine: " + readCString(errorRef),
+    );
+  }
 
-  // if (!ok) {
-  //   console.error("Error during JIT compilation:", message);
-  //   Deno.exit(1);
-  // }
+  const fnPtr = llvm.GetFunctionAddress(engineRef, toCString("main"));
 
-  // const fn = llvm.GetFunctionAddress(engine, "main", {
-  //   parameters: [],
-  //   result: "i32",
-  // });
+  const fn = new Deno.UnsafeFnPointer(fnPtr, {
+    parameters: [],
+    result: "i32",
+  });
 
-  // fn.call();
+  fn.call();
 
-  // llvm.DisposeExecutionEngine(engine);
+  llvm.DisposeExecutionEngine(engineRef);
 }
 
 function createContext(moduleName: string, llvm: typeof LLVM): ModuleContext {
@@ -106,8 +110,7 @@ function createContext(moduleName: string, llvm: typeof LLVM): ModuleContext {
     },
   };
 
-  // TODO: implement
-  // defineDefaultTypes(ctx);
+  defineDefaultTypes(ctx);
 
   return ctx;
 }
@@ -141,8 +144,10 @@ function verifyModule(ctx: ModuleContext) {
   }
 }
 
+const ref = Deno.UnsafePointer.of;
+
 function allocPtr<T extends string>(): Pointer<T> {
-  return Deno.UnsafePointer.of(new BigUint64Array(1)) as Pointer<T>;
+  return ref(new BigUint64Array(1)) as Pointer<T>;
 }
 
 function readCString(message: bigint) {
@@ -151,7 +156,7 @@ function readCString(message: bigint) {
 
 // TODO(ffigen): update type casts here
 function toCString<T extends string>(str: string): Pointer<T> {
-  return Deno.UnsafePointer.of(
+  return ref(
     Uint8Array.from(toCharCodes(str + "\0")),
   ) as Pointer<T>;
 }
