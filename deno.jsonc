@@ -1,6 +1,0 @@
-{
-  "tasks": {
-    "run": "deno run --allow-all --unstable src/main.ts",
-    "test": "deno test --allow-all --unstable"
-  }
-}

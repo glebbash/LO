@@ -1,7 +1,0 @@
-(#def &any (& i8))
-(#def &str (& i8))
-(#def &&any (& &i8))
-(#def &&str (& &any))
-
-(external-fn puts ((& i8)) i32)
-(external-fn-vararg printf ((& i8)) i32)
