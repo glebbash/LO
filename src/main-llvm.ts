@@ -11,10 +11,10 @@ import { expandFile } from "./expand/expand.ts";
 import { loadLLVM } from "./llvm-c-14/llvm-c/mod.ts";
 
 if (import.meta.main) {
-  mainLLVM2(parse(Deno.args));
+  mainLLVM(parse(Deno.args));
 }
 
-export async function mainLLVM2(args: ReturnType<typeof parse>) {
+export async function mainLLVM(args: ReturnType<typeof parse>) {
   const inputFile = (args._[0] as string) ?? args.src;
   if (inputFile === undefined) {
     throw new Error("No input file specified");
