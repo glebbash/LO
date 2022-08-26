@@ -1,0 +1,11 @@
+# install deno
+ENV DENO_INSTALL=${HOME}/.deno
+RUN mkdir -p ${DENO_INSTALL} \
+    && curl -fsSL https://deno.land/x/install/install.sh | sh
+
+ENV PATH=${DENO_INSTALL}/bin:${PATH} \
+    DENO_DIR=${DENO_INSTALL}/.cache/deno
+
+# install llvm
+RUN sudo wget https://apt.llvm.org/llvm.sh
+RUN sudo chmod +x llvm.sh && sudo ./llvm.sh 14
