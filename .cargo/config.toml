@@ -1,2 +1,2 @@
-[build]
-target = "wasm32-unknown-unknown"
+[alias]
+build_wasm = "build --target=wasm32-unknown-unknown"
