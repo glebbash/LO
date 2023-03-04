@@ -1,0 +1,6 @@
+(:: main () i32)
+(fn main () (
+    (i32.const 42)
+    (return)
+))
+(export main :as main)
