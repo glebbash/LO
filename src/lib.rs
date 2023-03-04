@@ -5,3 +5,4 @@
 mod allocator;
 mod compiler;
 mod panic_handler;
+mod parser;
