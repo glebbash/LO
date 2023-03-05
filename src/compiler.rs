@@ -123,6 +123,12 @@ fn parse_instrs(exprs: &Vec<SExpr>) -> Vec<Instr> {
 fn parse_value_type(name: &str) -> ValueType {
     match name {
         "i32" => ValueType::I32,
+        "i64" => ValueType::I64,
+        "f32" => ValueType::F32,
+        "f64" => ValueType::F64,
+        "v128" => ValueType::V128,
+        "funcref" => ValueType::FuncRef,
+        "externref" => ValueType::ExternRef,
         _ => panic!("Unknown value type: {name}"),
     }
 }
