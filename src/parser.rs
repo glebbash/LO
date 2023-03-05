@@ -1,3 +1,5 @@
+use core::fmt;
+
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -11,6 +13,15 @@ pub enum SExpr {
 pub enum ParseError {
     UnexpectedEOF,
     UnexpectedChar,
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::UnexpectedChar => write!(f, "Unexpected character"),
+            ParseError::UnexpectedEOF => write!(f, "Unexpected EOF"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -57,7 +68,7 @@ fn parse_expr(chars: &Vec<char>, index: usize) -> ParseResult {
 fn parse_atom(chars: &Vec<char>, index: usize) -> ParseResult {
     let atom_text = chars[index..]
         .iter()
-        .take_while(|&&c| !is_space(c) && c != ')')
+        .take_while(|&&c| !is_space(c) && c != ')' && c != ';')
         .collect::<String>();
 
     Ok(WithIndex {
@@ -90,8 +101,22 @@ fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
 }
 
 fn skip_space(chars: &Vec<char>, mut index: usize) -> usize {
-    while is_space(char_at(chars, index).unwrap_or('x')) {
+    while char_at(chars, index).map(is_space).unwrap_or(false) {
         index += 1
+    }
+
+    if let Ok(';') = char_at(chars, index) {
+        index += 1;
+
+        while char_at(chars, index).map(|c| c != '\n').unwrap_or(false) {
+            index += 1
+        }
+
+        if let Ok('\n') = char_at(chars, index) {
+            index += 1;
+        }
+
+        return skip_space(chars, index);
     }
 
     return index;
@@ -109,6 +134,28 @@ fn char_at(chars: &Vec<char>, index: usize) -> Result<char, WithIndex<ParseError
         data: ParseError::UnexpectedEOF,
         index,
     })
+}
+
+pub fn index_to_position(script: &str, mut index: usize) -> (u32, u32) {
+    let (mut line, mut col) = (1, 1);
+
+    for char in script.chars() {
+        index -= 1;
+
+        if index == 0 {
+            break;
+        }
+
+        if char == '\n' {
+            col = 1;
+            line += 1;
+            continue;
+        }
+
+        col += 1;
+    }
+
+    (line, col)
 }
 
 #[cfg(test)]
@@ -141,6 +188,41 @@ mod tests {
                 ]),
                 SExpr::List(vec![SExpr::List(vec![SExpr::List(vec![])])])
             ])]
+        );
+    }
+
+    #[test]
+    fn it_parses_42_example() {
+        let result = parse(include_str!("../examples/42.lole")).unwrap();
+
+        assert_eq!(
+            result,
+            vec![
+                SExpr::List(vec![
+                    SExpr::Atom(String::from("::")),
+                    SExpr::Atom(String::from("main")),
+                    SExpr::List(vec![]),
+                    SExpr::List(vec![SExpr::Atom(String::from("i32"))])
+                ]),
+                SExpr::List(vec![
+                    SExpr::Atom(String::from("fn")),
+                    SExpr::Atom(String::from("main")),
+                    SExpr::List(vec![]),
+                    SExpr::List(vec![
+                        SExpr::List(vec![
+                            SExpr::Atom(String::from("i32.const")),
+                            SExpr::Atom(String::from("42"))
+                        ]),
+                        SExpr::List(vec![SExpr::Atom(String::from("return"))])
+                    ])
+                ]),
+                SExpr::List(vec![
+                    SExpr::Atom(String::from("export")),
+                    SExpr::Atom(String::from("main")),
+                    SExpr::Atom(String::from(":as")),
+                    SExpr::Atom(String::from("main"))
+                ])
+            ]
         );
     }
 

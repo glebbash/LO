@@ -2,6 +2,9 @@
 #![feature(alloc_error_handler)]
 #![feature(vec_into_raw_parts)]
 
+// TODO: store panic message in global variable and provide access to it
+//       or do not panic at all
+
 extern crate alloc;
 
 mod binary_builder;
@@ -10,13 +13,11 @@ mod parser;
 mod runtime;
 mod wasm_module;
 
+use crate::parser::index_to_position;
 use alloc::vec::Vec;
 use binary_builder::BinaryBuilder;
 use compiler::compile_module;
 use parser::parse;
-
-// TODO: store panic message in global variable and provide access to it
-//       or do not panic at all
 
 #[repr(C)]
 pub struct RawVec {
@@ -30,7 +31,14 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> RawVec {
     let script = read_ascii_str(script_ptr, script_len).unwrap();
 
     let exprs = match parse(script) {
-        Err(err) => panic!("Parse error at index {}", err.index),
+        Err(err) => {
+            let (line, col) = index_to_position(script, err.index);
+
+            panic!(
+                "ParseError: {error_message} at line {line} col {col}",
+                error_message = err.data
+            );
+        }
         Ok(exprs) => exprs,
     };
 
@@ -38,11 +46,11 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> RawVec {
 
     let wasm_binary = BinaryBuilder::new(&module).build();
 
-    let (data, size, capacity) = wasm_binary.into_raw_parts();
+    let (data, length, capacity) = wasm_binary.into_raw_parts();
 
     RawVec {
         data,
-        length: size,
+        length,
         capacity,
     }
 }
