@@ -1,9 +1,8 @@
-use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
-
 use crate::{
     parser::SExpr,
     wasm_module::{Export, ExportType, Expr, FnCode, FnType, Instr, ValueType, WasmModule},
 };
+use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
 
 pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
     let mut module = WasmModule::default();
@@ -44,17 +43,29 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
                     },
                 );
             }
-            ("fn", [SExpr::Atom(name), SExpr::List(_inputs), SExpr::List(instrs)]) => {
+            ("fn", [SExpr::Atom(name), SExpr::List(params), SExpr::List(instrs)]) => {
                 if fn_codes.contains_key(name) {
                     panic!("Cannot redefine function body: {name}");
                 }
+
+                let fn_args = params
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, input)| {
+                        let SExpr::Atom(param_name) = input else {
+                            panic!("Unexpected list is parameters");
+                        };
+
+                        (param_name.as_str(), idx as u32)
+                    })
+                    .collect::<BTreeMap<_, _>>();
 
                 fn_codes.insert(
                     name.clone(),
                     FnCode {
                         locals: vec![], // TODO: implement
                         expr: Expr {
-                            instrs: parse_instrs(instrs),
+                            instrs: parse_instrs(instrs, &fn_args),
                         },
                     },
                 );
@@ -95,7 +106,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
     module
 }
 
-fn parse_instrs(exprs: &Vec<SExpr>) -> Vec<Instr> {
+fn parse_instrs(exprs: &Vec<SExpr>, fn_args: &BTreeMap<&str, u32>) -> Vec<Instr> {
     let mut instrs = vec![];
 
     for expr in exprs {
@@ -103,12 +114,19 @@ fn parse_instrs(exprs: &Vec<SExpr>) -> Vec<Instr> {
             panic!("Unexpected atom");
         };
 
-        let [SExpr::Atom(op), other @ ..] = &items[..] else {
+        let [SExpr::Atom(op), args @ ..] = &items[..] else {
             panic!("Expected operation, got a simple list");
         };
 
-        let instr = match (op.as_str(), &other[..]) {
+        let instr = match (op.as_str(), &args[..]) {
             ("i32.const", [SExpr::Atom(value)]) => Instr::I32Const(value.parse().unwrap()),
+            ("local.get", [SExpr::Atom(local_name)]) => {
+                let Some(&idx) = fn_args.get(local_name.as_str()) else {
+                    panic!("Unknown location for local.get: {local_name}");
+                };
+
+                Instr::LocalGet(idx)
+            }
             ("return", []) => Instr::Return,
             (instr, _) => panic!("Unkown instuction: {instr}"),
         };

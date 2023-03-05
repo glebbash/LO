@@ -78,7 +78,9 @@ mod tests {
     fn it_works() {
         use std::io::Write;
 
-        let (script, script_len) = make_ascii_str(include_str!("../examples/42.lole"));
+        let data = include_str!("../examples/fn_args.lole");
+
+        let (script, script_len) = make_ascii_str(data);
 
         let result = compile(script, script_len);
 

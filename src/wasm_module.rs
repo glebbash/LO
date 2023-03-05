@@ -29,6 +29,7 @@ pub struct Expr {
 pub enum Instr {
     Return,
     I32Const(i32),
+    LocalGet(u32),
 }
 
 #[repr(u8)]

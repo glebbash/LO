@@ -144,5 +144,9 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             output.push(0x41);
             write_i32(output, *value).unwrap();
         }
+        Instr::LocalGet(local_idx) => {
+            output.push(0x20);
+            write_u32(output, *local_idx).unwrap();
+        }
     }
 }

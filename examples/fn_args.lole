@@ -1,0 +1,13 @@
+(:: identity (i32) (i32))
+(fn identity (x) (
+    (local.get x)
+))
+
+(export identity :as identity)
+
+(:: second (i32 i32) (i32))
+(fn second (a b) (
+    (local.get b)
+))
+
+(export second :as second)
