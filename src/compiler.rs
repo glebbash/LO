@@ -24,7 +24,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
         // TODO: cleanup
         match (op.as_str(), &other[..]) {
             // TODO: support multiple outputs?
-            ("::", [SExpr::Atom(name), SExpr::List(_inputs), SExpr::Atom(output)]) => {
+            ("::", [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs)]) => {
                 if fn_types.contains_key(name) {
                     panic!("Cannot redefine function type: {name}");
                 }
@@ -32,8 +32,16 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
                 fn_types.insert(
                     name.clone(),
                     FnType {
-                        inputs: vec![], // TODO: implement
-                        outputs: vec![parse_value_type(output)],
+                        inputs: inputs
+                            .iter()
+                            .map(get_atom_text)
+                            .map(parse_value_type)
+                            .collect(),
+                        outputs: outputs
+                            .iter()
+                            .map(get_atom_text)
+                            .map(parse_value_type)
+                            .collect(),
                     },
                 );
             }
@@ -116,5 +124,12 @@ fn parse_value_type(name: &str) -> ValueType {
     match name {
         "i32" => ValueType::I32,
         _ => panic!("Unknown value type: {name}"),
+    }
+}
+
+fn get_atom_text(expr: &SExpr) -> &str {
+    match expr {
+        SExpr::Atom(atom_text) => &atom_text,
+        _ => panic!("Atom expected, list found"),
     }
 }
