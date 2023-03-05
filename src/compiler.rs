@@ -5,7 +5,7 @@ use crate::{
     wasm_module::{Export, ExportType, Expr, FnCode, FnType, Instr, ValueType, WasmModule},
 };
 
-pub fn compile_module(exprs: Vec<SExpr>) -> WasmModule {
+pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
     let mut module = WasmModule::default();
 
     let mut fn_types = BTreeMap::<String, FnType>::new();
@@ -23,7 +23,8 @@ pub fn compile_module(exprs: Vec<SExpr>) -> WasmModule {
 
         // TODO: cleanup
         match (op.as_str(), &other[..]) {
-            ("::", [SExpr::Atom(name), SExpr::List(_inputs), SExpr::Atom(_output)]) => {
+            // TODO: support multiple outputs?
+            ("::", [SExpr::Atom(name), SExpr::List(_inputs), SExpr::Atom(output)]) => {
                 if fn_types.contains_key(name) {
                     panic!("Cannot redefine function type: {name}");
                 }
@@ -31,12 +32,12 @@ pub fn compile_module(exprs: Vec<SExpr>) -> WasmModule {
                 fn_types.insert(
                     name.clone(),
                     FnType {
-                        inputs: vec![],                // TODO: implement
-                        outputs: vec![ValueType::I32], // TODO: implement
+                        inputs: vec![], // TODO: implement
+                        outputs: vec![parse_value_type(output)],
                     },
                 );
             }
-            ("fn", [SExpr::Atom(name), SExpr::List(_inputs), SExpr::List(_instrs)]) => {
+            ("fn", [SExpr::Atom(name), SExpr::List(_inputs), SExpr::List(instrs)]) => {
                 if fn_codes.contains_key(name) {
                     panic!("Cannot redefine function body: {name}");
                 }
@@ -46,8 +47,8 @@ pub fn compile_module(exprs: Vec<SExpr>) -> WasmModule {
                     FnCode {
                         locals: vec![], // TODO: implement
                         expr: Expr {
-                            instrs: vec![Instr::I32Const(42), Instr::Return],
-                        }, // TODO: implement
+                            instrs: parse_instrs(instrs),
+                        },
                     },
                 );
             }
@@ -64,8 +65,12 @@ pub fn compile_module(exprs: Vec<SExpr>) -> WasmModule {
         };
     }
 
-    // TODO: validate key matching in types and codes
     let fn_names = fn_types.keys().cloned().collect::<Vec<_>>();
+
+    if !fn_codes.keys().eq(fn_names.iter()) {
+        // TODO: better error message?
+        panic!("Function types and codes do not match");
+    }
 
     for (fn_index, fn_name) in fn_names.iter().enumerate() {
         module.fn_types.push(fn_types.remove(fn_name).unwrap());
@@ -81,4 +86,35 @@ pub fn compile_module(exprs: Vec<SExpr>) -> WasmModule {
     }
 
     module
+}
+
+fn parse_instrs(exprs: &Vec<SExpr>) -> Vec<Instr> {
+    let mut instrs = vec![];
+
+    for expr in exprs {
+        let SExpr::List(items) = expr else {
+            panic!("Unexpected atom");
+        };
+
+        let [SExpr::Atom(op), other @ ..] = &items[..] else {
+            panic!("Expected operation, got a simple list");
+        };
+
+        let instr = match (op.as_str(), &other[..]) {
+            ("i32.const", [SExpr::Atom(value)]) => Instr::I32Const(value.parse().unwrap()),
+            ("return", []) => Instr::Return,
+            (instr, _) => panic!("Unkown instuction: {instr}"),
+        };
+
+        instrs.push(instr);
+    }
+
+    instrs
+}
+
+fn parse_value_type(name: &str) -> ValueType {
+    match name {
+        "i32" => ValueType::I32,
+        _ => panic!("Unknown value type: {name}"),
+    }
 }

@@ -31,7 +31,7 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> RawVec {
         Ok(exprs) => exprs,
     };
 
-    let module = compile_module(exprs);
+    let module = compile_module(&exprs);
 
     let wasm_binary = BinaryBuilder::new(&module).build();
 

@@ -1,4 +1,7 @@
 {
+    "files.associations": {
+        "*.lole": "clojure"
+      },
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer"
     }
