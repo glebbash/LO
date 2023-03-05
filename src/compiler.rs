@@ -23,7 +23,6 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
 
         // TODO: cleanup
         match (op.as_str(), &other[..]) {
-            // TODO: support multiple outputs?
             ("::", [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs)]) => {
                 if fn_types.contains_key(name) {
                     panic!("Cannot redefine function type: {name}");

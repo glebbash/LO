@@ -15,6 +15,9 @@ use binary_builder::BinaryBuilder;
 use compiler::compile_module;
 use parser::parse;
 
+// TODO: store panic message in global variable and provide access to it
+//       or do not panic at all
+
 #[repr(C)]
 pub struct RawVec {
     data: *const u8,
