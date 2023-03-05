@@ -1,12 +1,5 @@
-
-tasks:
-  - name: setup rust and wasm utils
-    init: |
-        rustup install nightly &&
-        rustup default nightly &&
-        rustup component add rustfmt &&
-        rustup target add wasm32-unknown-unknown &&
-        sudo apt install wabt
+image:
+  file: .devcontainer/Dockerfile.gitpod
 
 vscode:
   extensions:
