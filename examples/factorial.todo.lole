@@ -1,0 +1,60 @@
+; This file is not supposed to be successfully compiled
+
+(:: factorial (i32) (i32))
+; linear stack
+(fn factorial (x) (
+    (local.get x)
+    (i32.const 2)
+    (i32.lt_s)
+    (if)
+        (local.get x)
+    (else)
+        (local.get x)
+        (local.get x)
+        (i32.const 1)
+        (i32.sub)
+        (call factorial)
+        (i32.mul)
+    (end)
+))
+; nested expressions
+(fn factorial (x) (
+    (if (i32.lt_s (local.get x) (i32.const 2))
+        (local.get x)
+        (i32.mul
+            (local.get x)
+            (call factorial
+                (i32.sub
+                    (local.get x)
+                    (i32.const 1)
+                )
+            )
+        )
+    )
+))
+; default to local.get for variables and call for functions
+(fn factorial (x) (
+    (if (i32.lt_s x (i32 2))
+        x
+        (i32.mul
+            x
+            (factorial (i32.sub x (i32 1)))
+        )
+    )
+))
+; add number type inference
+(fn factorial (x) (
+    (if (< x 2)
+        x
+        (* x (factorial (- x 2)))
+    )
+))
+; add infix expressions
+(fn factorial (x) (
+    (if { x < 2 }
+        x
+        { x * (factorial { x - 1 })}
+    )
+))
+
+(export factorial :as factorial)
