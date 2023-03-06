@@ -31,6 +31,12 @@ pub unsafe extern "C" fn mem_free(ptr: *mut u8, length: usize) {
     dealloc(ptr, Layout::from_size_align(length, 8).unwrap());
 }
 
+#[repr(C)]
+pub struct RawSlice {
+    data: *const u8,
+    size: usize,
+}
+
 #[no_mangle]
 pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> RawSlice {
     let script = ptr_to_str(script_ptr, script_len).unwrap();
@@ -58,12 +64,6 @@ fn ptr_to_str<'a>(chars: *const u8, chars_len: usize) -> Option<&'a str> {
     str::from_utf8(slice).ok()
 }
 
-#[repr(C)]
-pub struct RawSlice {
-    data: *const u8,
-    size: usize,
-}
-
 impl RawSlice {
     fn convert_and_forget(mut vec: Vec<u8>) -> Self {
         vec.shrink_to_fit();
@@ -74,7 +74,7 @@ impl RawSlice {
 
         mem::forget(vec);
 
-        RawSlice { data, size }
+        Self { data, size }
     }
 }
 
