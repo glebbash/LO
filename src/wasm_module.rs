@@ -28,8 +28,13 @@ pub struct Expr {
 
 pub enum Instr {
     Return,
+    I32LTS,
+    I32Sub,
+    I32Mul,
     I32Const(i32),
     LocalGet(u32),
+    Call(u32),
+    If(ValueType, Vec<Instr>, Vec<Instr>),
 }
 
 #[repr(u8)]

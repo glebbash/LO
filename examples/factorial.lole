@@ -1,0 +1,19 @@
+(:: factorial (i32) (i32))
+(fn factorial (x) (
+    (local.get x)
+    (i32.const 2)
+    (i32.lt_s)
+    (if i32
+        ((local.get x))
+        (
+            (local.get x)
+            (local.get x)
+            (i32.const 1)
+            (i32.sub)
+            (call factorial)
+            (i32.mul)
+        )
+    )
+))
+
+(export factorial :as factorial)

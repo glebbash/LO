@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs'
 
 const COMPILER_PATH = '../target/wasm32-unknown-unknown/release/lole_lisp.wasm';
-const SOURCE_PATH = './42.lole';
+const SOURCE_PATH = './factorial.lole';
 
 // load compiler
 const compilerData = readFileSync(COMPILER_PATH);
@@ -40,5 +40,5 @@ const programMod = await WebAssembly.instantiate(programData);
 const program = programMod.instance.exports;
 
 // run the program
-const result = program.main();
+const result = program.factorial(5);
 console.log(result);

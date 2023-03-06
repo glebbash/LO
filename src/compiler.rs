@@ -64,7 +64,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     FnCode {
                         locals: vec![], // TODO: implement
                         expr: Expr {
-                            instrs: parse_instrs(instrs, &fn_args)?,
+                            instrs: parse_instrs(instrs, &fn_args, &fn_types)?,
                         },
                     },
                 );
@@ -107,7 +107,11 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     Ok(module)
 }
 
-fn parse_instrs(exprs: &Vec<SExpr>, fn_args: &BTreeMap<&str, u32>) -> Result<Vec<Instr>, String> {
+fn parse_instrs(
+    exprs: &Vec<SExpr>,
+    fn_args: &BTreeMap<&str, u32>,
+    fn_types: &BTreeMap<String, FnType>,
+) -> Result<Vec<Instr>, String> {
     let mut instrs = vec![];
 
     for expr in exprs {
@@ -125,6 +129,9 @@ fn parse_instrs(exprs: &Vec<SExpr>, fn_args: &BTreeMap<&str, u32>) -> Result<Vec
                     .parse()
                     .map_err(|_| String::from("Parsing i32 failed"))?,
             ),
+            ("i32.lt_s", []) => Instr::I32LTS,
+            ("i32.sub", []) => Instr::I32Sub,
+            ("i32.mul", []) => Instr::I32Mul,
             ("local.get", [SExpr::Atom(local_name)]) => {
                 let Some(&idx) = fn_args.get(local_name.as_str()) else {
                     return Err(format!("Unknown location for local.get: {local_name}"));
@@ -132,8 +139,23 @@ fn parse_instrs(exprs: &Vec<SExpr>, fn_args: &BTreeMap<&str, u32>) -> Result<Vec
 
                 Instr::LocalGet(idx)
             }
+            (
+                "if",
+                [SExpr::Atom(block_type), SExpr::List(then_branch), SExpr::List(else_branch)],
+            ) => Instr::If(
+                parse_value_type(block_type)?,
+                parse_instrs(then_branch, fn_args, fn_types)?,
+                parse_instrs(else_branch, fn_args, fn_types)?,
+            ),
+            ("call", [SExpr::Atom(fn_name)]) => {
+                let Some(fn_idx) = fn_types.keys().position(|k| k == fn_name) else {
+                    return Err(format!("Trying to call unknown function: {fn_name}"));
+                };
+
+                Instr::Call(fn_idx as u32)
+            }
             ("return", []) => Instr::Return,
-            (instr, _) => return Err(format!("Unkown instuction: {instr}")),
+            (instr, _) => return Err(format!("Unknown instuction: {instr}")),
         };
 
         instrs.push(instr);

@@ -102,7 +102,7 @@ mod tests {
 
     #[test] // TODO: add assertions
     fn it_works() {
-        let script = include_str!("../examples/42.lole");
+        let script = include_str!("../examples/factorial.lole");
         let script_len = script.len();
 
         let script_ptr = unsafe { mem_alloc(script_len) };
