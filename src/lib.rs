@@ -102,9 +102,6 @@ mod tests {
 
     #[test]
     fn it_works() {
-        use std::fs::File;
-        use std::io::Write;
-
         let script = include_str!("../examples/42.lole");
         let script_len = script.len();
 
@@ -117,9 +114,7 @@ mod tests {
         if ok == 1 {
             let wasm_binary = unsafe { std::slice::from_raw_parts(data, size) };
 
-            let mut out = File::create("tmp/main.wasm").unwrap();
-            out.write_all(wasm_binary).unwrap();
-            out.flush().unwrap();
+            std::fs::write("tmp/main.wasm", wasm_binary).unwrap();
         } else {
             let error_msg = unsafe { std::slice::from_raw_parts(data, size) };
             let error_msg = str::from_utf8(error_msg).unwrap();
