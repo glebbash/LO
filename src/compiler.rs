@@ -2,9 +2,9 @@ use crate::{
     parser::SExpr,
     wasm_module::{Export, ExportType, Expr, FnCode, FnType, Instr, ValueType, WasmModule},
 };
-use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
+use alloc::{collections::BTreeMap, format, string::String, vec, vec::Vec};
 
-pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
+pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     let mut module = WasmModule::default();
 
     let mut fn_types = BTreeMap::<String, FnType>::new();
@@ -13,59 +13,58 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
 
     for expr in exprs {
         let SExpr::List(items) = expr else {
-            panic!("Unexpected atom");
+            return Err(String::from("Unexpected atom"));
         };
 
         let [SExpr::Atom(op), other @ ..] = &items[..] else {
-            panic!("Expected operation, got a simple list");
+            return Err(String::from("Expected operation, got a simple list"));
         };
 
         // TODO: cleanup
         match (op.as_str(), &other[..]) {
             ("::", [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs)]) => {
                 if fn_types.contains_key(name) {
-                    panic!("Cannot redefine function type: {name}");
+                    return Err(format!("Cannot redefine function type: {name}"));
+                }
+
+                let mut fn_inputs = vec![];
+                for input in inputs {
+                    fn_inputs.push(parse_value_type(get_atom_text(input)?)?);
+                }
+
+                let mut fn_outputs = vec![];
+                for input in outputs {
+                    fn_outputs.push(parse_value_type(get_atom_text(input)?)?);
                 }
 
                 fn_types.insert(
                     name.clone(),
                     FnType {
-                        inputs: inputs
-                            .iter()
-                            .map(get_atom_text)
-                            .map(parse_value_type)
-                            .collect(),
-                        outputs: outputs
-                            .iter()
-                            .map(get_atom_text)
-                            .map(parse_value_type)
-                            .collect(),
+                        inputs: fn_inputs,
+                        outputs: fn_outputs,
                     },
                 );
             }
             ("fn", [SExpr::Atom(name), SExpr::List(params), SExpr::List(instrs)]) => {
                 if fn_codes.contains_key(name) {
-                    panic!("Cannot redefine function body: {name}");
+                    return Err(format!("Cannot redefine function body: {name}"));
                 }
 
-                let fn_args = params
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, input)| {
-                        let SExpr::Atom(param_name) = input else {
-                            panic!("Unexpected list is parameters");
-                        };
+                let mut fn_args = BTreeMap::new();
+                for (idx, input) in params.iter().enumerate() {
+                    let SExpr::Atom(param_name) = input else {
+                        return Err(format!("Unexpected list is parameters"));
+                    };
 
-                        (param_name.as_str(), idx as u32)
-                    })
-                    .collect::<BTreeMap<_, _>>();
+                    fn_args.insert(param_name.as_str(), idx as u32);
+                }
 
                 fn_codes.insert(
                     name.clone(),
                     FnCode {
                         locals: vec![], // TODO: implement
                         expr: Expr {
-                            instrs: parse_instrs(instrs, &fn_args),
+                            instrs: parse_instrs(instrs, &fn_args)?,
                         },
                     },
                 );
@@ -74,12 +73,12 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
                 if as_literal == ":as" =>
             {
                 if !fn_types.contains_key(in_name) {
-                    panic!("Cannot export {in_name}, export type is unknown");
+                    return Err(format!("Cannot export {in_name}, export type is unknown"));
                 }
 
                 fn_exports.insert(in_name.clone(), out_name.clone());
             }
-            (op, _) => panic!("Unknown operation: {op}"),
+            (op, _) => return Err(format!("Unknown operation: {op}")),
         };
     }
 
@@ -87,12 +86,14 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
 
     if !fn_codes.keys().eq(fn_names.iter()) {
         // TODO: better error message?
-        panic!("Function types and codes do not match");
+        return Err(format!("Function types and codes do not match"));
     }
 
     for (fn_index, fn_name) in fn_names.iter().enumerate() {
         module.fn_types.push(fn_types.remove(fn_name).unwrap());
-        module.fn_codes.push(fn_codes.remove(fn_name).unwrap());
+        module
+            .fn_codes
+            .push(fn_codes.remove(fn_name).ok_or_else(|| String::from(""))?);
 
         if let Some(export_name) = fn_exports.remove(fn_name) {
             module.exports.push(Export {
@@ -103,56 +104,60 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> WasmModule {
         }
     }
 
-    module
+    Ok(module)
 }
 
-fn parse_instrs(exprs: &Vec<SExpr>, fn_args: &BTreeMap<&str, u32>) -> Vec<Instr> {
+fn parse_instrs(exprs: &Vec<SExpr>, fn_args: &BTreeMap<&str, u32>) -> Result<Vec<Instr>, String> {
     let mut instrs = vec![];
 
     for expr in exprs {
         let SExpr::List(items) = expr else {
-            panic!("Unexpected atom");
+            return Err(format!("Unexpected atom"));
         };
 
         let [SExpr::Atom(op), args @ ..] = &items[..] else {
-            panic!("Expected operation, got a simple list");
+            return Err(format!("Expected operation, got a simple list"));
         };
 
         let instr = match (op.as_str(), &args[..]) {
-            ("i32.const", [SExpr::Atom(value)]) => Instr::I32Const(value.parse().unwrap()),
+            ("i32.const", [SExpr::Atom(value)]) => Instr::I32Const(
+                value
+                    .parse()
+                    .map_err(|_| String::from("Parsing i32 failed"))?,
+            ),
             ("local.get", [SExpr::Atom(local_name)]) => {
                 let Some(&idx) = fn_args.get(local_name.as_str()) else {
-                    panic!("Unknown location for local.get: {local_name}");
+                    return Err(format!("Unknown location for local.get: {local_name}"));
                 };
 
                 Instr::LocalGet(idx)
             }
             ("return", []) => Instr::Return,
-            (instr, _) => panic!("Unkown instuction: {instr}"),
+            (instr, _) => return Err(format!("Unkown instuction: {instr}")),
         };
 
         instrs.push(instr);
     }
 
-    instrs
+    Ok(instrs)
 }
 
-fn parse_value_type(name: &str) -> ValueType {
+fn parse_value_type(name: &str) -> Result<ValueType, String> {
     match name {
-        "i32" => ValueType::I32,
-        "i64" => ValueType::I64,
-        "f32" => ValueType::F32,
-        "f64" => ValueType::F64,
-        "v128" => ValueType::V128,
-        "funcref" => ValueType::FuncRef,
-        "externref" => ValueType::ExternRef,
-        _ => panic!("Unknown value type: {name}"),
+        "i32" => Ok(ValueType::I32),
+        "i64" => Ok(ValueType::I64),
+        "f32" => Ok(ValueType::F32),
+        "f64" => Ok(ValueType::F64),
+        "v128" => Ok(ValueType::V128),
+        "funcref" => Ok(ValueType::FuncRef),
+        "externref" => Ok(ValueType::ExternRef),
+        _ => return Err(format!("Unknown value type: {name}")),
     }
 }
 
-fn get_atom_text(expr: &SExpr) -> &str {
+fn get_atom_text(expr: &SExpr) -> Result<&str, String> {
     match expr {
-        SExpr::Atom(atom_text) => &atom_text,
-        _ => panic!("Atom expected, list found"),
+        SExpr::Atom(atom_text) => Ok(&atom_text),
+        _ => return Err(format!("Atom expected, list found")),
     }
 }

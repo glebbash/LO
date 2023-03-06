@@ -18,8 +18,12 @@ const srcBuff = new Uint8Array(compiler.memory.buffer, data, size);
 srcBuff.set(source);
 
 // compile
-const [outData, outSize] = compiler.compile(data, size);
+const [ok, outData, outSize] = compiler.compile(data, size);
 const outBuff = new Uint8Array(compiler.memory.buffer, outData, outSize);
+
+if (!ok) {
+    throw new Error(new TextDecoder().decode(outBuff));
+}
 
 // copy out of compiler's out buffer
 const programData = new Uint8Array(outSize);
