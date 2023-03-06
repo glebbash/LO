@@ -34,7 +34,7 @@ pub unsafe extern "C" fn mem_free(ptr: *mut u8, length: usize) {
 
 #[repr(C)]
 pub struct ParseResult {
-    ok: u32,
+    ok: u32, // 0 | 1
     data: *mut u8,
     size: usize,
 }
@@ -46,6 +46,7 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
     };
 
     let exprs = match parse(script) {
+        Ok(exprs) => exprs,
         Err(err) => {
             let (line, col) = index_to_position(script, err.index);
 
@@ -54,7 +55,6 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
                 error_message = err.data
             ));
         }
-        Ok(exprs) => exprs,
     };
 
     let module = match compile_module(&exprs) {
@@ -100,7 +100,7 @@ impl ParseResult {
 mod tests {
     use super::*;
 
-    #[test]
+    #[test] // TODO: add assertions
     fn it_works() {
         let script = include_str!("../examples/42.lole");
         let script_len = script.len();
@@ -110,7 +110,6 @@ mod tests {
 
         let ParseResult { ok, data, size } = compile(script_ptr, script_len);
 
-        // TODO: add assertions
         if ok == 1 {
             let wasm_binary = unsafe { std::slice::from_raw_parts(data, size) };
 
