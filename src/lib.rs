@@ -14,21 +14,26 @@ mod runtime;
 mod wasm_module;
 
 use crate::parser::index_to_position;
+use alloc::alloc::{alloc_zeroed, dealloc};
 use alloc::vec::Vec;
 use binary_builder::BinaryBuilder;
 use compiler::compile_module;
+use core::{alloc::Layout, mem, slice, str};
 use parser::parse;
 
-#[repr(C)]
-pub struct RawVec {
-    data: *const u8,
-    length: usize,
-    capacity: usize,
+#[no_mangle]
+pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {
+    alloc_zeroed(Layout::from_size_align(length, 8).unwrap())
 }
 
 #[no_mangle]
-pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> RawVec {
-    let script = read_ascii_str(script_ptr, script_len).unwrap();
+pub unsafe extern "C" fn mem_free(ptr: *mut u8, length: usize) {
+    dealloc(ptr, Layout::from_size_align(length, 8).unwrap());
+}
+
+#[no_mangle]
+pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> RawSlice {
+    let script = ptr_to_str(script_ptr, script_len).unwrap();
 
     let exprs = match parse(script) {
         Err(err) => {
@@ -43,31 +48,34 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> RawVec {
     };
 
     let module = compile_module(&exprs);
-
     let wasm_binary = BinaryBuilder::new(&module).build();
 
-    let (data, length, capacity) = wasm_binary.into_raw_parts();
+    RawSlice::convert_and_forget(wasm_binary)
+}
 
-    RawVec {
-        data,
-        length,
-        capacity,
+fn ptr_to_str<'a>(chars: *const u8, chars_len: usize) -> Option<&'a str> {
+    let slice = unsafe { slice::from_raw_parts(chars, chars_len) };
+    str::from_utf8(slice).ok()
+}
+
+#[repr(C)]
+pub struct RawSlice {
+    data: *const u8,
+    size: usize,
+}
+
+impl RawSlice {
+    fn convert_and_forget(mut vec: Vec<u8>) -> Self {
+        vec.shrink_to_fit();
+        assert!(vec.len() == vec.capacity());
+
+        let data = vec.as_ptr();
+        let size = vec.len();
+
+        mem::forget(vec);
+
+        RawSlice { data, size }
     }
-}
-
-#[no_mangle]
-pub extern "C" fn free_binary(wasm_binary: RawVec) {
-    let _vec = unsafe {
-        Vec::<u8>::from_raw_parts(
-            wasm_binary.data as *mut u8,
-            wasm_binary.length,
-            wasm_binary.capacity,
-        )
-    };
-}
-
-fn read_ascii_str<'a>(chars: *const u8, chars_len: usize) -> Option<&'a str> {
-    unsafe { core::str::from_utf8(core::slice::from_raw_parts(chars, chars_len)).ok() }
 }
 
 #[cfg(test)]
@@ -76,24 +84,25 @@ mod tests {
 
     #[test]
     fn it_works() {
+        use std::fs::File;
         use std::io::Write;
 
-        let data = include_str!("../examples/fn_args.lole");
+        let script = include_str!("../examples/42.lole");
+        let script_len = script.len();
 
-        let (script, script_len) = make_ascii_str(data);
+        let script_ptr = unsafe { mem_alloc(script_len) };
+        unsafe { core::ptr::copy(script.as_ptr(), script_ptr, script_len) };
 
-        let result = compile(script, script_len);
+        let RawSlice { data, size } = compile(script_ptr, script_len);
 
-        let wasm_binary = unsafe { std::slice::from_raw_parts(result.data, result.length) };
+        let wasm_binary = unsafe { std::slice::from_raw_parts(data, size) };
 
-        let mut f1 = std::fs::File::create("tmp/main.wasm").unwrap();
-        f1.write_all(wasm_binary).unwrap();
-        f1.flush().unwrap();
+        let mut out = File::create("tmp/main.wasm").unwrap();
+        out.write_all(wasm_binary).unwrap();
+        out.flush().unwrap();
+
+        unsafe { mem_free(script_ptr, script_len) };
 
         // TODO: add assertions
-    }
-
-    fn make_ascii_str(data: &str) -> (*const u8, usize) {
-        return (data.as_bytes().as_ptr(), data.as_bytes().len());
     }
 }
