@@ -139,10 +139,21 @@ impl<'a> BinaryBuilder<'a> {
 
 fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
     match instr {
-        Instr::Return => output.push(0x0f),
-        Instr::I32LTS => output.push(0x48),
-        Instr::I32Sub => output.push(0x6b),
-        Instr::I32Mul => output.push(0x6c),
+        Instr::I32LTS { lhs, rhs } => {
+            write_instr(output, lhs);
+            write_instr(output, rhs);
+            output.push(0x48);
+        }
+        Instr::I32Sub { lhs, rhs } => {
+            write_instr(output, lhs);
+            write_instr(output, rhs);
+            output.push(0x6b);
+        }
+        Instr::I32Mul { lhs, rhs } => {
+            write_instr(output, lhs);
+            write_instr(output, rhs);
+            output.push(0x6c);
+        }
         Instr::I32Const(value) => {
             output.push(0x41);
             write_i32(output, *value).unwrap();
@@ -151,20 +162,31 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             output.push(0x20);
             write_u32(output, *local_idx).unwrap();
         }
-        Instr::Call(fn_idx) => {
+        Instr::Return { values } => {
+            for value in values {
+                write_instr(output, value);
+            }
+            output.push(0x0f);
+        }
+        Instr::Call { fn_idx, args } => {
+            for arg in args {
+                write_instr(output, arg);
+            }
             output.push(0x10);
             write_u32(output, *fn_idx).unwrap();
         }
-        Instr::If(block_type, then_branch, else_branch) => {
+        Instr::If {
+            block_type,
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            write_instr(output, cond);
             output.push(0x04); // if
             output.push((*block_type) as u8);
-            for instr in then_branch {
-                write_instr(output, instr);
-            }
+            write_instr(output, then_branch);
             output.push(0x05); // then
-            for instr in else_branch {
-                write_instr(output, instr);
-            }
+            write_instr(output, else_branch);
             output.push(0x0b); // end
         }
     }

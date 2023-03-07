@@ -207,13 +207,10 @@ mod tests {
                     SExpr::Atom(String::from("fn")),
                     SExpr::Atom(String::from("main")),
                     SExpr::List(vec![]),
-                    SExpr::List(vec![
-                        SExpr::List(vec![
-                            SExpr::Atom(String::from("i32.const")),
-                            SExpr::Atom(String::from("42"))
-                        ]),
-                        SExpr::List(vec![SExpr::Atom(String::from("return"))])
-                    ])
+                    SExpr::List(vec![SExpr::List(vec![
+                        SExpr::Atom(String::from("i32")),
+                        SExpr::Atom(String::from("42"))
+                    ]),])
                 ]),
                 SExpr::List(vec![
                     SExpr::Atom(String::from("export")),

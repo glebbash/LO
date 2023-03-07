@@ -2,7 +2,7 @@ use crate::{
     parser::SExpr,
     wasm_module::{Export, ExportType, Expr, FnCode, FnType, Instr, ValueType, WasmModule},
 };
-use alloc::{collections::BTreeMap, format, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     let mut module = WasmModule::default();
@@ -107,61 +107,75 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     Ok(module)
 }
 
+fn parse_instr(
+    expr: &SExpr,
+    fn_args: &BTreeMap<&str, u32>,
+    fn_types: &BTreeMap<String, FnType>,
+) -> Result<Instr, String> {
+    let items = match expr {
+        SExpr::List(items) => items,
+        SExpr::Atom(local_name) => {
+            let Some(&idx) = fn_args.get(local_name.as_str()) else {
+                return Err(format!("Unknown location for local.get: {local_name}"));
+            };
+
+            return Ok(Instr::LocalGet(idx));
+        }
+    };
+
+    let [SExpr::Atom(op), args @ ..] = &items[..] else {
+        return Err(format!("Expected operation, got a simple list"));
+    };
+
+    let instr = match (op.as_str(), &args[..]) {
+        ("i32", [SExpr::Atom(value)]) => {
+            Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
+        }
+        ("i32.lt_s", [lhs, rhs]) => Instr::I32LTS {
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+        },
+        ("i32.sub", [lhs, rhs]) => Instr::I32Sub {
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+        },
+        ("i32.mul", [lhs, rhs]) => Instr::I32Mul {
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+        },
+        ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => Instr::If {
+            block_type: parse_value_type(block_type)?,
+            cond: Box::new(parse_instr(cond, fn_args, fn_types)?),
+            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_types)?),
+            else_branch: Box::new(parse_instr(else_branch, fn_args, fn_types)?),
+        },
+        ("return", values) => Instr::Return {
+            values: parse_instrs(values, fn_args, fn_types)?,
+        },
+        (fn_name, args) => {
+            let Some(fn_idx) = fn_types.keys().position(|k| k == fn_name) else {
+                return Err(format!("Unknown instuction or function: {fn_name}"));
+            };
+
+            Instr::Call {
+                fn_idx: fn_idx as u32,
+                args: parse_instrs(args, fn_args, fn_types)?,
+            }
+        }
+    };
+
+    Ok(instr)
+}
+
 fn parse_instrs(
-    exprs: &Vec<SExpr>,
+    exprs: &[SExpr],
     fn_args: &BTreeMap<&str, u32>,
     fn_types: &BTreeMap<String, FnType>,
 ) -> Result<Vec<Instr>, String> {
-    let mut instrs = vec![];
-
-    for expr in exprs {
-        let SExpr::List(items) = expr else {
-            return Err(format!("Unexpected atom"));
-        };
-
-        let [SExpr::Atom(op), args @ ..] = &items[..] else {
-            return Err(format!("Expected operation, got a simple list"));
-        };
-
-        let instr = match (op.as_str(), &args[..]) {
-            ("i32.const", [SExpr::Atom(value)]) => Instr::I32Const(
-                value
-                    .parse()
-                    .map_err(|_| String::from("Parsing i32 failed"))?,
-            ),
-            ("i32.lt_s", []) => Instr::I32LTS,
-            ("i32.sub", []) => Instr::I32Sub,
-            ("i32.mul", []) => Instr::I32Mul,
-            ("local.get", [SExpr::Atom(local_name)]) => {
-                let Some(&idx) = fn_args.get(local_name.as_str()) else {
-                    return Err(format!("Unknown location for local.get: {local_name}"));
-                };
-
-                Instr::LocalGet(idx)
-            }
-            (
-                "if",
-                [SExpr::Atom(block_type), SExpr::List(then_branch), SExpr::List(else_branch)],
-            ) => Instr::If(
-                parse_value_type(block_type)?,
-                parse_instrs(then_branch, fn_args, fn_types)?,
-                parse_instrs(else_branch, fn_args, fn_types)?,
-            ),
-            ("call", [SExpr::Atom(fn_name)]) => {
-                let Some(fn_idx) = fn_types.keys().position(|k| k == fn_name) else {
-                    return Err(format!("Trying to call unknown function: {fn_name}"));
-                };
-
-                Instr::Call(fn_idx as u32)
-            }
-            ("return", []) => Instr::Return,
-            (instr, _) => return Err(format!("Unknown instuction: {instr}")),
-        };
-
-        instrs.push(instr);
-    }
-
-    Ok(instrs)
+    exprs
+        .iter()
+        .map(|expr| parse_instr(expr, fn_args, fn_types))
+        .collect()
 }
 
 fn parse_value_type(name: &str) -> Result<ValueType, String> {

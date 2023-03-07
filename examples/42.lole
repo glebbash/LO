@@ -1,8 +1,5 @@
 (:: main () (i32))
 (fn main () (
-    ; currently instructions are stored
-    ;   in a linear stack form
-    (i32.const 42)
-    (return)
+    (i32 42)
 ))
 (export main :as main)

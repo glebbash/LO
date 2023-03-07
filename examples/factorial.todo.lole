@@ -6,20 +6,20 @@
     (local.get x)
     (i32.const 2)
     (i32.lt_s)
-    (if)
+    (if i32 (
         (local.get x)
-    (else)
-        (local.get x)
-        (local.get x)
-        (i32.const 1)
-        (i32.sub)
-        (call factorial)
-        (i32.mul)
-    (end)
+    ) (
+            (local.get x)
+            (local.get x)
+            (i32.const 1)
+            (i32.sub)
+            (call factorial)
+            (i32.mul)
+    ))
 ))
 ; nested expressions
 (fn factorial (x) (
-    (if (i32.lt_s (local.get x) (i32.const 2))
+    (if i32 (i32.lt_s (local.get x) (i32.const 2))
         (local.get x)
         (i32.mul
             (local.get x)
@@ -34,7 +34,7 @@
 ))
 ; default to local.get for variables and call for functions
 (fn factorial (x) (
-    (if (i32.lt_s x (i32 2))
+    (if i32 (i32.lt_s x (i32 2))
         x
         (i32.mul
             x

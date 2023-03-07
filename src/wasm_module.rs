@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 #[derive(Default)]
 pub struct WasmModule {
@@ -27,14 +27,33 @@ pub struct Expr {
 }
 
 pub enum Instr {
-    Return,
-    I32LTS,
-    I32Sub,
-    I32Mul,
     I32Const(i32),
     LocalGet(u32),
-    Call(u32),
-    If(ValueType, Vec<Instr>, Vec<Instr>),
+    Return {
+        values: Vec<Instr>,
+    },
+    I32LTS {
+        lhs: Box<Instr>,
+        rhs: Box<Instr>,
+    },
+    I32Sub {
+        lhs: Box<Instr>,
+        rhs: Box<Instr>,
+    },
+    I32Mul {
+        lhs: Box<Instr>,
+        rhs: Box<Instr>,
+    },
+    Call {
+        fn_idx: u32,
+        args: Vec<Instr>,
+    },
+    If {
+        block_type: ValueType,
+        cond: Box<Instr>,
+        then_branch: Box<Instr>,
+        else_branch: Box<Instr>,
+    },
 }
 
 #[repr(u8)]
