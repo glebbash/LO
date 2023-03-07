@@ -1,0 +1,49 @@
+(:: parse (
+    i32 ; data
+    i32 ; size
+) (
+    i32 ; ok
+    i32 ; index
+))
+
+(:: skip_space (
+    i32 ; data
+    i32 ; size
+    i32 ; index
+) (i32))
+
+(:: char_at (
+    i32 ; data
+    i32 ; size
+    i32 ; index
+) (
+    i32 ; ok
+    i32 ; char
+))
+
+(mem m1 :min 1000)
+(export mem m1 :as memory)
+
+(export parse :as parse)
+(export char_at :as char_at)
+
+(fn parse (data size) (
+    ; TODO: implement
+    (return (i32 0) (i32 0))
+))
+
+(fn skip_space (data size index) (
+    ; TODO: implement
+    (i32 0)
+))
+
+(fn char_at (data size index) (
+    (if (i32.ge_s index size)
+        (return (i32 0) (i32 0))
+    )
+
+    (return
+        (i32 1)
+        (i32.load8_u (i32.add data index))
+    )
+))

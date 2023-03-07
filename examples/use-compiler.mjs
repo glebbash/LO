@@ -1,7 +1,8 @@
 import { readFileSync } from 'fs'
+import { TextEncoder } from 'util';
 
 const COMPILER_PATH = '../target/wasm32-unknown-unknown/release/lole_lisp.wasm';
-const SOURCE_PATH = './factorial.lole';
+const SOURCE_PATH = './parser.lole';
 
 // load compiler
 const compilerData = readFileSync(COMPILER_PATH);
@@ -39,6 +40,14 @@ compiler.mem_free(data, size);
 const programMod = await WebAssembly.instantiate(programData);
 const program = programMod.instance.exports;
 
+// store data in memory
+const str = "hello";
+const strData = new TextEncoder().encode(str);
+const strPtr = 0;
+const strSize = strData.length;
+const strBuff = new Uint8Array(program.memory.buffer, strPtr, strSize);
+strBuff.set(strData);
+
 // run the program
-const result = program.factorial(5);
+const result = program.char_at(strPtr, strSize, 0);
 console.log(result);

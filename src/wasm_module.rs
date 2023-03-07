@@ -4,6 +4,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 pub struct WasmModule {
     pub fn_types: Vec<FnType>,
     pub fn_codes: Vec<FnCode>,
+    pub memories: Vec<Memory>,
     pub exports: Vec<Export>,
 }
 
@@ -32,7 +33,15 @@ pub enum Instr {
     Return {
         values: Vec<Instr>,
     },
-    I32LTS {
+    I32LessThenSigned {
+        lhs: Box<Instr>,
+        rhs: Box<Instr>,
+    },
+    I32GreaterEqualSigned {
+        lhs: Box<Instr>,
+        rhs: Box<Instr>,
+    },
+    I32Add {
         lhs: Box<Instr>,
         rhs: Box<Instr>,
     },
@@ -44,6 +53,16 @@ pub enum Instr {
         lhs: Box<Instr>,
         rhs: Box<Instr>,
     },
+    I32Load {
+        align: u32,
+        offset: u32,
+        address_instr: Box<Instr>,
+    },
+    I32Load8Unsigned {
+        align: u32,
+        offset: u32,
+        address_instr: Box<Instr>,
+    },
     Call {
         fn_idx: u32,
         args: Vec<Instr>,
@@ -53,6 +72,10 @@ pub enum Instr {
         cond: Box<Instr>,
         then_branch: Box<Instr>,
         else_branch: Box<Instr>,
+    },
+    IfSingleBranch {
+        cond: Box<Instr>,
+        then_branch: Box<Instr>,
     },
 }
 
@@ -67,6 +90,11 @@ pub enum ValueType {
     V128 = 0x7b,
     FuncRef = 0x70,
     ExternRef = 0x6f,
+}
+
+pub struct Memory {
+    pub min: u32,
+    pub max: Option<u32>,
 }
 
 pub struct Export {

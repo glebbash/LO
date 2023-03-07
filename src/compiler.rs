@@ -1,6 +1,6 @@
 use crate::{
     parser::SExpr,
-    wasm_module::{Export, ExportType, Expr, FnCode, FnType, Instr, ValueType, WasmModule},
+    wasm_module::{Export, ExportType, Expr, FnCode, FnType, Instr, Memory, ValueType, WasmModule},
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 
@@ -10,6 +10,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     let mut fn_types = BTreeMap::<String, FnType>::new();
     let mut fn_codes = BTreeMap::<String, FnCode>::new();
     let mut fn_exports = BTreeMap::<String, String>::new();
+    let mut memory_names = Vec::<String>::new();
 
     for expr in exprs {
         let SExpr::List(items) = expr else {
@@ -22,6 +23,39 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
         // TODO: cleanup
         match (op.as_str(), &other[..]) {
+            ("mem", [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory)])
+                if min_literal == ":min" =>
+            {
+                if memory_names.contains(mem_name) {
+                    return Err(format!("Duplicate memory definition: {mem_name}"));
+                }
+                memory_names.push(mem_name.clone());
+                module.memories.push(Memory {
+                    min: min_memory
+                        .parse()
+                        .map_err(|_| format!("Parsing mem :min (u32) failed"))?,
+                    max: None,
+                });
+            }
+            (
+                "mem",
+                [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory), SExpr::Atom(max_literal), SExpr::Atom(max_memory)],
+            ) if min_literal == ":min" && max_literal == ":max" => {
+                if memory_names.contains(mem_name) {
+                    return Err(format!("Duplicate memory definition: {mem_name}"));
+                }
+                memory_names.push(mem_name.clone());
+                module.memories.push(Memory {
+                    min: min_memory
+                        .parse()
+                        .map_err(|_| format!("Parsing mem :min (u32) failed"))?,
+                    max: Some(
+                        max_memory
+                            .parse()
+                            .map_err(|_| format!("Parsing mem :max (u32) failed"))?,
+                    ),
+                });
+            }
             ("::", [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs)]) => {
                 if fn_types.contains_key(name) {
                     return Err(format!("Cannot redefine function type: {name}"));
@@ -68,6 +102,20 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         },
                     },
                 );
+            }
+            (
+                "export",
+                [SExpr::Atom(mem_literal), SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)],
+            ) if mem_literal == "mem" && as_literal == ":as" => {
+                if !memory_names.contains(in_name) {
+                    return Err(format!("Cannot export mem {in_name}, not found"));
+                }
+
+                module.exports.push(Export {
+                    export_type: ExportType::Mem,
+                    export_name: out_name.clone(),
+                    exported_item_index: memory_names.iter().position(|n| n == in_name).unwrap(),
+                });
             }
             ("export", [SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)])
                 if as_literal == ":as" =>
@@ -133,7 +181,15 @@ fn parse_instr(
         ("i32", [SExpr::Atom(value)]) => {
             Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
-        ("i32.lt_s", [lhs, rhs]) => Instr::I32LTS {
+        ("i32.lt_s", [lhs, rhs]) => Instr::I32LessThenSigned {
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+        },
+        ("i32.ge_s", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+        },
+        ("i32.add", [lhs, rhs]) => Instr::I32Add {
             lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
             rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
         },
@@ -145,11 +201,34 @@ fn parse_instr(
             lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
             rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
         },
+        ("i32.load", [address]) => Instr::I32Load {
+            align: 1,
+            offset: 0,
+            address_instr: Box::new(parse_instr(address, fn_args, fn_types)?),
+        },
+        ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => Instr::I32Load {
+            align: align
+                .parse()
+                .map_err(|_| format!("Parsing i32.load align failed"))?,
+            offset: offset
+                .parse()
+                .map_err(|_| format!("Parsing i32.load offset failed"))?,
+            address_instr: Box::new(parse_instr(address, fn_args, fn_types)?),
+        },
+        ("i32.load8_u", [address]) => Instr::I32Load8Unsigned {
+            align: 0,
+            offset: 0,
+            address_instr: Box::new(parse_instr(address, fn_args, fn_types)?),
+        },
         ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => Instr::If {
             block_type: parse_value_type(block_type)?,
             cond: Box::new(parse_instr(cond, fn_args, fn_types)?),
             then_branch: Box::new(parse_instr(then_branch, fn_args, fn_types)?),
             else_branch: Box::new(parse_instr(else_branch, fn_args, fn_types)?),
+        },
+        ("if", [cond, then_branch]) => Instr::IfSingleBranch {
+            cond: Box::new(parse_instr(cond, fn_args, fn_types)?),
+            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_types)?),
         },
         ("return", values) => Instr::Return {
             values: parse_instrs(values, fn_args, fn_types)?,
