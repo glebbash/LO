@@ -4,12 +4,15 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { readFile } from "node:fs/promises";
 
-const COMPILER_PATH = "../target/wasm32-unknown-unknown/release/lole_lisp.wasm";
+const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 
 const compiler = await loadWasm(await readFile(COMPILER_PATH));
 
 test("compiles 42 example", async () => {
-    const { ok, output } = await compile(compiler, await readFile("./42.lole"));
+    const { ok, output } = await compile(
+        compiler,
+        await readFile("./examples/42.lole")
+    );
 
     assert.strictEqual(ok, 1);
 
@@ -22,7 +25,7 @@ test("compiles 42 example", async () => {
 test("compiles factorial example", async () => {
     const { ok, output } = await compile(
         compiler,
-        await readFile("./factorial.lole")
+        await readFile("./examples/factorial.lole")
     );
 
     assert.strictEqual(ok, 1);
