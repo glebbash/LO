@@ -91,9 +91,11 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
     for (fn_index, fn_name) in fn_names.iter().enumerate() {
         module.fn_types.push(fn_types.remove(fn_name).unwrap());
-        module
-            .fn_codes
-            .push(fn_codes.remove(fn_name).ok_or_else(|| String::from(""))?);
+        module.fn_codes.push(
+            fn_codes
+                .remove(fn_name)
+                .ok_or_else(|| format!("Implementation not found for: {fn_name}"))?,
+        );
 
         if let Some(export_name) = fn_exports.remove(fn_name) {
             module.exports.push(Export {
