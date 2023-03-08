@@ -197,6 +197,19 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             output.push(0x21);
             write_u32(output, *local_idx);
         }
+        Instr::MultiValueLocalSet { local_idxs, value } => {
+            write_instr(output, value);
+
+            for local_idx in local_idxs.iter().rev() {
+                output.push(0x21);
+                write_u32(output, *local_idx);
+            }
+        }
+        Instr::MultiValueEmit { values } => {
+            for value in values {
+                write_instr(output, value);
+            }
+        }
         Instr::I32Load {
             align,
             offset,

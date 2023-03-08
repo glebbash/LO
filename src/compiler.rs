@@ -248,6 +248,29 @@ fn parse_instr(
                 value: Box::new(parse_instr(value, locals, fn_defs)?),
             }
         }
+        ("set", [SExpr::List(local_names), value]) => {
+            let mut local_idxs = vec![];
+
+            for local_name_expr in local_names {
+                let SExpr::Atom(local_name) = local_name_expr else {
+                    return Err(format!("Unexpected list in lhs of set"));
+                };
+
+                let Some(&local_idx) = locals.get(local_name.as_str()) else {
+                    return Err(format!("Unknown location for set: {local_name}"));
+                };
+
+                local_idxs.push(local_idx);
+            }
+
+            Instr::MultiValueLocalSet {
+                local_idxs,
+                value: Box::new(parse_instr(value, locals, fn_defs)?),
+            }
+        }
+        ("pack", exprs) => Instr::MultiValueEmit {
+            values: parse_instrs(exprs, locals, fn_defs)?,
+        },
         ("i32.load", [address]) => Instr::I32Load {
             align: 1,
             offset: 0,

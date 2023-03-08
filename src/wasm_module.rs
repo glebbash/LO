@@ -57,6 +57,13 @@ pub enum Instr {
         local_idx: u32,
         value: Box<Instr>,
     },
+    MultiValueLocalSet {
+        local_idxs: Vec<u32>,
+        value: Box<Instr>,
+    },
+    MultiValueEmit {
+        values: Vec<Instr>,
+    },
     I32Load {
         align: u32,
         offset: u32,

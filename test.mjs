@@ -39,7 +39,7 @@ test("compiles locals", async () => {
     );
 
     const program = await loadWasm(output);
-    assert.deepEqual(program.add(2, 2), 4);
+    assert.deepEqual(program.sub(5, 3), 2);
 });
 
 test("compiles parser", async () => {

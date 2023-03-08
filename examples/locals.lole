@@ -1,11 +1,14 @@
-(export add :as add)
+(export sub :as sub)
 
-(fn add ((a1 i32) (a2 i32)) (i32) (
+(fn sub ((a1 i32) (a2 i32)) (i32) (
     (l1 i32)
     (l2 i32)
 ) (
-    (set l1 a1)
-    (set l2 a2)
+    (set (l1 l2) (pack a1 a2))
 
-    (i32.add l1 l2)
+    ;; same as the following:
+    ;; (set l1 a1)
+    ;; (set l2 a2)
+
+    (i32.sub l1 l2)
 ))
