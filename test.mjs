@@ -32,6 +32,24 @@ test("compiles factorial example", async () => {
     assert.strictEqual(result, 120);
 });
 
+test("compiles parser", async () => {
+    const output = await compile(
+        compiler,
+        await readFile("./examples/parser.lole")
+    );
+
+    const program = await loadWasm(output);
+
+    const data = storeData(
+        program.memory,
+        0,
+        new TextEncoder().encode("hello")
+    );
+
+    assert.deepEqual(program.char_at(data.ptr, data.size, 0), [1, 104]);
+    assert.deepEqual(program.char_at(data.ptr, data.size, 5), [0, 0]);
+});
+
 // utils
 
 /**
@@ -48,18 +66,18 @@ async function loadWasm(data) {
  * @param {Buffer} source
  */
 async function compile(compiler, source) {
-    const inSize = source.byteLength;
-    const inPtr = compiler.mem_alloc(inSize);
+    const src = storeData(
+        compiler.memory,
+        compiler.mem_alloc(source.byteLength),
+        source
+    );
 
-    const input = new Uint8Array(compiler.memory.buffer, inPtr, inSize);
-    input.set(source);
-
-    const [ok, outPtr, outSize] = compiler.compile(inPtr, inSize);
+    const [ok, outPtr, outSize] = compiler.compile(src.ptr, src.size);
 
     const output = new Uint8Array(outSize);
     output.set(new Uint8Array(compiler.memory.buffer, outPtr, outSize));
 
-    compiler.mem_free(inPtr, inSize);
+    compiler.mem_free(src.ptr, src.size);
     compiler.mem_free(outPtr, outSize);
 
     if (!ok) {
@@ -67,4 +85,17 @@ async function compile(compiler, source) {
     }
 
     return output;
+}
+
+/**
+ * @param {{buffer: ArrayBufferLike;}} memory
+ * @param {number} ptr
+ * @param {Uint8Array} data
+ */
+function storeData(memory, ptr, data) {
+    const region = { ptr, size: data.byteLength };
+
+    new Uint8Array(memory.buffer, region.ptr, region.size).set(data);
+
+    return region;
 }

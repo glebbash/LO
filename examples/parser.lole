@@ -1,11 +1,14 @@
 (mem m1 :min 1000)
 (export mem m1 :as memory)
 
+(export parse :as parse)
+(export char_at :as char_at)
+
+; TODO: implement
 (fn parse ((data i32) (size i32)) (
     i32 ; ok
     i32 ; index
 ) () (
-    ; TODO: implement
     (return (i32 0) (i32 0))
 ))
 
@@ -45,6 +48,3 @@
         (i32.load8_u (i32.add data index))
     )
 ))
-
-(export parse :as parse)
-(export char_at :as char_at)
