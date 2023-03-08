@@ -32,6 +32,16 @@ test("compiles factorial example", async () => {
     assert.strictEqual(result, 120);
 });
 
+test("compiles locals", async () => {
+    const output = await compile(
+        compiler,
+        await readFile("./examples/locals.lole")
+    );
+
+    const program = await loadWasm(output);
+    assert.deepEqual(program.add(2, 2), 4);
+});
+
 test("compiles parser", async () => {
     const output = await compile(
         compiler,

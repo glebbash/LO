@@ -29,7 +29,6 @@ pub struct Expr {
 
 pub enum Instr {
     I32Const(i32),
-    LocalGet(u32),
     Return {
         values: Vec<Instr>,
     },
@@ -52,6 +51,11 @@ pub enum Instr {
     I32Mul {
         lhs: Box<Instr>,
         rhs: Box<Instr>,
+    },
+    LocalGet(u32),
+    LocalSet {
+        local_idx: u32,
+        value: Box<Instr>,
     },
     I32Load {
         align: u32,

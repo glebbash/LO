@@ -1,13 +1,15 @@
 use crate::{
     parser::SExpr,
-    wasm_module::{Export, ExportType, Expr, FnCode, FnType, Instr, Memory, ValueType, WasmModule},
+    wasm_module::{
+        Export, ExportType, Expr, FnCode, FnType, Instr, Locals, Memory, ValueType, WasmModule,
+    },
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 
 struct FnDef {
     fn_type: FnType,
-    locals: Vec<SExpr>,
-    args: BTreeMap<String, u32>,
+    locals_and_args: BTreeMap<String, u32>,
+    local_types: Vec<ValueType>,
     body: Vec<SExpr>,
 }
 
@@ -20,11 +22,11 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
     for expr in exprs {
         let SExpr::List(items) = expr else {
-            return Err(String::from("Unexpected atom"));
+            return Err(format!("Unexpected atom"));
         };
 
         let [SExpr::Atom(op), other @ ..] = &items[..] else {
-            return Err(String::from("Expected operation, got a simple list"));
+            return Err(format!("Expected operation, got a simple list"));
         };
 
         // TODO: cleanup
@@ -70,36 +72,62 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     return Err(format!("Cannot redefine function: {name}"));
                 }
 
-                let mut fn_inputs = vec![];
-                let mut fn_args = BTreeMap::new();
+                let mut locals_and_args = BTreeMap::new();
 
-                for (idx, input) in inputs.iter().enumerate() {
+                let mut input_types = vec![];
+                for input in inputs.iter() {
                     let SExpr::List(name_and_type) = input else {
-                        return Err(String::from("Unexpected atom in function params list"));
+                        return Err(format!("Unexpected atom in function params list"));
                     };
 
                     let [SExpr::Atom(p_name), SExpr::Atom(p_type)] = &name_and_type[..] else {
-                        return Err(String::from("Expected name and parameter pairs in function params list"));
+                        return Err(format!("Expected name and parameter pairs in function params list"));
                     };
 
-                    fn_args.insert(p_name.clone(), idx as u32);
-                    fn_inputs.push(parse_value_type(p_type)?);
+                    if locals_and_args.contains_key(p_name) {
+                        return Err(format!(
+                            "Found function param with conflicting name: {p_name}"
+                        ));
+                    }
+
+                    locals_and_args.insert(p_name.clone(), locals_and_args.len() as u32);
+                    input_types.push(parse_value_type(p_type)?);
                 }
 
-                let mut fn_outputs = vec![];
+                let mut output_types = vec![];
                 for input in outputs {
-                    fn_outputs.push(parse_value_type(get_atom_text(input)?)?);
+                    output_types.push(parse_value_type(get_atom_text(input)?)?);
+                }
+
+                let mut local_types = vec![];
+                for local in locals.iter() {
+                    let SExpr::List(name_and_type) = local else {
+                        return Err(format!("Unexpected atom in function locals list"));
+                    };
+
+                    let [SExpr::Atom(l_name), SExpr::Atom(l_type)] = &name_and_type[..] else {
+                        return Err(format!("Expected name and parameter pairs in function locals list"));
+                    };
+
+                    if locals_and_args.contains_key(l_name) {
+                        return Err(format!(
+                            "Found function local with conflicting name: {l_name}"
+                        ));
+                    }
+
+                    locals_and_args.insert(l_name.clone(), locals_and_args.len() as u32);
+                    local_types.push(parse_value_type(l_type)?);
                 }
 
                 fn_defs.insert(
                     name.clone(),
                     FnDef {
                         fn_type: FnType {
-                            inputs: fn_inputs,
-                            outputs: fn_outputs,
+                            inputs: input_types,
+                            outputs: output_types,
                         },
-                        args: fn_args,
-                        locals: locals.clone(),
+                        local_types,
+                        locals_and_args,
                         body: body.clone(),
                     },
                 );
@@ -141,12 +169,19 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
     // push function codes
     for fn_def in fn_defs.values() {
-        let _ = fn_def.locals;
+        let locals = fn_def
+            .local_types
+            .iter()
+            .map(|l| Locals {
+                count: 1,
+                value_type: l.clone(),
+            })
+            .collect();
 
         module.fn_codes.push(FnCode {
-            locals: vec![], // TODO: implement
+            locals,
             expr: Expr {
-                instrs: parse_instrs(&fn_def.body, &fn_def.args, &fn_defs)?,
+                instrs: parse_instrs(&fn_def.body, &fn_def.locals_and_args, &fn_defs)?,
             },
         });
     }
@@ -161,13 +196,13 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
 fn parse_instr(
     expr: &SExpr,
-    fn_args: &BTreeMap<String, u32>,
+    locals: &BTreeMap<String, u32>,
     fn_defs: &BTreeMap<String, FnDef>,
 ) -> Result<Instr, String> {
     let items = match expr {
         SExpr::List(items) => items,
         SExpr::Atom(local_name) => {
-            let Some(&idx) = fn_args.get(local_name.as_str()) else {
+            let Some(&idx) = locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for local.get: {local_name}"));
             };
 
@@ -184,29 +219,39 @@ fn parse_instr(
             Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
         ("i32.lt_s", [lhs, rhs]) => Instr::I32LessThenSigned {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
         },
         ("i32.ge_s", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
         },
         ("i32.add", [lhs, rhs]) => Instr::I32Add {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
         },
         ("i32.sub", [lhs, rhs]) => Instr::I32Sub {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
         },
         ("i32.mul", [lhs, rhs]) => Instr::I32Mul {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
         },
+        ("set", [SExpr::Atom(local_name), value]) => {
+            let Some(&local_idx) = locals.get(local_name.as_str()) else {
+                return Err(format!("Unknown location for set: {local_name}"));
+            };
+
+            Instr::LocalSet {
+                local_idx,
+                value: Box::new(parse_instr(value, locals, fn_defs)?),
+            }
+        }
         ("i32.load", [address]) => Instr::I32Load {
             align: 1,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, fn_args, fn_defs)?),
+            address_instr: Box::new(parse_instr(address, locals, fn_defs)?),
         },
         ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => Instr::I32Load {
             align: align
@@ -215,37 +260,34 @@ fn parse_instr(
             offset: offset
                 .parse()
                 .map_err(|_| format!("Parsing i32.load offset failed"))?,
-            address_instr: Box::new(parse_instr(address, fn_args, fn_defs)?),
+            address_instr: Box::new(parse_instr(address, locals, fn_defs)?),
         },
         ("i32.load8_u", [address]) => Instr::I32Load8Unsigned {
             align: 0,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, fn_args, fn_defs)?),
+            address_instr: Box::new(parse_instr(address, locals, fn_defs)?),
         },
         ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => Instr::If {
             block_type: parse_value_type(block_type)?,
-            cond: Box::new(parse_instr(cond, fn_args, fn_defs)?),
-            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_defs)?),
-            else_branch: Box::new(parse_instr(else_branch, fn_args, fn_defs)?),
+            cond: Box::new(parse_instr(cond, locals, fn_defs)?),
+            then_branch: Box::new(parse_instr(then_branch, locals, fn_defs)?),
+            else_branch: Box::new(parse_instr(else_branch, locals, fn_defs)?),
         },
         ("if", [cond, then_branch]) => Instr::IfSingleBranch {
-            cond: Box::new(parse_instr(cond, fn_args, fn_defs)?),
-            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_defs)?),
+            cond: Box::new(parse_instr(cond, locals, fn_defs)?),
+            then_branch: Box::new(parse_instr(then_branch, locals, fn_defs)?),
         },
         ("return", values) => Instr::Return {
-            values: parse_instrs(values, fn_args, fn_defs)?,
+            values: parse_instrs(values, locals, fn_defs)?,
         },
         (fn_name, args) => {
-            #[cfg(test)]
-            dbg!(fn_defs.keys().collect::<Vec<_>>());
-
             let Some(fn_idx) = fn_defs.keys().position(|k| k == fn_name) else {
                 return Err(format!("Unknown instuction or function: {fn_name}"));
             };
 
             Instr::Call {
                 fn_idx: fn_idx as u32,
-                args: parse_instrs(args, fn_args, fn_defs)?,
+                args: parse_instrs(args, locals, fn_defs)?,
             }
         }
     };
@@ -255,12 +297,12 @@ fn parse_instr(
 
 fn parse_instrs(
     exprs: &[SExpr],
-    fn_args: &BTreeMap<String, u32>,
+    locals: &BTreeMap<String, u32>,
     fn_defs: &BTreeMap<String, FnDef>,
 ) -> Result<Vec<Instr>, String> {
     exprs
         .iter()
-        .map(|expr| parse_instr(expr, fn_args, fn_defs))
+        .map(|expr| parse_instr(expr, locals, fn_defs))
         .collect()
 }
 

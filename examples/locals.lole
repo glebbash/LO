@@ -1,0 +1,11 @@
+(export add :as add)
+
+(fn add ((a1 i32) (a2 i32)) (i32) (
+    (l1 i32)
+    (l2 i32)
+) (
+    (set l1 a1)
+    (set l2 a2)
+
+    (i32.add l1 l2)
+))

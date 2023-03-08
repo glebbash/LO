@@ -188,6 +188,15 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             write_instr(output, rhs);
             output.push(0x6c);
         }
+        Instr::LocalGet(local_idx) => {
+            output.push(0x20);
+            write_u32(output, *local_idx);
+        }
+        Instr::LocalSet { local_idx, value } => {
+            write_instr(output, value);
+            output.push(0x21);
+            write_u32(output, *local_idx);
+        }
         Instr::I32Load {
             align,
             offset,
@@ -211,10 +220,6 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
         Instr::I32Const(value) => {
             output.push(0x41);
             write_i32(output, *value);
-        }
-        Instr::LocalGet(local_idx) => {
-            output.push(0x20);
-            write_u32(output, *local_idx);
         }
         Instr::Return { values } => {
             for value in values {
