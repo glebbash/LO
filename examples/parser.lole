@@ -32,7 +32,7 @@
     ;;     (set index (i32.add index (i32 1)))
     ;; ))
 
-    (i32 0)
+    index
 ))
 
 (fn char_at ((data i32) (size i32) (index i32)) (
