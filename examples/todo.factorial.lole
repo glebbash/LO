@@ -1,9 +1,9 @@
 ; This file is not supposed to be successfully compiled
 
-(:: factorial (i32) (i32))
 (export factorial :as factorial)
 
-(fn factorial (x) (
+
+(fn factorial ((x i32)) (i32) () (
     (if (i32.lt_s x (i32 2))
         (return x)
     )
@@ -12,13 +12,14 @@
 ))
 
 ; TODO: add number type inference
-(fn factorial (x) (
+(fn factorial ((x i32)) (i32) () (
     (if (< x 2) (return x))
     (* x (factorial (- x 2)))
 ))
 
 ; TODO: add infix expressions
-(fn factorial (x) (
+(fn factorial ((x i32)) (i32) () (
     (if { x < 2 } (return x))
     { x * (factorial { x - 2 }) }
 ))
+

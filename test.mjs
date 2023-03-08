@@ -9,12 +9,10 @@ const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 const compiler = await loadWasm(await readFile(COMPILER_PATH));
 
 test("compiles 42 example", async () => {
-    const { ok, output } = await compile(
+    const output = await compile(
         compiler,
         await readFile("./examples/42.lole")
     );
-
-    assert.strictEqual(ok, 1);
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -23,12 +21,10 @@ test("compiles 42 example", async () => {
 });
 
 test("compiles factorial example", async () => {
-    const { ok, output } = await compile(
+    const output = await compile(
         compiler,
         await readFile("./examples/factorial.lole")
     );
-
-    assert.strictEqual(ok, 1);
 
     const program = await loadWasm(output);
     const result = program.factorial(5);
@@ -66,5 +62,9 @@ async function compile(compiler, source) {
     compiler.mem_free(inPtr, inSize);
     compiler.mem_free(outPtr, outSize);
 
-    return { ok, output };
+    if (!ok) {
+        throw new Error(new TextDecoder().decode(output));
+    }
+
+    return output;
 }

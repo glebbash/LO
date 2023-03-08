@@ -2,7 +2,7 @@ use core::fmt;
 
 use alloc::{string::String, vec::Vec};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SExpr {
     Atom(String),
     List(Vec<SExpr>),
@@ -198,26 +198,22 @@ mod tests {
             result,
             vec![
                 SExpr::List(vec![
-                    SExpr::Atom(String::from("::")),
+                    SExpr::Atom(String::from("export")),
                     SExpr::Atom(String::from("main")),
-                    SExpr::List(vec![]),
-                    SExpr::List(vec![SExpr::Atom(String::from("i32"))])
+                    SExpr::Atom(String::from(":as")),
+                    SExpr::Atom(String::from("main"))
                 ]),
                 SExpr::List(vec![
                     SExpr::Atom(String::from("fn")),
                     SExpr::Atom(String::from("main")),
                     SExpr::List(vec![]),
+                    SExpr::List(vec![SExpr::Atom(String::from("i32"))]),
+                    SExpr::List(vec![]),
                     SExpr::List(vec![SExpr::List(vec![
                         SExpr::Atom(String::from("i32")),
                         SExpr::Atom(String::from("42"))
-                    ]),])
+                    ])])
                 ]),
-                SExpr::List(vec![
-                    SExpr::Atom(String::from("export")),
-                    SExpr::Atom(String::from("main")),
-                    SExpr::Atom(String::from(":as")),
-                    SExpr::Atom(String::from("main"))
-                ])
             ]
         );
     }

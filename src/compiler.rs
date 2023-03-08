@@ -4,11 +4,17 @@ use crate::{
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 
+struct FnDef {
+    fn_type: FnType,
+    locals: Vec<SExpr>,
+    args: BTreeMap<String, u32>,
+    body: Vec<SExpr>,
+}
+
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     let mut module = WasmModule::default();
 
-    let mut fn_types = BTreeMap::<String, FnType>::new();
-    let mut fn_codes = BTreeMap::<String, FnCode>::new();
+    let mut fn_defs = BTreeMap::<String, FnDef>::new();
     let mut fn_exports = BTreeMap::<String, String>::new();
     let mut memory_names = Vec::<String>::new();
 
@@ -22,7 +28,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
         };
 
         // TODO: cleanup
-        match (op.as_str(), &other[..]) {
+        match (op.as_str(), other) {
             ("mem", [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory)])
                 if min_literal == ":min" =>
             {
@@ -56,14 +62,28 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     ),
                 });
             }
-            ("::", [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs)]) => {
-                if fn_types.contains_key(name) {
-                    return Err(format!("Cannot redefine function type: {name}"));
+            (
+                "fn",
+                [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs), SExpr::List(locals), SExpr::List(body)],
+            ) => {
+                if fn_defs.contains_key(name) {
+                    return Err(format!("Cannot redefine function: {name}"));
                 }
 
                 let mut fn_inputs = vec![];
-                for input in inputs {
-                    fn_inputs.push(parse_value_type(get_atom_text(input)?)?);
+                let mut fn_args = BTreeMap::new();
+
+                for (idx, input) in inputs.iter().enumerate() {
+                    let SExpr::List(name_and_type) = input else {
+                        return Err(String::from("Unexpected atom in function params list"));
+                    };
+
+                    let [SExpr::Atom(p_name), SExpr::Atom(p_type)] = &name_and_type[..] else {
+                        return Err(String::from("Expected name and parameter pairs in function params list"));
+                    };
+
+                    fn_args.insert(p_name.clone(), idx as u32);
+                    fn_inputs.push(parse_value_type(p_type)?);
                 }
 
                 let mut fn_outputs = vec![];
@@ -71,35 +91,16 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     fn_outputs.push(parse_value_type(get_atom_text(input)?)?);
                 }
 
-                fn_types.insert(
+                fn_defs.insert(
                     name.clone(),
-                    FnType {
-                        inputs: fn_inputs,
-                        outputs: fn_outputs,
-                    },
-                );
-            }
-            ("fn", [SExpr::Atom(name), SExpr::List(params), SExpr::List(instrs)]) => {
-                if fn_codes.contains_key(name) {
-                    return Err(format!("Cannot redefine function body: {name}"));
-                }
-
-                let mut fn_args = BTreeMap::new();
-                for (idx, input) in params.iter().enumerate() {
-                    let SExpr::Atom(param_name) = input else {
-                        return Err(format!("Unexpected list is parameters"));
-                    };
-
-                    fn_args.insert(param_name.as_str(), idx as u32);
-                }
-
-                fn_codes.insert(
-                    name.clone(),
-                    FnCode {
-                        locals: vec![], // TODO: implement
-                        expr: Expr {
-                            instrs: parse_instrs(instrs, &fn_args, &fn_types)?,
+                    FnDef {
+                        fn_type: FnType {
+                            inputs: fn_inputs,
+                            outputs: fn_outputs,
                         },
+                        args: fn_args,
+                        locals: locals.clone(),
+                        body: body.clone(),
                     },
                 );
             }
@@ -120,38 +121,39 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             ("export", [SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)])
                 if as_literal == ":as" =>
             {
-                if !fn_types.contains_key(in_name) {
-                    return Err(format!("Cannot export {in_name}, export type is unknown"));
-                }
-
                 fn_exports.insert(in_name.clone(), out_name.clone());
             }
             (op, _) => return Err(format!("Unknown operation: {op}")),
         };
     }
 
-    let fn_names = fn_types.keys().cloned().collect::<Vec<_>>();
-
-    if !fn_codes.keys().eq(fn_names.iter()) {
-        // TODO: better error message?
-        return Err(format!("Function types and codes do not match"));
+    // push function exports
+    for (in_name, out_name) in fn_exports.into_iter() {
+        module.exports.push(Export {
+            export_type: ExportType::Func,
+            export_name: out_name,
+            exported_item_index: fn_defs
+                .keys()
+                .position(|fn_name| *fn_name == in_name)
+                .ok_or_else(|| format!("Cannot export unknown function {in_name}"))?,
+        });
     }
 
-    for (fn_index, fn_name) in fn_names.iter().enumerate() {
-        module.fn_types.push(fn_types.remove(fn_name).unwrap());
-        module.fn_codes.push(
-            fn_codes
-                .remove(fn_name)
-                .ok_or_else(|| format!("Implementation not found for: {fn_name}"))?,
-        );
+    // push function codes
+    for fn_def in fn_defs.values() {
+        let _ = fn_def.locals;
 
-        if let Some(export_name) = fn_exports.remove(fn_name) {
-            module.exports.push(Export {
-                export_type: ExportType::Func,
-                export_name,
-                exported_item_index: fn_index,
-            });
-        }
+        module.fn_codes.push(FnCode {
+            locals: vec![], // TODO: implement
+            expr: Expr {
+                instrs: parse_instrs(&fn_def.body, &fn_def.args, &fn_defs)?,
+            },
+        });
+    }
+
+    // push function types
+    for fn_def in fn_defs.into_values() {
+        module.fn_types.push(fn_def.fn_type);
     }
 
     Ok(module)
@@ -159,8 +161,8 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
 fn parse_instr(
     expr: &SExpr,
-    fn_args: &BTreeMap<&str, u32>,
-    fn_types: &BTreeMap<String, FnType>,
+    fn_args: &BTreeMap<String, u32>,
+    fn_defs: &BTreeMap<String, FnDef>,
 ) -> Result<Instr, String> {
     let items = match expr {
         SExpr::List(items) => items,
@@ -182,29 +184,29 @@ fn parse_instr(
             Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
         ("i32.lt_s", [lhs, rhs]) => Instr::I32LessThenSigned {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
         },
         ("i32.ge_s", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
         },
         ("i32.add", [lhs, rhs]) => Instr::I32Add {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
         },
         ("i32.sub", [lhs, rhs]) => Instr::I32Sub {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
         },
         ("i32.mul", [lhs, rhs]) => Instr::I32Mul {
-            lhs: Box::new(parse_instr(lhs, fn_args, fn_types)?),
-            rhs: Box::new(parse_instr(rhs, fn_args, fn_types)?),
+            lhs: Box::new(parse_instr(lhs, fn_args, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, fn_args, fn_defs)?),
         },
         ("i32.load", [address]) => Instr::I32Load {
             align: 1,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, fn_args, fn_types)?),
+            address_instr: Box::new(parse_instr(address, fn_args, fn_defs)?),
         },
         ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => Instr::I32Load {
             align: align
@@ -213,34 +215,37 @@ fn parse_instr(
             offset: offset
                 .parse()
                 .map_err(|_| format!("Parsing i32.load offset failed"))?,
-            address_instr: Box::new(parse_instr(address, fn_args, fn_types)?),
+            address_instr: Box::new(parse_instr(address, fn_args, fn_defs)?),
         },
         ("i32.load8_u", [address]) => Instr::I32Load8Unsigned {
             align: 0,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, fn_args, fn_types)?),
+            address_instr: Box::new(parse_instr(address, fn_args, fn_defs)?),
         },
         ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => Instr::If {
             block_type: parse_value_type(block_type)?,
-            cond: Box::new(parse_instr(cond, fn_args, fn_types)?),
-            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_types)?),
-            else_branch: Box::new(parse_instr(else_branch, fn_args, fn_types)?),
+            cond: Box::new(parse_instr(cond, fn_args, fn_defs)?),
+            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_defs)?),
+            else_branch: Box::new(parse_instr(else_branch, fn_args, fn_defs)?),
         },
         ("if", [cond, then_branch]) => Instr::IfSingleBranch {
-            cond: Box::new(parse_instr(cond, fn_args, fn_types)?),
-            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_types)?),
+            cond: Box::new(parse_instr(cond, fn_args, fn_defs)?),
+            then_branch: Box::new(parse_instr(then_branch, fn_args, fn_defs)?),
         },
         ("return", values) => Instr::Return {
-            values: parse_instrs(values, fn_args, fn_types)?,
+            values: parse_instrs(values, fn_args, fn_defs)?,
         },
         (fn_name, args) => {
-            let Some(fn_idx) = fn_types.keys().position(|k| k == fn_name) else {
+            #[cfg(test)]
+            dbg!(fn_defs.keys().collect::<Vec<_>>());
+
+            let Some(fn_idx) = fn_defs.keys().position(|k| k == fn_name) else {
                 return Err(format!("Unknown instuction or function: {fn_name}"));
             };
 
             Instr::Call {
                 fn_idx: fn_idx as u32,
-                args: parse_instrs(args, fn_args, fn_types)?,
+                args: parse_instrs(args, fn_args, fn_defs)?,
             }
         }
     };
@@ -250,12 +255,12 @@ fn parse_instr(
 
 fn parse_instrs(
     exprs: &[SExpr],
-    fn_args: &BTreeMap<&str, u32>,
-    fn_types: &BTreeMap<String, FnType>,
+    fn_args: &BTreeMap<String, u32>,
+    fn_defs: &BTreeMap<String, FnDef>,
 ) -> Result<Vec<Instr>, String> {
     exprs
         .iter()
-        .map(|expr| parse_instr(expr, fn_args, fn_types))
+        .map(|expr| parse_instr(expr, fn_args, fn_defs))
         .collect()
 }
 
