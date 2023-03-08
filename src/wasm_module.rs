@@ -40,6 +40,10 @@ pub enum Instr {
         lhs: Box<Instr>,
         rhs: Box<Instr>,
     },
+    I32NotEqual {
+        lhs: Box<Instr>,
+        rhs: Box<Instr>,
+    },
     I32Add {
         lhs: Box<Instr>,
         rhs: Box<Instr>,
@@ -64,6 +68,11 @@ pub enum Instr {
     MultiValueEmit {
         values: Vec<Instr>,
     },
+    Loop {
+        instrs: Vec<Instr>,
+    },
+    LoopBreak,
+    LoopContinue,
     I32Load {
         align: u32,
         offset: u32,

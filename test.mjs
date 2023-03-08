@@ -53,11 +53,13 @@ test("compiles parser", async () => {
     const data = storeData(
         program.memory,
         0,
-        new TextEncoder().encode("hello")
+        new TextEncoder().encode("   hello")
     );
 
-    assert.deepEqual(program.char_at(data.ptr, data.size, 0), [1, 104]);
-    assert.deepEqual(program.char_at(data.ptr, data.size, 5), [0, 0]);
+    assert.deepEqual(program.char_at(data.ptr, data.size, 3), [1, 104]);
+    assert.deepEqual(program.char_at(data.ptr, data.size, 8), [0, 0]);
+
+    assert.deepEqual(program.skip_space(data.ptr, data.size, 0), 3);
 });
 
 // utils

@@ -173,6 +173,11 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             write_instr(output, rhs);
             output.push(0x4e);
         }
+        Instr::I32NotEqual { lhs, rhs } => {
+            write_instr(output, lhs);
+            write_instr(output, rhs);
+            output.push(0x47);
+        }
         Instr::I32Add { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
@@ -239,6 +244,46 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
                 write_instr(output, value);
             }
             output.push(0x0f);
+        }
+        Instr::Loop { instrs } => {
+            output.push(0x02); // begin block
+            output.push(0x40); // no value
+
+            {
+                output.push(0x03); // begin loop
+                output.push(0x40); // no value
+
+                {
+                    for instr in instrs {
+                        write_instr(output, instr);
+                    }
+
+                    // loop implicitly
+                    output.push(0x0c); // br
+                    write_u32(output, 0);
+                }
+
+                output.push(0x0b); // end loop
+            }
+
+            output.push(0x0b); // end block
+        }
+        // to break the loop we need to:
+        // 1. break out of if branch (br 0)
+        // 2. end loop iteration with (br 1)
+        // 3. end surrounding loop block (br 2)
+        // NOTE: calling break or continue outside of if branch is undefined
+        Instr::LoopBreak => {
+            output.push(0x0c); // br
+            write_u32(output, 2);
+        }
+        // to break the loop we need to:
+        // 1. break out of if branch (br 0)
+        // 2. end loop iteration with (br 1)
+        // NOTE: calling break or continue outside of if branch is undefined
+        Instr::LoopContinue => {
+            output.push(0x0c); // br
+            write_u32(output, 1);
         }
         Instr::Call { fn_idx, args } => {
             for arg in args {

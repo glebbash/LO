@@ -226,6 +226,10 @@ fn parse_instr(
             lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
             rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
         },
+        ("i32.ne", [lhs, rhs]) => Instr::I32NotEqual {
+            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
+            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
+        },
         ("i32.add", [lhs, rhs]) => Instr::I32Add {
             lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
             rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
@@ -300,6 +304,11 @@ fn parse_instr(
             cond: Box::new(parse_instr(cond, locals, fn_defs)?),
             then_branch: Box::new(parse_instr(then_branch, locals, fn_defs)?),
         },
+        ("loop", [SExpr::List(exprs)]) => Instr::Loop {
+            instrs: parse_instrs(exprs, locals, fn_defs)?,
+        },
+        ("break", []) => Instr::LoopBreak,
+        ("continue", []) => Instr::LoopContinue,
         ("return", values) => Instr::Return {
             values: parse_instrs(values, locals, fn_defs)?,
         },

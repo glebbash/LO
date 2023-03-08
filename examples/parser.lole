@@ -2,6 +2,7 @@
 (export mem m1 :as memory)
 
 (export parse :as parse)
+(export skip_space :as skip_space)
 (export char_at :as char_at)
 
 ; TODO: implement
@@ -18,19 +19,19 @@
     (char_ok i32)
     (char i32)
 ) (
-    ;; (loop (
-    ;;     (set (char_ok char) (char_at data size index))
+    (loop (
+        (set (char_ok char) (char_at data size index))
 
-    ;;     (if (i32.ne char_ok 1)
-    ;;         (break)
-    ;;     )
+        (if (i32.ne char_ok (i32 1))
+            (break)
+        )
 
-    ;;     (if (i32.ne char (i32 32)) ; space
-    ;;         (break)
-    ;;     )
+        (if (i32.ne char (i32 32)) ; space
+            (break)
+        )
 
-    ;;     (set index (i32.add index (i32 1)))
-    ;; ))
+        (set index (i32.add index (i32 1)))
+    ))
 
     index
 ))
