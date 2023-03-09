@@ -13,6 +13,7 @@
     (return (i32 0) (i32 0))
 ))
 
+; TODO: add support for comments
 (fn skip_space ((data i32) (size i32) (index i32)) (
     i32 ; index
 ) (
