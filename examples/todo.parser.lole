@@ -1,0 +1,44 @@
+;; TODO(COMPILER): implement type system
+;; TODO(COMPILER): implement scoped locals
+;; TODO(COMPILER): implement string_to_chars_vec
+;; TODO(COMPILER): implement constants
+;; TODO(COMPILER): support macros or hardcode `try!`
+;; TODO(COMPILER): design struct creation
+;; TODO(COMPILER): implement struct creation
+;; TODO(USERLAND): define StringSlice type?
+;; TODO(USERLAND): define Result, Vec, SExpr, ParseError types
+;; TODO(USERLAND): implement `Vec/new`
+;; TODO(USERLAND): implement `Vec/len`
+;; TODO(USERLAND): implement `Result/ok` constructor
+;; TODO(USERLAND): implement `try!`
+
+(const L_PAREN 40)
+
+(export parse :as parse)
+(fn parse (script StringSlice) ((Result (Vec SExpr) ParseError)) (
+    (let chars (string_to_chars_vec script))
+    (let index (skip_space chars (i32 0)))
+    (let items (Vec/new))
+
+    (loop (
+        (if (i32.lt_s index (Vec/len chars))
+            (break)
+        )
+
+        (if (i32.ne (try! (char_at chars index)) L_PAREN)
+            (return (Result/err (ParseError
+                (kind (ParseErrorKind/UnexpectedChar))
+                (index index)
+            )))
+        )
+
+        (let res (try! (parse_list chars index)))
+        (Vec/push items (ParseResult/data res))
+        (set index (skip_space chars (ParseResult/index res)))
+    ))
+
+    ;; TODO: free chars
+    ;; TODO: use defer?
+
+    (Result/ok items)
+))
