@@ -184,7 +184,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             {
                 ctx.fn_exports.insert(in_name.clone(), out_name.clone());
             }
-            ("struct", [SExpr::Atom(s_name), SExpr::List(field_defs)]) => {
+            ("struct", [SExpr::Atom(s_name), field_defs @ ..]) => {
                 if ctx.struct_defs.contains_key(s_name) {
                     return Err(format!("Cannot redefine struct {s_name}"));
                 }
@@ -432,7 +432,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
             Instr::Nop
         }
         // TODO: validate that number of fields matches
-        ("new", [SExpr::Atom(s_name), SExpr::List(values)]) => {
+        ("new", [SExpr::Atom(s_name), values @ ..]) => {
             if !ctx.module.struct_defs.contains_key(s_name) {
                 return Err(format!("Unknown struct encountered in set: {s_name}"));
             }
