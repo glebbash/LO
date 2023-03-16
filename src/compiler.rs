@@ -13,12 +13,26 @@ struct FnDef {
     body: Vec<SExpr>,
 }
 
+struct StructDef {
+    fields: Vec<(String, ValueType)>,
+}
+
+struct ModuleContext {
+    fn_defs: BTreeMap<String, FnDef>,
+    fn_exports: BTreeMap<String, String>,
+    memory_names: Vec<String>,
+    struct_defs: BTreeMap<String, StructDef>,
+}
+
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     let mut module = WasmModule::default();
 
-    let mut fn_defs = BTreeMap::<String, FnDef>::new();
-    let mut fn_exports = BTreeMap::<String, String>::new();
-    let mut memory_names = Vec::<String>::new();
+    let mut ctx = ModuleContext {
+        fn_defs: BTreeMap::<String, FnDef>::new(),
+        fn_exports: BTreeMap::<String, String>::new(),
+        memory_names: Vec::<String>::new(),
+        struct_defs: BTreeMap::<String, StructDef>::new(),
+    };
 
     for expr in exprs {
         let SExpr::List(items) = expr else {
@@ -34,10 +48,10 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             ("mem", [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory)])
                 if min_literal == ":min" =>
             {
-                if memory_names.contains(mem_name) {
+                if ctx.memory_names.contains(mem_name) {
                     return Err(format!("Duplicate memory definition: {mem_name}"));
                 }
-                memory_names.push(mem_name.clone());
+                ctx.memory_names.push(mem_name.clone());
                 module.memories.push(Memory {
                     min: min_memory
                         .parse()
@@ -49,10 +63,11 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                 "mem",
                 [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory), SExpr::Atom(max_literal), SExpr::Atom(max_memory)],
             ) if min_literal == ":min" && max_literal == ":max" => {
-                if memory_names.contains(mem_name) {
+                if ctx.memory_names.contains(mem_name) {
                     return Err(format!("Duplicate memory definition: {mem_name}"));
                 }
-                memory_names.push(mem_name.clone());
+
+                ctx.memory_names.push(mem_name.clone());
                 module.memories.push(Memory {
                     min: min_memory
                         .parse()
@@ -68,7 +83,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                 "fn",
                 [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs), SExpr::List(locals), SExpr::List(body)],
             ) => {
-                if fn_defs.contains_key(name) {
+                if ctx.fn_defs.contains_key(name) {
                     return Err(format!("Cannot redefine function: {name}"));
                 }
 
@@ -90,13 +105,28 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         ));
                     }
 
-                    locals_and_args.insert(p_name.clone(), locals_and_args.len() as u32);
-                    input_types.push(parse_value_type(p_type)?);
+                    add_fn_locals(p_name, p_type, &mut locals_and_args, &ctx, &mut input_types)?;
                 }
 
                 let mut output_types = vec![];
-                for input in outputs {
-                    output_types.push(parse_value_type(get_atom_text(input)?)?);
+                for output in outputs {
+                    let l_type = match output {
+                        SExpr::Atom(atom_text) => atom_text.as_str(),
+                        _ => return Err(format!("Atom expected, list found")),
+                    };
+                    if let Ok(value_type) = parse_value_type(l_type) {
+                        output_types.push(value_type);
+                        continue;
+                    }
+
+                    let struct_def = match ctx.struct_defs.get(l_type) {
+                        Some(struct_def) => struct_def,
+                        None => return Err(format!("Unknown value type: {l_type}")),
+                    };
+
+                    for field in &struct_def.fields {
+                        output_types.push(field.1);
+                    }
                 }
 
                 let mut local_types = vec![];
@@ -115,11 +145,10 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         ));
                     }
 
-                    locals_and_args.insert(l_name.clone(), locals_and_args.len() as u32);
-                    local_types.push(parse_value_type(l_type)?);
+                    add_fn_locals(l_name, l_type, &mut locals_and_args, &ctx, &mut local_types)?;
                 }
 
-                fn_defs.insert(
+                ctx.fn_defs.insert(
                     name.clone(),
                     FnDef {
                         fn_type: FnType {
@@ -136,39 +165,70 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                 "export",
                 [SExpr::Atom(mem_literal), SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)],
             ) if mem_literal == "mem" && as_literal == ":as" => {
-                if !memory_names.contains(in_name) {
+                if !ctx.memory_names.contains(in_name) {
                     return Err(format!("Cannot export mem {in_name}, not found"));
                 }
 
                 module.exports.push(Export {
                     export_type: ExportType::Mem,
                     export_name: out_name.clone(),
-                    exported_item_index: memory_names.iter().position(|n| n == in_name).unwrap(),
+                    exported_item_index: ctx
+                        .memory_names
+                        .iter()
+                        .position(|n| n == in_name)
+                        .unwrap(),
                 });
             }
             ("export", [SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)])
                 if as_literal == ":as" =>
             {
-                fn_exports.insert(in_name.clone(), out_name.clone());
+                ctx.fn_exports.insert(in_name.clone(), out_name.clone());
+            }
+            ("struct", [SExpr::Atom(s_name), SExpr::List(field_defs)]) => {
+                if ctx.struct_defs.contains_key(s_name) {
+                    return Err(format!("Cannot redefine struct {s_name}"));
+                }
+
+                let mut fields = Vec::<(String, ValueType)>::new();
+                for field_def in field_defs {
+                    let SExpr::List(name_and_type) = field_def else {
+                        return Err(format!("Unexpected atom in stuct fields list"));
+                    };
+
+                    let [SExpr::Atom(f_name), SExpr::Atom(f_type)] = &name_and_type[..] else {
+                        return Err(format!("Expected name and parameter pairs in stuct fields list"));
+                    };
+
+                    if fields.iter().find(|f| &f.0 == f_name).is_some() {
+                        return Err(format!(
+                            "Found duplicate struct field name: '{f_name}' of struct {s_name}"
+                        ));
+                    }
+
+                    fields.push((f_name.clone(), parse_value_type(f_type)?));
+                }
+
+                ctx.struct_defs.insert(s_name.clone(), StructDef { fields });
             }
             (op, _) => return Err(format!("Unknown operation: {op}")),
         };
     }
 
     // push function exports
-    for (in_name, out_name) in fn_exports.into_iter() {
+    for (in_name, out_name) in ctx.fn_exports.iter() {
         module.exports.push(Export {
             export_type: ExportType::Func,
-            export_name: out_name,
-            exported_item_index: fn_defs
+            export_name: out_name.clone(),
+            exported_item_index: ctx
+                .fn_defs
                 .keys()
-                .position(|fn_name| *fn_name == in_name)
+                .position(|fn_name| fn_name == in_name)
                 .ok_or_else(|| format!("Cannot export unknown function {in_name}"))?,
         });
     }
 
     // push function codes
-    for fn_def in fn_defs.values() {
+    for fn_def in ctx.fn_defs.values() {
         let locals = fn_def
             .local_types
             .iter()
@@ -181,23 +241,56 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
         module.fn_codes.push(FnCode {
             locals,
             expr: Expr {
-                instrs: parse_instrs(&fn_def.body, &fn_def.locals_and_args, &fn_defs)?,
+                instrs: parse_instrs(&fn_def.body, &fn_def.locals_and_args, &ctx)?,
             },
         });
     }
 
     // push function types
-    for fn_def in fn_defs.into_values() {
+    for fn_def in ctx.fn_defs.into_values() {
         module.fn_types.push(fn_def.fn_type);
     }
 
     Ok(module)
 }
 
+fn add_fn_locals(
+    l_name: &String,
+    l_type: &String,
+    locals_and_args: &mut BTreeMap<String, u32>,
+    ctx: &ModuleContext,
+    output: &mut Vec<ValueType>,
+) -> Result<(), String> {
+    if let Ok(value_type) = parse_value_type(l_type) {
+        locals_and_args.insert(l_name.clone(), locals_and_args.len() as u32);
+        output.push(value_type);
+        return Ok(());
+    }
+
+    let struct_def = match ctx.struct_defs.get(l_type) {
+        Some(struct_def) => struct_def,
+        None => return Err(format!("Unknown value type: {l_type}")),
+    };
+
+    for (index, field) in struct_def.fields.iter().enumerate() {
+        // TODO: find a better way to do this
+        let local_name = if index == 0 {
+            l_name.clone()
+        } else {
+            format!("{l_name} {index}")
+        };
+
+        locals_and_args.insert(local_name, locals_and_args.len() as u32);
+        output.push(field.1);
+    }
+
+    Ok(())
+}
+
 fn parse_instr(
     expr: &SExpr,
     locals: &BTreeMap<String, u32>,
-    fn_defs: &BTreeMap<String, FnDef>,
+    ctx: &ModuleContext,
 ) -> Result<Instr, String> {
     let items = match expr {
         SExpr::List(items) => items,
@@ -219,28 +312,28 @@ fn parse_instr(
             Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
         ("i32.lt_s", [lhs, rhs]) => Instr::I32LessThenSigned {
-            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
+            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
         },
         ("i32.ge_s", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
-            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
+            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
         },
         ("i32.ne", [lhs, rhs]) => Instr::I32NotEqual {
-            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
+            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
         },
         ("i32.add", [lhs, rhs]) => Instr::I32Add {
-            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
+            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
         },
         ("i32.sub", [lhs, rhs]) => Instr::I32Sub {
-            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
+            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
         },
         ("i32.mul", [lhs, rhs]) => Instr::I32Mul {
-            lhs: Box::new(parse_instr(lhs, locals, fn_defs)?),
-            rhs: Box::new(parse_instr(rhs, locals, fn_defs)?),
+            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
+            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
         },
         ("set", [SExpr::Atom(local_name), value]) => {
             let Some(&local_idx) = locals.get(local_name.as_str()) else {
@@ -249,7 +342,7 @@ fn parse_instr(
 
             Instr::LocalSet {
                 local_idx,
-                value: Box::new(parse_instr(value, locals, fn_defs)?),
+                value: Box::new(parse_instr(value, locals, ctx)?),
             }
         }
         ("set", [SExpr::List(local_names), value]) => {
@@ -269,16 +362,68 @@ fn parse_instr(
 
             Instr::MultiValueLocalSet {
                 local_idxs,
-                value: Box::new(parse_instr(value, locals, fn_defs)?),
+                value: Box::new(parse_instr(value, locals, ctx)?),
+            }
+        }
+        ("new", [SExpr::Atom(s_name), SExpr::List(values)]) => {
+            if !ctx.struct_defs.contains_key(s_name) {
+                return Err(format!("Unknown struct encountered in set: {s_name}"));
+            }
+
+            Instr::MultiValueEmit {
+                values: parse_instrs(values, locals, ctx)?,
+            }
+        }
+        ("get", [SExpr::Atom(local_name), SExpr::Atom(field_name)]) => {
+            let Some(&local_idx) = locals.get(local_name.as_str()) else {
+                return Err(format!("Unknown location for set: {local_name}"));
+            };
+
+            let [s_name, f_name] = field_name.split('/').collect::<Vec<_>>()[..] else {
+                return Err(format!("Unknown struct field: {field_name}"));
+            };
+
+            let struct_def = match ctx.struct_defs.get(s_name) {
+                Some(struct_def) => struct_def,
+                None => return Err(format!("Unknown struct in get: {s_name}")),
+            };
+
+            let Some(field_offset) = struct_def.fields.iter().position(|f| f.0 == f_name) else {
+                return Err(format!("Unknown field {f_name} in struct {s_name}"));
+            };
+
+            Instr::LocalGet(local_idx + field_offset as u32)
+        }
+        ("set", [SExpr::Atom(local_name), SExpr::Atom(field_name), value]) => {
+            let Some(&local_idx) = locals.get(local_name.as_str()) else {
+                return Err(format!("Unknown location for set: {local_name}"));
+            };
+
+            let [s_name, f_name] = field_name.split('/').collect::<Vec<_>>()[..] else {
+                return Err(format!("Unknown struct field: {field_name}"));
+            };
+
+            let struct_def = match ctx.struct_defs.get(s_name) {
+                Some(struct_def) => struct_def,
+                None => return Err(format!("Unknown struct in get: {s_name}")),
+            };
+
+            let Some(field_offset) = struct_def.fields.iter().position(|f| f.0 == f_name) else {
+                return Err(format!("Unknown field {f_name} in struct {s_name}"));
+            };
+
+            Instr::LocalSet {
+                local_idx: local_idx + field_offset as u32,
+                value: Box::new(parse_instr(value, locals, &ctx)?),
             }
         }
         ("pack", exprs) => Instr::MultiValueEmit {
-            values: parse_instrs(exprs, locals, fn_defs)?,
+            values: parse_instrs(exprs, locals, ctx)?,
         },
         ("i32.load", [address]) => Instr::I32Load {
             align: 1,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, locals, fn_defs)?),
+            address_instr: Box::new(parse_instr(address, locals, ctx)?),
         },
         ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => Instr::I32Load {
             align: align
@@ -287,39 +432,39 @@ fn parse_instr(
             offset: offset
                 .parse()
                 .map_err(|_| format!("Parsing i32.load offset failed"))?,
-            address_instr: Box::new(parse_instr(address, locals, fn_defs)?),
+            address_instr: Box::new(parse_instr(address, locals, ctx)?),
         },
         ("i32.load8_u", [address]) => Instr::I32Load8Unsigned {
             align: 0,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, locals, fn_defs)?),
+            address_instr: Box::new(parse_instr(address, locals, ctx)?),
         },
         ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => Instr::If {
             block_type: parse_value_type(block_type)?,
-            cond: Box::new(parse_instr(cond, locals, fn_defs)?),
-            then_branch: Box::new(parse_instr(then_branch, locals, fn_defs)?),
-            else_branch: Box::new(parse_instr(else_branch, locals, fn_defs)?),
+            cond: Box::new(parse_instr(cond, locals, ctx)?),
+            then_branch: Box::new(parse_instr(then_branch, locals, ctx)?),
+            else_branch: Box::new(parse_instr(else_branch, locals, ctx)?),
         },
         ("if", [cond, then_branch]) => Instr::IfSingleBranch {
-            cond: Box::new(parse_instr(cond, locals, fn_defs)?),
-            then_branch: Box::new(parse_instr(then_branch, locals, fn_defs)?),
+            cond: Box::new(parse_instr(cond, locals, ctx)?),
+            then_branch: Box::new(parse_instr(then_branch, locals, ctx)?),
         },
         ("loop", [SExpr::List(exprs)]) => Instr::Loop {
-            instrs: parse_instrs(exprs, locals, fn_defs)?,
+            instrs: parse_instrs(exprs, locals, ctx)?,
         },
         ("break", []) => Instr::LoopBreak,
         ("continue", []) => Instr::LoopContinue,
         ("return", values) => Instr::Return {
-            values: parse_instrs(values, locals, fn_defs)?,
+            values: parse_instrs(values, locals, ctx)?,
         },
         (fn_name, args) => {
-            let Some(fn_idx) = fn_defs.keys().position(|k| k == fn_name) else {
-                return Err(format!("Unknown instuction or function: {fn_name}"));
+            let Some(fn_idx) = ctx.fn_defs.keys().position(|k| k == fn_name) else {
+                return Err(format!("Unknown instruction or function: {fn_name}"));
             };
 
             Instr::Call {
                 fn_idx: fn_idx as u32,
-                args: parse_instrs(args, locals, fn_defs)?,
+                args: parse_instrs(args, locals, ctx)?,
             }
         }
     };
@@ -330,11 +475,11 @@ fn parse_instr(
 fn parse_instrs(
     exprs: &[SExpr],
     locals: &BTreeMap<String, u32>,
-    fn_defs: &BTreeMap<String, FnDef>,
+    ctx: &ModuleContext,
 ) -> Result<Vec<Instr>, String> {
     exprs
         .iter()
-        .map(|expr| parse_instr(expr, locals, fn_defs))
+        .map(|expr| parse_instr(expr, locals, ctx))
         .collect()
 }
 
@@ -348,12 +493,5 @@ fn parse_value_type(name: &str) -> Result<ValueType, String> {
         "funcref" => Ok(ValueType::FuncRef),
         "externref" => Ok(ValueType::ExternRef),
         _ => return Err(format!("Unknown value type: {name}")),
-    }
-}
-
-fn get_atom_text(expr: &SExpr) -> Result<&str, String> {
-    match expr {
-        SExpr::Atom(atom_text) => Ok(&atom_text),
-        _ => return Err(format!("Atom expected, list found")),
     }
 }

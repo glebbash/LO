@@ -42,6 +42,18 @@ test("compiles locals", async () => {
     assert.deepEqual(program.sub(5, 3), 2);
 });
 
+test("compiles struct example", async () => {
+    const output = await compile(
+        compiler,
+        await readFile("./examples/struct.lole")
+    );
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 13);
+});
+
 test("compiles parser", async () => {
     const output = await compile(
         compiler,

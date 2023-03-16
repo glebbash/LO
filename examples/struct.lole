@@ -1,0 +1,48 @@
+(export main :as main)
+
+(struct Point2D (
+    (x i32)
+    (y i32)
+))
+
+(fn main () (i32) ((p1 Point2D) (sum Point2D)) (
+    (set sum (Point2D/add
+        (new Point2D ((i32 1) (i32 2)))
+        (new Point2D ((i32 1) (i32 1)))
+    ))
+
+    (Point2D/len_squared sum)
+))
+;; TODO: make this work
+;; (fn main () (i32) ((p1 Point2D) (sum Point2D)) (
+;;     (set p1 (new Point2D ((i32 0) (i32 0))))
+;;     (set p1 Point2D/x (i32 1))
+;;     (set p1 Point2D/y (i32 2))
+
+;;     (set sum (Point2D/add
+;;         (new Point2D ((get p1 Point2D/x) (get p1 Point2D/y)))
+;;         (new Point2D ((i32 1) (i32 1)))
+;;     ))
+
+;; TODO: and also this
+;;     (set sum (Point2D/add
+;;         p1
+;;         (new Point2D ((i32 1) (i32 1)))
+;;     ))
+
+;;     (Point2D/len_squared sum)
+;; ))
+
+(fn Point2D/add ((p1 Point2D) (p2 Point2D)) (Point2D) () (
+    (new Point2D (
+        (i32.add (get p1 Point2D/x) (get p2 Point2D/x))
+        (i32.add (get p1 Point2D/y) (get p2 Point2D/y))
+    ))
+))
+
+(fn Point2D/len_squared ((p Point2D)) (i32) () (
+    (i32.add
+        (i32.mul (get p Point2D/x) (get p Point2D/x))
+        (i32.mul (get p Point2D/y) (get p Point2D/y))
+    )
+))
