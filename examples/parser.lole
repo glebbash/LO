@@ -9,7 +9,7 @@
 (fn parse ((data i32) (size i32)) (
     i32 ; ok
     i32 ; index
-) () (
+) (
     (return (i32 0) (i32 0))
 ))
 
@@ -17,9 +17,9 @@
 (fn skip_space ((data i32) (size i32) (index i32)) (
     i32 ; index
 ) (
-    (char_ok i32)
-    (char i32)
-) (
+    (let char_ok i32)
+    (let char i32)
+
     (loop (
         (set (char_ok char) (char_at data size index))
 
@@ -40,7 +40,7 @@
 (fn char_at ((data i32) (size i32) (index i32)) (
     i32 ; ok
     i32 ; char
-) () (
+) (
     (if (i32.ge_s index size)
         (return (i32 0) (i32 0))
     )

@@ -6,11 +6,12 @@ use crate::{
     },
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
+use core::cell::RefCell;
 
 struct FnDef {
     fn_type: WasmFnType,
-    locals: BTreeMap<String, LocalDef>,
-    non_args_locals: Vec<WasmValueType>,
+    locals: RefCell<BTreeMap<String, LocalDef>>,
+    locals_last_index: u32,
     body: Vec<SExpr>,
 }
 
@@ -28,6 +29,7 @@ enum ValueType {
     StructInstance { name: String },
 }
 
+#[derive(Default)]
 struct ModuleContext {
     fn_defs: BTreeMap<String, FnDef>,
     fn_exports: BTreeMap<String, String>,
@@ -37,7 +39,9 @@ struct ModuleContext {
 
 struct FnContext<'a> {
     module: &'a ModuleContext,
-    locals: &'a BTreeMap<String, LocalDef>,
+    locals: &'a mut BTreeMap<String, LocalDef>,
+    locals_last_index: u32,
+    non_arg_locals: Vec<WasmValueType>,
 }
 
 struct LocalDef {
@@ -48,12 +52,7 @@ struct LocalDef {
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     let mut module = WasmModule::default();
 
-    let mut ctx = ModuleContext {
-        fn_defs: BTreeMap::<String, FnDef>::new(),
-        fn_exports: BTreeMap::<String, String>::new(),
-        memory_names: Vec::<String>::new(),
-        struct_defs: BTreeMap::<String, StructDef>::new(),
-    };
+    let mut ctx = ModuleContext::default();
 
     for expr in exprs {
         let SExpr::List(items) = expr else {
@@ -102,7 +101,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             }
             (
                 "fn",
-                [SExpr::Atom(name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(local_exprs), SExpr::List(body)],
+                [SExpr::Atom(name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(body)],
             ) => {
                 if ctx.fn_defs.contains_key(name) {
                     return Err(format!("Cannot redefine function: {name}"));
@@ -152,42 +151,12 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
-                let mut non_args_locals = vec![];
-                for local_expr in local_exprs.iter() {
-                    let SExpr::List(name_and_type) = local_expr else {
-                        return Err(format!("Unexpected atom in function locals list"));
-                    };
-
-                    let [SExpr::Atom(l_name), SExpr::Atom(l_type)] = &name_and_type[..] else {
-                        return Err(format!("Expected name and parameter pairs in function locals list"));
-                    };
-
-                    if locals.contains_key(l_name) {
-                        return Err(format!(
-                            "Found function local with conflicting name: {l_name}"
-                        ));
-                    }
-
-                    let value_type = build_value_type(l_type, &ctx)?;
-                    let comp_count = emit_value_components(&value_type, &ctx, &mut non_args_locals);
-
-                    locals.insert(
-                        l_name.clone(),
-                        LocalDef {
-                            index: locals_last_index,
-                            value_type,
-                        },
-                    );
-
-                    locals_last_index += comp_count;
-                }
-
                 ctx.fn_defs.insert(
                     name.clone(),
                     FnDef {
                         fn_type: WasmFnType { inputs, outputs },
-                        non_args_locals,
-                        locals,
+                        locals: RefCell::new(locals),
+                        locals_last_index,
                         body: body.clone(),
                     },
                 );
@@ -262,26 +231,27 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     }
 
     // push function codes
-    for fn_def in ctx.fn_defs.values() {
-        let mut locals = vec![];
+    for fn_meta in ctx.fn_defs.values() {
+        let mut fn_ctx = FnContext {
+            module: &ctx,
+            locals: &mut fn_meta.locals.borrow_mut(),
+            locals_last_index: fn_meta.locals_last_index,
+            non_arg_locals: vec![],
+        };
 
-        for l in &fn_def.non_args_locals {
+        let instrs = parse_instrs(&fn_meta.body, &mut fn_ctx)?;
+
+        let mut locals = vec![];
+        for local_type in fn_ctx.non_arg_locals {
             locals.push(WasmLocals {
                 count: 1,
-                value_type: l.clone(),
+                value_type: local_type.clone(),
             });
         }
 
-        let fn_ctx = FnContext {
-            module: &ctx,
-            locals: &fn_def.locals,
-        };
-
         module.fn_codes.push(WasmFnCode {
             locals,
-            expr: Expr {
-                instrs: parse_instrs(&fn_def.body, &fn_ctx)?,
-            },
+            expr: Expr { instrs },
         });
     }
 
@@ -329,7 +299,7 @@ fn emit_value_components(
     }
 }
 
-fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
+fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
     let items = match expr {
         SExpr::List(items) => items,
         SExpr::Atom(local_name) => {
@@ -438,6 +408,28 @@ fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
                 local_idxs,
                 value: Box::new(parse_instr(value, ctx)?),
             }
+        }
+        ("let", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
+            if ctx.locals.contains_key(local_name) {
+                return Err(format!("Duplicate local definition: {local_name}"));
+            }
+
+            let value_type = build_value_type(local_type, ctx.module)?;
+            let comp_count =
+                emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
+
+            ctx.locals.insert(
+                local_name.clone(),
+                LocalDef {
+                    index: ctx.locals_last_index,
+                    value_type,
+                },
+            );
+
+            ctx.locals_last_index += comp_count;
+
+            // TODO: find a better way
+            Instr::Nop
         }
         // TODO: validate that number of fields matches
         ("new", [SExpr::Atom(s_name), SExpr::List(values)]) => {
@@ -551,7 +543,7 @@ fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
     Ok(instr)
 }
 
-fn parse_instrs(exprs: &[SExpr], ctx: &FnContext) -> Result<Vec<Instr>, String> {
+fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<Instr>, String> {
     exprs.iter().map(|expr| parse_instr(expr, ctx)).collect()
 }
 

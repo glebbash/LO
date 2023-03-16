@@ -28,6 +28,7 @@ pub struct Expr {
 }
 
 pub enum Instr {
+    Nop,
     I32Const(i32),
     Return {
         values: Vec<Instr>,

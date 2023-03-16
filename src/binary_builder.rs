@@ -163,6 +163,7 @@ impl<'a> BinaryBuilder<'a> {
 
 fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
     match instr {
+        Instr::Nop => output.push(0x01),
         Instr::I32LessThenSigned { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
