@@ -144,22 +144,12 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                 let mut outputs = vec![];
                 for output_expr in output_exprs {
                     let l_type = match output_expr {
-                        SExpr::Atom(atom_text) => atom_text.as_str(),
+                        SExpr::Atom(atom_text) => atom_text,
                         _ => return Err(format!("Atom expected, list found")),
                     };
-                    if let Ok(value_type) = parse_value_type(l_type) {
-                        outputs.push(value_type);
-                        continue;
-                    }
 
-                    let struct_def = match ctx.struct_defs.get(l_type) {
-                        Some(struct_def) => struct_def,
-                        None => return Err(format!("Unknown value type: {l_type}")),
-                    };
-
-                    for field in &struct_def.fields {
-                        outputs.push(field.value_type);
-                    }
+                    let value_type = build_value_type(l_type, &ctx)?;
+                    emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
                 let mut non_args_locals = vec![];
