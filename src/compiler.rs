@@ -1,20 +1,31 @@
 use crate::{
     parser::SExpr,
     wasm_module::{
-        Export, ExportType, Expr, FnCode, FnType, Instr, Locals, Memory, ValueType, WasmModule,
+        Expr, Instr, WasmExport, WasmExportType, WasmFnCode, WasmFnType, WasmLocals, WasmMemory,
+        WasmModule, WasmValueType,
     },
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 
 struct FnDef {
-    fn_type: FnType,
-    locals_and_args: BTreeMap<String, u32>,
-    local_types: Vec<ValueType>,
+    fn_type: WasmFnType,
+    locals: BTreeMap<String, LocalDef>,
+    non_args_locals: Vec<WasmValueType>,
     body: Vec<SExpr>,
 }
 
 struct StructDef {
-    fields: Vec<(String, ValueType)>,
+    fields: Vec<StructField>,
+}
+
+struct StructField {
+    name: String,
+    value_type: WasmValueType,
+}
+
+enum ValueType {
+    Primitive(WasmValueType),
+    StructInstance { name: String },
 }
 
 struct ModuleContext {
@@ -26,7 +37,12 @@ struct ModuleContext {
 
 struct FnContext<'a> {
     module: &'a ModuleContext,
-    locals: &'a BTreeMap<String, u32>,
+    locals: &'a BTreeMap<String, LocalDef>,
+}
+
+struct LocalDef {
+    index: u32,
+    value_type: ValueType,
 }
 
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
@@ -57,7 +73,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     return Err(format!("Duplicate memory definition: {mem_name}"));
                 }
                 ctx.memory_names.push(mem_name.clone());
-                module.memories.push(Memory {
+                module.memories.push(WasmMemory {
                     min: min_memory
                         .parse()
                         .map_err(|_| format!("Parsing mem :min (u32) failed"))?,
@@ -73,7 +89,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                 }
 
                 ctx.memory_names.push(mem_name.clone());
-                module.memories.push(Memory {
+                module.memories.push(WasmMemory {
                     min: min_memory
                         .parse()
                         .map_err(|_| format!("Parsing mem :min (u32) failed"))?,
@@ -86,17 +102,18 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             }
             (
                 "fn",
-                [SExpr::Atom(name), SExpr::List(inputs), SExpr::List(outputs), SExpr::List(locals), SExpr::List(body)],
+                [SExpr::Atom(name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(local_exprs), SExpr::List(body)],
             ) => {
                 if ctx.fn_defs.contains_key(name) {
                     return Err(format!("Cannot redefine function: {name}"));
                 }
 
-                let mut locals_and_args = BTreeMap::new();
+                let mut locals = BTreeMap::new();
+                let mut locals_last_index = 0;
 
-                let mut input_types = vec![];
-                for input in inputs.iter() {
-                    let SExpr::List(name_and_type) = input else {
+                let mut inputs = vec![];
+                for input_expr in input_exprs.iter() {
+                    let SExpr::List(name_and_type) = input_expr else {
                         return Err(format!("Unexpected atom in function params list"));
                     };
 
@@ -104,23 +121,34 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         return Err(format!("Expected name and parameter pairs in function params list"));
                     };
 
-                    if locals_and_args.contains_key(p_name) {
+                    if locals.contains_key(p_name) {
                         return Err(format!(
                             "Found function param with conflicting name: {p_name}"
                         ));
                     }
 
-                    add_fn_locals(p_name, p_type, &mut locals_and_args, &ctx, &mut input_types)?;
+                    let value_type = build_value_type(p_type, &ctx)?;
+                    let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
+
+                    locals.insert(
+                        p_name.clone(),
+                        LocalDef {
+                            index: locals_last_index,
+                            value_type,
+                        },
+                    );
+
+                    locals_last_index += comp_count;
                 }
 
-                let mut output_types = vec![];
-                for output in outputs {
-                    let l_type = match output {
+                let mut outputs = vec![];
+                for output_expr in output_exprs {
+                    let l_type = match output_expr {
                         SExpr::Atom(atom_text) => atom_text.as_str(),
                         _ => return Err(format!("Atom expected, list found")),
                     };
                     if let Ok(value_type) = parse_value_type(l_type) {
-                        output_types.push(value_type);
+                        outputs.push(value_type);
                         continue;
                     }
 
@@ -130,13 +158,13 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     };
 
                     for field in &struct_def.fields {
-                        output_types.push(field.1);
+                        outputs.push(field.value_type);
                     }
                 }
 
-                let mut local_types = vec![];
-                for local in locals.iter() {
-                    let SExpr::List(name_and_type) = local else {
+                let mut non_args_locals = vec![];
+                for local_expr in local_exprs.iter() {
+                    let SExpr::List(name_and_type) = local_expr else {
                         return Err(format!("Unexpected atom in function locals list"));
                     };
 
@@ -144,24 +172,32 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         return Err(format!("Expected name and parameter pairs in function locals list"));
                     };
 
-                    if locals_and_args.contains_key(l_name) {
+                    if locals.contains_key(l_name) {
                         return Err(format!(
                             "Found function local with conflicting name: {l_name}"
                         ));
                     }
 
-                    add_fn_locals(l_name, l_type, &mut locals_and_args, &ctx, &mut local_types)?;
+                    let value_type = build_value_type(l_type, &ctx)?;
+                    let comp_count = emit_value_components(&value_type, &ctx, &mut non_args_locals);
+
+                    locals.insert(
+                        l_name.clone(),
+                        LocalDef {
+                            index: locals_last_index,
+                            value_type,
+                        },
+                    );
+
+                    locals_last_index += comp_count;
                 }
 
                 ctx.fn_defs.insert(
                     name.clone(),
                     FnDef {
-                        fn_type: FnType {
-                            inputs: input_types,
-                            outputs: output_types,
-                        },
-                        local_types,
-                        locals_and_args,
+                        fn_type: WasmFnType { inputs, outputs },
+                        non_args_locals,
+                        locals,
                         body: body.clone(),
                     },
                 );
@@ -174,8 +210,8 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     return Err(format!("Cannot export mem {in_name}, not found"));
                 }
 
-                module.exports.push(Export {
-                    export_type: ExportType::Mem,
+                module.exports.push(WasmExport {
+                    export_type: WasmExportType::Mem,
                     export_name: out_name.clone(),
                     exported_item_index: ctx
                         .memory_names
@@ -194,7 +230,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                     return Err(format!("Cannot redefine struct {s_name}"));
                 }
 
-                let mut fields = Vec::<(String, ValueType)>::new();
+                let mut fields = Vec::<StructField>::new();
                 for field_def in field_defs {
                     let SExpr::List(name_and_type) = field_def else {
                         return Err(format!("Unexpected atom in stuct fields list"));
@@ -204,13 +240,16 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         return Err(format!("Expected name and parameter pairs in stuct fields list"));
                     };
 
-                    if fields.iter().find(|f| &f.0 == f_name).is_some() {
+                    if fields.iter().find(|f| &f.name == f_name).is_some() {
                         return Err(format!(
                             "Found duplicate struct field name: '{f_name}' of struct {s_name}"
                         ));
                     }
 
-                    fields.push((f_name.clone(), parse_value_type(f_type)?));
+                    fields.push(StructField {
+                        name: f_name.clone(),
+                        value_type: parse_value_type(f_type)?,
+                    });
                 }
 
                 ctx.struct_defs.insert(s_name.clone(), StructDef { fields });
@@ -221,8 +260,8 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
     // push function exports
     for (in_name, out_name) in ctx.fn_exports.iter() {
-        module.exports.push(Export {
-            export_type: ExportType::Func,
+        module.exports.push(WasmExport {
+            export_type: WasmExportType::Func,
             export_name: out_name.clone(),
             exported_item_index: ctx
                 .fn_defs
@@ -234,21 +273,21 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
     // push function codes
     for fn_def in ctx.fn_defs.values() {
-        let locals = fn_def
-            .local_types
-            .iter()
-            .map(|l| Locals {
+        let mut locals = vec![];
+
+        for l in &fn_def.non_args_locals {
+            locals.push(WasmLocals {
                 count: 1,
                 value_type: l.clone(),
-            })
-            .collect();
+            });
+        }
 
         let fn_ctx = FnContext {
             module: &ctx,
-            locals: &fn_def.locals_and_args,
+            locals: &fn_def.locals,
         };
 
-        module.fn_codes.push(FnCode {
+        module.fn_codes.push(WasmFnCode {
             locals,
             expr: Expr {
                 instrs: parse_instrs(&fn_def.body, &fn_ctx)?,
@@ -264,48 +303,63 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     Ok(module)
 }
 
-fn add_fn_locals(
-    l_name: &String,
-    l_type: &String,
-    locals_and_args: &mut BTreeMap<String, u32>,
-    ctx: &ModuleContext,
-    output: &mut Vec<ValueType>,
-) -> Result<(), String> {
+fn build_value_type(l_type: &String, ctx: &ModuleContext) -> Result<ValueType, String> {
     if let Ok(value_type) = parse_value_type(l_type) {
-        locals_and_args.insert(l_name.clone(), locals_and_args.len() as u32);
-        output.push(value_type);
-        return Ok(());
+        return Ok(ValueType::Primitive(value_type));
     }
 
-    let struct_def = match ctx.struct_defs.get(l_type) {
-        Some(struct_def) => struct_def,
-        None => return Err(format!("Unknown value type: {l_type}")),
-    };
-
-    for (index, field) in struct_def.fields.iter().enumerate() {
-        // TODO: find a better way to do this
-        let local_name = if index == 0 {
-            l_name.clone()
-        } else {
-            format!("{l_name} {index}")
-        };
-
-        locals_and_args.insert(local_name, locals_and_args.len() as u32);
-        output.push(field.1);
+    if ctx.struct_defs.contains_key(l_type) {
+        return Ok(ValueType::StructInstance {
+            name: l_type.clone(),
+        });
     }
 
-    Ok(())
+    Err(format!("Unknown value type: {l_type}"))
+}
+
+fn emit_value_components(
+    value_type: &ValueType,
+    ctx: &ModuleContext,
+    components: &mut Vec<WasmValueType>,
+) -> u32 {
+    match value_type {
+        ValueType::Primitive(value_type) => {
+            components.push(*value_type);
+            1
+        }
+        ValueType::StructInstance { name } => {
+            let fields = &ctx.struct_defs.get(name).unwrap().fields;
+
+            for field in fields {
+                components.push(field.value_type);
+            }
+
+            fields.len() as u32
+        }
+    }
 }
 
 fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
     let items = match expr {
         SExpr::List(items) => items,
         SExpr::Atom(local_name) => {
-            let Some(&idx) = ctx.locals.get(local_name.as_str()) else {
+            let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for local.get: {local_name}"));
             };
 
-            return Ok(Instr::LocalGet(idx));
+            if let ValueType::StructInstance { name } = &local.value_type {
+                let struct_def = ctx.module.struct_defs.get(name).unwrap();
+
+                let mut values = vec![];
+
+                for field_offset in 0..struct_def.fields.len() {
+                    values.push(Instr::LocalGet(local.index + field_offset as u32));
+                }
+
+                return Ok(Instr::MultiValueEmit { values });
+            }
+
+            return Ok(Instr::LocalGet(local.index));
         }
     };
 
@@ -342,13 +396,28 @@ fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("set", [SExpr::Atom(local_name), value]) => {
-            let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
+            let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
 
-            Instr::LocalSet {
-                local_idx,
-                value: Box::new(parse_instr(value, ctx)?),
+            match &local.value_type {
+                ValueType::StructInstance { name } => {
+                    let struct_def = ctx.module.struct_defs.get(name).unwrap();
+
+                    let mut local_idxs = vec![];
+                    for field_offset in 0..struct_def.fields.len() {
+                        local_idxs.push(local.index + field_offset as u32);
+                    }
+
+                    return Ok(Instr::MultiValueLocalSet {
+                        local_idxs,
+                        value: Box::new(parse_instr(value, ctx)?),
+                    });
+                }
+                ValueType::Primitive(_) => Instr::LocalSet {
+                    local_idx: local.index,
+                    value: Box::new(parse_instr(value, ctx)?),
+                },
             }
         }
         ("set", [SExpr::List(local_names), value]) => {
@@ -359,11 +428,20 @@ fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
                     return Err(format!("Unexpected list in lhs of set"));
                 };
 
-                let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
+                let Some(local) = ctx.locals.get(local_name.as_str()) else {
                     return Err(format!("Unknown location for set: {local_name}"));
                 };
 
-                local_idxs.push(local_idx);
+                match &local.value_type {
+                    ValueType::StructInstance { name } => {
+                        let struct_def = ctx.module.struct_defs.get(name).unwrap();
+
+                        for field_offset in 0..struct_def.fields.len() {
+                            local_idxs.push(local.index + field_offset as u32);
+                        }
+                    }
+                    ValueType::Primitive(_) => local_idxs.push(local.index),
+                }
             }
 
             Instr::MultiValueLocalSet {
@@ -371,6 +449,7 @@ fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
+        // TODO: validate that number of fields matches
         ("new", [SExpr::Atom(s_name), SExpr::List(values)]) => {
             if !ctx.module.struct_defs.contains_key(s_name) {
                 return Err(format!("Unknown struct encountered in set: {s_name}"));
@@ -381,12 +460,14 @@ fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
             }
         }
         ("get", [SExpr::Atom(local_name), SExpr::Atom(field_name)]) => {
-            let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
-                return Err(format!("Unknown location for set: {local_name}"));
+            let f_name = &field_name[1..]; // strip `:`
+
+            let Some(local) = ctx.locals.get(local_name.as_str()) else {
+                return Err(format!("Unknown location for get: {local_name}"));
             };
 
-            let [s_name, f_name] = field_name.split('/').collect::<Vec<_>>()[..] else {
-                return Err(format!("Unknown struct field: {field_name}"));
+            let ValueType::StructInstance { name: s_name } = &local.value_type else {
+                return Err(format!("Trying to get field '{field_name}' on non struct: {local_name}"));
             };
 
             let struct_def = match ctx.module.struct_defs.get(s_name) {
@@ -394,32 +475,34 @@ fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
                 None => return Err(format!("Unknown struct in get: {s_name}")),
             };
 
-            let Some(field_offset) = struct_def.fields.iter().position(|f| f.0 == f_name) else {
+            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == f_name) else {
                 return Err(format!("Unknown field {f_name} in struct {s_name}"));
             };
 
-            Instr::LocalGet(local_idx + field_offset as u32)
+            Instr::LocalGet(local.index + field_offset as u32)
         }
         ("set", [SExpr::Atom(local_name), SExpr::Atom(field_name), value]) => {
-            let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
+            let f_name = &field_name[1..]; // strip `:`
+
+            let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
 
-            let [s_name, f_name] = field_name.split('/').collect::<Vec<_>>()[..] else {
-                return Err(format!("Unknown struct field: {field_name}"));
+            let ValueType::StructInstance { name: s_name } = &local.value_type else {
+                return Err(format!("Trying to set field '{field_name}' on non struct: {local_name}"));
             };
 
             let struct_def = match ctx.module.struct_defs.get(s_name) {
                 Some(struct_def) => struct_def,
-                None => return Err(format!("Unknown struct in get: {s_name}")),
+                None => return Err(format!("Unknown struct in set: {s_name}")),
             };
 
-            let Some(field_offset) = struct_def.fields.iter().position(|f| f.0 == f_name) else {
+            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == f_name) else {
                 return Err(format!("Unknown field {f_name} in struct {s_name}"));
             };
 
             Instr::LocalSet {
-                local_idx: local_idx + field_offset as u32,
+                local_idx: local.index + field_offset as u32,
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
@@ -482,15 +565,15 @@ fn parse_instrs(exprs: &[SExpr], ctx: &FnContext) -> Result<Vec<Instr>, String> 
     exprs.iter().map(|expr| parse_instr(expr, ctx)).collect()
 }
 
-fn parse_value_type(name: &str) -> Result<ValueType, String> {
+fn parse_value_type(name: &str) -> Result<WasmValueType, String> {
     match name {
-        "i32" => Ok(ValueType::I32),
-        "i64" => Ok(ValueType::I64),
-        "f32" => Ok(ValueType::F32),
-        "f64" => Ok(ValueType::F64),
-        "v128" => Ok(ValueType::V128),
-        "funcref" => Ok(ValueType::FuncRef),
-        "externref" => Ok(ValueType::ExternRef),
+        "i32" => Ok(WasmValueType::I32),
+        "i64" => Ok(WasmValueType::I64),
+        "f32" => Ok(WasmValueType::F32),
+        "f64" => Ok(WasmValueType::F64),
+        "v128" => Ok(WasmValueType::V128),
+        "funcref" => Ok(WasmValueType::FuncRef),
+        "externref" => Ok(WasmValueType::ExternRef),
         _ => return Err(format!("Unknown value type: {name}")),
     }
 }

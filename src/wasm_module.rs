@@ -2,25 +2,25 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 #[derive(Default)]
 pub struct WasmModule {
-    pub fn_types: Vec<FnType>,
-    pub fn_codes: Vec<FnCode>,
-    pub memories: Vec<Memory>,
-    pub exports: Vec<Export>,
+    pub fn_types: Vec<WasmFnType>,
+    pub fn_codes: Vec<WasmFnCode>,
+    pub memories: Vec<WasmMemory>,
+    pub exports: Vec<WasmExport>,
 }
 
-pub struct FnType {
-    pub inputs: Vec<ValueType>,
-    pub outputs: Vec<ValueType>,
+pub struct WasmFnType {
+    pub inputs: Vec<WasmValueType>,
+    pub outputs: Vec<WasmValueType>,
 }
 
-pub struct FnCode {
-    pub locals: Vec<Locals>,
+pub struct WasmFnCode {
+    pub locals: Vec<WasmLocals>,
     pub expr: Expr,
 }
 
-pub struct Locals {
+pub struct WasmLocals {
     pub count: u32,
-    pub value_type: ValueType,
+    pub value_type: WasmValueType,
 }
 
 pub struct Expr {
@@ -88,7 +88,7 @@ pub enum Instr {
         args: Vec<Instr>,
     },
     If {
-        block_type: ValueType,
+        block_type: WasmValueType,
         cond: Box<Instr>,
         then_branch: Box<Instr>,
         else_branch: Box<Instr>,
@@ -102,7 +102,7 @@ pub enum Instr {
 #[repr(u8)]
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
-pub enum ValueType {
+pub enum WasmValueType {
     I32 = 0x7f,
     I64 = 0x7e,
     F32 = 0x7d,
@@ -112,13 +112,13 @@ pub enum ValueType {
     ExternRef = 0x6f,
 }
 
-pub struct Memory {
+pub struct WasmMemory {
     pub min: u32,
     pub max: Option<u32>,
 }
 
-pub struct Export {
-    pub export_type: ExportType,
+pub struct WasmExport {
+    pub export_type: WasmExportType,
     pub export_name: String,
     pub exported_item_index: usize,
 }
@@ -126,7 +126,7 @@ pub struct Export {
 #[repr(u8)]
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
-pub enum ExportType {
+pub enum WasmExportType {
     Func = 0x00,
     Table = 0x01,
     Mem = 0x02,
