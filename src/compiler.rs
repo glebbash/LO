@@ -24,6 +24,11 @@ struct ModuleContext {
     struct_defs: BTreeMap<String, StructDef>,
 }
 
+struct FnContext<'a> {
+    module: &'a ModuleContext,
+    locals: &'a BTreeMap<String, u32>,
+}
+
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     let mut module = WasmModule::default();
 
@@ -238,10 +243,15 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             })
             .collect();
 
+        let fn_ctx = FnContext {
+            module: &ctx,
+            locals: &fn_def.locals_and_args,
+        };
+
         module.fn_codes.push(FnCode {
             locals,
             expr: Expr {
-                instrs: parse_instrs(&fn_def.body, &fn_def.locals_and_args, &ctx)?,
+                instrs: parse_instrs(&fn_def.body, &fn_ctx)?,
             },
         });
     }
@@ -287,15 +297,11 @@ fn add_fn_locals(
     Ok(())
 }
 
-fn parse_instr(
-    expr: &SExpr,
-    locals: &BTreeMap<String, u32>,
-    ctx: &ModuleContext,
-) -> Result<Instr, String> {
+fn parse_instr(expr: &SExpr, ctx: &FnContext) -> Result<Instr, String> {
     let items = match expr {
         SExpr::List(items) => items,
         SExpr::Atom(local_name) => {
-            let Some(&idx) = locals.get(local_name.as_str()) else {
+            let Some(&idx) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for local.get: {local_name}"));
             };
 
@@ -312,37 +318,37 @@ fn parse_instr(
             Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
         ("i32.lt_s", [lhs, rhs]) => Instr::I32LessThenSigned {
-            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
-            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.ge_s", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
-            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
-            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.ne", [lhs, rhs]) => Instr::I32NotEqual {
-            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
-            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.add", [lhs, rhs]) => Instr::I32Add {
-            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
-            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.sub", [lhs, rhs]) => Instr::I32Sub {
-            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
-            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.mul", [lhs, rhs]) => Instr::I32Mul {
-            lhs: Box::new(parse_instr(lhs, locals, ctx)?),
-            rhs: Box::new(parse_instr(rhs, locals, ctx)?),
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("set", [SExpr::Atom(local_name), value]) => {
-            let Some(&local_idx) = locals.get(local_name.as_str()) else {
+            let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
 
             Instr::LocalSet {
                 local_idx,
-                value: Box::new(parse_instr(value, locals, ctx)?),
+                value: Box::new(parse_instr(value, ctx)?),
             }
         }
         ("set", [SExpr::List(local_names), value]) => {
@@ -353,7 +359,7 @@ fn parse_instr(
                     return Err(format!("Unexpected list in lhs of set"));
                 };
 
-                let Some(&local_idx) = locals.get(local_name.as_str()) else {
+                let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
                     return Err(format!("Unknown location for set: {local_name}"));
                 };
 
@@ -362,20 +368,20 @@ fn parse_instr(
 
             Instr::MultiValueLocalSet {
                 local_idxs,
-                value: Box::new(parse_instr(value, locals, ctx)?),
+                value: Box::new(parse_instr(value, ctx)?),
             }
         }
         ("new", [SExpr::Atom(s_name), SExpr::List(values)]) => {
-            if !ctx.struct_defs.contains_key(s_name) {
+            if !ctx.module.struct_defs.contains_key(s_name) {
                 return Err(format!("Unknown struct encountered in set: {s_name}"));
             }
 
             Instr::MultiValueEmit {
-                values: parse_instrs(values, locals, ctx)?,
+                values: parse_instrs(values, ctx)?,
             }
         }
         ("get", [SExpr::Atom(local_name), SExpr::Atom(field_name)]) => {
-            let Some(&local_idx) = locals.get(local_name.as_str()) else {
+            let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
 
@@ -383,7 +389,7 @@ fn parse_instr(
                 return Err(format!("Unknown struct field: {field_name}"));
             };
 
-            let struct_def = match ctx.struct_defs.get(s_name) {
+            let struct_def = match ctx.module.struct_defs.get(s_name) {
                 Some(struct_def) => struct_def,
                 None => return Err(format!("Unknown struct in get: {s_name}")),
             };
@@ -395,7 +401,7 @@ fn parse_instr(
             Instr::LocalGet(local_idx + field_offset as u32)
         }
         ("set", [SExpr::Atom(local_name), SExpr::Atom(field_name), value]) => {
-            let Some(&local_idx) = locals.get(local_name.as_str()) else {
+            let Some(&local_idx) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
 
@@ -403,7 +409,7 @@ fn parse_instr(
                 return Err(format!("Unknown struct field: {field_name}"));
             };
 
-            let struct_def = match ctx.struct_defs.get(s_name) {
+            let struct_def = match ctx.module.struct_defs.get(s_name) {
                 Some(struct_def) => struct_def,
                 None => return Err(format!("Unknown struct in get: {s_name}")),
             };
@@ -414,16 +420,16 @@ fn parse_instr(
 
             Instr::LocalSet {
                 local_idx: local_idx + field_offset as u32,
-                value: Box::new(parse_instr(value, locals, &ctx)?),
+                value: Box::new(parse_instr(value, ctx)?),
             }
         }
         ("pack", exprs) => Instr::MultiValueEmit {
-            values: parse_instrs(exprs, locals, ctx)?,
+            values: parse_instrs(exprs, ctx)?,
         },
         ("i32.load", [address]) => Instr::I32Load {
             align: 1,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, locals, ctx)?),
+            address_instr: Box::new(parse_instr(address, ctx)?),
         },
         ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => Instr::I32Load {
             align: align
@@ -432,39 +438,39 @@ fn parse_instr(
             offset: offset
                 .parse()
                 .map_err(|_| format!("Parsing i32.load offset failed"))?,
-            address_instr: Box::new(parse_instr(address, locals, ctx)?),
+            address_instr: Box::new(parse_instr(address, ctx)?),
         },
         ("i32.load8_u", [address]) => Instr::I32Load8Unsigned {
             align: 0,
             offset: 0,
-            address_instr: Box::new(parse_instr(address, locals, ctx)?),
+            address_instr: Box::new(parse_instr(address, ctx)?),
         },
         ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => Instr::If {
             block_type: parse_value_type(block_type)?,
-            cond: Box::new(parse_instr(cond, locals, ctx)?),
-            then_branch: Box::new(parse_instr(then_branch, locals, ctx)?),
-            else_branch: Box::new(parse_instr(else_branch, locals, ctx)?),
+            cond: Box::new(parse_instr(cond, ctx)?),
+            then_branch: Box::new(parse_instr(then_branch, ctx)?),
+            else_branch: Box::new(parse_instr(else_branch, ctx)?),
         },
         ("if", [cond, then_branch]) => Instr::IfSingleBranch {
-            cond: Box::new(parse_instr(cond, locals, ctx)?),
-            then_branch: Box::new(parse_instr(then_branch, locals, ctx)?),
+            cond: Box::new(parse_instr(cond, ctx)?),
+            then_branch: Box::new(parse_instr(then_branch, ctx)?),
         },
         ("loop", [SExpr::List(exprs)]) => Instr::Loop {
-            instrs: parse_instrs(exprs, locals, ctx)?,
+            instrs: parse_instrs(exprs, ctx)?,
         },
         ("break", []) => Instr::LoopBreak,
         ("continue", []) => Instr::LoopContinue,
         ("return", values) => Instr::Return {
-            values: parse_instrs(values, locals, ctx)?,
+            values: parse_instrs(values, ctx)?,
         },
         (fn_name, args) => {
-            let Some(fn_idx) = ctx.fn_defs.keys().position(|k| k == fn_name) else {
+            let Some(fn_idx) = ctx.module.fn_defs.keys().position(|k| k == fn_name) else {
                 return Err(format!("Unknown instruction or function: {fn_name}"));
             };
 
             Instr::Call {
                 fn_idx: fn_idx as u32,
-                args: parse_instrs(args, locals, ctx)?,
+                args: parse_instrs(args, ctx)?,
             }
         }
     };
@@ -472,15 +478,8 @@ fn parse_instr(
     Ok(instr)
 }
 
-fn parse_instrs(
-    exprs: &[SExpr],
-    locals: &BTreeMap<String, u32>,
-    ctx: &ModuleContext,
-) -> Result<Vec<Instr>, String> {
-    exprs
-        .iter()
-        .map(|expr| parse_instr(expr, locals, ctx))
-        .collect()
+fn parse_instrs(exprs: &[SExpr], ctx: &FnContext) -> Result<Vec<Instr>, String> {
+    exprs.iter().map(|expr| parse_instr(expr, ctx)).collect()
 }
 
 fn parse_value_type(name: &str) -> Result<ValueType, String> {
