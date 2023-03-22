@@ -9,28 +9,22 @@
     (let p1 Point2D)
     (let sum Point2D)
 
-    (set p1 (new Point2D 0 0))
-    (set p1 :x 1)
-    (set p1 :y 2)
+    {p1 = (new Point2D 0 0)}
+    {p1 = x 1}
+    {p1 = y 2}
 
-    (set sum (Point2D/add
-        p1
-        (new Point2D 1 1)
-    ))
+    {sum = (Point2D/add p1 (new Point2D 1 1))}
 
     (Point2D/len_squared sum)
 ))
 
 (fn Point2D/add ((p1 Point2D) (p2 Point2D)) [Point2D] (
     (new Point2D
-        (i32.add (get p1 :x) (get p2 :x))
-        (i32.add (get p1 :y) (get p2 :y))
+        {{p1 . x} + {p2 . x}}
+        {{p1 . y} + {p2 . y}}
     )
 ))
 
 (fn Point2D/len_squared [(p Point2D)] [i32] (
-    (i32.add
-        (i32.mul (get p :x) (get p :x))
-        (i32.mul (get p :y) (get p :y))
-    )
+    {{{p . x} * {p . x}} + {{p . y} * {p . y}}}
 ))

@@ -11,7 +11,7 @@
 )
 
 (fn StringSlice/char_at [(self StringSlice) (index i32)] [i32] (
-    (i32.load8_u (i32.add (get self :data) index))
+    (i32.load8_u {{self . data} + index})
 ))
 
 ; TODO: implement
@@ -29,17 +29,17 @@
     (let res CharAtResult)
 
     (loop (
-        (set res (char_at chars index))
+        {res = (char_at chars index)}
 
-        (if (i32.ne (get res :ok) 1)
+        (if {{res . ok} != 1}
             (break)
         )
 
-        (if (i32.ne (get res :char) 32) ; space
+        (if {{res . char} != 32} ; space
             (break)
         )
 
-        (set index (i32.add index 1))
+        {index = {index + 1}}
     ))
 
     index
@@ -51,9 +51,9 @@
 )
 
 (fn char_at [(chars StringSlice) (index i32)] [CharAtResult] (
-    (if (i32.ge_s index (get chars :size))
+    (if {index >= {chars . size}}
         (return (new CharAtResult 0 0))
     )
 
-    (new CharAtResult (i32 1) (StringSlice/char_at chars index))
+    (new CharAtResult 1 (StringSlice/char_at chars index))
 ))

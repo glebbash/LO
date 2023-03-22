@@ -102,6 +102,10 @@ fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
         });
     }
 
+    if list_start_char == '{' && items.len() >= 2 {
+        items.swap(0, 1);
+    }
+
     Ok(WithIndex {
         data: SExpr::List(items),
         index,

@@ -339,31 +339,31 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
         ("i32", [SExpr::Atom(value)]) => {
             Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
-        ("i32.lt_s", [lhs, rhs]) => Instr::I32LessThenSigned {
+        ("i32.lt_s" | "<", [lhs, rhs]) => Instr::I32LessThenSigned {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.ge_s", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
+        ("i32.ge_s" | ">=", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.ne", [lhs, rhs]) => Instr::I32NotEqual {
+        ("i32.ne" | "!=", [lhs, rhs]) => Instr::I32NotEqual {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.add", [lhs, rhs]) => Instr::I32Add {
+        ("i32.add" | "+", [lhs, rhs]) => Instr::I32Add {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.sub", [lhs, rhs]) => Instr::I32Sub {
+        ("i32.sub" | "-", [lhs, rhs]) => Instr::I32Sub {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.mul", [lhs, rhs]) => Instr::I32Mul {
+        ("i32.mul" | "*", [lhs, rhs]) => Instr::I32Mul {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("set", [SExpr::Atom(local_name), value]) => {
+        ("set" | "=", [SExpr::Atom(local_name), value]) => {
             let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
@@ -388,7 +388,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 },
             }
         }
-        ("set", [SExpr::List(local_names), value]) => {
+        ("set" | "=", [SExpr::List(local_names), value]) => {
             let mut local_idxs = vec![];
 
             for local_name_expr in local_names {
@@ -417,7 +417,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
-        ("let", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
+        ("let" | ":", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
             if ctx.locals.contains_key(local_name) {
                 return Err(format!("Duplicate local definition: {local_name}"));
             }
@@ -449,15 +449,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 values: parse_instrs(values, ctx)?,
             }
         }
-        ("get", [SExpr::Atom(local_name), SExpr::Atom(field_name)]) => {
-            let f_name = &field_name[1..]; // strip `:`
-
+        ("get" | ".", [SExpr::Atom(local_name), SExpr::Atom(f_name)]) => {
             let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for get: {local_name}"));
             };
 
             let ValueType::StructInstance { name: s_name } = &local.value_type else {
-                return Err(format!("Trying to get field '{field_name}' on non struct: {local_name}"));
+                return Err(format!("Trying to get field '{f_name}' on non struct: {local_name}"));
             };
 
             let struct_def = match ctx.module.struct_defs.get(s_name) {
@@ -465,21 +463,19 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 None => return Err(format!("Unknown struct in get: {s_name}")),
             };
 
-            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == f_name) else {
+            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == *f_name) else {
                 return Err(format!("Unknown field {f_name} in struct {s_name}"));
             };
 
             Instr::LocalGet(local.index + field_offset as u32)
         }
-        ("set", [SExpr::Atom(local_name), SExpr::Atom(field_name), value]) => {
-            let f_name = &field_name[1..]; // strip `:`
-
+        ("set" | "=", [SExpr::Atom(local_name), SExpr::Atom(f_name), value]) => {
             let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
 
             let ValueType::StructInstance { name: s_name } = &local.value_type else {
-                return Err(format!("Trying to set field '{field_name}' on non struct: {local_name}"));
+                return Err(format!("Trying to set field '{f_name}' on non struct: {local_name}"));
             };
 
             let struct_def = match ctx.module.struct_defs.get(s_name) {
@@ -487,7 +483,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 None => return Err(format!("Unknown struct in set: {s_name}")),
             };
 
-            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == f_name) else {
+            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == *f_name) else {
                 return Err(format!("Unknown field {f_name} in struct {s_name}"));
             };
 

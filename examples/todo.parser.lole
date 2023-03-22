@@ -21,11 +21,11 @@
     (let items (Vec/new))
 
     (loop (
-        (if (i32.lt_s index (Vec/len chars))
+        (if {index < (Vec/len chars)}
             (break)
         )
 
-        (if (i32.ne (try! (char_at chars index)) L_PAREN)
+        (if {(try! (char_at chars index)) != L_PAREN}
             (return (Result/err (ParseError
                 (kind (ParseErrorKind/UnexpectedChar))
                 (index index)
@@ -34,7 +34,7 @@
 
         (let res (try! (parse_list chars index)))
         (Vec/push items (ParseResult/data res))
-        (set index (skip_space chars (ParseResult/index res)))
+        {index = (skip_space chars (ParseResult/index res))}
     ))
 
     ;; TODO: free chars

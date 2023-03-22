@@ -1,9 +1,8 @@
 (export factorial :as factorial)
 
 (fn factorial [(x i32)] [i32] (
-    (if (i32.lt_s x 2)
-        (return x)
+    (if {x < 2}
+        x
+        {x * (factorial {x - 1})}
     )
-
-    (i32.mul x (factorial (i32.sub x 1)))
 ))

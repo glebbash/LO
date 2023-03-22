@@ -4,11 +4,8 @@
     (let l1 i32)
     (let l2 i32)
 
-    (set (l1 l2) (pack a1 a2))
+    ;; same as the following: {l1 = a1} {l2 = a2}
+    {(l1 l2) = (pack a1 a2)}
 
-    ;; same as the following:
-    ;; (set l1 a1)
-    ;; (set l2 a2)
-
-    (i32.sub l1 l2)
+    {l1 - l2}
 ))
