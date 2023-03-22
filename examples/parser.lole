@@ -5,8 +5,13 @@
 (export skip_space :as skip_space)
 (export char_at :as char_at)
 
+(struct StringSlice
+    (data i32)
+    (size i32)
+)
+
 ; TODO: implement
-(fn parse ((data i32) (size i32)) (
+(fn parse ((script StringSlice)) (
     i32 ; ok
     i32 ; index
 ) (
@@ -14,20 +19,19 @@
 ))
 
 ; TODO: add support for comments
-(fn skip_space ((data i32) (size i32) (index i32)) (
+(fn skip_space ((chars StringSlice) (index i32)) (
     i32 ; index
 ) (
-    (let char_ok i32)
-    (let char i32)
+    (let res CharAtResult)
 
     (loop (
-        (set (char_ok char) (char_at data size index))
+        (set res (char_at chars index))
 
-        (if (i32.ne char_ok (i32 1))
+        (if (i32.ne (get res :ok) (i32 1))
             (break)
         )
 
-        (if (i32.ne char (i32 32)) ; space
+        (if (i32.ne (get res :char) (i32 32)) ; space
             (break)
         )
 
@@ -37,16 +41,18 @@
     index
 ))
 
-(fn char_at ((data i32) (size i32) (index i32)) (
-    i32 ; ok
-    i32 ; char
-) (
-    (if (i32.ge_s index size)
-        (return (i32 0) (i32 0))
+(struct CharAtResult
+    (ok i32)
+    (char i32)
+)
+
+(fn char_at ((chars StringSlice) (index i32)) (CharAtResult) (
+    (if (i32.ge_s index (get chars :size))
+        (return (new CharAtResult (i32 0) (i32 0)))
     )
 
-    (return
+    (new CharAtResult
         (i32 1)
-        (i32.load8_u (i32.add data index))
+        (i32.load8_u (i32.add (get chars :data) index))
     )
 ))
