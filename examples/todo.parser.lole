@@ -42,3 +42,31 @@
 
     (Result/ok items)
 ))
+
+(fn index_to_position [(chars StringSlice) (index i32)] [i32 i32] (
+    {line := 0}
+    {col := 0}
+    {char_index := 0}
+
+    (loop (
+        (if {char_index < {chars . size}}
+            (break)
+        )
+
+        (if {char_index == index}
+            (break)
+        )
+
+        (let char (StringSlice/char_at chars index))
+
+        (if {char == '\n'} (do
+            {col = 1}
+            {line = {line + 1}}
+            (continue)
+        ))
+
+        {col = {col + 1}}
+    ))
+
+    (pack line col)
+))
