@@ -1,5 +1,5 @@
 (export main :as main)
 
-(fn main () (i32) (
+(fn main [] [i32] (
     42
 ))

@@ -15,7 +15,7 @@
 (const L_PAREN 40)
 
 (export parse :as parse)
-(fn parse (script StringSlice) ((Result (Vec SExpr) ParseError)) (
+(fn parse [(script StringSlice)] [(Result (Vec SExpr) ParseError)] (
     (let chars (string_to_chars_vec script))
     (let index (skip_space chars 0))
     (let items (Vec/new))

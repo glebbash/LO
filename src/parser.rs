@@ -39,7 +39,7 @@ pub fn parse(script: &str) -> Result<Vec<SExpr>, WithIndex<ParseError>> {
     let mut items = Vec::new();
 
     while index < chars.len() {
-        if char_at(chars, index)? != '(' {
+        if !is_list_start(char_at(chars, index)?) {
             return Err(WithIndex {
                 data: ParseError::UnexpectedChar,
                 index,
@@ -57,7 +57,7 @@ pub fn parse(script: &str) -> Result<Vec<SExpr>, WithIndex<ParseError>> {
 }
 
 fn parse_expr(chars: &Vec<char>, index: usize) -> ParseResult {
-    if char_at(chars, index)? == '(' {
+    if is_list_start(char_at(chars, index)?) {
         parse_list(chars, index)
     } else {
         parse_atom(chars, index)
@@ -67,7 +67,7 @@ fn parse_expr(chars: &Vec<char>, index: usize) -> ParseResult {
 fn parse_atom(chars: &Vec<char>, index: usize) -> ParseResult {
     let atom_text = chars[index..]
         .iter()
-        .take_while(|&&c| !is_space(c) && c != ')' && c != ';')
+        .take_while(|&&c| !is_space(c) && !is_list_end(c) && c != ';')
         .collect::<String>();
 
     Ok(WithIndex {
@@ -77,13 +77,14 @@ fn parse_atom(chars: &Vec<char>, index: usize) -> ParseResult {
 }
 
 fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
-    index += 1; // eat lparen
+    let list_start_char = char_at(chars, index)?;
+    index += 1; // eat list start
 
     index = skip_space(chars, index);
 
     let mut items = Vec::new();
 
-    while char_at(chars, index)? != ')' {
+    while !is_list_end(char_at(chars, index)?) {
         let res = parse_expr(chars, index)?;
 
         items.push(res.data);
@@ -91,7 +92,15 @@ fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
         index = skip_space(chars, res.index);
     }
 
-    index += 1; // eat rparen
+    let list_end_char = char_at(chars, index)?;
+    index += 1; // eat list end
+
+    if !is_valid_list_chars(list_start_char, list_end_char) {
+        return Err(WithIndex {
+            data: ParseError::UnexpectedChar,
+            index,
+        });
+    }
 
     Ok(WithIndex {
         data: SExpr::List(items),
@@ -119,6 +128,29 @@ fn skip_space(chars: &Vec<char>, mut index: usize) -> usize {
     }
 
     return index;
+}
+
+fn is_list_start(c: char) -> bool {
+    match c {
+        '(' | '{' | '[' => true,
+        _ => false,
+    }
+}
+
+fn is_list_end(c: char) -> bool {
+    match c {
+        ')' | '}' | ']' => true,
+        _ => false,
+    }
+}
+
+fn is_valid_list_chars(start: char, end: char) -> bool {
+    match (start, end) {
+        ('(', ')') => true,
+        ('{', '}') => true,
+        ('[', ']') => true,
+        _ => false,
+    }
 }
 
 fn is_space(c: char) -> bool {
@@ -208,11 +240,7 @@ mod tests {
                     SExpr::Atom(String::from("main")),
                     SExpr::List(vec![]),
                     SExpr::List(vec![SExpr::Atom(String::from("i32"))]),
-                    SExpr::List(vec![]),
-                    SExpr::List(vec![SExpr::List(vec![
-                        SExpr::Atom(String::from("i32")),
-                        SExpr::Atom(String::from("42"))
-                    ])])
+                    SExpr::List(vec![SExpr::Atom(String::from("42"))]),
                 ]),
             ]
         );

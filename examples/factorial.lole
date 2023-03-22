@@ -1,6 +1,6 @@
 (export factorial :as factorial)
 
-(fn factorial ((x i32)) (i32) (
+(fn factorial [(x i32)] [i32] (
     (if (i32.lt_s x 2)
         (return x)
     )

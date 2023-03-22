@@ -10,22 +10,22 @@
     (size i32)
 )
 
-(fn StringSlice/char_at ((self StringSlice) (index i32)) (i32) (
+(fn StringSlice/char_at [(self StringSlice) (index i32)] [i32] (
     (i32.load8_u (i32.add (get self :data) index))
 ))
 
 ; TODO: implement
-(fn parse ((script StringSlice)) (
+(fn parse [(script StringSlice)] [
     i32 ; ok
     i32 ; index
-) (
+] (
     (return 0 0)
 ))
 
 ; TODO: add support for comments
-(fn skip_space ((chars StringSlice) (index i32)) (
+(fn skip_space [(chars StringSlice) (index i32)] [
     i32 ; index
-) (
+] (
     (let res CharAtResult)
 
     (loop (
@@ -50,7 +50,7 @@
     (char i32)
 )
 
-(fn char_at ((chars StringSlice) (index i32)) (CharAtResult) (
+(fn char_at [(chars StringSlice) (index i32)] [CharAtResult] (
     (if (i32.ge_s index (get chars :size))
         (return (new CharAtResult 0 0))
     )

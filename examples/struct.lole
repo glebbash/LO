@@ -5,7 +5,7 @@
     (y i32)
 )
 
-(fn main () (i32) (
+(fn main [] [i32] (
     (let p1 Point2D)
     (let sum Point2D)
 
@@ -21,14 +21,14 @@
     (Point2D/len_squared sum)
 ))
 
-(fn Point2D/add ((p1 Point2D) (p2 Point2D)) (Point2D) (
+(fn Point2D/add ((p1 Point2D) (p2 Point2D)) [Point2D] (
     (new Point2D
         (i32.add (get p1 :x) (get p2 :x))
         (i32.add (get p1 :y) (get p2 :y))
     )
 ))
 
-(fn Point2D/len_squared ((p Point2D)) (i32) (
+(fn Point2D/len_squared [(p Point2D)] [i32] (
     (i32.add
         (i32.mul (get p :x) (get p :x))
         (i32.mul (get p :y) (get p :y))
