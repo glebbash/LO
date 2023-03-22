@@ -6,13 +6,12 @@
 )
 
 (fn main [] [i32] (
-    (let p1 Point2D)
-    (let sum Point2D)
-
+    {p1 : Point2D}
     {p1 = (new Point2D 0 0)}
     {p1 = x 1}
     {p1 = y 2}
 
+    {sum : Point2D}
     {sum = (Point2D/add p1 (new Point2D 1 1))}
 
     (Point2D/len_squared sum)

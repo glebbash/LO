@@ -15,10 +15,13 @@
 ))
 
 ; TODO: implement
-(fn parse [(script StringSlice)] [
+(fn parse [(chars StringSlice)] [
     i32 ; ok
     i32 ; index
 ] (
+    {index : i32}
+    {index = (skip_space chars 0)}
+
     (return 0 0)
 ))
 
@@ -26,7 +29,7 @@
 (fn skip_space [(chars StringSlice) (index i32)] [
     i32 ; index
 ] (
-    (let res CharAtResult)
+    {res : CharAtResult}
 
     (loop (
         {res = (char_at chars index)}

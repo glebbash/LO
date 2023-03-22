@@ -16,9 +16,9 @@
 
 (export parse :as parse)
 (fn parse [(script StringSlice)] [(Result (Vec SExpr) ParseError)] (
-    (let chars (string_to_chars_vec script))
-    (let index (skip_space chars 0))
-    (let items (Vec/new))
+    {chars := (string_to_chars_vec script)}
+    {index := (skip_space chars 0)}
+    {items := (Vec/new)}
 
     (loop (
         (if {index < (Vec/len chars)}
@@ -32,7 +32,7 @@
             )))
         )
 
-        (let res (try! (parse_list chars index)))
+        {res := (try! (parse_list chars index))}
         (Vec/push items (ParseResult/data res))
         {index = (skip_space chars (ParseResult/index res))}
     ))
@@ -57,7 +57,7 @@
             (break)
         )
 
-        (let char (StringSlice/char_at chars index))
+        {char := (StringSlice/char_at chars index)}
 
         (if {char == '\n'} (do
             {col = 1}
