@@ -303,6 +303,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
     let items = match expr {
         SExpr::List(items) => items,
         SExpr::Atom(local_name) => {
+            if local_name.chars().all(|c| c.is_ascii_digit()) {
+                return Ok(Instr::I32Const(
+                    local_name
+                        .parse()
+                        .map_err(|_| format!("Parsing i32 (implicit) failed"))?,
+                ));
+            }
+
             let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for local.get: {local_name}"));
             };

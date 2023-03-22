@@ -17,7 +17,7 @@
 (export parse :as parse)
 (fn parse (script StringSlice) ((Result (Vec SExpr) ParseError)) (
     (let chars (string_to_chars_vec script))
-    (let index (skip_space chars (i32 0)))
+    (let index (skip_space chars 0))
     (let items (Vec/new))
 
     (loop (

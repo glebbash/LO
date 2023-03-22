@@ -1,9 +1,9 @@
 (export factorial :as factorial)
 
 (fn factorial ((x i32)) (i32) (
-    (if (i32.lt_s x (i32 2))
+    (if (i32.lt_s x 2)
         (return x)
     )
 
-    (i32.mul x (factorial (i32.sub x (i32 1))))
+    (i32.mul x (factorial (i32.sub x 1)))
 ))

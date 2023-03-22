@@ -9,13 +9,13 @@
     (let p1 Point2D)
     (let sum Point2D)
 
-    (set p1 (new Point2D (i32 0) (i32 0)))
-    (set p1 :x (i32 1))
-    (set p1 :y (i32 2))
+    (set p1 (new Point2D 0 0))
+    (set p1 :x 1)
+    (set p1 :y 2)
 
     (set sum (Point2D/add
         p1
-        (new Point2D (i32 1) (i32 1))
+        (new Point2D 1 1)
     ))
 
     (Point2D/len_squared sum)

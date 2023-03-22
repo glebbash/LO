@@ -19,7 +19,7 @@
     i32 ; ok
     i32 ; index
 ) (
-    (return (i32 0) (i32 0))
+    (return 0 0)
 ))
 
 ; TODO: add support for comments
@@ -31,15 +31,15 @@
     (loop (
         (set res (char_at chars index))
 
-        (if (i32.ne (get res :ok) (i32 1))
+        (if (i32.ne (get res :ok) 1)
             (break)
         )
 
-        (if (i32.ne (get res :char) (i32 32)) ; space
+        (if (i32.ne (get res :char) 32) ; space
             (break)
         )
 
-        (set index (i32.add index (i32 1)))
+        (set index (i32.add index 1))
     ))
 
     index
@@ -52,7 +52,7 @@
 
 (fn char_at ((chars StringSlice) (index i32)) (CharAtResult) (
     (if (i32.ge_s index (get chars :size))
-        (return (new CharAtResult (i32 0) (i32 0)))
+        (return (new CharAtResult 0 0))
     )
 
     (new CharAtResult (i32 1) (StringSlice/char_at chars index))
