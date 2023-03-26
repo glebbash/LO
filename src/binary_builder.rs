@@ -1,15 +1,12 @@
-use crate::wasm_module::{Instr, WasmModule};
+use crate::wasm_module::{WasmExpr, WasmInstr, WasmModule};
 use alloc::vec::Vec;
-
-const FUNC_TYPE: u8 = 0x60;
 
 const SECTION_TYPE: u8 = 0x01;
 const SECTION_FUNC: u8 = 0x03;
 const SECTION_MEMORY: u8 = 0x05;
+const SECTION_GLOBAL: u8 = 0x06;
 const SECTION_EXPORT: u8 = 0x07;
 const SECTION_CODE: u8 = 0x0a;
-
-const EXPR_END_OPCODE: u8 = 0x0b;
 
 pub struct BinaryBuilder<'a> {
     module: &'a WasmModule,
@@ -28,6 +25,7 @@ impl<'a> BinaryBuilder<'a> {
         self.emit_type_section();
         self.emit_func_section();
         self.emit_memory_section();
+        self.emit_global_section();
         self.emit_export_section();
         self.emit_code_section();
         self.data
@@ -49,7 +47,7 @@ impl<'a> BinaryBuilder<'a> {
         {
             write_u32(&mut type_section, self.module.fn_types.len() as u32);
             for fn_type in &self.module.fn_types {
-                type_section.push(FUNC_TYPE);
+                type_section.push(0x60); // func type
 
                 write_u32(&mut type_section, fn_type.inputs.len() as u32);
                 for &fn_input in &fn_type.inputs {
@@ -106,6 +104,30 @@ impl<'a> BinaryBuilder<'a> {
         self.data.append(&mut memory_section);
     }
 
+    fn emit_global_section(&mut self) {
+        self.data.push(SECTION_GLOBAL);
+
+        let mut global_section = Vec::new();
+
+        {
+            write_u32(&mut global_section, self.module.globals.len() as u32);
+            for global in &self.module.globals {
+                global_section.push(global.value_type as u8);
+
+                if global.mutable {
+                    global_section.push(0x01);
+                } else {
+                    global_section.push(0x00);
+                }
+
+                write_expr(&mut global_section, &global.initial_value);
+            }
+        }
+
+        write_u32(&mut self.data, global_section.len() as u32);
+        self.data.append(&mut global_section);
+    }
+
     fn emit_export_section(&mut self) {
         self.data.push(SECTION_EXPORT);
 
@@ -144,11 +166,7 @@ impl<'a> BinaryBuilder<'a> {
                         fn_section.push(locals_of_some_type.value_type as u8);
                     }
 
-                    for instr in &fn_code.expr.instrs {
-                        write_instr(&mut fn_section, instr);
-                    }
-
-                    fn_section.push(EXPR_END_OPCODE);
+                    write_expr(&mut fn_section, &fn_code.expr);
                 }
 
                 write_u32(&mut code_section, fn_section.len() as u32);
@@ -161,49 +179,66 @@ impl<'a> BinaryBuilder<'a> {
     }
 }
 
-fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
+fn write_expr(output: &mut Vec<u8>, expr: &WasmExpr) {
+    for instr in &expr.instrs {
+        write_instr(output, instr);
+    }
+
+    output.push(0x0b); // end
+}
+
+fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
     match instr {
-        Instr::Nop => output.push(0x01),
-        Instr::I32LessThenSigned { lhs, rhs } => {
+        WasmInstr::Nop => output.push(0x01),
+        WasmInstr::I32LessThenSigned { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
             output.push(0x48);
         }
-        Instr::I32GreaterEqualSigned { lhs, rhs } => {
+        WasmInstr::I32GreaterEqualSigned { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
             output.push(0x4e);
         }
-        Instr::I32NotEqual { lhs, rhs } => {
+        WasmInstr::I32NotEqual { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
             output.push(0x47);
         }
-        Instr::I32Add { lhs, rhs } => {
+        WasmInstr::I32Add { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
             output.push(0x6a);
         }
-        Instr::I32Sub { lhs, rhs } => {
+        WasmInstr::I32Sub { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
             output.push(0x6b);
         }
-        Instr::I32Mul { lhs, rhs } => {
+        WasmInstr::I32Mul { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
             output.push(0x6c);
         }
-        Instr::LocalGet(local_idx) => {
+        WasmInstr::LocalGet(local_idx) => {
             output.push(0x20);
             write_u32(output, *local_idx);
         }
-        Instr::LocalSet { local_idx, value } => {
+        WasmInstr::LocalSet { local_idx, value } => {
             write_instr(output, value);
             output.push(0x21);
             write_u32(output, *local_idx);
         }
-        Instr::MultiValueLocalSet { local_idxs, value } => {
+        WasmInstr::GlobalGet(local_idx) => {
+            output.push(0x23);
+            write_u32(output, *local_idx);
+        }
+        WasmInstr::GlobalSet { global_idx, value } => {
+            write_instr(output, value);
+            output.push(0x24);
+            write_u32(output, *global_idx);
+        }
+        WasmInstr::MultiValueLocalSet { local_idxs, value } => {
             write_instr(output, value);
 
             for local_idx in local_idxs.iter().rev() {
@@ -211,12 +246,12 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
                 write_u32(output, *local_idx);
             }
         }
-        Instr::MultiValueEmit { values } => {
+        WasmInstr::MultiValueEmit { values } => {
             for value in values {
                 write_instr(output, value);
             }
         }
-        Instr::I32Load {
+        WasmInstr::I32Load {
             align,
             offset,
             address_instr,
@@ -226,7 +261,7 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             write_u32(output, *align);
             write_u32(output, *offset);
         }
-        Instr::I32Load8Unsigned {
+        WasmInstr::I32Load8Unsigned {
             align,
             offset,
             address_instr,
@@ -236,17 +271,17 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             write_u32(output, *align);
             write_u32(output, *offset);
         }
-        Instr::I32Const(value) => {
+        WasmInstr::I32Const(value) => {
             output.push(0x41);
             write_i32(output, *value);
         }
-        Instr::Return { values } => {
+        WasmInstr::Return { values } => {
             for value in values {
                 write_instr(output, value);
             }
             output.push(0x0f);
         }
-        Instr::Loop { instrs } => {
+        WasmInstr::Loop { instrs } => {
             output.push(0x02); // begin block
             output.push(0x40); // no value
 
@@ -274,7 +309,7 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
         // 2. end loop iteration with (br 1)
         // 3. end surrounding loop block (br 2)
         // NOTE: calling break or continue outside of if branch is undefined
-        Instr::LoopBreak => {
+        WasmInstr::LoopBreak => {
             output.push(0x0c); // br
             write_u32(output, 2);
         }
@@ -282,18 +317,18 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
         // 1. break out of if branch (br 0)
         // 2. end loop iteration with (br 1)
         // NOTE: calling break or continue outside of if branch is undefined
-        Instr::LoopContinue => {
+        WasmInstr::LoopContinue => {
             output.push(0x0c); // br
             write_u32(output, 1);
         }
-        Instr::Call { fn_idx, args } => {
+        WasmInstr::Call { fn_idx, args } => {
             for arg in args {
                 write_instr(output, arg);
             }
             output.push(0x10);
             write_u32(output, *fn_idx);
         }
-        Instr::If {
+        WasmInstr::If {
             block_type,
             cond,
             then_branch,
@@ -307,7 +342,7 @@ fn write_instr(output: &mut Vec<u8>, instr: &Instr) {
             write_instr(output, else_branch);
             output.push(0x0b); // end
         }
-        Instr::IfSingleBranch { cond, then_branch } => {
+        WasmInstr::IfSingleBranch { cond, then_branch } => {
             write_instr(output, cond);
             output.push(0x04); // if
             output.push(0x40); // no value

@@ -5,6 +5,7 @@ pub struct WasmModule {
     pub fn_types: Vec<WasmFnType>,
     pub fn_codes: Vec<WasmFnCode>,
     pub memories: Vec<WasmMemory>,
+    pub globals: Vec<WasmGlobal>,
     pub exports: Vec<WasmExport>,
 }
 
@@ -15,7 +16,7 @@ pub struct WasmFnType {
 
 pub struct WasmFnCode {
     pub locals: Vec<WasmLocals>,
-    pub expr: Expr,
+    pub expr: WasmExpr,
 }
 
 pub struct WasmLocals {
@@ -23,80 +24,85 @@ pub struct WasmLocals {
     pub value_type: WasmValueType,
 }
 
-pub struct Expr {
-    pub instrs: Vec<Instr>,
+pub struct WasmExpr {
+    pub instrs: Vec<WasmInstr>,
 }
 
-pub enum Instr {
+pub enum WasmInstr {
     Nop,
     I32Const(i32),
     Return {
-        values: Vec<Instr>,
+        values: Vec<WasmInstr>,
     },
     I32LessThenSigned {
-        lhs: Box<Instr>,
-        rhs: Box<Instr>,
+        lhs: Box<WasmInstr>,
+        rhs: Box<WasmInstr>,
     },
     I32GreaterEqualSigned {
-        lhs: Box<Instr>,
-        rhs: Box<Instr>,
+        lhs: Box<WasmInstr>,
+        rhs: Box<WasmInstr>,
     },
     I32NotEqual {
-        lhs: Box<Instr>,
-        rhs: Box<Instr>,
+        lhs: Box<WasmInstr>,
+        rhs: Box<WasmInstr>,
     },
     I32Add {
-        lhs: Box<Instr>,
-        rhs: Box<Instr>,
+        lhs: Box<WasmInstr>,
+        rhs: Box<WasmInstr>,
     },
     I32Sub {
-        lhs: Box<Instr>,
-        rhs: Box<Instr>,
+        lhs: Box<WasmInstr>,
+        rhs: Box<WasmInstr>,
     },
     I32Mul {
-        lhs: Box<Instr>,
-        rhs: Box<Instr>,
+        lhs: Box<WasmInstr>,
+        rhs: Box<WasmInstr>,
     },
     LocalGet(u32),
     LocalSet {
         local_idx: u32,
-        value: Box<Instr>,
+        value: Box<WasmInstr>,
+    },
+    GlobalGet(u32),
+    GlobalSet {
+        global_idx: u32,
+        value: Box<WasmInstr>,
     },
     MultiValueLocalSet {
         local_idxs: Vec<u32>,
-        value: Box<Instr>,
+        value: Box<WasmInstr>,
     },
     MultiValueEmit {
-        values: Vec<Instr>,
+        values: Vec<WasmInstr>,
     },
     Loop {
-        instrs: Vec<Instr>,
+        instrs: Vec<WasmInstr>,
     },
     LoopBreak,
     LoopContinue,
     I32Load {
         align: u32,
         offset: u32,
-        address_instr: Box<Instr>,
+        address_instr: Box<WasmInstr>,
     },
     I32Load8Unsigned {
         align: u32,
         offset: u32,
-        address_instr: Box<Instr>,
+        address_instr: Box<WasmInstr>,
     },
     Call {
         fn_idx: u32,
-        args: Vec<Instr>,
+        args: Vec<WasmInstr>,
     },
     If {
         block_type: WasmValueType,
-        cond: Box<Instr>,
-        then_branch: Box<Instr>,
-        else_branch: Box<Instr>,
+        cond: Box<WasmInstr>,
+        then_branch: Box<WasmInstr>,
+        else_branch: Box<WasmInstr>,
     },
     IfSingleBranch {
-        cond: Box<Instr>,
-        then_branch: Box<Instr>,
+        cond: Box<WasmInstr>,
+        then_branch: Box<WasmInstr>,
     },
 }
 
@@ -116,6 +122,12 @@ pub enum WasmValueType {
 pub struct WasmMemory {
     pub min: u32,
     pub max: Option<u32>,
+}
+
+pub struct WasmGlobal {
+    pub value_type: WasmValueType,
+    pub mutable: bool,
+    pub initial_value: WasmExpr,
 }
 
 pub struct WasmExport {

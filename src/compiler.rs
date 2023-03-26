@@ -1,8 +1,8 @@
 use crate::{
     parser::SExpr,
     wasm_module::{
-        Expr, Instr, WasmExport, WasmExportType, WasmFnCode, WasmFnType, WasmLocals, WasmMemory,
-        WasmModule, WasmValueType,
+        WasmExport, WasmExportType, WasmExpr, WasmFnCode, WasmFnType, WasmGlobal, WasmInstr,
+        WasmLocals, WasmMemory, WasmModule, WasmValueType,
     },
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
@@ -35,6 +35,7 @@ struct ModuleContext {
     fn_exports: BTreeMap<String, String>,
     memory_names: Vec<String>,
     struct_defs: BTreeMap<String, StructDef>,
+    globals: BTreeMap<String, GlobalDef>,
 }
 
 struct FnContext<'a> {
@@ -47,6 +48,11 @@ struct FnContext<'a> {
 struct LocalDef {
     index: u32,
     value_type: ValueType,
+}
+
+struct GlobalDef {
+    index: u32,
+    mutable: bool,
 }
 
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
@@ -126,7 +132,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         ));
                     }
 
-                    let value_type = build_value_type(p_type, &ctx)?;
+                    let value_type = parse_value_type(p_type, &ctx)?;
                     let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
 
                     locals.insert(
@@ -147,7 +153,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
                         _ => return Err(format!("Atom expected, list found")),
                     };
 
-                    let value_type = build_value_type(l_type, &ctx)?;
+                    let value_type = parse_value_type(l_type, &ctx)?;
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
@@ -207,11 +213,36 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
                     fields.push(StructField {
                         name: f_name.clone(),
-                        value_type: parse_value_type(f_type)?,
+                        value_type: parse_wasm_value_type(f_type)?,
                     });
                 }
 
                 ctx.struct_defs.insert(s_name.clone(), StructDef { fields });
+            }
+            ("global-mut", [SExpr::Atom(global_name), SExpr::Atom(global_type), global_value]) => {
+                if ctx.globals.contains_key(global_name) {
+                    return Err(format!("Cannot redefine global: {global_name}"));
+                }
+
+                let mutable = true;
+                let value_type = parse_wasm_value_type(global_type)?;
+                let initial_value = WasmExpr {
+                    instrs: vec![parse_const_instr(global_value, &ctx)?],
+                };
+
+                ctx.globals.insert(
+                    global_name.clone(),
+                    GlobalDef {
+                        index: ctx.globals.len() as u32,
+                        mutable,
+                    },
+                );
+
+                module.globals.push(WasmGlobal {
+                    value_type,
+                    mutable,
+                    initial_value,
+                });
             }
             (op, _) => return Err(format!("Unknown operation: {op}")),
         };
@@ -251,7 +282,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
         module.fn_codes.push(WasmFnCode {
             locals,
-            expr: Expr { instrs },
+            expr: WasmExpr { instrs },
         });
     }
 
@@ -263,8 +294,8 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     Ok(module)
 }
 
-fn build_value_type(l_type: &String, ctx: &ModuleContext) -> Result<ValueType, String> {
-    if let Ok(value_type) = parse_value_type(l_type) {
+fn parse_value_type(l_type: &String, ctx: &ModuleContext) -> Result<ValueType, String> {
+    if let Ok(value_type) = parse_wasm_value_type(l_type) {
         return Ok(ValueType::Primitive(value_type));
     }
 
@@ -299,20 +330,24 @@ fn emit_value_components(
     }
 }
 
-fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
+fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
     let items = match expr {
         SExpr::List(items) => items,
-        SExpr::Atom(local_name) => {
-            if local_name.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(Instr::I32Const(
-                    local_name
+        SExpr::Atom(var_name) => {
+            if var_name.chars().all(|c| c.is_ascii_digit()) {
+                return Ok(WasmInstr::I32Const(
+                    var_name
                         .parse()
                         .map_err(|_| format!("Parsing i32 (implicit) failed"))?,
                 ));
             }
 
-            let Some(local) = ctx.locals.get(local_name.as_str()) else {
-                return Err(format!("Unknown location for local.get: {local_name}"));
+            if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
+                return Ok(WasmInstr::GlobalGet(global.index));
+            };
+
+            let Some(local) = ctx.locals.get(var_name.as_str()) else {
+                return Err(format!("Reading unknown variable: {var_name}"));
             };
 
             if let ValueType::StructInstance { name } = &local.value_type {
@@ -321,13 +356,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 let mut values = vec![];
 
                 for field_offset in 0..struct_def.fields.len() {
-                    values.push(Instr::LocalGet(local.index + field_offset as u32));
+                    values.push(WasmInstr::LocalGet(local.index + field_offset as u32));
                 }
 
-                return Ok(Instr::MultiValueEmit { values });
+                return Ok(WasmInstr::MultiValueEmit { values });
             }
 
-            return Ok(Instr::LocalGet(local.index));
+            return Ok(WasmInstr::LocalGet(local.index));
         }
     };
 
@@ -337,35 +372,46 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
 
     let instr = match (op.as_str(), &args[..]) {
         ("i32", [SExpr::Atom(value)]) => {
-            Instr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
+            WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
-        ("i32.lt_s" | "<", [lhs, rhs]) => Instr::I32LessThenSigned {
+        ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::I32LessThenSigned {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.ge_s" | ">=", [lhs, rhs]) => Instr::I32GreaterEqualSigned {
+        ("i32.ge_s" | ">=", [lhs, rhs]) => WasmInstr::I32GreaterEqualSigned {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.ne" | "!=", [lhs, rhs]) => Instr::I32NotEqual {
+        ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::I32NotEqual {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.add" | "+", [lhs, rhs]) => Instr::I32Add {
+        ("i32.add" | "+", [lhs, rhs]) => WasmInstr::I32Add {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.sub" | "-", [lhs, rhs]) => Instr::I32Sub {
+        ("i32.sub" | "-", [lhs, rhs]) => WasmInstr::I32Sub {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.mul" | "*", [lhs, rhs]) => Instr::I32Mul {
+        ("i32.mul" | "*", [lhs, rhs]) => WasmInstr::I32Mul {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("set" | "=", [SExpr::Atom(local_name), value]) => {
-            let Some(local) = ctx.locals.get(local_name.as_str()) else {
-                return Err(format!("Unknown location for set: {local_name}"));
+        ("set" | "=", [SExpr::Atom(var_name), value]) => {
+            if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
+                if !global.mutable {
+                    return Err(format!("Setting immutable global: {var_name}"));
+                }
+
+                return Ok(WasmInstr::GlobalSet {
+                    global_idx: global.index,
+                    value: Box::new(parse_instr(value, ctx)?),
+                });
+            };
+
+            let Some(local) = ctx.locals.get(var_name.as_str()) else {
+                return Err(format!("Unknown variable: {var_name}"));
             };
 
             match &local.value_type {
@@ -377,12 +423,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                         local_idxs.push(local.index + field_offset as u32);
                     }
 
-                    return Ok(Instr::MultiValueLocalSet {
+                    return Ok(WasmInstr::MultiValueLocalSet {
                         local_idxs,
                         value: Box::new(parse_instr(value, ctx)?),
                     });
                 }
-                ValueType::Primitive(_) => Instr::LocalSet {
+                ValueType::Primitive(_) => WasmInstr::LocalSet {
                     local_idx: local.index,
                     value: Box::new(parse_instr(value, ctx)?),
                 },
@@ -394,6 +440,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
             for local_name_expr in local_names {
                 let SExpr::Atom(local_name) = local_name_expr else {
                     return Err(format!("Unexpected list in lhs of set"));
+                };
+
+                if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
+                    return Err(format!(
+                        "Cannot set globals in multivalue set: {local_name}"
+                    ));
                 };
 
                 let Some(local) = ctx.locals.get(local_name.as_str()) else {
@@ -412,17 +464,21 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 }
             }
 
-            Instr::MultiValueLocalSet {
+            WasmInstr::MultiValueLocalSet {
                 local_idxs,
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
         ("let" | ":", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
+            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
+                return Err(format!("Local name collides with global: {local_name}"));
+            };
+
             if ctx.locals.contains_key(local_name) {
                 return Err(format!("Duplicate local definition: {local_name}"));
             }
 
-            let value_type = build_value_type(local_type, ctx.module)?;
+            let value_type = parse_value_type(local_type, ctx.module)?;
             let comp_count =
                 emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
 
@@ -437,7 +493,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
             ctx.locals_last_index += comp_count;
 
             // TODO: find a better way
-            Instr::Nop
+            WasmInstr::Nop
         }
         // TODO: validate that number of fields matches
         ("new", [SExpr::Atom(s_name), values @ ..]) => {
@@ -445,13 +501,19 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 return Err(format!("Unknown struct encountered in set: {s_name}"));
             }
 
-            Instr::MultiValueEmit {
+            WasmInstr::MultiValueEmit {
                 values: parse_instrs(values, ctx)?,
             }
         }
         ("get" | ".", [SExpr::Atom(local_name), SExpr::Atom(f_name)]) => {
+            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
+                return Err(format!(
+                    "Getting struct field from global variable: {local_name}"
+                ));
+            };
+
             let Some(local) = ctx.locals.get(local_name.as_str()) else {
-                return Err(format!("Unknown location for get: {local_name}"));
+                return Err(format!("Reading unknown variable: {local_name}"));
             };
 
             let ValueType::StructInstance { name: s_name } = &local.value_type else {
@@ -467,9 +529,15 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 return Err(format!("Unknown field {f_name} in struct {s_name}"));
             };
 
-            Instr::LocalGet(local.index + field_offset as u32)
+            WasmInstr::LocalGet(local.index + field_offset as u32)
         }
         ("set" | "=", [SExpr::Atom(local_name), SExpr::Atom(f_name), value]) => {
+            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
+                return Err(format!(
+                    "Setting struct field from global variable: {local_name}"
+                ));
+            };
+
             let Some(local) = ctx.locals.get(local_name.as_str()) else {
                 return Err(format!("Unknown location for set: {local_name}"));
             };
@@ -487,20 +555,20 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 return Err(format!("Unknown field {f_name} in struct {s_name}"));
             };
 
-            Instr::LocalSet {
+            WasmInstr::LocalSet {
                 local_idx: local.index + field_offset as u32,
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
-        ("pack", exprs) => Instr::MultiValueEmit {
+        ("pack", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,
         },
-        ("i32.load", [address]) => Instr::I32Load {
+        ("i32.load", [address]) => WasmInstr::I32Load {
             align: 1,
             offset: 0,
             address_instr: Box::new(parse_instr(address, ctx)?),
         },
-        ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => Instr::I32Load {
+        ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => WasmInstr::I32Load {
             align: align
                 .parse()
                 .map_err(|_| format!("Parsing i32.load align failed"))?,
@@ -509,27 +577,27 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 .map_err(|_| format!("Parsing i32.load offset failed"))?,
             address_instr: Box::new(parse_instr(address, ctx)?),
         },
-        ("i32.load8_u", [address]) => Instr::I32Load8Unsigned {
+        ("i32.load8_u", [address]) => WasmInstr::I32Load8Unsigned {
             align: 0,
             offset: 0,
             address_instr: Box::new(parse_instr(address, ctx)?),
         },
-        ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => Instr::If {
-            block_type: parse_value_type(block_type)?,
+        ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => WasmInstr::If {
+            block_type: parse_wasm_value_type(block_type)?,
             cond: Box::new(parse_instr(cond, ctx)?),
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
             else_branch: Box::new(parse_instr(else_branch, ctx)?),
         },
-        ("if", [cond, then_branch]) => Instr::IfSingleBranch {
+        ("if", [cond, then_branch]) => WasmInstr::IfSingleBranch {
             cond: Box::new(parse_instr(cond, ctx)?),
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
         },
-        ("loop", [SExpr::List(exprs)]) => Instr::Loop {
+        ("loop", [SExpr::List(exprs)]) => WasmInstr::Loop {
             instrs: parse_instrs(exprs, ctx)?,
         },
-        ("break", []) => Instr::LoopBreak,
-        ("continue", []) => Instr::LoopContinue,
-        ("return", values) => Instr::Return {
+        ("break", []) => WasmInstr::LoopBreak,
+        ("continue", []) => WasmInstr::LoopContinue,
+        ("return", values) => WasmInstr::Return {
             values: parse_instrs(values, ctx)?,
         },
         (fn_name, args) => {
@@ -537,7 +605,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
                 return Err(format!("Unknown instruction or function: {fn_name}"));
             };
 
-            Instr::Call {
+            WasmInstr::Call {
                 fn_idx: fn_idx as u32,
                 args: parse_instrs(args, ctx)?,
             }
@@ -547,11 +615,47 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<Instr, String> {
     Ok(instr)
 }
 
-fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<Instr>, String> {
+fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, String> {
+    let items = match expr {
+        SExpr::List(items) => items,
+        SExpr::Atom(global_name) => {
+            if global_name.chars().all(|c| c.is_ascii_digit()) {
+                return Ok(WasmInstr::I32Const(
+                    global_name
+                        .parse()
+                        .map_err(|_| format!("Parsing i32 (implicit) failed"))?,
+                ));
+            }
+
+            let Some(global) = ctx.globals.get(global_name.as_str()) else {
+                return Err(format!("Unknown location for global.get: {global_name}"));
+            };
+
+            return Ok(WasmInstr::GlobalGet(global.index));
+        }
+    };
+
+    let [SExpr::Atom(op), args @ ..] = &items[..] else {
+        return Err(format!("Expected operation, got a simple list"));
+    };
+
+    let instr = match (op.as_str(), &args[..]) {
+        ("i32", [SExpr::Atom(value)]) => {
+            WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
+        }
+        (instr_name, _args) => {
+            return Err(format!("Unknown instruction: {instr_name}"));
+        }
+    };
+
+    Ok(instr)
+}
+
+fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, String> {
     exprs.iter().map(|expr| parse_instr(expr, ctx)).collect()
 }
 
-fn parse_value_type(name: &str) -> Result<WasmValueType, String> {
+fn parse_wasm_value_type(name: &str) -> Result<WasmValueType, String> {
     match name {
         "i32" => Ok(WasmValueType::I32),
         "i64" => Ok(WasmValueType::I64),
