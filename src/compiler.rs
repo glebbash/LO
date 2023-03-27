@@ -294,20 +294,6 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
     Ok(module)
 }
 
-fn parse_value_type(l_type: &String, ctx: &ModuleContext) -> Result<ValueType, String> {
-    if let Ok(value_type) = parse_wasm_value_type(l_type) {
-        return Ok(ValueType::Primitive(value_type));
-    }
-
-    if ctx.struct_defs.contains_key(l_type) {
-        return Ok(ValueType::StructInstance {
-            name: l_type.clone(),
-        });
-    }
-
-    Err(format!("Unknown value type: {l_type}"))
-}
-
 fn emit_value_components(
     value_type: &ValueType,
     ctx: &ModuleContext,
@@ -492,8 +478,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             ctx.locals_last_index += comp_count;
 
-            // TODO: find a better way
-            WasmInstr::Nop
+            WasmInstr::NoInstr
         }
         // TODO: validate that number of fields matches
         ("new", [SExpr::Atom(s_name), values @ ..]) => {
@@ -582,6 +567,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             offset: 0,
             address_instr: Box::new(parse_instr(address, ctx)?),
         },
+        ("sizeof", [SExpr::Atom(struct_name)]) => {
+            let value_type = parse_value_type(struct_name, ctx.module)?;
+
+            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module))
+        }
+        // TODO: implement this
+        // ("store", [SExpr::Atom(ref_name), SExpr::Atom(value_type), value]) => {}
+        // ("load", [SExpr::Atom(ref_name), SExpr::Atom(value_type)]) => {}
         ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => WasmInstr::If {
             block_type: parse_wasm_value_type(block_type)?,
             cond: Box::new(parse_instr(cond, ctx)?),
@@ -653,6 +646,40 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Str
 
 fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, String> {
     exprs.iter().map(|expr| parse_instr(expr, ctx)).collect()
+}
+
+// types
+
+fn parse_value_type(l_type: &String, ctx: &ModuleContext) -> Result<ValueType, String> {
+    if let Ok(value_type) = parse_wasm_value_type(l_type) {
+        return Ok(ValueType::Primitive(value_type));
+    }
+
+    if ctx.struct_defs.contains_key(l_type) {
+        return Ok(ValueType::StructInstance {
+            name: l_type.clone(),
+        });
+    }
+
+    Err(format!("Unknown value type: {l_type}"))
+}
+
+fn get_value_type_size(value_type: &ValueType, ctx: &ModuleContext) -> i32 {
+    match value_type {
+        ValueType::Primitive(WasmValueType::FuncRef | WasmValueType::ExternRef) => 4, // TODO: check this
+        ValueType::Primitive(WasmValueType::I32 | WasmValueType::F32) => 4,
+        ValueType::Primitive(WasmValueType::I64 | WasmValueType::F64) => 8,
+        ValueType::Primitive(WasmValueType::V128) => 16,
+        ValueType::StructInstance { name } => {
+            let struct_def = ctx.struct_defs.get(name).unwrap();
+
+            let mut size = 0;
+            for field in &struct_def.fields {
+                size += get_value_type_size(&ValueType::Primitive(field.value_type), ctx);
+            }
+            size
+        }
+    }
 }
 
 fn parse_wasm_value_type(name: &str) -> Result<WasmValueType, String> {

@@ -29,7 +29,7 @@ pub struct WasmExpr {
 }
 
 pub enum WasmInstr {
-    Nop,
+    NoInstr,
     I32Const(i32),
     Return {
         values: Vec<WasmInstr>,

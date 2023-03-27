@@ -189,7 +189,7 @@ fn write_expr(output: &mut Vec<u8>, expr: &WasmExpr) {
 
 fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
     match instr {
-        WasmInstr::Nop => output.push(0x01),
+        WasmInstr::NoInstr => {}
         WasmInstr::I32LessThenSigned { lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
