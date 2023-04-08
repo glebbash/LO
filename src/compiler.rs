@@ -2,10 +2,10 @@ use crate::{
     parser::SExpr,
     wasm_module::{
         WasmBinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFnCode, WasmFnType, WasmGlobal,
-        WasmInstr, WasmLoadKind, WasmLocals, WasmMemory, WasmModule, WasmValueType,
+        WasmInstr, WasmLoadKind, WasmLocals, WasmMemory, WasmModule, WasmStoreKind, WasmValueType,
     },
 };
-use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 
 struct FnDef {
@@ -428,6 +428,129 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 values: parse_instrs(values, ctx)?,
             }),
         },
+        /*
+            TODO: validate that number values matches the one of fields
+            WARNING: it's not that simple because it involves nested `MultiValueEmit`s
+        */
+        ("struct.new", [SExpr::Atom(s_name), values @ ..]) => {
+            if !ctx.module.struct_defs.contains_key(s_name) {
+                return Err(format!("Unknown struct encountered in {op}: {s_name}"));
+            }
+
+            WasmInstr::MultiValueEmit {
+                values: parse_instrs(values, ctx)?,
+            }
+        }
+        ("struct.load", [SExpr::Atom(struct_name), address_expr]) => {
+            let Some(struct_def) = ctx.module.struct_defs.get(struct_name) else {
+                return Err(format!("Unknown struct encountered in {op}: {struct_name}"));
+            };
+
+            let address_instr = Rc::new(parse_instr(address_expr, ctx)?);
+
+            let mut offset = 0;
+            let mut primitive_loads = Vec::<WasmInstr>::with_capacity(struct_def.fields.len());
+
+            for field in &struct_def.fields {
+                primitive_loads.push(WasmInstr::Load {
+                    kind: get_load_kind_from_value_type(&field.value_type)?,
+                    align: 1,
+                    offset,
+                    address_instr: address_instr.clone(),
+                });
+
+                offset += get_primitive_value_type_size(&field.value_type);
+            }
+
+            WasmInstr::MultiValueEmit {
+                values: primitive_loads,
+            }
+        }
+        ("struct.store", [SExpr::Atom(struct_name), address_expr, value_expr]) => {
+            let Some(struct_def) = ctx.module.struct_defs.get(struct_name) else {
+                return Err(format!("Unknown struct encountered in {op}: {struct_name}"));
+            };
+
+            let mut value_instrs = match parse_instr(value_expr, ctx)? {
+                WasmInstr::MultiValueEmit { values } => values,
+                instr => vec![instr],
+            };
+
+            // TODO: add better check if type inference is implemented
+            if value_instrs.len() != struct_def.fields.len() {
+                return Err(format!(
+                    "Invalid number of receiving variables for {op}, needed {}, got {}",
+                    struct_def.fields.len(),
+                    value_instrs.len()
+                ));
+            }
+
+            let address_instr = Rc::new(parse_instr(address_expr, ctx)?);
+
+            let mut offset = 0;
+            let mut instrs = Vec::<WasmInstr>::with_capacity(struct_def.fields.len());
+
+            for field in struct_def.fields.iter() {
+                instrs.push(WasmInstr::Store {
+                    kind: get_store_kind_from_value_type(&field.value_type)?,
+                    align: 1,
+                    offset,
+                    value_instr: Box::new(value_instrs.remove(0)),
+                    address_instr: address_instr.clone(),
+                });
+
+                offset += get_primitive_value_type_size(&field.value_type);
+            }
+
+            WasmInstr::MultiValueEmit { values: instrs }
+        }
+        ("i32.load", [address]) => WasmInstr::Load {
+            kind: WasmLoadKind::I32,
+            align: 1,
+            offset: 0,
+            address_instr: Rc::new(parse_instr(address, ctx)?),
+        },
+        ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => WasmInstr::Load {
+            kind: WasmLoadKind::I32,
+            align: align
+                .parse()
+                .map_err(|_| format!("Parsing i32.load align failed"))?,
+            offset: offset
+                .parse()
+                .map_err(|_| format!("Parsing i32.load offset failed"))?,
+            address_instr: Rc::new(parse_instr(address, ctx)?),
+        },
+        ("i32.load8_u", [address]) => WasmInstr::Load {
+            kind: WasmLoadKind::I32_8u,
+            align: 0,
+            offset: 0,
+            address_instr: Rc::new(parse_instr(address, ctx)?),
+        },
+        ("let" | ":", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
+            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
+                return Err(format!("Local name collides with global: {local_name}"));
+            };
+
+            if ctx.locals.contains_key(local_name) {
+                return Err(format!("Duplicate local definition: {local_name}"));
+            }
+
+            let value_type = parse_value_type(local_type, ctx.module)?;
+            let comp_count =
+                emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
+
+            ctx.locals.insert(
+                local_name.clone(),
+                LocalDef {
+                    index: ctx.locals_last_index,
+                    value_type,
+                },
+            );
+
+            ctx.locals_last_index += comp_count;
+
+            WasmInstr::NoInstr
+        }
         ("set" | "=", [SExpr::Atom(var_name), value]) => {
             if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
                 if !global.mutable {
@@ -499,41 +622,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
-        ("let" | ":", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
-            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                return Err(format!("Local name collides with global: {local_name}"));
-            };
-
-            if ctx.locals.contains_key(local_name) {
-                return Err(format!("Duplicate local definition: {local_name}"));
-            }
-
-            let value_type = parse_value_type(local_type, ctx.module)?;
-            let comp_count =
-                emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
-
-            ctx.locals.insert(
-                local_name.clone(),
-                LocalDef {
-                    index: ctx.locals_last_index,
-                    value_type,
-                },
-            );
-
-            ctx.locals_last_index += comp_count;
-
-            WasmInstr::NoInstr
-        }
-        // TODO: validate that number of fields matches
-        ("struct.new", [SExpr::Atom(s_name), values @ ..]) => {
-            if !ctx.module.struct_defs.contains_key(s_name) {
-                return Err(format!("Unknown struct encountered in set: {s_name}"));
-            }
-
-            WasmInstr::MultiValueEmit {
-                values: parse_instrs(values, ctx)?,
-            }
-        }
         ("get" | ".", [SExpr::Atom(local_name), SExpr::Atom(f_name)]) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                 return Err(format!(
@@ -568,7 +656,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             };
 
             let Some(local) = ctx.locals.get(local_name.as_str()) else {
-                return Err(format!("Unknown location for set: {local_name}"));
+                return Err(format!("Unknown location for {op}: {local_name}"));
             };
 
             let ValueType::StructInstance { name: s_name } = &local.value_type else {
@@ -577,7 +665,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             let struct_def = match ctx.module.struct_defs.get(s_name) {
                 Some(struct_def) => struct_def,
-                None => return Err(format!("Unknown struct in set: {s_name}")),
+                None => return Err(format!("Unknown struct in {op}: {s_name}")),
             };
 
             let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == *f_name) else {
@@ -589,36 +677,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
-        // TODO: implement this
-        // ("struct.store", [SExpr::Atom(ref_name), SExpr::Atom(value_type), value]) => {}
-        // ("struct.load", [SExpr::Atom(ref_name), SExpr::Atom(value_type)]) => {}
-        ("sizeof", [SExpr::Atom(struct_name)]) => {
-            let value_type = parse_value_type(struct_name, ctx.module)?;
+        ("sizeof", [SExpr::Atom(type_name)]) => {
+            let value_type = parse_value_type(type_name, ctx.module)?;
 
-            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module))
+            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module) as i32)
         }
-        ("i32.load", [address]) => WasmInstr::Load {
-            kind: WasmLoadKind::I32,
-            align: 1,
-            offset: 0,
-            address_instr: Box::new(parse_instr(address, ctx)?),
-        },
-        ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => WasmInstr::Load {
-            kind: WasmLoadKind::I32,
-            align: align
-                .parse()
-                .map_err(|_| format!("Parsing i32.load align failed"))?,
-            offset: offset
-                .parse()
-                .map_err(|_| format!("Parsing i32.load offset failed"))?,
-            address_instr: Box::new(parse_instr(address, ctx)?),
-        },
-        ("i32.load8_u", [address]) => WasmInstr::Load {
-            kind: WasmLoadKind::I32_8u,
-            align: 0,
-            offset: 0,
-            address_instr: Box::new(parse_instr(address, ctx)?),
-        },
         ("pack", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,
         },
@@ -693,12 +756,9 @@ fn parse_value_type(l_type: &String, ctx: &ModuleContext) -> Result<ValueType, S
     Err(format!("Unknown value type: {l_type}"))
 }
 
-fn get_value_type_size(value_type: &ValueType, ctx: &ModuleContext) -> i32 {
+fn get_value_type_size(value_type: &ValueType, ctx: &ModuleContext) -> u32 {
     match value_type {
-        ValueType::Primitive(WasmValueType::FuncRef | WasmValueType::ExternRef) => 4, // TODO: check this
-        ValueType::Primitive(WasmValueType::I32 | WasmValueType::F32) => 4,
-        ValueType::Primitive(WasmValueType::I64 | WasmValueType::F64) => 8,
-        ValueType::Primitive(WasmValueType::V128) => 16,
+        ValueType::Primitive(primitive) => get_primitive_value_type_size(primitive),
         ValueType::StructInstance { name } => {
             let struct_def = ctx.struct_defs.get(name).unwrap();
 
@@ -708,6 +768,15 @@ fn get_value_type_size(value_type: &ValueType, ctx: &ModuleContext) -> i32 {
             }
             size
         }
+    }
+}
+
+fn get_primitive_value_type_size(value_type: &WasmValueType) -> u32 {
+    match value_type {
+        WasmValueType::FuncRef | WasmValueType::ExternRef => 4, // TODO: check this
+        WasmValueType::I32 | WasmValueType::F32 => 4,
+        WasmValueType::I64 | WasmValueType::F64 => 8,
+        WasmValueType::V128 => 16,
     }
 }
 
@@ -722,4 +791,18 @@ fn parse_wasm_value_type(name: &str) -> Result<WasmValueType, String> {
         "externref" => Ok(WasmValueType::ExternRef),
         _ => return Err(format!("Unknown value type: {name}")),
     }
+}
+
+fn get_load_kind_from_value_type(value_type: &WasmValueType) -> Result<WasmLoadKind, String> {
+    Ok(match value_type {
+        WasmValueType::I32 => WasmLoadKind::I32,
+        _ => return Err(format!("Unsupported type for load: {value_type:?}")),
+    })
+}
+
+fn get_store_kind_from_value_type(value_type: &WasmValueType) -> Result<WasmStoreKind, String> {
+    Ok(match value_type {
+        WasmValueType::I32 => WasmStoreKind::I32,
+        _ => return Err(format!("Unsupported type for store: {value_type:?}")),
+    })
 }

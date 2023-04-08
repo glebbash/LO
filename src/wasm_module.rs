@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 
 #[derive(Default)]
 pub struct WasmModule {
@@ -46,6 +46,12 @@ pub enum WasmLoadKind {
     I32_8u = 0x2d,
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum WasmStoreKind {
+    I32 = 0x36,
+}
+
 pub enum WasmInstr {
     NoInstr,
     BinaryOp {
@@ -57,7 +63,14 @@ pub enum WasmInstr {
         kind: WasmLoadKind,
         align: u32,
         offset: u32,
-        address_instr: Box<WasmInstr>,
+        address_instr: Rc<WasmInstr>, // cannot use Box because of struct.load
+    },
+    Store {
+        kind: WasmStoreKind,
+        align: u32,
+        offset: u32,
+        address_instr: Rc<WasmInstr>, // cannot use Box because of struct.store
+        value_instr: Box<WasmInstr>,
     },
     I32Const(i32),
     Return {
@@ -103,7 +116,7 @@ pub enum WasmInstr {
 
 #[repr(u8)]
 #[allow(dead_code)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum WasmValueType {
     I32 = 0x7f,
     I64 = 0x7e,

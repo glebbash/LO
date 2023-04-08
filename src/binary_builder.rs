@@ -206,6 +206,19 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             write_u32(output, *align);
             write_u32(output, *offset);
         }
+        WasmInstr::Store {
+            kind,
+            align,
+            offset,
+            address_instr,
+            value_instr,
+        } => {
+            write_instr(output, address_instr);
+            write_instr(output, value_instr);
+            output.push(*kind as u8);
+            write_u32(output, *align);
+            write_u32(output, *offset);
+        }
         WasmInstr::I32Const(value) => {
             output.push(0x41);
             write_i32(output, *value);

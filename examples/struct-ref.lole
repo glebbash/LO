@@ -1,0 +1,28 @@
+(export main :as main)
+
+(mem m :min 100)
+(export mem m :as memory)
+
+(struct Point2D
+    (x i32)
+    (y i32)
+)
+
+(fn main [] [i32] (
+    {ref : i32}
+    {ref = (alloc (sizeof Point2D))}
+    (struct.store Point2D ref (struct.new Point2D 2 3))
+
+    {p : Point2D}
+    {p = (struct.load Point2D ref)}
+
+    {p . y}
+))
+
+(global-mut @heap_index i32 0)
+(fn alloc [(size i32)] [i32] (
+    {ref : i32}
+    {ref = @heap_index}
+    {@heap_index = {@heap_index + size}}
+    ref
+))

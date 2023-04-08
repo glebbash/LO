@@ -66,6 +66,18 @@ test("compiles globals example", async () => {
     assert.strictEqual(result, 69);
 });
 
+test("compiles struct-ref example", async () => {
+    const output = await compile(
+        compiler,
+        await readFile("./examples/struct-ref.lole")
+    );
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 3);
+});
+
 test("compiles parser", async () => {
     const output = await compile(
         compiler,
