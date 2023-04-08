@@ -682,7 +682,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module) as i32)
         }
-        ("pack", exprs) => WasmInstr::MultiValueEmit {
+        ("pack" | "do", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,
         },
         (fn_name, args) => {
