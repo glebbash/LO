@@ -35,6 +35,7 @@ struct ModuleContext {
     fn_exports: BTreeMap<String, String>,
     memory_names: Vec<String>,
     struct_defs: BTreeMap<String, StructDef>,
+    enum_kinds: BTreeMap<String, u32>,
     globals: BTreeMap<String, GlobalDef>,
 }
 
@@ -247,34 +248,57 @@ fn compile_top_level_expr(
             _ => return Err(format!("Invalid arguments for {op}")),
         },
         "struct" => match other {
-            [SExpr::Atom(s_name), field_defs @ ..] => {
-                if ctx.struct_defs.contains_key(s_name) {
-                    return Err(format!("Cannot redefine struct {s_name}"));
+            [SExpr::Atom(struct_name), field_defs @ ..] => {
+                if ctx.struct_defs.contains_key(struct_name) {
+                    return Err(format!("Cannot redefine struct {struct_name}"));
                 }
 
-                let mut fields = Vec::<StructField>::new();
-                for field_def in field_defs {
-                    let SExpr::List(name_and_type) = field_def else {
-                        return Err(format!("Unexpected atom in stuct fields list"));
+                let fields = parse_struct_field_defs(field_defs, struct_name)?;
+
+                ctx.struct_defs
+                    .insert(struct_name.clone(), StructDef { fields });
+            }
+            _ => return Err(format!("Invalid arguments for {op}")),
+        },
+        "enum" => match other {
+            [SExpr::Atom(enum_name), variants @ ..] => {
+                for (kind, variant) in variants.iter().enumerate() {
+                    let SExpr::List(variant_body) = variant else {
+                        return Err(format!("Invalid arguments for {op}"));
                     };
 
-                    let [SExpr::Atom(f_name), SExpr::Atom(f_type)] = &name_and_type[..] else {
-                        return Err(format!("Expected name and parameter pairs in stuct fields list"));
+                    let [SExpr::Atom(struct_name), field_defs @ ..] = &variant_body[..] else {
+                        return Err(format!("Invalid arguments for {op}"));
                     };
 
-                    if fields.iter().find(|f| &f.name == f_name).is_some() {
-                        return Err(format!(
-                            "Found duplicate struct field name: '{f_name}' of struct {s_name}"
-                        ));
+                    let full_name = format!("{enum_name}/{struct_name}");
+                    if ctx.struct_defs.contains_key(struct_name) {
+                        return Err(format!("Cannot redefine struct {full_name}"));
                     }
 
-                    fields.push(StructField {
-                        name: f_name.clone(),
-                        value_type: parse_wasm_value_type(f_type)?,
-                    });
+                    let fields = parse_struct_field_defs(field_defs, &full_name)?;
+
+                    ctx.struct_defs
+                        .insert(full_name.clone(), StructDef { fields });
+
+                    ctx.enum_kinds.insert(full_name, kind as u32);
                 }
 
-                ctx.struct_defs.insert(s_name.clone(), StructDef { fields });
+                ctx.struct_defs.insert(
+                    enum_name.clone(),
+                    StructDef {
+                        fields: vec![
+                            StructField {
+                                name: String::from("kind"),
+                                value_type: WasmValueType::I32,
+                            },
+                            StructField {
+                                name: String::from("ref"),
+                                value_type: WasmValueType::I32,
+                            },
+                        ],
+                    },
+                );
             }
             _ => return Err(format!("Invalid arguments for {op}")),
         },
@@ -310,6 +334,31 @@ fn compile_top_level_expr(
     }
 
     Ok(())
+}
+
+fn parse_struct_field_defs(exprs: &[SExpr], struct_name: &str) -> Result<Vec<StructField>, String> {
+    let mut fields = Vec::<StructField>::new();
+    for field_def in exprs {
+        let SExpr::List(name_and_type) = field_def else {
+            return Err(format!("Unexpected atom in fields list of struct {struct_name}"));
+        };
+
+        let [SExpr::Atom(f_name), SExpr::Atom(f_type)] = &name_and_type[..] else {
+            return Err(format!("Expected name and parameter pairs in fields list of struct {struct_name}"));
+        };
+
+        if fields.iter().find(|f| &f.name == f_name).is_some() {
+            return Err(format!(
+                "Found duplicate struct field name: '{f_name}' of struct {struct_name}"
+            ));
+        }
+
+        fields.push(StructField {
+            name: f_name.clone(),
+            value_type: parse_wasm_value_type(f_type)?,
+        });
+    }
+    Ok(fields)
 }
 
 fn emit_value_components(
@@ -378,6 +427,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         ("i32", [SExpr::Atom(value)]) => {
             WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
+        ("i32.eq" | "==", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Equals,
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
+        },
         ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenSigned,
             lhs: Box::new(parse_instr(lhs, ctx)?),
@@ -526,6 +580,18 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             offset: 0,
             address_instr: Rc::new(parse_instr(address, ctx)?),
         },
+        ("sizeof", [SExpr::Atom(type_name)]) => {
+            let value_type = parse_value_type(type_name, ctx.module)?;
+
+            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module) as i32)
+        }
+        ("enum.kind", [SExpr::Atom(enum_variant)]) => {
+            let Some(kind) = ctx.module.enum_kinds.get(enum_variant) else {
+                return Err(format!("Unknown enum variant in {op}: {enum_variant}"));
+            };
+
+            WasmInstr::I32Const(*kind as i32)
+        }
         ("let" | ":", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                 return Err(format!("Local name collides with global: {local_name}"));
@@ -676,11 +742,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 local_idx: local.index + field_offset as u32,
                 value: Box::new(parse_instr(value, ctx)?),
             }
-        }
-        ("sizeof", [SExpr::Atom(type_name)]) => {
-            let value_type = parse_value_type(type_name, ctx.module)?;
-
-            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module) as i32)
         }
         ("pack" | "do", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,

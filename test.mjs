@@ -8,7 +8,7 @@ const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 
 const compiler = await loadWasm(await readFile(COMPILER_PATH));
 
-test("compiles 42 example", async () => {
+test("compiles 42", async () => {
     const output = await compile(
         compiler,
         await readFile("./examples/42.lole")
@@ -20,7 +20,7 @@ test("compiles 42 example", async () => {
     assert.strictEqual(result, 42);
 });
 
-test("compiles factorial example", async () => {
+test("compiles factorial", async () => {
     const output = await compile(
         compiler,
         await readFile("./examples/factorial.lole")
@@ -42,7 +42,7 @@ test("compiles locals", async () => {
     assert.deepEqual(program.sub(5, 3), 2);
 });
 
-test("compiles struct example", async () => {
+test("compiles struct", async () => {
     const output = await compile(
         compiler,
         await readFile("./examples/struct.lole")
@@ -54,7 +54,7 @@ test("compiles struct example", async () => {
     assert.strictEqual(result, 13);
 });
 
-test("compiles globals example", async () => {
+test("compiles globals", async () => {
     const output = await compile(
         compiler,
         await readFile("./examples/globals.lole")
@@ -66,7 +66,7 @@ test("compiles globals example", async () => {
     assert.strictEqual(result, 69);
 });
 
-test("compiles struct-ref example", async () => {
+test("compiles struct-ref", async () => {
     const output = await compile(
         compiler,
         await readFile("./examples/struct-ref.lole")
@@ -76,6 +76,18 @@ test("compiles struct-ref example", async () => {
     const result = program.main();
 
     assert.strictEqual(result, 3);
+});
+
+test("compiles enums", async () => {
+    const output = await compile(
+        compiler,
+        await readFile("./examples/enums.lole")
+    );
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 1);
 });
 
 test("compiles parser", async () => {

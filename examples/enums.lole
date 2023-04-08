@@ -1,0 +1,43 @@
+(mem m :min 100)
+(export main :as main)
+
+(enum ParseResult
+    (Ok (value i32))
+    (Err (error i32))
+)
+;; desugars to:
+;; (struct ParseResult (kind i32) (ref i32))
+;; (struct ParseResult/Ok (value i32))
+;; (struct ParseResult/Err (error i32))
+
+(fn main [] [i32] (
+    {res : ParseResult}
+    {res = (do_stuff)}
+
+    (if {{res . kind} == (enum.kind ParseResult/Ok)} (do
+        {res_ok : ParseResult/Ok}
+        {res_ok = (struct.load ParseResult/Ok {res . ref})}
+        (return {res_ok . value})
+    ))
+
+    (return 0)
+))
+
+(fn do_stuff [] [ParseResult] (
+    {ref : i32}
+    {ref = (alloc (sizeof ParseResult/Ok))}
+    (struct.store ParseResult/Ok ref (struct.new ParseResult/Ok 1))
+
+    (struct.new ParseResult
+        (enum.kind ParseResult/Ok)
+        ref
+    )
+))
+
+(global-mut @heap_index i32 0)
+(fn alloc [(size i32)] [i32] (
+    {ref : i32}
+    {ref = @heap_index}
+    {@heap_index = {@heap_index + size}}
+    ref
+))

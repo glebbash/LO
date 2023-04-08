@@ -31,6 +31,7 @@ pub struct WasmExpr {
 #[repr(u8)]
 #[derive(Clone, Copy)]
 pub enum WasmBinaryOpKind {
+    I32Equals = 0x46,
     I32LessThenSigned = 0x48,
     I32GreaterEqualSigned = 0x4e,
     I32NotEqual = 0x47,

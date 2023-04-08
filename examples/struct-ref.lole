@@ -1,7 +1,6 @@
 (export main :as main)
 
 (mem m :min 100)
-(export mem m :as memory)
 
 (struct Point2D
     (x i32)
