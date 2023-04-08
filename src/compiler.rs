@@ -123,179 +123,191 @@ fn compile_top_level_expr(
         return Err(format!("Expected operation, got a simple list"));
     };
 
-    // TODO: cleanup
-    match (op.as_str(), other) {
-        ("mem", [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory)])
-            if min_literal == ":min" =>
-        {
-            if ctx.memory_names.contains(mem_name) {
-                return Err(format!("Duplicate memory definition: {mem_name}"));
-            }
-            ctx.memory_names.push(mem_name.clone());
-            module.memories.push(WasmMemory {
-                min: min_memory
-                    .parse()
-                    .map_err(|_| format!("Parsing mem :min (u32) failed"))?,
-                max: None,
-            });
-        }
-        (
-            "mem",
-            [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory), SExpr::Atom(max_literal), SExpr::Atom(max_memory)],
-        ) if min_literal == ":min" && max_literal == ":max" => {
-            if ctx.memory_names.contains(mem_name) {
-                return Err(format!("Duplicate memory definition: {mem_name}"));
-            }
-
-            ctx.memory_names.push(mem_name.clone());
-            module.memories.push(WasmMemory {
-                min: min_memory
-                    .parse()
-                    .map_err(|_| format!("Parsing mem :min (u32) failed"))?,
-                max: Some(
-                    max_memory
-                        .parse()
-                        .map_err(|_| format!("Parsing mem :max (u32) failed"))?,
-                ),
-            });
-        }
-        (
-            "fn",
-            [SExpr::Atom(name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(body)],
-        ) => {
-            if ctx.fn_defs.contains_key(name) {
-                return Err(format!("Cannot redefine function: {name}"));
-            }
-
-            let mut locals = BTreeMap::new();
-            let mut locals_last_index = 0;
-
-            let mut inputs = vec![];
-            for input_expr in input_exprs.iter() {
-                let SExpr::List(name_and_type) = input_expr else {
-                    return Err(format!("Unexpected atom in function params list"));
-                };
-
-                let [SExpr::Atom(p_name), SExpr::Atom(p_type)] = &name_and_type[..] else {
-                    return Err(format!("Expected name and parameter pairs in function params list"));
-                };
-
-                if locals.contains_key(p_name) {
-                    return Err(format!(
-                        "Found function param with conflicting name: {p_name}"
-                    ));
+    match op.as_str() {
+        "mem" => match other {
+            [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory), optional @ ..]
+                if min_literal == ":min" =>
+            {
+                if ctx.memory_names.contains(mem_name) {
+                    return Err(format!("Duplicate memory definition: {mem_name}"));
                 }
 
-                let value_type = parse_value_type(p_type, &ctx)?;
-                let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
+                let min_memory = min_memory
+                    .parse()
+                    .map_err(|_| format!("Parsing {op} :min (u32) failed"))?;
 
-                locals.insert(
-                    p_name.clone(),
-                    LocalDef {
-                        index: locals_last_index,
-                        value_type,
+                let max_memory = match optional {
+                    [SExpr::Atom(max_literal), SExpr::Atom(max_memory)]
+                        if max_literal == ":max" =>
+                    {
+                        Some(
+                            max_memory
+                                .parse::<u32>()
+                                .map_err(|_| format!("Parsing {op} :max (u32) failed"))?,
+                        )
+                    }
+                    [] => None,
+                    _ => return Err(format!("Invalid arguments for {op}")),
+                };
+
+                ctx.memory_names.push(mem_name.clone());
+                module.memories.push(WasmMemory {
+                    min: min_memory,
+                    max: max_memory,
+                });
+            }
+            _ => return Err(format!("Invalid arguments for {op}")),
+        },
+        "fn" => match other {
+            [SExpr::Atom(name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(body)] =>
+            {
+                if ctx.fn_defs.contains_key(name) {
+                    return Err(format!("Cannot redefine function: {name}"));
+                }
+
+                let mut locals = BTreeMap::new();
+                let mut locals_last_index = 0;
+
+                let mut inputs = vec![];
+                for input_expr in input_exprs.iter() {
+                    let SExpr::List(name_and_type) = input_expr else {
+                        return Err(format!("Unexpected atom in function params list"));
+                    };
+
+                    let [SExpr::Atom(p_name), SExpr::Atom(p_type)] = &name_and_type[..] else {
+                        return Err(format!("Expected name and parameter pairs in function params list"));
+                    };
+
+                    if locals.contains_key(p_name) {
+                        return Err(format!(
+                            "Found function param with conflicting name: {p_name}"
+                        ));
+                    }
+
+                    let value_type = parse_value_type(p_type, &ctx)?;
+                    let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
+
+                    locals.insert(
+                        p_name.clone(),
+                        LocalDef {
+                            index: locals_last_index,
+                            value_type,
+                        },
+                    );
+
+                    locals_last_index += comp_count;
+                }
+
+                let mut outputs = vec![];
+                for output_expr in output_exprs {
+                    let l_type = match output_expr {
+                        SExpr::Atom(atom_text) => atom_text,
+                        _ => return Err(format!("Atom expected, list found")),
+                    };
+
+                    let value_type = parse_value_type(l_type, &ctx)?;
+                    emit_value_components(&value_type, &ctx, &mut outputs);
+                }
+
+                ctx.fn_defs.insert(
+                    name.clone(),
+                    FnDef {
+                        fn_type: WasmFnType { inputs, outputs },
+                        locals: RefCell::new(locals),
+                        locals_last_index,
+                        body: body.clone(),
+                    },
+                );
+            }
+            _ => return Err(format!("Invalid arguments for {op}")),
+        },
+        "export" => match other {
+            [SExpr::Atom(mem_literal), SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)]
+                if mem_literal == "mem" && as_literal == ":as" =>
+            {
+                if !ctx.memory_names.contains(in_name) {
+                    return Err(format!("Cannot export mem {in_name}, not found"));
+                }
+
+                module.exports.push(WasmExport {
+                    export_type: WasmExportType::Mem,
+                    export_name: out_name.clone(),
+                    exported_item_index: ctx
+                        .memory_names
+                        .iter()
+                        .position(|n| n == in_name)
+                        .unwrap(),
+                });
+            }
+            [SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)]
+                if as_literal == ":as" =>
+            {
+                ctx.fn_exports.insert(in_name.clone(), out_name.clone());
+            }
+            _ => return Err(format!("Invalid arguments for {op}")),
+        },
+        "struct" => match other {
+            [SExpr::Atom(s_name), field_defs @ ..] => {
+                if ctx.struct_defs.contains_key(s_name) {
+                    return Err(format!("Cannot redefine struct {s_name}"));
+                }
+
+                let mut fields = Vec::<StructField>::new();
+                for field_def in field_defs {
+                    let SExpr::List(name_and_type) = field_def else {
+                        return Err(format!("Unexpected atom in stuct fields list"));
+                    };
+
+                    let [SExpr::Atom(f_name), SExpr::Atom(f_type)] = &name_and_type[..] else {
+                        return Err(format!("Expected name and parameter pairs in stuct fields list"));
+                    };
+
+                    if fields.iter().find(|f| &f.name == f_name).is_some() {
+                        return Err(format!(
+                            "Found duplicate struct field name: '{f_name}' of struct {s_name}"
+                        ));
+                    }
+
+                    fields.push(StructField {
+                        name: f_name.clone(),
+                        value_type: parse_wasm_value_type(f_type)?,
+                    });
+                }
+
+                ctx.struct_defs.insert(s_name.clone(), StructDef { fields });
+            }
+            _ => return Err(format!("Invalid arguments for {op}")),
+        },
+        "global-mut" => match other {
+            [SExpr::Atom(global_name), SExpr::Atom(global_type), global_value] => {
+                if ctx.globals.contains_key(global_name) {
+                    return Err(format!("Cannot redefine global: {global_name}"));
+                }
+
+                let mutable = true;
+                let value_type = parse_wasm_value_type(global_type)?;
+                let initial_value = WasmExpr {
+                    instrs: vec![parse_const_instr(global_value, &ctx)?],
+                };
+
+                ctx.globals.insert(
+                    global_name.clone(),
+                    GlobalDef {
+                        index: ctx.globals.len() as u32,
+                        mutable,
                     },
                 );
 
-                locals_last_index += comp_count;
-            }
-
-            let mut outputs = vec![];
-            for output_expr in output_exprs {
-                let l_type = match output_expr {
-                    SExpr::Atom(atom_text) => atom_text,
-                    _ => return Err(format!("Atom expected, list found")),
-                };
-
-                let value_type = parse_value_type(l_type, &ctx)?;
-                emit_value_components(&value_type, &ctx, &mut outputs);
-            }
-
-            ctx.fn_defs.insert(
-                name.clone(),
-                FnDef {
-                    fn_type: WasmFnType { inputs, outputs },
-                    locals: RefCell::new(locals),
-                    locals_last_index,
-                    body: body.clone(),
-                },
-            );
-        }
-        (
-            "export",
-            [SExpr::Atom(mem_literal), SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)],
-        ) if mem_literal == "mem" && as_literal == ":as" => {
-            if !ctx.memory_names.contains(in_name) {
-                return Err(format!("Cannot export mem {in_name}, not found"));
-            }
-
-            module.exports.push(WasmExport {
-                export_type: WasmExportType::Mem,
-                export_name: out_name.clone(),
-                exported_item_index: ctx.memory_names.iter().position(|n| n == in_name).unwrap(),
-            });
-        }
-        ("export", [SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)])
-            if as_literal == ":as" =>
-        {
-            ctx.fn_exports.insert(in_name.clone(), out_name.clone());
-        }
-        ("struct", [SExpr::Atom(s_name), field_defs @ ..]) => {
-            if ctx.struct_defs.contains_key(s_name) {
-                return Err(format!("Cannot redefine struct {s_name}"));
-            }
-
-            let mut fields = Vec::<StructField>::new();
-            for field_def in field_defs {
-                let SExpr::List(name_and_type) = field_def else {
-                    return Err(format!("Unexpected atom in stuct fields list"));
-                };
-
-                let [SExpr::Atom(f_name), SExpr::Atom(f_type)] = &name_and_type[..] else {
-                    return Err(format!("Expected name and parameter pairs in stuct fields list"));
-                };
-
-                if fields.iter().find(|f| &f.name == f_name).is_some() {
-                    return Err(format!(
-                        "Found duplicate struct field name: '{f_name}' of struct {s_name}"
-                    ));
-                }
-
-                fields.push(StructField {
-                    name: f_name.clone(),
-                    value_type: parse_wasm_value_type(f_type)?,
+                module.globals.push(WasmGlobal {
+                    value_type,
+                    mutable,
+                    initial_value,
                 });
             }
-
-            ctx.struct_defs.insert(s_name.clone(), StructDef { fields });
-        }
-        ("global-mut", [SExpr::Atom(global_name), SExpr::Atom(global_type), global_value]) => {
-            if ctx.globals.contains_key(global_name) {
-                return Err(format!("Cannot redefine global: {global_name}"));
-            }
-
-            let mutable = true;
-            let value_type = parse_wasm_value_type(global_type)?;
-            let initial_value = WasmExpr {
-                instrs: vec![parse_const_instr(global_value, &ctx)?],
-            };
-
-            ctx.globals.insert(
-                global_name.clone(),
-                GlobalDef {
-                    index: ctx.globals.len() as u32,
-                    mutable,
-                },
-            );
-
-            module.globals.push(WasmGlobal {
-                value_type,
-                mutable,
-                initial_value,
-            });
-        }
-        (op, _) => return Err(format!("Unknown operation: {op}")),
-    };
+            _ => return Err(format!("Invalid arguments for {op}")),
+        },
+        _ => return Err(format!("Unknown operation: {op}")),
+    }
 
     Ok(())
 }
