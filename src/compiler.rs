@@ -1,8 +1,8 @@
 use crate::{
     parser::SExpr,
     wasm_module::{
-        WasmExport, WasmExportType, WasmExpr, WasmFnCode, WasmFnType, WasmGlobal, WasmInstr,
-        WasmLocals, WasmMemory, WasmModule, WasmValueType,
+        BinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFnCode, WasmFnType, WasmGlobal,
+        WasmInstr, WasmLocals, WasmMemory, WasmModule, WasmValueType,
     },
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
@@ -360,27 +360,33 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         ("i32", [SExpr::Atom(value)]) => {
             WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
-        ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::I32LessThenSigned {
+        ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: BinaryOpKind::I32LessThenSigned,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.ge_s" | ">=", [lhs, rhs]) => WasmInstr::I32GreaterEqualSigned {
+        ("i32.ge_s" | ">=", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: BinaryOpKind::I32GreaterEqualSigned,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::I32NotEqual {
+        ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: BinaryOpKind::I32NotEqual,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.add" | "+", [lhs, rhs]) => WasmInstr::I32Add {
+        ("i32.add" | "+", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: BinaryOpKind::I32Add,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.sub" | "-", [lhs, rhs]) => WasmInstr::I32Sub {
+        ("i32.sub" | "-", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: BinaryOpKind::I32Sub,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.mul" | "*", [lhs, rhs]) => WasmInstr::I32Mul {
+        ("i32.mul" | "*", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: BinaryOpKind::I32Mul,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },

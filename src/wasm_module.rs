@@ -28,33 +28,25 @@ pub struct WasmExpr {
     pub instrs: Vec<WasmInstr>,
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum BinaryOpKind {
+    I32LessThenSigned = 0x48,
+    I32GreaterEqualSigned = 0x4e,
+    I32NotEqual = 0x47,
+    I32Add = 0x6a,
+    I32Sub = 0x6b,
+    I32Mul = 0x6c,
+}
+
 pub enum WasmInstr {
     NoInstr,
     I32Const(i32),
     Return {
         values: Vec<WasmInstr>,
     },
-    I32LessThenSigned {
-        lhs: Box<WasmInstr>,
-        rhs: Box<WasmInstr>,
-    },
-    I32GreaterEqualSigned {
-        lhs: Box<WasmInstr>,
-        rhs: Box<WasmInstr>,
-    },
-    I32NotEqual {
-        lhs: Box<WasmInstr>,
-        rhs: Box<WasmInstr>,
-    },
-    I32Add {
-        lhs: Box<WasmInstr>,
-        rhs: Box<WasmInstr>,
-    },
-    I32Sub {
-        lhs: Box<WasmInstr>,
-        rhs: Box<WasmInstr>,
-    },
-    I32Mul {
+    BinaryOp {
+        kind: BinaryOpKind,
         lhs: Box<WasmInstr>,
         rhs: Box<WasmInstr>,
     },

@@ -190,35 +190,10 @@ fn write_expr(output: &mut Vec<u8>, expr: &WasmExpr) {
 fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
     match instr {
         WasmInstr::NoInstr => {}
-        WasmInstr::I32LessThenSigned { lhs, rhs } => {
+        WasmInstr::BinaryOp { kind, lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
-            output.push(0x48);
-        }
-        WasmInstr::I32GreaterEqualSigned { lhs, rhs } => {
-            write_instr(output, lhs);
-            write_instr(output, rhs);
-            output.push(0x4e);
-        }
-        WasmInstr::I32NotEqual { lhs, rhs } => {
-            write_instr(output, lhs);
-            write_instr(output, rhs);
-            output.push(0x47);
-        }
-        WasmInstr::I32Add { lhs, rhs } => {
-            write_instr(output, lhs);
-            write_instr(output, rhs);
-            output.push(0x6a);
-        }
-        WasmInstr::I32Sub { lhs, rhs } => {
-            write_instr(output, lhs);
-            write_instr(output, rhs);
-            output.push(0x6b);
-        }
-        WasmInstr::I32Mul { lhs, rhs } => {
-            write_instr(output, lhs);
-            write_instr(output, rhs);
-            output.push(0x6c);
+            output.push((*kind) as u8);
         }
         WasmInstr::LocalGet(local_idx) => {
             output.push(0x20);
@@ -313,7 +288,7 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x0c); // br
             write_u32(output, 2);
         }
-        // to break the loop we need to:
+        // to `continue` in the loop we need to:
         // 1. break out of if branch (br 0)
         // 2. end loop iteration with (br 1)
         // NOTE: calling break or continue outside of if branch is undefined
