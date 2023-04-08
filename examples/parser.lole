@@ -55,8 +55,8 @@
 
 (fn char_at [(chars StringSlice) (index i32)] [CharAtResult] (
     (if {index >= {chars . size}}
-        (return (new CharAtResult 0 0))
+        (return (struct.new CharAtResult 0 0))
     )
 
-    (new CharAtResult 1 (StringSlice/char_at chars index))
+    (struct.new CharAtResult 1 (StringSlice/char_at chars index))
 ))

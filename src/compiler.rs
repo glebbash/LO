@@ -408,6 +408,26 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
+        ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => WasmInstr::If {
+            block_type: parse_wasm_value_type(block_type)?,
+            cond: Box::new(parse_instr(cond, ctx)?),
+            then_branch: Box::new(parse_instr(then_branch, ctx)?),
+            else_branch: Box::new(parse_instr(else_branch, ctx)?),
+        },
+        ("if", [cond, then_branch]) => WasmInstr::IfSingleBranch {
+            cond: Box::new(parse_instr(cond, ctx)?),
+            then_branch: Box::new(parse_instr(then_branch, ctx)?),
+        },
+        ("loop", [SExpr::List(exprs)]) => WasmInstr::Loop {
+            instrs: parse_instrs(exprs, ctx)?,
+        },
+        ("break", []) => WasmInstr::LoopBreak,
+        ("continue", []) => WasmInstr::LoopContinue,
+        ("return", values) => WasmInstr::Return {
+            value: Box::new(WasmInstr::MultiValueEmit {
+                values: parse_instrs(values, ctx)?,
+            }),
+        },
         ("set" | "=", [SExpr::Atom(var_name), value]) => {
             if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
                 if !global.mutable {
@@ -505,7 +525,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             WasmInstr::NoInstr
         }
         // TODO: validate that number of fields matches
-        ("new", [SExpr::Atom(s_name), values @ ..]) => {
+        ("struct.new", [SExpr::Atom(s_name), values @ ..]) => {
             if !ctx.module.struct_defs.contains_key(s_name) {
                 return Err(format!("Unknown struct encountered in set: {s_name}"));
             }
@@ -569,9 +589,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
-        ("pack", exprs) => WasmInstr::MultiValueEmit {
-            values: parse_instrs(exprs, ctx)?,
-        },
+        // TODO: implement this
+        // ("struct.store", [SExpr::Atom(ref_name), SExpr::Atom(value_type), value]) => {}
+        // ("struct.load", [SExpr::Atom(ref_name), SExpr::Atom(value_type)]) => {}
+        ("sizeof", [SExpr::Atom(struct_name)]) => {
+            let value_type = parse_value_type(struct_name, ctx.module)?;
+
+            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module))
+        }
         ("i32.load", [address]) => WasmInstr::Load {
             kind: WasmLoadKind::I32,
             align: 1,
@@ -594,33 +619,8 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             offset: 0,
             address_instr: Box::new(parse_instr(address, ctx)?),
         },
-        ("sizeof", [SExpr::Atom(struct_name)]) => {
-            let value_type = parse_value_type(struct_name, ctx.module)?;
-
-            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module))
-        }
-        // TODO: implement this
-        // ("store", [SExpr::Atom(ref_name), SExpr::Atom(value_type), value]) => {}
-        // ("load", [SExpr::Atom(ref_name), SExpr::Atom(value_type)]) => {}
-        ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => WasmInstr::If {
-            block_type: parse_wasm_value_type(block_type)?,
-            cond: Box::new(parse_instr(cond, ctx)?),
-            then_branch: Box::new(parse_instr(then_branch, ctx)?),
-            else_branch: Box::new(parse_instr(else_branch, ctx)?),
-        },
-        ("if", [cond, then_branch]) => WasmInstr::IfSingleBranch {
-            cond: Box::new(parse_instr(cond, ctx)?),
-            then_branch: Box::new(parse_instr(then_branch, ctx)?),
-        },
-        ("loop", [SExpr::List(exprs)]) => WasmInstr::Loop {
-            instrs: parse_instrs(exprs, ctx)?,
-        },
-        ("break", []) => WasmInstr::LoopBreak,
-        ("continue", []) => WasmInstr::LoopContinue,
-        ("return", values) => WasmInstr::Return {
-            value: Box::new(WasmInstr::MultiValueEmit {
-                values: parse_instrs(values, ctx)?,
-            }),
+        ("pack", exprs) => WasmInstr::MultiValueEmit {
+            values: parse_instrs(exprs, ctx)?,
         },
         (fn_name, args) => {
             let Some(fn_idx) = ctx.module.fn_defs.keys().position(|k| k == fn_name) else {
