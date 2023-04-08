@@ -193,7 +193,22 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::BinaryOp { kind, lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
-            output.push((*kind) as u8);
+            output.push(*kind as u8);
+        }
+        WasmInstr::Load {
+            kind,
+            align,
+            offset,
+            address_instr,
+        } => {
+            write_instr(output, address_instr);
+            output.push(*kind as u8);
+            write_u32(output, *align);
+            write_u32(output, *offset);
+        }
+        WasmInstr::I32Const(value) => {
+            output.push(0x41);
+            write_i32(output, *value);
         }
         WasmInstr::LocalGet(local_idx) => {
             output.push(0x20);
@@ -204,6 +219,14 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x21);
             write_u32(output, *local_idx);
         }
+        WasmInstr::MultiValueLocalSet { local_idxs, value } => {
+            write_instr(output, value);
+
+            for local_idx in local_idxs.iter().rev() {
+                output.push(0x21);
+                write_u32(output, *local_idx);
+            }
+        }
         WasmInstr::GlobalGet(local_idx) => {
             output.push(0x23);
             write_u32(output, *local_idx);
@@ -213,47 +236,13 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x24);
             write_u32(output, *global_idx);
         }
-        WasmInstr::MultiValueLocalSet { local_idxs, value } => {
-            write_instr(output, value);
-
-            for local_idx in local_idxs.iter().rev() {
-                output.push(0x21);
-                write_u32(output, *local_idx);
-            }
-        }
         WasmInstr::MultiValueEmit { values } => {
             for value in values {
                 write_instr(output, value);
             }
         }
-        WasmInstr::I32Load {
-            align,
-            offset,
-            address_instr,
-        } => {
-            write_instr(output, address_instr);
-            output.push(0x28);
-            write_u32(output, *align);
-            write_u32(output, *offset);
-        }
-        WasmInstr::I32Load8Unsigned {
-            align,
-            offset,
-            address_instr,
-        } => {
-            write_instr(output, address_instr);
-            output.push(0x2d);
-            write_u32(output, *align);
-            write_u32(output, *offset);
-        }
-        WasmInstr::I32Const(value) => {
-            output.push(0x41);
-            write_i32(output, *value);
-        }
-        WasmInstr::Return { values } => {
-            for value in values {
-                write_instr(output, value);
-            }
+        WasmInstr::Return { value } => {
+            write_instr(output, value);
             output.push(0x0f);
         }
         WasmInstr::Loop { instrs } => {

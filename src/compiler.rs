@@ -1,8 +1,8 @@
 use crate::{
     parser::SExpr,
     wasm_module::{
-        BinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFnCode, WasmFnType, WasmGlobal,
-        WasmInstr, WasmLocals, WasmMemory, WasmModule, WasmValueType,
+        WasmBinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFnCode, WasmFnType, WasmGlobal,
+        WasmInstr, WasmLoadKind, WasmLocals, WasmMemory, WasmModule, WasmValueType,
     },
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
@@ -361,32 +361,32 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
         ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: BinaryOpKind::I32LessThenSigned,
+            kind: WasmBinaryOpKind::I32LessThenSigned,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.ge_s" | ">=", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: BinaryOpKind::I32GreaterEqualSigned,
+            kind: WasmBinaryOpKind::I32GreaterEqualSigned,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: BinaryOpKind::I32NotEqual,
+            kind: WasmBinaryOpKind::I32NotEqual,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.add" | "+", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: BinaryOpKind::I32Add,
+            kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.sub" | "-", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: BinaryOpKind::I32Sub,
+            kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("i32.mul" | "*", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: BinaryOpKind::I32Mul,
+            kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
@@ -554,12 +554,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         ("pack", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,
         },
-        ("i32.load", [address]) => WasmInstr::I32Load {
+        ("i32.load", [address]) => WasmInstr::Load {
+            kind: WasmLoadKind::I32,
             align: 1,
             offset: 0,
             address_instr: Box::new(parse_instr(address, ctx)?),
         },
-        ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => WasmInstr::I32Load {
+        ("i32.load", [SExpr::Atom(align), SExpr::Atom(offset), address]) => WasmInstr::Load {
+            kind: WasmLoadKind::I32,
             align: align
                 .parse()
                 .map_err(|_| format!("Parsing i32.load align failed"))?,
@@ -568,7 +570,8 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 .map_err(|_| format!("Parsing i32.load offset failed"))?,
             address_instr: Box::new(parse_instr(address, ctx)?),
         },
-        ("i32.load8_u", [address]) => WasmInstr::I32Load8Unsigned {
+        ("i32.load8_u", [address]) => WasmInstr::Load {
+            kind: WasmLoadKind::I32_8u,
             align: 0,
             offset: 0,
             address_instr: Box::new(parse_instr(address, ctx)?),
@@ -597,7 +600,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         ("break", []) => WasmInstr::LoopBreak,
         ("continue", []) => WasmInstr::LoopContinue,
         ("return", values) => WasmInstr::Return {
-            values: parse_instrs(values, ctx)?,
+            value: Box::new(WasmInstr::MultiValueEmit {
+                values: parse_instrs(values, ctx)?,
+            }),
         },
         (fn_name, args) => {
             let Some(fn_idx) = ctx.module.fn_defs.keys().position(|k| k == fn_name) else {

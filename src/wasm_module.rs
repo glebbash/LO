@@ -30,7 +30,7 @@ pub struct WasmExpr {
 
 #[repr(u8)]
 #[derive(Clone, Copy)]
-pub enum BinaryOpKind {
+pub enum WasmBinaryOpKind {
     I32LessThenSigned = 0x48,
     I32GreaterEqualSigned = 0x4e,
     I32NotEqual = 0x47,
@@ -39,16 +39,29 @@ pub enum BinaryOpKind {
     I32Mul = 0x6c,
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum WasmLoadKind {
+    I32 = 0x28,
+    I32_8u = 0x2d,
+}
+
 pub enum WasmInstr {
     NoInstr,
-    I32Const(i32),
-    Return {
-        values: Vec<WasmInstr>,
-    },
     BinaryOp {
-        kind: BinaryOpKind,
+        kind: WasmBinaryOpKind,
         lhs: Box<WasmInstr>,
         rhs: Box<WasmInstr>,
+    },
+    Load {
+        kind: WasmLoadKind,
+        align: u32,
+        offset: u32,
+        address_instr: Box<WasmInstr>,
+    },
+    I32Const(i32),
+    Return {
+        value: Box<WasmInstr>,
     },
     LocalGet(u32),
     LocalSet {
@@ -72,16 +85,6 @@ pub enum WasmInstr {
     },
     LoopBreak,
     LoopContinue,
-    I32Load {
-        align: u32,
-        offset: u32,
-        address_instr: Box<WasmInstr>,
-    },
-    I32Load8Unsigned {
-        align: u32,
-        offset: u32,
-        address_instr: Box<WasmInstr>,
-    },
     Call {
         fn_idx: u32,
         args: Vec<WasmInstr>,
