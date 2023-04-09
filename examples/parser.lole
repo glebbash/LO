@@ -8,8 +8,9 @@
 (export skip_space :as skip_space)
 (export char_at :as char_at)
 
-(global true bool 1)
+(global true  bool 1)
 (global false bool 0)
+
 (global CHAR_TAB       u8 009)
 (global CHAR_NEWLINE   u8 010)
 (global CHAR_SPACE     u8 032)
@@ -17,8 +18,6 @@
 (global CHAR_LPAREN u8 040) (global CHAR_RPAREN u8 041)
 (global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
 (global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
-(global ParseError/UnexpectedEOF  u8 0)
-(global ParseError/UnexpectedChar u8 1)
 
 (struct StringSlice
     (data ptr)
@@ -37,10 +36,12 @@
     (size u32) ; length of Atom's chars or List's expr vector
 )
 
+(global ParseError/UnexpectedEOF  u8 0)
+(global ParseError/UnexpectedChar u8 1)
 (struct ParseResult
     (index u32)
     (ok bool)
-    (data u32) ; error kind or pointer to SExpr
+    (data u32) ; ParseError or pointer to SExpr
 )
 
 ;; TODO: test
