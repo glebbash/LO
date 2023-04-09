@@ -131,7 +131,7 @@ fn skip_space(chars: &Vec<char>, mut index: usize) -> usize {
         return skip_space(chars, index);
     }
 
-    return index;
+    index
 }
 
 fn is_list_start(c: char) -> bool {

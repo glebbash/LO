@@ -440,15 +440,15 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.and" | "&&", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32And,
+        ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32NotEqual,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.or" | "||", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Or,
+        ("i32.not" | "not" | "!", [lhs]) => WasmInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(parse_instr(lhs, ctx)?),
-            rhs: Box::new(parse_instr(rhs, ctx)?),
+            rhs: Box::new(WasmInstr::I32Const(0)),
         },
         ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenSigned,
@@ -460,8 +460,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32NotEqual,
+        ("i32.and" | "&&", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32And,
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
+        },
+        ("i32.or" | "||", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Or,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
