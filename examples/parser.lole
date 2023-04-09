@@ -51,18 +51,15 @@
     index
 ))
 
-(struct CharAtResult
-    (ok i32)
-    (char i32)
-)
-
 ;; TODO: should match be added?
 ;; (fn is_space [(c i32)] [i32] (
 ;;     (match c
 ;;         ({' ' | '\n' | '\t'} true)
-;;         (else 0)
+;;         (else false)
 ;;     )
 ;; ))
+
+(struct CharAtResult (ok i32) (char i32))
 
 (fn char_at [(chars StringSlice) (index i32)] [CharAtResult] (
     (if {index >= {chars . size}}
