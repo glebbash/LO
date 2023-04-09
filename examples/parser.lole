@@ -1,9 +1,12 @@
 (mem m1 :min 1000)
-(export mem m1 :as memory)
 
 (export parse :as parse)
+
+;; exporting for testing
+(export mem m1 :as memory)
 (export skip_space :as skip_space)
 (export char_at :as char_at)
+(export index_to_position :as index_to_position)
 
 (struct StringSlice
     (data i32)
@@ -59,4 +62,31 @@
     )
 
     (struct.new CharAtResult 1 (StringSlice/char_at chars index))
+))
+
+(fn index_to_position [(chars StringSlice) (index i32)] [i32 i32] (
+    {line : i32}
+    {col : i32}
+    {char_index : i32}
+    {(line col char_index) = (pack 1 1 0)}
+
+    (loop (
+        (if {char_index >= {chars . size}} (break))
+        (if {char_index >= index} (break))
+
+        {char : i32}
+        {char = (StringSlice/char_at chars char_index)}
+
+        (if {char == 10} (do ;; '\n'
+            {col = 1}
+            {line = {line + 1}}
+            {char_index = {char_index + 1}}
+            (continue)
+        ))
+
+        {col = {col + 1}}
+        {char_index = {char_index + 1}}
+    ))
+
+    (pack line col)
 ))
