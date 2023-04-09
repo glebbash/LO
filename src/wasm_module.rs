@@ -79,16 +79,16 @@ pub enum WasmInstr {
     },
     LocalGet(u32),
     LocalSet {
-        local_idx: u32,
+        local_index: u32,
         value: Box<WasmInstr>,
     },
     GlobalGet(u32),
     GlobalSet {
-        global_idx: u32,
+        global_index: u32,
         value: Box<WasmInstr>,
     },
     MultiValueLocalSet {
-        local_idxs: Vec<u32>,
+        local_indices: Vec<u32>,
         value: Box<WasmInstr>,
     },
     MultiValueEmit {
@@ -100,7 +100,7 @@ pub enum WasmInstr {
     LoopBreak,
     LoopContinue,
     Call {
-        fn_idx: u32,
+        fn_index: u32,
         args: Vec<WasmInstr>,
     },
     If {

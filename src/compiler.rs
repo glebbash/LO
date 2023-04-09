@@ -632,7 +632,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 }
 
                 return Ok(WasmInstr::GlobalSet {
-                    global_idx: global.index,
+                    global_index: global.index,
                     value: Box::new(parse_instr(value, ctx)?),
                 });
             };
@@ -645,24 +645,24 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 ValueType::StructInstance { name } => {
                     let struct_def = ctx.module.struct_defs.get(name).unwrap();
 
-                    let mut local_idxs = vec![];
+                    let mut local_indices = vec![];
                     for field_offset in 0..struct_def.fields.len() {
-                        local_idxs.push(local.index + field_offset as u32);
+                        local_indices.push(local.index + field_offset as u32);
                     }
 
                     return Ok(WasmInstr::MultiValueLocalSet {
-                        local_idxs,
+                        local_indices,
                         value: Box::new(parse_instr(value, ctx)?),
                     });
                 }
                 ValueType::Primitive(_) => WasmInstr::LocalSet {
-                    local_idx: local.index,
+                    local_index: local.index,
                     value: Box::new(parse_instr(value, ctx)?),
                 },
             }
         }
         ("set" | "=", [SExpr::List(local_names), value]) => {
-            let mut local_idxs = vec![];
+            let mut local_indices = vec![];
 
             for local_name_expr in local_names {
                 let SExpr::Atom(local_name) = local_name_expr else {
@@ -684,15 +684,15 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                         let struct_def = ctx.module.struct_defs.get(name).unwrap();
 
                         for field_offset in 0..struct_def.fields.len() {
-                            local_idxs.push(local.index + field_offset as u32);
+                            local_indices.push(local.index + field_offset as u32);
                         }
                     }
-                    ValueType::Primitive(_) => local_idxs.push(local.index),
+                    ValueType::Primitive(_) => local_indices.push(local.index),
                 }
             }
 
             WasmInstr::MultiValueLocalSet {
-                local_idxs,
+                local_indices,
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
@@ -747,7 +747,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             };
 
             WasmInstr::LocalSet {
-                local_idx: local.index + field_offset as u32,
+                local_index: local.index + field_offset as u32,
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
@@ -755,12 +755,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             values: parse_instrs(exprs, ctx)?,
         },
         (fn_name, args) => {
-            let Some(fn_idx) = ctx.module.fn_defs.keys().position(|k| k == fn_name) else {
+            let Some(fn_index) = ctx.module.fn_defs.keys().position(|k| k == fn_name) else {
                 return Err(format!("Unknown instruction or function: {fn_name}"));
             };
 
             WasmInstr::Call {
-                fn_idx: fn_idx as u32,
+                fn_index: fn_index as u32,
                 args: parse_instrs(args, ctx)?,
             }
         }

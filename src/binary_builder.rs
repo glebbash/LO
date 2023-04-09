@@ -223,31 +223,37 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x41);
             write_i32(output, *value);
         }
-        WasmInstr::LocalGet(local_idx) => {
+        WasmInstr::LocalGet(local_index) => {
             output.push(0x20);
-            write_u32(output, *local_idx);
+            write_u32(output, *local_index);
         }
-        WasmInstr::LocalSet { local_idx, value } => {
+        WasmInstr::LocalSet { local_index, value } => {
             write_instr(output, value);
             output.push(0x21);
-            write_u32(output, *local_idx);
+            write_u32(output, *local_index);
         }
-        WasmInstr::MultiValueLocalSet { local_idxs, value } => {
+        WasmInstr::MultiValueLocalSet {
+            local_indices,
+            value,
+        } => {
             write_instr(output, value);
 
-            for local_idx in local_idxs.iter().rev() {
+            for local_index in local_indices.iter().rev() {
                 output.push(0x21);
-                write_u32(output, *local_idx);
+                write_u32(output, *local_index);
             }
         }
-        WasmInstr::GlobalGet(local_idx) => {
+        WasmInstr::GlobalGet(local_index) => {
             output.push(0x23);
-            write_u32(output, *local_idx);
+            write_u32(output, *local_index);
         }
-        WasmInstr::GlobalSet { global_idx, value } => {
+        WasmInstr::GlobalSet {
+            global_index,
+            value,
+        } => {
             write_instr(output, value);
             output.push(0x24);
-            write_u32(output, *global_idx);
+            write_u32(output, *global_index);
         }
         WasmInstr::MultiValueEmit { values } => {
             for value in values {
@@ -298,12 +304,12 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x0c); // br
             write_u32(output, 1);
         }
-        WasmInstr::Call { fn_idx, args } => {
+        WasmInstr::Call { fn_index, args } => {
             for arg in args {
                 write_instr(output, arg);
             }
             output.push(0x10);
-            write_u32(output, *fn_idx);
+            write_u32(output, *fn_index);
         }
         WasmInstr::If {
             block_type,
