@@ -71,9 +71,11 @@
             ))
         )
 
-        ;; TODO: implement
-        ;; let res = parse_list(chars, index)?;
+        {res : ParseResult}
+        {res = (parse_list chars index)}
+        (if (not {char_res . ok}) (return res))
 
+        ;; TODO: implement
         ;; items.push(res.data);
 
         {index = (skip_space chars index)}
