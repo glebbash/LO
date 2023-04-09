@@ -10,9 +10,12 @@
 
 (global true bool 1)
 (global false bool 0)
-(global CHAR_TAB u8 09) ; '\t'
-(global CHAR_NWL u8 10) ; '\n'
-(global CHAR_SPC u8 32) ; ' '
+(global CHAR_TAB u8 009) ; '\t'
+(global CHAR_NWL u8 010) ; '\n'
+(global CHAR_SPC u8 032) ; ' '
+(global CHAR_LPAREN u8 040) (global CHAR_RPAREN u8 041)
+(global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
+(global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
 
 (struct StringSlice
     (data ptr)
@@ -47,7 +50,7 @@
             (break)
         )
 
-        (if {{res . char} != CHAR_SPC}
+        (if {(Parser/is_space {res . char}) != true}
             (break)
         )
 
@@ -57,15 +60,23 @@
     index
 ))
 
+(fn Parser/is_valid_list_chars [(start u8) (end u8)] [bool] (
+    (|| (||
+    {{start == CHAR_LPAREN} && { end == CHAR_RPAREN}}
+    {{start == CHAR_LCURLY} && { end == CHAR_RCURLY}})
+    {{start == CHAR_LBRACK} && { end == CHAR_RBRACK}})
+))
+
 (fn Parser/is_space [(char u8)] [bool] (
-    (if {char == CHAR_SPC} (return true))
-    (if {char == CHAR_NWL} (return true))
-    (if {char == CHAR_TAB} (return true))
-    false
+    (|| (||
+    {char == CHAR_SPC}
+    {char == CHAR_NWL})
+    {char == CHAR_TAB})
 ))
 
 (struct CharAtResult (ok bool) (char u8))
 
+;; TODO: this does not match rust version
 (fn Parser/char_at [(chars StringSlice) (index u32)] [CharAtResult] (
     (if {index >= {chars . size}}
         (return (struct.new CharAtResult false 0))
