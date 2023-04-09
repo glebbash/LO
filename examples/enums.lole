@@ -34,10 +34,10 @@
     )
 ))
 
-(global-mut @heap_index u32 0)
+(global mut HEAP_INDEX u32 0)
 (fn alloc [(size u32)] [ptr] (
     {ref : ptr}
-    {ref = @heap_index}
-    {@heap_index = {@heap_index + size}}
+    {ref = HEAP_INDEX}
+    {HEAP_INDEX = {HEAP_INDEX + size}}
     ref
 ))

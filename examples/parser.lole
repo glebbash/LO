@@ -1,12 +1,18 @@
 (mem m1 :min 1000)
 
-(export parse :as parse)
+(export Parser/parse :as parse)
 
 ;; exporting for testing
 (export mem m1 :as memory)
-(export skip_space :as skip_space)
-(export char_at :as char_at)
-(export index_to_position :as index_to_position)
+(export Parser/skip_space :as skip_space)
+(export Parser/char_at :as char_at)
+(export Parser/index_to_position :as index_to_position)
+
+(global true bool 1)
+(global false bool 0)
+(global CHAR_TAB u8 09) ; '\t'
+(global CHAR_NWL u8 10) ; '\n'
+(global CHAR_SPC u8 32) ; ' '
 
 (struct StringSlice
     (data ptr)
@@ -18,30 +24,30 @@
 ))
 
 ; TODO: implement
-(fn parse [(chars StringSlice)] [
+(fn Parser/parse [(chars StringSlice)] [
     bool ; ok
     u32 ; index
 ] (
     {index : u32}
-    {index = (skip_space chars 0)}
+    {index = (Parser/skip_space chars 0)}
 
-    (return 0 0)
+    (return false 0)
 ))
 
 ; TODO: add support for comments
-(fn skip_space [(chars StringSlice) (index u32)] [
+(fn Parser/skip_space [(chars StringSlice) (index u32)] [
     u32 ; index
 ] (
     {res : CharAtResult}
 
     (loop (
-        {res = (char_at chars index)}
+        {res = (Parser/char_at chars index)}
 
-        (if {{res . ok} != 1}
+        (if {{res . ok} != true}
             (break)
         )
 
-        (if {{res . char} != 32} ; space
+        (if {{res . char} != CHAR_SPC}
             (break)
         )
 
@@ -51,25 +57,27 @@
     index
 ))
 
-;; TODO: should match be added?
-;; (fn is_space [(char u8)] [bool] (
-;;     (match char
-;;         ({' ' | '\n' | '\t'} true)
-;;         (else false)
-;;     )
-;; ))
+(fn Parser/is_space [(char u8)] [bool] (
+    (if {char == CHAR_SPC} (return true))
+    (if {char == CHAR_NWL} (return true))
+    (if {char == CHAR_TAB} (return true))
+    false
+))
 
 (struct CharAtResult (ok bool) (char u8))
 
-(fn char_at [(chars StringSlice) (index u32)] [CharAtResult] (
+(fn Parser/char_at [(chars StringSlice) (index u32)] [CharAtResult] (
     (if {index >= {chars . size}}
-        (return (struct.new CharAtResult 0 0))
+        (return (struct.new CharAtResult false 0))
     )
 
-    (struct.new CharAtResult 1 (StringSlice/char_at chars index))
+    (struct.new CharAtResult true (StringSlice/char_at chars index))
 ))
 
-(fn index_to_position [(chars StringSlice) (index u32)] [u32 u32] (
+(fn Parser/index_to_position [(chars StringSlice) (index u32)] [
+    u32 ; line
+    u32 ; col
+] (
     {line : u32}
     {col : u32}
     {(line col) = (pack 1 1)}
@@ -83,7 +91,7 @@
         {char : u32}
         {char = (StringSlice/char_at chars char_index)}
 
-        (if {char == 10} (do ;; '\n'
+        (if {char == CHAR_NWL} (do
             {col = 1}
             {line = {line + 1}}
             {char_index = {char_index + 1}}

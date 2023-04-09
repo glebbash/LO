@@ -302,34 +302,42 @@ fn compile_top_level_expr(
             }
             _ => return Err(format!("Invalid arguments for {op}")),
         },
-        "global-mut" => match other {
-            [SExpr::Atom(global_name), SExpr::Atom(global_type), global_value] => {
-                if ctx.globals.contains_key(global_name) {
-                    return Err(format!("Cannot redefine global: {global_name}"));
+        "global" => {
+            let (mutable, global_name, global_type, global_value) = match other {
+                [SExpr::Atom(mutable_literal), SExpr::Atom(global_name), SExpr::Atom(global_type), global_value]
+                    if mutable_literal == "mut" =>
+                {
+                    (true, global_name, global_type, global_value)
                 }
+                [SExpr::Atom(global_name), SExpr::Atom(global_type), global_value] => {
+                    (false, global_name, global_type, global_value)
+                }
+                _ => return Err(format!("Invalid arguments for {op}")),
+            };
 
-                let mutable = true;
-                let value_type = parse_wasm_value_type(global_type)?;
-                let initial_value = WasmExpr {
-                    instrs: vec![parse_const_instr(global_value, &ctx)?],
-                };
-
-                ctx.globals.insert(
-                    global_name.clone(),
-                    GlobalDef {
-                        index: ctx.globals.len() as u32,
-                        mutable,
-                    },
-                );
-
-                module.globals.push(WasmGlobal {
-                    value_type,
-                    mutable,
-                    initial_value,
-                });
+            if ctx.globals.contains_key(global_name) {
+                return Err(format!("Cannot redefine global: {global_name}"));
             }
-            _ => return Err(format!("Invalid arguments for {op}")),
-        },
+
+            let value_type = parse_wasm_value_type(global_type)?;
+            let initial_value = WasmExpr {
+                instrs: vec![parse_const_instr(global_value, &ctx)?],
+            };
+
+            ctx.globals.insert(
+                global_name.clone(),
+                GlobalDef {
+                    index: ctx.globals.len() as u32,
+                    mutable,
+                },
+            );
+
+            module.globals.push(WasmGlobal {
+                value_type,
+                mutable,
+                initial_value,
+            });
+        }
         _ => return Err(format!("Unknown operation: {op}")),
     }
 
