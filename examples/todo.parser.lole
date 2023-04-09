@@ -3,9 +3,6 @@
 ;; TODO(COMPILER): implement string_to_chars_vec
 ;; TODO(COMPILER): implement constants
 ;; TODO(COMPILER): support macros or hardcode `try!`
-;; TODO(COMPILER): design struct creation
-;; TODO(COMPILER): implement struct creation
-;; TODO(USERLAND): define StringSlice type?
 ;; TODO(USERLAND): define Result, Vec, SExpr, ParseError types
 ;; TODO(USERLAND): implement `Vec/new`
 ;; TODO(USERLAND): implement `Vec/len`
