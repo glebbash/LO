@@ -1,12 +1,12 @@
 (mem m1 :min 1000)
 
-(export Parser/parse :as parse)
+(export parse :as parse)
+(export index_to_position :as index_to_position)
 
-;; exporting for testing
+;; temporary exporting for testing
 (export mem m1 :as memory)
-(export Parser/skip_space :as skip_space)
-(export Parser/char_at :as char_at)
-(export Parser/index_to_position :as index_to_position)
+(export skip_space :as skip_space)
+(export char_at :as char_at)
 
 (global true bool 1)
 (global false bool 0)
@@ -17,6 +17,8 @@
 (global CHAR_LPAREN u8 040) (global CHAR_RPAREN u8 041)
 (global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
 (global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
+(global ParseError/UnexpectedEOF  u8 0)
+(global ParseError/UnexpectedChar u8 1)
 
 (struct StringSlice
     (data ptr)
@@ -27,32 +29,180 @@
     (load i32/u8 {{self . data} + index})
 ))
 
-;; TODO: implement
-(struct ParseResult)
+(global SExpr/Atom u8 0)
+(global SExpr/List u8 1)
+(struct SExpr
+    (kind u8) ; SExpr/Atom | SExpr/List
+    (data ptr) ; pointer to Atom's chars or List's expr vector
+    (size u32) ; length of Atom's chars or List's expr vector
+)
 
-;; TODO: implement
-(struct ParseSubResult)
+(struct ParseResult
+    (index u32)
+    (ok bool)
+    (data u32) ; error kind or pointer to SExpr
+)
 
-; TODO: implement
-(fn Parser/parse [(chars StringSlice)] [ParseResult] ())
+;; TODO: test
+(fn parse [(chars StringSlice)] [ParseResult] (
+    {index : u32}
+    {index = 0}
 
-;; TODO: implement
-(fn parse_expr [(chars StringSlice) (index u32)] [ParseSubResult] ())
+    {index = (skip_space chars index)}
 
-;; TODO: implement
-(fn parse_atom [(chars StringSlice) (index u32)] [ParseSubResult] ())
+    ;; TODO: implement
+    ;; let mut items = Vec::new();
 
-;; TODO: implement
-(fn parse_list [(chars StringSlice) (index u32)] [ParseSubResult] ())
+    (loop (
+        (if {index >= {chars . size}} (break))
+
+        {char_res : CharAtResult}
+        {char_res = (char_at chars index)}
+
+        (if (not {char_res . ok})
+            (return (struct.new ParseResult
+                index false ParseError/UnexpectedEOF
+            ))
+        )
+
+        (if (not (is_list_start {char_res . char}))
+            (return (struct.new ParseResult
+                index false ParseError/UnexpectedChar
+            ))
+        )
+
+        ;; TODO: implement
+        ;; let res = parse_list(chars, index)?;
+
+        ;; items.push(res.data);
+
+        {index = (skip_space chars index)}
+    ))
+
+    ;; TODO: implement
+    ;; Ok(items)
+
+    (struct.new ParseResult
+        index false ParseError/UnexpectedChar
+    )
+))
+
+(fn parse_expr [(chars StringSlice) (index u32)] [ParseResult] (
+    {char_res : CharAtResult}
+    {char_res = (char_at chars index)}
+
+    (if (not {char_res . ok})
+        (return (struct.new ParseResult
+            index false ParseError/UnexpectedEOF
+        ))
+    )
+
+    (if (is_list_start {char_res . char})
+        (return (parse_list chars index))
+    )
+
+    (parse_atom chars index)
+))
+
+(fn parse_atom [(chars StringSlice) (index u32)] [ParseResult] (
+    {atom_len : u32}
+    {atom_len = 0}
+
+    (loop (
+        {char_res : CharAtResult}
+        {char_res = (char_at chars index)}
+        (if (not {char_res . ok}) (break))
+        (if (|| (||
+            (is_space {char_res . char})
+            (is_list_end {char_res . char}))
+            {{char_res . char} == CHAR_SEMICOLON})
+            (break)
+        )
+        {index = {index + 1}}
+        {atom_len = {atom_len + 1}}
+    ))
+
+    {expr_ref : ptr}
+    {expr_ref = (alloc (sizeof SExpr))}
+    (store SExpr expr_ref (struct.new SExpr
+        SExpr/Atom
+        {{{chars . data} + index} - atom_len}
+        atom_len
+    ))
+
+    (struct.new ParseResult
+        index true expr_ref
+    )
+))
+
+(fn parse_list [(chars StringSlice) (index u32)] [ParseResult] (
+    {char_res : CharAtResult}
+    {char_res = (char_at chars index)}
+
+    {list_start_char : u8}
+    {list_start_char = {char_res . char}}
+    {index = {index + 1}} ; eat list start
+
+    {index = (skip_space chars index)}
+
+    ;; TODO: implement
+    ;; let mut items = Vec::new();
+
+    (loop (
+        {char_res = (char_at chars index)}
+        (if (not {char_res . ok})
+            (return (struct.new ParseResult
+                index false ParseError/UnexpectedEOF
+            ))
+        )
+
+        (if (not (is_list_end {char_res . char})) (break))
+
+        {res : ParseResult}
+        {res = (parse_expr chars index)}
+        (if (not {char_res . ok}) (return res))
+
+        ;; TODO: implement
+        ;; items.push(res.data);
+
+        {index = (skip_space chars index)}
+    ))
+
+    {char_res = (char_at chars index)}
+    (if (not {char_res . ok})
+        (return (struct.new ParseResult
+            index false ParseError/UnexpectedEOF
+        ))
+    )
+
+    {list_start_end : u8}
+    {list_start_end = {char_res . char}}
+    {index = {index + 1}} ; eat list end
+
+    ;; TODO: implement
+    ;; if list_start_char == '{' && items.len() >= 2 {
+    ;;     items.swap(0, 1);
+    ;; }
+
+    ;; TODO: implement
+    ;; Ok(WithIndex {
+    ;;     data: SExpr::List(items),
+    ;;     index,
+    ;; })
+
+    (struct.new ParseResult
+        index false ParseError/UnexpectedChar
+    )
+))
 
 ;; TODO: test comment skipping
-(fn Parser/skip_space [(chars StringSlice) (index u32)] [u32] (
+(fn skip_space [(chars StringSlice) (index u32)] [u32] (
     {char_res : CharAtResult}
 
     (loop (
-        {char_res = (Parser/char_at chars index)}
+        {char_res = (char_at chars index)}
         (if (not {char_res . ok}) (break))
-        (if (not (Parser/is_space {char_res . char})) (break))
+        (if (not (is_space {char_res . char})) (break))
         {index = {index + 1}}
     ))
 
@@ -60,7 +210,7 @@
         {index = {index + 1}}
 
         (loop (
-            {char_res = (Parser/char_at chars index)}
+            {char_res = (char_at chars index)}
             (if (not {char_res . ok}) (break))
             (if {{char_res . char} == CHAR_NEWLINE} (break))
             {index = {index + 1}}
@@ -70,34 +220,34 @@
             {index = {index + 1}}
         )
 
-        (return (Parser/skip_space chars index))
+        (return (skip_space chars index))
     ))
 
     index
 ))
 
-(fn Parser/is_list_start [(start u8) (end u8)] [bool] (
+(fn is_list_start [(char u8)] [bool] (
     (|| (||
-    { end == CHAR_LPAREN}
-    { end == CHAR_LCURLY})
-    { end == CHAR_LBRACK})
+    {char == CHAR_LPAREN}
+    {char == CHAR_LCURLY})
+    {char == CHAR_LBRACK})
 ))
 
-(fn Parser/is_list_end [(start u8) (end u8)] [bool] (
+(fn is_list_end [(char u8)] [bool] (
     (|| (||
-    { end == CHAR_RPAREN}
-    { end == CHAR_RCURLY})
-    { end == CHAR_RBRACK})
+    {char == CHAR_RPAREN}
+    {char == CHAR_RCURLY})
+    {char == CHAR_RBRACK})
 ))
 
-(fn Parser/is_valid_list_chars [(start u8) (end u8)] [bool] (
+(fn is_valid_list_chars [(start u8) (end u8)] [bool] (
     (|| (||
-    {{start == CHAR_LPAREN} && { end == CHAR_RPAREN}}
-    {{start == CHAR_LCURLY} && { end == CHAR_RCURLY}})
-    {{start == CHAR_LBRACK} && { end == CHAR_RBRACK}})
+    {{start == CHAR_LPAREN} && {end == CHAR_RPAREN}}
+    {{start == CHAR_LCURLY} && {end == CHAR_RCURLY}})
+    {{start == CHAR_LBRACK} && {end == CHAR_RBRACK}})
 ))
 
-(fn Parser/is_space [(char u8)] [bool] (
+(fn is_space [(char u8)] [bool] (
     (|| (||
     {char == CHAR_SPACE}
     {char == CHAR_NEWLINE})
@@ -106,8 +256,7 @@
 
 (struct CharAtResult (ok bool) (char u8))
 
-;; TODO: this does not match rust version
-(fn Parser/char_at [(chars StringSlice) (index u32)] [CharAtResult] (
+(fn char_at [(chars StringSlice) (index u32)] [CharAtResult] (
     (if {index >= {chars . size}}
         (return (struct.new CharAtResult false 0))
     )
@@ -115,7 +264,7 @@
     (struct.new CharAtResult true (StringSlice/char_at chars index))
 ))
 
-(fn Parser/index_to_position [(chars StringSlice) (index u32)] [
+(fn index_to_position [(chars StringSlice) (index u32)] [
     u32 ; line
     u32 ; col
 ] (
@@ -144,4 +293,14 @@
     ))
 
     (pack line col)
+))
+
+;; utils
+
+(global mut HEAP_INDEX u32 0)
+(fn alloc [(size u32)] [ptr] (
+    {ref : ptr}
+    {ref = HEAP_INDEX}
+    {HEAP_INDEX = {HEAP_INDEX + size}}
+    ref
 ))
