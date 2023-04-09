@@ -10,10 +10,10 @@
 (fn main [] [i32] (
     {ref : ptr}
     {ref = (alloc (sizeof Point2D))}
-    (struct.store Point2D ref (struct.new Point2D 2 3))
+    (store Point2D ref (struct.new Point2D 2 3))
 
     {p : Point2D}
-    {p = (struct.load Point2D ref)}
+    {p = (load Point2D ref)}
 
     {p . y}
 ))

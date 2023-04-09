@@ -20,7 +20,7 @@
 )
 
 (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
-    (i32.load8_u {{self . data} + index})
+    (load i32/u8 {{self . data} + index})
 ))
 
 ; TODO: implement

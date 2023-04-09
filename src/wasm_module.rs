@@ -44,7 +44,7 @@ pub enum WasmBinaryOpKind {
 #[derive(Clone, Copy)]
 pub enum WasmLoadKind {
     I32 = 0x28,
-    I32_8u = 0x2d,
+    I32U8 = 0x2d,
 }
 
 #[repr(u8)]
@@ -64,7 +64,7 @@ pub enum WasmInstr {
         kind: WasmLoadKind,
         align: u32,
         offset: u32,
-        address_instr: Rc<WasmInstr>, // cannot use Box because of struct.load
+        address_instr: Rc<WasmInstr>, // cannot use Box because of struct load
     },
     Store {
         kind: WasmStoreKind,

@@ -16,7 +16,7 @@
 
     (if {{res . kind} == (enum.kind ParseResult/Ok)} (do
         {res_ok : ParseResult/Ok}
-        {res_ok = (struct.load ParseResult/Ok {res . ref})}
+        {res_ok = (load ParseResult/Ok {res . ref})}
         (return {res_ok . value})
     ))
 
@@ -26,7 +26,7 @@
 (fn do_stuff [] [ParseResult] (
     {ref : ptr}
     {ref = (alloc (sizeof ParseResult/Ok))}
-    (struct.store ParseResult/Ok ref (struct.new ParseResult/Ok 1))
+    (store ParseResult/Ok ref (struct.new ParseResult/Ok 1))
 
     (struct.new ParseResult
         (enum.kind ParseResult/Ok)
