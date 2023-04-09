@@ -56,6 +56,14 @@
     (char i32)
 )
 
+;; TODO: should match be added?
+;; (fn is_space [(c i32)] [i32] (
+;;     (match c
+;;         ({' ' | '\n' | '\t'} true)
+;;         (else 0)
+;;     )
+;; ))
+
 (fn char_at [(chars StringSlice) (index i32)] [CharAtResult] (
     (if {index >= {chars . size}}
         (return (struct.new CharAtResult 0 0))
@@ -67,9 +75,10 @@
 (fn index_to_position [(chars StringSlice) (index i32)] [i32 i32] (
     {line : i32}
     {col : i32}
-    {char_index : i32}
-    {(line col char_index) = (pack 1 1 0)}
+    {(line col) = (pack 1 1)}
 
+    {char_index : i32}
+    {char_index = 0}
     (loop (
         (if {char_index >= {chars . size}} (break))
         (if {char_index >= index} (break))
