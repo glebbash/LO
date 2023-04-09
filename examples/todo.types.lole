@@ -100,7 +100,7 @@
 
 ;; packing multiple types into one doesn't make a lot of sence
 ;; but specialized types can be provided instead:
-;;   like boolean4, byte2, etc
+;;   like boolean8, byte4, etc
 
 ;; structs and enums should be passed by value
 ;; would be nice to show user the size of types

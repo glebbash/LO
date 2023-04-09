@@ -3,15 +3,15 @@
 (export compile :as compile)
 
 ; TODO: implement
-(fn mem_alloc [(i32 size)] [i32] (
+(fn mem_alloc [(size u32)] [u32] (
     0
 ))
 
 ; TODO: implement
-(fn mem_free [(ptr i32) (size i32)] [] (
+(fn mem_free [(ptr ptr) (size u32)] [] (
 ))
 
 ; TODO: implement
-(fn compile [(script_ptr i32) (script_len i32)] [i32 i32 i32] (
+(fn compile [(script_ptr ptr) (script_len u32)] [u32 u32 u32] (
     0
 ))

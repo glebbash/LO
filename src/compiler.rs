@@ -843,7 +843,7 @@ fn get_primitive_value_type_size(value_type: &WasmValueType) -> u32 {
 
 fn parse_wasm_value_type(name: &str) -> Result<WasmValueType, String> {
     match name {
-        "i32" => Ok(WasmValueType::I32),
+        "bool" | "u8" | "u32" | "i32" | "ptr" => Ok(WasmValueType::I32),
         "i64" => Ok(WasmValueType::I64),
         "f32" => Ok(WasmValueType::F32),
         "f64" => Ok(WasmValueType::F64),

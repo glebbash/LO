@@ -2,15 +2,15 @@
 (export main :as main)
 
 (enum ParseResult
-    (Ok (value i32))
-    (Err (error i32))
+    (Ok (value u32))
+    (Err (error u32))
 )
 ;; desugars to:
-;; (struct ParseResult (kind i32) (ref i32))
-;; (struct ParseResult/Ok (value i32))
-;; (struct ParseResult/Err (error i32))
+;; (struct ParseResult (kind u32) (ref ptr))
+;; (struct ParseResult/Ok (value u32))
+;; (struct ParseResult/Err (error u32))
 
-(fn main [] [i32] (
+(fn main [] [u32] (
     {res : ParseResult}
     {res = (do_stuff)}
 
@@ -24,7 +24,7 @@
 ))
 
 (fn do_stuff [] [ParseResult] (
-    {ref : i32}
+    {ref : ptr}
     {ref = (alloc (sizeof ParseResult/Ok))}
     (struct.store ParseResult/Ok ref (struct.new ParseResult/Ok 1))
 
@@ -34,9 +34,9 @@
     )
 ))
 
-(global-mut @heap_index i32 0)
-(fn alloc [(size i32)] [i32] (
-    {ref : i32}
+(global-mut @heap_index u32 0)
+(fn alloc [(size u32)] [ptr] (
+    {ref : ptr}
     {ref = @heap_index}
     {@heap_index = {@heap_index + size}}
     ref

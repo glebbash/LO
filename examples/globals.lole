@@ -1,7 +1,7 @@
 (export main :as main)
 
-(fn main [] [i32] (
-    {_ : i32}
+(fn main [] [u32] (
+    {_ : ptr}
 
     {_ = (alloc 45)}
     {_ = (alloc 24)}
@@ -9,9 +9,9 @@
     @heap_index
 ))
 
-(global-mut @heap_index i32 0)
-(fn alloc [(size i32)] [i32] (
-    {ref : i32}
+(global-mut @heap_index u32 0)
+(fn alloc [(size u32)] [ptr] (
+    {ref : ptr}
     {ref = @heap_index}
     {@heap_index = {@heap_index + size}}
     ref
