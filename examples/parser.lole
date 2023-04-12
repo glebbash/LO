@@ -33,7 +33,6 @@
 (struct SExpr
     (kind u8) ; SExpr/Atom | SExpr/List
     (data ptr) ; pointer to Atom's chars or List's expr vector
-    (size u32) ; length of Atom's chars or List's expr vector
 )
 
 (global ParseError/UnexpectedEOF  u8 0)
@@ -44,15 +43,45 @@
     (data u32) ; ParseError or pointer to SExpr
 )
 
+(struct MainParseResult
+    (index u32)
+    (ok bool)
+    (data u32) ; ParseError or pointer to SExpr vector
+)
+
+;; pointer to: [capacity: u32, item_size: u32, length: u32, ...items]
+(struct Vec (ref ptr))
+
+(fn Vec/new [(capacity u32) (item_size u32)] [Vec] (
+    {self : Vec}
+    {self = (alloc {{(sizeof u32) * 3} + {capacity * item_size}})}
+    (store i32 self capacity)
+    (store i32 {self + (sizeof u32)} item_size)
+    self
+))
+
+;; TODO: implement
+(fn Vec/init_from_slice [(self Vec) (slice_start ptr) (slice_len u32)] [] ())
+
+;; TODO: implement
+(fn Vec/swap [(self Vec) (a u32) (b u32)] [] ())
+
+;; TODO: implement
+(fn Vec/push_by_ref [(self Vec) (item_ref ptr)] [] ())
+
+(fn Vec/len [(self Vec)] [u32] (
+    (load i32 {self + {(sizeof u32) * 2}})
+))
+
 ;; TODO: test
-(fn parse [(chars StringSlice)] [ParseResult] (
+(fn parse [(chars StringSlice)] [MainParseResult] (
     {index : u32}
     {index = 0}
 
     {index = (skip_space chars index)}
 
-    ;; TODO: implement
-    ;; let mut items = Vec::new();
+    {items : Vec}
+    {items = (Vec/new 6 (sizeof SExpr))}
 
     (loop (
         (if {index >= {chars . size}} (break))
@@ -74,20 +103,14 @@
 
         {res : ParseResult}
         {res = (parse_list chars index)}
-        (if (not {char_res . ok}) (return res))
+        (if (not {res . ok}) (return res))
 
-        ;; TODO: implement
-        ;; items.push(res.data);
+        (Vec/push_by_ref items {res . data})
 
         {index = (skip_space chars index)}
     ))
 
-    ;; TODO: implement
-    ;; Ok(items)
-
-    (struct.new ParseResult
-        index false ParseError/UnexpectedChar
-    )
+    (struct.new ParseResult index true items)
 ))
 
 (fn parse_expr [(chars StringSlice) (index u32)] [ParseResult] (
@@ -125,17 +148,21 @@
         {atom_len = {atom_len + 1}}
     ))
 
-    {expr_ref : ptr}
-    {expr_ref = (alloc (sizeof SExpr))}
-    (store SExpr expr_ref (struct.new SExpr
-        SExpr/Atom
+    {atom : Vec}
+    {atom = (Vec/new atom_len 1)} ; TODO: replace 1 with (sizeof u8)
+    (Vec/init_from_slice atom
         {{{chars . data} + index} - atom_len}
         atom_len
+    )
+
+    {expr : ptr}
+    {expr = (alloc (sizeof SExpr))}
+    (store SExpr expr (struct.new SExpr
+        SExpr/Atom
+        atom
     ))
 
-    (struct.new ParseResult
-        index true expr_ref
-    )
+    (struct.new ParseResult index true expr)
 ))
 
 (fn parse_list [(chars StringSlice) (index u32)] [ParseResult] (
@@ -148,8 +175,8 @@
 
     {index = (skip_space chars index)}
 
-    ;; TODO: implement
-    ;; let mut items = Vec::new();
+    {items : Vec}
+    {items = (Vec/new 6 (sizeof SExpr))}
 
     (loop (
         {char_res = (char_at chars index)}
@@ -163,10 +190,9 @@
 
         {res : ParseResult}
         {res = (parse_expr chars index)}
-        (if (not {char_res . ok}) (return res))
+        (if (not {res . ok}) (return res))
 
-        ;; TODO: implement
-        ;; items.push(res.data);
+        (Vec/push_by_ref items {res . data})
 
         {index = (skip_space chars index)}
     ))
@@ -182,20 +208,18 @@
     {list_start_end = {char_res . char}}
     {index = {index + 1}} ; eat list end
 
-    ;; TODO: implement
-    ;; if list_start_char == '{' && items.len() >= 2 {
-    ;;     items.swap(0, 1);
-    ;; }
-
-    ;; TODO: implement
-    ;; Ok(WithIndex {
-    ;;     data: SExpr::List(items),
-    ;;     index,
-    ;; })
-
-    (struct.new ParseResult
-        index false ParseError/UnexpectedChar
+    (if {{list_start_char == CHAR_LCURLY} && {(Vec/len items) >= 2}}
+        (Vec/swap items 0 1)
     )
+
+    {expr : ptr}
+    {expr = (alloc (sizeof SExpr))}
+    (store SExpr expr (struct.new SExpr
+        SExpr/List
+        items
+    ))
+
+    (struct.new ParseResult index true expr)
 ))
 
 ;; TODO: test comment skipping
