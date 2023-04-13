@@ -204,9 +204,11 @@
         ))
     )
 
-    {list_start_end : u8}
-    {list_start_end = {char_res . char}}
+    {list_end : u8}
+    {list_end = {char_res . char}}
     {index = {index + 1}} ; eat list end
+    
+    ; TODO: check is_valid_list_chars
 
     (if {{list_start_char == CHAR_LCURLY} && {(Vec/len items) >= 2}}
         (Vec/swap items 0 1)
