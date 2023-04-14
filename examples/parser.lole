@@ -204,11 +204,15 @@
         ))
     )
 
-    {list_end : u8}
-    {list_end = {char_res . char}}
+    {list_end_char : u8}
+    {list_end_char = {char_res . char}}
     {index = {index + 1}} ; eat list end
-    
-    ; TODO: check is_valid_list_chars
+
+    (if (not (is_valid_list_chars list_start_char list_end_char))
+        (return (struct.new ParseResult
+            index false ParseError/UnexpectedEOF
+        ))
+    )
 
     (if {{list_start_char == CHAR_LCURLY} && {(Vec/len items) >= 2}}
         (Vec/swap items 0 1)
