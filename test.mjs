@@ -122,6 +122,7 @@ test("compiles vec", async () => {
     assert.strictEqual(lib.vec_get_u8(vec, 4), 5);
     assert.strictEqual(lib.vec_get_u8(vec, 5), 6);
     assert.strictEqual(lib.vec_get_u8(vec, 6), 7);
+    assert.strictEqual(lib.vec_len(vec), 7);
 });
 
 test("compiles parser", async () => {

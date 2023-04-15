@@ -4,6 +4,7 @@
 (export mem m1 :as memory)
 (export Vec/new :as vec_new)
 (export Vec/get_u8 :as vec_get_u8)
+(export Vec/len :as vec_len)
 (export Vec/swap :as vec_swap)
 (export Vec/push_u8 :as vec_push_u8)
 (export Vec/push_all :as vec_push_all)
@@ -44,6 +45,13 @@
         {{self . data_ref} + {index2 * {self . item_size}}}
         {self . item_size}
     )
+))
+
+(fn Vec/len [(&self &Vec)] [u32] (
+    {self : Vec}
+    {self = (load Vec &self)}
+
+    {self . length}
 ))
 
 (fn Vec/push_u8 [(&self &Vec) (item u8)] [] (
