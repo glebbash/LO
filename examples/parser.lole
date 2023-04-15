@@ -28,6 +28,24 @@
     (load i32/u8 {{self . data} + index})
 ))
 
+;; Vec
+(struct &Vec (ref ptr))
+(struct Vec (length u32)(capacity u32)(item_size u32)(data_ref ptr))
+(fn Vec/new [(capacity u32)(item_size u32)][&Vec]({&self : &Vec}{&self = (alloc (sizeof Vec))}(store Vec &self (struct.new Vec 0 capacity item_size (alloc {capacity * item_size}))) &self ))
+(fn Vec/get_u8 [(&self &Vec)(index u32)][u8]({self : Vec}{self = (load Vec &self)}(load i32/u8 {{self . data_ref} + {index * {self . item_size}}})))
+(fn Vec/swap [(&self &Vec)(index1 u32)(index2 u32)][]({self : Vec}{self = (load Vec &self)}(memswap {{self . data_ref} + {index1 * {self . item_size}}}{{self . data_ref} + {index2 * {self . item_size}}}{self . item_size}) ))
+(fn Vec/len [(&self &Vec)][u32]({self : Vec}{self = (load Vec &self)}{self . length}))
+(fn Vec/push_u8 [(&self &Vec)(item u8)][]({self : Vec}{self = (load Vec &self)}{index : u32}{index = {self . length}}{self = length {index + 1}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(store i32/u8 {{self . data_ref} + {index * {self . item_size}}} item )))
+(fn Vec/push_all [(&self &Vec)(&items ptr)(items_len u32)][]({self : Vec}{self = (load Vec &self)}{old_len : u32}{old_len = {self . length}}{self = length {old_len + items_len}}(store Vec &self self)(Vec/grow_if_needed &self)(memcpy &items {{self . data_ref} + {old_len * {self . item_size}}}{items_len * {self . item_size}}) ))
+(fn Vec/grow_if_needed [(&self &Vec)][]({self : Vec}{self = (load Vec &self)}(if {{self . length} == {self . capacity}}(do {new_cap : u32}{new_cap = {{self . capacity} * 2}}{old_data_ref : ptr}{old_data_ref = {self . data_ref}}{self = data_ref (alloc {new_cap * {self . item_size}})}(memcpy old_data_ref {self . data_ref}{self . capacity}){self = capacity new_cap}(free old_data_ref)))(store Vec &self self)))
+
+;; mem utils
+(global mut HEAP_INDEX u32 0)
+(fn alloc [(size u32)][ptr]({ref : ptr}{ref = HEAP_INDEX}{HEAP_INDEX = {HEAP_INDEX + size}} ref ))
+(fn free [(ref ptr)][]())
+(fn memcpy [(src ptr)(dist ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}(store i32/u8 {dist + size}(load i32/u8 {src + size}))))))
+(fn memswap [(ref1 ptr)(ref2 ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}{tmp : u8}{tmp = (load i32/u8 {ref1 + size})}(store i32/u8 {ref1 + size}(load i32/u8 {ref2 + size}))(store i32/u8 {ref2 + size} tmp)))))
+
 (global SExpr/Atom u8 0)
 (global SExpr/List u8 1)
 (struct SExpr
@@ -35,53 +53,23 @@
     (data ptr) ; pointer to Atom's chars or List's expr vector
 )
 
-(global ParseError/UnexpectedEOF  u8 0)
-(global ParseError/UnexpectedChar u8 1)
+(global ParseError/UnexpectedEOF  u32 0)
+(global ParseError/UnexpectedChar u32 1)
 (struct ParseResult
-    (index u32)
     (ok bool)
-    (data u32) ; ParseError or pointer to SExpr
-)
-
-(struct MainParseResult
     (index u32)
-    (ok bool)
-    (data u32) ; ParseError or pointer to SExpr vector
+    (data u32) ; ParseError/* or pointer to some result
 )
-
-;; pointer to: [capacity: u32, item_size: u32, length: u32, ...items]
-(struct Vec (ref ptr))
-
-(fn Vec/new [(capacity u32) (item_size u32)] [Vec] (
-    {self : Vec}
-    {self = (alloc {{(sizeof u32) * 3} + {capacity * item_size}})}
-    (store i32 self capacity)
-    (store i32 {self + (sizeof u32)} item_size)
-    self
-))
-
-;; TODO: implement
-(fn Vec/init_from_slice [(self Vec) (slice_start ptr) (slice_len u32)] [] ())
-
-;; TODO: implement
-(fn Vec/swap [(self Vec) (a u32) (b u32)] [] ())
-
-;; TODO: implement
-(fn Vec/push_by_ref [(self Vec) (item_ref ptr)] [] ())
-
-(fn Vec/len [(self Vec)] [u32] (
-    (load i32 {self + {(sizeof u32) * 2}})
-))
 
 ;; TODO: test
-(fn parse [(chars StringSlice)] [MainParseResult] (
+(fn parse [(chars StringSlice)] [ParseResult] (
     {index : u32}
     {index = 0}
 
     {index = (skip_space chars index)}
 
-    {items : Vec}
-    {items = (Vec/new 6 (sizeof SExpr))}
+    {&items : &Vec}
+    {&items = (Vec/new 6 (sizeof SExpr))}
 
     (loop (
         (if {index >= {chars . size}} (break))
@@ -105,12 +93,12 @@
         {res = (parse_list chars index)}
         (if (not {res . ok}) (return res))
 
-        (Vec/push_by_ref items {res . data})
+        (Vec/push_all &items {res . data} 1)
 
         {index = (skip_space chars index)}
     ))
 
-    (struct.new ParseResult index true items)
+    (struct.new ParseResult index true &items)
 ))
 
 (fn parse_expr [(chars StringSlice) (index u32)] [ParseResult] (
@@ -148,21 +136,21 @@
         {atom_len = {atom_len + 1}}
     ))
 
-    {atom : Vec}
-    {atom = (Vec/new atom_len 1)} ; TODO: replace 1 with (sizeof u8)
-    (Vec/init_from_slice atom
+    {&atom : &Vec}
+    {&atom = (Vec/new atom_len 1)} ; TODO: replace 1 with (sizeof u8)
+    (Vec/push_all &atom
         {{{chars . data} + index} - atom_len}
         atom_len
     )
 
-    {expr : ptr}
-    {expr = (alloc (sizeof SExpr))}
-    (store SExpr expr (struct.new SExpr
+    {&expr : ptr}
+    {&expr = (alloc (sizeof SExpr))}
+    (store SExpr &expr (struct.new SExpr
         SExpr/Atom
-        atom
+        &atom
     ))
 
-    (struct.new ParseResult index true expr)
+    (struct.new ParseResult index true &expr)
 ))
 
 (fn parse_list [(chars StringSlice) (index u32)] [ParseResult] (
@@ -175,8 +163,8 @@
 
     {index = (skip_space chars index)}
 
-    {items : Vec}
-    {items = (Vec/new 6 (sizeof SExpr))}
+    {&items : &Vec}
+    {&items = (Vec/new 6 (sizeof SExpr))}
 
     (loop (
         {char_res = (char_at chars index)}
@@ -186,13 +174,15 @@
             ))
         )
 
-        (if (not (is_list_end {char_res . char})) (break))
+        (if (is_list_end {char_res . char})
+            (break)
+        )
 
         {res : ParseResult}
         {res = (parse_expr chars index)}
         (if (not {res . ok}) (return res))
 
-        (Vec/push_by_ref items {res . data})
+        (Vec/push_all &items {res . data} 1)
 
         {index = (skip_space chars index)}
     ))
@@ -214,18 +204,18 @@
         ))
     )
 
-    (if {{list_start_char == CHAR_LCURLY} && {(Vec/len items) >= 2}}
-        (Vec/swap items 0 1)
+    (if {{list_start_char == CHAR_LCURLY} && {(Vec/len &items) >= 2}}
+        (Vec/swap &items 0 1)
     )
 
-    {expr : ptr}
-    {expr = (alloc (sizeof SExpr))}
-    (store SExpr expr (struct.new SExpr
+    {&expr : ptr}
+    {&expr = (alloc (sizeof SExpr))}
+    (store SExpr &expr (struct.new SExpr
         SExpr/List
-        items
+        &items
     ))
 
-    (struct.new ParseResult index true expr)
+    (struct.new ParseResult index true &expr)
 ))
 
 ;; TODO: test comment skipping
@@ -326,14 +316,4 @@
     ))
 
     (pack line col)
-))
-
-;; utils
-
-(global mut HEAP_INDEX u32 0)
-(fn alloc [(size u32)] [ptr] (
-    {ref : ptr}
-    {ref = HEAP_INDEX}
-    {HEAP_INDEX = {HEAP_INDEX + size}}
-    ref
 ))
