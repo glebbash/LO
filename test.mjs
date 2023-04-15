@@ -90,6 +90,40 @@ test("compiles enums", async () => {
     assert.strictEqual(result, 1);
 });
 
+test("compiles vec", async () => {
+    const output = await compile(
+        compiler,
+        await readFile("./examples/vec.lole")
+    );
+
+    const lib = await loadWasm(output);
+
+    const vec = lib.vec_new(4, 1);
+    assert.deepEqual(vec, 0);
+
+    lib.vec_push_u8(vec, 1);
+
+    lib.vec_push_u8(vec, 3);
+    lib.vec_push_u8(vec, 2);
+    lib.vec_swap(vec, 1, 2);
+
+    storeData(lib.memory, 1000, new Uint8Array([4, 5]));
+    lib.vec_push_all(vec, 1000, 2);
+
+    storeData(lib.memory, 1000, new Uint8Array([6]));
+    lib.vec_push_all(vec, 1000, 1);
+
+    lib.vec_push_u8(vec, 7);
+
+    assert.strictEqual(lib.vec_get_u8(vec, 0), 1);
+    assert.strictEqual(lib.vec_get_u8(vec, 1), 2);
+    assert.strictEqual(lib.vec_get_u8(vec, 2), 3);
+    assert.strictEqual(lib.vec_get_u8(vec, 3), 4);
+    assert.strictEqual(lib.vec_get_u8(vec, 4), 5);
+    assert.strictEqual(lib.vec_get_u8(vec, 5), 6);
+    assert.strictEqual(lib.vec_get_u8(vec, 6), 7);
+});
+
 test("compiles parser", async () => {
     const output = await compile(
         compiler,

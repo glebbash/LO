@@ -879,6 +879,7 @@ fn parse_load_kind(kind: &str) -> Result<WasmLoadKind, String> {
 fn parse_store_kind(kind: &str) -> Result<WasmStoreKind, String> {
     Ok(match kind {
         "i32" => WasmStoreKind::I32,
+        "i32/u8" => WasmStoreKind::I32U8,
         _ => return Err(format!("Unknown store kind: {kind}")),
     })
 }

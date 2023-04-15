@@ -53,6 +53,7 @@ pub enum WasmLoadKind {
 #[derive(Clone, Copy)]
 pub enum WasmStoreKind {
     I32 = 0x36,
+    I32U8 = 0x3A,
 }
 
 pub enum WasmInstr {
