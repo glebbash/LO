@@ -131,24 +131,63 @@ test("compiles parser", async () => {
         await readFile("./examples/parser.lole")
     );
 
-    const program = await loadWasm(output);
+    const parser = await loadWasm(output);
 
-    const data = storeData(
-        program.memory,
-        0,
-        new TextEncoder().encode("   hello\nawdawdfad\naxwadada")
-    );
+    {
+        const text = new TextEncoder().encode("   hello\nawdawdfad\naxwadada");
+        const data = storeData(
+            parser.memory,
+            parser.alloc(text.byteLength),
+            text
+        );
 
-    assert.deepEqual(program.char_at(data.ptr, data.size, 3), [1, 104]);
-    assert.deepEqual(program.char_at(data.ptr, data.size, 10000), [0, 0]);
+        assert.deepEqual(parser.char_at(data.ptr, data.size, 3), [1, 104]);
+        assert.deepEqual(parser.char_at(data.ptr, data.size, 10000), [0, 0]);
 
-    assert.equal(program.skip_space(data.ptr, data.size, 0), 3);
+        assert.equal(parser.skip_space(data.ptr, data.size, 0), 3);
 
-    assert.deepEqual(program.char_at(data.ptr, data.size, 20), [1, 120]);
-    assert.deepEqual(
-        program.index_to_position(data.ptr, data.size, 20),
-        [3, 2]
-    );
+        assert.deepEqual(parser.char_at(data.ptr, data.size, 20), [1, 120]);
+        assert.deepEqual(
+            parser.index_to_position(data.ptr, data.size, 20),
+            [3, 2]
+        );
+    }
+
+    {
+        const [ok, index, expr_ref] = await parseExpr(parser, "abc");
+        assert.deepEqual([ok, index], [1, 3]);
+
+        const mem = parser.memory.buffer;
+
+        const [expr_type, atom_ref] = u32s(mem, expr_ref, 2);
+        assert.equal(expr_type, 0); // atom
+
+        const [len, cap, item_size, chars_ref] = u32s(mem, atom_ref, 4);
+        assert.deepEqual([len, cap, item_size], [3, 6, 1]);
+
+        const chars = new Uint8Array(mem, chars_ref, len);
+        assert.deepEqual(chars, new TextEncoder().encode("abc"));
+    }
+
+    {
+        const [ok, index, expr_ref] = await parseExpr(parser, "()");
+        assert.deepEqual([ok, index], [1, 2]);
+
+        const mem = parser.memory.buffer;
+
+        const [expr_type, atom_ref] = u32s(mem, expr_ref, 2);
+        assert.equal(expr_type, 1); // list
+
+        const [len, cap, item_size, _exprs_ref] = u32s(mem, atom_ref, 4);
+        assert.deepEqual([len, cap, item_size], [0, 6, 8]);
+    }
+
+    async function parseExpr(parser, text) {
+        const bytes = new TextEncoder().encode(text);
+        const data_ref = parser.alloc(bytes.byteLength);
+        const data = storeData(parser.memory, data_ref, bytes);
+        return await parser.parse_expr(data.ptr, data.size);
+    }
 });
 
 // utils
@@ -199,4 +238,13 @@ function storeData(memory, ptr, data) {
     new Uint8Array(memory.buffer, region.ptr, region.size).set(data);
 
     return region;
+}
+
+/**
+ * @param {ArrayBufferLike} buff
+ * @param {number} offset
+ * @param {number} length
+ */
+function u32s(buff, offset, length) {
+    return new Uint32Array(buff.slice(offset), 0, length);
 }

@@ -1,5 +1,9 @@
 (mem m1 :min 1000)
 
+;; exports for testing
+(export parse_expr :as parse_expr)
+(export alloc :as alloc)
+
 (export parse :as parse)
 (export index_to_position :as index_to_position)
 
@@ -33,10 +37,10 @@
 (struct Vec (length u32)(capacity u32)(item_size u32)(data_ref ptr))
 (fn Vec/new [(capacity u32)(item_size u32)][&Vec]({&self : &Vec}{&self = (alloc (sizeof Vec))}(store Vec &self (struct.new Vec 0 capacity item_size (alloc {capacity * item_size}))) &self ))
 (fn Vec/get_u8 [(&self &Vec)(index u32)][u8]({self : Vec}{self = (load Vec &self)}(load i32/u8 {{self . data_ref} + {index * {self . item_size}}})))
-(fn Vec/swap [(&self &Vec)(index1 u32)(index2 u32)][]({self : Vec}{self = (load Vec &self)}(memswap {{self . data_ref} + {index1 * {self . item_size}}}{{self . data_ref} + {index2 * {self . item_size}}}{self . item_size}) ))
+(fn Vec/swap [(&self &Vec)(index1 u32)(index2 u32)][]({self : Vec}{self = (load Vec &self)}(memswap {{self . data_ref} + {index1 * {self . item_size}}}{{self . data_ref} + {index2 * {self . item_size}}}{self . item_size})))
 (fn Vec/len [(&self &Vec)][u32]({self : Vec}{self = (load Vec &self)}{self . length}))
 (fn Vec/push_u8 [(&self &Vec)(item u8)][]({self : Vec}{self = (load Vec &self)}{index : u32}{index = {self . length}}{self = length {index + 1}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(store i32/u8 {{self . data_ref} + {index * {self . item_size}}} item )))
-(fn Vec/push_all [(&self &Vec)(&items ptr)(items_len u32)][]({self : Vec}{self = (load Vec &self)}{old_len : u32}{old_len = {self . length}}{self = length {old_len + items_len}}(store Vec &self self)(Vec/grow_if_needed &self)(memcpy &items {{self . data_ref} + {old_len * {self . item_size}}}{items_len * {self . item_size}}) ))
+(fn Vec/push_all [(&self &Vec)(&items ptr)(items_len u32)][]({self : Vec}{self = (load Vec &self)}{old_len : u32}{old_len = {self . length}}{self = length {old_len + items_len}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(memcpy &items {{self . data_ref} + {old_len * {self . item_size}}}{items_len * {self . item_size}})))
 (fn Vec/grow_if_needed [(&self &Vec)][]({self : Vec}{self = (load Vec &self)}(if {{self . length} == {self . capacity}}(do {new_cap : u32}{new_cap = {{self . capacity} * 2}}{old_data_ref : ptr}{old_data_ref = {self . data_ref}}{self = data_ref (alloc {new_cap * {self . item_size}})}(memcpy old_data_ref {self . data_ref}{self . capacity}){self = capacity new_cap}(free old_data_ref)))(store Vec &self self)))
 
 ;; mem utils
@@ -79,13 +83,13 @@
 
         (if (not {char_res . ok})
             (return (struct.new ParseResult
-                index false ParseError/UnexpectedEOF
+                false index ParseError/UnexpectedEOF
             ))
         )
 
         (if (not (is_list_start {char_res . char}))
             (return (struct.new ParseResult
-                index false ParseError/UnexpectedChar
+                false index ParseError/UnexpectedChar
             ))
         )
 
@@ -98,7 +102,7 @@
         {index = (skip_space chars index)}
     ))
 
-    (struct.new ParseResult index true &items)
+    (struct.new ParseResult true index &items)
 ))
 
 (fn parse_expr [(chars StringSlice) (index u32)] [ParseResult] (
@@ -107,7 +111,7 @@
 
     (if (not {char_res . ok})
         (return (struct.new ParseResult
-            index false ParseError/UnexpectedEOF
+            false index ParseError/UnexpectedEOF
         ))
     )
 
@@ -150,7 +154,7 @@
         &atom
     ))
 
-    (struct.new ParseResult index true &expr)
+    (struct.new ParseResult true index &expr)
 ))
 
 (fn parse_list [(chars StringSlice) (index u32)] [ParseResult] (
@@ -170,7 +174,7 @@
         {char_res = (char_at chars index)}
         (if (not {char_res . ok})
             (return (struct.new ParseResult
-                index false ParseError/UnexpectedEOF
+                false index ParseError/UnexpectedEOF
             ))
         )
 
@@ -190,7 +194,7 @@
     {char_res = (char_at chars index)}
     (if (not {char_res . ok})
         (return (struct.new ParseResult
-            index false ParseError/UnexpectedEOF
+            false index ParseError/UnexpectedEOF
         ))
     )
 
@@ -200,7 +204,7 @@
 
     (if (not (is_valid_list_chars list_start_char list_end_char))
         (return (struct.new ParseResult
-            index false ParseError/UnexpectedEOF
+            false index ParseError/UnexpectedEOF
         ))
     )
 
@@ -215,7 +219,7 @@
         &items
     ))
 
-    (struct.new ParseResult index true &expr)
+    (struct.new ParseResult true index &expr)
 ))
 
 ;; TODO: test comment skipping
