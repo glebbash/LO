@@ -86,6 +86,8 @@
 
     (Vec/grow_if_needed &self)
 
+    {self = (load Vec &self)}
+
     (memcpy
         &items
         {{self . data_ref} + {old_len * {self . item_size}}}
@@ -93,6 +95,7 @@
     )
 ))
 
+;; TODO: do not realloc if length is equal to capacity
 (fn Vec/grow_if_needed [(&self &Vec)] [] (
     {self : Vec}
     {self = (load Vec &self)}
