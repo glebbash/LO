@@ -7,9 +7,8 @@ function minify(input) {
         const trimmed = input
             .replace(/;.*\n/g, "")
             .replace(/\s+/g, " ")
+            .replace(/ ([\)\}\]])/g, "$1")
             .replace(/([\(\{\[]) ([\(\{\[])/g, "$1$2")
-            .replace(/([\(\{\[]) ([\)\}\]])/g, "$1$2")
-            .replace(/([\)\}\]]) ([\)\}\]])/g, "$1$2")
             .replace(/([\)\}\]]) ([\(\{\[])/g, "$1$2");
 
         if (trimmed.length === input.length) break;
