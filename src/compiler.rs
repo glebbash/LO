@@ -1,8 +1,9 @@
 use crate::{
     parser::SExpr,
     wasm_module::{
-        WasmBinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFnCode, WasmFnType, WasmGlobal,
-        WasmInstr, WasmLoadKind, WasmLocals, WasmMemory, WasmModule, WasmStoreKind, WasmValueType,
+        WasmBinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType, WasmGlobal,
+        WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits, WasmLoadKind,
+        WasmLocals, WasmModule, WasmStoreKind, WasmValueType,
     },
 };
 use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
@@ -97,7 +98,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             });
         }
 
-        module.fn_codes.push(WasmFnCode {
+        module.functions.push(WasmFn {
             locals,
             expr: WasmExpr { instrs },
         });
@@ -105,7 +106,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
 
     // push function types
     for fn_def in ctx.fn_defs.into_values() {
-        module.fn_types.push(fn_def.fn_type);
+        module.types.push(fn_def.fn_type);
     }
 
     Ok(module)
@@ -152,7 +153,7 @@ fn compile_top_level_expr(
                 };
 
                 ctx.memory_names.push(mem_name.clone());
-                module.memories.push(WasmMemory {
+                module.memories.push(WasmLimits {
                     min: min_memory,
                     max: max_memory,
                 });
@@ -160,10 +161,10 @@ fn compile_top_level_expr(
             _ => return Err(format!("Invalid arguments for {op}")),
         },
         "fn" => match other {
-            [SExpr::Atom(name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(body)] =>
+            [SExpr::Atom(fn_name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(body)] =>
             {
-                if ctx.fn_defs.contains_key(name) {
-                    return Err(format!("Cannot redefine function: {name}"));
+                if ctx.fn_defs.contains_key(fn_name) {
+                    return Err(format!("Cannot redefine function: {fn_name}"));
                 }
 
                 let mut locals = BTreeMap::new();
@@ -211,7 +212,7 @@ fn compile_top_level_expr(
                 }
 
                 ctx.fn_defs.insert(
-                    name.clone(),
+                    fn_name.clone(),
                     FnDef {
                         fn_type: WasmFnType { inputs, outputs },
                         locals: RefCell::new(locals),
@@ -219,6 +220,68 @@ fn compile_top_level_expr(
                         body: body.clone(),
                     },
                 );
+            }
+            _ => return Err(format!("Invalid arguments for {op}")),
+        },
+        "import" => match other {
+            [SExpr::Atom(fn_literal), SExpr::Atom(fn_name), /* * */
+             SExpr::List(input_exprs), SExpr::List(output_exprs), /* * */
+             SExpr::Atom(from_literal), SExpr::Atom(module_name), SExpr::Atom(extern_fn_name)]
+                if fn_literal == "fn" && from_literal == ":from" =>
+            {
+                if ctx.fn_defs.contains_key(fn_name) {
+                    return Err(format!("Cannot redefine function: {fn_name}"));
+                }
+
+                let mut locals = BTreeMap::new();
+                let mut locals_last_index = 0;
+
+                let mut inputs = vec![];
+                for input_expr in input_exprs.iter() {
+                    let SExpr::List(name_and_type) = input_expr else {
+                        return Err(format!("Unexpected atom in function params list"));
+                    };
+
+                    let [SExpr::Atom(p_name), SExpr::Atom(p_type)] = &name_and_type[..] else {
+                        return Err(format!("Expected name and parameter pairs in function params list"));
+                    };
+
+                    if locals.contains_key(p_name) {
+                        return Err(format!(
+                            "Found function param with conflicting name: {p_name}"
+                        ));
+                    }
+
+                    let value_type = parse_value_type(p_type, &ctx)?;
+                    let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
+
+                    locals.insert(
+                        p_name.clone(),
+                        LocalDef {
+                            index: locals_last_index,
+                            value_type,
+                        },
+                    );
+
+                    locals_last_index += comp_count;
+                }
+
+                let mut outputs = vec![];
+                for output_expr in output_exprs {
+                    let l_type = match output_expr {
+                        SExpr::Atom(atom_text) => atom_text,
+                        _ => return Err(format!("Atom expected, list found")),
+                    };
+
+                    let value_type = parse_value_type(l_type, &ctx)?;
+                    emit_value_components(&value_type, &ctx, &mut outputs);
+                }
+
+                module.imports.push(WasmImport {
+                    module_name: module_name.clone(),
+                    item_name: extern_fn_name.clone(),
+                    item_desc: WasmImportDesc::Func { type_index: todo!() },
+                });
             }
             _ => return Err(format!("Invalid arguments for {op}")),
         },
@@ -333,8 +396,10 @@ fn compile_top_level_expr(
             );
 
             module.globals.push(WasmGlobal {
-                value_type,
-                mutable,
+                kind: WasmGlobalKind {
+                    value_type,
+                    mutable,
+                },
                 initial_value,
             });
         }

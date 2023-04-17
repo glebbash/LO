@@ -2,9 +2,10 @@ use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 
 #[derive(Default)]
 pub struct WasmModule {
-    pub fn_types: Vec<WasmFnType>,
-    pub fn_codes: Vec<WasmFnCode>,
-    pub memories: Vec<WasmMemory>,
+    pub types: Vec<WasmFnType>,
+    pub imports: Vec<WasmImport>,
+    pub functions: Vec<WasmFn>,
+    pub memories: Vec<WasmLimits>,
     pub globals: Vec<WasmGlobal>,
     pub exports: Vec<WasmExport>,
 }
@@ -14,7 +15,17 @@ pub struct WasmFnType {
     pub outputs: Vec<WasmValueType>,
 }
 
-pub struct WasmFnCode {
+pub struct WasmImport {
+    pub module_name: String,
+    pub item_name: String,
+    pub item_desc: WasmImportDesc,
+}
+
+pub enum WasmImportDesc {
+    Func { type_index: u32 },
+}
+
+pub struct WasmFn {
     pub locals: Vec<WasmLocals>,
     pub expr: WasmExpr,
 }
@@ -119,7 +130,6 @@ pub enum WasmInstr {
 }
 
 #[repr(u8)]
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub enum WasmValueType {
     I32 = 0x7f,
@@ -131,15 +141,21 @@ pub enum WasmValueType {
     ExternRef = 0x6f,
 }
 
-pub struct WasmMemory {
+#[derive(Clone, Copy)]
+pub struct WasmLimits {
     pub min: u32,
     pub max: Option<u32>,
 }
 
 pub struct WasmGlobal {
+    pub kind: WasmGlobalKind,
+    pub initial_value: WasmExpr,
+}
+
+#[derive(Clone, Copy)]
+pub struct WasmGlobalKind {
     pub value_type: WasmValueType,
     pub mutable: bool,
-    pub initial_value: WasmExpr,
 }
 
 pub struct WasmExport {
@@ -149,11 +165,8 @@ pub struct WasmExport {
 }
 
 #[repr(u8)]
-#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum WasmExportType {
     Func = 0x00,
-    Table = 0x01,
     Mem = 0x02,
-    Global = 0x03,
 }

@@ -1,7 +1,8 @@
-use crate::wasm_module::{WasmExpr, WasmInstr, WasmModule};
+use crate::wasm_module::{WasmExpr, WasmImportDesc, WasmInstr, WasmModule};
 use alloc::vec::Vec;
 
 const SECTION_TYPE: u8 = 0x01;
+const SECTION_IMPORT: u8 = 0x02;
 const SECTION_FUNC: u8 = 0x03;
 const SECTION_MEMORY: u8 = 0x05;
 const SECTION_GLOBAL: u8 = 0x06;
@@ -23,6 +24,7 @@ impl<'a> BinaryBuilder<'a> {
     pub fn build(mut self) -> Vec<u8> {
         self.emit_magic_and_version();
         self.emit_type_section();
+        self.emit_import_section();
         self.emit_func_section();
         self.emit_memory_section();
         self.emit_global_section();
@@ -45,8 +47,8 @@ impl<'a> BinaryBuilder<'a> {
         let mut type_section = Vec::new();
 
         {
-            write_u32(&mut type_section, self.module.fn_types.len() as u32);
-            for fn_type in &self.module.fn_types {
+            write_u32(&mut type_section, self.module.types.len() as u32);
+            for fn_type in &self.module.types {
                 type_section.push(0x60); // func type
 
                 write_u32(&mut type_section, fn_type.inputs.len() as u32);
@@ -65,6 +67,29 @@ impl<'a> BinaryBuilder<'a> {
         self.data.append(&mut type_section);
     }
 
+    fn emit_import_section(&mut self) {
+        self.data.push(SECTION_IMPORT);
+
+        let mut import_section = Vec::new();
+
+        {
+            write_u32(&mut import_section, self.module.imports.len() as u32);
+            for import in &self.module.imports {
+                import_section.extend_from_slice(import.module_name.as_bytes());
+                import_section.extend_from_slice(import.item_name.as_bytes());
+
+                match import.item_desc {
+                    WasmImportDesc::Func { type_index } => {
+                        write_u32(&mut import_section, type_index);
+                    }
+                }
+            }
+        }
+
+        write_u32(&mut self.data, import_section.len() as u32);
+        self.data.append(&mut import_section);
+    }
+
     /**
     Currently functions and their types map 1 to 1.
 
@@ -73,10 +98,10 @@ impl<'a> BinaryBuilder<'a> {
     fn emit_func_section(&mut self) {
         self.data.push(SECTION_FUNC);
 
-        write_u32(&mut self.data, (self.module.fn_types.len() + 1) as u32);
+        write_u32(&mut self.data, (self.module.types.len() + 1) as u32);
 
-        write_u32(&mut self.data, self.module.fn_types.len() as u32);
-        for i in 0..self.module.fn_types.len() {
+        write_u32(&mut self.data, self.module.types.len() as u32);
+        for i in 0..self.module.types.len() {
             write_u32(&mut self.data, i as u32);
         }
     }
@@ -112,9 +137,9 @@ impl<'a> BinaryBuilder<'a> {
         {
             write_u32(&mut global_section, self.module.globals.len() as u32);
             for global in &self.module.globals {
-                global_section.push(global.value_type as u8);
+                global_section.push(global.kind.value_type as u8);
 
-                if global.mutable {
+                if global.kind.mutable {
                     global_section.push(0x01);
                 } else {
                     global_section.push(0x00);
@@ -157,8 +182,8 @@ impl<'a> BinaryBuilder<'a> {
         {
             let mut fn_section = Vec::new();
 
-            write_u32(&mut code_section, self.module.fn_codes.len() as u32);
-            for fn_code in &self.module.fn_codes {
+            write_u32(&mut code_section, self.module.functions.len() as u32);
+            for fn_code in &self.module.functions {
                 {
                     write_u32(&mut fn_section, fn_code.locals.len() as u32);
                     for locals_of_some_type in &fn_code.locals {
