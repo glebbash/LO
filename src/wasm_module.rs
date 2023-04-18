@@ -4,10 +4,11 @@ use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 pub struct WasmModule {
     pub types: Vec<WasmFnType>,
     pub imports: Vec<WasmImport>,
-    pub functions: Vec<WasmFn>,
+    pub functions: Vec<u32>,
     pub memories: Vec<WasmLimits>,
     pub globals: Vec<WasmGlobal>,
     pub exports: Vec<WasmExport>,
+    pub codes: Vec<WasmFn>,
 }
 
 pub struct WasmFnType {
@@ -161,7 +162,7 @@ pub struct WasmGlobalKind {
 pub struct WasmExport {
     pub export_type: WasmExportType,
     pub export_name: String,
-    pub exported_item_index: usize,
+    pub exported_item_index: u32,
 }
 
 #[repr(u8)]

@@ -1,0 +1,8 @@
+(import fn debug [(x u32)] [] :from utils debug)
+
+(export main :as main)
+(fn main [] [] (
+    (debug 1)
+    (debug 2)
+    (debug 3)
+))

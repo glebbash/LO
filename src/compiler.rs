@@ -6,11 +6,19 @@ use crate::{
         WasmLocals, WasmModule, WasmStoreKind, WasmValueType,
     },
 };
-use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    format,
+    rc::Rc,
+    string::String,
+    vec,
+    vec::Vec,
+};
 use core::cell::RefCell;
 
-struct FnDef {
-    fn_type: WasmFnType,
+struct FnBody {
+    fn_index: u32,
     locals: RefCell<BTreeMap<String, LocalDef>>,
     locals_last_index: u32,
     body: Vec<SExpr>,
@@ -33,11 +41,18 @@ enum ValueType {
 #[derive(Default)]
 struct ModuleContext {
     fn_defs: BTreeMap<String, FnDef>,
+    fn_bodies: BTreeMap<String, FnBody>,
     fn_exports: BTreeMap<String, String>,
     memory_names: Vec<String>,
     struct_defs: BTreeMap<String, StructDef>,
     enum_kinds: BTreeMap<String, u32>,
     globals: BTreeMap<String, GlobalDef>,
+    imported_fns_count: u32,
+}
+
+struct FnDef {
+    local: bool,
+    fn_index: u32,
 }
 
 struct FnContext<'a> {
@@ -73,22 +88,25 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             export_name: out_name.clone(),
             exported_item_index: ctx
                 .fn_defs
-                .keys()
-                .position(|fn_name| fn_name == in_name)
+                .get(in_name)
+                .map(|fd| ctx.imported_fns_count + fd.fn_index)
                 .ok_or_else(|| format!("Cannot export unknown function {in_name}"))?,
         });
     }
 
+    let mut fn_defs_sorted = ctx.fn_bodies.values().collect::<Vec<_>>();
+    fn_defs_sorted.sort_by_key(|fd| fd.fn_index);
+
     // push function codes
-    for fn_meta in ctx.fn_defs.values() {
+    for fn_def in fn_defs_sorted {
         let mut fn_ctx = FnContext {
             module: &ctx,
-            locals: &mut fn_meta.locals.borrow_mut(),
-            locals_last_index: fn_meta.locals_last_index,
+            locals: &mut fn_def.locals.borrow_mut(),
+            locals_last_index: fn_def.locals_last_index,
             non_arg_locals: vec![],
         };
 
-        let instrs = parse_instrs(&fn_meta.body, &mut fn_ctx)?;
+        let instrs = parse_instrs(&fn_def.body, &mut fn_ctx)?;
 
         let mut locals = vec![];
         for local_type in fn_ctx.non_arg_locals {
@@ -98,15 +116,10 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, String> {
             });
         }
 
-        module.functions.push(WasmFn {
+        module.codes.push(WasmFn {
             locals,
             expr: WasmExpr { instrs },
         });
-    }
-
-    // push function types
-    for fn_def in ctx.fn_defs.into_values() {
-        module.types.push(fn_def.fn_type);
     }
 
     Ok(module)
@@ -211,10 +224,22 @@ fn compile_top_level_expr(
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
+                module.types.push(WasmFnType { inputs, outputs });
+                let type_index = module.types.len() as u32 - 1;
+                let fn_index = module.functions.len() as u32;
+
+                module.functions.push(type_index);
                 ctx.fn_defs.insert(
                     fn_name.clone(),
                     FnDef {
-                        fn_type: WasmFnType { inputs, outputs },
+                        local: true,
+                        fn_index,
+                    },
+                );
+                ctx.fn_bodies.insert(
+                    fn_name.clone(),
+                    FnBody {
+                        fn_index,
                         locals: RefCell::new(locals),
                         locals_last_index,
                         body: body.clone(),
@@ -233,8 +258,7 @@ fn compile_top_level_expr(
                     return Err(format!("Cannot redefine function: {fn_name}"));
                 }
 
-                let mut locals = BTreeMap::new();
-                let mut locals_last_index = 0;
+                let mut param_names = BTreeSet::new();
 
                 let mut inputs = vec![];
                 for input_expr in input_exprs.iter() {
@@ -246,24 +270,16 @@ fn compile_top_level_expr(
                         return Err(format!("Expected name and parameter pairs in function params list"));
                     };
 
-                    if locals.contains_key(p_name) {
+                    if param_names.contains(p_name) {
                         return Err(format!(
                             "Found function param with conflicting name: {p_name}"
                         ));
                     }
 
                     let value_type = parse_value_type(p_type, &ctx)?;
-                    let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
+                    emit_value_components(&value_type, &ctx, &mut inputs);
 
-                    locals.insert(
-                        p_name.clone(),
-                        LocalDef {
-                            index: locals_last_index,
-                            value_type,
-                        },
-                    );
-
-                    locals_last_index += comp_count;
+                    param_names.insert(p_name.clone());
                 }
 
                 let mut outputs = vec![];
@@ -277,10 +293,19 @@ fn compile_top_level_expr(
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
+                let type_index = module.types.len() as u32;
+                let fn_index =  ctx.imported_fns_count;
+
+                ctx.imported_fns_count += 1;
+                ctx.fn_defs.insert(fn_name.clone(), FnDef {
+                    local: false,
+                    fn_index,
+                });
+                module.types.push(WasmFnType { inputs, outputs });
                 module.imports.push(WasmImport {
                     module_name: module_name.clone(),
                     item_name: extern_fn_name.clone(),
-                    item_desc: WasmImportDesc::Func { type_index: todo!() },
+                    item_desc: WasmImportDesc::Func { type_index },
                 });
             }
             _ => return Err(format!("Invalid arguments for {op}")),
@@ -296,11 +321,8 @@ fn compile_top_level_expr(
                 module.exports.push(WasmExport {
                     export_type: WasmExportType::Mem,
                     export_name: out_name.clone(),
-                    exported_item_index: ctx
-                        .memory_names
-                        .iter()
-                        .position(|n| n == in_name)
-                        .unwrap(),
+                    exported_item_index: ctx.memory_names.iter().position(|n| n == in_name).unwrap()
+                        as u32,
                 });
             }
             [SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)]
@@ -826,12 +848,17 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             values: parse_instrs(exprs, ctx)?,
         },
         (fn_name, args) => {
-            let Some(fn_index) = ctx.module.fn_defs.keys().position(|k| k == fn_name) else {
+            let Some(fn_def) = ctx.module.fn_defs.get(fn_name) else {
                 return Err(format!("Unknown instruction or function: {fn_name}"));
+            };
+            let fn_index = if fn_def.local {
+                fn_def.fn_index + ctx.module.imported_fns_count
+            } else {
+                fn_def.fn_index
             };
 
             WasmInstr::Call {
-                fn_index: fn_index as u32,
+                fn_index,
                 args: parse_instrs(args, ctx)?,
             }
         }

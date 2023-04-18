@@ -25,7 +25,7 @@ impl<'a> BinaryBuilder<'a> {
         self.emit_magic_and_version();
         self.emit_type_section();
         self.emit_import_section();
-        self.emit_func_section();
+        self.emit_function_section();
         self.emit_memory_section();
         self.emit_global_section();
         self.emit_export_section();
@@ -75,11 +75,15 @@ impl<'a> BinaryBuilder<'a> {
         {
             write_u32(&mut import_section, self.module.imports.len() as u32);
             for import in &self.module.imports {
+                write_u32(&mut import_section, import.module_name.len() as u32);
                 import_section.extend_from_slice(import.module_name.as_bytes());
+
+                write_u32(&mut import_section, import.item_name.len() as u32);
                 import_section.extend_from_slice(import.item_name.as_bytes());
 
                 match import.item_desc {
                     WasmImportDesc::Func { type_index } => {
+                        write_u32(&mut import_section, 0x00); // fn
                         write_u32(&mut import_section, type_index);
                     }
                 }
@@ -90,19 +94,15 @@ impl<'a> BinaryBuilder<'a> {
         self.data.append(&mut import_section);
     }
 
-    /**
-    Currently functions and their types map 1 to 1.
-
-    TODO(optimize): Functions with equivalent types can point to the same type
-    */
-    fn emit_func_section(&mut self) {
+    // TODO(optimize): Functions with equivalent types can point to the same type
+    fn emit_function_section(&mut self) {
         self.data.push(SECTION_FUNC);
 
-        write_u32(&mut self.data, (self.module.types.len() + 1) as u32);
+        write_u32(&mut self.data, (self.module.functions.len() + 1) as u32);
 
-        write_u32(&mut self.data, self.module.types.len() as u32);
-        for i in 0..self.module.types.len() {
-            write_u32(&mut self.data, i as u32);
+        write_u32(&mut self.data, self.module.functions.len() as u32);
+        for type_index in &self.module.functions {
+            write_u32(&mut self.data, *type_index);
         }
     }
 
@@ -166,7 +166,7 @@ impl<'a> BinaryBuilder<'a> {
 
                 export_section.push(export.export_type as u8);
 
-                write_u32(&mut export_section, export.exported_item_index as u32);
+                write_u32(&mut export_section, export.exported_item_index);
             }
         }
 
@@ -182,8 +182,8 @@ impl<'a> BinaryBuilder<'a> {
         {
             let mut fn_section = Vec::new();
 
-            write_u32(&mut code_section, self.module.functions.len() as u32);
-            for fn_code in &self.module.functions {
+            write_u32(&mut code_section, self.module.codes.len() as u32);
+            for fn_code in &self.module.codes {
                 {
                     write_u32(&mut fn_section, fn_code.locals.len() as u32);
                     for locals_of_some_type in &fn_code.locals {

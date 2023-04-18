@@ -90,6 +90,21 @@ test("compiles enums", async () => {
     assert.strictEqual(result, 1);
 });
 
+test("compiles import", async () => {
+    const output = await compile(
+        compiler,
+        await readFile("./examples/import.lole")
+    );
+
+    const logs = [];
+    const program = await loadWasm(output, {
+        utils: { debug: (x) => logs.push(x) },
+    });
+
+    program.main();
+    assert.deepEqual(logs, [1, 2, 3]);
+});
+
 test("compiles vec", async () => {
     const output = await compile(
         compiler,
@@ -194,10 +209,11 @@ test("compiles parser", async () => {
 
 /**
  * @param {BufferSource} data
+ * @param {WebAssembly.Imports} [imports]
  * @returns {Promise<any>}
  */
-async function loadWasm(data) {
-    const mod = await WebAssembly.instantiate(data);
+async function loadWasm(data, imports) {
+    const mod = await WebAssembly.instantiate(data, imports);
     return mod.instance.exports;
 }
 
