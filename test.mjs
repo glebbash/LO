@@ -185,8 +185,8 @@ test("compiles parser", async () => {
     }
 
     {
-        const [ok, index, expr_ref] = await parseExpr(parser, "()");
-        assert.deepEqual([ok, index], [1, 2]);
+        const [ok, index, expr_ref] = await parseExpr(parser, "(a)");
+        assert.deepEqual([ok, index], [1, 3]);
 
         const mem = parser.memory.buffer;
 
@@ -194,7 +194,22 @@ test("compiles parser", async () => {
         assert.equal(expr_type, 1); // list
 
         const [len, cap, item_size, _exprs_ref] = u32s(mem, atom_ref, 4);
-        assert.deepEqual([len, cap, item_size], [0, 6, 8]);
+        assert.deepEqual([len, cap, item_size], [1, 6, 8]);
+    }
+
+    {
+        const res = await parseAll(
+            parser,
+            await readFile("examples/parser.lole", { encoding: "utf8" })
+        );
+        assert.deepEqual(res, [1, 9702, 9867]);
+    }
+
+    async function parseAll(parser, text) {
+        const bytes = new TextEncoder().encode(text);
+        const data_ref = parser.alloc(bytes.byteLength);
+        const data = storeData(parser.memory, data_ref, bytes);
+        return await parser.parse(data.ptr, data.size);
     }
 
     async function parseExpr(parser, text) {

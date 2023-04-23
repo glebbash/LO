@@ -99,7 +99,7 @@
 
         (Vec/push_all &items {res . data} 1)
 
-        {index = (skip_space chars index)}
+        {index = (skip_space chars {res . index})}
     ))
 
     (struct.new ParseResult true index &items)
@@ -188,7 +188,7 @@
 
         (Vec/push_all &items {res . data} 1)
 
-        {index = (skip_space chars index)}
+        {index = (skip_space chars {res . index})}
     ))
 
     {char_res = (char_at chars index)}
