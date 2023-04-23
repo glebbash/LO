@@ -1,14 +1,12 @@
 (mem m1 :min 1000)
-
-;; exports for testing
-(export parse_expr :as parse_expr)
-(export alloc :as alloc)
+(export mem m1 :as memory)
 
 (export parse :as parse)
 (export index_to_position :as index_to_position)
 
-;; temporary exporting for testing
-(export mem m1 :as memory)
+;; exports for testing
+(export parse_expr :as parse_expr)
+(export alloc :as alloc)
 (export skip_space :as skip_space)
 (export char_at :as char_at)
 
@@ -23,14 +21,9 @@
 (global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
 (global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
 
-(struct StringSlice
-    (data ptr)
-    (size u32)
-)
-
-(fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
-    (load i32/u8 {{self . data} + index})
-))
+;; StringSlice
+(struct StringSlice (data ptr)(size u32))
+(fn StringSlice/char_at [(self StringSlice)(index u32)][u8]((load i32/u8 {{self . data} + index})))
 
 ;; Vec
 (struct &Vec (ref ptr))
