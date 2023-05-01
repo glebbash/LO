@@ -58,7 +58,6 @@
     (data u32) ; ParseError/* or pointer to some result
 )
 
-;; TODO: test
 (fn parse [(chars StringSlice)] [ParseResult] (
     {index : u32}
     {index = 0}
@@ -215,7 +214,6 @@
     (struct.new ParseResult true index &expr)
 ))
 
-;; TODO: test comment skipping
 (fn skip_space [(chars StringSlice) (index u32)] [u32] (
     {char_res : CharAtResult}
 
