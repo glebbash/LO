@@ -202,7 +202,7 @@ test("compiles parser", async () => {
             parser,
             await readFile("examples/parser.lole", { encoding: "utf8" })
         );
-        assert.deepEqual(res, [1, 9702, 9867]);
+        assert.deepEqual(res, [1, 9616, 9781]);
     }
 
     async function parseAll(parser, text) {

@@ -130,17 +130,23 @@ fn compile_top_level_expr(
     ctx: &mut ModuleContext,
     module: &mut WasmModule,
 ) -> Result<(), String> {
-    let SExpr::List(items) = expr else {
+    let SExpr::List {value: items, ..} = expr else {
         return Err(format!("Unexpected atom"));
     };
 
-    let [SExpr::Atom(op), other @ ..] = &items[..] else {
+    let [SExpr::Atom{value: op, ..}, other @ ..] = &items[..] else {
         return Err(format!("Expected operation, got a simple list"));
     };
 
     match op.as_str() {
         "mem" => match other {
-            [SExpr::Atom(mem_name), SExpr::Atom(min_literal), SExpr::Atom(min_memory), optional @ ..]
+            [SExpr::Atom {
+                value: mem_name, ..
+            }, SExpr::Atom {
+                value: min_literal, ..
+            }, SExpr::Atom {
+                value: min_memory, ..
+            }, optional @ ..]
                 if min_literal == ":min" =>
             {
                 if ctx.memory_names.contains(mem_name) {
@@ -152,15 +158,15 @@ fn compile_top_level_expr(
                     .map_err(|_| format!("Parsing {op} :min (u32) failed"))?;
 
                 let max_memory = match optional {
-                    [SExpr::Atom(max_literal), SExpr::Atom(max_memory)]
-                        if max_literal == ":max" =>
-                    {
-                        Some(
-                            max_memory
-                                .parse::<u32>()
-                                .map_err(|_| format!("Parsing {op} :max (u32) failed"))?,
-                        )
-                    }
+                    [SExpr::Atom {
+                        value: max_literal, ..
+                    }, SExpr::Atom {
+                        value: max_memory, ..
+                    }] if max_literal == ":max" => Some(
+                        max_memory
+                            .parse::<u32>()
+                            .map_err(|_| format!("Parsing {op} :max (u32) failed"))?,
+                    ),
                     [] => None,
                     _ => return Err(format!("Invalid arguments for {op}")),
                 };
@@ -174,8 +180,12 @@ fn compile_top_level_expr(
             _ => return Err(format!("Invalid arguments for {op}")),
         },
         "fn" => match other {
-            [SExpr::Atom(fn_name), SExpr::List(input_exprs), SExpr::List(output_exprs), SExpr::List(body)] =>
-            {
+            [SExpr::Atom { value: fn_name, .. }, SExpr::List {
+                value: input_exprs, ..
+            }, SExpr::List {
+                value: output_exprs,
+                ..
+            }, SExpr::List { value: body, .. }] => {
                 if ctx.fn_defs.contains_key(fn_name) {
                     return Err(format!("Cannot redefine function: {fn_name}"));
                 }
@@ -185,11 +195,11 @@ fn compile_top_level_expr(
 
                 let mut inputs = vec![];
                 for input_expr in input_exprs.iter() {
-                    let SExpr::List(name_and_type) = input_expr else {
+                    let SExpr::List{ value: name_and_type, .. } = input_expr else {
                         return Err(format!("Unexpected atom in function params list"));
                     };
 
-                    let [SExpr::Atom(p_name), SExpr::Atom(p_type)] = &name_and_type[..] else {
+                    let [SExpr::Atom { value: p_name, .. }, SExpr::Atom { value: p_type, .. }] = &name_and_type[..] else {
                         return Err(format!("Expected name and parameter pairs in function params list"));
                     };
 
@@ -216,7 +226,9 @@ fn compile_top_level_expr(
                 let mut outputs = vec![];
                 for output_expr in output_exprs {
                     let l_type = match output_expr {
-                        SExpr::Atom(atom_text) => atom_text,
+                        SExpr::Atom {
+                            value: atom_text, ..
+                        } => atom_text,
                         _ => return Err(format!("Atom expected, list found")),
                     };
 
@@ -249,9 +261,9 @@ fn compile_top_level_expr(
             _ => return Err(format!("Invalid arguments for {op}")),
         },
         "import" => match other {
-            [SExpr::Atom(fn_literal), SExpr::Atom(fn_name), /* * */
-             SExpr::List(input_exprs), SExpr::List(output_exprs), /* * */
-             SExpr::Atom(from_literal), SExpr::Atom(module_name), SExpr::Atom(extern_fn_name)]
+            [SExpr::Atom { value: fn_literal, .. }, SExpr::Atom { value: fn_name, .. }, /* * */
+             SExpr::List{ value: input_exprs, .. }, SExpr::List{ value: output_exprs, .. }, /* * */
+             SExpr::Atom { value: from_literal, .. }, SExpr::Atom { value: module_name, .. }, SExpr::Atom { value: extern_fn_name, .. }]
                 if fn_literal == "fn" && from_literal == ":from" =>
             {
                 if ctx.fn_defs.contains_key(fn_name) {
@@ -262,11 +274,11 @@ fn compile_top_level_expr(
 
                 let mut inputs = vec![];
                 for input_expr in input_exprs.iter() {
-                    let SExpr::List(name_and_type) = input_expr else {
+                    let SExpr::List{ value: name_and_type, .. } = input_expr else {
                         return Err(format!("Unexpected atom in function params list"));
                     };
 
-                    let [SExpr::Atom(p_name), SExpr::Atom(p_type)] = &name_and_type[..] else {
+                    let [SExpr::Atom { value: p_name, .. }, SExpr::Atom { value: p_type, .. }] = &name_and_type[..] else {
                         return Err(format!("Expected name and parameter pairs in function params list"));
                     };
 
@@ -285,7 +297,7 @@ fn compile_top_level_expr(
                 let mut outputs = vec![];
                 for output_expr in output_exprs {
                     let l_type = match output_expr {
-                        SExpr::Atom(atom_text) => atom_text,
+                        SExpr::Atom { value: atom_text, .. } => atom_text,
                         _ => return Err(format!("Atom expected, list found")),
                     };
 
@@ -311,9 +323,13 @@ fn compile_top_level_expr(
             _ => return Err(format!("Invalid arguments for {op}")),
         },
         "export" => match other {
-            [SExpr::Atom(mem_literal), SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)]
-                if mem_literal == "mem" && as_literal == ":as" =>
-            {
+            [SExpr::Atom {
+                value: mem_literal, ..
+            }, SExpr::Atom { value: in_name, .. }, SExpr::Atom {
+                value: as_literal, ..
+            }, SExpr::Atom {
+                value: out_name, ..
+            }] if mem_literal == "mem" && as_literal == ":as" => {
                 if !ctx.memory_names.contains(in_name) {
                     return Err(format!("Cannot export mem {in_name}, not found"));
                 }
@@ -325,15 +341,19 @@ fn compile_top_level_expr(
                         as u32,
                 });
             }
-            [SExpr::Atom(in_name), SExpr::Atom(as_literal), SExpr::Atom(out_name)]
-                if as_literal == ":as" =>
-            {
+            [SExpr::Atom { value: in_name, .. }, SExpr::Atom {
+                value: as_literal, ..
+            }, SExpr::Atom {
+                value: out_name, ..
+            }] if as_literal == ":as" => {
                 ctx.fn_exports.insert(in_name.clone(), out_name.clone());
             }
             _ => return Err(format!("Invalid arguments for {op}")),
         },
         "struct" => match other {
-            [SExpr::Atom(struct_name), field_defs @ ..] => {
+            [SExpr::Atom {
+                value: struct_name, ..
+            }, field_defs @ ..] => {
                 if ctx.struct_defs.contains_key(struct_name) {
                     return Err(format!("Cannot redefine struct {struct_name}"));
                 }
@@ -346,13 +366,15 @@ fn compile_top_level_expr(
             _ => return Err(format!("Invalid arguments for {op}")),
         },
         "enum" => match other {
-            [SExpr::Atom(enum_name), variants @ ..] => {
+            [SExpr::Atom {
+                value: enum_name, ..
+            }, variants @ ..] => {
                 for (kind, variant) in variants.iter().enumerate() {
-                    let SExpr::List(variant_body) = variant else {
+                    let SExpr::List{ value: variant_body, .. } = variant else {
                         return Err(format!("Invalid arguments for {op}"));
                     };
 
-                    let [SExpr::Atom(struct_name), field_defs @ ..] = &variant_body[..] else {
+                    let [SExpr::Atom { value: struct_name, .. }, field_defs @ ..] = &variant_body[..] else {
                         return Err(format!("Invalid arguments for {op}"));
                     };
 
@@ -389,14 +411,23 @@ fn compile_top_level_expr(
         },
         "global" => {
             let (mutable, global_name, global_type, global_value) = match other {
-                [SExpr::Atom(mutable_literal), SExpr::Atom(global_name), SExpr::Atom(global_type), global_value]
+                [SExpr::Atom {
+                    value: mutable_literal,
+                    ..
+                }, SExpr::Atom {
+                    value: global_name, ..
+                }, SExpr::Atom {
+                    value: global_type, ..
+                }, global_value]
                     if mutable_literal == "mut" =>
                 {
                     (true, global_name, global_type, global_value)
                 }
-                [SExpr::Atom(global_name), SExpr::Atom(global_type), global_value] => {
-                    (false, global_name, global_type, global_value)
-                }
+                [SExpr::Atom {
+                    value: global_name, ..
+                }, SExpr::Atom {
+                    value: global_type, ..
+                }, global_value] => (false, global_name, global_type, global_value),
                 _ => return Err(format!("Invalid arguments for {op}")),
             };
 
@@ -434,11 +465,11 @@ fn compile_top_level_expr(
 fn parse_struct_field_defs(exprs: &[SExpr], struct_name: &str) -> Result<Vec<StructField>, String> {
     let mut fields = Vec::<StructField>::new();
     for field_def in exprs {
-        let SExpr::List(name_and_type) = field_def else {
+        let SExpr::List{ value: name_and_type, .. } = field_def else {
             return Err(format!("Unexpected atom in fields list of struct {struct_name}"));
         };
 
-        let [SExpr::Atom(f_name), SExpr::Atom(f_type)] = &name_and_type[..] else {
+        let [SExpr::Atom { value: f_name, .. }, SExpr::Atom { value: f_type, .. }] = &name_and_type[..] else {
             return Err(format!("Expected name and parameter pairs in fields list of struct {struct_name}"));
         };
 
@@ -480,8 +511,10 @@ fn emit_value_components(
 
 fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
     let items = match expr {
-        SExpr::List(items) => items,
-        SExpr::Atom(var_name) => {
+        SExpr::List { value: items, .. } => items,
+        SExpr::Atom {
+            value: var_name, ..
+        } => {
             if var_name.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(WasmInstr::I32Const(
                     var_name
@@ -514,12 +547,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         }
     };
 
-    let [SExpr::Atom(op), args @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, .. }, args @ ..] = &items[..] else {
         return Err(format!("Expected operation, got a simple list"));
     };
 
     let instr = match (op.as_str(), &args[..]) {
-        ("i32", [SExpr::Atom(value)]) => {
+        ("i32", [SExpr::Atom { value, .. }]) => {
             WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
         ("i32.eq" | "==", [lhs, rhs]) => WasmInstr::BinaryOp {
@@ -572,7 +605,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
-        ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => WasmInstr::If {
+        (
+            "if",
+            [SExpr::Atom {
+                value: block_type, ..
+            }, cond, then_branch, else_branch],
+        ) => WasmInstr::If {
             block_type: parse_wasm_value_type(block_type)?,
             cond: Box::new(parse_instr(cond, ctx)?),
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
@@ -582,7 +620,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             cond: Box::new(parse_instr(cond, ctx)?),
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
         },
-        ("loop", [SExpr::List(exprs)]) => WasmInstr::Loop {
+        ("loop", [SExpr::List { value: exprs, .. }]) => WasmInstr::Loop {
             instrs: parse_instrs(exprs, ctx)?,
         },
         ("break", []) => WasmInstr::LoopBreak,
@@ -593,7 +631,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             }),
         },
         // TODO: support custom aligns and offsets
-        ("store", [SExpr::Atom(store_kind), address_expr, value_expr]) => {
+        (
+            "store",
+            [SExpr::Atom {
+                value: store_kind, ..
+            }, address_expr, value_expr],
+        ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(store_kind) else {
                 return Ok(WasmInstr::Store {
                     kind: parse_store_kind(store_kind)?,
@@ -638,7 +681,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             WasmInstr::MultiValueEmit { values: instrs }
         }
         // TODO: support custom aligns and offsets
-        ("load", [SExpr::Atom(load_kind), address_expr]) => {
+        (
+            "load",
+            [SExpr::Atom {
+                value: load_kind, ..
+            }, address_expr],
+        ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(load_kind) else {
                 return Ok(WasmInstr::Load {
                     kind: parse_load_kind(load_kind)?,
@@ -672,7 +720,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             TODO: validate that number values matches the one of fields
             WARNING: it's not that simple because it involves nested `MultiValueEmit`s
         */
-        ("struct.new", [SExpr::Atom(s_name), values @ ..]) => {
+        ("struct.new", [SExpr::Atom { value: s_name, .. }, values @ ..]) => {
             if !ctx.module.struct_defs.contains_key(s_name) {
                 return Err(format!("Unknown struct encountered in {op}: {s_name}"));
             }
@@ -681,19 +729,37 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 values: parse_instrs(values, ctx)?,
             }
         }
-        ("enum.kind", [SExpr::Atom(enum_variant)]) => {
+        (
+            "enum.kind",
+            [SExpr::Atom {
+                value: enum_variant,
+                ..
+            }],
+        ) => {
             let Some(kind) = ctx.module.enum_kinds.get(enum_variant) else {
                 return Err(format!("Unknown enum variant in {op}: {enum_variant}"));
             };
 
             WasmInstr::I32Const(*kind as i32)
         }
-        ("sizeof", [SExpr::Atom(type_name)]) => {
+        (
+            "sizeof",
+            [SExpr::Atom {
+                value: type_name, ..
+            }],
+        ) => {
             let value_type = parse_value_type(type_name, ctx.module)?;
 
             WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module) as i32)
         }
-        ("let" | ":", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
+        (
+            "let" | ":",
+            [SExpr::Atom {
+                value: local_name, ..
+            }, SExpr::Atom {
+                value: local_type, ..
+            }],
+        ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                 return Err(format!("Local name collides with global: {local_name}"));
             };
@@ -718,7 +784,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             WasmInstr::NoInstr
         }
-        ("set" | "=", [SExpr::Atom(var_name), value]) => {
+        (
+            "set" | "=",
+            [SExpr::Atom {
+                value: var_name, ..
+            }, value],
+        ) => {
             if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
                 if !global.mutable {
                     return Err(format!("Setting immutable global: {var_name}"));
@@ -754,11 +825,16 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 },
             }
         }
-        ("set" | "=", [SExpr::List(local_names), value]) => {
+        (
+            "set" | "=",
+            [SExpr::List {
+                value: local_names, ..
+            }, value],
+        ) => {
             let mut local_indices = vec![];
 
             for local_name_expr in local_names {
-                let SExpr::Atom(local_name) = local_name_expr else {
+                let SExpr::Atom { value: local_name, .. } = local_name_expr else {
                     return Err(format!("Unexpected list in lhs of set"));
                 };
 
@@ -789,7 +865,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
-        ("set" | "=", [SExpr::Atom(local_name), SExpr::Atom(f_name), value]) => {
+        (
+            "set" | "=",
+            [SExpr::Atom {
+                value: local_name, ..
+            }, SExpr::Atom { value: f_name, .. }, value],
+        ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                 return Err(format!(
                     "Setting struct field from global variable: {local_name}"
@@ -818,7 +899,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 value: Box::new(parse_instr(value, ctx)?),
             }
         }
-        ("get" | ".", [SExpr::Atom(local_name), SExpr::Atom(f_name)]) => {
+        (
+            "get" | ".",
+            [SExpr::Atom {
+                value: local_name, ..
+            }, SExpr::Atom { value: f_name, .. }],
+        ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                 return Err(format!(
                     "Getting struct field from global variable: {local_name}"
@@ -869,8 +955,10 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
 fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, String> {
     let items = match expr {
-        SExpr::List(items) => items,
-        SExpr::Atom(global_name) => {
+        SExpr::List { value: items, .. } => items,
+        SExpr::Atom {
+            value: global_name, ..
+        } => {
             if global_name.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(WasmInstr::I32Const(
                     global_name
@@ -887,12 +975,12 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Str
         }
     };
 
-    let [SExpr::Atom(op), args @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, .. }, args @ ..] = &items[..] else {
         return Err(format!("Expected operation, got a simple list"));
     };
 
     let instr = match (op.as_str(), &args[..]) {
-        ("i32", [SExpr::Atom(value)]) => {
+        ("i32", [SExpr::Atom { value, .. }]) => {
             WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
         }
         (instr_name, _args) => {

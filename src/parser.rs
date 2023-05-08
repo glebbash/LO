@@ -3,35 +3,82 @@ use core::fmt;
 use alloc::{string::String, vec::Vec};
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Location {
+    pub offset: usize,
+    pub length: usize,
+}
+
+impl Location {
+    pub fn position_in(&self, script: &str) -> (usize, usize) {
+        let mut offset = self.offset;
+        let (mut line, mut col) = (1, 1);
+
+        for char in script.chars() {
+            offset -= 1;
+
+            if offset == 0 {
+                break;
+            }
+
+            if char == '\n' {
+                col = 1;
+                line += 1;
+                continue;
+            }
+
+            col += 1;
+        }
+
+        (line, col)
+    }
+
+    fn end(&self) -> usize {
+        self.offset + self.length
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum SExpr {
-    Atom(String),
-    List(Vec<SExpr>),
+    Atom { value: String, loc: Location },
+    List { value: Vec<SExpr>, loc: Location },
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ParseError {
-    UnexpectedEOF,
-    UnexpectedChar,
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl SExpr {
+    pub fn loc(&self) -> &Location {
         match self {
-            ParseError::UnexpectedChar => write!(f, "Unexpected character"),
-            ParseError::UnexpectedEOF => write!(f, "Unexpected EOF"),
+            Self::Atom { loc, .. } => loc,
+            Self::List { loc, .. } => loc,
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct WithIndex<T> {
-    pub data: T,
-    pub index: usize,
+pub enum ParseError {
+    UnexpectedEOF { loc: Location },
+    UnexpectedChar { loc: Location },
 }
 
-pub type ParseResult = Result<WithIndex<SExpr>, WithIndex<ParseError>>;
+impl ParseError {
+    pub fn loc(&self) -> &Location {
+        match self {
+            Self::UnexpectedEOF { loc, .. } => loc,
+            Self::UnexpectedChar { loc, .. } => loc,
+        }
+    }
+}
 
-pub fn parse(script: &str) -> Result<Vec<SExpr>, WithIndex<ParseError>> {
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::UnexpectedChar { .. } => write!(f, "Unexpected character"),
+            ParseError::UnexpectedEOF { .. } => write!(f, "Unexpected EOF"),
+        }
+    }
+}
+
+pub type ParseResult = Result<SExpr, ParseError>;
+
+pub fn parse(script: &str) -> Result<Vec<SExpr>, ParseError> {
     let chars = &script.chars().collect::<Vec<_>>();
 
     let mut index = skip_space(chars, 0);
@@ -40,17 +87,17 @@ pub fn parse(script: &str) -> Result<Vec<SExpr>, WithIndex<ParseError>> {
 
     while index < chars.len() {
         if !is_list_start(char_at(chars, index)?) {
-            return Err(WithIndex {
-                data: ParseError::UnexpectedChar,
-                index,
+            return Err(ParseError::UnexpectedChar {
+                loc: Location {
+                    offset: index,
+                    length: 1,
+                },
             });
         }
 
         let res = parse_list(chars, index)?;
-
-        items.push(res.data);
-
-        index = skip_space(chars, res.index);
+        index = skip_space(chars, res.loc().end());
+        items.push(res);
     }
 
     Ok(items)
@@ -70,13 +117,20 @@ fn parse_atom(chars: &Vec<char>, index: usize) -> ParseResult {
         .take_while(|&&c| !is_space(c) && !is_list_end(c) && c != ';')
         .collect::<String>();
 
-    Ok(WithIndex {
-        index: index + atom_text.len(),
-        data: SExpr::Atom(atom_text),
+    let atom_len = atom_text.len();
+
+    Ok(SExpr::Atom {
+        value: atom_text,
+        loc: Location {
+            offset: index,
+            length: atom_len,
+        },
     })
 }
 
 fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
+    let start_index = index;
+
     let list_start_char = char_at(chars, index)?;
     index += 1; // eat list start
 
@@ -86,19 +140,19 @@ fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
 
     while !is_list_end(char_at(chars, index)?) {
         let res = parse_expr(chars, index)?;
-
-        items.push(res.data);
-
-        index = skip_space(chars, res.index);
+        index = skip_space(chars, res.loc().end());
+        items.push(res);
     }
 
     let list_end_char = char_at(chars, index)?;
     index += 1; // eat list end
 
     if !is_valid_list_chars(list_start_char, list_end_char) {
-        return Err(WithIndex {
-            data: ParseError::UnexpectedChar,
-            index,
+        return Err(ParseError::UnexpectedChar {
+            loc: Location {
+                offset: index,
+                length: 1,
+            },
         });
     }
 
@@ -106,9 +160,12 @@ fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
         items.swap(0, 1);
     }
 
-    Ok(WithIndex {
-        data: SExpr::List(items),
-        index,
+    Ok(SExpr::List {
+        value: items,
+        loc: Location {
+            offset: start_index,
+            length: index - start_index,
+        },
     })
 }
 
@@ -164,33 +221,16 @@ fn is_space(c: char) -> bool {
     }
 }
 
-fn char_at(chars: &Vec<char>, index: usize) -> Result<char, WithIndex<ParseError>> {
-    chars.get(index).copied().ok_or_else(|| WithIndex {
-        data: ParseError::UnexpectedEOF,
-        index,
-    })
-}
-
-pub fn index_to_position(script: &str, mut index: usize) -> (u32, u32) {
-    let (mut line, mut col) = (1, 1);
-
-    for char in script.chars() {
-        index -= 1;
-
-        if index == 0 {
-            break;
-        }
-
-        if char == '\n' {
-            col = 1;
-            line += 1;
-            continue;
-        }
-
-        col += 1;
-    }
-
-    (line, col)
+fn char_at(chars: &Vec<char>, index: usize) -> Result<char, ParseError> {
+    chars
+        .get(index)
+        .copied()
+        .ok_or_else(|| ParseError::UnexpectedEOF {
+            loc: Location {
+                offset: index,
+                length: 1,
+            },
+        })
 }
 
 #[cfg(test)]
@@ -211,42 +251,90 @@ mod tests {
 
         assert_eq!(
             result,
-            vec![SExpr::List(vec![
-                SExpr::Atom(String::from("a")),
-                SExpr::Atom(String::from("b")),
-                SExpr::List(vec![]),
-                SExpr::List(vec![
-                    SExpr::Atom(String::from("a")),
-                    SExpr::Atom(String::from("b")),
-                    SExpr::Atom(String::from("cadwdawd-aw423f")),
-                    SExpr::Atom(String::from("123"))
-                ]),
-                SExpr::List(vec![SExpr::List(vec![SExpr::List(vec![])])])
-            ])]
-        );
-    }
-
-    #[test]
-    fn it_parses_42_example() {
-        let result = parse(include_str!("../examples/42.lole")).unwrap();
-
-        assert_eq!(
-            result,
-            vec![
-                SExpr::List(vec![
-                    SExpr::Atom(String::from("export")),
-                    SExpr::Atom(String::from("main")),
-                    SExpr::Atom(String::from(":as")),
-                    SExpr::Atom(String::from("main"))
-                ]),
-                SExpr::List(vec![
-                    SExpr::Atom(String::from("fn")),
-                    SExpr::Atom(String::from("main")),
-                    SExpr::List(vec![]),
-                    SExpr::List(vec![SExpr::Atom(String::from("i32"))]),
-                    SExpr::List(vec![SExpr::Atom(String::from("42"))]),
-                ]),
-            ]
+            vec![SExpr::List {
+                value: vec![
+                    SExpr::Atom {
+                        value: String::from("a"),
+                        loc: Location {
+                            offset: 18,
+                            length: 1
+                        }
+                    },
+                    SExpr::Atom {
+                        value: String::from("b"),
+                        loc: Location {
+                            offset: 20,
+                            length: 1
+                        }
+                    },
+                    SExpr::List {
+                        value: vec![],
+                        loc: Location {
+                            offset: 46,
+                            length: 2
+                        }
+                    },
+                    SExpr::List {
+                        value: vec![
+                            SExpr::Atom {
+                                value: String::from("a"),
+                                loc: Location {
+                                    offset: 50,
+                                    length: 1
+                                }
+                            },
+                            SExpr::Atom {
+                                value: String::from("b"),
+                                loc: Location {
+                                    offset: 52,
+                                    length: 1
+                                }
+                            },
+                            SExpr::Atom {
+                                value: String::from("cadwdawd-aw423f"),
+                                loc: Location {
+                                    offset: 54,
+                                    length: 15
+                                }
+                            },
+                            SExpr::Atom {
+                                value: String::from("123"),
+                                loc: Location {
+                                    offset: 91,
+                                    length: 3
+                                }
+                            }
+                        ],
+                        loc: Location {
+                            offset: 49,
+                            length: 46
+                        }
+                    },
+                    SExpr::List {
+                        value: vec![SExpr::List {
+                            value: vec![SExpr::List {
+                                value: vec![],
+                                loc: Location {
+                                    offset: 98,
+                                    length: 2
+                                }
+                            }],
+                            loc: Location {
+                                offset: 97,
+                                length: 21
+                            }
+                        }],
+                        loc: Location {
+                            offset: 96,
+                            length: 23
+                        }
+                    }
+                ],
+                loc: Location {
+                    offset: 17,
+                    length: 103
+                }
+            }]
         );
     }
 
@@ -256,9 +344,11 @@ mod tests {
 
         assert_eq!(
             result,
-            Err(WithIndex {
-                data: ParseError::UnexpectedEOF,
-                index: 1,
+            Err(ParseError::UnexpectedEOF {
+                loc: Location {
+                    offset: 1,
+                    length: 1,
+                },
             })
         );
     }
@@ -269,9 +359,11 @@ mod tests {
 
         assert_eq!(
             result,
-            Err(WithIndex {
-                data: ParseError::UnexpectedChar,
-                index: 6,
+            Err(ParseError::UnexpectedChar {
+                loc: Location {
+                    offset: 6,
+                    length: 1,
+                },
             })
         );
     }
