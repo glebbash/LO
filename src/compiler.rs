@@ -513,18 +513,23 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom {
-            value: var_name, ..
+            value: var_name,
+            loc,
         } => {
             if var_name.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(WasmInstr::I32Const(
-                    var_name
+                return Ok(WasmInstr::I32Const {
+                    value: (var_name
                         .parse()
-                        .map_err(|_| format!("Parsing i32 (implicit) failed"))?,
-                ));
+                        .map_err(|_| format!("Parsing i32 (implicit) failed"))?),
+                    loc: loc.clone(),
+                });
             }
 
             if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
-                return Ok(WasmInstr::GlobalGet(global.index));
+                return Ok(WasmInstr::GlobalGet {
+                    local_index: global.index,
+                    loc: loc.clone(),
+                });
             };
 
             let Some(local) = ctx.locals.get(var_name.as_str()) else {
@@ -537,73 +542,96 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 let mut values = vec![];
 
                 for field_offset in 0..struct_def.fields.len() {
-                    values.push(WasmInstr::LocalGet(local.index + field_offset as u32));
+                    values.push(WasmInstr::LocalGet {
+                        local_index: local.index + field_offset as u32,
+                        loc: loc.clone(),
+                    });
                 }
 
-                return Ok(WasmInstr::MultiValueEmit { values });
+                return Ok(WasmInstr::MultiValueEmit {
+                    values,
+                    loc: loc.clone(),
+                });
             }
 
-            return Ok(WasmInstr::LocalGet(local.index));
+            return Ok(WasmInstr::LocalGet {
+                local_index: local.index,
+                loc: loc.clone(),
+            });
         }
     };
 
-    let [SExpr::Atom { value: op, .. }, args @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, loc: op_loc }, args @ ..] = &items[..] else {
         return Err(format!("Expected operation, got a simple list"));
     };
 
     let instr = match (op.as_str(), &args[..]) {
-        ("i32", [SExpr::Atom { value, .. }]) => {
-            WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
-        }
+        ("i32", [SExpr::Atom { value, .. }]) => WasmInstr::I32Const {
+            value: value.parse().map_err(|_| format!("Parsing i32 failed"))?,
+            loc: op_loc.clone(),
+        },
         ("i32.eq" | "==", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32NotEqual,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.not" | "not" | "!", [lhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(parse_instr(lhs, ctx)?),
-            rhs: Box::new(WasmInstr::I32Const(0)),
+            rhs: Box::new(WasmInstr::I32Const {
+                value: 0,
+                loc: op_loc.clone(), // TODO: add better location
+            }),
+            loc: op_loc.clone(),
         },
         ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenSigned,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.ge_s" | ">=", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterEqualSigned,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.and" | "&&", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32And,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.or" | "||", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Or,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.add" | "+", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.sub" | "-", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         ("i32.mul" | "*", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
         },
         (
             "if",
@@ -615,20 +643,29 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             cond: Box::new(parse_instr(cond, ctx)?),
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
             else_branch: Box::new(parse_instr(else_branch, ctx)?),
+            loc: op_loc.clone(),
         },
         ("if", [cond, then_branch]) => WasmInstr::IfSingleBranch {
             cond: Box::new(parse_instr(cond, ctx)?),
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
+            loc: op_loc.clone(),
         },
         ("loop", [SExpr::List { value: exprs, .. }]) => WasmInstr::Loop {
             instrs: parse_instrs(exprs, ctx)?,
+            loc: op_loc.clone(),
         },
-        ("break", []) => WasmInstr::LoopBreak,
-        ("continue", []) => WasmInstr::LoopContinue,
+        ("break", []) => WasmInstr::LoopBreak {
+            loc: op_loc.clone(),
+        },
+        ("continue", []) => WasmInstr::LoopContinue {
+            loc: op_loc.clone(),
+        },
         ("return", values) => WasmInstr::Return {
             value: Box::new(WasmInstr::MultiValueEmit {
                 values: parse_instrs(values, ctx)?,
+                loc: op_loc.clone(), // TODO: add better location
             }),
+            loc: op_loc.clone(),
         },
         // TODO: support custom aligns and offsets
         (
@@ -644,11 +681,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                     offset: 0,
                     value_instr: Box::new(parse_instr(value_expr, ctx)?),
                     address_instr: Rc::new(parse_instr(address_expr, ctx)?),
+                    loc: op_loc.clone(),
                 })
             };
 
             let mut value_instrs = match parse_instr(value_expr, ctx)? {
-                WasmInstr::MultiValueEmit { values } => values,
+                WasmInstr::MultiValueEmit { values, .. } => values,
                 instr => vec![instr],
             };
 
@@ -673,12 +711,16 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                     offset,
                     value_instr: Box::new(value_instrs.remove(0)),
                     address_instr: address_instr.clone(),
+                    loc: op_loc.clone(), // TODO: add better location
                 });
 
                 offset += get_primitive_value_type_size(&field.value_type);
             }
 
-            WasmInstr::MultiValueEmit { values: instrs }
+            WasmInstr::MultiValueEmit {
+                values: instrs,
+                loc: op_loc.clone(),
+            }
         }
         // TODO: support custom aligns and offsets
         (
@@ -693,6 +735,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                     align: 0,
                     offset: 0,
                     address_instr: Rc::new(parse_instr(address_expr, ctx)?),
+                    loc: op_loc.clone(),
                 })
             };
 
@@ -707,6 +750,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                     align: 1,
                     offset,
                     address_instr: address_instr.clone(),
+                    loc: op_loc.clone(), // TODO: add better location
                 });
 
                 offset += get_primitive_value_type_size(&field.value_type);
@@ -714,6 +758,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             WasmInstr::MultiValueEmit {
                 values: primitive_loads,
+                loc: op_loc.clone(),
             }
         }
         /*
@@ -727,6 +772,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             WasmInstr::MultiValueEmit {
                 values: parse_instrs(values, ctx)?,
+                loc: op_loc.clone(),
             }
         }
         (
@@ -740,7 +786,10 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 return Err(format!("Unknown enum variant in {op}: {enum_variant}"));
             };
 
-            WasmInstr::I32Const(*kind as i32)
+            WasmInstr::I32Const {
+                value: *kind as i32,
+                loc: op_loc.clone(),
+            }
         }
         (
             "sizeof",
@@ -750,7 +799,10 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         ) => {
             let value_type = parse_value_type(type_name, ctx.module)?;
 
-            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module) as i32)
+            WasmInstr::I32Const {
+                value: get_value_type_size(&value_type, ctx.module) as i32,
+                loc: op_loc.clone(),
+            }
         }
         (
             "let" | ":",
@@ -782,7 +834,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             ctx.locals_last_index += comp_count;
 
-            WasmInstr::NoInstr
+            WasmInstr::NoInstr {
+                loc: op_loc.clone(),
+            }
         }
         (
             "set" | "=",
@@ -798,6 +852,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 return Ok(WasmInstr::GlobalSet {
                     global_index: global.index,
                     value: Box::new(parse_instr(value, ctx)?),
+                    loc: op_loc.clone(),
                 });
             };
 
@@ -817,11 +872,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                     return Ok(WasmInstr::MultiValueLocalSet {
                         local_indices,
                         value: Box::new(parse_instr(value, ctx)?),
+                        loc: op_loc.clone(),
                     });
                 }
                 ValueType::Primitive(_) => WasmInstr::LocalSet {
                     local_index: local.index,
                     value: Box::new(parse_instr(value, ctx)?),
+                    loc: op_loc.clone(),
                 },
             }
         }
@@ -863,6 +920,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             WasmInstr::MultiValueLocalSet {
                 local_indices,
                 value: Box::new(parse_instr(value, ctx)?),
+                loc: op_loc.clone(),
             }
         }
         (
@@ -897,6 +955,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             WasmInstr::LocalSet {
                 local_index: local.index + field_offset as u32,
                 value: Box::new(parse_instr(value, ctx)?),
+                loc: op_loc.clone(),
             }
         }
         (
@@ -928,10 +987,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 return Err(format!("Unknown field {f_name} in struct {s_name}"));
             };
 
-            WasmInstr::LocalGet(local.index + field_offset as u32)
+            WasmInstr::LocalGet {
+                local_index: local.index + field_offset as u32,
+                loc: op_loc.clone(),
+            }
         }
         ("pack" | "do", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,
+            loc: op_loc.clone(),
         },
         (fn_name, args) => {
             let Some(fn_def) = ctx.module.fn_defs.get(fn_name) else {
@@ -946,6 +1009,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             WasmInstr::Call {
                 fn_index,
                 args: parse_instrs(args, ctx)?,
+                loc: op_loc.clone(),
             }
         }
     };
@@ -957,32 +1021,38 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Str
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom {
-            value: global_name, ..
+            value: global_name,
+            loc: op_loc,
         } => {
             if global_name.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(WasmInstr::I32Const(
-                    global_name
+                return Ok(WasmInstr::I32Const {
+                    value: global_name
                         .parse()
                         .map_err(|_| format!("Parsing i32 (implicit) failed"))?,
-                ));
+                    loc: op_loc.clone(),
+                });
             }
 
             let Some(global) = ctx.globals.get(global_name.as_str()) else {
                 return Err(format!("Unknown location for global.get: {global_name}"));
             };
 
-            return Ok(WasmInstr::GlobalGet(global.index));
+            return Ok(WasmInstr::GlobalGet {
+                local_index: global.index,
+                loc: op_loc.clone(),
+            });
         }
     };
 
-    let [SExpr::Atom { value: op, .. }, args @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, loc: op_loc }, args @ ..] = &items[..] else {
         return Err(format!("Expected operation, got a simple list"));
     };
 
     let instr = match (op.as_str(), &args[..]) {
-        ("i32", [SExpr::Atom { value, .. }]) => {
-            WasmInstr::I32Const(value.parse().map_err(|_| format!("Parsing i32 failed"))?)
-        }
+        ("i32", [SExpr::Atom { value, .. }]) => WasmInstr::I32Const {
+            value: value.parse().map_err(|_| format!("Parsing i32 failed"))?,
+            loc: op_loc.clone(),
+        },
         (instr_name, _args) => {
             return Err(format!("Unknown instruction: {instr_name}"));
         }
