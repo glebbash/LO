@@ -8,6 +8,7 @@ mod binary_builder;
 mod compiler;
 mod parser;
 mod runtime;
+mod type_checker;
 mod wasm_module;
 
 use alloc::{
@@ -56,7 +57,12 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
     let module = match compile_module(&exprs) {
         Ok(module) => module,
         Err(err) => {
-            return ParseResult::err(format!("CompilerError: {err}"));
+            let (line, col) = err.loc.position_in(script);
+
+            return ParseResult::err(format!(
+                "CompilerError: {msg} at line {line} col {col}",
+                msg = err.message
+            ));
         }
     };
 

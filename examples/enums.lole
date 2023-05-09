@@ -28,10 +28,10 @@
     {ref = (alloc (sizeof ParseResult/Ok))}
     (store ParseResult/Ok ref (struct.new ParseResult/Ok 1))
 
-    (struct.new ParseResult
+    (return (struct.new ParseResult
         (enum.kind ParseResult/Ok)
         ref
-    )
+    ))
 ))
 
 (global mut HEAP_INDEX u32 0)
@@ -39,5 +39,5 @@
     {ref : ptr}
     {ref = HEAP_INDEX}
     {HEAP_INDEX = {HEAP_INDEX + size}}
-    ref
+    (return ref)
 ))

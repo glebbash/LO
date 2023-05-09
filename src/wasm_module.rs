@@ -159,6 +159,31 @@ pub enum WasmInstr {
     },
 }
 
+impl WasmInstr {
+    pub fn loc(&self) -> &Location {
+        match self {
+            Self::NoInstr { loc, .. } => loc,
+            Self::BinaryOp { loc, .. } => loc,
+            Self::Load { loc, .. } => loc,
+            Self::Store { loc, .. } => loc,
+            Self::I32Const { loc, .. } => loc,
+            Self::Return { loc, .. } => loc,
+            Self::LocalGet { loc, .. } => loc,
+            Self::LocalSet { loc, .. } => loc,
+            Self::GlobalGet { loc, .. } => loc,
+            Self::GlobalSet { loc, .. } => loc,
+            Self::MultiValueLocalSet { loc, .. } => loc,
+            Self::MultiValueEmit { loc, .. } => loc,
+            Self::Loop { loc, .. } => loc,
+            Self::LoopBreak { loc } => loc,
+            Self::LoopContinue { loc } => loc,
+            Self::Call { loc, .. } => loc,
+            Self::If { loc, .. } => loc,
+            Self::IfSingleBranch { loc, .. } => loc,
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(Clone, Copy, Debug)]
 pub enum WasmValueType {
