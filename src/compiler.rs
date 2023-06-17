@@ -1,9 +1,9 @@
 use crate::{
     parser::SExpr,
     wasm_module::{
-        WasmBinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType, WasmGlobal,
-        WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits, WasmLoadKind,
-        WasmLocals, WasmModule, WasmStoreKind, WasmValueType,
+        WasmBinaryOpKind, WasmData, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType,
+        WasmGlobal, WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits,
+        WasmLoadKind, WasmLocals, WasmModule, WasmStoreKind, WasmValueType,
     },
 };
 use alloc::{
@@ -423,6 +423,20 @@ fn compile_top_level_expr(
                     mutable,
                 },
                 initial_value,
+            });
+        }
+        "data" => {
+            let [SExpr::Atom(offset), SExpr::Atom(data_base64)] = other else {
+                return Err(format!("Invalid arguments for {op}"));
+            };
+
+            module.datas.push(WasmData::Active {
+                offset: WasmExpr {
+                    instrs: vec![WasmInstr::I32Const(
+                        offset.parse().map_err(|_| format!("Parsing i32 failed"))?,
+                    )],
+                },
+                bytes: base64_decode(data_base64.as_bytes()),
             });
         }
         _ => return Err(format!("Unknown operation: {op}")),
@@ -996,4 +1010,32 @@ impl WasmStoreKind {
             _ => Err(format!("Unsupported type for store: {value_type:?}")),
         }
     }
+}
+
+// Stolen from https://keyboardsmash.dev/posts/base64-implementation-in-rust-decoding/
+fn base64_decode(input: &[u8]) -> Vec<u8> {
+    const BASE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    fn decode_char(input: u8) -> u8 {
+        BASE_CHARS.iter().position(|&c| c == input).unwrap_or(0) as u8
+    }
+
+    let mut output: Vec<u8> = Vec::new();
+
+    for chunk in input.chunks(4) {
+        let a = decode_char(chunk[0]);
+        let b = decode_char(chunk[1]);
+        let c = decode_char(chunk[2]);
+        let d = decode_char(chunk[3]);
+
+        let dec1 = ((a << 2) | (b & 0x30) >> 4) as u8;
+        let dec2 = (((b & 0x0F) << 4) | (c & 0x3C) >> 2) as u8;
+        let dec3 = (((c & 0x03) << 6) | (d)) as u8;
+
+        output.push(dec1);
+        output.push(dec2);
+        output.push(dec3);
+    }
+
+    output
 }

@@ -2,7 +2,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { readFile } from "node:fs/promises";
+import { open, readFile, unlink } from "node:fs/promises";
+import { WASI } from "node:wasi";
+import { randomUUID } from "node:crypto";
 
 const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 
@@ -138,6 +140,20 @@ test("compiles vec", async () => {
     assert.strictEqual(lib.vec_get_u8(vec, 5), 6);
     assert.strictEqual(lib.vec_get_u8(vec, 6), 7);
     assert.strictEqual(lib.vec_len(vec), 7);
+});
+
+test("compiles hello world", async () => {
+    const program = await compile(
+        compiler,
+        await readFile("./examples/hello-world.lole")
+    );
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, "Hello World!\n");
 });
 
 test("compiles parser", async () => {
@@ -278,4 +294,38 @@ function storeData(memory, ptr, data) {
  */
 function u32s(buff, offset, length) {
     return new Uint32Array(buff.slice(offset), 0, length);
+}
+
+/**
+ * @param {BufferSource} data
+ * @param {import("node:wasi").WASIOptions} [wasiOptions]
+ */
+async function runWASI(data, wasiOptions) {
+    // @ts-ignore
+    const wasi = new WASI({ version: "preview1", ...wasiOptions });
+
+    const wasm = await WebAssembly.compile(data);
+    const instance = await WebAssembly.instantiate(
+        wasm,
+        // @ts-ignore
+        wasi.getImportObject()
+    );
+
+    wasi.start(instance);
+}
+
+/**
+ * @template T
+ * @param {(file: import("node:fs/promises").FileHandle, fileName: string) => T} run
+ */
+async function runWithTmpFile(run) {
+    const mockOutputFileName = `${randomUUID()}.tmp`;
+    const mockOutputFile = await open(mockOutputFileName, "w+");
+
+    try {
+        return await run(mockOutputFile, mockOutputFileName);
+    } finally {
+        await mockOutputFile.close();
+        await unlink(mockOutputFileName);
+    }
 }
