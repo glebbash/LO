@@ -33,7 +33,7 @@ struct StructField {
     value_type: WasmValueType,
 }
 
-enum ValueType {
+enum LoleValueType {
     Primitive(WasmValueType),
     StructInstance { name: String },
 }
@@ -64,7 +64,7 @@ struct FnContext<'a> {
 
 struct LocalDef {
     index: u32,
-    value_type: ValueType,
+    value_type: LoleValueType,
 }
 
 struct GlobalDef {
@@ -199,7 +199,7 @@ fn compile_top_level_expr(
                         ));
                     }
 
-                    let value_type = parse_value_type(p_type, &ctx)?;
+                    let value_type = LoleValueType::parse(p_type, &ctx)?;
                     let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
 
                     locals.insert(
@@ -220,7 +220,7 @@ fn compile_top_level_expr(
                         _ => return Err(format!("Atom expected, list found")),
                     };
 
-                    let value_type = parse_value_type(l_type, &ctx)?;
+                    let value_type = LoleValueType::parse(l_type, &ctx)?;
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
@@ -276,7 +276,7 @@ fn compile_top_level_expr(
                         ));
                     }
 
-                    let value_type = parse_value_type(p_type, &ctx)?;
+                    let value_type = LoleValueType::parse(p_type, &ctx)?;
                     emit_value_components(&value_type, &ctx, &mut inputs);
 
                     param_names.insert(p_name.clone());
@@ -289,7 +289,7 @@ fn compile_top_level_expr(
                         _ => return Err(format!("Atom expected, list found")),
                     };
 
-                    let value_type = parse_value_type(l_type, &ctx)?;
+                    let value_type = LoleValueType::parse(l_type, &ctx)?;
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
@@ -404,7 +404,7 @@ fn compile_top_level_expr(
                 return Err(format!("Cannot redefine global: {global_name}"));
             }
 
-            let value_type = parse_wasm_value_type(global_type)?;
+            let value_type = WasmValueType::parse(global_type)?;
             let initial_value = WasmExpr {
                 instrs: vec![parse_const_instr(global_value, &ctx)?],
             };
@@ -450,23 +450,23 @@ fn parse_struct_field_defs(exprs: &[SExpr], struct_name: &str) -> Result<Vec<Str
 
         fields.push(StructField {
             name: f_name.clone(),
-            value_type: parse_wasm_value_type(f_type)?,
+            value_type: WasmValueType::parse(f_type)?,
         });
     }
     Ok(fields)
 }
 
 fn emit_value_components(
-    value_type: &ValueType,
+    value_type: &LoleValueType,
     ctx: &ModuleContext,
     components: &mut Vec<WasmValueType>,
 ) -> u32 {
     match value_type {
-        ValueType::Primitive(value_type) => {
+        LoleValueType::Primitive(value_type) => {
             components.push(*value_type);
             1
         }
-        ValueType::StructInstance { name } => {
+        LoleValueType::StructInstance { name } => {
             let fields = &ctx.struct_defs.get(name).unwrap().fields;
 
             for field in fields {
@@ -498,7 +498,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 return Err(format!("Reading unknown variable: {var_name}"));
             };
 
-            if let ValueType::StructInstance { name } = &local.value_type {
+            if let LoleValueType::StructInstance { name } = &local.value_type {
                 let struct_def = ctx.module.struct_defs.get(name).unwrap();
 
                 let mut values = vec![];
@@ -573,7 +573,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
         ("if", [SExpr::Atom(block_type), cond, then_branch, else_branch]) => WasmInstr::If {
-            block_type: parse_wasm_value_type(block_type)?,
+            block_type: WasmValueType::parse(block_type)?,
             cond: Box::new(parse_instr(cond, ctx)?),
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
             else_branch: Box::new(parse_instr(else_branch, ctx)?),
@@ -596,7 +596,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         ("store", [SExpr::Atom(store_kind), address_expr, value_expr]) => {
             let Some(struct_def) = ctx.module.struct_defs.get(store_kind) else {
                 return Ok(WasmInstr::Store {
-                    kind: parse_store_kind(store_kind)?,
+                    kind: WasmStoreKind::parse(store_kind)?,
                     align: 0,
                     offset: 0,
                     value_instr: Box::new(parse_instr(value_expr, ctx)?),
@@ -625,14 +625,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             for field in struct_def.fields.iter() {
                 instrs.push(WasmInstr::Store {
-                    kind: get_store_kind_from_value_type(&field.value_type)?,
+                    kind: WasmStoreKind::from_value_type(&field.value_type)?,
                     align: 1,
                     offset,
                     value_instr: Box::new(value_instrs.remove(0)),
                     address_instr: address_instr.clone(),
                 });
 
-                offset += get_primitive_value_type_size(&field.value_type);
+                offset += field.value_type.byte_size();
             }
 
             WasmInstr::MultiValueEmit { values: instrs }
@@ -641,7 +641,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
         ("load", [SExpr::Atom(load_kind), address_expr]) => {
             let Some(struct_def) = ctx.module.struct_defs.get(load_kind) else {
                 return Ok(WasmInstr::Load {
-                    kind: parse_load_kind(load_kind)?,
+                    kind: WasmLoadKind::parse(load_kind)?,
                     align: 0,
                     offset: 0,
                     address_instr: Rc::new(parse_instr(address_expr, ctx)?),
@@ -655,13 +655,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
 
             for field in &struct_def.fields {
                 primitive_loads.push(WasmInstr::Load {
-                    kind: get_load_kind_from_value_type(&field.value_type)?,
+                    kind: WasmLoadKind::from_value_type(&field.value_type)?,
                     align: 1,
                     offset,
                     address_instr: address_instr.clone(),
                 });
 
-                offset += get_primitive_value_type_size(&field.value_type);
+                offset += field.value_type.byte_size();
             }
 
             WasmInstr::MultiValueEmit {
@@ -689,9 +689,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             WasmInstr::I32Const(*kind as i32)
         }
         ("sizeof", [SExpr::Atom(type_name)]) => {
-            let value_type = parse_value_type(type_name, ctx.module)?;
+            let value_type = LoleValueType::parse(type_name, ctx.module)?;
 
-            WasmInstr::I32Const(get_value_type_size(&value_type, ctx.module) as i32)
+            WasmInstr::I32Const(value_type.byte_size(ctx.module) as i32)
         }
         ("let" | ":", [SExpr::Atom(local_name), SExpr::Atom(local_type)]) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
@@ -702,7 +702,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 return Err(format!("Duplicate local definition: {local_name}"));
             }
 
-            let value_type = parse_value_type(local_type, ctx.module)?;
+            let value_type = LoleValueType::parse(local_type, ctx.module)?;
             let comp_count =
                 emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
 
@@ -735,7 +735,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
             };
 
             match &local.value_type {
-                ValueType::StructInstance { name } => {
+                LoleValueType::StructInstance { name } => {
                     let struct_def = ctx.module.struct_defs.get(name).unwrap();
 
                     let mut local_indices = vec![];
@@ -748,7 +748,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                         value: Box::new(parse_instr(value, ctx)?),
                     });
                 }
-                ValueType::Primitive(_) => WasmInstr::LocalSet {
+                LoleValueType::Primitive(_) => WasmInstr::LocalSet {
                     local_index: local.index,
                     value: Box::new(parse_instr(value, ctx)?),
                 },
@@ -773,14 +773,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 };
 
                 match &local.value_type {
-                    ValueType::StructInstance { name } => {
+                    LoleValueType::StructInstance { name } => {
                         let struct_def = ctx.module.struct_defs.get(name).unwrap();
 
                         for field_offset in 0..struct_def.fields.len() {
                             local_indices.push(local.index + field_offset as u32);
                         }
                     }
-                    ValueType::Primitive(_) => local_indices.push(local.index),
+                    LoleValueType::Primitive(_) => local_indices.push(local.index),
                 }
             }
 
@@ -800,7 +800,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 return Err(format!("Unknown location for {op}: {local_name}"));
             };
 
-            let ValueType::StructInstance { name: s_name } = &local.value_type else {
+            let LoleValueType::StructInstance { name: s_name } = &local.value_type else {
                 return Err(format!("Trying to set field '{f_name}' on non struct: {local_name}"));
             };
 
@@ -829,7 +829,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, String> {
                 return Err(format!("Reading unknown variable: {local_name}"));
             };
 
-            let ValueType::StructInstance { name: s_name } = &local.value_type else {
+            let LoleValueType::StructInstance { name: s_name } = &local.value_type else {
                 return Err(format!("Trying to get field '{f_name}' on non struct: {local_name}"));
             };
 
@@ -909,83 +909,91 @@ fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, 
 
 // types
 
-fn parse_value_type(l_type: &String, ctx: &ModuleContext) -> Result<ValueType, String> {
-    if let Ok(value_type) = parse_wasm_value_type(l_type) {
-        return Ok(ValueType::Primitive(value_type));
+impl LoleValueType {
+    fn parse(l_type: &String, ctx: &ModuleContext) -> Result<Self, String> {
+        if let Ok(value_type) = WasmValueType::parse(l_type) {
+            return Ok(Self::Primitive(value_type));
+        }
+
+        if ctx.struct_defs.contains_key(l_type) {
+            return Ok(Self::StructInstance {
+                name: l_type.clone(),
+            });
+        }
+
+        Err(format!("Unknown value type: {l_type}"))
     }
 
-    if ctx.struct_defs.contains_key(l_type) {
-        return Ok(ValueType::StructInstance {
-            name: l_type.clone(),
-        });
-    }
+    fn byte_size(&self, ctx: &ModuleContext) -> u32 {
+        match self {
+            Self::Primitive(primitive) => primitive.byte_size(),
+            Self::StructInstance { name } => {
+                let struct_def = ctx.struct_defs.get(name).unwrap();
 
-    Err(format!("Unknown value type: {l_type}"))
-}
-
-fn get_value_type_size(value_type: &ValueType, ctx: &ModuleContext) -> u32 {
-    match value_type {
-        ValueType::Primitive(primitive) => get_primitive_value_type_size(primitive),
-        ValueType::StructInstance { name } => {
-            let struct_def = ctx.struct_defs.get(name).unwrap();
-
-            let mut size = 0;
-            for field in &struct_def.fields {
-                size += get_value_type_size(&ValueType::Primitive(field.value_type), ctx);
+                let mut size = 0;
+                for field in &struct_def.fields {
+                    size += Self::Primitive(field.value_type).byte_size(ctx);
+                }
+                size
             }
-            size
         }
     }
 }
 
-fn get_primitive_value_type_size(value_type: &WasmValueType) -> u32 {
-    match value_type {
-        WasmValueType::FuncRef | WasmValueType::ExternRef => 4, // TODO: check this
-        WasmValueType::I32 | WasmValueType::F32 => 4,
-        WasmValueType::I64 | WasmValueType::F64 => 8,
-        WasmValueType::V128 => 16,
+impl WasmValueType {
+    fn parse(name: &str) -> Result<Self, String> {
+        match name {
+            "bool" | "u8" | "u32" | "i32" | "ptr" => Ok(Self::I32),
+            "i64" => Ok(Self::I64),
+            "f32" => Ok(Self::F32),
+            "f64" => Ok(Self::F64),
+            "v128" => Ok(Self::V128),
+            "funcref" => Ok(Self::FuncRef),
+            "externref" => Ok(Self::ExternRef),
+            _ => return Err(format!("Unknown value type: {name}")),
+        }
+    }
+
+    fn byte_size(&self) -> u32 {
+        match self {
+            Self::FuncRef | Self::ExternRef => 4, // TODO: check this
+            Self::I32 | Self::F32 => 4,
+            Self::I64 | Self::F64 => 8,
+            Self::V128 => 16,
+        }
     }
 }
 
-fn parse_wasm_value_type(name: &str) -> Result<WasmValueType, String> {
-    match name {
-        "bool" | "u8" | "u32" | "i32" | "ptr" => Ok(WasmValueType::I32),
-        "i64" => Ok(WasmValueType::I64),
-        "f32" => Ok(WasmValueType::F32),
-        "f64" => Ok(WasmValueType::F64),
-        "v128" => Ok(WasmValueType::V128),
-        "funcref" => Ok(WasmValueType::FuncRef),
-        "externref" => Ok(WasmValueType::ExternRef),
-        _ => return Err(format!("Unknown value type: {name}")),
+impl WasmLoadKind {
+    fn parse(kind: &str) -> Result<Self, String> {
+        match kind {
+            "i32" => Ok(Self::I32),
+            "i32/u8" => Ok(Self::I32U8),
+            _ => Err(format!("Unknown load kind: {kind}")),
+        }
+    }
+
+    fn from_value_type(value_type: &WasmValueType) -> Result<Self, String> {
+        match value_type {
+            WasmValueType::I32 => Ok(Self::I32),
+            _ => return Err(format!("Unsupported type for load: {value_type:?}")),
+        }
     }
 }
 
-fn parse_load_kind(kind: &str) -> Result<WasmLoadKind, String> {
-    Ok(match kind {
-        "i32" => WasmLoadKind::I32,
-        "i32/u8" => WasmLoadKind::I32U8,
-        _ => return Err(format!("Unknown load kind: {kind}")),
-    })
-}
+impl WasmStoreKind {
+    fn parse(kind: &str) -> Result<Self, String> {
+        match kind {
+            "i32" => Ok(Self::I32),
+            "i32/u8" => Ok(Self::I32U8),
+            _ => return Err(format!("Unknown store kind: {kind}")),
+        }
+    }
 
-fn parse_store_kind(kind: &str) -> Result<WasmStoreKind, String> {
-    Ok(match kind {
-        "i32" => WasmStoreKind::I32,
-        "i32/u8" => WasmStoreKind::I32U8,
-        _ => return Err(format!("Unknown store kind: {kind}")),
-    })
-}
-
-fn get_load_kind_from_value_type(value_type: &WasmValueType) -> Result<WasmLoadKind, String> {
-    Ok(match value_type {
-        WasmValueType::I32 => WasmLoadKind::I32,
-        _ => return Err(format!("Unsupported type for load: {value_type:?}")),
-    })
-}
-
-fn get_store_kind_from_value_type(value_type: &WasmValueType) -> Result<WasmStoreKind, String> {
-    Ok(match value_type {
-        WasmValueType::I32 => WasmStoreKind::I32,
-        _ => return Err(format!("Unsupported type for store: {value_type:?}")),
-    })
+    fn from_value_type(value_type: &WasmValueType) -> Result<Self, String> {
+        match value_type {
+            WasmValueType::I32 => Ok(Self::I32),
+            _ => Err(format!("Unsupported type for store: {value_type:?}")),
+        }
+    }
 }
