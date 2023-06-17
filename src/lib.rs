@@ -8,9 +8,9 @@ mod binary_builder;
 mod compiler;
 mod parser;
 mod runtime;
+mod type_checker;
 mod wasm_module;
 
-use crate::parser::index_to_position;
 use alloc::{
     alloc::{alloc_zeroed, dealloc},
     format,
@@ -48,19 +48,21 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
     let exprs = match parse(script) {
         Ok(exprs) => exprs,
         Err(err) => {
-            let (line, col) = index_to_position(script, err.index);
+            let (line, col) = err.loc().position_in(script);
 
-            return ParseResult::err(format!(
-                "ParseError: {error_message} at line {line} col {col}",
-                error_message = err.data
-            ));
+            return ParseResult::err(format!("ParseError: {err} at line {line} col {col}"));
         }
     };
 
     let module = match compile_module(&exprs) {
         Ok(module) => module,
         Err(err) => {
-            return ParseResult::err(format!("CompilerError: {err}"));
+            let (line, col) = err.loc.position_in(script);
+
+            return ParseResult::err(format!(
+                "CompilerError: {msg} at line {line} col {col}",
+                msg = err.message
+            ));
         }
     };
 
