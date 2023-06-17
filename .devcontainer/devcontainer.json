@@ -3,7 +3,9 @@
 	"image": "mcr.microsoft.com/devcontainers/base:jammy",
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:2": {},
-		"ghcr.io/devcontainers/features/node:1": {},
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "20"
+		},
 		"ghcr.io/devcontainers/features/rust:1": {
 			"version": "nightly-2023-06-16"
 		},
