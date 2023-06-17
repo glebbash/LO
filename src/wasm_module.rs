@@ -11,6 +11,7 @@ pub struct WasmModule {
     pub globals: Vec<WasmGlobal>,
     pub exports: Vec<WasmExport>,
     pub codes: Vec<WasmFn>,
+    pub datas: Vec<WasmData>,
 }
 
 pub struct WasmFnType {
@@ -224,4 +225,8 @@ pub struct WasmExport {
 pub enum WasmExportType {
     Func = 0x00,
     Mem = 0x02,
+}
+
+pub enum WasmData {
+    Active { offset: WasmExpr, bytes: Vec<u8> },
 }

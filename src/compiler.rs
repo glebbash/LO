@@ -2,9 +2,9 @@ use crate::{
     parser::{Location, SExpr},
     type_checker::get_type,
     wasm_module::{
-        WasmBinaryOpKind, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType, WasmGlobal,
-        WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits, WasmLoadKind,
-        WasmLocals, WasmModule, WasmStoreKind, WasmValueType,
+        WasmBinaryOpKind, WasmData, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType,
+        WasmGlobal, WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits,
+        WasmLoadKind, WasmLocals, WasmModule, WasmStoreKind, WasmValueType,
     },
 };
 use alloc::{
@@ -303,7 +303,7 @@ fn compile_top_level_expr(
                         }
                     };
 
-                    let value_type =
+let value_type =
                         LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
                             message: e,
                             loc: output_expr.loc().clone(),
@@ -380,7 +380,7 @@ fn compile_top_level_expr(
                         });
                     }
 
-                    let value_type = LoleValueType::parse(p_type, &ctx).map_err(|e| CompileError {
+ let value_type = LoleValueType::parse(p_type, &ctx).map_err(|e| CompileError {
                         message: e,
                         loc: type_loc.clone()
                     })?;
@@ -399,7 +399,7 @@ fn compile_top_level_expr(
                         }),
                     };
 
-                    let value_type = LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
+let value_type = LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
                         message: e,
                         loc: output_expr.loc().clone()
                     })?;
@@ -595,7 +595,7 @@ fn compile_top_level_expr(
                 });
             }
 
-            let value_type = WasmValueType::parse(global_type).map_err(|e| CompileError {
+let value_type = WasmValueType::parse(global_type).map_err(|e| CompileError {
                 message: e,
                 loc: type_loc.clone(),
             })?;
@@ -617,6 +617,20 @@ fn compile_top_level_expr(
                     mutable,
                 },
                 initial_value,
+            });
+        }
+        "data" => {
+            let [SExpr::Atom(offset), SExpr::Atom(data_base64)] = other else {
+                return Err(format!("Invalid arguments for {op}"));
+            };
+
+            module.datas.push(WasmData::Active {
+                offset: WasmExpr {
+                    instrs: vec![WasmInstr::I32Const(
+                        offset.parse().map_err(|_| format!("Parsing i32 failed"))?,
+                    )],
+                },
+                bytes: base64_decode(data_base64.as_bytes()),
             });
         }
         _ => {
@@ -661,7 +675,7 @@ fn parse_struct_field_defs(
 
         fields.push(StructField {
             name: f_name.clone(),
-            value_type: WasmValueType::parse(f_type).map_err(|e| CompileError {
+value_type: WasmValueType::parse(f_type).map_err(|e| CompileError {
                 message: e,
                 loc: type_loc.clone(),
             })?,
@@ -826,7 +840,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             rhs: Box::new(parse_instr(rhs, ctx)?),
             loc: op_loc.clone(),
         },
-        (
+(
             "if",
             [SExpr::Atom {
                 value: block_type,
@@ -874,7 +888,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(store_kind) else {
                 return Ok(WasmInstr::Store {
-                    kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
+kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
                         message: e,
                         loc: kind_loc.clone()
                     })?,
@@ -910,7 +924,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 
             for field in struct_def.fields.iter() {
                 instrs.push(WasmInstr::Store {
-                    kind: WasmStoreKind::from_value_type(&field.value_type).map_err(|e| {
+kind: WasmStoreKind::from_value_type(&field.value_type).map_err(|e| {
                         CompileError {
                             message: e,
                             loc: op_loc.clone(),
@@ -941,7 +955,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(load_kind) else {
                 return Ok(WasmInstr::Load {
-                    kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
+kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
                         message: e,
                         loc: kind_loc.clone(),
                     })?,
@@ -959,7 +973,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 
             for field in &struct_def.fields {
                 primitive_loads.push(WasmInstr::Load {
-                    kind: WasmLoadKind::from_value_type(&field.value_type).map_err(|e| {
+kind: WasmLoadKind::from_value_type(&field.value_type).map_err(|e| {
                         CompileError {
                             message: e,
                             loc: op_loc.clone(),
@@ -1068,7 +1082,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     message: e,
                     loc: type_loc.clone(),
                 })?;
-
             let comp_count =
                 emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
 
@@ -1471,4 +1484,32 @@ impl WasmStoreKind {
             _ => Err(format!("Unsupported type for store: {value_type:?}")),
         }
     }
+}
+
+// Stolen from https://keyboardsmash.dev/posts/base64-implementation-in-rust-decoding/
+fn base64_decode(input: &[u8]) -> Vec<u8> {
+    const BASE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    fn decode_char(input: u8) -> u8 {
+        BASE_CHARS.iter().position(|&c| c == input).unwrap_or(0) as u8
+    }
+
+    let mut output: Vec<u8> = Vec::new();
+
+    for chunk in input.chunks(4) {
+        let a = decode_char(chunk[0]);
+        let b = decode_char(chunk[1]);
+        let c = decode_char(chunk[2]);
+        let d = decode_char(chunk[3]);
+
+        let dec1 = ((a << 2) | (b & 0x30) >> 4) as u8;
+        let dec2 = (((b & 0x0F) << 4) | (c & 0x3C) >> 2) as u8;
+        let dec3 = (((c & 0x03) << 6) | (d)) as u8;
+
+        output.push(dec1);
+        output.push(dec2);
+        output.push(dec3);
+    }
+
+    output
 }

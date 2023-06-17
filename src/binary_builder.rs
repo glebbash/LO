@@ -1,4 +1,4 @@
-use crate::wasm_module::{WasmExpr, WasmImportDesc, WasmInstr, WasmModule};
+use crate::wasm_module::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule};
 use alloc::vec::Vec;
 
 const SECTION_TYPE: u8 = 0x01;
@@ -8,6 +8,7 @@ const SECTION_MEMORY: u8 = 0x05;
 const SECTION_GLOBAL: u8 = 0x06;
 const SECTION_EXPORT: u8 = 0x07;
 const SECTION_CODE: u8 = 0x0a;
+const SECTION_DATA: u8 = 0x0b;
 
 pub struct BinaryBuilder<'a> {
     module: &'a WasmModule,
@@ -30,6 +31,7 @@ impl<'a> BinaryBuilder<'a> {
         self.emit_global_section();
         self.emit_export_section();
         self.emit_code_section();
+        self.emit_data_section();
         self.data
     }
 
@@ -201,6 +203,26 @@ impl<'a> BinaryBuilder<'a> {
 
         write_u32(&mut self.data, code_section.len() as u32);
         self.data.append(&mut code_section);
+    }
+
+    fn emit_data_section(&mut self) {
+        self.data.push(SECTION_DATA);
+
+        let mut data_section = Vec::new();
+
+        {
+            write_u32(&mut data_section, self.module.datas.len() as u32);
+            for data in &self.module.datas {
+                let WasmData::Active { offset, bytes } = data;
+                write_u32(&mut data_section, 0);
+                write_expr(&mut data_section, offset);
+                write_u32(&mut data_section, bytes.len() as u32);
+                data_section.extend(bytes);
+            }
+        }
+
+        write_u32(&mut self.data, data_section.len() as u32);
+        self.data.append(&mut data_section);
     }
 }
 
