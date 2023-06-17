@@ -620,15 +620,27 @@ let value_type = LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
             });
         }
         "data" => {
-            let [SExpr::Atom(offset), SExpr::Atom(data_base64)] = other else {
-                return Err(format!("Invalid arguments for {op}"));
+            let [
+                SExpr::Atom { value: offset, loc },
+                SExpr::Atom { value: data_base64, .. }
+            ] = other else {
+                return Err(CompileError {
+                    message: format!("Invalid arguments for {op}"),
+                    loc: op_loc.clone(),
+                })
             };
+
+            let offset = offset.parse().map_err(|_| CompileError {
+                message: format!("Parsing i32 (implicit) failed"),
+                loc: loc.clone(),
+            })?;
 
             module.datas.push(WasmData::Active {
                 offset: WasmExpr {
-                    instrs: vec![WasmInstr::I32Const(
-                        offset.parse().map_err(|_| format!("Parsing i32 failed"))?,
-                    )],
+                    instrs: vec![WasmInstr::I32Const {
+                        value: offset,
+                        loc: loc.clone(),
+                    }],
                 },
                 bytes: base64_decode(data_base64.as_bytes()),
             });
