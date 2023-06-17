@@ -303,7 +303,7 @@ fn compile_top_level_expr(
                         }
                     };
 
-let value_type =
+                    let value_type =
                         LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
                             message: e,
                             loc: output_expr.loc().clone(),
@@ -595,7 +595,7 @@ let value_type = LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
                 });
             }
 
-let value_type = WasmValueType::parse(global_type).map_err(|e| CompileError {
+            let value_type = WasmValueType::parse(global_type).map_err(|e| CompileError {
                 message: e,
                 loc: type_loc.clone(),
             })?;
@@ -675,7 +675,7 @@ fn parse_struct_field_defs(
 
         fields.push(StructField {
             name: f_name.clone(),
-value_type: WasmValueType::parse(f_type).map_err(|e| CompileError {
+            value_type: WasmValueType::parse(f_type).map_err(|e| CompileError {
                 message: e,
                 loc: type_loc.clone(),
             })?,
@@ -840,7 +840,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             rhs: Box::new(parse_instr(rhs, ctx)?),
             loc: op_loc.clone(),
         },
-(
+        (
             "if",
             [SExpr::Atom {
                 value: block_type,
@@ -924,7 +924,7 @@ kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
 
             for field in struct_def.fields.iter() {
                 instrs.push(WasmInstr::Store {
-kind: WasmStoreKind::from_value_type(&field.value_type).map_err(|e| {
+                    kind: WasmStoreKind::from_value_type(&field.value_type).map_err(|e| {
                         CompileError {
                             message: e,
                             loc: op_loc.clone(),
@@ -973,7 +973,7 @@ kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
 
             for field in &struct_def.fields {
                 primitive_loads.push(WasmInstr::Load {
-kind: WasmLoadKind::from_value_type(&field.value_type).map_err(|e| {
+                    kind: WasmLoadKind::from_value_type(&field.value_type).map_err(|e| {
                         CompileError {
                             message: e,
                             loc: op_loc.clone(),
