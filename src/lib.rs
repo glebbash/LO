@@ -115,6 +115,7 @@ mod tests {
         if ok == 1 {
             let wasm_binary = unsafe { std::slice::from_raw_parts(data, size) };
 
+            let _ = std::fs::create_dir("tmp");
             std::fs::write("tmp/main.wasm", wasm_binary).unwrap();
         } else {
             let error_msg = unsafe { std::slice::from_raw_parts(data, size) };
