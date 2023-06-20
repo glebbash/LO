@@ -380,7 +380,7 @@ fn compile_top_level_expr(
                         });
                     }
 
- let value_type = LoleValueType::parse(p_type, &ctx).map_err(|e| CompileError {
+                let value_type = LoleValueType::parse(p_type, &ctx).map_err(|e| CompileError {
                         message: e,
                         loc: type_loc.clone()
                     })?;
@@ -399,7 +399,7 @@ fn compile_top_level_expr(
                         }),
                     };
 
-let value_type = LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
+                let value_type = LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
                         message: e,
                         loc: output_expr.loc().clone()
                     })?;
@@ -900,7 +900,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(store_kind) else {
                 return Ok(WasmInstr::Store {
-kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
+                        kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
                         message: e,
                         loc: kind_loc.clone()
                     })?,
@@ -967,7 +967,7 @@ kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(load_kind) else {
                 return Ok(WasmInstr::Load {
-kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
+                        kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
                         message: e,
                         loc: kind_loc.clone(),
                     })?,
