@@ -1,0 +1,33 @@
+;; (export :as memory (mem m1 :min 1000))
+;; TODO: add memory implicitly if it's used
+
+(export main :as _start)
+(fn main [] [] (
+    ;; TODO: add string support
+    (std/print "Hello World!\n")
+))
+
+;; TODO: add module support
+(module std
+    (alias str ([] u8))
+    (struct str (data (& u8)) (len u32))
+    (global mut TMP_U32 u32 0)
+
+    (fn print [(message std/str)] []
+        ;; TODO: make {_ = ...} work as multidrop
+        {_ = (wasi/fd_write
+            wasi/FD_STDOUT (pack message 1) (& TMP_U32)
+        )}
+    )
+)
+
+(module wasi
+    (global FD_STDOUT u32 1)
+    (alias IOVec ([] u8))
+
+    (import fn fd_write [
+        (file_descriptor u32)        ;; file_descriptor
+        (iovs            ([] IOVec)) ;; IOVec slice
+        (&nwritten       (& u32))    ;; Where to store number of bytes written
+    ] [i32] :from "wasi_snapshot_preview1" "fd_write")
+)
