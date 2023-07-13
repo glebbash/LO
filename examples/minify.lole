@@ -96,7 +96,7 @@
     ))
 
     {&str : &Vec<u8>}
-    {&str = (u32-to-string i)}
+    {&str = (u32_to_string i)}
     (Vec/push_u8 &str CHAR_NEWLINE)
     
     {str : Vec}
@@ -114,7 +114,7 @@
 ))
 
 ;; ascii digits: 48-57
-(fn u32-to-string [(input u32)] [&Vec<u8>] (
+(fn u32_to_string [(input u32)] [&Vec<u8>] (
     {&output : &Vec<u8>}
     {&output = (Vec/new 32 1)}
 

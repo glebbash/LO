@@ -10,7 +10,7 @@
     (file_descriptor u32) ;; file_descriptor
     (&iovs           ptr) ;; The pointer to the iov array
     (iovs_len        u32) ;; Amount of Wasi/IOVec
-    (&nwritten       u32) ;; Pointer to store the number of bytes written to
+    (&nwritten       u32) ;; Pointer to store the number of bytes written
 ] [i32] :from wasi_snapshot_preview1 fd_write)
 
 (export main :as _start)
