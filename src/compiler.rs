@@ -852,6 +852,18 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             rhs: Box::new(parse_instr(rhs, ctx)?),
             loc: op_loc.clone(),
         },
+        ("i32.div" | "/", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32DivUnsigned,
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
+        },
+        ("i32.rem" | "%", [lhs, rhs]) => WasmInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32RemUnsigned,
+            lhs: Box::new(parse_instr(lhs, ctx)?),
+            rhs: Box::new(parse_instr(rhs, ctx)?),
+            loc: op_loc.clone(),
+        },
         (
             "if",
             [SExpr::Atom {

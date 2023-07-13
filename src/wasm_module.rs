@@ -53,6 +53,8 @@ pub enum WasmBinaryOpKind {
     I32Add = 0x6a,
     I32Sub = 0x6b,
     I32Mul = 0x6c,
+    I32DivUnsigned = 0x6e,
+    I32RemUnsigned = 0x70,
     I32And = 0x71,
     I32Or = 0x72,
 }
