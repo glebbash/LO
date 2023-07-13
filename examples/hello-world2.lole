@@ -1,0 +1,33 @@
+(mem m1 :min 1000)
+(export mem m1 :as memory)
+
+(data 8 SGVsbG8gV29ybGQhCg==) ;; "Hello World!\n"
+
+(global Wasi/FD_STDOUT u32 1)
+(struct Wasi/IOVec (base ptr) (len u32))
+(struct &Wasi/IOVec (actual ptr))
+(import fn Wasi/fd_write [
+    (file_descriptor u32) ;; file_descriptor
+    (&iovs           ptr) ;; The pointer to the iov array
+    (iovs_len        u32) ;; Amount of Wasi/IOVec
+    (&nwritten       u32) ;; Pointer to store the number of bytes written to
+] [i32] :from wasi_snapshot_preview1 fd_write)
+
+(export main :as _start)
+(fn main [] [] (
+    {&iov : ptr}
+    {&iov = 0}
+    
+    (store Wasi/IOVec &iov (struct.new Wasi/IOVec
+        8 ;; base
+        13 ;; len
+    ))
+
+    (Std/print &iov)
+))
+
+(fn Std/print [(&iov &Wasi/IOVec)] [] (
+    {_ : i32}
+    {_ = (Wasi/fd_write Wasi/FD_STDOUT &iov 1 0)}
+))
+
