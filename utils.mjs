@@ -41,7 +41,10 @@ async function runCommand(args) {
     const filePath = new URL(args[0], import.meta.url);
     const compiler = await loadWasm(await readFile(COMPILER_PATH));
     const program = await compile(compiler, await readFile(filePath));
-    await runWASI(program);
+    await runWASI(program, {
+        args: args.slice(1),
+        env: process.env,
+    });
 }
 
 /** @param {string[]} args */

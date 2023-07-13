@@ -102,13 +102,13 @@
     {str : Vec}
     {str = (load Vec &str)}
     
-    {&out-str : ptr}
-    {&out-str = (Mem/alloc (sizeof StringSlice))}
-    (store StringSlice &out-str (struct.new StringSlice
+    {&out_str : ptr}
+    {&out_str = (Mem/alloc (sizeof StringSlice))}
+    (store StringSlice &out_str (struct.new StringSlice
         {str . data_ref}
         {str . length}
     ))
-    (Std/print &out-str)
+    (Std/print &out_str)
 
     (return 0)
 ))
