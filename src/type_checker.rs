@@ -19,8 +19,18 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             get_type(ctx, &address_instr)?;
             vec![]
         }
-        WasmInstr::Return { value, .. } => {
-            get_type(ctx, value)?;
+        WasmInstr::Return { value, loc } => {
+            let return_type = get_type(ctx, value)?;
+            if return_type.len() != ctx.fn_type.outputs.len() {
+                return Err(CompileError {
+                    message: format!(
+                        "TypeError: Invalid return type, \
+                            expected {outputs:?}, got {return_type:?}",
+                        outputs = ctx.fn_type.outputs,
+                    ),
+                    loc: loc.clone(),
+                });
+            }
             vec![]
         }
         WasmInstr::LocalSet { value, .. } => {
