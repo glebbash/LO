@@ -1,0 +1,303 @@
+(mem m1 :min 1000)
+(export mem m1 :as memory)
+
+(struct &*u8 (actual ptr))
+(struct &*&*u8 (actual ptr))
+
+;; <std>
+    (global true bool 1)
+    (global false bool 0)
+
+    (struct &Vec<u8> (actual ptr))
+    
+    ;; ascii digits: 48-57
+    (fn std/u32_to_string [(input u32)] [&Vec<u8>] (
+        {&output : &Vec<u8>}
+        {&output = (Vec/new 32 1)}
+
+        (if {input == 0} (do
+            (Vec/push_u8 &output 48)
+            (return &output)
+        ))
+
+        (loop (
+            {rem : u32}
+            {rem = {input % 10}}
+        
+            (Vec/push_u8 &output {48 + rem})
+            {input = {input / 10}}
+            
+            (if {input == 0} (break))
+        ))
+        
+        (Vec/reverse &output)
+
+        (return &output)
+    ))
+;; </std>
+
+;; <string>
+    (struct StringSlice (data ptr)(size u32))
+    (fn StringSlice/Parser/char_at [(self StringSlice)(index u32)][u8]((return (load i32/u8 {{self . data} + index}))))
+;; </string>
+
+;; <vec>
+    (struct &Vec (ref ptr))
+    (struct Vec (length u32)(capacity u32)(item_size u32)(data_ref ptr))
+    (fn Vec/new [(capacity u32)(item_size u32)][&Vec]({&self : &Vec}{&self = (Mem/alloc (sizeof Vec))}(store Vec &self (struct.new Vec 0 capacity item_size (Mem/alloc {capacity * item_size}))) (return &self)))
+    (fn Vec/get_u8 [(&self &Vec)(index u32)][u8]({self : Vec}{self = (load Vec &self)}(return (load i32/u8 {{self . data_ref} + {index * {self . item_size}}}))))
+    (fn Vec/get_u32 [(&self &Vec)(index u32)][u32]({self : Vec}{self = (load Vec &self)}(return (load i32 {{self . data_ref} + {index * {self . item_size}}}))))
+    (fn Vec/swap [(&self &Vec)(index1 u32)(index2 u32)][]({self : Vec}{self = (load Vec &self)}(Mem/swap {{self . data_ref} + {index1 * {self . item_size}}}{{self . data_ref} + {index2 * {self . item_size}}}{self . item_size})))
+    (fn Vec/len [(&self &Vec)][u32]({self : Vec}{self = (load Vec &self)}(return {self . length})))
+    (fn Vec/push_u8 [(&self &Vec)(item u8)][]({self : Vec}{self = (load Vec &self)}{index : u32}{index = {self . length}}{self = length {index + 1}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(store i32/u8 {{self . data_ref} + {index * {self . item_size}}} item)))
+    (fn Vec/push_all [(&self &Vec)(&items ptr)(items_len u32)][]({self : Vec}{self = (load Vec &self)}{old_len : u32}{old_len = {self . length}}{self = length {old_len + items_len}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(Mem/copy &items {{self . data_ref} + {old_len * {self . item_size}}}{items_len * {self . item_size}})))
+    (fn Vec/grow_if_needed [(&self &Vec)][]({self : Vec}{self = (load Vec &self)}(if {{self . length} == {self . capacity}}(do {new_cap : u32}{new_cap = {{self . capacity} * 2}}{old_data_ref : ptr}{old_data_ref = {self . data_ref}}{self = data_ref (Mem/alloc {new_cap * {self . item_size}})}(Mem/copy old_data_ref {self . data_ref}{self . capacity}){self = capacity new_cap}(Mem/free old_data_ref)))(store Vec &self self)))
+    (fn Vec/reverse [(&self &Vec)] [] (
+        {start : u32}
+        {start = 0}
+        {end : u32}
+        {end = {(Vec/len &self) - 1}}
+        
+        (loop (
+            (if {start >= end} (break))
+
+            (Vec/swap &self start end)
+            {start = {start + 1}}
+            {end = {end - 1}}
+        ))
+    ))
+;; </vec>
+
+;; <mem>
+    (global mut Mem/HEAP_INDEX u32 4) ;; 0-4 is for Wasi/fd_write nwritten 
+    (fn Mem/alloc [(size u32)][ptr]({ref : ptr}{ref = Mem/HEAP_INDEX}{Mem/HEAP_INDEX = {Mem/HEAP_INDEX + size}} (return ref)))
+    (fn Mem/free [(ref ptr)][]())
+    (fn Mem/copy [(src ptr)(dist ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}(store i32/u8 {dist + size}(load i32/u8 {src + size}))))))
+    (fn Mem/swap [(ref1 ptr)(ref2 ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}{tmp : u8}{tmp = (load i32/u8 {ref1 + size})}(store i32/u8 {ref1 + size}(load i32/u8 {ref2 + size}))(store i32/u8 {ref2 + size} tmp)))))
+;; </mem>
+
+;; <wasi>
+    (struct WasiErr (actual u32))
+    (global WasiErr/SUCCESS u32 0)
+    (global WasiErr/BADF    u32 8)
+    (global FD_STDIN u32 0)
+    (global FD_STDOUT u32 1)
+    (struct &u32 (actual ptr))
+    (struct &IOVec* (actual ptr))
+    (struct IOVec (base ptr) (len u32))
+    (import fn fd_read [
+        (fd              u32) ;; file_descriptor
+        (&iovs           &IOVec*) ;; The pointer to the iov array
+        (iovs_len        u32) ;; Amount of IOVec
+        (&nread          u32) ;; Pointer to store the number of bytes read
+    ] [WasiErr] :from wasi_snapshot_preview1 fd_read)
+    (import fn fd_write [
+        (fd              u32) ;; file_descriptor
+        (&iovs           &IOVec*) ;; The pointer to the iov array
+        (iovs_len        u32) ;; Amount of IOVec
+        (&nwritten       u32) ;; Pointer to store the number of bytes written
+    ] [WasiErr] :from wasi_snapshot_preview1 fd_write)
+    (import fn args_sizes_get [
+        (&argc          &u32) ;; Pointer to where the number of arguments will be written.
+        (&argv_buf_size &u32) ;; Pointer to where the size of the argument string data will be written.
+    ] [i32] :from wasi_snapshot_preview1 args_sizes_get)
+    (import fn args_get [
+        (&argv     &u32) ;; Pointer to a buffer where the argument pointers will be written.
+        (&argv_buf &u32) ;; Pointer to a buffer where the argument string data will be written.
+    ] [WasiErr] :from wasi_snapshot_preview1 args_get)
+    (import fn path_open [
+        (dirfd                u32) ;; The file descriptor representing the directory that the file is located in.
+        (dirflags             u32) ;; Flags specifying how the path will be resolved.
+        (&path                &*u8) ;; A wasm pointer to a null-terminated string containing the path of the file or directory to open.
+        (path_len             u32) ;; The length of the path string.
+        (oflags               u32) ;; Flags specifying how the file will be opened.
+        (fs_rights_base       u64) ;; The rights of the created file descriptor.
+        (fs_rights_inheriting u64) ;; The rights of file descriptors derived from the created file descriptor.
+        (fdflags              u32) ;; The flags of the file descriptor.
+        (&fd                  &u32) ;; A wasm pointer to a WasiFd variable where the new file descriptor will be stored.
+    ] [WasiErr] :from wasi_snapshot_preview1 path_open)
+    (import fn fd_close [
+        (fd u32) ;; file_descriptor
+    ] [WasiErr] :from wasi_snapshot_preview1 fd_close)
+;; </wasi>
+
+;; <args>
+    (struct Args
+        (argc u32)
+        (&argv ptr) ;; &*&*u8
+    )
+
+    (fn Args/load [] [Args] (
+        {&argc : &u32}
+        {&argc = (Mem/alloc (sizeof u32))}
+        
+        {&argv_buf_size : &u32}
+        {&argv_buf_size = (Mem/alloc (sizeof u32))}
+
+        {_ : i32}
+        {_ = (args_sizes_get &argc &argv_buf_size)}
+
+        {argc : u32}
+        {argc = (load i32 &argc)}
+
+        {&argv : &*&*u8}
+        {&argv = (Mem/alloc {argc * (sizeof &*u8)})}
+
+        {&argv_buf : &*u8}
+        {&argv_buf = (Mem/alloc (load i32 &argv_buf_size))}
+
+        {_ = (args_get &argv &argv_buf)}
+
+        (return (struct.new Args
+            argc
+            &argv
+        ))
+    ))
+
+    (fn Args/get [(self Args) (i u32)] [StringSlice] (
+        {&arg : &*u8}
+        {&arg = (load i32 {{self . &argv} + {i * (sizeof &*u8)}})}
+        (return (struct.new StringSlice
+            &arg (Args/_c_str_len &arg)
+        ))
+    ))
+
+    (fn Args/_c_str_len [(&str &*u8)] [u32] (
+        {len : u32}
+        {len = 0}
+        
+        (loop (
+            {char : u8}
+            {char = (load i32/u8 {&str + len})}
+            
+            (if {char == 0} (break))
+
+            {len = {len + 1}}
+        ))
+
+        (return len)
+    ))
+;; </args>
+
+;; <print>
+    (fn print_u32 [(num u32)] [] (
+        {&out : &Vec<u8>}
+        {&out = (std/u32_to_string num)}
+
+        (print_str &out)
+    ))
+
+    (fn println [] [] (
+        (print_char 10) ;; \n
+    ))
+
+    (fn print_char [(char u8)] [] (
+        {&out : &*u8}
+        {&out = (Mem/alloc 1)}
+        (store i32/u8 &out char)
+
+        (print_str_slice (pack &out 1))
+    ))
+
+    (fn print_str [(&str &Vec<u8>)] [] (
+        {str : Vec}
+        {str = (load Vec &str)}
+
+        (print_str_slice (pack
+            {str . data_ref}
+            {str . length}
+        ))
+    ))
+
+    (fn print_str_slice [(str StringSlice)] [] (
+        {&io_vec : &IOVec*}
+        {&io_vec = (Mem/alloc (sizeof StringSlice))}
+        (store StringSlice &io_vec str)
+
+        {&nwritten : &u32}
+        {&nwritten = (Mem/alloc (sizeof u32))}
+
+        {io_res : i32}
+        {io_res = (fd_write FD_STDOUT &io_vec 1 &nwritten)}
+    ))
+;; </print>
+
+;; this program expects host to preopen "." on fd 3
+(global CWD_PREOPEN_FD u32 3)
+
+(export main :as _start)
+(fn main [] [i32] (
+    {args : Args}
+    {args = (Args/load)}
+
+    (if {{args . argc} != 1} (do
+        (return 1)
+    ))
+
+    {file_path : StringSlice}
+    {file_path = (Args/get args 0)}
+
+    {&fd : u32}
+    {&fd = (Mem/alloc (sizeof u32))}
+
+    {err : u32}
+    {err = (path_open
+        CWD_PREOPEN_FD 0
+        file_path 0 (i64 2) (i64 0) 0
+        &fd
+    )}
+    (if {err != 0} (return err))
+
+    {fd : u32}
+    {fd = (load i32 &fd)}
+
+    {err = (fd_pipe fd FD_STDOUT 256)}
+    (if {err != 0} (return err))
+
+    {err = (fd_close fd)}
+    (return err)
+))
+
+(fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (
+    {&chunk : &*u8}
+    {&chunk = (Mem/alloc chunk_size)}
+
+    {&iov : &IOVec*}
+    {&iov = (Mem/alloc (sizeof IOVec))}
+    (store i32 &iov &chunk)
+
+    {&nread : &u32}
+    {&nread = (Mem/alloc (sizeof u32))}
+
+    {result : i32}
+    {result = 0}
+
+    {io_res : i32}
+
+    (loop (
+        (store i32 {&iov + (sizeof u32)} chunk_size)
+        {io_res = (fd_read fd_in &iov 1 &nread)}
+        (if {io_res != 0} (do
+            {result = 1}
+            (break)
+        ))
+        
+        {nread : u32}
+        {nread = (load i32 &nread)}
+
+        (if {nread == 0} (break))
+
+        (store i32 {&iov + (sizeof u32)} nread)
+        {io_res = (fd_write fd_out &iov 1 &nread)}
+        (if {io_res != 0} (do
+            {result = 1}
+            (break)
+        ))
+    ))
+
+    (Mem/free &chunk)
+    (Mem/free &iov)
+    (Mem/free &nread)
+
+    (return result)
+))

@@ -44,6 +44,9 @@ async function runCommand(args) {
     await runWASI(program, {
         args: args.slice(1),
         env: process.env,
+        preopens: {
+            ".": ".",
+        },
     });
 }
 

@@ -1474,7 +1474,7 @@ impl WasmValueType {
     fn parse(name: &str) -> Result<Self, String> {
         match name {
             "bool" | "u8" | "u32" | "i32" | "ptr" => Ok(Self::I32),
-            "i64" => Ok(Self::I64),
+            "i64" | "u64" => Ok(Self::I64),
             "f32" => Ok(Self::F32),
             "f64" => Ok(Self::F64),
             "v128" => Ok(Self::V128),
