@@ -126,10 +126,11 @@
     (loop (
         {rem : u32}
         {rem = {input % 10}}
-        (if {rem == 0} (break))
       
         (Vec/push_u8 &output {48 + rem})
         {input = {input / 10}}
+        
+        (if {input == 0} (break))
     ))
     
     (Vec/reverse &output)
