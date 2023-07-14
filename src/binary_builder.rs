@@ -272,6 +272,10 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x41);
             write_i32(output, *value);
         }
+        WasmInstr::I64Const { value, .. } => {
+            output.push(0x42);
+            write_i64(output, *value);
+        }
         WasmInstr::LocalGet { local_index, .. } => {
             output.push(0x20);
             write_u32(output, *local_index);
@@ -400,4 +404,8 @@ fn write_u32(output: &mut Vec<u8>, value: u32) {
 
 fn write_i32(output: &mut Vec<u8>, value: i32) {
     mini_leb128::write_i32(output, value).unwrap();
+}
+
+fn write_i64(output: &mut Vec<u8>, value: i64) {
+    mini_leb128::write_i64(output, value).unwrap();
 }

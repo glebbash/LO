@@ -804,6 +804,14 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             })?,
             loc: op_loc.clone(),
         },
+        ("i64", [SExpr::Atom { value, loc }]) => WasmInstr::I64Const {
+            // TODO: figure out why I can't use parse::<i64>
+            value: value.parse::<i32>().map_err(|_| CompileError {
+                message: format!("Parsing i64 failed"),
+                loc: loc.clone(),
+            })? as i64,
+            loc: op_loc.clone(),
+        },
         ("i32.eq" | "==", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(parse_instr(lhs, ctx)?),

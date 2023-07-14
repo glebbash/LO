@@ -102,6 +102,10 @@ pub enum WasmInstr {
         value: i32,
         loc: Location,
     },
+    I64Const {
+        value: i64,
+        loc: Location,
+    },
     Return {
         value: Box<WasmInstr>,
         loc: Location,
@@ -170,6 +174,7 @@ impl WasmInstr {
             Self::Load { loc, .. } => loc,
             Self::Store { loc, .. } => loc,
             Self::I32Const { loc, .. } => loc,
+            Self::I64Const { loc, .. } => loc,
             Self::Return { loc, .. } => loc,
             Self::LocalGet { loc, .. } => loc,
             Self::LocalSet { loc, .. } => loc,

@@ -10,6 +10,10 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::NoInstr { .. } => vec![],
         WasmInstr::LoopBreak { .. } => vec![],
         WasmInstr::LoopContinue { .. } => vec![],
+        WasmInstr::I32Const { .. } => vec![WasmValueType::I32],
+        WasmInstr::I64Const { .. } => vec![WasmValueType::I64],
+        WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
+
         WasmInstr::Store {
             value_instr,
             address_instr,
@@ -17,20 +21,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         } => {
             get_type(ctx, &value_instr)?;
             get_type(ctx, &address_instr)?;
-            vec![]
-        }
-        WasmInstr::Return { value, loc } => {
-            let return_type = get_type(ctx, value)?;
-            if return_type.len() != ctx.fn_type.outputs.len() {
-                return Err(CompileError {
-                    message: format!(
-                        "TypeError: Invalid return type, \
-                            expected {outputs:?}, got {return_type:?}",
-                        outputs = ctx.fn_type.outputs,
-                    ),
-                    loc: loc.clone(),
-                });
-            }
             vec![]
         }
         WasmInstr::LocalSet { value, .. } => {
@@ -52,11 +42,17 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             get_type(ctx, &then_branch)?;
             vec![]
         }
-
-        WasmInstr::I32Const { .. } => vec![WasmValueType::I32],
         WasmInstr::BinaryOp { lhs, rhs, .. } => {
             get_type(ctx, rhs)?;
             return get_type(ctx, lhs);
+        }
+        WasmInstr::Load {
+            kind,
+            address_instr,
+            ..
+        } => {
+            get_type(ctx, &address_instr)?;
+            vec![kind.get_value_type()]
         }
         WasmInstr::If {
             block_type,
@@ -70,9 +66,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             get_type(ctx, &else_branch)?;
             vec![block_type.clone()]
         }
-
-        WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
-
         WasmInstr::Loop { instrs, loc } => {
             let types = get_types(ctx, instrs)?;
             if types.len() > 0 {
@@ -82,15 +75,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
                 });
             }
             vec![]
-        }
-
-        WasmInstr::Load {
-            kind,
-            address_instr,
-            ..
-        } => {
-            get_type(ctx, &address_instr)?;
-            vec![kind.get_value_type()]
         }
         WasmInstr::GlobalGet { global_index, .. } => {
             let wasm_global = ctx
@@ -155,6 +139,20 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             }
 
             fn_type.outputs.clone()
+        }
+        WasmInstr::Return { value, loc } => {
+            let return_type = get_type(ctx, value)?;
+            if return_type.len() != ctx.fn_type.outputs.len() {
+                return Err(CompileError {
+                    message: format!(
+                        "TypeError: Invalid return type, \
+                            expected {outputs:?}, got {return_type:?}",
+                        outputs = ctx.fn_type.outputs,
+                    ),
+                    loc: loc.clone(),
+                });
+            }
+            vec![]
         }
     })
 }
