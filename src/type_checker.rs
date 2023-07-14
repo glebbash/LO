@@ -1,7 +1,7 @@
 use crate::{
     compiler::{CompileError, FnContext},
     parser::Location,
-    wasm_module::{WasmInstr, WasmValueType},
+    wasm_module::{WasmImportDesc, WasmInstr, WasmValueType},
 };
 use alloc::{format, vec, vec::Vec};
 
@@ -116,7 +116,15 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
                     .get(fn_def.fn_index as usize)
                     .ok_or_else(|| unreachable_err(line!()))?
             } else {
-                fn_index
+                let WasmImportDesc::Func { type_index } = ctx
+                    .module
+                    .wasm_module
+                    .imports
+                    .get(fn_def.fn_index as usize)
+                    .map(|i| &i.item_desc)
+                    .ok_or_else(|| unreachable_err(line!()))?;
+
+                type_index
             };
 
             let fn_type = ctx
