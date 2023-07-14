@@ -237,6 +237,18 @@
     {file_path : StringSlice}
     {file_path = (Args/get args 0)}
 
+    {err : u32}
+    {fd : u32}
+    {(err fd) = (fd_open file_path)}
+
+    {err = (fd_pipe fd FD_STDOUT 256)}
+    (if {err != 0} (return err))
+
+    {err = (fd_close fd)}
+    (return err)
+))
+
+(fn fd_open [(file_path StringSlice)] [u32 u32] (
     {&fd : u32}
     {&fd = (Mem/alloc (sizeof u32))}
 
@@ -246,16 +258,16 @@
         file_path 0 (i64 2) (i64 0) 0
         &fd
     )}
-    (if {err != 0} (return err))
+    (if {err != 0} (do
+        (Mem/free &fd)
+        (return (pack err 0))
+    ))
 
     {fd : u32}
     {fd = (load i32 &fd)}
-
-    {err = (fd_pipe fd FD_STDOUT 256)}
-    (if {err != 0} (return err))
-
-    {err = (fd_close fd)}
-    (return err)
+    
+    (Mem/free &fd)
+    (return (pack 0 fd))
 ))
 
 (fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (
