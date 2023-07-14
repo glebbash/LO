@@ -173,6 +173,23 @@ test("compiles echo", async () => {
     assert.strictEqual(output, "abc");
 });
 
+test("compiles args", async () => {
+    const program = await compile(
+        compiler,
+        await readFile("./examples/args.lole")
+    );
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, {
+            stdout: stdout.fd,
+            args: ["123", "456", "789"],
+        });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, "123\n456\n789\n");
+});
+
 test("compiles parser", async () => {
     const output = await compile(
         compiler,
