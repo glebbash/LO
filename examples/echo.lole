@@ -22,7 +22,7 @@
 
 ;; <mem>
     (global mut Mem/HEAP_INDEX u32 4) ;; 0-4 is for Wasi/fd_write nwritten 
-    (fn Mem/alloc [(size u32)][ptr]({ref : ptr}{ref = Mem/HEAP_INDEX}{Mem/HEAP_INDEX = {Mem/HEAP_INDEX + size}} ref))
+    (fn Mem/alloc [(size u32)][ptr]({ref : ptr}{ref = Mem/HEAP_INDEX}{Mem/HEAP_INDEX = {Mem/HEAP_INDEX + size}} (return ref)))
     (fn Mem/free [(ref ptr)][]())
     (fn Mem/copy [(src ptr)(dist ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}(store i32/u8 {dist + size}(load i32/u8 {src + size}))))))
     (fn Mem/swap [(ref1 ptr)(ref2 ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}{tmp : u8}{tmp = (load i32/u8 {ref1 + size})}(store i32/u8 {ref1 + size}(load i32/u8 {ref2 + size}))(store i32/u8 {ref2 + size} tmp)))))
@@ -36,7 +36,7 @@
 
 (export main :as _start)
 (fn main [] [i32] (
-    (fd_pipe FD_STDIN FD_STDOUT 256)
+    (return (fd_pipe FD_STDIN FD_STDOUT 256))
 ))
 
 (fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (

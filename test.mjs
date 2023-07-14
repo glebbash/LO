@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { open, readFile, unlink } from "node:fs/promises";
+import { open, readFile, unlink, writeFile } from "node:fs/promises";
 import { WASI } from "node:wasi";
 import { randomUUID } from "node:crypto";
 
@@ -154,6 +154,23 @@ test("compiles hello world", async () => {
     });
 
     assert.strictEqual(output, "Hello World!\n");
+});
+
+test("compiles echo", async () => {
+    const program = await compile(
+        compiler,
+        await readFile("./examples/echo.lole")
+    );
+
+    const output = await runWithTmpFile(async (stdin, stdinFile) => {
+        await writeFile(stdinFile, "abc");
+        return runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, { stdin: stdin.fd, stdout: stdout.fd });
+            return readFile(stdoutFile, { encoding: "utf-8" });
+        });
+    });
+
+    assert.strictEqual(output, "abc");
 });
 
 test("compiles parser", async () => {
