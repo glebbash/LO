@@ -190,6 +190,24 @@ test("compiles args", async () => {
     assert.strictEqual(output, "123\n456\n789\n");
 });
 
+test("compiles cat", async () => {
+    const program = await compile(
+        compiler,
+        await readFile("./examples/cat.lole")
+    );
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, {
+            stdout: stdout.fd,
+            args: ["examples/42.lole"],
+            preopens: { ".": "." },
+        });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, await readFile("examples/42.lole", "utf-8"));
+});
+
 test("compiles parser", async () => {
     const output = await compile(
         compiler,
