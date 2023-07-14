@@ -23,22 +23,22 @@
 
 ;; StringSlice
 (struct StringSlice (data ptr)(size u32))
-(fn StringSlice/char_at [(self StringSlice)(index u32)][u8]((load i32/u8 {{self . data} + index})))
+(fn StringSlice/char_at [(self StringSlice)(index u32)][u8]((return (load i32/u8 {{self . data} + index}))))
 
 ;; Vec
 (struct &Vec (ref ptr))
 (struct Vec (length u32)(capacity u32)(item_size u32)(data_ref ptr))
-(fn Vec/new [(capacity u32)(item_size u32)][&Vec]({&self : &Vec}{&self = (alloc (sizeof Vec))}(store Vec &self (struct.new Vec 0 capacity item_size (alloc {capacity * item_size}))) &self ))
-(fn Vec/get_u8 [(&self &Vec)(index u32)][u8]({self : Vec}{self = (load Vec &self)}(load i32/u8 {{self . data_ref} + {index * {self . item_size}}})))
+(fn Vec/new [(capacity u32)(item_size u32)][&Vec]({&self : &Vec}{&self = (alloc (sizeof Vec))}(store Vec &self (struct.new Vec 0 capacity item_size (alloc {capacity * item_size}))) (return &self) ))
+(fn Vec/get_u8 [(&self &Vec)(index u32)][u8]({self : Vec}{self = (load Vec &self)}(return (load i32/u8 {{self . data_ref} + {index * {self . item_size}}}))))
 (fn Vec/swap [(&self &Vec)(index1 u32)(index2 u32)][]({self : Vec}{self = (load Vec &self)}(memswap {{self . data_ref} + {index1 * {self . item_size}}}{{self . data_ref} + {index2 * {self . item_size}}}{self . item_size})))
-(fn Vec/len [(&self &Vec)][u32]({self : Vec}{self = (load Vec &self)}{self . length}))
+(fn Vec/len [(&self &Vec)][u32]({self : Vec}{self = (load Vec &self)}(return {self . length})))
 (fn Vec/push_u8 [(&self &Vec)(item u8)][]({self : Vec}{self = (load Vec &self)}{index : u32}{index = {self . length}}{self = length {index + 1}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(store i32/u8 {{self . data_ref} + {index * {self . item_size}}} item )))
 (fn Vec/push_all [(&self &Vec)(&items ptr)(items_len u32)][]({self : Vec}{self = (load Vec &self)}{old_len : u32}{old_len = {self . length}}{self = length {old_len + items_len}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(memcpy &items {{self . data_ref} + {old_len * {self . item_size}}}{items_len * {self . item_size}})))
 (fn Vec/grow_if_needed [(&self &Vec)][]({self : Vec}{self = (load Vec &self)}(if {{self . length} == {self . capacity}}(do {new_cap : u32}{new_cap = {{self . capacity} * 2}}{old_data_ref : ptr}{old_data_ref = {self . data_ref}}{self = data_ref (alloc {new_cap * {self . item_size}})}(memcpy old_data_ref {self . data_ref}{self . capacity}){self = capacity new_cap}(free old_data_ref)))(store Vec &self self)))
 
 ;; mem utils
 (global mut HEAP_INDEX u32 0)
-(fn alloc [(size u32)][ptr]({ref : ptr}{ref = HEAP_INDEX}{HEAP_INDEX = {HEAP_INDEX + size}} ref ))
+(fn alloc [(size u32)][ptr]({ref : ptr}{ref = HEAP_INDEX}{HEAP_INDEX = {HEAP_INDEX + size}} (return ref) ))
 (fn free [(ref ptr)][]())
 (fn memcpy [(src ptr)(dist ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}(store i32/u8 {dist + size}(load i32/u8 {src + size}))))))
 (fn memswap [(ref1 ptr)(ref2 ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}{tmp : u8}{tmp = (load i32/u8 {ref1 + size})}(store i32/u8 {ref1 + size}(load i32/u8 {ref2 + size}))(store i32/u8 {ref2 + size} tmp)))))
@@ -94,7 +94,7 @@
         {index = (skip_space chars {res . index})}
     ))
 
-    (struct.new ParseResult true index &items)
+    (return (struct.new ParseResult true index &items))
 ))
 
 (fn parse_expr [(chars StringSlice) (index u32)] [ParseResult] (
@@ -111,7 +111,7 @@
         (return (parse_list chars index))
     )
 
-    (parse_atom chars index)
+    (return (parse_atom chars index))
 ))
 
 (fn parse_atom [(chars StringSlice) (index u32)] [ParseResult] (
@@ -146,7 +146,7 @@
         &atom
     ))
 
-    (struct.new ParseResult true index &expr)
+    (return (struct.new ParseResult true index &expr))
 ))
 
 (fn parse_list [(chars StringSlice) (index u32)] [ParseResult] (
@@ -211,7 +211,7 @@
         &items
     ))
 
-    (struct.new ParseResult true index &expr)
+    (return (struct.new ParseResult true index &expr))
 ))
 
 (fn skip_space [(chars StringSlice) (index u32)] [u32] (
@@ -241,35 +241,35 @@
         (return (skip_space chars index))
     ))
 
-    index
+    (return index)
 ))
 
 (fn is_list_start [(char u8)] [bool] (
-    (|| (||
-    {char == CHAR_LPAREN}
-    {char == CHAR_LCURLY})
-    {char == CHAR_LBRACK})
+    (return (|| (||
+        {char == CHAR_LPAREN}
+        {char == CHAR_LCURLY})
+        {char == CHAR_LBRACK}))
 ))
 
 (fn is_list_end [(char u8)] [bool] (
-    (|| (||
-    {char == CHAR_RPAREN}
-    {char == CHAR_RCURLY})
-    {char == CHAR_RBRACK})
+    (return (|| (||
+        {char == CHAR_RPAREN}
+        {char == CHAR_RCURLY})
+        {char == CHAR_RBRACK}))
 ))
 
 (fn is_valid_list_chars [(start u8) (end u8)] [bool] (
-    (|| (||
-    {{start == CHAR_LPAREN} && {end == CHAR_RPAREN}}
-    {{start == CHAR_LCURLY} && {end == CHAR_RCURLY}})
-    {{start == CHAR_LBRACK} && {end == CHAR_RBRACK}})
+    (return (|| (||
+        {{start == CHAR_LPAREN} && {end == CHAR_RPAREN}}
+        {{start == CHAR_LCURLY} && {end == CHAR_RCURLY}})
+        {{start == CHAR_LBRACK} && {end == CHAR_RBRACK}}))
 ))
 
 (fn is_space [(char u8)] [bool] (
-    (|| (||
-    {char == CHAR_SPACE}
-    {char == CHAR_NEWLINE})
-    {char == CHAR_TAB})
+    (return (|| (||
+        {char == CHAR_SPACE}
+        {char == CHAR_NEWLINE})
+        {char == CHAR_TAB}))
 ))
 
 (struct CharAtResult (ok bool) (char u8))
@@ -279,7 +279,9 @@
         (return (struct.new CharAtResult false 0))
     )
 
-    (struct.new CharAtResult true (StringSlice/char_at chars index))
+    (return (struct.new CharAtResult
+        true (StringSlice/char_at chars index)
+    ))
 ))
 
 (fn index_to_position [(chars StringSlice) (index u32)] [
@@ -310,5 +312,5 @@
         {char_index = {char_index + 1}}
     ))
 
-    (pack line col)
+    (return (pack line col))
 ))

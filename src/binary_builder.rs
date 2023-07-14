@@ -295,7 +295,10 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
                 write_u32(output, *local_index);
             }
         }
-        WasmInstr::GlobalGet { local_index, .. } => {
+        WasmInstr::GlobalGet {
+            global_index: local_index,
+            ..
+        } => {
             output.push(0x23);
             write_u32(output, *local_index);
         }

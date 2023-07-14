@@ -24,7 +24,7 @@
         0 capacity item_size
         (alloc {capacity * item_size})
     ))
-    &self
+    (return &self)
 ))
 
 ;; TODO: check out of bounds
@@ -32,7 +32,9 @@
     {self : Vec}
     {self = (load Vec &self)}
 
-    (load i32/u8 {{self . data_ref} + {index * {self . item_size}}})
+    (return
+        (load i32/u8 {{self . data_ref} + {index * {self . item_size}}})
+    )
 ))
 
 ;; TODO: check out of bounds
@@ -51,7 +53,7 @@
     {self : Vec}
     {self = (load Vec &self)}
 
-    {self . length}
+    (return {self . length})
 ))
 
 (fn Vec/push_u8 [(&self &Vec) (item u8)] [] (
@@ -124,7 +126,7 @@
     {ref : ptr}
     {ref = HEAP_INDEX}
     {HEAP_INDEX = {HEAP_INDEX + size}}
-    ref
+    (return ref)
 ))
 
 ;; TODO: implement

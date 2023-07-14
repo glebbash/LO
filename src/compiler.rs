@@ -18,20 +18,20 @@ use alloc::{
 };
 use core::cell::RefCell;
 
-struct FnBody {
-    fn_index: u32,
-    locals: RefCell<BTreeMap<String, LocalDef>>,
-    locals_last_index: u32,
-    body: Vec<SExpr>,
+pub struct FnBody {
+    pub fn_index: u32,
+    pub locals: RefCell<BTreeMap<String, LocalDef>>,
+    pub locals_last_index: u32,
+    pub body: Vec<SExpr>,
 }
 
-struct StructDef {
-    fields: Vec<StructField>,
+pub struct StructDef {
+    pub fields: Vec<StructField>,
 }
 
-struct StructField {
-    name: String,
-    value_type: WasmValueType,
+pub struct StructField {
+    pub name: String,
+    pub value_type: WasmValueType,
 }
 
 pub enum LoleValueType {
@@ -43,17 +43,17 @@ pub enum LoleValueType {
 pub struct ModuleContext {
     pub wasm_module: WasmModule,
     pub fn_defs: BTreeMap<String, FnDef>,
-    fn_bodies: BTreeMap<String, FnBody>,
-    fn_exports: BTreeMap<String, String>,
-    memory_names: Vec<String>,
-    struct_defs: BTreeMap<String, StructDef>,
-    enum_kinds: BTreeMap<String, u32>,
-    globals: BTreeMap<String, GlobalDef>,
-    imported_fns_count: u32,
+    pub fn_bodies: BTreeMap<String, FnBody>,
+    pub fn_exports: BTreeMap<String, String>,
+    pub memory_names: Vec<String>,
+    pub struct_defs: BTreeMap<String, StructDef>,
+    pub enum_kinds: BTreeMap<String, u32>,
+    pub globals: BTreeMap<String, GlobalDef>,
+    pub imported_fns_count: u32,
 }
 
 pub struct FnDef {
-    local: bool,
+    pub local: bool,
     pub fn_index: u32,
 }
 
@@ -69,9 +69,10 @@ impl FnDef {
 
 pub struct FnContext<'a> {
     pub module: &'a ModuleContext,
+    pub fn_type: &'a WasmFnType,
     pub locals: &'a mut BTreeMap<String, LocalDef>,
-    locals_last_index: u32,
-    non_arg_locals: Vec<WasmValueType>,
+    pub locals_last_index: u32,
+    pub non_arg_locals: Vec<WasmValueType>,
 }
 
 pub struct LocalDef {
@@ -79,9 +80,9 @@ pub struct LocalDef {
     pub value_type: LoleValueType,
 }
 
-struct GlobalDef {
-    index: u32,
-    mutable: bool,
+pub struct GlobalDef {
+    pub index: u32,
+    pub mutable: bool,
 }
 
 pub struct CompileError {
@@ -116,25 +117,34 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
         });
     }
 
-    let mut fn_defs_sorted = ctx.fn_bodies.values().collect::<Vec<_>>();
-    fn_defs_sorted.sort_by_key(|fd| fd.fn_index);
+    let mut fn_bodies_sorted = ctx.fn_bodies.values().collect::<Vec<_>>();
+    fn_bodies_sorted.sort_by_key(|fd| fd.fn_index);
 
     // push function codes
-    for fn_def in fn_defs_sorted {
+    for fn_body in fn_bodies_sorted {
+        let type_index = ctx
+            .wasm_module
+            .functions
+            .get(fn_body.fn_index as usize)
+            .unwrap();
+
+        let fn_type = ctx.wasm_module.types.get(*type_index as usize).unwrap();
+
         let mut fn_ctx = FnContext {
             module: &ctx,
-            locals: &mut fn_def.locals.borrow_mut(),
-            locals_last_index: fn_def.locals_last_index,
+            fn_type,
+            locals: &mut fn_body.locals.borrow_mut(),
+            locals_last_index: fn_body.locals_last_index,
             non_arg_locals: vec![],
         };
 
-        let instrs = parse_instrs(&fn_def.body, &mut fn_ctx)?;
+        let instrs = parse_instrs(&fn_body.body, &mut fn_ctx)?;
         for instr in &instrs {
             let types = get_type(&fn_ctx, instr)?;
 
             if types.len() > 0 {
                 return Err(CompileError {
-                    message: format!("TypeError: excess values"),
+                    message: format!("TypeError: Excess values"),
                     loc: instr.loc().clone(),
                 });
             }
@@ -742,7 +752,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 
             if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
                 return Ok(WasmInstr::GlobalGet {
-                    local_index: global.index,
+                    global_index: global.index,
                     loc: loc.clone(),
                 });
             };
@@ -1383,7 +1393,7 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Com
             };
 
             return Ok(WasmInstr::GlobalGet {
-                local_index: global.index,
+                global_index: global.index,
                 loc: op_loc.clone(),
             });
         }
@@ -1482,6 +1492,13 @@ impl WasmLoadKind {
             "i32" => Ok(Self::I32),
             "i32/u8" => Ok(Self::I32U8),
             _ => Err(format!("Unknown load kind: {kind}")),
+        }
+    }
+
+    pub fn get_value_type(&self) -> WasmValueType {
+        match &self {
+            Self::I32 => WasmValueType::I32,
+            Self::I32U8 => WasmValueType::I32,
         }
     }
 

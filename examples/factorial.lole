@@ -3,5 +3,5 @@
 (fn factorial [(x u32)] [u32] (
     (if {x < 2} (return x))
 
-    {x * (factorial {x - 1})}
+    (return {x * (factorial {x - 1})})
 ))

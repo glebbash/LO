@@ -116,7 +116,7 @@ pub enum WasmInstr {
         loc: Location,
     },
     GlobalGet {
-        local_index: u32,
+        global_index: u32,
         loc: Location,
     },
     GlobalSet {

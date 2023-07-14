@@ -6,7 +6,7 @@
     {_ = (alloc 45)}
     {_ = (alloc 24)}
 
-    HEAP_INDEX
+    (return HEAP_INDEX)
 ))
 
 (global mut HEAP_INDEX u32 0)
@@ -14,5 +14,5 @@
     {ref : ptr}
     {ref = HEAP_INDEX}
     {HEAP_INDEX = {HEAP_INDEX + size}}
-    ref
+    (return ref)
 ))

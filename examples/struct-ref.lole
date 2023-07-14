@@ -15,7 +15,7 @@
     {p : Point2D}
     {p = (load Point2D ref)}
 
-    {p . y}
+    (return {p . y})
 ))
 
 (global mut HEAP_INDEX u32 0)
@@ -23,5 +23,5 @@
     {ref : ptr}
     {ref = HEAP_INDEX}
     {HEAP_INDEX = {HEAP_INDEX + size}}
-    ref
+    (return ref)
 ))

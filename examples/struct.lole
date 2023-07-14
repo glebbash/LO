@@ -14,16 +14,16 @@
     {sum : Point2D}
     {sum = (Point2D/add p1 (struct.new Point2D 1 1))}
 
-    (Point2D/len_squared sum)
+    (return (Point2D/len_squared sum))
 ))
 
 (fn Point2D/add ((p1 Point2D) (p2 Point2D)) [Point2D] (
-    (struct.new Point2D
+    (return (struct.new Point2D
         {{p1 . x} + {p2 . x}}
         {{p1 . y} + {p2 . y}}
-    )
+    ))
 ))
 
 (fn Point2D/len_squared [(p Point2D)] [i32] (
-    {{{p . x} * {p . x}} + {{p . y} * {p . y}}}
+    (return {{{p . x} * {p . x}} + {{p . y} * {p . y}}})
 ))
