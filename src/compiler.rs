@@ -34,14 +34,15 @@ struct StructField {
     value_type: WasmValueType,
 }
 
-enum LoleValueType {
+pub enum LoleValueType {
     Primitive(WasmValueType),
     StructInstance { name: String },
 }
 
 #[derive(Default)]
-struct ModuleContext {
-    fn_defs: BTreeMap<String, FnDef>,
+pub struct ModuleContext {
+    pub wasm_module: WasmModule,
+    pub fn_defs: BTreeMap<String, FnDef>,
     fn_bodies: BTreeMap<String, FnBody>,
     fn_exports: BTreeMap<String, String>,
     memory_names: Vec<String>,
@@ -51,21 +52,31 @@ struct ModuleContext {
     imported_fns_count: u32,
 }
 
-struct FnDef {
+pub struct FnDef {
     local: bool,
-    fn_index: u32,
+    pub fn_index: u32,
 }
 
-struct FnContext<'a> {
-    module: &'a ModuleContext,
-    locals: &'a mut BTreeMap<String, LocalDef>,
+impl FnDef {
+    pub fn get_absolute_index(&self, ctx: &ModuleContext) -> u32 {
+        if self.local {
+            self.fn_index + ctx.imported_fns_count
+        } else {
+            self.fn_index
+        }
+    }
+}
+
+pub struct FnContext<'a> {
+    pub module: &'a ModuleContext,
+    pub locals: &'a mut BTreeMap<String, LocalDef>,
     locals_last_index: u32,
     non_arg_locals: Vec<WasmValueType>,
 }
 
-struct LocalDef {
-    index: u32,
-    value_type: LoleValueType,
+pub struct LocalDef {
+    pub index: u32,
+    pub value_type: LoleValueType,
 }
 
 struct GlobalDef {
@@ -79,17 +90,15 @@ pub struct CompileError {
 }
 
 pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
-    let mut module = WasmModule::default();
-
     let mut ctx = ModuleContext::default();
 
     for expr in exprs {
-        compile_top_level_expr(expr, &mut ctx, &mut module)?;
+        compile_top_level_expr(expr, &mut ctx)?;
     }
 
     // push function exports
     for (in_name, out_name) in ctx.fn_exports.iter() {
-        module.exports.push(WasmExport {
+        ctx.wasm_module.exports.push(WasmExport {
             export_type: WasmExportType::Func,
             export_name: out_name.clone(),
             exported_item_index: ctx
@@ -121,7 +130,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
 
         let instrs = parse_instrs(&fn_def.body, &mut fn_ctx)?;
         for instr in &instrs {
-            let types = get_type(instr);
+            let types = get_type(&fn_ctx, instr)?;
 
             if types.len() > 0 {
                 return Err(CompileError {
@@ -139,20 +148,16 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
             });
         }
 
-        module.codes.push(WasmFn {
+        ctx.wasm_module.codes.push(WasmFn {
             locals,
             expr: WasmExpr { instrs },
         });
     }
 
-    Ok(module)
+    Ok(ctx.wasm_module)
 }
 
-fn compile_top_level_expr(
-    expr: &SExpr,
-    ctx: &mut ModuleContext,
-    module: &mut WasmModule,
-) -> Result<(), CompileError> {
+fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), CompileError> {
     let SExpr::List { value: items, .. } = expr else {
         return Err(CompileError {
             message: format!("Unexpected atom"),
@@ -214,7 +219,7 @@ fn compile_top_level_expr(
                 };
 
                 ctx.memory_names.push(mem_name.clone());
-                module.memories.push(WasmLimits {
+                ctx.wasm_module.memories.push(WasmLimits {
                     min: min_memory,
                     max: max_memory,
                 });
@@ -311,11 +316,11 @@ fn compile_top_level_expr(
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
-                module.types.push(WasmFnType { inputs, outputs });
-                let type_index = module.types.len() as u32 - 1;
-                let fn_index = module.functions.len() as u32;
+                ctx.wasm_module.types.push(WasmFnType { inputs, outputs });
+                let type_index = ctx.wasm_module.types.len() as u32 - 1;
+                let fn_index = ctx.wasm_module.functions.len() as u32;
 
-                module.functions.push(type_index);
+                ctx.wasm_module.functions.push(type_index);
                 ctx.fn_defs.insert(
                     fn_name.clone(),
                     FnDef {
@@ -406,7 +411,7 @@ fn compile_top_level_expr(
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
-                let type_index = module.types.len() as u32;
+                let type_index = ctx.wasm_module.types.len() as u32;
                 let fn_index =  ctx.imported_fns_count;
 
                 ctx.imported_fns_count += 1;
@@ -414,8 +419,8 @@ fn compile_top_level_expr(
                     local: false,
                     fn_index,
                 });
-                module.types.push(WasmFnType { inputs, outputs });
-                module.imports.push(WasmImport {
+                ctx.wasm_module.types.push(WasmFnType { inputs, outputs });
+                ctx.wasm_module.imports.push(WasmImport {
                     module_name: module_name.clone(),
                     item_name: extern_fn_name.clone(),
                     item_desc: WasmImportDesc::Func { type_index },
@@ -444,7 +449,7 @@ fn compile_top_level_expr(
                     });
                 }
 
-                module.exports.push(WasmExport {
+                ctx.wasm_module.exports.push(WasmExport {
                     export_type: WasmExportType::Mem,
                     export_name: out_name.clone(),
                     exported_item_index: ctx.memory_names.iter().position(|n| n == in_name).unwrap()
@@ -611,7 +616,7 @@ fn compile_top_level_expr(
                 },
             );
 
-            module.globals.push(WasmGlobal {
+            ctx.wasm_module.globals.push(WasmGlobal {
                 kind: WasmGlobalKind {
                     value_type,
                     mutable,
@@ -635,7 +640,7 @@ fn compile_top_level_expr(
                 loc: loc.clone(),
             })?;
 
-            module.datas.push(WasmData::Active {
+            ctx.wasm_module.datas.push(WasmData::Active {
                 offset: WasmExpr {
                     instrs: vec![WasmInstr::I32Const {
                         value: offset,
@@ -696,7 +701,7 @@ fn parse_struct_field_defs(
     Ok(fields)
 }
 
-fn emit_value_components(
+pub fn emit_value_components(
     value_type: &LoleValueType,
     ctx: &ModuleContext,
     components: &mut Vec<WasmValueType>,
@@ -1341,14 +1346,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     loc: op_loc.clone()
                 });
             };
-            let fn_index = if fn_def.local {
-                fn_def.fn_index + ctx.module.imported_fns_count
-            } else {
-                fn_def.fn_index
-            };
 
             WasmInstr::Call {
-                fn_index,
+                fn_index: fn_def.get_absolute_index(ctx.module),
                 args: parse_instrs(args, ctx)?,
                 loc: op_loc.clone(),
             }
