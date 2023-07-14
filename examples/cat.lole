@@ -119,6 +119,9 @@
     (import fn fd_close [
         (fd u32) ;; file_descriptor
     ] [WasiErr] :from wasi_snapshot_preview1 fd_close)
+    (import fn proc_exit [
+        (code u32)
+    ] [] :from wasi_snapshot_preview1 proc_exit)
 ;; </wasi>
 
 ;; <args>
@@ -226,30 +229,34 @@
 (global CWD_PREOPEN_FD u32 3)
 
 (export main :as _start)
-(fn main [] [i32] (
+(fn main [] [] (
     {args : Args}
     {args = (Args/load)}
 
-    (if {{args . argc} != 1} (do
-        (return 1)
+    (if {{args . argc} != 2} (do
+        (return (proc_exit 1))
     ))
 
     {file_path : StringSlice}
-    {file_path = (Args/get args 0)}
+    {file_path = (Args/get args 1)}
 
     {err : u32}
     {fd : u32}
     {(err fd) = (fd_open file_path)}
 
     {err = (fd_pipe fd FD_STDOUT 256)}
-    (if {err != 0} (return err))
+    (if {err != 0} (do 
+        (return (proc_exit 1))
+    ))
 
     {err = (fd_close fd)}
-    (return err)
+
+    (return (proc_exit 0))
 ))
 
 (fn fd_open [(file_path StringSlice)] [u32 u32] (
     {&fd : u32}
+    {&fd = (Mem/alloc 2)} ;; aligning fd pointer for wasmtime
     {&fd = (Mem/alloc (sizeof u32))}
 
     {err : u32}
