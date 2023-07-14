@@ -126,7 +126,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
                 .get(*type_index as usize)
                 .ok_or_else(|| unreachable_err(line!()))?;
 
-            if fn_type.inputs.len() != arg_types.len() {
+            if fn_type.inputs != arg_types {
                 return Err(CompileError {
                     message: format!(
                         "TypeError: Mismatched arguments for function \
@@ -142,7 +142,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         }
         WasmInstr::Return { value, loc } => {
             let return_type = get_type(ctx, value)?;
-            if return_type.len() != ctx.fn_type.outputs.len() {
+            if return_type != ctx.fn_type.outputs {
                 return Err(CompileError {
                     message: format!(
                         "TypeError: Invalid return type, \

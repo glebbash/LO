@@ -193,7 +193,7 @@ impl WasmInstr {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WasmValueType {
     I32 = 0x7f,
     I64 = 0x7e,
