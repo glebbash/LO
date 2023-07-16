@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 
 const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 
-const compiler = await loadWasm(await readFile(COMPILER_PATH));
+const compiler = await loadCompiler(COMPILER_PATH);
 
 test("compiles 42", async () => {
     const output = await compile(
@@ -298,6 +298,13 @@ test("compiles parser", async () => {
 async function loadWasm(data, imports) {
     const mod = await WebAssembly.instantiate(data, imports);
     return mod.instance.exports;
+}
+
+/**
+ * @param {string} compilerPath
+ */
+async function loadCompiler(compilerPath) {
+    return loadWasm(await readFile(compilerPath));
 }
 
 /**
