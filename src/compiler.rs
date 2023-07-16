@@ -109,7 +109,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
                 .ok_or_else(|| CompileError {
                     message: format!("Cannot export unknown function {in_name}"),
                     loc: Location {
-                        // TODO: add correct error location
+                        // TODO(doubt): add correct error location
                         offset: 0,
                         length: 0,
                     },
@@ -805,7 +805,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             loc: op_loc.clone(),
         },
         ("i64", [SExpr::Atom { value, loc }]) => WasmInstr::I64Const {
-            // TODO: figure out why I can't use parse::<i64>
+            // TODO(3rd-party-bug): figure out why I can't use parse::<i64>
             value: value.parse::<i32>().map_err(|_| CompileError {
                 message: format!("Parsing i64 failed"),
                 loc: loc.clone(),
@@ -829,7 +829,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(WasmInstr::I32Const {
                 value: 0,
-                loc: op_loc.clone(), // TODO: add better location
+                loc: op_loc.clone(), // TODO(doubt): add better location
             }),
             loc: op_loc.clone(),
         },
@@ -921,11 +921,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         ("return", values) => WasmInstr::Return {
             value: Box::new(WasmInstr::MultiValueEmit {
                 values: parse_instrs(values, ctx)?,
-                loc: op_loc.clone(), // TODO: add better location
+                loc: op_loc.clone(), // TODO(doubt): add better location
             }),
             loc: op_loc.clone(),
         },
-        // TODO: support custom aligns and offsets
+        // TODO(feat): support custom aligns and offsets
         (
             "store",
             [SExpr::Atom {
@@ -952,7 +952,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 instr => vec![instr],
             };
 
-            // TODO: check if this is doing duplicate work
+            // TODO(perf): check if this is doing duplicate work
             let value_types = get_types(ctx, &value_instrs)?;
             let field_types = struct_def
                 .fields
@@ -987,10 +987,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     offset,
                     value_instr: Box::new(value_instrs.remove(0)),
                     address_instr: address_instr.clone(),
-                    loc: op_loc.clone(), // TODO: add better location
+                    loc: op_loc.clone(), // TODO(doubt): add better location
                 });
 
-                offset += field.value_type.byte_size();
+                // unwrap uncreachable because of `WasmStoreKind::from_value_type` check
+                offset += field.value_type.byte_size().unwrap();
             }
 
             WasmInstr::MultiValueEmit {
@@ -998,7 +999,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 loc: op_loc.clone(),
             }
         }
-        // TODO: support custom aligns and offsets
+        // TODO(feat): support custom aligns and offsets
         (
             "load",
             [SExpr::Atom {
@@ -1035,10 +1036,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     align: 1,
                     offset,
                     address_instr: address_instr.clone(),
-                    loc: op_loc.clone(), // TODO: add better location
+                    loc: op_loc.clone(), // TODO(doubt): add better location
                 });
 
-                offset += field.value_type.byte_size();
+                // unwrap uncreachable because of `WasmLoadKind::from_value_type` check
+                offset += field.value_type.byte_size().unwrap();
             }
 
             WasmInstr::MultiValueEmit {
@@ -1046,10 +1048,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 loc: op_loc.clone(),
             }
         }
-        /*
-            TODO: validate that number values matches the one of fields
-            WARNING: it's not that simple because it involves nested `MultiValueEmit`s
-        */
         (
             "struct.new",
             [SExpr::Atom {
@@ -1057,15 +1055,35 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 loc: name_loc,
             }, values @ ..],
         ) => {
-            if !ctx.module.struct_defs.contains_key(s_name) {
+            let Some(struct_def) = ctx.module.struct_defs.get(s_name) else {
                 return Err(CompileError {
                     message: format!("Unknown struct encountered in {op}: {s_name}"),
                     loc: name_loc.clone(),
                 });
+            };
+
+            let value_instrs = parse_instrs(values, ctx)?;
+
+            // TODO(perf): check if this is doing duplicate work
+            let value_types = get_types(ctx, &value_instrs)?;
+            let field_types = struct_def
+                .fields
+                .iter()
+                .map(|f| f.value_type)
+                .collect::<Vec<_>>();
+
+            if value_types != field_types {
+                return Err(CompileError {
+                    message: format!(
+                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
+                        field_types, value_types
+                    ),
+                    loc: op_loc.clone(),
+                });
             }
 
             WasmInstr::MultiValueEmit {
-                values: parse_instrs(values, ctx)?,
+                values: value_instrs,
                 loc: op_loc.clone(),
             }
         }
@@ -1102,7 +1120,10 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 })?;
 
             WasmInstr::I32Const {
-                value: value_type.byte_size(ctx.module) as i32,
+                value: value_type.byte_size(ctx.module).map_err(|e| CompileError {
+                    message: e,
+                    loc: type_loc.clone(),
+                })? as i32,
                 loc: op_loc.clone(),
             }
         }
@@ -1460,7 +1481,7 @@ impl LoleValueType {
         Err(format!("Unknown value type: {l_type}"))
     }
 
-    fn byte_size(&self, ctx: &ModuleContext) -> u32 {
+    fn byte_size(&self, ctx: &ModuleContext) -> Result<u32, String> {
         match self {
             Self::Primitive(primitive) => primitive.byte_size(),
             Self::StructInstance { name } => {
@@ -1468,9 +1489,9 @@ impl LoleValueType {
 
                 let mut size = 0;
                 for field in &struct_def.fields {
-                    size += Self::Primitive(field.value_type).byte_size(ctx);
+                    size += Self::Primitive(field.value_type).byte_size(ctx)?;
                 }
-                size
+                Ok(size)
             }
         }
     }
@@ -1490,13 +1511,15 @@ impl WasmValueType {
         }
     }
 
-    fn byte_size(&self) -> u32 {
-        match self {
-            Self::FuncRef | Self::ExternRef => 4, // TODO: check this
+    fn byte_size(&self) -> Result<u32, String> {
+        Ok(match self {
+            Self::FuncRef | Self::ExternRef => {
+                return Err(format!("Cannot get byte size of FuncRef/ExternRef"))
+            }
             Self::I32 | Self::F32 => 4,
             Self::I64 | Self::F64 => 8,
             Self::V128 => 16,
-        }
+        })
     }
 }
 

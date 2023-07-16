@@ -15,7 +15,7 @@ pub struct BinaryBuilder<'a> {
     data: Vec<u8>,
 }
 
-// TODO(optimize): Where temporary section buffer is needed one buffer can be shared
+// TODO(perf): Where temporary section buffer is needed one buffer can be shared
 impl<'a> BinaryBuilder<'a> {
     pub fn new(module: &'a WasmModule) -> Self {
         let data = Vec::new();
