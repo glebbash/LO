@@ -199,7 +199,7 @@ test("compiles cat", async () => {
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, {
             stdout: stdout.fd,
-            args: ["examples/42.lole"],
+            args: ["args.lole", "examples/42.lole"],
             preopens: { ".": "." },
         });
         return readFile(stdoutFile, { encoding: "utf-8" });

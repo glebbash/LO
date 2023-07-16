@@ -1,6 +1,6 @@
 use crate::{
     parser::{Location, SExpr},
-    type_checker::get_type,
+    type_checker::{get_type, get_types},
     wasm_module::{
         WasmBinaryOpKind, WasmData, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType,
         WasmGlobal, WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits,
@@ -935,7 +935,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(store_kind) else {
                 return Ok(WasmInstr::Store {
-                        kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
+                    kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
                         message: e,
                         loc: kind_loc.clone()
                     })?,
@@ -952,13 +952,19 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 instr => vec![instr],
             };
 
-            // TODO: add better check if type inference is implemented
-            if value_instrs.len() != struct_def.fields.len() {
+            // TODO: check if this is doing duplicate work
+            let value_types = get_types(ctx, &value_instrs)?;
+            let field_types = struct_def
+                .fields
+                .iter()
+                .map(|f| f.value_type)
+                .collect::<Vec<_>>();
+
+            if value_types != field_types {
                 return Err(CompileError {
                     message: format!(
-                        "Invalid number of receiving variables for {op}, needed {}, got {}",
-                        struct_def.fields.len(),
-                        value_instrs.len()
+                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
+                        field_types, value_types
                     ),
                     loc: op_loc.clone(),
                 });

@@ -5,6 +5,17 @@ use crate::{
 };
 use alloc::{format, vec, vec::Vec};
 
+pub fn get_types(
+    ctx: &FnContext,
+    instrs: &Vec<WasmInstr>,
+) -> Result<Vec<WasmValueType>, CompileError> {
+    instrs
+        .iter()
+        .map(|v| get_type(ctx, v))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|ts| ts.into_iter().flatten().collect())
+}
+
 pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>, CompileError> {
     Ok(match instr {
         WasmInstr::NoInstr { .. } => vec![],
@@ -163,14 +174,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             vec![]
         }
     })
-}
-
-fn get_types(ctx: &FnContext, instrs: &Vec<WasmInstr>) -> Result<Vec<WasmValueType>, CompileError> {
-    instrs
-        .iter()
-        .map(|v| get_type(ctx, v))
-        .collect::<Result<Vec<_>, _>>()
-        .map(|ts| ts.into_iter().flatten().collect())
 }
 
 fn unreachable_err(line: u32) -> CompileError {

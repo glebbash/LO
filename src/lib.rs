@@ -97,34 +97,3 @@ impl ParseResult {
         Self { ok, data, size }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test] // TODO: add assertions
-    fn it_works() {
-        let script = include_str!("../examples/factorial.lole");
-        let script_len = script.len();
-
-        let script_ptr = unsafe { mem_alloc(script_len) };
-        unsafe { core::ptr::copy(script.as_ptr(), script_ptr, script_len) };
-
-        let ParseResult { ok, data, size } = compile(script_ptr, script_len);
-
-        if ok == 1 {
-            let wasm_binary = unsafe { std::slice::from_raw_parts(data, size) };
-
-            let _ = std::fs::create_dir("tmp");
-            std::fs::write("tmp/main.wasm", wasm_binary).unwrap();
-        } else {
-            let error_msg = unsafe { std::slice::from_raw_parts(data, size) };
-            let error_msg = str::from_utf8(error_msg).unwrap();
-
-            panic!("{error_msg}");
-        }
-
-        unsafe { mem_free(data, size) };
-        unsafe { mem_free(script_ptr, script_len) };
-    }
-}
