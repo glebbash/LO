@@ -112,12 +112,7 @@ pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
                 .map(|fd| ctx.imported_fns_count + fd.fn_index)
                 .ok_or_else(|| CompileError {
                     message: format!("Cannot export unknown function {in_name}"),
-                    loc: Location {
-                        // TODO(doubt): add correct error location
-                        file_name: format!("<internal>").into(),
-                        offset: 0,
-                        length: 0,
-                    },
+                    loc: Location::internal(),
                 })?,
         });
     }

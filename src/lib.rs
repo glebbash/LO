@@ -21,7 +21,7 @@ use alloc::{
 use binary_builder::BinaryBuilder;
 use compiler::{compile_module, CompileError};
 use core::{alloc::Layout, mem, slice, str};
-use parser::{parse, SExpr};
+use parser::{parse, Location, SExpr};
 
 #[no_mangle]
 pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {
@@ -82,13 +82,16 @@ fn compile_str(script: &str) -> Result<Vec<u8>, String> {
     let module = parse_file("<input>", script)
         .and_then(compile_module)
         .map_err(|err| {
-            // FIXME: get position from err's source file, not <input>
-            let (line, col) = err.loc.position_in(script);
+            let Location {
+                file_name,
+                line,
+                col,
+                ..
+            } = err.loc;
 
             return format!(
-                "{msg} in {file} at line {line} col {col}",
+                "{msg} in {file_name} at line {line} col {col}",
                 msg = err.message,
-                file = &err.loc.file_name
             );
         })?;
 

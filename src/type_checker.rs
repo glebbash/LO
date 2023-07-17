@@ -82,6 +82,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             if types.len() > 0 {
                 return Err(CompileError {
                     message: format!("TypeError: Excess values in loop"),
+                    // TODO: move this closer to actual location of excess value
                     loc: loc.clone(),
                 });
             }
@@ -179,10 +180,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
 fn unreachable_err(line: u32) -> CompileError {
     CompileError {
         message: format!("Unreachable in {}, {}", file!(), line),
-        loc: Location {
-            file_name: format!("<internal>").into(),
-            offset: 0,
-            length: 0,
-        },
+        loc: Location::internal(),
     }
 }
