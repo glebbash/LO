@@ -82,6 +82,7 @@ fn compile_str(script: &str) -> Result<Vec<u8>, String> {
     let module = parse_file("<input>", script)
         .and_then(compile_module)
         .map_err(|err| {
+            // FIXME: get position from err's source file, not <input>
             let (line, col) = err.loc.position_in(script);
 
             return format!(
