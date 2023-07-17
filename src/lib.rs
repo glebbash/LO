@@ -9,6 +9,7 @@ mod compiler;
 mod parser;
 mod runtime;
 mod type_checker;
+mod wasi_io;
 mod wasm_module;
 
 use alloc::{
@@ -41,40 +42,14 @@ pub struct ParseResult {
 
 #[no_mangle]
 pub extern "C" fn _start() {
-    let mut source = Vec::<u8>::new();
-    let mut chunk = [0; 256];
-
-    let in_vec = [wasi::Iovec {
-        buf: chunk.as_mut_ptr(),
-        buf_len: chunk.len(),
-    }];
-
-    loop {
-        let nread = unsafe { wasi::fd_read(wasi::FD_STDIN, &in_vec) }.unwrap();
-
-        if nread == 0 {
-            break;
-        }
-
-        source.extend(&chunk[0..nread]);
-    }
+    let source = wasi_io::fd_read(wasi::FD_STDIN);
 
     match compile_str(str::from_utf8(&source).unwrap()) {
         Ok(binary) => {
-            let out_vec = [wasi::Ciovec {
-                buf: binary.as_ptr(),
-                buf_len: binary.len(),
-            }];
-
-            unsafe { wasi::fd_write(wasi::FD_STDOUT, &out_vec) }.unwrap();
+            wasi_io::fd_write(wasi::FD_STDOUT, binary.as_slice());
         }
         Err(message) => {
-            let err_vec = [wasi::Ciovec {
-                buf: message.as_ptr(),
-                buf_len: message.len(),
-            }];
-
-            unsafe { wasi::fd_write(wasi::FD_STDERR, &err_vec) }.unwrap();
+            wasi_io::fd_write(wasi::FD_STDERR, message.as_bytes());
 
             unsafe { wasi::proc_exit(1) };
         }
