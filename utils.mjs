@@ -1,9 +1,10 @@
 #!/usr/bin/env -S node --no-warnings
 // @ts-check
 
-import { readFile } from "node:fs/promises";
 import { WASI } from "node:wasi";
 import process from "node:process";
+import { randomUUID } from "node:crypto";
+import { open, readFile, unlink } from "node:fs/promises";
 
 const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 
@@ -28,25 +29,27 @@ function main() {
     COMMANDS[command](args);
 }
 
-/** @param {string[]} args */
-async function compileCommand(args) {
-    const filePath = new URL(args[0], import.meta.url);
-    const compiler = await loadWasm(await readFile(COMPILER_PATH));
-    const program = await compile(compiler, await readFile(filePath));
-    process.stdout.write(program);
+async function compileCommand() {
+    return runWASI(await readFile(COMPILER_PATH), {
+        preopens: { ".": "examples" },
+        returnOnExit: false,
+    });
 }
 
-/** @param {string[]} args */
-async function runCommand(args) {
-    const filePath = new URL(args[0], import.meta.url);
-    const compiler = await loadWasm(await readFile(COMPILER_PATH));
-    const program = await compile(compiler, await readFile(filePath));
+async function runCommand() {
+    const program = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(await readFile(COMPILER_PATH), {
+            stdout: stdout.fd,
+            preopens: { ".": "examples" },
+            returnOnExit: false,
+        });
+
+        return readFile(stdoutFile);
+    });
+
     await runWASI(program, {
-        args: args.slice(1),
-        env: process.env,
-        preopens: {
-            ".": ".",
-        },
+        preopens: { ".": "examples" },
+        returnOnExit: false,
     });
 }
 
@@ -94,55 +97,6 @@ async function runWasiCommand(args) {
 
 /**
  * @param {BufferSource} data
- * @param {WebAssembly.Imports} [imports]
- * @returns {Promise<any>}
- */
-async function loadWasm(data, imports) {
-    const mod = await WebAssembly.instantiate(data, imports);
-    return mod.instance.exports;
-}
-
-/**
- * @param {any} compiler
- * @param {Buffer} source
- */
-async function compile(compiler, source) {
-    const src = storeData(
-        compiler.memory,
-        compiler.mem_alloc(source.byteLength),
-        source
-    );
-
-    const [ok, outPtr, outSize] = compiler.compile(src.ptr, src.size);
-
-    const output = new Uint8Array(outSize);
-    output.set(new Uint8Array(compiler.memory.buffer, outPtr, outSize));
-
-    compiler.mem_free(src.ptr, src.size);
-    compiler.mem_free(outPtr, outSize);
-
-    if (!ok) {
-        throw new Error(new TextDecoder().decode(output));
-    }
-
-    return output;
-}
-
-/**
- * @param {{buffer: ArrayBufferLike;}} memory
- * @param {number} ptr
- * @param {Uint8Array} data
- */
-function storeData(memory, ptr, data) {
-    const region = { ptr, size: data.byteLength };
-
-    new Uint8Array(memory.buffer, region.ptr, region.size).set(data);
-
-    return region;
-}
-
-/**
- * @param {BufferSource} data
  * @param {import("node:wasi").WASIOptions} [wasiOptions]
  */
 async function runWASI(data, wasiOptions) {
@@ -157,4 +111,20 @@ async function runWASI(data, wasiOptions) {
     );
 
     wasi.start(instance);
+}
+
+/**
+ * @template T
+ * @param {(file: import("node:fs/promises").FileHandle, fileName: string) => T} run
+ */
+async function runWithTmpFile(run) {
+    const mockOutputFileName = `${randomUUID()}.tmp`;
+    const mockOutputFile = await open(mockOutputFileName, "w+");
+
+    try {
+        return await run(mockOutputFile, mockOutputFileName);
+    } finally {
+        await mockOutputFile.close();
+        await unlink(mockOutputFileName);
+    }
 }
