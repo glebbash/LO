@@ -1,0 +1,13 @@
+;; exports parser api for testing
+
+(mod parser)
+
+(mem m1 :min 1000)
+(export mem m1 :as memory)
+
+(export Mem/alloc :as alloc)
+(export Parser/parse :as parse)
+(export Parser/index_to_position :as index_to_position)
+(export Parser/parse_expr :as parse_expr)
+(export Parser/skip_space :as skip_space)
+(export Parser/char_at :as char_at)

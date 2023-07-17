@@ -93,7 +93,7 @@ test("compiles import", async () => {
 });
 
 test("compiles vec", async () => {
-    const output = await compile("./examples/vec.lole");
+    const output = await compile("./examples/vec.test.lole");
 
     const lib = await loadWasm(output);
 
@@ -179,7 +179,7 @@ test("compiles cat", async () => {
 });
 
 test("compiles parser", async () => {
-    const output = await compile("./examples/parser.lole");
+    const output = await compile("./examples/parser.test.lole");
 
     const parser = await loadWasm(output);
 
@@ -237,7 +237,7 @@ test("compiles parser", async () => {
             parser,
             await readFile("examples/parser.lole", { encoding: "utf8" })
         );
-        assert.deepEqual(res, [1, 7240, 7405]);
+        assert.deepEqual(res, [1, 7554, 7719]);
     }
 
     async function parseAll(parser, text) {
