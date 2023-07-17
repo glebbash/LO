@@ -330,7 +330,7 @@ async function loadCompilerWithWasiAPI(compilerPath) {
                         wasi.start(instance)
                     );
 
-                    if (exitCode !== 0) {
+                    if (exitCode ?? 0 !== 0) {
                         throw new Error(await readFile(stderrFile, "utf-8"));
                     }
 

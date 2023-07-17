@@ -38,11 +38,16 @@ async function compileCommand() {
 
 async function runCommand() {
     const program = await runWithTmpFile(async (stdout, stdoutFile) => {
-        await runWASI(await readFile(COMPILER_PATH), {
-            stdout: stdout.fd,
-            preopens: { ".": "examples" },
-            returnOnExit: false,
-        });
+        const exitCode = /** @type {unknown} */ (
+            await runWASI(await readFile(COMPILER_PATH), {
+                stdout: stdout.fd,
+                preopens: { ".": "examples" },
+            })
+        );
+
+        if (exitCode ?? 0 !== 0) {
+            throw new Error("Compilation failed, see compiler error above");
+        }
 
         return readFile(stdoutFile);
     });
