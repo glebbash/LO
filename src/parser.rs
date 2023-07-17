@@ -257,6 +257,7 @@ fn char_at(ctx: &ParseContext) -> Result<char, ParseError> {
         })
 }
 
+// FIXME: make this tests run or move them to test.mjs
 #[cfg(test)]
 mod tests {
     use super::*;
