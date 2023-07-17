@@ -1,9 +1,10 @@
 use core::fmt;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Location {
+    pub file_name: Box<str>,
     pub offset: usize,
     pub length: usize,
 }
@@ -78,41 +79,56 @@ impl fmt::Display for ParseError {
 
 pub type ParseResult = Result<SExpr, ParseError>;
 
-pub fn parse(script: &str) -> Result<Vec<SExpr>, ParseError> {
+#[derive(Clone)]
+struct ParseContext<'a> {
+    file_name: &'a str,
+    chars: &'a Vec<char>,
+    index: usize,
+}
+
+pub fn parse(file_name: &str, script: &str) -> Result<Vec<SExpr>, ParseError> {
     let chars = &script.chars().collect::<Vec<_>>();
 
-    let mut index = skip_space(chars, 0);
+    let mut ctx = ParseContext {
+        file_name,
+        chars,
+        index: 0,
+    };
+
+    ctx.index = skip_space(&ctx);
 
     let mut items = Vec::new();
 
-    while index < chars.len() {
-        if !is_list_start(char_at(chars, index)?) {
+    while ctx.index < chars.len() {
+        if !is_list_start(char_at(&ctx)?) {
             return Err(ParseError::UnexpectedChar {
                 loc: Location {
-                    offset: index,
+                    file_name: file_name.into(),
+                    offset: ctx.index,
                     length: 1,
                 },
             });
         }
 
-        let res = parse_list(chars, index)?;
-        index = skip_space(chars, res.loc().end());
+        let res = parse_list(&ctx)?;
+        ctx.index = res.loc().end();
+        ctx.index = skip_space(&ctx);
         items.push(res);
     }
 
     Ok(items)
 }
 
-fn parse_expr(chars: &Vec<char>, index: usize) -> ParseResult {
-    if is_list_start(char_at(chars, index)?) {
-        parse_list(chars, index)
+fn parse_expr(ctx: &ParseContext) -> ParseResult {
+    if is_list_start(char_at(ctx)?) {
+        parse_list(ctx)
     } else {
-        parse_atom(chars, index)
+        parse_atom(ctx)
     }
 }
 
-fn parse_atom(chars: &Vec<char>, index: usize) -> ParseResult {
-    let atom_text = chars[index..]
+fn parse_atom(ctx: &ParseContext) -> ParseResult {
+    let atom_text = ctx.chars[ctx.index..]
         .iter()
         .take_while(|&&c| !is_space(c) && !is_list_end(c) && c != ';')
         .collect::<String>();
@@ -122,35 +138,39 @@ fn parse_atom(chars: &Vec<char>, index: usize) -> ParseResult {
     Ok(SExpr::Atom {
         value: atom_text,
         loc: Location {
-            offset: index,
+            file_name: ctx.file_name.into(),
+            offset: ctx.index,
             length: atom_len,
         },
     })
 }
 
-fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
-    let start_index = index;
+fn parse_list(ctx: &ParseContext) -> ParseResult {
+    let mut ctx = (*ctx).clone();
+    let start_index = ctx.index;
 
-    let list_start_char = char_at(chars, index)?;
-    index += 1; // eat list start
+    let list_start_char = char_at(&ctx)?;
+    ctx.index += 1; // eat list start
 
-    index = skip_space(chars, index);
+    ctx.index = skip_space(&ctx);
 
     let mut items = Vec::new();
 
-    while !is_list_end(char_at(chars, index)?) {
-        let res = parse_expr(chars, index)?;
-        index = skip_space(chars, res.loc().end());
+    while !is_list_end(char_at(&ctx)?) {
+        let res = parse_expr(&ctx)?;
+        ctx.index = res.loc().end();
+        ctx.index = skip_space(&ctx);
         items.push(res);
     }
 
-    let list_end_char = char_at(chars, index)?;
-    index += 1; // eat list end
+    let list_end_char = char_at(&ctx)?;
+    ctx.index += 1; // eat list end
 
     if !is_valid_list_chars(list_start_char, list_end_char) {
         return Err(ParseError::UnexpectedChar {
             loc: Location {
-                offset: index,
+                file_name: ctx.file_name.into(),
+                offset: ctx.index,
                 length: 1,
             },
         });
@@ -163,32 +183,35 @@ fn parse_list(chars: &Vec<char>, mut index: usize) -> ParseResult {
     Ok(SExpr::List {
         value: items,
         loc: Location {
+            file_name: ctx.file_name.into(),
             offset: start_index,
-            length: index - start_index,
+            length: ctx.index - start_index,
         },
     })
 }
 
-fn skip_space(chars: &Vec<char>, mut index: usize) -> usize {
-    while char_at(chars, index).map(is_space).unwrap_or(false) {
-        index += 1
+fn skip_space(ctx: &ParseContext) -> usize {
+    let mut ctx = (*ctx).clone();
+
+    while char_at(&ctx).map(is_space).unwrap_or(false) {
+        ctx.index += 1
     }
 
-    if let Ok(';') = char_at(chars, index) {
-        index += 1;
+    if let Ok(';') = char_at(&ctx) {
+        ctx.index += 1;
 
-        while char_at(chars, index).map(|c| c != '\n').unwrap_or(false) {
-            index += 1
+        while char_at(&ctx).map(|c| c != '\n').unwrap_or(false) {
+            ctx.index += 1
         }
 
-        if let Ok('\n') = char_at(chars, index) {
-            index += 1;
+        if let Ok('\n') = char_at(&ctx) {
+            ctx.index += 1;
         }
 
-        return skip_space(chars, index);
+        return skip_space(&ctx);
     }
 
-    index
+    ctx.index
 }
 
 fn is_list_start(c: char) -> bool {
@@ -221,13 +244,14 @@ fn is_space(c: char) -> bool {
     }
 }
 
-fn char_at(chars: &Vec<char>, index: usize) -> Result<char, ParseError> {
-    chars
-        .get(index)
+fn char_at(ctx: &ParseContext) -> Result<char, ParseError> {
+    ctx.chars
+        .get(ctx.index)
         .copied()
         .ok_or_else(|| ParseError::UnexpectedEOF {
             loc: Location {
-                offset: index,
+                file_name: ctx.file_name.into(),
+                offset: ctx.index,
                 length: 1,
             },
         })
@@ -239,7 +263,9 @@ mod tests {
 
     #[test]
     fn it_parses_complex_script() {
+        let file_name = "<input>";
         let result = parse(
+            file_name,
             r"
                 (a b
                         () (a b cadwdawd-aw423f
@@ -256,6 +282,7 @@ mod tests {
                     SExpr::Atom {
                         value: String::from("a"),
                         loc: Location {
+                            file_name: file_name.into(),
                             offset: 18,
                             length: 1
                         }
@@ -263,6 +290,7 @@ mod tests {
                     SExpr::Atom {
                         value: String::from("b"),
                         loc: Location {
+                            file_name: file_name.into(),
                             offset: 20,
                             length: 1
                         }
@@ -270,6 +298,7 @@ mod tests {
                     SExpr::List {
                         value: vec![],
                         loc: Location {
+                            file_name: file_name.into(),
                             offset: 46,
                             length: 2
                         }
@@ -279,6 +308,7 @@ mod tests {
                             SExpr::Atom {
                                 value: String::from("a"),
                                 loc: Location {
+                                    file_name: file_name.into(),
                                     offset: 50,
                                     length: 1
                                 }
@@ -286,6 +316,7 @@ mod tests {
                             SExpr::Atom {
                                 value: String::from("b"),
                                 loc: Location {
+                                    file_name: file_name.into(),
                                     offset: 52,
                                     length: 1
                                 }
@@ -293,6 +324,7 @@ mod tests {
                             SExpr::Atom {
                                 value: String::from("cadwdawd-aw423f"),
                                 loc: Location {
+                                    file_name: file_name.into(),
                                     offset: 54,
                                     length: 15
                                 }
@@ -300,12 +332,14 @@ mod tests {
                             SExpr::Atom {
                                 value: String::from("123"),
                                 loc: Location {
+                                    file_name: file_name.into(),
                                     offset: 91,
                                     length: 3
                                 }
                             }
                         ],
                         loc: Location {
+                            file_name: file_name.into(),
                             offset: 49,
                             length: 46
                         }
@@ -315,22 +349,26 @@ mod tests {
                             value: vec![SExpr::List {
                                 value: vec![],
                                 loc: Location {
+                                    file_name: file_name.into(),
                                     offset: 98,
                                     length: 2
                                 }
                             }],
                             loc: Location {
+                                file_name: file_name.into(),
                                 offset: 97,
                                 length: 21
                             }
                         }],
                         loc: Location {
+                            file_name: file_name.into(),
                             offset: 96,
                             length: 23
                         }
                     }
                 ],
                 loc: Location {
+                    file_name: file_name.into(),
                     offset: 17,
                     length: 103
                 }
@@ -340,12 +378,14 @@ mod tests {
 
     #[test]
     fn it_fails_on_eof_reached() {
-        let result = parse("(");
+        let file_name = "<input>";
+        let result = parse(file_name, "(");
 
         assert_eq!(
             result,
             Err(ParseError::UnexpectedEOF {
                 loc: Location {
+                    file_name: file_name.into(),
                     offset: 1,
                     length: 1,
                 },
@@ -355,12 +395,14 @@ mod tests {
 
     #[test]
     fn it_fails_in_other_ways() {
-        let result = parse("      )  ");
+        let file_name = "<input>";
+        let result = parse(file_name, "      )  ");
 
         assert_eq!(
             result,
             Err(ParseError::UnexpectedChar {
                 loc: Location {
+                    file_name: file_name.into(),
                     offset: 6,
                     length: 1,
                 },

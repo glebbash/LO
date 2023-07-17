@@ -1,5 +1,6 @@
 use crate::{
-    parser::{parse, Location, SExpr},
+    parse_file,
+    parser::{Location, SExpr},
     type_checker::{get_type, get_types},
     wasi_io::{fd_open, fd_read},
     wasm_module::{
@@ -93,11 +94,11 @@ pub struct CompileError {
     pub loc: Location,
 }
 
-pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
+pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
     let mut ctx = ModuleContext::default();
 
     for expr in exprs {
-        compile_top_level_expr(expr, &mut ctx)?;
+        compile_top_level_expr(&expr, &mut ctx)?;
     }
 
     // push function exports
@@ -113,6 +114,7 @@ pub fn compile_module(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
                     message: format!("Cannot export unknown function {in_name}"),
                     loc: Location {
                         // TODO(doubt): add correct error location
+                        file_name: format!("<internal>").into(),
                         offset: 0,
                         length: 0,
                     },
@@ -195,23 +197,16 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     return Ok(());
                 };
 
-                let mod_fd = fd_open(format!("{}.lole", mod_name)).map_err(|err| CompileError {
-                    message: format!("Cannot load module {}: {}", mod_name, err),
+                let file_name = format!("{}.lole", mod_name);
+                let mod_fd = fd_open(&file_name).map_err(|err| CompileError {
+                    message: format!("Cannot load file {file_name}: {err}"),
                     loc: op_loc.clone(),
                 })?;
 
                 let source_buf = fd_read(mod_fd);
                 let source = str::from_utf8(source_buf.as_slice()).unwrap();
 
-                let exprs = match parse(source) {
-                    Ok(exprs) => exprs,
-                    Err(err) => {
-                        return Err(CompileError {
-                            message: format!("ParseError {err}"),
-                            loc: err.loc().clone(),
-                        });
-                    }
-                };
+                let exprs = parse_file(&file_name, source)?;
 
                 for expr in exprs {
                     compile_top_level_expr(&expr, ctx)?;

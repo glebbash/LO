@@ -1,9 +1,8 @@
-use alloc::string::String;
 use alloc::vec::Vec;
 
 const CWD_PREOPEN_FD: u32 = 3;
 
-pub fn fd_open(file_path: String) -> Result<u32, wasi::Errno> {
+pub fn fd_open(file_path: &str) -> Result<u32, wasi::Errno> {
     unsafe { wasi::path_open(CWD_PREOPEN_FD, 0, &file_path, 0, 2, 0, 0) }
 }
 

@@ -19,9 +19,9 @@ use alloc::{
     vec::Vec,
 };
 use binary_builder::BinaryBuilder;
-use compiler::compile_module;
+use compiler::{compile_module, CompileError};
 use core::{alloc::Layout, mem, slice, str};
-use parser::parse;
+use parser::{parse, SExpr};
 
 #[no_mangle]
 pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {
@@ -69,27 +69,27 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
     }
 }
 
+pub fn parse_file(file_name: &str, source: &str) -> Result<Vec<SExpr>, CompileError> {
+    parse(file_name, source).map_err(|err| {
+        return CompileError {
+            message: format!("{err}"),
+            loc: err.loc().clone(),
+        };
+    })
+}
+
 fn compile_str(script: &str) -> Result<Vec<u8>, String> {
-    let exprs = match parse(script) {
-        Ok(exprs) => exprs,
-        Err(err) => {
-            let (line, col) = err.loc().position_in(script);
-
-            return Err(format!("ParseError: {err} at line {line} col {col}"));
-        }
-    };
-
-    let module = match compile_module(&exprs) {
-        Ok(module) => module,
-        Err(err) => {
+    let module = parse_file("<input>", script)
+        .and_then(compile_module)
+        .map_err(|err| {
             let (line, col) = err.loc.position_in(script);
 
-            return Err(format!(
-                "CompilerError: {msg} at line {line} col {col}",
-                msg = err.message
-            ));
-        }
-    };
+            return format!(
+                "{msg} in {file} at line {line} col {col}",
+                msg = err.message,
+                file = &err.loc.file_name
+            );
+        })?;
 
     let wasm_binary = BinaryBuilder::new(&module).build();
 

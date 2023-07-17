@@ -180,6 +180,7 @@ fn unreachable_err(line: u32) -> CompileError {
     CompileError {
         message: format!("Unreachable in {}, {}", file!(), line),
         loc: Location {
+            file_name: format!("<internal>").into(),
             offset: 0,
             length: 0,
         },
