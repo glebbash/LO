@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lol_alloc = "0.3.0"
+lol_alloc = "0.4.0"
 mini_leb128 = "0.1.1"
+wasi = { version = "0.11.0", default-features = false }
 
 [lib]
 crate-type = ["cdylib"]

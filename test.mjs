@@ -8,13 +8,20 @@ import { randomUUID } from "node:crypto";
 
 const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 
-const compiler = await loadCompiler(COMPILER_PATH);
+const compileFuncAPI = await loadCompilerWithFuncAPI(COMPILER_PATH);
+const compileWasiAPI = await loadCompilerWithWasiAPI(COMPILER_PATH);
+
+const compile = async (/** @type {string} */ sourcePath) => {
+    const output1 = await compileFuncAPI(sourcePath);
+    const output2 = await compileWasiAPI(sourcePath);
+
+    assert.deepEqual(output1.buffer, output2.buffer);
+
+    return output1;
+};
 
 test("compiles 42", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/42.lole")
-    );
+    const output = await compile("./examples/42.lole");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -23,10 +30,7 @@ test("compiles 42", async () => {
 });
 
 test("compiles factorial", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/factorial.lole")
-    );
+    const output = await compile("./examples/factorial.lole");
 
     const program = await loadWasm(output);
     const result = program.factorial(5);
@@ -35,20 +39,14 @@ test("compiles factorial", async () => {
 });
 
 test("compiles locals", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/locals.lole")
-    );
+    const output = await compile("./examples/locals.lole");
 
     const program = await loadWasm(output);
     assert.deepEqual(program.sub(5, 3), 2);
 });
 
 test("compiles struct", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/struct.lole")
-    );
+    const output = await compile("./examples/struct.lole");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -57,10 +55,7 @@ test("compiles struct", async () => {
 });
 
 test("compiles globals", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/globals.lole")
-    );
+    const output = await compile("./examples/globals.lole");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -69,10 +64,7 @@ test("compiles globals", async () => {
 });
 
 test("compiles struct-ref", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/struct-ref.lole")
-    );
+    const output = await compile("./examples/struct-ref.lole");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -81,10 +73,7 @@ test("compiles struct-ref", async () => {
 });
 
 test("compiles enums", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/enums.lole")
-    );
+    const output = await compile("./examples/enums.lole");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -93,10 +82,7 @@ test("compiles enums", async () => {
 });
 
 test("compiles import", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/import.lole")
-    );
+    const output = await compile("./examples/import.lole");
 
     const logs = [];
     const program = await loadWasm(output, {
@@ -108,10 +94,7 @@ test("compiles import", async () => {
 });
 
 test("compiles vec", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/vec.lole")
-    );
+    const output = await compile("./examples/vec.lole");
 
     const lib = await loadWasm(output);
 
@@ -143,10 +126,7 @@ test("compiles vec", async () => {
 });
 
 test("compiles hello world", async () => {
-    const program = await compile(
-        compiler,
-        await readFile("./examples/hello-world.lole")
-    );
+    const program = await compile("./examples/hello-world.lole");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
@@ -157,10 +137,7 @@ test("compiles hello world", async () => {
 });
 
 test("compiles echo", async () => {
-    const program = await compile(
-        compiler,
-        await readFile("./examples/echo.lole")
-    );
+    const program = await compile("./examples/echo.lole");
 
     const output = await runWithTmpFile(async (stdin, stdinFile) => {
         await writeFile(stdinFile, "abc");
@@ -174,10 +151,7 @@ test("compiles echo", async () => {
 });
 
 test("compiles args", async () => {
-    const program = await compile(
-        compiler,
-        await readFile("./examples/args.lole")
-    );
+    const program = await compile("./examples/args.lole");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, {
@@ -191,10 +165,7 @@ test("compiles args", async () => {
 });
 
 test("compiles cat", async () => {
-    const program = await compile(
-        compiler,
-        await readFile("./examples/cat.lole")
-    );
+    const program = await compile("./examples/cat.lole");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, {
@@ -209,10 +180,7 @@ test("compiles cat", async () => {
 });
 
 test("compiles parser", async () => {
-    const output = await compile(
-        compiler,
-        await readFile("./examples/parser.lole")
-    );
+    const output = await compile("./examples/parser.lole");
 
     const parser = await loadWasm(output);
 
@@ -291,6 +259,79 @@ test("compiles parser", async () => {
 // utils
 
 /**
+ * @param {string} compilerPath
+ * @returns {Promise<(sourcePath: string) => Promise<Uint8Array>>}
+ */
+async function loadCompilerWithFuncAPI(compilerPath) {
+    // @ts-ignore
+    const stubWasiImports = new WASI({ version: "preview1" }).getImportObject();
+
+    const compiler = await loadWasm(
+        await readFile(compilerPath),
+        stubWasiImports
+    );
+
+    return async (sourcePath) => {
+        const source = await readFile(sourcePath);
+        const src = storeData(
+            compiler.memory,
+            compiler.mem_alloc(source.byteLength),
+            source
+        );
+
+        const [ok, outPtr, outSize] = compiler.compile(src.ptr, src.size);
+
+        const output = new Uint8Array(outSize);
+        output.set(new Uint8Array(compiler.memory.buffer, outPtr, outSize));
+
+        compiler.mem_free(src.ptr, src.size);
+        compiler.mem_free(outPtr, outSize);
+
+        if (!ok) {
+            throw new Error(new TextDecoder().decode(output));
+        }
+
+        return output;
+    };
+}
+
+/**
+ * @param {string} compilerPath
+ * @returns {Promise<(sourcePath: string) => Promise<Promise<Buffer>>>}
+ */
+async function loadCompilerWithWasiAPI(compilerPath) {
+    const mod = await WebAssembly.compile(await readFile(compilerPath));
+
+    /**
+     * @param {string} sourcePath
+     */
+    return (sourcePath) =>
+        runWithTmpFile(async (stdin, stdinFile) => {
+            await writeFile(stdinFile, await readFile(sourcePath));
+
+            return runWithTmpFile(async (stdout, stdoutFile) => {
+                const wasi = new WASI({
+                    // @ts-ignore
+                    version: "preview1",
+                    stdin: stdin.fd,
+                    stdout: stdout.fd,
+                    args: ["compiler.wasm", "--stdio"],
+                });
+
+                const instance = await WebAssembly.instantiate(
+                    mod,
+                    // @ts-ignore
+                    wasi.getImportObject()
+                );
+
+                wasi.start(instance);
+
+                return readFile(stdoutFile);
+            });
+        });
+}
+
+/**
  * @param {BufferSource} data
  * @param {WebAssembly.Imports} [imports]
  * @returns {Promise<any>}
@@ -298,39 +339,6 @@ test("compiles parser", async () => {
 async function loadWasm(data, imports) {
     const mod = await WebAssembly.instantiate(data, imports);
     return mod.instance.exports;
-}
-
-/**
- * @param {string} compilerPath
- */
-async function loadCompiler(compilerPath) {
-    return loadWasm(await readFile(compilerPath));
-}
-
-/**
- * @param {any} compiler
- * @param {Buffer} source
- */
-async function compile(compiler, source) {
-    const src = storeData(
-        compiler.memory,
-        compiler.mem_alloc(source.byteLength),
-        source
-    );
-
-    const [ok, outPtr, outSize] = compiler.compile(src.ptr, src.size);
-
-    const output = new Uint8Array(outSize);
-    output.set(new Uint8Array(compiler.memory.buffer, outPtr, outSize));
-
-    compiler.mem_free(src.ptr, src.size);
-    compiler.mem_free(outPtr, outSize);
-
-    if (!ok) {
-        throw new Error(new TextDecoder().decode(output));
-    }
-
-    return output;
 }
 
 /**

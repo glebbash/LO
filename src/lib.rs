@@ -40,17 +40,66 @@ pub struct ParseResult {
 }
 
 #[no_mangle]
+pub extern "C" fn _start() {
+    let mut source = Vec::<u8>::new();
+    let mut chunk = [0; 256];
+
+    let in_vec = [wasi::Iovec {
+        buf: chunk.as_mut_ptr(),
+        buf_len: chunk.len(),
+    }];
+
+    loop {
+        let nread = unsafe { wasi::fd_read(wasi::FD_STDIN, &in_vec) }.unwrap();
+
+        if nread == 0 {
+            break;
+        }
+
+        source.extend(&chunk[0..nread]);
+    }
+
+    match compile_str(str::from_utf8(&source).unwrap()) {
+        Ok(binary) => {
+            let out_vec = [wasi::Ciovec {
+                buf: binary.as_ptr(),
+                buf_len: binary.len(),
+            }];
+
+            unsafe { wasi::fd_write(wasi::FD_STDOUT, &out_vec) }.unwrap();
+        }
+        Err(message) => {
+            let err_vec = [wasi::Ciovec {
+                buf: message.as_ptr(),
+                buf_len: message.len(),
+            }];
+
+            unsafe { wasi::fd_write(wasi::FD_STDERR, &err_vec) }.unwrap();
+
+            unsafe { wasi::proc_exit(1) };
+        }
+    };
+}
+
+#[no_mangle]
 pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResult {
     let Some(script) = ptr_to_str(script_ptr, script_len) else {
         return ParseResult::err(String::from("ParseError: Cannot process input"));
     };
 
+    match compile_str(script) {
+        Ok(binary) => ParseResult::ok(binary),
+        Err(message) => ParseResult::err(message),
+    }
+}
+
+fn compile_str(script: &str) -> Result<Vec<u8>, String> {
     let exprs = match parse(script) {
         Ok(exprs) => exprs,
         Err(err) => {
             let (line, col) = err.loc().position_in(script);
 
-            return ParseResult::err(format!("ParseError: {err} at line {line} col {col}"));
+            return Err(format!("ParseError: {err} at line {line} col {col}"));
         }
     };
 
@@ -59,7 +108,7 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
         Err(err) => {
             let (line, col) = err.loc.position_in(script);
 
-            return ParseResult::err(format!(
+            return Err(format!(
                 "CompilerError: {msg} at line {line} col {col}",
                 msg = err.message
             ));
@@ -68,7 +117,7 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
 
     let wasm_binary = BinaryBuilder::new(&module).build();
 
-    ParseResult::ok(wasm_binary)
+    Ok(wasm_binary)
 }
 
 fn ptr_to_str<'a>(chars: *const u8, chars_len: usize) -> Option<&'a str> {
