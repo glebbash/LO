@@ -32,10 +32,6 @@ impl Location {
 
         (line, col)
     }
-
-    fn end(&self) -> usize {
-        self.offset + self.length
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -80,138 +76,157 @@ impl fmt::Display for ParseError {
 pub type ParseResult = Result<SExpr, ParseError>;
 
 #[derive(Clone)]
-struct ParseContext<'a> {
-    file_name: &'a str,
-    chars: &'a Vec<char>,
+struct Parser {
+    file_name: Box<str>,
+    chars: Vec<char>,
     index: usize,
 }
 
 pub fn parse(file_name: &str, script: &str) -> Result<Vec<SExpr>, ParseError> {
-    let chars = &script.chars().collect::<Vec<_>>();
+    Parser::new(file_name, script).parse_all()
+}
 
-    let mut ctx = ParseContext {
-        file_name,
-        chars,
-        index: 0,
-    };
+impl Parser {
+    fn new(file_name: &str, script: &str) -> Self {
+        Self {
+            file_name: file_name.into(),
+            chars: script.chars().collect::<Vec<_>>(),
+            index: 0,
+        }
+    }
 
-    ctx.index = skip_space(&ctx);
+    fn parse_all(&mut self) -> Result<Vec<SExpr>, ParseError> {
+        self.skip_space();
 
-    let mut items = Vec::new();
+        let mut items = Vec::new();
 
-    while ctx.index < chars.len() {
-        if !is_list_start(char_at(&ctx)?) {
+        while self.index < self.chars.len() {
+            if !is_list_start(self.current_char()?) {
+                return Err(ParseError::UnexpectedChar {
+                    loc: Location {
+                        file_name: self.file_name.clone(),
+                        offset: self.index,
+                        length: 1,
+                    },
+                });
+            }
+
+            let res = self.parse_list()?;
+            self.skip_space();
+            items.push(res);
+        }
+
+        Ok(items)
+    }
+
+    fn parse_expr(&mut self) -> ParseResult {
+        if is_list_start(self.current_char()?) {
+            self.parse_list()
+        } else {
+            self.parse_atom()
+        }
+    }
+
+    fn parse_atom(&mut self) -> ParseResult {
+        let start_index = self.index;
+
+        loop {
+            let c = self.current_char()?;
+            if is_space(c) || is_list_end(c) || c == ';' {
+                break;
+            }
+            self.next_char();
+        }
+
+        Ok(SExpr::Atom {
+            value: self.chars[start_index..self.index].iter().collect(),
+            loc: Location {
+                file_name: self.file_name.clone(),
+                offset: start_index,
+                length: self.index - start_index,
+            },
+        })
+    }
+
+    fn parse_list(&mut self) -> ParseResult {
+        let start_index = self.index;
+
+        let list_start_char = self.current_char()?;
+        self.next_char(); // eat list start
+
+        self.skip_space();
+
+        let mut items = Vec::new();
+
+        while !is_list_end(self.current_char()?) {
+            let res = self.parse_expr()?;
+            self.skip_space();
+            items.push(res);
+        }
+
+        let list_end_char = self.current_char()?;
+        self.next_char(); // eat list end
+
+        if !is_valid_list_chars(list_start_char, list_end_char) {
             return Err(ParseError::UnexpectedChar {
                 loc: Location {
-                    file_name: file_name.into(),
-                    offset: ctx.index,
+                    file_name: self.file_name.clone(),
+                    offset: self.index,
                     length: 1,
                 },
             });
         }
 
-        let res = parse_list(&ctx)?;
-        ctx.index = res.loc().end();
-        ctx.index = skip_space(&ctx);
-        items.push(res);
-    }
+        if list_start_char == '{' && items.len() >= 2 {
+            items.swap(0, 1);
+        }
 
-    Ok(items)
-}
-
-fn parse_expr(ctx: &ParseContext) -> ParseResult {
-    if is_list_start(char_at(ctx)?) {
-        parse_list(ctx)
-    } else {
-        parse_atom(ctx)
-    }
-}
-
-fn parse_atom(ctx: &ParseContext) -> ParseResult {
-    let atom_text = ctx.chars[ctx.index..]
-        .iter()
-        .take_while(|&&c| !is_space(c) && !is_list_end(c) && c != ';')
-        .collect::<String>();
-
-    let atom_len = atom_text.len();
-
-    Ok(SExpr::Atom {
-        value: atom_text,
-        loc: Location {
-            file_name: ctx.file_name.into(),
-            offset: ctx.index,
-            length: atom_len,
-        },
-    })
-}
-
-fn parse_list(ctx: &ParseContext) -> ParseResult {
-    let mut ctx = (*ctx).clone();
-    let start_index = ctx.index;
-
-    let list_start_char = char_at(&ctx)?;
-    ctx.index += 1; // eat list start
-
-    ctx.index = skip_space(&ctx);
-
-    let mut items = Vec::new();
-
-    while !is_list_end(char_at(&ctx)?) {
-        let res = parse_expr(&ctx)?;
-        ctx.index = res.loc().end();
-        ctx.index = skip_space(&ctx);
-        items.push(res);
-    }
-
-    let list_end_char = char_at(&ctx)?;
-    ctx.index += 1; // eat list end
-
-    if !is_valid_list_chars(list_start_char, list_end_char) {
-        return Err(ParseError::UnexpectedChar {
+        Ok(SExpr::List {
+            value: items,
             loc: Location {
-                file_name: ctx.file_name.into(),
-                offset: ctx.index,
-                length: 1,
+                file_name: self.file_name.clone(),
+                offset: start_index,
+                length: self.index - start_index,
             },
-        });
+        })
     }
 
-    if list_start_char == '{' && items.len() >= 2 {
-        items.swap(0, 1);
-    }
-
-    Ok(SExpr::List {
-        value: items,
-        loc: Location {
-            file_name: ctx.file_name.into(),
-            offset: start_index,
-            length: ctx.index - start_index,
-        },
-    })
-}
-
-fn skip_space(ctx: &ParseContext) -> usize {
-    let mut ctx = (*ctx).clone();
-
-    while char_at(&ctx).map(is_space).unwrap_or(false) {
-        ctx.index += 1
-    }
-
-    if let Ok(';') = char_at(&ctx) {
-        ctx.index += 1;
-
-        while char_at(&ctx).map(|c| c != '\n').unwrap_or(false) {
-            ctx.index += 1
+    fn skip_space(&mut self) {
+        while self.current_char().map(is_space).unwrap_or(false) {
+            self.next_char();
         }
 
-        if let Ok('\n') = char_at(&ctx) {
-            ctx.index += 1;
-        }
+        if let Ok(';') = self.current_char() {
+            self.next_char();
 
-        return skip_space(&ctx);
+            while self.current_char().map(|c| c != '\n').unwrap_or(false) {
+                self.next_char();
+            }
+
+            if let Ok('\n') = self.current_char() {
+                self.next_char();
+            }
+
+            self.skip_space();
+        }
     }
 
-    ctx.index
+    fn next_char(&mut self) {
+        self.index += 1;
+    }
+
+    fn current_char(&mut self) -> Result<char, ParseError> {
+        self.chars
+            .get(self.index)
+            .copied()
+            .ok_or_else(|| ParseError::UnexpectedEOF {
+                loc: Location {
+                    file_name: self.file_name.clone(),
+                    offset: self.index,
+                    length: 1,
+                },
+            })
+    }
 }
 
 fn is_list_start(c: char) -> bool {
@@ -242,19 +257,6 @@ fn is_space(c: char) -> bool {
         ' ' | '\n' | '\t' => true,
         _ => false,
     }
-}
-
-fn char_at(ctx: &ParseContext) -> Result<char, ParseError> {
-    ctx.chars
-        .get(ctx.index)
-        .copied()
-        .ok_or_else(|| ParseError::UnexpectedEOF {
-            loc: Location {
-                file_name: ctx.file_name.into(),
-                offset: ctx.index,
-                length: 1,
-            },
-        })
 }
 
 // FIXME: make this tests run or move them to test.mjs
