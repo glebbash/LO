@@ -315,7 +315,7 @@ async function loadCompilerWithWasiAPI(compilerPath) {
                     version: "preview1",
                     stdin: stdin.fd,
                     stdout: stdout.fd,
-                    args: ["compiler.wasm", "--stdio"],
+                    args: ["compiler.wasm"],
                 });
 
                 const instance = await WebAssembly.instantiate(
