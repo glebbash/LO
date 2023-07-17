@@ -1,0 +1,43 @@
+(mod lib/std)
+(mod lib/wasi)
+
+(fn print_u32 [(num u32)] [] (
+    {&out : &String}
+    {&out = (std/u32_to_string num)}
+
+    (print_str &out)
+))
+
+(fn println [] [] (
+    (print_char 10) ;; \n
+))
+
+(fn print_char [(char u8)] [] (
+    {&out : &*u8}
+    {&out = (Mem/alloc 1)}
+    (store i32/u8 &out char)
+
+    (print_str_slice (pack &out 1))
+))
+
+(fn print_str [(&str &String)] [] (
+    {str : Vec}
+    {str = (load Vec &str)}
+
+    (print_str_slice (pack
+        {str . data_ref}
+        {str . length}
+    ))
+))
+
+(fn print_str_slice [(str StringSlice)] [] (
+    {&io_vec : &*IOVec}
+    {&io_vec = (Mem/alloc (sizeof StringSlice))}
+    (store StringSlice &io_vec str)
+
+    {&nwritten : &u32}
+    {&nwritten = (Mem/alloc (sizeof u32))}
+
+    {io_res : i32}
+    {io_res = (fd_write FD_STDOUT &io_vec 1 &nwritten)}
+))

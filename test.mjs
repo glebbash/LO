@@ -8,17 +8,16 @@ import { randomUUID } from "node:crypto";
 
 const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
 
-const compileFuncAPI = await loadCompilerWithFuncAPI(COMPILER_PATH);
-const compileWasiAPI = await loadCompilerWithWasiAPI(COMPILER_PATH);
+const compile = await loadCompilerWithWasiAPI(COMPILER_PATH);
 
-const compile = async (/** @type {string} */ sourcePath) => {
-    const output1 = await compileFuncAPI(sourcePath);
-    const output2 = await compileWasiAPI(sourcePath);
+test("single file modules can be compiled using simpler function API", async () => {
+    const compileFuncAPI = await loadCompilerWithFuncAPI(COMPILER_PATH);
+
+    const output1 = await compileFuncAPI("./examples/42.lole");
+    const output2 = await compile("./examples/42.lole");
 
     assert.deepEqual(output1.buffer, output2.buffer);
-
-    return output1;
-};
+});
 
 test("compiles 42", async () => {
     const output = await compile("./examples/42.lole");
@@ -238,7 +237,7 @@ test("compiles parser", async () => {
             parser,
             await readFile("examples/parser.lole", { encoding: "utf8" })
         );
-        assert.deepEqual(res, [1, 9821, 9986]);
+        assert.deepEqual(res, [1, 7240, 7405]);
     }
 
     async function parseAll(parser, text) {
@@ -306,29 +305,39 @@ async function loadCompilerWithWasiAPI(compilerPath) {
      * @param {string} sourcePath
      */
     return (sourcePath) =>
-        runWithTmpFile(async (stdin, stdinFile) => {
-            await writeFile(stdinFile, await readFile(sourcePath));
+        runWithTmpFile(async (stderr, stderrFile) =>
+            runWithTmpFile(async (stdin, stdinFile) => {
+                await writeFile(stdinFile, await readFile(sourcePath));
 
-            return runWithTmpFile(async (stdout, stdoutFile) => {
-                const wasi = new WASI({
-                    // @ts-ignore
-                    version: "preview1",
-                    stdin: stdin.fd,
-                    stdout: stdout.fd,
-                    args: ["compiler.wasm"],
+                return runWithTmpFile(async (stdout, stdoutFile) => {
+                    const wasi = new WASI({
+                        // @ts-ignore
+                        version: "preview1",
+                        stdin: stdin.fd,
+                        stdout: stdout.fd,
+                        stderr: stderr.fd,
+                        args: ["compiler.wasm"],
+                        preopens: { ".": "examples" },
+                    });
+
+                    const instance = await WebAssembly.instantiate(
+                        mod,
+                        // @ts-ignore
+                        wasi.getImportObject()
+                    );
+
+                    const exitCode = /** @type {unknown} */ (
+                        wasi.start(instance)
+                    );
+
+                    if (exitCode !== 0) {
+                        throw new Error(await readFile(stderrFile, "utf-8"));
+                    }
+
+                    return readFile(stdoutFile);
                 });
-
-                const instance = await WebAssembly.instantiate(
-                    mod,
-                    // @ts-ignore
-                    wasi.getImportObject()
-                );
-
-                wasi.start(instance);
-
-                return readFile(stdoutFile);
-            });
-        });
+            })
+        );
 }
 
 /**

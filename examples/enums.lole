@@ -1,5 +1,4 @@
 (mem m :min 100)
-(export main :as main)
 
 (enum ParseResult
     (Ok (value u32))
@@ -10,6 +9,7 @@
 ;; (struct ParseResult/Ok (value u32))
 ;; (struct ParseResult/Err (error u32))
 
+(export main :as main)
 (fn main [] [u32] (
     {res : ParseResult}
     {res = (do_stuff)}

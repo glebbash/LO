@@ -1,6 +1,7 @@
 use crate::{
-    parser::{Location, SExpr},
+    parser::{parse, Location, SExpr},
     type_checker::{get_type, get_types},
+    wasi_io::{fd_open, fd_read},
     wasm_module::{
         WasmBinaryOpKind, WasmData, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType,
         WasmGlobal, WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits,
@@ -12,6 +13,7 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
     rc::Rc,
+    str,
     string::String,
     vec,
     vec::Vec,
@@ -41,6 +43,7 @@ pub enum LoleValueType {
 
 #[derive(Default)]
 pub struct ModuleContext {
+    pub included_modules: BTreeSet<String>,
     pub wasm_module: WasmModule,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: BTreeMap<String, FnBody>,
@@ -183,6 +186,44 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
     };
 
     match op.as_str() {
+        "mod" => match other {
+            [SExpr::Atom {
+                value: mod_name, ..
+            }] => {
+                if !ctx.included_modules.insert(mod_name.clone()) {
+                    // do not include module twice
+                    return Ok(());
+                };
+
+                let mod_fd = fd_open(format!("{}.lole", mod_name)).map_err(|err| CompileError {
+                    message: format!("Cannot load module {}: {}", mod_name, err),
+                    loc: op_loc.clone(),
+                })?;
+
+                let source_buf = fd_read(mod_fd);
+                let source = str::from_utf8(source_buf.as_slice()).unwrap();
+
+                let exprs = match parse(source) {
+                    Ok(exprs) => exprs,
+                    Err(err) => {
+                        return Err(CompileError {
+                            message: format!("ParseError {err}"),
+                            loc: err.loc().clone(),
+                        });
+                    }
+                };
+
+                for expr in exprs {
+                    compile_top_level_expr(&expr, ctx)?;
+                }
+            }
+            _ => {
+                return Err(CompileError {
+                    message: format!("Invalid arguments for {op}"),
+                    loc: op_loc.clone(),
+                });
+            }
+        },
         "mem" => match other {
             [SExpr::Atom {
                 value: mem_name,

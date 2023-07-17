@@ -1,34 +1,12 @@
+(mod lib/std)
+(mod lib/wasi)
+(mod lib/print)
+(mod lib/args)
+
 (mem m1 :min 1000)
 (export mem m1 :as memory)
 
-;; Good stuff
-(global true bool 1)
-(global false bool 0)
-
 ;; #region Imports
-
-;; Strings
-(struct StringSlice (data ptr)(size u32))
-(fn StringSlice/Parser/char_at [(self StringSlice)(index u32)][u8]((load i32/u8 {{self . data} + index})))
-
-;; Vec
-(struct &Vec (ref ptr))
-(struct Vec (length u32)(capacity u32)(item_size u32)(data_ref ptr))
-(fn Vec/new [(capacity u32)(item_size u32)][&Vec]({&self : &Vec}{&self = (Mem/alloc (sizeof Vec))}(store Vec &self (struct.new Vec 0 capacity item_size (Mem/alloc {capacity * item_size}))) &self))
-(fn Vec/get_u8 [(&self &Vec)(index u32)][u8]({self : Vec}{self = (load Vec &self)}(load i32/u8 {{self . data_ref} + {index * {self . item_size}}})))
-(fn Vec/get_u32 [(&self &Vec)(index u32)][u32]({self : Vec}{self = (load Vec &self)}(load i32 {{self . data_ref} + {index * {self . item_size}}})))
-(fn Vec/swap [(&self &Vec)(index1 u32)(index2 u32)][]({self : Vec}{self = (load Vec &self)}(Mem/swap {{self . data_ref} + {index1 * {self . item_size}}}{{self . data_ref} + {index2 * {self . item_size}}}{self . item_size})))
-(fn Vec/len [(&self &Vec)][u32]({self : Vec}{self = (load Vec &self)}{self . length}))
-(fn Vec/push_u8 [(&self &Vec)(item u8)][]({self : Vec}{self = (load Vec &self)}{index : u32}{index = {self . length}}{self = length {index + 1}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(store i32/u8 {{self . data_ref} + {index * {self . item_size}}} item)))
-(fn Vec/push_all [(&self &Vec)(&items ptr)(items_len u32)][]({self : Vec}{self = (load Vec &self)}{old_len : u32}{old_len = {self . length}}{self = length {old_len + items_len}}(store Vec &self self)(Vec/grow_if_needed &self){self = (load Vec &self)}(Mem/copy &items {{self . data_ref} + {old_len * {self . item_size}}}{items_len * {self . item_size}})))
-(fn Vec/grow_if_needed [(&self &Vec)][]({self : Vec}{self = (load Vec &self)}(if {{self . length} == {self . capacity}}(do {new_cap : u32}{new_cap = {{self . capacity} * 2}}{old_data_ref : ptr}{old_data_ref = {self . data_ref}}{self = data_ref (Mem/alloc {new_cap * {self . item_size}})}(Mem/copy old_data_ref {self . data_ref}{self . capacity}){self = capacity new_cap}(Mem/free old_data_ref)))(store Vec &self self)))
-
-;; Mem utils
-(global mut Mem/HEAP_INDEX u32 4) ;; 0-4 is for Wasi/fd_write nwritten 
-(fn Mem/alloc [(size u32)][ptr]({ref : ptr}{ref = Mem/HEAP_INDEX}{Mem/HEAP_INDEX = {Mem/HEAP_INDEX + size}} ref))
-(fn Mem/free [(ref ptr)][]())
-(fn Mem/copy [(src ptr)(dist ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}(store i32/u8 {dist + size}(load i32/u8 {src + size}))))))
-(fn Mem/swap [(ref1 ptr)(ref2 ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}{tmp : u8}{tmp = (load i32/u8 {ref1 + size})}(store i32/u8 {ref1 + size}(load i32/u8 {ref2 + size}))(store i32/u8 {ref2 + size} tmp)))))
 
 ;; Parser
 (global Parser/SExpr/Atom u8 0)
@@ -50,13 +28,6 @@
 (struct Parser/CharAtResult (ok bool)(char u8))
 (fn Parser/char_at [(chars StringSlice)(index u32)][Parser/CharAtResult]((if {index >= {chars . size}}(return (struct.new Parser/CharAtResult false 0)))(struct.new Parser/CharAtResult true (StringSlice/Parser/char_at chars index))))
 (fn Parser/index_to_position [(chars StringSlice)(index u32)][ u32 u32]({line : u32}{col : u32}{(line col) = (pack 1 1)}{char_index : u32}{char_index = 0}(loop ((if {char_index >= {chars . size}}(break))(if {char_index >= index}(break)){char : u32}{char = (StringSlice/Parser/char_at chars char_index)}(if {char == CHAR_NEWLINE}(do {col = 1}{line = {line + 1}}{char_index = {char_index + 1}}(continue))){col = {col + 1}}{char_index = {char_index + 1}}))(pack line col))) 
-
-;; WASI
-(global Wasi/FD_STDOUT u32 1)
-(struct Wasi/IOVec (base ptr)(len u32))
-(struct &Wasi/IOVec (actual ptr))
-(import fn Wasi/fd_write [(file_descriptor u32)(&iovs ptr)(iovs_len u32)(&nwritten u32)][i32] :from wasi_snapshot_preview1 fd_write)
-(fn Std/print [(&iov &Wasi/IOVec)][]({_ : i32}{_ = (Wasi/fd_write Wasi/FD_STDOUT &iov 1 0)})) 
 
 ;; #endregion
 
@@ -101,14 +72,8 @@
     
     {str : Vec}
     {str = (load Vec &str)}
-    
-    {&out_str : ptr}
-    {&out_str = (Mem/alloc (sizeof StringSlice))}
-    (store StringSlice &out_str (struct.new StringSlice
-        {str . data_ref}
-        {str . length}
-    ))
-    (Std/print &out_str)
+
+    (print_str_slice {str . data_ref} {str . length})
 
     (return 0)
 ))

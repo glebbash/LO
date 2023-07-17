@@ -1,4 +1,4 @@
-(export main :as main)
+(mod lib/std)
 
 (mem m :min 100)
 
@@ -7,21 +7,14 @@
     (y i32)
 )
 
+(export main :as main)
 (fn main [] [i32] (
     {ref : ptr}
-    {ref = (alloc (sizeof Point2D))}
+    {ref = (Mem/alloc (sizeof Point2D))}
     (store Point2D ref (struct.new Point2D 2 3))
 
     {p : Point2D}
     {p = (load Point2D ref)}
 
     (return {p . y})
-))
-
-(global mut HEAP_INDEX u32 0)
-(fn alloc [(size u32)] [ptr] (
-    {ref : ptr}
-    {ref = HEAP_INDEX}
-    {HEAP_INDEX = {HEAP_INDEX + size}}
-    (return ref)
 ))

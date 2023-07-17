@@ -1,38 +1,8 @@
-;; <wasi>
-    (global FD_STDIN u32 0)
-    (global FD_STDOUT u32 1)
-
-    (struct &IOVec* (actual ptr))
-    (struct IOVec (base ptr) (len u32))
-
-    (import fn fd_read [
-        (file_descriptor u32) ;; file_descriptor
-        (&iovs           &IOVec*) ;; The pointer to the iov array
-        (iovs_len        u32) ;; Amount of IOVec
-        (&nread          u32) ;; Pointer to store the number of bytes read
-    ] [i32] :from wasi_snapshot_preview1 fd_read)
-
-    (import fn fd_write [
-        (file_descriptor u32) ;; file_descriptor
-        (&iovs           &IOVec*) ;; The pointer to the iov array
-        (iovs_len        u32) ;; Amount of IOVec
-        (&nwritten       u32) ;; Pointer to store the number of bytes written
-    ] [i32] :from wasi_snapshot_preview1 fd_write)
-;; </wasi>
-
-;; <mem>
-    (global mut Mem/HEAP_INDEX u32 4) ;; 0-4 is for Wasi/fd_write nwritten 
-    (fn Mem/alloc [(size u32)][ptr]({ref : ptr}{ref = Mem/HEAP_INDEX}{Mem/HEAP_INDEX = {Mem/HEAP_INDEX + size}} (return ref)))
-    (fn Mem/free [(ref ptr)][]())
-    (fn Mem/copy [(src ptr)(dist ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}(store i32/u8 {dist + size}(load i32/u8 {src + size}))))))
-    (fn Mem/swap [(ref1 ptr)(ref2 ptr)(size u32)][]((loop ((if {size == 0}(break)){size = {size - 1}}{tmp : u8}{tmp = (load i32/u8 {ref1 + size})}(store i32/u8 {ref1 + size}(load i32/u8 {ref2 + size}))(store i32/u8 {ref2 + size} tmp)))))
-;; </mem>
+(mod lib/std)
+(mod lib/wasi)
 
 (mem m1 :min 1000)
 (export mem m1 :as memory)
-
-(struct &u8* (actual ptr))
-(struct &u32 (actual ptr))
 
 (export main :as _start)
 (fn main [] [i32] (
@@ -40,10 +10,10 @@
 ))
 
 (fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (
-    {&chunk : &u8*}
+    {&chunk : &*u8}
     {&chunk = (Mem/alloc chunk_size)}
 
-    {&iov : &IOVec*}
+    {&iov : &*IOVec}
     {&iov = (Mem/alloc (sizeof IOVec))}
     (store i32 &iov &chunk)
 

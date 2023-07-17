@@ -1,4 +1,11 @@
+use alloc::string::String;
 use alloc::vec::Vec;
+
+const CWD_PREOPEN_FD: u32 = 3;
+
+pub fn fd_open(file_path: String) -> Result<u32, wasi::Errno> {
+    unsafe { wasi::path_open(CWD_PREOPEN_FD, 0, &file_path, 0, 2, 0, 0) }
+}
 
 pub fn fd_read(fd: u32) -> Vec<u8> {
     let mut source = Vec::<u8>::new();

@@ -48,7 +48,8 @@ pub extern "C" fn _start() {
         Ok(binary) => {
             wasi_io::fd_write(wasi::FD_STDOUT, binary.as_slice());
         }
-        Err(message) => {
+        Err(mut message) => {
+            message.push('\n');
             wasi_io::fd_write(wasi::FD_STDERR, message.as_bytes());
 
             unsafe { wasi::proc_exit(1) };

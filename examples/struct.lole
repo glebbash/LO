@@ -1,10 +1,9 @@
-(export main :as main)
-
 (struct Point2D
     (x i32)
     (y i32)
 )
 
+(export main :as main)
 (fn main [] [i32] (
     {p1 : Point2D}
     {p1 = (struct.new Point2D 0 0)}

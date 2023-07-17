@@ -1,0 +1,55 @@
+(struct Args
+    (argc u32)
+    (&argv ptr) ;; &*&*u8
+)
+
+(fn Args/load [] [Args] (
+    {&argc : &u32}
+    {&argc = (Mem/alloc (sizeof u32))}
+    
+    {&argv_buf_size : &u32}
+    {&argv_buf_size = (Mem/alloc (sizeof u32))}
+
+    {_ : i32}
+    {_ = (args_sizes_get &argc &argv_buf_size)}
+
+    {argc : u32}
+    {argc = (load i32 &argc)}
+
+    {&argv : &*&*u8}
+    {&argv = (Mem/alloc {argc * (sizeof &*u8)})}
+
+    {&argv_buf : &*u8}
+    {&argv_buf = (Mem/alloc (load i32 &argv_buf_size))}
+
+    {_ = (args_get &argv &argv_buf)}
+
+    (return (struct.new Args
+        argc
+        &argv
+    ))
+))
+
+(fn Args/get [(self Args) (i u32)] [StringSlice] (
+    {&arg : &*u8}
+    {&arg = (load i32 {{self . &argv} + {i * (sizeof &*u8)}})}
+    (return (struct.new StringSlice
+        &arg (Args/_c_str_len &arg)
+    ))
+))
+
+(fn Args/_c_str_len [(&str &*u8)] [u32] (
+    {len : u32}
+    {len = 0}
+    
+    (loop (
+        {char : u8}
+        {char = (load i32/u8 {&str + len})}
+        
+        (if {char == 0} (break))
+
+        {len = {len + 1}}
+    ))
+
+    (return len)
+))
