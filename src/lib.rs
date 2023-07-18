@@ -42,15 +42,15 @@ pub struct ParseResult {
 
 #[no_mangle]
 pub extern "C" fn _start() {
-    let source = wasi_io::fd_read(wasi::FD_STDIN);
+    let source = wasi_io::fd_read_all(wasi::FD_STDIN);
 
     match compile_str(str::from_utf8(&source).unwrap()) {
         Ok(binary) => {
-            wasi_io::fd_write(wasi::FD_STDOUT, binary.as_slice());
+            wasi_io::fd_write_all(wasi::FD_STDOUT, binary.as_slice());
         }
         Err(mut message) => {
             message.push('\n');
-            wasi_io::fd_write(wasi::FD_STDERR, message.as_bytes());
+            wasi_io::fd_write_all(wasi::FD_STDERR, message.as_bytes());
 
             unsafe { wasi::proc_exit(1) };
         }

@@ -7,7 +7,7 @@
 (export mem m1 :as memory)
 
 (export main :as _start)
-(fn main [] [i32] (
+(fn main [] [] (
     {args : Args}
     {args = (Args/load)}
 
@@ -24,6 +24,4 @@
 
         {i = {i + 1}}
     ))
-    
-    (return 0)
 ))

@@ -2,7 +2,7 @@ use crate::{
     parse_file,
     parser::{Location, SExpr},
     type_checker::{get_type, get_types},
-    wasi_io::{fd_open, fd_read},
+    wasi_io::{fd_open, fd_read_all},
     wasm_module::{
         WasmBinaryOpKind, WasmData, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType,
         WasmGlobal, WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits,
@@ -198,7 +198,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     loc: op_loc.clone(),
                 })?;
 
-                let source_buf = fd_read(mod_fd);
+                let source_buf = fd_read_all(mod_fd);
                 let source = str::from_utf8(source_buf.as_slice()).unwrap();
 
                 let exprs = parse_file(&file_name, source)?;

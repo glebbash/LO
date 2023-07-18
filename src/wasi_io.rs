@@ -6,8 +6,8 @@ pub fn fd_open(file_path: &str) -> Result<u32, wasi::Errno> {
     unsafe { wasi::path_open(CWD_PREOPEN_FD, 0, &file_path, 0, 2, 0, 0) }
 }
 
-pub fn fd_read(fd: u32) -> Vec<u8> {
-    let mut source = Vec::<u8>::new();
+pub fn fd_read_all(fd: u32) -> Vec<u8> {
+    let mut output = Vec::<u8>::new();
     let mut chunk = [0; 256];
 
     let in_vec = [wasi::Iovec {
@@ -22,17 +22,17 @@ pub fn fd_read(fd: u32) -> Vec<u8> {
             break;
         }
 
-        source.extend(&chunk[0..nread]);
+        output.extend(&chunk[0..nread]);
     }
 
-    source
+    output
 }
 
-pub fn fd_write(fd: u32, message: &[u8]) {
-    let err_vec = [wasi::Ciovec {
+pub fn fd_write_all(fd: u32, message: &[u8]) {
+    let out_vec = [wasi::Ciovec {
         buf: message.as_ptr(),
         buf_len: message.len(),
     }];
 
-    unsafe { wasi::fd_write(fd, &err_vec) }.unwrap();
+    unsafe { wasi::fd_write(fd, &out_vec) }.unwrap();
 }
