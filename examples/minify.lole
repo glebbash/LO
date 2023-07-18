@@ -1,60 +1,61 @@
 (mod lib/std)
 (mod lib/wasi)
+(mod lib/wasi_io)
 (mod lib/print)
-(mod lib/args)
 (mod parser)
 
 (mem m1 :min 1000)
 (export mem m1 :as memory)
 
-(struct MinifyResult (ok bool) (data ptr))
-
 (struct &Vec<Parser/SExpr> (actual ptr))
-(struct &Vec<u8> (actual ptr))
 
 (export main :as _start)
-(fn main [(chars StringSlice)] [i32] (
+(fn main [] [] (
+    {&source : &String}
+    {&source = (fd_read_all FD_STDIN)}
+
     {parse_res : Parser/ParseResult}
-    {parse_res = (Parser/parse chars)}
+    {parse_res = (Parser/parse (Vec/as_slice &source))}
 
     (if (not {parse_res . ok}) (do
-        (return 1)
+        (return (proc_exit 1))
     ))
 
     {&exprs : &Vec<Parser/SExpr>}
     {&exprs = {parse_res . data}}
+
+    (dump_exprs &exprs)
+    (println)
+))
+
+(fn dump_exprs [(&exprs &Vec<Parser/SExpr>)] [] (
     {i : u32}
     {i = 0}
-    ;; TODO: implement dump
-    ;; {&output : &Vec<u8>}
-    ;; {&output = (Vec/new 256 1)}
 
     (loop (
         (if {i == (Vec/len &exprs)}
             (break)
         )
 
-        ;; TODO: implement dump
-        ;; {expr : Parser/SExpr}
-        ;; {expr = (load Parser/SExpr {&exprs + {i * (sizeof Parser/SExpr)}})}
-        ;; (dump_expr expr &output)
+        {expr : Parser/SExpr}
+        {expr = (load Parser/SExpr (Vec/at &exprs i))}
+        (dump_expr expr)
+
+        (if {i != {(Vec/len &exprs) - 1}}
+            (print_char 32)
+        )
 
         {i = {i + 1}}
     ))
-
-    {&str : &Vec<u8>}
-    {&str = (std/u32_to_string i)}
-    (Vec/push_u8 &str CHAR_NEWLINE)
-    
-    {str : Vec}
-    {str = (load Vec &str)}
-
-    (print_str_slice {str . data_ref} {str . length})
-
-    (return 0)
 ))
 
-;; TODO: implement dump
-;; (fn dump_expr [(expr Parser/SExpr) (&output &Vec)] [] (
-    
-;; ))
+(fn dump_expr [(expr Parser/SExpr)] [] (
+    (if {{expr . kind} == Parser/SExpr/Atom} (do
+        (print_str {expr . data})
+        (return)
+    ))
+
+    (print_char 40)
+    (dump_exprs {expr . data})
+    (print_char 41)
+))

@@ -1,0 +1,40 @@
+(fn fd_read_all [(fd u32)] [&String] (
+    {&output : &String}
+    {&output = (Vec/new 256 1)}
+
+    {&chunk : &*u8}
+    {&chunk = (Mem/alloc 256)}
+
+    {&in_vec : &*IOVec}
+    {&in_vec = (Mem/alloc (sizeof IOVec))}
+    (store IOVec &in_vec (struct.new IOVec &chunk 256))
+
+    {&nread : &u32}
+    {&nread = (Mem/alloc (sizeof u32))}
+
+    (loop (
+        {err : WasiErr}
+        {err = (fd_read fd &in_vec 1 &nread)}
+
+        {nread : u32}
+        {nread = (load i32 &nread)}
+
+        (if {nread == 0} (break))
+
+        (Vec/push_all &output &chunk nread)
+    ))
+
+    (return &output)
+))
+
+(fn fd_write_all [(fd u32) (message StringSlice)] [] (
+    {&out_vec : &*IOVec}
+    {&out_vec = (Mem/alloc (sizeof IOVec))}
+    (store IOVec &out_vec message)
+
+    {&nwritten : &u32}
+    {&nwritten = (Mem/alloc (sizeof u32))}
+
+    {err : WasiErr}
+    {err = (fd_write fd &out_vec 1 &nwritten)}
+))

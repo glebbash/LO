@@ -142,7 +142,7 @@
             {old_data_ref = {self . data_ref}}
 
             {self = data_ref (Mem/alloc {new_cap * {self . item_size}})} ; TODO: fix this ugly syntax
-            (Mem/copy old_data_ref {self . data_ref} {self . capacity})
+            (Mem/copy old_data_ref {self . data_ref} {{self . capacity} * {self . item_size}})
             {self = capacity new_cap} ; TODO: fix this ugly syntax
 
             (Mem/free old_data_ref)
@@ -164,6 +164,20 @@
             {start = {start + 1}}
             {end = {end - 1}}
         ))
+    ))
+
+    (fn Vec/as_slice [(&self &Vec)] [ptr u32] (
+        {self : Vec}
+        {self = (load Vec &self)}
+
+        (return {self . data_ref} {self . length})
+    ))
+
+    (fn Vec/at [(&self &Vec) (index u32)] [u32] (
+        {self : Vec}
+        {self = (load Vec &self)}
+
+        (return {{self . data_ref} + {index * {self . item_size}}})
     ))
 ;; </vec>
 
