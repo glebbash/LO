@@ -1,11 +1,11 @@
 ;; (export :as memory (mem m1 :min 1000))
 ;; TODO: add memory implicitly if it's used
 
-(export main :as _start)
+(export :as _start
 (fn main [] [] (
     ;; TODO: add string support
     (std/print "Hello World!\n")
-))
+)))
 
 ;; TODO: add module support
 (module std

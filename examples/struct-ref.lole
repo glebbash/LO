@@ -10,11 +10,13 @@
 (export main :as main)
 (fn main [] [i32] (
     {ref : ptr}
-    {ref = (Mem/alloc (sizeof Point2D))}
+    {ref = (Stack/alloc (sizeof Point2D))}
     (store Point2D ref (struct.new Point2D 2 3))
 
     {p : Point2D}
     {p = (load Point2D ref)}
+
+    (Stack/free (sizeof Point2D))
 
     (return {p . y})
 ))

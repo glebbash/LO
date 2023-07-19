@@ -1,5 +1,6 @@
 (mod lib/std)
 (mod lib/wasi)
+(mod lib/wasi_io)
 (mod lib/print)
 (mod lib/args)
 
@@ -37,8 +38,7 @@
 
 (fn fd_open [(file_path StringSlice)] [u32 u32] (
     {&fd : u32}
-    {&fd = (Mem/alloc 2)} ;; aligning fd pointer for wasmtime
-    {&fd = (Mem/alloc (sizeof u32))}
+    {&fd = (Stack/alloc (sizeof u32))}
 
     {err : u32}
     {err = (path_open
@@ -47,57 +47,13 @@
         &fd
     )}
     (if {err != 0} (do
-        (Mem/free &fd)
+        (Stack/free (sizeof u32))
         (return (pack err 0))
     ))
 
     {fd : u32}
     {fd = (load i32 &fd)}
     
-    (Mem/free &fd)
+    (Stack/free (sizeof u32))
     (return (pack 0 fd))
-))
-
-(fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (
-    {&chunk : &*u8}
-    {&chunk = (Mem/alloc chunk_size)}
-
-    {&iov : &*IOVec}
-    {&iov = (Mem/alloc (sizeof IOVec))}
-    (store i32 &iov &chunk)
-
-    {&nread : &u32}
-    {&nread = (Mem/alloc (sizeof u32))}
-
-    {result : i32}
-    {result = 0}
-
-    {io_res : i32}
-
-    (loop (
-        (store i32 {&iov + (sizeof u32)} chunk_size)
-        {io_res = (fd_read fd_in &iov 1 &nread)}
-        (if {io_res != 0} (do
-            {result = 1}
-            (break)
-        ))
-        
-        {nread : u32}
-        {nread = (load i32 &nread)}
-
-        (if {nread == 0} (break))
-
-        (store i32 {&iov + (sizeof u32)} nread)
-        {io_res = (fd_write fd_out &iov 1 &nread)}
-        (if {io_res != 0} (do
-            {result = 1}
-            (break)
-        ))
-    ))
-
-    (Mem/free &chunk)
-    (Mem/free &iov)
-    (Mem/free &nread)
-
-    (return result)
 ))

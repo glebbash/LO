@@ -98,7 +98,6 @@ test("compiles vec", async () => {
     const lib = await loadWasm(output);
 
     const vec = lib.vec_new(4, 1);
-    assert.deepEqual(vec, 0);
 
     lib.vec_push_u8(vec, 1);
 
@@ -237,7 +236,7 @@ test("compiles parser", async () => {
             parser,
             await readFile("examples/parser.lole", { encoding: "utf8" })
         );
-        assert.deepEqual(res, [1, 7554, 7719]);
+        assert.deepEqual(res, [1, 7554, 1056295]);
     }
 
     async function parseAll(parser, text) {

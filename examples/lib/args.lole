@@ -5,10 +5,10 @@
 
 (fn Args/load [] [Args] (
     {&argc : &u32}
-    {&argc = (Mem/alloc (sizeof u32))}
+    {&argc = (Stack/alloc (sizeof u32))}
     
     {&argv_buf_size : &u32}
-    {&argv_buf_size = (Mem/alloc (sizeof u32))}
+    {&argv_buf_size = (Stack/alloc (sizeof u32))}
 
     {_ : i32}
     {_ = (args_sizes_get &argc &argv_buf_size)}
@@ -23,6 +23,9 @@
     {&argv_buf = (Mem/alloc (load i32 &argv_buf_size))}
 
     {_ = (args_get &argv &argv_buf)}
+
+    (Stack/free (sizeof u32))
+    (Stack/free (sizeof u32))
 
     (return (struct.new Args
         argc

@@ -9,7 +9,7 @@
 (export main :as _start)
 (fn main [] [] (
     {&iov : ptr}
-    {&iov = 0}
+    {&iov = (Stack/alloc (sizeof IOVec))}
     
     (store IOVec &iov (struct.new IOVec
         8 ;; base
@@ -18,4 +18,6 @@
 
     {_ : i32}
     {_ = (fd_write FD_STDOUT &iov 1 20)}
+    
+    (Stack/free (sizeof IOVec))
 ))

@@ -1,5 +1,6 @@
 (mod lib/std)
 (mod lib/wasi)
+(mod lib/wasi_io)
 
 (mem m1 :min 1000)
 (export mem m1 :as memory)
@@ -7,48 +8,4 @@
 (export main :as _start)
 (fn main [] [i32] (
     (return (fd_pipe FD_STDIN FD_STDOUT 256))
-))
-
-(fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (
-    {&chunk : &*u8}
-    {&chunk = (Mem/alloc chunk_size)}
-
-    {&iov : &*IOVec}
-    {&iov = (Mem/alloc (sizeof IOVec))}
-    (store i32 &iov &chunk)
-
-    {&nread : &u32}
-    {&nread = (Mem/alloc (sizeof u32))}
-
-    {result : i32}
-    {result = 0}
-
-    {io_res : i32}
-
-    (loop (
-        (store i32 {&iov + (sizeof u32)} chunk_size)
-        {io_res = (fd_read fd_in &iov 1 &nread)}
-        (if {io_res != 0} (do
-            {result = 1}
-            (break)
-        ))
-        
-        {nread : u32}
-        {nread = (load i32 &nread)}
-
-        (if {nread == 0} (break))
-
-        (store i32 {&iov + (sizeof u32)} nread)
-        {io_res = (fd_write fd_out &iov 1 &nread)}
-        (if {io_res != 0} (do
-            {result = 1}
-            (break)
-        ))
-    ))
-
-    (Mem/free &chunk)
-    (Mem/free &iov)
-    (Mem/free &nread)
-
-    (return result)
 ))

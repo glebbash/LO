@@ -1,3 +1,5 @@
+(mod lib/std)
+
 (mem m :min 100)
 
 (enum ParseResult
@@ -25,19 +27,11 @@
 
 (fn do_stuff [] [ParseResult] (
     {ref : ptr}
-    {ref = (alloc (sizeof ParseResult/Ok))}
+    {ref = (Mem/alloc (sizeof ParseResult/Ok))}
     (store ParseResult/Ok ref (struct.new ParseResult/Ok 1))
 
     (return (struct.new ParseResult
         (enum.kind ParseResult/Ok)
         ref
     ))
-))
-
-(global mut HEAP_INDEX u32 0)
-(fn alloc [(size u32)] [ptr] (
-    {ref : ptr}
-    {ref = HEAP_INDEX}
-    {HEAP_INDEX = {HEAP_INDEX + size}}
-    (return ref)
 ))

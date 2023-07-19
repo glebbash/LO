@@ -35,9 +35,7 @@
     {&io_vec = (Mem/alloc (sizeof StringSlice))}
     (store StringSlice &io_vec str)
 
-    {&nwritten : &u32}
-    {&nwritten = (Mem/alloc (sizeof u32))}
-
     {io_res : i32}
-    {io_res = (fd_write FD_STDOUT &io_vec 1 &nwritten)}
+    {io_res = (fd_write FD_STDOUT &io_vec 1 (Stack/alloc (sizeof u32)))}
+    (Stack/free (sizeof u32))
 ))
