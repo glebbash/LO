@@ -18,6 +18,7 @@ pub fn get_types(
 
 pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>, CompileError> {
     Ok(match instr {
+        WasmInstr::Unreachable { .. } => vec![],
         WasmInstr::NoInstr { .. } => vec![],
         WasmInstr::LoopBreak { .. } => vec![],
         WasmInstr::LoopContinue { .. } => vec![],

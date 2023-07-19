@@ -48,6 +48,7 @@ pub struct WasmExpr {
 pub enum WasmBinaryOpKind {
     I32Equals = 0x46,
     I32LessThenSigned = 0x48,
+    I32GreaterThenSigned = 0x4a,
     I32GreaterEqualSigned = 0x4e,
     I32NotEqual = 0x47,
     I32Add = 0x6a,
@@ -74,21 +75,20 @@ pub enum WasmStoreKind {
 }
 
 pub enum WasmInstr {
-    NoInstr {
-        loc: Location,
-    },
+    Unreachable,
+    NoInstr,
+    LoopBreak,
+    LoopContinue,
     BinaryOp {
         kind: WasmBinaryOpKind,
         lhs: Box<WasmInstr>,
         rhs: Box<WasmInstr>,
-        loc: Location,
     },
     Load {
         kind: WasmLoadKind,
         align: u32,
         offset: u32,
         address_instr: Rc<WasmInstr>, // cannot use Box because of struct load
-        loc: Location,
     },
     Store {
         kind: WasmStoreKind,
@@ -96,55 +96,40 @@ pub enum WasmInstr {
         offset: u32,
         address_instr: Rc<WasmInstr>, // cannot use Box because of struct.store
         value_instr: Box<WasmInstr>,
-        loc: Location,
     },
     I32Const {
         value: i32,
-        loc: Location,
     },
     I64Const {
         value: i64,
-        loc: Location,
+    },
+    LocalGet {
+        local_index: u32,
+    },
+    LocalSet {
+        local_index: u32,
+        value: Box<WasmInstr>,
+    },
+    GlobalGet {
+        global_index: u32,
+    },
+    GlobalSet {
+        global_index: u32,
+        value: Box<WasmInstr>,
+    },
+    MultiValueLocalSet {
+        local_indices: Vec<u32>,
+        value: Box<WasmInstr>,
+    },
+    MultiValueEmit {
+        values: Vec<WasmInstr>,
     },
     Return {
         value: Box<WasmInstr>,
         loc: Location,
     },
-    LocalGet {
-        local_index: u32,
-        loc: Location,
-    },
-    LocalSet {
-        local_index: u32,
-        value: Box<WasmInstr>,
-        loc: Location,
-    },
-    GlobalGet {
-        global_index: u32,
-        loc: Location,
-    },
-    GlobalSet {
-        global_index: u32,
-        value: Box<WasmInstr>,
-        loc: Location,
-    },
-    MultiValueLocalSet {
-        local_indices: Vec<u32>,
-        value: Box<WasmInstr>,
-        loc: Location,
-    },
-    MultiValueEmit {
-        values: Vec<WasmInstr>,
-        loc: Location,
-    },
     Loop {
         instrs: Vec<WasmInstr>,
-        loc: Location,
-    },
-    LoopBreak {
-        loc: Location,
-    },
-    LoopContinue {
         loc: Location,
     },
     Call {
@@ -157,39 +142,11 @@ pub enum WasmInstr {
         cond: Box<WasmInstr>,
         then_branch: Box<WasmInstr>,
         else_branch: Box<WasmInstr>,
-        loc: Location,
     },
     IfSingleBranch {
         cond: Box<WasmInstr>,
         then_branch: Box<WasmInstr>,
-        loc: Location,
     },
-}
-
-impl WasmInstr {
-    pub fn loc(&self) -> &Location {
-        match self {
-            Self::NoInstr { loc, .. } => loc,
-            Self::BinaryOp { loc, .. } => loc,
-            Self::Load { loc, .. } => loc,
-            Self::Store { loc, .. } => loc,
-            Self::I32Const { loc, .. } => loc,
-            Self::I64Const { loc, .. } => loc,
-            Self::Return { loc, .. } => loc,
-            Self::LocalGet { loc, .. } => loc,
-            Self::LocalSet { loc, .. } => loc,
-            Self::GlobalGet { loc, .. } => loc,
-            Self::GlobalSet { loc, .. } => loc,
-            Self::MultiValueLocalSet { loc, .. } => loc,
-            Self::MultiValueEmit { loc, .. } => loc,
-            Self::Loop { loc, .. } => loc,
-            Self::LoopBreak { loc } => loc,
-            Self::LoopContinue { loc } => loc,
-            Self::Call { loc, .. } => loc,
-            Self::If { loc, .. } => loc,
-            Self::IfSingleBranch { loc, .. } => loc,
-        }
-    }
 }
 
 #[repr(u8)]
