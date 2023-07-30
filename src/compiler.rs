@@ -55,6 +55,7 @@ pub struct ModuleContext {
     pub globals: BTreeMap<String, GlobalDef>,
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<i32>>,
+    pub string_pool: RefCell<BTreeMap<String, i32>>,
 }
 
 pub struct FnDef {
@@ -843,20 +844,29 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         SExpr::List { value: items, .. } => items,
         SExpr::Atom { value, loc, kind } => {
             if *kind == AtomKind::String {
-                let string_ptr = *ctx.module.data_size.borrow();
                 let string_len = value.as_bytes().len() as i32;
 
-                // TODO(optimize): use string pooling
-                *ctx.module.data_size.borrow_mut() += string_len;
-                ctx.module
-                    .wasm_module
-                    .datas
+                let string_ptr = *ctx
+                    .module
+                    .string_pool
                     .borrow_mut()
-                    .push(WasmData::Active {
-                        offset: WasmExpr {
-                            instrs: vec![WasmInstr::I32Const { value: string_ptr }],
-                        },
-                        bytes: value.as_bytes().to_vec(),
+                    .entry(value.clone())
+                    .or_insert_with(|| {
+                        let string_ptr = *ctx.module.data_size.borrow();
+
+                        *ctx.module.data_size.borrow_mut() += string_len;
+                        ctx.module
+                            .wasm_module
+                            .datas
+                            .borrow_mut()
+                            .push(WasmData::Active {
+                                offset: WasmExpr {
+                                    instrs: vec![WasmInstr::I32Const { value: string_ptr }],
+                                },
+                                bytes: value.as_bytes().to_vec(),
+                            });
+
+                        string_ptr
                     });
 
                 return Ok(WasmInstr::MultiValueEmit {

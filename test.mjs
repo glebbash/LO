@@ -177,6 +177,17 @@ test("compiles cat", async () => {
     assert.strictEqual(output, await readFile("examples/42.lole", "utf-8"));
 });
 
+test("compiles string-pooling", async () => {
+    const program = await compile("./examples/string-pooling.test.lole");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, "13\n");
+});
+
 test("compiles parser", async () => {
     const output = await compile("./examples/parser.test.lole");
 
@@ -211,7 +222,7 @@ test("compiles parser", async () => {
         const [expr_type, atom_ref] = u32s(mem, expr_ref, 2);
         assert.equal(expr_type, 0); // atom
 
-        const [len, cap, item_size, chars_ref] = u32s(mem, atom_ref, 4);
+        const [chars_ref, len, cap, item_size] = u32s(mem, atom_ref, 4);
         assert.deepEqual([len, cap, item_size], [3, 6, 1]);
 
         const chars = new Uint8Array(mem, chars_ref, len);
@@ -227,7 +238,7 @@ test("compiles parser", async () => {
         const [expr_type, atom_ref] = u32s(mem, expr_ref, 2);
         assert.equal(expr_type, 1); // list
 
-        const [len, cap, item_size, _exprs_ref] = u32s(mem, atom_ref, 4);
+        const [_exprs_ref, len, cap, item_size] = u32s(mem, atom_ref, 4);
         assert.deepEqual([len, cap, item_size], [1, 6, 8]);
     }
 

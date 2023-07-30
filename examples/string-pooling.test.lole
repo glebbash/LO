@@ -1,0 +1,12 @@
+(mod lib/cli)
+
+(fn main [] [] (
+    {_ : StringSlice}
+    {_ = "Hello World!\n"}
+    {_ = "Hello World!\n"}
+    {_ = "Hello World!\n"}
+    {_ = "Hello World!\n"}
+    {_ = "Hello World!\n"}
+    (print_u32 (data.size))
+    (println)
+))
