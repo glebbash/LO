@@ -90,18 +90,20 @@
 ;; <vec>
     (struct &Vec (ref ptr))
     (struct Vec
+        (data_ref ptr)
         (length u32)
         (capacity u32)
         (item_size u32)
-        (data_ref ptr)
     )
 
     (fn Vec/new [(capacity u32) (item_size u32)] [&Vec] (
         {&self : &Vec}
         {&self = (Mem/alloc (sizeof Vec))}
         (store Vec &self (struct.new Vec
-            0 capacity item_size
             (Mem/alloc {capacity * item_size})
+            0
+            capacity
+            item_size
         ))
         (return &self)
     ))
