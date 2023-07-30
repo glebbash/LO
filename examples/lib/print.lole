@@ -4,7 +4,6 @@
 (fn print_u32 [(num u32)] [] (
     {&out : &String}
     {&out = (std/u32_to_string num)}
-
     (print_str &out)
 ))
 
@@ -14,28 +13,22 @@
 
 (fn print_char [(char u8)] [] (
     {&out : &*u8}
-    {&out = (Mem/alloc 1)}
+    {&out = (Stack/alloc 1)}
     (store i32/u8 &out char)
-
     (print_str_slice (pack &out 1))
-))
-
-(fn print_str [(&str &String)] [] (
-    {str : Vec}
-    {str = (load Vec &str)}
-
-    (print_str_slice (pack
-        {str . data_ref}
-        {str . length}
-    ))
+    (Stack/free 1)
 ))
 
 (fn print_str_slice [(str StringSlice)] [] (
-    {&io_vec : &*IOVec}
-    {&io_vec = (Mem/alloc (sizeof StringSlice))}
-    (store StringSlice &io_vec str)
+    {&str : &StringSlice}
+    {&str = (Stack/alloc (sizeof StringSlice))}
+    (store StringSlice &str str)
+    (print_str &str)
+    (Stack/free (sizeof StringSlice))
+))
 
+(fn print_str [(&str &StringSlice)] [] (
     {io_res : i32}
-    {io_res = (fd_write FD_STDOUT &io_vec 1 (Stack/alloc (sizeof u32)))}
+    {io_res = (fd_write FD_STDOUT &str 1 (Stack/alloc (sizeof u32)))}
     (Stack/free (sizeof u32))
 ))

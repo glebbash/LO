@@ -14,9 +14,9 @@
 ;; </unrecoverable-errors>
 
 ;; <stack>
-    (global mut Stack/$begin ptr 0)
+    (global mut Stack/&current u32 (data.size))
+    (global mut Stack/$begin ptr (data.size))
     (global mut Stack/&end u32 1048576)
-    (global mut Stack/&current u32 0)
 
     (fn Stack/push_u32 [(value u32)] [] (
         (store i32 (Stack/alloc (sizeof u32)) value)
@@ -230,6 +230,7 @@
 
 ;; <string>
     (struct StringSlice (data ptr)(size u32))
+    (struct &StringSlice (actual ptr))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
         (return (load i32/u8 {{self . data} + index}))

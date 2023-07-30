@@ -54,6 +54,7 @@ pub struct ModuleContext {
     pub enum_kinds: BTreeMap<String, u32>,
     pub globals: BTreeMap<String, GlobalDef>,
     pub imported_fns_count: u32,
+    pub data_size: Rc<RefCell<i32>>,
 }
 
 pub struct FnDef {
@@ -753,7 +754,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 AtomKind::Symbol => base64_decode(data_base64.as_bytes()),
             };
 
-            ctx.wasm_module.datas.push(WasmData::Active {
+            ctx.wasm_module.datas.borrow_mut().push(WasmData::Active {
                 offset: WasmExpr {
                     instrs: vec![WasmInstr::I32Const { value: offset }],
                 },
@@ -840,37 +841,50 @@ pub fn emit_value_components(
 fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
-        SExpr::Atom {
-            value: var_name,
-            loc,
-            kind,
-        } => {
+        SExpr::Atom { value, loc, kind } => {
             if *kind == AtomKind::String {
-                // TODO: support strings
-                return Err(CompileError {
-                    message: format!("Strings are not supported yet"),
-                    loc: loc.clone(),
+                let string_ptr = *ctx.module.data_size.borrow();
+                let string_len = value.as_bytes().len() as i32;
+
+                // TODO(optimize): use string pooling
+                *ctx.module.data_size.borrow_mut() += string_len;
+                ctx.module
+                    .wasm_module
+                    .datas
+                    .borrow_mut()
+                    .push(WasmData::Active {
+                        offset: WasmExpr {
+                            instrs: vec![WasmInstr::I32Const { value: string_ptr }],
+                        },
+                        bytes: value.as_bytes().to_vec(),
+                    });
+
+                return Ok(WasmInstr::MultiValueEmit {
+                    values: vec![
+                        WasmInstr::I32Const { value: string_ptr },
+                        WasmInstr::I32Const { value: string_len },
+                    ],
                 });
             }
 
-            if var_name.chars().all(|c| c.is_ascii_digit()) {
+            if value.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(WasmInstr::I32Const {
-                    value: (var_name.parse().map_err(|_| CompileError {
+                    value: (value.parse().map_err(|_| CompileError {
                         message: format!("Parsing i32 (implicit) failed"),
                         loc: loc.clone(),
                     })?),
                 });
             }
 
-            if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
+            if let Some(global) = ctx.module.globals.get(value.as_str()) {
                 return Ok(WasmInstr::GlobalGet {
                     global_index: global.index,
                 });
             };
 
-            let Some(local) = ctx.locals.get(var_name.as_str()) else {
+            let Some(local) = ctx.locals.get(value.as_str()) else {
                 return Err(CompileError {
-                    message: format!("Reading unknown variable: {var_name}"),
+                    message: format!("Reading unknown variable: {value}"),
                     loc: loc.clone()
                 });
             };
@@ -916,6 +930,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 message: format!("Parsing i32 failed"),
                 loc: loc.clone(),
             })?,
+        },
+        ("data.size", []) => WasmInstr::I32ConstLazy {
+            value: ctx.module.data_size.clone(),
         },
         (
             "i64",
@@ -1556,6 +1573,9 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Com
                 message: format!("Parsing i32 failed"),
                 loc: op_loc.clone(),
             })?,
+        },
+        ("data.size", []) => WasmInstr::I32ConstLazy {
+            value: ctx.data_size.clone(),
         },
         (instr_name, _args) => {
             return Err(CompileError {

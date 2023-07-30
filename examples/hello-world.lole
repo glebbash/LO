@@ -1,23 +1,5 @@
-(mod lib/std)
-(mod lib/wasi)
+(mod lib/cli)
 
-(mem m1 :min 1000)
-(export mem m1 :as memory)
-
-(data 8 "Hello World!\n")
-
-(export main :as _start)
 (fn main [] [] (
-    {&iov : ptr}
-    {&iov = (Stack/alloc (sizeof IOVec))}
-    
-    (store IOVec &iov (struct.new IOVec
-        8 ;; base
-        13 ;; len
-    ))
-
-    {_ : i32}
-    {_ = (fd_write FD_STDOUT &iov 1 20)}
-    
-    (Stack/free (sizeof IOVec))
+    (print_str_slice "Hello World!\n")
 ))

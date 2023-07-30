@@ -1,3 +1,5 @@
+use core::cell::RefCell;
+
 use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 
 use crate::parser::Location;
@@ -11,7 +13,7 @@ pub struct WasmModule {
     pub globals: Vec<WasmGlobal>,
     pub exports: Vec<WasmExport>,
     pub codes: Vec<WasmFn>,
-    pub datas: Vec<WasmData>,
+    pub datas: RefCell<Vec<WasmData>>, // need RefCell for string support
 }
 
 pub struct WasmFnType {
@@ -96,6 +98,9 @@ pub enum WasmInstr {
         offset: u32,
         address_instr: Rc<WasmInstr>, // cannot use Box because of struct.store
         value_instr: Box<WasmInstr>,
+    },
+    I32ConstLazy {
+        value: Rc<RefCell<i32>>,
     },
     I32Const {
         value: i32,

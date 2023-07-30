@@ -211,8 +211,8 @@ impl<'a> BinaryBuilder<'a> {
         let mut data_section = Vec::new();
 
         {
-            write_u32(&mut data_section, self.module.datas.len() as u32);
-            for data in &self.module.datas {
+            write_u32(&mut data_section, self.module.datas.borrow().len() as u32);
+            for data in self.module.datas.borrow().iter() {
                 let WasmData::Active { offset, bytes } = data;
                 write_u32(&mut data_section, 0);
                 write_expr(&mut data_section, offset);
@@ -274,6 +274,10 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::I32Const { value, .. } => {
             output.push(0x41);
             write_i32(output, *value);
+        }
+        WasmInstr::I32ConstLazy { value, .. } => {
+            output.push(0x41);
+            write_i32(output, *value.borrow());
         }
         WasmInstr::I64Const { value, .. } => {
             output.push(0x42);
