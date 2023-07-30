@@ -4,7 +4,7 @@
 (mem m1 :min 1000)
 (export mem m1 :as memory)
 
-(data 8 SGVsbG8gV29ybGQhCg==) ;; "Hello World!\n"
+(data 8 "Hello World!\n")
 
 (export main :as _start)
 (fn main [] [] (

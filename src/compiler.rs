@@ -1,6 +1,6 @@
 use crate::{
     parse_file,
-    parser::{Location, SExpr},
+    parser::{AtomKind, Location, SExpr},
     type_checker::{get_type, get_types},
     wasi_io::{fd_open, fd_read_all},
     wasm_module::{
@@ -175,17 +175,26 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
         });
     };
 
-    let [SExpr::Atom{ value: op, loc: op_loc }, other @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, loc: op_loc, kind }, other @ ..] = &items[..] else {
         return Err(CompileError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone()
         });
     };
 
+    if *kind != AtomKind::Symbol {
+        return Err(CompileError {
+            message: format!("Expected operation, got a string"),
+            loc: expr.loc().clone(),
+        });
+    }
+
     match op.as_str() {
         "mod" => match other {
             [SExpr::Atom {
-                value: mod_name, ..
+                value: mod_name,
+                loc: _,
+                kind: _,
             }] => {
                 if !ctx.included_modules.insert(mod_name.clone()) {
                     // do not include module twice
@@ -218,11 +227,15 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             [SExpr::Atom {
                 value: mem_name,
                 loc: mem_name_loc,
+                kind: AtomKind::Symbol,
             }, SExpr::Atom {
-                value: min_literal, ..
+                value: min_literal,
+                loc: _,
+                kind: AtomKind::Symbol,
             }, SExpr::Atom {
                 value: min_memory,
                 loc: min_memory_loc,
+                kind: AtomKind::Symbol,
             }, optional @ ..]
                 if min_literal == ":min" =>
             {
@@ -240,10 +253,13 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
 
                 let max_memory = match optional {
                     [SExpr::Atom {
-                        value: max_literal, ..
+                        value: max_literal,
+                        loc: _,
+                        kind: AtomKind::Symbol,
                     }, SExpr::Atom {
                         value: max_memory,
                         loc: max_memory_loc,
+                        kind: AtomKind::Symbol,
                     }] if max_literal == ":max" => {
                         Some(max_memory.parse::<u32>().map_err(|_| CompileError {
                             message: format!("Parsing {op} :max (u32) failed"),
@@ -276,6 +292,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             [SExpr::Atom {
                 value: fn_name,
                 loc: fn_name_loc,
+                kind: AtomKind::Symbol,
             }, SExpr::List {
                 value: input_exprs, ..
             }, SExpr::List {
@@ -301,7 +318,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         });
                     };
 
-                    let [SExpr::Atom { value: p_name, loc: p_name_loc }, SExpr::Atom { value: p_type, loc: p_type_loc }] = &name_and_type[..] else {
+                    let [SExpr::Atom {
+                        value: p_name, loc: p_name_loc, kind: AtomKind::Symbol,
+                    }, SExpr::Atom {
+                        value: p_type, loc: p_type_loc, kind: AtomKind::Symbol,
+                    }] = &name_and_type[..] else {
                         return Err(CompileError {
                             message: format!("Expected name and parameter pairs in function params list"),
                             loc: input_expr.loc().clone()
@@ -387,15 +408,34 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             }
         },
         "import" => match other {
-            [SExpr::Atom { value: fn_literal, .. }, SExpr::Atom { value: fn_name, loc: fn_name_loc }, /* * */
-             SExpr::List{ value: input_exprs, .. }, SExpr::List{ value: output_exprs, .. }, /* * */
-             SExpr::Atom { value: from_literal, .. }, SExpr::Atom { value: module_name, .. }, SExpr::Atom { value: extern_fn_name, .. }]
-                if fn_literal == "fn" && from_literal == ":from" =>
-            {
+            [SExpr::Atom {
+                value: fn_literal, ..
+            }, SExpr::Atom {
+                value: fn_name,
+                loc: fn_name_loc,
+                kind: AtomKind::Symbol,
+            }, SExpr::List {
+                value: input_exprs, ..
+            }, SExpr::List {
+                value: output_exprs,
+                loc: _,
+            }, SExpr::Atom {
+                value: from_literal,
+                loc: _,
+                kind: AtomKind::Symbol,
+            }, SExpr::Atom {
+                value: module_name,
+                loc: _,
+                kind: _,
+            }, SExpr::Atom {
+                value: extern_fn_name,
+                loc: _,
+                kind: _,
+            }] if fn_literal == "fn" && from_literal == ":from" => {
                 if ctx.fn_defs.contains_key(fn_name) {
                     return Err(CompileError {
                         message: format!("Cannot redefine function: {fn_name}"),
-                        loc: fn_name_loc.clone()
+                        loc: fn_name_loc.clone(),
                     });
                 }
 
@@ -410,7 +450,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         });
                     };
 
-                    let [SExpr::Atom { value: p_name, loc: name_loc }, SExpr::Atom { value: p_type, loc: type_loc }] = &name_and_type[..] else {
+                    let [SExpr::Atom {
+                        value: p_name, loc: name_loc,kind: AtomKind::Symbol,
+                    }, SExpr::Atom {
+                        value: p_type, loc: type_loc, kind: AtomKind::Symbol,
+                    }] = &name_and_type[..] else {
                         return Err(CompileError {
                             message: format!("Expected name and parameter pairs in function params list"),
                             loc: input_expr.loc().clone()
@@ -422,14 +466,15 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                             message: format!(
                                 "Found function param with conflicting name: {p_name}"
                             ),
-                            loc: name_loc.clone()
+                            loc: name_loc.clone(),
                         });
                     }
 
-                let value_type = LoleValueType::parse(p_type, &ctx).map_err(|e| CompileError {
-                        message: e,
-                        loc: type_loc.clone()
-                    })?;
+                    let value_type =
+                        LoleValueType::parse(p_type, &ctx).map_err(|e| CompileError {
+                            message: e,
+                            loc: type_loc.clone(),
+                        })?;
                     emit_value_components(&value_type, &ctx, &mut inputs);
 
                     param_names.insert(p_name.clone());
@@ -438,28 +483,36 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 let mut outputs = vec![];
                 for output_expr in output_exprs {
                     let l_type = match output_expr {
-                        SExpr::Atom { value: atom_text, .. } => atom_text,
-                        _ => return Err(CompileError {
-                            message: format!("Atom expected, list found"),
-                            loc: output_expr.loc().clone()
-                        }),
+                        SExpr::Atom {
+                            value: atom_text, ..
+                        } => atom_text,
+                        _ => {
+                            return Err(CompileError {
+                                message: format!("Atom expected, list found"),
+                                loc: output_expr.loc().clone(),
+                            })
+                        }
                     };
 
-                let value_type = LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
-                        message: e,
-                        loc: output_expr.loc().clone()
-                    })?;
+                    let value_type =
+                        LoleValueType::parse(l_type, &ctx).map_err(|e| CompileError {
+                            message: e,
+                            loc: output_expr.loc().clone(),
+                        })?;
                     emit_value_components(&value_type, &ctx, &mut outputs);
                 }
 
                 let type_index = ctx.wasm_module.types.len() as u32;
-                let fn_index =  ctx.imported_fns_count;
+                let fn_index = ctx.imported_fns_count;
 
                 ctx.imported_fns_count += 1;
-                ctx.fn_defs.insert(fn_name.clone(), FnDef {
-                    local: false,
-                    fn_index,
-                });
+                ctx.fn_defs.insert(
+                    fn_name.clone(),
+                    FnDef {
+                        local: false,
+                        fn_index,
+                    },
+                );
                 ctx.wasm_module.types.push(WasmFnType { inputs, outputs });
                 ctx.wasm_module.imports.push(WasmImport {
                     module_name: module_name.clone(),
@@ -467,21 +520,28 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     item_desc: WasmImportDesc::Func { type_index },
                 });
             }
-            _ => return Err(CompileError {
-                message: format!("Invalid arguments for {op}"),
-                loc: op_loc.clone(),
-            })
+            _ => {
+                return Err(CompileError {
+                    message: format!("Invalid arguments for {op}"),
+                    loc: op_loc.clone(),
+                })
+            }
         },
         "export" => match other {
             [SExpr::Atom {
-                value: mem_literal, ..
+                value: mem_literal,
+                loc: _,
+                kind: AtomKind::Symbol,
             }, SExpr::Atom {
                 value: in_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, SExpr::Atom {
                 value: as_literal, ..
             }, SExpr::Atom {
-                value: out_name, ..
+                value: out_name,
+                loc: _,
+                kind: _,
             }] if mem_literal == "mem" && as_literal == ":as" => {
                 if !ctx.memory_names.contains(in_name) {
                     return Err(CompileError {
@@ -515,6 +575,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             [SExpr::Atom {
                 value: struct_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, field_defs @ ..] => {
                 if ctx.struct_defs.contains_key(struct_name) {
                     return Err(CompileError {
@@ -539,6 +600,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             [SExpr::Atom {
                 value: enum_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, variants @ ..] => {
                 for (kind, variant) in variants.iter().enumerate() {
                     let SExpr::List{ value: variant_body, .. } = variant else {
@@ -593,13 +655,16 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             {
                 [SExpr::Atom {
                     value: mutable_literal,
-                    ..
+                    loc: _,
+                    kind: AtomKind::Symbol,
                 }, SExpr::Atom {
                     value: global_name,
                     loc: name_loc,
+                    kind: AtomKind::Symbol,
                 }, SExpr::Atom {
                     value: global_type,
                     loc: type_loc,
+                    kind: AtomKind::Symbol,
                 }, global_value]
                     if mutable_literal == "mut" =>
                 {
@@ -615,9 +680,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 [SExpr::Atom {
                     value: global_name,
                     loc: name_loc,
+                    kind: AtomKind::Symbol,
                 }, SExpr::Atom {
                     value: global_type,
                     loc: type_loc,
+                    kind: AtomKind::Symbol,
                 }, global_value] => (
                     false,
                     global_name,
@@ -667,8 +734,8 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
         }
         "data" => {
             let [
-                SExpr::Atom { value: offset, loc },
-                SExpr::Atom { value: data_base64, .. }
+                SExpr::Atom { value: offset, loc, kind: AtomKind::Symbol, },
+                SExpr::Atom { value: data_base64, loc: _, kind }
             ] = other else {
                 return Err(CompileError {
                     message: format!("Invalid arguments for {op}"),
@@ -681,11 +748,16 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 loc: loc.clone(),
             })?;
 
+            let bytes = match *kind {
+                AtomKind::String => data_base64.as_bytes().iter().map(|b| *b).collect(),
+                AtomKind::Symbol => base64_decode(data_base64.as_bytes()),
+            };
+
             ctx.wasm_module.datas.push(WasmData::Active {
                 offset: WasmExpr {
                     instrs: vec![WasmInstr::I32Const { value: offset }],
                 },
-                bytes: base64_decode(data_base64.as_bytes()),
+                bytes,
             });
         }
         _ => {
@@ -712,7 +784,11 @@ fn parse_struct_field_defs(
             });
         };
 
-        let [SExpr::Atom { value: f_name, loc: name_loc }, SExpr::Atom { value: f_type, loc: type_loc }] = &name_and_type[..] else {
+        let [SExpr::Atom {
+            value: f_name, loc: name_loc, kind: AtomKind::Symbol,
+        }, SExpr::Atom {
+            value: f_type, loc: type_loc, kind: AtomKind::Symbol,
+        }] = &name_and_type[..] else {
             return Err(CompileError{
                 message: format!("Expected name and parameter pairs in fields list of struct {struct_name}"),
                 loc: field_def.loc().clone(),
@@ -767,7 +843,16 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         SExpr::Atom {
             value: var_name,
             loc,
+            kind,
         } => {
+            if *kind == AtomKind::String {
+                // TODO: support strings
+                return Err(CompileError {
+                    message: format!("Strings are not supported yet"),
+                    loc: loc.clone(),
+                });
+            }
+
             if var_name.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(WasmInstr::I32Const {
                     value: (var_name.parse().map_err(|_| CompileError {
@@ -810,7 +895,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         }
     };
 
-    let [SExpr::Atom { value: op, loc: op_loc }, args @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, loc: op_loc, .. }, args @ ..] = &items[..] else {
         return Err(CompileError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone()
@@ -819,13 +904,27 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 
     let instr = match (op.as_str(), &args[..]) {
         ("unreachable", []) => WasmInstr::Unreachable {},
-        ("i32", [SExpr::Atom { value, loc }]) => WasmInstr::I32Const {
+        (
+            "i32",
+            [SExpr::Atom {
+                value,
+                loc,
+                kind: AtomKind::Symbol,
+            }],
+        ) => WasmInstr::I32Const {
             value: value.parse().map_err(|_| CompileError {
                 message: format!("Parsing i32 failed"),
                 loc: loc.clone(),
             })?,
         },
-        ("i64", [SExpr::Atom { value, loc }]) => WasmInstr::I64Const {
+        (
+            "i64",
+            [SExpr::Atom {
+                value,
+                loc,
+                kind: AtomKind::Symbol,
+            }],
+        ) => WasmInstr::I64Const {
             // TODO(3rd-party-bug): figure out why I can't use parse::<i64>
             value: value.parse::<i32>().map_err(|_| CompileError {
                 message: format!("Parsing i64 failed"),
@@ -903,6 +1002,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: block_type,
                 loc: type_loc,
+                kind: AtomKind::Symbol,
             }, cond, then_branch, else_branch],
         ) => WasmInstr::If {
             block_type: WasmValueType::parse(block_type).map_err(|e| CompileError {
@@ -935,6 +1035,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: store_kind,
                 loc: kind_loc,
+                kind: AtomKind::Symbol,
             }, address_expr, value_expr],
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(store_kind) else {
@@ -1004,6 +1105,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: load_kind,
                 loc: kind_loc,
+                kind: AtomKind::Symbol,
             }, address_expr],
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(load_kind) else {
@@ -1049,6 +1151,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: s_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, values @ ..],
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(s_name) else {
@@ -1087,6 +1190,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: enum_variant,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }],
         ) => {
             let Some(kind) = ctx.module.enum_kinds.get(enum_variant) else {
@@ -1105,6 +1209,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: type_name,
                 loc: type_loc,
+                kind: AtomKind::Symbol,
             }],
         ) => {
             let value_type =
@@ -1125,9 +1230,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: local_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, SExpr::Atom {
                 value: local_type,
                 loc: type_loc,
+                kind: AtomKind::Symbol,
             }],
         ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
@@ -1169,6 +1276,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: var_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, value],
         ) => {
             if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
@@ -1265,9 +1373,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: local_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, SExpr::Atom {
                 value: f_name,
                 loc: f_name_loc,
+                kind: AtomKind::Symbol,
             }, value],
         ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
@@ -1318,9 +1428,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             [SExpr::Atom {
                 value: local_name,
                 loc: name_loc,
+                kind: AtomKind::Symbol,
             }, SExpr::Atom {
                 value: f_name,
                 loc: f_name_loc,
+                kind: AtomKind::Symbol,
             }],
         ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
@@ -1393,7 +1505,15 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Com
         SExpr::Atom {
             value: global_name,
             loc: op_loc,
+            kind,
         } => {
+            if *kind != AtomKind::Symbol {
+                return Err(CompileError {
+                    message: format!("Strings are not allowed in globals"),
+                    loc: expr.loc().clone(),
+                });
+            }
+
             if global_name.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(WasmInstr::I32Const {
                     value: global_name.parse().map_err(|_| CompileError {
@@ -1416,12 +1536,19 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Com
         }
     };
 
-    let [SExpr::Atom { value: op, loc: op_loc }, args @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, loc: op_loc, kind }, args @ ..] = &items[..] else {
         return Err(CompileError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone(),
         });
     };
+
+    if *kind != AtomKind::Symbol {
+        return Err(CompileError {
+            message: format!("Expected operation, got a string"),
+            loc: expr.loc().clone(),
+        });
+    }
 
     let instr = match (op.as_str(), &args[..]) {
         ("i32", [SExpr::Atom { value, .. }]) => WasmInstr::I32Const {

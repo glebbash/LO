@@ -26,9 +26,22 @@ impl Location {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum AtomKind {
+    Symbol,
+    String,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum SExpr {
-    Atom { value: String, loc: Location },
-    List { value: Vec<SExpr>, loc: Location },
+    Atom {
+        value: String,
+        kind: AtomKind,
+        loc: Location,
+    },
+    List {
+        value: Vec<SExpr>,
+        loc: Location,
+    },
 }
 
 impl SExpr {
@@ -117,6 +130,52 @@ impl Parser {
     }
 
     fn parse_atom(&mut self) -> ParseResult {
+        match self.current_char()? {
+            '"' => self.parse_string(),
+            _ => self.parse_symbol(),
+        }
+    }
+
+    fn parse_string(&mut self) -> ParseResult {
+        let mut loc = self.loc();
+
+        self.next_char(); // skip start quote
+
+        let mut value = String::new();
+
+        loop {
+            let c = self.current_char()?;
+            match c {
+                '"' => break,
+                '\\' => {
+                    self.next_char();
+                    match self.current_char()? {
+                        'n' => value.push('\n'),
+                        '\\' | '"' => value.push(c),
+                        _ => {
+                            return Err(ParseError::UnexpectedChar { loc: self.loc() });
+                        }
+                    }
+                }
+                _ => {
+                    value.push(c);
+                }
+            };
+            self.next_char();
+        }
+
+        self.next_char(); // skip end quote
+
+        loc.length = self.index - loc.offset;
+
+        Ok(SExpr::Atom {
+            value,
+            kind: AtomKind::String,
+            loc,
+        })
+    }
+
+    fn parse_symbol(&mut self) -> ParseResult {
         let mut loc = self.loc();
 
         loop {
@@ -131,6 +190,7 @@ impl Parser {
 
         Ok(SExpr::Atom {
             value: self.chars[loc.offset..self.index].iter().collect(),
+            kind: AtomKind::Symbol,
             loc,
         })
     }
