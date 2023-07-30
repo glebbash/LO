@@ -34,7 +34,7 @@
 
     (fn Stack/alloc [(size u32)] [ptr] (
         {Stack/&current = {Stack/&current + size}}
-        
+
         (if {Stack/&current > Stack/&end} (do
             {Unrec/err = Unrec/STACK_OVERFLOW}
             (unreachable)
@@ -45,7 +45,7 @@
 
     (fn Stack/free [(size u32)] [] (
         {Stack/&current = {Stack/&current - size}}
-        
+
         (if {Stack/&current < Stack/$begin} (do
             {Unrec/err = Unrec/STACK_UNDERFLOW}
             (unreachable)
@@ -205,7 +205,7 @@
         {start = 0}
         {end : u32}
         {end = {(Vec/len &self) - 1}}
-        
+
         (loop (
             (if {start >= end} (break))
 
@@ -253,13 +253,13 @@
         (loop (
             {rem : u32}
             {rem = {input % 10}}
-        
+
             (Vec/push_u8 &output {48 + rem})
             {input = {input / 10}}
-            
+
             (if {input == 0} (break))
         ))
-        
+
         (Vec/reverse &output)
 
         (return &output)
