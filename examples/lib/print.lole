@@ -28,7 +28,6 @@
 ))
 
 (fn print_str [(&str &StringSlice)] [] (
-    {io_res : i32}
-    {io_res = (fd_write FD_STDOUT &str 1 (Stack/alloc (sizeof u32)))}
+    (drop (fd_write FD_STDOUT &str 1 (Stack/alloc (sizeof u32))))
     (Stack/free (sizeof u32))
 ))

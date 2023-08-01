@@ -327,6 +327,12 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
                 write_instr(output, value);
             }
         }
+        WasmInstr::Drop { value, drop_count } => {
+            write_instr(output, value);
+            for _ in 0..*drop_count {
+                output.push(0x1A);
+            }
+        }
         WasmInstr::Return { value, .. } => {
             write_instr(output, value);
             output.push(0x0f);

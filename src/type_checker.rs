@@ -27,6 +27,10 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::I64Const { .. } => vec![WasmValueType::I64],
         WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
 
+        WasmInstr::Drop { value, .. } => {
+            get_type(ctx, &value)?;
+            vec![]
+        }
         WasmInstr::Store {
             value_instr,
             address_instr,

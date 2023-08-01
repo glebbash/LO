@@ -81,6 +81,10 @@ pub enum WasmInstr {
     NoInstr,
     LoopBreak,
     LoopContinue,
+    Drop {
+        value: Box<WasmInstr>,
+        drop_count: usize,
+    },
     BinaryOp {
         kind: WasmBinaryOpKind,
         lhs: Box<WasmInstr>,

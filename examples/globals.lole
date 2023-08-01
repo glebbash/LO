@@ -1,9 +1,7 @@
 (export main :as main)
 (fn main [] [u32] (
-    {_ : ptr}
-
-    {_ = (alloc 45)}
-    {_ = (alloc 24)}
+    (drop (alloc 45))
+    (drop (alloc 24))
 
     (return HEAP_INDEX)
 ))

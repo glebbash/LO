@@ -928,6 +928,15 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 
     let instr = match (op.as_str(), &args[..]) {
         ("unreachable", []) => WasmInstr::Unreachable {},
+        ("drop", [expr]) => {
+            let instr = parse_instr(expr, ctx)?;
+            let drop_count = get_type(ctx, &instr)?.len();
+
+            WasmInstr::Drop {
+                value: Box::new(instr),
+                drop_count,
+            }
+        }
         (
             "i32",
             [SExpr::Atom {
