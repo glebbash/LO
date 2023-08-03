@@ -1,11 +1,6 @@
-(mod lib/std)
-(mod lib/wasi)
+(mod lib/cli)
 (mod lib/wasi_io)
 
-(mem m1 :min 1000)
-(export mem m1 :as memory)
-
-(export main :as _start)
 (fn main [] [i32] (
     (return (fd_pipe FD_STDIN FD_STDOUT 256))
 ))

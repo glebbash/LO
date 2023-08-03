@@ -1,16 +1,10 @@
-(mod lib/std)
-(mod lib/wasi)
+(mod lib/cli)
 (mod lib/wasi_io)
-(mod lib/print)
 (mod lib/args)
-
-(mem m1 :min 1000)
-(export mem m1 :as memory)
 
 ;; this program expects host to preopen "." on fd 3
 (global CWD_PREOPEN_FD u32 3)
 
-(export main :as _start)
 (fn main [] [] (
     {args : Args}
     {args = (Args/load)}
@@ -27,7 +21,7 @@
     {(err fd) = (fd_open file_path)}
 
     {err = (fd_pipe fd FD_STDOUT 256)}
-    (if {err != 0} (do 
+    (if {err != 0} (do
         (return (proc_exit 1))
     ))
 
@@ -53,7 +47,7 @@
 
     {fd : u32}
     {fd = (load i32 &fd)}
-    
+
     (Stack/free (sizeof u32))
     (return (pack 0 fd))
 ))

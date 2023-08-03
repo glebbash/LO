@@ -1,15 +1,9 @@
-(mod lib/std)
-(mod lib/wasi)
+(mod lib/cli)
 (mod lib/wasi_io)
-(mod lib/print)
 (mod parser)
-
-(mem m1 :min 1000)
-(export mem m1 :as memory)
 
 (struct &Vec<Parser/SExpr> (actual ptr))
 
-(export main :as _start)
 (fn main [] [] (
     {&source : &String}
     {&source = (fd_read_all FD_STDIN)}

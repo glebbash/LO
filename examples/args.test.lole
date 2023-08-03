@@ -1,12 +1,6 @@
-(mod lib/std)
-(mod lib/wasi)
-(mod lib/print)
+(mod lib/cli)
 (mod lib/args)
 
-(mem m1 :min 1000)
-(export mem m1 :as memory)
-
-(export main :as _start)
 (fn main [] [] (
     {args : Args}
     {args = (Args/load)}

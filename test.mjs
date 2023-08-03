@@ -149,7 +149,7 @@ test("compiles echo", async () => {
 });
 
 test("compiles args", async () => {
-    const program = await compile("./examples/args.lole");
+    const program = await compile("./examples/args.test.lole");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, {
