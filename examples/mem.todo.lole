@@ -1,0 +1,78 @@
+{tmp : u8}
+{tmp = (load i32/u8 {ref1 + size})}
+(store i32/u8 {ref1 + size} (load i32/u8 {ref2 + size}))
+(store i32/u8 {ref2 + size} tmp)
+
+{tmp : u8}
+{tmp = (get {ref1 + size})}
+(set {ref1 + size} (get {ref2 + size}))
+(set {ref2 + size} tmp)
+
+{tmp : u8}
+{tmp = (* {ref1 + size})}
+{(* {ref1 + size}) = (* {ref2 + size})}
+{(* {ref2 + size}) = tmp}
+
+let tmp: u8;
+tmp = *(ref1 + size);
+*(ref1 + size) = *(ref2 + size);
+*(ref2 + size) = tmp;
+
+let tmp = ptr(ref1 + size).get();
+ptr(ref1 + size).set(ptr(ref2 + size).get());
+ptr(ref2 + size).set(tmp);
+
+let tmp = get(ref1 + size);
+set(ref1 + size, get(ref2 + size));
+set(ref2 + size, tmp);
+
+let tmp = mem[ref1 + size];
+mem[ref1 + size] = mem[ref2 + size];
+mem[ref2 + size] = tmp;
+
+// get/set + mem
+{{tmp : u8} = (get mem {ref1 + size})}
+(set mem {ref1 + size} (get mem {ref2 + size}))
+(set mem {ref2 + size} tmp)
+
+// use @ no sugar
+{{tmp : u8} = {mem @ {ref1 + size}}}
+{{mem @ {ref1 + size}} = {mem @ {ref2 + size}}}
+{{mem @ {ref2 + size}} = tmp}
+
+// left associativity by default
+{tmp : u8 = {mem @ {ref1 + size}}}
+{mem @ {ref1 + size} = {mem @ {ref2 + size}}}
+{mem @ {ref2 + size} = tmp}
+
+////////////////////////////////////////
+
+{xs = (Vec/new)}
+{xs @ 0 = 1}
+{xs @ 1 = 2}
+{xs @ 2 = 3}
+
+(println {xs @ 1})
+
+////////////////////////////////////////
+
+{{a : ptr} = {ref1 + size}}
+{{b : ptr} = {ref2 + size}}
+
+{{tmp : u8} = {mem @ a}}
+{{mem @ a} = {mem @ b}}
+{{mem @ b} = tmp}
+
+////////////////////////////////////////
+
+{xs : (slice u8 5) = (alloc {(sizeof u8) * 5})}
+{tmp : u8 = {xs @ a}}
+{xs @ a = {xs @ b}}
+{xs @ b = tmp}
+
+{&user : (& User) = (load_user)}
+{user_name : str = {&user . name}}
+
+{&user : &User = (load_user)}
+{user : User = {mem @ &user}}
+{user_name : str = {user . name}}
