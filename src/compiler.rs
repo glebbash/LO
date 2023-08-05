@@ -1248,7 +1248,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             if value_types != bind_types {
                 return Err(CompileError {
                     message: format!(
-                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
+                        "TypeError: Invalid types for '{op}', needed {:?}, got {:?}",
                         bind_types, value_types
                     ),
                     loc: op_loc.clone(),
