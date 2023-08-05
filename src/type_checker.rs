@@ -27,10 +27,10 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::I64Const { .. } => vec![WasmValueType::I64],
         WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
 
-        WasmInstr::Drop { value, .. } => {
-            get_type(ctx, &value)?;
-            vec![]
-        }
+        // type checked in the complier:
+        WasmInstr::Set { .. } => vec![],
+        WasmInstr::Drop { .. } => vec![],
+
         WasmInstr::Store {
             value_instr,
             address_instr,
@@ -38,18 +38,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         } => {
             get_type(ctx, &value_instr)?;
             get_type(ctx, &address_instr)?;
-            vec![]
-        }
-        WasmInstr::LocalSet { value, .. } => {
-            get_type(ctx, value)?;
-            vec![]
-        }
-        WasmInstr::GlobalSet { value, .. } => {
-            get_type(ctx, value)?;
-            vec![]
-        }
-        WasmInstr::MultiValueLocalSet { value, .. } => {
-            get_type(ctx, value)?;
             vec![]
         }
         WasmInstr::IfSingleBranch {

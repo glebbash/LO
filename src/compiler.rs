@@ -6,7 +6,7 @@ use crate::{
     wasm_module::{
         WasmBinaryOpKind, WasmData, WasmExport, WasmExportType, WasmExpr, WasmFn, WasmFnType,
         WasmGlobal, WasmGlobalKind, WasmImport, WasmImportDesc, WasmInstr, WasmLimits,
-        WasmLoadKind, WasmLocals, WasmModule, WasmStoreKind, WasmValueType,
+        WasmLoadKind, WasmLocals, WasmModule, WasmSetBind, WasmStoreKind, WasmValueType,
     },
 };
 use alloc::{
@@ -1307,108 +1307,29 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 
             WasmInstr::NoInstr
         }
-        (
-            "set" | "=",
-            [SExpr::Atom {
-                value: var_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, value],
-        ) => {
-            if let Some(global) = ctx.module.globals.get(var_name.as_str()) {
-                if !global.mutable {
-                    return Err(CompileError {
-                        message: format!("Setting immutable global: {var_name}"),
-                        loc: name_loc.clone(),
-                    });
-                }
+        ("set" | "=", [bind, value]) => {
+            let value_instr = parse_instr(value, ctx)?;
+            let value_types = get_type(ctx, &value_instr)?;
 
-                return Ok(WasmInstr::GlobalSet {
-                    global_index: global.index,
-                    value: Box::new(parse_instr(value, ctx)?),
-                });
-            };
+            let bind_instr = parse_instr(bind, ctx)?;
+            let bind_types = get_type(ctx, &bind_instr)?;
 
-            let Some(local) = ctx.locals.get(var_name.as_str()) else {
+            if value_types != bind_types {
                 return Err(CompileError {
-                    message: format!("Unknown variable: {var_name}"),
-                    loc: name_loc.clone(),
+                    message: format!(
+                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
+                        bind_types, value_types
+                    ),
+                    loc: op_loc.clone(),
                 });
-            };
-
-            match &local.value_type {
-                LoleValueType::StructInstance { name } => {
-                    let struct_def = ctx.module.struct_defs.get(name).unwrap();
-
-                    let mut local_indices = vec![];
-                    for field_offset in 0..struct_def.fields.len() {
-                        local_indices.push(local.index + field_offset as u32);
-                    }
-
-                    return Ok(WasmInstr::MultiValueLocalSet {
-                        local_indices,
-                        value: Box::new(parse_instr(value, ctx)?),
-                    });
-                }
-                LoleValueType::Primitive(_) => WasmInstr::LocalSet {
-                    local_index: local.index,
-                    value: Box::new(parse_instr(value, ctx)?),
-                },
             }
-        }
-        (
-            "set" | "=",
-            [SExpr::Atom {
-                value: local_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
-                value: f_name,
-                loc: f_name_loc,
-                kind: AtomKind::Symbol,
-            }, value],
-        ) => {
-            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                return Err(CompileError {
-                    message: format!("Setting struct field from global variable: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            };
 
-            let Some(local) = ctx.locals.get(local_name.as_str()) else {
-                return Err(CompileError {
-                    message: format!("Unknown location for {op}: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            };
+            let mut binds = vec![];
+            extract_set_binds(&mut binds, &bind_instr, bind.loc())?;
 
-            let LoleValueType::StructInstance { name: s_name } = &local.value_type else {
-                return Err(CompileError {
-                    message: format!("Trying to set field '{f_name}' on non struct: {local_name}"),
-                    loc: f_name_loc.clone(),
-                });
-            };
-
-            let struct_def = match ctx.module.struct_defs.get(s_name) {
-                Some(struct_def) => struct_def,
-                None => {
-                    return Err(CompileError {
-                        message: format!("Unknown struct in {op}: {s_name}"),
-                        loc: name_loc.clone(),
-                    })
-                }
-            };
-
-            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == *f_name) else {
-                return Err(CompileError {
-                    message: format!("Unknown field {f_name} in struct {s_name}"),
-                    loc: f_name_loc.clone(),
-                });
-            };
-
-            WasmInstr::LocalSet {
-                local_index: local.index + field_offset as u32,
-                value: Box::new(parse_instr(value, ctx)?),
+            WasmInstr::Set {
+                binds,
+                value: Box::new(value_instr),
             }
         }
         (
@@ -1561,6 +1482,37 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Com
 
 fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, CompileError> {
     exprs.iter().map(|expr| parse_instr(expr, ctx)).collect()
+}
+
+// TODO: figure out better location
+fn extract_set_binds(
+    output: &mut Vec<WasmSetBind>,
+    bind_instr: &WasmInstr,
+    bind_loc: &Location,
+) -> Result<(), CompileError> {
+    Ok(match bind_instr {
+        WasmInstr::LocalGet { local_index } => {
+            output.push(WasmSetBind::Local {
+                index: *local_index,
+            });
+        }
+        WasmInstr::GlobalGet { global_index } => {
+            output.push(WasmSetBind::Global {
+                index: *global_index,
+            });
+        }
+        WasmInstr::MultiValueEmit { values } => {
+            for value in values {
+                extract_set_binds(output, value, bind_loc)?;
+            }
+        }
+        _ => {
+            return Err(CompileError {
+                message: format!("Invalid "),
+                loc: bind_loc.clone(),
+            });
+        }
+    })
 }
 
 // types

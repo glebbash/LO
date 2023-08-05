@@ -1,4 +1,4 @@
-use crate::wasm_module::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule};
+use crate::wasm_module::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
 use alloc::vec::Vec;
 
 const SECTION_TYPE: u8 = 0x01;
@@ -287,40 +287,16 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x20);
             write_u32(output, *local_index);
         }
-        WasmInstr::LocalSet {
-            local_index, value, ..
-        } => {
-            write_instr(output, value);
-            output.push(0x21);
-            write_u32(output, *local_index);
+        WasmInstr::GlobalGet { global_index, .. } => {
+            output.push(0x23);
+            write_u32(output, *global_index);
         }
-        WasmInstr::MultiValueLocalSet {
-            local_indices,
-            value,
-            ..
-        } => {
+        WasmInstr::Set { binds, value, .. } => {
             write_instr(output, value);
 
-            for local_index in local_indices.iter().rev() {
-                output.push(0x21);
-                write_u32(output, *local_index);
+            for bind in binds.iter().rev() {
+                write_set_bind(output, bind);
             }
-        }
-        WasmInstr::GlobalGet {
-            global_index: local_index,
-            ..
-        } => {
-            output.push(0x23);
-            write_u32(output, *local_index);
-        }
-        WasmInstr::GlobalSet {
-            global_index,
-            value,
-            ..
-        } => {
-            write_instr(output, value);
-            output.push(0x24);
-            write_u32(output, *global_index);
         }
         WasmInstr::MultiValueEmit { values, .. } => {
             for value in values {
@@ -407,6 +383,19 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x40); // no value
             write_instr(output, then_branch);
             output.push(0x0b); // end
+        }
+    }
+}
+
+fn write_set_bind(output: &mut Vec<u8>, bind: &WasmSetBind) {
+    match bind {
+        WasmSetBind::Local { index } => {
+            output.push(0x21);
+            write_u32(output, *index);
+        }
+        WasmSetBind::Global { index } => {
+            output.push(0x24);
+            write_u32(output, *index);
         }
     }
 }

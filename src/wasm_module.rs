@@ -115,19 +115,11 @@ pub enum WasmInstr {
     LocalGet {
         local_index: u32,
     },
-    LocalSet {
-        local_index: u32,
-        value: Box<WasmInstr>,
-    },
     GlobalGet {
         global_index: u32,
     },
-    GlobalSet {
-        global_index: u32,
-        value: Box<WasmInstr>,
-    },
-    MultiValueLocalSet {
-        local_indices: Vec<u32>,
+    Set {
+        binds: Vec<WasmSetBind>,
         value: Box<WasmInstr>,
     },
     MultiValueEmit {
@@ -202,4 +194,9 @@ pub enum WasmExportType {
 
 pub enum WasmData {
     Active { offset: WasmExpr, bytes: Vec<u8> },
+}
+
+pub enum WasmSetBind {
+    Local { index: u32 },
+    Global { index: u32 },
 }

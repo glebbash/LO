@@ -7,8 +7,8 @@
 (fn main [] [i32] (
     {p1 : Point2D}
     {p1 = (struct.new Point2D 0 0)}
-    {p1 = x 1} ; this weird looking syntax means p1.x = 1
-    {p1 = y 2}
+    {{p1 . x} = 1}
+    {{p1 . y} = 2}
 
     {sum : Point2D}
     {sum = (Point2D/add p1 (struct.new Point2D 1 1))}

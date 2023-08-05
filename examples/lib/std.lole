@@ -144,7 +144,7 @@
         {index : u32}
         {index = {self . length}}
 
-        {self = length {index + 1}} ; TODO: fix this ugly syntax
+        {{self . length} = {index + 1}}
         (store Vec &self self)
 
         (Vec/grow_if_needed &self)
@@ -164,7 +164,7 @@
         {old_len : u32}
         {old_len = {self . length}}
 
-        {self = length {old_len + items_len}} ; TODO: fix this ugly syntax
+        {{self . length} = {old_len + items_len}}
         (store Vec &self self)
 
         (Vec/grow_if_needed &self)
@@ -190,9 +190,9 @@
             {old_data_ref : ptr}
             {old_data_ref = {self . data_ref}}
 
-            {self = data_ref (Mem/alloc {new_cap * {self . item_size}})} ; TODO: fix this ugly syntax
+            {{self . data_ref} = (Mem/alloc {new_cap * {self . item_size}})}
             (Mem/copy old_data_ref {self . data_ref} {{self . capacity} * {self . item_size}})
-            {self = capacity new_cap} ; TODO: fix this ugly syntax
+            {{self . capacity}= new_cap}
 
             (Mem/free old_data_ref)
         ))

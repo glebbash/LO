@@ -258,10 +258,7 @@
             (continue)
         ))
 
-        (set pos col {{pos . col} + 1})
-
-        ;; TODO(assign-v2): impl this syntax:
-        ;; {{pos . col} = {{pos . col} + 1}}
+        {{pos . col} = {{pos . col} + 1}}
 
         {char_index = {char_index + 1}}
     ))
