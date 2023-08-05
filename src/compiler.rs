@@ -1054,7 +1054,12 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                         rhs: Box::new(offset_instr),
                     }),
                 },
-                _ => todo!(),
+                _ => {
+                    return Err(CompileError {
+                        message: format!("Invalid arguments for {op}"),
+                        loc: op_loc.clone(),
+                    })
+                }
             }
         }
         (
@@ -1452,24 +1457,22 @@ impl WasmValueType {
                 "externref" => return Ok(Self::ExternRef),
                 _ => {}
             },
-            SExpr::List { value, .. } => {
-                match &value[..] {
-                    [SExpr::Atom {
-                        kind: AtomKind::Symbol,
-                        value,
-                        ..
-                    }, ptr_data]
-                        if value == "&" || value == "&*" =>
-                    {
-                        LoleValueType::parse(ptr_data, ctx)?;
-                        // pointer
-                        return Ok(Self::I32);
-                    }
-                    _ => {}
-                };
+            SExpr::List { value, .. } => match &value[..] {
+                [SExpr::Atom {
+                    kind: AtomKind::Symbol,
+                    value,
+                    ..
+                }, ptr_data]
+                    if value == "&" || value == "&*" =>
+                {
+                    // ignoring ptr data type
+                    LoleValueType::parse(ptr_data, ctx)?;
 
-                todo!();
-            }
+                    // pointer type
+                    return Ok(Self::I32);
+                }
+                _ => {}
+            },
             _ => {}
         };
 
