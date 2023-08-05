@@ -24,13 +24,11 @@
 )
 
 (fn Parser/parse [(chars StringSlice)] [Parser/ParseResult] (
-    {index : u32}
-    {index = 0}
+    {{index : u32} = 0}
 
     {index = (Parser/skip_space chars index)}
 
-    {&items : &Vec}
-    {&items = (Vec/new 6 (sizeof Parser/SExpr))}
+    {{&items : &Vec} = (Vec/new 6 (sizeof Parser/SExpr))}
 
     (loop (
         (if {index >= {chars . size}} (break))
@@ -80,8 +78,7 @@
 ))
 
 (fn Parser/parse_atom [(chars StringSlice) (index u32)] [Parser/ParseResult] (
-    {atom_len : u32}
-    {atom_len = 0}
+    {{atom_len : u32} = 0}
 
     (loop (
         {char_res : Parser/CharAtResult}
@@ -97,15 +94,14 @@
         {atom_len = {atom_len + 1}}
     ))
 
-    {&atom : &Vec}
-    {&atom = (Vec/new atom_len 1)} ; TODO: replace 1 with (sizeof u8)
+    ; TODO: replace 1 with (sizeof u8)
+    {{&atom : &Vec} = (Vec/new atom_len 1)}
     (Vec/push_all &atom
         {{{chars . data} + index} - atom_len}
         atom_len
     )
 
-    {&expr : ptr}
-    {&expr = (Mem/alloc (sizeof Parser/SExpr))}
+    {{&expr : ptr} = (Mem/alloc (sizeof Parser/SExpr))}
     {{Parser/SExpr @ &expr} = (struct.new Parser/SExpr
         Parser/SExpr/Atom
         &atom
@@ -118,14 +114,12 @@
     {char_res : Parser/CharAtResult}
     {char_res = (Parser/char_at chars index)}
 
-    {list_start_char : u8}
-    {list_start_char = {char_res . char}}
+    {{list_start_char : u8} = {char_res . char}}
     {index = {index + 1}} ; eat list start
 
     {index = (Parser/skip_space chars index)}
 
-    {&items : &Vec}
-    {&items = (Vec/new 6 (sizeof Parser/SExpr))}
+    {{&items : &Vec} = (Vec/new 6 (sizeof Parser/SExpr))}
 
     (loop (
         {char_res = (Parser/char_at chars index)}
@@ -155,8 +149,7 @@
         ))
     )
 
-    {list_end_char : u8}
-    {list_end_char = {char_res . char}}
+    {{list_end_char : u8} = {char_res . char}}
     {index = {index + 1}} ; eat list end
 
     (if (not (Parser/is_valid_list_chars list_start_char list_end_char))
@@ -169,8 +162,7 @@
         (Vec/swap &items 0 1)
     )
 
-    {&expr : ptr}
-    {&expr = (Mem/alloc (sizeof Parser/SExpr))}
+    {{&expr : ptr} = (Mem/alloc (sizeof Parser/SExpr))}
     {{Parser/SExpr @ &expr} = (struct.new Parser/SExpr
         Parser/SExpr/List
         &items
@@ -240,17 +232,14 @@
 (struct Position (line u32) (col u32))
 
 (fn Parser/index_to_position [(chars StringSlice) (index u32)] [Position] (
-    {pos : Position}
-    {pos = (do 1 1)}
+    {{pos : Position} = (do 1 1)}
 
-    {char_index : u32}
-    {char_index = 0}
+    {{char_index : u32} = 0}
     (loop (
         (if {char_index >= {chars . size}} (break))
         (if {char_index >= index} (break))
 
-        {char : u32}
-        {char = (StringSlice/char_at chars char_index)}
+        {{char : u32} = (StringSlice/char_at chars char_index)}
 
         (if {char == CHAR_NEWLINE} (do
             {pos = (do {{pos . line} + 1} 1)}

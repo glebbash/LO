@@ -4,12 +4,7 @@
     {l1 : u32}
     {l2 : u32}
 
-    ;; TODO(destr-assign): use this later
-    ;; {{l1 , l2} = {a1 , a2}}
-
-
-    {l1 = a1}
-    {l2 = a2}
+    {(do l1 l2) = (do a1 a2)}
 
     (return {l1 - l2})
 ))

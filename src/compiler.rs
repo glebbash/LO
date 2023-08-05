@@ -162,6 +162,10 @@ pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
 fn build_block(exprs: &Vec<SExpr>, fn_ctx: &mut FnContext) -> Result<Vec<WasmInstr>, CompileError> {
     let instrs = parse_instrs(exprs, fn_ctx)?;
     for (instr, i) in instrs.iter().zip(0..) {
+        if let WasmInstr::NoEmit { .. } = instr {
+            continue;
+        }
+
         let types = get_type(&fn_ctx, instr)?;
 
         if types.len() > 0 {
@@ -1228,20 +1232,27 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     message: e,
                     loc: type_loc.clone(),
                 })?;
+
+            let start_index = ctx.locals_last_index;
             let comp_count =
                 emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
 
+            ctx.locals_last_index += comp_count;
             ctx.locals.insert(
                 local_name.clone(),
                 LocalDef {
-                    index: ctx.locals_last_index,
+                    index: start_index,
                     value_type,
                 },
             );
 
-            ctx.locals_last_index += comp_count;
+            let values = (start_index..(start_index + comp_count))
+                .map(|i| WasmInstr::LocalGet { local_index: i })
+                .collect();
 
-            WasmInstr::NoInstr
+            WasmInstr::NoEmit {
+                instr: Box::new(WasmInstr::MultiValueEmit { values }),
+            }
         }
         ("set" | "=", [bind, value]) => {
             let value_instr = parse_instr(value, ctx)?;
@@ -1459,9 +1470,12 @@ fn extract_set_binds(
                 extract_set_binds(output, ctx, value, bind_loc)?;
             }
         }
+        WasmInstr::NoEmit { instr } => {
+            extract_set_binds(output, ctx, *instr, bind_loc)?;
+        }
         _ => {
             return Err(CompileError {
-                message: format!("Invalid "),
+                message: format!("Invalid bind"),
                 loc: bind_loc.clone(),
             });
         }

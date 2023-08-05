@@ -78,7 +78,6 @@ pub enum WasmStoreKind {
 
 pub enum WasmInstr {
     Unreachable,
-    NoInstr,
     LoopBreak,
     LoopContinue,
     Drop {
@@ -140,6 +139,10 @@ pub enum WasmInstr {
     IfSingleBranch {
         cond: Box<WasmInstr>,
         then_branch: Box<WasmInstr>,
+    },
+    // will not be written to binary, used for types only
+    NoEmit {
+        instr: Box<WasmInstr>,
     },
 }
 

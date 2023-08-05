@@ -2,16 +2,13 @@
 (mod lib/args)
 
 (fn main [] [] (
-    {args : Args}
-    {args = (Args/load)}
+    {{args : Args} = (Args/load)}
 
-    {i : u32}
-    {i = 0}
+    {{i : u32} = 0}
     (loop (
         (if {i == {args . argc}} (break))
 
-        {arg : StringSlice}
-        {arg = (Args/get args i)}
+        {{arg : StringSlice} = (Args/get args i)}
 
         (print_str_slice arg)
         (println)

@@ -19,13 +19,13 @@ pub fn get_types(
 pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>, CompileError> {
     Ok(match instr {
         WasmInstr::Unreachable { .. } => vec![],
-        WasmInstr::NoInstr { .. } => vec![],
         WasmInstr::LoopBreak { .. } => vec![],
         WasmInstr::LoopContinue { .. } => vec![],
         WasmInstr::I32ConstLazy { .. } => vec![WasmValueType::I32],
         WasmInstr::I32Const { .. } => vec![WasmValueType::I32],
         WasmInstr::I64Const { .. } => vec![WasmValueType::I64],
         WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
+        WasmInstr::NoEmit { instr } => get_type(ctx, instr)?,
 
         // type checked in the complier:
         WasmInstr::Set { .. } => vec![],

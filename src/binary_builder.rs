@@ -236,7 +236,7 @@ fn write_expr(output: &mut Vec<u8>, expr: &WasmExpr) {
 
 fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
     match instr {
-        WasmInstr::NoInstr { .. } => {}
+        WasmInstr::NoEmit { .. } => {}
         WasmInstr::Unreachable { .. } => {
             output.push(0x00);
         }
