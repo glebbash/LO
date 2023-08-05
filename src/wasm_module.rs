@@ -1,8 +1,6 @@
-use core::cell::RefCell;
-
+use crate::common::Location;
 use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
-
-use crate::parser::Location;
+use core::cell::RefCell;
 
 #[derive(Default)]
 pub struct WasmModule {

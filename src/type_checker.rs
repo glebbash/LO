@@ -1,6 +1,6 @@
 use crate::{
-    compiler::{CompileError, FnContext},
-    parser::Location,
+    common::{CompileError, Location},
+    compiler::FnContext,
     wasm_module::{WasmImportDesc, WasmInstr, WasmValueType},
 };
 use alloc::{format, vec, vec::Vec};

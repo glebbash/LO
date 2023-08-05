@@ -1,29 +1,7 @@
-use core::fmt;
-
-use alloc::{boxed::Box, string::String, vec::Vec};
+use crate::common::{CompileError, Location};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 // TODO: add parser tests
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Location {
-    pub file_name: Box<str>,
-    pub offset: usize,
-    pub length: usize,
-    pub line: usize,
-    pub col: usize,
-}
-
-impl Location {
-    pub fn internal() -> Self {
-        Location {
-            file_name: "<internal>".into(),
-            offset: 0,
-            length: 0,
-            line: 0,
-            col: 0,
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum AtomKind {
@@ -53,31 +31,7 @@ impl SExpr {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ParseError {
-    UnexpectedEOF { loc: Location },
-    UnexpectedChar { loc: Location },
-}
-
-impl ParseError {
-    pub fn loc(&self) -> &Location {
-        match self {
-            Self::UnexpectedEOF { loc, .. } => loc,
-            Self::UnexpectedChar { loc, .. } => loc,
-        }
-    }
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::UnexpectedChar { .. } => write!(f, "Unexpected character"),
-            ParseError::UnexpectedEOF { .. } => write!(f, "Unexpected EOF"),
-        }
-    }
-}
-
-pub type ParseResult = Result<SExpr, ParseError>;
+pub type ParseResult = Result<SExpr, CompileError>;
 
 #[derive(Clone)]
 struct Parser {
@@ -88,7 +42,7 @@ struct Parser {
     col: usize,
 }
 
-pub fn parse(file_name: &str, script: &str) -> Result<Vec<SExpr>, ParseError> {
+pub fn parse(file_name: &str, script: &str) -> Result<Vec<SExpr>, CompileError> {
     Parser::new(file_name, script).parse_all()
 }
 
@@ -103,14 +57,14 @@ impl Parser {
         }
     }
 
-    fn parse_all(&mut self) -> Result<Vec<SExpr>, ParseError> {
+    fn parse_all(&mut self) -> Result<Vec<SExpr>, CompileError> {
         self.skip_space();
 
         let mut items = Vec::new();
 
         while self.index < self.chars.len() {
             if !is_list_start(self.current_char()?) {
-                return Err(ParseError::UnexpectedChar { loc: self.loc() });
+                return Err(self.err_unexpected_char());
             }
 
             let res = self.parse_list()?;
@@ -153,7 +107,7 @@ impl Parser {
                         'n' => value.push('\n'),
                         '\\' | '"' => value.push(c),
                         _ => {
-                            return Err(ParseError::UnexpectedChar { loc: self.loc() });
+                            return Err(self.err_unexpected_char());
                         }
                     }
                 }
@@ -215,14 +169,14 @@ impl Parser {
         self.next_char(); // eat list end
 
         if !is_valid_list_chars(list_start_char, list_end_char) {
-            return Err(ParseError::UnexpectedChar { loc: self.loc() });
-        }
-
-        if list_start_char == '{' && items.len() >= 2 {
-            items.swap(0, 1);
+            return Err(self.err_unexpected_char());
         }
 
         loc.length = self.index - loc.offset;
+
+        if list_start_char == '{' && items.len() >= 2 {
+            return Ok(m_expr_to_s_expr(items, loc));
+        }
 
         Ok(SExpr::List { value: items, loc })
     }
@@ -261,11 +215,25 @@ impl Parser {
         }
     }
 
-    fn current_char(&mut self) -> Result<char, ParseError> {
+    fn current_char(&mut self) -> Result<char, CompileError> {
         self.chars
             .get(self.index)
             .copied()
-            .ok_or_else(|| ParseError::UnexpectedEOF { loc: self.loc() })
+            .ok_or_else(|| self.err_unexpected_eof())
+    }
+
+    fn err_unexpected_char(&self) -> CompileError {
+        CompileError {
+            message: format!("ParseError: Unexpected character"),
+            loc: self.loc(),
+        }
+    }
+
+    fn err_unexpected_eof(&self) -> CompileError {
+        CompileError {
+            message: format!("ParseError: Unexpected EOF"),
+            loc: self.loc(),
+        }
     }
 
     fn loc(&self) -> Location {
@@ -277,6 +245,20 @@ impl Parser {
             col: self.col,
         }
     }
+}
+
+// ❓ {1 + 2 - 3 * 4}
+// 🚫 (+ 1 (- 2 (* 3 4)))
+// ✅ (* (- (+ 1 2) 3) 4)
+fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> SExpr {
+    if items.len() % 2 != 1 {
+        // TODO: this should be parse error
+        return SExpr::List { value: items, loc };
+    }
+
+    // TODO: implement chained ops
+    items.swap(0, 1);
+    SExpr::List { value: items, loc }
 }
 
 fn is_list_start(c: char) -> bool {

@@ -1,6 +1,7 @@
 use crate::{
+    common::{CompileError, Location},
     parse_file,
-    parser::{AtomKind, Location, SExpr},
+    parser::{AtomKind, SExpr},
     type_checker::{get_type, get_types},
     wasi_io::{fd_open, fd_read_all},
     wasm_module::{
@@ -89,11 +90,6 @@ pub struct LocalDef {
 pub struct GlobalDef {
     pub index: u32,
     pub mutable: bool,
-}
-
-pub struct CompileError {
-    pub message: String,
-    pub loc: Location,
 }
 
 pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {

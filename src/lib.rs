@@ -5,6 +5,7 @@
 extern crate alloc;
 
 mod binary_builder;
+mod common;
 mod compiler;
 mod parser;
 mod runtime;
@@ -19,9 +20,10 @@ use alloc::{
     vec::Vec,
 };
 use binary_builder::BinaryBuilder;
-use compiler::{compile_module, CompileError};
+use common::{CompileError, Location};
+use compiler::compile_module;
 use core::{alloc::Layout, mem, slice, str};
-use parser::{parse, Location, SExpr};
+use parser::{parse, SExpr};
 
 #[no_mangle]
 pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {
@@ -60,7 +62,7 @@ pub extern "C" fn _start() {
 #[no_mangle]
 pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResult {
     let Some(script) = ptr_to_str(script_ptr, script_len) else {
-        return ParseResult::err(String::from("ParseError: Cannot process input"));
+        return ParseResult::err(format!("ParseError: Cannot process input"));
     };
 
     match compile_str(script) {
@@ -72,8 +74,8 @@ pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResu
 pub fn parse_file(file_name: &str, source: &str) -> Result<Vec<SExpr>, CompileError> {
     parse(file_name, source).map_err(|err| {
         return CompileError {
-            message: format!("{err}"),
-            loc: err.loc().clone(),
+            message: err.message,
+            loc: err.loc.clone(),
         };
     })
 }
