@@ -140,17 +140,7 @@ pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
             non_arg_locals: vec![],
         };
 
-        let instrs = parse_instrs(&fn_body.body, &mut fn_ctx)?;
-        for (instr, i) in instrs.iter().zip(0..) {
-            let types = get_type(&fn_ctx, instr)?;
-
-            if types.len() > 0 {
-                return Err(CompileError {
-                    message: format!("TypeError: Excess values"),
-                    loc: fn_body.body[i].loc().clone(),
-                });
-            }
-        }
+        let instrs = build_block(&fn_body.body, &mut fn_ctx)?;
 
         let mut locals = vec![];
         for local_type in fn_ctx.non_arg_locals {
@@ -167,6 +157,21 @@ pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
     }
 
     Ok(ctx.wasm_module)
+}
+
+fn build_block(exprs: &Vec<SExpr>, fn_ctx: &mut FnContext) -> Result<Vec<WasmInstr>, CompileError> {
+    let instrs = parse_instrs(exprs, fn_ctx)?;
+    for (instr, i) in instrs.iter().zip(0..) {
+        let types = get_type(&fn_ctx, instr)?;
+
+        if types.len() > 0 {
+            return Err(CompileError {
+                message: format!("TypeError: Excess values"),
+                loc: exprs[i].loc().clone(),
+            });
+        }
+    }
+    Ok(instrs)
 }
 
 fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), CompileError> {
@@ -1054,7 +1059,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             then_branch: Box::new(parse_instr(then_branch, ctx)?),
         },
         ("loop", [SExpr::List { value: exprs, .. }]) => WasmInstr::Loop {
-            instrs: parse_instrs(exprs, ctx)?,
+            instrs: build_block(exprs, ctx)?,
             loc: op_loc.clone(),
         },
         ("break", []) => WasmInstr::LoopBreak {},

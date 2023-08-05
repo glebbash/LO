@@ -30,6 +30,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         // type checked in the complier:
         WasmInstr::Set { .. } => vec![],
         WasmInstr::Drop { .. } => vec![],
+        WasmInstr::Loop { .. } => vec![],
 
         WasmInstr::IfSingleBranch {
             cond, then_branch, ..
@@ -61,17 +62,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             get_type(ctx, &then_branch)?;
             get_type(ctx, &else_branch)?;
             vec![block_type.clone()]
-        }
-        WasmInstr::Loop { instrs, loc } => {
-            let types = get_types(ctx, instrs)?;
-            if types.len() > 0 {
-                return Err(CompileError {
-                    message: format!("TypeError: Excess values in loop"),
-                    // TODO: move this closer to actual location of excess value
-                    loc: loc.clone(),
-                });
-            }
-            vec![]
         }
         WasmInstr::GlobalGet { global_index, .. } => {
             let wasm_global = ctx
