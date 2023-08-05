@@ -1070,7 +1070,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             }),
             loc: op_loc.clone(),
         },
-
         // TODO(feat): support custom aligns and offsets
         (
             "@" | "load",
@@ -1082,17 +1081,17 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         ) => {
             let Some(struct_def) = ctx.module.struct_defs.get(load_kind) else {
                 return Ok(WasmInstr::Load {
-                        kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
+                    kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
                         message: e,
                         loc: kind_loc.clone(),
                     })?,
                     align: 0,
                     offset: 0,
-                    address_instr: Rc::new(parse_instr(address_expr, ctx)?),
+                    address_instr: Box::new(parse_instr(address_expr, ctx)?),
                 })
             };
 
-            let address_instr = Rc::new(parse_instr(address_expr, ctx)?);
+            let address_instr = Box::new(parse_instr(address_expr, ctx)?);
 
             let mut offset = 0;
             let mut primitive_loads = Vec::<WasmInstr>::with_capacity(struct_def.fields.len());
@@ -1116,6 +1115,29 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 
             WasmInstr::MultiValueEmit {
                 values: primitive_loads,
+            }
+        }
+        ("@" | "load", [load, offset]) => {
+            let load_instr = parse_instr(load, ctx)?;
+            let offset_instr = parse_instr(offset, ctx)?;
+
+            match load_instr {
+                WasmInstr::Load {
+                    kind,
+                    align,
+                    offset,
+                    address_instr,
+                } => WasmInstr::Load {
+                    kind,
+                    align,
+                    offset,
+                    address_instr: Box::new(WasmInstr::BinaryOp {
+                        kind: WasmBinaryOpKind::I32Add,
+                        lhs: address_instr,
+                        rhs: Box::new(offset_instr),
+                    }),
+                },
+                _ => todo!(),
             }
         }
         (
@@ -1275,6 +1297,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 value: Box::new(value_instr),
             }
         }
+        // TODO: chain with load
         (
             "get" | ".",
             [SExpr::Atom {

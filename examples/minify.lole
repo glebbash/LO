@@ -5,7 +5,7 @@
 (struct &Vec<Parser/SExpr> (actual ptr))
 
 (fn main [] [] (
-    {{&source : &String} = (fd_read_all FD_STDIN)}
+    {&source : &String = (fd_read_all FD_STDIN)}
 
     {parse_res : Parser/ParseResult}
     {parse_res = (Parser/parse (Vec/as_slice &source))}
@@ -14,14 +14,14 @@
         (return (proc_exit 1))
     ))
 
-    {{&exprs : &Vec<Parser/SExpr>} = {parse_res . data}}
+    {&exprs : &Vec<Parser/SExpr> = {parse_res . data}}
 
     (dump_exprs &exprs)
     (println)
 ))
 
 (fn dump_exprs [(&exprs &Vec<Parser/SExpr>)] [] (
-    {{i : u32} = 0}
+    {i : u32 = 0}
 
     (loop (
         (if {i == (Vec/len &exprs)}
@@ -41,7 +41,7 @@
 ))
 
 (fn dump_expr [(expr Parser/SExpr)] [] (
-    (if {{expr . kind} == Parser/SExpr/Atom} (do
+    (if {expr . kind == Parser/SExpr/Atom} (do
         (print_str {expr . data})
         (return)
     ))

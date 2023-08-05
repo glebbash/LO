@@ -13,10 +13,10 @@
 
 (export main :as main)
 (fn main [] [u32] (
-    {{res : ParseResult} = (do_stuff)}
+    {res : ParseResult = (do_stuff)}
 
-    (if {{res . kind} == (enum.kind ParseResult/Ok)} (do
-        {{res_ok : ParseResult/Ok} = {ParseResult/Ok @ {res . ref}}}
+    (if {res . kind == (enum.kind ParseResult/Ok)} (do
+        {res_ok : ParseResult/Ok = {ParseResult/Ok @ {res . ref}}}
         (return {res_ok . value})
     ))
 
@@ -24,8 +24,8 @@
 ))
 
 (fn do_stuff [] [ParseResult] (
-    {{ref : ptr} = (Mem/alloc (sizeof ParseResult/Ok))}
-    {{ParseResult/Ok @ ref} = (struct.new ParseResult/Ok 1)}
+    {ref : ptr = (Mem/alloc (sizeof ParseResult/Ok))}
+    {ParseResult/Ok @ ref = (struct.new ParseResult/Ok 1)}
 
     (return (struct.new ParseResult
         (enum.kind ParseResult/Ok)

@@ -74,6 +74,7 @@ pub enum WasmStoreKind {
     I32U8 = 0x3A,
 }
 
+#[derive(Clone)]
 pub enum WasmInstr {
     Unreachable,
     LoopBreak,
@@ -91,7 +92,7 @@ pub enum WasmInstr {
         kind: WasmLoadKind,
         align: u32,
         offset: u32,
-        address_instr: Rc<WasmInstr>, // cannot use Box because of struct load
+        address_instr: Box<WasmInstr>,
     },
     I32ConstLazy {
         value: Rc<RefCell<i32>>,
@@ -190,6 +191,7 @@ pub enum WasmData {
     Active { offset: WasmExpr, bytes: Vec<u8> },
 }
 
+#[derive(Clone)]
 pub enum WasmSetBind {
     Local {
         index: u32,
@@ -201,7 +203,7 @@ pub enum WasmSetBind {
         align: u32,
         offset: u32,
         kind: WasmStoreKind,
-        address_instr: Rc<WasmInstr>,
+        address_instr: Box<WasmInstr>,
         value_local_index: u32,
     },
 }

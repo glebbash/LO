@@ -24,11 +24,11 @@
 )
 
 (fn Parser/parse [(chars StringSlice)] [Parser/ParseResult] (
-    {{index : u32} = 0}
+    {index : u32 = 0}
 
     {index = (Parser/skip_space chars index)}
 
-    {{&items : &Vec} = (Vec/new 6 (sizeof Parser/SExpr))}
+    {&items : &Vec = (Vec/new 6 (sizeof Parser/SExpr))}
 
     (loop (
         (if {index >= {chars . size}} (break))
@@ -78,7 +78,7 @@
 ))
 
 (fn Parser/parse_atom [(chars StringSlice) (index u32)] [Parser/ParseResult] (
-    {{atom_len : u32} = 0}
+    {atom_len : u32 = 0}
 
     (loop (
         {char_res : Parser/CharAtResult}
@@ -87,7 +87,7 @@
         (if (|| (||
             (Parser/is_space {char_res . char})
             (Parser/is_list_end {char_res . char}))
-            {{char_res . char} == CHAR_SEMICOLON})
+            {char_res . char == CHAR_SEMICOLON})
             (break)
         )
         {index = {index + 1}}
@@ -95,14 +95,14 @@
     ))
 
     ; TODO: replace 1 with (sizeof u8)
-    {{&atom : &Vec} = (Vec/new atom_len 1)}
+    {&atom : &Vec = (Vec/new atom_len 1)}
     (Vec/push_all &atom
-        {{{chars . data} + index} - atom_len}
+        {chars . data + index - atom_len}
         atom_len
     )
 
-    {{&expr : ptr} = (Mem/alloc (sizeof Parser/SExpr))}
-    {{Parser/SExpr @ &expr} = (struct.new Parser/SExpr
+    {&expr : ptr = (Mem/alloc (sizeof Parser/SExpr))}
+    {Parser/SExpr @ &expr = (struct.new Parser/SExpr
         Parser/SExpr/Atom
         &atom
     )}
@@ -114,12 +114,12 @@
     {char_res : Parser/CharAtResult}
     {char_res = (Parser/char_at chars index)}
 
-    {{list_start_char : u8} = {char_res . char}}
+    {list_start_char : u8 = {char_res . char}}
     {index = {index + 1}} ; eat list start
 
     {index = (Parser/skip_space chars index)}
 
-    {{&items : &Vec} = (Vec/new 6 (sizeof Parser/SExpr))}
+    {&items : &Vec = (Vec/new 6 (sizeof Parser/SExpr))}
 
     (loop (
         {char_res = (Parser/char_at chars index)}
@@ -149,7 +149,7 @@
         ))
     )
 
-    {{list_end_char : u8} = {char_res . char}}
+    {list_end_char : u8 = {char_res . char}}
     {index = {index + 1}} ; eat list end
 
     (if (not (Parser/is_valid_list_chars list_start_char list_end_char))
@@ -158,12 +158,12 @@
         ))
     )
 
-    (if {{list_start_char == CHAR_LCURLY} && {(Vec/len &items) >= 2}}
+    (if {list_start_char == CHAR_LCURLY && {(Vec/len &items) >= 2}}
         (Vec/swap &items 0 1)
     )
 
-    {{&expr : ptr} = (Mem/alloc (sizeof Parser/SExpr))}
-    {{Parser/SExpr @ &expr} = (struct.new Parser/SExpr
+    {&expr : ptr = (Mem/alloc (sizeof Parser/SExpr))}
+    {Parser/SExpr @ &expr = (struct.new Parser/SExpr
         Parser/SExpr/List
         &items
     )}
@@ -181,17 +181,17 @@
         {index = {index + 1}}
     ))
 
-    (if {{char_res . ok} && {{char_res . char} == CHAR_SEMICOLON}} (do
+    (if {char_res . ok && {char_res . char == CHAR_SEMICOLON}} (do
         {index = {index + 1}}
 
         (loop (
             {char_res = (Parser/char_at chars index)}
             (if (not {char_res . ok}) (break))
-            (if {{char_res . char} == CHAR_NEWLINE} (break))
+            (if {char_res . char == CHAR_NEWLINE} (break))
             {index = {index + 1}}
         ))
 
-        (if {{char_res . ok} && {{char_res . char} == CHAR_SEMICOLON}}
+        (if {char_res . ok && {char_res . char == CHAR_SEMICOLON}}
             {index = {index + 1}}
         )
 
@@ -202,52 +202,56 @@
 ))
 
 (fn Parser/is_list_start [(char u8)] [bool] (
-    (return (|| (||
-        {char == CHAR_LPAREN}
-        {char == CHAR_LCURLY})
-        {char == CHAR_LBRACK}))
+    (return {
+        {char == CHAR_LPAREN} ||
+        {char == CHAR_LCURLY} ||
+        {char == CHAR_LBRACK}
+    })
 ))
 
 (fn Parser/is_list_end [(char u8)] [bool] (
-    (return (|| (||
-        {char == CHAR_RPAREN}
-        {char == CHAR_RCURLY})
-        {char == CHAR_RBRACK}))
+    (return {
+        {char == CHAR_RPAREN} ||
+        {char == CHAR_RCURLY} ||
+        {char == CHAR_RBRACK}
+    })
 ))
 
 (fn Parser/is_valid_list_chars [(start u8) (end u8)] [bool] (
-    (return (|| (||
-        {{start == CHAR_LPAREN} && {end == CHAR_RPAREN}}
-        {{start == CHAR_LCURLY} && {end == CHAR_RCURLY}})
-        {{start == CHAR_LBRACK} && {end == CHAR_RBRACK}}))
+    (return {
+        {start == CHAR_LPAREN && {end == CHAR_RPAREN}} ||
+        {start == CHAR_LCURLY && {end == CHAR_RCURLY}} ||
+        {start == CHAR_LBRACK && {end == CHAR_RBRACK}}
+    })
 ))
 
 (fn Parser/is_space [(char u8)] [bool] (
-    (return (|| (||
-        {char == CHAR_SPACE}
-        {char == CHAR_NEWLINE})
-        {char == CHAR_TAB}))
+    (return {
+        {char == CHAR_SPACE} ||
+        {char == CHAR_NEWLINE} ||
+        {char == CHAR_TAB}
+    })
 ))
 
 (struct Position (line u32) (col u32))
 
 (fn Parser/index_to_position [(chars StringSlice) (index u32)] [Position] (
-    {{pos : Position} = (do 1 1)}
+    {pos : Position = (do 1 1)}
 
-    {{char_index : u32} = 0}
+    {char_index : u32 = 0}
     (loop (
         (if {char_index >= {chars . size}} (break))
         (if {char_index >= index} (break))
 
-        {{char : u32} = (StringSlice/char_at chars char_index)}
+        {char : u32 = (StringSlice/char_at chars char_index)}
 
         (if {char == CHAR_NEWLINE} (do
-            {pos = (do {{pos . line} + 1} 1)}
+            {pos = (do {pos . line + 1} 1)}
             {char_index = {char_index + 1}}
             (continue)
         ))
 
-        {{pos . col} = {{pos . col} + 1}}
+        {pos . col = {pos . col + 1}}
 
         {char_index = {char_index + 1}}
     ))

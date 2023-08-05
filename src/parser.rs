@@ -1,5 +1,5 @@
 use crate::common::{CompileError, Location};
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 // TODO: add parser tests
 
@@ -175,7 +175,7 @@ impl Parser {
         loc.length = self.index - loc.offset;
 
         if list_start_char == '{' && items.len() >= 2 {
-            return m_expr_to_s_expr(items, loc);
+            return m_expr_to_s_expr_and_validate(items, loc);
         }
 
         Ok(SExpr::List { value: items, loc })
@@ -247,10 +247,7 @@ impl Parser {
     }
 }
 
-// ❓ {1 + 2 - 3 * 4}
-// 🚫 (+ 1 (- 2 (* 3 4)))
-// ✅ (* (- (+ 1 2) 3) 4)
-fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> ParseResult {
+fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: Location) -> ParseResult {
     if items.len() % 2 != 1 {
         return Err(CompileError {
             message: format!("Invalid m-expr: even length"),
@@ -258,10 +255,27 @@ fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> ParseResult {
         });
     }
 
-    // TODO: implement chained ops
-    items.swap(0, 1);
+    if items.len() < 2 {
+        return Ok(SExpr::List { value: items, loc });
+    }
 
-    Ok(SExpr::List { value: items, loc })
+    return Ok(m_expr_to_s_expr(items, loc));
+}
+
+// ❓ {1 + 2 - 3 * 4}
+// 🚫 (+ 1 (- 2 (* 3 4)))
+// ✅ (* (- (+ 1 2) 3) 4)
+fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> SExpr {
+    if items.len() == 1 {
+        return items.into_iter().next().unwrap();
+    }
+
+    let rhs = items.pop().unwrap();
+    let op = items.pop().unwrap();
+
+    let value = vec![op, m_expr_to_s_expr(items, loc.clone()), rhs];
+
+    SExpr::List { value, loc }
 }
 
 fn is_list_start(c: char) -> bool {

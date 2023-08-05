@@ -6,15 +6,15 @@
 (global CWD_PREOPEN_FD u32 3)
 
 (fn main [] [] (
-    {{args : Args} = (Args/load)}
+    {args : Args = (Args/load)}
 
-    (if {{args . argc} != 2} (do
+    (if {args . argc != 2} (do
         (return (proc_exit 1))
     ))
 
-    {{file_path : StringSlice} = (Args/get args 1)}
+    {file_path : StringSlice = (Args/get args 1)}
 
-    {{fd : u32} = (fd_open file_path)}
+    {fd : u32 = (fd_open file_path)}
 
     {err : u32}
     {err = (fd_pipe fd FD_STDOUT 256)}
@@ -29,9 +29,9 @@
 
 ;; TODO(destr-assign): return error instead of proc_exit
 (fn fd_open [(file_path StringSlice)] [u32] (
-    {{&fd : &u32} = (Stack/alloc (sizeof u32))}
+    {&fd : &u32 = (Stack/alloc (sizeof u32))}
 
-    {{err : WasiErr} = (path_open
+    {err : WasiErr = (path_open
         CWD_PREOPEN_FD 0
         file_path 0 (i64 2) (i64 0) 0
         &fd
@@ -41,7 +41,7 @@
         (proc_exit 1)
     ))
 
-    {{fd : u32} = {i32 @ &fd}}
+    {fd : u32 = {i32 @ &fd}}
 
     (Stack/free (sizeof u32))
     (return fd)

@@ -8,7 +8,7 @@
 
 (global mut HEAP_INDEX u32 0)
 (fn alloc [(size u32)] [ptr] (
-    {{ref : ptr} = HEAP_INDEX}
+    {ref : ptr = HEAP_INDEX}
     {HEAP_INDEX = {HEAP_INDEX + size}}
     (return ref)
 ))
