@@ -30,9 +30,7 @@
     {len : u32 = 0}
 
     (loop (
-        {char : u8 = {i32/u8 @ &str @ len}}
-
-        (if {char == 0} (break))
+        (if {{i32/u8 @ &str @ len} == 0} (break))
 
         {len = {len + 1}}
     ))
