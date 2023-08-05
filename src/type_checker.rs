@@ -36,8 +36,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             cond, then_branch, ..
         } => {
             get_type(ctx, cond)?;
-            get_type(ctx, &then_branch)?;
-            vec![]
+            get_type(ctx, &then_branch)?
         }
         WasmInstr::BinaryOp { lhs, rhs, .. } => {
             get_type(ctx, rhs)?;
