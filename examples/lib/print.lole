@@ -2,7 +2,7 @@
 (mod lib/wasi)
 
 (fn print_u32 [(num u32)] [] (
-    {&out : &String = (std/u32_to_string num)}
+    {&out : (& String) = (std/u32_to_string num)}
     (print_str &out)
 ))
 
@@ -11,20 +11,20 @@
 ))
 
 (fn print_char [(char u8)] [] (
-    {&out : &*u8 = (Stack/alloc 1)}
+    {&out : (&* u8) = (Stack/alloc 1)}
     {i32/u8 @ &out = char}
     (print_str_slice (do &out 1))
     (Stack/free 1)
 ))
 
 (fn print_str_slice [(str StringSlice)] [] (
-    {&str : &StringSlice = (Stack/alloc (sizeof StringSlice))}
+    {&str : (& StringSlice) = (Stack/alloc (sizeof StringSlice))}
     {StringSlice @ &str = str}
     (print_str &str)
     (Stack/free (sizeof StringSlice))
 ))
 
-(fn print_str [(&str &StringSlice)] [] (
+(fn print_str [(&str (& StringSlice))] [] (
     (drop (fd_write FD_STDOUT &str 1 (Stack/alloc (sizeof u32))))
     (Stack/free (sizeof u32))
 ))

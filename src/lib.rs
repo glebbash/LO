@@ -20,10 +20,10 @@ use alloc::{
     vec::Vec,
 };
 use binary_builder::BinaryBuilder;
-use common::{CompileError, Location};
+use common::{CompileError, Location, SExpr};
 use compiler::compile_module;
 use core::{alloc::Layout, mem, slice, str};
-use parser::{parse, SExpr};
+use parser::parse;
 
 #[no_mangle]
 pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {

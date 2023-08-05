@@ -1,35 +1,7 @@
-use crate::common::{CompileError, Location};
+use crate::common::{AtomKind, CompileError, Location, SExpr};
 use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 // TODO: add parser tests
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum AtomKind {
-    Symbol,
-    String,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum SExpr {
-    Atom {
-        value: String,
-        kind: AtomKind,
-        loc: Location,
-    },
-    List {
-        value: Vec<SExpr>,
-        loc: Location,
-    },
-}
-
-impl SExpr {
-    pub fn loc(&self) -> &Location {
-        match self {
-            Self::Atom { loc, .. } => loc,
-            Self::List { loc, .. } => loc,
-        }
-    }
-}
 
 pub type ParseResult = Result<SExpr, CompileError>;
 

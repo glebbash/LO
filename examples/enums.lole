@@ -24,7 +24,7 @@
 ))
 
 (fn do_stuff [] [ParseResult] (
-    {ref : ptr = (Mem/alloc (sizeof ParseResult/Ok))}
+    {ref : (& ParseResult/Ok) = (Mem/alloc (sizeof ParseResult/Ok))}
     {ParseResult/Ok @ ref = (struct.new ParseResult/Ok 1)}
 
     (return (struct.new ParseResult

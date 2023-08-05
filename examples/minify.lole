@@ -2,10 +2,10 @@
 (mod lib/wasi_io)
 (mod parser)
 
-(struct &Vec<Parser/SExpr> (actual ptr))
+(struct (& Vec)<Parser/SExpr> (actual (& Vec)))
 
 (fn main [] [] (
-    {&source : &String = (fd_read_all FD_STDIN)}
+    {&source : (& String) = (fd_read_all FD_STDIN)}
 
     {parse_res : Parser/ParseResult}
     {parse_res = (Parser/parse (Vec/as_slice &source))}
@@ -14,13 +14,13 @@
         (return (proc_exit 1))
     ))
 
-    {&exprs : &Vec<Parser/SExpr> = {parse_res . data}}
+    {&exprs : (& Vec)<Parser/SExpr> = {parse_res . data}}
 
     (dump_exprs &exprs)
     (println)
 ))
 
-(fn dump_exprs [(&exprs &Vec<Parser/SExpr>)] [] (
+(fn dump_exprs [(&exprs (& Vec)<Parser/SExpr>)] [] (
     {i : u32 = 0}
 
     (loop (

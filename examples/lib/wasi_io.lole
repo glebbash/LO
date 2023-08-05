@@ -1,11 +1,11 @@
-(fn fd_read_all [(fd u32)] [&String] (
-    {&output : &String = (Vec/new 256 1)}
-    {&chunk : &*u8 = (Stack/alloc 256)}
+(fn fd_read_all [(fd u32)] [(& String)] (
+    {&output : (& String) = (Vec/new 256 1)}
+    {&chunk : (&* u8) = (Stack/alloc 256)}
 
-    {&in_vec : &*IOVec = (Stack/alloc (sizeof IOVec))}
+    {&in_vec : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
     {IOVec @ &in_vec = (struct.new IOVec &chunk 256)}
 
-    {&nread : &u32 = (Stack/alloc (sizeof u32))}
+    {&nread : (& u32) = (Stack/alloc (sizeof u32))}
 
     (loop (
         {err : WasiErr = (fd_read fd &in_vec 1 &nread)}
@@ -25,10 +25,10 @@
 ))
 
 (fn fd_write_all [(fd u32) (message StringSlice)] [] (
-    {&out_vec : &*IOVec = (Stack/alloc (sizeof IOVec))}
+    {&out_vec : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
     {IOVec @ &out_vec = message}
 
-    {&nwritten : &u32 = (Stack/alloc (sizeof u32))}
+    {&nwritten : (& u32) = (Stack/alloc (sizeof u32))}
     {err : WasiErr = (fd_write fd &out_vec 1 &nwritten)}
 
     (Stack/free (sizeof IOVec))
@@ -36,12 +36,12 @@
 ))
 
 (fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (
-    {&chunk : &*u8 = (Stack/alloc chunk_size)}
+    {&chunk : (&* u8) = (Stack/alloc chunk_size)}
 
-    {&iov : &*IOVec = (Stack/alloc (sizeof IOVec))}
+    {&iov : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
     {i32 @ &iov = &chunk}
 
-    {&nread : &u32 = (Stack/alloc (sizeof u32))}
+    {&nread : (& u32) = (Stack/alloc (sizeof u32))}
 
     {result : i32 = 0}
 

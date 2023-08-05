@@ -28,7 +28,7 @@
 
     {index = (Parser/skip_space chars index)}
 
-    {&items : &Vec = (Vec/new 6 (sizeof Parser/SExpr))}
+    {&items : (& Vec) = (Vec/new 6 (sizeof Parser/SExpr))}
 
     (loop (
         (if {index >= {chars . size}} (break))
@@ -95,13 +95,13 @@
     ))
 
     ; TODO: replace 1 with (sizeof u8)
-    {&atom : &Vec = (Vec/new atom_len 1)}
+    {&atom : (& Vec) = (Vec/new atom_len 1)}
     (Vec/push_all &atom
         {chars . data + index - atom_len}
         atom_len
     )
 
-    {&expr : ptr = (Mem/alloc (sizeof Parser/SExpr))}
+    {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
     {Parser/SExpr @ &expr = (struct.new Parser/SExpr
         Parser/SExpr/Atom
         &atom
@@ -119,7 +119,7 @@
 
     {index = (Parser/skip_space chars index)}
 
-    {&items : &Vec = (Vec/new 6 (sizeof Parser/SExpr))}
+    {&items : (& Vec) = (Vec/new 6 (sizeof Parser/SExpr))}
 
     (loop (
         {char_res = (Parser/char_at chars index)}
@@ -162,7 +162,7 @@
         (Vec/swap &items 0 1)
     )
 
-    {&expr : ptr = (Mem/alloc (sizeof Parser/SExpr))}
+    {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
     {Parser/SExpr @ &expr = (struct.new Parser/SExpr
         Parser/SExpr/List
         &items

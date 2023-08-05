@@ -9,7 +9,7 @@
 
 (export main :as main)
 (fn main [] [i32] (
-    {&p : ptr = (Stack/alloc (sizeof Point2D))}
+    {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
     {Point2D @ &p = (struct.new Point2D 2 3)}
 
     {p : Point2D = {Point2D @ &p}}

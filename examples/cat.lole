@@ -29,7 +29,7 @@
 
 ;; TODO(destr-assign): return error instead of proc_exit
 (fn fd_open [(file_path StringSlice)] [u32] (
-    {&fd : &u32 = (Stack/alloc (sizeof u32))}
+    {&fd : (& u32) = (Stack/alloc (sizeof u32))}
 
     {err : WasiErr = (path_open
         CWD_PREOPEN_FD 0

@@ -1,11 +1,6 @@
 (global true bool 1)
 (global false bool 0)
 
-(struct &u32 (actual ptr))
-(struct &*u8 (actual ptr))
-(struct &*&*u8 (actual ptr))
-(struct &String (actual ptr))
-
 ;; <unrecoverable-errors>
     (global Unrec/UNKNOWN u32 0)
     (global Unrec/STACK_OVERFLOW u32 1)
@@ -91,7 +86,6 @@
 ;; </mem>
 
 ;; <vec>
-    (struct &Vec (ref ptr))
     (struct Vec
         (data_ref ptr)
         (length u32)
@@ -99,8 +93,8 @@
         (item_size u32)
     )
 
-    (fn Vec/new [(capacity u32) (item_size u32)] [&Vec] (
-        {&self : &Vec = (Mem/alloc (sizeof Vec))}
+    (fn Vec/new [(capacity u32) (item_size u32)] [(& Vec)] (
+        {&self : (& Vec) = (Mem/alloc (sizeof Vec))}
         {Vec @ &self = (struct.new Vec
             (Mem/alloc {capacity * item_size})
             0
@@ -111,7 +105,7 @@
     ))
 
     ;; TODO: check out of bounds
-    (fn Vec/get_u8 [(&self &Vec) (index u32)] [u8] (
+    (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
         {self : Vec = {Vec @ &self}}
 
         (return
@@ -120,7 +114,7 @@
     ))
 
     ;; TODO: check out of bounds
-    (fn Vec/swap [(&self &Vec) (index1 u32) (index2 u32)] [] (
+    (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] [] (
         {self : Vec = {Vec @ &self}}
 
         (Mem/swap
@@ -130,13 +124,13 @@
         )
     ))
 
-    (fn Vec/len [(&self &Vec)] [u32] (
+    (fn Vec/len [(&self (& Vec))] [u32] (
         {self : Vec = {Vec @ &self}}
 
         (return {self . length})
     ))
 
-    (fn Vec/push_u8 [(&self &Vec) (item u8)] [] (
+    (fn Vec/push_u8 [(&self (& Vec)) (item u8)] [] (
         {self : Vec = {Vec @ &self}}
 
         {index : u32 = {self . length}}
@@ -153,7 +147,7 @@
             @ {index * {self . item_size}} = item}
     ))
 
-    (fn Vec/push_all [(&self &Vec) (&items ptr) (items_len u32)] [] (
+    (fn Vec/push_all [(&self (& Vec)) (&items ptr) (items_len u32)] [] (
         {self : Vec = {Vec @ &self}}
 
         {old_len : u32 = {self . length}}
@@ -173,7 +167,7 @@
     ))
 
     ;; TODO: do not realloc if length is equal to capacity
-    (fn Vec/grow_if_needed [(&self &Vec)] [] (
+    (fn Vec/grow_if_needed [(&self (& Vec))] [] (
         {self : Vec = {Vec @ &self}}
 
         (if {self . length == {self . capacity}} (do
@@ -191,7 +185,7 @@
         {Vec @ &self = self}
     ))
 
-    (fn Vec/reverse [(&self &Vec)] [] (
+    (fn Vec/reverse [(&self (& Vec))] [] (
         {start : u32 = 0}
         {end : u32 = {(Vec/len &self) - 1}}
 
@@ -204,13 +198,13 @@
         ))
     ))
 
-    (fn Vec/as_slice [(&self &Vec)] [ptr u32] (
+    (fn Vec/as_slice [(&self (& Vec))] [ptr u32] (
         {self : Vec = {Vec @ &self}}
 
         (return {self . data_ref} {self . length})
     ))
 
-    (fn Vec/at [(&self &Vec) (index u32)] [u32] (
+    (fn Vec/at [(&self (& Vec)) (index u32)] [u32] (
         {self : Vec = {Vec @ &self}}
 
         (return {self . data_ref + {index * {self . item_size}}})
@@ -218,8 +212,8 @@
 ;; </vec>
 
 ;; <string>
-    (struct StringSlice (data ptr)(size u32))
-    (struct &StringSlice (actual ptr))
+    (struct String (actual ptr)) ;; actually an alias for Vec<u8>
+    (struct StringSlice (data (&* u8)) (size u32))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
         (return {i32/u8 @ {self . data} @ index})
@@ -228,8 +222,8 @@
 
 ;; <conversions>
     ;; ascii digits: 48-57
-    (fn std/u32_to_string [(input u32)] [&String] (
-        {&output : &String = (Vec/new 32 1)}
+    (fn std/u32_to_string [(input u32)] [(& String)] (
+        {&output : (& String) = (Vec/new 32 1)}
 
         (if {input == 0} (do
             (Vec/push_u8 &output 48)
