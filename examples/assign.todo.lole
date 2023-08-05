@@ -1,0 +1,33 @@
+;; local
+{x = 1}
+
+;; global
+{SOME_VAL = 1}
+
+;; local struct
+{s = (struct.new ...)}
+
+;; local struct/tuple field
+{{pos . x} = 1}
+
+;; array item
+{{u8 @ &arr @ 0} = 1}
+{{u8 @ &arr @ {3 * (sizeof u8)}} = 1}
+
+;; pointer
+{{u32 @ &x} = 1}
+
+;; struct ref
+{{StringSlice @ &str} = (struct.new ...)}
+
+;; struct ref field
+{{StringSlice @ &str . len} = 1}
+
+;; destructure into tuple
+{{x , y} = {1 , 2}}
+
+;; destructure into tuple, swap
+{{x , y} = {y , x}}
+
+;; destructure into ref tuple
+{{{u32 @ &x} , {u32 @ &y}} = {{u32 @ &y} , {u32 @ &x}}}
