@@ -1517,12 +1517,12 @@ impl WasmValueType {
 
     fn byte_size(&self) -> Result<u32, String> {
         Ok(match self {
-            Self::FuncRef | Self::ExternRef => {
-                return Err(format!("Cannot get byte size of FuncRef/ExternRef"))
-            }
             Self::I32 | Self::F32 => 4,
             Self::I64 | Self::F64 => 8,
             Self::V128 => 16,
+            Self::FuncRef | Self::ExternRef => {
+                return Err(format!("Cannot get byte size of FuncRef/ExternRef"))
+            }
         })
     }
 }
