@@ -243,11 +243,15 @@ test("compiles parser", async () => {
     }
 
     {
-        const res = await parseAll(
-            parser,
-            await readFile("examples/parser.lole", { encoding: "utf8" })
-        );
-        assert.deepEqual(res, [1, 7554, 1056295]);
+        const parserSource = await readFile("examples/parser.lole", {
+            encoding: "utf8",
+        });
+
+        const [ok, index, data] = await parseAll(parser, parserSource);
+
+        assert.equal(ok, 1);
+        assert.equal(index, parserSource.length);
+        assert(data > 0);
     }
 
     async function parseAll(parser, text) {

@@ -4,8 +4,12 @@
     {l1 : u32}
     {l2 : u32}
 
-    ;; same as the following: {l1 = a1} {l2 = a2}
-    {(l1 l2) = (pack a1 a2)}
+    ;; TODO(destr-assign): use this later
+    ;; {{l1 , l2} = {a1 , a2}}
+
+
+    {l1 = a1}
+    {l2 = a2}
 
     (return {l1 - l2})
 ))

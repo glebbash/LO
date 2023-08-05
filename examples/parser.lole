@@ -237,13 +237,11 @@
         {char == CHAR_TAB}))
 ))
 
-(fn Parser/index_to_position [(chars StringSlice) (index u32)] [
-    u32 ; line
-    u32 ; col
-] (
-    {line : u32}
-    {col : u32}
-    {(line col) = (pack 1 1)}
+(struct Position (line u32) (col u32))
+
+(fn Parser/index_to_position [(chars StringSlice) (index u32)] [Position] (
+    {pos : Position}
+    {pos = (pack 1 1)}
 
     {char_index : u32}
     {char_index = 0}
@@ -255,17 +253,20 @@
         {char = (StringSlice/char_at chars char_index)}
 
         (if {char == CHAR_NEWLINE} (do
-            {col = 1}
-            {line = {line + 1}}
+            {pos = (pack {{pos . line} + 1} 1)}
             {char_index = {char_index + 1}}
             (continue)
         ))
 
-        {col = {col + 1}}
+        (set pos col {{pos . col} + 1})
+
+        ;; TODO(assign-v2): impl this syntax:
+        ;; {{pos . col} = {{pos . col} + 1}}
+
         {char_index = {char_index + 1}}
     ))
 
-    (return (pack line col))
+    (return pos)
 ))
 
 (struct Parser/CharAtResult (ok bool) (char u8))

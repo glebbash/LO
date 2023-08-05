@@ -1358,54 +1358,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         }
         (
             "set" | "=",
-            [SExpr::List {
-                value: local_names,
-                loc: name_loc,
-            }, value],
-        ) => {
-            let mut local_indices = vec![];
-
-            for local_name_expr in local_names {
-                let SExpr::Atom { value: local_name, .. } = local_name_expr else {
-                    return Err(CompileError {
-                        message: format!("Unexpected list in lhs of set"),
-                        loc: local_name_expr.loc().clone(),
-                    });
-                };
-
-                if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                    return Err(CompileError {
-                        message: format!("Cannot set globals in multivalue set: {local_name}"),
-                        loc: name_loc.clone(),
-                    });
-                };
-
-                let Some(local) = ctx.locals.get(local_name.as_str()) else {
-                    return Err(CompileError {
-                        message: format!("Unknown location for set: {local_name}"),
-                        loc: name_loc.clone(),
-                    });
-                };
-
-                match &local.value_type {
-                    LoleValueType::StructInstance { name } => {
-                        let struct_def = ctx.module.struct_defs.get(name).unwrap();
-
-                        for field_offset in 0..struct_def.fields.len() {
-                            local_indices.push(local.index + field_offset as u32);
-                        }
-                    }
-                    LoleValueType::Primitive(_) => local_indices.push(local.index),
-                }
-            }
-
-            WasmInstr::MultiValueLocalSet {
-                local_indices,
-                value: Box::new(parse_instr(value, ctx)?),
-            }
-        }
-        (
-            "set" | "=",
             [SExpr::Atom {
                 value: local_name,
                 loc: name_loc,
