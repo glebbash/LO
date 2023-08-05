@@ -175,7 +175,7 @@ impl Parser {
         loc.length = self.index - loc.offset;
 
         if list_start_char == '{' && items.len() >= 2 {
-            return Ok(m_expr_to_s_expr(items, loc));
+            return m_expr_to_s_expr(items, loc);
         }
 
         Ok(SExpr::List { value: items, loc })
@@ -250,15 +250,18 @@ impl Parser {
 // ❓ {1 + 2 - 3 * 4}
 // 🚫 (+ 1 (- 2 (* 3 4)))
 // ✅ (* (- (+ 1 2) 3) 4)
-fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> SExpr {
+fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> ParseResult {
     if items.len() % 2 != 1 {
-        // TODO: this should be parse error
-        return SExpr::List { value: items, loc };
+        return Err(CompileError {
+            message: format!("Invalid m-expr: even length"),
+            loc,
+        });
     }
 
     // TODO: implement chained ops
     items.swap(0, 1);
-    SExpr::List { value: items, loc }
+
+    Ok(SExpr::List { value: items, loc })
 }
 
 fn is_list_start(c: char) -> bool {
