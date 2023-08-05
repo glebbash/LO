@@ -14,7 +14,7 @@
 (fn print_char [(char u8)] [] (
     {&out : &*u8}
     {&out = (Stack/alloc 1)}
-    (store i32/u8 &out char)
+    {{i32/u8 @ &out} = char}
     (print_str_slice (do &out 1))
     (Stack/free 1)
 ))
@@ -22,7 +22,7 @@
 (fn print_str_slice [(str StringSlice)] [] (
     {&str : &StringSlice}
     {&str = (Stack/alloc (sizeof StringSlice))}
-    (store StringSlice &str str)
+    {{StringSlice @ &str} = str}
     (print_str &str)
     (Stack/free (sizeof StringSlice))
 ))

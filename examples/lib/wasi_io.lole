@@ -7,7 +7,7 @@
 
     {&in_vec : &*IOVec}
     {&in_vec = (Stack/alloc (sizeof IOVec))}
-    (store IOVec &in_vec (struct.new IOVec &chunk 256))
+    {{IOVec @ &in_vec} = (struct.new IOVec &chunk 256)}
 
     {&nread : &u32}
     {&nread = (Stack/alloc (sizeof u32))}
@@ -17,7 +17,7 @@
         {err = (fd_read fd &in_vec 1 &nread)}
 
         {nread : u32}
-        {nread = (load i32 &nread)}
+        {nread = {i32 @ &nread}}
 
         (if {nread == 0} (break))
 
@@ -34,7 +34,7 @@
 (fn fd_write_all [(fd u32) (message StringSlice)] [] (
     {&out_vec : &*IOVec}
     {&out_vec = (Stack/alloc (sizeof IOVec))}
-    (store IOVec &out_vec message)
+    {{IOVec @ &out_vec} = message}
 
     {&nwritten : &u32}
     {&nwritten = (Stack/alloc (sizeof u32))}
@@ -52,7 +52,7 @@
 
     {&iov : &*IOVec}
     {&iov = (Stack/alloc (sizeof IOVec))}
-    (store i32 &iov &chunk)
+    {{i32 @ &iov} = &chunk}
 
     {&nread : &u32}
     {&nread = (Stack/alloc (sizeof u32))}
@@ -63,19 +63,19 @@
     {io_res : i32}
 
     (loop (
-        (store i32 {&iov + (sizeof u32)} chunk_size)
+        {{i32 @ {&iov + (sizeof u32)}} = chunk_size}
         {io_res = (fd_read fd_in &iov 1 &nread)}
         (if {io_res != 0} (do
             {result = 1}
             (break)
         ))
-        
+
         {nread : u32}
-        {nread = (load i32 &nread)}
+        {nread = {i32 @ &nread}}
 
         (if {nread == 0} (break))
 
-        (store i32 {&iov + (sizeof u32)} nread)
+        {{i32 @ {&iov + (sizeof u32)}} = nread}
         {io_res = (fd_write fd_out &iov 1 &nread)}
         (if {io_res != 0} (do
             {result = 1}

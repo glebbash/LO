@@ -96,13 +96,6 @@ pub enum WasmInstr {
         offset: u32,
         address_instr: Rc<WasmInstr>, // cannot use Box because of struct load
     },
-    Store {
-        kind: WasmStoreKind,
-        align: u32,
-        offset: u32,
-        address_instr: Rc<WasmInstr>, // cannot use Box because of struct.store
-        value_instr: Box<WasmInstr>,
-    },
     I32ConstLazy {
         value: Rc<RefCell<i32>>,
     },
@@ -197,6 +190,17 @@ pub enum WasmData {
 }
 
 pub enum WasmSetBind {
-    Local { index: u32 },
-    Global { index: u32 },
+    Local {
+        index: u32,
+    },
+    Global {
+        index: u32,
+    },
+    Memory {
+        align: u32,
+        offset: u32,
+        kind: WasmStoreKind,
+        address_instr: Rc<WasmInstr>,
+        value_local_index: u32,
+    },
 }

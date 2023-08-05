@@ -106,10 +106,10 @@
 
     {&expr : ptr}
     {&expr = (Mem/alloc (sizeof Parser/SExpr))}
-    (store Parser/SExpr &expr (struct.new Parser/SExpr
+    {{Parser/SExpr @ &expr} = (struct.new Parser/SExpr
         Parser/SExpr/Atom
         &atom
-    ))
+    )}
 
     (return (struct.new Parser/ParseResult true index &expr))
 ))
@@ -171,10 +171,10 @@
 
     {&expr : ptr}
     {&expr = (Mem/alloc (sizeof Parser/SExpr))}
-    (store Parser/SExpr &expr (struct.new Parser/SExpr
+    {{Parser/SExpr @ &expr} = (struct.new Parser/SExpr
         Parser/SExpr/List
         &items
-    ))
+    )}
 
     (return (struct.new Parser/ParseResult true index &expr))
 ))

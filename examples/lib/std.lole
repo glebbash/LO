@@ -19,17 +19,17 @@
     (global mut Stack/&end u32 1048576)
 
     (fn Stack/push_u32 [(value u32)] [] (
-        (store i32 (Stack/alloc (sizeof u32)) value)
+        {{i32 @ (Stack/alloc (sizeof u32))} = value}
     ))
 
     (fn Stack/read_u32 [] [u32] (
-        (return (load i32 {Stack/&current - (sizeof u32)}))
+        (return {i32 @ {Stack/&current - (sizeof u32)}})
     ))
 
     (fn Stack/pop_u32 [] [u32] (
         (Stack/free (sizeof u32))
 
-        (return (load i32 Stack/&current))
+        (return {i32 @ Stack/&current})
     ))
 
     (fn Stack/alloc [(size u32)] [ptr] (
@@ -65,12 +65,13 @@
     ;; TODO: implement
     (fn Mem/free [(ref ptr)] [] ())
 
+    ;; TODO: use builtin mem.copy instr
     (fn Mem/copy [(src ptr) (dist ptr) (size u32)] [] (
         (loop (
             (if {size == 0} (break))
             {size = {size - 1}}
 
-            (store i32/u8 {dist + size} (load i32/u8 {src + size}))
+            {{i32/u8 @ {dist + size}} = {i32/u8 @ {src + size}}}
         ))
     ))
 
@@ -79,10 +80,13 @@
             (if {size == 0} (break))
             {size = {size - 1}}
 
-            {tmp : u8}
-            {tmp = (load i32/u8 {ref1 + size})}
-            (store i32/u8 {ref1 + size} (load i32/u8 {ref2 + size}))
-            (store i32/u8 {ref2 + size} tmp)
+            {
+            (do {i32/u8 @ {ref1 + size}}
+                {i32/u8 @ {ref2 + size}})
+                =
+            (do {i32/u8 @ {ref2 + size}}
+                {i32/u8 @ {ref1 + size}})
+            }
         ))
     ))
 ;; </mem>
@@ -99,29 +103,29 @@
     (fn Vec/new [(capacity u32) (item_size u32)] [&Vec] (
         {&self : &Vec}
         {&self = (Mem/alloc (sizeof Vec))}
-        (store Vec &self (struct.new Vec
+        {{Vec @ &self} = (struct.new Vec
             (Mem/alloc {capacity * item_size})
             0
             capacity
             item_size
-        ))
+        )}
         (return &self)
     ))
 
     ;; TODO: check out of bounds
     (fn Vec/get_u8 [(&self &Vec) (index u32)] [u8] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         (return
-            (load i32/u8 {{self . data_ref} + {index * {self . item_size}}})
+            {i32/u8 @ {{self . data_ref} + {index * {self . item_size}}}}
         )
     ))
 
     ;; TODO: check out of bounds
     (fn Vec/swap [(&self &Vec) (index1 u32) (index2 u32)] [] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         (Mem/swap
             {{self . data_ref} + {index1 * {self . item_size}}}
@@ -132,44 +136,42 @@
 
     (fn Vec/len [(&self &Vec)] [u32] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         (return {self . length})
     ))
 
     (fn Vec/push_u8 [(&self &Vec) (item u8)] [] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         {index : u32}
         {index = {self . length}}
 
         {{self . length} = {index + 1}}
-        (store Vec &self self)
+        {{Vec @ &self} = self}
 
         (Vec/grow_if_needed &self)
 
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
-        (store i32/u8 {
-            {self . data_ref} + {index * {self . item_size}}}
-            item
-        )
+        {{i32/u8 @ {{self . data_ref} +
+            {index * {self . item_size}}}} = item}
     ))
 
     (fn Vec/push_all [(&self &Vec) (&items ptr) (items_len u32)] [] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         {old_len : u32}
         {old_len = {self . length}}
 
         {{self . length} = {old_len + items_len}}
-        (store Vec &self self)
+        {{Vec @ &self} = self}
 
         (Vec/grow_if_needed &self)
 
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         (Mem/copy
             &items
@@ -181,7 +183,7 @@
     ;; TODO: do not realloc if length is equal to capacity
     (fn Vec/grow_if_needed [(&self &Vec)] [] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         (if {{self . length} == {self . capacity}} (do
             {new_cap : u32}
@@ -197,7 +199,7 @@
             (Mem/free old_data_ref)
         ))
 
-        (store Vec &self self)
+        {{Vec @ &self} = self}
     ))
 
     (fn Vec/reverse [(&self &Vec)] [] (
@@ -217,14 +219,14 @@
 
     (fn Vec/as_slice [(&self &Vec)] [ptr u32] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         (return {self . data_ref} {self . length})
     ))
 
     (fn Vec/at [(&self &Vec) (index u32)] [u32] (
         {self : Vec}
-        {self = (load Vec &self)}
+        {self = {Vec @ &self}}
 
         (return {{self . data_ref} + {index * {self . item_size}}})
     ))
@@ -235,7 +237,7 @@
     (struct &StringSlice (actual ptr))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
-        (return (load i32/u8 {{self . data} + index}))
+        (return {i32/u8 @ {{self . data} + index}})
     ))
 ;; </string>
 

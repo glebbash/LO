@@ -1065,79 +1065,10 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             }),
             loc: op_loc.clone(),
         },
+
         // TODO(feat): support custom aligns and offsets
         (
-            "store",
-            [SExpr::Atom {
-                value: store_kind,
-                loc: kind_loc,
-                kind: AtomKind::Symbol,
-            }, address_expr, value_expr],
-        ) => {
-            let Some(struct_def) = ctx.module.struct_defs.get(store_kind) else {
-                return Ok(WasmInstr::Store {
-                    kind: WasmStoreKind::parse(store_kind).map_err(|e| CompileError {
-                        message: e,
-                        loc: kind_loc.clone()
-                    })?,
-                    align: 0,
-                    offset: 0,
-                    value_instr: Box::new(parse_instr(value_expr, ctx)?),
-                    address_instr: Rc::new(parse_instr(address_expr, ctx)?),
-                })
-            };
-
-            let mut value_instrs = match parse_instr(value_expr, ctx)? {
-                WasmInstr::MultiValueEmit { values, .. } => values,
-                instr => vec![instr],
-            };
-
-            // TODO(perf): check if this is doing duplicate work
-            let value_types = get_types(ctx, &value_instrs)?;
-            let field_types = struct_def
-                .fields
-                .iter()
-                .map(|f| f.value_type)
-                .collect::<Vec<_>>();
-
-            if value_types != field_types {
-                return Err(CompileError {
-                    message: format!(
-                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
-                        field_types, value_types
-                    ),
-                    loc: op_loc.clone(),
-                });
-            }
-
-            let address_instr = Rc::new(parse_instr(address_expr, ctx)?);
-
-            let mut offset = 0;
-            let mut instrs = Vec::<WasmInstr>::with_capacity(struct_def.fields.len());
-
-            for field in struct_def.fields.iter() {
-                instrs.push(WasmInstr::Store {
-                    kind: WasmStoreKind::from_value_type(&field.value_type).map_err(|e| {
-                        CompileError {
-                            message: e,
-                            loc: op_loc.clone(),
-                        }
-                    })?,
-                    align: 1,
-                    offset,
-                    value_instr: Box::new(value_instrs.remove(0)),
-                    address_instr: address_instr.clone(),
-                });
-
-                // unwrap uncreachable because of `WasmStoreKind::from_value_type` check
-                offset += field.value_type.byte_size().unwrap();
-            }
-
-            WasmInstr::MultiValueEmit { values: instrs }
-        }
-        // TODO(feat): support custom aligns and offsets
-        (
-            "load",
+            "@" | "load",
             [SExpr::Atom {
                 value: load_kind,
                 loc: kind_loc,
@@ -1174,7 +1105,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     address_instr: address_instr.clone(),
                 });
 
-                // unwrap uncreachable because of `WasmLoadKind::from_value_type` check
+                // safe to unwrap because of `WasmLoadKind::from_value_type` check
                 offset += field.value_type.byte_size().unwrap();
             }
 
@@ -1325,7 +1256,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             }
 
             let mut binds = vec![];
-            extract_set_binds(&mut binds, &bind_instr, bind.loc())?;
+            extract_set_binds(&mut binds, ctx, bind_instr, bind.loc())?;
 
             WasmInstr::Set {
                 binds,
@@ -1487,23 +1418,40 @@ fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, 
 // TODO: figure out better location
 fn extract_set_binds(
     output: &mut Vec<WasmSetBind>,
-    bind_instr: &WasmInstr,
+    ctx: &mut FnContext,
+    bind_instr: WasmInstr,
     bind_loc: &Location,
 ) -> Result<(), CompileError> {
     Ok(match bind_instr {
         WasmInstr::LocalGet { local_index } => {
-            output.push(WasmSetBind::Local {
-                index: *local_index,
-            });
+            output.push(WasmSetBind::Local { index: local_index });
         }
         WasmInstr::GlobalGet { global_index } => {
             output.push(WasmSetBind::Global {
-                index: *global_index,
+                index: global_index,
+            });
+        }
+        WasmInstr::Load {
+            kind,
+            align,
+            offset,
+            address_instr,
+        } => {
+            let value_local_index = ctx.locals_last_index;
+            ctx.non_arg_locals.push(kind.get_value_type());
+            ctx.locals_last_index += 1;
+
+            output.push(WasmSetBind::Memory {
+                align,
+                offset,
+                kind: WasmStoreKind::from_load_kind(&kind),
+                address_instr,
+                value_local_index,
             });
         }
         WasmInstr::MultiValueEmit { values } => {
             for value in values {
-                extract_set_binds(output, value, bind_loc)?;
+                extract_set_binds(output, ctx, value, bind_loc)?;
             }
         }
         _ => {
@@ -1599,18 +1547,10 @@ impl WasmLoadKind {
 }
 
 impl WasmStoreKind {
-    fn parse(kind: &str) -> Result<Self, String> {
+    fn from_load_kind(kind: &WasmLoadKind) -> Self {
         match kind {
-            "i32" => Ok(Self::I32),
-            "i32/u8" => Ok(Self::I32U8),
-            _ => return Err(format!("Unknown store kind: {kind}")),
-        }
-    }
-
-    fn from_value_type(value_type: &WasmValueType) -> Result<Self, String> {
-        match value_type {
-            WasmValueType::I32 => Ok(Self::I32),
-            _ => Err(format!("Unsupported type for store: {value_type:?}")),
+            WasmLoadKind::I32 => Self::I32,
+            WasmLoadKind::I32U8 => Self::I32U8,
         }
     }
 }

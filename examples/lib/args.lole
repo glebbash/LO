@@ -13,13 +13,13 @@
     (drop (args_sizes_get &argc &argv_buf_size))
 
     {argc : u32}
-    {argc = (load i32 &argc)}
+    {argc = {i32 @ &argc}}
 
     {&argv : &*&*u8}
     {&argv = (Mem/alloc {argc * (sizeof &*u8)})}
 
     {&argv_buf : &*u8}
-    {&argv_buf = (Mem/alloc (load i32 &argv_buf_size))}
+    {&argv_buf = (Mem/alloc {i32 @ &argv_buf_size})}
 
     (drop (args_get &argv &argv_buf))
 
@@ -34,7 +34,7 @@
 
 (fn Args/get [(self Args) (i u32)] [StringSlice] (
     {&arg : &*u8}
-    {&arg = (load i32 {{self . &argv} + {i * (sizeof &*u8)}})}
+    {&arg = {i32 @ {{self . &argv} + {i * (sizeof &*u8)}}}}
     (return (struct.new StringSlice
         &arg (Args/_c_str_len &arg)
     ))
@@ -46,7 +46,7 @@
 
     (loop (
         {char : u8}
-        {char = (load i32/u8 {&str + len})}
+        {char = {i32/u8 @ {&str + len}}}
 
         (if {char == 0} (break))
 

@@ -31,15 +31,6 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::Set { .. } => vec![],
         WasmInstr::Drop { .. } => vec![],
 
-        WasmInstr::Store {
-            value_instr,
-            address_instr,
-            ..
-        } => {
-            get_type(ctx, &value_instr)?;
-            get_type(ctx, &address_instr)?;
-            vec![]
-        }
         WasmInstr::IfSingleBranch {
             cond, then_branch, ..
         } => {

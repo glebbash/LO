@@ -47,7 +47,7 @@
     ))
 
     {fd : u32}
-    {fd = (load i32 &fd)}
+    {fd = {i32 @ &fd}}
 
     (Stack/free (sizeof u32))
     (return fd)

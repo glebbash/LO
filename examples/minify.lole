@@ -32,7 +32,7 @@
         )
 
         {expr : Parser/SExpr}
-        {expr = (load Parser/SExpr (Vec/at &exprs i))}
+        {expr = {Parser/SExpr @ (Vec/at &exprs i)}}
         (dump_expr expr)
 
         (if {i != {(Vec/len &exprs) - 1}}
