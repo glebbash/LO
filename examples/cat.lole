@@ -14,9 +14,14 @@
 
     {file_path : StringSlice = (Args/get args 1)}
 
-    {fd : u32 = (fd_open file_path)}
-
     {err : u32}
+    {fd : u32}
+
+    {(do err fd) = (fd_open file_path)}
+    (if {err != 0} (do
+        (return (proc_exit 1))
+    ))
+
     {err = (fd_pipe fd FD_STDOUT 256)}
     (if {err != 0} (do
         (return (proc_exit 1))
@@ -27,8 +32,7 @@
     (return (proc_exit 0))
 ))
 
-;; TODO(destr-assign): return error instead of proc_exit
-(fn fd_open [(file_path StringSlice)] [u32] (
+(fn fd_open [(file_path StringSlice)] [u32 u32] (
     {&fd : (& u32) = (Stack/alloc (sizeof u32))}
 
     {err : WasiErr = (path_open
@@ -38,11 +42,11 @@
     )}
     (if {err != 0} (do
         (Stack/free (sizeof u32))
-        (proc_exit 1)
+        (return (do err 0))
     ))
 
     {fd : u32 = {i32 @ &fd}}
-
     (Stack/free (sizeof u32))
-    (return fd)
+
+    (return (do 0 fd))
 ))
