@@ -241,7 +241,7 @@
 
 (fn Parser/index_to_position [(chars StringSlice) (index u32)] [Position] (
     {pos : Position}
-    {pos = (pack 1 1)}
+    {pos = (do 1 1)}
 
     {char_index : u32}
     {char_index = 0}
@@ -253,7 +253,7 @@
         {char = (StringSlice/char_at chars char_index)}
 
         (if {char == CHAR_NEWLINE} (do
-            {pos = (pack {{pos . line} + 1} 1)}
+            {pos = (do {{pos . line} + 1} 1)}
             {char_index = {char_index + 1}}
             (continue)
         ))

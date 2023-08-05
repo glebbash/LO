@@ -15,7 +15,7 @@
     {&out : &*u8}
     {&out = (Stack/alloc 1)}
     (store i32/u8 &out char)
-    (print_str_slice (pack &out 1))
+    (print_str_slice (do &out 1))
     (Stack/free 1)
 ))
 

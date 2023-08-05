@@ -1465,7 +1465,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 local_index: local.index + field_offset as u32,
             }
         }
-        ("pack" | "do", exprs) => WasmInstr::MultiValueEmit {
+        ("do", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,
         },
         (fn_name, args) => {
