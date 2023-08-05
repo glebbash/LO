@@ -22,6 +22,5 @@
 ))
 
 (fn Point2D/len_squared [(p Point2D)] [i32] (
-    (return {p . x * {p . x}
-           + {p . y * {p . y}}})
+    (return {p . x * {p . x} + {p . y * {p . y}}})
 ))
