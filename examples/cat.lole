@@ -2,7 +2,7 @@
 (mod lib/wasi_io)
 (mod lib/args)
 
-;; this program expects host to preopen "." on fd 3
+; this program expects host to preopen "." on fd 3
 (global CWD_PREOPEN_FD u32 3)
 
 (fn main [] [] (

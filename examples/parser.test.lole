@@ -1,4 +1,4 @@
-;; exports parser api for testing
+; exports parser api for testing
 
 (mod parser)
 

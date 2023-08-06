@@ -6,10 +6,10 @@
     (Ok (value u32))
     (Err (error u32))
 )
-;; desugars to:
-;; (struct ParseResult (kind u32) (ref ptr))
-;; (struct ParseResult/Ok (value u32))
-;; (struct ParseResult/Err (error u32))
+; desugars to:
+; (struct ParseResult (kind u32) (ref ptr))
+; (struct ParseResult/Ok (value u32))
+; (struct ParseResult/Err (error u32))
 
 (export main :as main)
 (fn main [] [u32] (

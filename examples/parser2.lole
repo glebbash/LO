@@ -1,6 +1,6 @@
 (mod lib/std)
 
-;; for testing:
+; for testing:
 (mod lib/cli) (fn main [] [] ())
 
 (global CHAR_TAB       u8 009)
@@ -28,7 +28,7 @@
 
 (struct Parser
     (file_name (& StringSlice))
-    (chars (& StringSlice)) ;; TODO: need struct in struct
+    (chars (& StringSlice)) ; TODO: need struct in struct
     (index u32)
     (line u32)
     (col u32)
@@ -41,17 +41,17 @@
 (enum Parser/SExpr
     (Atom
         (value (& String))
-        (kind u32) ;; Parser/AtomKind ;; TODO: need struct in struct
-        (loc (& Parser/Location)) ;; TODO: need struct in struct
+        (kind u32) ; Parser/AtomKind ; TODO: need struct in struct
+        (loc (& Parser/Location)) ; TODO: need struct in struct
     )
     (List
-        (value (& Vec)) ;; &Vec<SExpr> ;; TODO: need struct in struct
-        (loc (& Parser/Location)) ;; TODO: need struct in struct
+        (value (& Vec)) ; &Vec<SExpr> ; TODO: need struct in struct
+        (loc (& Parser/Location)) ; TODO: need struct in struct
     )
 )
 
 (enum Parser/Result
-    (Ok (value (& Vec))) ;; &Vec<SExpr> ;; TODO: need struct in struct
+    (Ok (value (& Vec))) ; &Vec<SExpr> ; TODO: need struct in struct
     (Err (error (& Parser/CompileError)))
 )
 
@@ -71,9 +71,9 @@
     (return (struct.new Parser
         file_name
         script
-        0 ;; index
-        1 ;; line
-        1 ;; col
+        0 ; index
+        1 ; line
+        1 ; col
     ))
 ))
 
@@ -99,7 +99,7 @@
 
 (struct Parser/_CharAtResult
     (ok bool)
-    (data u32) ;; u8 | (& CompileError)
+    (data u32) ; u8 | (& CompileError)
 )
 
 (fn Parser/_is_space [(char u8)] [bool] (
@@ -144,7 +144,7 @@
     {Parser/Location @ &loc = (struct.new Parser/Location
         {Parser @ &self . file_name}
         {Parser @ &self . index}
-        1 ;; length
+        1 ; length
         {Parser @ &self . line}
         {Parser @ &self . col}
     )}

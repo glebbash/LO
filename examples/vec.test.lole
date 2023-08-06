@@ -1,4 +1,4 @@
-;; exports vec api for testing
+; exports vec api for testing
 
 (mod lib/std)
 
