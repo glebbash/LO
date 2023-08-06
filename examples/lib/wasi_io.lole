@@ -39,7 +39,7 @@
     {&chunk : (&* u8) = (Stack/alloc chunk_size)}
 
     {&iov : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
-    {i32 @ &iov = &chunk}
+    {IOVec @ &iov . base = &chunk}
 
     {&nread : (& u32) = (Stack/alloc (sizeof u32))}
 
@@ -48,7 +48,7 @@
     {io_res : i32}
 
     (loop (
-        {i32 @ &iov @ (sizeof u32) = chunk_size}
+        {IOVec @ &iov . len = chunk_size}
         {io_res = (fd_read fd_in &iov 1 &nread)}
         (if {io_res != 0} (do
             {result = 1}
@@ -58,7 +58,7 @@
         {nread : u32 = {i32 @ &nread}}
         (if {nread == 0} (break))
 
-        {i32 @ &iov @ (sizeof u32) = nread}
+        {IOVec @ &iov . len = nread}
         {io_res = (fd_write fd_out &iov 1 &nread)}
         (if {io_res != 0} (do
             {result = 1}

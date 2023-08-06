@@ -28,13 +28,17 @@ pub struct FnBody {
     pub body: Vec<SExpr>,
 }
 
+#[derive(Clone)]
 pub struct StructDef {
     pub fields: Vec<StructField>,
 }
 
+#[derive(Clone)]
 pub struct StructField {
     pub name: String,
     pub value_type: WasmValueType,
+    pub field_index: u32,
+    pub byte_offset: u32,
 }
 
 pub enum LoleValueType {
@@ -596,10 +600,14 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                             StructField {
                                 name: String::from("kind"),
                                 value_type: WasmValueType::I32,
+                                field_index: 0,
+                                byte_offset: 0,
                             },
                             StructField {
                                 name: String::from("ref"),
                                 value_type: WasmValueType::I32,
+                                field_index: 1,
+                                byte_offset: WasmValueType::I32.byte_size().unwrap(),
                             },
                         ],
                     },
@@ -714,6 +722,9 @@ fn parse_struct_field_defs(
     struct_name: &str,
     ctx: &ModuleContext,
 ) -> Result<Vec<StructField>, CompileError> {
+    let mut field_index = 0;
+    let mut byte_offset = 0;
+
     let mut fields = Vec::<StructField>::new();
     for field_def in exprs {
         let SExpr::List { value: name_and_type, .. } = field_def else {
@@ -741,10 +752,20 @@ fn parse_struct_field_defs(
             });
         }
 
+        let value_type = WasmValueType::parse(f_type, ctx)?;
+
         fields.push(StructField {
             name: f_name.clone(),
-            value_type: WasmValueType::parse(f_type, ctx)?,
+            value_type,
+            field_index,
+            byte_offset,
         });
+
+        field_index += 1;
+        byte_offset += value_type.byte_size().map_err(|err| CompileError {
+            message: err,
+            loc: f_type.loc().clone(),
+        })?;
     }
     Ok(fields)
 }
@@ -1007,6 +1028,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     address_instr: Box::new(parse_instr(address_expr, ctx)?),
                 })
             };
+            let struct_name = load_kind;
 
             let address_instr = Box::new(parse_instr(address_expr, ctx)?);
 
@@ -1030,8 +1052,10 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 offset += field.value_type.byte_size().unwrap();
             }
 
-            WasmInstr::MultiValueEmit {
-                values: primitive_loads,
+            WasmInstr::StructLoad {
+                struct_name: struct_name.clone(),
+                address_instr,
+                primitive_loads,
             }
         }
         ("@" | "load", [load, offset]) => {
@@ -1203,16 +1227,50 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         // TODO: chain with load
         (
             "get" | ".",
-            [SExpr::Atom {
-                value: local_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
+            [lhs, SExpr::Atom {
                 value: f_name,
                 loc: f_name_loc,
                 kind: AtomKind::Symbol,
             }],
         ) => {
+            let SExpr::Atom {
+                value: local_name,
+                loc: name_loc,
+                kind: AtomKind::Symbol,
+            } = lhs else {
+                let lhs_instr = parse_instr(lhs, ctx)?;
+
+                let WasmInstr::StructLoad { struct_name, address_instr, .. } = lhs_instr else {
+                    return Err(CompileError {
+                        message: format!("Invalid arguments for {op}"),
+                        loc: op_loc.clone(),
+                    });
+                };
+
+                // safe to unwrap as it was already checked in `StructLoad`
+                let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
+
+
+                let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
+                    return Err(CompileError {
+                        message: format!("Unknown field {f_name} in struct {struct_name}"),
+                        loc: f_name_loc.clone(),
+                    });
+                };
+
+                return Ok(WasmInstr::Load {
+                    kind: WasmLoadKind::from_value_type(&field.value_type).map_err(|e| {
+                        CompileError {
+                            message: e,
+                            loc: op_loc.clone(),
+                        }
+                    })?,
+                    align: 1,
+                    offset: field.byte_offset,
+                    address_instr
+                });
+            };
+
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                 return Err(CompileError {
                     message: format!("Getting struct field from global variable: {local_name}"),
@@ -1244,7 +1302,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 }
             };
 
-            let Some(field_offset) = struct_def.fields.iter().position(|f| f.name == *f_name) else {
+            let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
                 return Err(CompileError {
                     message: format!("Unknown field {f_name} in struct {s_name}"),
                     loc: f_name_loc.clone(),
@@ -1252,7 +1310,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             };
 
             WasmInstr::LocalGet {
-                local_index: local.index + field_offset as u32,
+                local_index: local.index + field.field_index,
             }
         }
         ("do", exprs) => WasmInstr::MultiValueEmit {
@@ -1386,6 +1444,13 @@ fn extract_set_binds(
                 address_instr,
                 value_local_index,
             });
+        }
+        WasmInstr::StructLoad {
+            primitive_loads, ..
+        } => {
+            for value in primitive_loads {
+                extract_set_binds(output, ctx, value, bind_loc)?;
+            }
         }
         WasmInstr::MultiValueEmit { values } => {
             for value in values {

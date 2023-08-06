@@ -88,6 +88,11 @@ pub enum WasmInstr {
         lhs: Box<WasmInstr>,
         rhs: Box<WasmInstr>,
     },
+    StructLoad {
+        struct_name: String,
+        address_instr: Box<WasmInstr>,
+        primitive_loads: Vec<WasmInstr>,
+    },
     Load {
         kind: WasmLoadKind,
         align: u32,

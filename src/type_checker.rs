@@ -25,6 +25,9 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::I32Const { .. } => vec![WasmValueType::I32],
         WasmInstr::I64Const { .. } => vec![WasmValueType::I64],
         WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
+        WasmInstr::StructLoad {
+            primitive_loads, ..
+        } => get_types(ctx, primitive_loads)?,
         WasmInstr::NoEmit { instr } => get_type(ctx, instr)?,
 
         // type checked in the complier:

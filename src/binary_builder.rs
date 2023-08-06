@@ -315,6 +315,13 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
                 }
             }
         }
+        WasmInstr::StructLoad {
+            primitive_loads, ..
+        } => {
+            for value in primitive_loads {
+                write_instr(output, value);
+            }
+        }
         WasmInstr::MultiValueEmit { values, .. } => {
             for value in values {
                 write_instr(output, value);

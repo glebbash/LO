@@ -106,63 +106,46 @@
 
     ;; TODO: check out of bounds
     (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
-        {self : Vec = {Vec @ &self}}
-
-        (return
-            {i32/u8 @ {self . data_ref} @ {index * {self . item_size}}}
-        )
+        (return {i32/u8
+            @ {Vec @ &self . data_ref}
+            @ {index * {Vec @ &self . item_size}}})
     ))
 
     ;; TODO: check out of bounds
     (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] [] (
-        {self : Vec = {Vec @ &self}}
-
+        {item_size : u32 = {Vec @ &self . item_size}}
         (Mem/swap
-            {self . data_ref + {index1 * {self . item_size}}}
-            {self . data_ref + {index2 * {self . item_size}}}
-            {self . item_size}
+            {Vec @ &self . data_ref + {index1 * item_size}}
+            {Vec @ &self . data_ref + {index2 * item_size}}
+            item_size
         )
     ))
 
     (fn Vec/len [(&self (& Vec))] [u32] (
-        {self : Vec = {Vec @ &self}}
-
-        (return {self . length})
+        (return {Vec @ &self . length})
     ))
 
     (fn Vec/push_u8 [(&self (& Vec)) (item u8)] [] (
-        {self : Vec = {Vec @ &self}}
-
-        {index : u32 = {self . length}}
-
-        {self . length = {index + 1}}
-        {Vec @ &self = self}
+        {index : u32 = {Vec @ &self . length}}
+        {Vec @ &self . length = {index + 1}}
 
         (Vec/grow_if_needed &self)
 
-        {self = {Vec @ &self}}
-
         {i32/u8
-            @ {self . data_ref }
-            @ {index * {self . item_size}} = item}
+            @ {Vec @ &self . data_ref }
+            @ {index * {Vec @ &self . item_size}} = item}
     ))
 
     (fn Vec/push_all [(&self (& Vec)) (&items ptr) (items_len u32)] [] (
-        {self : Vec = {Vec @ &self}}
-
-        {old_len : u32 = {self . length}}
-
-        {self . length = {old_len + items_len}}
-        {Vec @ &self = self}
+        {old_len : u32 = {Vec @ &self . length}}
+        {Vec @ &self . length = {old_len + items_len}}
 
         (Vec/grow_if_needed &self)
 
-        {self = {Vec @ &self}}
-
         (Mem/copy
             &items
-            {self . data_ref + {old_len * {self . item_size}}}
-            {items_len * {self . item_size}}
+            {Vec @ &self . data_ref + {old_len * {Vec @ &self . item_size}}}
+            {items_len * {Vec @ &self . item_size}}
         )
     ))
 
@@ -199,15 +182,11 @@
     ))
 
     (fn Vec/as_slice [(&self (& Vec))] [ptr u32] (
-        {self : Vec = {Vec @ &self}}
-
-        (return {self . data_ref} {self . length})
+        (return {Vec @ &self . data_ref} {Vec @ &self . length})
     ))
 
     (fn Vec/at [(&self (& Vec)) (index u32)] [u32] (
-        {self : Vec = {Vec @ &self}}
-
-        (return {self . data_ref + {index * {self . item_size}}})
+        (return {Vec @ &self . data_ref @ {index * {Vec @ &self . item_size}}})
     ))
 ;; </vec>
 
