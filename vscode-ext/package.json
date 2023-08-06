@@ -2,7 +2,7 @@
   "name": "lole-lisp",
   "displayName": "lole-lisp",
   "description": "lole-lisp language support",
-  "version": "0.0.5",
+  "version": "0.0.9",
   "engines": {
     "vscode": "^1.81.0"
   },
@@ -23,8 +23,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/outline_air_black_24dp.png",
-          "dark": "./icons/outline_air_white_24dp.png"
+          "light": "./icons/lole-lisp.svg",
+          "dark": "./icons/lole-lisp.svg"
         }
       }
     ],
