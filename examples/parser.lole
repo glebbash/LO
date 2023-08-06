@@ -8,15 +8,15 @@
 (global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
 (global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
 
-(global Parser/SExpr/Atom u8 0)
-(global Parser/SExpr/List u8 1)
+(global Parser/SExpr/ATOM u8 0)
+(global Parser/SExpr/LIST u8 1)
 (struct Parser/SExpr
-    (kind u8) ; Parser/SExpr/Atom | Parser/SExpr/List
+    (kind u8) ; Parser/SExpr/ATOM | Parser/SExpr/LIST
     (data ptr) ; pointer to Atom's chars or List's expr vector
 )
 
-(global Parser/ParseError/UnexpectedEOF  u32 0)
-(global Parser/ParseError/UnexpectedChar u32 1)
+(global Parser/ParseError/UNEXPECTED_EOF  u32 0)
+(global Parser/ParseError/UNEXPECTED_CHAR u32 1)
 (struct Parser/ParseResult
     (ok bool)
     (index u32)
@@ -38,13 +38,13 @@
 
         (if (not {char_res . ok})
             (return (struct.new Parser/ParseResult
-                false index Parser/ParseError/UnexpectedEOF
+                false index Parser/ParseError/UNEXPECTED_EOF
             ))
         )
 
         (if (not (Parser/is_list_start {char_res . char}))
             (return (struct.new Parser/ParseResult
-                false index Parser/ParseError/UnexpectedChar
+                false index Parser/ParseError/UNEXPECTED_CHAR
             ))
         )
 
@@ -66,7 +66,7 @@
 
     (if (not {char_res . ok})
         (return (struct.new Parser/ParseResult
-            false index Parser/ParseError/UnexpectedEOF
+            false index Parser/ParseError/UNEXPECTED_EOF
         ))
     )
 
@@ -84,10 +84,9 @@
         {char_res : Parser/CharAtResult}
         {char_res = (Parser/char_at chars index)}
         (if (not {char_res . ok}) (break))
-        (if (|| (||
-            (Parser/is_space {char_res . char})
-            (Parser/is_list_end {char_res . char}))
-            {char_res . char == CHAR_SEMICOLON})
+        (if {(Parser/is_space {char_res . char})
+                || (Parser/is_list_end {char_res . char})
+                || {char_res . char == CHAR_SEMICOLON}}
             (break)
         )
         {index = {index + 1}}
@@ -103,7 +102,7 @@
 
     {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
     {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-        Parser/SExpr/Atom
+        Parser/SExpr/ATOM
         &atom
     )}
 
@@ -125,7 +124,7 @@
         {char_res = (Parser/char_at chars index)}
         (if (not {char_res . ok})
             (return (struct.new Parser/ParseResult
-                false index Parser/ParseError/UnexpectedEOF
+                false index Parser/ParseError/UNEXPECTED_EOF
             ))
         )
 
@@ -145,7 +144,7 @@
     {char_res = (Parser/char_at chars index)}
     (if (not {char_res . ok})
         (return (struct.new Parser/ParseResult
-            false index Parser/ParseError/UnexpectedEOF
+            false index Parser/ParseError/UNEXPECTED_EOF
         ))
     )
 
@@ -154,7 +153,7 @@
 
     (if (not (Parser/is_valid_list_chars list_start_char list_end_char))
         (return (struct.new Parser/ParseResult
-            false index Parser/ParseError/UnexpectedEOF
+            false index Parser/ParseError/UNEXPECTED_EOF
         ))
     )
 
@@ -164,7 +163,7 @@
 
     {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
     {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-        Parser/SExpr/List
+        Parser/SExpr/LIST
         &items
     )}
 
