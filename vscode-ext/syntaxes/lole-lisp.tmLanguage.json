@@ -1,0 +1,126 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "lole-lisp",
+	"patterns": [
+        {
+            "include": "#constructs"
+        },
+        {
+			"include": "#keywords"
+		},
+        {
+			"include": "#constants"
+		},
+        {
+            "include": "#sexprs"
+        },
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+        "types": {
+            "patterns": [
+                {
+					"match": "(?<![A-Za-z])(f32|f64|i128|i16|i32|i64|i8|u128|u16|u32|u64|u8|ptr|bool)\\b",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.numeric.lole-lisp"
+						}
+					}
+				},
+                {
+                    "name": "entity.name.type.lole-lisp",
+                    "match": "\\b([A-Z][A-Za-z_]*\\/)*[A-Z][A-Za-z0-9_]*\\b"
+                }
+            ]
+        },
+        "constants": {
+            "patterns": [
+                {
+					"name": "constant.language.boolean.lole-lisp",
+					"match": "(true|false)"
+				},
+                {
+					"name": "constant.numeric.long.lole-lisp",
+					"match": "\\b\\d+"
+				},
+                {
+                    "name": "variable.other.constant.lole-lisp",
+                    "match": "\\b([A-Z][A-Za-z_]*\\/)*[A-Z0-9_]+\\b"
+                }
+            ]
+        },
+		"keywords": {
+			"patterns": [
+                {
+                    "name": "keyword.control.lole-lisp",
+                    "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct\\.new|struct|enum|break|not)\\b"
+			    },
+                {
+                    "name": "keyword.operator.lole-lisp",
+                    "match": "(=|==|!|!=|&&|&|\\.|>=|<=|>|<|:|\\+|-|\\*|\\/|&(?!\b)|@|\\|\\|)"
+                }
+            ]
+		},
+        "constructs": {
+            "patterns": [
+                {
+					"begin": "\\b(fn)\\s+([A-Za-z0-9_/]+)",
+					"beginCaptures": {
+						"1": {
+							"name": "keyword.control.lole-lisp"
+						},
+                        "2": {
+							"name": "entity.name.function.lole-lisp"
+						}
+					},
+                    "end": "\\s"
+				}
+            ]
+        },
+        "sexprs": {
+            "patterns": [
+                {
+					"match": "(?<=\\()(.+?)(?=\\s|\\))",
+					"captures": {
+						"1": {
+							"name": "entity.name.function.lole-lisp"
+						}
+					},
+					"patterns": [
+						{
+							"include": "$self"
+						}
+					]
+				}
+            ]
+        },
+		"strings": {
+			"name": "string.quoted.double.lole-lisp",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.lole-lisp",
+					"match": "\\\\."
+				}
+			]
+		},
+        "comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.lole-lisp",
+					"match": "\\s*;.*"
+				}
+			]
+		}
+	},
+	"scopeName": "source.lole"
+}
