@@ -1,0 +1,42 @@
+{
+  "name": "lole-lisp",
+  "displayName": "lole-lisp",
+  "description": "lole-lisp language support",
+  "version": "0.0.5",
+  "engines": {
+    "vscode": "^1.81.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "repository": "https://github.com/glebbash/lole-lisp",
+  "contributes": {
+    "languages": [
+      {
+        "id": "lole-lisp",
+        "aliases": [
+          "lole-lisp",
+          "lole-lisp"
+        ],
+        "extensions": [
+          ".lole"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/outline_air_black_24dp.png",
+          "dark": "./icons/outline_air_white_24dp.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lole-lisp",
+        "scopeName": "source.lole",
+        "path": "./syntaxes/lole-lisp.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.20.1"
+  }
+}

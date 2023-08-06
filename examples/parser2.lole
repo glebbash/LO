@@ -1,0 +1,153 @@
+(mod lib/std)
+
+;; for testing:
+(mod lib/cli) (fn main [] [] ())
+
+(global CHAR_TAB       u8 009)
+(global CHAR_NEWLINE   u8 010)
+(global CHAR_SPACE     u8 032)
+(global CHAR_SEMICOLON u8 059)
+(global CHAR_LPAREN u8 040) (global CHAR_RPAREN u8 041)
+(global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
+(global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
+
+(struct &Vec<SExpr> (actual (& Vec)))
+
+(struct Parser/Location
+    (file_name (& StringSlice))
+    (offset u32)
+    (length u32)
+    (line u32)
+    (col u32)
+)
+
+(struct Parser/CompileError
+    (&message (& String))
+    (&loc (& Parser/Location))
+)
+
+(struct Parser
+    (file_name (& StringSlice))
+    (chars (& StringSlice)) ;; TODO: need struct in struct
+    (index u32)
+    (line u32)
+    (col u32)
+)
+
+(struct Parser/AtomKind (actual u32))
+(global Parser/AtomKind/Symbol u32 0)
+(global Parser/AtomKind/String u32 1)
+
+(enum Parser/SExpr
+    (Atom
+        (value (& String))
+        (kind u32) ;; Parser/AtomKind ;; TODO: need struct in struct
+        (loc (& Parser/Location)) ;; TODO: need struct in struct
+    )
+    (List
+        (value (& Vec)) ;; &Vec<SExpr> ;; TODO: need struct in struct
+        (loc (& Parser/Location)) ;; TODO: need struct in struct
+    )
+)
+
+(enum Parser/Result
+    (Ok (value (& Vec))) ;; &Vec<SExpr> ;; TODO: need struct in struct
+    (Err (error (& Parser/CompileError)))
+)
+
+(fn Parser/parse [(file_name (& StringSlice)) (script (& StringSlice))] [Parser/Result] (
+    {parser : Parser = (Parser/_new file_name script)}
+
+    {&parser : (& Parser) = (Stack/alloc (sizeof Parser))}
+    {Parser @ &parser = parser}
+
+    {result : Parser/Result = (Parser/_parse_all &parser)}
+
+    (Stack/free (sizeof Parser))
+    (return result)
+))
+
+(fn Parser/_new [(file_name (& StringSlice)) (script (& StringSlice))] [Parser] (
+    (return (struct.new Parser
+        file_name
+        script
+        0 ;; index
+        1 ;; line
+        1 ;; col
+    ))
+))
+
+(fn Parser/_parse_all [(&self (& Parser))] [Parser/Result] (
+    (Parser/_skip_space &self)
+
+    {items : (& Vec) = (Vec/new 10 (sizeof Parser/SExpr))}
+
+    (return 0 0)
+))
+
+(fn Parser/_skip_space [(&self (& Parser))] [] (
+    {char_res : Parser/_CharAtResult}
+
+    (loop (
+        {char_res = (Parser/_current_char &self)}
+        (if (not {char_res . ok}) (break))
+        (if (not (Parser/_is_space {char_res . data})) (break))
+        {{Parser @ &self . index}
+            = {{Parser @ &self . index} + 1}}
+    ))
+))
+
+(struct Parser/_CharAtResult
+    (ok bool)
+    (data u32) ;; u8 | (& CompileError)
+)
+
+(fn Parser/_is_space [(char u8)] [bool] (
+    (return {
+        {char == CHAR_SPACE} ||
+        {char == CHAR_NEWLINE} ||
+        {char == CHAR_TAB}
+    })
+))
+
+(fn Parser/_current_char [(&self (& Parser))] [Parser/_CharAtResult] (
+    {&chars : (& StringSlice) = {Parser @ &self . chars}}
+
+    (if {Parser @ &self . index >= {StringSlice @ &chars . size}} (do
+        (return (struct.new Parser/_CharAtResult
+            false
+            (Parser/_err_unexpected_char &self)))
+    ))
+
+    (return (struct.new Parser/_CharAtResult
+        true
+        (StringSlice/char_at {StringSlice @ &chars} {Parser @ &self . index})))
+))
+
+(fn Parser/_err_unexpected_char [(&self (& Parser))] [(& Parser/CompileError)] (
+    {&message : (& StringSlice) = (Mem/alloc (sizeof StringSlice))}
+    {StringSlice @ &message = "Parser: Unexpected character"}
+
+    {&loc : (& Parser/Location) = (Parser/_loc &self)}
+
+    {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
+    {Parser/CompileError @ &error = (struct.new Parser/CompileError
+        &message
+        &loc
+    )}
+
+    (return &error)
+))
+
+(fn Parser/_loc [(&self (& Parser))] [(& Parser/Location)] (
+    {&loc : (& Parser/Location) = (Mem/alloc (sizeof Parser/Location))}
+    {Parser/Location @ &loc = (struct.new Parser/Location
+        {Parser @ &self . file_name}
+        {Parser @ &self . index}
+        1 ;; length
+        {Parser @ &self . line}
+        {Parser @ &self . col}
+    )}
+
+    (return &loc)
+))
