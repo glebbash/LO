@@ -23,7 +23,7 @@
 
 (struct Parser/CompileError
     (&message (& String))
-    (&loc (& Parser/Location))
+    (&loc (& Parser/Location)) ; TODO: need struct in struct
 )
 
 (struct Parser
@@ -56,10 +56,8 @@
 )
 
 (fn Parser/parse [(file_name (& StringSlice)) (script (& StringSlice))] [Parser/Result] (
-    {parser : Parser = (Parser/_new file_name script)}
-
     {&parser : (& Parser) = (Stack/alloc (sizeof Parser))}
-    {Parser @ &parser = parser}
+    {Parser @ &parser = (Parser/_new file_name script)}
 
     {result : Parser/Result = (Parser/_parse_all &parser)}
 
