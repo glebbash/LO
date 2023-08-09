@@ -45,11 +45,14 @@ async function runCommand() {
             })
         );
 
-        if (exitCode ?? 0 !== 0) {
+        if (exitCode !== 0) {
             throw new Error("Compilation failed, see compiler error above");
         }
 
         return readFile(stdoutFile);
+    }).catch((err) => {
+        console.error(err.message);
+        process.exit(1);
     });
 
     await runWASI(program, {
@@ -115,7 +118,7 @@ async function runWASI(data, wasiOptions) {
         wasi.getImportObject()
     );
 
-    wasi.start(instance);
+    return wasi.start(instance);
 }
 
 /**
