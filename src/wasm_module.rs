@@ -44,7 +44,7 @@ pub struct WasmExpr {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum WasmBinaryOpKind {
     I32Equals = 0x46,
     I32LessThenSigned = 0x48,
@@ -61,20 +61,20 @@ pub enum WasmBinaryOpKind {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum WasmLoadKind {
     I32 = 0x28,
     I32U8 = 0x2d,
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum WasmStoreKind {
     I32 = 0x36,
     I32U8 = 0x3A,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum WasmInstr {
     Unreachable,
     LoopBreak,
@@ -88,16 +88,29 @@ pub enum WasmInstr {
         lhs: Box<WasmInstr>,
         rhs: Box<WasmInstr>,
     },
-    StructLoad {
-        struct_name: String,
-        address_instr: Box<WasmInstr>,
-        primitive_loads: Vec<WasmInstr>,
-    },
+    // TODO: use single type for loads/gets?
     Load {
         kind: WasmLoadKind,
         align: u32,
         offset: u32,
         address_instr: Box<WasmInstr>,
+    },
+    StructLoad {
+        struct_name: String,
+        address_instr: Box<WasmInstr>,
+        base_byte_offset: u32,
+        primitive_loads: Vec<WasmInstr>,
+    },
+    LocalGet {
+        local_index: u32,
+    },
+    GlobalGet {
+        global_index: u32,
+    },
+    StructGet {
+        struct_name: String,
+        base_index: u32,
+        primitive_gets: Vec<WasmInstr>,
     },
     I32ConstLazy {
         value: Rc<RefCell<i32>>,
@@ -108,18 +121,9 @@ pub enum WasmInstr {
     I64Const {
         value: i64,
     },
-    LocalGet {
-        local_index: u32,
-    },
-    GlobalGet {
-        global_index: u32,
-    },
     Set {
         binds: Vec<WasmSetBind>,
         value: Box<WasmInstr>,
-    },
-    MultiValueEmit {
-        values: Vec<WasmInstr>,
     },
     Return {
         value: Box<WasmInstr>,
@@ -143,6 +147,9 @@ pub enum WasmInstr {
     IfSingleBranch {
         cond: Box<WasmInstr>,
         then_branch: Box<WasmInstr>,
+    },
+    MultiValueEmit {
+        values: Vec<WasmInstr>,
     },
     // will not be written to binary, used for types only
     NoEmit {
@@ -196,7 +203,7 @@ pub enum WasmData {
     Active { offset: WasmExpr, bytes: Vec<u8> },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum WasmSetBind {
     Local {
         index: u32,

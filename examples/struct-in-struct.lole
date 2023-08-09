@@ -1,0 +1,57 @@
+(mod lib/cli)
+
+(struct Point2D
+    (x i32)
+    (y i32)
+)
+
+(struct Rect
+    (tl Point2D)
+    (br Point2D)
+)
+
+(fn main [] [] (
+    {r : Rect = (struct.new Rect
+        (struct.new Point2D 1 2)
+        (struct.new Point2D 3 4)
+    )}
+
+    {br : Point2D = {r . br}}
+    (print_u32 {br . x})
+    (println)
+
+    (print_u32 {r . br . x})
+    (println)
+
+    {&r : (& Rect) = (Stack/alloc (sizeof Rect))}
+    {Rect @ &r = r}
+
+    {r2 : Rect = {Rect @ &r}}
+    (print_u32 {r2 . br . x})
+    (println)
+
+    {br2 : Point2D = {Rect @ &r . br}}
+    (print_u32 {br2 . x})
+    (println)
+
+    {&br : (& Point2D) = {&r + (sizeof Point2D)}}
+    (print_u32 {Point2D @ &br . x})
+    (println)
+
+    (print_u32 {Point2D @ {&r + (sizeof Point2D)} . x})
+    (println)
+
+    (print_u32 {Point2D @ &r @ (sizeof Point2D) . x})
+    (println)
+
+    (print_u32 {Rect @ &r . br . x})
+    (println)
+
+    ; TODO: throws TypeError
+    ; TODO: look into supporting nested references
+    ; {&br2 : (& Point2D) = {&r . br}}
+    ; (print_u32 {Point2D @ &br2 . x})
+    ; (println)
+
+    (Stack/free (sizeof Rect))
+))

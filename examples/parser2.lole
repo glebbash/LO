@@ -11,10 +11,10 @@
 (global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
 (global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
 
-(struct &Vec<SExpr> (actual (& Vec)))
+(struct Vec<SExpr> (actual Vec))
 
 (struct Parser/Location
-    (file_name (& StringSlice))
+    (file_name StringSlice)
     (offset u32)
     (length u32)
     (line u32)
@@ -22,13 +22,13 @@
 )
 
 (struct Parser/CompileError
-    (&message (& String))
-    (&loc (& Parser/Location)) ; TODO: need struct in struct
+    (message String)
+    (loc Parser/Location)
 )
 
 (struct Parser
-    (file_name (& StringSlice))
-    (chars (& StringSlice)) ; TODO: need struct in struct
+    (file_name StringSlice)
+    (chars StringSlice)
     (index u32)
     (line u32)
     (col u32)
@@ -41,21 +41,21 @@
 (enum Parser/SExpr
     (Atom
         (value (& String))
-        (kind u32) ; Parser/AtomKind ; TODO: need struct in struct
-        (loc (& Parser/Location)) ; TODO: need struct in struct
+        (kind Parser/AtomKind)
+        (loc Parser/Location)
     )
     (List
-        (value (& Vec)) ; &Vec<SExpr> ; TODO: need struct in struct
-        (loc (& Parser/Location)) ; TODO: need struct in struct
+        (value (& Vec<SExpr>))
+        (loc Parser/Location)
     )
 )
 
 (enum Parser/Result
-    (Ok (value (& Vec))) ; &Vec<SExpr> ; TODO: need struct in struct
+    (Ok (value (& Vec<SExpr>)))
     (Err (error (& Parser/CompileError)))
 )
 
-(fn Parser/parse [(file_name (& StringSlice)) (script (& StringSlice))] [Parser/Result] (
+(fn Parser/parse [(file_name StringSlice) (script StringSlice)] [Parser/Result] (
     {&parser : (& Parser) = (Stack/alloc (sizeof Parser))}
     {Parser @ &parser = (Parser/_new file_name script)}
 
@@ -65,7 +65,7 @@
     (return result)
 ))
 
-(fn Parser/_new [(file_name (& StringSlice)) (script (& StringSlice))] [Parser] (
+(fn Parser/_new [(file_name StringSlice) (script StringSlice)] [Parser] (
     (return (struct.new Parser
         file_name
         script
@@ -109,9 +109,9 @@
 ))
 
 (fn Parser/_current_char [(&self (& Parser))] [Parser/_CharAtResult] (
-    {&chars : (& StringSlice) = {Parser @ &self . chars}}
+    {chars : StringSlice = {Parser @ &self . chars}}
 
-    (if {Parser @ &self . index >= {StringSlice @ &chars . size}} (do
+    (if {Parser @ &self . index >= {chars . size}} (do
         (return (struct.new Parser/_CharAtResult
             false
             (Parser/_err_unexpected_char &self)))
@@ -119,33 +119,30 @@
 
     (return (struct.new Parser/_CharAtResult
         true
-        (StringSlice/char_at {StringSlice @ &chars} {Parser @ &self . index})))
+        (StringSlice/char_at chars {Parser @ &self . index})))
 ))
 
 (fn Parser/_err_unexpected_char [(&self (& Parser))] [(& Parser/CompileError)] (
     {&message : (& StringSlice) = (Mem/alloc (sizeof StringSlice))}
     {StringSlice @ &message = "Parser: Unexpected character"}
 
-    {&loc : (& Parser/Location) = (Parser/_loc &self)}
+    {loc : Parser/Location = (Parser/_loc &self)}
 
     {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
     {Parser/CompileError @ &error = (struct.new Parser/CompileError
-        &message
-        &loc
+        &message ; TODO: this needs to be &String, not &StringSlice
+        loc
     )}
 
     (return &error)
 ))
 
-(fn Parser/_loc [(&self (& Parser))] [(& Parser/Location)] (
-    {&loc : (& Parser/Location) = (Mem/alloc (sizeof Parser/Location))}
-    {Parser/Location @ &loc = (struct.new Parser/Location
+(fn Parser/_loc [(&self (& Parser))] [Parser/Location] (
+    (return (struct.new Parser/Location
         {Parser @ &self . file_name}
         {Parser @ &self . index}
         1 ; length
         {Parser @ &self . line}
         {Parser @ &self . col}
-    )}
-
-    (return &loc)
+    ))
 ))

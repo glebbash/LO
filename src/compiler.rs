@@ -36,11 +36,12 @@ pub struct StructDef {
 #[derive(Clone)]
 pub struct StructField {
     pub name: String,
-    pub value_type: WasmValueType,
+    pub value_type: LoleValueType,
     pub field_index: u32,
     pub byte_offset: u32,
 }
 
+#[derive(Clone, Debug)]
 pub enum LoleValueType {
     Primitive(WasmValueType),
     StructInstance { name: String },
@@ -347,7 +348,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     }
 
                     let value_type = LoleValueType::parse(p_type, &ctx)?;
-                    let comp_count = emit_value_components(&value_type, &ctx, &mut inputs);
+                    let comp_count = value_type.emit_components(&ctx, &mut inputs);
 
                     locals.insert(
                         p_name.clone(),
@@ -363,7 +364,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 let mut outputs = vec![];
                 for output_type in output_exprs {
                     let value_type = LoleValueType::parse(output_type, &ctx)?;
-                    emit_value_components(&value_type, &ctx, &mut outputs);
+                    value_type.emit_components(&ctx, &mut outputs);
                 }
 
                 ctx.wasm_module.types.push(WasmFnType { inputs, outputs });
@@ -457,7 +458,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     }
 
                     let value_type = LoleValueType::parse(p_type, &ctx)?;
-                    emit_value_components(&value_type, &ctx, &mut inputs);
+                    value_type.emit_components(&ctx, &mut inputs);
 
                     param_names.insert(p_name.clone());
                 }
@@ -465,7 +466,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 let mut outputs = vec![];
                 for output_type in output_exprs {
                     let value_type = LoleValueType::parse(output_type, &ctx)?;
-                    emit_value_components(&value_type, &ctx, &mut outputs);
+                    value_type.emit_components(&ctx, &mut outputs);
                 }
 
                 let type_index = ctx.wasm_module.types.len() as u32;
@@ -599,15 +600,15 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         fields: vec![
                             StructField {
                                 name: String::from("kind"),
-                                value_type: WasmValueType::I32,
+                                value_type: LoleValueType::Primitive(WasmValueType::I32),
                                 field_index: 0,
                                 byte_offset: 0,
                             },
                             StructField {
                                 name: String::from("ref"),
-                                value_type: WasmValueType::I32,
+                                value_type: LoleValueType::Primitive(WasmValueType::I32),
                                 field_index: 1,
-                                byte_offset: WasmValueType::I32.byte_size().unwrap(),
+                                byte_offset: WasmValueType::I32.byte_length().unwrap(),
                             },
                         ],
                     },
@@ -752,7 +753,15 @@ fn parse_struct_field_defs(
             });
         }
 
-        let value_type = WasmValueType::parse(f_type, ctx)?;
+        let value_type = LoleValueType::parse(f_type, ctx)?;
+
+        let mut stats = EmitComponentStats::default();
+        value_type
+            .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
+            .map_err(|err| CompileError {
+                message: err,
+                loc: f_type.loc().clone(),
+            })?;
 
         fields.push(StructField {
             name: f_name.clone(),
@@ -761,35 +770,10 @@ fn parse_struct_field_defs(
             byte_offset,
         });
 
-        field_index += 1;
-        byte_offset += value_type.byte_size().map_err(|err| CompileError {
-            message: err,
-            loc: f_type.loc().clone(),
-        })?;
+        field_index += stats.count;
+        byte_offset += stats.byte_length;
     }
     Ok(fields)
-}
-
-pub fn emit_value_components(
-    value_type: &LoleValueType,
-    ctx: &ModuleContext,
-    components: &mut Vec<WasmValueType>,
-) -> u32 {
-    match value_type {
-        LoleValueType::Primitive(value_type) => {
-            components.push(*value_type);
-            1
-        }
-        LoleValueType::StructInstance { name } => {
-            let fields = &ctx.struct_defs.get(name).unwrap().fields;
-
-            for field in fields {
-                components.push(field.value_type);
-            }
-
-            fields.len() as u32
-        }
-    }
 }
 
 fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileError> {
@@ -852,23 +836,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 });
             };
 
-            if let LoleValueType::StructInstance { name } = &local.value_type {
-                let struct_def = ctx.module.struct_defs.get(name).unwrap();
-
-                let mut values = vec![];
-
-                for field_offset in 0..struct_def.fields.len() {
-                    values.push(WasmInstr::LocalGet {
-                        local_index: local.index + field_offset as u32,
-                    });
-                }
-
-                return Ok(WasmInstr::MultiValueEmit { values });
-            }
-
-            return Ok(WasmInstr::LocalGet {
-                local_index: local.index,
-            });
+            return Ok(build_local_get(ctx.module, local.index, &local.value_type));
         }
     };
 
@@ -1017,7 +985,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 kind: AtomKind::Symbol,
             }, address_expr],
         ) => {
-            let Some(struct_def) = ctx.module.struct_defs.get(load_kind) else {
+            let address_instr = Box::new(parse_instr(address_expr, ctx)?);
+
+            let Some(_) = ctx.module.struct_defs.get(load_kind) else {
                 return Ok(WasmInstr::Load {
                     kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
                         message: e,
@@ -1025,38 +995,22 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     })?,
                     align: 0,
                     offset: 0,
-                    address_instr: Box::new(parse_instr(address_expr, ctx)?),
+                    address_instr,
                 })
             };
-            let struct_name = load_kind;
 
-            let address_instr = Box::new(parse_instr(address_expr, ctx)?);
-
-            let mut offset = 0;
-            let mut primitive_loads = Vec::<WasmInstr>::with_capacity(struct_def.fields.len());
-
-            for field in &struct_def.fields {
-                primitive_loads.push(WasmInstr::Load {
-                    kind: WasmLoadKind::from_value_type(&field.value_type).map_err(|e| {
-                        CompileError {
-                            message: e,
-                            loc: op_loc.clone(),
-                        }
-                    })?,
-                    align: 1,
-                    offset,
-                    address_instr: address_instr.clone(),
-                });
-
-                // safe to unwrap because of `WasmLoadKind::from_value_type` check
-                offset += field.value_type.byte_size().unwrap();
-            }
-
-            WasmInstr::StructLoad {
-                struct_name: struct_name.clone(),
+            build_load(
+                ctx.module,
+                &LoleValueType::StructInstance {
+                    name: load_kind.clone(),
+                },
                 address_instr,
-                primitive_loads,
-            }
+                0,
+            )
+            .map_err(|err| CompileError {
+                message: err,
+                loc: op_loc.clone(),
+            })?
         }
         ("@" | "load", [load, offset]) => {
             let load_instr = parse_instr(load, ctx)?;
@@ -1078,6 +1032,43 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                         rhs: Box::new(offset_instr),
                     }),
                 },
+                // TODO: this is like real mess
+                WasmInstr::StructLoad {
+                    struct_name,
+                    address_instr,
+                    primitive_loads,
+                    base_byte_offset,
+                } => {
+                    let new_address = Box::new(WasmInstr::BinaryOp {
+                        kind: WasmBinaryOpKind::I32Add,
+                        lhs: address_instr,
+                        rhs: Box::new(offset_instr),
+                    });
+
+                    WasmInstr::StructLoad {
+                        struct_name,
+                        address_instr: new_address.clone(),
+                        base_byte_offset,
+                        primitive_loads: primitive_loads
+                            .into_iter()
+                            .map(|load_instr| {
+                                let WasmInstr::Load {
+                                kind,
+                                align,
+                                offset,
+                                ..
+                            } = load_instr else { unreachable!() };
+
+                                WasmInstr::Load {
+                                    kind,
+                                    align,
+                                    offset,
+                                    address_instr: new_address.clone(),
+                                }
+                            })
+                            .collect(),
+                    }
+                }
                 _ => {
                     return Err(CompileError {
                         message: format!("Invalid arguments for {op}"),
@@ -1094,7 +1085,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 kind: AtomKind::Symbol,
             }, values @ ..],
         ) => {
-            let Some(struct_def) = ctx.module.struct_defs.get(s_name) else {
+            let Some(_) = ctx.module.struct_defs.get(s_name) else {
                 return Err(CompileError {
                     message: format!("Unknown struct encountered in {op}: {s_name}"),
                     loc: name_loc.clone(),
@@ -1102,14 +1093,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             };
 
             let value_instrs = parse_instrs(values, ctx)?;
-
-            // TODO(perf): check if this is doing duplicate work
             let value_types = get_types(ctx, &value_instrs)?;
-            let field_types = struct_def
-                .fields
-                .iter()
-                .map(|f| f.value_type)
-                .collect::<Vec<_>>();
+
+            let mut field_types = vec![];
+            LoleValueType::StructInstance {
+                name: s_name.clone(),
+            }
+            .emit_components(ctx.module, &mut field_types);
 
             if value_types != field_types {
                 return Err(CompileError {
@@ -1148,10 +1138,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             let value_type = LoleValueType::parse(type_expr, ctx.module)?;
 
             WasmInstr::I32Const {
-                value: value_type.byte_size(ctx.module).map_err(|e| CompileError {
-                    message: e,
-                    loc: type_expr.loc().clone(),
-                })? as i32,
+                value: value_type
+                    .sized_comp_stats(ctx.module)
+                    .map_err(|err| CompileError {
+                        message: err,
+                        loc: op_loc.clone(),
+                    })?
+                    .byte_length as i32,
             }
         }
         (
@@ -1179,8 +1172,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             let value_type = LoleValueType::parse(value_type, ctx.module)?;
 
             let start_index = ctx.locals_last_index;
-            let comp_count =
-                emit_value_components(&value_type, &ctx.module, &mut ctx.non_arg_locals);
+            let comp_count = value_type.emit_components(&ctx.module, &mut ctx.non_arg_locals);
 
             ctx.locals_last_index += comp_count;
             ctx.locals.insert(
@@ -1233,23 +1225,87 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 kind: AtomKind::Symbol,
             }],
         ) => {
-            let SExpr::Atom {
+            if let SExpr::Atom {
                 value: local_name,
                 loc: name_loc,
                 kind: AtomKind::Symbol,
-            } = lhs else {
-                let lhs_instr = parse_instr(lhs, ctx)?;
-
-                let WasmInstr::StructLoad { struct_name, address_instr, .. } = lhs_instr else {
+            } = lhs
+            {
+                if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                     return Err(CompileError {
-                        message: format!("Invalid arguments for {op}"),
-                        loc: op_loc.clone(),
+                        message: format!("Getting struct field from global variable: {local_name}"),
+                        loc: name_loc.clone(),
                     });
                 };
 
-                // safe to unwrap as it was already checked in `StructLoad`
+                let Some(local) = ctx.locals.get(local_name.as_str()) else {
+                    return Err(CompileError {
+                        message: format!("Reading unknown variable: {local_name}"),
+                        loc: name_loc.clone(),
+                    });
+                };
+
+                let LoleValueType::StructInstance { name: s_name } = &local.value_type else {
+                    return Err(CompileError {
+                        message: format!("Trying to get field '{f_name}' on non struct: {local_name}"),
+                        loc: f_name_loc.clone(),
+                    });
+                };
+
+                let struct_def = match ctx.module.struct_defs.get(s_name) {
+                    Some(struct_def) => struct_def,
+                    None => {
+                        return Err(CompileError {
+                            message: format!("Unknown struct in get: {s_name}"),
+                            loc: name_loc.clone(),
+                        })
+                    }
+                };
+
+                let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
+                    return Err(CompileError {
+                        message: format!("Unknown field {f_name} in struct {s_name}"),
+                        loc: f_name_loc.clone(),
+                    });
+                };
+
+                return Ok(build_local_get(
+                    ctx.module,
+                    local.index + field.field_index,
+                    &field.value_type,
+                ));
+            }
+
+            let lhs_instr = parse_instr(lhs, ctx)?;
+
+            if let WasmInstr::StructGet {
+                struct_name,
+                base_index,
+                ..
+            } = lhs_instr
+            {
+                // safe to unwrap as it was already checked in `StructGet`
                 let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
 
+                let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
+                        return Err(CompileError {
+                            message: format!("Unknown field {f_name} in struct {struct_name}"),
+                            loc: f_name_loc.clone(),
+                        });
+                    };
+
+                return Ok(build_local_get(ctx.module, base_index, &field.value_type));
+            };
+
+            if let WasmInstr::StructLoad {
+                struct_name,
+                address_instr,
+                base_byte_offset,
+                ..
+            } = lhs_instr
+            {
+                // safe to unwrap as it was already checked in `StructLoad`
+                let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
 
                 let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
                     return Err(CompileError {
@@ -1258,60 +1314,22 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     });
                 };
 
-                return Ok(WasmInstr::Load {
-                    kind: WasmLoadKind::from_value_type(&field.value_type).map_err(|e| {
-                        CompileError {
-                            message: e,
-                            loc: op_loc.clone(),
-                        }
-                    })?,
-                    align: 1,
-                    offset: field.byte_offset,
-                    address_instr
+                return build_load(
+                    ctx.module,
+                    &field.value_type,
+                    address_instr,
+                    base_byte_offset + field.byte_offset,
+                )
+                .map_err(|e| CompileError {
+                    message: e,
+                    loc: op_loc.clone(),
                 });
-            };
-
-            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                return Err(CompileError {
-                    message: format!("Getting struct field from global variable: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            };
-
-            let Some(local) = ctx.locals.get(local_name.as_str()) else {
-                return Err(CompileError {
-                    message: format!("Reading unknown variable: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            };
-
-            let LoleValueType::StructInstance { name: s_name } = &local.value_type else {
-                return Err(CompileError {
-                    message: format!("Trying to get field '{f_name}' on non struct: {local_name}"),
-                    loc: f_name_loc.clone(),
-                });
-            };
-
-            let struct_def = match ctx.module.struct_defs.get(s_name) {
-                Some(struct_def) => struct_def,
-                None => {
-                    return Err(CompileError {
-                        message: format!("Unknown struct in get: {s_name}"),
-                        loc: name_loc.clone(),
-                    })
-                }
-            };
-
-            let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                return Err(CompileError {
-                    message: format!("Unknown field {f_name} in struct {s_name}"),
-                    loc: f_name_loc.clone(),
-                });
-            };
-
-            WasmInstr::LocalGet {
-                local_index: local.index + field.field_index,
             }
+
+            return Err(CompileError {
+                message: format!("Invalid arguments for {op}"),
+                loc: op_loc.clone(),
+            });
         }
         ("do", exprs) => WasmInstr::MultiValueEmit {
             values: parse_instrs(exprs, ctx)?,
@@ -1333,6 +1351,67 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
     };
 
     Ok(instr)
+}
+
+fn build_load(
+    ctx: &ModuleContext,
+    value_type: &LoleValueType,
+    address_instr: Box<WasmInstr>,
+    base_byte_offset: u32,
+) -> Result<WasmInstr, String> {
+    let mut components = vec![];
+    let mut stats = EmitComponentStats {
+        count: 0,
+        byte_length: base_byte_offset,
+    };
+
+    value_type.emit_sized_component_stats(ctx, &mut stats, &mut components)?;
+
+    let mut primitive_loads = vec![];
+    for comp in components.into_iter() {
+        primitive_loads.push(WasmInstr::Load {
+            kind: WasmLoadKind::from_value_type(&comp.value_type)?,
+            align: 1,
+            offset: comp.byte_offset,
+            address_instr: address_instr.clone(),
+        });
+    }
+
+    Ok(match value_type {
+        LoleValueType::Primitive(_) => primitive_loads.into_iter().next().unwrap(),
+        LoleValueType::StructInstance { name } => WasmInstr::StructLoad {
+            struct_name: name.clone(),
+            address_instr,
+            base_byte_offset,
+            primitive_loads,
+        },
+    })
+}
+
+fn build_local_get(ctx: &ModuleContext, base_index: u32, value_type: &LoleValueType) -> WasmInstr {
+    let comp_count = value_type.emit_components(ctx, &mut vec![]);
+    if comp_count == 1 {
+        return WasmInstr::LocalGet {
+            local_index: base_index,
+        };
+    }
+
+    let LoleValueType::StructInstance { name } = value_type else {
+        unreachable!()
+    };
+
+    let mut primitive_gets = vec![];
+    for field_index in 0..comp_count {
+        primitive_gets.push(WasmInstr::LocalGet {
+            local_index: base_index + field_index as u32,
+        });
+    }
+
+    WasmInstr::StructGet {
+        struct_name: name.clone(),
+        base_index,
+        primitive_gets,
+    }
 }
 
 fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, CompileError> {
@@ -1445,10 +1524,16 @@ fn extract_set_binds(
                 value_local_index,
             });
         }
+        // TODO: improve this? (StructLoad/StructGet/MultiValueEmit/NoEmit)
         WasmInstr::StructLoad {
             primitive_loads, ..
         } => {
             for value in primitive_loads {
+                extract_set_binds(output, ctx, value, bind_loc)?;
+            }
+        }
+        WasmInstr::StructGet { primitive_gets, .. } => {
+            for value in primitive_gets {
                 extract_set_binds(output, ctx, value, bind_loc)?;
             }
         }
@@ -1467,6 +1552,17 @@ fn extract_set_binds(
             });
         }
     })
+}
+
+struct ValueComponent {
+    byte_offset: u32,
+    value_type: Rc<WasmValueType>,
+}
+
+#[derive(Default)]
+struct EmitComponentStats {
+    count: u32,
+    byte_length: u32,
 }
 
 // types
@@ -1489,17 +1585,60 @@ impl LoleValueType {
         }
     }
 
-    fn byte_size(&self, ctx: &ModuleContext) -> Result<u32, String> {
+    fn sized_comp_stats(&self, ctx: &ModuleContext) -> Result<EmitComponentStats, String> {
+        let mut stats = EmitComponentStats::default();
+        self.emit_sized_component_stats(ctx, &mut stats, &mut Default::default())?;
+
+        Ok(stats)
+    }
+
+    fn emit_sized_component_stats(
+        &self,
+        ctx: &ModuleContext,
+        stats: &mut EmitComponentStats,
+        components: &mut Vec<ValueComponent>,
+    ) -> Result<(), String> {
         match self {
-            Self::Primitive(primitive) => primitive.byte_size(),
+            Self::Primitive(primitive) => {
+                let component = ValueComponent {
+                    byte_offset: stats.byte_length,
+                    value_type: Rc::new(*primitive),
+                };
+
+                stats.count += 1;
+                stats.byte_length += primitive.byte_length()?;
+                components.push(component);
+            }
             Self::StructInstance { name } => {
+                // safe, validation is done when creating StructInstance
                 let struct_def = ctx.struct_defs.get(name).unwrap();
 
-                let mut size = 0;
                 for field in &struct_def.fields {
-                    size += Self::Primitive(field.value_type).byte_size(ctx)?;
+                    field
+                        .value_type
+                        .emit_sized_component_stats(ctx, stats, components)?;
                 }
-                Ok(size)
+            }
+        };
+        Ok(())
+    }
+
+    fn emit_components(&self, ctx: &ModuleContext, components: &mut Vec<WasmValueType>) -> u32 {
+        match self {
+            LoleValueType::Primitive(value_type) => {
+                components.push(*value_type);
+                1
+            }
+            LoleValueType::StructInstance { name } => {
+                // safe, validation is done when creating StructInstance
+                let struct_def = ctx.struct_defs.get(name).unwrap();
+                let mut count = 0;
+
+                for field in &struct_def.fields {
+                    count += field.value_type.emit_components(ctx, components);
+                }
+
+                count
             }
         }
     }
@@ -1547,7 +1686,7 @@ impl WasmValueType {
         })
     }
 
-    fn byte_size(&self) -> Result<u32, String> {
+    fn byte_length(&self) -> Result<u32, String> {
         Ok(match self {
             Self::I32 | Self::F32 => 4,
             Self::I64 | Self::F64 => 8,
@@ -1618,4 +1757,18 @@ fn base64_decode(input: &[u8]) -> Vec<u8> {
     }
 
     output
+}
+
+#[allow(dead_code)]
+fn debug(msg: String) {
+    unsafe {
+        wasi::fd_write(
+            wasi::FD_STDERR,
+            &[wasi::Ciovec {
+                buf: msg.as_ptr(),
+                buf_len: msg.as_bytes().len(),
+            }],
+        )
+        .unwrap();
+    }
 }

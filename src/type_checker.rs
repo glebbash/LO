@@ -9,11 +9,11 @@ pub fn get_types(
     ctx: &FnContext,
     instrs: &Vec<WasmInstr>,
 ) -> Result<Vec<WasmValueType>, CompileError> {
-    instrs
-        .iter()
-        .map(|v| get_type(ctx, v))
-        .collect::<Result<Vec<_>, _>>()
-        .map(|ts| ts.into_iter().flatten().collect())
+    let mut types = vec![];
+    for instr in instrs {
+        types.append(&mut get_type(ctx, instr)?);
+    }
+    Ok(types)
 }
 
 pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>, CompileError> {
@@ -28,6 +28,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::StructLoad {
             primitive_loads, ..
         } => get_types(ctx, primitive_loads)?,
+        WasmInstr::StructGet { primitive_gets, .. } => get_types(ctx, primitive_gets)?,
         WasmInstr::NoEmit { instr } => get_type(ctx, instr)?,
 
         // type checked in the complier:
