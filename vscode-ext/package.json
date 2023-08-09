@@ -2,7 +2,7 @@
   "name": "lole-lisp",
   "displayName": "lole-lisp",
   "description": "lole-lisp language support",
-  "version": "0.0.32",
+  "version": "0.0.35",
   "engines": {
     "vscode": "^1.81.0"
   },

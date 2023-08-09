@@ -37,7 +37,7 @@
 				},
                 {
                     "name": "entity.name.type.lole-lisp",
-                    "match": "\\b([A-Z][A-Za-z_]*\\/)*[A-Z][A-Za-z0-9_]*\\b"
+                    "match": "\\b(_*[A-Z][A-Za-z_]*\\/)*_*[A-Z][A-Za-z0-9_]*\\b"
                 }
             ]
         },
@@ -65,7 +65,11 @@
 			    },
                 {
                     "name": "keyword.operator.lole-lisp",
-                    "match": "(=|==|!|!=|&&|&|\\.|>=|<=|>|<|:|\\+|-|\\*|\\/|&(?!\b)|@|\\|\\|)"
+                    "match": "(=|==|!|!=|&&|\\.|>=|<=|>|<|:|\\+|-|\\*|\\/|@|\\|\\|)"
+                },
+                {
+                    "name": "keyword.operator.lole-lisp",
+                    "match": "(&)\\s"
                 }
             ]
 		},
