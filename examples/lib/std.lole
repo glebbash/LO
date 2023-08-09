@@ -197,6 +197,12 @@
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
         (return {i32/u8 @ {self . data} @ index})
     ))
+
+    (fn String/from_slice [(str StringSlice)] [(& String)] (
+        {&string : (& String) = (Vec/new {str . size} 1)}
+        (Vec/push_all &string str)
+        (return &string)
+    ))
 ; </string>
 
 ; <conversions>

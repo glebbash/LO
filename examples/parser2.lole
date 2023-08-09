@@ -123,17 +123,11 @@
 ))
 
 (fn Parser/_err_unexpected_char [(&self (& Parser))] [(& Parser/CompileError)] (
-    {&message : (& String) = (Vec/new (sizeof StringSlice) 1)}
-    (Vec/push_all &message "Parser: Unexpected character")
-
-    {loc : Parser/Location = (Parser/_loc &self)}
-
     {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
     {Parser/CompileError @ &error = (struct.new Parser/CompileError
-        &message
-        loc
+        (String/from_slice "Parser: Unexpected character")
+        (Parser/_loc &self)
     )}
-
     (return &error)
 ))
 
