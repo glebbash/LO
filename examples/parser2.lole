@@ -22,7 +22,7 @@
 )
 
 (struct Parser/CompileError
-    (message String)
+    (message (& String))
     (loc Parser/Location)
 )
 
@@ -123,14 +123,14 @@
 ))
 
 (fn Parser/_err_unexpected_char [(&self (& Parser))] [(& Parser/CompileError)] (
-    {&message : (& StringSlice) = (Mem/alloc (sizeof StringSlice))}
-    {StringSlice @ &message = "Parser: Unexpected character"}
+    {&message : (& String) = (Vec/new (sizeof StringSlice) 1)}
+    (Vec/push_all &message "Parser: Unexpected character")
 
     {loc : Parser/Location = (Parser/_loc &self)}
 
     {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
     {Parser/CompileError @ &error = (struct.new Parser/CompileError
-        &message ; TODO: this needs to be &String, not &StringSlice
+        &message
         loc
     )}
 
