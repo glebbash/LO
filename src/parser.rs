@@ -177,15 +177,17 @@ impl Parser {
     fn next_char(&mut self) {
         self.index += 1;
 
-        if let Ok(char) = self.current_char() {
-            if char == '\n' {
-                self.col = 0;
-                self.line += 1;
-                return;
-            }
+        let Ok(char) = self.current_char() else {
+            return;
+        };
 
-            self.col += 1;
+        if char == '\n' {
+            self.col = 0;
+            self.line += 1;
+            return;
         }
+
+        self.col += 1;
     }
 
     fn current_char(&mut self) -> Result<char, CompileError> {
@@ -223,7 +225,7 @@ impl Parser {
 fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: Location) -> ParseResult {
     if items.len() % 2 != 1 {
         return Err(CompileError {
-            message: format!("Invalid m-expr: even length"),
+            message: format!("ParseError: Invalid m-expr: even length"),
             loc,
         });
     }
@@ -245,10 +247,12 @@ fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> SExpr {
 
     let rhs = items.pop().unwrap();
     let op = items.pop().unwrap();
+    let lhs = m_expr_to_s_expr(items, loc.clone());
 
-    let value = vec![op, m_expr_to_s_expr(items, loc.clone()), rhs];
-
-    SExpr::List { value, loc }
+    SExpr::List {
+        value: vec![op, lhs, rhs],
+        loc,
+    }
 }
 
 fn is_list_start(c: char) -> bool {
