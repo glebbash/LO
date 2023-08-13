@@ -2,25 +2,40 @@
 (mod lib/wasi_io)
 (mod parser)
 
-(struct (& Vec)<Parser/SExpr> (actual (& Vec)))
+; this program expects host to preopen "." on fd 3
+(global CWD_PREOPEN_FD u32 3)
+
+(struct Vec<Parser/SExpr> (actual Vec))
 
 (fn main [] [] (
-    {&source : (& String) = (fd_read_all FD_STDIN)}
-
-    {parse_res : Parser/ParseResult}
-    {parse_res = (Parser/parse (Vec/as_slice &source))}
+    {fd : u32 = (fd_open "42.lole")}
+    {&source : (& String) = (fd_read_all fd)}
+    {parse_res : Parser/ParseResult = (Parser/parse (Vec/as_slice &source))}
 
     (if (not {parse_res . ok}) (do
+        {pos : Parser/Position = (Parser/index_to_position
+            (Vec/as_slice &source) {parse_res . index})}
+
+        (if {parse_res . data == Parser/ParseError/UNEXPECTED_EOF} (do
+            (print_str_slice "ParseError: Unexpected EOF at line ")
+        ))
+        (if {parse_res . data == Parser/ParseError/UNEXPECTED_CHAR} (do
+            (print_str_slice "ParseError: Unexpected char at line ")
+        ))
+        (print_u32 {pos . line})
+        (print_str_slice ", col ")
+        (print_u32 {pos . col})
+        (print_str_slice "\n")
         (return (proc_exit 1))
     ))
 
-    {&exprs : (& Vec)<Parser/SExpr> = {parse_res . data}}
+    {&exprs : (& Vec<Parser/SExpr>) = {parse_res . data}}
 
     (dump_exprs &exprs)
     (println)
 ))
 
-(fn dump_exprs [(&exprs (& Vec)<Parser/SExpr>)] [] (
+(fn dump_exprs [(&exprs (& Vec<Parser/SExpr>))] [] (
     {i : u32 = 0}
 
     (loop (
@@ -28,25 +43,48 @@
             (break)
         )
 
-        {expr : Parser/SExpr}
-        {expr = {Parser/SExpr @ (Vec/at &exprs i)}}
-        (dump_expr expr)
+        (dump_expr {Parser/SExpr @ (Vec/at &exprs i)})
 
-        (if {i != {(Vec/len &exprs) - 1}}
-            (print_char 32)
-        )
+        (if {i != {(Vec/len &exprs) - 1}} (do
+            (print_char (char_code " "))
+        ))
 
         {i = {i + 1}}
     ))
 ))
 
 (fn dump_expr [(expr Parser/SExpr)] [] (
-    (if {expr . kind == Parser/SExpr/Atom} (do
+    (if {expr . kind == Parser/SExpr/ATOM} (do
         (print_str {expr . data})
         (return)
     ))
 
-    (print_char 40)
+    (print_char (char_code "("))
     (dump_exprs {expr . data})
-    (print_char 41)
+    (print_char (char_code ")"))
+))
+
+(fn fd_open [(file_path StringSlice)] [u32] (
+    {&fd : (& u32) = (Stack/alloc (sizeof u32))}
+
+    {err : WasiErr = (path_open
+        CWD_PREOPEN_FD 0
+        file_path 0 (i64 2) (i64 0) 0
+        &fd
+    )}
+    (if {err != 0} (do
+        (Stack/free (sizeof u32))
+
+        (print_str_slice "Error: cannot read file: ")
+        (print_str_slice file_path)
+        (println)
+        (proc_exit 1)
+
+        (return 0)
+    ))
+
+    {fd : u32 = {i32 @ &fd}}
+    (Stack/free (sizeof u32))
+
+    (return fd)
 ))

@@ -150,7 +150,19 @@
         )
     ))
 
-    ; TODO: do not realloc if length is equal to capacity
+    (fn Vec/push_undef [(&self (& Vec))] [ptr] (
+        {Vec @ &self . length = {Vec @ &self . length + 1}}
+
+        (Vec/grow_if_needed &self)
+
+        (return (Vec/at &self {Vec @ &self . length - 1}))
+    ))
+
+    (fn Parser/pop_unchecked [(&self (& Vec))] [ptr] (
+        {Vec @ &self . length = {Vec @ &self . length - 1}}
+        (return (Vec/at &self {(Vec/len &self) - 1}))
+    ))
+
     (fn Vec/grow_if_needed [(&self (& Vec))] [] (
         (if {Vec @ &self . length != {Vec @ &self . capacity}} (do
             (return)
@@ -184,7 +196,7 @@
     ))
 
     (fn Vec/at [(&self (& Vec)) (index u32)] [u32] (
-        (return {Vec @ &self . data_ref @ {index * {Vec @ &self . item_size}}})
+        (return {Vec @ &self . data_ref + {index * {Vec @ &self . item_size}}})
     ))
 
 ; string
@@ -209,14 +221,14 @@
         {&output : (& String) = (Vec/new 32 1)}
 
         (if {input == 0} (do
-            (Vec/push_u8 &output 48)
+            (Vec/push_u8 &output (char_code "0"))
             (return &output)
         ))
 
         (loop (
             {rem : u32 = {input % 10}}
 
-            (Vec/push_u8 &output {48 + rem})
+            (Vec/push_u8 &output {(char_code "0") + rem})
             {input = {input / 10}}
 
             (if {input == 0} (break))

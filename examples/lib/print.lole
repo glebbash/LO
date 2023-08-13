@@ -7,7 +7,7 @@
 ))
 
 (fn println [] [] (
-    (print_char 10) ; \n
+    (print_char (char_code "\n"))
 ))
 
 (fn print_char [(char u8)] [] (

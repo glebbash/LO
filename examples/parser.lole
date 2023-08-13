@@ -224,10 +224,10 @@
     })
 ))
 
-(struct Position (line u32) (col u32))
+(struct Parser/Position (line u32) (col u32))
 
-(fn Parser/index_to_position [(chars StringSlice) (index u32)] [Position] (
-    {pos : Position = (do 1 1)}
+(fn Parser/index_to_position [(chars StringSlice) (index u32)] [Parser/Position] (
+    {pos : Parser/Position = (do 1 1)}
 
     {char_index : u32 = 0}
     (loop (
