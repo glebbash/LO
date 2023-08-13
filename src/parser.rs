@@ -159,19 +159,20 @@ impl Parser {
             self.next_char();
         }
 
-        if let Ok(';') = self.current_char() {
+        let Ok(';') = self.current_char() else {
+            return;
+        };
+        self.next_char();
+
+        while self.current_char().map(|c| c != '\n').unwrap_or(false) {
             self.next_char();
-
-            while self.current_char().map(|c| c != '\n').unwrap_or(false) {
-                self.next_char();
-            }
-
-            if let Ok('\n') = self.current_char() {
-                self.next_char();
-            }
-
-            self.skip_space();
         }
+
+        if let Ok('\n') = self.current_char() {
+            self.next_char();
+        }
+
+        self.skip_space();
     }
 
     fn next_char(&mut self) {
