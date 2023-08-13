@@ -888,6 +888,16 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 loc: loc.clone(),
             })? as i64,
         },
+        (
+            "char_code",
+            [SExpr::Atom {
+                value,
+                kind: AtomKind::String,
+                ..
+            }],
+        ) => WasmInstr::I32Const {
+            value: value.chars().next().unwrap() as i32,
+        },
         ("i32.eq" | "==", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(parse_instr(lhs, ctx)?),

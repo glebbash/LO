@@ -254,14 +254,14 @@ test("compiles parser", async () => {
     }
 
     {
-        const parserSource = await readFile("examples/parser.lole", {
+        const testSource = await readFile("examples/enums.lole", {
             encoding: "utf8",
         });
 
-        const [ok, index, data] = await parseAll(parser, parserSource);
+        const [ok, index, data] = await parseAll(parser, testSource);
 
         assert.equal(ok, 1);
-        assert.equal(index, parserSource.length);
+        assert.equal(index, testSource.length);
         assert(data > 0);
     }
 

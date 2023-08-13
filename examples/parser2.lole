@@ -3,14 +3,6 @@
 ; for testing:
 (mod lib/cli) (fn main [] [] ())
 
-(global CHAR_TAB       u8 009)
-(global CHAR_NEWLINE   u8 010)
-(global CHAR_SPACE     u8 032)
-(global CHAR_SEMICOLON u8 059)
-(global CHAR_LPAREN u8 040) (global CHAR_RPAREN u8 041)
-(global CHAR_LCURLY u8 123) (global CHAR_RCURLY u8 125)
-(global CHAR_LBRACK u8 091) (global CHAR_RBRACK u8 093)
-
 (struct Vec<SExpr> (actual Vec))
 
 (struct Parser/Location
@@ -102,9 +94,9 @@
 
 (fn Parser/_is_space [(char u8)] [bool] (
     (return {
-        {char == CHAR_SPACE} ||
-        {char == CHAR_NEWLINE} ||
-        {char == CHAR_TAB}
+        {char == (char_code " ")} ||
+        {char == (char_code "\n")} ||
+        {char == (char_code "\t")}
     })
 ))
 
