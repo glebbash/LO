@@ -199,85 +199,30 @@ test("compiles struct-in-struct", async () => {
     assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n3\n");
 });
 
-test("compiles parser", async () => {
-    const output = await compile("./examples/parser.test.lole");
+test("compiles minify", async () => {
+    const testSource = `
+        ; std + wasi
+        (mod lib/cli)
 
-    const parser = await loadWasm(output);
+        (fn main [] [] (
+            (print_str_slice "Hello World!\n")
+        ))
+        `;
 
-    {
-        const text = new TextEncoder().encode("   hello\nawdawdfad\naxwadada");
-        const data = storeData(
-            parser.memory,
-            parser.alloc(text.byteLength),
-            text
-        );
+    const program = await compile("./examples/minify.lole");
 
-        assert.deepEqual(parser.char_at(data.ptr, data.size, 3), [1, 104]);
-        assert.deepEqual(parser.char_at(data.ptr, data.size, 10000), [0, 0]);
-
-        assert.equal(parser.skip_space(data.ptr, data.size, 0), 3);
-
-        assert.deepEqual(parser.char_at(data.ptr, data.size, 20), [1, 120]);
-        assert.deepEqual(
-            parser.index_to_position(data.ptr, data.size, 20),
-            [3, 2]
-        );
-    }
-
-    {
-        const [ok, index, expr_ref] = await parseExpr(parser, "abc");
-        assert.deepEqual([ok, index], [1, 3]);
-
-        const mem = parser.memory.buffer;
-
-        const [expr_type, atom_ref] = u32s(mem, expr_ref, 2);
-        assert.equal(expr_type, 0); // atom
-
-        const [chars_ref, len, cap, item_size] = u32s(mem, atom_ref, 4);
-        assert.deepEqual([len, cap, item_size], [3, 6, 1]);
-
-        const chars = new Uint8Array(mem, chars_ref, len);
-        assert.deepEqual(chars, new TextEncoder().encode("abc"));
-    }
-
-    {
-        const [ok, index, expr_ref] = await parseExpr(parser, "(a)");
-        assert.deepEqual([ok, index], [1, 3]);
-
-        const mem = parser.memory.buffer;
-
-        const [expr_type, atom_ref] = u32s(mem, expr_ref, 2);
-        assert.equal(expr_type, 1); // list
-
-        const [_exprs_ref, len, cap, item_size] = u32s(mem, atom_ref, 4);
-        assert.deepEqual([len, cap, item_size], [1, 6, 8]);
-    }
-
-    {
-        const testSource = await readFile("examples/enums.lole", {
-            encoding: "utf8",
+    const output = await runWithTmpFile(async (stdin, stdinFile) => {
+        await writeFile(stdinFile, testSource);
+        return runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, { stdin: stdin.fd, stdout: stdout.fd });
+            return readFile(stdoutFile, { encoding: "utf-8" });
         });
+    });
 
-        const [ok, index, data] = await parseAll(parser, testSource);
-
-        assert.equal(ok, 1);
-        assert.equal(index, testSource.length);
-        assert(data > 0);
-    }
-
-    async function parseAll(parser, text) {
-        const bytes = new TextEncoder().encode(text);
-        const data_ref = parser.alloc(bytes.byteLength);
-        const data = storeData(parser.memory, data_ref, bytes);
-        return await parser.parse(data.ptr, data.size);
-    }
-
-    async function parseExpr(parser, text) {
-        const bytes = new TextEncoder().encode(text);
-        const data_ref = parser.alloc(bytes.byteLength);
-        const data = storeData(parser.memory, data_ref, bytes);
-        return await parser.parse_expr(data.ptr, data.size);
-    }
+    assert.strictEqual(
+        output,
+        "(mod lib/cli) (fn main () () ((print_str_slice Hello World!\n)))\n"
+    );
 });
 
 // utils

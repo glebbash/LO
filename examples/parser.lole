@@ -1,195 +1,440 @@
 (mod lib/std)
 
-(global Parser/SExpr/ATOM u8 0)
-(global Parser/SExpr/LIST u8 1)
-(struct Parser/SExpr
-    (kind u8) ; Parser/SExpr/ATOM | Parser/SExpr/LIST
-    (data ptr) ; pointer to Atom's chars or List's expr vector
+(struct Vec<Parser/SExpr> (actual Vec))
+
+(struct Parser/Location
+    (file_name StringSlice)
+    (offset u32)
+    (length u32)
+    (line u32)
+    (col u32)
 )
 
-(global Parser/ParseError/UNEXPECTED_EOF  u32 0)
-(global Parser/ParseError/UNEXPECTED_CHAR u32 1)
+(struct Parser/CompileError
+    (message (& String))
+    (loc Parser/Location)
+)
+
+(struct Parser
+    (file_name StringSlice)
+    (chars StringSlice)
+    (index u32)
+    (line u32)
+    (col u32)
+)
+
+(struct Parser/AtomKind (actual u32))
+(global Parser/AtomKind/SYMBOL u32 0)
+(global Parser/AtomKind/STRING u32 1)
+
+(enum Parser/SExpr
+    (Atom
+        (&value (& String))
+        (kind Parser/AtomKind)
+        (loc Parser/Location)
+    )
+    (List
+        (&value (& Vec<Parser/SExpr>))
+        (loc Parser/Location)
+    )
+)
+
 (struct Parser/ParseResult
     (ok bool)
-    (index u32)
-    (data u32) ; Parser/ParseError/* or pointer to some result
+    (data ptr) ; (& Parser/SExpr) | (& Parser/CompileError)
 )
 
-(fn Parser/parse [(chars StringSlice)] [Parser/ParseResult] (
-    {index : u32 = 0}
+(struct Parser/ParseScriptResult
+    (ok bool)
+    (data ptr) ; (& Vec<Parser/SExpr>) | (& Parser/CompileError)
+)
 
-    {index = (Parser/skip_space chars index)}
+; public interface
+(fn Parser/parse [(file_name StringSlice) (script StringSlice)] [Parser/ParseScriptResult] (
+    {&parser : (& Parser) = (Stack/alloc (sizeof Parser))}
+    {Parser @ &parser = (Parser/new file_name script)}
 
-    {&items : (& Vec) = (Vec/new 6 (sizeof Parser/SExpr))}
+    {result : Parser/ParseScriptResult = (Parser/parse_all &parser)}
+
+    (Stack/free (sizeof Parser))
+    (return result)
+))
+
+(fn Parser/new [(file_name StringSlice) (script StringSlice)] [Parser] (
+    (return (struct.new Parser
+        file_name
+        script
+        0 ; index
+        1 ; line
+        1 ; col
+    ))
+))
+
+(fn Parser/parse_all [(&self (& Parser))] [Parser/ParseScriptResult] (
+    (Parser/skip_space &self)
+
+    {&items : (& Vec) = (Vec/new 10 (sizeof Parser/SExpr))}
 
     (loop (
-        (if {index >= {chars . size}} (break))
+        (if {Parser @ &self . index >= {Parser @ &self . chars . size}} (do
+            (break)
+        ))
 
-        {char_res : Parser/CharAtResult}
-        {char_res = (Parser/char_at chars index)}
-
-        (if (not {char_res . ok})
-            (return (struct.new Parser/ParseResult
-                false index Parser/ParseError/UNEXPECTED_EOF
-            ))
-        )
-
-        (if (not (Parser/is_list_start {char_res . char}))
-            (return (struct.new Parser/ParseResult
-                false index Parser/ParseError/UNEXPECTED_CHAR
-            ))
-        )
-
-        {res : Parser/ParseResult}
-        {res = (Parser/parse_list chars index)}
+        {res : Parser/CharAtResult = (Parser/current_char &self)}
         (if (not {res . ok}) (return res))
 
-        (Vec/push_all &items {res . data} 1)
+        (if (not (Parser/is_list_start {res . data})) (do
+            (return (struct.new Parser/ParseScriptResult false
+                (Parser/err_unexpected_char &self)))
+        ))
 
-        {index = (Parser/skip_space chars {res . index})}
+        {expr_res : Parser/ParseResult = (Parser/parse_list &self)}
+        (if (not {expr_res . ok}) (return expr_res))
+
+        (Parser/skip_space &self)
+
+        (Vec/push_all &items {expr_res . data} 1)
     ))
 
-    (return (struct.new Parser/ParseResult true index &items))
+    (return (struct.new Parser/ParseScriptResult true
+        &items))
 ))
 
-(fn Parser/parse_expr [(chars StringSlice) (index u32)] [Parser/ParseResult] (
-    {char_res : Parser/CharAtResult}
-    {char_res = (Parser/char_at chars index)}
+(fn Parser/parse_expr [(&self (& Parser))] [Parser/ParseResult] (
+    {res : Parser/CharAtResult = (Parser/current_char &self)}
+    (if (not {res . ok}) (return res))
 
-    (if (not {char_res . ok})
-        (return (struct.new Parser/ParseResult
-            false index Parser/ParseError/UNEXPECTED_EOF
-        ))
-    )
+    (if (Parser/is_list_start {res . data}) (do
+        (return (Parser/parse_list &self))
+    ))
 
-    (if (Parser/is_list_start {char_res . char})
-        (return (Parser/parse_list chars index))
-    )
-
-    (return (Parser/parse_atom chars index))
+    (return (Parser/parse_atom &self))
 ))
 
-(fn Parser/parse_atom [(chars StringSlice) (index u32)] [Parser/ParseResult] (
-    {atom_len : u32 = 0}
+(fn Parser/parse_atom [(&self (& Parser))] [Parser/ParseResult] (
+    {res : Parser/CharAtResult = (Parser/current_char &self)}
+    (if (not {res . ok}) (return res))
+
+    (if {res . data == (char_code "\"")} (do
+        (return (Parser/parse_string &self))
+    ))
+
+    (return (Parser/parse_symbol &self))
+))
+
+(fn Parser/parse_string [(&self (& Parser))] [Parser/ParseResult] (
+    {loc : Parser/Location = (Parser/loc &self)}
+
+    (Parser/next_char &self) ; skip start quote
+
+    {&value : String = (Vec/new 6 1)}
 
     (loop (
-        {char_res : Parser/CharAtResult}
-        {char_res = (Parser/char_at chars index)}
-        (if (not {char_res . ok}) (break))
-        (if {(Parser/is_space {char_res . char})
-                || (Parser/is_list_end {char_res . char})
-                || {char_res . char == (char_code ";")}}
+        {res : Parser/CharAtResult}
+        {res = (Parser/current_char &self)}
+        (if (not {res . ok}) (return res))
+
+        (if {res . data == (char_code "\"")} (do
             (break)
-        )
-        {index = {index + 1}}
-        {atom_len = {atom_len + 1}}
+        ))
+
+        (if {res . data != (char_code "\\")} (do
+            (Vec/push_u8 &value {res . data})
+            (Parser/next_char &self)
+            (continue)
+        ))
+        (Parser/next_char &self) ; skip '\'
+
+        {res = (Parser/current_char &self)}
+        (if (not {res . ok}) (return res))
+
+        (if {res . data == (char_code "n")} (do
+            (Vec/push_u8 &value (char_code "\n"))
+            (Parser/next_char &self)
+            (continue)
+        ))
+
+        (if {res . data == (char_code "t")} (do
+            (Vec/push_u8 &value (char_code "\t"))
+            (Parser/next_char &self)
+            (continue)
+        ))
+
+        (if {res . data == (char_code "\\")
+                || {res . data == (char_code "\"")}} (do
+            (Vec/push_u8 &value {res . data})
+            (Parser/next_char &self)
+            (continue)
+        ))
+
+        (return (struct.new Parser/ParseResult false
+            (Parser/err_unexpected_char &self)))
     ))
 
-    ; TODO: replace 1 with (sizeof u8)
-    {&atom : (& Vec) = (Vec/new atom_len 1)}
-    (Vec/push_all &atom
-        {chars . data + index - atom_len}
-        atom_len
-    )
+    (Parser/next_char &self) ; skip end quote
+
+    {loc . length = {Parser @ &self . index - {loc . offset}}}
+
+    {&atom : (& Parser/SExpr/Atom) = (Mem/alloc (sizeof Parser/SExpr/Atom))}
+    {Parser/SExpr/Atom @ &atom = (struct.new Parser/SExpr/Atom
+        &value
+        Parser/AtomKind/STRING
+        loc
+    )}
 
     {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
     {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-        Parser/SExpr/ATOM
+        (enum.kind Parser/SExpr/Atom)
         &atom
     )}
-
-    (return (struct.new Parser/ParseResult true index &expr))
+    (return (struct.new Parser/ParseResult true &expr))
 ))
 
-(fn Parser/parse_list [(chars StringSlice) (index u32)] [Parser/ParseResult] (
-    {char_res : Parser/CharAtResult}
-    {char_res = (Parser/char_at chars index)}
-
-    {list_start_char : u8 = {char_res . char}}
-    {index = {index + 1}} ; eat list start
-
-    {index = (Parser/skip_space chars index)}
-
-    {&items : (& Vec) = (Vec/new 6 (sizeof Parser/SExpr))}
+(fn Parser/parse_symbol [(&self (& Parser))] [Parser/ParseResult] (
+    {loc : Parser/Location = (Parser/loc &self)}
 
     (loop (
-        {char_res = (Parser/char_at chars index)}
-        (if (not {char_res . ok})
-            (return (struct.new Parser/ParseResult
-                false index Parser/ParseError/UNEXPECTED_EOF
-            ))
-        )
-
-        (if (Parser/is_list_end {char_res . char})
+        {res : Parser/CharAtResult = (Parser/current_char &self)}
+        (if {(Parser/is_space {res . data})
+                || (Parser/is_list_end {res . data})
+                || {res . data == (char_code ";")}} (do
             (break)
-        )
-
-        {res : Parser/ParseResult}
-        {res = (Parser/parse_expr chars index)}
-        (if (not {res . ok}) (return res))
-
-        (Vec/push_all &items {res . data} 1)
-
-        {index = (Parser/skip_space chars {res . index})}
+        ))
+        (Parser/next_char &self)
     ))
 
-    {char_res = (Parser/char_at chars index)}
-    (if (not {char_res . ok})
-        (return (struct.new Parser/ParseResult
-            false index Parser/ParseError/UNEXPECTED_EOF
-        ))
-    )
+    {loc . length = {Parser @ &self . index - {loc . offset}}}
 
-    {list_end_char : u8 = {char_res . char}}
-    {index = {index + 1}} ; eat list end
-
-    (if (not (Parser/is_valid_list_chars list_start_char list_end_char))
-        (return (struct.new Parser/ParseResult
-            false index Parser/ParseError/UNEXPECTED_EOF
-        ))
-    )
-
-    (if {list_start_char == (char_code "{") && {(Vec/len &items) >= 2}}
-        (Vec/swap &items 0 1)
-    )
+    {&atom : (& Parser/SExpr/Atom) = (Mem/alloc (sizeof Parser/SExpr/Atom))}
+    {Parser/SExpr/Atom @ &atom = (struct.new Parser/SExpr/Atom
+        (String/from_slice {Parser @ &self . chars . data + {loc . offset}} {loc . length})
+        Parser/AtomKind/SYMBOL
+        loc
+    )}
 
     {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
     {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-        Parser/SExpr/LIST
-        &items
+        (enum.kind Parser/SExpr/Atom)
+        &atom
     )}
-
-    (return (struct.new Parser/ParseResult true index &expr))
+    (return (struct.new Parser/ParseResult true &expr))
 ))
 
-(fn Parser/skip_space [(chars StringSlice) (index u32)] [u32] (
-    {char_res : Parser/CharAtResult}
+(fn Parser/parse_list [(&self (& Parser))] [Parser/ParseResult] (
+    {loc : Parser/Location = (Parser/loc &self)}
+    {res : Parser/CharAtResult}
+
+    {res = (Parser/current_char &self)}
+    (if (not {res . ok}) (return res))
+    {list_start_char : u8 = {res . data}}
+    (Parser/next_char &self) ; eat list start
+
+    (Parser/skip_space &self)
+
+    {&items : (& Vec<Parser/SExpr>) = (Vec/new 6 (sizeof Parser/SExpr))}
 
     (loop (
-        {char_res = (Parser/char_at chars index)}
-        (if (not {char_res . ok}) (break))
-        (if (not (Parser/is_space {char_res . char})) (break))
-        {index = {index + 1}}
-    ))
+        {res = (Parser/current_char &self)}
+        (if (not {res . ok}) (return res))
 
-    (if {char_res . ok && {char_res . char == (char_code ";")}} (do
-        {index = {index + 1}}
-
-        (loop (
-            {char_res = (Parser/char_at chars index)}
-            (if (not {char_res . ok}) (break))
-            (if {char_res . char == (char_code "\n")} (break))
-            {index = {index + 1}}
+        (if (Parser/is_list_end {res . data}) (do
+            (break)
         ))
 
-        (if {char_res . ok && {char_res . char == (char_code ";")}}
-            {index = {index + 1}}
-        )
+        {expr_res : Parser/ParseResult = (Parser/parse_expr &self)}
+        (if (not {expr_res . ok}) (return expr_res))
+        (Vec/push_all &items {expr_res . data} 1)
 
-        (return (Parser/skip_space chars index))
+        (Parser/skip_space &self)
     ))
 
-    (return index)
+    {res = (Parser/current_char &self)}
+    (if (not {res . ok}) (return res))
+    {list_end_char : u8 = {res . data}}
+    (Parser/next_char &self) ; eat list end
+
+    {loc . length = {Parser @ &self . index - {loc . offset}}}
+
+    (if {list_start_char == (char_code "{") && {(Vec/len &items) >= 2}} (do
+        (return (Parser/m_expr_to_s_expr_and_validate &items loc))
+    ))
+
+    {&list : (& Parser/SExpr/List) = (Mem/alloc (sizeof Parser/SExpr/List))}
+    {Parser/SExpr/List @ &list = (struct.new Parser/SExpr/List
+        &items
+        loc
+    )}
+
+    {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
+    {Parser/SExpr @ &expr = (struct.new Parser/SExpr
+        (enum.kind Parser/SExpr/List)
+        &list
+    )}
+    (return (struct.new Parser/ParseResult true &expr))
+))
+
+(fn Parser/skip_space [(&self (& Parser))] [] (
+    {res : Parser/CharAtResult}
+
+    (loop (
+        {res = (Parser/current_char &self)}
+        (if (not {res . ok}) (return))
+        (if (not (Parser/is_space {res . data})) (break))
+
+        (Parser/next_char &self)
+    ))
+
+    (if {res . ok && {res . data != (char_code ";")}} (do
+        (return)
+    ))
+    (Parser/next_char &self)
+
+    (loop (
+        {res = (Parser/current_char &self)}
+        (if (not {res . ok}) (return))
+        (if {res . data == (char_code "\n")} (break))
+        (Parser/next_char &self)
+    ))
+
+    (if {res . data == (char_code ";")} (do
+        (Parser/next_char &self)
+    ))
+
+    (Parser/skip_space &self)
+))
+
+; TODO(QOL?): add += operator
+(fn Parser/next_char [(&self (& Parser))] [] (
+    {Parser @ &self . index = {Parser @ &self . index + 1}}
+
+    {res : Parser/CharAtResult = (Parser/current_char &self)}
+    (if (not {res . ok}) (do
+        (return)
+    ))
+
+    (if {res . data == (char_code "\n")} (do
+        {Parser @ &self . col = 0}
+        {Parser @ &self . line = {Parser @ &self . line + 1}}
+        (return)
+    ))
+
+    {Parser @ &self . col = {Parser @ &self . col + 1}}
+))
+
+(struct Parser/CharAtResult
+    (ok bool)
+    (data u32) ; u8 | (& CompileError)
+)
+
+(fn Parser/current_char [(&self (& Parser))] [Parser/CharAtResult] (
+    {chars : StringSlice = {Parser @ &self . chars}}
+
+    (if {Parser @ &self . index >= {chars . size}} (do
+        (return (struct.new Parser/CharAtResult
+            false
+            (Parser/err_unexpected_eof &self)))
+    ))
+
+    (return (struct.new Parser/CharAtResult
+        true
+        (StringSlice/char_at chars {Parser @ &self . index})))
+))
+
+(fn Parser/err_unexpected_char [(&self (& Parser))] [(& Parser/CompileError)] (
+    {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
+    {Parser/CompileError @ &error = (struct.new Parser/CompileError
+        (String/from_slice "ParseError: Unexpected character")
+        (Parser/loc &self)
+    )}
+    (return &error)
+))
+
+(fn Parser/err_unexpected_eof [(&self (& Parser))] [(& Parser/CompileError)] (
+    {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
+    {Parser/CompileError @ &error = (struct.new Parser/CompileError
+        (String/from_slice "ParseError: Unexpected EOF")
+        (Parser/loc &self)
+    )}
+    (return &error)
+))
+
+(fn Parser/loc [(&self (& Parser))] [Parser/Location] (
+    (return (struct.new Parser/Location
+        ; TODO(mem): clone file_name
+        {Parser @ &self . file_name}
+        {Parser @ &self . index}
+        1 ; length
+        {Parser @ &self . line}
+        {Parser @ &self . col}
+    ))
+))
+
+(fn Parser/m_expr_to_s_expr_and_validate [(&items (& Vec<Parser/SExpr>)) (loc Parser/Location)] [Parser/ParseResult] (
+    (if {(Vec/len &items) % 2 != 1} (do
+        {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
+        {Parser/CompileError @ &error = (struct.new Parser/CompileError
+            (String/from_slice "ParseError: Invalid m-expr: even length")
+            loc
+        )}
+        (return (struct.new Parser/ParseResult false &error))
+    ))
+
+    {&expr : (& Parser/SExpr)}
+
+    (if {(Vec/len &items) < 2} (do
+        {&list : (& Parser/SExpr/List) = (Mem/alloc (sizeof Parser/SExpr/List))}
+        {Parser/SExpr/List @ &list = (struct.new Parser/SExpr/List
+            &items
+            loc
+        )}
+
+        {&expr = (Mem/alloc (sizeof Parser/SExpr))}
+        {Parser/SExpr @ &expr = (struct.new Parser/SExpr
+            (enum.kind Parser/SExpr/List)
+            &list
+        )}
+        (return (struct.new Parser/ParseResult true &expr))
+    ))
+
+    {&expr = (Mem/alloc (sizeof Parser/SExpr))}
+    {Parser/SExpr @ &expr = (Parser/m_expr_to_s_expr &items loc)}
+    (return (struct.new Parser/ParseResult true &expr))
+))
+
+; ❓ {1 + 2 - 3 * 4}
+; 🚫 (+ 1 (- 2 (* 3 4)))
+; ✅ (* (- (+ 1 2) 3) 4)
+(fn Parser/m_expr_to_s_expr [(&items (& Vec<Parser/SExpr>)) (loc Parser/Location)] [Parser/SExpr] (
+    (if {(Vec/len &items) == 1} (do
+        ; TODO(mem): need to free &items and move expr out. How is Rust doing it?
+        (return {Parser/SExpr @ (Vec/at &items 0)})
+    ))
+
+    ; TODO(bug): double address eval
+    {addr : ptr}
+
+    {addr = (Vec/pop_unchecked &items) }
+    {rhs : Parser/SExpr = {Parser/SExpr @ addr}}
+    {addr = (Vec/pop_unchecked &items) }
+    {op : Parser/SExpr = {Parser/SExpr @ addr}}
+    ; TODO(mem): clone loc
+    {lhs : Parser/SExpr = (Parser/m_expr_to_s_expr &items loc)}
+
+    {&sexpr_items : (& Vec<Parser/SExpr>) = (Vec/new 3 (sizeof Parser/SExpr))}
+    {Parser/SExpr @ (Vec/push_undef &sexpr_items) = op}
+    {Parser/SExpr @ (Vec/push_undef &sexpr_items) = lhs}
+    {Parser/SExpr @ (Vec/push_undef &sexpr_items) = rhs}
+
+    {&list : (& Parser/SExpr/List) = (Mem/alloc (sizeof Parser/SExpr/List))}
+    {Parser/SExpr/List @ &list = (struct.new Parser/SExpr/List
+        &sexpr_items
+        loc
+    )}
+
+    (return (struct.new Parser/SExpr
+        (enum.kind Parser/SExpr/List)
+        &list
+    ))
 ))
 
 (fn Parser/is_list_start [(char u8)] [bool] (
@@ -222,42 +467,4 @@
         {char == (char_code "\n")} ||
         {char == (char_code "\t")}
     })
-))
-
-(struct Parser/Position (line u32) (col u32))
-
-(fn Parser/index_to_position [(chars StringSlice) (index u32)] [Parser/Position] (
-    {pos : Parser/Position = (do 1 1)}
-
-    {char_index : u32 = 0}
-    (loop (
-        (if {char_index >= {chars . size}} (break))
-        (if {char_index >= index} (break))
-
-        {char : u32 = (StringSlice/char_at chars char_index)}
-
-        (if {char == (char_code "\n")} (do
-            {pos = (do {pos . line + 1} 1)}
-            {char_index = {char_index + 1}}
-            (continue)
-        ))
-
-        {pos . col = {pos . col + 1}}
-
-        {char_index = {char_index + 1}}
-    ))
-
-    (return pos)
-))
-
-(struct Parser/CharAtResult (ok bool) (char u8))
-
-(fn Parser/char_at [(chars StringSlice) (index u32)] [Parser/CharAtResult] (
-    (if {index >= {chars . size}}
-        (return (struct.new Parser/CharAtResult false 0))
-    )
-
-    (return (struct.new Parser/CharAtResult
-        true (StringSlice/char_at chars index)
-    ))
 ))
