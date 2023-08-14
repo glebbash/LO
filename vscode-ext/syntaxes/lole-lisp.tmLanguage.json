@@ -53,7 +53,7 @@
 				},
                 {
                     "name": "variable.other.constant.lole-lisp",
-                    "match": "\\b([A-Z][A-Za-z_]*\\/)*[A-Z0-9_]+\\b"
+                    "match": "\\b([A-Z][A-Za-z_]*\\/)*&?[A-Z0-9_]+\\b"
                 }
             ]
         },
@@ -61,7 +61,7 @@
 			"patterns": [
                 {
                     "name": "keyword.control.lole-lisp",
-                    "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct\\.new|struct|enum|break|not)\\b"
+                    "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct\\.new|struct|enum\\.kind|enum|break|not|continue|unreachable|mut)\\b"
 			    },
                 {
                     "name": "keyword.operator.lole-lisp",
@@ -92,7 +92,7 @@
         "sexprs": {
             "patterns": [
                 {
-					"match": "(?<=\\()(.+?)(?=\\s|\\))",
+					"match": "(?<=\\()([^;]+?)(?=\\s|\\))",
 					"captures": {
 						"1": {
 							"name": "entity.name.function.lole-lisp"
