@@ -410,13 +410,8 @@
         (return {Parser/SExpr @ (Vec/at &items 0)})
     ))
 
-    ; TODO(bug): double address eval
-    {addr : ptr}
-
-    {addr = (Vec/pop_unchecked &items) }
-    {rhs : Parser/SExpr = {Parser/SExpr @ addr}}
-    {addr = (Vec/pop_unchecked &items) }
-    {op : Parser/SExpr = {Parser/SExpr @ addr}}
+    {rhs : Parser/SExpr = {Parser/SExpr @ (Vec/pop_unchecked &items)}}
+    {op : Parser/SExpr = {Parser/SExpr @ (Vec/pop_unchecked &items)}}
     ; TODO(mem): clone loc
     {lhs : Parser/SExpr = (Parser/m_expr_to_s_expr &items loc)}
 

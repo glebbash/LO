@@ -318,8 +318,21 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             }
         }
         WasmInstr::StructLoad {
-            primitive_loads, ..
+            address_instr,
+            address_local_index,
+            primitive_loads,
+            ..
         } => {
+            write_instr(output, address_instr);
+            write_instr(
+                output,
+                &WasmInstr::Set {
+                    bind: WasmSetBind::Local {
+                        index: *address_local_index,
+                    },
+                },
+            );
+
             for value in primitive_loads {
                 write_instr(output, value);
             }

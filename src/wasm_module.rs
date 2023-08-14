@@ -98,6 +98,7 @@ pub enum WasmInstr {
     StructLoad {
         struct_name: String,
         address_instr: Box<WasmInstr>,
+        address_local_index: u32,
         base_byte_offset: u32,
         primitive_loads: Vec<WasmInstr>,
     },

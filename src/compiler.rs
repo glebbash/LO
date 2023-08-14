@@ -1010,7 +1010,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             };
 
             build_load(
-                ctx.module,
+                ctx,
                 &LoleValueType::StructInstance {
                     name: load_kind.clone(),
                 },
@@ -1046,6 +1046,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 WasmInstr::StructLoad {
                     struct_name,
                     address_instr,
+                    address_local_index,
                     primitive_loads,
                     base_byte_offset,
                 } => {
@@ -1058,6 +1059,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     WasmInstr::StructLoad {
                         struct_name,
                         address_instr: new_address.clone(),
+                        address_local_index,
                         base_byte_offset,
                         primitive_loads: primitive_loads
                             .into_iter()
@@ -1325,7 +1327,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 };
 
                 return build_load(
-                    ctx.module,
+                    ctx,
                     &field.value_type,
                     address_instr,
                     base_byte_offset + field.byte_offset,
@@ -1364,7 +1366,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
 }
 
 fn build_load(
-    ctx: &ModuleContext,
+    ctx: &mut FnContext,
     value_type: &LoleValueType,
     address_instr: Box<WasmInstr>,
     base_byte_offset: u32,
@@ -1388,7 +1390,11 @@ fn build_load(
         byte_length: base_byte_offset,
     };
 
-    value_type.emit_sized_component_stats(ctx, &mut stats, &mut components)?;
+    value_type.emit_sized_component_stats(ctx.module, &mut stats, &mut components)?;
+
+    let address_local_index = ctx.locals_last_index;
+    ctx.non_arg_locals.push(WasmValueType::I32);
+    ctx.locals_last_index += 1;
 
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
@@ -1396,13 +1402,16 @@ fn build_load(
             kind: WasmLoadKind::from_value_type(&comp.value_type)?,
             align: 1,
             offset: comp.byte_offset,
-            address_instr: address_instr.clone(),
+            address_instr: Box::new(WasmInstr::LocalGet {
+                local_index: address_local_index,
+            }),
         });
     }
 
     Ok(WasmInstr::StructLoad {
         struct_name: name.clone(),
         address_instr,
+        address_local_index,
         base_byte_offset,
         primitive_loads,
     })
