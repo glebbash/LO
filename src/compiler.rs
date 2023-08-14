@@ -1552,35 +1552,35 @@ fn extract_set_binds(
             primitive_loads,
             address_instr,
             ..
-        } => match address_index {
-            Some(address_index) => {
+        } => {
+            if let Some(address_index) = address_index {
                 for value in primitive_loads {
                     extract_set_binds(output, ctx, value, bind_loc, Some(address_index))?;
                 }
+                return Ok(());
             }
-            None => {
-                let new_address_index = ctx.locals_last_index;
-                ctx.non_arg_locals.push(WasmValueType::I32);
-                ctx.locals_last_index += 1;
 
-                let mut values = vec![];
+            let new_address_index = ctx.locals_last_index;
+            ctx.non_arg_locals.push(WasmValueType::I32);
+            ctx.locals_last_index += 1;
 
-                for value in primitive_loads {
-                    extract_set_binds(&mut values, ctx, value, bind_loc, Some(new_address_index))?;
-                }
+            let mut values = vec![];
 
-                values.push(WasmInstr::Set {
-                    bind: WasmSetBind::Local {
-                        index: new_address_index,
-                    },
-                });
-                values.push(*address_instr);
-
-                values.reverse();
-
-                output.push(WasmInstr::MultiValueEmit { values });
+            for value in primitive_loads {
+                extract_set_binds(&mut values, ctx, value, bind_loc, Some(new_address_index))?;
             }
-        },
+
+            values.push(WasmInstr::Set {
+                bind: WasmSetBind::Local {
+                    index: new_address_index,
+                },
+            });
+            values.push(*address_instr);
+
+            values.reverse();
+
+            output.push(WasmInstr::MultiValueEmit { values });
+        }
         WasmInstr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
                 extract_set_binds(output, ctx, value, bind_loc, address_index)?;
