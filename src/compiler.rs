@@ -1569,28 +1569,18 @@ fn extract_set_binds(
         WasmInstr::StructLoad {
             primitive_loads,
             address_instr,
+            address_local_index,
             ..
         } => {
-            if let Some(address_index) = address_index {
-                for value in primitive_loads {
-                    extract_set_binds(output, ctx, value, bind_loc, Some(address_index))?;
-                }
-                return Ok(());
-            }
-
-            let new_address_index = ctx.locals_last_index;
-            ctx.non_arg_locals.push(WasmValueType::I32);
-            ctx.locals_last_index += 1;
-
             let mut values = vec![];
 
             for value in primitive_loads {
-                extract_set_binds(&mut values, ctx, value, bind_loc, Some(new_address_index))?;
+                extract_set_binds(&mut values, ctx, value, bind_loc, Some(address_local_index))?;
             }
 
             values.push(WasmInstr::Set {
                 bind: WasmSetBind::Local {
-                    index: new_address_index,
+                    index: address_local_index,
                 },
             });
             values.push(*address_instr);
