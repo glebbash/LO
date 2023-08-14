@@ -1063,11 +1063,11 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                             .into_iter()
                             .map(|load_instr| {
                                 let WasmInstr::Load {
-                                kind,
-                                align,
-                                offset,
-                                ..
-                            } = load_instr else { unreachable!() };
+                                    kind,
+                                    align,
+                                    offset,
+                                    ..
+                                } = load_instr else { unreachable!() };
 
                                 WasmInstr::Load {
                                     kind,
@@ -1227,7 +1227,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 instr: Box::new(WasmInstr::MultiValueEmit { values }),
             }
         }
-        // TODO: chain with load
         (
             "get" | ".",
             [lhs, SExpr::Atom {
@@ -1370,6 +1369,19 @@ fn build_load(
     address_instr: Box<WasmInstr>,
     base_byte_offset: u32,
 ) -> Result<WasmInstr, String> {
+    if let LoleValueType::Primitive(value_type) = value_type {
+        return Ok(WasmInstr::Load {
+            kind: WasmLoadKind::from_value_type(value_type)?,
+            align: 1,
+            offset: base_byte_offset,
+            address_instr: address_instr.clone(),
+        });
+    }
+
+    let LoleValueType::StructInstance { name } = value_type else {
+        unreachable!()
+    };
+
     let mut components = vec![];
     let mut stats = EmitComponentStats {
         count: 0,
@@ -1388,14 +1400,11 @@ fn build_load(
         });
     }
 
-    Ok(match value_type {
-        LoleValueType::Primitive(_) => primitive_loads.into_iter().next().unwrap(),
-        LoleValueType::StructInstance { name } => WasmInstr::StructLoad {
-            struct_name: name.clone(),
-            address_instr,
-            base_byte_offset,
-            primitive_loads,
-        },
+    Ok(WasmInstr::StructLoad {
+        struct_name: name.clone(),
+        address_instr,
+        base_byte_offset,
+        primitive_loads,
     })
 }
 
