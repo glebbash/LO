@@ -1565,7 +1565,6 @@ fn extract_set_binds(
                 },
             });
         }
-        // TODO: improve this? (StructLoad/StructGet/MultiValueEmit/NoEmit)
         WasmInstr::StructLoad {
             primitive_loads,
             address_instr,
@@ -1589,6 +1588,7 @@ fn extract_set_binds(
 
             output.push(WasmInstr::MultiValueEmit { values });
         }
+        // TODO: improve this? (StructGet/MultiValueEmit/NoEmit)
         WasmInstr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
                 extract_set_binds(output, ctx, value, bind_loc, address_index)?;
