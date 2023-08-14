@@ -421,12 +421,9 @@
     {lhs : Parser/SExpr = (Parser/m_expr_to_s_expr &items loc)}
 
     {&sexpr_items : (& Vec<Parser/SExpr>) = (Vec/new 3 (sizeof Parser/SExpr))}
-    {addr = (Vec/push_undef &sexpr_items) }
-    {Parser/SExpr @ addr = op}
-    {addr = (Vec/push_undef &sexpr_items) }
-    {Parser/SExpr @ addr = lhs}
-    {addr = (Vec/push_undef &sexpr_items) }
-    {Parser/SExpr @ addr = rhs}
+    {Parser/SExpr @ (Vec/push_undef &sexpr_items) = op}
+    {Parser/SExpr @ (Vec/push_undef &sexpr_items) = lhs}
+    {Parser/SExpr @ (Vec/push_undef &sexpr_items) = rhs}
 
     {&list : (& Parser/SExpr/List) = (Mem/alloc (sizeof Parser/SExpr/List))}
     {Parser/SExpr/List @ &list = (struct.new Parser/SExpr/List

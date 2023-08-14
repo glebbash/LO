@@ -1218,12 +1218,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 });
             }
 
-            let mut binds = vec![];
-            extract_set_binds(&mut binds, ctx, bind_instr, bind.loc())?;
+            let mut values = vec![];
+            extract_set_binds(&mut values, ctx, bind_instr, bind.loc(), None)?;
+            values.push(value_instr);
+            values.reverse();
 
-            WasmInstr::Set {
-                binds,
-                value: Box::new(value_instr),
+            WasmInstr::NoTypeCheck {
+                instr: Box::new(WasmInstr::MultiValueEmit { values }),
             }
         }
         // TODO: chain with load
@@ -1502,18 +1503,23 @@ fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, 
 
 // TODO: figure out better location
 fn extract_set_binds(
-    output: &mut Vec<WasmSetBind>,
+    output: &mut Vec<WasmInstr>,
     ctx: &mut FnContext,
     bind_instr: WasmInstr,
     bind_loc: &Location,
+    address_index: Option<u32>,
 ) -> Result<(), CompileError> {
     Ok(match bind_instr {
         WasmInstr::LocalGet { local_index } => {
-            output.push(WasmSetBind::Local { index: local_index });
+            output.push(WasmInstr::Set {
+                bind: WasmSetBind::Local { index: local_index },
+            });
         }
         WasmInstr::GlobalGet { global_index } => {
-            output.push(WasmSetBind::Global {
-                index: global_index,
+            output.push(WasmInstr::Set {
+                bind: WasmSetBind::Global {
+                    index: global_index,
+                },
             });
         }
         WasmInstr::Load {
@@ -1526,34 +1532,67 @@ fn extract_set_binds(
             ctx.non_arg_locals.push(kind.get_value_type());
             ctx.locals_last_index += 1;
 
-            output.push(WasmSetBind::Memory {
-                align,
-                offset,
-                kind: WasmStoreKind::from_load_kind(&kind),
-                address_instr,
-                value_local_index,
+            let address_instr = match address_index {
+                Some(local_index) => Box::new(WasmInstr::LocalGet { local_index }),
+                None => address_instr,
+            };
+
+            output.push(WasmInstr::Set {
+                bind: WasmSetBind::Memory {
+                    align,
+                    offset,
+                    kind: WasmStoreKind::from_load_kind(&kind),
+                    address_instr,
+                    value_local_index,
+                },
             });
         }
         // TODO: improve this? (StructLoad/StructGet/MultiValueEmit/NoEmit)
         WasmInstr::StructLoad {
-            primitive_loads, ..
-        } => {
-            for value in primitive_loads {
-                extract_set_binds(output, ctx, value, bind_loc)?;
+            primitive_loads,
+            address_instr,
+            ..
+        } => match address_index {
+            Some(address_index) => {
+                for value in primitive_loads {
+                    extract_set_binds(output, ctx, value, bind_loc, Some(address_index))?;
+                }
             }
-        }
+            None => {
+                let new_address_index = ctx.locals_last_index;
+                ctx.non_arg_locals.push(WasmValueType::I32);
+                ctx.locals_last_index += 1;
+
+                let mut values = vec![];
+
+                for value in primitive_loads {
+                    extract_set_binds(&mut values, ctx, value, bind_loc, Some(new_address_index))?;
+                }
+
+                values.push(WasmInstr::Set {
+                    bind: WasmSetBind::Local {
+                        index: new_address_index,
+                    },
+                });
+                values.push(*address_instr);
+
+                values.reverse();
+
+                output.push(WasmInstr::MultiValueEmit { values });
+            }
+        },
         WasmInstr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
-                extract_set_binds(output, ctx, value, bind_loc)?;
+                extract_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
         WasmInstr::MultiValueEmit { values } => {
             for value in values {
-                extract_set_binds(output, ctx, value, bind_loc)?;
+                extract_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
         WasmInstr::NoEmit { instr } => {
-            extract_set_binds(output, ctx, *instr, bind_loc)?;
+            extract_set_binds(output, ctx, *instr, bind_loc, address_index)?;
         }
         _ => {
             return Err(CompileError {

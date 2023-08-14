@@ -32,6 +32,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::NoEmit { instr } => get_type(ctx, instr)?,
 
         // type checked in the complier:
+        WasmInstr::NoTypeCheck { .. } => vec![],
         WasmInstr::Set { .. } => vec![],
         WasmInstr::Drop { .. } => vec![],
         WasmInstr::Loop { .. } => vec![],

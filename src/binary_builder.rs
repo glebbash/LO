@@ -237,6 +237,9 @@ fn write_expr(output: &mut Vec<u8>, expr: &WasmExpr) {
 fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
     match instr {
         WasmInstr::NoEmit { .. } => {}
+        WasmInstr::NoTypeCheck { instr } => {
+            write_instr(output, instr);
+        }
         WasmInstr::Unreachable { .. } => {
             output.push(0x00);
         }
@@ -277,44 +280,38 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             output.push(0x23);
             write_u32(output, *global_index);
         }
-        WasmInstr::Set { binds, value, .. } => {
-            write_instr(output, value);
-
-            for bind in binds.iter().rev() {
-                match bind {
-                    WasmSetBind::Local { index } => {
-                        output.push(0x21);
-                        write_u32(output, *index);
-                    }
-                    WasmSetBind::Global { index } => {
-                        output.push(0x24);
-                        write_u32(output, *index);
-                    }
-                    WasmSetBind::Memory {
-                        align,
-                        offset,
-                        kind,
-                        address_instr,
-                        value_local_index,
-                    } => {
-                        // set_local(tmp, <value on top of the stack>)
-                        output.push(0x21);
-                        write_u32(output, *value_local_index);
-
-                        write_instr(output, address_instr);
-
-                        // get_local(tmp)
-                        output.push(0x20);
-                        write_u32(output, *value_local_index);
-
-                        output.push(*kind as u8);
-
-                        write_u32(output, *align);
-                        write_u32(output, *offset);
-                    }
-                }
+        WasmInstr::Set { bind } => match bind {
+            WasmSetBind::Local { index } => {
+                output.push(0x21);
+                write_u32(output, *index);
             }
-        }
+            WasmSetBind::Global { index } => {
+                output.push(0x24);
+                write_u32(output, *index);
+            }
+            WasmSetBind::Memory {
+                align,
+                offset,
+                kind,
+                address_instr,
+                value_local_index,
+            } => {
+                // set_local(tmp, <value on top of the stack>)
+                output.push(0x21);
+                write_u32(output, *value_local_index);
+
+                write_instr(output, address_instr);
+
+                // get_local(tmp)
+                output.push(0x20);
+                write_u32(output, *value_local_index);
+
+                output.push(*kind as u8);
+
+                write_u32(output, *align);
+                write_u32(output, *offset);
+            }
+        },
         WasmInstr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
                 write_instr(output, value);

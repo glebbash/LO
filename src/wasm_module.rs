@@ -122,8 +122,7 @@ pub enum WasmInstr {
         value: i64,
     },
     Set {
-        binds: Vec<WasmSetBind>,
-        value: Box<WasmInstr>,
+        bind: WasmSetBind,
     },
     Return {
         value: Box<WasmInstr>,
@@ -153,6 +152,10 @@ pub enum WasmInstr {
     },
     // will not be written to binary, used for types only
     NoEmit {
+        instr: Box<WasmInstr>,
+    },
+    // will be written to binary but emits no types
+    NoTypeCheck {
         instr: Box<WasmInstr>,
     },
 }
