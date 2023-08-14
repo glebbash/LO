@@ -78,7 +78,8 @@ impl Parser {
                     match self.current_char()? {
                         'n' => value.push('\n'),
                         't' => value.push('\t'),
-                        '\\' | '"' => value.push(c),
+                        '\\' => value.push('\\'),
+                        '"' => value.push('"'),
                         _ => {
                             return Err(self.err_unexpected_char());
                         }
