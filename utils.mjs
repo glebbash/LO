@@ -58,6 +58,7 @@ async function runCommand() {
     await runWASI(program, {
         preopens: { ".": "examples" },
         returnOnExit: false,
+        args: process.argv.slice(3),
     });
 }
 

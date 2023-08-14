@@ -1,3 +1,6 @@
+; wasi_io expects host to preopen "." on fd 3
+(global CWD_PREOPEN_FD u32 3)
+
 (fn fd_read_all [(fd u32)] [(& String)] (
     {&output : (& String) = (Vec/new 256 1)}
     {&chunk : (&* u8) = (Stack/alloc 256)}
@@ -71,4 +74,23 @@
     (Stack/free chunk_size)
 
     (return result)
+))
+
+(fn fd_open [(file_path StringSlice)] [u32 u32] (
+    {&fd : (& u32) = (Stack/alloc (sizeof u32))}
+
+    {err : WasiErr = (path_open
+        CWD_PREOPEN_FD 0
+        file_path 0 (i64 2) (i64 0) 0
+        &fd
+    )}
+    (if {err != 0} (do
+        (Stack/free (sizeof u32))
+        (return (do err 0))
+    ))
+
+    {fd : u32 = {i32 @ &fd}}
+    (Stack/free (sizeof u32))
+
+    (return (do 0 fd))
 ))

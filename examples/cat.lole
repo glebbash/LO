@@ -2,9 +2,6 @@
 (mod lib/wasi_io)
 (mod lib/args)
 
-; this program expects host to preopen "." on fd 3
-(global CWD_PREOPEN_FD u32 3)
-
 (fn main [] [] (
     {args : Args = (Args/load)}
 
@@ -15,9 +12,8 @@
     {file_path : StringSlice = (Args/get args 1)}
 
     {err : u32}
-    {fd : u32}
 
-    {(do err fd) = (fd_open file_path)}
+    {(do err {fd : u32}) = (fd_open file_path)}
     (if {err != 0} (do
         (return (proc_exit 1))
     ))
@@ -30,23 +26,4 @@
     {err = (fd_close fd)}
 
     (return (proc_exit 0))
-))
-
-(fn fd_open [(file_path StringSlice)] [u32 u32] (
-    {&fd : (& u32) = (Stack/alloc (sizeof u32))}
-
-    {err : WasiErr = (path_open
-        CWD_PREOPEN_FD 0
-        file_path 0 (i64 2) (i64 0) 0
-        &fd
-    )}
-    (if {err != 0} (do
-        (Stack/free (sizeof u32))
-        (return (do err 0))
-    ))
-
-    {fd : u32 = {i32 @ &fd}}
-    (Stack/free (sizeof u32))
-
-    (return (do 0 fd))
 ))
