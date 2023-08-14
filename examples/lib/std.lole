@@ -158,9 +158,9 @@
         (return (Vec/at &self {Vec @ &self . length - 1}))
     ))
 
-    (fn Parser/pop_unchecked [(&self (& Vec))] [ptr] (
+    (fn Vec/pop_unchecked [(&self (& Vec))] [ptr] (
         {Vec @ &self . length = {Vec @ &self . length - 1}}
-        (return (Vec/at &self {(Vec/len &self) - 1}))
+        (return (Vec/at &self (Vec/len &self)))
     ))
 
     (fn Vec/grow_if_needed [(&self (& Vec))] [] (
