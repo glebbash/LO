@@ -24,11 +24,10 @@
 ))
 
 (fn do_stuff [] [ParseResult] (
-    {ref : (& ParseResult/Ok) = (Mem/alloc (sizeof ParseResult/Ok))}
-    {ParseResult/Ok @ ref = (struct.new ParseResult/Ok 1)}
+    {&res : (& ParseResult/Ok) = (new ParseResult/Ok 1)}
 
     (return (struct.new ParseResult
         (enum.kind ParseResult/Ok)
-        ref
+        &res
     ))
 ))

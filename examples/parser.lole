@@ -51,8 +51,8 @@
 
 ; public interface
 (fn Parser/parse [(file_name StringSlice) (script StringSlice)] [Parser/ParseScriptResult] (
-    {&parser : (& Parser) = (Stack/alloc (sizeof Parser))}
-    {Parser @ &parser = (Parser/new file_name script)}
+    {&parser : (& Parser) = (new Parser (Parser/new file_name script)
+        :using Alloc/STACK)}
 
     {result : Parser/ParseScriptResult = (Parser/parse_all &parser)}
 
@@ -175,19 +175,16 @@
 
     {loc . length = {Parser @ &self . index - {loc . offset}}}
 
-    {&atom : (& Parser/SExpr/Atom) = (Mem/alloc (sizeof Parser/SExpr/Atom))}
-    {Parser/SExpr/Atom @ &atom = (struct.new Parser/SExpr/Atom
-        &value
-        Parser/AtomKind/STRING
-        loc
-    )}
-
-    {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
-    {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-        (enum.kind Parser/SExpr/Atom)
-        &atom
-    )}
-    (return (struct.new Parser/ParseResult true &expr))
+    (return (struct.new Parser/ParseResult true
+        (new Parser/SExpr (do
+            (enum.kind Parser/SExpr/Atom)
+            (new Parser/SExpr/Atom (do
+                &value
+                Parser/AtomKind/STRING
+                loc
+            ))
+        ))
+    ))
 ))
 
 (fn Parser/parse_symbol [(&self (& Parser))] [Parser/ParseResult] (
@@ -205,19 +202,19 @@
 
     {loc . length = {Parser @ &self . index - {loc . offset}}}
 
-    {&atom : (& Parser/SExpr/Atom) = (Mem/alloc (sizeof Parser/SExpr/Atom))}
-    {Parser/SExpr/Atom @ &atom = (struct.new Parser/SExpr/Atom
-        (String/from_slice {Parser @ &self . chars . data + {loc . offset}} {loc . length})
-        Parser/AtomKind/SYMBOL
-        loc
-    )}
+    {&value : (& String) = (String/from_slice
+        {Parser @ &self . chars . data + {loc . offset}} {loc . length}) }
 
-    {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
-    {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-        (enum.kind Parser/SExpr/Atom)
-        &atom
-    )}
-    (return (struct.new Parser/ParseResult true &expr))
+    (return (struct.new Parser/ParseResult true
+        (new Parser/SExpr (do
+            (enum.kind Parser/SExpr/Atom)
+            (new Parser/SExpr/Atom (do
+                &value
+                Parser/AtomKind/SYMBOL
+                loc
+            ))
+        ))
+    ))
 ))
 
 (fn Parser/parse_list [(&self (& Parser))] [Parser/ParseResult] (
@@ -259,18 +256,12 @@
         (return (Parser/m_expr_to_s_expr_and_validate &items loc))
     ))
 
-    {&list : (& Parser/SExpr/List) = (Mem/alloc (sizeof Parser/SExpr/List))}
-    {Parser/SExpr/List @ &list = (struct.new Parser/SExpr/List
-        &items
-        loc
-    )}
-
-    {&expr : (& Parser/SExpr) = (Mem/alloc (sizeof Parser/SExpr))}
-    {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-        (enum.kind Parser/SExpr/List)
-        &list
-    )}
-    (return (struct.new Parser/ParseResult true &expr))
+    (return (struct.new Parser/ParseResult true
+        (new Parser/SExpr (do
+            (enum.kind Parser/SExpr/List)
+            (new Parser/SExpr/List (do &items loc))
+        ))
+    ))
 ))
 
 (fn Parser/skip_space [(&self (& Parser))] [] (
@@ -341,21 +332,17 @@
 ))
 
 (fn Parser/err_unexpected_char [(&self (& Parser))] [(& Parser/CompileError)] (
-    {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
-    {Parser/CompileError @ &error = (struct.new Parser/CompileError
+    (return (new Parser/CompileError (do
         (String/from_slice "ParseError: Unexpected character")
         (Parser/loc &self)
-    )}
-    (return &error)
+    )))
 ))
 
 (fn Parser/err_unexpected_eof [(&self (& Parser))] [(& Parser/CompileError)] (
-    {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
-    {Parser/CompileError @ &error = (struct.new Parser/CompileError
+    (return (new Parser/CompileError (do
         (String/from_slice "ParseError: Unexpected EOF")
         (Parser/loc &self)
-    )}
-    (return &error)
+    )))
 ))
 
 (fn Parser/loc [(&self (& Parser))] [Parser/Location] (
@@ -371,34 +358,26 @@
 
 (fn Parser/m_expr_to_s_expr_and_validate [(&items (& Vec<Parser/SExpr>)) (loc Parser/Location)] [Parser/ParseResult] (
     (if {(Vec/len &items) % 2 != 1} (do
-        {&error : (& Parser/CompileError) = (Mem/alloc (sizeof Parser/CompileError))}
-        {Parser/CompileError @ &error = (struct.new Parser/CompileError
-            (String/from_slice "ParseError: Invalid m-expr: even length")
-            loc
-        )}
-        (return (struct.new Parser/ParseResult false &error))
+        (return (struct.new Parser/ParseResult false
+            (new Parser/CompileError (do
+                (String/from_slice "ParseError: Invalid m-expr: even length")
+                loc
+            ))
+        ))
     ))
-
-    {&expr : (& Parser/SExpr)}
 
     (if {(Vec/len &items) < 2} (do
-        {&list : (& Parser/SExpr/List) = (Mem/alloc (sizeof Parser/SExpr/List))}
-        {Parser/SExpr/List @ &list = (struct.new Parser/SExpr/List
-            &items
-            loc
-        )}
-
-        {&expr = (Mem/alloc (sizeof Parser/SExpr))}
-        {Parser/SExpr @ &expr = (struct.new Parser/SExpr
-            (enum.kind Parser/SExpr/List)
-            &list
-        )}
-        (return (struct.new Parser/ParseResult true &expr))
+        (return (struct.new Parser/ParseResult true
+            (new Parser/SExpr (do
+                (enum.kind Parser/SExpr/List)
+                (new Parser/SExpr/List (do &items loc))
+            ))
+        ))
     ))
 
-    {&expr = (Mem/alloc (sizeof Parser/SExpr))}
-    {Parser/SExpr @ &expr = (Parser/m_expr_to_s_expr &items loc)}
-    (return (struct.new Parser/ParseResult true &expr))
+    (return (struct.new Parser/ParseResult true
+        (new Parser/SExpr (Parser/m_expr_to_s_expr &items loc))
+    ))
 ))
 
 ; ❓ {1 + 2 - 3 * 4}

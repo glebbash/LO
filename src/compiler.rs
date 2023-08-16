@@ -1129,7 +1129,28 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 values: value_instrs,
             }
         }
-        ("new", [type_expr, init_expr]) => {
+        ("new", [type_expr, init_expr, other @ ..]) => {
+            let alloc_id_instr = match other {
+                [] => WasmInstr::I32Const {
+                    value: HEAP_ALLOC_ID,
+                },
+                [SExpr::Atom {
+                    value: using_literal,
+                    kind: AtomKind::Symbol,
+                    ..
+                }, alloc_id_expr]
+                    if using_literal == ":using" =>
+                {
+                    parse_instr(alloc_id_expr, ctx)?
+                }
+                _ => {
+                    return Err(CompileError {
+                        message: format!("Invalid arguments for {op}"),
+                        loc: op_loc.clone(),
+                    });
+                }
+            };
+
             let init_instr = parse_instr(init_expr, ctx)?;
             let init_types = get_type(ctx, &init_instr)?;
 
@@ -1191,9 +1212,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                         instr: Box::new(WasmInstr::Call {
                             fn_index: alloc_fn_index,
                             args: vec![
-                                WasmInstr::I32Const {
-                                    value: HEAP_ALLOC_ID,
-                                },
+                                alloc_id_instr,
                                 WasmInstr::I32Const {
                                     value: value_size as i32,
                                 },

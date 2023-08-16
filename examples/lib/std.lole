@@ -103,27 +103,25 @@
 ; vec
 
     (struct Vec
-        (data_ref ptr)
+        (&data ptr)
         (length u32)
         (capacity u32)
         (item_size u32)
     )
 
     (fn Vec/new [(capacity u32) (item_size u32)] [(& Vec)] (
-        {&self : (& Vec) = (Mem/alloc (sizeof Vec))}
-        {Vec @ &self = (struct.new Vec
-            (Mem/alloc {capacity * item_size})
+        (return (new Vec (do
+            (alloc Alloc/HEAP {capacity * item_size})
             0
             capacity
             item_size
-        )}
-        (return &self)
+        ) :using Alloc/HEAP))
     ))
 
     ; TODO: check out of bounds
     (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
         (return {i32/u8
-            @ {Vec @ &self . data_ref}
+            @ {Vec @ &self . &data}
             @ {index * {Vec @ &self . item_size}}})
     ))
 
@@ -131,8 +129,8 @@
     (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] [] (
         {item_size : u32 = {Vec @ &self . item_size}}
         (Mem/swap
-            {Vec @ &self . data_ref + {index1 * item_size}}
-            {Vec @ &self . data_ref + {index2 * item_size}}
+            {Vec @ &self . &data + {index1 * item_size}}
+            {Vec @ &self . &data + {index2 * item_size}}
             item_size
         )
     ))
@@ -148,7 +146,7 @@
         (Vec/grow_if_needed &self)
 
         {i32/u8
-            @ {Vec @ &self . data_ref }
+            @ {Vec @ &self . &data }
             @ {index * {Vec @ &self . item_size}} = item}
     ))
 
@@ -160,7 +158,7 @@
 
         (Mem/copy
             &items
-            {Vec @ &self . data_ref + {old_len * {Vec @ &self . item_size}}}
+            {Vec @ &self . &data + {old_len * {Vec @ &self . item_size}}}
             {items_len * {Vec @ &self . item_size}}
         )
     ))
@@ -183,14 +181,15 @@
             (return)
         ))
 
-        {item_size : i32 = {Vec @ &self . item_size}}
-        {old_data_ref : ptr = {Vec @ &self . data_ref}}
+        {item_size : u32 = {Vec @ &self . item_size}}
+        {&old_data : ptr = {Vec @ &self . &data}}
+        {old_capacity : u32 = {Vec @ &self . capacity}}
 
-        {Vec @ &self . capacity = {Vec @ &self . capacity * 2}}
-        {Vec @ &self . data_ref = (Mem/alloc {Vec @ &self . capacity * item_size})}
+        {Vec @ &self . capacity = {old_capacity * 2}}
+        {Vec @ &self . &data = (alloc Alloc/HEAP {Vec @ &self . capacity * item_size})}
 
-        (Mem/copy old_data_ref {Vec @ &self . data_ref} {Vec @ &self . length * item_size})
-        (Mem/free old_data_ref)
+        (Mem/copy &old_data {Vec @ &self . &data} {Vec @ &self . length * item_size})
+        (free Alloc/HEAP &old_data old_capacity)
     ))
 
     (fn Vec/reverse [(&self (& Vec))] [] (
@@ -207,11 +206,11 @@
     ))
 
     (fn Vec/as_slice [(&self (& Vec))] [ptr u32] (
-        (return {Vec @ &self . data_ref} {Vec @ &self . length})
+        (return {Vec @ &self . &data} {Vec @ &self . length})
     ))
 
     (fn Vec/at [(&self (& Vec)) (index u32)] [u32] (
-        (return {Vec @ &self . data_ref + {index * {Vec @ &self . item_size}}})
+        (return {Vec @ &self . &data + {index * {Vec @ &self . item_size}}})
     ))
 
 ; string
