@@ -8,6 +8,21 @@
     (global Unrec/STACK_UNDERFLOW u32 2)
     (global mut Unrec/ERR u32 0)
 
+; alloc
+
+    (global Alloc/STACK u32 0)
+    (global Alloc/HEAP u32 1)
+
+    (fn alloc [(alloc_id u32) (size u32)] [ptr] (
+        (if {alloc_id == 0} (return (Stack/alloc size)))
+        (return (Mem/alloc size))
+    ))
+
+    (fn free [(alloc_id u32) (ptr u32) (size u32)] [] (
+        (if {alloc_id == 0} (return (Stack/free size)))
+        (return (Mem/free ptr))
+    ))
+
 ; stack
 
     (global mut Stack/&CURRENT u32 (data.size))

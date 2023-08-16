@@ -420,15 +420,9 @@
     {Parser/SExpr @ (Vec/push_undef &sexpr_items) = lhs}
     {Parser/SExpr @ (Vec/push_undef &sexpr_items) = rhs}
 
-    {&list : (& Parser/SExpr/List) = (Mem/alloc (sizeof Parser/SExpr/List))}
-    {Parser/SExpr/List @ &list = (struct.new Parser/SExpr/List
-        &sexpr_items
-        loc
-    )}
-
     (return (struct.new Parser/SExpr
         (enum.kind Parser/SExpr/List)
-        &list
+        (new Parser/SExpr/List (do &sexpr_items loc))
     ))
 ))
 

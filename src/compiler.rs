@@ -21,6 +21,8 @@ use alloc::{
 };
 use core::cell::RefCell;
 
+const HEAP_ALLOC_ID: i32 = 1;
+
 pub struct FnBody {
     pub fn_index: u32,
     pub locals: RefCell<BTreeMap<String, LocalDef>>,
@@ -1127,6 +1129,90 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 values: value_instrs,
             }
         }
+        ("new", [type_expr, init_expr]) => {
+            let init_instr = parse_instr(init_expr, ctx)?;
+            let init_types = get_type(ctx, &init_instr)?;
+
+            let value_type = LoleValueType::parse(type_expr, ctx.module)?;
+
+            let mut comp_types = vec![];
+            value_type.emit_components(ctx.module, &mut comp_types);
+
+            if init_types != comp_types {
+                return Err(CompileError {
+                    message: format!(
+                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
+                        comp_types, init_types
+                    ),
+                    loc: op_loc.clone(),
+                });
+            }
+
+            let alloc_fn_def = ctx
+                .module
+                .fn_defs
+                .get("alloc")
+                .ok_or_else(|| CompileError {
+                    message: format!("`alloc` not defined, required for using {}", op),
+                    loc: op_loc.clone(),
+                })?;
+            let alloc_fn_index = alloc_fn_def.get_absolute_index(ctx.module);
+
+            let value_size = value_type
+                .sized_comp_stats(ctx.module)
+                .map_err(|err| CompileError {
+                    message: err,
+                    loc: op_loc.clone(),
+                })?
+                .byte_length;
+
+            let return_addr_local_index = ctx.locals_last_index;
+            ctx.non_arg_locals.push(WasmValueType::I32);
+            ctx.locals_last_index += 1;
+
+            let init_load = build_load(
+                ctx,
+                &value_type,
+                Box::new(WasmInstr::LocalGet {
+                    local_index: return_addr_local_index,
+                }),
+                0,
+            )
+            .map_err(|err| CompileError {
+                message: err,
+                loc: op_loc.clone(),
+            })?;
+
+            let init_store_instr = build_set(ctx, init_instr, init_load, op_loc)?;
+
+            WasmInstr::MultiValueEmit {
+                values: vec![
+                    WasmInstr::NoTypeCheck {
+                        instr: Box::new(WasmInstr::Call {
+                            fn_index: alloc_fn_index,
+                            args: vec![
+                                WasmInstr::I32Const {
+                                    value: HEAP_ALLOC_ID,
+                                },
+                                WasmInstr::I32Const {
+                                    value: value_size as i32,
+                                },
+                            ],
+                            loc: Location::internal(),
+                        }),
+                    },
+                    WasmInstr::Set {
+                        bind: WasmSetBind::Local {
+                            index: return_addr_local_index,
+                        },
+                    },
+                    init_store_instr,
+                    WasmInstr::LocalGet {
+                        local_index: return_addr_local_index,
+                    },
+                ],
+            }
+        }
         (
             "enum.kind",
             [SExpr::Atom {
@@ -1205,9 +1291,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         }
         ("set" | "=", [bind, value]) => {
             let value_instr = parse_instr(value, ctx)?;
-            let value_types = get_type(ctx, &value_instr)?;
-
             let bind_instr = parse_instr(bind, ctx)?;
+
+            let value_types = get_type(ctx, &value_instr)?;
             let bind_types = get_type(ctx, &bind_instr)?;
 
             if value_types != bind_types {
@@ -1220,14 +1306,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 });
             }
 
-            let mut values = vec![];
-            extract_set_binds(&mut values, ctx, bind_instr, bind.loc(), None)?;
-            values.push(value_instr);
-            values.reverse();
-
-            WasmInstr::NoTypeCheck {
-                instr: Box::new(WasmInstr::MultiValueEmit { values }),
-            }
+            build_set(ctx, value_instr, bind_instr, op_loc)?
         }
         (
             "get" | ".",
@@ -1517,6 +1596,22 @@ fn parse_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, Com
 
 fn parse_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, CompileError> {
     exprs.iter().map(|expr| parse_instr(expr, ctx)).collect()
+}
+
+fn build_set(
+    ctx: &mut FnContext,
+    value_instr: WasmInstr,
+    bind_instr: WasmInstr,
+    bind_loc: &Location,
+) -> Result<WasmInstr, CompileError> {
+    let mut values = vec![];
+    extract_set_binds(&mut values, ctx, bind_instr, bind_loc, None)?;
+    values.push(value_instr);
+    values.reverse();
+
+    Ok(WasmInstr::NoTypeCheck {
+        instr: Box::new(WasmInstr::MultiValueEmit { values }),
+    })
 }
 
 // TODO: figure out better location
