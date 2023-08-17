@@ -1,10 +1,19 @@
 use core::fmt::Write;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 pub struct CompileError {
     pub message: String,
     pub loc: Location,
+}
+
+impl CompileError {
+    pub fn unreachable(file: &str, line: u32) -> CompileError {
+        CompileError {
+            message: format!("Unreachable in {}, {}", file, line),
+            loc: Location::internal(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

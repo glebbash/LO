@@ -1,9 +1,9 @@
 use crate::{
-    common::{CompileError, Location},
+    common::CompileError,
     compiler::FnContext,
-    wasm_module::{WasmImportDesc, WasmInstr, WasmValueType},
+    wasm_module::{WasmInstr, WasmValueType},
 };
-use alloc::{format, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 
 pub fn get_types(
     ctx: &FnContext,
@@ -31,11 +31,14 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::StructGet { primitive_gets, .. } => get_types(ctx, primitive_gets)?,
         WasmInstr::NoEmit { instr } => get_type(ctx, instr)?,
 
-        // type checked in the complier:
+        // type-checked in the complier:
         WasmInstr::NoTypeCheck { .. } => vec![],
         WasmInstr::Set { .. } => vec![],
         WasmInstr::Drop { .. } => vec![],
         WasmInstr::Loop { .. } => vec![],
+        WasmInstr::Return { .. } => vec![],
+        WasmInstr::MemorySize { .. } => vec![WasmValueType::I32],
+        WasmInstr::MemoryGrow { .. } => vec![WasmValueType::I32],
 
         WasmInstr::IfSingleBranch {
             cond, then_branch, ..
@@ -73,7 +76,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
                 .wasm_module
                 .globals
                 .get(*global_index as usize)
-                .ok_or_else(|| unreachable_err(line!()))?;
+                .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
 
             vec![wasm_global.kind.value_type]
         }
@@ -86,79 +89,15 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
             }
         }
         // TODO: clean up, logic with functions and imported functions is confusing
-        WasmInstr::Call {
-            fn_index,
-            args,
-            loc,
-        } => {
-            let arg_types = get_types(ctx, args)?;
-
-            let (fn_name, fn_def) = ctx
-                .module
-                .fn_defs
-                .iter()
-                .find(|(_, fd)| fd.get_absolute_index(ctx.module) == *fn_index)
-                .ok_or_else(|| unreachable_err(line!()))?;
-
-            let type_index = if fn_def.local {
-                ctx.module
-                    .wasm_module
-                    .functions
-                    .get(fn_def.fn_index as usize)
-                    .ok_or_else(|| unreachable_err(line!()))?
-            } else {
-                let WasmImportDesc::Func { type_index } = ctx
-                    .module
-                    .wasm_module
-                    .imports
-                    .get(fn_def.fn_index as usize)
-                    .map(|i| &i.item_desc)
-                    .ok_or_else(|| unreachable_err(line!()))?;
-
-                type_index
-            };
-
+        WasmInstr::Call { fn_type_index, .. } => {
             let fn_type = ctx
                 .module
                 .wasm_module
                 .types
-                .get(*type_index as usize)
-                .ok_or_else(|| unreachable_err(line!()))?;
-
-            if fn_type.inputs != arg_types {
-                return Err(CompileError {
-                    message: format!(
-                        "TypeError: Mismatched arguments for function \
-                            '{fn_name}', expected {inputs:?}, got {args:?}",
-                        inputs = fn_type.inputs,
-                        args = arg_types,
-                    ),
-                    loc: loc.clone(),
-                });
-            }
+                .get(*fn_type_index as usize)
+                .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
 
             fn_type.outputs.clone()
         }
-        WasmInstr::Return { value, loc } => {
-            let return_type = get_type(ctx, value)?;
-            if return_type != ctx.fn_type.outputs {
-                return Err(CompileError {
-                    message: format!(
-                        "TypeError: Invalid return type, \
-                            expected {outputs:?}, got {return_type:?}",
-                        outputs = ctx.fn_type.outputs,
-                    ),
-                    loc: loc.clone(),
-                });
-            }
-            vec![]
-        }
     })
-}
-
-fn unreachable_err(line: u32) -> CompileError {
-    CompileError {
-        message: format!("Unreachable in {}, {}", file!(), line),
-        loc: Location::internal(),
-    }
 }

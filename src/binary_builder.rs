@@ -236,47 +236,55 @@ fn write_expr(output: &mut Vec<u8>, expr: &WasmExpr) {
 
 fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
     match instr {
-        WasmInstr::NoEmit { .. } => {}
+        WasmInstr::NoEmit { instr: _ } => {}
         WasmInstr::NoTypeCheck { instr } => {
             write_instr(output, instr);
         }
-        WasmInstr::Unreachable { .. } => {
+        WasmInstr::Unreachable => {
             output.push(0x00);
         }
-        WasmInstr::BinaryOp { kind, lhs, rhs, .. } => {
+        WasmInstr::BinaryOp { kind, lhs, rhs } => {
             write_instr(output, lhs);
             write_instr(output, rhs);
             output.push(*kind as u8);
+        }
+        WasmInstr::MemorySize => {
+            output.push(0x3F);
+            output.push(0x00);
+        }
+        WasmInstr::MemoryGrow { size } => {
+            write_instr(output, size);
+            output.push(0x40);
+            output.push(0x00);
         }
         WasmInstr::Load {
             kind,
             align,
             offset,
             address_instr,
-            ..
         } => {
             write_instr(output, address_instr);
             output.push(*kind as u8);
             write_u32(output, *align);
             write_u32(output, *offset);
         }
-        WasmInstr::I32Const { value, .. } => {
+        WasmInstr::I32Const { value } => {
             output.push(0x41);
             write_i32(output, *value);
         }
-        WasmInstr::I32ConstLazy { value, .. } => {
+        WasmInstr::I32ConstLazy { value } => {
             output.push(0x41);
             write_i32(output, *value.borrow());
         }
-        WasmInstr::I64Const { value, .. } => {
+        WasmInstr::I64Const { value } => {
             output.push(0x42);
             write_i64(output, *value);
         }
-        WasmInstr::LocalGet { local_index, .. } => {
+        WasmInstr::LocalGet { local_index } => {
             output.push(0x20);
             write_u32(output, *local_index);
         }
-        WasmInstr::GlobalGet { global_index, .. } => {
+        WasmInstr::GlobalGet { global_index } => {
             output.push(0x23);
             write_u32(output, *global_index);
         }
@@ -312,16 +320,21 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
                 write_u32(output, *offset);
             }
         },
-        WasmInstr::StructGet { primitive_gets, .. } => {
+        WasmInstr::StructGet {
+            base_index: _,
+            struct_name: _,
+            primitive_gets,
+        } => {
             for value in primitive_gets {
                 write_instr(output, value);
             }
         }
         WasmInstr::StructLoad {
+            struct_name: _,
             address_instr,
             address_local_index,
+            base_byte_offset: _,
             primitive_loads,
-            ..
         } => {
             write_instr(output, address_instr);
             write_instr(
@@ -337,7 +350,7 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
                 write_instr(output, value);
             }
         }
-        WasmInstr::MultiValueEmit { values, .. } => {
+        WasmInstr::MultiValueEmit { values } => {
             for value in values {
                 write_instr(output, value);
             }
@@ -348,11 +361,11 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
                 output.push(0x1A);
             }
         }
-        WasmInstr::Return { value, .. } => {
+        WasmInstr::Return { value } => {
             write_instr(output, value);
             output.push(0x0f);
         }
-        WasmInstr::Loop { instrs, .. } => {
+        WasmInstr::Loop { instrs } => {
             output.push(0x02); // begin block
             output.push(0x40); // no value
 
@@ -380,7 +393,7 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
         // 2. end loop iteration with (br 1)
         // 3. end surrounding loop block (br 2)
         // NOTE: calling break or continue outside of if branch is undefined
-        WasmInstr::LoopBreak { .. } => {
+        WasmInstr::LoopBreak => {
             output.push(0x0c); // br
             write_u32(output, 2);
         }
@@ -388,11 +401,15 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
         // 1. break out of if branch (br 0)
         // 2. end loop iteration with (br 1)
         // NOTE: calling break or continue outside of if branch is undefined
-        WasmInstr::LoopContinue { .. } => {
+        WasmInstr::LoopContinue => {
             output.push(0x0c); // br
             write_u32(output, 1);
         }
-        WasmInstr::Call { fn_index, args, .. } => {
+        WasmInstr::Call {
+            fn_index,
+            fn_type_index: _,
+            args,
+        } => {
             for arg in args {
                 write_instr(output, arg);
             }
@@ -404,7 +421,6 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             cond,
             then_branch,
             else_branch,
-            ..
         } => {
             write_instr(output, cond);
             output.push(0x04); // if
@@ -414,9 +430,7 @@ fn write_instr(output: &mut Vec<u8>, instr: &WasmInstr) {
             write_instr(output, else_branch);
             output.push(0x0b); // end
         }
-        WasmInstr::IfSingleBranch {
-            cond, then_branch, ..
-        } => {
+        WasmInstr::IfSingleBranch { cond, then_branch } => {
             write_instr(output, cond);
             output.push(0x04); // if
             output.push(0x40); // no value

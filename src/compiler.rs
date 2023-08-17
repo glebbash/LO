@@ -78,6 +78,22 @@ impl FnDef {
             self.fn_index
         }
     }
+
+    pub fn get_type_index(&self, ctx: &ModuleContext) -> Option<u32> {
+        if self.local {
+            ctx.wasm_module
+                .functions
+                .get(self.fn_index as usize)
+                .map(|t| *t)
+        } else {
+            ctx.wasm_module
+                .imports
+                .get(self.fn_index as usize)
+                .and_then(|i| match &i.item_desc {
+                    WasmImportDesc::Func { type_index } => Some(*type_index),
+                })
+        }
+    }
 }
 
 pub struct FnContext<'a> {
@@ -873,9 +889,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 loc: loc.clone(),
             })?,
         },
-        ("data.size", []) => WasmInstr::I32ConstLazy {
-            value: ctx.module.data_size.clone(),
-        },
         (
             "i64",
             [SExpr::Atom {
@@ -966,6 +979,26 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
+        ("data.size", []) => WasmInstr::I32ConstLazy {
+            value: ctx.module.data_size.clone(),
+        },
+        ("memory.size", []) => WasmInstr::MemorySize {},
+        ("memory.grow", [size_expr]) => {
+            let size = parse_instr(size_expr, ctx)?;
+            let size_type = get_type(ctx, &size)?;
+
+            if let [WasmValueType::I32] = size_type[..] {
+            } else {
+                return Err(CompileError {
+                    message: format!("Invalid arguments "),
+                    loc: size_expr.loc().clone(),
+                });
+            }
+
+            WasmInstr::MemoryGrow {
+                size: Box::new(size),
+            }
+        }
         ("if", [block_type, cond, then_branch, else_branch]) => WasmInstr::If {
             block_type: WasmValueType::parse(block_type, ctx.module)?,
             cond: Box::new(parse_instr(cond, ctx)?),
@@ -978,16 +1011,30 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
         },
         ("loop", [SExpr::List { value: exprs, .. }]) => WasmInstr::Loop {
             instrs: build_block(exprs, ctx)?,
-            loc: op_loc.clone(),
         },
         ("break", []) => WasmInstr::LoopBreak {},
         ("continue", []) => WasmInstr::LoopContinue {},
-        ("return", values) => WasmInstr::Return {
-            value: Box::new(WasmInstr::MultiValueEmit {
+        ("return", values) => {
+            let value = WasmInstr::MultiValueEmit {
                 values: parse_instrs(values, ctx)?,
-            }),
-            loc: op_loc.clone(),
-        },
+            };
+
+            let return_type = get_type(ctx, &value)?;
+            if return_type != ctx.fn_type.outputs {
+                return Err(CompileError {
+                    message: format!(
+                        "TypeError: Invalid return type, \
+                            expected {outputs:?}, got {return_type:?}",
+                        outputs = ctx.fn_type.outputs,
+                    ),
+                    loc: op_loc.clone(),
+                });
+            }
+
+            WasmInstr::Return {
+                value: Box::new(value),
+            }
+        }
         // TODO(feat): support custom aligns and offsets
         (
             "@" | "load",
@@ -1211,13 +1258,13 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                     WasmInstr::NoTypeCheck {
                         instr: Box::new(WasmInstr::Call {
                             fn_index: alloc_fn_index,
+                            fn_type_index: 0, // doesn't matter as it's inside NoTypeCheck
                             args: vec![
                                 alloc_id_instr,
                                 WasmInstr::I32Const {
                                     value: value_size as i32,
                                 },
                             ],
-                            loc: Location::internal(),
                         }),
                     },
                     WasmInstr::Set {
@@ -1452,10 +1499,35 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 });
             };
 
+            let fn_type_index = fn_def
+                .get_type_index(ctx.module)
+                .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
+
+            let fn_type = ctx
+                .module
+                .wasm_module
+                .types
+                .get(fn_type_index as usize)
+                .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
+
+            let args = parse_instrs(args, ctx)?;
+            let arg_types = get_types(ctx, &args)?;
+            if fn_type.inputs != arg_types {
+                return Err(CompileError {
+                    message: format!(
+                        "TypeError: Mismatched arguments for function \
+                            '{fn_name}', expected {inputs:?}, got {args:?}",
+                        inputs = fn_type.inputs,
+                        args = arg_types,
+                    ),
+                    loc: op_loc.clone(),
+                });
+            }
+
             WasmInstr::Call {
                 fn_index: fn_def.get_absolute_index(ctx.module),
-                args: parse_instrs(args, ctx)?,
-                loc: op_loc.clone(),
+                fn_type_index,
+                args,
             }
         }
     };

@@ -1,4 +1,3 @@
-use crate::common::Location;
 use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
@@ -88,6 +87,10 @@ pub enum WasmInstr {
         lhs: Box<WasmInstr>,
         rhs: Box<WasmInstr>,
     },
+    MemorySize,
+    MemoryGrow {
+        size: Box<WasmInstr>,
+    },
     // TODO: use single type for loads/gets?
     Load {
         kind: WasmLoadKind,
@@ -127,16 +130,14 @@ pub enum WasmInstr {
     },
     Return {
         value: Box<WasmInstr>,
-        loc: Location,
     },
     Loop {
         instrs: Vec<WasmInstr>,
-        loc: Location,
     },
     Call {
         fn_index: u32,
+        fn_type_index: u32, // for type-checker
         args: Vec<WasmInstr>,
-        loc: Location,
     },
     If {
         block_type: WasmValueType,
