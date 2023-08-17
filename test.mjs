@@ -199,6 +199,26 @@ test("compiles struct-in-struct", async () => {
     assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n3\n");
 });
 
+test("compiles heap-alloc", async () => {
+    const program = await compile("./examples/heap-alloc.test.lole");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(
+        output,
+        dropPadding(`
+            Heap/TOTAL_ALLOCATED = 1048576
+            &p = (Heap/alloc 1) // 1048592
+            (Heap/free &p)
+            &p = (Heap/alloc 1) // 1048592
+            &p = (Heap/alloc 1) // 1048612
+        `)
+    );
+});
+
 test("compiles minify", async () => {
     const testSource = `
         ; std + wasi
@@ -334,15 +354,6 @@ function storeData(memory, ptr, data) {
 }
 
 /**
- * @param {ArrayBufferLike} buff
- * @param {number} offset
- * @param {number} length
- */
-function u32s(buff, offset, length) {
-    return new Uint32Array(buff.slice(offset), 0, length);
-}
-
-/**
  * @param {BufferSource} data
  * @param {import("node:wasi").WASIOptions} [wasiOptions]
  */
@@ -374,4 +385,12 @@ async function runWithTmpFile(run) {
         await mockOutputFile.close();
         await unlink(mockOutputFileName);
     }
+}
+
+function dropPadding(/** @type {string} */ str) {
+    return str
+        .slice(1)
+        .split("\n")
+        .map((s) => s.trimStart())
+        .join("\n");
 }

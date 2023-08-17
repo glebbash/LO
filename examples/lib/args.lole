@@ -9,8 +9,8 @@
     (drop (args_sizes_get &argc &argv_buf_size))
 
     {argc : u32 = {i32 @ &argc}}
-    {&argv : (&* (&* u8)) = (Mem/alloc {argc * (sizeof (&* u8))})}
-    {&argv_buf : (&* u8) = (Mem/alloc {i32 @ &argv_buf_size})}
+    {&argv : (&* (&* u8)) = (Heap/alloc {argc * (sizeof (&* u8))})}
+    {&argv_buf : (&* u8) = (Heap/alloc {i32 @ &argv_buf_size})}
     (drop (args_get &argv &argv_buf))
 
     (Stack/free (sizeof u32))

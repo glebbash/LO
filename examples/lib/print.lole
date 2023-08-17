@@ -2,8 +2,9 @@
 (mod lib/wasi)
 
 (fn print_u32 [(num u32)] [] (
-    {&out : (& String) = (std/u32_to_string num)}
+    {&out : (& String) = (std/u32_to_string_using num Alloc/STACK)}
     (print_str &out)
+    (Vec/free &out)
 ))
 
 (fn println [] [] (

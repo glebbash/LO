@@ -6,6 +6,7 @@
     (global Unrec/UNKNOWN u32 0)
     (global Unrec/STACK_OVERFLOW u32 1)
     (global Unrec/STACK_UNDERFLOW u32 2)
+    (global Unrec/OOM u32 3)
     (global mut Unrec/ERR u32 0)
 
 ; alloc
@@ -15,12 +16,12 @@
 
     (fn alloc [(alloc_id u32) (size u32)] [ptr] (
         (if {alloc_id == 0} (return (Stack/alloc size)))
-        (return (Mem/alloc size))
+        (return (Heap/alloc size))
     ))
 
     (fn free [(alloc_id u32) (ptr u32) (size u32)] [] (
         (if {alloc_id == 0} (return (Stack/free size)))
-        (return (Mem/free ptr))
+        (return (Heap/free ptr))
     ))
 
 ; stack
@@ -63,19 +64,110 @@
         ))
     ))
 
-; mem
+; heap
 
-    (global mut Mem/&CURRENT u32 1048576) ; starts after stack end
-    (fn Mem/alloc [(size u32)] [ptr] (
-        {ref : ptr = Mem/&CURRENT}
-        {Mem/&CURRENT = {Mem/&CURRENT + size}}
-        (return ref)
+    (struct Heap/Block
+        (size u32)
+        (used bool)
+        (&next ptr) ; (& Heap/Block)
+        (&data ptr)
+    )
+
+    (global mut Heap/TOTAL_ALLOCATED u32 1048576) ; starts after stack end
+    (global mut Heap/&FIRST_BLOCK (& Heap/Block) 0)
+    (global mut Heap/&CURRENT_BLOCK (& Heap/Block) 0)
+
+    ; http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
+    (fn Heap/alloc [(size u32)] [ptr] (
+        {size = (Mem/align size)}
+
+        {&free_block : (& Heap/Block) = (Heap/find_free_block size)}
+        (if {&free_block != 0} (do
+            {Heap/Block @ &free_block . used = true}
+            (return {Heap/Block @ &free_block . &data})
+        ))
+
+        {total_size_to_alloc : u32 = {size + (sizeof Heap/Block)}}
+
+        {&block : (& Heap/Block) = Heap/TOTAL_ALLOCATED}
+        {Heap/TOTAL_ALLOCATED = {Heap/TOTAL_ALLOCATED + total_size_to_alloc}}
+
+        ; memory.grow enough if out of space
+        (if {Heap/TOTAL_ALLOCATED >= {(memory.size) * Mem/PAGE_SIZE}} (do
+            {pages_to_grow : u32 = (Mem/align_to total_size_to_alloc Mem/PAGE_SIZE)}
+            {grow_res : u32 = (memory.grow pages_to_grow)}
+            (if {grow_res == {0 - 1}} (do
+                {Unrec/ERR = Unrec/OOM}
+                (unreachable)
+            ))
+        ))
+
+        {Heap/Block @ &block . size = size}
+        {Heap/Block @ &block . used = true}
+        {Heap/Block @ &block . &data = {&block + (sizeof Heap/Block)}}
+
+        ; init heap
+        (if {Heap/&FIRST_BLOCK == 0} (do
+            {Heap/&FIRST_BLOCK = &block}
+        ))
+
+        ; chain block
+        (if {Heap/&CURRENT_BLOCK != 0} (do
+            {Heap/Block @ Heap/&CURRENT_BLOCK . &next = &block}
+        ))
+
+        {Heap/&CURRENT_BLOCK = &block}
+
+        (return {Heap/Block @ &block . &data})
     ))
 
-    ; TODO: implement
-    (fn Mem/free [(ref ptr)] [] ())
+    (fn Heap/free [(&ref ptr)] [] (
+        {&block : (& Heap/Block) = (Heap/get_block &ref)}
+        {Heap/Block @ &block . used = false}
+    ))
 
-    ; TODO: use builtin mem.copy instr
+    (fn Heap/get_block [(&ref ptr)] [(& Heap/Block)] (
+        (return {&ref - (sizeof Heap/Block)})
+    ))
+
+    ; first fit
+    (fn Heap/find_free_block [(size u32)] [(& Heap/Block)] (
+        {&block : (& Heap/Block) = Heap/&FIRST_BLOCK}
+
+        (loop (
+            (if {&block == 0} (break))
+
+            (if {(not {Heap/Block @ &block . used})
+                    && {Heap/Block @ &block . size >= size}} (do
+                (return &block)
+            ))
+
+            {&block = {Heap/Block @ &block . &next}}
+        ))
+
+        (return 0)
+    ))
+
+; memory instructions
+
+    (global Mem/POINTER_SIZE u32 4)
+    (global Mem/PAGE_SIZE u32 65536)
+
+    (fn Mem/align [(size u32)] [u32] (
+        (return (Mem/align_to size Mem/POINTER_SIZE))
+    ))
+
+    (fn Mem/align_to [(size u32) (size_multiple u32)] [u32] (
+        {remaining_to_align : u32 = {size % size_multiple}}
+        (if {remaining_to_align == 0} (do
+            (return size)
+        ))
+
+        {padding : u32 = {size_multiple - remaining_to_align}}
+        (return {size + padding})
+    ))
+
+    ; TODO: use builtin mem.copy instr, check engine support
     (fn Mem/copy [(src ptr) (dist ptr) (size u32)] [] (
         (loop (
             (if {size == 0} (break))
@@ -107,15 +199,26 @@
         (length u32)
         (capacity u32)
         (item_size u32)
+        (alloc_id u32)
     )
 
     (fn Vec/new [(capacity u32) (item_size u32)] [(& Vec)] (
+        (return (Vec/new_using capacity item_size Alloc/HEAP))
+    ))
+
+    (fn Vec/new_using [(capacity u32) (item_size u32) (alloc_id u32)] [(& Vec)] (
         (return (new Vec (do
-            (alloc Alloc/HEAP {capacity * item_size})
+            (alloc alloc_id {capacity * item_size})
             0
             capacity
             item_size
-        ) :using Alloc/HEAP))
+            alloc_id
+        ) :using alloc_id))
+    ))
+
+    (fn Vec/free [(&self (& Vec))] [] (
+        (free {Vec @ &self . alloc_id} &self (sizeof Vec))
+        (free {Vec @ &self . alloc_id} {Vec @ &self . &data} {Vec @ &self . capacity})
     ))
 
     ; TODO: check out of bounds
@@ -230,9 +333,12 @@
 
 ; conversions
 
-    ; ascii digits: 48-57
     (fn std/u32_to_string [(input u32)] [(& String)] (
-        {&output : (& String) = (Vec/new 32 1)}
+        (return (std/u32_to_string_using input Alloc/HEAP))
+    ))
+
+    (fn std/u32_to_string_using [(input u32) (alloc_id u32)] [(& String)] (
+        {&output : (& String) = (Vec/new_using 32 1 alloc_id)}
 
         (if {input == 0} (do
             (Vec/push_u8 &output (char_code "0"))
