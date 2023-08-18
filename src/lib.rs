@@ -97,7 +97,7 @@ fn compile_str(script: &str) -> Result<Vec<u8>, String> {
             );
         })?;
 
-    let wasm_binary = BinaryBuilder::new(&module).build();
+    let wasm_binary = BinaryBuilder::build(&module);
 
     Ok(wasm_binary)
 }

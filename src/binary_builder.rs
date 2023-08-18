@@ -17,22 +17,23 @@ pub struct BinaryBuilder<'a> {
 
 // TODO(perf): Where temporary section buffer is needed one buffer can be shared
 impl<'a> BinaryBuilder<'a> {
-    pub fn new(module: &'a WasmModule) -> Self {
-        let data = Vec::new();
-        Self { module, data }
-    }
+    pub fn build(module: &'a WasmModule) -> Vec<u8> {
+        let mut builder = Self {
+            module,
+            data: Vec::new(),
+        };
 
-    pub fn build(mut self) -> Vec<u8> {
-        self.emit_magic_and_version();
-        self.emit_type_section();
-        self.emit_import_section();
-        self.emit_function_section();
-        self.emit_memory_section();
-        self.emit_global_section();
-        self.emit_export_section();
-        self.emit_code_section();
-        self.emit_data_section();
-        self.data
+        builder.emit_magic_and_version();
+        builder.emit_type_section();
+        builder.emit_import_section();
+        builder.emit_function_section();
+        builder.emit_memory_section();
+        builder.emit_global_section();
+        builder.emit_export_section();
+        builder.emit_code_section();
+        builder.emit_data_section();
+
+        builder.data
     }
 
     fn emit_magic_and_version(&mut self) {
