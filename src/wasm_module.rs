@@ -13,6 +13,7 @@ pub struct WasmModule {
     pub datas: RefCell<Vec<WasmData>>, // need RefCell for string support
 }
 
+#[derive(PartialEq)]
 pub struct WasmFnType {
     pub inputs: Vec<WasmValueType>,
     pub outputs: Vec<WasmValueType>,

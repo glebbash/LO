@@ -96,7 +96,6 @@ impl<'a> BinaryBuilder<'a> {
         self.data.append(&mut import_section);
     }
 
-    // TODO(optimize): Functions with equivalent types can point to the same type
     fn emit_function_section(&mut self) {
         self.data.push(SECTION_FUNC);
 
