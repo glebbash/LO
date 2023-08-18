@@ -296,9 +296,8 @@
     (Parser/skip_space &self)
 ))
 
-; TODO(QOL?): add += operator
 (fn Parser/next_char [(&self (& Parser))] [] (
-    {Parser @ &self . index = {Parser @ &self . index + 1}}
+    {Parser @ &self . index += 1}
 
     {res : Parser/CharAtResult = (Parser/current_char &self)}
     (if (not {res . ok}) (do
@@ -307,11 +306,11 @@
 
     (if {res . data == (char_code "\n")} (do
         {Parser @ &self . col = 0}
-        {Parser @ &self . line = {Parser @ &self . line + 1}}
+        {Parser @ &self . line += 1}
         (return)
     ))
 
-    {Parser @ &self . col = {Parser @ &self . col + 1}}
+    {Parser @ &self . col += 1}
 ))
 
 (struct Parser/CharAtResult

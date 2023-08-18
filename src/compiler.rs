@@ -967,11 +967,29 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
+        ("+=", [lhs, rhs]) => {
+            let bind = parse_instr(lhs, ctx)?;
+            let value = WasmInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Add,
+                lhs: Box::new(bind.clone()),
+                rhs: Box::new(parse_instr(rhs, ctx)?),
+            };
+            build_set(ctx, value, bind, lhs.loc())?
+        }
         ("i32.sub" | "-", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(parse_instr(lhs, ctx)?),
             rhs: Box::new(parse_instr(rhs, ctx)?),
         },
+        ("-=", [lhs, rhs]) => {
+            let bind = parse_instr(lhs, ctx)?;
+            let value = WasmInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Sub,
+                lhs: Box::new(bind.clone()),
+                rhs: Box::new(parse_instr(rhs, ctx)?),
+            };
+            build_set(ctx, value, bind, lhs.loc())?
+        }
         ("i32.mul" | "*", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(parse_instr(lhs, ctx)?),

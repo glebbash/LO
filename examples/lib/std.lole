@@ -45,7 +45,7 @@
     ))
 
     (fn Stack/alloc [(size u32)] [ptr] (
-        {Stack/&CURRENT = {Stack/&CURRENT + size}}
+        {Stack/&CURRENT += size}
 
         (if {Stack/&CURRENT > Stack/&END} (do
             {Unrec/ERR = Unrec/STACK_OVERFLOW}
@@ -56,7 +56,7 @@
     ))
 
     (fn Stack/free [(size u32)] [] (
-        {Stack/&CURRENT = {Stack/&CURRENT - size}}
+        {Stack/&CURRENT -= size}
 
         (if {Stack/&CURRENT < Stack/&BEGIN} (do
             {Unrec/ERR = Unrec/STACK_UNDERFLOW}
@@ -90,7 +90,7 @@
         {total_size_to_alloc : u32 = {size + (sizeof Heap/Block)}}
 
         {&block : (& Heap/Block) = Heap/TOTAL_ALLOCATED}
-        {Heap/TOTAL_ALLOCATED = {Heap/TOTAL_ALLOCATED + total_size_to_alloc}}
+        {Heap/TOTAL_ALLOCATED += total_size_to_alloc}
 
         ; memory.grow enough if out of space
         (if {Heap/TOTAL_ALLOCATED >= {(memory.size) * Mem/PAGE_SIZE}} (do
@@ -171,7 +171,7 @@
     (fn Mem/copy [(src ptr) (dist ptr) (size u32)] [] (
         (loop (
             (if {size == 0} (break))
-            {size = {size - 1}}
+            {size -= 1}
 
             {i32/u8 @ dist @ size = {i32/u8 @ src @ size}}
         ))
@@ -180,7 +180,7 @@
     (fn Mem/swap [(ref1 ptr) (ref2 ptr) (size u32)] [] (
         (loop (
             (if {size == 0} (break))
-            {size = {size - 1}}
+            {size -= 1}
 
             {
             (do {i32/u8 @ ref1 @ size}
@@ -267,7 +267,7 @@
     ))
 
     (fn Vec/push_undef [(&self (& Vec))] [ptr] (
-        {Vec @ &self . length = {Vec @ &self . length + 1}}
+        {Vec @ &self . length += 1}
 
         (Vec/grow_if_needed &self)
 
@@ -275,7 +275,7 @@
     ))
 
     (fn Vec/pop_unchecked [(&self (& Vec))] [ptr] (
-        {Vec @ &self . length = {Vec @ &self . length - 1}}
+        {Vec @ &self . length -= 1}
         (return (Vec/at &self (Vec/len &self)))
     ))
 
@@ -303,8 +303,8 @@
             (if {start >= end} (break))
 
             (Vec/swap &self start end)
-            {start = {start + 1}}
-            {end = {end - 1}}
+            {start += 1}
+            {end -= 1}
         ))
     ))
 
