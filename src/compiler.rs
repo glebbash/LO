@@ -391,9 +391,15 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     value_type.emit_components(&ctx, &mut outputs);
                 }
 
-                ctx.wasm_module.types.push(WasmFnType { inputs, outputs });
-                let type_index = ctx.wasm_module.types.len() as u32 - 1;
                 let fn_index = ctx.wasm_module.functions.len() as u32;
+                let fn_type = WasmFnType { inputs, outputs };
+
+                // reuse existing type or add new
+                let type_index = ctx.wasm_module.types.iter().position(|ft| *ft == fn_type);
+                let type_index = type_index.unwrap_or_else(|| {
+                    ctx.wasm_module.types.push(fn_type);
+                    ctx.wasm_module.types.len() - 1
+                }) as u32;
 
                 ctx.wasm_module.functions.push(type_index);
                 ctx.fn_defs.insert(
