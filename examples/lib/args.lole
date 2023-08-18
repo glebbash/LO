@@ -6,10 +6,10 @@
 
 (fn Args/load [] [Args] (
     {&argc : (& u32) = (Stack/alloc (sizeof u32))}
+    (defer (Stack/free (sizeof u32)))
     {&argv_buf_size : (& u32) = (Stack/alloc (sizeof u32))}
+    (defer (Stack/free (sizeof u32)))
     (drop (args_sizes_get &argc &argv_buf_size))
-    (Stack/free (sizeof u32))
-    (Stack/free (sizeof u32))
 
     {argv_buf_size : u32 = {i32 @ &argv_buf_size}}
     {argc : u32 = {i32 @ &argc}}

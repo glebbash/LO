@@ -23,8 +23,8 @@
     (print_u32 {r . br . x})
     (println)
 
-    {&r : (& Rect) = (Stack/alloc (sizeof Rect))}
-    {Rect @ &r = r}
+    {&r : (& Rect) = (new Rect r :using Alloc/STACK)}
+    (defer (Stack/free (sizeof Rect)))
 
     {r2 : Rect = {Rect @ &r}}
     (print_u32 {r2 . br . x})
@@ -52,6 +52,4 @@
     ; {&br2 : (& Point2D) = {&r . br}}
     ; (print_u32 {Point2D @ &br2 . x})
     ; (println)
-
-    (Stack/free (sizeof Rect))
 ))

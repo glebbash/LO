@@ -3,8 +3,9 @@
 
 (fn print_u32 [(num u32)] [] (
     {&out : (& String) = (std/u32_to_string_using num Alloc/STACK)}
+    (defer (Vec/free &out))
+
     (print_str &out)
-    (Vec/free &out)
 ))
 
 (fn println [] [] (
@@ -13,19 +14,22 @@
 
 (fn print_char [(char u8)] [] (
     {&out : (&* u8) = (Stack/alloc 1)}
+    (defer (Stack/free 1))
     {i32/u8 @ &out = char}
+
     (print_str_slice (do &out 1))
-    (Stack/free 1)
 ))
 
 (fn print_str_slice [(str StringSlice)] [] (
-    {&str : (& StringSlice) = (Stack/alloc (sizeof StringSlice))}
-    {StringSlice @ &str = str}
+    {&str : (& StringSlice) = (new StringSlice str :using Alloc/STACK)}
+    (defer (Stack/free (sizeof StringSlice)))
+
     (print_str &str)
-    (Stack/free (sizeof StringSlice))
 ))
 
 (fn print_str [(&str (& StringSlice))] [] (
-    (drop (fd_write FD_STDOUT &str 1 (Stack/alloc (sizeof u32))))
-    (Stack/free (sizeof u32))
+    {&nwritten : (& u32) = (Stack/alloc (sizeof u32))}
+    (defer (Stack/free (sizeof u32)))
+
+    (drop (fd_write FD_STDOUT &str 1 &nwritten))
 ))

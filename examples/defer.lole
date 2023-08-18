@@ -1,0 +1,8 @@
+(mod lib/cli)
+
+(fn main [] [] (
+    (defer main (print_str_slice "1\n"))
+    (defer main (print_str_slice "2\n"))
+    (defer main (print_str_slice "3\n"))
+    (defer.eval main)
+))

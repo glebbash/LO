@@ -4,11 +4,14 @@
 (fn fd_read_all [(fd u32)] [(& String)] (
     {&output : (& String) = (Vec/new 256 1)}
     {&chunk : (&* u8) = (Stack/alloc 256)}
+    (defer (Stack/free 256))
 
     {&in_vec : (&* IOVec) = (new IOVec
         (struct.new IOVec &chunk 256) :using Alloc/STACK)}
+    (defer (Stack/free (sizeof IOVec)))
 
     {&nread : (& u32) = (Stack/alloc (sizeof u32))}
+    (defer (Stack/free (sizeof u32)))
 
     (loop (
         {err : WasiErr = (fd_read fd &in_vec 1 &nread)}
@@ -20,33 +23,28 @@
         (Vec/push_all &output &chunk nread)
     ))
 
-    (Stack/free 256)
-    (Stack/free (sizeof IOVec))
-    (Stack/free (sizeof u32))
-
     (return &output)
 ))
 
 (fn fd_write_all [(fd u32) (message StringSlice)] [] (
-    {&out_vec : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
-    {IOVec @ &out_vec = message}
+    {&out_vec : (&* IOVec) = (new IOVec message :using Alloc/STACK)}
+    (defer (Stack/free (sizeof IOVec)))
 
     {&nwritten : (& u32) = (Stack/alloc (sizeof u32))}
-    {err : WasiErr = (fd_write fd &out_vec 1 &nwritten)}
+    (defer (Stack/free (sizeof u32)))
 
-    (Stack/free (sizeof IOVec))
-    (Stack/free (sizeof u32))
+    {err : WasiErr = (fd_write fd &out_vec 1 &nwritten)}
 ))
 
 (fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [bool] (
     {&chunk : (&* u8) = (Stack/alloc chunk_size)}
+    (defer (Stack/free chunk_size))
 
-    {&iov : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
-    {IOVec @ &iov . base = &chunk}
+    {&iov : (&* IOVec) = (new IOVec (do &chunk 0) :using Alloc/STACK)}
+    (defer (Stack/free (sizeof IOVec)))
 
     {&nread : (& u32) = (Stack/alloc (sizeof u32))}
-
-    {ok : bool = true}
+    (defer (Stack/free (sizeof u32)))
 
     {io_res : i32}
 
@@ -54,8 +52,7 @@
         {IOVec @ &iov . len = chunk_size}
         {io_res = (fd_read fd_in &iov 1 &nread)}
         (if {io_res != 0} (do
-            {ok = false}
-            (break)
+            (return false)
         ))
 
         {nread : u32 = {i32 @ &nread}}
@@ -64,27 +61,23 @@
         {IOVec @ &iov . len = nread}
         {io_res = (fd_write fd_out &iov 1 &nread)}
         (if {io_res != 0} (do
-            {ok = false}
-            (break)
+            (return false)
         ))
     ))
 
-    (Stack/free (sizeof u32))
-    (Stack/free (sizeof IOVec))
-    (Stack/free chunk_size)
-    (return ok)
+    (return true)
 ))
 
 (fn fd_open [(file_path StringSlice)] [u32 u32] (
     {&fd : (& u32) = (new u32 0 :using Alloc/STACK)}
+    (defer (free Alloc/STACK &fd (sizeof u32)))
+
     {err : WasiErr = (path_open
         CWD_PREOPEN_FD 0
         file_path 0 (i64 2) (i64 0) 0
         &fd
     )}
-
     {fd : u32 = {i32 @ &fd}}
-    (free Alloc/STACK &fd (sizeof u32))
 
     (return (do err fd))
 ))

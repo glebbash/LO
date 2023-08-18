@@ -6,10 +6,13 @@
 (fn main [] [] (
     {fd : u32 = FD_STDIN}
     {file_name : StringSlice = (StringSlice/clone "<internal>")}
+    (defer (Heap/free {file_name . data}))
 
     {args : Args = (Args/load)}
+    (defer (Args/free args))
+
     (if {args . argc == 1} (do
-        (Heap/free {file_name . data})
+        (Heap/free {file_name . data}) ; free default value
         {file_name = (StringSlice/clone (Args/get args 0))}
 
         {(do {err : u32} fd) = (fd_open file_name)}
@@ -20,13 +23,16 @@
             (return (proc_exit 1))
         ))
     ))
-    (Args/free args)
 
     {&source : (& String) = (fd_read_all fd)}
+    (defer (Vec/free &source))
+
     {parse_res : Parser/ParseResult = (Parser/parse file_name (Vec/as_slice &source))}
 
     (if (not {parse_res . ok}) (do
         {parse_err : Parser/CompileError = {Parser/CompileError @ {parse_res . data}}}
+        (defer _if (Parser/CompileError/free parse_err))
+
         (print_str_slice {parse_err . loc . file_name})
         (print_str_slice ":")
         (print_u32 {parse_err . loc . line})
@@ -36,20 +42,15 @@
         (print_str {parse_err . &message})
         (print_str_slice "\n")
 
-        (Parser/CompileError/free parse_err)
-
+        (defer.eval _if)
         (return (proc_exit 1))
     ))
 
     {&exprs : (& Vec<Parser/SExpr>) = {parse_res . data}}
+    (defer (Vec/free &exprs)) ; TODO: free inner data of &exprs
 
     (dump_exprs &exprs)
     (println)
-
-    ; TODO: free inner data of &exprs
-    (Vec/free &exprs)
-    (Vec/free &source)
-    (Heap/free {file_name . data})
 ))
 
 (fn dump_exprs [(&exprs (& Vec<Parser/SExpr>))] [] (

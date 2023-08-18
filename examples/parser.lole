@@ -57,11 +57,9 @@
 (fn Parser/parse [(file_name StringSlice) (script StringSlice)] [Parser/ParseScriptResult] (
     {&parser : (& Parser) = (new Parser (Parser/new file_name script)
         :using Alloc/STACK)}
+    (defer (Stack/free (sizeof Parser)))
 
-    {result : Parser/ParseScriptResult = (Parser/parse_all &parser)}
-
-    (Stack/free (sizeof Parser))
-    (return result)
+    (return (Parser/parse_all &parser))
 ))
 
 (fn Parser/new [(file_name StringSlice) (script StringSlice)] [Parser] (

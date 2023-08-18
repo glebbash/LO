@@ -10,10 +10,9 @@
 (export main :as main)
 (fn main [] [i32] (
     {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
+    (defer (Stack/free (sizeof Point2D)))
+
     {Point2D @ &p = (struct.new Point2D 2 3)}
-
     {y : u32 = {Point2D @ &p . y}}
-    (Stack/free (sizeof Point2D))
-
     (return y)
 ))

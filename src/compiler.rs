@@ -21,6 +21,7 @@ use alloc::{
 };
 use core::cell::RefCell;
 
+const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: i32 = 1;
 
 pub struct FnBody {
@@ -102,6 +103,7 @@ pub struct FnContext<'a> {
     pub locals: &'a mut BTreeMap<String, LocalDef>,
     pub locals_last_index: u32,
     pub non_arg_locals: Vec<WasmValueType>,
+    pub defers: BTreeMap<String, Vec<SExpr>>,
 }
 
 pub struct LocalDef {
@@ -156,9 +158,13 @@ pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
             locals: &mut fn_body.locals.borrow_mut(),
             locals_last_index: fn_body.locals_last_index,
             non_arg_locals: vec![],
+            defers: BTreeMap::default(),
         };
 
-        let instrs = build_block(&fn_body.body, &mut fn_ctx)?;
+        let mut instrs = build_block(&fn_body.body, &mut fn_ctx)?;
+        if let Some(values) = get_deferred("return", &mut fn_ctx) {
+            instrs.append(&mut values?);
+        };
 
         let mut locals = vec![];
         for local_type in fn_ctx.non_arg_locals {
@@ -993,7 +999,7 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
             if let [WasmValueType::I32] = size_type[..] {
             } else {
                 return Err(CompileError {
-                    message: format!("Invalid arguments "),
+                    message: format!("Invalid arguments for {op}"),
                     loc: size_expr.loc().clone(),
                 });
             }
@@ -1034,9 +1040,56 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 });
             }
 
+            if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, ctx) {
+                let mut values = values?;
+                values.push(WasmInstr::Return {
+                    value: Box::new(value),
+                });
+                return Ok(WasmInstr::MultiValueEmit { values });
+            };
+
             WasmInstr::Return {
                 value: Box::new(value),
             }
+        }
+        ("defer", [defer_label_exprs @ .., defer_expr]) => {
+            let defer_label = match &defer_label_exprs[..] {
+                [SExpr::Atom {
+                    kind: AtomKind::Symbol,
+                    value: defer_label,
+                    loc: _,
+                }] => defer_label.clone(),
+                [] => String::from(DEFER_UNTIL_RETURN_LABEL),
+                _ => {
+                    return Err(CompileError {
+                        message: format!("Invalid arguments for {op}"),
+                        loc: op_loc.clone(),
+                    })
+                }
+            };
+
+            let deferred = ctx.defers.entry(defer_label).or_insert_with(|| vec![]);
+
+            deferred.push(defer_expr.clone());
+
+            WasmInstr::MultiValueEmit { values: vec![] }
+        }
+        (
+            "defer.eval",
+            [SExpr::Atom {
+                kind: AtomKind::Symbol,
+                value: defer_label,
+                loc: defer_label_loc,
+            }],
+        ) => {
+            let Some(values) = get_deferred(defer_label, ctx) else {
+                return Err(CompileError {
+                    message: format!("Unknown defer scope: {defer_label}"),
+                    loc: defer_label_loc.clone(),
+                });
+            };
+
+            WasmInstr::MultiValueEmit { values: values? }
         }
         ("sizeof", [type_expr]) => {
             let value_type = LoleValueType::parse(type_expr, ctx.module)?;
@@ -1537,6 +1590,20 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
     };
 
     Ok(instr)
+}
+
+fn get_deferred(
+    defer_label: &str,
+    ctx: &mut FnContext,
+) -> Option<Result<Vec<WasmInstr>, CompileError>> {
+    let Some(deferred) = ctx.defers.get(defer_label) else {
+        return None;
+    };
+
+    let mut deferred = deferred.clone();
+    deferred.reverse();
+
+    Some(parse_instrs(&deferred, ctx))
 }
 
 fn build_load(
