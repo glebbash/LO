@@ -26,16 +26,6 @@
     (return &output)
 ))
 
-(fn fd_write_all [(fd u32) (message StringSlice)] [] (
-    {&out_vec : (&* IOVec) = (new IOVec message :using Alloc/STACK)}
-    (defer (Stack/free (sizeof IOVec)))
-
-    {&nwritten : (& u32) = (Stack/alloc (sizeof u32))}
-    (defer (Stack/free (sizeof u32)))
-
-    {err : WasiErr = (fd_write fd &out_vec 1 &nwritten)}
-))
-
 (fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [bool] (
     {&chunk : (&* u8) = (Stack/alloc chunk_size)}
     (defer (Stack/free chunk_size))

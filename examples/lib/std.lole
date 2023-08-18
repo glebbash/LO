@@ -202,6 +202,8 @@
         (alloc_id u32)
     )
 
+    (struct Vec<u8> (actual Vec))
+
     (fn Vec/new [(capacity u32) (item_size u32)] [(& Vec)] (
         (return (Vec/new_using capacity item_size Alloc/HEAP))
     ))
@@ -318,7 +320,7 @@
 
 ; string
 
-    (struct String (actual ptr)) ; actually an alias for Vec<u8>
+    (struct String (actual (& Vec<u8>)))
     (struct StringSlice (data (&* u8)) (size u32))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (

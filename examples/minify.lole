@@ -28,7 +28,6 @@
     (defer (Vec/free &source))
 
     {parse_res : Parser/ParseResult = (Parser/parse file_name (Vec/as_slice &source))}
-
     (if (not {parse_res . ok}) (do
         {parse_err : Parser/CompileError = {Parser/CompileError @ {parse_res . data}}}
         (defer _if (Parser/CompileError/free parse_err))
