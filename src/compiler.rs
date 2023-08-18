@@ -876,6 +876,9 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 drop_count,
             }
         }
+        ("do", exprs) => WasmInstr::MultiValueEmit {
+            values: parse_instrs(exprs, ctx)?,
+        },
         (
             "i32",
             [SExpr::Atom {
@@ -1035,107 +1038,36 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 value: Box::new(value),
             }
         }
-        // TODO(feat): support custom aligns and offsets
-        (
-            "@" | "load",
-            [SExpr::Atom {
-                value: load_kind,
-                loc: kind_loc,
-                kind: AtomKind::Symbol,
-            }, address_expr],
-        ) => {
-            let address_instr = Box::new(parse_instr(address_expr, ctx)?);
+        ("sizeof", [type_expr]) => {
+            let value_type = LoleValueType::parse(type_expr, ctx.module)?;
 
-            let Some(_) = ctx.module.struct_defs.get(load_kind) else {
-                return Ok(WasmInstr::Load {
-                    kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
-                        message: e,
-                        loc: kind_loc.clone(),
-                    })?,
-                    align: 0,
-                    offset: 0,
-                    address_instr,
-                })
+            WasmInstr::I32Const {
+                value: value_type
+                    .sized_comp_stats(ctx.module)
+                    .map_err(|err| CompileError {
+                        message: err,
+                        loc: op_loc.clone(),
+                    })?
+                    .byte_length as i32,
+            }
+        }
+        (
+            "enum.kind",
+            [SExpr::Atom {
+                value: enum_variant,
+                loc: name_loc,
+                kind: AtomKind::Symbol,
+            }],
+        ) => {
+            let Some(kind) = ctx.module.enum_kinds.get(enum_variant) else {
+                return Err(CompileError {
+                    message: format!("Unknown enum variant in {op}: {enum_variant}"),
+                    loc: name_loc.clone()
+                });
             };
 
-            build_load(
-                ctx,
-                &LoleValueType::StructInstance {
-                    name: load_kind.clone(),
-                },
-                address_instr,
-                0,
-            )
-            .map_err(|err| CompileError {
-                message: err,
-                loc: op_loc.clone(),
-            })?
-        }
-        ("@" | "load", [load, offset]) => {
-            let load_instr = parse_instr(load, ctx)?;
-            let offset_instr = parse_instr(offset, ctx)?;
-
-            match load_instr {
-                WasmInstr::Load {
-                    kind,
-                    align,
-                    offset,
-                    address_instr,
-                } => WasmInstr::Load {
-                    kind,
-                    align,
-                    offset,
-                    address_instr: Box::new(WasmInstr::BinaryOp {
-                        kind: WasmBinaryOpKind::I32Add,
-                        lhs: address_instr,
-                        rhs: Box::new(offset_instr),
-                    }),
-                },
-                // TODO: this is like real mess
-                WasmInstr::StructLoad {
-                    struct_name,
-                    address_instr,
-                    address_local_index,
-                    primitive_loads,
-                    base_byte_offset,
-                } => {
-                    let new_address = Box::new(WasmInstr::BinaryOp {
-                        kind: WasmBinaryOpKind::I32Add,
-                        lhs: address_instr,
-                        rhs: Box::new(offset_instr),
-                    });
-
-                    WasmInstr::StructLoad {
-                        struct_name,
-                        address_instr: new_address.clone(),
-                        address_local_index,
-                        base_byte_offset,
-                        primitive_loads: primitive_loads
-                            .into_iter()
-                            .map(|load_instr| {
-                                let WasmInstr::Load {
-                                    kind,
-                                    align,
-                                    offset,
-                                    ..
-                                } = load_instr else { unreachable!() };
-
-                                WasmInstr::Load {
-                                    kind,
-                                    align,
-                                    offset,
-                                    address_instr: new_address.clone(),
-                                }
-                            })
-                            .collect(),
-                    }
-                }
-                _ => {
-                    return Err(CompileError {
-                        message: format!("Invalid arguments for {op}"),
-                        loc: op_loc.clone(),
-                    })
-                }
+            WasmInstr::I32Const {
+                value: *kind as i32,
             }
         }
         (
@@ -1277,38 +1209,6 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                         local_index: return_addr_local_index,
                     },
                 ],
-            }
-        }
-        (
-            "enum.kind",
-            [SExpr::Atom {
-                value: enum_variant,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }],
-        ) => {
-            let Some(kind) = ctx.module.enum_kinds.get(enum_variant) else {
-                return Err(CompileError {
-                    message: format!("Unknown enum variant in {op}: {enum_variant}"),
-                    loc: name_loc.clone()
-                });
-            };
-
-            WasmInstr::I32Const {
-                value: *kind as i32,
-            }
-        }
-        ("sizeof", [type_expr]) => {
-            let value_type = LoleValueType::parse(type_expr, ctx.module)?;
-
-            WasmInstr::I32Const {
-                value: value_type
-                    .sized_comp_stats(ctx.module)
-                    .map_err(|err| CompileError {
-                        message: err,
-                        loc: op_loc.clone(),
-                    })?
-                    .byte_length as i32,
             }
         }
         (
@@ -1492,9 +1392,109 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 loc: op_loc.clone(),
             });
         }
-        ("do", exprs) => WasmInstr::MultiValueEmit {
-            values: parse_instrs(exprs, ctx)?,
-        },
+        // TODO(feat): support custom aligns and offsets
+        (
+            "@" | "load",
+            [SExpr::Atom {
+                value: load_kind,
+                loc: kind_loc,
+                kind: AtomKind::Symbol,
+            }, address_expr],
+        ) => {
+            let address_instr = Box::new(parse_instr(address_expr, ctx)?);
+
+            let Some(_) = ctx.module.struct_defs.get(load_kind) else {
+                return Ok(WasmInstr::Load {
+                    kind: WasmLoadKind::parse(load_kind).map_err(|e| CompileError {
+                        message: e,
+                        loc: kind_loc.clone(),
+                    })?,
+                    align: 0,
+                    offset: 0,
+                    address_instr,
+                })
+            };
+
+            build_load(
+                ctx,
+                &LoleValueType::StructInstance {
+                    name: load_kind.clone(),
+                },
+                address_instr,
+                0,
+            )
+            .map_err(|err| CompileError {
+                message: err,
+                loc: op_loc.clone(),
+            })?
+        }
+        ("@" | "load", [load, offset]) => {
+            let load_instr = parse_instr(load, ctx)?;
+            let offset_instr = parse_instr(offset, ctx)?;
+
+            match load_instr {
+                WasmInstr::Load {
+                    kind,
+                    align,
+                    offset,
+                    address_instr,
+                } => WasmInstr::Load {
+                    kind,
+                    align,
+                    offset,
+                    address_instr: Box::new(WasmInstr::BinaryOp {
+                        kind: WasmBinaryOpKind::I32Add,
+                        lhs: address_instr,
+                        rhs: Box::new(offset_instr),
+                    }),
+                },
+                // TODO: this is like real mess
+                WasmInstr::StructLoad {
+                    struct_name,
+                    address_instr,
+                    address_local_index,
+                    primitive_loads,
+                    base_byte_offset,
+                } => {
+                    let new_address = Box::new(WasmInstr::BinaryOp {
+                        kind: WasmBinaryOpKind::I32Add,
+                        lhs: address_instr,
+                        rhs: Box::new(offset_instr),
+                    });
+
+                    WasmInstr::StructLoad {
+                        struct_name,
+                        address_instr: new_address.clone(),
+                        address_local_index,
+                        base_byte_offset,
+                        primitive_loads: primitive_loads
+                            .into_iter()
+                            .map(|load_instr| {
+                                let WasmInstr::Load {
+                                    kind,
+                                    align,
+                                    offset,
+                                    ..
+                                } = load_instr else { unreachable!() };
+
+                                WasmInstr::Load {
+                                    kind,
+                                    align,
+                                    offset,
+                                    address_instr: new_address.clone(),
+                                }
+                            })
+                            .collect(),
+                    }
+                }
+                _ => {
+                    return Err(CompileError {
+                        message: format!("Invalid arguments for {op}"),
+                        loc: op_loc.clone(),
+                    })
+                }
+            }
+        }
         (fn_name, args) => {
             let Some(fn_def) = ctx.module.fn_defs.get(fn_name) else {
                 return Err(CompileError {
