@@ -1445,13 +1445,17 @@ fn parse_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileEr
                 let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
 
                 let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                        return Err(CompileError {
-                            message: format!("Unknown field {f_name} in struct {struct_name}"),
-                            loc: f_name_loc.clone(),
-                        });
-                    };
+                    return Err(CompileError {
+                        message: format!("Unknown field {f_name} in struct {struct_name}"),
+                        loc: f_name_loc.clone(),
+                    });
+                };
 
-                return Ok(build_local_get(ctx.module, base_index, &field.value_type));
+                return Ok(build_local_get(
+                    ctx.module,
+                    base_index + field.field_index,
+                    &field.value_type,
+                ));
             };
 
             if let WasmInstr::StructLoad {

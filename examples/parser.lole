@@ -11,9 +11,13 @@
 )
 
 (struct Parser/CompileError
-    (message (& String))
+    (&message (& String))
     (loc Parser/Location)
 )
+
+(fn Parser/CompileError/free [(self Parser/CompileError)] [] (
+    (Vec/free {self . &message})
+))
 
 (struct Parser
     (file_name StringSlice)

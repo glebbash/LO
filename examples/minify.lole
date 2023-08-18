@@ -4,11 +4,12 @@
 (mod parser)
 
 (fn main [] [] (
+    {file_name : StringSlice}
     {fd : u32 = FD_STDIN}
 
     {args : Args = (Args/load)}
     (if {args . argc == 1} (do
-        {file_name : StringSlice = (Args/get args 0)}
+        {file_name = (StringSlice/clone (Args/get args 0))}
 
         {(do {err : u32} fd) = (fd_open file_name)}
         (if {err != 0} (do
@@ -18,22 +19,23 @@
             (return (proc_exit 1))
         ))
     ))
+    (Args/free args)
 
     {&source : (& String) = (fd_read_all fd)}
     {parse_res : Parser/ParseResult = (Parser/parse file_name (Vec/as_slice &source))}
 
     (if (not {parse_res . ok}) (do
-        ; TODO(bug): accessing fields of this doesn't work for some reason
-        ; {err : Parser/CompileError = {Parser/CompileError @ {parse_res . data}}}
-
-        (print_str_slice {Parser/CompileError @ {parse_res . data} . loc . file_name})
+        {parse_err : Parser/CompileError = {Parser/CompileError @ {parse_res . data}}}
+        (print_str_slice {parse_err . loc . file_name})
         (print_str_slice ":")
-        (print_u32 {Parser/CompileError @ {parse_res . data} . loc . line})
+        (print_u32 {parse_err . loc . line})
         (print_str_slice ":")
-        (print_u32 {Parser/CompileError @ {parse_res . data} . loc . col})
+        (print_u32 {parse_err . loc . col})
         (print_str_slice " - ")
-        (print_str {Parser/CompileError @ {parse_res . data} . message})
+        (print_str {parse_err . &message})
         (print_str_slice "\n")
+
+        (Parser/CompileError/free parse_err)
 
         (return (proc_exit 1))
     ))
@@ -42,6 +44,10 @@
 
     (dump_exprs &exprs)
     (println)
+
+    ; TODO: free &exprs
+    (Vec/free &source)
+    (Heap/free {file_name . data})
 ))
 
 (fn dump_exprs [(&exprs (& Vec<Parser/SExpr>))] [] (

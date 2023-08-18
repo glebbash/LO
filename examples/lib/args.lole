@@ -1,22 +1,29 @@
 (struct Args
     (argc u32)
     (&argv (&* (&* u8)))
+    (&argv_buf (&* u8))
 )
 
 (fn Args/load [] [Args] (
     {&argc : (& u32) = (Stack/alloc (sizeof u32))}
     {&argv_buf_size : (& u32) = (Stack/alloc (sizeof u32))}
     (drop (args_sizes_get &argc &argv_buf_size))
+    (Stack/free (sizeof u32))
+    (Stack/free (sizeof u32))
 
+    {argv_buf_size : u32 = {i32 @ &argv_buf_size}}
     {argc : u32 = {i32 @ &argc}}
+
     {&argv : (&* (&* u8)) = (Heap/alloc {argc * (sizeof (&* u8))})}
     {&argv_buf : (&* u8) = (Heap/alloc {i32 @ &argv_buf_size})}
     (drop (args_get &argv &argv_buf))
 
-    (Stack/free (sizeof u32))
-    (Stack/free (sizeof u32))
+    (return (struct.new Args argc &argv &argv_buf))
+))
 
-    (return (struct.new Args argc &argv))
+(fn Args/free [(self Args)] [] (
+    (Heap/free {self . &argv})
+    (Heap/free {self . &argv_buf})
 ))
 
 (fn Args/get [(self Args) (i u32)] [StringSlice] (

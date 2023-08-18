@@ -325,6 +325,12 @@
         (return {i32/u8 @ {self . data} @ index})
     ))
 
+    (fn StringSlice/clone [(self StringSlice)] [StringSlice] (
+        {&cloned_data : (&* u8) = (Heap/alloc {self . size})}
+        (Mem/copy {self . data} &cloned_data {self . size})
+        (return (struct.new StringSlice &cloned_data {self . size}))
+    ))
+
     (fn String/from_slice [(str StringSlice)] [(& String)] (
         {&string : (& String) = (Vec/new {str . size} 1)}
         (Vec/push_all &string str)
