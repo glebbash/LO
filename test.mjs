@@ -219,6 +219,35 @@ test("compiles heap-alloc", async () => {
     );
 });
 
+test("compiles defer", async () => {
+    const program = await compile("./examples/defer.lole");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(
+        output,
+        dropPadding(`
+            defer(scope1): 3
+            defer(scope1): 2
+            defer(scope1): 1
+            -------------
+            defer(scope2): 2
+            defer(scope2): 1
+            -------------
+            defer(scope2): 3
+            defer(scope2): 2
+            defer(scope2): 1
+            -------------
+            defer(return): 3
+            defer(return): 2
+            defer(return): 1
+            `)
+    );
+});
+
 test("compiles minify", async () => {
     const testSource = `
         ; std + wasi
