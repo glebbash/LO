@@ -46,7 +46,7 @@
 
     {&nread : (& u32) = (Stack/alloc (sizeof u32))}
 
-    {ok : bool = false}
+    {ok : bool = true}
 
     {io_res : i32}
 
@@ -54,7 +54,7 @@
         {IOVec @ &iov . len = chunk_size}
         {io_res = (fd_read fd_in &iov 1 &nread)}
         (if {io_res != 0} (do
-            {ok = true}
+            {ok = false}
             (break)
         ))
 
@@ -64,7 +64,7 @@
         {IOVec @ &iov . len = nread}
         {io_res = (fd_write fd_out &iov 1 &nread)}
         (if {io_res != 0} (do
-            {ok = true}
+            {ok = false}
             (break)
         ))
     ))
@@ -72,7 +72,6 @@
     (Stack/free (sizeof u32))
     (Stack/free (sizeof IOVec))
     (Stack/free chunk_size)
-
     (return ok)
 ))
 
