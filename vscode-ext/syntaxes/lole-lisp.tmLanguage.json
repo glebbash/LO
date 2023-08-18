@@ -61,7 +61,7 @@
 			"patterns": [
                 {
                     "name": "keyword.control.lole-lisp",
-                    "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct\\.new|struct|enum\\.kind|enum|break|not|continue|unreachable|mut|defer)\\b"
+                    "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct\\.new|struct|enum\\.kind|enum|break|not|continue|unreachable|mut|defer.eval|defer)\\b"
 			    },
                 {
                     "name": "keyword.operator.lole-lisp",
