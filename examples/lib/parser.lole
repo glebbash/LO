@@ -349,13 +349,18 @@
 
 (fn Parser/loc [(&self (& Parser))] [Parser/Location] (
     (return (struct.new Parser/Location
-        ; TODO(mem): clone file_name
-        {Parser @ &self . file_name}
+        (StringSlice/clone {Parser @ &self . file_name})
         {Parser @ &self . index}
         1 ; length
         {Parser @ &self . line}
         {Parser @ &self . col}
     ))
+))
+
+(fn Parser/Location/clone [(self Parser/Location)] [Parser/Location] (
+    {clone : Parser/Location = self}
+    {clone . file_name = (StringSlice/clone {self . file_name})}
+    (return clone)
 ))
 
 (fn Parser/m_expr_to_s_expr_and_validate [(&items (& Vec<Parser/SExpr>)) (loc Parser/Location)] [Parser/ParseResult] (
@@ -387,14 +392,13 @@
 ; ✅ (* (- (+ 1 2) 3) 4)
 (fn Parser/m_expr_to_s_expr [(&items (& Vec<Parser/SExpr>)) (loc Parser/Location)] [Parser/SExpr] (
     (if {(Vec/len &items) == 1} (do
-        ; TODO(mem): need to free &items and move expr out. How is Rust doing it?
+        (defer (Vec/free &items))
         (return {Parser/SExpr @ (Vec/at &items 0)})
     ))
 
     {rhs : Parser/SExpr = {Parser/SExpr @ (Vec/pop_unchecked &items)}}
     {op : Parser/SExpr = {Parser/SExpr @ (Vec/pop_unchecked &items)}}
-    ; TODO(mem): clone loc
-    {lhs : Parser/SExpr = (Parser/m_expr_to_s_expr &items loc)}
+    {lhs : Parser/SExpr = (Parser/m_expr_to_s_expr &items (Parser/Location/clone loc))}
 
     {&sexpr_items : (& Vec<Parser/SExpr>) = (Vec/new 3 (sizeof Parser/SExpr))}
     {Parser/SExpr @ (Vec/push_undef &sexpr_items) = op}
