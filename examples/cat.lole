@@ -18,7 +18,7 @@
     (if {err != 0} (do
         (return (proc_exit 1))
     ))
-    (defer {err = (fd_close fd)})
+    (defer (drop (fd_close fd)))
 
     {err = (fd_pipe fd FD_STDOUT 256)}
     (if {err != 0} (do

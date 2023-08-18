@@ -4,45 +4,15 @@
 (mod lib/parser)
 
 (fn main [] [] (
-    {fd : u32 = FD_STDIN}
-    {file_name : StringSlice = (StringSlice/clone "<internal>")}
+    {(do {fd : u32} {file_name : StringSlice}) = (get_input_file)}
     (defer (Heap/free {file_name . data}))
-
-    {args : Args = (Args/load)}
-    (defer (Args/free args))
-
-    (if {args . argc == 1} (do
-        (Heap/free {file_name . data}) ; free default value
-        {file_name = (StringSlice/clone (Args/get args 0))}
-
-        {(do {err : u32} fd) = (fd_open file_name)}
-        (if {err != 0} (do
-            (puts "Error: cannot read file: ")
-            (puts file_name)
-            (puts "\n")
-            (return (proc_exit 1))
-        ))
-    ))
 
     {&source : (& String) = (fd_read_all fd)}
     (defer (Vec/free &source))
 
     {parse_res : Parser/ParseResult = (Parser/parse file_name (Vec/as_slice &source))}
     (if (not {parse_res . ok}) (do
-        {parse_err : Parser/CompileError = {Parser/CompileError @ {parse_res . data}}}
-        (defer _if (Parser/CompileError/free parse_err))
-
-        (puts {parse_err . loc . file_name})
-        (puts ":")
-        (print_u32 {parse_err . loc . line})
-        (puts ":")
-        (print_u32 {parse_err . loc . col})
-        (puts " - ")
-        (print_str {parse_err . &message})
-        (puts "\n")
-
-        (defer.eval _if)
-        (return (proc_exit 1))
+        (return (print_err_and_exit {parse_res . data}))
     ))
 
     {&exprs : (& Vec<Parser/SExpr>) = {parse_res . data}}
@@ -83,4 +53,40 @@
     (dump_exprs {list . &value})
 
     (puts ")")
+))
+
+(fn get_input_file [] [u32 StringSlice] (
+    {args : Args = (Args/load)}
+    (defer (Args/free args))
+
+    (if {args . argc != 2} (do
+        (return FD_STDIN (StringSlice/clone "<internal>"))
+    ))
+
+    {file_name : StringSlice = (StringSlice/clone (Args/get args 1))}
+    {(do {err : u32} {fd : u32}) = (fd_open file_name)}
+    (if {err != 0} (do
+        (fputs FD_STDERR "Error: cannot read file: ")
+        (fputs FD_STDERR file_name)
+        (fputs FD_STDERR "\n")
+        (proc_exit 1)
+    ))
+
+    (return fd file_name)
+))
+
+(fn print_err_and_exit [(&err (& Parser/CompileError))] [] (
+    {parse_err : Parser/CompileError = {Parser/CompileError @ &err}}
+    (defer (Parser/CompileError/free parse_err))
+
+    (fputs FD_STDERR {parse_err . loc . file_name})
+    (fputs FD_STDERR ":")
+    (fprint_u32 FD_STDERR {parse_err . loc . line})
+    (fputs FD_STDERR ":")
+    (fprint_u32 FD_STDERR {parse_err . loc . col})
+    (fputs FD_STDERR " - ")
+    (fprint_str FD_STDERR {parse_err . &message})
+    (fputs FD_STDERR "\n")
+
+    (return (proc_exit 1))
 ))
