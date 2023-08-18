@@ -5,8 +5,8 @@
     {&output : (& String) = (Vec/new 256 1)}
     {&chunk : (&* u8) = (Stack/alloc 256)}
 
-    {&in_vec : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
-    {IOVec @ &in_vec = (struct.new IOVec &chunk 256)}
+    {&in_vec : (&* IOVec) = (new IOVec
+        (struct.new IOVec &chunk 256) :using Alloc/STACK)}
 
     {&nread : (& u32) = (Stack/alloc (sizeof u32))}
 
@@ -38,7 +38,7 @@
     (Stack/free (sizeof u32))
 ))
 
-(fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [i32] (
+(fn fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [bool] (
     {&chunk : (&* u8) = (Stack/alloc chunk_size)}
 
     {&iov : (&* IOVec) = (Stack/alloc (sizeof IOVec))}
@@ -46,7 +46,7 @@
 
     {&nread : (& u32) = (Stack/alloc (sizeof u32))}
 
-    {result : i32 = 0}
+    {ok : bool = false}
 
     {io_res : i32}
 
@@ -54,7 +54,7 @@
         {IOVec @ &iov . len = chunk_size}
         {io_res = (fd_read fd_in &iov 1 &nread)}
         (if {io_res != 0} (do
-            {result = 1}
+            {ok = true}
             (break)
         ))
 
@@ -64,7 +64,7 @@
         {IOVec @ &iov . len = nread}
         {io_res = (fd_write fd_out &iov 1 &nread)}
         (if {io_res != 0} (do
-            {result = 1}
+            {ok = true}
             (break)
         ))
     ))
@@ -73,24 +73,19 @@
     (Stack/free (sizeof IOVec))
     (Stack/free chunk_size)
 
-    (return result)
+    (return ok)
 ))
 
 (fn fd_open [(file_path StringSlice)] [u32 u32] (
-    {&fd : (& u32) = (Stack/alloc (sizeof u32))}
-
+    {&fd : (& u32) = (new u32 0 :using Alloc/STACK)}
     {err : WasiErr = (path_open
         CWD_PREOPEN_FD 0
         file_path 0 (i64 2) (i64 0) 0
         &fd
     )}
-    (if {err != 0} (do
-        (Stack/free (sizeof u32))
-        (return (do err 0))
-    ))
 
     {fd : u32 = {i32 @ &fd}}
-    (Stack/free (sizeof u32))
+    (free Alloc/STACK &fd (sizeof u32))
 
-    (return (do 0 fd))
+    (return (do err fd))
 ))

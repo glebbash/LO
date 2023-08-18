@@ -4,11 +4,12 @@
 (mod parser)
 
 (fn main [] [] (
-    {file_name : StringSlice}
     {fd : u32 = FD_STDIN}
+    {file_name : StringSlice = (StringSlice/clone "<internal>")}
 
     {args : Args = (Args/load)}
     (if {args . argc == 1} (do
+        (Heap/free {file_name . data})
         {file_name = (StringSlice/clone (Args/get args 0))}
 
         {(do {err : u32} fd) = (fd_open file_name)}
@@ -45,7 +46,8 @@
     (dump_exprs &exprs)
     (println)
 
-    ; TODO: free &exprs
+    ; TODO: free inner data of &exprs
+    (Vec/free &exprs)
     (Vec/free &source)
     (Heap/free {file_name . data})
 ))
