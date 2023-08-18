@@ -1,7 +1,7 @@
 (mod lib/cli)
 (mod lib/wasi_io)
 (mod lib/args)
-(mod parser)
+(mod lib/parser)
 
 (fn main [] [] (
     {fd : u32 = FD_STDIN}

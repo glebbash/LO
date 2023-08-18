@@ -228,7 +228,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
         "mod" => match other {
             [SExpr::Atom {
                 value: mod_name,
-                loc: _,
+                loc: mod_name_loc,
                 kind: _,
             }] => {
                 if !ctx.included_modules.insert(mod_name.clone()) {
@@ -239,7 +239,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 let file_name = format!("{}.lole", mod_name);
                 let mod_fd = fd_open(&file_name).map_err(|err| CompileError {
                     message: format!("Cannot load file {file_name}: {err}"),
-                    loc: op_loc.clone(),
+                    loc: mod_name_loc.clone(),
                 })?;
 
                 let source_buf = fd_read_all(mod_fd);
