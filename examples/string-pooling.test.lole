@@ -7,5 +7,5 @@
     (drop "Hello World!\n")
     (drop "Hello World!\n")
     (print_u32 (data.size))
-    (println)
+    (puts "\n")
 ))

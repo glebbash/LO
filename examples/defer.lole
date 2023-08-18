@@ -1,25 +1,25 @@
 (mod lib/cli)
 
 (fn main [] [] (
-    (defer (print_str_slice "defer(return): 1\n"))
-    (defer (print_str_slice "defer(return): 2\n"))
-    (defer (print_str_slice "defer(return): 3\n"))
+    (defer (puts "defer(return): 1\n"))
+    (defer (puts "defer(return): 2\n"))
+    (defer (puts "defer(return): 3\n"))
 
-    (defer scope1 (print_str_slice "defer(scope1): 1\n"))
-    (defer scope1 (print_str_slice "defer(scope1): 2\n"))
-    (defer scope1 (print_str_slice "defer(scope1): 3\n"))
+    (defer scope1 (puts "defer(scope1): 1\n"))
+    (defer scope1 (puts "defer(scope1): 2\n"))
+    (defer scope1 (puts "defer(scope1): 3\n"))
     (defer.eval scope1)
 
-    (print_str_slice "-------------\n")
+    (puts "-------------\n")
 
-    (defer scope2 (print_str_slice "defer(scope2): 1\n"))
-    (defer scope2 (print_str_slice "defer(scope2): 2\n"))
+    (defer scope2 (puts "defer(scope2): 1\n"))
+    (defer scope2 (puts "defer(scope2): 2\n"))
     (defer.eval scope2)
 
-    (print_str_slice "-------------\n")
+    (puts "-------------\n")
 
-    (defer scope2 (print_str_slice "defer(scope2): 3\n"))
+    (defer scope2 (puts "defer(scope2): 3\n"))
     (defer.eval scope2)
 
-    (print_str_slice "-------------\n")
+    (puts "-------------\n")
 ))

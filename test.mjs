@@ -185,7 +185,7 @@ test("compiles string-pooling", async () => {
         return readFile(stdoutFile, { encoding: "utf-8" });
     });
 
-    assert.strictEqual(output, "13\n");
+    assert.strictEqual(output, "14\n");
 });
 
 test("compiles struct-in-struct", async () => {
@@ -254,7 +254,7 @@ test("compiles minify", async () => {
         (mod lib/cli)
 
         (fn main [] [] (
-            (print_str_slice "Hello World!\n")
+            (puts "Hello World!\n")
         ))
         `;
 
@@ -270,7 +270,7 @@ test("compiles minify", async () => {
 
     assert.strictEqual(
         output,
-        "(mod lib/cli) (fn main () () ((print_str_slice Hello World!\n)))\n"
+        "(mod lib/cli) (fn main () () ((puts Hello World!\n)))\n"
     );
 });
 

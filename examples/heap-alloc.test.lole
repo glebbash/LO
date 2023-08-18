@@ -1,21 +1,21 @@
 (mod lib/cli)
 
 (fn main [] [] (
-    (print_str_slice "Heap/TOTAL_ALLOCATED = ")
-    (print_u32 Heap/TOTAL_ALLOCATED) (println)
+    (puts "Heap/TOTAL_ALLOCATED = ")
+    (print_u32 Heap/TOTAL_ALLOCATED) (puts "\n")
 
     {&p : ptr = (Heap/alloc 1)}
-    (print_str_slice "&p = (Heap/alloc 1) // ")
-    (print_u32 &p) (println)
+    (puts "&p = (Heap/alloc 1) // ")
+    (print_u32 &p) (puts "\n")
 
-    (print_str_slice "(Heap/free &p)\n")
+    (puts "(Heap/free &p)\n")
     (Heap/free &p)
 
     {&p = (Heap/alloc 1)}
-    (print_str_slice "&p = (Heap/alloc 1) // ")
-    (print_u32 &p) (println)
+    (puts "&p = (Heap/alloc 1) // ")
+    (print_u32 &p) (puts "\n")
 
     {&p = (Heap/alloc 1)}
-    (print_str_slice "&p = (Heap/alloc 1) // ")
-    (print_u32 &p) (println)
+    (puts "&p = (Heap/alloc 1) // ")
+    (print_u32 &p) (puts "\n")
 ))

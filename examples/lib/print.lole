@@ -8,19 +8,7 @@
     (print_str &out)
 ))
 
-(fn println [] [] (
-    (print_char (char_code "\n"))
-))
-
-(fn print_char [(char u8)] [] (
-    {&out : (&* u8) = (Stack/alloc 1)}
-    (defer (Stack/free 1))
-    {i32/u8 @ &out = char}
-
-    (print_str_slice (do &out 1))
-))
-
-(fn print_str_slice [(str StringSlice)] [] (
+(fn puts [(str StringSlice)] [] (
     {&str : (& StringSlice) = (new StringSlice str :using Alloc/STACK)}
     (defer (Stack/free (sizeof StringSlice)))
 

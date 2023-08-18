@@ -10,8 +10,8 @@
 
         {arg : StringSlice = (Args/get args i)}
 
-        (print_str_slice arg)
-        (println)
+        (puts arg)
+        (puts "\n")
 
         {i = {i + 1}}
     ))

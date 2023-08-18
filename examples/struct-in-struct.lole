@@ -18,38 +18,38 @@
 
     {br : Point2D = {r . br}}
     (print_u32 {br . x})
-    (println)
+    (puts "\n")
 
     (print_u32 {r . br . x})
-    (println)
+    (puts "\n")
 
     {&r : (& Rect) = (new Rect r :using Alloc/STACK)}
     (defer (Stack/free (sizeof Rect)))
 
     {r2 : Rect = {Rect @ &r}}
     (print_u32 {r2 . br . x})
-    (println)
+    (puts "\n")
 
     {br2 : Point2D = {Rect @ &r . br}}
     (print_u32 {br2 . x})
-    (println)
+    (puts "\n")
 
     {&br : (& Point2D) = {&r + (sizeof Point2D)}}
     (print_u32 {Point2D @ &br . x})
-    (println)
+    (puts "\n")
 
     (print_u32 {Point2D @ {&r + (sizeof Point2D)} . x})
-    (println)
+    (puts "\n")
 
     (print_u32 {Point2D @ &r @ (sizeof Point2D) . x})
-    (println)
+    (puts "\n")
 
     (print_u32 {Rect @ &r . br . x})
-    (println)
+    (puts "\n")
 
     ; TODO: throws TypeError
     ; TODO: look into supporting nested references
     ; {&br2 : (& Point2D) = {&r . br}}
     ; (print_u32 {Point2D @ &br2 . x})
-    ; (println)
+    ; (puts "\n")
 ))
