@@ -4,7 +4,7 @@
 
 extern crate alloc;
 
-mod binary_builder;
+mod binary_writer;
 mod common;
 mod compiler;
 mod parser;
@@ -19,7 +19,7 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use binary_builder::BinaryBuilder;
+use binary_writer::write_binary;
 use common::{CompileError, Location, SExpr};
 use compiler::compile_module;
 use core::{alloc::Layout, mem, slice, str};
@@ -97,8 +97,8 @@ fn compile_str(script: &str) -> Result<Vec<u8>, String> {
             );
         })?;
 
-    let wasm_binary = BinaryBuilder::build(&module);
-
+    let mut wasm_binary = Vec::new();
+    write_binary(&mut wasm_binary, &module);
     Ok(wasm_binary)
 }
 
