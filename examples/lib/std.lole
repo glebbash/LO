@@ -1,13 +1,16 @@
 (global true bool 1)
 (global false bool 0)
 
-; unrecoverable-errors
+; panic
 
-    (global Unrec/UNKNOWN u32 0)
-    (global Unrec/STACK_OVERFLOW u32 1)
-    (global Unrec/STACK_UNDERFLOW u32 2)
-    (global Unrec/OOM u32 3)
-    (global mut Unrec/ERR u32 0)
+    (global mut Panic/MESSAGE_PTR u32 0)
+    (global mut Panic/MESSAGE_LEN u32 0)
+
+    (fn panic [(message_ptr ptr) (message_len u32)] [] (
+        {Panic/MESSAGE_PTR = message_ptr}
+        {Panic/MESSAGE_LEN = message_len}
+        (unreachable)
+    ))
 
 ; alloc
 
@@ -48,8 +51,7 @@
         {Stack/&CURRENT += size}
 
         (if {Stack/&CURRENT > Stack/&END} (do
-            {Unrec/ERR = Unrec/STACK_OVERFLOW}
-            (unreachable)
+            (panic "Stack overflow")
         ))
 
         (return {Stack/&CURRENT - size})
@@ -59,8 +61,7 @@
         {Stack/&CURRENT -= size}
 
         (if {Stack/&CURRENT < Stack/&BEGIN} (do
-            {Unrec/ERR = Unrec/STACK_UNDERFLOW}
-            (unreachable)
+            (panic "Stack underflow")
         ))
     ))
 
@@ -97,8 +98,7 @@
             {pages_to_grow : u32 = (Mem/align_to total_size_to_alloc Mem/PAGE_SIZE)}
             {grow_res : u32 = (memory.grow pages_to_grow)}
             (if {grow_res == {0 - 1}} (do
-                {Unrec/ERR = Unrec/OOM}
-                (unreachable)
+                (panic "OOM")
             ))
         ))
 
@@ -223,15 +223,32 @@
         (free {Vec @ &self . alloc_id} {Vec @ &self . &data} {Vec @ &self . capacity})
     ))
 
-    ; TODO: check out of bounds
+    (fn Vec/len [(&self (& Vec))] [u32] (
+        (return {Vec @ &self . length})
+    ))
+
+    (fn Vec/as_slice [(&self (& Vec))] [ptr u32] (
+        (return {Vec @ &self . &data} {Vec @ &self . length})
+    ))
+
+    (fn Vec/at [(&self (& Vec)) (index u32)] [u32] (
+        (Vec/_panic_if_out_of_bounds &self index)
+
+        (return {Vec @ &self . &data + {index * {Vec @ &self . item_size}}})
+    ))
+
     (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
+        (Vec/_panic_if_out_of_bounds &self index)
+
         (return {i32/u8
             @ {Vec @ &self . &data}
             @ {index * {Vec @ &self . item_size}}})
     ))
 
-    ; TODO: check out of bounds
     (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] [] (
+        (Vec/_panic_if_out_of_bounds &self index1)
+        (Vec/_panic_if_out_of_bounds &self index2)
+
         {item_size : u32 = {Vec @ &self . item_size}}
         (Mem/swap
             {Vec @ &self . &data + {index1 * item_size}}
@@ -240,15 +257,11 @@
         )
     ))
 
-    (fn Vec/len [(&self (& Vec))] [u32] (
-        (return {Vec @ &self . length})
-    ))
-
     (fn Vec/push_u8 [(&self (& Vec)) (item u8)] [] (
         {index : u32 = {Vec @ &self . length}}
         {Vec @ &self . length = {index + 1}}
 
-        (Vec/grow_if_needed &self)
+        (Vec/_grow_if_needed &self)
 
         {i32/u8
             @ {Vec @ &self . &data }
@@ -259,7 +272,7 @@
         {old_len : u32 = {Vec @ &self . length}}
         {Vec @ &self . length = {old_len + items_len}}
 
-        (Vec/grow_if_needed &self)
+        (Vec/_grow_if_needed &self)
 
         (Mem/copy
             &items
@@ -268,43 +281,22 @@
         )
     ))
 
+    (fn Vec/push_undef [(&self (& Vec))] [ptr] (
+        {Vec @ &self . length += 1}
+
+        (Vec/_grow_if_needed &self)
+
+        (return (Vec/at &self {Vec @ &self . length - 1}))
+    ))
+
     (fn Vec/append [(&self (& Vec)) (&other (& Vec))] [] (
         (Vec/push_all &self {Vec @ &other . &data} (Vec/len &other))
         {Vec @ &other . length = 0}
     ))
 
-    (fn Vec/push_undef [(&self (& Vec))] [ptr] (
-        {Vec @ &self . length += 1}
-
-        (Vec/grow_if_needed &self)
-
-        (return (Vec/at &self {Vec @ &self . length - 1}))
-    ))
-
     (fn Vec/pop_unchecked [(&self (& Vec))] [ptr] (
         {Vec @ &self . length -= 1}
         (return (Vec/at &self (Vec/len &self)))
-    ))
-
-    (fn Vec/grow_if_needed [(&self (& Vec))] [] (
-        (if {Vec @ &self . length != {Vec @ &self . capacity}} (do
-            (return)
-        ))
-
-        (if {Vec @ &self . alloc_id == Alloc/STACK} (do
-
-            (unreachable)
-        ))
-
-        {item_size : u32 = {Vec @ &self . item_size}}
-        {old_capacity : u32 = {Vec @ &self . capacity}}
-        {&old_data : ptr = {Vec @ &self . &data}}
-        (defer (free {Vec @ &self . alloc_id} &old_data old_capacity))
-
-        {Vec @ &self . capacity = {old_capacity * 2}}
-        {Vec @ &self . &data = (alloc {Vec @ &self . alloc_id} {Vec @ &self . capacity * item_size})}
-
-        (Mem/copy &old_data {Vec @ &self . &data} {Vec @ &self . length * item_size})
     ))
 
     (fn Vec/reverse [(&self (& Vec))] [] (
@@ -320,12 +312,30 @@
         ))
     ))
 
-    (fn Vec/as_slice [(&self (& Vec))] [ptr u32] (
-        (return {Vec @ &self . &data} {Vec @ &self . length})
+    (fn Vec/_grow_if_needed [(&self (& Vec))] [] (
+        (if {Vec @ &self . length != {Vec @ &self . capacity}} (do
+            (return)
+        ))
+
+        (if {Vec @ &self . alloc_id == Alloc/STACK} (do
+            (panic "Attempt to grow stack allocated vector")
+        ))
+
+        {item_size : u32 = {Vec @ &self . item_size}}
+        {old_capacity : u32 = {Vec @ &self . capacity}}
+        {&old_data : ptr = {Vec @ &self . &data}}
+        (defer (free {Vec @ &self . alloc_id} &old_data old_capacity))
+
+        {Vec @ &self . capacity = {old_capacity * 2}}
+        {Vec @ &self . &data = (alloc {Vec @ &self . alloc_id} {Vec @ &self . capacity * item_size})}
+
+        (Mem/copy &old_data {Vec @ &self . &data} {Vec @ &self . length * item_size})
     ))
 
-    (fn Vec/at [(&self (& Vec)) (index u32)] [u32] (
-        (return {Vec @ &self . &data + {index * {Vec @ &self . item_size}}})
+    (fn Vec/_panic_if_out_of_bounds [(&self (& Vec)) (index u32)] [] (
+        (if {{index < 0} || {index >= (Vec/len &self)}} (do
+            (panic "Vec access out of bounds")
+        ))
     ))
 
 ; string

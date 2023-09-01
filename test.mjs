@@ -188,7 +188,7 @@ test("compiles string-pooling", async () => {
         return readFile(stdoutFile, { encoding: "utf-8" });
     });
 
-    assert.strictEqual(output, "14\n");
+    assert.strictEqual(output, "108\n");
 });
 
 test("compiles struct-in-struct", async () => {
