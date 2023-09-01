@@ -83,3 +83,16 @@ impl FnDef {
         }
     }
 }
+
+impl ModuleContext {
+    pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
+        self.wasm_module
+            .types
+            .iter()
+            .position(|ft| *ft == fn_type)
+            .unwrap_or_else(|| {
+                self.wasm_module.types.push(fn_type);
+                self.wasm_module.types.len() - 1
+            }) as u32
+    }
+}
