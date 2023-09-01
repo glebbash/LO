@@ -1,34 +1,37 @@
 use crate::wasm::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
 use alloc::vec::Vec;
 
-pub fn write_module(out: &mut Vec<u8>, module: &WasmModule) {
-    write_magic_and_version(out);
-
+pub fn codegen(module: &WasmModule) -> Vec<u8> {
+    let mut binary = Vec::new();
     let mut section = Vec::new();
 
+    write_magic_and_version(&mut binary);
+
     write_type_section(&mut section, module);
-    write_section(out, &mut section, 0x01);
+    write_section(&mut binary, &mut section, 0x01);
 
     write_import_section(&mut section, module);
-    write_section(out, &mut section, 0x02);
+    write_section(&mut binary, &mut section, 0x02);
 
     write_function_section(&mut section, module);
-    write_section(out, &mut section, 0x03);
+    write_section(&mut binary, &mut section, 0x03);
 
     write_memory_section(&mut section, module);
-    write_section(out, &mut section, 0x05);
+    write_section(&mut binary, &mut section, 0x05);
 
     write_global_section(&mut section, module);
-    write_section(out, &mut section, 0x06);
+    write_section(&mut binary, &mut section, 0x06);
 
     write_export_section(&mut section, module);
-    write_section(out, &mut section, 0x07);
+    write_section(&mut binary, &mut section, 0x07);
 
     write_code_section(&mut section, module);
-    write_section(out, &mut section, 0x0a);
+    write_section(&mut binary, &mut section, 0x0a);
 
     write_data_section(&mut section, module);
-    write_section(out, &mut section, 0x0b);
+    write_section(&mut binary, &mut section, 0x0b);
+
+    binary
 }
 
 fn write_section(out: &mut Vec<u8>, section: &mut Vec<u8>, section_code: u8) {

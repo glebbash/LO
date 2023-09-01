@@ -12,7 +12,7 @@ use core::cell::RefCell;
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: i32 = 1;
 
-pub fn compile_ast(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
+pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
     let mut ctx = ModuleContext::default();
 
     for expr in exprs {

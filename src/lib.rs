@@ -1,23 +1,22 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(alloc_error_handler)]
-#![feature(vec_into_raw_parts)]
 
 extern crate alloc;
 
 mod ast;
+mod codegen;
 mod compiler;
 mod ir;
 mod parser;
 mod type_checker;
 mod wasi_io;
 mod wasm;
-mod wasm_writer;
 
 use alloc::{string::String, vec::Vec};
+use codegen::*;
 use compiler::*;
 use core::str;
 use parser::*;
-use wasm_writer::*;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_target {
@@ -39,12 +38,10 @@ mod wasm_target {
 }
 
 fn exec_pipeline(script: &str) -> Result<Vec<u8>, String> {
-    let ast = parse("<input>", script)?;
-    let module = compile_ast(ast)?;
-
-    let mut wasm_binary = Vec::new();
-    write_module(&mut wasm_binary, &module);
-    Ok(wasm_binary)
+    let exprs = parse("<input>", script)?;
+    let module = compile(&exprs)?;
+    let binary = codegen(&module);
+    Ok(binary)
 }
 
 mod wasi_api {
