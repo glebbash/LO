@@ -1,4 +1,4 @@
-use crate::wasm_module::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
+use crate::wasm::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
 use alloc::vec::Vec;
 
 pub fn write_binary(out: &mut Vec<u8>, module: &WasmModule) {

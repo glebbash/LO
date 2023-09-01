@@ -284,13 +284,14 @@ test("compiles minify", async () => {
  * @returns {Promise<(sourcePath: string) => Promise<Uint8Array>>}
  */
 async function loadCompilerWithFuncAPI(compilerPath) {
-    // @ts-ignore
-    const stubWasiImports = new WASI({ version: "preview1" }).getImportObject();
-
-    const compiler = await loadWasm(
-        await readFile(compilerPath),
-        stubWasiImports
-    );
+    const compiler = await loadWasm(await readFile(compilerPath), {
+        wasi_snapshot_preview1: {
+            path_open: () => "stub",
+            fd_read: () => "stub",
+            fd_write: () => "stub",
+            proc_exit: () => "stub",
+        },
+    });
 
     return async (sourcePath) => {
         const source = await readFile(sourcePath);

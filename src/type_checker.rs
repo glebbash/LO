@@ -1,8 +1,4 @@
-use crate::{
-    common::CompileError,
-    compiler::FnContext,
-    wasm_module::{WasmInstr, WasmValueType},
-};
+use crate::{ast::*, ir::*, wasm::*};
 use alloc::{vec, vec::Vec};
 
 pub fn get_types(

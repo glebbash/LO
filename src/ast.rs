@@ -1,6 +1,5 @@
-use core::fmt::Write;
-
 use alloc::{boxed::Box, format, string::String, vec::Vec};
+use core::fmt::Write;
 
 pub struct CompileError {
     pub message: String,

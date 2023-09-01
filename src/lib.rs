@@ -4,35 +4,49 @@
 
 extern crate alloc;
 
+mod ast;
 mod binary_writer;
-mod common;
 mod compiler;
+mod ir;
 mod parser;
-mod runtime;
 mod type_checker;
 mod wasi_io;
-mod wasm_module;
+mod wasm;
 
-use alloc::{
-    alloc::{alloc_zeroed, dealloc},
-    format,
-    string::String,
-    vec::Vec,
-};
-use binary_writer::write_binary;
-use common::{CompileError, Location, SExpr};
-use compiler::compile_module;
+use alloc::{format, string::String, vec::Vec};
+use ast::*;
+use binary_writer::*;
+use compiler::*;
 use core::{alloc::Layout, mem, slice, str};
-use parser::parse;
+use parser::*;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm_target {
+    use lol_alloc::{FreeListAllocator, LockedAllocator};
+
+    #[global_allocator]
+    static ALLOCATOR: LockedAllocator<FreeListAllocator> =
+        LockedAllocator::new(FreeListAllocator::new());
+
+    #[alloc_error_handler]
+    fn oom(_: core::alloc::Layout) -> ! {
+        core::arch::wasm32::unreachable()
+    }
+
+    #[panic_handler]
+    fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
+        core::arch::wasm32::unreachable()
+    }
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {
-    alloc_zeroed(Layout::from_size_align(length, 8).unwrap())
+    alloc::alloc::alloc_zeroed(Layout::from_size_align(length, 8).unwrap())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mem_free(ptr: *mut u8, length: usize) {
-    dealloc(ptr, Layout::from_size_align(length, 8).unwrap());
+    alloc::alloc::dealloc(ptr, Layout::from_size_align(length, 8).unwrap());
 }
 
 #[repr(C)]
@@ -48,13 +62,12 @@ pub extern "C" fn _start() {
 
     match compile_str(str::from_utf8(&source).unwrap()) {
         Ok(binary) => {
-            wasi_io::fd_write_all(wasi::FD_STDOUT, binary.as_slice());
+            wasi_io::stdout_write(binary.as_slice());
         }
         Err(mut message) => {
             message.push('\n');
-            wasi_io::fd_write_all(wasi::FD_STDERR, message.as_bytes());
-
-            unsafe { wasi::proc_exit(1) };
+            wasi_io::stderr_write(message.as_bytes());
+            wasi_io::exit(1);
         }
     };
 }
