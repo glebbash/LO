@@ -272,7 +272,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         });
                     }
 
-                    let value_type = LoleValueType::parse(p_type, &ctx)?;
+                    let value_type = LoleValueType::build(p_type, &ctx)?;
                     let comp_count = value_type.emit_components(&ctx, &mut inputs);
 
                     locals.insert(
@@ -288,7 +288,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
 
                 let mut outputs = vec![];
                 for output_type in output_exprs {
-                    let value_type = LoleValueType::parse(output_type, &ctx)?;
+                    let value_type = LoleValueType::build(output_type, &ctx)?;
                     value_type.emit_components(&ctx, &mut outputs);
                 }
 
@@ -383,7 +383,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         });
                     }
 
-                    let value_type = LoleValueType::parse(p_type, &ctx)?;
+                    let value_type = LoleValueType::build(p_type, &ctx)?;
                     value_type.emit_components(&ctx, &mut inputs);
 
                     param_names.insert(p_name.clone());
@@ -391,7 +391,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
 
                 let mut outputs = vec![];
                 for output_type in output_exprs {
-                    let value_type = LoleValueType::parse(output_type, &ctx)?;
+                    let value_type = LoleValueType::build(output_type, &ctx)?;
                     value_type.emit_components(&ctx, &mut outputs);
                 }
 
@@ -675,7 +675,7 @@ fn compile_struct(
             });
         }
 
-        let value_type = LoleValueType::parse(f_type, ctx)?;
+        let value_type = LoleValueType::build(f_type, ctx)?;
 
         let mut stats = EmitComponentStats::default();
         value_type
@@ -1012,7 +1012,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
             WasmInstr::MultiValueEmit { values: values? }
         }
         ("sizeof", [type_expr]) => {
-            let value_type = LoleValueType::parse(type_expr, ctx.module)?;
+            let value_type = LoleValueType::build(type_expr, ctx.module)?;
 
             WasmInstr::I32Const {
                 value: value_type
@@ -1106,7 +1106,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
             let init_instr = compile_instr(init_expr, ctx)?;
             let init_types = get_type(ctx, &init_instr)?;
 
-            let value_type = LoleValueType::parse(type_expr, ctx.module)?;
+            let value_type = LoleValueType::build(type_expr, ctx.module)?;
 
             let mut comp_types = vec![];
             value_type.emit_components(ctx.module, &mut comp_types);
@@ -1206,7 +1206,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
                 });
             }
 
-            let value_type = LoleValueType::parse(value_type, ctx.module)?;
+            let value_type = LoleValueType::build(value_type, ctx.module)?;
 
             let start_index = ctx.locals_last_index;
             let comp_count = value_type.emit_components(&ctx.module, &mut ctx.non_arg_locals);
@@ -1804,7 +1804,7 @@ struct EmitComponentStats {
 // types
 
 impl LoleValueType {
-    fn parse(expr: &SExpr, ctx: &ModuleContext) -> Result<Self, CompileError> {
+    fn build(expr: &SExpr, ctx: &ModuleContext) -> Result<Self, CompileError> {
         match WasmValueType::build(expr, ctx) {
             Ok(value_type) => Ok(Self::Primitive(value_type)),
             Err(err) => {
@@ -1906,7 +1906,7 @@ impl WasmValueType {
                     if value == "&" || value == "&*" =>
                 {
                     // ignoring ptr data type
-                    LoleValueType::parse(ptr_data, ctx)?;
+                    LoleValueType::build(ptr_data, ctx)?;
 
                     // pointer type
                     return Ok(Self::I32);
