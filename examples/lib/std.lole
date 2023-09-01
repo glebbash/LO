@@ -3,12 +3,9 @@
 
 ; panic
 
-    (global mut Panic/MESSAGE_PTR u32 0)
-    (global mut Panic/MESSAGE_LEN u32 0)
-
     (fn panic [(message_ptr ptr) (message_len u32)] [] (
-        {Panic/MESSAGE_PTR = message_ptr}
-        {Panic/MESSAGE_LEN = message_len}
+        {i32 @ 0 = message_ptr}
+        {i32 @ 4 = message_len}
         (unreachable)
     ))
 
