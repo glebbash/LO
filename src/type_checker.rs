@@ -1,10 +1,7 @@
 use crate::{ast::*, ir::*, wasm::*};
 use alloc::{vec, vec::Vec};
 
-pub fn get_types(
-    ctx: &FnContext,
-    instrs: &Vec<WasmInstr>,
-) -> Result<Vec<WasmValueType>, CompileError> {
+pub fn get_types(ctx: &FnContext, instrs: &Vec<WasmInstr>) -> Result<Vec<WasmType>, CompileError> {
     let mut types = vec![];
     for instr in instrs {
         types.append(&mut get_type(ctx, instr)?);
@@ -12,14 +9,14 @@ pub fn get_types(
     Ok(types)
 }
 
-pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>, CompileError> {
+pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmType>, CompileError> {
     Ok(match instr {
         WasmInstr::Unreachable { .. } => vec![],
         WasmInstr::LoopBreak { .. } => vec![],
         WasmInstr::LoopContinue { .. } => vec![],
-        WasmInstr::I32ConstLazy { .. } => vec![WasmValueType::I32],
-        WasmInstr::I32Const { .. } => vec![WasmValueType::I32],
-        WasmInstr::I64Const { .. } => vec![WasmValueType::I64],
+        WasmInstr::I32ConstLazy { .. } => vec![WasmType::I32],
+        WasmInstr::I32Const { .. } => vec![WasmType::I32],
+        WasmInstr::I64Const { .. } => vec![WasmType::I64],
         WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
         WasmInstr::StructLoad {
             primitive_loads, ..
@@ -33,8 +30,8 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmValueType>
         WasmInstr::Drop { .. } => vec![],
         WasmInstr::Loop { .. } => vec![],
         WasmInstr::Return { .. } => vec![],
-        WasmInstr::MemorySize { .. } => vec![WasmValueType::I32],
-        WasmInstr::MemoryGrow { .. } => vec![WasmValueType::I32],
+        WasmInstr::MemorySize { .. } => vec![WasmType::I32],
+        WasmInstr::MemoryGrow { .. } => vec![WasmType::I32],
 
         WasmInstr::IfSingleBranch {
             cond, then_branch, ..

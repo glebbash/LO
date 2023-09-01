@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, format, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -15,8 +15,8 @@ pub struct WasmModule {
 
 #[derive(PartialEq)]
 pub struct WasmFnType {
-    pub inputs: Vec<WasmValueType>,
-    pub outputs: Vec<WasmValueType>,
+    pub inputs: Vec<WasmType>,
+    pub outputs: Vec<WasmType>,
 }
 
 pub struct WasmImport {
@@ -36,7 +36,7 @@ pub struct WasmFn {
 
 pub struct WasmLocals {
     pub count: u32,
-    pub value_type: WasmValueType,
+    pub value_type: WasmType,
 }
 
 pub struct WasmExpr {
@@ -141,7 +141,7 @@ pub enum WasmInstr {
         args: Vec<WasmInstr>,
     },
     If {
-        block_type: WasmValueType,
+        block_type: WasmType,
         cond: Box<WasmInstr>,
         then_branch: Box<WasmInstr>,
         else_branch: Box<WasmInstr>,
@@ -165,7 +165,7 @@ pub enum WasmInstr {
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum WasmValueType {
+pub enum WasmType {
     I32 = 0x7f,
     I64 = 0x7e,
     F32 = 0x7d,
@@ -188,7 +188,7 @@ pub struct WasmGlobal {
 
 #[derive(Clone, Copy)]
 pub struct WasmGlobalKind {
-    pub value_type: WasmValueType,
+    pub value_type: WasmType,
     pub mutable: bool,
 }
 
@@ -224,4 +224,42 @@ pub enum WasmSetBind {
         address_instr: Box<WasmInstr>,
         value_local_index: u32,
     },
+}
+
+impl WasmType {
+    pub fn byte_length(&self) -> Result<u32, String> {
+        Ok(match self {
+            Self::I32 | Self::F32 => 4,
+            Self::I64 | Self::F64 => 8,
+            Self::V128 => 16,
+            Self::FuncRef | Self::ExternRef => {
+                return Err(format!("Cannot get byte size of FuncRef/ExternRef"))
+            }
+        })
+    }
+}
+
+impl WasmStoreKind {
+    pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
+        match kind {
+            WasmLoadKind::I32 => Self::I32,
+            WasmLoadKind::I32U8 => Self::I32U8,
+        }
+    }
+}
+
+impl WasmLoadKind {
+    pub fn get_value_type(&self) -> WasmType {
+        match &self {
+            Self::I32 => WasmType::I32,
+            Self::I32U8 => WasmType::I32,
+        }
+    }
+
+    pub fn from_value_type(value_type: &WasmType) -> Result<Self, String> {
+        match value_type {
+            WasmType::I32 => Ok(Self::I32),
+            _ => return Err(format!("Unsupported type for load: {value_type:?}")),
+        }
+    }
 }
