@@ -1,0 +1,34 @@
+(struct Vec<Lole/Ast/SExpr> (actual Vec))
+
+(struct Lole/Ast/Location
+    (file_name StringSlice)
+    (offset u32)
+    (length u32)
+    (line u32)
+    (col u32)
+)
+
+(struct Lole/Ast/CompileError
+    (&message (& String))
+    (loc Lole/Ast/Location)
+)
+
+(fn Lole/Ast/CompileError/free [(self Lole/Ast/CompileError)] [] (
+    (Vec/free {self . &message})
+))
+
+(struct Lole/Ast/AtomKind (actual u32))
+(global Lole/Ast/AtomKind/SYMBOL u32 0)
+(global Lole/Ast/AtomKind/STRING u32 1)
+
+(enum Lole/Ast/SExpr
+    (Atom
+        (&value (& String))
+        (kind Lole/Ast/AtomKind)
+        (loc Lole/Ast/Location)
+    )
+    (List
+        (&value (& Vec<Lole/Ast/SExpr>))
+        (loc Lole/Ast/Location)
+    )
+)

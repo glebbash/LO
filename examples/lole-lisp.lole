@@ -1,28 +1,29 @@
 (mod lib/cli)
 (mod lib/wasi_io)
 (mod lib/args)
-(mod lib/parser)
-(mod lib/compiler)
-(mod lib/codegen)
+(mod lib/lole/ir)
+(mod lib/lole/parser)
+(mod lib/lole/compiler)
+(mod lib/lole/codegen)
 
 (fn main [] [] (
     {(do {fd : u32} {file_name : StringSlice}) = (get_input_file)}
     (defer (Heap/free {file_name . data}))
 
-    {&source : (& String) = (fd_read_all fd)}
+    {&source : (& String) = (Wasi_IO/fd_read_all fd)}
     (defer (Vec/free &source))
 
-    {parse_res : Parser/ParseResult = (Parser/parse file_name (Vec/as_slice &source))}
+    {parse_res : Lole/Parser/ParseResult = (Lole/Parser/parse file_name (Vec/as_slice &source))}
     (if (not {parse_res . ok}) (do
         (return (print_err_and_exit {parse_res . data}))
     ))
 
-    {compile_res : Compiler/CompileResult = (Compiler/compile {parse_res . data})}
+    {compile_res : Lole/Compiler/CompileResult = (Lole/Compiler/compile {parse_res . data})}
     (if (not {compile_res . ok}) (do
         (return (print_err_and_exit {compile_res . data}))
     ))
 
-    {&binary : (& Vec<u8>) = (CodeGen/codegen {compile_res . data})}
+    {&binary : (& Vec<u8>) = (Lole/CodeGen/codegen {compile_res . data})}
     (print_str &binary)
 
     ; TODO: free everything
@@ -33,33 +34,33 @@
     (defer (Args/free args))
 
     (if {args . argc != 2} (do
-        (return FD_STDIN (StringSlice/clone "<internal>"))
+        (return Wasi/FD_STDIN (StringSlice/clone "<internal>"))
     ))
 
     {file_name : StringSlice = (StringSlice/clone (Args/get args 1))}
-    {(do {err : u32} {fd : u32}) = (fd_open file_name)}
+    {(do {err : u32} {fd : u32}) = (Wasi_IO/fd_open file_name)}
     (if {err != 0} (do
-        (fputs FD_STDERR "Error: cannot read file: ")
-        (fputs FD_STDERR file_name)
-        (fputs FD_STDERR "\n")
-        (proc_exit 1)
+        (fputs Wasi/FD_STDERR "Error: cannot read file: ")
+        (fputs Wasi/FD_STDERR file_name)
+        (fputs Wasi/FD_STDERR "\n")
+        (Wasi/proc_exit 1)
     ))
 
     (return fd file_name)
 ))
 
-(fn print_err_and_exit [(&err (& Parser/CompileError))] [] (
-    {parse_err : Parser/CompileError = {Parser/CompileError @ &err}}
-    (defer (Parser/CompileError/free parse_err))
+(fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] [] (
+    {parse_err : Lole/Ast/CompileError = {Lole/Ast/CompileError @ &err}}
+    (defer (Lole/Ast/CompileError/free parse_err))
 
-    (fputs FD_STDERR {parse_err . loc . file_name})
-    (fputs FD_STDERR ":")
-    (fprint_u32 FD_STDERR {parse_err . loc . line})
-    (fputs FD_STDERR ":")
-    (fprint_u32 FD_STDERR {parse_err . loc . col})
-    (fputs FD_STDERR " - ")
-    (fprint_str FD_STDERR {parse_err . &message})
-    (fputs FD_STDERR "\n")
+    (fputs Wasi/FD_STDERR {parse_err . loc . file_name})
+    (fputs Wasi/FD_STDERR ":")
+    (fprint_u32 Wasi/FD_STDERR {parse_err . loc . line})
+    (fputs Wasi/FD_STDERR ":")
+    (fprint_u32 Wasi/FD_STDERR {parse_err . loc . col})
+    (fputs Wasi/FD_STDERR " - ")
+    (fprint_str Wasi/FD_STDERR {parse_err . &message})
+    (fputs Wasi/FD_STDERR "\n")
 
-    (return (proc_exit 1))
+    (return (Wasi/proc_exit 1))
 ))

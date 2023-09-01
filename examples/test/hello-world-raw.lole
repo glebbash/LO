@@ -13,12 +13,12 @@
 ;   - function call
 ;   - drop (multidrop?)
 
-(import fn fd_write [
+(import fn Wasi/fd_write [
     (fd              u32) ; file_descriptor
     (&iovs           ptr) ; The pointer to the iov array
-    (iovs_len        u32) ; Amount of IOVec
+    (iovs_len        u32) ; Amount of Wasi/IOVec
     (&nwritten       u32) ; Pointer to store the number of bytes written
-] [u32] :from wasi_snapshot_preview1 fd_write)
+] [u32] :from wasi_snapshot_preview1 Wasi/fd_write)
 
 (mem m1 :min 1)
 (export mem m1 :as memory)
@@ -27,16 +27,16 @@
 
 (export main :as _start)
 (fn main [] [] (
-    {i32 @ 4 ; IOVec.base
+    {i32 @ 4 ; Wasi/IOVec.base
         = 12} ; ref to "Hello World!\n"
 
-    {i32 @ 8 ; IOVec.size
+    {i32 @ 8 ; Wasi/IOVec.size
         = 13} ; "Hello World!\n".length
 
-    (drop (fd_write
+    (drop (Wasi/fd_write
         1 ; file_descriptor
         4 ; The pointer to the iov array
-        1 ; Amount of IOVecs
+        1 ; Amount of Wasi/IOVecs
         0 ; Pointer to store the number of bytes written
     ))
 ))

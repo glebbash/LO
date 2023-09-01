@@ -7,23 +7,23 @@
     (defer (Args/free args))
 
     (if {args . argc != 2} (do
-        (return (proc_exit 1))
+        (return (Wasi/proc_exit 1))
     ))
 
     {file_path : StringSlice = (Args/get args 1)}
 
     {err : u32}
 
-    {(do err {fd : u32}) = (fd_open file_path)}
+    {(do err {fd : u32}) = (Wasi_IO/fd_open file_path)}
     (if {err != 0} (do
-        (return (proc_exit 1))
+        (return (Wasi/proc_exit 1))
     ))
-    (defer (drop (fd_close fd)))
+    (defer (drop (Wasi/fd_close fd)))
 
-    {err = (fd_pipe fd FD_STDOUT 256)}
+    {err = (Wasi_IO/fd_pipe fd Wasi/FD_STDOUT 256)}
     (if {err != 0} (do
-        (return (proc_exit 1))
+        (return (Wasi/proc_exit 1))
     ))
 
-    (return (proc_exit 0))
+    (return (Wasi/proc_exit 0))
 ))

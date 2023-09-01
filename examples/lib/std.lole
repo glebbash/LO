@@ -291,13 +291,18 @@
             (return)
         ))
 
+        (if {Vec @ &self . alloc_id == Alloc/STACK} (do
+
+            (unreachable)
+        ))
+
         {item_size : u32 = {Vec @ &self . item_size}}
         {old_capacity : u32 = {Vec @ &self . capacity}}
         {&old_data : ptr = {Vec @ &self . &data}}
-        (defer (free Alloc/HEAP &old_data old_capacity))
+        (defer (free {Vec @ &self . alloc_id} &old_data old_capacity))
 
         {Vec @ &self . capacity = {old_capacity * 2}}
-        {Vec @ &self . &data = (alloc Alloc/HEAP {Vec @ &self . capacity * item_size})}
+        {Vec @ &self . &data = (alloc {Vec @ &self . alloc_id} {Vec @ &self . capacity * item_size})}
 
         (Mem/copy &old_data {Vec @ &self . &data} {Vec @ &self . length * item_size})
     ))

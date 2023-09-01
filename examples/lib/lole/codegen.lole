@@ -1,0 +1,83 @@
+(mod lib/std)
+(mod lib/lole/compiler)
+
+; public interface
+(fn Lole/CodeGen/codegen [(&module (& Lole/Ir/WasmModule))] [(& Vec<u8>)] (
+    {&binary : (& Vec<u8>) = (Vec/new 100 1)}
+    {&section : (& Vec<u8>) = (Vec/new 100 1)}
+    (defer (Vec/free &section))
+
+    (Lole/CodeGen/write_magic_and_version &binary)
+
+    (Lole/CodeGen/write_type_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 1)
+
+    (Lole/CodeGen/write_import_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 2)
+
+    (Lole/CodeGen/write_function_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 3)
+
+    (Lole/CodeGen/write_memory_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 5)
+
+    (Lole/CodeGen/write_global_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 6)
+
+    (Lole/CodeGen/write_export_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 7)
+
+    (Lole/CodeGen/write_code_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 10)
+
+    (Lole/CodeGen/write_data_section &section &module)
+    (Lole/CodeGen/write_section &binary &section 11)
+
+    (return &binary)
+))
+
+(fn Lole/CodeGen/write_magic_and_version [(&out (& Vec<u8>))] [] (
+    (Vec/push_u8 &out 0)
+    (Vec/push_all &out "asm")
+
+    (Vec/push_u8 &out 1)
+    (Vec/push_u8 &out 0)
+    (Vec/push_u8 &out 0)
+    (Vec/push_u8 &out 0)
+))
+
+(fn Lole/CodeGen/write_section [(&out (& Vec<u8>)) (&section (& Vec<u8>)) (section_code u8)] [] (
+    (Lole/CodeGen/write_u8 &out section_code)
+    (Lole/CodeGen/write_u32 &out (Vec/len &section))
+    (Vec/append &out &section)
+))
+
+; TODO: implement
+(fn Lole/CodeGen/write_type_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_import_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_function_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_memory_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_global_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_export_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_code_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_data_section [(&out (& Vec<u8>)) (&module (& Lole/Ir/WasmModule))] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_u8 [(&out (& Vec<u8>)) (value u8)] [] ())
+
+; TODO: implement
+(fn Lole/CodeGen/write_u32 [(&out (& Vec<u8>)) (value u32)] [] ())

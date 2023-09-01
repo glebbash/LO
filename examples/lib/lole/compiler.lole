@@ -1,0 +1,21 @@
+(mod lib/std)
+(mod lib/lole/ir)
+(mod lib/lole/parser)
+
+(struct Lole/Compiler/CompileResult
+    (ok bool)
+    (data ptr) ; (& Lole/Ir/WasmModule) | (& Lole/Ast/CompileError)
+)
+
+; TODO: implement
+(fn Lole/Compiler/compile [(&exprs (& Vec<Lole/Ast/SExpr>))] [Lole/Compiler/CompileResult] (
+    (return true (new Lole/Ir/WasmModule (do)))
+
+    ; (return false (new Lole/Ast/CompileError (do
+    ;     (String/from_slice "CompileError: not implemented")
+    ;     (struct.new Lole/Ast/Location
+    ;         (StringSlice/clone "<internal>")
+    ;         0 0 0 0
+    ;     )
+    ; )))
+))

@@ -1,7 +1,7 @@
 (mod lib/std)
 (mod lib/wasi)
 
-(fn puts [(str StringSlice)] [] ((return (fputs FD_STDOUT str))))
+(fn puts [(str StringSlice)] [] ((return (fputs Wasi/FD_STDOUT str))))
 (fn fputs [(fd u32) (str StringSlice)] [] (
     {&str : (& StringSlice) = (new StringSlice str :using Alloc/STACK)}
     (defer (Stack/free (sizeof StringSlice)))
@@ -9,7 +9,7 @@
     (fprint_str fd &str)
 ))
 
-(fn print_u32 [(num u32)] [] ((return (fprint_u32 FD_STDOUT num))))
+(fn print_u32 [(num u32)] [] ((return (fprint_u32 Wasi/FD_STDOUT num))))
 (fn fprint_u32 [(fd u32) (num u32)] [] (
     {&out : (& String) = (std/u32_to_string_using num Alloc/STACK)}
     (defer (Vec/free &out))
@@ -17,10 +17,10 @@
     (fprint_str fd &out)
 ))
 
-(fn print_str [(&str (& StringSlice))] [] ((return (fprint_str FD_STDOUT &str))))
+(fn print_str [(&str (& StringSlice))] [] ((return (fprint_str Wasi/FD_STDOUT &str))))
 (fn fprint_str [(fd u32) (&str (& StringSlice))] [] (
     {&nwritten : (& u32) = (Stack/alloc (sizeof u32))}
     (defer (Stack/free (sizeof u32)))
 
-    (drop (fd_write fd &str 1 &nwritten))
+    (drop (Wasi/fd_write fd &str 1 &nwritten))
 ))
