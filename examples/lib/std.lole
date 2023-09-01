@@ -268,6 +268,11 @@
         )
     ))
 
+    (fn Vec/append [(&self (& Vec)) (&other (& Vec))] [] (
+        (Vec/push_all &self {Vec @ &other . &data} (Vec/len &other))
+        {Vec @ &other . length = 0}
+    ))
+
     (fn Vec/push_undef [(&self (& Vec))] [ptr] (
         {Vec @ &self . length += 1}
 

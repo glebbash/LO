@@ -3,7 +3,7 @@
 (mod lib/args)
 (mod lib/parser)
 (mod lib/compiler)
-(mod lib/binary_builder)
+(mod lib/codegen)
 
 (fn main [] [] (
     {(do {fd : u32} {file_name : StringSlice}) = (get_input_file)}
@@ -22,7 +22,7 @@
         (return (print_err_and_exit {compile_res . data}))
     ))
 
-    {&binary : (& Vec<u8>) = (BinaryBuilder/build {compile_res . data})}
+    {&binary : (& Vec<u8>) = (CodeGen/codegen {compile_res . data})}
     (print_str &binary)
 
     ; TODO: free everything
