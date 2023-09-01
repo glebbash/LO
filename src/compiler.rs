@@ -308,6 +308,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     FnDef {
                         local: true,
                         fn_index,
+                        type_index,
                     },
                 );
                 ctx.fn_bodies.insert(
@@ -409,6 +410,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     FnDef {
                         local: false,
                         fn_index,
+                        type_index,
                     },
                 );
                 ctx.wasm_module.types.push(WasmFnType { inputs, outputs });
@@ -1480,9 +1482,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
                 });
             };
 
-            let fn_type_index = fn_def
-                .get_type_index(ctx.module)
-                .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
+            let fn_type_index = fn_def.type_index;
 
             let fn_type = ctx
                 .module

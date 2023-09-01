@@ -71,6 +71,7 @@ pub struct StructField {
 pub struct FnDef {
     pub local: bool,
     pub fn_index: u32,
+    pub type_index: u32,
 }
 
 impl FnDef {
@@ -79,22 +80,6 @@ impl FnDef {
             self.fn_index + ctx.imported_fns_count
         } else {
             self.fn_index
-        }
-    }
-
-    pub fn get_type_index(&self, ctx: &ModuleContext) -> Option<u32> {
-        if self.local {
-            ctx.wasm_module
-                .functions
-                .get(self.fn_index as usize)
-                .map(|t| *t)
-        } else {
-            ctx.wasm_module
-                .imports
-                .get(self.fn_index as usize)
-                .and_then(|i| match &i.item_desc {
-                    WasmImportDesc::Func { type_index } => Some(*type_index),
-                })
         }
     }
 }
