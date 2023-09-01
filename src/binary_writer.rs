@@ -1,7 +1,6 @@
 use crate::wasm_module::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
 use alloc::vec::Vec;
 
-// TODO(perf): Where temporary section buffer is needed one buffer can be shared
 pub fn write_binary(out: &mut Vec<u8>, module: &WasmModule) {
     write_magic_and_version(out);
 
@@ -153,7 +152,7 @@ fn write_data_section(out: &mut Vec<u8>, module: &WasmModule) {
         write_u32(out, 0);
         write_expr(out, offset);
         write_u32(out, bytes.len() as u32);
-        out.extend(bytes);
+        write_all(out, bytes);
     }
 }
 
