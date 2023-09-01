@@ -7,6 +7,47 @@ use alloc::{
 };
 use core::cell::RefCell;
 
+#[derive(Default)]
+pub struct ModuleContext {
+    pub included_modules: BTreeSet<String>,
+    pub wasm_module: WasmModule,
+    pub fn_defs: BTreeMap<String, FnDef>,
+    pub fn_bodies: BTreeMap<String, FnBody>,
+    pub fn_exports: BTreeMap<String, String>,
+    pub memory_names: Vec<String>,
+    pub struct_defs: BTreeMap<String, StructDef>,
+    pub enum_kinds: BTreeMap<String, u32>,
+    pub globals: BTreeMap<String, GlobalDef>,
+    pub imported_fns_count: u32,
+    pub data_size: Rc<RefCell<i32>>,
+    pub string_pool: RefCell<BTreeMap<String, i32>>,
+}
+
+pub struct FnContext<'a> {
+    pub module: &'a ModuleContext,
+    pub fn_type: &'a WasmFnType,
+    pub locals: &'a mut BTreeMap<String, LocalDef>,
+    pub locals_last_index: u32,
+    pub non_arg_locals: Vec<WasmValueType>,
+    pub defers: BTreeMap<String, Vec<SExpr>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum LoleValueType {
+    Primitive(WasmValueType),
+    StructInstance { name: String },
+}
+
+pub struct LocalDef {
+    pub index: u32,
+    pub value_type: LoleValueType,
+}
+
+pub struct GlobalDef {
+    pub index: u32,
+    pub mutable: bool,
+}
+
 pub struct FnBody {
     pub fn_index: u32,
     pub locals: RefCell<BTreeMap<String, LocalDef>>,
@@ -25,28 +66,6 @@ pub struct StructField {
     pub value_type: LoleValueType,
     pub field_index: u32,
     pub byte_offset: u32,
-}
-
-#[derive(Clone, Debug)]
-pub enum LoleValueType {
-    Primitive(WasmValueType),
-    StructInstance { name: String },
-}
-
-#[derive(Default)]
-pub struct ModuleContext {
-    pub included_modules: BTreeSet<String>,
-    pub wasm_module: WasmModule,
-    pub fn_defs: BTreeMap<String, FnDef>,
-    pub fn_bodies: BTreeMap<String, FnBody>,
-    pub fn_exports: BTreeMap<String, String>,
-    pub memory_names: Vec<String>,
-    pub struct_defs: BTreeMap<String, StructDef>,
-    pub enum_kinds: BTreeMap<String, u32>,
-    pub globals: BTreeMap<String, GlobalDef>,
-    pub imported_fns_count: u32,
-    pub data_size: Rc<RefCell<i32>>,
-    pub string_pool: RefCell<BTreeMap<String, i32>>,
 }
 
 pub struct FnDef {
@@ -78,23 +97,4 @@ impl FnDef {
                 })
         }
     }
-}
-
-pub struct FnContext<'a> {
-    pub module: &'a ModuleContext,
-    pub fn_type: &'a WasmFnType,
-    pub locals: &'a mut BTreeMap<String, LocalDef>,
-    pub locals_last_index: u32,
-    pub non_arg_locals: Vec<WasmValueType>,
-    pub defers: BTreeMap<String, Vec<SExpr>>,
-}
-
-pub struct LocalDef {
-    pub index: u32,
-    pub value_type: LoleValueType,
-}
-
-pub struct GlobalDef {
-    pub index: u32,
-    pub mutable: bool,
 }
