@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, parse_file, type_checker::*, wasi_io::*, wasm::*};
+use crate::{ast::*, ir::*, parser::*, type_checker::*, wasi_io::*, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -14,7 +14,7 @@ use core::cell::RefCell;
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: i32 = 1;
 
-pub fn compile_module(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
+pub fn compile_ast(exprs: Vec<SExpr>) -> Result<WasmModule, CompileError> {
     let mut ctx = ModuleContext::default();
 
     for expr in exprs {
@@ -146,7 +146,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 let source_buf = fd_read_all(mod_fd);
                 let source = str::from_utf8(source_buf.as_slice()).unwrap();
 
-                let exprs = parse_file(&file_name, source)?;
+                let exprs = parse(&file_name, source)?;
 
                 for expr in exprs {
                     compile_top_level_expr(&expr, ctx)?;

@@ -1,7 +1,7 @@
 use crate::wasm::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
 use alloc::vec::Vec;
 
-pub fn write_binary(out: &mut Vec<u8>, module: &WasmModule) {
+pub fn write_module(out: &mut Vec<u8>, module: &WasmModule) {
     write_magic_and_version(out);
 
     let mut section = Vec::new();

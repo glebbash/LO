@@ -5,20 +5,19 @@
 extern crate alloc;
 
 mod ast;
-mod binary_writer;
 mod compiler;
 mod ir;
 mod parser;
 mod type_checker;
 mod wasi_io;
 mod wasm;
+mod wasm_writer;
 
-use alloc::{format, string::String, vec::Vec};
-use ast::*;
-use binary_writer::*;
+use alloc::{string::String, vec::Vec};
 use compiler::*;
-use core::{alloc::Layout, mem, slice, str};
+use core::str;
 use parser::*;
+use wasm_writer::*;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_target {
@@ -39,105 +38,88 @@ mod wasm_target {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {
-    alloc::alloc::alloc_zeroed(Layout::from_size_align(length, 8).unwrap())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn mem_free(ptr: *mut u8, length: usize) {
-    alloc::alloc::dealloc(ptr, Layout::from_size_align(length, 8).unwrap());
-}
-
-#[repr(C)]
-pub struct ParseResult {
-    ok: u32, // 0 | 1
-    data: *mut u8,
-    size: usize,
-}
-
-#[no_mangle]
-pub extern "C" fn _start() {
-    let source = wasi_io::fd_read_all(wasi::FD_STDIN);
-
-    match compile_str(str::from_utf8(&source).unwrap()) {
-        Ok(binary) => {
-            wasi_io::stdout_write(binary.as_slice());
-        }
-        Err(mut message) => {
-            message.push('\n');
-            wasi_io::stderr_write(message.as_bytes());
-            wasi_io::exit(1);
-        }
-    };
-}
-
-#[no_mangle]
-pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResult {
-    let Some(script) = ptr_to_str(script_ptr, script_len) else {
-        return ParseResult::err(format!("ParseError: Cannot process input"));
-    };
-
-    match compile_str(script) {
-        Ok(binary) => ParseResult::ok(binary),
-        Err(message) => ParseResult::err(message),
-    }
-}
-
-pub fn parse_file(file_name: &str, source: &str) -> Result<Vec<SExpr>, CompileError> {
-    parse(file_name, source).map_err(|err| {
-        return CompileError {
-            message: err.message,
-            loc: err.loc.clone(),
-        };
-    })
-}
-
-fn compile_str(script: &str) -> Result<Vec<u8>, String> {
-    let module = parse_file("<input>", script)
-        .and_then(compile_module)
-        .map_err(|err| {
-            let Location {
-                file_name,
-                line,
-                col,
-                ..
-            } = err.loc;
-
-            return format!(
-                "{msg} in {file_name} at line {line} col {col}",
-                msg = err.message,
-            );
-        })?;
+fn exec_pipeline(script: &str) -> Result<Vec<u8>, String> {
+    let ast = parse("<input>", script)?;
+    let module = compile_ast(ast)?;
 
     let mut wasm_binary = Vec::new();
-    write_binary(&mut wasm_binary, &module);
+    write_module(&mut wasm_binary, &module);
     Ok(wasm_binary)
 }
 
-fn ptr_to_str<'a>(chars: *const u8, chars_len: usize) -> Option<&'a str> {
-    let slice = unsafe { slice::from_raw_parts(chars, chars_len) };
-    str::from_utf8(slice).ok()
+mod wasi_api {
+    use super::exec_pipeline;
+    use super::wasi_io::*;
+    use core::str;
+
+    #[no_mangle]
+    pub extern "C" fn _start() {
+        let source = stdin_read();
+
+        match exec_pipeline(str::from_utf8(&source).unwrap()) {
+            Ok(binary) => {
+                stdout_write(binary.as_slice());
+            }
+            Err(mut message) => {
+                message.push('\n');
+                stderr_write(message.as_bytes());
+                exit(1);
+            }
+        };
+    }
 }
 
-impl ParseResult {
-    fn ok(result: Vec<u8>) -> Self {
-        Self::new(1, result)
+mod fn_api {
+    use super::exec_pipeline;
+    use alloc::{format, string::String, vec::Vec};
+    use core::{alloc::Layout, mem::ManuallyDrop, slice, str};
+
+    #[no_mangle]
+    pub unsafe extern "C" fn mem_alloc(length: usize) -> *mut u8 {
+        alloc::alloc::alloc_zeroed(Layout::from_size_align(length, 8).unwrap())
     }
 
-    fn err(err_message: String) -> Self {
-        Self::new(0, err_message.into())
+    #[no_mangle]
+    pub unsafe extern "C" fn mem_free(ptr: *mut u8, length: usize) {
+        alloc::alloc::dealloc(ptr, Layout::from_size_align(length, 8).unwrap());
     }
 
-    fn new(ok: u32, mut vec: Vec<u8>) -> Self {
-        vec.shrink_to_fit();
-        assert!(vec.len() == vec.capacity());
+    #[repr(C)]
+    pub struct ParseResult {
+        ok: u32, // 0 | 1
+        data: *mut u8,
+        size: usize,
+    }
 
-        let data = vec.as_mut_ptr();
-        let size = vec.len();
+    #[no_mangle]
+    pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResult {
+        let bytes = unsafe { slice::from_raw_parts(script_ptr, script_len) };
+        let Ok(script) = str::from_utf8(bytes) else {
+            return ParseResult::from(Err(format!("ParseError: Cannot process input")));
+        };
 
-        mem::forget(vec);
+        ParseResult::from(exec_pipeline(script))
+    }
 
-        Self { ok, data, size }
+    impl ParseResult {
+        fn from(res: Result<Vec<u8>, String>) -> Self {
+            match res {
+                Ok(binary) => Self::new(1, binary),
+                Err(message) => Self::new(0, message.into()),
+            }
+        }
+
+        fn new(ok: u32, vec: Vec<u8>) -> Self {
+            let mut vec = ManuallyDrop::new(vec);
+
+            vec.shrink_to_fit();
+            assert!(vec.len() == vec.capacity());
+
+            Self {
+                ok,
+                data: vec.as_mut_ptr(),
+                size: vec.len(),
+            }
+        }
     }
 }

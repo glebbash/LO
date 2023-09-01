@@ -15,6 +15,22 @@ impl CompileError {
     }
 }
 
+impl From<CompileError> for String {
+    fn from(err: CompileError) -> Self {
+        let Location {
+            file_name,
+            line,
+            col,
+            ..
+        } = err.loc;
+
+        format!(
+            "{msg} in {file_name} at line {line} col {col}",
+            msg = err.message,
+        )
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Location {
     pub file_name: Box<str>,

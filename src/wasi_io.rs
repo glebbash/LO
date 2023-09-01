@@ -1,5 +1,7 @@
 use alloc::{string::String, vec::Vec};
-use wasi::{fd_read, fd_write, path_open, proc_exit, Ciovec, Errno, Iovec, FD_STDERR, FD_STDOUT};
+use wasi::{
+    fd_read, fd_write, path_open, proc_exit, Ciovec, Errno, Iovec, FD_STDERR, FD_STDIN, FD_STDOUT,
+};
 
 const CWD_PREOPEN_FD: u32 = 3;
 
@@ -9,6 +11,10 @@ pub fn exit(exit_code: u32) {
 
 pub fn open(file_path: &str) -> Result<u32, Errno> {
     unsafe { path_open(CWD_PREOPEN_FD, 0, &file_path, 0, 2, 0, 0) }
+}
+
+pub fn stdin_read() -> Vec<u8> {
+    fd_read_all(FD_STDIN)
 }
 
 pub fn fd_read_all(fd: u32) -> Vec<u8> {
