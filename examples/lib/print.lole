@@ -4,7 +4,7 @@
 (fn puts [(str StringSlice)] [] ((return (fputs Wasi/FD_STDOUT str))))
 (fn fputs [(fd u32) (str StringSlice)] [] (
     {&str : (& StringSlice) = (new StringSlice str :using Alloc/STACK)}
-    (defer (Stack/free (sizeof StringSlice)))
+    (defer (free Alloc/STACK &str (sizeof StringSlice)))
 
     (fprint_str fd &str)
 ))
@@ -19,8 +19,9 @@
 
 (fn print_str [(&str (& StringSlice))] [] ((return (fprint_str Wasi/FD_STDOUT &str))))
 (fn fprint_str [(fd u32) (&str (& StringSlice))] [] (
-    {&nwritten : (& u32) = (Stack/alloc (sizeof u32))}
-    (defer (Stack/free (sizeof u32)))
+    ; TODO(bug): Alloc/STACK doesn't work here and messes up parser execution
+    {&nwritten : (& u32) = (alloc Alloc/HEAP (sizeof u32))}
+    (defer (free Alloc/HEAP &nwritten (sizeof u32)))
 
     (drop (Wasi/fd_write fd &str 1 &nwritten))
 ))

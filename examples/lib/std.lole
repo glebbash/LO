@@ -28,7 +28,7 @@
 
     (global mut Stack/&CURRENT u32 (data.size))
     (global mut Stack/&BEGIN ptr (data.size))
-    (global mut Stack/&END u32 1048576)
+    (global mut Stack/&END u32 1048576) ; 1MB
 
     (fn Stack/push_u32 [(value u32)] [] (
         {i32 @ (Stack/alloc (sizeof u32)) = value}
