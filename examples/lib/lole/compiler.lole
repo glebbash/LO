@@ -4,12 +4,17 @@
 
 (struct Lole/Compiler/CompileResult
     (ok bool)
-    (data ptr) ; (& Lole/Ir/WasmModule) | (& Lole/Ast/CompileError)
+    (data ptr) ; (& Lole/Wasm/WasmModule) | (& Lole/Ast/CompileError)
 )
 
 ; TODO: implement
 (fn Lole/Compiler/compile [(&exprs (& Vec<Lole/Ast/SExpr>))] [Lole/Compiler/CompileResult] (
-    (return true (new Lole/Ir/WasmModule (do)))
+    {&ctx : (& Lole/Ir/ModuleContext) = (Lole/Ir/ModuleContext/new)}
+    (defer (Lole/Ir/ModuleContext/free &ctx))
+
+    (return true (new Lole/Wasm/WasmModule
+        {Lole/Ir/ModuleContext @ &ctx . wasm_module}
+    ))
 
     ; (return false (new Lole/Ast/CompileError (do
     ;     (String/from_slice "CompileError: not implemented")

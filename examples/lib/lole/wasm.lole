@@ -1,0 +1,53 @@
+(struct Vec<Lole/Wasm/WasmFnType> (actual Vec))
+(struct Vec<Lole/Wasm/WasmImport> (actual Vec))
+(struct Vec<u32> (actual Vec))
+(struct Vec<Lole/Wasm/WasmLimits> (actual Vec))
+(struct Vec<Lole/Wasm/WasmGlobal> (actual Vec))
+(struct Vec<Lole/Wasm/WasmExport> (actual Vec))
+(struct Vec<Lole/Wasm/WasmFn> (actual Vec))
+(struct Vec<Lole/Wasm/WasmData> (actual Vec))
+
+(struct Lole/Wasm/WasmModule
+    (types (& Vec<Lole/Wasm/WasmFnType>))
+    (imports (& Vec<Lole/Wasm/WasmImport>))
+    (functions (& Vec<u32>))
+    (memories (& Vec<Lole/Wasm/WasmLimits>))
+    (globals (& Vec<Lole/Wasm/WasmGlobal>))
+    (exports (& Vec<Lole/Wasm/WasmExport>))
+    (codes (& Vec<Lole/Wasm/WasmFn>))
+    (datas (& Vec<Lole/Wasm/WasmData>))
+)
+
+; TODO: implement
+(struct Lole/Wasm/WasmFnType)
+
+; TODO: implement
+(struct Lole/Wasm/WasmImport)
+
+; TODO: implement
+(struct Lole/Wasm/WasmLimits)
+
+; TODO: implement
+(struct Lole/Wasm/WasmGlobal)
+
+; TODO: implement
+(struct Lole/Wasm/WasmExport)
+
+; TODO: implement
+(struct Lole/Wasm/WasmFn)
+
+; TODO: implement
+(struct Lole/Wasm/WasmData)
+
+(fn Lole/Wasm/WasmModule/new [] [Lole/Wasm/WasmModule] (
+    (return (struct.new Lole/Wasm/WasmModule (do
+        (Vec/new 1 (sizeof Lole/Wasm/WasmFnType))
+        (Vec/new 1 (sizeof Lole/Wasm/WasmImport))
+        (Vec/new 1 (sizeof u32))
+        (Vec/new 1 (sizeof Lole/Wasm/WasmLimits))
+        (Vec/new 1 (sizeof Lole/Wasm/WasmGlobal))
+        (Vec/new 1 (sizeof Lole/Wasm/WasmExport))
+        (Vec/new 1 (sizeof Lole/Wasm/WasmFn))
+        (Vec/new 1 (sizeof Lole/Wasm/WasmData))
+    )))
+))

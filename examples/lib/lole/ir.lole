@@ -1,2 +1,31 @@
+(mod lib/lole/wasm)
+
+(struct Vec<String> (actual Vec))
+
+(struct Lole/Ir/ModuleContext
+    (wasm_module Lole/Wasm/WasmModule)
+    (memory_names (& Vec<String>))
+    (imported_fns_count u32)
+    ; MVP, need to implement BTreeMap
+    ; (fn_defs BTreeMap<String,Lole/Ir/FnDef>)
+    ; (fn_bodies BTreeMap<String,Lole/Ir/FnBody>)
+    ; (fn_exports BTreeMap<String,String>)
+    ; POST MVP
+    ; (included_modules BTreeSet<String>)
+    ; (struct_defs BTreeMap<String,Lole/Ir/StructDef>)
+    ; (enum_kinds BTreeMap<String,u32>)
+    ; (globals BTreeMap<String,Lole/Ir/GlobalDef>)
+    ; (data_size Rc<RefCell<i32>>)
+    ; (string_pool RefCell<BTreeMap<String,i32>>)
+)
+
+(fn Lole/Ir/ModuleContext/new [] [(& Lole/Ir/ModuleContext)] (
+    (return (new Lole/Ir/ModuleContext (do
+        (Lole/Wasm/WasmModule/new)
+        (Vec/new 1 (sizeof String))
+        0
+    )))
+))
+
 ; TODO: implement
-(struct Lole/Ir/WasmModule)
+(fn Lole/Ir/ModuleContext/free [(&self (& Lole/Ir/ModuleContext))] [] ())
