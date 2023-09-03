@@ -62,8 +62,14 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
             instrs.append(&mut values?);
         };
 
-        let mut locals = vec![];
+        let mut locals = Vec::<WasmLocals>::new();
         for local_type in fn_ctx.non_arg_locals {
+            if let Some(wasm_locals) = locals.last_mut() {
+                if (*wasm_locals).value_type == local_type {
+                    wasm_locals.count += 1;
+                    continue;
+                }
+            }
             locals.push(WasmLocals {
                 count: 1,
                 value_type: local_type.clone(),

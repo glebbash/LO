@@ -234,6 +234,10 @@
         (return {Vec @ &self . &data + {index * {Vec @ &self . item_size}}})
     ))
 
+    (fn Vec/at_unchecked [(&self (& Vec)) (index u32)] [u32] (
+        (return {Vec @ &self . &data + {index * {Vec @ &self . item_size}}})
+    ))
+
     (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
         (Vec/_panic_if_out_of_bounds &self index)
 
@@ -293,7 +297,7 @@
 
     (fn Vec/pop_unchecked [(&self (& Vec))] [ptr] (
         {Vec @ &self . length -= 1}
-        (return (Vec/at &self (Vec/len &self)))
+        (return (Vec/at_unchecked &self (Vec/len &self)))
     ))
 
     (fn Vec/reverse [(&self (& Vec))] [] (
