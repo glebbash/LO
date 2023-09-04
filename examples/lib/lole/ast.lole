@@ -32,3 +32,27 @@
         (loc Lole/Ast/Location)
     )
 )
+
+(fn Lole/Ast/SExpr/free [(self Lole/Ast/SExpr)] [] (
+    (if {self . kind == (enum.kind Lole/Ast/SExpr/Atom)} (do
+        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . ref}}}
+        (Vec/free {atom . &value})
+        (return)
+    ))
+
+    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {self . ref}}}
+    (Vec<Lole/Ast/SExpr>/free {list . &value})
+))
+
+(fn Vec<Lole/Ast/SExpr>/free [(&self (& Vec))] [] (
+    {i : u32 = 0}
+    (loop (
+        (if {i == (Vec/len &self)} (break))
+
+        (Lole/Ast/SExpr/free {Lole/Ast/SExpr @ (Vec/at &self i)})
+
+        {i += 1}
+    ))
+
+    (Vec/free &self)
+))

@@ -17,16 +17,18 @@
     (if (not {parse_res . ok}) (do
         (return (print_err_and_exit {parse_res . data}))
     ))
+    (defer (Vec<Lole/Ast/SExpr>/free {parse_res . data}))
 
     {compile_res : Lole/Compiler/CompileResult = (Lole/Compiler/compile {parse_res . data})}
     (if (not {compile_res . ok}) (do
         (return (print_err_and_exit {compile_res . data}))
     ))
+    (defer (Lole/Wasm/WasmModule/free {Lole/Wasm/WasmModule @ {compile_res . data}}))
 
     {&binary : (& Vec<u8>) = (Lole/CodeGen/codegen {compile_res . data})}
-    (print_str &binary)
+    (defer (Vec/free &binary))
 
-    ; TODO: free everything
+    (print_str &binary)
 ))
 
 (fn get_input_file [] [u32 StringSlice] (

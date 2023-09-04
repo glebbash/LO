@@ -339,6 +339,18 @@
         ))
     ))
 
+; map
+
+    (struct VMap (actual Vec))
+
+    (fn VMap/new [(initial_capacity u32) (key_size u32) (value_size u32)] [(& VMap)] (
+        (return (Vec/new initial_capacity {key_size + value_size}))
+    ))
+
+    (fn VMap/free [(&self (& VMap))] [] (
+        (Vec/free &self)
+    ))
+
 ; string
 
     (struct String (actual (& Vec<u8>)))

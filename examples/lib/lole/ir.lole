@@ -1,31 +1,47 @@
 (mod lib/lole/wasm)
 
 (struct Vec<String> (actual Vec))
+(struct VMap<String,Lole/Ir/FnDef> (actual VMap))
+(struct VMap<String,Lole/Ir/FnBody> (actual VMap))
+(struct VMap<String,String> (actual VMap))
 
 (struct Lole/Ir/ModuleContext
     (wasm_module Lole/Wasm/WasmModule)
     (memory_names (& Vec<String>))
     (imported_fns_count u32)
-    ; MVP, need to implement BTreeMap
-    ; (fn_defs BTreeMap<String,Lole/Ir/FnDef>)
-    ; (fn_bodies BTreeMap<String,Lole/Ir/FnBody>)
-    ; (fn_exports BTreeMap<String,String>)
+    (fn_defs (& VMap<String,Lole/Ir/FnDef>))
+    (fn_bodies (& VMap<String,Lole/Ir/FnBody>))
+    (fn_exports (& VMap<String,String>))
     ; POST MVP
     ; (included_modules BTreeSet<String>)
-    ; (struct_defs BTreeMap<String,Lole/Ir/StructDef>)
-    ; (enum_kinds BTreeMap<String,u32>)
-    ; (globals BTreeMap<String,Lole/Ir/GlobalDef>)
+    ; (struct_defs VMap<String,Lole/Ir/StructDef>)
+    ; (enum_kinds VMap<String,u32>)
+    ; (globals VMap<String,Lole/Ir/GlobalDef>)
     ; (data_size Rc<RefCell<i32>>)
-    ; (string_pool RefCell<BTreeMap<String,i32>>)
+    ; (string_pool RefCell<VMap<String,i32>>)
 )
+
+; TODO: implement
+(struct Lole/Ir/FnDef)
+
+; TODO: implement
+(struct Lole/Ir/FnBody)
 
 (fn Lole/Ir/ModuleContext/new [] [(& Lole/Ir/ModuleContext)] (
     (return (new Lole/Ir/ModuleContext (do
         (Lole/Wasm/WasmModule/new)
         (Vec/new 1 (sizeof String))
         0
+        (VMap/new 1 (sizeof String) (sizeof Lole/Ir/FnDef))
+        (VMap/new 1 (sizeof String) (sizeof Lole/Ir/FnBody))
+        (VMap/new 1 (sizeof String) (sizeof String))
     )))
 ))
 
-; TODO: implement
-(fn Lole/Ir/ModuleContext/free [(&self (& Lole/Ir/ModuleContext))] [] ())
+; NOTE: this doesn't free `wasm_module` as it doesn't "own" it
+(fn Lole/Ir/ModuleContext/free [(&self (& Lole/Ir/ModuleContext))] [] (
+    (Vec/free {Lole/Ir/ModuleContext @ &self . memory_names})
+    (VMap/free {Lole/Ir/ModuleContext @ &self . fn_defs})
+    (VMap/free {Lole/Ir/ModuleContext @ &self . fn_bodies})
+    (VMap/free {Lole/Ir/ModuleContext @ &self . fn_exports})
+))
