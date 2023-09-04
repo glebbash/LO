@@ -20,7 +20,7 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
     }
 
     // push function exports
-    for (in_name, out_name) in ctx.fn_exports.iter() {
+    for (in_name, out_name) in &ctx.fn_exports {
         ctx.wasm_module.exports.push(WasmExport {
             export_type: WasmExportType::Func,
             export_name: out_name.clone(),
