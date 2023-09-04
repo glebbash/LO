@@ -12,7 +12,7 @@ pub struct ModuleContext {
     pub included_modules: BTreeSet<String>,
     pub wasm_module: WasmModule,
     pub fn_defs: BTreeMap<String, FnDef>,
-    pub fn_bodies: BTreeMap<String, FnBody>,
+    pub fn_bodies: Vec<FnBody>,
     pub fn_exports: BTreeMap<String, String>,
     pub memory_names: Vec<String>,
     pub struct_defs: BTreeMap<String, StructDef>,

@@ -35,11 +35,8 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
         });
     }
 
-    let mut fn_bodies_sorted = ctx.fn_bodies.values().collect::<Vec<_>>();
-    fn_bodies_sorted.sort_by_key(|fd| fd.fn_index);
-
     // push function codes
-    for fn_body in fn_bodies_sorted {
+    for fn_body in &ctx.fn_bodies {
         let type_index = ctx
             .wasm_module
             .functions
@@ -309,15 +306,12 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         type_index,
                     },
                 );
-                ctx.fn_bodies.insert(
-                    fn_name.clone(),
-                    FnBody {
-                        fn_index,
-                        locals: RefCell::new(locals),
-                        locals_last_index,
-                        body: body.clone(),
-                    },
-                );
+                ctx.fn_bodies.push(FnBody {
+                    fn_index,
+                    locals: RefCell::new(locals),
+                    locals_last_index,
+                    body: body.clone(),
+                });
             }
             _ => {
                 return Err(CompileError {
