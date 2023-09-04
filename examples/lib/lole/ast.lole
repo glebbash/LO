@@ -8,6 +8,12 @@
     (col u32)
 )
 
+(fn Lole/Ast/Location/clone [(self Lole/Ast/Location)] [Lole/Ast/Location] (
+    {clone : Lole/Ast/Location = self}
+    {clone . file_name = (StringSlice/clone {self . file_name})}
+    (return clone)
+))
+
 (struct Lole/Ast/CompileError
     (&message (& String))
     (loc Lole/Ast/Location)
@@ -55,4 +61,14 @@
     ))
 
     (Vec/free &self)
+))
+
+(fn Lole/Ast/SExpr/loc [(self Lole/Ast/SExpr)] [Lole/Ast/Location] (
+    (if {self . kind == (enum.kind Lole/Ast/SExpr/Atom)} (do
+        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . ref}}}
+        (return {atom . loc})
+    ))
+
+    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {self . ref}}}
+    (return {list . loc})
 ))

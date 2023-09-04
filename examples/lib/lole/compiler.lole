@@ -4,17 +4,32 @@
 
 (struct Lole/Compiler/CompileResult
     (ok bool)
-    (data ptr) ; (& Lole/Wasm/WasmModule) | (& Lole/Ast/CompileError)
+    (data ptr) ; 0 | (& Lole/Ast/CompileError)
 )
 
 ; TODO: implement
-(fn Lole/Compiler/compile [(&exprs (& Vec<Lole/Ast/SExpr>))] [Lole/Compiler/CompileResult] (
-    {&ctx : (& Lole/Ir/ModuleContext) = (Lole/Ir/ModuleContext/new)}
+(fn Lole/Compiler/compile [
+    (&exprs (& Vec<Lole/Ast/SExpr>)) (&wasm_module (& Lole/Wasm/WasmModule))
+] [Lole/Compiler/CompileResult] (
+    {&ctx : (& Lole/Ir/ModuleContext) = (Lole/Ir/ModuleContext/new &wasm_module)}
     (defer (Lole/Ir/ModuleContext/free &ctx))
 
-    (return true (new Lole/Wasm/WasmModule
-        {Lole/Ir/ModuleContext @ &ctx . wasm_module}
+    {i : u32 = 0}
+    (loop (
+        (if {i == (Vec/len &exprs)} (break))
+
+        {res : Lole/Compiler/CompileResult =
+            (Lole/Compiler/compile_top_level_expr
+                {Lole/Ast/SExpr @ (Vec/at &exprs i)}
+                &ctx
+            )
+        }
+        (if (not {res . ok}) (return res))
+
+        {i += 1}
     ))
+
+    (return true 0)
 
     ; (return false (new Lole/Ast/CompileError (do
     ;     (String/from_slice "CompileError: not implemented")
@@ -23,4 +38,17 @@
     ;         0 0 0 0
     ;     )
     ; )))
+))
+
+(fn Lole/Compiler/compile_top_level_expr [
+    (expr Lole/Ast/SExpr) (&ctx (& Lole/Ir/ModuleContext))
+] [Lole/Compiler/CompileResult] (
+    (if {expr . kind == (enum.kind Lole/Ast/SExpr/Atom)} (do
+        (return false (new Lole/Ast/CompileError (do
+            (String/from_slice "Unexpected atom")
+            (Lole/Ast/Location/clone (Lole/Ast/SExpr/loc expr))
+        )))
+    ))
+
+    (return true 0)
 ))

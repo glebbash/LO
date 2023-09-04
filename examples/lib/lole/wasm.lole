@@ -39,8 +39,8 @@
 ; TODO: implement
 (struct Lole/Wasm/WasmData)
 
-(fn Lole/Wasm/WasmModule/new [] [Lole/Wasm/WasmModule] (
-    (return (struct.new Lole/Wasm/WasmModule (do
+(fn Lole/Wasm/WasmModule/new [] [(& Lole/Wasm/WasmModule)] (
+    (return (new Lole/Wasm/WasmModule (do
         (Vec/new 1 (sizeof Lole/Wasm/WasmFnType))
         (Vec/new 1 (sizeof Lole/Wasm/WasmImport))
         (Vec/new 1 (sizeof u32))
@@ -52,7 +52,8 @@
     )))
 ))
 
-(fn Lole/Wasm/WasmModule/free [(self Lole/Wasm/WasmModule)] [] (
+(fn Lole/Wasm/WasmModule/free [(&self (& Lole/Wasm/WasmModule))] [] (
+    {self : Lole/Wasm/WasmModule = {Lole/Wasm/WasmModule @ &self}}
     (Vec/free {self . types})
     (Vec/free {self . imports})
     (Vec/free {self . functions})

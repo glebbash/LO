@@ -6,7 +6,7 @@
 (struct VMap<String,String> (actual VMap))
 
 (struct Lole/Ir/ModuleContext
-    (wasm_module Lole/Wasm/WasmModule)
+    (wasm_module (& Lole/Wasm/WasmModule)) ; not owned
     (memory_names (& Vec<String>))
     (imported_fns_count u32)
     (fn_defs (& VMap<String,Lole/Ir/FnDef>))
@@ -27,9 +27,9 @@
 ; TODO: implement
 (struct Lole/Ir/FnBody)
 
-(fn Lole/Ir/ModuleContext/new [] [(& Lole/Ir/ModuleContext)] (
+(fn Lole/Ir/ModuleContext/new [(&wasm_module (& Lole/Wasm/WasmModule))] [(& Lole/Ir/ModuleContext)] (
     (return (new Lole/Ir/ModuleContext (do
-        (Lole/Wasm/WasmModule/new)
+        &wasm_module
         (Vec/new 1 (sizeof String))
         0
         (VMap/new 1 (sizeof String) (sizeof Lole/Ir/FnDef))

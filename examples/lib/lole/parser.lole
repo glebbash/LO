@@ -322,12 +322,6 @@
     ))
 ))
 
-(fn Lole/Ast/Location/clone [(self Lole/Ast/Location)] [Lole/Ast/Location] (
-    {clone : Lole/Ast/Location = self}
-    {clone . file_name = (StringSlice/clone {self . file_name})}
-    (return clone)
-))
-
 (fn Lole/Parser/m_expr_to_s_expr_and_validate [(&items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] [Lole/Parser/ParseResult] (
     (if {(Vec/len &items) % 2 != 1} (do
         (return (struct.new Lole/Parser/ParseResult false
