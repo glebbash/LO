@@ -8,14 +8,14 @@
 (struct Vec<Lole/Wasm/WasmData> (actual Vec))
 
 (struct Lole/Wasm/WasmModule
-    (types (& Vec<Lole/Wasm/WasmFnType>))
-    (imports (& Vec<Lole/Wasm/WasmImport>))
-    (functions (& Vec<u32>))
-    (memories (& Vec<Lole/Wasm/WasmLimits>))
-    (globals (& Vec<Lole/Wasm/WasmGlobal>))
-    (exports (& Vec<Lole/Wasm/WasmExport>))
-    (codes (& Vec<Lole/Wasm/WasmFn>))
-    (datas (& Vec<Lole/Wasm/WasmData>))
+    (&types (& Vec<Lole/Wasm/WasmFnType>))
+    (&imports (& Vec<Lole/Wasm/WasmImport>))
+    (&functions (& Vec<u32>))
+    (&memories (& Vec<Lole/Wasm/WasmLimits>))
+    (&globals (& Vec<Lole/Wasm/WasmGlobal>))
+    (&exports (& Vec<Lole/Wasm/WasmExport>))
+    (&codes (& Vec<Lole/Wasm/WasmFn>))
+    (&datas (& Vec<Lole/Wasm/WasmData>))
 )
 
 ; TODO: implement
@@ -30,8 +30,16 @@
 ; TODO: implement
 (struct Lole/Wasm/WasmGlobal)
 
-; TODO: implement
-(struct Lole/Wasm/WasmExport)
+; values correspond to binary output
+(global Lole/Wasm/WasmExportType/FUNC u32 0)
+(global Lole/Wasm/WasmExportType/MEM u32 2)
+(struct Lole/Wasm/WasmExportType (actual u32))
+
+(struct Lole/Wasm/WasmExport
+    (export_type Lole/Wasm/WasmExportType)
+    (export_name (& String))
+    (exported_item_index u32)
+)
 
 ; TODO: implement
 (struct Lole/Wasm/WasmFn)
@@ -54,12 +62,12 @@
 
 (fn Lole/Wasm/WasmModule/free [(&self (& Lole/Wasm/WasmModule))] [] (
     {self : Lole/Wasm/WasmModule = {Lole/Wasm/WasmModule @ &self}}
-    (Vec/free {self . types})
-    (Vec/free {self . imports})
-    (Vec/free {self . functions})
-    (Vec/free {self . memories})
-    (Vec/free {self . globals})
-    (Vec/free {self . exports})
-    (Vec/free {self . codes})
-    (Vec/free {self . datas})
+    (Vec/free {self . &types})
+    (Vec/free {self . &imports})
+    (Vec/free {self . &functions})
+    (Vec/free {self . &memories})
+    (Vec/free {self . &globals})
+    (Vec/free {self . &exports})
+    (Vec/free {self . &codes})
+    (Vec/free {self . &datas})
 ))

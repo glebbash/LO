@@ -1,47 +1,73 @@
 (mod lib/lole/wasm)
+(mod lib/lole/ast)
 
 (struct Vec<String> (actual Vec))
-(struct VMap<String,Lole/Ir/FnDef> (actual VMap))
-(struct VMap<String,Lole/Ir/FnBody> (actual VMap))
-(struct VMap<String,String> (actual VMap))
+(struct Dict<Lole/Ir/FnDef> (actual Dict))
+(struct Dict<Lole/Ir/FnBody> (actual Dict))
+(struct Vec<Lole/Ir/FnExport> (actual Vec))
+(struct Dict<bool> (actual Vec))
+(struct Dict<Lole/Ir/StructDef> (actual Vec))
+(struct Dict<Lole/Ir/GlobalDef> (actual Vec))
+(struct Dict<u32> (actual Vec))
 
 (struct Lole/Ir/ModuleContext
-    (wasm_module (& Lole/Wasm/WasmModule)) ; not owned
-    (memory_names (& Vec<String>))
+    (&wasm_module (& Lole/Wasm/WasmModule)) ; not owned
+    (&memory_names (& Vec<String>))
     (imported_fns_count u32)
-    (fn_defs (& VMap<String,Lole/Ir/FnDef>))
-    (fn_bodies (& VMap<String,Lole/Ir/FnBody>))
-    (fn_exports (& VMap<String,String>))
-    ; POST MVP
-    ; (included_modules BTreeSet<String>)
-    ; (struct_defs VMap<String,Lole/Ir/StructDef>)
-    ; (enum_kinds VMap<String,u32>)
-    ; (globals VMap<String,Lole/Ir/GlobalDef>)
-    ; (data_size Rc<RefCell<i32>>)
-    ; (string_pool RefCell<VMap<String,i32>>)
+    (&fn_defs (& Dict<Lole/Ir/FnDef>))
+    (&fn_bodies (& Dict<Lole/Ir/FnBody>))
+    (&fn_exports (& Vec<Lole/Ir/FnExport>))
+    (&included_modules (& Vec<String>)) ; BTreeSet<String>
+    (&struct_defs (& Dict<Lole/Ir/StructDef>))
+    (&enum_kinds (& Dict<u32>))
+    (&globals (& Dict<Lole/Ir/GlobalDef>))
+    (&data_size (& u32)) ; Rc<RefCell<u32>>
+    (&string_pool (& Dict<u32>)) ; RefCell<BTreeMap<String, i32>>
+)
+
+(struct Lole/Ir/FnDef
+    (local bool)
+    (fn_index u32)
+    (type_index u32)
 )
 
 ; TODO: implement
-(struct Lole/Ir/FnDef)
+(struct Lole/Ir/GlobalDef)
 
 ; TODO: implement
 (struct Lole/Ir/FnBody)
+
+(struct Lole/Ir/FnExport
+    (&in_name (& String))
+    (&out_name (& String))
+    (loc Lole/Ast/Location)
+)
+
+; TODO: implement
+(struct Lole/Ir/StructDef)
 
 (fn Lole/Ir/ModuleContext/new [(&wasm_module (& Lole/Wasm/WasmModule))] [(& Lole/Ir/ModuleContext)] (
     (return (new Lole/Ir/ModuleContext (do
         &wasm_module
         (Vec/new 1 (sizeof String))
         0
-        (VMap/new 1 (sizeof String) (sizeof Lole/Ir/FnDef))
-        (VMap/new 1 (sizeof String) (sizeof Lole/Ir/FnBody))
-        (VMap/new 1 (sizeof String) (sizeof String))
+        (Dict/new 1 (sizeof Lole/Ir/FnDef))
+        (Dict/new 1 (sizeof Lole/Ir/FnBody))
+        (Vec/new 1 (sizeof Lole/Ir/FnExport))
+        (Vec/new 1 (sizeof String))
+        (Dict/new 1 (sizeof Lole/Ir/StructDef))
+        (Dict/new 1 (sizeof u32))
+        (Dict/new 1 (sizeof Lole/Ir/GlobalDef))
+        (new u32 0)
+        (Dict/new 1 (sizeof u32))
     )))
 ))
 
 ; NOTE: this doesn't free `wasm_module` as it doesn't "own" it
 (fn Lole/Ir/ModuleContext/free [(&self (& Lole/Ir/ModuleContext))] [] (
-    (Vec/free {Lole/Ir/ModuleContext @ &self . memory_names})
-    (VMap/free {Lole/Ir/ModuleContext @ &self . fn_defs})
-    (VMap/free {Lole/Ir/ModuleContext @ &self . fn_bodies})
-    (VMap/free {Lole/Ir/ModuleContext @ &self . fn_exports})
+    {self : Lole/Ir/ModuleContext = {Lole/Ir/ModuleContext @ &self}}
+    (Vec/free {self . &memory_names})
+    (Dict/free {self . &fn_defs})
+    (Dict/free {self . &fn_bodies})
+    (Dict/free {self . &fn_exports})
 ))

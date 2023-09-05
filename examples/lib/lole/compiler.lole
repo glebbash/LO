@@ -7,7 +7,6 @@
     (data ptr) ; 0 | (& Lole/Ast/CompileError)
 )
 
-; TODO: implement
 (fn Lole/Compiler/compile [
     (&exprs (& Vec<Lole/Ast/SExpr>)) (&wasm_module (& Lole/Wasm/WasmModule))
 ] [Lole/Compiler/CompileResult] (
@@ -29,17 +28,94 @@
         {i += 1}
     ))
 
-    (return true 0)
+    {&fn_defs : (& Dict<Lole/Ir/FnDef>) = {Lole/Ir/ModuleContext @ &ctx . &fn_defs}}
+    {&fn_exports : (& Vec<String>) = {Lole/Ir/ModuleContext @ &ctx . &fn_exports}}
 
-    ; (return false (new Lole/Ast/CompileError (do
-    ;     (String/from_slice "CompileError: not implemented")
-    ;     (struct.new Lole/Ast/Location
-    ;         (StringSlice/clone "<internal>")
-    ;         0 0 0 0
-    ;     )
-    ; )))
+    ; push function exports
+    {i = 0}
+    (loop (
+        (if {i == (Vec/len &fn_exports)} (break))
+
+        {fn_export : Lole/Ir/FnExport = {Lole/Ir/FnExport @ (Vec/at &fn_exports i)}}
+
+        {fn_def_res : Dict/GetResult = (Dict/get &fn_defs {fn_export . &in_name})}
+        (if (not {fn_def_res . ok}) (do
+            (return false (new Lole/Ast/CompileError (do
+                (String/from_slice "Cannot export unknown function {in_name}")
+                (Lole/Ast/Location/clone {fn_export . loc})
+            )))
+        ))
+        {fn_def : Lole/Ir/FnDef = {Lole/Ir/FnDef @ {fn_def_res . &value}}}
+
+        {&exports : (& Vec) = {Lole/Wasm/WasmModule @ &wasm_module . &exports}}
+
+        {Lole/Wasm/WasmExport @ (Vec/push_undef &exports) = (struct.new Lole/Wasm/WasmExport
+            Lole/Wasm/WasmExportType/FUNC
+            (String/clone {fn_export . &out_name})
+            {Lole/Ir/ModuleContext @ &ctx . imported_fns_count + {fn_def . fn_index}}
+        )}
+
+        {i += 1}
+    ))
+
+    {&fn_bodies : (& Dict<Lole/Ir/FnDef>) = {Lole/Ir/ModuleContext @ &ctx . &fn_bodies}}
+
+    ; push function codes
+    {i = 0}
+    (loop (
+        (if {i == (Vec/len &fn_bodies)} (break))
+
+        {fn_body : Lole/Ir/FnBody = {Lole/Ir/FnBody @ (Vec/at &fn_bodies i)}}
+
+        ; TODO: implement
+        ; let type_index = ctx
+        ;     .wasm_module
+        ;     .functions
+        ;     .get(fn_body.fn_index as usize)
+        ;     .unwrap();
+
+        ; let fn_type = ctx.wasm_module.types.get(*type_index as usize).unwrap();
+
+        ; let mut fn_ctx = FnContext {
+        ;     module: &ctx,
+        ;     fn_type,
+        ;     locals: &mut fn_body.locals.borrow_mut(),
+        ;     locals_last_index: fn_body.locals_last_index,
+        ;     non_arg_locals: vec![],
+        ;     defers: BTreeMap::default(),
+        ; };
+
+        ; let mut instrs = compile_block(&fn_body.body, &mut fn_ctx)?;
+        ; if let Some(values) = get_deferred("return", &mut fn_ctx) {
+        ;     instrs.append(&mut values?);
+        ; };
+
+        ; let mut locals = Vec::<WasmLocals>::new();
+        ; for local_type in fn_ctx.non_arg_locals {
+        ;     if let Some(wasm_locals) = locals.last_mut() {
+        ;         if (*wasm_locals).value_type == local_type {
+        ;             wasm_locals.count += 1;
+        ;             continue;
+        ;         }
+        ;     }
+        ;     locals.push(WasmLocals {
+        ;         count: 1,
+        ;         value_type: local_type.clone(),
+        ;     });
+        ; }
+
+        ; ctx.wasm_module.codes.push(WasmFn {
+        ;     locals,
+        ;     expr: WasmExpr { instrs },
+        ; });
+
+        {i += 1}
+    ))
+
+    (return true 0)
 ))
 
+; TODO: implement
 (fn Lole/Compiler/compile_top_level_expr [
     (expr Lole/Ast/SExpr) (&ctx (& Lole/Ir/ModuleContext))
 ] [Lole/Compiler/CompileResult] (

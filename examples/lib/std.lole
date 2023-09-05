@@ -339,16 +339,27 @@
         ))
     ))
 
-; map
+    (fn Vec/equals [(&self (& Vec)) (&other (& Vec))] [bool] (
+        {byte_len : u32 = {(Vec/len &self) * {Vec @ &self . item_size}}}
+        (if {byte_len != {(Vec/len &other) * {Vec @ &other . item_size}}} (do
+            (return false)
+        ))
 
-    (struct VMap (actual Vec))
+        {&self_data : ptr = {Vec @ &self . &data}}
+        {&other_data : ptr = {Vec @ &other . &data}}
 
-    (fn VMap/new [(initial_capacity u32) (key_size u32) (value_size u32)] [(& VMap)] (
-        (return (Vec/new initial_capacity {key_size + value_size}))
-    ))
+        {i : u32 = 0}
+        (loop (
+            (if {i == byte_len} (break))
 
-    (fn VMap/free [(&self (& VMap))] [] (
-        (Vec/free &self)
+            (if {i32/u8 @ &self_data @ i != {i32/u8 @ &other_data @ i}} (do
+                (return false)
+            ))
+
+            {i += 1}
+        ))
+
+        (return true)
     ))
 
 ; string
@@ -366,10 +377,48 @@
         (return (struct.new StringSlice &cloned_data {self . size}))
     ))
 
+    (fn String/clone [(&self String)] [(& String)] (
+        (return (String/from_slice {Vec @ &self . &data} {Vec @ &self . length}))
+    ))
+
     (fn String/from_slice [(str StringSlice)] [(& String)] (
         {&string : (& String) = (Vec/new {str . size} 1)}
         (Vec/push_all &string str)
         (return &string)
+    ))
+
+; dict
+
+    (struct Dict (actual Vec))
+
+    (fn Dict/new [(initial_capacity u32) (value_size u32)] [(& Dict)] (
+        (return (Vec/new initial_capacity {value_size + (sizeof String)}))
+    ))
+
+    (fn Dict/free [(&self (& Dict))] [] (
+        (Vec/free &self)
+    ))
+
+    (fn Dict/len [(&self (& Dict))] [u32] (
+        (return (Vec/len &self))
+    ))
+
+    (struct Dict/GetResult (ok bool) (&value ptr))
+
+    (fn Dict/get [(&self (& Dict)) (&key (& String))] [Dict/GetResult] (
+        {i : u32 = 0}
+        (loop (
+            (if {i == (Dict/len &self)} (break))
+
+            {&entry_key : (& String) = (Vec/at &self i)}
+            (if (Vec/equals &key &entry_key) (do
+                (return true {&entry_key + (sizeof String)})
+            ))
+
+            {i += 1}
+        ))
+
+        (return false 0)
     ))
 
 ; conversions
