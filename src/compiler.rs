@@ -20,18 +20,18 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
     }
 
     // push function exports
-    for (in_name, out_name) in &ctx.fn_exports {
+    for fn_export in &ctx.fn_exports {
+        let Some(fn_def) = ctx.fn_defs.get(&fn_export.in_name) else {
+            return Err(CompileError {
+                message: format!("Cannot export unknown function {}", fn_export.in_name),
+                loc: fn_export.loc.clone(),
+            });
+        };
+
         ctx.wasm_module.exports.push(WasmExport {
             export_type: WasmExportType::Func,
-            export_name: out_name.clone(),
-            exported_item_index: ctx
-                .fn_defs
-                .get(in_name)
-                .map(|fd| ctx.imported_fns_count + fd.fn_index)
-                .ok_or_else(|| CompileError {
-                    message: format!("Cannot export unknown function {in_name}"),
-                    loc: Location::internal(),
-                })?,
+            export_name: fn_export.out_name.clone(),
+            exported_item_index: ctx.imported_fns_count + fn_def.fn_index,
         });
     }
 
@@ -449,12 +449,20 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         as u32,
                 });
             }
-            [SExpr::Atom { value: in_name, .. }, SExpr::Atom {
+            [SExpr::Atom {
+                value: in_name,
+                loc: in_name_loc,
+                ..
+            }, SExpr::Atom {
                 value: as_literal, ..
             }, SExpr::Atom {
                 value: out_name, ..
             }] if as_literal == ":as" => {
-                ctx.fn_exports.insert(in_name.clone(), out_name.clone());
+                ctx.fn_exports.push(FnExport {
+                    in_name: in_name.clone(),
+                    out_name: out_name.clone(),
+                    loc: in_name_loc.clone(),
+                });
             }
             _ => {
                 return Err(CompileError {

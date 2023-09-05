@@ -13,7 +13,7 @@ pub struct ModuleContext {
     pub wasm_module: WasmModule,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: Vec<FnBody>,
-    pub fn_exports: BTreeMap<String, String>,
+    pub fn_exports: Vec<FnExport>,
     pub memory_names: Vec<String>,
     pub struct_defs: BTreeMap<String, StructDef>,
     pub enum_kinds: BTreeMap<String, u32>,
@@ -53,6 +53,12 @@ pub struct FnBody {
     pub locals: RefCell<BTreeMap<String, LocalDef>>,
     pub locals_last_index: u32,
     pub body: Vec<SExpr>,
+}
+
+pub struct FnExport {
+    pub in_name: String,
+    pub out_name: String,
+    pub loc: Location,
 }
 
 #[derive(Clone)]
