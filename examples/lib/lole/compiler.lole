@@ -40,8 +40,11 @@
 
         {fn_def_res : Dict/GetResult = (Dict/get &fn_defs {fn_export . &in_name})}
         (if (not {fn_def_res . ok}) (do
+            {&msg : (& String) = (String/from_slice "Cannot export unknown function: ")}
+            (Vec/push_all &msg (Vec/as_slice {fn_export . &in_name}))
+
             (return false (new Lole/Ast/CompileError (do
-                (String/from_slice "Cannot export unknown function {in_name}")
+                &msg
                 (Lole/Ast/Location/clone {fn_export . loc})
             )))
         ))
