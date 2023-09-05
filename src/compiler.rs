@@ -37,13 +37,11 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
 
     // push function codes
     for fn_body in &ctx.fn_bodies {
-        let type_index = ctx
+        let fn_type = ctx
             .wasm_module
-            .functions
-            .get(fn_body.fn_index as usize)
+            .types
+            .get(fn_body.type_index as usize)
             .unwrap();
-
-        let fn_type = ctx.wasm_module.types.get(*type_index as usize).unwrap();
 
         let mut fn_ctx = FnContext {
             module: &ctx,
@@ -308,6 +306,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 );
                 ctx.fn_bodies.push(FnBody {
                     fn_index,
+                    type_index,
                     locals: RefCell::new(locals),
                     locals_last_index,
                     body: body.clone(),

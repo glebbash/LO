@@ -50,6 +50,7 @@ pub struct GlobalDef {
 
 pub struct FnBody {
     pub fn_index: u32,
+    pub type_index: u32,
     pub locals: RefCell<BTreeMap<String, LocalDef>>,
     pub locals_last_index: u32,
     pub body: Vec<SExpr>,
