@@ -62,6 +62,7 @@
     ))
 
     {&fn_bodies : (& Dict<Lole/Ir/FnDef>) = {Lole/Ir/ModuleContext @ &ctx . &fn_bodies}}
+    {&fn_types : (& Vec<Lole/Wasm/WasmFnType>) = {Lole/Wasm/WasmModule @ &wasm_module . &types}}
 
     ; push function codes
     {i = 0}
@@ -70,23 +71,16 @@
 
         {fn_body : Lole/Ir/FnBody = {Lole/Ir/FnBody @ (Vec/at &fn_bodies i)}}
 
-        ; TODO: implement
-        ; let type_index = ctx
-        ;     .wasm_module
-        ;     .functions
-        ;     .get(fn_body.fn_index as usize)
-        ;     .unwrap();
+        {&fn_type : (& Lole/Wasm/WasmFnType) = (Vec/at &fn_types {fn_body . type_index})}
 
-        ; let fn_type = ctx.wasm_module.types.get(*type_index as usize).unwrap();
-
-        ; let mut fn_ctx = FnContext {
-        ;     module: &ctx,
-        ;     fn_type,
-        ;     locals: &mut fn_body.locals.borrow_mut(),
-        ;     locals_last_index: fn_body.locals_last_index,
-        ;     non_arg_locals: vec![],
-        ;     defers: BTreeMap::default(),
-        ; };
+        {&fn_ctx : (& Lole/Ir/FnContext) = (new Lole/Ir/FnContext (do
+            &ctx
+            &fn_type
+            {fn_body . &locals}
+            {fn_body . locals_last_index}
+            (Vec/new 1 (sizeof Lole/Wasm/WasmType))
+            (Dict/new 1 (sizeof Lole/Ast/SExpr))
+        ))}
 
         ; let mut instrs = compile_block(&fn_body.body, &mut fn_ctx)?;
         ; if let Some(values) = get_deferred("return", &mut fn_ctx) {

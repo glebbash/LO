@@ -5,10 +5,12 @@
 (struct Dict<Lole/Ir/FnDef> (actual Dict))
 (struct Dict<Lole/Ir/FnBody> (actual Dict))
 (struct Vec<Lole/Ir/FnExport> (actual Vec))
-(struct Dict<bool> (actual Vec))
-(struct Dict<Lole/Ir/StructDef> (actual Vec))
-(struct Dict<Lole/Ir/GlobalDef> (actual Vec))
-(struct Dict<u32> (actual Vec))
+(struct Dict<bool> (actual Dict))
+(struct Dict<Lole/Ir/StructDef> (actual Dict))
+(struct Dict<u32> (actual Dict))
+(struct Dict<Lole/Ir/GlobalDef> (actual Dict))
+(struct Dict<Lole/Ir/LocalDef> (actual Dict))
+(struct Dict<Lole/Ast/SExpr> (actual Dict))
 
 (struct Lole/Ir/ModuleContext
     (&wasm_module (& Lole/Wasm/WasmModule)) ; not owned
@@ -25,6 +27,15 @@
     (&string_pool (& Dict<u32>)) ; RefCell<BTreeMap<String, i32>>
 )
 
+(struct Lole/Ir/FnContext
+    (module (& Lole/Ir/ModuleContext)) ; &'a
+    (fn_type (& Lole/Wasm/WasmFnType)) ; &'a
+    (locals (& Dict<Lole/Ir/LocalDef>)) ; &'a mut
+    (locals_last_index u32)
+    (non_arg_locals (& Vec<Lole/Wasm/WasmType>))
+    (defers (& Dict<Lole/Ast/SExpr>))
+)
+
 (struct Lole/Ir/FnDef
     (local bool)
     (fn_index u32)
@@ -34,8 +45,13 @@
 ; TODO: implement
 (struct Lole/Ir/GlobalDef)
 
-; TODO: implement
-(struct Lole/Ir/FnBody)
+(struct Lole/Ir/FnBody
+    (fn_index u32)
+    (type_index u32)
+    (&locals (& Dict<Lole/Ir/LocalDef>)) ; RefCell<BTreeMap<String, LocalDef>>
+    (locals_last_index u32)
+    (&body (& Vec<Lole/Ast/SExpr>))
+)
 
 (struct Lole/Ir/FnExport
     (&in_name (& String))
