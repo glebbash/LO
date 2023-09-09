@@ -53,7 +53,7 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
         };
 
         let mut instrs = compile_block(&fn_body.body, &mut fn_ctx)?;
-        if let Some(values) = get_deferred("return", &mut fn_ctx) {
+        if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut fn_ctx) {
             instrs.append(&mut values?);
         };
 
@@ -67,7 +67,7 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
             }
             locals.push(WasmLocals {
                 count: 1,
-                value_type: local_type.clone(),
+                value_type: local_type,
             });
         }
 
