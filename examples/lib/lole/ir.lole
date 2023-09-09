@@ -28,12 +28,12 @@
 )
 
 (struct Lole/Ir/FnContext
-    (module (& Lole/Ir/ModuleContext)) ; &'a
-    (fn_type (& Lole/Wasm/WasmFnType)) ; &'a
-    (locals (& Dict<Lole/Ir/LocalDef>)) ; &'a mut
+    (&module (& Lole/Ir/ModuleContext)) ; &'a
+    (&fn_type (& Lole/Wasm/WasmFnType)) ; &'a
+    (&locals (& Dict<Lole/Ir/LocalDef>)) ; &'a mut
     (locals_last_index u32)
-    (non_arg_locals (& Vec<Lole/Wasm/WasmType>))
-    (defers (& Dict<Lole/Ast/SExpr>))
+    (&non_arg_locals (& Vec<Lole/Wasm/WasmType>))
+    (&defers (& Dict<Lole/Ast/SExpr>))
 )
 
 (struct Lole/Ir/FnDef

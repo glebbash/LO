@@ -38,7 +38,7 @@
 
         {fn_export : Lole/Ir/FnExport = {Lole/Ir/FnExport @ (Vec/at &fn_exports i)}}
 
-        {fn_def_res : Dict/GetResult = (Dict/get &fn_defs {fn_export . &in_name})}
+        {fn_def_res : Dict/GetResult = (Dict/get &fn_defs (Vec/as_slice {fn_export . &in_name}))}
         (if (not {fn_def_res . ok}) (do
             {&msg : (& String) = (String/from_slice "Cannot export unknown function: ")}
             (Vec/push_all &msg (Vec/as_slice {fn_export . &in_name}))
@@ -82,29 +82,51 @@
             (Dict/new 1 (sizeof Lole/Ast/SExpr))
         ))}
 
-        ; let mut instrs = compile_block(&fn_body.body, &mut fn_ctx)?;
-        ; if let Some(values) = get_deferred("return", &mut fn_ctx) {
-        ;     instrs.append(&mut values?);
-        ; };
+        {instrs_res : Lole/Compiler/CompileBlockResult = (Lole/Compiler/compile_block
+            {fn_body . &body} &fn_ctx
+        )}
+        (if (not {instrs_res . ok}) (return instrs_res))
+        {&instrs : (& Vec<Lole/Wasm/WasmInstr>) = {instrs_res . data}}
 
-        ; let mut locals = Vec::<WasmLocals>::new();
-        ; for local_type in fn_ctx.non_arg_locals {
-        ;     if let Some(wasm_locals) = locals.last_mut() {
-        ;         if (*wasm_locals).value_type == local_type {
-        ;             wasm_locals.count += 1;
-        ;             continue;
-        ;         }
-        ;     }
-        ;     locals.push(WasmLocals {
-        ;         count: 1,
-        ;         value_type: local_type.clone(),
-        ;     });
-        ; }
+        {deferred_res : Lole/Compiler/GetDefferedRes = (Lole/Compiler/get_deferred
+            "return" ; TODO: this should be a constant
+            &fn_ctx
+        )}
+        (if {deferred_res . ok} (do
+            (Vec/append &instrs {deferred_res . data})
+            (Vec/free {deferred_res . data})
+        ))
 
-        ; ctx.wasm_module.codes.push(WasmFn {
-        ;     locals,
-        ;     expr: WasmExpr { instrs },
-        ; });
+        {&locals : (& Vec<Lole/Wasm/WasmLocals>) = (Vec/new 1 (sizeof Lole/Wasm/WasmLocals))}
+        {&non_arg_locals : (& Vec<Lole/Wasm/WasmType>) = {Lole/Ir/FnContext @ &fn_ctx . &non_arg_locals}}
+
+        {j : u32 = 0}
+        (loop (
+            (if {j == (Vec/len &non_arg_locals)} (break))
+
+            {local_type : Lole/Wasm/WasmType = {Lole/Wasm/WasmType @ (Vec/at &non_arg_locals j)}}
+            {locals_len : u32 = (Vec/len &locals)}
+            (if {locals_len > 0} (do
+                {&wasm_locals : (& Lole/Wasm/WasmLocals) = (Vec/at &locals {locals_len - 1})}
+                (if {Lole/Wasm/WasmLocals @ &wasm_locals . value_type == local_type} (do
+                    {Lole/Wasm/WasmLocals @ &wasm_locals . count += 1}
+                    (continue) ; TODO(fix): won't work
+                ))
+            ))
+
+            {Lole/Wasm/WasmLocals @ (Vec/push_undef &locals) = (struct.new Lole/Wasm/WasmLocals
+                1
+                local_type
+            )}
+
+            {j += 1}
+        ))
+
+        {&codes : (& Vec<Lole/Wasm/WasmFn>) = {Lole/Wasm/WasmModule @ &wasm_module . &codes}}
+        {Lole/Wasm/WasmFn @ (Vec/push_undef &codes) = (struct.new Lole/Wasm/WasmFn
+            &locals
+            (struct.new Lole/Wasm/WasmExpr &instrs)
+        )}
 
         {i += 1}
     ))
@@ -123,5 +145,29 @@
         )))
     ))
 
+    (return true 0)
+))
+
+(struct Lole/Compiler/CompileBlockResult
+    (ok bool)
+    (data ptr) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
+)
+
+; TODO: implement
+(fn Lole/Compiler/compile_block [
+    (&exprs (& Vec<Lole/Ast/SExpr>)) (&ctx (& Lole/Ir/ModuleContext))
+] [Lole/Compiler/CompileBlockResult] (
+    (return true 0)
+))
+
+(struct Lole/Compiler/GetDefferedRes
+    (ok bool)
+    (data ptr) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
+)
+
+; TODO: implement
+(fn Lole/Compiler/get_deferred [
+    (defer_label StringSlice) (&ctx (& Lole/Ir/ModuleContext))
+] [Lole/Compiler/GetDefferedRes] (
     (return true 0)
 ))

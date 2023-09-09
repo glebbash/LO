@@ -339,29 +339,6 @@
         ))
     ))
 
-    (fn Vec/equals [(&self (& Vec)) (&other (& Vec))] [bool] (
-        {byte_len : u32 = {(Vec/len &self) * {Vec @ &self . item_size}}}
-        (if {byte_len != {(Vec/len &other) * {Vec @ &other . item_size}}} (do
-            (return false)
-        ))
-
-        {&self_data : ptr = {Vec @ &self . &data}}
-        {&other_data : ptr = {Vec @ &other . &data}}
-
-        {i : u32 = 0}
-        (loop (
-            (if {i == byte_len} (break))
-
-            (if {i32/u8 @ &self_data @ i != {i32/u8 @ &other_data @ i}} (do
-                (return false)
-            ))
-
-            {i += 1}
-        ))
-
-        (return true)
-    ))
-
 ; string
 
     (struct String (actual (& Vec<u8>)))
@@ -375,6 +352,25 @@
         {&cloned_data : (&* u8) = (Heap/alloc {self . size})}
         (Mem/copy {self . data} &cloned_data {self . size})
         (return (struct.new StringSlice &cloned_data {self . size}))
+    ))
+
+    (fn StringSlice/equals [(self StringSlice) (other StringSlice)] [bool] (
+        (if {self . size != {other . size}} (do
+            (return false)
+        ))
+
+        {i : u32 = 0}
+        (loop (
+            (if {i == {self . size}} (break))
+
+            (if {i32/u8 @ {self . data} @ i != {i32/u8 @ {other . data} @ i}} (do
+                (return false)
+            ))
+
+            {i += 1}
+        ))
+
+        (return true)
     ))
 
     (fn String/clone [(&self String)] [(& String)] (
@@ -405,13 +401,13 @@
 
     (struct Dict/GetResult (ok bool) (&value ptr))
 
-    (fn Dict/get [(&self (& Dict)) (&key (& String))] [Dict/GetResult] (
+    (fn Dict/get [(&self (& Dict)) (key StringSlice)] [Dict/GetResult] (
         {i : u32 = 0}
         (loop (
             (if {i == (Dict/len &self)} (break))
 
             {&entry_key : (& String) = (Vec/at &self i)}
-            (if (Vec/equals &key &entry_key) (do
+            (if (StringSlice/equals key (Vec/as_slice &entry_key)) (do
                 (return true {&entry_key + (sizeof String)})
             ))
 

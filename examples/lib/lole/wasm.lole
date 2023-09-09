@@ -7,6 +7,8 @@
 (struct Vec<Lole/Wasm/WasmFn> (actual Vec))
 (struct Vec<Lole/Wasm/WasmData> (actual Vec))
 (struct Vec<Lole/Wasm/WasmType> (actual Vec))
+(struct Vec<Lole/Wasm/WasmInstr> (actual Vec))
+(struct Vec<Lole/Wasm/WasmLocals> (actual Vec))
 
 (struct Lole/Wasm/WasmModule
     (&types (& Vec<Lole/Wasm/WasmFnType>))
@@ -44,12 +46,6 @@
     (exported_item_index u32)
 )
 
-; TODO: implement
-(struct Lole/Wasm/WasmFn)
-
-; TODO: implement
-(struct Lole/Wasm/WasmData)
-
 ; values correspond to binary output
 (struct Lole/Wasm/WasmType (actual u32))
 (global Lole/Wasm/WasmType/I32 u32 127) ; 0x7f
@@ -59,6 +55,23 @@
 (global Lole/Wasm/WasmType/V128 u32 123) ; 0x7b
 (global Lole/Wasm/WasmType/FUNC_REF u32 112) ; 0x70
 (global Lole/Wasm/WasmType/EXTERN_REF u32 111) ; 0x6f
+
+(struct Lole/Wasm/WasmLocals
+    (count u32)
+    (value_type Lole/Wasm/WasmType)
+)
+
+(struct Lole/Wasm/WasmExpr
+    (&instrs (& Vec<Lole/Wasm/WasmInstr>))
+)
+
+(struct Lole/Wasm/WasmFn
+    (&locals (& Vec<Lole/Wasm/WasmLocals>))
+    (expr Lole/Wasm/WasmExpr)
+)
+
+; TODO: implement
+(struct Lole/Wasm/WasmData)
 
 (fn Lole/Wasm/WasmModule/new [] [(& Lole/Wasm/WasmModule)] (
     (return (new Lole/Wasm/WasmModule (do
