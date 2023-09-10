@@ -32,6 +32,7 @@ pub struct FnContext<'a> {
     pub defers: BTreeMap<String, Vec<SExpr>>,
 }
 
+#[derive(PartialEq)]
 pub enum BlockType {
     Function,
     Loop,

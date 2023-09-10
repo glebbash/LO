@@ -1,0 +1,14 @@
+(mod lib/cli)
+
+(fn main [] [] (
+    (loop (
+        (if true (do
+            (if true (do
+                (if true (do
+                    (break)
+                ))
+            ))
+        ))
+    ))
+    (puts "all good\n")
+))

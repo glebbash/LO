@@ -1007,17 +1007,36 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 }],
             }
         }
-        // to break the loop we need to:
-        // 1. break out of if branch (br 0)
-        // 2. end loop iteration with (br 1)
-        // 3. end surrounding loop block (br 2)
-        // NOTE: calling break or continue outside of if branch is undefined
-        ("break", []) => WasmInstr::Branch { label_index: 2 },
-        // to `continue` in the loop we need to:
-        // 1. break out of if branch (br 0)
-        // 2. end loop iteration with (br 1)
-        // NOTE: calling break or continue outside of if branch is undefined
-        ("continue", []) => WasmInstr::Branch { label_index: 1 },
+        ("break", []) => {
+            let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
+
+            let mut current_block = &ctx.block;
+            loop {
+                if current_block.block_type == BlockType::Loop {
+                    break;
+                }
+
+                current_block = current_block.parent.unwrap();
+                label_index += 1;
+            }
+
+            WasmInstr::Branch { label_index }
+        }
+        ("continue", []) => {
+            let mut label_index = 0; // 0 = loop
+
+            let mut current_block = &ctx.block;
+            loop {
+                if current_block.block_type == BlockType::Loop {
+                    break;
+                }
+
+                current_block = current_block.parent.unwrap();
+                label_index += 1;
+            }
+
+            WasmInstr::Branch { label_index }
+        }
         ("return", values) => {
             let value = WasmInstr::MultiValueEmit {
                 values: compile_instrs(values, ctx)?,
