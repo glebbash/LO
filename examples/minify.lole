@@ -16,7 +16,7 @@
     ))
 
     {&exprs : (& Vec<Lole/Ast/SExpr>) = {parse_res . data}}
-    (defer (Vec/free &exprs)) ; TODO: free inner data of &exprs
+    (defer (Vec<Lole/Ast/SExpr>/free &exprs))
 
     (dump_exprs &exprs)
     (puts "\n")

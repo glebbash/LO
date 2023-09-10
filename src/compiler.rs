@@ -1520,7 +1520,6 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                         rhs: Box::new(offset_instr),
                     }),
                 },
-                // TODO: this is like real mess
                 WasmInstr::StructLoad {
                     struct_name,
                     address_instr,

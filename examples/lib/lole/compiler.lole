@@ -110,7 +110,7 @@
                 {&wasm_locals : (& Lole/Wasm/WasmLocals) = (Vec/at &locals {locals_len - 1})}
                 (if {Lole/Wasm/WasmLocals @ &wasm_locals . value_type == local_type} (do
                     {Lole/Wasm/WasmLocals @ &wasm_locals . count += 1}
-                    (continue) ; TODO(fix): won't work
+                    (continue)
                 ))
             ))
 
