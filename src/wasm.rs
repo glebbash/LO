@@ -143,12 +143,12 @@ pub enum WasmInstr {
     If {
         block_type: WasmType,
         cond: Box<WasmInstr>,
-        then_branch: Box<WasmInstr>,
-        else_branch: Box<WasmInstr>,
+        then_branch: Vec<WasmInstr>,
+        else_branch: Vec<WasmInstr>,
     },
     IfSingleBranch {
         cond: Box<WasmInstr>,
-        then_branch: Box<WasmInstr>,
+        then_branch: Vec<WasmInstr>,
     },
     MultiValueEmit {
         values: Vec<WasmInstr>,

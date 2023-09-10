@@ -1,7 +1,10 @@
 use crate::{ast::*, ir::*, wasm::*};
 use alloc::{vec, vec::Vec};
 
-pub fn get_types(ctx: &FnContext, instrs: &Vec<WasmInstr>) -> Result<Vec<WasmType>, CompileError> {
+pub fn get_types(
+    ctx: &BlockContext,
+    instrs: &Vec<WasmInstr>,
+) -> Result<Vec<WasmType>, CompileError> {
     let mut types = vec![];
     for instr in instrs {
         types.append(&mut get_type(ctx, instr)?);
@@ -9,7 +12,7 @@ pub fn get_types(ctx: &FnContext, instrs: &Vec<WasmInstr>) -> Result<Vec<WasmTyp
     Ok(types)
 }
 
-pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmType>, CompileError> {
+pub fn get_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<Vec<WasmType>, CompileError> {
     Ok(match instr {
         WasmInstr::Unreachable { .. } => vec![],
         WasmInstr::LoopBreak { .. } => vec![],
@@ -37,7 +40,7 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmType>, Com
             cond, then_branch, ..
         } => {
             get_type(ctx, cond)?;
-            get_type(ctx, &then_branch)?
+            get_types(ctx, &then_branch)?
         }
         WasmInstr::BinaryOp { lhs, rhs, .. } => {
             get_type(ctx, rhs)?;
@@ -59,8 +62,8 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmType>, Com
             ..
         } => {
             get_type(ctx, &cond)?;
-            get_type(ctx, &then_branch)?;
-            get_type(ctx, &else_branch)?;
+            get_types(ctx, &then_branch)?;
+            get_types(ctx, &else_branch)?;
             vec![block_type.clone()]
         }
         WasmInstr::GlobalGet { global_index, .. } => {
@@ -75,10 +78,11 @@ pub fn get_type(ctx: &FnContext, instr: &WasmInstr) -> Result<Vec<WasmType>, Com
         }
         WasmInstr::LocalGet { local_index, .. } => {
             let local_index = *local_index as usize;
-            if local_index < ctx.fn_type.inputs.len() {
-                vec![ctx.fn_type.inputs[local_index]]
+            let locals_len = ctx.fn_ctx.fn_type.inputs.len();
+            if local_index < locals_len {
+                vec![ctx.fn_ctx.fn_type.inputs[local_index]]
             } else {
-                vec![ctx.non_arg_locals[local_index - ctx.fn_type.inputs.len()]]
+                vec![ctx.fn_ctx.non_arg_locals[local_index - locals_len]]
             }
         }
         // TODO: clean up, logic with functions and imported functions is confusing

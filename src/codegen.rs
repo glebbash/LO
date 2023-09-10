@@ -358,16 +358,22 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_instr(out, cond);
             write_u8(out, 0x04); // if
             write_u8(out, (*block_type) as u8);
-            write_instr(out, then_branch);
+            for then_instr in then_branch {
+                write_instr(out, then_instr);
+            }
             write_u8(out, 0x05); // then
-            write_instr(out, else_branch);
+            for else_instr in else_branch {
+                write_instr(out, else_instr);
+            }
             write_u8(out, 0x0b); // end
         }
         WasmInstr::IfSingleBranch { cond, then_branch } => {
             write_instr(out, cond);
             write_u8(out, 0x04); // if
             write_u8(out, 0x40); // no value
-            write_instr(out, then_branch);
+            for then_instr in then_branch {
+                write_instr(out, then_instr);
+            }
             write_u8(out, 0x0b); // end
         }
     }

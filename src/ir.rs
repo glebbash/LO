@@ -32,6 +32,23 @@ pub struct FnContext<'a> {
     pub defers: BTreeMap<String, Vec<SExpr>>,
 }
 
+pub enum BlockType {
+    Function,
+    Loop,
+    Block,
+}
+
+pub struct Block<'a> {
+    pub block_type: BlockType,
+    pub parent: Option<&'a Block<'a>>,
+}
+
+pub struct BlockContext<'a, 'b> {
+    pub module: &'a ModuleContext,
+    pub fn_ctx: &'a mut FnContext<'b>,
+    pub block: Block<'a>,
+}
+
 #[derive(Clone, Debug)]
 pub enum LoleType {
     Primitive(WasmType),

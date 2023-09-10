@@ -7,7 +7,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::cell::RefCell;
+use core::{cell::RefCell, slice};
 
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: i32 = 1;
@@ -52,22 +52,31 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
             defers: BTreeMap::default(),
         };
 
-        let mut instrs = compile_block(&fn_body.body, &mut fn_ctx)?;
-        if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut fn_ctx) {
+        let mut block_ctx = BlockContext {
+            module: &ctx,
+            fn_ctx: &mut fn_ctx,
+            block: Block {
+                block_type: BlockType::Function,
+                parent: None,
+            },
+        };
+
+        let mut instrs = compile_block(&fn_body.body, &mut block_ctx)?;
+        if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
             instrs.append(&mut values?);
         };
 
         let mut locals = Vec::<WasmLocals>::new();
-        for local_type in fn_ctx.non_arg_locals {
+        for local_type in &block_ctx.fn_ctx.non_arg_locals {
             if let Some(wasm_locals) = locals.last_mut() {
-                if (*wasm_locals).value_type == local_type {
+                if (*wasm_locals).value_type == *local_type {
                     wasm_locals.count += 1;
                     continue;
                 }
             }
             locals.push(WasmLocals {
                 count: 1,
-                value_type: local_type,
+                value_type: *local_type,
             });
         }
 
@@ -80,18 +89,14 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
     Ok(ctx.wasm_module)
 }
 
-fn compile_block(
-    exprs: &Vec<SExpr>,
-    fn_ctx: &mut FnContext,
-) -> Result<Vec<WasmInstr>, CompileError> {
-    let instrs = compile_instrs(exprs, fn_ctx)?;
+fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<WasmInstr>, CompileError> {
+    let instrs = compile_instrs(exprs, ctx)?;
     for (instr, i) in instrs.iter().zip(0..) {
         if let WasmInstr::NoEmit { .. } = instr {
             continue;
         }
 
-        let types = get_type(&fn_ctx, instr)?;
-
+        let types = get_type(ctx, instr)?;
         if types.len() > 0 {
             return Err(CompileError {
                 message: format!("TypeError: Excess values"),
@@ -703,11 +708,11 @@ fn compile_struct(
     Ok(StructDef { fields })
 }
 
-fn compile_instrs(exprs: &[SExpr], ctx: &mut FnContext) -> Result<Vec<WasmInstr>, CompileError> {
+fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<WasmInstr>, CompileError> {
     exprs.iter().map(|expr| compile_instr(expr, ctx)).collect()
 }
 
-fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, CompileError> {
+fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, CompileError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom { value, loc, kind } => {
@@ -760,7 +765,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
                 });
             };
 
-            let Some(local) = ctx.locals.get(value.as_str()) else {
+            let Some(local) = ctx.fn_ctx.locals.get(value.as_str()) else {
                 return Err(CompileError {
                     message: format!("Reading unknown variable: {value}"),
                     loc: loc.clone()
@@ -940,16 +945,57 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
         ("if", [block_type, cond, then_branch, else_branch]) => WasmInstr::If {
             block_type: parse_wasm_type(block_type, ctx.module)?,
             cond: Box::new(compile_instr(cond, ctx)?),
-            then_branch: Box::new(compile_instr(then_branch, ctx)?),
-            else_branch: Box::new(compile_instr(else_branch, ctx)?),
+            then_branch: compile_block(
+                slice::from_ref(then_branch),
+                &mut BlockContext {
+                    module: ctx.module,
+                    fn_ctx: ctx.fn_ctx,
+                    block: Block {
+                        block_type: BlockType::Block,
+                        parent: Some(&ctx.block),
+                    },
+                },
+            )?,
+            else_branch: compile_block(
+                slice::from_ref(else_branch),
+                &mut BlockContext {
+                    module: ctx.module,
+                    fn_ctx: ctx.fn_ctx,
+                    block: Block {
+                        block_type: BlockType::Block,
+                        parent: Some(&ctx.block),
+                    },
+                },
+            )?,
         },
         ("if", [cond, then_branch]) => WasmInstr::IfSingleBranch {
             cond: Box::new(compile_instr(cond, ctx)?),
-            then_branch: Box::new(compile_instr(then_branch, ctx)?),
+            then_branch: compile_block(
+                slice::from_ref(then_branch),
+                &mut BlockContext {
+                    module: ctx.module,
+                    fn_ctx: ctx.fn_ctx,
+                    block: Block {
+                        block_type: BlockType::Block,
+                        parent: Some(&ctx.block),
+                    },
+                },
+            )?,
         },
-        ("loop", [SExpr::List { value: exprs, .. }]) => WasmInstr::Loop {
-            instrs: compile_block(exprs, ctx)?,
-        },
+        ("loop", [SExpr::List { value: exprs, .. }]) => {
+            let mut ctx = BlockContext {
+                module: ctx.module,
+                fn_ctx: ctx.fn_ctx,
+                block: Block {
+                    block_type: BlockType::Loop,
+                    parent: Some(&ctx.block),
+                },
+            };
+
+            WasmInstr::Loop {
+                instrs: compile_block(exprs, &mut ctx)?,
+            }
+        }
         ("break", []) => WasmInstr::LoopBreak {},
         ("continue", []) => WasmInstr::LoopContinue {},
         ("return", values) => {
@@ -958,12 +1004,12 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
             };
 
             let return_type = get_type(ctx, &value)?;
-            if return_type != ctx.fn_type.outputs {
+            if return_type != ctx.fn_ctx.fn_type.outputs {
                 return Err(CompileError {
                     message: format!(
                         "TypeError: Invalid return type, \
                             expected {outputs:?}, got {return_type:?}",
-                        outputs = ctx.fn_type.outputs,
+                        outputs = ctx.fn_ctx.fn_type.outputs,
                     ),
                     loc: op_loc.clone(),
                 });
@@ -997,7 +1043,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
                 }
             };
 
-            let deferred = ctx.defers.entry(defer_label).or_insert_with(|| vec![]);
+            let deferred = ctx
+                .fn_ctx
+                .defers
+                .entry(defer_label)
+                .or_insert_with(|| vec![]);
 
             deferred.push(defer_expr.clone());
 
@@ -1148,9 +1198,9 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
                 })?
                 .byte_length;
 
-            let return_addr_local_index = ctx.locals_last_index;
-            ctx.non_arg_locals.push(WasmType::I32);
-            ctx.locals_last_index += 1;
+            let return_addr_local_index = ctx.fn_ctx.locals_last_index;
+            ctx.fn_ctx.non_arg_locals.push(WasmType::I32);
+            ctx.fn_ctx.locals_last_index += 1;
 
             let init_load = compile_load(
                 ctx,
@@ -1208,7 +1258,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
                 });
             };
 
-            if ctx.locals.contains_key(local_name) {
+            if ctx.fn_ctx.locals.contains_key(local_name) {
                 return Err(CompileError {
                     message: format!("Duplicate local definition: {local_name}"),
                     loc: name_loc.clone(),
@@ -1217,11 +1267,12 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
 
             let value_type = parse_lole_type(value_type, ctx.module)?;
 
-            let start_index = ctx.locals_last_index;
-            let comp_count = value_type.emit_components(&ctx.module, &mut ctx.non_arg_locals);
+            let start_index = ctx.fn_ctx.locals_last_index;
+            let comp_count =
+                value_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_locals);
 
-            ctx.locals_last_index += comp_count;
-            ctx.locals.insert(
+            ctx.fn_ctx.locals_last_index += comp_count;
+            ctx.fn_ctx.locals.insert(
                 local_name.clone(),
                 LocalDef {
                     index: start_index,
@@ -1277,7 +1328,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
                     });
                 };
 
-                let Some(local) = ctx.locals.get(local_name.as_str()) else {
+                let Some(local) = ctx.fn_ctx.locals.get(local_name.as_str()) else {
                     return Err(CompileError {
                         message: format!("Reading unknown variable: {local_name}"),
                         loc: name_loc.clone(),
@@ -1521,9 +1572,9 @@ fn compile_instr(expr: &SExpr, ctx: &mut FnContext) -> Result<WasmInstr, Compile
 
 fn get_deferred(
     defer_label: &str,
-    ctx: &mut FnContext,
+    ctx: &mut BlockContext,
 ) -> Option<Result<Vec<WasmInstr>, CompileError>> {
-    let Some(deferred) = ctx.defers.get(defer_label) else {
+    let Some(deferred) = ctx.fn_ctx.defers.get(defer_label) else {
         return None;
     };
 
@@ -1534,7 +1585,7 @@ fn get_deferred(
 }
 
 fn compile_load(
-    ctx: &mut FnContext,
+    ctx: &mut BlockContext,
     value_type: &LoleType,
     address_instr: Box<WasmInstr>,
     base_byte_offset: u32,
@@ -1560,9 +1611,9 @@ fn compile_load(
 
     value_type.emit_sized_component_stats(ctx.module, &mut stats, &mut components)?;
 
-    let address_local_index = ctx.locals_last_index;
-    ctx.non_arg_locals.push(WasmType::I32);
-    ctx.locals_last_index += 1;
+    let address_local_index = ctx.fn_ctx.locals_last_index;
+    ctx.fn_ctx.non_arg_locals.push(WasmType::I32);
+    ctx.fn_ctx.locals_last_index += 1;
 
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
@@ -1684,7 +1735,7 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, C
 }
 
 fn compile_set(
-    ctx: &mut FnContext,
+    ctx: &mut BlockContext,
     value_instr: WasmInstr,
     bind_instr: WasmInstr,
     bind_loc: &Location,
@@ -1702,7 +1753,7 @@ fn compile_set(
 // TODO: figure out better location
 fn compile_set_binds(
     output: &mut Vec<WasmInstr>,
-    ctx: &mut FnContext,
+    ctx: &mut BlockContext,
     bind_instr: WasmInstr,
     bind_loc: &Location,
     address_index: Option<u32>,
@@ -1726,9 +1777,9 @@ fn compile_set_binds(
             offset,
             address_instr,
         } => {
-            let value_local_index = ctx.locals_last_index;
-            ctx.non_arg_locals.push(kind.get_value_type());
-            ctx.locals_last_index += 1;
+            let value_local_index = ctx.fn_ctx.locals_last_index;
+            ctx.fn_ctx.non_arg_locals.push(kind.get_value_type());
+            ctx.fn_ctx.locals_last_index += 1;
 
             let address_instr = match address_index {
                 Some(local_index) => Box::new(WasmInstr::LocalGet { local_index }),
