@@ -6,8 +6,17 @@
     (defer (puts "defer(return): 3\n"))
 
     (defer scope1 (puts "defer(scope1): 1\n"))
-    (defer scope1 (puts "defer(scope1): 2\n"))
-    (defer scope1 (puts "defer(scope1): 3\n"))
+    {i : u32 = 0}
+    (loop (
+        (if {i == 10} (break))
+        ; exprs in loops are only deferred once
+        (defer scope1 (puts "defer(scope1): 2\n"))
+        {i += 1}
+    ))
+    (if false (do
+        ; exprs are deferred even `if` body never executes
+        (defer scope1 (puts "defer(scope1): 3\n"))
+    ))
     (defer.eval scope1)
 
     (puts "-------------\n")
