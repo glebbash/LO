@@ -77,8 +77,6 @@ pub enum WasmStoreKind {
 #[derive(Clone, Debug)]
 pub enum WasmInstr {
     Unreachable,
-    LoopBreak,
-    LoopContinue,
     Drop {
         value: Box<WasmInstr>,
         drop_count: usize,
@@ -133,22 +131,26 @@ pub enum WasmInstr {
         value: Box<WasmInstr>,
     },
     Loop {
-        instrs: Vec<WasmInstr>,
+        block_type: Option<WasmType>,
+        body: Vec<WasmInstr>,
+    },
+    Block {
+        block_type: Option<WasmType>,
+        body: Vec<WasmInstr>,
+    },
+    If {
+        block_type: Option<WasmType>,
+        cond: Box<WasmInstr>,
+        then_branch: Vec<WasmInstr>,
+        else_branch: Option<Vec<WasmInstr>>,
+    },
+    Branch {
+        label_index: u32,
     },
     Call {
         fn_index: u32,
         fn_type_index: u32, // for type-checker
         args: Vec<WasmInstr>,
-    },
-    If {
-        block_type: WasmType,
-        cond: Box<WasmInstr>,
-        then_branch: Vec<WasmInstr>,
-        else_branch: Vec<WasmInstr>,
-    },
-    IfSingleBranch {
-        cond: Box<WasmInstr>,
-        then_branch: Vec<WasmInstr>,
     },
     MultiValueEmit {
         values: Vec<WasmInstr>,

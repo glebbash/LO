@@ -943,7 +943,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             }
         }
         ("if", [block_type, cond, then_branch, else_branch]) => WasmInstr::If {
-            block_type: parse_wasm_type(block_type, ctx.module)?,
+            block_type: Some(parse_wasm_type(block_type, ctx.module)?),
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
                 slice::from_ref(then_branch),
@@ -956,7 +956,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                     },
                 },
             )?,
-            else_branch: compile_block(
+            else_branch: Some(compile_block(
                 slice::from_ref(else_branch),
                 &mut BlockContext {
                     module: ctx.module,
@@ -966,9 +966,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                         parent: Some(&ctx.block),
                     },
                 },
-            )?,
+            )?),
         },
-        ("if", [cond, then_branch]) => WasmInstr::IfSingleBranch {
+        ("if", [cond, then_branch]) => WasmInstr::If {
+            block_type: None,
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
                 slice::from_ref(then_branch),
@@ -981,6 +982,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                     },
                 },
             )?,
+            else_branch: None,
         },
         ("loop", [SExpr::List { value: exprs, .. }]) => {
             let mut ctx = BlockContext {
@@ -992,12 +994,30 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 },
             };
 
-            WasmInstr::Loop {
-                instrs: compile_block(exprs, &mut ctx)?,
+            let mut body = compile_block(exprs, &mut ctx)?;
+
+            // add implicit continue
+            body.push(WasmInstr::Branch { label_index: 0 });
+
+            WasmInstr::Block {
+                block_type: None,
+                body: vec![WasmInstr::Loop {
+                    block_type: None,
+                    body,
+                }],
             }
         }
-        ("break", []) => WasmInstr::LoopBreak {},
-        ("continue", []) => WasmInstr::LoopContinue {},
+        // to break the loop we need to:
+        // 1. break out of if branch (br 0)
+        // 2. end loop iteration with (br 1)
+        // 3. end surrounding loop block (br 2)
+        // NOTE: calling break or continue outside of if branch is undefined
+        ("break", []) => WasmInstr::Branch { label_index: 2 },
+        // to `continue` in the loop we need to:
+        // 1. break out of if branch (br 0)
+        // 2. end loop iteration with (br 1)
+        // NOTE: calling break or continue outside of if branch is undefined
+        ("continue", []) => WasmInstr::Branch { label_index: 1 },
         ("return", values) => {
             let value = WasmInstr::MultiValueEmit {
                 values: compile_instrs(values, ctx)?,

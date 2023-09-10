@@ -15,8 +15,6 @@ pub fn get_types(
 pub fn get_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<Vec<WasmType>, CompileError> {
     Ok(match instr {
         WasmInstr::Unreachable { .. } => vec![],
-        WasmInstr::LoopBreak { .. } => vec![],
-        WasmInstr::LoopContinue { .. } => vec![],
         WasmInstr::I32ConstLazy { .. } => vec![WasmType::I32],
         WasmInstr::I32Const { .. } => vec![WasmType::I32],
         WasmInstr::I64Const { .. } => vec![WasmType::I64],
@@ -31,17 +29,10 @@ pub fn get_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<Vec<WasmType>, 
         WasmInstr::NoTypeCheck { .. } => vec![],
         WasmInstr::Set { .. } => vec![],
         WasmInstr::Drop { .. } => vec![],
-        WasmInstr::Loop { .. } => vec![],
         WasmInstr::Return { .. } => vec![],
         WasmInstr::MemorySize { .. } => vec![WasmType::I32],
         WasmInstr::MemoryGrow { .. } => vec![WasmType::I32],
 
-        WasmInstr::IfSingleBranch {
-            cond, then_branch, ..
-        } => {
-            get_type(ctx, cond)?;
-            get_types(ctx, &then_branch)?
-        }
         WasmInstr::BinaryOp { lhs, rhs, .. } => {
             get_type(ctx, rhs)?;
             return get_type(ctx, lhs);
@@ -53,18 +44,6 @@ pub fn get_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<Vec<WasmType>, 
         } => {
             get_type(ctx, &address_instr)?;
             vec![kind.get_value_type()]
-        }
-        WasmInstr::If {
-            block_type,
-            cond,
-            then_branch,
-            else_branch,
-            ..
-        } => {
-            get_type(ctx, &cond)?;
-            get_types(ctx, &then_branch)?;
-            get_types(ctx, &else_branch)?;
-            vec![block_type.clone()]
         }
         WasmInstr::GlobalGet { global_index, .. } => {
             let wasm_global = ctx
@@ -85,16 +64,19 @@ pub fn get_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<Vec<WasmType>, 
                 vec![ctx.fn_ctx.non_arg_locals[local_index - locals_len]]
             }
         }
-        // TODO: clean up, logic with functions and imported functions is confusing
         WasmInstr::Call { fn_type_index, .. } => {
-            let fn_type = ctx
-                .module
-                .wasm_module
-                .types
-                .get(*fn_type_index as usize)
-                .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
-
+            let fn_type = &ctx.module.wasm_module.types[*fn_type_index as usize];
             fn_type.outputs.clone()
         }
+        WasmInstr::If { block_type, .. }
+        | WasmInstr::Block { block_type, .. }
+        | WasmInstr::Loop { block_type, .. } => {
+            if let Some(block_type) = block_type {
+                vec![*block_type]
+            } else {
+                vec![]
+            }
+        }
+        WasmInstr::Branch { .. } => vec![],
     })
 }

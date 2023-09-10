@@ -1,6 +1,8 @@
 use crate::wasm::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
 use alloc::vec::Vec;
 
+const END_TAG: u8 = 0x0b;
+
 pub fn codegen(module: &WasmModule) -> Vec<u8> {
     let mut binary = Vec::new();
     let mut section = Vec::new();
@@ -164,7 +166,7 @@ fn write_expr(out: &mut Vec<u8>, expr: &WasmExpr) {
         write_instr(out, instr);
     }
 
-    write_u8(out, 0x0b); // end
+    write_u8(out, END_TAG);
 }
 
 fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
@@ -298,46 +300,6 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_instr(out, value);
             write_u8(out, 0x0f);
         }
-        WasmInstr::Loop { instrs } => {
-            write_u8(out, 0x02); // begin block
-            write_u8(out, 0x40); // no value
-
-            {
-                write_u8(out, 0x03); // begin loop
-                write_u8(out, 0x40); // no value
-
-                {
-                    for instr in instrs {
-                        write_instr(out, instr);
-                    }
-
-                    // loop implicitly
-                    write_u8(out, 0x0c); // br
-                    write_u32(out, 0);
-                }
-
-                write_u8(out, 0x0b); // end loop
-            }
-
-            write_u8(out, 0x0b); // end block
-        }
-        // to break the loop we need to:
-        // 1. break out of if branch (br 0)
-        // 2. end loop iteration with (br 1)
-        // 3. end surrounding loop block (br 2)
-        // NOTE: calling break or continue outside of if branch is undefined
-        WasmInstr::LoopBreak => {
-            write_u8(out, 0x0c); // br
-            write_u32(out, 2);
-        }
-        // to `continue` in the loop we need to:
-        // 1. break out of if branch (br 0)
-        // 2. end loop iteration with (br 1)
-        // NOTE: calling break or continue outside of if branch is undefined
-        WasmInstr::LoopContinue => {
-            write_u8(out, 0x0c); // br
-            write_u32(out, 1);
-        }
         WasmInstr::Call {
             fn_index,
             fn_type_index: _,
@@ -349,6 +311,30 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x10);
             write_u32(out, *fn_index);
         }
+        WasmInstr::Block { block_type, body } => {
+            write_u8(out, 0x02); // block
+            if let Some(block_type) = block_type {
+                write_u8(out, (*block_type) as u8);
+            } else {
+                write_u8(out, 0x40); // no value
+            }
+            for instr in body {
+                write_instr(out, instr);
+            }
+            write_u8(out, END_TAG);
+        }
+        WasmInstr::Loop { block_type, body } => {
+            write_u8(out, 0x03); // loop
+            if let Some(block_type) = block_type {
+                write_u8(out, (*block_type) as u8);
+            } else {
+                write_u8(out, 0x40); // no value
+            }
+            for instr in body {
+                write_instr(out, instr);
+            }
+            write_u8(out, END_TAG);
+        }
         WasmInstr::If {
             block_type,
             cond,
@@ -357,24 +343,25 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         } => {
             write_instr(out, cond);
             write_u8(out, 0x04); // if
-            write_u8(out, (*block_type) as u8);
+            if let Some(block_type) = block_type {
+                write_u8(out, (*block_type) as u8);
+            } else {
+                write_u8(out, 0x40); // no value
+            }
             for then_instr in then_branch {
                 write_instr(out, then_instr);
             }
-            write_u8(out, 0x05); // then
-            for else_instr in else_branch {
-                write_instr(out, else_instr);
+            if let Some(else_branch) = else_branch {
+                write_u8(out, 0x05); // then
+                for else_instr in else_branch {
+                    write_instr(out, else_instr);
+                }
             }
-            write_u8(out, 0x0b); // end
+            write_u8(out, END_TAG);
         }
-        WasmInstr::IfSingleBranch { cond, then_branch } => {
-            write_instr(out, cond);
-            write_u8(out, 0x04); // if
-            write_u8(out, 0x40); // no value
-            for then_instr in then_branch {
-                write_instr(out, then_instr);
-            }
-            write_u8(out, 0x0b); // end
+        WasmInstr::Branch { label_index } => {
+            write_u8(out, 0x0c); // br
+            write_u32(out, *label_index);
         }
     }
 }
