@@ -202,6 +202,17 @@ test("compiles struct-in-struct", async () => {
     assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n3\n");
 });
 
+test("compiles nested-if-break", async () => {
+    const program = await compile("./examples/test/nested-if-break.lole");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, "all good\n");
+});
+
 test("compiles heap-alloc", async () => {
     const program = await compile("./examples/test/heap-alloc.lole");
 
