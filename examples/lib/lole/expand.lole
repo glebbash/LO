@@ -1,0 +1,11 @@
+(struct Lole/Expand/ExpandResult
+    (ok bool)
+    (data ptr) ; (& Vec<Lole/Ast/SExpr>) | (& Lole/Ast/CompileError)
+)
+
+; TODO: implement
+(fn Lole/Expand/expand [
+    (&exprs (& Vec<Lole/Ast/SExpr>))
+] [Lole/Expand/ExpandResult] (
+    (return true &exprs)
+))

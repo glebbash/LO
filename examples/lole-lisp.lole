@@ -1,8 +1,8 @@
 (mod lib/cli)
 (mod lib/wasi_io)
 (mod lib/args)
-(mod lib/lole/ir)
 (mod lib/lole/parser)
+(mod lib/lole/expand)
 (mod lib/lole/compiler)
 (mod lib/lole/codegen)
 
@@ -18,6 +18,12 @@
         (return (print_err_and_exit {parse_res . data}))
     ))
     (defer (Vec<Lole/Ast/SExpr>/free {parse_res . data}))
+
+    {expand_res : Lole/Expand/ExpandResult = (Lole/Expand/expand {parse_res . data})}
+    (if (not {expand_res . ok}) (do
+        (return (print_err_and_exit {expand_res . data}))
+    ))
+    (defer (Vec<Lole/Ast/SExpr>/free {expand_res . data}))
 
     {&wasm_module : (& Lole/Wasm/WasmModule) = (Lole/Wasm/WasmModule/new)}
     (defer (Lole/Wasm/WasmModule/free &wasm_module))
