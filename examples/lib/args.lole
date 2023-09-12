@@ -11,11 +11,11 @@
     (defer (Stack/free (sizeof u32)))
     (drop (Wasi/args_sizes_get &argc &argv_buf_size))
 
-    {argv_buf_size : u32 = {i32 @ &argv_buf_size}}
-    {argc : u32 = {i32 @ &argc}}
+    {argv_buf_size : u32 = {u32 @ &argv_buf_size}}
+    {argc : u32 = {u32 @ &argc}}
 
     {&argv : (&* (&* u8)) = (Heap/alloc {argc * (sizeof (&* u8))})}
-    {&argv_buf : (&* u8) = (Heap/alloc {i32 @ &argv_buf_size})}
+    {&argv_buf : (&* u8) = (Heap/alloc argv_buf_size)}
     (drop (Wasi/args_get &argv &argv_buf))
 
     (return (struct.new Args argc &argv &argv_buf))
@@ -27,6 +27,6 @@
 ))
 
 (fn Args/get [(self Args) (i u32)] [StringSlice] (
-    {&arg : (&* u8) = {i32 @ {self . &argv} @ {i * (sizeof (&* u8))}}}
+    {&arg : (&* u8) = {ptr @ {self . &argv} @ {i * (sizeof (&* u8))}}}
     (return (std/c_str_to_slice &arg))
 ))

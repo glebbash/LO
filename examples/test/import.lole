@@ -1,4 +1,4 @@
-(import fn debug [(x u32)] [] :from utils debug)
+(import fn debug [(x i32)] [] :from utils debug)
 
 (export main :as main)
 (fn main [] [] (

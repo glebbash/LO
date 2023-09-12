@@ -1,18 +1,23 @@
-(global true bool 1)
-(global false bool 0)
+(alias true 1)
+(alias false 0)
+(alias u32 i32)
+(alias u8 i32)
+(alias bool i32)
+(alias ptr i32)
+(alias u64 i64)
 
 ; panic
 
     (fn panic [(message_ptr ptr) (message_len u32)] [] (
-        {i32 @ 0 = message_ptr}
-        {i32 @ 4 = message_len}
+        {u32 @ 0 = message_ptr}
+        {u32 @ 4 = message_len}
         (unreachable)
     ))
 
 ; alloc
 
-    (global Alloc/STACK u32 0)
-    (global Alloc/HEAP u32 1)
+    (alias Alloc/STACK 0)
+    (alias Alloc/HEAP 1)
 
     (fn alloc [(alloc_id u32) (size u32)] [ptr] (
         (if {alloc_id == 0} (return (Stack/alloc size)))
@@ -24,6 +29,50 @@
         (return (Heap/free ptr))
     ))
 
+; memory instructions
+
+    (alias Mem/POINTER_SIZE 4)
+    (alias Mem/PAGE_SIZE 65536)
+
+    (fn Mem/align [(size u32)] [u32] (
+        (return (Mem/align_to size Mem/POINTER_SIZE))
+    ))
+
+    (fn Mem/align_to [(size u32) (size_multiple u32)] [u32] (
+        {remaining_to_align : u32 = {size % size_multiple}}
+        (if {remaining_to_align == 0} (do
+            (return size)
+        ))
+
+        {padding : u32 = {size_multiple - remaining_to_align}}
+        (return {size + padding})
+    ))
+
+    ; TODO: use builtin mem.copy instr, check engine support
+    (fn Mem/copy [(src ptr) (dist ptr) (size u32)] [] (
+        (loop (
+            (if {size == 0} (break))
+            {size -= 1}
+
+            {i32/u8 @ dist @ size = {i32/u8 @ src @ size}}
+        ))
+    ))
+
+    (fn Mem/swap [(ref1 ptr) (ref2 ptr) (size u32)] [] (
+        (loop (
+            (if {size == 0} (break))
+            {size -= 1}
+
+            {
+            (do {i32/u8 @ ref1 @ size}
+                {i32/u8 @ ref2 @ size})
+                =
+            (do {i32/u8 @ ref2 @ size}
+                {i32/u8 @ ref1 @ size})
+            }
+        ))
+    ))
+
 ; stack
 
     (global mut Stack/&CURRENT u32 (data.size))
@@ -31,17 +80,17 @@
     (global mut Stack/&END u32 1048576) ; 1MB
 
     (fn Stack/push_u32 [(value u32)] [] (
-        {i32 @ (Stack/alloc (sizeof u32)) = value}
+        {u32 @ (Stack/alloc (sizeof u32)) = value}
     ))
 
     (fn Stack/read_u32 [] [u32] (
-        (return {i32 @ {Stack/&CURRENT - (sizeof u32)}})
+        (return {u32 @ {Stack/&CURRENT - (sizeof u32)}})
     ))
 
     (fn Stack/pop_u32 [] [u32] (
         (Stack/free (sizeof u32))
 
-        (return {i32 @ Stack/&CURRENT})
+        (return {u32 @ Stack/&CURRENT})
     ))
 
     (fn Stack/alloc [(size u32)] [ptr] (
@@ -145,50 +194,6 @@
         (return 0)
     ))
 
-; memory instructions
-
-    (global Mem/POINTER_SIZE u32 4)
-    (global Mem/PAGE_SIZE u32 65536)
-
-    (fn Mem/align [(size u32)] [u32] (
-        (return (Mem/align_to size Mem/POINTER_SIZE))
-    ))
-
-    (fn Mem/align_to [(size u32) (size_multiple u32)] [u32] (
-        {remaining_to_align : u32 = {size % size_multiple}}
-        (if {remaining_to_align == 0} (do
-            (return size)
-        ))
-
-        {padding : u32 = {size_multiple - remaining_to_align}}
-        (return {size + padding})
-    ))
-
-    ; TODO: use builtin mem.copy instr, check engine support
-    (fn Mem/copy [(src ptr) (dist ptr) (size u32)] [] (
-        (loop (
-            (if {size == 0} (break))
-            {size -= 1}
-
-            {i32/u8 @ dist @ size = {i32/u8 @ src @ size}}
-        ))
-    ))
-
-    (fn Mem/swap [(ref1 ptr) (ref2 ptr) (size u32)] [] (
-        (loop (
-            (if {size == 0} (break))
-            {size -= 1}
-
-            {
-            (do {i32/u8 @ ref1 @ size}
-                {i32/u8 @ ref2 @ size})
-                =
-            (do {i32/u8 @ ref2 @ size}
-                {i32/u8 @ ref1 @ size})
-            }
-        ))
-    ))
-
 ; vec
 
     (struct Vec
@@ -198,8 +203,6 @@
         (item_size u32)
         (alloc_id u32)
     )
-
-    (struct Vec<u8> (actual Vec))
 
     (fn Vec/new [(capacity u32) (item_size u32)] [(& Vec)] (
         (return (Vec/new_using capacity item_size Alloc/HEAP))
@@ -341,7 +344,8 @@
 
 ; string
 
-    (struct String (actual (& Vec<u8>)))
+    (alias Vec<u8> Vec)
+    (alias String (& Vec<u8>))
     (struct StringSlice (data (&* u8)) (size u32))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
@@ -385,7 +389,7 @@
 
 ; dict
 
-    (struct Dict (actual Vec))
+    (alias Dict Vec)
 
     (fn Dict/new [(initial_capacity u32) (value_size u32)] [(& Dict)] (
         (return (Vec/new initial_capacity {value_size + (sizeof String)}))

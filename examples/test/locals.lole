@@ -1,8 +1,8 @@
 (export sub :as sub)
 
-(fn sub [(a1 u32) (a2 u32)] [u32] (
-    {l1 : u32}
-    {l2 : u32}
+(fn sub [(a1 i32) (a2 i32)] [i32] (
+    {l1 : i32}
+    {l2 : i32}
 
     {(do l1 l2) = (do a1 a2)}
 

@@ -1,4 +1,4 @@
-(struct Vec<Lole/Ast/SExpr> (actual Vec))
+(alias Vec<Lole/Ast/SExpr> Vec)
 
 (struct Lole/Ast/Location
     (file_name StringSlice)
@@ -23,9 +23,9 @@
     (Vec/free {self . &message})
 ))
 
-(struct Lole/Ast/AtomKind (actual u32))
-(global Lole/Ast/AtomKind/SYMBOL u32 0)
-(global Lole/Ast/AtomKind/STRING u32 1)
+(alias Lole/Ast/AtomKind u32)
+(alias Lole/Ast/AtomKind/SYMBOL 0)
+(alias Lole/Ast/AtomKind/STRING 1)
 
 (enum Lole/Ast/SExpr
     (Atom

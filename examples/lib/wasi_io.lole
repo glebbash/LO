@@ -1,5 +1,5 @@
 ; wasi_io expects host to preopen "." on fd 3
-(global CWD_PREOPEN_FD u32 3)
+(alias CWD_PREOPEN_FD 3)
 
 (fn Wasi_IO/fd_read_all [(fd u32)] [(& String)] (
     {&output : (& String) = (Vec/new 256 1)}
@@ -16,7 +16,7 @@
     (loop (
         {err : Wasi/Err = (Wasi/fd_read fd &in_vec 1 &nread)}
 
-        {nread : u32 = {i32 @ &nread}}
+        {nread : u32 = {u32 @ &nread}}
 
         (if {nread == 0} (break))
 
@@ -45,7 +45,7 @@
             (return false)
         ))
 
-        {nread : u32 = {i32 @ &nread}}
+        {nread : u32 = {u32 @ &nread}}
         (if {nread == 0} (break))
 
         {Wasi/IOVec @ &iov . len = nread}
@@ -67,7 +67,7 @@
         file_path 0 (i64 2) (i64 0) 0
         &fd
     )}
-    {fd : u32 = {i32 @ &fd}}
+    {fd : u32 = {u32 @ &fd}}
 
     (return (do err fd))
 ))

@@ -1,16 +1,16 @@
 (mod lib/lole/wasm)
 (mod lib/lole/ast)
 
-(struct Vec<String> (actual Vec))
-(struct Dict<Lole/Ir/FnDef> (actual Dict))
-(struct Dict<Lole/Ir/FnBody> (actual Dict))
-(struct Vec<Lole/Ir/FnExport> (actual Vec))
-(struct Dict<bool> (actual Dict))
-(struct Dict<Lole/Ir/StructDef> (actual Dict))
-(struct Dict<u32> (actual Dict))
-(struct Dict<Lole/Ir/GlobalDef> (actual Dict))
-(struct Dict<Lole/Ir/LocalDef> (actual Dict))
-(struct Dict<Lole/Ast/SExpr> (actual Dict))
+(alias Vec<String> Vec)
+(alias Dict<Lole/Ir/FnDef> Dict)
+(alias Dict<Lole/Ir/FnBody> Dict)
+(alias Vec<Lole/Ir/FnExport> Vec)
+(alias Dict<bool> Dict)
+(alias Dict<Lole/Ir/StructDef> Dict)
+(alias Dict<u32> Dict)
+(alias Dict<Lole/Ir/GlobalDef> Dict)
+(alias Dict<Lole/Ir/LocalDef> Dict)
+(alias Dict<Lole/Ast/SExpr> Dict)
 
 (struct Lole/Ir/ModuleContext
     (&wasm_module (& Lole/Wasm/WasmModule)) ; not owned

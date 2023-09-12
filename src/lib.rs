@@ -6,6 +6,7 @@ extern crate alloc;
 mod ast;
 mod codegen;
 mod compiler;
+mod expand;
 mod ir;
 mod parser;
 mod type_checker;
@@ -13,10 +14,6 @@ mod wasi_io;
 mod wasm;
 
 use alloc::{string::String, vec::Vec};
-use codegen::*;
-use compiler::*;
-use core::str;
-use parser::*;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_target {
@@ -38,9 +35,10 @@ mod wasm_target {
 }
 
 fn exec_pipeline(script: &str) -> Result<Vec<u8>, String> {
-    let exprs = parse("<input>", script)?;
-    let module = compile(&exprs)?;
-    let binary = codegen(&module);
+    let raw_exprs = parser::parse("<input>", script)?;
+    let exprs = expand::expand(raw_exprs)?;
+    let module = compiler::compile(&exprs)?;
+    let binary = codegen::codegen(&module);
     Ok(binary)
 }
 

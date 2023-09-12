@@ -1,12 +1,12 @@
 (mod lib/std)
 
-(struct Wasi/Err (actual u32))
-(global Wasi/Err/SUCCESS u32 0)
-(global Wasi/Err/BADF    u32 8)
+(alias Wasi/Err u32)
+(alias Wasi/Err/SUCCESS 0)
+(alias Wasi/Err/BADF    8)
 
-(global Wasi/FD_STDIN u32 0)
-(global Wasi/FD_STDOUT u32 1)
-(global Wasi/FD_STDERR u32 2)
+(alias Wasi/FD_STDIN 0)
+(alias Wasi/FD_STDOUT 1)
+(alias Wasi/FD_STDERR 2)
 
 (struct Wasi/IOVec (base (& u8)) (len u32))
 

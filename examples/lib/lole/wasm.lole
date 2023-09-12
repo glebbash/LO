@@ -1,14 +1,14 @@
-(struct Vec<Lole/Wasm/WasmFnType> (actual Vec))
-(struct Vec<Lole/Wasm/WasmImport> (actual Vec))
-(struct Vec<u32> (actual Vec))
-(struct Vec<Lole/Wasm/WasmLimits> (actual Vec))
-(struct Vec<Lole/Wasm/WasmGlobal> (actual Vec))
-(struct Vec<Lole/Wasm/WasmExport> (actual Vec))
-(struct Vec<Lole/Wasm/WasmFn> (actual Vec))
-(struct Vec<Lole/Wasm/WasmData> (actual Vec))
-(struct Vec<Lole/Wasm/WasmType> (actual Vec))
-(struct Vec<Lole/Wasm/WasmInstr> (actual Vec))
-(struct Vec<Lole/Wasm/WasmLocals> (actual Vec))
+(alias Vec<Lole/Wasm/WasmFnType> Vec)
+(alias Vec<Lole/Wasm/WasmImport> Vec)
+(alias Vec<u32> Vec)
+(alias Vec<Lole/Wasm/WasmLimits> Vec)
+(alias Vec<Lole/Wasm/WasmGlobal> Vec)
+(alias Vec<Lole/Wasm/WasmExport> Vec)
+(alias Vec<Lole/Wasm/WasmFn> Vec)
+(alias Vec<Lole/Wasm/WasmData> Vec)
+(alias Vec<Lole/Wasm/WasmType> Vec)
+(alias Vec<Lole/Wasm/WasmInstr> Vec)
+(alias Vec<Lole/Wasm/WasmLocals> Vec)
 
 (struct Lole/Wasm/WasmModule
     (&types (& Vec<Lole/Wasm/WasmFnType>))
@@ -36,9 +36,9 @@
 (struct Lole/Wasm/WasmGlobal)
 
 ; values correspond to binary output
-(global Lole/Wasm/WasmExportType/FUNC u32 0) ; 0x00
-(global Lole/Wasm/WasmExportType/MEM u32 2) ; 0x02
-(struct Lole/Wasm/WasmExportType (actual u32))
+(alias Lole/Wasm/WasmExportType u32)
+(alias Lole/Wasm/WasmExportType/FUNC 0) ; 0x00
+(alias Lole/Wasm/WasmExportType/MEM 2) ; 0x02
 
 (struct Lole/Wasm/WasmExport
     (export_type Lole/Wasm/WasmExportType)
@@ -47,14 +47,14 @@
 )
 
 ; values correspond to binary output
-(struct Lole/Wasm/WasmType (actual u32))
-(global Lole/Wasm/WasmType/I32 u32 127) ; 0x7f
-(global Lole/Wasm/WasmType/I64 u32 126) ; 0x7e
-(global Lole/Wasm/WasmType/F32 u32 125) ; 0x7d
-(global Lole/Wasm/WasmType/F64 u32 124) ; 0x7c
-(global Lole/Wasm/WasmType/V128 u32 123) ; 0x7b
-(global Lole/Wasm/WasmType/FUNC_REF u32 112) ; 0x70
-(global Lole/Wasm/WasmType/EXTERN_REF u32 111) ; 0x6f
+(alias Lole/Wasm/WasmType i32)
+(alias Lole/Wasm/WasmType/I32 127) ; 0x7f
+(alias Lole/Wasm/WasmType/I64 126) ; 0x7e
+(alias Lole/Wasm/WasmType/F32 125) ; 0x7d
+(alias Lole/Wasm/WasmType/F64 124) ; 0x7c
+(alias Lole/Wasm/WasmType/V128 123) ; 0x7b
+(alias Lole/Wasm/WasmType/FUNC_REF 112) ; 0x70
+(alias Lole/Wasm/WasmType/EXTERN_REF 111) ; 0x6f
 
 (struct Lole/Wasm/WasmLocals
     (count u32)

@@ -1,15 +1,9 @@
 use crate::{ast::*, wasm::*};
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    rc::Rc,
-    string::String,
-    vec::Vec,
-};
+use alloc::{collections::BTreeMap, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
 pub struct ModuleContext {
-    pub included_modules: BTreeSet<String>,
     pub wasm_module: WasmModule,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: Vec<FnBody>,

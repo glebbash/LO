@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, parser::*, type_checker::*, wasi_io::*, wasm::*};
+use crate::{ast::*, ir::*, type_checker::*, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -130,39 +130,6 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
     }
 
     match op.as_str() {
-        "mod" => match other {
-            [SExpr::Atom {
-                value: mod_name,
-                loc: mod_name_loc,
-                kind: _,
-            }] => {
-                if !ctx.included_modules.insert(mod_name.clone()) {
-                    // do not include module twice
-                    return Ok(());
-                };
-
-                let file_name = format!("{}.lole", mod_name);
-                let mod_fd = open(&file_name).map_err(|err| CompileError {
-                    message: format!("Cannot load file {file_name}: {err}"),
-                    loc: mod_name_loc.clone(),
-                })?;
-
-                let source_buf = fd_read_all(mod_fd);
-                let source = str::from_utf8(source_buf.as_slice()).unwrap();
-
-                let exprs = parse(&file_name, source)?;
-
-                for expr in exprs {
-                    compile_top_level_expr(&expr, ctx)?;
-                }
-            }
-            _ => {
-                return Err(CompileError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
-                });
-            }
-        },
         "mem" => match other {
             [SExpr::Atom {
                 value: mem_name,
@@ -1906,8 +1873,8 @@ fn parse_wasm_type(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmType, Compil
             value: name,
             ..
         } => match &name[..] {
-            "bool" | "u8" | "u32" | "i32" | "ptr" => return Ok(WasmType::I32),
-            "i64" | "u64" => return Ok(WasmType::I64),
+            "i32" => return Ok(WasmType::I32),
+            "i64" => return Ok(WasmType::I64),
             "f32" => return Ok(WasmType::F32),
             "f64" => return Ok(WasmType::F64),
             "v128" => return Ok(WasmType::V128),
