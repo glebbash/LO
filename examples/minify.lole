@@ -41,15 +41,15 @@
 ))
 
 (fn dump_expr [(expr Lole/Ast/SExpr)] [] (
-    (if {expr . kind == (enum.kind Lole/Ast/SExpr/Atom)} (do
-        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {expr . ref}}}
+    (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
+        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {expr . &value}}}
         (print_str {atom . &value})
         (return)
     ))
 
     (puts "(")
 
-    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {expr . ref}}}
+    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {expr . &value}}}
     (dump_exprs {list . &value})
 
     (puts ")")

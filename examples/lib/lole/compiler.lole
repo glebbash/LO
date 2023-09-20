@@ -138,7 +138,7 @@
 (fn Lole/Compiler/compile_top_level_expr [
     (expr Lole/Ast/SExpr) (&ctx (& Lole/Ir/ModuleContext))
 ] [Lole/Compiler/CompileResult] (
-    (if {expr . kind == (enum.kind Lole/Ast/SExpr/Atom)} (do
+    (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
         (return false (new Lole/Ast/CompileError (do
             (String/from_slice "Unexpected atom")
             (Lole/Ast/Location/clone (Lole/Ast/SExpr/loc expr))

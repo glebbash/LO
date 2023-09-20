@@ -465,61 +465,6 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 })
             }
         },
-        "enum" => match other {
-            [SExpr::Atom {
-                value: enum_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, variants @ ..] => {
-                for (kind, variant) in variants.iter().enumerate() {
-                    let SExpr::List{ value: variant_body, .. } = variant else {
-                        return Err(CompileError { message: format!("Invalid arguments for {op}"), loc: op_loc.clone() });
-                    };
-
-                    let [SExpr::Atom { value: struct_name, .. }, field_defs @ ..] = &variant_body[..] else {
-                        return Err(CompileError { message: format!("Invalid arguments for {op}"), loc: op_loc.clone() });
-                    };
-
-                    let full_name = format!("{enum_name}/{struct_name}");
-                    if ctx.struct_defs.contains_key(struct_name) {
-                        return Err(CompileError {
-                            message: format!("Cannot redefine struct {full_name}"),
-                            loc: name_loc.clone(),
-                        });
-                    }
-
-                    let struct_def = compile_struct(field_defs, &full_name, ctx)?;
-                    ctx.struct_defs.insert(full_name.clone(), struct_def);
-                    ctx.enum_kinds.insert(full_name, kind as u32);
-                }
-
-                ctx.struct_defs.insert(
-                    enum_name.clone(),
-                    StructDef {
-                        fields: vec![
-                            StructField {
-                                name: String::from("kind"),
-                                value_type: LoleType::Primitive(WasmType::I32),
-                                field_index: 0,
-                                byte_offset: 0,
-                            },
-                            StructField {
-                                name: String::from("ref"),
-                                value_type: LoleType::Primitive(WasmType::I32),
-                                field_index: 1,
-                                byte_offset: WasmType::I32.byte_length().unwrap(),
-                            },
-                        ],
-                    },
-                );
-            }
-            _ => {
-                return Err(CompileError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
-                })
-            }
-        },
         "global" => {
             let (mutable, global_name, global_type, global_value, name_loc) = match other {
                 [SExpr::Atom {
@@ -1087,25 +1032,6 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                         loc: op_loc.clone(),
                     })?
                     .byte_length as i32,
-            }
-        }
-        (
-            "enum.kind",
-            [SExpr::Atom {
-                value: enum_variant,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }],
-        ) => {
-            let Some(kind) = ctx.module.enum_kinds.get(enum_variant) else {
-                return Err(CompileError {
-                    message: format!("Unknown enum variant in {op}: {enum_variant}"),
-                    loc: name_loc.clone()
-                });
-            };
-
-            WasmInstr::I32Const {
-                value: *kind as i32,
             }
         }
         (

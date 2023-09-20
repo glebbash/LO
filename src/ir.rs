@@ -10,7 +10,6 @@ pub struct ModuleContext {
     pub fn_exports: Vec<FnExport>,
     pub memory_names: Vec<String>,
     pub struct_defs: BTreeMap<String, StructDef>,
-    pub enum_kinds: BTreeMap<String, u32>,
     pub globals: BTreeMap<String, GlobalDef>,
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<i32>>,

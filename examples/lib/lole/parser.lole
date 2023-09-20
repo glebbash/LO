@@ -145,7 +145,7 @@
 
     (return (struct.new Lole/Parser/ParseResult true
         (new Lole/Ast/SExpr (do
-            (enum.kind Lole/Ast/SExpr/Atom)
+            Lole/Ast/SExpr/ATOM
             (new Lole/Ast/SExpr/Atom (do
                 &value
                 Lole/Ast/AtomKind/STRING
@@ -175,7 +175,7 @@
 
     (return (struct.new Lole/Parser/ParseResult true
         (new Lole/Ast/SExpr (do
-            (enum.kind Lole/Ast/SExpr/Atom)
+            Lole/Ast/SExpr/ATOM
             (new Lole/Ast/SExpr/Atom (do
                 &value
                 Lole/Ast/AtomKind/SYMBOL
@@ -226,7 +226,7 @@
 
     (return (struct.new Lole/Parser/ParseResult true
         (new Lole/Ast/SExpr (do
-            (enum.kind Lole/Ast/SExpr/List)
+            Lole/Ast/SExpr/LIST
             (new Lole/Ast/SExpr/List (do &items loc))
         ))
     ))
@@ -335,7 +335,7 @@
     (if {(Vec/len &items) < 2} (do
         (return (struct.new Lole/Parser/ParseResult true
             (new Lole/Ast/SExpr (do
-                (enum.kind Lole/Ast/SExpr/List)
+                Lole/Ast/SExpr/LIST
                 (new Lole/Ast/SExpr/List (do &items loc))
             ))
         ))
@@ -365,7 +365,7 @@
     {Lole/Ast/SExpr @ (Vec/push_undef &sexpr_items) = rhs}
 
     (return (struct.new Lole/Ast/SExpr
-        (enum.kind Lole/Ast/SExpr/List)
+        Lole/Ast/SExpr/LIST
         (new Lole/Ast/SExpr/List (do &sexpr_items loc))
     ))
 ))

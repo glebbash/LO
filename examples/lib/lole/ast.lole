@@ -27,26 +27,30 @@
 (alias Lole/Ast/AtomKind/SYMBOL 0)
 (alias Lole/Ast/AtomKind/STRING 1)
 
-(enum Lole/Ast/SExpr
-    (Atom
-        (&value (& String))
-        (kind Lole/Ast/AtomKind)
-        (loc Lole/Ast/Location)
-    )
-    (List
-        (&value (& Vec<Lole/Ast/SExpr>))
-        (loc Lole/Ast/Location)
-    )
+(alias Lole/Ast/SExpr/ATOM 0)
+(alias Lole/Ast/SExpr/LIST 1)
+(struct Lole/Ast/SExpr
+    (kind u32) ; Lole/Ast/SExpr/ATOM | Lole/Ast/SExpr/LIST
+    (&value ptr) ; (& Lole/Ast/SExpr/Atom) | (& Lole/Ast/SExpr/List)
+)
+(struct Lole/Ast/SExpr/Atom
+    (&value (& String))
+    (kind Lole/Ast/AtomKind)
+    (loc Lole/Ast/Location)
+)
+(struct Lole/Ast/SExpr/List
+    (&value (& Vec<Lole/Ast/SExpr>))
+    (loc Lole/Ast/Location)
 )
 
 (fn Lole/Ast/SExpr/free [(self Lole/Ast/SExpr)] [] (
-    (if {self . kind == (enum.kind Lole/Ast/SExpr/Atom)} (do
-        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . ref}}}
+    (if {self . kind == Lole/Ast/SExpr/ATOM} (do
+        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . &value}}}
         (Vec/free {atom . &value})
         (return)
     ))
 
-    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {self . ref}}}
+    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {self . &value}}}
     (Vec<Lole/Ast/SExpr>/free {list . &value})
 ))
 
@@ -64,11 +68,11 @@
 ))
 
 (fn Lole/Ast/SExpr/loc [(self Lole/Ast/SExpr)] [Lole/Ast/Location] (
-    (if {self . kind == (enum.kind Lole/Ast/SExpr/Atom)} (do
-        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . ref}}}
+    (if {self . kind == Lole/Ast/SExpr/ATOM} (do
+        {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . &value}}}
         (return {atom . loc})
     ))
 
-    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {self . ref}}}
+    {list : Lole/Ast/SExpr/List = {Lole/Ast/SExpr/List @ {self . &value}}}
     (return {list . loc})
 ))

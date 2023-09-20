@@ -71,15 +71,6 @@ test("compiles struct-ref", async () => {
     assert.strictEqual(result, 3);
 });
 
-test("compiles enums", async () => {
-    const output = await compile("./examples/test/enums.lole");
-
-    const program = await loadWasm(output);
-    const result = program.main();
-
-    assert.strictEqual(result, 1);
-});
-
 test("compiles import", async () => {
     const output = await compile("./examples/test/import.lole");
 
