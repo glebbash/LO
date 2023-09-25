@@ -43,7 +43,8 @@ pub fn get_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<Vec<WasmType>, 
             ..
         } => {
             get_type(ctx, &address_instr)?;
-            vec![kind.get_value_type()]
+            // TODO: use primitive type
+            vec![kind.get_primitive_type().to_wasm_type()]
         }
         WasmInstr::GlobalGet { global_index, .. } => {
             let wasm_global = ctx

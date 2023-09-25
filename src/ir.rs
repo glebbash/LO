@@ -44,8 +44,25 @@ pub struct BlockContext<'a, 'b> {
 }
 
 #[derive(Clone, Debug)]
+pub enum LolePrimitiveType {
+    Bool,
+    U8,
+    I8,
+    F8,
+    U16,
+    I16,
+    F16,
+    U32,
+    I32,
+    F32,
+    U64,
+    I64,
+    F64,
+}
+
+#[derive(Clone, Debug)]
 pub enum LoleType {
-    Primitive(WasmType),
+    Primitive(LolePrimitiveType),
     StructInstance { name: String },
 }
 
@@ -117,7 +134,7 @@ impl ModuleContext {
 
 pub struct ValueComponent {
     pub byte_offset: u32,
-    pub value_type: WasmType,
+    pub value_type: LolePrimitiveType,
 }
 
 #[derive(Default)]
@@ -137,11 +154,11 @@ impl LoleType {
             Self::Primitive(primitive) => {
                 let component = ValueComponent {
                     byte_offset: stats.byte_length,
-                    value_type: *primitive,
+                    value_type: primitive.clone(),
                 };
 
                 stats.count += 1;
-                stats.byte_length += primitive.byte_length()?;
+                stats.byte_length += primitive.byte_length();
                 components.push(component);
             }
             Self::StructInstance { name } => {
@@ -161,7 +178,7 @@ impl LoleType {
     pub fn emit_components(&self, ctx: &ModuleContext, components: &mut Vec<WasmType>) -> u32 {
         match self {
             LoleType::Primitive(value_type) => {
-                components.push(*value_type);
+                components.push(value_type.to_wasm_type());
                 1
             }
             LoleType::StructInstance { name } => {
@@ -183,5 +200,43 @@ impl LoleType {
         self.emit_sized_component_stats(ctx, &mut stats, &mut Default::default())?;
 
         Ok(stats)
+    }
+}
+
+impl LolePrimitiveType {
+    pub fn byte_length(&self) -> u32 {
+        match self {
+            LolePrimitiveType::Bool => 1,
+            LolePrimitiveType::U8 => 1,
+            LolePrimitiveType::I8 => 1,
+            LolePrimitiveType::F8 => 1,
+            LolePrimitiveType::U16 => 2,
+            LolePrimitiveType::I16 => 2,
+            LolePrimitiveType::F16 => 2,
+            LolePrimitiveType::U32 => 4,
+            LolePrimitiveType::I32 => 4,
+            LolePrimitiveType::F32 => 4,
+            LolePrimitiveType::U64 => 8,
+            LolePrimitiveType::I64 => 8,
+            LolePrimitiveType::F64 => 8,
+        }
+    }
+
+    pub fn to_wasm_type(&self) -> WasmType {
+        match self {
+            LolePrimitiveType::Bool => WasmType::I32,
+            LolePrimitiveType::U8 => WasmType::I32,
+            LolePrimitiveType::I8 => WasmType::I32,
+            LolePrimitiveType::F8 => WasmType::F32,
+            LolePrimitiveType::U16 => WasmType::I32,
+            LolePrimitiveType::I16 => WasmType::I32,
+            LolePrimitiveType::F16 => WasmType::F32,
+            LolePrimitiveType::U32 => WasmType::I32,
+            LolePrimitiveType::I32 => WasmType::I32,
+            LolePrimitiveType::F32 => WasmType::F32,
+            LolePrimitiveType::U64 => WasmType::I64,
+            LolePrimitiveType::I64 => WasmType::I64,
+            LolePrimitiveType::F64 => WasmType::F64,
+        }
     }
 }

@@ -502,7 +502,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 });
             }
 
-            let value_type = parse_wasm_type(global_type, ctx)?;
+            let value_type = parse_lole_primitive_type(global_type, ctx)?;
             let initial_value = WasmExpr {
                 instrs: vec![compile_const_instr(global_value, &ctx)?],
             };
@@ -517,7 +517,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
 
             ctx.wasm_module.globals.push(WasmGlobal {
                 kind: WasmGlobalKind {
-                    value_type,
+                    value_type: value_type.to_wasm_type(),
                     mutable,
                 },
                 initial_value,
@@ -855,7 +855,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             }
         }
         ("if", [block_type, cond, then_branch, else_branch]) => WasmInstr::If {
-            block_type: Some(parse_wasm_type(block_type, ctx.module)?),
+            block_type: Some(parse_lole_primitive_type(block_type, ctx.module)?.to_wasm_type()),
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
                 slice::from_ref(then_branch),
@@ -1523,7 +1523,7 @@ fn compile_load(
 ) -> Result<WasmInstr, String> {
     if let LoleType::Primitive(value_type) = value_type {
         return Ok(WasmInstr::Load {
-            kind: WasmLoadKind::from_value_type(value_type)?,
+            kind: WasmLoadKind::from_primitive_type(value_type)?,
             align: 1,
             offset: base_byte_offset,
             address_instr: address_instr.clone(),
@@ -1549,7 +1549,7 @@ fn compile_load(
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
         primitive_loads.push(WasmInstr::Load {
-            kind: WasmLoadKind::from_value_type(&comp.value_type)?,
+            kind: WasmLoadKind::from_primitive_type(&comp.value_type)?,
             align: 1,
             offset: comp.byte_offset,
             address_instr: Box::new(WasmInstr::LocalGet {
@@ -1709,7 +1709,9 @@ fn compile_set_binds(
             address_instr,
         } => {
             let value_local_index = ctx.fn_ctx.locals_last_index;
-            ctx.fn_ctx.non_arg_locals.push(kind.get_value_type());
+            ctx.fn_ctx
+                .non_arg_locals
+                .push(kind.get_primitive_type().to_wasm_type());
             ctx.fn_ctx.locals_last_index += 1;
 
             let address_instr = match address_index {
@@ -1776,7 +1778,7 @@ fn compile_set_binds(
 // types
 
 fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, CompileError> {
-    match parse_wasm_type(expr, ctx) {
+    match parse_lole_primitive_type(expr, ctx) {
         Ok(value_type) => Ok(LoleType::Primitive(value_type)),
         Err(err) => {
             if let SExpr::Atom { value: s_name, .. } = expr {
@@ -1792,20 +1794,29 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
     }
 }
 
-fn parse_wasm_type(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmType, CompileError> {
+fn parse_lole_primitive_type(
+    expr: &SExpr,
+    ctx: &ModuleContext,
+) -> Result<LolePrimitiveType, CompileError> {
     match expr {
         SExpr::Atom {
             kind: AtomKind::Symbol,
             value: name,
             ..
         } => match &name[..] {
-            "i32" => return Ok(WasmType::I32),
-            "i64" => return Ok(WasmType::I64),
-            "f32" => return Ok(WasmType::F32),
-            "f64" => return Ok(WasmType::F64),
-            "v128" => return Ok(WasmType::V128),
-            "funcref" => return Ok(WasmType::FuncRef),
-            "externref" => return Ok(WasmType::ExternRef),
+            "bool" => return Ok(LolePrimitiveType::Bool),
+            "u8" => return Ok(LolePrimitiveType::U8),
+            "i8" => return Ok(LolePrimitiveType::I8),
+            "f8" => return Ok(LolePrimitiveType::F8),
+            "u16" => return Ok(LolePrimitiveType::U16),
+            "i16" => return Ok(LolePrimitiveType::I16),
+            "f16" => return Ok(LolePrimitiveType::F16),
+            "u32" => return Ok(LolePrimitiveType::U32),
+            "i32" => return Ok(LolePrimitiveType::I32),
+            "f32" => return Ok(LolePrimitiveType::F32),
+            "u64" => return Ok(LolePrimitiveType::U64),
+            "i64" => return Ok(LolePrimitiveType::I64),
+            "f64" => return Ok(LolePrimitiveType::F64),
             _ => {}
         },
         SExpr::List { value, .. } => match &value[..] {
@@ -1820,7 +1831,7 @@ fn parse_wasm_type(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmType, Compil
                 parse_lole_type(ptr_data, ctx)?;
 
                 // pointer type
-                return Ok(WasmType::I32);
+                return Ok(LolePrimitiveType::I32);
             }
             _ => {}
         },

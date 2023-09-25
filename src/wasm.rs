@@ -1,3 +1,4 @@
+use crate::ir::*;
 use alloc::{boxed::Box, format, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
@@ -172,9 +173,6 @@ pub enum WasmType {
     I64 = 0x7e,
     F32 = 0x7d,
     F64 = 0x7c,
-    V128 = 0x7b,
-    FuncRef = 0x70,
-    ExternRef = 0x6f,
 }
 
 #[derive(Clone, Copy)]
@@ -228,19 +226,6 @@ pub enum WasmSetBind {
     },
 }
 
-impl WasmType {
-    pub fn byte_length(&self) -> Result<u32, String> {
-        Ok(match self {
-            Self::I32 | Self::F32 => 4,
-            Self::I64 | Self::F64 => 8,
-            Self::V128 => 16,
-            Self::FuncRef | Self::ExternRef => {
-                return Err(format!("Cannot get byte size of FuncRef/ExternRef"))
-            }
-        })
-    }
-}
-
 impl WasmStoreKind {
     pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
         match kind {
@@ -251,16 +236,17 @@ impl WasmStoreKind {
 }
 
 impl WasmLoadKind {
-    pub fn get_value_type(&self) -> WasmType {
+    pub fn get_primitive_type(&self) -> LolePrimitiveType {
         match &self {
-            Self::I32 => WasmType::I32,
-            Self::I32U8 => WasmType::I32,
+            Self::I32 => LolePrimitiveType::I32,
+            Self::I32U8 => LolePrimitiveType::U8,
         }
     }
 
-    pub fn from_value_type(value_type: &WasmType) -> Result<Self, String> {
+    pub fn from_primitive_type(value_type: &LolePrimitiveType) -> Result<Self, String> {
         match value_type {
-            WasmType::I32 => Ok(Self::I32),
+            LolePrimitiveType::I32 => Ok(Self::I32),
+            LolePrimitiveType::U8 => Ok(Self::I32U8),
             _ => return Err(format!("Unsupported type for load: {value_type:?}")),
         }
     }
