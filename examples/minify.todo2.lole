@@ -1,0 +1,95 @@
+import "lib/cli"
+import "lib/std" { Heap, Vec, StringSlice }
+import "lib/wasi" as Wasi
+import "lib/wasi_io" as WasiIO
+import "lib/args" as Args
+import "lib/lole/ast" { SExpr, CompileError }
+import "lib/lole/parser" as Parser
+
+fn main() {
+    let (fd, file_name) = get_input_file()
+    defer Heap.free(file_name.data)
+
+    let source = WasiIO.fd_read_all(fd)
+    defer Vec.free(source)
+
+    let parse_res = Parser.parse(file_name, Vec.as_slice(source))
+    if !parse_res.ok {
+        return print_err_and_exit(parse_res.data)
+    }
+
+    let exprs = parse_res.data
+    defer Vec<SExpr>.free(exprs)
+
+    dump_exprs(exprs)
+    puts("\n")
+}
+
+fn dump_exprs(exprs: &Vec<SExpr>) {
+    let i = 0
+
+    loop {
+        if i == Vec.len(exprs) {
+            break
+        }
+
+        dump_expr(SExpr @ Vec.at(exprs, i))
+
+        if i != Vec.len(exprs) - 1 {
+            puts(" ")
+        }
+
+        i += 1
+    }
+}
+
+fn dump_expr(expr: SExpr) {
+    if expr.kind == SExpr.ATOM {
+        let atom = SExpr.Atom @ expr.value
+        print_str(atom.value)
+        return
+    }
+
+    puts("(")
+
+    let list = SExpr.List @ expr.value
+    dump_exprs(list.value)
+
+    puts(")")
+}
+
+fn get_input_file(): (u32, StringSlice) {
+    let args = Args.load()
+    defer Args.free(args)
+
+    if args.argc != 2 {
+        return (Wasi.FD_STDIN, StringSlice.clone("<internal>"))
+    }
+
+    let file_name = StringSlice.clone(Args.get(args, 1))
+    let (err, fd) = Wasi_IO.fd_open(file_name)
+    if err != 0 {
+        fputs(Wasi.FD_STDERR, "Error: cannot read file: ")
+        fputs(Wasi.FD_STDERR, file_name)
+        fputs(Wasi.FD_STDERR, "\n")
+        Wasi.proc_exit(1)
+    }
+
+    return (fd, file_name)
+}
+
+fn print_err_and_exit(err: &CompileError) {
+    let parse_err = CompileError @ err
+    defer CompileError.free(parse_err)
+
+    fputs(Wasi.FD_STDERR, parse_err.loc.file_name)
+    fputs(Wasi.FD_STDERR,, ":")
+    fprint_u32(Wasi.FD_STDERR, parse_err.loc.line)
+    fputs(Wasi.FD_STDERR, ":")
+    fprint_u32(Wasi.FD_STDERR, parse_err.loc.col)
+    fputs(Wasi.FD_STDERR, " - ")
+    fprint_str(Wasi.FD_STDERR, parse_err.message)
+    fputs(Wasi.FD_STDERR, "\n")
+
+    return Wasi.proc_exit(1)
+}
