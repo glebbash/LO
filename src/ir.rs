@@ -117,7 +117,7 @@ impl ModuleContext {
 
 pub struct ValueComponent {
     pub byte_offset: u32,
-    pub value_type: Rc<WasmType>,
+    pub value_type: WasmType,
 }
 
 #[derive(Default)]
@@ -137,7 +137,7 @@ impl LoleType {
             Self::Primitive(primitive) => {
                 let component = ValueComponent {
                     byte_offset: stats.byte_length,
-                    value_type: Rc::new(*primitive),
+                    value_type: *primitive,
                 };
 
                 stats.count += 1;
