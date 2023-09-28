@@ -1,0 +1,60 @@
+; current
+
+(struct Point2D
+    (x i32)
+    (y i32)
+)
+
+(fn main [] [i32] (
+    {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
+    (defer (Stack/free (sizeof Point2D)))
+
+    {Point2D @ &p = (struct.new Point2D 2 3)}
+    {y : u32 = {Point2D @ &p . y}}
+    (return y)
+))
+
+; v2
+
+(struct Point2D
+    (x i32)
+    (y i32)
+)
+
+(fn main [] [i32] (
+    {p := (stack.new (Point2D :x 2 :y 3))}
+    (defer (stack.free p))
+
+    {y := {p . y}}
+    (return y)
+))
+
+; v3?
+
+{Point2D :: (struct
+    :x i32
+    :y i32
+)}
+
+{main :: (fn [] [i32] (
+    {p := (stack.new (Point2D :x 2 :y 3))}
+    (defer (stack.free p))
+
+    {y := {p . y}}
+    (return y)
+))}
+
+; v4?
+
+Point2D :: struct {
+    x: i32
+    y: i32
+}
+
+main :: fn() -> i32 {
+    p := stack.new(Point2D { x: 2, y: 3 });
+    defer stack.free(p);
+
+    y := p.y;
+    return y;
+}
