@@ -24,10 +24,7 @@ impl From<CompileError> for String {
             ..
         } = err.loc;
 
-        format!(
-            "{msg} in {file_name} at line {line} col {col}",
-            msg = err.message,
-        )
+        format!("{file_name}:{line}:{col} - {msg}", msg = err.message,)
     }
 }
 

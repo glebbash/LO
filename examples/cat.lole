@@ -14,13 +14,13 @@
 
     {err : u32}
 
-    {(do err {fd : u32}) = (Wasi_IO/fd_open file_path)}
+    {(do err {fd : u32}) = (WasiIO/fd_open file_path)}
     (if {err != 0} (do
         (return (Wasi/proc_exit 1))
     ))
     (defer (drop (Wasi/fd_close fd)))
 
-    {err = (Wasi_IO/fd_pipe fd Wasi/FD_STDOUT 256)}
+    {err = (WasiIO/fd_pipe fd Wasi/FD_STDOUT 256)}
     (if {err != 0} (do
         (return (Wasi/proc_exit 1))
     ))

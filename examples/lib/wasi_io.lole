@@ -1,7 +1,7 @@
 ; wasi_io expects host to preopen "." on fd 3
 (alias CWD_PREOPEN_FD 3)
 
-(fn Wasi_IO/fd_read_all [(fd u32)] [(& String)] (
+(fn WasiIO/fd_read_all [(fd u32)] [(& String)] (
     {&output : (& String) = (Vec/new 256 1)}
     {&chunk : (&* u8) = (Stack/alloc 256)}
     (defer (Stack/free 256))
@@ -26,7 +26,7 @@
     (return &output)
 ))
 
-(fn Wasi_IO/fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [bool] (
+(fn WasiIO/fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] [bool] (
     {&chunk : (&* u8) = (Stack/alloc chunk_size)}
     (defer (Stack/free chunk_size))
 
@@ -58,7 +58,7 @@
     (return true)
 ))
 
-(fn Wasi_IO/fd_open [(file_path StringSlice)] [u32 u32] (
+(fn WasiIO/fd_open [(file_path StringSlice)] [u32 u32] (
     {&fd : (& u32) = (new u32 0 :using Alloc/STACK)}
     (defer (free Alloc/STACK &fd (sizeof u32)))
 
