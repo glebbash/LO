@@ -79,7 +79,7 @@
 ))
 
 (fn print_err_and_exit [(&err (& CompileError))] [] (
-    {parse_err := {CompileError @ &err}}
+    {parse_err := (* &err)}
     (defer (CompileError/free parse_err))
 
     (fputs Wasi/FD_STDERR {parse_err . loc . file_name})

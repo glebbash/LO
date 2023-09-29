@@ -1,4 +1,5 @@
 use crate::{ast::*, ir::*, wasm::*};
+use alloc::format;
 use alloc::{vec, vec::Vec};
 
 pub fn get_types(
@@ -10,6 +11,49 @@ pub fn get_types(
         types.append(&mut get_type(ctx, instr)?);
     }
     Ok(types)
+}
+
+pub fn get_lole_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<LoleType, CompileError> {
+    match instr {
+        WasmInstr::GlobalGet { global_index, .. } => {
+            let global_def = ctx
+                .module
+                .globals
+                .values()
+                .find(|global| global.index == *global_index);
+
+            // TODO: handle struct fields: {s . x} should be supported
+            let Some(global_def) = global_def else {
+                return Err(CompileError {
+                    message: format!("shouldn't happen"),
+                    loc: Location::internal(),
+                });
+            };
+
+            Ok(global_def.value_type.clone())
+        }
+        WasmInstr::LocalGet { local_index, .. } => {
+            let local_def = ctx
+                .fn_ctx
+                .locals
+                .values()
+                .find(|local| local.index == *local_index);
+
+            // TODO: handle struct fields: {s . x} should be supported
+            let Some(local_def) = local_def else {
+                return Err(CompileError {
+                    message: format!("shouldn't happen"),
+                    loc: Location::internal(),
+                });
+            };
+
+            Ok(local_def.value_type.clone())
+        }
+        _ => Err(CompileError {
+            message: format!("not implemented yet"),
+            loc: Location::internal(),
+        }),
+    }
 }
 
 pub fn get_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<Vec<WasmType>, CompileError> {

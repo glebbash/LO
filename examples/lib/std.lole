@@ -130,8 +130,8 @@
 
         {&free_block : (& Heap/Block) = (Heap/find_free_block size)}
         (if {&free_block != 0} (do
-            {Heap/Block @ &free_block . used = true}
-            (return {Heap/Block @ &free_block . &data})
+            {&free_block -> used = true}
+            (return {&free_block -> &data})
         ))
 
         {total_size_to_alloc : u32 = {size + (sizeof Heap/Block)}}
@@ -148,9 +148,9 @@
             ))
         ))
 
-        {Heap/Block @ &block . size = size}
-        {Heap/Block @ &block . used = true}
-        {Heap/Block @ &block . &data = {&block + (sizeof Heap/Block)}}
+        {&block -> size = size}
+        {&block -> used = true}
+        {&block -> &data = {&block + (sizeof Heap/Block)}}
 
         ; init heap
         (if {Heap/&FIRST_BLOCK == 0} (do
@@ -159,17 +159,17 @@
 
         ; chain block
         (if {Heap/&CURRENT_BLOCK != 0} (do
-            {Heap/Block @ Heap/&CURRENT_BLOCK . &next = &block}
+            {Heap/&CURRENT_BLOCK -> &next = &block}
         ))
 
         {Heap/&CURRENT_BLOCK = &block}
 
-        (return {Heap/Block @ &block . &data})
+        (return {&block -> &data})
     ))
 
     (fn Heap/free [(&ref ptr)] [] (
         {&block : (& Heap/Block) = (Heap/get_block &ref)}
-        {Heap/Block @ &block . used = false}
+        {&block -> used = false}
     ))
 
     (fn Heap/get_block [(&ref ptr)] [(& Heap/Block)] (
@@ -183,12 +183,11 @@
         (loop (
             (if {&block == 0} (break))
 
-            (if {(not {Heap/Block @ &block . used})
-                    && {Heap/Block @ &block . size >= size}} (do
+            (if {(not {&block -> used}) && {&block -> size >= size}} (do
                 (return &block)
             ))
 
-            {&block = {Heap/Block @ &block . &next}}
+            {&block = {&block -> &next}}
         ))
 
         (return 0)
@@ -219,87 +218,87 @@
     ))
 
     (fn Vec/free [(&self (& Vec))] [] (
-        (free {Vec @ &self . alloc_id} &self (sizeof Vec))
-        (free {Vec @ &self . alloc_id} {Vec @ &self . &data} {Vec @ &self . capacity})
+        (free {&self -> alloc_id} &self (sizeof Vec))
+        (free {&self -> alloc_id} {&self -> &data} {&self -> capacity})
     ))
 
     (fn Vec/len [(&self (& Vec))] [u32] (
-        (return {Vec @ &self . length})
+        (return {&self -> length})
     ))
 
     (fn Vec/as_slice [(&self (& Vec))] [ptr u32] (
-        (return {Vec @ &self . &data} {Vec @ &self . length})
+        (return {&self -> &data} {&self -> length})
     ))
 
     (fn Vec/at [(&self (& Vec)) (index u32)] [u32] (
         (Vec/_panic_if_out_of_bounds &self index)
 
-        (return {Vec @ &self . &data + {index * {Vec @ &self . item_size}}})
+        (return {&self -> &data + {index * {&self -> item_size}}})
     ))
 
     (fn Vec/at_unchecked [(&self (& Vec)) (index u32)] [u32] (
-        (return {Vec @ &self . &data + {index * {Vec @ &self . item_size}}})
+        (return {&self -> &data + {index * {&self -> item_size}}})
     ))
 
     (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
         (Vec/_panic_if_out_of_bounds &self index)
 
         (return {i32/u8
-            @ {Vec @ &self . &data}
-            @ {index * {Vec @ &self . item_size}}})
+            @ {&self -> &data}
+            @ {index * {&self -> item_size}}})
     ))
 
     (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] [] (
         (Vec/_panic_if_out_of_bounds &self index1)
         (Vec/_panic_if_out_of_bounds &self index2)
 
-        {item_size : u32 = {Vec @ &self . item_size}}
+        {item_size : u32 = {&self -> item_size}}
         (Mem/swap
-            {Vec @ &self . &data + {index1 * item_size}}
-            {Vec @ &self . &data + {index2 * item_size}}
+            {&self -> &data + {index1 * item_size}}
+            {&self -> &data + {index2 * item_size}}
             item_size
         )
     ))
 
     (fn Vec/push_u8 [(&self (& Vec)) (item u8)] [] (
-        {index : u32 = {Vec @ &self . length}}
-        {Vec @ &self . length = {index + 1}}
+        {index : u32 = {&self -> length}}
+        {&self -> length = {index + 1}}
 
         (Vec/_grow_if_needed &self)
 
         {i32/u8
-            @ {Vec @ &self . &data }
-            @ {index * {Vec @ &self . item_size}} = item}
+            @ {&self -> &data }
+            @ {index * {&self -> item_size}} = item}
     ))
 
     (fn Vec/push_all [(&self (& Vec)) (&items ptr) (items_len u32)] [] (
-        {old_len : u32 = {Vec @ &self . length}}
-        {Vec @ &self . length = {old_len + items_len}}
+        {old_len : u32 = {&self -> length}}
+        {&self -> length = {old_len + items_len}}
 
         (Vec/_grow_if_needed &self)
 
         (Mem/copy
             &items
-            {Vec @ &self . &data + {old_len * {Vec @ &self . item_size}}}
-            {items_len * {Vec @ &self . item_size}}
+            {&self -> &data + {old_len * {&self -> item_size}}}
+            {items_len * {&self -> item_size}}
         )
     ))
 
     (fn Vec/push_undef [(&self (& Vec))] [ptr] (
-        {Vec @ &self . length += 1}
+        {&self -> length += 1}
 
         (Vec/_grow_if_needed &self)
 
-        (return (Vec/at &self {Vec @ &self . length - 1}))
+        (return (Vec/at &self {&self -> length - 1}))
     ))
 
     (fn Vec/append [(&self (& Vec)) (&other (& Vec))] [] (
-        (Vec/push_all &self {Vec @ &other . &data} (Vec/len &other))
-        {Vec @ &other . length = 0}
+        (Vec/push_all &self {&other -> &data} (Vec/len &other))
+        {&other -> length = 0}
     ))
 
     (fn Vec/pop_unchecked [(&self (& Vec))] [ptr] (
-        {Vec @ &self . length -= 1}
+        {&self -> length -= 1}
         (return (Vec/at_unchecked &self (Vec/len &self)))
     ))
 
@@ -317,23 +316,23 @@
     ))
 
     (fn Vec/_grow_if_needed [(&self (& Vec))] [] (
-        (if {Vec @ &self . length != {Vec @ &self . capacity}} (do
+        (if {&self -> length != {&self -> capacity}} (do
             (return)
         ))
 
-        (if {Vec @ &self . alloc_id == Alloc/STACK} (do
+        (if {&self -> alloc_id == Alloc/STACK} (do
             (panic "Attempt to grow stack allocated vector")
         ))
 
-        {item_size : u32 = {Vec @ &self . item_size}}
-        {old_capacity : u32 = {Vec @ &self . capacity}}
-        {&old_data : ptr = {Vec @ &self . &data}}
-        (defer (free {Vec @ &self . alloc_id} &old_data old_capacity))
+        {item_size : u32 = {&self -> item_size}}
+        {old_capacity : u32 = {&self -> capacity}}
+        {&old_data : ptr = {&self -> &data}}
+        (defer (free {&self -> alloc_id} &old_data old_capacity))
 
-        {Vec @ &self . capacity = {old_capacity * 2}}
-        {Vec @ &self . &data = (alloc {Vec @ &self . alloc_id} {Vec @ &self . capacity * item_size})}
+        {&self -> capacity = {old_capacity * 2}}
+        {&self -> &data = (alloc {&self -> alloc_id} {&self -> capacity * item_size})}
 
-        (Mem/copy &old_data {Vec @ &self . &data} {Vec @ &self . length * item_size})
+        (Mem/copy &old_data {&self -> &data} {&self -> length * item_size})
     ))
 
     (fn Vec/_panic_if_out_of_bounds [(&self (& Vec)) (index u32)] [] (
@@ -378,7 +377,7 @@
     ))
 
     (fn String/clone [(&self String)] [(& String)] (
-        (return (String/from_slice {Vec @ &self . &data} {Vec @ &self . length}))
+        (return (String/from_slice {&self -> &data} {&self -> length}))
     ))
 
     (fn String/from_slice [(str StringSlice)] [(& String)] (

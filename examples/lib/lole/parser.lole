@@ -44,7 +44,8 @@
     {&items : (& Vec) = (Vec/new 10 (sizeof Lole/Ast/SExpr))}
 
     (loop (
-        (if {Lole/Parser @ &self . index >= {Lole/Parser @ &self . chars . size}} (do
+        ; TODO: support chaining `->`
+        (if {&self -> index >= {&self -> chars . size}} (do
             (break)
         ))
 
@@ -141,7 +142,7 @@
 
     (Lole/Parser/next_char &self) ; skip end quote
 
-    {loc . length = {Lole/Parser @ &self . index - {loc . offset}}}
+    {loc . length = {&self -> index - {loc . offset}}}
 
     (return (struct.new Lole/Parser/ParseResult true
         (new Lole/Ast/SExpr (do
@@ -168,10 +169,10 @@
         (Lole/Parser/next_char &self)
     ))
 
-    {loc . length = {Lole/Parser @ &self . index - {loc . offset}}}
+    {loc . length = {&self -> index - {loc . offset}}}
 
     {&value : (& String) = (String/from_slice
-        {Lole/Parser @ &self . chars . data + {loc . offset}} {loc . length}) }
+        {&self -> chars . data + {loc . offset}} {loc . length}) }
 
     (return (struct.new Lole/Parser/ParseResult true
         (new Lole/Ast/SExpr (do
@@ -218,7 +219,7 @@
     {list_end_char : u8 = {res . data}}
     (Lole/Parser/next_char &self) ; eat list end
 
-    {loc . length = {Lole/Parser @ &self . index - {loc . offset}}}
+    {loc . length = {&self -> index - {loc . offset}}}
 
     (if {list_start_char == (char_code "{") && {(Vec/len &items) >= 2}} (do
         (return (Lole/Parser/m_expr_to_s_expr_and_validate &items loc))
@@ -263,7 +264,7 @@
 ))
 
 (fn Lole/Parser/next_char [(&self (& Lole/Parser))] [] (
-    {Lole/Parser @ &self . index += 1}
+    {&self -> index += 1}
 
     {res : Lole/Parser/CharAtResult = (Lole/Parser/current_char &self)}
     (if (not {res . ok}) (do
@@ -271,12 +272,12 @@
     ))
 
     (if {res . data == (char_code "\n")} (do
-        {Lole/Parser @ &self . col = 0}
-        {Lole/Parser @ &self . line += 1}
+        {&self -> col = 0}
+        {&self -> line += 1}
         (return)
     ))
 
-    {Lole/Parser @ &self . col += 1}
+    {&self -> col += 1}
 ))
 
 (struct Lole/Parser/CharAtResult
@@ -285,9 +286,9 @@
 )
 
 (fn Lole/Parser/current_char [(&self (& Lole/Parser))] [Lole/Parser/CharAtResult] (
-    {chars : StringSlice = {Lole/Parser @ &self . chars}}
+    {chars : StringSlice = {&self -> chars}}
 
-    (if {Lole/Parser @ &self . index >= {chars . size}} (do
+    (if {&self -> index >= {chars . size}} (do
         (return (struct.new Lole/Parser/CharAtResult
             false
             (Lole/Parser/err_unexpected_eof &self)))
@@ -295,7 +296,7 @@
 
     (return (struct.new Lole/Parser/CharAtResult
         true
-        (StringSlice/char_at chars {Lole/Parser @ &self . index})))
+        (StringSlice/char_at chars {&self -> index})))
 ))
 
 (fn Lole/Parser/err_unexpected_char [(&self (& Lole/Parser))] [(& Lole/Ast/CompileError)] (
@@ -314,11 +315,11 @@
 
 (fn Lole/Parser/loc [(&self (& Lole/Parser))] [Lole/Ast/Location] (
     (return (struct.new Lole/Ast/Location
-        (StringSlice/clone {Lole/Parser @ &self . file_name})
-        {Lole/Parser @ &self . index}
+        (StringSlice/clone {&self -> file_name})
+        {&self -> index}
         1 ; length
-        {Lole/Parser @ &self . line}
-        {Lole/Parser @ &self . col}
+        {&self -> line}
+        {&self -> col}
     ))
 ))
 

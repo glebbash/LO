@@ -75,6 +75,7 @@ pub struct LocalDef {
 pub struct GlobalDef {
     pub index: u32,
     pub mutable: bool,
+    pub value_type: LoleType,
 }
 
 pub struct FnBody {

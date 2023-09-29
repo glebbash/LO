@@ -60,7 +60,7 @@
 ))
 
 (fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] [] (
-    {parse_err : Lole/Ast/CompileError = {Lole/Ast/CompileError @ &err}}
+    {parse_err : Lole/Ast/CompileError = (* &err)}
     (defer (Lole/Ast/CompileError/free parse_err))
 
     (fputs Wasi/FD_STDERR {parse_err . loc . file_name})

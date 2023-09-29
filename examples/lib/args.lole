@@ -11,8 +11,8 @@
     (defer (Stack/free (sizeof u32)))
     (drop (Wasi/args_sizes_get &argc &argv_buf_size))
 
-    {argv_buf_size : u32 = {u32 @ &argv_buf_size}}
-    {argc : u32 = {u32 @ &argc}}
+    {argv_buf_size : u32 = (* &argv_buf_size)}
+    {argc : u32 = (* &argc)}
 
     {&argv : (&* (&* u8)) = (Heap/alloc {argc * (sizeof (&* u8))})}
     {&argv_buf : (&* u8) = (Heap/alloc argv_buf_size)}

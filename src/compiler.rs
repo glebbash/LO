@@ -502,7 +502,8 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 });
             }
 
-            let value_type = parse_unary_type(global_type, ctx)?;
+            let lole_type = parse_lole_type(global_type, ctx)?;
+            let wasm_type = get_wasm_type(&lole_type, global_type)?;
             let initial_value = WasmExpr {
                 instrs: vec![compile_const_instr(global_value, &ctx)?],
             };
@@ -512,12 +513,13 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 GlobalDef {
                     index: ctx.globals.len() as u32,
                     mutable,
+                    value_type: lole_type,
                 },
             );
 
             ctx.wasm_module.globals.push(WasmGlobal {
                 kind: WasmGlobalKind {
-                    value_type,
+                    value_type: wasm_type,
                     mutable,
                 },
                 initial_value,
@@ -1274,15 +1276,8 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                     });
                 };
 
-                let struct_def = match ctx.module.struct_defs.get(s_name) {
-                    Some(struct_def) => struct_def,
-                    None => {
-                        return Err(CompileError {
-                            message: format!("Unknown struct in get: {s_name}"),
-                            loc: name_loc.clone(),
-                        })
-                    }
-                };
+                // safe
+                let struct_def = ctx.module.struct_defs.get(s_name).unwrap();
 
                 let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
                     return Err(CompileError {
@@ -1356,6 +1351,61 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 message: format!("Invalid arguments for {op}"),
                 loc: op_loc.clone(),
             });
+        }
+        ("*", [pointer_expr]) => {
+            let pointer_instr = Box::new(compile_instr(pointer_expr, ctx)?);
+            let lole_type = get_lole_type(ctx, &pointer_instr)?;
+
+            let LoleType::Pointer(pointee_type) = lole_type else {
+                return Err(CompileError {
+                    message: format!("Cannot dereference {lole_type:?}"),
+                    loc: op_loc.clone(),
+                })
+            };
+
+            compile_load(ctx, &pointee_type, pointer_instr, 0).map_err(|err| CompileError {
+                message: err,
+                loc: op_loc.clone(),
+            })?
+        }
+        (
+            "->",
+            [struct_ref_expr, SExpr::Atom {
+                value: f_name,
+                loc: f_name_loc,
+                kind: AtomKind::Symbol,
+            }],
+        ) => {
+            let struct_ref_instr = Box::new(compile_instr(struct_ref_expr, ctx)?);
+            let lole_type = get_lole_type(ctx, &struct_ref_instr)?;
+
+            let LoleType::Pointer(pointee_type) = &lole_type else {
+                return Err(CompileError {
+                    message: format!("Cannot dereference {lole_type:?}"),
+                    loc: op_loc.clone(),
+                })
+            };
+            let LoleType::StructInstance { name: s_name } = pointee_type.as_ref() else {
+                return Err(CompileError {
+                    message: format!("Cannot dereference {lole_type:?}"),
+                    loc: op_loc.clone(),
+                })
+            };
+
+            let struct_def = ctx.module.struct_defs.get(s_name).unwrap();
+            let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
+                return Err(CompileError {
+                    message: format!("Unknown field {f_name} in struct {s_name}"),
+                    loc: f_name_loc.clone(),
+                });
+            };
+
+            compile_load(ctx, &field.value_type, struct_ref_instr, field.byte_offset).map_err(
+                |e| CompileError {
+                    message: e,
+                    loc: op_loc.clone(),
+                },
+            )?
         }
         // TODO(feat): support custom aligns and offsets
         (
@@ -1829,13 +1879,16 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
 
 // unary type - type that corresponds to single Wasm type (i.e not a multivalue)
 fn parse_unary_type(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmType, CompileError> {
-    match parse_lole_type(expr, ctx) {
-        Ok(LoleType::Primitive(primitive)) => Ok(primitive.to_wasm_type()),
-        Ok(LoleType::Pointer(_)) => Ok(WasmType::I32),
-        Err(err) => Err(err),
+    get_wasm_type(&parse_lole_type(expr, ctx)?, expr)
+}
+
+fn get_wasm_type(lole_type: &LoleType, original_expr: &SExpr) -> Result<WasmType, CompileError> {
+    match lole_type {
+        LoleType::Primitive(primitive) => Ok(primitive.to_wasm_type()),
+        LoleType::Pointer(_) => Ok(WasmType::I32),
         _ => Err(CompileError {
-            message: format!("Only unary type is supported here, got: {expr}"),
-            loc: expr.loc().clone(),
+            message: format!("Only unary type is supported here, got: {original_expr}"),
+            loc: original_expr.loc().clone(),
         }),
     }
 }

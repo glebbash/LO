@@ -16,7 +16,7 @@
     (loop (
         {err : Wasi/Err = (Wasi/fd_read fd &in_vec 1 &nread)}
 
-        {nread : u32 = {u32 @ &nread}}
+        {nread : u32 = (* &nread)}
 
         (if {nread == 0} (break))
 
@@ -39,16 +39,16 @@
     {io_res : i32}
 
     (loop (
-        {Wasi/IOVec @ &iov . len = chunk_size}
+        {&iov -> len = chunk_size}
         {io_res = (Wasi/fd_read fd_in &iov 1 &nread)}
         (if {io_res != 0} (do
             (return false)
         ))
 
-        {nread : u32 = {u32 @ &nread}}
+        {nread : u32 = (* &nread)}
         (if {nread == 0} (break))
 
-        {Wasi/IOVec @ &iov . len = nread}
+        {&iov -> len = nread}
         {io_res = (Wasi/fd_write fd_out &iov 1 &nread)}
         (if {io_res != 0} (do
             (return false)
@@ -67,7 +67,7 @@
         file_path 0 (i64 2) (i64 0) 0
         &fd
     )}
-    {fd : u32 = {u32 @ &fd}}
+    {fd : u32 = (* &fd)}
 
     (return (do err fd))
 ))

@@ -9,12 +9,12 @@
     {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
     (defer (Stack/free (sizeof Point2D)))
 
-    {Point2D @ &p = (struct.new Point2D 2 3)}
-    {y : u32 = {Point2D @ &p . y}}
+    {(* &p) = (struct.new Point2D 2 3)}
+    {y : u32 = {&p -> y}}
     (return y)
 ))
 
-; v2
+; v2?
 
 (struct Point2D
     (x i32)
