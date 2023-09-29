@@ -1,5 +1,5 @@
 use crate::{ast::*, wasm::*};
-use alloc::{collections::BTreeMap, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -63,6 +63,7 @@ pub enum LolePrimitiveType {
 #[derive(Clone, Debug)]
 pub enum LoleType {
     Primitive(LolePrimitiveType),
+    Pointer(Box<LoleType>),
     StructInstance { name: String },
 }
 
@@ -151,17 +152,26 @@ impl LoleType {
         components: &mut Vec<ValueComponent>,
     ) -> Result<(), String> {
         match self {
-            Self::Primitive(primitive) => {
+            LoleType::Pointer(_) => {
+                let component = ValueComponent {
+                    byte_offset: stats.byte_length,
+                    value_type: LolePrimitiveType::U32,
+                };
+                stats.count += 1;
+                stats.byte_length += component.value_type.byte_length();
+                components.push(component);
+            }
+            LoleType::Primitive(primitive) => {
                 let component = ValueComponent {
                     byte_offset: stats.byte_length,
                     value_type: primitive.clone(),
                 };
 
                 stats.count += 1;
-                stats.byte_length += primitive.byte_length();
+                stats.byte_length += component.value_type.byte_length();
                 components.push(component);
             }
-            Self::StructInstance { name } => {
+            LoleType::StructInstance { name } => {
                 // safe, validation is done when creating StructInstance
                 let struct_def = ctx.struct_defs.get(name).unwrap();
 
@@ -177,6 +187,10 @@ impl LoleType {
 
     pub fn emit_components(&self, ctx: &ModuleContext, components: &mut Vec<WasmType>) -> u32 {
         match self {
+            LoleType::Pointer(_) => {
+                components.push(WasmType::I32);
+                1
+            }
             LoleType::Primitive(value_type) => {
                 components.push(value_type.to_wasm_type());
                 1

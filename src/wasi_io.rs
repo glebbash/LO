@@ -61,10 +61,16 @@ pub fn debug(msg: String) {
     unsafe {
         fd_write(
             FD_STDERR,
-            &[Ciovec {
-                buf: msg.as_ptr(),
-                buf_len: msg.as_bytes().len(),
-            }],
+            &[
+                Ciovec {
+                    buf: msg.as_ptr(),
+                    buf_len: msg.as_bytes().len(),
+                },
+                Ciovec {
+                    buf: "\n".as_ptr(),
+                    buf_len: 1,
+                },
+            ],
         )
         .unwrap();
     }

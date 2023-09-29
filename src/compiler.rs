@@ -502,7 +502,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 });
             }
 
-            let value_type = parse_lole_primitive_type(global_type, ctx)?;
+            let value_type = parse_unary_type(global_type, ctx)?;
             let initial_value = WasmExpr {
                 instrs: vec![compile_const_instr(global_value, &ctx)?],
             };
@@ -517,7 +517,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
 
             ctx.wasm_module.globals.push(WasmGlobal {
                 kind: WasmGlobalKind {
-                    value_type: value_type.to_wasm_type(),
+                    value_type,
                     mutable,
                 },
                 initial_value,
@@ -855,7 +855,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             }
         }
         ("if", [block_type, cond, then_branch, else_branch]) => WasmInstr::If {
-            block_type: Some(parse_lole_primitive_type(block_type, ctx.module)?.to_wasm_type()),
+            block_type: Some(parse_unary_type(block_type, ctx.module)?),
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
                 slice::from_ref(then_branch),
@@ -1521,9 +1521,9 @@ fn compile_load(
     address_instr: Box<WasmInstr>,
     base_byte_offset: u32,
 ) -> Result<WasmInstr, String> {
-    if let LoleType::Primitive(value_type) = value_type {
+    if let Ok(load_kind) = WasmLoadKind::from_lole_type(value_type) {
         return Ok(WasmInstr::Load {
-            kind: WasmLoadKind::from_primitive_type(value_type)?,
+            kind: load_kind,
             align: 1,
             offset: base_byte_offset,
             address_instr: address_instr.clone(),
@@ -1549,7 +1549,7 @@ fn compile_load(
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
         primitive_loads.push(WasmInstr::Load {
-            kind: WasmLoadKind::from_primitive_type(&comp.value_type)?,
+            kind: WasmLoadKind::from_lole_type(&LoleType::Primitive(comp.value_type))?,
             align: 1,
             offset: comp.byte_offset,
             address_instr: Box::new(WasmInstr::LocalGet {
@@ -1778,45 +1778,30 @@ fn compile_set_binds(
 // types
 
 fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, CompileError> {
-    match parse_lole_primitive_type(expr, ctx) {
-        Ok(value_type) => Ok(LoleType::Primitive(value_type)),
-        Err(err) => {
-            if let SExpr::Atom { value: s_name, .. } = expr {
-                if ctx.struct_defs.contains_key(s_name) {
-                    return Ok(LoleType::StructInstance {
-                        name: s_name.clone(),
-                    });
-                }
-            }
-
-            Err(err)
-        }
-    }
-}
-
-fn parse_lole_primitive_type(
-    expr: &SExpr,
-    ctx: &ModuleContext,
-) -> Result<LolePrimitiveType, CompileError> {
     match expr {
         SExpr::Atom {
             kind: AtomKind::Symbol,
             value: name,
             ..
         } => match &name[..] {
-            "bool" => return Ok(LolePrimitiveType::Bool),
-            "u8" => return Ok(LolePrimitiveType::U8),
-            "i8" => return Ok(LolePrimitiveType::I8),
-            "f8" => return Ok(LolePrimitiveType::F8),
-            "u16" => return Ok(LolePrimitiveType::U16),
-            "i16" => return Ok(LolePrimitiveType::I16),
-            "f16" => return Ok(LolePrimitiveType::F16),
-            "u32" => return Ok(LolePrimitiveType::U32),
-            "i32" => return Ok(LolePrimitiveType::I32),
-            "f32" => return Ok(LolePrimitiveType::F32),
-            "u64" => return Ok(LolePrimitiveType::U64),
-            "i64" => return Ok(LolePrimitiveType::I64),
-            "f64" => return Ok(LolePrimitiveType::F64),
+            "bool" => return Ok(LoleType::Primitive(LolePrimitiveType::Bool)),
+            "u8" => return Ok(LoleType::Primitive(LolePrimitiveType::U8)),
+            "i8" => return Ok(LoleType::Primitive(LolePrimitiveType::I8)),
+            "f8" => return Ok(LoleType::Primitive(LolePrimitiveType::F8)),
+            "u16" => return Ok(LoleType::Primitive(LolePrimitiveType::U16)),
+            "i16" => return Ok(LoleType::Primitive(LolePrimitiveType::I16)),
+            "f16" => return Ok(LoleType::Primitive(LolePrimitiveType::F16)),
+            "u32" => return Ok(LoleType::Primitive(LolePrimitiveType::U32)),
+            "i32" => return Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+            "f32" => return Ok(LoleType::Primitive(LolePrimitiveType::F32)),
+            "u64" => return Ok(LoleType::Primitive(LolePrimitiveType::U64)),
+            "i64" => return Ok(LoleType::Primitive(LolePrimitiveType::I64)),
+            "f64" => return Ok(LoleType::Primitive(LolePrimitiveType::F64)),
+            _ if ctx.struct_defs.contains_key(name) => {
+                return Ok(LoleType::StructInstance {
+                    name: String::from(name),
+                });
+            }
             _ => {}
         },
         SExpr::List { value, .. } => match &value[..] {
@@ -1827,11 +1812,9 @@ fn parse_lole_primitive_type(
             }, ptr_data]
                 if value == "&" || value == "&*" =>
             {
-                // ignoring ptr data type
-                parse_lole_type(ptr_data, ctx)?;
+                let pointee = parse_lole_type(ptr_data, ctx)?;
 
-                // pointer type
-                return Ok(LolePrimitiveType::I32);
+                return Ok(LoleType::Pointer(Box::new(pointee)));
             }
             _ => {}
         },
@@ -1842,6 +1825,19 @@ fn parse_lole_primitive_type(
         message: format!("Unknown value type: {expr}"),
         loc: expr.loc().clone(),
     })
+}
+
+// unary type - type that corresponds to single Wasm type (i.e not a multivalue)
+fn parse_unary_type(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmType, CompileError> {
+    match parse_lole_type(expr, ctx) {
+        Ok(LoleType::Primitive(primitive)) => Ok(primitive.to_wasm_type()),
+        Ok(LoleType::Pointer(_)) => Ok(WasmType::I32),
+        Err(err) => Err(err),
+        _ => Err(CompileError {
+            message: format!("Only unary type is supported here, got: {expr}"),
+            loc: expr.loc().clone(),
+        }),
+    }
 }
 
 fn parse_load_kind(kind: &str) -> Result<WasmLoadKind, String> {

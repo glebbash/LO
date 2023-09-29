@@ -243,11 +243,14 @@ impl WasmLoadKind {
         }
     }
 
-    pub fn from_primitive_type(value_type: &LolePrimitiveType) -> Result<Self, String> {
+    pub fn from_lole_type(value_type: &LoleType) -> Result<Self, String> {
         match value_type {
-            LolePrimitiveType::I32 => Ok(Self::I32),
-            LolePrimitiveType::U8 => Ok(Self::I32U8),
-            _ => return Err(format!("Unsupported type for load: {value_type:?}")),
-        }
+            LoleType::Primitive(LolePrimitiveType::U32) => return Ok(Self::I32),
+            LoleType::Primitive(LolePrimitiveType::I32) => return Ok(Self::I32),
+            LoleType::Primitive(LolePrimitiveType::U8) => return Ok(Self::I32U8),
+            LoleType::Pointer(_) => return Ok(Self::I32),
+            _ => {}
+        };
+        return Err(format!("Unsupported type for load: {value_type:?}"));
     }
 }
