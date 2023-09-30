@@ -73,8 +73,7 @@
 
         {&fn_type : (& Lole/Wasm/WasmFnType) = (Vec/at &fn_types {fn_body . type_index})}
 
-        ; TODO: use `:=`
-        {&fn_ctx : (& Lole/Ir/FnContext) = (new Lole/Ir/FnContext (do
+        {&fn_ctx := (new Lole/Ir/FnContext (do
             &ctx
             &fn_type
             {fn_body . &locals}

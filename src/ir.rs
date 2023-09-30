@@ -380,12 +380,12 @@ pub enum LoleExpr {
     MultiValueEmit {
         values: Vec<LoleExpr>,
     },
-    // will not be written to binary, used for types only
-    NoEmit {
+    Casted {
+        value_type: LoleType,
         expr: Box<LoleExpr>,
     },
-    // will be written to binary but emits no types
-    NoTypeCheck {
+    // will not be written to binary, used for types only
+    NoEmit {
         expr: Box<LoleExpr>,
     },
 }

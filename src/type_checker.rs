@@ -14,12 +14,12 @@ pub fn get_types(
 
 pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, String> {
     match instr {
-        LoleExpr::Unreachable { .. } => Ok(LoleType::Void),
-        LoleExpr::I32ConstLazy { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
-        LoleExpr::I32Const { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
-        LoleExpr::I64Const { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I64)),
+        LoleExpr::Unreachable => Ok(LoleType::Void),
+        LoleExpr::I32ConstLazy { value: _ } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+        LoleExpr::I32Const { value: _ } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+        LoleExpr::I64Const { value: _ } => Ok(LoleType::Primitive(LolePrimitiveType::I64)),
 
-        LoleExpr::MultiValueEmit { values, .. } => {
+        LoleExpr::MultiValueEmit { values } => {
             let mut types = vec![];
             for value in values {
                 types.push(get_lole_type(ctx, value)?);
@@ -27,22 +27,46 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
             Ok(LoleType::Tuple(types))
         }
         LoleExpr::NoEmit { expr } => get_lole_type(ctx, expr),
-        LoleExpr::StructLoad { struct_name, .. } | LoleExpr::StructGet { struct_name, .. } => {
-            Ok(LoleType::StructInstance {
-                name: struct_name.clone(),
-            })
+        LoleExpr::StructLoad {
+            struct_name,
+            address_instr: _,
+            address_local_index: _,
+            base_byte_offset: _,
+            primitive_loads: _,
         }
+        | LoleExpr::StructGet {
+            struct_name,
+            base_index: _,
+            primitive_gets: _,
+        } => Ok(LoleType::StructInstance {
+            name: struct_name.clone(),
+        }),
 
         // type-checked in the complier:
-        LoleExpr::NoTypeCheck { .. } => Ok(LoleType::Void),
-        LoleExpr::Set { .. } => Ok(LoleType::Void),
-        LoleExpr::Drop { .. } => Ok(LoleType::Void),
-        LoleExpr::Return { .. } => Ok(LoleType::Void),
-        LoleExpr::MemorySize { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
-        LoleExpr::MemoryGrow { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+        LoleExpr::Casted {
+            value_type,
+            expr: _,
+        } => Ok(value_type.clone()),
+        LoleExpr::Set { bind: _ } => Ok(LoleType::Void),
+        LoleExpr::Drop {
+            value: _,
+            drop_count: _,
+        } => Ok(LoleType::Void),
+        LoleExpr::Return { value: _ } => Ok(LoleType::Void),
+        LoleExpr::MemorySize => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+        LoleExpr::MemoryGrow { size: _ } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
 
-        LoleExpr::BinaryOp { lhs, .. } => get_lole_type(ctx, lhs),
-        LoleExpr::Load { kind, .. } => Ok(kind.clone()),
+        LoleExpr::BinaryOp {
+            kind: _,
+            lhs,
+            rhs: _,
+        } => get_lole_type(ctx, lhs),
+        LoleExpr::Load {
+            kind,
+            align: _,
+            offset: _,
+            address_instr: _,
+        } => Ok(kind.clone()),
         LoleExpr::GlobalGet { global_index } => {
             let global_def = ctx
                 .module
@@ -71,14 +95,29 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
 
             Ok(local_def.value_type.clone())
         }
-        LoleExpr::Call { fn_type_index, .. } => {
+        LoleExpr::Call {
+            fn_type_index,
+            fn_index: _,
+            args: _,
+        } => {
             let lole_fn_type = &ctx.module.lole_fn_types.get(fn_type_index).unwrap();
             Ok(lole_fn_type.output.clone())
         }
-        LoleExpr::If { block_type, .. }
-        | LoleExpr::Block { block_type, .. }
-        | LoleExpr::Loop { block_type, .. } => Ok(block_type.clone()),
-        LoleExpr::Branch { .. } => Ok(LoleType::Void),
+        LoleExpr::If {
+            block_type,
+            cond: _,
+            then_branch: _,
+            else_branch: _,
+        }
+        | LoleExpr::Block {
+            block_type,
+            body: _,
+        }
+        | LoleExpr::Loop {
+            block_type,
+            body: _,
+        } => Ok(block_type.clone()),
+        LoleExpr::Branch { label_index: _ } => Ok(LoleType::Void),
     }
 }
 
@@ -94,31 +133,53 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
     // Ok(wasm_types)
 
     Ok(match instr {
-        LoleExpr::Unreachable { .. } => vec![],
-        LoleExpr::I32ConstLazy { .. } => vec![WasmType::I32],
-        LoleExpr::I32Const { .. } => vec![WasmType::I32],
-        LoleExpr::I64Const { .. } => vec![WasmType::I64],
-        LoleExpr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
+        LoleExpr::Unreachable => vec![],
+        LoleExpr::I32ConstLazy { value: _ } => vec![WasmType::I32],
+        LoleExpr::I32Const { value: _ } => vec![WasmType::I32],
+        LoleExpr::I64Const { value: _ } => vec![WasmType::I64],
+        LoleExpr::MultiValueEmit { values } => get_types(ctx, values)?,
         LoleExpr::StructLoad {
-            primitive_loads, ..
+            primitive_loads,
+            struct_name: _,
+            address_instr: _,
+            address_local_index: _,
+            base_byte_offset: _,
         } => get_types(ctx, primitive_loads)?,
-        LoleExpr::StructGet { primitive_gets, .. } => get_types(ctx, primitive_gets)?,
+        LoleExpr::StructGet {
+            primitive_gets,
+            struct_name: _,
+            base_index: _,
+        } => get_types(ctx, primitive_gets)?,
         LoleExpr::NoEmit { expr: instr } => get_type(ctx, instr)?,
 
-        // type-checked in the complier:
-        LoleExpr::NoTypeCheck { .. } => vec![],
-        LoleExpr::Set { .. } => vec![],
-        LoleExpr::Drop { .. } => vec![],
-        LoleExpr::Return { .. } => vec![],
-        LoleExpr::MemorySize { .. } => vec![WasmType::I32],
-        LoleExpr::MemoryGrow { .. } => vec![WasmType::I32],
+        LoleExpr::Casted {
+            value_type,
+            expr: _,
+        } => {
+            let mut wasm_types = vec![];
+            value_type.emit_components(ctx.module, &mut wasm_types);
+            wasm_types
+        }
+        LoleExpr::Set { bind: _ } => vec![],
+        LoleExpr::Drop {
+            value: _,
+            drop_count: _,
+        } => vec![],
+        LoleExpr::Return { value: _ } => vec![],
+        LoleExpr::MemorySize => vec![WasmType::I32],
+        LoleExpr::MemoryGrow { size: _ } => vec![WasmType::I32],
 
-        LoleExpr::BinaryOp { lhs, rhs, .. } => {
+        LoleExpr::BinaryOp { lhs, rhs, kind: _ } => {
             get_type(ctx, rhs)?;
             return get_type(ctx, lhs);
         }
-        LoleExpr::Load { kind, .. } => vec![kind.to_wasm_type().unwrap()],
-        LoleExpr::GlobalGet { global_index, .. } => {
+        LoleExpr::Load {
+            kind,
+            align: _,
+            offset: _,
+            address_instr: _,
+        } => vec![kind.to_wasm_type().unwrap()],
+        LoleExpr::GlobalGet { global_index } => {
             let wasm_global = ctx
                 .module
                 .wasm_module
@@ -128,7 +189,7 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
 
             vec![wasm_global.kind.value_type]
         }
-        LoleExpr::LocalGet { local_index, .. } => {
+        LoleExpr::LocalGet { local_index } => {
             let local_index = *local_index as usize;
             let locals_len = ctx.fn_ctx.fn_type.inputs.len();
             if local_index < locals_len {
@@ -137,19 +198,34 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
                 vec![ctx.fn_ctx.non_arg_locals[local_index - locals_len]]
             }
         }
-        LoleExpr::Call { fn_type_index, .. } => {
+        LoleExpr::Call {
+            fn_type_index,
+            fn_index: _,
+            args: _,
+        } => {
             let fn_type = &ctx.module.wasm_module.types[*fn_type_index as usize];
             fn_type.outputs.clone()
         }
-        LoleExpr::If { block_type, .. }
-        | LoleExpr::Block { block_type, .. }
-        | LoleExpr::Loop { block_type, .. } => {
+        LoleExpr::If {
+            block_type,
+            cond: _,
+            then_branch: _,
+            else_branch: _,
+        }
+        | LoleExpr::Block {
+            block_type,
+            body: _,
+        }
+        | LoleExpr::Loop {
+            block_type,
+            body: _,
+        } => {
             if let Some(wasm_type) = block_type.to_wasm_type() {
                 vec![wasm_type]
             } else {
                 vec![]
             }
         }
-        LoleExpr::Branch { .. } => vec![],
+        LoleExpr::Branch { label_index: _ } => vec![],
     })
 }

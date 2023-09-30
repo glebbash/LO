@@ -145,7 +145,10 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             lower_exprs(out, values);
         }
         LoleExpr::NoEmit { expr: _ } => {}
-        LoleExpr::NoTypeCheck { expr } => {
+        LoleExpr::Casted {
+            expr,
+            value_type: _,
+        } => {
             lower_expr(out, *expr);
         }
     }

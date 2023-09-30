@@ -1113,8 +1113,13 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 });
             }
 
-            LoleExpr::MultiValueEmit {
-                values: value_instrs,
+            LoleExpr::Casted {
+                value_type: LoleType::StructInstance {
+                    name: s_name.clone(),
+                },
+                expr: Box::new(LoleExpr::MultiValueEmit {
+                    values: value_instrs,
+                }),
             }
         }
         ("new", [type_expr, init_expr, other @ ..]) => {
@@ -1194,10 +1199,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
 
             let init_store_instr = compile_set(ctx, init_instr, init_load, op_loc)?;
 
-            LoleExpr::MultiValueEmit {
-                values: vec![
-                    LoleExpr::NoTypeCheck {
-                        expr: Box::new(LoleExpr::Call {
+            LoleExpr::Casted {
+                value_type: LoleType::Pointer(Box::new(value_type)),
+                expr: Box::new(LoleExpr::MultiValueEmit {
+                    values: vec![
+                        LoleExpr::Call {
                             fn_index: alloc_fn_index,
                             fn_type_index: 0, // doesn't matter as it's inside NoTypeCheck
                             args: vec![
@@ -1206,18 +1212,18 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                                     value: value_size as i32,
                                 },
                             ],
-                        }),
-                    },
-                    LoleExpr::Set {
-                        bind: LoleSetBind::Local {
-                            index: return_addr_local_index,
                         },
-                    },
-                    init_store_instr,
-                    LoleExpr::LocalGet {
-                        local_index: return_addr_local_index,
-                    },
-                ],
+                        LoleExpr::Set {
+                            bind: LoleSetBind::Local {
+                                index: return_addr_local_index,
+                            },
+                        },
+                        init_store_instr,
+                        LoleExpr::LocalGet {
+                            local_index: return_addr_local_index,
+                        },
+                    ],
+                }),
             }
         }
         (
@@ -1733,7 +1739,8 @@ fn compile_set(
     values.push(value_instr);
     values.reverse();
 
-    Ok(LoleExpr::NoTypeCheck {
+    Ok(LoleExpr::Casted {
+        value_type: LoleType::Void,
         expr: Box::new(LoleExpr::MultiValueEmit { values }),
     })
 }

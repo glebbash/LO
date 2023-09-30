@@ -21,8 +21,7 @@
 
 ; public interface
 (fn Lole/Parser/parse [(file_name StringSlice) (script StringSlice)] Lole/Parser/ParseScriptResult (
-    ; TODO: use `:=`
-    {&parser : (& Lole/Parser) = (new Lole/Parser (Lole/Parser/new file_name script)
+    {&parser := (new Lole/Parser (Lole/Parser/new file_name script)
         :using Alloc/STACK)}
     (defer (free Alloc/STACK &parser (sizeof Lole/Parser)))
 

@@ -5,8 +5,7 @@
 
 (export main :as main)
 (fn main [] i32 (
-    ; TODO: use `:=`
-    {p1 : Point2D = (struct.new Point2D 0 0)}
+    {p1 := (struct.new Point2D 0 0)}
     {p1 . x = 1}
     {p1 . y = 2}
 

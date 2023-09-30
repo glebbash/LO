@@ -11,8 +11,7 @@
 )
 
 (fn main [] void (
-    ; TODO: use `:=`
-    {r : Rect = (struct.new Rect
+    {r := (struct.new Rect
         (struct.new Point2D 1 2)
         (struct.new Point2D 3 4)
     )}
@@ -24,8 +23,7 @@
     (print_u32 {r . br . x})
     (puts "\n")
 
-    ; TODO: use `:=`
-    {&r : (& Rect) = (new Rect r :using Alloc/STACK)}
+    {&r := (new Rect r :using Alloc/STACK)}
     (defer (Stack/free (sizeof Rect)))
 
     {r2 := (* &r)}
