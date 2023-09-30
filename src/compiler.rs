@@ -752,47 +752,47 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
         ) => WasmInstr::I32Const {
             value: value.chars().next().unwrap() as i32,
         },
-        ("i32.eq" | "==", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("==", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.ne" | "!=", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("!=", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32NotEqual,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.not" | "not" | "!", [lhs]) => WasmInstr::BinaryOp {
+        ("not", [lhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(WasmInstr::I32Const { value: 0 }),
         },
-        ("i32.lt_s" | "<", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("<", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenSigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.gt_s" | ">", [lhs, rhs]) => WasmInstr::BinaryOp {
+        (">", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterThenSigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.ge_s" | ">=", [lhs, rhs]) => WasmInstr::BinaryOp {
+        (">=", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterEqualSigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.and" | "&&", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("&&", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32And,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.or" | "||", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("||", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Or,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.add" | "+", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("+", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
@@ -806,7 +806,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             };
             compile_set(ctx, value, bind, lhs.loc())?
         }
-        ("i32.sub" | "-", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("-", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
@@ -820,18 +820,17 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             };
             compile_set(ctx, value, bind, lhs.loc())?
         }
-        ("i32.mul" | "*", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("*", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        // TODO: should default `div` and `rem` be unsigned?
-        ("i32.div" | "/", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("/", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32DivUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("i32.rem" | "%", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("%", [lhs, rhs]) => WasmInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32RemUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
@@ -1178,7 +1177,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             }
         }
         (
-            "let" | ":",
+            ":",
             [SExpr::Atom {
                 value: local_name,
                 loc: name_loc,
@@ -1222,7 +1221,26 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 instr: Box::new(WasmInstr::MultiValueEmit { values }),
             }
         }
-        ("set" | "=", [bind, value]) => {
+        ("=", [bind, value]) => {
+            let value_instr = compile_instr(value, ctx)?;
+            let bind_instr = compile_instr(bind, ctx)?;
+
+            let value_types = get_type(ctx, &value_instr)?;
+            let bind_types = get_type(ctx, &bind_instr)?;
+
+            if value_types != bind_types {
+                return Err(CompileError {
+                    message: format!(
+                        "TypeError: Invalid types for '{op}', needed {:?}, got {:?}",
+                        bind_types, value_types
+                    ),
+                    loc: op_loc.clone(),
+                });
+            }
+
+            compile_set(ctx, value_instr, bind_instr, op_loc)?
+        }
+        (":=", [bind, value]) => {
             let value_instr = compile_instr(value, ctx)?;
             let bind_instr = compile_instr(bind, ctx)?;
 
@@ -1242,7 +1260,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             compile_set(ctx, value_instr, bind_instr, op_loc)?
         }
         (
-            "get" | ".",
+            ".",
             [lhs, SExpr::Atom {
                 value: f_name,
                 loc: f_name_loc,
@@ -1409,7 +1427,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
         }
         // TODO(feat): support custom aligns and offsets
         (
-            "@" | "load",
+            "@",
             [SExpr::Atom {
                 value: load_kind,
                 loc: kind_loc,
@@ -1443,7 +1461,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 loc: op_loc.clone(),
             })?
         }
-        ("@" | "load", [load, offset]) => {
+        ("@", [load, offset]) => {
             let load_instr = compile_instr(load, ctx)?;
             let offset_instr = compile_instr(offset, ctx)?;
 
