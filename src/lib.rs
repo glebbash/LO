@@ -8,6 +8,7 @@ mod codegen;
 mod compiler;
 mod expand;
 mod ir;
+mod lowering;
 mod parser;
 mod type_checker;
 mod wasi_io;

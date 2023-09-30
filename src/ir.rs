@@ -112,6 +112,114 @@ pub struct FnDef {
     pub type_index: u32,
 }
 
+#[derive(Clone, Debug)]
+pub enum LoleExpr {
+    Unreachable,
+    Drop {
+        value: Box<LoleExpr>,
+        drop_count: usize,
+    },
+    BinaryOp {
+        kind: WasmBinaryOpKind,
+        lhs: Box<LoleExpr>,
+        rhs: Box<LoleExpr>,
+    },
+    MemorySize,
+    MemoryGrow {
+        size: Box<LoleExpr>,
+    },
+    // TODO: use single type for loads/gets?
+    Load {
+        kind: WasmLoadKind,
+        align: u32,
+        offset: u32,
+        address_instr: Box<LoleExpr>,
+    },
+    StructLoad {
+        struct_name: String,
+        address_instr: Box<LoleExpr>,
+        address_local_index: u32,
+        base_byte_offset: u32,
+        primitive_loads: Vec<LoleExpr>,
+    },
+    LocalGet {
+        local_index: u32,
+    },
+    GlobalGet {
+        global_index: u32,
+    },
+    StructGet {
+        struct_name: String,
+        base_index: u32,
+        primitive_gets: Vec<LoleExpr>,
+    },
+    I32ConstLazy {
+        value: Rc<RefCell<i32>>,
+    },
+    I32Const {
+        value: i32,
+    },
+    I64Const {
+        value: i64,
+    },
+    Set {
+        bind: LoleSetBind,
+    },
+    Return {
+        value: Box<LoleExpr>,
+    },
+    Loop {
+        block_type: Option<WasmType>,
+        body: Vec<LoleExpr>,
+    },
+    Block {
+        block_type: Option<WasmType>,
+        body: Vec<LoleExpr>,
+    },
+    If {
+        block_type: Option<WasmType>,
+        cond: Box<LoleExpr>,
+        then_branch: Vec<LoleExpr>,
+        else_branch: Option<Vec<LoleExpr>>,
+    },
+    Branch {
+        label_index: u32,
+    },
+    Call {
+        fn_index: u32,
+        fn_type_index: u32, // for type-checker
+        args: Vec<LoleExpr>,
+    },
+    MultiValueEmit {
+        values: Vec<LoleExpr>,
+    },
+    // will not be written to binary, used for types only
+    NoEmit {
+        expr: Box<LoleExpr>,
+    },
+    // will be written to binary but emits no types
+    NoTypeCheck {
+        expr: Box<LoleExpr>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum LoleSetBind {
+    Local {
+        index: u32,
+    },
+    Global {
+        index: u32,
+    },
+    Memory {
+        align: u32,
+        offset: u32,
+        kind: WasmStoreKind,
+        address_instr: Box<LoleExpr>,
+        value_local_index: u32,
+    },
+}
+
 impl FnDef {
     pub fn get_absolute_index(&self, ctx: &ModuleContext) -> u32 {
         if self.local {

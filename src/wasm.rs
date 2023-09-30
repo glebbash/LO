@@ -1,5 +1,5 @@
 use crate::ir::*;
-use alloc::{boxed::Box, format, rc::Rc, string::String, vec::Vec};
+use alloc::{format, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -78,43 +78,24 @@ pub enum WasmStoreKind {
 #[derive(Clone, Debug)]
 pub enum WasmInstr {
     Unreachable,
-    Drop {
-        value: Box<WasmInstr>,
-        drop_count: usize,
-    },
+    Drop,
+    // TODO: inline all?
     BinaryOp {
         kind: WasmBinaryOpKind,
-        lhs: Box<WasmInstr>,
-        rhs: Box<WasmInstr>,
     },
     MemorySize,
-    MemoryGrow {
-        size: Box<WasmInstr>,
-    },
+    MemoryGrow,
     // TODO: use single type for loads/gets?
     Load {
         kind: WasmLoadKind,
         align: u32,
         offset: u32,
-        address_instr: Box<WasmInstr>,
-    },
-    StructLoad {
-        struct_name: String,
-        address_instr: Box<WasmInstr>,
-        address_local_index: u32,
-        base_byte_offset: u32,
-        primitive_loads: Vec<WasmInstr>,
     },
     LocalGet {
         local_index: u32,
     },
     GlobalGet {
         global_index: u32,
-    },
-    StructGet {
-        struct_name: String,
-        base_index: u32,
-        primitive_gets: Vec<WasmInstr>,
     },
     I32ConstLazy {
         value: Rc<RefCell<i32>>,
@@ -125,45 +106,38 @@ pub enum WasmInstr {
     I64Const {
         value: i64,
     },
-    Set {
-        bind: WasmSetBind,
+    LocalSet {
+        local_index: u32,
     },
-    Return {
-        value: Box<WasmInstr>,
+    GlobalSet {
+        global_index: u32,
     },
-    Loop {
-        block_type: Option<WasmType>,
-        body: Vec<WasmInstr>,
+    Store {
+        align: u32,
+        offset: u32,
+        kind: WasmStoreKind,
     },
-    Block {
-        block_type: Option<WasmType>,
-        body: Vec<WasmInstr>,
+    Return,
+    BlockStart {
+        block_type: WasmBlockType,
+        return_type: Option<WasmType>,
     },
-    If {
-        block_type: Option<WasmType>,
-        cond: Box<WasmInstr>,
-        then_branch: Vec<WasmInstr>,
-        else_branch: Option<Vec<WasmInstr>>,
-    },
+    Else,
+    BlockEnd,
     Branch {
         label_index: u32,
     },
     Call {
         fn_index: u32,
-        fn_type_index: u32, // for type-checker
-        args: Vec<WasmInstr>,
     },
-    MultiValueEmit {
-        values: Vec<WasmInstr>,
-    },
-    // will not be written to binary, used for types only
-    NoEmit {
-        instr: Box<WasmInstr>,
-    },
-    // will be written to binary but emits no types
-    NoTypeCheck {
-        instr: Box<WasmInstr>,
-    },
+}
+
+#[repr(u8)]
+#[derive(Debug, Copy, Clone)]
+pub enum WasmBlockType {
+    Block = 0x02,
+    Loop = 0x03,
+    If = 0x04,
 }
 
 #[repr(u8)]
@@ -207,23 +181,6 @@ pub enum WasmExportType {
 
 pub enum WasmData {
     Active { offset: WasmExpr, bytes: Vec<u8> },
-}
-
-#[derive(Clone, Debug)]
-pub enum WasmSetBind {
-    Local {
-        index: u32,
-    },
-    Global {
-        index: u32,
-    },
-    Memory {
-        align: u32,
-        offset: u32,
-        kind: WasmStoreKind,
-        address_instr: Box<WasmInstr>,
-        value_local_index: u32,
-    },
 }
 
 impl WasmStoreKind {

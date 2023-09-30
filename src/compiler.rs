@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, type_checker::*, wasm::*};
+use crate::{ast::*, ir::*, lowering::*, type_checker::*, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -61,9 +61,9 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
             },
         };
 
-        let mut instrs = compile_block(&fn_body.body, &mut block_ctx)?;
+        let mut lole_exprs = compile_block(&fn_body.body, &mut block_ctx)?;
         if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
-            instrs.append(&mut values?);
+            lole_exprs.append(&mut values?);
         };
 
         let mut locals = Vec::<WasmLocals>::new();
@@ -80,6 +80,10 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
             });
         }
 
+        // TODO: move to better place
+        let mut instrs = vec![];
+        lower_exprs(&mut instrs, lole_exprs);
+
         ctx.wasm_module.codes.push(WasmFn {
             locals,
             expr: WasmExpr { instrs },
@@ -89,10 +93,10 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
     Ok(ctx.wasm_module)
 }
 
-fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<WasmInstr>, CompileError> {
+fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleExpr>, CompileError> {
     let instrs = compile_instrs(exprs, ctx)?;
     for (instr, i) in instrs.iter().zip(0..) {
-        if let WasmInstr::NoEmit { .. } = instr {
+        if let LoleExpr::NoEmit { .. } = instr {
             continue;
         }
 
@@ -504,9 +508,12 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
 
             let lole_type = parse_lole_type(global_type, ctx)?;
             let wasm_type = get_wasm_type(&lole_type, global_type)?;
-            let initial_value = WasmExpr {
-                instrs: vec![compile_const_instr(global_value, &ctx)?],
-            };
+
+            // TODO: move to better place
+            let mut instrs = vec![];
+            lower_expr(&mut instrs, compile_const_instr(global_value, &ctx)?);
+
+            let initial_value = WasmExpr { instrs };
 
             ctx.globals.insert(
                 global_name.clone(),
@@ -546,6 +553,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 AtomKind::Symbol => base64_decode(data_base64.as_bytes()),
             };
 
+            // TODO: move to better place
             ctx.wasm_module.datas.borrow_mut().push(WasmData::Active {
                 offset: WasmExpr {
                     instrs: vec![WasmInstr::I32Const { value: offset }],
@@ -622,11 +630,11 @@ fn compile_struct(
     Ok(StructDef { fields })
 }
 
-fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<WasmInstr>, CompileError> {
+fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleExpr>, CompileError> {
     exprs.iter().map(|expr| compile_instr(expr, ctx)).collect()
 }
 
-fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, CompileError> {
+fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, CompileError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom { value, loc, kind } => {
@@ -647,6 +655,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                             .datas
                             .borrow_mut()
                             .push(WasmData::Active {
+                                // TODO: move to better place
                                 offset: WasmExpr {
                                     instrs: vec![WasmInstr::I32Const { value: string_ptr }],
                                 },
@@ -656,16 +665,16 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                         string_ptr
                     });
 
-                return Ok(WasmInstr::MultiValueEmit {
+                return Ok(LoleExpr::MultiValueEmit {
                     values: vec![
-                        WasmInstr::I32Const { value: string_ptr },
-                        WasmInstr::I32Const { value: string_len },
+                        LoleExpr::I32Const { value: string_ptr },
+                        LoleExpr::I32Const { value: string_len },
                     ],
                 });
             }
 
             if value.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(WasmInstr::I32Const {
+                return Ok(LoleExpr::I32Const {
                     value: (value.parse().map_err(|_| CompileError {
                         message: format!("Parsing i32 (implicit) failed"),
                         loc: loc.clone(),
@@ -674,7 +683,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             }
 
             if let Some(global) = ctx.module.globals.get(value.as_str()) {
-                return Ok(WasmInstr::GlobalGet {
+                return Ok(LoleExpr::GlobalGet {
                     global_index: global.index,
                 });
             };
@@ -702,17 +711,17 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
     };
 
     let instr = match (op.as_str(), &args[..]) {
-        ("unreachable", []) => WasmInstr::Unreachable {},
+        ("unreachable", []) => LoleExpr::Unreachable {},
         ("drop", [expr]) => {
             let instr = compile_instr(expr, ctx)?;
             let drop_count = get_type(ctx, &instr)?.len();
 
-            WasmInstr::Drop {
+            LoleExpr::Drop {
                 value: Box::new(instr),
                 drop_count,
             }
         }
-        ("do", exprs) => WasmInstr::MultiValueEmit {
+        ("do", exprs) => LoleExpr::MultiValueEmit {
             values: compile_instrs(exprs, ctx)?,
         },
         (
@@ -722,7 +731,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 loc,
                 kind: AtomKind::Symbol,
             }],
-        ) => WasmInstr::I32Const {
+        ) => LoleExpr::I32Const {
             value: value.parse().map_err(|_| CompileError {
                 message: format!("Parsing i32 failed"),
                 loc: loc.clone(),
@@ -735,7 +744,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 loc,
                 kind: AtomKind::Symbol,
             }],
-        ) => WasmInstr::I64Const {
+        ) => LoleExpr::I64Const {
             // TODO(3rd-party-bug): figure out why I can't use parse::<i64>
             value: value.parse::<i32>().map_err(|_| CompileError {
                 message: format!("Parsing i64 failed"),
@@ -749,96 +758,96 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 kind: AtomKind::String,
                 ..
             }],
-        ) => WasmInstr::I32Const {
+        ) => LoleExpr::I32Const {
             value: value.chars().next().unwrap() as i32,
         },
-        ("==", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("==", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("!=", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("!=", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32NotEqual,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("not", [lhs]) => WasmInstr::BinaryOp {
+        ("not", [lhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(WasmInstr::I32Const { value: 0 }),
+            rhs: Box::new(LoleExpr::I32Const { value: 0 }),
         },
-        ("<", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("<", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenSigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        (">", [lhs, rhs]) => WasmInstr::BinaryOp {
+        (">", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterThenSigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        (">=", [lhs, rhs]) => WasmInstr::BinaryOp {
+        (">=", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterEqualSigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("&&", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("&&", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32And,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("||", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("||", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32Or,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("+", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("+", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         ("+=", [lhs, rhs]) => {
             let bind = compile_instr(lhs, ctx)?;
-            let value = WasmInstr::BinaryOp {
+            let value = LoleExpr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Add,
                 lhs: Box::new(bind.clone()),
                 rhs: Box::new(compile_instr(rhs, ctx)?),
             };
             compile_set(ctx, value, bind, lhs.loc())?
         }
-        ("-", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("-", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         ("-=", [lhs, rhs]) => {
             let bind = compile_instr(lhs, ctx)?;
-            let value = WasmInstr::BinaryOp {
+            let value = LoleExpr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Sub,
                 lhs: Box::new(bind.clone()),
                 rhs: Box::new(compile_instr(rhs, ctx)?),
             };
             compile_set(ctx, value, bind, lhs.loc())?
         }
-        ("*", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("*", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("/", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("/", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32DivUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("%", [lhs, rhs]) => WasmInstr::BinaryOp {
+        ("%", [lhs, rhs]) => LoleExpr::BinaryOp {
             kind: WasmBinaryOpKind::I32RemUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("data.size", []) => WasmInstr::I32ConstLazy {
+        ("data.size", []) => LoleExpr::I32ConstLazy {
             value: ctx.module.data_size.clone(),
         },
-        ("memory.size", []) => WasmInstr::MemorySize {},
+        ("memory.size", []) => LoleExpr::MemorySize {},
         ("memory.grow", [size_expr]) => {
             let size = compile_instr(size_expr, ctx)?;
             let size_type = get_type(ctx, &size)?;
@@ -851,11 +860,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 });
             }
 
-            WasmInstr::MemoryGrow {
+            LoleExpr::MemoryGrow {
                 size: Box::new(size),
             }
         }
-        ("if", [block_type, cond, then_branch, else_branch]) => WasmInstr::If {
+        ("if", [block_type, cond, then_branch, else_branch]) => LoleExpr::If {
             block_type: Some(parse_unary_type(block_type, ctx.module)?),
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
@@ -881,7 +890,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 },
             )?),
         },
-        ("if", [cond, then_branch]) => WasmInstr::If {
+        ("if", [cond, then_branch]) => LoleExpr::If {
             block_type: None,
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
@@ -910,11 +919,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             let mut body = compile_block(exprs, &mut ctx)?;
 
             // add implicit continue
-            body.push(WasmInstr::Branch { label_index: 0 });
+            body.push(LoleExpr::Branch { label_index: 0 });
 
-            WasmInstr::Block {
+            LoleExpr::Block {
                 block_type: None,
-                body: vec![WasmInstr::Loop {
+                body: vec![LoleExpr::Loop {
                     block_type: None,
                     body,
                 }],
@@ -933,7 +942,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 label_index += 1;
             }
 
-            WasmInstr::Branch { label_index }
+            LoleExpr::Branch { label_index }
         }
         ("continue", []) => {
             let mut label_index = 0; // 0 = loop
@@ -948,10 +957,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 label_index += 1;
             }
 
-            WasmInstr::Branch { label_index }
+            LoleExpr::Branch { label_index }
         }
         ("return", values) => {
-            let value = WasmInstr::MultiValueEmit {
+            let value = LoleExpr::MultiValueEmit {
                 values: compile_instrs(values, ctx)?,
             };
 
@@ -969,13 +978,13 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
 
             if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, ctx) {
                 let mut values = values?;
-                values.push(WasmInstr::Return {
+                values.push(LoleExpr::Return {
                     value: Box::new(value),
                 });
-                return Ok(WasmInstr::MultiValueEmit { values });
+                return Ok(LoleExpr::MultiValueEmit { values });
             };
 
-            WasmInstr::Return {
+            LoleExpr::Return {
                 value: Box::new(value),
             }
         }
@@ -1003,7 +1012,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
 
             deferred.push(defer_expr.clone());
 
-            WasmInstr::MultiValueEmit { values: vec![] }
+            LoleExpr::MultiValueEmit { values: vec![] }
         }
         (
             "defer.eval",
@@ -1020,12 +1029,12 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 });
             };
 
-            WasmInstr::MultiValueEmit { values: values? }
+            LoleExpr::MultiValueEmit { values: values? }
         }
         ("sizeof", [type_expr]) => {
             let value_type = parse_lole_type(type_expr, ctx.module)?;
 
-            WasmInstr::I32Const {
+            LoleExpr::I32Const {
                 value: value_type
                     .sized_comp_stats(ctx.module)
                     .map_err(|err| CompileError {
@@ -1069,13 +1078,13 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 });
             }
 
-            WasmInstr::MultiValueEmit {
+            LoleExpr::MultiValueEmit {
                 values: value_instrs,
             }
         }
         ("new", [type_expr, init_expr, other @ ..]) => {
             let alloc_id_instr = match other {
-                [] => WasmInstr::I32Const {
+                [] => LoleExpr::I32Const {
                     value: HEAP_ALLOC_ID,
                 },
                 [SExpr::Atom {
@@ -1138,7 +1147,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             let init_load = compile_load(
                 ctx,
                 &value_type,
-                Box::new(WasmInstr::LocalGet {
+                Box::new(LoleExpr::LocalGet {
                     local_index: return_addr_local_index,
                 }),
                 0,
@@ -1150,27 +1159,27 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
 
             let init_store_instr = compile_set(ctx, init_instr, init_load, op_loc)?;
 
-            WasmInstr::MultiValueEmit {
+            LoleExpr::MultiValueEmit {
                 values: vec![
-                    WasmInstr::NoTypeCheck {
-                        instr: Box::new(WasmInstr::Call {
+                    LoleExpr::NoTypeCheck {
+                        expr: Box::new(LoleExpr::Call {
                             fn_index: alloc_fn_index,
                             fn_type_index: 0, // doesn't matter as it's inside NoTypeCheck
                             args: vec![
                                 alloc_id_instr,
-                                WasmInstr::I32Const {
+                                LoleExpr::I32Const {
                                     value: value_size as i32,
                                 },
                             ],
                         }),
                     },
-                    WasmInstr::Set {
-                        bind: WasmSetBind::Local {
+                    LoleExpr::Set {
+                        bind: LoleSetBind::Local {
                             index: return_addr_local_index,
                         },
                     },
                     init_store_instr,
-                    WasmInstr::LocalGet {
+                    LoleExpr::LocalGet {
                         local_index: return_addr_local_index,
                     },
                 ],
@@ -1214,11 +1223,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             );
 
             let values = (start_index..(start_index + comp_count))
-                .map(|i| WasmInstr::LocalGet { local_index: i })
+                .map(|i| LoleExpr::LocalGet { local_index: i })
                 .collect();
 
-            WasmInstr::NoEmit {
-                instr: Box::new(WasmInstr::MultiValueEmit { values }),
+            LoleExpr::NoEmit {
+                expr: Box::new(LoleExpr::MultiValueEmit { values }),
             }
         }
         ("=", [bind, value]) => {
@@ -1278,10 +1287,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             );
 
             let values = (start_index..(start_index + comp_count))
-                .map(|i| WasmInstr::LocalGet { local_index: i })
+                .map(|i| LoleExpr::LocalGet { local_index: i })
                 .collect();
 
-            let bind_instr = WasmInstr::MultiValueEmit { values };
+            let bind_instr = LoleExpr::MultiValueEmit { values };
 
             compile_set(ctx, value_instr, bind_instr, op_loc)?
         }
@@ -1339,7 +1348,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
 
             let lhs_instr = compile_instr(lhs, ctx)?;
 
-            if let WasmInstr::StructGet {
+            if let LoleExpr::StructGet {
                 struct_name,
                 base_index,
                 ..
@@ -1362,7 +1371,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 ));
             };
 
-            if let WasmInstr::StructLoad {
+            if let LoleExpr::StructLoad {
                 struct_name,
                 address_instr,
                 base_byte_offset,
@@ -1463,7 +1472,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             let address_instr = Box::new(compile_instr(address_expr, ctx)?);
 
             let Some(_) = ctx.module.struct_defs.get(load_kind) else {
-                return Ok(WasmInstr::Load {
+                return Ok(LoleExpr::Load {
                     kind: parse_load_kind(load_kind).map_err(|e| CompileError {
                         message: e,
                         loc: kind_loc.clone(),
@@ -1492,35 +1501,35 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
             let offset_instr = compile_instr(offset, ctx)?;
 
             match load_instr {
-                WasmInstr::Load {
+                LoleExpr::Load {
                     kind,
                     align,
                     offset,
                     address_instr,
-                } => WasmInstr::Load {
+                } => LoleExpr::Load {
                     kind,
                     align,
                     offset,
-                    address_instr: Box::new(WasmInstr::BinaryOp {
+                    address_instr: Box::new(LoleExpr::BinaryOp {
                         kind: WasmBinaryOpKind::I32Add,
                         lhs: address_instr,
                         rhs: Box::new(offset_instr),
                     }),
                 },
-                WasmInstr::StructLoad {
+                LoleExpr::StructLoad {
                     struct_name,
                     address_instr,
                     address_local_index,
                     primitive_loads,
                     base_byte_offset,
                 } => {
-                    let new_address = Box::new(WasmInstr::BinaryOp {
+                    let new_address = Box::new(LoleExpr::BinaryOp {
                         kind: WasmBinaryOpKind::I32Add,
                         lhs: address_instr,
                         rhs: Box::new(offset_instr),
                     });
 
-                    WasmInstr::StructLoad {
+                    LoleExpr::StructLoad {
                         struct_name,
                         address_instr: new_address.clone(),
                         address_local_index,
@@ -1528,14 +1537,14 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                         primitive_loads: primitive_loads
                             .into_iter()
                             .map(|load_instr| {
-                                let WasmInstr::Load {
+                                let LoleExpr::Load {
                                     kind,
                                     align,
                                     offset,
                                     ..
                                 } = load_instr else { unreachable!() };
 
-                                WasmInstr::Load {
+                                LoleExpr::Load {
                                     kind,
                                     align,
                                     offset,
@@ -1584,7 +1593,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
                 });
             }
 
-            WasmInstr::Call {
+            LoleExpr::Call {
                 fn_index: fn_def.get_absolute_index(ctx.module),
                 fn_type_index,
                 args,
@@ -1598,7 +1607,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
 fn get_deferred(
     defer_label: &str,
     ctx: &mut BlockContext,
-) -> Option<Result<Vec<WasmInstr>, CompileError>> {
+) -> Option<Result<Vec<LoleExpr>, CompileError>> {
     let Some(deferred) = ctx.fn_ctx.defers.get(defer_label) else {
         return None;
     };
@@ -1612,11 +1621,11 @@ fn get_deferred(
 fn compile_load(
     ctx: &mut BlockContext,
     value_type: &LoleType,
-    address_instr: Box<WasmInstr>,
+    address_instr: Box<LoleExpr>,
     base_byte_offset: u32,
-) -> Result<WasmInstr, String> {
+) -> Result<LoleExpr, String> {
     if let Ok(load_kind) = WasmLoadKind::from_lole_type(value_type) {
-        return Ok(WasmInstr::Load {
+        return Ok(LoleExpr::Load {
             kind: load_kind,
             align: 1,
             offset: base_byte_offset,
@@ -1642,17 +1651,17 @@ fn compile_load(
 
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
-        primitive_loads.push(WasmInstr::Load {
+        primitive_loads.push(LoleExpr::Load {
             kind: WasmLoadKind::from_lole_type(&LoleType::Primitive(comp.value_type))?,
             align: 1,
             offset: comp.byte_offset,
-            address_instr: Box::new(WasmInstr::LocalGet {
+            address_instr: Box::new(LoleExpr::LocalGet {
                 local_index: address_local_index,
             }),
         });
     }
 
-    Ok(WasmInstr::StructLoad {
+    Ok(LoleExpr::StructLoad {
         struct_name: name.clone(),
         address_instr,
         address_local_index,
@@ -1661,10 +1670,10 @@ fn compile_load(
     })
 }
 
-fn compile_local_get(ctx: &ModuleContext, base_index: u32, value_type: &LoleType) -> WasmInstr {
+fn compile_local_get(ctx: &ModuleContext, base_index: u32, value_type: &LoleType) -> LoleExpr {
     let comp_count = value_type.emit_components(ctx, &mut vec![]);
     if comp_count == 1 {
-        return WasmInstr::LocalGet {
+        return LoleExpr::LocalGet {
             local_index: base_index,
         };
     }
@@ -1675,19 +1684,19 @@ fn compile_local_get(ctx: &ModuleContext, base_index: u32, value_type: &LoleType
 
     let mut primitive_gets = vec![];
     for field_index in 0..comp_count {
-        primitive_gets.push(WasmInstr::LocalGet {
+        primitive_gets.push(LoleExpr::LocalGet {
             local_index: base_index + field_index as u32,
         });
     }
 
-    WasmInstr::StructGet {
+    LoleExpr::StructGet {
         struct_name: name.clone(),
         base_index,
         primitive_gets,
     }
 }
 
-fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, CompileError> {
+fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleExpr, CompileError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom {
@@ -1703,7 +1712,7 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, C
             }
 
             if global_name.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(WasmInstr::I32Const {
+                return Ok(LoleExpr::I32Const {
                     value: global_name.parse().map_err(|_| CompileError {
                         message: format!("Parsing i32 (implicit) failed"),
                         loc: op_loc.clone(),
@@ -1718,7 +1727,7 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, C
                 });
             };
 
-            return Ok(WasmInstr::GlobalGet {
+            return Ok(LoleExpr::GlobalGet {
                 global_index: global.index,
             });
         }
@@ -1739,13 +1748,13 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, C
     }
 
     let instr = match (op.as_str(), &args[..]) {
-        ("i32", [SExpr::Atom { value, .. }]) => WasmInstr::I32Const {
+        ("i32", [SExpr::Atom { value, .. }]) => LoleExpr::I32Const {
             value: value.parse().map_err(|_| CompileError {
                 message: format!("Parsing i32 failed"),
                 loc: op_loc.clone(),
             })?,
         },
-        ("data.size", []) => WasmInstr::I32ConstLazy {
+        ("data.size", []) => LoleExpr::I32ConstLazy {
             value: ctx.data_size.clone(),
         },
         (instr_name, _args) => {
@@ -1761,42 +1770,42 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmInstr, C
 
 fn compile_set(
     ctx: &mut BlockContext,
-    value_instr: WasmInstr,
-    bind_instr: WasmInstr,
+    value_instr: LoleExpr,
+    bind_instr: LoleExpr,
     bind_loc: &Location,
-) -> Result<WasmInstr, CompileError> {
+) -> Result<LoleExpr, CompileError> {
     let mut values = vec![];
     compile_set_binds(&mut values, ctx, bind_instr, bind_loc, None)?;
     values.push(value_instr);
     values.reverse();
 
-    Ok(WasmInstr::NoTypeCheck {
-        instr: Box::new(WasmInstr::MultiValueEmit { values }),
+    Ok(LoleExpr::NoTypeCheck {
+        expr: Box::new(LoleExpr::MultiValueEmit { values }),
     })
 }
 
 // TODO: figure out better location
 fn compile_set_binds(
-    output: &mut Vec<WasmInstr>,
+    output: &mut Vec<LoleExpr>,
     ctx: &mut BlockContext,
-    bind_instr: WasmInstr,
+    bind_instr: LoleExpr,
     bind_loc: &Location,
     address_index: Option<u32>,
 ) -> Result<(), CompileError> {
     Ok(match bind_instr {
-        WasmInstr::LocalGet { local_index } => {
-            output.push(WasmInstr::Set {
-                bind: WasmSetBind::Local { index: local_index },
+        LoleExpr::LocalGet { local_index } => {
+            output.push(LoleExpr::Set {
+                bind: LoleSetBind::Local { index: local_index },
             });
         }
-        WasmInstr::GlobalGet { global_index } => {
-            output.push(WasmInstr::Set {
-                bind: WasmSetBind::Global {
+        LoleExpr::GlobalGet { global_index } => {
+            output.push(LoleExpr::Set {
+                bind: LoleSetBind::Global {
                     index: global_index,
                 },
             });
         }
-        WasmInstr::Load {
+        LoleExpr::Load {
             kind,
             align,
             offset,
@@ -1809,12 +1818,12 @@ fn compile_set_binds(
             ctx.fn_ctx.locals_last_index += 1;
 
             let address_instr = match address_index {
-                Some(local_index) => Box::new(WasmInstr::LocalGet { local_index }),
+                Some(local_index) => Box::new(LoleExpr::LocalGet { local_index }),
                 None => address_instr,
             };
 
-            output.push(WasmInstr::Set {
-                bind: WasmSetBind::Memory {
+            output.push(LoleExpr::Set {
+                bind: LoleSetBind::Memory {
                     align,
                     offset,
                     kind: WasmStoreKind::from_load_kind(&kind),
@@ -1823,7 +1832,7 @@ fn compile_set_binds(
                 },
             });
         }
-        WasmInstr::StructLoad {
+        LoleExpr::StructLoad {
             primitive_loads,
             address_instr,
             address_local_index,
@@ -1835,8 +1844,8 @@ fn compile_set_binds(
                 compile_set_binds(&mut values, ctx, value, bind_loc, Some(address_local_index))?;
             }
 
-            values.push(WasmInstr::Set {
-                bind: WasmSetBind::Local {
+            values.push(LoleExpr::Set {
+                bind: LoleSetBind::Local {
                     index: address_local_index,
                 },
             });
@@ -1844,20 +1853,20 @@ fn compile_set_binds(
 
             values.reverse();
 
-            output.push(WasmInstr::MultiValueEmit { values });
+            output.push(LoleExpr::MultiValueEmit { values });
         }
         // TODO: improve this? (StructGet/MultiValueEmit/NoEmit)
-        WasmInstr::StructGet { primitive_gets, .. } => {
+        LoleExpr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
                 compile_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
-        WasmInstr::MultiValueEmit { values } => {
+        LoleExpr::MultiValueEmit { values } => {
             for value in values {
                 compile_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
-        WasmInstr::NoEmit { instr } => {
+        LoleExpr::NoEmit { expr: instr } => {
             compile_set_binds(output, ctx, *instr, bind_loc, address_index)?;
         }
         _ => {

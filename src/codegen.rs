@@ -1,4 +1,4 @@
-use crate::wasm::{WasmData, WasmExpr, WasmImportDesc, WasmInstr, WasmModule, WasmSetBind};
+use crate::wasm::*;
 use alloc::vec::Vec;
 
 const END_TAG: u8 = 0x0b;
@@ -171,24 +171,17 @@ fn write_expr(out: &mut Vec<u8>, expr: &WasmExpr) {
 
 fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
     match instr {
-        WasmInstr::NoEmit { instr: _ } => {}
-        WasmInstr::NoTypeCheck { instr } => {
-            write_instr(out, instr);
-        }
         WasmInstr::Unreachable => {
             write_u8(out, 0x00);
         }
-        WasmInstr::BinaryOp { kind, lhs, rhs } => {
-            write_instr(out, lhs);
-            write_instr(out, rhs);
+        WasmInstr::BinaryOp { kind } => {
             write_u8(out, *kind as u8);
         }
         WasmInstr::MemorySize => {
             write_u8(out, 0x3F);
             write_u8(out, 0x00);
         }
-        WasmInstr::MemoryGrow { size } => {
-            write_instr(out, size);
+        WasmInstr::MemoryGrow => {
             write_u8(out, 0x40);
             write_u8(out, 0x00);
         }
@@ -196,9 +189,7 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             kind,
             align,
             offset,
-            address_instr,
         } => {
-            write_instr(out, address_instr);
             write_u8(out, *kind as u8);
             write_u32(out, *align);
             write_u32(out, *offset);
@@ -223,144 +214,52 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x23);
             write_u32(out, *global_index);
         }
-        WasmInstr::Set { bind } => match bind {
-            WasmSetBind::Local { index } => {
-                write_u8(out, 0x21);
-                write_u32(out, *index);
-            }
-            WasmSetBind::Global { index } => {
-                write_u8(out, 0x24);
-                write_u32(out, *index);
-            }
-            WasmSetBind::Memory {
-                align,
-                offset,
-                kind,
-                address_instr,
-                value_local_index,
-            } => {
-                // set_local(tmp, <value on top of the stack>)
-                write_u8(out, 0x21);
-                write_u32(out, *value_local_index);
-
-                write_instr(out, address_instr);
-
-                // get_local(tmp)
-                write_u8(out, 0x20);
-                write_u32(out, *value_local_index);
-
-                write_u8(out, *kind as u8);
-
-                write_u32(out, *align);
-                write_u32(out, *offset);
-            }
-        },
-        WasmInstr::StructGet {
-            base_index: _,
-            struct_name: _,
-            primitive_gets,
+        WasmInstr::LocalSet { local_index } => {
+            write_u8(out, 0x21);
+            write_u32(out, *local_index);
+        }
+        WasmInstr::GlobalSet { global_index } => {
+            write_u8(out, 0x24);
+            write_u32(out, *global_index);
+        }
+        WasmInstr::Store {
+            align,
+            offset,
+            kind,
         } => {
-            for value in primitive_gets {
-                write_instr(out, value);
-            }
+            write_u8(out, *kind as u8);
+            write_u32(out, *align);
+            write_u32(out, *offset);
         }
-        WasmInstr::StructLoad {
-            struct_name: _,
-            address_instr,
-            address_local_index,
-            base_byte_offset: _,
-            primitive_loads,
-        } => {
-            write_instr(out, address_instr);
-            write_instr(
-                out,
-                &WasmInstr::Set {
-                    bind: WasmSetBind::Local {
-                        index: *address_local_index,
-                    },
-                },
-            );
-
-            for value in primitive_loads {
-                write_instr(out, value);
-            }
+        WasmInstr::Drop => {
+            write_u8(out, 0x1A);
         }
-        WasmInstr::MultiValueEmit { values } => {
-            for value in values {
-                write_instr(out, value);
-            }
-        }
-        WasmInstr::Drop { value, drop_count } => {
-            write_instr(out, value);
-            for _ in 0..*drop_count {
-                write_u8(out, 0x1A);
-            }
-        }
-        WasmInstr::Return { value } => {
-            write_instr(out, value);
+        WasmInstr::Return => {
             write_u8(out, 0x0f);
         }
-        WasmInstr::Call {
-            fn_index,
-            fn_type_index: _,
-            args,
-        } => {
-            for arg in args {
-                write_instr(out, arg);
-            }
+        WasmInstr::Call { fn_index } => {
             write_u8(out, 0x10);
             write_u32(out, *fn_index);
         }
-        WasmInstr::Block { block_type, body } => {
-            write_u8(out, 0x02); // block
-            if let Some(block_type) = block_type {
-                write_u8(out, (*block_type) as u8);
-            } else {
-                write_u8(out, 0x40); // no value
-            }
-            for instr in body {
-                write_instr(out, instr);
-            }
-            write_u8(out, END_TAG);
-        }
-        WasmInstr::Loop { block_type, body } => {
-            write_u8(out, 0x03); // loop
-            if let Some(block_type) = block_type {
-                write_u8(out, (*block_type) as u8);
-            } else {
-                write_u8(out, 0x40); // no value
-            }
-            for instr in body {
-                write_instr(out, instr);
-            }
-            write_u8(out, END_TAG);
-        }
-        WasmInstr::If {
+        WasmInstr::BlockStart {
             block_type,
-            cond,
-            then_branch,
-            else_branch,
+            return_type,
         } => {
-            write_instr(out, cond);
-            write_u8(out, 0x04); // if
-            if let Some(block_type) = block_type {
-                write_u8(out, (*block_type) as u8);
+            write_u8(out, (*block_type) as u8);
+            if let Some(return_type) = return_type {
+                write_u8(out, (*return_type) as u8);
             } else {
                 write_u8(out, 0x40); // no value
             }
-            for then_instr in then_branch {
-                write_instr(out, then_instr);
-            }
-            if let Some(else_branch) = else_branch {
-                write_u8(out, 0x05); // then
-                for else_instr in else_branch {
-                    write_instr(out, else_instr);
-                }
-            }
+        }
+        WasmInstr::Else => {
+            write_u8(out, 0x05);
+        }
+        WasmInstr::BlockEnd => {
             write_u8(out, END_TAG);
         }
         WasmInstr::Branch { label_index } => {
-            write_u8(out, 0x0c); // br
+            write_u8(out, 0x0c);
             write_u32(out, *label_index);
         }
     }
