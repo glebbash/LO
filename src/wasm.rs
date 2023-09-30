@@ -1,4 +1,4 @@
-use alloc::{rc::Rc, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -108,10 +108,11 @@ pub enum WasmInstr {
     },
     MemorySize,
     MemoryGrow,
-    Load {
-        kind: WasmLoadKind,
-        align: u32,
-        offset: u32,
+    I32Const {
+        value: i32,
+    },
+    I64Const {
+        value: i64,
     },
     LocalGet {
         local_index: u32,
@@ -119,25 +120,21 @@ pub enum WasmInstr {
     GlobalGet {
         global_index: u32,
     },
-    I32ConstLazy {
-        value: Rc<RefCell<i32>>,
-    },
-    I32Const {
-        value: i32,
-    },
-    I64Const {
-        value: i64,
-    },
     LocalSet {
         local_index: u32,
     },
     GlobalSet {
         global_index: u32,
     },
-    Store {
+    Load {
+        kind: WasmLoadKind,
         align: u32,
         offset: u32,
+    },
+    Store {
         kind: WasmStoreKind,
+        align: u32,
+        offset: u32,
     },
     Return,
     BlockStart {

@@ -41,12 +41,9 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
         LoleExpr::MemorySize { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
         LoleExpr::MemoryGrow { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
 
-        LoleExpr::BinaryOp { lhs, rhs, .. } => {
-            get_lole_type(ctx, rhs)?;
-            return get_lole_type(ctx, lhs);
-        }
+        LoleExpr::BinaryOp { lhs, .. } => get_lole_type(ctx, lhs),
         LoleExpr::Load { kind, .. } => Ok(kind.clone()),
-        LoleExpr::GlobalGet { global_index, .. } => {
+        LoleExpr::GlobalGet { global_index } => {
             let global_def = ctx
                 .module
                 .globals
@@ -60,7 +57,7 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
 
             Ok(global_def.value_type.clone())
         }
-        LoleExpr::LocalGet { local_index, .. } => {
+        LoleExpr::LocalGet { local_index } => {
             let local_def = ctx
                 .fn_ctx
                 .locals

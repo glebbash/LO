@@ -61,7 +61,9 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
         } => {
             lower_exprs(out, primitive_gets);
         }
-        LoleExpr::I32ConstLazy { value } => out.push(WasmInstr::I32ConstLazy { value }),
+        LoleExpr::I32ConstLazy { value } => out.push(WasmInstr::I32Const {
+            value: *value.borrow(),
+        }),
         LoleExpr::I32Const { value } => out.push(WasmInstr::I32Const { value }),
         LoleExpr::I64Const { value } => out.push(WasmInstr::I64Const { value }),
         LoleExpr::Set { bind } => match bind {

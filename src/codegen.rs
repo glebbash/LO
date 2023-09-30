@@ -196,10 +196,6 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x41);
             write_i32(out, *value);
         }
-        WasmInstr::I32ConstLazy { value } => {
-            write_u8(out, 0x41);
-            write_i32(out, *value.borrow());
-        }
         WasmInstr::I64Const { value } => {
             write_u8(out, 0x42);
             write_i64(out, *value);
