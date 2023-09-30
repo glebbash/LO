@@ -64,21 +64,37 @@ pub enum WasmBinaryOpKind {
 #[derive(Clone, Copy, Debug)]
 pub enum WasmLoadKind {
     I32 = 0x28,
+    I64 = 0x29,
+    F32 = 0x2A,
+    F64 = 0x2B,
+    I32I8 = 0x2c,
     I32U8 = 0x2d,
+    I32I16 = 0x2e,
+    I32U16 = 0x2f,
 }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug)]
 pub enum WasmStoreKind {
     I32 = 0x36,
+    I64 = 0x37,
+    F32 = 0x38,
+    F64 = 0x39,
     I32U8 = 0x3A,
+    I32U16 = 0x3B,
 }
 
 impl WasmStoreKind {
     pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
         match kind {
             WasmLoadKind::I32 => Self::I32,
+            WasmLoadKind::I64 => Self::I64,
+            WasmLoadKind::F32 => Self::F32,
+            WasmLoadKind::F64 => Self::F64,
+            WasmLoadKind::I32I8 => Self::I32U8,
             WasmLoadKind::I32U8 => Self::I32U8,
+            WasmLoadKind::I32I16 => Self::I32U16,
+            WasmLoadKind::I32U16 => Self::I32U16,
         }
     }
 }
