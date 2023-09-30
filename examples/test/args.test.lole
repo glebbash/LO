@@ -2,13 +2,13 @@
 (mod lib/args)
 
 (fn main [] void (
-    {args : Args = (Args/load)}
+    {args := (Args/load)}
 
     {i := 0}
     (loop (
         (if {i == {args . argc}} (break))
 
-        {arg : StringSlice = (Args/get args i)}
+        {arg := (Args/get args i)}
 
         (puts arg)
         (puts "\n")

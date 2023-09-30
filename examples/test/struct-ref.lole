@@ -13,6 +13,6 @@
     (defer (Stack/free (sizeof Point2D)))
 
     {(* &p) = (struct.new Point2D 2 3)}
-    {y : u32 = {&p -> y}}
+    {y := {&p -> y}}
     (return y)
 ))

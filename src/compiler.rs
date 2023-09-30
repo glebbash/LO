@@ -270,10 +270,13 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     inputs: wasm_inputs,
                     outputs: wasm_outputs,
                 });
-                ctx.lole_fn_types.push(LoleFnType {
-                    inputs: lole_inputs,
-                    output: lole_output,
-                });
+                ctx.lole_fn_types.insert(
+                    type_index,
+                    LoleFnType {
+                        inputs: lole_inputs,
+                        output: lole_output,
+                    },
+                );
 
                 ctx.wasm_module.functions.push(type_index);
                 ctx.fn_defs.insert(
@@ -373,10 +376,13 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     inputs: wasm_inputs,
                     outputs: wasm_outputs,
                 });
-                ctx.lole_fn_types.push(LoleFnType {
-                    inputs: lole_inputs,
-                    output: lole_output,
-                });
+                ctx.lole_fn_types.insert(
+                    type_index,
+                    LoleFnType {
+                        inputs: lole_inputs,
+                        output: lole_output,
+                    },
+                );
 
                 let fn_index = ctx.imported_fns_count;
                 ctx.imported_fns_count += 1;

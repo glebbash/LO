@@ -81,7 +81,7 @@
 
 ; NOTE: this doesn't free `wasm_module` as it doesn't "own" it
 (fn Lole/Ir/ModuleContext/free [(&self (& Lole/Ir/ModuleContext))] void (
-    {self : Lole/Ir/ModuleContext = (* &self)}
+    {self := (* &self)}
     (Vec/free {self . &memory_names})
     (Dict/free {self . &fn_defs})
     (Dict/free {self . &fn_bodies})

@@ -3,8 +3,8 @@
 
 ; public interface
 (fn Lole/CodeGen/codegen [(&module (& Lole/Wasm/WasmModule))] (& Vec<u8>) (
-    {&binary : (& Vec<u8>) = (Vec/new 100 1)}
-    {&section : (& Vec<u8>) = (Vec/new 100 1)}
+    {&binary := (Vec/new 100 (sizeof u8))}
+    {&section := (Vec/new 100 (sizeof u8))}
     (defer (Vec/free &section))
 
     (Lole/CodeGen/write_magic_and_version &binary)

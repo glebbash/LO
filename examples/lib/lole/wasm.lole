@@ -87,7 +87,7 @@
 ))
 
 (fn Lole/Wasm/WasmModule/free [(&self (& Lole/Wasm/WasmModule))] void (
-    {self : Lole/Wasm/WasmModule = (* &self)}
+    {self := (* &self)}
     (Vec/free {self . &types})
     (Vec/free {self . &imports})
     (Vec/free {self . &functions})

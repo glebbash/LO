@@ -10,44 +10,44 @@
     {(do {fd : u32} {file_name : StringSlice}) = (get_input_file)}
     (defer (Heap/free {file_name . data}))
 
-    {&source : (& String) = (WasiIO/fd_read_all fd)}
+    {&source := (WasiIO/fd_read_all fd)}
     (defer (Vec/free &source))
 
-    {parse_res : Lole/Parser/ParseResult = (Lole/Parser/parse file_name (Vec/as_slice &source))}
+    {parse_res := (Lole/Parser/parse file_name (Vec/as_slice &source))}
     (if (not {parse_res . ok}) (do
         (return (print_err_and_exit {parse_res . data}))
     ))
     (defer (Vec<Lole/Ast/SExpr>/free {parse_res . data}))
 
-    {expand_res : Lole/Expand/ExpandResult = (Lole/Expand/expand {parse_res . data})}
+    {expand_res := (Lole/Expand/expand {parse_res . data})}
     (if (not {expand_res . ok}) (do
         (return (print_err_and_exit {expand_res . data}))
     ))
     (defer (Vec<Lole/Ast/SExpr>/free {expand_res . data}))
 
-    {&wasm_module : (& Lole/Wasm/WasmModule) = (Lole/Wasm/WasmModule/new)}
+    {&wasm_module := (Lole/Wasm/WasmModule/new)}
     (defer (Lole/Wasm/WasmModule/free &wasm_module))
 
-    {compile_res : Lole/Compiler/CompileResult = (Lole/Compiler/compile {parse_res . data} &wasm_module)}
+    {compile_res := (Lole/Compiler/compile {parse_res . data} &wasm_module)}
     (if (not {compile_res . ok}) (do
         (return (print_err_and_exit {compile_res . data}))
     ))
 
-    {&binary : (& Vec<u8>) = (Lole/CodeGen/codegen &wasm_module)}
+    {&binary := (Lole/CodeGen/codegen &wasm_module)}
     (defer (Vec/free &binary))
 
     (print_str &binary)
 ))
 
 (fn get_input_file [] (tuple u32 StringSlice) (
-    {args : Args = (Args/load)}
+    {args := (Args/load)}
     (defer (Args/free args))
 
     (if {args . argc != 2} (do
         (return Wasi/FD_STDIN (StringSlice/clone "<internal>"))
     ))
 
-    {file_name : StringSlice = (StringSlice/clone (Args/get args 1))}
+    {file_name := (StringSlice/clone (Args/get args 1))}
     {(do {err : u32} {fd : u32}) = (WasiIO/fd_open file_name)}
     (if {err != 0} (do
         (fputs Wasi/FD_STDERR "Error: cannot read file: ")
@@ -60,7 +60,7 @@
 ))
 
 (fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] void (
-    {parse_err : Lole/Ast/CompileError = (* &err)}
+    {parse_err := (* &err)}
     (defer (Lole/Ast/CompileError/free parse_err))
 
     (fputs Wasi/FD_STDERR {parse_err . loc . file_name})

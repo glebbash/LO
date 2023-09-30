@@ -2,7 +2,7 @@
 (alias CWD_PREOPEN_FD 3)
 
 (fn WasiIO/fd_read_all [(fd u32)] (& String) (
-    {&output : (& String) = (Vec/new 256 1)}
+    {&output : (& String) = (Vec/new 256 (sizeof u8))}
     {&chunk : (&* u8) = (Stack/alloc 256)}
     (defer (Stack/free 256))
 
@@ -14,9 +14,9 @@
     (defer (Stack/free (sizeof u32)))
 
     (loop (
-        {err : Wasi/Err = (Wasi/fd_read fd &in_vec 1 &nread)}
+        {err := (Wasi/fd_read fd &in_vec 1 &nread)}
 
-        {nread : u32 = (* &nread)}
+        {nread := (* &nread)}
 
         (if {nread == 0} (break))
 
@@ -45,7 +45,7 @@
             (return false)
         ))
 
-        {nread : u32 = (* &nread)}
+        {nread := (* &nread)}
         (if {nread == 0} (break))
 
         {&iov -> len = nread}
@@ -62,12 +62,12 @@
     {&fd : (& u32) = (new u32 0 :using Alloc/STACK)}
     (defer (free Alloc/STACK &fd (sizeof u32)))
 
-    {err : Wasi/Err = (Wasi/path_open
+    {err := (Wasi/path_open
         CWD_PREOPEN_FD 0
         file_path 0 (i64 2) (i64 0) 0
         &fd
     )}
-    {fd : u32 = (* &fd)}
+    {fd := (* &fd)}
 
     (return (do err fd))
 ))

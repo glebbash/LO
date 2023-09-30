@@ -3,14 +3,14 @@
 (mod lib/args)
 
 (fn main [] void (
-    {args : Args = (Args/load)}
+    {args := (Args/load)}
     (defer (Args/free args))
 
     (if {args . argc != 2} (do
         (return (Wasi/proc_exit 1))
     ))
 
-    {file_path : StringSlice = (Args/get args 1)}
+    {file_path := (Args/get args 1)}
 
     {err : u32}
 

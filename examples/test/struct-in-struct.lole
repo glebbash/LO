@@ -11,26 +11,28 @@
 )
 
 (fn main [] void (
+    ; TODO: use `:=`
     {r : Rect = (struct.new Rect
         (struct.new Point2D 1 2)
         (struct.new Point2D 3 4)
     )}
 
-    {br : Point2D = {r . br}}
+    {br := {r . br}}
     (print_u32 {br . x})
     (puts "\n")
 
     (print_u32 {r . br . x})
     (puts "\n")
 
+    ; TODO: use `:=`
     {&r : (& Rect) = (new Rect r :using Alloc/STACK)}
     (defer (Stack/free (sizeof Rect)))
 
-    {r2 : Rect = (* &r)}
+    {r2 := (* &r)}
     (print_u32 {r2 . br . x})
     (puts "\n")
 
-    {br2 : Point2D = {&r -> br}}
+    {br2 := {&r -> br}}
     (print_u32 {br2 . x})
     (puts "\n")
 
@@ -47,7 +49,7 @@
 
     ; TODO: throws TypeError
     ; TODO: look into supporting nested references
-    ; {&br2 : (& Point2D) = {&r . br}}
+    ; {&br2 := {&r . br}}
     ; (print_u32 {&br2 -> x})
     ; (puts "\n")
 ))

@@ -136,7 +136,7 @@
 
         ; memory.grow enough if out of space
         (if {Heap/TOTAL_ALLOCATED >= {(memory.size) * Mem/PAGE_SIZE}} (do
-            {pages_to_grow : u32 = (Mem/align_to total_size_to_alloc Mem/PAGE_SIZE)}
+            {pages_to_grow := (Mem/align_to total_size_to_alloc Mem/PAGE_SIZE)}
             {grow_res := (memory.grow pages_to_grow)}
             (if {grow_res == {0 - 1}} (do
                 (panic "OOM")
@@ -245,7 +245,7 @@
         (Vec/_panic_if_out_of_bounds &self index1)
         (Vec/_panic_if_out_of_bounds &self index2)
 
-        {item_size : u32 = {&self -> item_size}}
+        {item_size := {&self -> item_size}}
         (Mem/swap
             {&self -> &data + {index1 * item_size}}
             {&self -> &data + {index2 * item_size}}
@@ -254,7 +254,7 @@
     ))
 
     (fn Vec/push_u8 [(&self (& Vec)) (item u8)] void (
-        {index : u32 = {&self -> length}}
+        {index := {&self -> length}}
         {&self -> length = {index + 1}}
 
         (Vec/_grow_if_needed &self)
@@ -263,7 +263,7 @@
     ))
 
     (fn Vec/push_all [(&self (& Vec)) (&items (& void)) (items_len u32)] void (
-        {old_len : u32 = {&self -> length}}
+        {old_len := {&self -> length}}
         {&self -> length = {old_len + items_len}}
 
         (Vec/_grow_if_needed &self)
@@ -295,7 +295,7 @@
 
     (fn Vec/reverse [(&self (& Vec))] void (
         {start := 0}
-        {end : u32 = {(Vec/len &self) - 1}}
+        {end := {(Vec/len &self) - 1}}
 
         (loop (
             (if {start >= end} (break))
@@ -315,9 +315,9 @@
             (panic "Attempt to grow stack allocated vector")
         ))
 
-        {item_size : u32 = {&self -> item_size}}
-        {old_capacity : u32 = {&self -> capacity}}
-        {&old_data : (& void) = {&self -> &data}}
+        {item_size := {&self -> item_size}}
+        {old_capacity := {&self -> capacity}}
+        {&old_data := {&self -> &data}}
         (defer (free {&self -> alloc_id} &old_data old_capacity))
 
         {&self -> capacity = {old_capacity * 2}}
@@ -372,7 +372,7 @@
     ))
 
     (fn String/from_slice [(str StringSlice)] (& String) (
-        {&string : (& String) = (Vec/new {str . size} 1)}
+        {&string : (& String) = (Vec/new {str . size} (sizeof u8))}
         (Vec/push_all &string str)
         (return &string)
     ))

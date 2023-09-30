@@ -5,11 +5,12 @@
 
 (export main :as main)
 (fn main [] i32 (
+    ; TODO: use `:=`
     {p1 : Point2D = (struct.new Point2D 0 0)}
     {p1 . x = 1}
     {p1 . y = 2}
 
-    {sum : Point2D = (Point2D/add p1 (struct.new Point2D 1 1))}
+    {sum := (Point2D/add p1 (struct.new Point2D 1 1))}
 
     (return (Point2D/len_squared sum))
 ))

@@ -75,7 +75,7 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
             Ok(local_def.value_type.clone())
         }
         LoleExpr::Call { fn_type_index, .. } => {
-            let lole_fn_type = &ctx.module.lole_fn_types[*fn_type_index as usize];
+            let lole_fn_type = &ctx.module.lole_fn_types.get(fn_type_index).unwrap();
             Ok(lole_fn_type.output.clone())
         }
         LoleExpr::If { block_type, .. }
