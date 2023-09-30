@@ -6,7 +6,7 @@
     (defer (puts "defer(return): 3\n"))
 
     (defer scope1 (puts "defer(scope1): 1\n"))
-    {i : u32 = 0}
+    {i := 0}
     (loop (
         (if {i == 10} (break))
         ; exprs in loops are only deferred once

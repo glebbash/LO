@@ -55,7 +55,7 @@
 ))
 
 (fn Vec<Lole/Ast/SExpr>/free [(&self (& Vec))] [] (
-    {i : u32 = 0}
+    {i := 0}
     (loop (
         (if {i == (Vec/len &self)} (break))
 

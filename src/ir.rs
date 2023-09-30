@@ -62,6 +62,7 @@ pub enum LolePrimitiveType {
 
 #[derive(Clone, Debug)]
 pub enum LoleType {
+    Void,
     Primitive(LolePrimitiveType),
     Pointer(Box<LoleType>),
     StructInstance { name: String },
@@ -153,21 +154,22 @@ impl LoleType {
         components: &mut Vec<ValueComponent>,
     ) -> Result<(), String> {
         match self {
-            LoleType::Pointer(_) => {
-                let component = ValueComponent {
-                    byte_offset: stats.byte_length,
-                    value_type: LolePrimitiveType::U32,
-                };
-                stats.count += 1;
-                stats.byte_length += component.value_type.byte_length();
-                components.push(component);
-            }
+            LoleType::Void => {}
             LoleType::Primitive(primitive) => {
                 let component = ValueComponent {
                     byte_offset: stats.byte_length,
                     value_type: primitive.clone(),
                 };
 
+                stats.count += 1;
+                stats.byte_length += component.value_type.byte_length();
+                components.push(component);
+            }
+            LoleType::Pointer(_) => {
+                let component = ValueComponent {
+                    byte_offset: stats.byte_length,
+                    value_type: LolePrimitiveType::U32,
+                };
                 stats.count += 1;
                 stats.byte_length += component.value_type.byte_length();
                 components.push(component);
@@ -188,6 +190,7 @@ impl LoleType {
 
     pub fn emit_components(&self, ctx: &ModuleContext, components: &mut Vec<WasmType>) -> u32 {
         match self {
+            LoleType::Void => 0,
             LoleType::Pointer(_) => {
                 components.push(WasmType::I32);
                 1

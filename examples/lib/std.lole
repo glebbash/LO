@@ -39,12 +39,12 @@
     ))
 
     (fn Mem/align_to [(size u32) (size_multiple u32)] [u32] (
-        {remaining_to_align : u32 = {size % size_multiple}}
+        {remaining_to_align := {size % size_multiple}}
         (if {remaining_to_align == 0} (do
             (return size)
         ))
 
-        {padding : u32 = {size_multiple - remaining_to_align}}
+        {padding := {size_multiple - remaining_to_align}}
         (return {size + padding})
     ))
 
@@ -134,7 +134,7 @@
             (return {&free_block -> &data})
         ))
 
-        {total_size_to_alloc : u32 = {size + (sizeof Heap/Block)}}
+        {total_size_to_alloc := {size + (sizeof Heap/Block)}}
 
         {&block : (& Heap/Block) = Heap/TOTAL_ALLOCATED}
         {Heap/TOTAL_ALLOCATED += total_size_to_alloc}
@@ -142,7 +142,7 @@
         ; memory.grow enough if out of space
         (if {Heap/TOTAL_ALLOCATED >= {(memory.size) * Mem/PAGE_SIZE}} (do
             {pages_to_grow : u32 = (Mem/align_to total_size_to_alloc Mem/PAGE_SIZE)}
-            {grow_res : u32 = (memory.grow pages_to_grow)}
+            {grow_res := (memory.grow pages_to_grow)}
             (if {grow_res == {0 - 1}} (do
                 (panic "OOM")
             ))
@@ -303,7 +303,7 @@
     ))
 
     (fn Vec/reverse [(&self (& Vec))] [] (
-        {start : u32 = 0}
+        {start := 0}
         {end : u32 = {(Vec/len &self) - 1}}
 
         (loop (
@@ -362,7 +362,7 @@
             (return false)
         ))
 
-        {i : u32 = 0}
+        {i := 0}
         (loop (
             (if {i == {self . size}} (break))
 
@@ -405,7 +405,7 @@
     (struct Dict/GetResult (ok bool) (&value ptr))
 
     (fn Dict/get [(&self (& Dict)) (key StringSlice)] [Dict/GetResult] (
-        {i : u32 = 0}
+        {i := 0}
         (loop (
             (if {i == (Dict/len &self)} (break))
 
@@ -435,7 +435,7 @@
         ))
 
         (loop (
-            {rem : u32 = {input % 10}}
+            {rem := {input % 10}}
 
             (Vec/push_u8 &output {(char_code "0") + rem})
             {input = {input / 10}}
@@ -449,7 +449,7 @@
     ))
 
     (fn std/c_str_to_slice [(&str (&* u8))] [StringSlice] (
-        {len : u32 = 0}
+        {len := 0}
 
         (loop (
             (if {{i32/u8 @ &str @ len} == 0} (break))

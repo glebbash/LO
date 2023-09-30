@@ -4,7 +4,7 @@
 (fn main [] [] (
     {args : Args = (Args/load)}
 
-    {i : u32 = 0}
+    {i := 0}
     (loop (
         (if {i == {args . argc}} (break))
 

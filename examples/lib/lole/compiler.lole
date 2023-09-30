@@ -13,7 +13,7 @@
     {&ctx : (& Lole/Ir/ModuleContext) = (Lole/Ir/ModuleContext/new &wasm_module)}
     (defer (Lole/Ir/ModuleContext/free &ctx))
 
-    {i : u32 = 0}
+    {i := 0}
     (loop (
         (if {i == (Vec/len &exprs)} (break))
 
@@ -100,7 +100,7 @@
         {&locals : (& Vec<Lole/Wasm/WasmLocals>) = (Vec/new 1 (sizeof Lole/Wasm/WasmLocals))}
         {&non_arg_locals : (& Vec<Lole/Wasm/WasmType>) = {&fn_ctx -> &non_arg_locals}}
 
-        {j : u32 = 0}
+        {j := 0}
         (loop (
             (if {j == (Vec/len &non_arg_locals)} (break))
 

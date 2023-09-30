@@ -15,6 +15,43 @@ pub fn get_types(
 
 pub fn get_lole_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<LoleType, CompileError> {
     match instr {
+        WasmInstr::Unreachable { .. } => Ok(LoleType::Void),
+        WasmInstr::I32ConstLazy { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+        WasmInstr::I32Const { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+        WasmInstr::I64Const { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I64)),
+
+        // TODO: implement
+        // WasmInstr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
+        WasmInstr::NoEmit { .. } => Ok(LoleType::Void),
+        WasmInstr::StructLoad { struct_name, .. } | WasmInstr::StructGet { struct_name, .. } => {
+            Ok(LoleType::StructInstance {
+                name: struct_name.clone(),
+            })
+        }
+
+        // type-checked in the complier:
+        WasmInstr::NoTypeCheck { .. } => Ok(LoleType::Void),
+        WasmInstr::Set { .. } => Ok(LoleType::Void),
+        WasmInstr::Drop { .. } => Ok(LoleType::Void),
+        WasmInstr::Return { .. } => Ok(LoleType::Void),
+        WasmInstr::MemorySize { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+        WasmInstr::MemoryGrow { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
+
+        WasmInstr::BinaryOp { lhs, rhs, .. } => {
+            get_lole_type(ctx, rhs)?;
+            return get_lole_type(ctx, lhs);
+        }
+
+        // TODO: implement
+        // WasmInstr::Load {
+        //     kind,
+        //     address_instr,
+        //     ..
+        // } => {
+        //     get_type(ctx, &address_instr)?;
+        //     // TODO: use primitive type
+        //     vec![kind.get_primitive_type().to_wasm_type()]
+        // }
         WasmInstr::GlobalGet { global_index, .. } => {
             let global_def = ctx
                 .module
@@ -49,6 +86,22 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &WasmInstr) -> Result<LoleType, 
 
             Ok(local_def.value_type.clone())
         }
+        // TODO: implement
+        // WasmInstr::Call { fn_type_index, .. } => {
+        //     let fn_type = &ctx.module.wasm_module.types[*fn_type_index as usize];
+        //     fn_type.outputs.clone()
+        // }
+        // WasmInstr::If { block_type, .. }
+        // | WasmInstr::Block { block_type, .. }
+        // | WasmInstr::Loop { block_type, .. } => {
+        //     if let Some(block_type) = block_type {
+        //         vec![*block_type]
+        //     } else {
+        //         vec![]
+        //     }
+        // }
+        WasmInstr::Branch { .. } => Ok(LoleType::Void),
+
         _ => Err(CompileError {
             message: format!("not implemented yet"),
             loc: Location::internal(),

@@ -23,7 +23,7 @@
 ))
 
 (fn dump_exprs [(&exprs (& Vec<Lole/Ast/SExpr>))] [] (
-    {i : u32 = 0}
+    {i := 0}
 
     (loop (
         (if {i == (Vec/len &exprs)}

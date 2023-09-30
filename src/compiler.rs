@@ -1240,22 +1240,48 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<WasmInstr, Comp
 
             compile_set(ctx, value_instr, bind_instr, op_loc)?
         }
-        (":=", [bind, value]) => {
-            let value_instr = compile_instr(value, ctx)?;
-            let bind_instr = compile_instr(bind, ctx)?;
-
-            let value_types = get_type(ctx, &value_instr)?;
-            let bind_types = get_type(ctx, &bind_instr)?;
-
-            if value_types != bind_types {
+        (
+            ":=",
+            [SExpr::Atom {
+                value: local_name,
+                loc: name_loc,
+                kind: AtomKind::Symbol,
+            }, value],
+        ) => {
+            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
                 return Err(CompileError {
-                    message: format!(
-                        "TypeError: Invalid types for '{op}', needed {:?}, got {:?}",
-                        bind_types, value_types
-                    ),
-                    loc: op_loc.clone(),
+                    message: format!("Local name collides with global: {local_name}"),
+                    loc: name_loc.clone(),
+                });
+            };
+
+            if ctx.fn_ctx.locals.contains_key(local_name) {
+                return Err(CompileError {
+                    message: format!("Duplicate local definition: {local_name}"),
+                    loc: name_loc.clone(),
                 });
             }
+
+            let value_instr = compile_instr(value, ctx)?;
+            let lole_type = get_lole_type(ctx, &value_instr)?;
+
+            let start_index = ctx.fn_ctx.locals_last_index;
+            let comp_count = lole_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_locals);
+
+            ctx.fn_ctx.locals_last_index += comp_count;
+            ctx.fn_ctx.locals.insert(
+                local_name.clone(),
+                LocalDef {
+                    index: start_index,
+                    value_type: lole_type,
+                },
+            );
+
+            let values = (start_index..(start_index + comp_count))
+                .map(|i| WasmInstr::LocalGet { local_index: i })
+                .collect();
+
+            let bind_instr = WasmInstr::MultiValueEmit { values };
 
             compile_set(ctx, value_instr, bind_instr, op_loc)?
         }
