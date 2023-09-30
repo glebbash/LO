@@ -8,7 +8,7 @@
 )
 
 (export main :as main)
-(fn main [] [i32] (
+(fn main [] i32 (
     {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
     (defer (Stack/free (sizeof Point2D)))
 

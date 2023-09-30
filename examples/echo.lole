@@ -1,6 +1,6 @@
 (mod lib/cli)
 (mod lib/wasi_io)
 
-(fn main [] [i32] (
+(fn main [] i32 (
     (return (WasiIO/fd_pipe Wasi/FD_STDIN Wasi/FD_STDOUT 256))
 ))

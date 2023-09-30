@@ -2,7 +2,7 @@
 (mod lib/wasi_io)
 (mod lib/args)
 
-(fn main [] [] (
+(fn main [] void (
     {args : Args = (Args/load)}
     (defer (Args/free args))
 

@@ -258,7 +258,7 @@ test("compiles minify", async () => {
         ; std + wasi
         (mod lib/cli)
 
-        (fn main [] [] (
+        (fn main [] void (
             (puts "Hello World!\n")
         ))
         `;
@@ -275,7 +275,7 @@ test("compiles minify", async () => {
 
     assert.strictEqual(
         output,
-        "(mod lib/cli) (fn main () () ((puts Hello World!\n)))\n"
+        "(mod lib/cli) (fn main () void ((puts Hello World!\n)))\n"
     );
 });
 

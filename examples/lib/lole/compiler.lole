@@ -9,7 +9,7 @@
 
 (fn Lole/Compiler/compile [
     (&exprs (& Vec<Lole/Ast/SExpr>)) (&wasm_module (& Lole/Wasm/WasmModule))
-] [Lole/Compiler/CompileResult] (
+] Lole/Compiler/CompileResult (
     {&ctx : (& Lole/Ir/ModuleContext) = (Lole/Ir/ModuleContext/new &wasm_module)}
     (defer (Lole/Ir/ModuleContext/free &ctx))
 
@@ -137,7 +137,7 @@
 ; TODO: implement
 (fn Lole/Compiler/compile_top_level_expr [
     (expr Lole/Ast/SExpr) (&ctx (& Lole/Ir/ModuleContext))
-] [Lole/Compiler/CompileResult] (
+] Lole/Compiler/CompileResult (
     (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
         (return false (new Lole/Ast/CompileError (do
             (String/from_slice "Unexpected atom")
@@ -156,7 +156,7 @@
 ; TODO: implement
 (fn Lole/Compiler/compile_block [
     (&exprs (& Vec<Lole/Ast/SExpr>)) (&ctx (& Lole/Ir/ModuleContext))
-] [Lole/Compiler/CompileBlockResult] (
+] Lole/Compiler/CompileBlockResult (
     (return true 0)
 ))
 
@@ -168,6 +168,6 @@
 ; TODO: implement
 (fn Lole/Compiler/get_deferred [
     (defer_label StringSlice) (&ctx (& Lole/Ir/ModuleContext))
-] [Lole/Compiler/GetDefferedRes] (
+] Lole/Compiler/GetDefferedRes (
     (return true 0)
 ))

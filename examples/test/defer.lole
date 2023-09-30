@@ -1,6 +1,6 @@
 (mod lib/cli)
 
-(fn main [] [] (
+(fn main [] void (
     (defer (puts "defer(return): 1\n"))
     (defer (puts "defer(return): 2\n"))
     (defer (puts "defer(return): 3\n"))

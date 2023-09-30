@@ -1,6 +1,6 @@
 (mod lib/cli)
 
-(fn main [] [] (
+(fn main [] void (
     (puts "Heap/TOTAL_ALLOCATED = ")
     (print_u32 Heap/TOTAL_ALLOCATED) (puts "\n")
 

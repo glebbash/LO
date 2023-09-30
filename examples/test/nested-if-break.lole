@@ -1,6 +1,6 @@
 (mod lib/cli)
 
-(fn main [] [] (
+(fn main [] void (
     (loop (
         (if true (do
             (if true (do

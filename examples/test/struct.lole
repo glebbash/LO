@@ -4,7 +4,7 @@
 )
 
 (export main :as main)
-(fn main [] [i32] (
+(fn main [] i32 (
     {p1 : Point2D = (struct.new Point2D 0 0)}
     {p1 . x = 1}
     {p1 . y = 2}
@@ -14,13 +14,13 @@
     (return (Point2D/len_squared sum))
 ))
 
-(fn Point2D/add ((p1 Point2D) (p2 Point2D)) [Point2D] (
+(fn Point2D/add ((p1 Point2D) (p2 Point2D)) Point2D (
     (return (struct.new Point2D
         {p1 . x + {p2 . x}}
         {p1 . y + {p2 . y}}
     ))
 ))
 
-(fn Point2D/len_squared [(p Point2D)] [i32] (
+(fn Point2D/len_squared [(p Point2D)] i32 (
     (return {p . x * {p . x} + {p . y * {p . y}}})
 ))

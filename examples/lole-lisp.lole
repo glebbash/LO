@@ -6,7 +6,7 @@
 (mod lib/lole/compiler)
 (mod lib/lole/codegen)
 
-(fn main [] [] (
+(fn main [] void (
     {(do {fd : u32} {file_name : StringSlice}) = (get_input_file)}
     (defer (Heap/free {file_name . data}))
 
@@ -39,7 +39,7 @@
     (print_str &binary)
 ))
 
-(fn get_input_file [] [u32 StringSlice] (
+(fn get_input_file [] (tuple u32 StringSlice) (
     {args : Args = (Args/load)}
     (defer (Args/free args))
 
@@ -59,7 +59,7 @@
     (return fd file_name)
 ))
 
-(fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] [] (
+(fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] void (
     {parse_err : Lole/Ast/CompileError = (* &err)}
     (defer (Lole/Ast/CompileError/free parse_err))
 

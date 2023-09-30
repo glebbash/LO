@@ -4,7 +4,7 @@
     (&argv_buf (&* u8))
 )
 
-(fn Args/load [] [Args] (
+(fn Args/load [] Args (
     {&argc : (& u32) = (Stack/alloc (sizeof u32))}
     (defer (Stack/free (sizeof u32)))
     {&argv_buf_size : (& u32) = (Stack/alloc (sizeof u32))}
@@ -21,12 +21,12 @@
     (return (struct.new Args argc &argv &argv_buf))
 ))
 
-(fn Args/free [(self Args)] [] (
+(fn Args/free [(self Args)] void (
     (Heap/free {self . &argv})
     (Heap/free {self . &argv_buf})
 ))
 
-(fn Args/get [(self Args) (i u32)] [StringSlice] (
+(fn Args/get [(self Args) (i u32)] StringSlice (
     {&arg : (&* u8) = {(& void) @ {self . &argv + {i * (sizeof (&* u8))}}}}
     (return (std/c_str_to_slice &arg))
 ))

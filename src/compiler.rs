@@ -206,10 +206,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 kind: AtomKind::Symbol,
             }, SExpr::List {
                 value: input_exprs, ..
-            }, SExpr::List {
-                value: output_exprs,
-                ..
-            }, SExpr::List { value: body, .. }] => {
+            }, output_expr, SExpr::List { value: body, .. }] => {
                 if ctx.fn_defs.contains_key(fn_name) {
                     return Err(CompileError {
                         message: format!("Cannot redefine function: {fn_name}"),
@@ -220,7 +217,8 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 let mut locals = BTreeMap::new();
                 let mut locals_last_index = 0;
 
-                let mut inputs = vec![];
+                let mut lole_inputs = vec![];
+                let mut wasm_inputs = vec![];
                 for input_expr in input_exprs.iter() {
                     let SExpr::List{ value: name_and_type, .. } = input_expr else {
                         return Err(CompileError {
@@ -248,28 +246,34 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     }
 
                     let value_type = parse_lole_type(p_type, &ctx)?;
-                    let comp_count = value_type.emit_components(&ctx, &mut inputs);
+                    let comp_count = value_type.emit_components(&ctx, &mut wasm_inputs);
 
                     locals.insert(
                         p_name.clone(),
                         LocalDef {
                             index: locals_last_index,
-                            value_type,
+                            value_type: value_type.clone(),
                         },
                     );
+                    lole_inputs.push(value_type);
 
                     locals_last_index += comp_count;
                 }
 
-                let mut outputs = vec![];
-                for output_type in output_exprs {
-                    let value_type = parse_lole_type(output_type, &ctx)?;
-                    value_type.emit_components(&ctx, &mut outputs);
-                }
+                let lole_output = parse_lole_type(output_expr, &ctx)?;
+                let mut wasm_outputs = vec![];
+                lole_output.emit_components(&ctx, &mut wasm_outputs);
 
                 let fn_index = ctx.wasm_module.functions.len() as u32;
 
-                let type_index = ctx.insert_fn_type(WasmFnType { inputs, outputs });
+                let type_index = ctx.insert_fn_type(WasmFnType {
+                    inputs: wasm_inputs,
+                    outputs: wasm_outputs,
+                });
+                ctx.lole_fn_types.push(LoleFnType {
+                    inputs: lole_inputs,
+                    output: lole_output,
+                });
 
                 ctx.wasm_module.functions.push(type_index);
                 ctx.fn_defs.insert(
@@ -304,10 +308,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 kind: AtomKind::Symbol,
             }, SExpr::List {
                 value: input_exprs, ..
-            }, SExpr::List {
-                value: output_exprs,
-                loc: _,
-            }, SExpr::Atom {
+            }, output_expr, SExpr::Atom {
                 value: from_literal,
                 loc: _,
                 kind: AtomKind::Symbol,
@@ -329,7 +330,8 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
 
                 let mut param_names = BTreeSet::new();
 
-                let mut inputs = vec![];
+                let mut lole_inputs = vec![];
+                let mut wasm_inputs = vec![];
                 for input_expr in input_exprs.iter() {
                     let SExpr::List { value: name_and_type, .. } = input_expr else {
                         return Err(CompileError {
@@ -357,18 +359,24 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     }
 
                     let value_type = parse_lole_type(p_type, &ctx)?;
-                    value_type.emit_components(&ctx, &mut inputs);
+                    value_type.emit_components(&ctx, &mut wasm_inputs);
+                    lole_inputs.push(value_type);
 
                     param_names.insert(p_name.clone());
                 }
 
-                let mut outputs = vec![];
-                for output_type in output_exprs {
-                    let value_type = parse_lole_type(output_type, &ctx)?;
-                    value_type.emit_components(&ctx, &mut outputs);
-                }
+                let mut wasm_outputs = vec![];
+                let lole_output = parse_lole_type(output_expr, &ctx)?;
+                lole_output.emit_components(&ctx, &mut wasm_outputs);
 
-                let type_index = ctx.insert_fn_type(WasmFnType { inputs, outputs });
+                let type_index = ctx.insert_fn_type(WasmFnType {
+                    inputs: wasm_inputs,
+                    outputs: wasm_outputs,
+                });
+                ctx.lole_fn_types.push(LoleFnType {
+                    inputs: lole_inputs,
+                    output: lole_output,
+                });
 
                 let fn_index = ctx.imported_fns_count;
                 ctx.imported_fns_count += 1;
@@ -1855,6 +1863,19 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
                 let pointee = parse_lole_type(ptr_data, ctx)?;
 
                 return Ok(LoleType::Pointer(Box::new(pointee)));
+            }
+            [SExpr::Atom {
+                kind: AtomKind::Symbol,
+                value,
+                ..
+            }, type_exprs @ ..]
+                if value == "tuple" =>
+            {
+                let mut types = vec![];
+                for type_expr in type_exprs {
+                    types.push(parse_lole_type(type_expr, ctx)?);
+                }
+                return Ok(LoleType::Tuple(types));
             }
             _ => {}
         },

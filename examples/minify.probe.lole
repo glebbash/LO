@@ -6,7 +6,7 @@
 (import "lib/lole/ast" :use { SExpr, CompileError })
 (import "lib/lole/parser" :as Parser)
 
-(fn main [] [] (
+(fn main [] void (
     {(do fd file_name) := (get_input_file)}
     (defer (Heap/free {file_name . data}))
 
@@ -25,7 +25,7 @@
     (puts "\n")
 ))
 
-(fn dump_exprs [(&exprs (& Vec<SExpr>))] [] (
+(fn dump_exprs [(&exprs (& Vec<SExpr>))] void (
     {i := 0}
 
     (loop (
@@ -43,7 +43,7 @@
     ))
 ))
 
-(fn dump_expr [(expr SExpr)] [] (
+(fn dump_expr [(expr SExpr)] void (
     (if {expr . kind == SExpr/ATOM} (do
         {atom := {SExpr/Atom @ {expr . &value}}}
         (print_str {atom . &value})
@@ -58,7 +58,7 @@
     (puts ")")
 ))
 
-(fn get_input_file [] [u32 StringSlice] (
+(fn get_input_file [] (tuple u32 StringSlice) (
     {args := (Args/load)}
     (defer (Args/free args))
 
@@ -78,7 +78,7 @@
     (return fd file_name)
 ))
 
-(fn print_err_and_exit [(&err (& CompileError))] [] (
+(fn print_err_and_exit [(&err (& CompileError))] void (
     {parse_err := (* &err)}
     (defer (CompileError/free parse_err))
 

@@ -5,7 +5,7 @@
     (y i32)
 )
 
-(fn main [] [i32] (
+(fn main [] i32 (
     {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
     (defer (Stack/free (sizeof Point2D)))
 
@@ -21,7 +21,7 @@
     (y i32)
 )
 
-(fn main [] [i32] (
+(fn main [] i32 (
     {p := (stack.new (Point2D :x 2 :y 3))}
     (defer (stack.free p))
 
@@ -36,7 +36,7 @@
     :y i32
 )}
 
-{main :: (fn [] [i32] (
+{main :: (fn [] i32 (
     {p := (stack.new (Point2D :x 2 :y 3))}
     (defer (stack.free p))
 

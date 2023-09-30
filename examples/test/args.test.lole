@@ -1,7 +1,7 @@
 (mod lib/cli)
 (mod lib/args)
 
-(fn main [] [] (
+(fn main [] void (
     {args : Args = (Args/load)}
 
     {i := 0}

@@ -5,6 +5,7 @@ use core::cell::RefCell;
 #[derive(Default)]
 pub struct ModuleContext {
     pub wasm_module: WasmModule,
+    pub lole_fn_types: Vec<LoleFnType>,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: Vec<FnBody>,
     pub fn_exports: Vec<FnExport>,
@@ -26,6 +27,11 @@ impl ModuleContext {
         self.wasm_module.types.push(fn_type);
         self.wasm_module.types.len() as u32 - 1
     }
+}
+
+pub struct LoleFnType {
+    pub inputs: Vec<LoleType>,
+    pub output: LoleType,
 }
 
 pub struct FnContext<'a> {
@@ -109,17 +115,8 @@ pub enum LoleType {
     Void,
     Primitive(LolePrimitiveType),
     Pointer(Box<LoleType>),
+    Tuple(Vec<LoleType>),
     StructInstance { name: String },
-}
-
-impl LoleType {
-    pub fn to_wasm_type(&self) -> Option<WasmType> {
-        match self {
-            LoleType::Primitive(primitive) => Some(primitive.to_wasm_type()),
-            LoleType::Pointer(_) => Some(WasmType::I32),
-            _ => None,
-        }
-    }
 }
 
 pub struct ValueComponent {
@@ -134,6 +131,14 @@ pub struct EmitComponentStats {
 }
 
 impl LoleType {
+    pub fn to_wasm_type(&self) -> Option<WasmType> {
+        match self {
+            LoleType::Primitive(primitive) => Some(primitive.to_wasm_type()),
+            LoleType::Pointer(_) => Some(WasmType::I32),
+            _ => None,
+        }
+    }
+
     pub fn emit_sized_component_stats(
         &self,
         ctx: &ModuleContext,
@@ -161,6 +166,11 @@ impl LoleType {
                 stats.byte_length += component.value_type.byte_length();
                 components.push(component);
             }
+            LoleType::Tuple(types) => {
+                for lole_type in types {
+                    lole_type.emit_sized_component_stats(ctx, stats, components)?;
+                }
+            }
             LoleType::StructInstance { name } => {
                 // safe, validation is done when creating StructInstance
                 let struct_def = ctx.struct_defs.get(name).unwrap();
@@ -186,15 +196,21 @@ impl LoleType {
                 components.push(value_type.to_wasm_type());
                 1
             }
+            LoleType::Tuple(types) => {
+                let mut count = 0;
+                for lole_type in types {
+                    count += lole_type.emit_components(ctx, components);
+                }
+                count
+            }
             LoleType::StructInstance { name } => {
                 // safe, validation is done when creating StructInstance
                 let struct_def = ctx.struct_defs.get(name).unwrap();
-                let mut count = 0;
 
+                let mut count = 0;
                 for field in &struct_def.fields {
                     count += field.value_type.emit_components(ctx, components);
                 }
-
                 count
             }
         }

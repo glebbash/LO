@@ -6,6 +6,6 @@
 ; TODO: implement
 (fn Lole/Expand/expand [
     (&exprs (& Vec<Lole/Ast/SExpr>))
-] [Lole/Expand/ExpandResult] (
+] Lole/Expand/ExpandResult (
     (return true &exprs)
 ))

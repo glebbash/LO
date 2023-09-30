@@ -19,8 +19,13 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
         LoleExpr::I32Const { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
         LoleExpr::I64Const { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I64)),
 
-        // TODO: implement
-        // LoleExpr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
+        LoleExpr::MultiValueEmit { values, .. } => {
+            let mut types = vec![];
+            for value in values {
+                types.push(get_lole_type(ctx, value)?);
+            }
+            Ok(LoleType::Tuple(types))
+        }
         LoleExpr::NoEmit { expr } => get_lole_type(ctx, expr),
         LoleExpr::StructLoad { struct_name, .. } | LoleExpr::StructGet { struct_name, .. } => {
             Ok(LoleType::StructInstance {
@@ -69,19 +74,14 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
 
             Ok(local_def.value_type.clone())
         }
-        // TODO: implement
-        // LoleExpr::Call { fn_type_index, .. } => {
-        //     let fn_type = &ctx.module.wasm_module.types[*fn_type_index as usize];
-        //     fn_type.outputs.clone()
-        // }
+        LoleExpr::Call { fn_type_index, .. } => {
+            let lole_fn_type = &ctx.module.lole_fn_types[*fn_type_index as usize];
+            Ok(lole_fn_type.output.clone())
+        }
         LoleExpr::If { block_type, .. }
         | LoleExpr::Block { block_type, .. }
         | LoleExpr::Loop { block_type, .. } => Ok(block_type.clone()),
         LoleExpr::Branch { .. } => Ok(LoleType::Void),
-
-        _ => Err(format!(
-            "type extraction of {instr:?} is not implemented yet"
-        )),
     }
 }
 

@@ -8,7 +8,7 @@
     (col u32)
 )
 
-(fn Lole/Ast/Location/clone [(self Lole/Ast/Location)] [Lole/Ast/Location] (
+(fn Lole/Ast/Location/clone [(self Lole/Ast/Location)] Lole/Ast/Location (
     {clone : Lole/Ast/Location = self}
     {clone . file_name = (StringSlice/clone {self . file_name})}
     (return clone)
@@ -19,7 +19,7 @@
     (loc Lole/Ast/Location)
 )
 
-(fn Lole/Ast/CompileError/free [(self Lole/Ast/CompileError)] [] (
+(fn Lole/Ast/CompileError/free [(self Lole/Ast/CompileError)] void (
     (Vec/free {self . &message})
 ))
 
@@ -43,7 +43,7 @@
     (loc Lole/Ast/Location)
 )
 
-(fn Lole/Ast/SExpr/free [(self Lole/Ast/SExpr)] [] (
+(fn Lole/Ast/SExpr/free [(self Lole/Ast/SExpr)] void (
     (if {self . kind == Lole/Ast/SExpr/ATOM} (do
         {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . &value}}}
         (Vec/free {atom . &value})
@@ -54,7 +54,7 @@
     (Vec<Lole/Ast/SExpr>/free {list . &value})
 ))
 
-(fn Vec<Lole/Ast/SExpr>/free [(&self (& Vec))] [] (
+(fn Vec<Lole/Ast/SExpr>/free [(&self (& Vec))] void (
     {i := 0}
     (loop (
         (if {i == (Vec/len &self)} (break))
@@ -67,7 +67,7 @@
     (Vec/free &self)
 ))
 
-(fn Lole/Ast/SExpr/loc [(self Lole/Ast/SExpr)] [Lole/Ast/Location] (
+(fn Lole/Ast/SExpr/loc [(self Lole/Ast/SExpr)] Lole/Ast/Location (
     (if {self . kind == Lole/Ast/SExpr/ATOM} (do
         {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {self . &value}}}
         (return {atom . loc})

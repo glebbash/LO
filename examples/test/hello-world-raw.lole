@@ -26,7 +26,7 @@
 (data 12 "Hello World!\n")
 
 (export main :as _start)
-(fn main [] [] (
+(fn main [] void (
     {i32 @ 4 ; Wasi/IOVec.base
         = 12} ; ref to "Hello World!\n"
 

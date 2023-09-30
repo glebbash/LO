@@ -10,7 +10,7 @@
     (br Point2D)
 )
 
-(fn main [] [] (
+(fn main [] void (
     {r : Rect = (struct.new Rect
         (struct.new Point2D 1 2)
         (struct.new Point2D 3 4)

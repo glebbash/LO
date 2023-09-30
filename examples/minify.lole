@@ -3,7 +3,7 @@
 (mod lib/args)
 (mod lib/lole/parser)
 
-(fn main [] [] (
+(fn main [] void (
     {(do {fd : u32} {file_name : StringSlice}) = (get_input_file)}
     (defer (Heap/free {file_name . data}))
 
@@ -22,7 +22,7 @@
     (puts "\n")
 ))
 
-(fn dump_exprs [(&exprs (& Vec<Lole/Ast/SExpr>))] [] (
+(fn dump_exprs [(&exprs (& Vec<Lole/Ast/SExpr>))] void (
     {i := 0}
 
     (loop (
@@ -40,7 +40,7 @@
     ))
 ))
 
-(fn dump_expr [(expr Lole/Ast/SExpr)] [] (
+(fn dump_expr [(expr Lole/Ast/SExpr)] void (
     (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
         {atom : Lole/Ast/SExpr/Atom = {Lole/Ast/SExpr/Atom @ {expr . &value}}}
         (print_str {atom . &value})
@@ -55,7 +55,7 @@
     (puts ")")
 ))
 
-(fn get_input_file [] [u32 StringSlice] (
+(fn get_input_file [] (tuple u32 StringSlice) (
     {args : Args = (Args/load)}
     (defer (Args/free args))
 
@@ -75,7 +75,7 @@
     (return fd file_name)
 ))
 
-(fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] [] (
+(fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] void (
     {parse_err : Lole/Ast/CompileError = (* &err)}
     (defer (Lole/Ast/CompileError/free parse_err))
 
