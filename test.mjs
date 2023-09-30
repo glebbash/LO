@@ -190,7 +190,7 @@ test("compiles struct-in-struct", async () => {
         return readFile(stdoutFile, { encoding: "utf-8" });
     });
 
-    assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n3\n");
+    assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
 });
 
 test("compiles nested-if-break", async () => {

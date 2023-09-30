@@ -41,9 +41,6 @@
     (print_u32 {Point2D @ {&r + (sizeof Point2D)} . x})
     (puts "\n")
 
-    (print_u32 {Point2D @ &r @ (sizeof Point2D) . x})
-    (puts "\n")
-
     ; TODO: support chained `->`
     (print_u32 {&r -> br . x})
     (puts "\n")

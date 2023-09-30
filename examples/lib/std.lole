@@ -54,7 +54,7 @@
             (if {size == 0} (break))
             {size -= 1}
 
-            {i32/u8 @ dist @ size = {i32/u8 @ src @ size}}
+            {i32/u8 @ {dist + size} = {i32/u8 @ {src + size}}}
         ))
     ))
 
@@ -64,11 +64,11 @@
             {size -= 1}
 
             {
-            (do {i32/u8 @ ref1 @ size}
-                {i32/u8 @ ref2 @ size})
+            (do {i32/u8 @ {ref1 + size}}
+                {i32/u8 @ {ref2 + size}})
                 =
-            (do {i32/u8 @ ref2 @ size}
-                {i32/u8 @ ref1 @ size})
+            (do {i32/u8 @ {ref2 + size}}
+                {i32/u8 @ {ref1 + size}})
             }
         ))
     ))
@@ -243,9 +243,7 @@
     (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
         (Vec/_panic_if_out_of_bounds &self index)
 
-        (return {i32/u8
-            @ {&self -> &data}
-            @ {index * {&self -> item_size}}})
+        (return {i32/u8 @ {&self -> &data + {index * {&self -> item_size}}}})
     ))
 
     (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] [] (
@@ -266,9 +264,7 @@
 
         (Vec/_grow_if_needed &self)
 
-        {i32/u8
-            @ {&self -> &data }
-            @ {index * {&self -> item_size}} = item}
+        {i32/u8 @ {&self -> &data + {index * {&self -> item_size}}} = item}
     ))
 
     (fn Vec/push_all [(&self (& Vec)) (&items ptr) (items_len u32)] [] (
@@ -348,7 +344,7 @@
     (struct StringSlice (data (&* u8)) (size u32))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
-        (return {i32/u8 @ {self . data} @ index})
+        (return {i32/u8 @ {self . data + index}})
     ))
 
     (fn StringSlice/clone [(self StringSlice)] [StringSlice] (
@@ -366,7 +362,7 @@
         (loop (
             (if {i == {self . size}} (break))
 
-            (if {i32/u8 @ {self . data} @ i != {i32/u8 @ {other . data} @ i}} (do
+            (if {i32/u8 @ {self . data + i} != {i32/u8 @ {other . data + i}}} (do
                 (return false)
             ))
 
@@ -452,7 +448,7 @@
         {len := 0}
 
         (loop (
-            (if {{i32/u8 @ &str @ len} == 0} (break))
+            (if {{i32/u8 @ {&str + len}} == 0} (break))
 
             {len += 1}
         ))

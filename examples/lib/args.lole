@@ -27,6 +27,6 @@
 ))
 
 (fn Args/get [(self Args) (i u32)] [StringSlice] (
-    {&arg : (&* u8) = {ptr @ {self . &argv} @ {i * (sizeof (&* u8))}}}
+    {&arg : (&* u8) = {ptr @ {self . &argv + {i * (sizeof (&* u8))}}}}
     (return (std/c_str_to_slice &arg))
 ))
