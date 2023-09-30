@@ -31,7 +31,7 @@
 (alias Lole/Ast/SExpr/LIST 1)
 (struct Lole/Ast/SExpr
     (kind u32) ; Lole/Ast/SExpr/ATOM | Lole/Ast/SExpr/LIST
-    (&value ptr) ; (& Lole/Ast/SExpr/Atom) | (& Lole/Ast/SExpr/List)
+    (&value (& void)) ; (& Lole/Ast/SExpr/Atom) | (& Lole/Ast/SExpr/List)
 )
 (struct Lole/Ast/SExpr/Atom
     (&value (& String))

@@ -18,14 +18,13 @@ pub struct ModuleContext {
 
 impl ModuleContext {
     pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
-        self.wasm_module
-            .types
-            .iter()
-            .position(|ft| *ft == fn_type)
-            .unwrap_or_else(|| {
-                self.wasm_module.types.push(fn_type);
-                self.wasm_module.types.len() - 1
-            }) as u32
+        let type_index = self.wasm_module.types.iter().position(|ft| *ft == fn_type);
+        if let Some(type_index) = type_index {
+            return type_index as u32;
+        }
+
+        self.wasm_module.types.push(fn_type);
+        self.wasm_module.types.len() as u32 - 1
     }
 }
 
@@ -107,13 +106,6 @@ impl LolePrimitiveType {
             LolePrimitiveType::U64 => WasmType::I64,
             LolePrimitiveType::I64 => WasmType::I64,
             LolePrimitiveType::F64 => WasmType::F64,
-        }
-    }
-
-    pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
-        match kind {
-            WasmLoadKind::I32 => LolePrimitiveType::I32,
-            WasmLoadKind::I32U8 => LolePrimitiveType::U8,
         }
     }
 }
@@ -223,6 +215,7 @@ impl LoleType {
 
     pub fn to_load_kind(&self) -> Result<WasmLoadKind, String> {
         match self {
+            LoleType::Primitive(LolePrimitiveType::Bool) => return Ok(WasmLoadKind::I32),
             LoleType::Primitive(LolePrimitiveType::U32) => return Ok(WasmLoadKind::I32),
             LoleType::Primitive(LolePrimitiveType::I32) => return Ok(WasmLoadKind::I32),
             LoleType::Primitive(LolePrimitiveType::U8) => return Ok(WasmLoadKind::I32U8),
@@ -303,9 +296,8 @@ pub enum LoleExpr {
     MemoryGrow {
         size: Box<LoleExpr>,
     },
-    // TODO: use single type for loads/gets?
     Load {
-        kind: WasmLoadKind,
+        kind: LoleType,
         align: u32,
         offset: u32,
         address_instr: Box<LoleExpr>,

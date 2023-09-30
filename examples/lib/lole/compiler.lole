@@ -4,7 +4,7 @@
 
 (struct Lole/Compiler/CompileResult
     (ok bool)
-    (data ptr) ; 0 | (& Lole/Ast/CompileError)
+    (data (& void)) ; 0 | (& Lole/Ast/CompileError)
 )
 
 (fn Lole/Compiler/compile [
@@ -150,7 +150,7 @@
 
 (struct Lole/Compiler/CompileBlockResult
     (ok bool)
-    (data ptr) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
+    (data (& void)) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
 )
 
 ; TODO: implement
@@ -162,7 +162,7 @@
 
 (struct Lole/Compiler/GetDefferedRes
     (ok bool)
-    (data ptr) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
+    (data (& void)) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
 )
 
 ; TODO: implement

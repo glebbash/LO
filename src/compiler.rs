@@ -1482,37 +1482,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             )?
         }
         // TODO(feat): support custom aligns and offsets
-        (
-            "@",
-            [SExpr::Atom {
-                value: load_kind,
-                loc: kind_loc,
-                kind: AtomKind::Symbol,
-            }, address_expr],
-        ) => {
+        ("@", [load_kind_expr, address_expr]) => {
             let address_instr = Box::new(compile_instr(address_expr, ctx)?);
+            let value_type = parse_lole_type(&load_kind_expr, ctx.module)?;
 
-            let Some(_) = ctx.module.struct_defs.get(load_kind) else {
-                return Ok(LoleExpr::Load {
-                    kind: parse_load_kind(load_kind).map_err(|e| CompileError {
-                        message: e,
-                        loc: kind_loc.clone(),
-                    })?,
-                    align: 0,
-                    offset: 0,
-                    address_instr,
-                })
-            };
-
-            compile_load(
-                ctx,
-                &LoleType::StructInstance {
-                    name: load_kind.clone(),
-                },
-                address_instr,
-                0,
-            )
-            .map_err(|err| CompileError {
+            compile_load(ctx, &value_type, address_instr, 0).map_err(|err| CompileError {
                 message: err,
                 loc: op_loc.clone(),
             })?
@@ -1579,16 +1553,17 @@ fn compile_load(
     address_instr: Box<LoleExpr>,
     base_byte_offset: u32,
 ) -> Result<LoleExpr, String> {
-    if let Ok(load_kind) = value_type.to_load_kind() {
+    if let Ok(_) = value_type.to_load_kind() {
         return Ok(LoleExpr::Load {
-            kind: load_kind,
-            align: 1,
+            kind: value_type.clone(),
+            align: 0,
             offset: base_byte_offset,
             address_instr: address_instr.clone(),
         });
     }
 
     let LoleType::StructInstance { name } = value_type else {
+        crate::wasi_io::debug(format!("hi"));
         unreachable!()
     };
 
@@ -1607,7 +1582,7 @@ fn compile_load(
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
         primitive_loads.push(LoleExpr::Load {
-            kind: LoleType::Primitive(comp.value_type).to_load_kind()?,
+            kind: LoleType::Primitive(comp.value_type),
             align: 1,
             offset: comp.byte_offset,
             address_instr: Box::new(LoleExpr::LocalGet {
@@ -1767,9 +1742,7 @@ fn compile_set_binds(
             address_instr,
         } => {
             let value_local_index = ctx.fn_ctx.locals_last_index;
-            ctx.fn_ctx
-                .non_arg_locals
-                .push(LolePrimitiveType::from_load_kind(&kind).to_wasm_type());
+            ctx.fn_ctx.non_arg_locals.push(kind.to_wasm_type().unwrap());
             ctx.fn_ctx.locals_last_index += 1;
 
             let address_instr = match address_index {
@@ -1781,7 +1754,7 @@ fn compile_set_binds(
                 bind: LoleSetBind::Memory {
                     align,
                     offset,
-                    kind: WasmStoreKind::from_load_kind(&kind),
+                    kind: WasmStoreKind::from_load_kind(&kind.to_load_kind().unwrap()),
                     address_instr,
                     value_local_index,
                 },
@@ -1842,6 +1815,7 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
             value: name,
             ..
         } => match &name[..] {
+            "void" => return Ok(LoleType::Void),
             "bool" => return Ok(LoleType::Primitive(LolePrimitiveType::Bool)),
             "u8" => return Ok(LoleType::Primitive(LolePrimitiveType::U8)),
             "i8" => return Ok(LoleType::Primitive(LolePrimitiveType::I8)),
@@ -1883,14 +1857,6 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
         message: format!("Unknown value type: {expr}"),
         loc: expr.loc().clone(),
     })
-}
-
-fn parse_load_kind(kind: &str) -> Result<WasmLoadKind, String> {
-    match kind {
-        "i32" => Ok(WasmLoadKind::I32),
-        "i32/u8" => Ok(WasmLoadKind::I32U8),
-        _ => Err(format!("Unknown load kind: {kind}")),
-    }
 }
 
 // Stolen from https://keyboardsmash.dev/posts/base64-implementation-in-rust-decoding/

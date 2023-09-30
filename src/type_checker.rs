@@ -41,16 +41,7 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, C
             return get_lole_type(ctx, lhs);
         }
 
-        // TODO: implement
-        // LoleExpr::Load {
-        //     kind,
-        //     address_instr,
-        //     ..
-        // } => {
-        //     get_type(ctx, &address_instr)?;
-        //     // TODO: use primitive type
-        //     vec![kind.get_primitive_type().to_wasm_type()]
-        // }
+        LoleExpr::Load { kind, .. } => Ok(kind.clone()),
         LoleExpr::GlobalGet { global_index, .. } => {
             let global_def = ctx
                 .module
@@ -127,15 +118,7 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
             get_type(ctx, rhs)?;
             return get_type(ctx, lhs);
         }
-        LoleExpr::Load {
-            kind,
-            address_instr,
-            ..
-        } => {
-            get_type(ctx, &address_instr)?;
-            // TODO: use primitive type
-            vec![LolePrimitiveType::from_load_kind(kind).to_wasm_type()]
-        }
+        LoleExpr::Load { kind, .. } => vec![kind.to_wasm_type().unwrap()],
         LoleExpr::GlobalGet { global_index, .. } => {
             let wasm_global = ctx
                 .module

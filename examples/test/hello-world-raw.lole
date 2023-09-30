@@ -1,5 +1,5 @@
 ; todo for running from self-hosted compiler:
-; - types: ptr, u32
+; - types: (& void), u32
 ; - function imports
 ; - memory declaration
 ; - memory export
@@ -15,7 +15,7 @@
 
 (import fn Wasi/fd_write [
     (fd              u32) ; file_descriptor
-    (&iovs           ptr) ; The pointer to the iov array
+    (&iovs           (& void)) ; The pointer to the iov array
     (iovs_len        u32) ; Amount of Wasi/IOVec
     (&nwritten       u32) ; Pointer to store the number of bytes written
 ] [u32] :from wasi_snapshot_preview1 fd_write)

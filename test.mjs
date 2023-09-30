@@ -215,11 +215,11 @@ test("compiles heap-alloc", async () => {
     assert.strictEqual(
         output,
         dropPadding(`
-            Heap/TOTAL_ALLOCATED = 1048596
-            &p = (Heap/alloc 1) // 1048592
+            Heap/TOTAL_ALLOCATED = 1048593
+            &p = (Heap/alloc 1) // 1048589
             (Heap/free &p)
-            &p = (Heap/alloc 1) // 1048592
-            &p = (Heap/alloc 1) // 1048612
+            &p = (Heap/alloc 1) // 1048589
+            &p = (Heap/alloc 1) // 1048674
         `)
     );
 });

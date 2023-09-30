@@ -1,6 +1,6 @@
 (struct Lole/Expand/ExpandResult
     (ok bool)
-    (data ptr) ; (& Vec<Lole/Ast/SExpr>) | (& Lole/Ast/CompileError)
+    (data (& void)) ; (& Vec<Lole/Ast/SExpr>) | (& Lole/Ast/CompileError)
 )
 
 ; TODO: implement

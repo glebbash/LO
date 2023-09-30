@@ -4,7 +4,7 @@
     (puts "Heap/TOTAL_ALLOCATED = ")
     (print_u32 Heap/TOTAL_ALLOCATED) (puts "\n")
 
-    {&p : ptr = (Heap/alloc 1)}
+    {&p : (& void) = (Heap/alloc 1)}
     (puts "&p = (Heap/alloc 1) // ")
     (print_u32 &p) (puts "\n")
 

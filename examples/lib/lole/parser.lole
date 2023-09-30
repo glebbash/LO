@@ -11,12 +11,12 @@
 
 (struct Lole/Parser/ParseResult
     (ok bool)
-    (data ptr) ; (& Lole/Ast/SExpr) | (& Lole/Ast/CompileError)
+    (data (& void)) ; (& Lole/Ast/SExpr) | (& Lole/Ast/CompileError)
 )
 
 (struct Lole/Parser/ParseScriptResult
     (ok bool)
-    (data ptr) ; (& Vec<Lole/Ast/SExpr>) | (& Lole/Ast/CompileError)
+    (data (& void)) ; (& Vec<Lole/Ast/SExpr>) | (& Lole/Ast/CompileError)
 )
 
 ; public interface

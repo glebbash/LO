@@ -1,14 +1,9 @@
 (alias true 1)
 (alias false 0)
-(alias u32 i32)
-(alias u8 i32)
-(alias bool i32)
-(alias ptr i32)
-(alias u64 i64)
 
 ; panic
 
-    (fn panic [(message_ptr ptr) (message_len u32)] [] (
+    (fn panic [(message_ptr (& void)) (message_len u32)] [] (
         {u32 @ 0 = message_ptr}
         {u32 @ 4 = message_len}
         (unreachable)
@@ -19,7 +14,7 @@
     (alias Alloc/STACK 0)
     (alias Alloc/HEAP 1)
 
-    (fn alloc [(alloc_id u32) (size u32)] [ptr] (
+    (fn alloc [(alloc_id u32) (size u32)] [(& void)] (
         (if {alloc_id == 0} (return (Stack/alloc size)))
         (return (Heap/alloc size))
     ))
@@ -49,26 +44,26 @@
     ))
 
     ; TODO: use builtin mem.copy instr, check engine support
-    (fn Mem/copy [(src ptr) (dist ptr) (size u32)] [] (
+    (fn Mem/copy [(src (& void)) (dist (& void)) (size u32)] [] (
         (loop (
             (if {size == 0} (break))
             {size -= 1}
 
-            {i32/u8 @ {dist + size} = {i32/u8 @ {src + size}}}
+            {u8 @ {dist + size} = {u8 @ {src + size}}}
         ))
     ))
 
-    (fn Mem/swap [(ref1 ptr) (ref2 ptr) (size u32)] [] (
+    (fn Mem/swap [(ref1 (& void)) (ref2 (& void)) (size u32)] [] (
         (loop (
             (if {size == 0} (break))
             {size -= 1}
 
             {
-            (do {i32/u8 @ {ref1 + size}}
-                {i32/u8 @ {ref2 + size}})
+            (do {u8 @ {ref1 + size}}
+                {u8 @ {ref2 + size}})
                 =
-            (do {i32/u8 @ {ref2 + size}}
-                {i32/u8 @ {ref1 + size}})
+            (do {u8 @ {ref2 + size}}
+                {u8 @ {ref1 + size}})
             }
         ))
     ))
@@ -76,7 +71,7 @@
 ; stack
 
     (global mut Stack/&CURRENT u32 (data.size))
-    (global mut Stack/&BEGIN ptr (data.size))
+    (global mut Stack/&BEGIN (& void) (data.size))
     (global mut Stack/&END u32 1048576) ; 1MB
 
     (fn Stack/push_u32 [(value u32)] [] (
@@ -93,7 +88,7 @@
         (return {u32 @ Stack/&CURRENT})
     ))
 
-    (fn Stack/alloc [(size u32)] [ptr] (
+    (fn Stack/alloc [(size u32)] [(& void)] (
         {Stack/&CURRENT += size}
 
         (if {Stack/&CURRENT > Stack/&END} (do
@@ -116,8 +111,8 @@
     (struct Heap/Block
         (size u32)
         (used bool)
-        (&next ptr) ; (& Heap/Block)
-        (&data ptr)
+        (&next (& void)) ; (& Heap/Block)
+        (&data (& void))
     )
 
     (global mut Heap/TOTAL_ALLOCATED u32 1048576) ; starts after stack end
@@ -125,7 +120,7 @@
     (global mut Heap/&CURRENT_BLOCK (& Heap/Block) 0)
 
     ; http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
-    (fn Heap/alloc [(size u32)] [ptr] (
+    (fn Heap/alloc [(size u32)] [(& void)] (
         {size = (Mem/align size)}
 
         {&free_block : (& Heap/Block) = (Heap/find_free_block size)}
@@ -167,12 +162,12 @@
         (return {&block -> &data})
     ))
 
-    (fn Heap/free [(&ref ptr)] [] (
+    (fn Heap/free [(&ref (& void))] [] (
         {&block : (& Heap/Block) = (Heap/get_block &ref)}
         {&block -> used = false}
     ))
 
-    (fn Heap/get_block [(&ref ptr)] [(& Heap/Block)] (
+    (fn Heap/get_block [(&ref (& void))] [(& Heap/Block)] (
         (return {&ref - (sizeof Heap/Block)})
     ))
 
@@ -196,7 +191,7 @@
 ; vec
 
     (struct Vec
-        (&data ptr)
+        (&data (& void))
         (length u32)
         (capacity u32)
         (item_size u32)
@@ -226,7 +221,7 @@
         (return {&self -> length})
     ))
 
-    (fn Vec/as_slice [(&self (& Vec))] [ptr u32] (
+    (fn Vec/as_slice [(&self (& Vec))] [(& void) u32] (
         (return {&self -> &data} {&self -> length})
     ))
 
@@ -243,7 +238,7 @@
     (fn Vec/get_u8 [(&self (& Vec)) (index u32)] [u8] (
         (Vec/_panic_if_out_of_bounds &self index)
 
-        (return {i32/u8 @ {&self -> &data + {index * {&self -> item_size}}}})
+        (return {u8 @ {&self -> &data + {index * {&self -> item_size}}}})
     ))
 
     (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] [] (
@@ -264,10 +259,10 @@
 
         (Vec/_grow_if_needed &self)
 
-        {i32/u8 @ {&self -> &data + {index * {&self -> item_size}}} = item}
+        {u8 @ {&self -> &data + {index * {&self -> item_size}}} = item}
     ))
 
-    (fn Vec/push_all [(&self (& Vec)) (&items ptr) (items_len u32)] [] (
+    (fn Vec/push_all [(&self (& Vec)) (&items (& void)) (items_len u32)] [] (
         {old_len : u32 = {&self -> length}}
         {&self -> length = {old_len + items_len}}
 
@@ -280,7 +275,7 @@
         )
     ))
 
-    (fn Vec/push_undef [(&self (& Vec))] [ptr] (
+    (fn Vec/push_undef [(&self (& Vec))] [(& void)] (
         {&self -> length += 1}
 
         (Vec/_grow_if_needed &self)
@@ -293,7 +288,7 @@
         {&other -> length = 0}
     ))
 
-    (fn Vec/pop_unchecked [(&self (& Vec))] [ptr] (
+    (fn Vec/pop_unchecked [(&self (& Vec))] [(& void)] (
         {&self -> length -= 1}
         (return (Vec/at_unchecked &self (Vec/len &self)))
     ))
@@ -322,7 +317,7 @@
 
         {item_size : u32 = {&self -> item_size}}
         {old_capacity : u32 = {&self -> capacity}}
-        {&old_data : ptr = {&self -> &data}}
+        {&old_data : (& void) = {&self -> &data}}
         (defer (free {&self -> alloc_id} &old_data old_capacity))
 
         {&self -> capacity = {old_capacity * 2}}
@@ -344,7 +339,7 @@
     (struct StringSlice (data (&* u8)) (size u32))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] [u8] (
-        (return {i32/u8 @ {self . data + index}})
+        (return {u8 @ {self . data + index}})
     ))
 
     (fn StringSlice/clone [(self StringSlice)] [StringSlice] (
@@ -362,7 +357,7 @@
         (loop (
             (if {i == {self . size}} (break))
 
-            (if {i32/u8 @ {self . data + i} != {i32/u8 @ {other . data + i}}} (do
+            (if {u8 @ {self . data + i} != {u8 @ {other . data + i}}} (do
                 (return false)
             ))
 
@@ -398,7 +393,7 @@
         (return (Vec/len &self))
     ))
 
-    (struct Dict/GetResult (ok bool) (&value ptr))
+    (struct Dict/GetResult (ok bool) (&value (& void)))
 
     (fn Dict/get [(&self (& Dict)) (key StringSlice)] [Dict/GetResult] (
         {i := 0}
@@ -448,7 +443,7 @@
         {len := 0}
 
         (loop (
-            (if {{i32/u8 @ {&str + len}} == 0} (break))
+            (if {{u8 @ {&str + len}} == 0} (break))
 
             {len += 1}
         ))

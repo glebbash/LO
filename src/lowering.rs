@@ -34,7 +34,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
         } => {
             lower_expr(out, *address_instr);
             out.push(WasmInstr::Load {
-                kind,
+                kind: kind.to_load_kind().unwrap(),
                 align,
                 offset,
             });
