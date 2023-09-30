@@ -1,5 +1,5 @@
 use crate::{ast::*, ir::*, wasm::*};
-use alloc::{format, vec, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 
 pub fn get_types(
     ctx: &BlockContext,
@@ -12,7 +12,7 @@ pub fn get_types(
     Ok(types)
 }
 
-pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, CompileError> {
+pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, String> {
     match instr {
         LoleExpr::Unreachable { .. } => Ok(LoleType::Void),
         LoleExpr::I32ConstLazy { .. } => Ok(LoleType::Primitive(LolePrimitiveType::I32)),
@@ -21,7 +21,7 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, C
 
         // TODO: implement
         // LoleExpr::MultiValueEmit { values, .. } => get_types(ctx, values)?,
-        LoleExpr::NoEmit { .. } => Ok(LoleType::Void),
+        LoleExpr::NoEmit { expr } => get_lole_type(ctx, expr),
         LoleExpr::StructLoad { struct_name, .. } | LoleExpr::StructGet { struct_name, .. } => {
             Ok(LoleType::StructInstance {
                 name: struct_name.clone(),
@@ -40,7 +40,6 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, C
             get_lole_type(ctx, rhs)?;
             return get_lole_type(ctx, lhs);
         }
-
         LoleExpr::Load { kind, .. } => Ok(kind.clone()),
         LoleExpr::GlobalGet { global_index, .. } => {
             let global_def = ctx
@@ -51,10 +50,7 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, C
 
             // TODO: handle struct fields: {s . x} should be supported
             let Some(global_def) = global_def else {
-                return Err(CompileError {
-                    message: format!("shouldn't happen"),
-                    loc: Location::internal(),
-                });
+                return Err(format!("shouldn't happen"));
             };
 
             Ok(global_def.value_type.clone())
@@ -68,10 +64,7 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, C
 
             // TODO: handle struct fields: {s . x} should be supported
             let Some(local_def) = local_def else {
-                return Err(CompileError {
-                    message: format!("shouldn't happen"),
-                    loc: Location::internal(),
-                });
+                return Err(format!("shouldn't happen"));
             };
 
             Ok(local_def.value_type.clone())
@@ -86,14 +79,23 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, C
         | LoleExpr::Loop { block_type, .. } => Ok(block_type.clone()),
         LoleExpr::Branch { .. } => Ok(LoleType::Void),
 
-        _ => Err(CompileError {
-            message: format!("not implemented yet"),
-            loc: Location::internal(),
-        }),
+        _ => Err(format!(
+            "type extraction of {instr:?} is not implemented yet"
+        )),
     }
 }
 
 pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, CompileError> {
+    // TODO: use this for testing get_lole_type
+    // let lole_type = get_lole_type(ctx, instr).map_err(|message| CompileError {
+    //     message,
+    //     loc: Location::internal(),
+    // })?;
+
+    // let mut wasm_types = vec![];
+    // lole_type.emit_components(ctx.module, &mut wasm_types);
+    // Ok(wasm_types)
+
     Ok(match instr {
         LoleExpr::Unreachable { .. } => vec![],
         LoleExpr::I32ConstLazy { .. } => vec![WasmType::I32],

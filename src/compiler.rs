@@ -1293,7 +1293,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             }
 
             let value_instr = compile_instr(value, ctx)?;
-            let lole_type = get_lole_type(ctx, &value_instr)?;
+            let lole_type = get_lole_type(ctx, &value_instr).map_err(|message| CompileError {
+                message,
+                loc: value.loc().clone(),
+            })?;
 
             let start_index = ctx.fn_ctx.locals_last_index;
             let comp_count = lole_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_locals);
@@ -1428,7 +1431,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
         }
         ("*", [pointer_expr]) => {
             let pointer_instr = Box::new(compile_instr(pointer_expr, ctx)?);
-            let lole_type = get_lole_type(ctx, &pointer_instr)?;
+            let lole_type = get_lole_type(ctx, &pointer_instr).map_err(|message| CompileError {
+                message,
+                loc: pointer_expr.loc().clone(),
+            })?;
 
             let LoleType::Pointer(pointee_type) = lole_type else {
                 return Err(CompileError {
@@ -1451,7 +1457,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             }],
         ) => {
             let struct_ref_instr = Box::new(compile_instr(struct_ref_expr, ctx)?);
-            let lole_type = get_lole_type(ctx, &struct_ref_instr)?;
+            let lole_type =
+                get_lole_type(ctx, &struct_ref_instr).map_err(|message| CompileError {
+                    message,
+                    loc: struct_ref_expr.loc().clone(),
+                })?;
 
             let LoleType::Pointer(pointee_type) = &lole_type else {
                 return Err(CompileError {
