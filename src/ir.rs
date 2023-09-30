@@ -126,6 +126,16 @@ pub enum LoleType {
     StructInstance { name: String },
 }
 
+impl LoleType {
+    pub fn to_wasm_type(&self) -> Option<WasmType> {
+        match self {
+            LoleType::Primitive(primitive) => Some(primitive.to_wasm_type()),
+            LoleType::Pointer(_) => Some(WasmType::I32),
+            _ => None,
+        }
+    }
+}
+
 pub struct ValueComponent {
     pub byte_offset: u32,
     pub value_type: LolePrimitiveType,
@@ -333,16 +343,16 @@ pub enum LoleExpr {
     Return {
         value: Box<LoleExpr>,
     },
-    Loop {
-        block_type: Option<WasmType>,
+    Block {
+        block_type: LoleType,
         body: Vec<LoleExpr>,
     },
-    Block {
-        block_type: Option<WasmType>,
+    Loop {
+        block_type: LoleType,
         body: Vec<LoleExpr>,
     },
     If {
-        block_type: Option<WasmType>,
+        block_type: LoleType,
         cond: Box<LoleExpr>,
         then_branch: Vec<LoleExpr>,
         else_branch: Option<Vec<LoleExpr>>,

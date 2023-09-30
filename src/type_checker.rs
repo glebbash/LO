@@ -1,6 +1,5 @@
 use crate::{ast::*, ir::*, wasm::*};
-use alloc::format;
-use alloc::{vec, vec::Vec};
+use alloc::{format, vec, vec::Vec};
 
 pub fn get_types(
     ctx: &BlockContext,
@@ -91,15 +90,9 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, C
         //     let fn_type = &ctx.module.wasm_module.types[*fn_type_index as usize];
         //     fn_type.outputs.clone()
         // }
-        // LoleExpr::If { block_type, .. }
-        // | LoleExpr::Block { block_type, .. }
-        // | LoleExpr::Loop { block_type, .. } => {
-        //     if let Some(block_type) = block_type {
-        //         vec![*block_type]
-        //     } else {
-        //         vec![]
-        //     }
-        // }
+        LoleExpr::If { block_type, .. }
+        | LoleExpr::Block { block_type, .. }
+        | LoleExpr::Loop { block_type, .. } => Ok(block_type.clone()),
         LoleExpr::Branch { .. } => Ok(LoleType::Void),
 
         _ => Err(CompileError {
@@ -169,8 +162,8 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
         LoleExpr::If { block_type, .. }
         | LoleExpr::Block { block_type, .. }
         | LoleExpr::Loop { block_type, .. } => {
-            if let Some(block_type) = block_type {
-                vec![*block_type]
+            if let Some(wasm_type) = block_type.to_wasm_type() {
+                vec![wasm_type]
             } else {
                 vec![]
             }

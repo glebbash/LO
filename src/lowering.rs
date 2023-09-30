@@ -97,7 +97,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
         LoleExpr::Block { block_type, body } => {
             out.push(WasmInstr::BlockStart {
                 block_type: WasmBlockType::Block,
-                return_type: block_type,
+                return_type: block_type.to_wasm_type(),
             });
             lower_exprs(out, body);
             out.push(WasmInstr::BlockEnd);
@@ -105,7 +105,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
         LoleExpr::Loop { block_type, body } => {
             out.push(WasmInstr::BlockStart {
                 block_type: WasmBlockType::Loop,
-                return_type: block_type,
+                return_type: block_type.to_wasm_type(),
             });
             lower_exprs(out, body);
             out.push(WasmInstr::BlockEnd);
@@ -119,7 +119,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             lower_expr(out, *cond);
             out.push(WasmInstr::BlockStart {
                 block_type: WasmBlockType::If,
-                return_type: block_type,
+                return_type: block_type.to_wasm_type(),
             });
             lower_exprs(out, then_branch);
             if let Some(else_branch) = else_branch {

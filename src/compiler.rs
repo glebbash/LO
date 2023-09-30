@@ -470,7 +470,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             }
         },
         "global" => {
-            let (mutable, global_name, global_type, global_value, name_loc) = match other {
+            let (mutable, global_name, global_type_expr, global_value, name_loc) = match other {
                 [SExpr::Atom {
                     value: mutable_literal,
                     loc: _,
@@ -506,8 +506,13 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 });
             }
 
-            let lole_type = parse_lole_type(global_type, ctx)?;
-            let wasm_type = get_wasm_type(&lole_type, global_type)?;
+            let lole_type = parse_lole_type(global_type_expr, ctx)?;
+            let Some(wasm_type) = lole_type.to_wasm_type() else {
+                return Err(CompileError {
+                    message: format!("Unsupported type: {global_type_expr}"),
+                    loc: global_type_expr.loc().clone(),
+                });
+            };
 
             // TODO: move to better place
             let mut instrs = vec![];
@@ -864,10 +869,8 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 size: Box::new(size),
             }
         }
-        ("if", [block_type, cond, then_branch, else_branch]) => LoleExpr::If {
-            block_type: Some(parse_unary_type(block_type, ctx.module)?),
-            cond: Box::new(compile_instr(cond, ctx)?),
-            then_branch: compile_block(
+        ("if", [block_type_expr, cond, then_branch, else_branch]) => {
+            let then_branch = compile_block(
                 slice::from_ref(then_branch),
                 &mut BlockContext {
                     module: ctx.module,
@@ -877,8 +880,9 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                         parent: Some(&ctx.block),
                     },
                 },
-            )?,
-            else_branch: Some(compile_block(
+            )?;
+
+            let else_branch = Some(compile_block(
                 slice::from_ref(else_branch),
                 &mut BlockContext {
                     module: ctx.module,
@@ -888,10 +892,27 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                         parent: Some(&ctx.block),
                     },
                 },
-            )?),
-        },
+            )?);
+
+            let block_type = parse_lole_type(block_type_expr, ctx.module)?;
+            if let None = block_type.to_wasm_type() {
+                let LoleType::Void = block_type else {
+                    return Err(CompileError {
+                        message: format!("Unsupported type: {block_type_expr}"),
+                        loc: block_type_expr.loc().clone(),
+                    });
+                };
+            }
+
+            LoleExpr::If {
+                block_type,
+                cond: Box::new(compile_instr(cond, ctx)?),
+                then_branch,
+                else_branch,
+            }
+        }
         ("if", [cond, then_branch]) => LoleExpr::If {
-            block_type: None,
+            block_type: LoleType::Void,
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
                 slice::from_ref(then_branch),
@@ -922,9 +943,9 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             body.push(LoleExpr::Branch { label_index: 0 });
 
             LoleExpr::Block {
-                block_type: None,
+                block_type: LoleType::Void,
                 body: vec![LoleExpr::Loop {
-                    block_type: None,
+                    block_type: LoleType::Void,
                     body,
                 }],
             }
@@ -1542,7 +1563,9 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                                     align,
                                     offset,
                                     ..
-                                } = load_instr else { unreachable!() };
+                                } = load_instr else {
+                                    unreachable!();
+                                };
 
                                 LoleExpr::Load {
                                     kind,
@@ -1928,22 +1951,6 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
         message: format!("Unknown value type: {expr}"),
         loc: expr.loc().clone(),
     })
-}
-
-// unary type - type that corresponds to single Wasm type (i.e not a multivalue)
-fn parse_unary_type(expr: &SExpr, ctx: &ModuleContext) -> Result<WasmType, CompileError> {
-    get_wasm_type(&parse_lole_type(expr, ctx)?, expr)
-}
-
-fn get_wasm_type(lole_type: &LoleType, original_expr: &SExpr) -> Result<WasmType, CompileError> {
-    match lole_type {
-        LoleType::Primitive(primitive) => Ok(primitive.to_wasm_type()),
-        LoleType::Pointer(_) => Ok(WasmType::I32),
-        _ => Err(CompileError {
-            message: format!("Only unary type is supported here, got: {original_expr}"),
-            loc: original_expr.loc().clone(),
-        }),
-    }
 }
 
 fn parse_load_kind(kind: &str) -> Result<WasmLoadKind, String> {
