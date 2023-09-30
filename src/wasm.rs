@@ -1,5 +1,4 @@
-use crate::ir::*;
-use alloc::{format, rc::Rc, string::String, vec::Vec};
+use alloc::{rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -75,17 +74,24 @@ pub enum WasmStoreKind {
     I32U8 = 0x3A,
 }
 
+impl WasmStoreKind {
+    pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
+        match kind {
+            WasmLoadKind::I32 => Self::I32,
+            WasmLoadKind::I32U8 => Self::I32U8,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum WasmInstr {
     Unreachable,
     Drop,
-    // TODO: inline all?
     BinaryOp {
         kind: WasmBinaryOpKind,
     },
     MemorySize,
     MemoryGrow,
-    // TODO: use single type for loads/gets?
     Load {
         kind: WasmLoadKind,
         align: u32,
@@ -181,33 +187,4 @@ pub enum WasmExportType {
 
 pub enum WasmData {
     Active { offset: WasmExpr, bytes: Vec<u8> },
-}
-
-impl WasmStoreKind {
-    pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
-        match kind {
-            WasmLoadKind::I32 => Self::I32,
-            WasmLoadKind::I32U8 => Self::I32U8,
-        }
-    }
-}
-
-impl WasmLoadKind {
-    pub fn get_primitive_type(&self) -> LolePrimitiveType {
-        match &self {
-            Self::I32 => LolePrimitiveType::I32,
-            Self::I32U8 => LolePrimitiveType::U8,
-        }
-    }
-
-    pub fn from_lole_type(value_type: &LoleType) -> Result<Self, String> {
-        match value_type {
-            LoleType::Primitive(LolePrimitiveType::U32) => return Ok(Self::I32),
-            LoleType::Primitive(LolePrimitiveType::I32) => return Ok(Self::I32),
-            LoleType::Primitive(LolePrimitiveType::U8) => return Ok(Self::I32U8),
-            LoleType::Pointer(_) => return Ok(Self::I32),
-            _ => {}
-        };
-        return Err(format!("Unsupported type for load: {value_type:?}"));
-    }
 }

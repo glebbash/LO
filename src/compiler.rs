@@ -1624,7 +1624,7 @@ fn compile_load(
     address_instr: Box<LoleExpr>,
     base_byte_offset: u32,
 ) -> Result<LoleExpr, String> {
-    if let Ok(load_kind) = WasmLoadKind::from_lole_type(value_type) {
+    if let Ok(load_kind) = value_type.to_load_kind() {
         return Ok(LoleExpr::Load {
             kind: load_kind,
             align: 1,
@@ -1652,7 +1652,7 @@ fn compile_load(
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
         primitive_loads.push(LoleExpr::Load {
-            kind: WasmLoadKind::from_lole_type(&LoleType::Primitive(comp.value_type))?,
+            kind: LoleType::Primitive(comp.value_type).to_load_kind()?,
             align: 1,
             offset: comp.byte_offset,
             address_instr: Box::new(LoleExpr::LocalGet {
@@ -1814,7 +1814,7 @@ fn compile_set_binds(
             let value_local_index = ctx.fn_ctx.locals_last_index;
             ctx.fn_ctx
                 .non_arg_locals
-                .push(kind.get_primitive_type().to_wasm_type());
+                .push(LolePrimitiveType::from_load_kind(&kind).to_wasm_type());
             ctx.fn_ctx.locals_last_index += 1;
 
             let address_instr = match address_index {

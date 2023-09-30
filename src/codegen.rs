@@ -1,8 +1,6 @@
 use crate::wasm::*;
 use alloc::vec::Vec;
 
-const END_TAG: u8 = 0x0b;
-
 pub fn codegen(module: &WasmModule) -> Vec<u8> {
     let mut binary = Vec::new();
     let mut section = Vec::new();
@@ -166,7 +164,7 @@ fn write_expr(out: &mut Vec<u8>, expr: &WasmExpr) {
         write_instr(out, instr);
     }
 
-    write_u8(out, END_TAG);
+    write_u8(out, 0x0b); // end
 }
 
 fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
@@ -256,7 +254,7 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x05);
         }
         WasmInstr::BlockEnd => {
-            write_u8(out, END_TAG);
+            write_u8(out, 0x0b);
         }
         WasmInstr::Branch { label_index } => {
             write_u8(out, 0x0c);

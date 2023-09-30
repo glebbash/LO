@@ -141,7 +141,7 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
         } => {
             get_type(ctx, &address_instr)?;
             // TODO: use primitive type
-            vec![kind.get_primitive_type().to_wasm_type()]
+            vec![LolePrimitiveType::from_load_kind(kind).to_wasm_type()]
         }
         LoleExpr::GlobalGet { global_index, .. } => {
             let wasm_global = ctx
