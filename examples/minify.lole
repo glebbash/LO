@@ -15,6 +15,7 @@
         (return (print_err_and_exit {parse_res . data}))
     ))
 
+    ; TODO: use `:=`
     {&exprs : (& Vec<Lole/Ast/SExpr>) = {parse_res . data}}
     (defer (Vec<Lole/Ast/SExpr>/free &exprs))
 
@@ -63,7 +64,7 @@
         (return Wasi/FD_STDIN (StringSlice/clone "<internal>"))
     ))
 
-    {file_name : StringSlice = (StringSlice/clone (Args/get args 1))}
+    {file_name := (StringSlice/clone (Args/get args 1))}
     {(do {err : u32} {fd : u32}) = (WasiIO/fd_open file_name)}
     (if {err != 0} (do
         (fputs Wasi/FD_STDERR "Error: cannot read file: ")

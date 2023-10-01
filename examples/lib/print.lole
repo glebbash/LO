@@ -3,7 +3,7 @@
 
 (fn puts [(str StringSlice)] void ((return (fputs Wasi/FD_STDOUT str))))
 (fn fputs [(fd u32) (str StringSlice)] void (
-    {&str : (& StringSlice) = (new StringSlice str :using Alloc/STACK)}
+    {&str := (new StringSlice str :using Alloc/STACK)}
     (defer (free Alloc/STACK &str (sizeof StringSlice)))
 
     (fprint_str fd &str)
@@ -11,7 +11,7 @@
 
 (fn print_u32 [(num u32)] void ((return (fprint_u32 Wasi/FD_STDOUT num))))
 (fn fprint_u32 [(fd u32) (num u32)] void (
-    {&out : (& String) = (std/u32_to_string_using num Alloc/STACK)}
+    {&out := (std/u32_to_string_using num Alloc/STACK)}
     (defer (Vec/free &out))
 
     (fprint_str fd &out)
@@ -19,9 +19,8 @@
 
 (fn print_str [(&str (& StringSlice))] void ((return (fprint_str Wasi/FD_STDOUT &str))))
 (fn fprint_str [(fd u32) (&str (& StringSlice))] void (
-    ; TODO(bug): Alloc/STACK doesn't work here and messes up parser execution
-    {&nwritten : (& u32) = (alloc Alloc/HEAP (sizeof u32))}
-    (defer (free Alloc/HEAP &nwritten (sizeof u32)))
+    {&nwritten := (new u32 0 :using Alloc/STACK)}
+    (defer (free Alloc/STACK &nwritten (sizeof u32)))
 
     (drop (Wasi/fd_write fd &str 1 &nwritten))
 ))

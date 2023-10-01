@@ -682,6 +682,20 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 });
             }
 
+            if value == "true" {
+                return Ok(LoleExpr::Casted {
+                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    expr: Box::new(LoleExpr::I32Const { value: 1 }),
+                });
+            }
+
+            if value == "false" {
+                return Ok(LoleExpr::Casted {
+                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    expr: Box::new(LoleExpr::I32Const { value: 0 }),
+                });
+            }
+
             if value.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(LoleExpr::I32Const {
                     value: (value.parse().map_err(|_| CompileError {
@@ -1068,6 +1082,15 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
 
             LoleExpr::MultiValueEmit { values: values? }
         }
+        ("as", [value_expr, type_expr]) => {
+            let lole_expr = compile_instr(value_expr, ctx)?;
+            let value_type = parse_lole_type(type_expr, ctx.module)?;
+
+            LoleExpr::Casted {
+                value_type,
+                expr: Box::new(lole_expr),
+            }
+        }
         ("sizeof", [type_expr]) => {
             let value_type = parse_lole_type(type_expr, ctx.module)?;
 
@@ -1108,8 +1131,9 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             if value_types != field_types {
                 return Err(CompileError {
                     message: format!(
-                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
-                        field_types, value_types
+                        "TypeError: Invalid types for {op}, \
+                        needed {field_types:?}, \
+                        got {value_types:?}",
                     ),
                     loc: op_loc.clone(),
                 });
@@ -1261,7 +1285,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 local_name.clone(),
                 LocalDef {
                     index: start_index,
-                    value_type,
+                    value_type: value_type.clone(),
                 },
             );
 
@@ -1270,12 +1294,36 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 .collect();
 
             LoleExpr::NoEmit {
-                expr: Box::new(LoleExpr::MultiValueEmit { values }),
+                expr: Box::new(LoleExpr::Casted {
+                    value_type,
+                    expr: Box::new(LoleExpr::MultiValueEmit { values }),
+                }),
             }
         }
         ("=", [bind, value]) => {
             let value_instr = compile_instr(value, ctx)?;
             let bind_instr = compile_instr(bind, ctx)?;
+
+            // TODO: enable this once tests pass
+            // let value_type = get_lole_type(ctx, &value_instr).map_err(|message| CompileError {
+            //     message,
+            //     loc: value.loc().clone(),
+            // })?;
+            // let bind_type = get_lole_type(ctx, &bind_instr).map_err(|message| CompileError {
+            //     message,
+            //     loc: value.loc().clone(),
+            // })?;
+
+            // if value_type != bind_type {
+            //     return Err(CompileError {
+            //         message: format!(
+            //             "TypeError: Invalid types for '{op}', \
+            //             needed {bind_type}, \
+            //             got {value_type}",
+            //         ),
+            //         loc: op_loc.clone(),
+            //     });
+            // }
 
             let value_types = get_type(ctx, &value_instr)?;
             let bind_types = get_type(ctx, &bind_instr)?;
@@ -1673,7 +1721,7 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleExpr, Co
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom {
-            value: global_name,
+            value,
             loc: op_loc,
             kind,
         } => {
@@ -1684,18 +1732,32 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleExpr, Co
                 });
             }
 
-            if global_name.chars().all(|c| c.is_ascii_digit()) {
+            if value == "true" {
+                return Ok(LoleExpr::Casted {
+                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    expr: Box::new(LoleExpr::I32Const { value: 1 }),
+                });
+            }
+
+            if value == "false" {
+                return Ok(LoleExpr::Casted {
+                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    expr: Box::new(LoleExpr::I32Const { value: 0 }),
+                });
+            }
+
+            if value.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(LoleExpr::I32Const {
-                    value: global_name.parse().map_err(|_| CompileError {
+                    value: value.parse().map_err(|_| CompileError {
                         message: format!("Parsing i32 (implicit) failed"),
                         loc: op_loc.clone(),
                     })?,
                 });
             }
 
-            let Some(global) = ctx.globals.get(global_name.as_str()) else {
+            let Some(global) = ctx.globals.get(value.as_str()) else {
                 return Err(CompileError {
-                    message: format!("Unknown location for global.get: {global_name}"),
+                    message: format!("Unknown location for global.get: {value}"),
                     loc: op_loc.clone(),
                 });
             };
@@ -1839,6 +1901,12 @@ fn compile_set_binds(
             }
         }
         LoleExpr::NoEmit { expr: instr } => {
+            compile_set_binds(output, ctx, *instr, bind_loc, address_index)?;
+        }
+        LoleExpr::Casted {
+            expr: instr,
+            value_type: _,
+        } => {
             compile_set_binds(output, ctx, *instr, bind_loc, address_index)?;
         }
         _ => {

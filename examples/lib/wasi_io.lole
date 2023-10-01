@@ -2,15 +2,15 @@
 (alias CWD_PREOPEN_FD 3)
 
 (fn WasiIO/fd_read_all [(fd u32)] (& String) (
-    {&output : (& String) = (Vec/new 256 (sizeof u8))}
-    {&chunk : (&* u8) = (Stack/alloc 256)}
+    {&output := (Vec/new 256 (sizeof u8))}
+    {&chunk := {(Stack/alloc 256) as (&* u8)}}
     (defer (Stack/free 256))
 
-    {&in_vec : (&* Wasi/IOVec) = (new Wasi/IOVec
+    {&in_vec := (new Wasi/IOVec
         (struct.new Wasi/IOVec &chunk 256) :using Alloc/STACK)}
     (defer (Stack/free (sizeof Wasi/IOVec)))
 
-    {&nread : (& u32) = (Stack/alloc (sizeof u32))}
+    {&nread := (new u32 0 :using Alloc/STACK)}
     (defer (Stack/free (sizeof u32)))
 
     (loop (
@@ -27,16 +27,16 @@
 ))
 
 (fn WasiIO/fd_pipe [(fd_in i32) (fd_out i32) (chunk_size u32)] bool (
-    {&chunk : (&* u8) = (Stack/alloc chunk_size)}
+    {&chunk := {(Stack/alloc chunk_size) as (&* u8)}}
     (defer (Stack/free chunk_size))
 
-    {&iov : (&* Wasi/IOVec) = (new Wasi/IOVec (do &chunk 0) :using Alloc/STACK)}
+    {&iov := (new Wasi/IOVec (do &chunk 0) :using Alloc/STACK)}
     (defer (Stack/free (sizeof Wasi/IOVec)))
 
-    {&nread : (& u32) = (Stack/alloc (sizeof u32))}
+    {&nread := {(Stack/alloc (sizeof u32)) as (& u32)}}
     (defer (Stack/free (sizeof u32)))
 
-    {io_res : i32}
+    {io_res : u32}
 
     (loop (
         {&iov -> len = chunk_size}
@@ -59,7 +59,7 @@
 ))
 
 (fn WasiIO/fd_open [(file_path StringSlice)] (tuple u32 u32) (
-    {&fd : (& u32) = (new u32 0 :using Alloc/STACK)}
+    {&fd := (new u32 0 :using Alloc/STACK)}
     (defer (free Alloc/STACK &fd (sizeof u32)))
 
     {err := (Wasi/path_open

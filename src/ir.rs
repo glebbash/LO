@@ -61,7 +61,7 @@ pub struct BlockContext<'a, 'b> {
     pub block: Block<'a>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LolePrimitiveType {
     Bool,
     U8,
@@ -110,13 +110,46 @@ impl LolePrimitiveType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LoleType {
     Void,
     Primitive(LolePrimitiveType),
     Pointer(Box<LoleType>),
     Tuple(Vec<LoleType>),
     StructInstance { name: String },
+}
+
+impl core::fmt::Display for LoleType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use LolePrimitiveType::*;
+        use LoleType::*;
+        match self {
+            Void => f.write_str("void"),
+            Primitive(primitive) => match primitive {
+                Bool => f.write_str("bool"),
+                U8 => f.write_str("u8"),
+                I8 => f.write_str("i8"),
+                U16 => f.write_str("u16"),
+                I16 => f.write_str("i16"),
+                U32 => f.write_str("u32"),
+                I32 => f.write_str("i32"),
+                F32 => f.write_str("f32"),
+                U64 => f.write_str("u64"),
+                I64 => f.write_str("i64"),
+                F64 => f.write_str("f64"),
+            },
+            Pointer(pointee) => f.write_fmt(format_args!("(& {pointee})")),
+            Tuple(types) => {
+                f.write_str("(tuple")?;
+                for item in types {
+                    f.write_str(" ")?;
+                    f.write_fmt(format_args!("{item}"))?;
+                }
+                f.write_str(")")
+            }
+            StructInstance { name } => f.write_str(name),
+        }
+    }
 }
 
 pub struct ValueComponent {

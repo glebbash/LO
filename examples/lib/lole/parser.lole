@@ -96,7 +96,7 @@
 
     (Lole/Parser/next_char &self) ; skip start quote
 
-    {&value := (Vec/new 6 (sizeof u8))}
+    {&value := (String/new 6)}
 
     (loop (
         {res := (Lole/Parser/current_char &self)}

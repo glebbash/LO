@@ -1,10 +1,7 @@
-(alias true 1)
-(alias false 0)
-
 ; panic
 
     (fn panic [(message_ptr (& void)) (message_len u32)] void (
-        {u32 @ 0 = message_ptr}
+        {(& void) @ 0 = message_ptr}
         {u32 @ 4 = message_len}
         (unreachable)
     ))
@@ -111,7 +108,7 @@
     (struct Heap/Block
         (size u32)
         (used bool)
-        (&next (& void)) ; (& Heap/Block)
+        (&next (& void)) ; (& Heap/Block) ; TODO: support self references
         (&data (& void))
     )
 
@@ -123,7 +120,7 @@
     (fn Heap/alloc [(size u32)] (& void) (
         {size = (Mem/align size)}
 
-        {&free_block : (& Heap/Block) = (Heap/find_free_block size)}
+        {&free_block := (Heap/find_free_block size)}
         (if {&free_block != 0} (do
             {&free_block -> used = true}
             (return {&free_block -> &data})
@@ -131,7 +128,7 @@
 
         {total_size_to_alloc := {size + (sizeof Heap/Block)}}
 
-        {&block : (& Heap/Block) = Heap/TOTAL_ALLOCATED}
+        {&block := {Heap/TOTAL_ALLOCATED as (& Heap/Block)}}
         {Heap/TOTAL_ALLOCATED += total_size_to_alloc}
 
         ; memory.grow enough if out of space
@@ -145,7 +142,7 @@
 
         {&block -> size = size}
         {&block -> used = true}
-        {&block -> &data = {&block + (sizeof Heap/Block)}}
+        {&block -> &data = {&block + (sizeof Heap/Block) as (& void)}}
 
         ; init heap
         (if {Heap/&FIRST_BLOCK == 0} (do
@@ -154,7 +151,7 @@
 
         ; chain block
         (if {Heap/&CURRENT_BLOCK != 0} (do
-            {Heap/&CURRENT_BLOCK -> &next = &block}
+            {Heap/&CURRENT_BLOCK -> &next = {&block as (& void)}}
         ))
 
         {Heap/&CURRENT_BLOCK = &block}
@@ -163,7 +160,7 @@
     ))
 
     (fn Heap/free [(&ref (& void))] void (
-        {&block : (& Heap/Block) = (Heap/get_block &ref)}
+        {&block := (Heap/get_block &ref)}
         {&block -> used = false}
     ))
 
@@ -173,7 +170,7 @@
 
     ; first fit
     (fn Heap/find_free_block [(size u32)] (& Heap/Block) (
-        {&block : (& Heap/Block) = Heap/&FIRST_BLOCK}
+        {&block := Heap/&FIRST_BLOCK}
 
         (loop (
             (if {&block == 0} (break))
@@ -182,7 +179,7 @@
                 (return &block)
             ))
 
-            {&block = {&block -> &next}}
+            {&block = {&block -> &next as (& Heap/Block)}}
         ))
 
         (return 0)
@@ -285,7 +282,8 @@
 
     (fn Vec/append [(&self (& Vec)) (&other (& Vec))] void (
         (Vec/push_all &self {&other -> &data} (Vec/len &other))
-        {&other -> length = 0}
+        ; TODO: ? add number inference
+        {&other -> length = {0 as u32}}
     ))
 
     (fn Vec/pop_unchecked [(&self (& Vec))] (& void) (
@@ -335,15 +333,23 @@
 ; string
 
     (alias Vec<u8> Vec)
-    (alias String (& Vec<u8>))
+    (alias String Vec<u8>)
     (struct StringSlice (data (&* u8)) (size u32))
+
+    (fn String/new [(len u32)] (& String) (
+        (return (Vec/new len (sizeof u8)))
+    ))
+
+    (fn String/new_using [(len u32) (alloc_id u32)] (& String) (
+        (return (Vec/new_using len (sizeof u8) alloc_id))
+    ))
 
     (fn StringSlice/char_at [(self StringSlice) (index u32)] u8 (
         (return {u8 @ {self . data + index}})
     ))
 
     (fn StringSlice/clone [(self StringSlice)] StringSlice (
-        {&cloned_data : (&* u8) = (Heap/alloc {self . size})}
+        {&cloned_data := {(Heap/alloc {self . size}) as (&* u8)}}
         (Mem/copy {self . data} &cloned_data {self . size})
         (return (struct.new StringSlice &cloned_data {self . size}))
     ))
@@ -367,12 +373,12 @@
         (return true)
     ))
 
-    (fn String/clone [(&self String)] (& String) (
+    (fn String/clone [(&self (& String))] (& String) (
         (return (String/from_slice {&self -> &data} {&self -> length}))
     ))
 
     (fn String/from_slice [(str StringSlice)] (& String) (
-        {&string : (& String) = (Vec/new {str . size} (sizeof u8))}
+        {&string := (String/new {str . size})}
         (Vec/push_all &string str)
         (return &string)
     ))
@@ -400,7 +406,7 @@
         (loop (
             (if {i == (Dict/len &self)} (break))
 
-            {&entry_key : (& String) = (Vec/at &self i)}
+            {&entry_key := {(Vec/at &self i) as (& String)}}
             (if (StringSlice/equals key (Vec/as_slice &entry_key)) (do
                 (return true {&entry_key + (sizeof String)})
             ))
@@ -418,7 +424,7 @@
     ))
 
     (fn std/u32_to_string_using [(input u32) (alloc_id u32)] (& String) (
-        {&output : (& String) = (Vec/new_using 32 1 alloc_id)}
+        {&output := (String/new_using 32 alloc_id)}
 
         (if {input == 0} (do
             (Vec/push_u8 &output (char_code "0"))
