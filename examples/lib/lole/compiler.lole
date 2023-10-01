@@ -108,7 +108,7 @@
             {local_type := {Lole/Wasm/WasmType @ (Vec/at &non_arg_locals j)}}
             {locals_len := (Vec/len &locals)}
             (if {locals_len > 0} (do
-                {&wasm_locals : (& Lole/Wasm/WasmLocals) = (Vec/at &locals {locals_len - 1})}
+                {&wasm_locals := {(Vec/at &locals {locals_len - 1}) as (& Lole/Wasm/WasmLocals)}}
                 (if {&wasm_locals -> value_type == local_type} (do
                     {&wasm_locals -> count += 1}
                     (continue)
