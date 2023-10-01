@@ -115,7 +115,7 @@
             ))
 
             {Lole/Wasm/WasmLocals @ (Vec/push_undef &locals) = (Lole/Wasm/WasmLocals
-                :count {1 as u32}
+                :count 1
                 :value_type local_type
             )}
 

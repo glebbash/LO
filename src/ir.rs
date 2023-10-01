@@ -12,8 +12,8 @@ pub struct ModuleContext {
     pub struct_defs: BTreeMap<String, StructDef>,
     pub globals: BTreeMap<String, GlobalDef>,
     pub imported_fns_count: u32,
-    pub data_size: Rc<RefCell<i32>>,
-    pub string_pool: RefCell<BTreeMap<String, i32>>,
+    pub data_size: Rc<RefCell<u32>>,
+    pub string_pool: RefCell<BTreeMap<String, u32>>,
 }
 
 impl ModuleContext {
@@ -379,11 +379,11 @@ pub enum LoleExpr {
         base_index: u32,
         primitive_gets: Vec<LoleExpr>,
     },
-    I32ConstLazy {
-        value: Rc<RefCell<i32>>,
+    U32ConstLazy {
+        value: Rc<RefCell<u32>>,
     },
-    I32Const {
-        value: i32,
+    U32Const {
+        value: u32,
     },
     I64Const {
         value: i64,

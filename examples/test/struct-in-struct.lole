@@ -1,8 +1,8 @@
 (mod lib/cli)
 
 (struct Point2D
-    (x i32)
-    (y i32)
+    (x u32)
+    (y u32)
 )
 
 (struct Rect

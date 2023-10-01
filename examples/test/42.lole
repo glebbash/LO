@@ -1,4 +1,4 @@
 (export main :as main)
-(fn main [] i32 (
+(fn main [] u32 (
     (return 42)
 ))

@@ -4,8 +4,8 @@ use alloc::{vec, vec::Vec};
 pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> LoleType {
     match instr {
         LoleExpr::Unreachable => LoleType::Void,
-        LoleExpr::I32ConstLazy { value: _ } => LoleType::Primitive(LolePrimitiveType::I32),
-        LoleExpr::I32Const { value: _ } => LoleType::Primitive(LolePrimitiveType::I32),
+        LoleExpr::U32ConstLazy { value: _ } => LoleType::Primitive(LolePrimitiveType::U32),
+        LoleExpr::U32Const { value: _ } => LoleType::Primitive(LolePrimitiveType::U32),
         LoleExpr::I64Const { value: _ } => LoleType::Primitive(LolePrimitiveType::I64),
 
         LoleExpr::MultiValueEmit { values } => {

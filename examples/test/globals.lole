@@ -1,13 +1,13 @@
 (export main :as main)
-(fn main [] i32 (
+(fn main [] u32 (
     (drop (alloc 45))
     (drop (alloc 24))
 
     (return HEAP_INDEX)
 ))
 
-(global mut HEAP_INDEX i32 0)
-(fn alloc [(size i32)] i32 (
+(global mut HEAP_INDEX u32 0)
+(fn alloc [(size u32)] u32 (
     {ref := HEAP_INDEX}
     {HEAP_INDEX += size}
     (return ref)

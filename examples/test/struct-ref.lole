@@ -3,12 +3,12 @@
 (mem m :min 100)
 
 (struct Point2D
-    (x i32)
-    (y i32)
+    (x u32)
+    (y u32)
 )
 
 (export main :as main)
-(fn main [] i32 (
+(fn main [] u32 (
     {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
     (defer (Stack/free (sizeof Point2D)))
 

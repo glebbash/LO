@@ -37,8 +37,8 @@
 
 ; values correspond to binary output
 (alias Lole/Wasm/WasmExportType u32)
-(alias Lole/Wasm/WasmExportType/FUNC {0 as u32}) ; 0x00
-(alias Lole/Wasm/WasmExportType/MEM {2 as u32}) ; 0x02
+(alias Lole/Wasm/WasmExportType/FUNC 0) ; 0x00
+(alias Lole/Wasm/WasmExportType/MEM 2) ; 0x02
 
 (struct Lole/Wasm/WasmExport
     (export_type Lole/Wasm/WasmExportType)

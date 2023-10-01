@@ -1,10 +1,10 @@
 (struct Point2D
-    (x i32)
-    (y i32)
+    (x u32)
+    (y u32)
 )
 
 (export main :as main)
-(fn main [] i32 (
+(fn main [] u32 (
     {p1 := (Point2D :x 0 :y 0)}
     {p1 . x = 1}
     {p1 . y = 2}
@@ -21,6 +21,6 @@
     ))
 ))
 
-(fn Point2D/len_squared [(p Point2D)] i32 (
+(fn Point2D/len_squared [(p Point2D)] u32 (
     (return {p . x * {p . x} + {p . y * {p . y}}})
 ))

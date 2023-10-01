@@ -16,7 +16,7 @@
         (return (Heap/alloc size))
     ))
 
-    (fn free [(alloc_id u32) (ptr u32) (size u32)] void (
+    (fn free [(alloc_id u32) (ptr (& void)) (size u32)] void (
         (if {alloc_id == 0} (return (Stack/free size)))
         (return (Heap/free ptr))
     ))
@@ -283,7 +283,7 @@
     (fn Vec/append [(&self (& Vec)) (&other (& Vec))] void (
         (Vec/push_all &self {&other -> &data} (Vec/len &other))
         ; TODO: ? add number inference
-        {&other -> length = {0 as u32}}
+        {&other -> length = 0}
     ))
 
     (fn Vec/pop_unchecked [(&self (& Vec))] (& void) (
@@ -446,7 +446,7 @@
     ))
 
     (fn std/c_str_to_slice [(&str (&* u8))] StringSlice (
-        {len := {0 as u32}}
+        {len := 0}
 
         (loop (
             (if {{u8 @ {&str + len}} == 0} (break))

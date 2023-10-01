@@ -32,9 +32,9 @@
     (return (Lole/Parser
         :file_name file_name
         :chars script
-        :index {0 as u32}
-        :line {1 as u32}
-        :col {1 as u32}
+        :index 0
+        :line 1
+        :col 1
     ))
 ))
 
@@ -290,7 +290,7 @@
 
 (struct Lole/Parser/CharAtResult
     (ok bool)
-    (data u32) ; u8 | (& CompileError)
+    (data (& void)) ; u8 | (& CompileError)
 )
 
 (fn Lole/Parser/current_char [(&self (& Lole/Parser))] Lole/Parser/CharAtResult (
@@ -299,13 +299,13 @@
     (if {&self -> index >= {chars . size}} (do
         (return (Lole/Parser/CharAtResult
             :ok false
-            :data {(Lole/Parser/err_unexpected_eof &self) as u32}
+            :data {(Lole/Parser/err_unexpected_eof &self) as (& void)}
         ))
     ))
 
     (return (Lole/Parser/CharAtResult
         :ok true
-        :data {(StringSlice/char_at chars {&self -> index}) as u32}
+        :data {(StringSlice/char_at chars {&self -> index}) as (& void)}
     ))
 ))
 
@@ -327,7 +327,7 @@
     (return (Lole/Ast/Location
         :file_name (StringSlice/clone {&self -> file_name})
         :offset {&self -> index}
-        :length {1 as u32}
+        :length 1
         :line {&self -> line}
         :col {&self -> col}
     ))

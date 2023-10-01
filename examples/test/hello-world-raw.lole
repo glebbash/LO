@@ -27,10 +27,10 @@
 
 (export main :as _start)
 (fn main [] void (
-    {i32 @ 4 ; Wasi/IOVec.base
+    {u32 @ 4 ; Wasi/IOVec.base
         = 12} ; ref to "Hello World!\n"
 
-    {i32 @ 8 ; Wasi/IOVec.size
+    {u32 @ 8 ; Wasi/IOVec.size
         = 13} ; "Hello World!\n".length
 
     (drop (Wasi/fd_write

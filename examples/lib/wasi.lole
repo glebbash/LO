@@ -43,7 +43,7 @@
 (import fn Wasi/args_sizes_get [
     (&argc          (& u32)) ; Pointer to where the number of arguments will be written.
     (&argv_buf_size (& u32)) ; Pointer to where the size of the argument string data will be written.
-] i32 :from wasi_snapshot_preview1 args_sizes_get)
+] Wasi/Err :from wasi_snapshot_preview1 args_sizes_get)
 
 (import fn Wasi/args_get [
     (&argv     (& u32)) ; Pointer to a buffer where the argument pointers will be written.

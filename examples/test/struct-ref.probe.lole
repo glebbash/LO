@@ -1,11 +1,11 @@
 ; current
 
 (struct Point2D
-    (x i32)
-    (y i32)
+    (x u32)
+    (y u32)
 )
 
-(fn main [] i32 (
+(fn main [] u32 (
     {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
     (defer (Stack/free (sizeof Point2D)))
 
@@ -17,11 +17,11 @@
 ; v2?
 
 (struct Point2D
-    (x i32)
-    (y i32)
+    (x u32)
+    (y u32)
 )
 
-(fn main [] i32 (
+(fn main [] u32 (
     {p := (stack.new (Point2D :x 2 :y 3))}
     (defer (stack.free p))
 
@@ -32,11 +32,11 @@
 ; v3?
 
 {Point2D :: (struct
-    :x i32
-    :y i32
+    :x u32
+    :y u32
 )}
 
-{main :: (fn [] i32 (
+{main :: (fn [] u32 (
     {p := (stack.new (Point2D :x 2 :y 3))}
     (defer (stack.free p))
 
@@ -47,11 +47,11 @@
 ; v4?
 
 Point2D :: struct {
-    x: i32
-    y: i32
+    x: u32
+    y: u32
 }
 
-main :: fn() -> i32 {
+main :: fn() -> u32 {
     p := stack.new(Point2D { x: 2, y: 3 });
     defer stack.free(p);
 
