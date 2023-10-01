@@ -7,7 +7,7 @@
     (defer (Stack/free 256))
 
     {&in_vec := (new Wasi/IOVec
-        (struct.new Wasi/IOVec &chunk 256) :using Alloc/STACK)}
+        (Wasi/IOVec :base &chunk :len {256 as u32}) :using Alloc/STACK)}
     (defer (Stack/free (sizeof Wasi/IOVec)))
 
     {&nread := (new u32 0 :using Alloc/STACK)}

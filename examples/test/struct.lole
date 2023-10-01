@@ -5,19 +5,20 @@
 
 (export main :as main)
 (fn main [] i32 (
-    {p1 := (struct.new Point2D 0 0)}
+    {p1 := (Point2D :x 0 :y 0)}
     {p1 . x = 1}
     {p1 . y = 2}
 
-    {sum := (Point2D/add p1 (struct.new Point2D 1 1))}
+    {sum := (Point2D/add p1 (Point2D :x 1 :y 1))}
 
     (return (Point2D/len_squared sum))
 ))
 
 (fn Point2D/add ((p1 Point2D) (p2 Point2D)) Point2D (
-    (return (struct.new Point2D
-        {p1 . x + {p2 . x}}
-        {p1 . y + {p2 . y}}
+    ; TODO: drop cast once `.` inference is done
+    (return (Point2D
+        :x {p1 . x + {p2 . x} as i32}
+        :y {p1 . y + {p2 . y} as i32}
     ))
 ))
 

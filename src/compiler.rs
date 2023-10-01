@@ -1115,50 +1115,6 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                     .byte_length as i32,
             }
         }
-        (
-            "struct.new",
-            [SExpr::Atom {
-                value: s_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, values @ ..],
-        ) => {
-            let Some(_) = ctx.module.struct_defs.get(s_name) else {
-                return Err(CompileError {
-                    message: format!("Unknown struct encountered in {op}: {s_name}"),
-                    loc: name_loc.clone(),
-                });
-            };
-
-            let value_instrs = compile_instrs(values, ctx)?;
-            let value_types = get_types(ctx, &value_instrs)?;
-
-            let mut field_types = vec![];
-            LoleType::StructInstance {
-                name: s_name.clone(),
-            }
-            .emit_components(ctx.module, &mut field_types);
-
-            if value_types != field_types {
-                return Err(CompileError {
-                    message: format!(
-                        "TypeError: Invalid types for {op}, \
-                        needed {field_types:?}, \
-                        got {value_types:?}",
-                    ),
-                    loc: op_loc.clone(),
-                });
-            }
-
-            LoleExpr::Casted {
-                value_type: LoleType::StructInstance {
-                    name: s_name.clone(),
-                },
-                expr: Box::new(LoleExpr::MultiValueEmit {
-                    values: value_instrs,
-                }),
-            }
-        }
         ("new", [type_expr, init_expr, other @ ..]) => {
             let alloc_id_instr = match other {
                 [] => LoleExpr::I32Const {
@@ -1591,6 +1547,70 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             })?
         }
         (fn_name, args) => {
+            if let Some(struct_def) = ctx.module.struct_defs.get(fn_name) {
+                let struct_name = fn_name;
+                if args.len() / 2 != struct_def.fields.len() {
+                    return Err(CompileError {
+                        message: format!(
+                            "Invalid number of struct fields, expected: {}",
+                            struct_def.fields.len()
+                        ),
+                        loc: op_loc.clone(),
+                    });
+                }
+
+                let mut values = vec![];
+                for i in 0..args.len() / 2 {
+                    let struct_field = &struct_def.fields[i];
+                    let field_name_expr = &args[i * 2];
+                    let field_value_expr = &args[i * 2 + 1];
+
+                    let SExpr::Atom { value: field_name, kind: AtomKind::Symbol, loc: _ } = field_name_expr else {
+                        return Err(CompileError {
+                            message: format!("Field name expected, got {field_name_expr}"),
+                            loc: field_name_expr.loc().clone(),
+                        });
+                    };
+
+                    let expected_field_name = format!(":{}", struct_field.name);
+                    if field_name != &expected_field_name[..] {
+                        return Err(CompileError {
+                            message: format!(
+                                "Unexpected field name, expecting: `{expected_field_name}`"
+                            ),
+                            loc: field_name_expr.loc().clone(),
+                        });
+                    }
+
+                    let field_value = compile_instr(field_value_expr, ctx)?;
+                    let field_value_type =
+                        get_lole_type(ctx, &field_value).map_err(|message| CompileError {
+                            message,
+                            loc: field_value_expr.loc().clone(),
+                        })?;
+
+                    let field_type = &struct_field.value_type;
+                    if field_value_type != *field_type {
+                        return Err(CompileError {
+                            message: format!(
+                                "Invalid type for field {struct_name}{field_name}, \
+                                expected: {field_type}, \
+                                got: {field_value_type}"
+                            ),
+                            loc: field_value_expr.loc().clone(),
+                        });
+                    }
+                    values.push(field_value);
+                }
+
+                return Ok(LoleExpr::Casted {
+                    value_type: LoleType::StructInstance {
+                        name: struct_name.into(),
+                    },
+                    expr: Box::new(LoleExpr::MultiValueEmit { values }),
+                });
+            };
+
             let Some(fn_def) = ctx.module.fn_defs.get(fn_name) else {
                 return Err(CompileError {
                     message: format!("Unknown instruction or function: {fn_name}"),

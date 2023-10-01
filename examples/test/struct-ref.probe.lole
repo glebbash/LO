@@ -9,7 +9,7 @@
     {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
     (defer (Stack/free (sizeof Point2D)))
 
-    {(* &p) = (struct.new Point2D 2 3)}
+    {(* &p) = (Point2D :x 2 :y 3)}
     {y := {&p -> y}}
     (return y)
 ))

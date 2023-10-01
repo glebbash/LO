@@ -52,10 +52,10 @@
 
         {&exports := {&wasm_module -> &exports}}
 
-        {Lole/Wasm/WasmExport @ (Vec/push_undef &exports) = (struct.new Lole/Wasm/WasmExport
-            Lole/Wasm/WasmExportType/FUNC
-            (String/clone {fn_export . &out_name})
-            {&ctx -> imported_fns_count + {fn_def . fn_index}}
+        {Lole/Wasm/WasmExport @ (Vec/push_undef &exports) = (Lole/Wasm/WasmExport
+            :export_type Lole/Wasm/WasmExportType/FUNC
+            :export_name (String/clone {fn_export . &out_name})
+            :exported_item_index {&ctx -> imported_fns_count + {fn_def . fn_index}}
         )}
 
         {i += 1}
@@ -115,18 +115,18 @@
                 ))
             ))
 
-            {Lole/Wasm/WasmLocals @ (Vec/push_undef &locals) = (struct.new Lole/Wasm/WasmLocals
-                1
-                local_type
+            {Lole/Wasm/WasmLocals @ (Vec/push_undef &locals) = (Lole/Wasm/WasmLocals
+                :count {1 as u32}
+                :value_type local_type
             )}
 
             {j += 1}
         ))
 
         {&codes := {&wasm_module -> &codes}}
-        {Lole/Wasm/WasmFn @ (Vec/push_undef &codes) = (struct.new Lole/Wasm/WasmFn
-            &locals
-            (struct.new Lole/Wasm/WasmExpr &instrs)
+        {Lole/Wasm/WasmFn @ (Vec/push_undef &codes) = (Lole/Wasm/WasmFn
+            :&locals &locals
+            :expr (Lole/Wasm/WasmExpr :&instrs &instrs)
         )}
 
         {i += 1}

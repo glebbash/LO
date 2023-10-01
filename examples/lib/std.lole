@@ -1,7 +1,7 @@
 ; panic
 
-    (fn panic [(message_ptr (& void)) (message_len u32)] void (
-        {(& void) @ 0 = message_ptr}
+    (fn panic [(message_ptr (&* u8)) (message_len u32)] void (
+        {(&* u8) @ 0 = message_ptr}
         {u32 @ 4 = message_len}
         (unreachable)
     ))
@@ -351,7 +351,8 @@
     (fn StringSlice/clone [(self StringSlice)] StringSlice (
         {&cloned_data := {(Heap/alloc {self . size}) as (&* u8)}}
         (Mem/copy {self . data} &cloned_data {self . size})
-        (return (struct.new StringSlice &cloned_data {self . size}))
+        ; TODO: drop cast once `.` inference is done
+        (return (StringSlice :data &cloned_data :size {{self . size} as u32}))
     ))
 
     (fn StringSlice/equals [(self StringSlice) (other StringSlice)] bool (
@@ -446,7 +447,7 @@
     ))
 
     (fn std/c_str_to_slice [(&str (&* u8))] StringSlice (
-        {len := 0}
+        {len := {0 as u32}}
 
         (loop (
             (if {{u8 @ {&str + len}} == 0} (break))
@@ -454,5 +455,5 @@
             {len += 1}
         ))
 
-        (return (struct.new StringSlice &str len))
+        (return (StringSlice :data &str :size len))
     ))

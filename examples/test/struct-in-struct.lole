@@ -11,9 +11,9 @@
 )
 
 (fn main [] void (
-    {r := (struct.new Rect
-        (struct.new Point2D 1 2)
-        (struct.new Point2D 3 4)
+    {r := (Rect
+        :tl (Point2D :x 1 :y 2)
+        :br (Point2D :x 3 :y 4)
     )}
 
     {br := {r . br}}

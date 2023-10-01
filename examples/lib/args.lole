@@ -18,7 +18,11 @@
     {&argv_buf := {(Heap/alloc argv_buf_size) as (&* u8)}}
     (drop (Wasi/args_get &argv &argv_buf))
 
-    (return (struct.new Args argc &argv &argv_buf))
+    (return (Args
+        :argc argc
+        :&argv &argv
+        :&argv_buf &argv_buf
+    ))
 ))
 
 (fn Args/free [(self Args)] void (

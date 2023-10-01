@@ -29,12 +29,12 @@
 ))
 
 (fn Lole/Parser/new [(file_name StringSlice) (script StringSlice)] Lole/Parser (
-    (return (struct.new Lole/Parser
-        file_name
-        script
-        0 ; index
-        1 ; line
-        1 ; col
+    (return (Lole/Parser
+        :file_name file_name
+        :chars script
+        :index {0 as u32}
+        :line {1 as u32}
+        :col {1 as u32}
     ))
 ))
 
@@ -53,8 +53,10 @@
         (if (not {res . ok}) (return res))
 
         (if (not (Lole/Parser/is_list_start {res . data})) (do
-            (return (struct.new Lole/Parser/ParseScriptResult false
-                (Lole/Parser/err_unexpected_char &self)))
+            (return (Lole/Parser/ParseScriptResult
+                :ok false
+                :data {(Lole/Parser/err_unexpected_char &self) as (& void)}
+            ))
         ))
 
         {expr_res := (Lole/Parser/parse_list &self)}
@@ -65,8 +67,10 @@
         (Vec/push_all &items {expr_res . data} 1)
     ))
 
-    (return (struct.new Lole/Parser/ParseScriptResult true
-        &items))
+    (return (Lole/Parser/ParseScriptResult
+        :ok true
+        :data {&items as (& void)}
+    ))
 ))
 
 (fn Lole/Parser/parse_expr [(&self (& Lole/Parser))] Lole/Parser/ParseResult (
@@ -135,23 +139,26 @@
             (continue)
         ))
 
-        (return (struct.new Lole/Parser/ParseResult false
-            (Lole/Parser/err_unexpected_char &self)))
+        (return (Lole/Parser/ParseResult
+            :ok false
+            :data {(Lole/Parser/err_unexpected_char &self) as (& void)}
+        ))
     ))
 
     (Lole/Parser/next_char &self) ; skip end quote
 
     {loc . length = {&self -> index - {loc . offset}}}
 
-    (return (struct.new Lole/Parser/ParseResult true
-        (new Lole/Ast/SExpr (do
+    (return (Lole/Parser/ParseResult
+        :ok true
+        :data {(new Lole/Ast/SExpr (do
             Lole/Ast/SExpr/ATOM
             (new Lole/Ast/SExpr/Atom (do
                 &value
                 Lole/Ast/AtomKind/STRING
                 loc
             ))
-        ))
+        )) as (& void)}
     ))
 ))
 
@@ -173,15 +180,16 @@
     {&value := (String/from_slice
         {&self -> chars . data + {loc . offset}} {loc . length}) }
 
-    (return (struct.new Lole/Parser/ParseResult true
-        (new Lole/Ast/SExpr (do
+    (return (Lole/Parser/ParseResult
+        :ok true
+        :data {(new Lole/Ast/SExpr (do
             Lole/Ast/SExpr/ATOM
             (new Lole/Ast/SExpr/Atom (do
                 &value
                 Lole/Ast/AtomKind/SYMBOL
                 loc
             ))
-        ))
+        )) as (& void)}
     ))
 ))
 
@@ -226,11 +234,12 @@
         (return (Lole/Parser/m_expr_to_s_expr_and_validate &items loc))
     ))
 
-    (return (struct.new Lole/Parser/ParseResult true
-        (new Lole/Ast/SExpr (do
+    (return (Lole/Parser/ParseResult
+        :ok true
+        :data {(new Lole/Ast/SExpr (do
             Lole/Ast/SExpr/LIST
             (new Lole/Ast/SExpr/List (do &items loc))
-        ))
+        )) as (& void)}
     ))
 ))
 
@@ -290,14 +299,16 @@
     {chars := {&self -> chars}}
 
     (if {&self -> index >= {chars . size}} (do
-        (return (struct.new Lole/Parser/CharAtResult
-            false
-            (Lole/Parser/err_unexpected_eof &self)))
+        (return (Lole/Parser/CharAtResult
+            :ok false
+            :data {(Lole/Parser/err_unexpected_eof &self) as u32}
+        ))
     ))
 
-    (return (struct.new Lole/Parser/CharAtResult
-        true
-        (StringSlice/char_at chars {&self -> index})))
+    (return (Lole/Parser/CharAtResult
+        :ok true
+        :data {(StringSlice/char_at chars {&self -> index}) as u32}
+    ))
 ))
 
 (fn Lole/Parser/err_unexpected_char [(&self (& Lole/Parser))] (& Lole/Ast/CompileError) (
@@ -315,36 +326,41 @@
 ))
 
 (fn Lole/Parser/loc [(&self (& Lole/Parser))] Lole/Ast/Location (
-    (return (struct.new Lole/Ast/Location
-        (StringSlice/clone {&self -> file_name})
-        {&self -> index}
-        1 ; length
-        {&self -> line}
-        {&self -> col}
+    (return (Lole/Ast/Location
+        :file_name (StringSlice/clone {&self -> file_name})
+        :offset {&self -> index}
+        :length {1 as u32}
+        :line {&self -> line}
+        :col {&self -> col}
     ))
 ))
 
 (fn Lole/Parser/m_expr_to_s_expr_and_validate [(&items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] Lole/Parser/ParseResult (
     (if {(Vec/len &items) % 2 != 1} (do
-        (return (struct.new Lole/Parser/ParseResult false
-            (new Lole/Ast/CompileError (do
+        (return (Lole/Parser/ParseResult
+            :ok false
+            :data {(new Lole/Ast/CompileError (do
                 (String/from_slice "ParseError: Invalid m-expr: even length")
                 loc
-            ))
+            )) as (& void)}
         ))
     ))
 
     (if {(Vec/len &items) < 2} (do
-        (return (struct.new Lole/Parser/ParseResult true
-            (new Lole/Ast/SExpr (do
+        (return (Lole/Parser/ParseResult
+            :ok true
+            :data {(new Lole/Ast/SExpr (do
                 Lole/Ast/SExpr/LIST
                 (new Lole/Ast/SExpr/List (do &items loc))
-            ))
+            )) as (& void)}
         ))
     ))
 
-    (return (struct.new Lole/Parser/ParseResult true
-        (new Lole/Ast/SExpr (Lole/Parser/m_expr_to_s_expr &items loc))
+    (return (Lole/Parser/ParseResult
+        :ok true
+        :data {(new Lole/Ast/SExpr
+            (Lole/Parser/m_expr_to_s_expr &items loc)
+        ) as (& void)}
     ))
 ))
 
@@ -366,9 +382,9 @@
     {Lole/Ast/SExpr @ (Vec/push_undef &sexpr_items) = lhs}
     {Lole/Ast/SExpr @ (Vec/push_undef &sexpr_items) = rhs}
 
-    (return (struct.new Lole/Ast/SExpr
-        Lole/Ast/SExpr/LIST
-        (new Lole/Ast/SExpr/List (do &sexpr_items loc))
+    (return (Lole/Ast/SExpr
+        :kind Lole/Ast/SExpr/LIST
+        :&value {(new Lole/Ast/SExpr/List (do &sexpr_items loc)) as (& void)}
     ))
 ))
 

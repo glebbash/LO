@@ -24,11 +24,11 @@
 ))
 
 (alias Lole/Ast/AtomKind u32)
-(alias Lole/Ast/AtomKind/SYMBOL 0)
-(alias Lole/Ast/AtomKind/STRING 1)
+(alias Lole/Ast/AtomKind/SYMBOL {0 as u32})
+(alias Lole/Ast/AtomKind/STRING {1 as u32})
 
-(alias Lole/Ast/SExpr/ATOM 0)
-(alias Lole/Ast/SExpr/LIST 1)
+(alias Lole/Ast/SExpr/ATOM {0 as u32})
+(alias Lole/Ast/SExpr/LIST {1 as u32})
 (struct Lole/Ast/SExpr
     (kind u32) ; Lole/Ast/SExpr/ATOM | Lole/Ast/SExpr/LIST
     (&value (& void)) ; (& Lole/Ast/SExpr/Atom) | (& Lole/Ast/SExpr/List)
