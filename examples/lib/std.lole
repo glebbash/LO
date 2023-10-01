@@ -108,7 +108,7 @@
     (struct Heap/Block
         (size u32)
         (used bool)
-        (&next (& void)) ; (& Heap/Block) ; TODO: support self references
+        (&next (& Heap/Block))
         (&data (& void))
     )
 
@@ -151,7 +151,7 @@
 
         ; chain block
         (if {Heap/&CURRENT_BLOCK != 0} (do
-            {Heap/&CURRENT_BLOCK -> &next = {&block as (& void)}}
+            {Heap/&CURRENT_BLOCK -> &next = &block}
         ))
 
         {Heap/&CURRENT_BLOCK = &block}
@@ -179,7 +179,7 @@
                 (return &block)
             ))
 
-            {&block = {&block -> &next as (& Heap/Block)}}
+            {&block = {&block -> &next}}
         ))
 
         (return 0)

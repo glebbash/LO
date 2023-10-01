@@ -306,6 +306,7 @@ pub struct FnExport {
 #[derive(Clone)]
 pub struct StructDef {
     pub fields: Vec<StructField>,
+    pub fully_defined: bool, // used for self-reference checks
 }
 
 #[derive(Clone)]

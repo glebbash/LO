@@ -463,8 +463,19 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     });
                 }
 
-                let struct_def = compile_struct(field_defs, struct_name, ctx)?;
-                ctx.struct_defs.insert(struct_name.clone(), struct_def);
+                ctx.struct_defs.insert(
+                    struct_name.clone(),
+                    StructDef {
+                        fields: vec![],
+                        fully_defined: false,
+                    },
+                );
+
+                let mut struct_fields = build_struct_fields(field_defs, struct_name, ctx)?;
+
+                let struct_def = ctx.struct_defs.get_mut(struct_name).unwrap();
+                struct_def.fields.append(&mut struct_fields);
+                struct_def.fully_defined = true;
             }
             _ => {
                 return Err(CompileError {
@@ -581,11 +592,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
     Ok(())
 }
 
-fn compile_struct(
+fn build_struct_fields(
     exprs: &[SExpr],
     struct_name: &str,
     ctx: &ModuleContext,
-) -> Result<StructDef, CompileError> {
+) -> Result<Vec<StructField>, CompileError> {
     let mut field_index = 0;
     let mut byte_offset = 0;
 
@@ -600,7 +611,7 @@ fn compile_struct(
 
         let [SExpr::Atom {
             value: f_name, loc: name_loc, kind: AtomKind::Symbol,
-        }, f_type] = &name_and_type[..] else {
+        }, f_type_expr] = &name_and_type[..] else {
             return Err(CompileError{
                 message: format!("Expected name and parameter pairs in fields list of struct {struct_name}"),
                 loc: field_def.loc().clone(),
@@ -616,19 +627,19 @@ fn compile_struct(
             });
         }
 
-        let value_type = parse_lole_type(f_type, ctx)?;
+        let field_type = parse_lole_type(f_type_expr, ctx)?;
 
         let mut stats = EmitComponentStats::default();
-        value_type
+        field_type
             .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
             .map_err(|err| CompileError {
                 message: err,
-                loc: f_type.loc().clone(),
+                loc: f_type_expr.loc().clone(),
             })?;
 
         fields.push(StructField {
             name: f_name.clone(),
-            value_type,
+            value_type: field_type,
             field_index,
             byte_offset,
         });
@@ -636,7 +647,7 @@ fn compile_struct(
         field_index += stats.count;
         byte_offset += stats.byte_length;
     }
-    Ok(StructDef { fields })
+    Ok(fields)
 }
 
 fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleExpr>, CompileError> {
@@ -1921,6 +1932,14 @@ fn compile_set_binds(
 // types
 
 fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, CompileError> {
+    parse_lole_type_checking_ref(expr, ctx, false)
+}
+
+fn parse_lole_type_checking_ref(
+    expr: &SExpr,
+    ctx: &ModuleContext,
+    is_referenced: bool,
+) -> Result<LoleType, CompileError> {
     match expr {
         SExpr::Atom {
             kind: AtomKind::Symbol,
@@ -1939,12 +1958,20 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
             "u64" => return Ok(LoleType::Primitive(LolePrimitiveType::U64)),
             "i64" => return Ok(LoleType::Primitive(LolePrimitiveType::I64)),
             "f64" => return Ok(LoleType::Primitive(LolePrimitiveType::F64)),
-            _ if ctx.struct_defs.contains_key(name) => {
-                return Ok(LoleType::StructInstance {
-                    name: String::from(name),
-                });
+            _ => {
+                if let Some(struct_def) = ctx.struct_defs.get(name) {
+                    if !struct_def.fully_defined && !is_referenced {
+                        return Err(CompileError {
+                            message: format!("Cannot use partially defined struct"),
+                            loc: expr.loc().clone(),
+                        });
+                    }
+
+                    return Ok(LoleType::StructInstance {
+                        name: String::from(name),
+                    });
+                }
             }
-            _ => {}
         },
         SExpr::List { value, .. } => match &value[..] {
             [SExpr::Atom {
@@ -1954,7 +1981,7 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
             }, ptr_data]
                 if value == "&" || value == "&*" =>
             {
-                let pointee = parse_lole_type(ptr_data, ctx)?;
+                let pointee = parse_lole_type_checking_ref(ptr_data, ctx, true)?;
 
                 return Ok(LoleType::Pointer(Box::new(pointee)));
             }
@@ -1967,7 +1994,7 @@ fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, Compil
             {
                 let mut types = vec![];
                 for type_expr in type_exprs {
-                    types.push(parse_lole_type(type_expr, ctx)?);
+                    types.push(parse_lole_type_checking_ref(type_expr, ctx, is_referenced)?);
                 }
                 return Ok(LoleType::Tuple(types));
             }
