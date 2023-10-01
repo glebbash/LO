@@ -15,10 +15,9 @@
 ))
 
 (fn Point2D/add ((p1 Point2D) (p2 Point2D)) Point2D (
-    ; TODO: drop cast once `.` inference is done
     (return (Point2D
-        :x {p1 . x + {p2 . x} as i32}
-        :y {p1 . y + {p2 . y} as i32}
+        :x {p1 . x + {p2 . x}}
+        :y {p1 . y + {p2 . y}}
     ))
 ))
 

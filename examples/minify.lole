@@ -15,8 +15,7 @@
         (return (print_err_and_exit {parse_res . data}))
     ))
 
-    ; TODO: use `:=`
-    {&exprs : (& Vec<Lole/Ast/SExpr>) = {parse_res . data}}
+    {&exprs := {parse_res . data}}
     (defer (Vec<Lole/Ast/SExpr>/free &exprs))
 
     (dump_exprs &exprs)

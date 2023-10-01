@@ -351,8 +351,7 @@
     (fn StringSlice/clone [(self StringSlice)] StringSlice (
         {&cloned_data := {(Heap/alloc {self . size}) as (&* u8)}}
         (Mem/copy {self . data} &cloned_data {self . size})
-        ; TODO: drop cast once `.` inference is done
-        (return (StringSlice :data &cloned_data :size {{self . size} as u32}))
+        (return (StringSlice :data &cloned_data :size {self . size}))
     ))
 
     (fn StringSlice/equals [(self StringSlice) (other StringSlice)] bool (

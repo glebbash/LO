@@ -199,8 +199,7 @@
 
     {res = (Lole/Parser/current_char &self)}
     (if (not {res . ok}) (return res))
-    ; TODO: use `:=`
-    {list_start_char : u8 = {res . data}}
+    {list_start_char := {res . data}}
     (Lole/Parser/next_char &self) ; eat list start
 
     (Lole/Parser/skip_space &self)
@@ -224,8 +223,7 @@
 
     {res = (Lole/Parser/current_char &self)}
     (if (not {res . ok}) (return res))
-    ; TODO: use `:=`
-    {list_end_char : u8 = {res . data}}
+    {list_end_char := {res . data}}
     (Lole/Parser/next_char &self) ; eat list end
 
     {loc . length = {&self -> index - {loc . offset}}}

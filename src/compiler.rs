@@ -1725,8 +1725,9 @@ fn compile_local_get(
 ) -> Result<LoleExpr, String> {
     let comp_count = value_type.emit_components(ctx, &mut vec![]);
     if comp_count == 1 {
-        return Ok(LoleExpr::LocalGet {
+        return Ok(LoleExpr::TypedLocalGet {
             local_index: base_index,
+            value_type: value_type.clone(),
         });
     }
 
@@ -1860,7 +1861,11 @@ fn compile_set_binds(
     address_index: Option<u32>,
 ) -> Result<(), CompileError> {
     Ok(match bind_instr {
-        LoleExpr::LocalGet { local_index } => {
+        LoleExpr::TypedLocalGet {
+            local_index,
+            value_type: _,
+        }
+        | LoleExpr::LocalGet { local_index } => {
             output.push(LoleExpr::Set {
                 bind: LoleSetBind::Local { index: local_index },
             });

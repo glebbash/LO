@@ -364,6 +364,10 @@ pub enum LoleExpr {
         base_byte_offset: u32,
         primitive_loads: Vec<LoleExpr>,
     },
+    TypedLocalGet {
+        local_index: u32,
+        value_type: LoleType,
+    },
     LocalGet {
         local_index: u32,
     },

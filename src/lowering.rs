@@ -52,7 +52,11 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             });
             lower_exprs(out, primitive_loads);
         }
-        LoleExpr::LocalGet { local_index } => out.push(WasmInstr::LocalGet { local_index }),
+        LoleExpr::LocalGet { local_index }
+        | LoleExpr::TypedLocalGet {
+            local_index,
+            value_type: _,
+        } => out.push(WasmInstr::LocalGet { local_index }),
         LoleExpr::GlobalGet { global_index } => out.push(WasmInstr::GlobalGet { global_index }),
         LoleExpr::StructGet {
             struct_name: _,

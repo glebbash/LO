@@ -81,6 +81,10 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
 
             Ok(global_def.value_type.clone())
         }
+        LoleExpr::TypedLocalGet {
+            local_index: _,
+            value_type,
+        } => Ok(value_type.clone()),
         LoleExpr::LocalGet { local_index } => {
             let local_def = ctx
                 .fn_ctx
@@ -186,7 +190,11 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
 
             vec![wasm_global.kind.value_type]
         }
-        LoleExpr::LocalGet { local_index } => {
+        LoleExpr::TypedLocalGet {
+            local_index,
+            value_type: _,
+        }
+        | LoleExpr::LocalGet { local_index } => {
             let local_index = *local_index as usize;
             let locals_len = ctx.fn_ctx.fn_type.inputs.len();
             if local_index < locals_len {
