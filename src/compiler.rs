@@ -100,7 +100,7 @@ fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleExpr
             continue;
         }
 
-        let types = get_type(ctx, instr)?;
+        let types = get_type(ctx, instr);
         if types.len() > 0 {
             return Err(CompileError {
                 message: format!("TypeError: Excess values"),
@@ -749,7 +749,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
         ("unreachable", []) => LoleExpr::Unreachable {},
         ("drop", [expr]) => {
             let instr = compile_instr(expr, ctx)?;
-            let drop_count = get_type(ctx, &instr)?.len();
+            let drop_count = get_type(ctx, &instr).len();
 
             LoleExpr::Drop {
                 value: Box::new(instr),
@@ -885,7 +885,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
         ("memory.size", []) => LoleExpr::MemorySize {},
         ("memory.grow", [size_expr]) => {
             let size = compile_instr(size_expr, ctx)?;
-            let size_type = get_type(ctx, &size)?;
+            let size_type = get_type(ctx, &size);
 
             if let [WasmType::I32] = size_type[..] {
             } else {
@@ -1027,7 +1027,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 values: compile_instrs(values, ctx)?,
             };
 
-            let return_type = get_type(ctx, &value)?;
+            let return_type = get_type(ctx, &value);
             if return_type != ctx.fn_ctx.fn_type.outputs {
                 return Err(CompileError {
                     message: format!(
@@ -1138,7 +1138,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             };
 
             let init_instr = compile_instr(init_expr, ctx)?;
-            let init_types = get_type(ctx, &init_instr)?;
+            let init_types = get_type(ctx, &init_instr);
 
             let value_type = parse_lole_type(type_expr, ctx.module)?;
 
@@ -1292,8 +1292,8 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             //     });
             // }
 
-            let value_types = get_type(ctx, &value_instr)?;
-            let bind_types = get_type(ctx, &bind_instr)?;
+            let value_types = get_type(ctx, &value_instr);
+            let bind_types = get_type(ctx, &bind_instr);
 
             if value_types != bind_types {
                 return Err(CompileError {
@@ -1330,10 +1330,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             }
 
             let value_instr = compile_instr(value, ctx)?;
-            let lole_type = get_lole_type(ctx, &value_instr).map_err(|message| CompileError {
-                message,
-                loc: value.loc().clone(),
-            })?;
+            let lole_type = get_lole_type(ctx, &value_instr);
 
             let start_index = ctx.fn_ctx.locals_last_index;
             let comp_count = lole_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_locals);
@@ -1476,10 +1473,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
         }
         ("*", [pointer_expr]) => {
             let pointer_instr = Box::new(compile_instr(pointer_expr, ctx)?);
-            let lole_type = get_lole_type(ctx, &pointer_instr).map_err(|message| CompileError {
-                message,
-                loc: pointer_expr.loc().clone(),
-            })?;
+            let lole_type = get_lole_type(ctx, &pointer_instr);
 
             let LoleType::Pointer(pointee_type) = lole_type else {
                 return Err(CompileError {
@@ -1502,11 +1496,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             }],
         ) => {
             let struct_ref_instr = Box::new(compile_instr(struct_ref_expr, ctx)?);
-            let lole_type =
-                get_lole_type(ctx, &struct_ref_instr).map_err(|message| CompileError {
-                    message,
-                    loc: struct_ref_expr.loc().clone(),
-                })?;
+            let lole_type = get_lole_type(ctx, &struct_ref_instr);
 
             let LoleType::Pointer(pointee_type) = &lole_type else {
                 return Err(CompileError {
@@ -1583,11 +1573,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                     }
 
                     let field_value = compile_instr(field_value_expr, ctx)?;
-                    let field_value_type =
-                        get_lole_type(ctx, &field_value).map_err(|message| CompileError {
-                            message,
-                            loc: field_value_expr.loc().clone(),
-                        })?;
+                    let field_value_type = get_lole_type(ctx, &field_value);
 
                     let field_type = &struct_field.value_type;
                     if field_value_type != *field_type {
@@ -1628,7 +1614,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
 
             let args = compile_instrs(args, ctx)?;
-            let arg_types = get_types(ctx, &args)?;
+            let mut arg_types = vec![];
+            for arg in &args {
+                arg_types.append(&mut get_type(ctx, &arg));
+            }
             if fn_type.inputs != arg_types {
                 return Err(CompileError {
                     message: format!(
