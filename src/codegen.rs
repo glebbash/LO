@@ -26,10 +26,10 @@ pub fn codegen(module: &WasmModule) -> Vec<u8> {
     write_section(&mut binary, &mut section, 0x07);
 
     write_code_section(&mut section, module);
-    write_section(&mut binary, &mut section, 0x0a);
+    write_section(&mut binary, &mut section, 0x0A);
 
     write_data_section(&mut section, module);
-    write_section(&mut binary, &mut section, 0x0b);
+    write_section(&mut binary, &mut section, 0x0B);
 
     binary
 }
@@ -164,7 +164,7 @@ fn write_expr(out: &mut Vec<u8>, expr: &WasmExpr) {
         write_instr(out, instr);
     }
 
-    write_u8(out, 0x0b); // end
+    write_u8(out, 0x0B); // end
 }
 
 fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
@@ -229,7 +229,7 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x1A);
         }
         WasmInstr::Return => {
-            write_u8(out, 0x0f);
+            write_u8(out, 0x0F);
         }
         WasmInstr::Call { fn_index } => {
             write_u8(out, 0x10);
@@ -250,10 +250,10 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x05);
         }
         WasmInstr::BlockEnd => {
-            write_u8(out, 0x0b);
+            write_u8(out, 0x0B);
         }
         WasmInstr::Branch { label_index } => {
-            write_u8(out, 0x0c);
+            write_u8(out, 0x0C);
             write_u32(out, *label_index);
         }
     }

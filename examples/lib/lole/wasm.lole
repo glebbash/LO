@@ -48,13 +48,13 @@
 
 ; values correspond to binary output
 (alias Lole/Wasm/WasmType i32)
-(alias Lole/Wasm/WasmType/I32 127) ; 0x7f
-(alias Lole/Wasm/WasmType/I64 126) ; 0x7e
-(alias Lole/Wasm/WasmType/F32 125) ; 0x7d
-(alias Lole/Wasm/WasmType/F64 124) ; 0x7c
-(alias Lole/Wasm/WasmType/V128 123) ; 0x7b
+(alias Lole/Wasm/WasmType/I32 127) ; 0x7F
+(alias Lole/Wasm/WasmType/I64 126) ; 0x7E
+(alias Lole/Wasm/WasmType/F32 125) ; 0x7D
+(alias Lole/Wasm/WasmType/F64 124) ; 0x7C
+(alias Lole/Wasm/WasmType/V128 123) ; 0x7B
 (alias Lole/Wasm/WasmType/FUNC_REF 112) ; 0x70
-(alias Lole/Wasm/WasmType/EXTERN_REF 111) ; 0x6f
+(alias Lole/Wasm/WasmType/EXTERN_REF 111) ; 0x6F
 
 (struct Lole/Wasm/WasmLocals
     (count u32)

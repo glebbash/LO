@@ -814,17 +814,17 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             rhs: Box::new(LoleExpr::U32Const { value: 0 }),
         },
         ("<", [lhs, rhs]) => LoleExpr::BinaryOp {
-            kind: WasmBinaryOpKind::I32LessThenSigned,
+            kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         (">", [lhs, rhs]) => LoleExpr::BinaryOp {
-            kind: WasmBinaryOpKind::I32GreaterThenSigned,
+            kind: WasmBinaryOpKind::I32GreaterThenUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         (">=", [lhs, rhs]) => LoleExpr::BinaryOp {
-            kind: WasmBinaryOpKind::I32GreaterEqualSigned,
+            kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },

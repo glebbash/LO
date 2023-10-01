@@ -47,14 +47,14 @@ pub struct WasmExpr {
 #[derive(Clone, Copy, Debug)]
 pub enum WasmBinaryOpKind {
     I32Equals = 0x46,
-    I32LessThenSigned = 0x48,
-    I32GreaterThenSigned = 0x4a,
-    I32GreaterEqualSigned = 0x4e,
+    I32LessThenUnsigned = 0x49,
+    I32GreaterThenUnsigned = 0x4B,
+    I32GreaterEqualUnsigned = 0x4F,
     I32NotEqual = 0x47,
-    I32Add = 0x6a,
-    I32Sub = 0x6b,
-    I32Mul = 0x6c,
-    I32DivUnsigned = 0x6e,
+    I32Add = 0x6A,
+    I32Sub = 0x6B,
+    I32Mul = 0x6C,
+    I32DivUnsigned = 0x6E,
     I32RemUnsigned = 0x70,
     I32And = 0x71,
     I32Or = 0x72,
@@ -67,10 +67,10 @@ pub enum WasmLoadKind {
     I64 = 0x29,
     F32 = 0x2A,
     F64 = 0x2B,
-    I32I8 = 0x2c,
-    I32U8 = 0x2d,
-    I32I16 = 0x2e,
-    I32U16 = 0x2f,
+    I32I8 = 0x2C,
+    I32U8 = 0x2D,
+    I32I16 = 0x2E,
+    I32U16 = 0x2F,
 }
 
 #[repr(u8)]
@@ -162,10 +162,10 @@ pub enum WasmBlockType {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WasmType {
-    I32 = 0x7f,
-    I64 = 0x7e,
-    F32 = 0x7d,
-    F64 = 0x7c,
+    I32 = 0x7F,
+    I64 = 0x7E,
+    F32 = 0x7D,
+    F64 = 0x7C,
 }
 
 #[derive(Clone, Copy)]
