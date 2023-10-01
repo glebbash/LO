@@ -56,7 +56,7 @@
 ))
 
 (fn get_input_file [] (tuple u32 StringSlice) (
-    {args : Args = (Args/load)}
+    {args := (Args/load)}
     (defer (Args/free args))
 
     (if {args . argc != 2} (do

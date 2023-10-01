@@ -5,7 +5,6 @@ use core::cell::RefCell;
 #[derive(Default)]
 pub struct ModuleContext {
     pub wasm_module: WasmModule,
-    pub lole_fn_types: BTreeMap<u32, LoleFnType>,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: Vec<FnBody>,
     pub fn_exports: Vec<FnExport>,
@@ -29,7 +28,7 @@ impl ModuleContext {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoleFnType {
     pub inputs: Vec<LoleType>,
     pub output: LoleType,
@@ -284,10 +283,12 @@ pub struct StructField {
     pub byte_offset: u32,
 }
 
+#[derive(Debug, Clone)]
 pub struct FnDef {
     pub local: bool,
     pub fn_index: u32,
     pub type_index: u32,
+    pub kind: LoleFnType,
 }
 
 impl FnDef {
@@ -374,7 +375,7 @@ pub enum LoleExpr {
     },
     Call {
         fn_index: u32,
-        fn_type_index: u32, // for type-checker
+        return_type: LoleType,
         args: Vec<LoleExpr>,
     },
     MultiValueEmit {

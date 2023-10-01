@@ -270,23 +270,18 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     inputs: wasm_inputs,
                     outputs: wasm_outputs,
                 });
-                ctx.lole_fn_types.insert(
+
+                ctx.wasm_module.functions.push(type_index);
+                let fn_def = FnDef {
+                    local: true,
+                    fn_index,
                     type_index,
-                    LoleFnType {
+                    kind: LoleFnType {
                         inputs: lole_inputs,
                         output: lole_output,
                     },
-                );
-
-                ctx.wasm_module.functions.push(type_index);
-                ctx.fn_defs.insert(
-                    fn_name.clone(),
-                    FnDef {
-                        local: true,
-                        fn_index,
-                        type_index,
-                    },
-                );
+                };
+                ctx.fn_defs.insert(fn_name.clone(), fn_def);
                 ctx.fn_bodies.push(FnBody {
                     fn_index,
                     type_index,
@@ -376,25 +371,20 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     inputs: wasm_inputs,
                     outputs: wasm_outputs,
                 });
-                ctx.lole_fn_types.insert(
-                    type_index,
-                    LoleFnType {
-                        inputs: lole_inputs,
-                        output: lole_output,
-                    },
-                );
 
                 let fn_index = ctx.imported_fns_count;
                 ctx.imported_fns_count += 1;
 
-                ctx.fn_defs.insert(
-                    fn_name.clone(),
-                    FnDef {
-                        local: false,
-                        fn_index,
-                        type_index,
+                let fn_def = FnDef {
+                    local: false,
+                    fn_index,
+                    type_index,
+                    kind: LoleFnType {
+                        inputs: lole_inputs,
+                        output: lole_output,
                     },
-                );
+                };
+                ctx.fn_defs.insert(fn_name.clone(), fn_def);
                 ctx.wasm_module.imports.push(WasmImport {
                     module_name: module_name.clone(),
                     item_name: extern_fn_name.clone(),
@@ -714,11 +704,12 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 });
             };
 
-            return Ok(compile_local_get(
-                ctx.module,
-                local.index,
-                &local.value_type,
-            ));
+            return compile_local_get(ctx.module, local.index, &local.value_type).map_err(
+                |message| CompileError {
+                    message,
+                    loc: expr.loc().clone(),
+                },
+            );
         }
     };
 
@@ -883,6 +874,18 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 size: Box::new(size),
             }
         }
+        ("debug.typeof", [sub_expr]) => {
+            let lole_expr = compile_instr(sub_expr, ctx)?;
+            let lole_type = get_lole_type(ctx, &lole_expr);
+            crate::wasi_io::debug(format!(
+                "{}",
+                String::from(CompileError {
+                    message: format!("{expr} = {:?}", lole_type),
+                    loc: expr.loc().clone(),
+                })
+            ));
+            LoleExpr::MultiValueEmit { values: vec![] }
+        }
         ("if", [block_type_expr, cond, then_branch, else_branch]) => {
             let then_branch = compile_block(
                 slice::from_ref(then_branch),
@@ -1011,16 +1014,15 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 });
             }
 
+            let return_expr = LoleExpr::Return {
+                value: Box::new(value),
+            };
             if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, ctx) {
                 let mut values = values?;
-                values.push(LoleExpr::Return {
-                    value: Box::new(value),
-                });
-                return Ok(LoleExpr::MultiValueEmit { values });
-            };
-
-            LoleExpr::Return {
-                value: Box::new(value),
+                values.push(return_expr);
+                LoleExpr::MultiValueEmit { values }
+            } else {
+                return_expr
             }
         }
         ("defer", [defer_label_exprs @ .., defer_expr]) => {
@@ -1205,7 +1207,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                     values: vec![
                         LoleExpr::Call {
                             fn_index: alloc_fn_index,
-                            fn_type_index: 0, // doesn't matter as it's inside NoTypeCheck
+                            return_type: LoleType::Void, // won't be typechecked
                             args: vec![
                                 alloc_id_instr,
                                 LoleExpr::I32Const {
@@ -1383,11 +1385,15 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                     });
                 };
 
-                return Ok(compile_local_get(
+                return compile_local_get(
                     ctx.module,
                     local.index + field.field_index,
                     &field.value_type,
-                ));
+                )
+                .map_err(|message| CompileError {
+                    message,
+                    loc: lhs.loc().clone(),
+                });
             }
 
             let lhs_instr = compile_instr(lhs, ctx)?;
@@ -1408,11 +1414,15 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                     });
                 };
 
-                return Ok(compile_local_get(
+                return compile_local_get(
                     ctx.module,
                     base_index + field.field_index,
                     &field.value_type,
-                ));
+                )
+                .map_err(|message| CompileError {
+                    message,
+                    loc: lhs.loc().clone(),
+                });
             };
 
             if let LoleExpr::StructLoad {
@@ -1554,8 +1564,8 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
 
             LoleExpr::Call {
                 fn_index: fn_def.get_absolute_index(ctx.module),
-                fn_type_index,
                 args,
+                return_type: fn_def.kind.output.clone(),
             }
         }
     };
@@ -1593,8 +1603,7 @@ fn compile_load(
     }
 
     let LoleType::StructInstance { name } = value_type else {
-        crate::wasi_io::debug(format!("hi"));
-        unreachable!()
+        return Err(format!("Unsupported type for compile_load: {value_type:?}"));
     };
 
     let mut components = vec![];
@@ -1630,16 +1639,20 @@ fn compile_load(
     })
 }
 
-fn compile_local_get(ctx: &ModuleContext, base_index: u32, value_type: &LoleType) -> LoleExpr {
+fn compile_local_get(
+    ctx: &ModuleContext,
+    base_index: u32,
+    value_type: &LoleType,
+) -> Result<LoleExpr, String> {
     let comp_count = value_type.emit_components(ctx, &mut vec![]);
     if comp_count == 1 {
-        return LoleExpr::LocalGet {
+        return Ok(LoleExpr::LocalGet {
             local_index: base_index,
-        };
+        });
     }
 
     let LoleType::StructInstance { name } = value_type else {
-        unreachable!()
+        return Err(format!("Unsupported type for compile_load: {value_type:?}"));
     };
 
     let mut primitive_gets = vec![];
@@ -1649,11 +1662,11 @@ fn compile_local_get(ctx: &ModuleContext, base_index: u32, value_type: &LoleType
         });
     }
 
-    LoleExpr::StructGet {
+    Ok(LoleExpr::StructGet {
         struct_name: name.clone(),
         base_index,
         primitive_gets,
-    }
+    })
 }
 
 fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleExpr, CompileError> {

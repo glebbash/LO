@@ -132,9 +132,9 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
         }
         LoleExpr::Branch { label_index } => out.push(WasmInstr::Branch { label_index }),
         LoleExpr::Call {
-            fn_type_index: _,
             fn_index,
             args,
+            return_type: _,
         } => {
             for arg in args {
                 lower_expr(out, arg);

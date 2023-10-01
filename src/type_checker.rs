@@ -96,13 +96,10 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<LoleType, S
             Ok(local_def.value_type.clone())
         }
         LoleExpr::Call {
-            fn_type_index,
+            return_type,
             fn_index: _,
             args: _,
-        } => {
-            let lole_fn_type = &ctx.module.lole_fn_types.get(fn_type_index).unwrap();
-            Ok(lole_fn_type.output.clone())
-        }
+        } => Ok(return_type.clone()),
         LoleExpr::If {
             block_type,
             cond: _,
@@ -130,7 +127,7 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
 
     // let mut wasm_types = vec![];
     // lole_type.emit_components(ctx.module, &mut wasm_types);
-    // Ok(wasm_types)
+    // return Ok(wasm_types);
 
     Ok(match instr {
         LoleExpr::Unreachable => vec![],
@@ -199,12 +196,13 @@ pub fn get_type(ctx: &BlockContext, instr: &LoleExpr) -> Result<Vec<WasmType>, C
             }
         }
         LoleExpr::Call {
-            fn_type_index,
             fn_index: _,
+            return_type,
             args: _,
         } => {
-            let fn_type = &ctx.module.wasm_module.types[*fn_type_index as usize];
-            fn_type.outputs.clone()
+            let mut wasm_outputs = vec![];
+            return_type.emit_components(ctx.module, &mut wasm_outputs);
+            wasm_outputs
         }
         LoleExpr::If {
             block_type,
