@@ -227,7 +227,7 @@
 
     {loc . item_size = {self -> index - {loc . offset}}}
 
-    (if {list_start_char == (char_code "{") && {(Vec/len items) >= 2}} (do
+    (if {list_start_char == (char_code "{") && {items -> size >= 2}} (do
         (return (Lole/Parser/m_expr_to_s_expr_and_validate items loc))
     ))
 
@@ -333,7 +333,7 @@
 ))
 
 (fn Lole/Parser/m_expr_to_s_expr_and_validate [(items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] Lole/Parser/ParseResult (
-    (if {(Vec/len items) % 2 != 1} (do
+    (if {items -> size % 2 != 1} (do
         (return (Lole/Parser/ParseResult
             :ok false
             :data {(new Lole/Ast/CompileError (do
@@ -343,7 +343,7 @@
         ))
     ))
 
-    (if {(Vec/len items) < 2} (do
+    (if {items -> size < 2} (do
         (return (Lole/Parser/ParseResult
             :ok true
             :data {(new Lole/Ast/SExpr (do
@@ -365,7 +365,7 @@
 ; 🚫 (+ 1 (- 2 (* 3 4)))
 ; ✅ (* (- (+ 1 2) 3) 4)
 (fn Lole/Parser/m_expr_to_s_expr [(items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] Lole/Ast/SExpr (
-    (if {(Vec/len items) == 1} (do
+    (if {items -> size == 1} (do
         (defer (Vec/free items))
         (return {Lole/Ast/SExpr @ (Vec/at items 0)})
     ))

@@ -57,7 +57,7 @@
 (fn Vec<Lole/Ast/SExpr>/free [(self (& Vec))] void (
     {i := 0}
     (loop (
-        (if {i == (Vec/len self)} (break))
+        (if {i == {self -> size}} (break))
 
         (Lole/Ast/SExpr/free {Lole/Ast/SExpr @ (Vec/at self i)})
 

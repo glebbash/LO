@@ -214,10 +214,6 @@
         (free {self -> alloc_id} {self -> data} {self -> capacity})
     ))
 
-    (fn Vec/len [(self (& Vec))] u32 (
-        (return {self -> size})
-    ))
-
     (struct Slice
         (data (& void))
         (size u32)
@@ -289,19 +285,19 @@
     ))
 
     (fn Vec/append [(self (& Vec)) (other (& Vec))] void (
-        (Vec/push_all self {other -> data} (Vec/len other))
+        (Vec/push_all self {other -> data} {other -> size})
         ; TODO: ? add number inference
         {other -> size = 0}
     ))
 
     (fn Vec/pop_unchecked [(self (& Vec))] (& void) (
         {self -> size -= 1}
-        (return (Vec/at_unchecked self (Vec/len self)))
+        (return (Vec/at_unchecked self {self -> size}))
     ))
 
     (fn Vec/reverse [(self (& Vec))] void (
         {start := 0}
-        {end := {(Vec/len self) - 1}}
+        {end := {self -> size - 1}}
 
         (loop (
             (if {start >= end} (break))
@@ -333,7 +329,7 @@
     ))
 
     (fn Vec/_panic_if_out_of_bounds [(self (& Vec)) (index u32)] void (
-        (if {{index < 0} || {index >= (Vec/len self)}} (do
+        (if {{index < 0} || {index >= {self -> size}}} (do
             (panic "Vec access out of bounds")
         ))
     ))
@@ -403,16 +399,12 @@
         (Vec/free self)
     ))
 
-    (fn Dict/len [(self (& Dict))] u32 (
-        (return (Vec/len self))
-    ))
-
     (struct Dict/GetResult (ok bool) (value (& void)))
 
     (fn Dict/get [(self (& Dict)) (key StringSlice)] Dict/GetResult (
         {i := 0}
         (loop (
-            (if {i == (Dict/len self)} (break))
+            (if {i == {self -> size}} (break))
 
             {entry_key := {(Vec/at self i) as (& String)}}
             (if (StringSlice/equals key (Vec/as_slice entry_key)) (do

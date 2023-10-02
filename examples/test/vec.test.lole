@@ -7,7 +7,11 @@
 
 (export Vec/new :as vec_new)
 (export Vec/get_u8 :as vec_get_u8)
-(export Vec/len :as vec_len)
 (export Vec/swap :as vec_swap)
 (export Vec/push_u8 :as vec_push_u8)
 (export Vec/push_all :as vec_push_all)
+
+(export vec_len :as vec_len)
+(fn vec_len [(vec (& Vec))] u32 (
+    (return {vec -> size})
+))

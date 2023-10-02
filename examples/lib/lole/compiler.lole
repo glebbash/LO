@@ -15,7 +15,7 @@
 
     {i := 0}
     (loop (
-        (if {i == (Vec/len exprs)} (break))
+        (if {i == {exprs -> size}} (break))
 
         {res :=
             (Lole/Compiler/compile_top_level_expr
@@ -34,7 +34,7 @@
     ; push function exports
     {i = 0}
     (loop (
-        (if {i == (Vec/len fn_exports)} (break))
+        (if {i == {fn_exports -> size}} (break))
 
         {fn_export := {Lole/Ir/FnExport @ (Vec/at fn_exports i)}}
 
@@ -70,7 +70,7 @@
     ; push function codes
     {i = 0}
     (loop (
-        (if {i == (Vec/len fn_bodies)} (break))
+        (if {i == {fn_bodies -> size}} (break))
 
         {fn_body := {Lole/Ir/FnBody @ (Vec/at fn_bodies i)}}
 
@@ -106,10 +106,10 @@
 
         {j := 0}
         (loop (
-            (if {j == (Vec/len non_arg_locals)} (break))
+            (if {j == {non_arg_locals -> size}} (break))
 
             {local_type := {Lole/Wasm/WasmType @ (Vec/at non_arg_locals j)}}
-            {locals_len := (Vec/len locals)}
+            {locals_len := {locals -> size}}
             (if {locals_len > 0} (do
                 {wasm_locals := {(Vec/at locals {locals_len - 1}) as (& Lole/Wasm/WasmLocals)}}
                 (if {wasm_locals -> value_type == local_type} (do

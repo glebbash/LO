@@ -32,13 +32,13 @@
     {i := 0}
 
     (loop (
-        (if {i == (Vec/len exprs)}
+        (if {i == {exprs -> size}}
             (break)
         )
 
         (dump_expr {SExpr @ (Vec/at exprs i)})
 
-        (if {i != {(Vec/len exprs) - 1}} (do
+        (if {i != {exprs -> size - 1}} (do
             (puts " ")
         ))
 

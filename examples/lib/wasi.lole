@@ -8,7 +8,10 @@
 (alias Wasi/FD_STDOUT 1)
 (alias Wasi/FD_STDERR 2)
 
-(struct Wasi/IOVec (base (& u8)) (len u32))
+(struct Wasi/IOVec
+    (base (&* u8))
+    (size u32)
+)
 
 (import fn Wasi/path_open [
     (dirfd                u32) ; The file descriptor representing the directory that the file is located in.

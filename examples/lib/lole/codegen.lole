@@ -48,7 +48,7 @@
 
 (fn Lole/CodeGen/write_section [(out (& Vec<u8>)) (section (& Vec<u8>)) (section_code u8)] void (
     (Lole/CodeGen/write_u8 out section_code)
-    (Lole/CodeGen/write_u32 out (Vec/len section))
+    (Lole/CodeGen/write_u32 out {section -> size})
     (Vec/append out section)
 ))
 
