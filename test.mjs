@@ -216,10 +216,10 @@ test("compiles heap-alloc", async () => {
         output,
         dropPadding(`
             Heap/TOTAL_ALLOCATED = 1048576
-            &p = (Heap/alloc 1) // 1048589
-            (Heap/free &p)
-            &p = (Heap/alloc 1) // 1048589
-            &p = (Heap/alloc 1) // 1048606
+            p = (Heap/alloc 1) // 1048589
+            (Heap/free p)
+            p = (Heap/alloc 1) // 1048589
+            p = (Heap/alloc 1) // 1048606
         `)
     );
 });

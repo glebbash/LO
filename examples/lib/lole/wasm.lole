@@ -87,13 +87,12 @@
 ))
 
 (fn Lole/Wasm/WasmModule/free [(self (& Lole/Wasm/WasmModule))] void (
-    {self := (* self)}
-    (Vec/free {self . types})
-    (Vec/free {self . imports})
-    (Vec/free {self . functions})
-    (Vec/free {self . memories})
-    (Vec/free {self . globals})
-    (Vec/free {self . exports})
-    (Vec/free {self . codes})
-    (Vec/free {self . datas})
+    (Vec/free {self -> types})
+    (Vec/free {self -> imports})
+    (Vec/free {self -> functions})
+    (Vec/free {self -> memories})
+    (Vec/free {self -> globals})
+    (Vec/free {self -> exports})
+    (Vec/free {self -> codes})
+    (Vec/free {self -> datas})
 ))

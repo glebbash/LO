@@ -3,7 +3,7 @@
 (struct Lole/Ast/Location
     (file_name StringSlice)
     (offset u32)
-    (length u32)
+    (item_size u32)
     (line u32)
     (col u32)
 )

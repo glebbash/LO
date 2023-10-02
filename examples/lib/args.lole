@@ -5,14 +5,14 @@
 )
 
 (fn Args/load [] Args (
-    {argc := (new u32 0 :using Alloc/STACK)}
+    {argc_ref := (new u32 0 :using Alloc/STACK)}
     (defer (Stack/free (sizeof u32)))
-    {argv_buf_size := (new u32 0 :using Alloc/STACK)}
+    {argv_buf_size_ref := (new u32 0 :using Alloc/STACK)}
     (defer (Stack/free (sizeof u32)))
-    (drop (Wasi/args_sizes_get argc argv_buf_size))
+    (drop (Wasi/args_sizes_get argc_ref argv_buf_size_ref))
 
-    {argv_buf_size := (* argv_buf_size)}
-    {argc := (* argc)}
+    {argv_buf_size := (* argv_buf_size_ref)}
+    {argc := (* argc_ref)}
 
     {argv := {(Heap/alloc {argc * (sizeof (&* u8))}) as (&* (&* u8))}}
     {argv_buf := {(Heap/alloc argv_buf_size) as (&* u8)}}

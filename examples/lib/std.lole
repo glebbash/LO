@@ -175,7 +175,7 @@
         (loop (
             (if {block == 0} (break))
 
-            (if {(not {block -> used}) & {block -> size >= size}} (do
+            (if {(not {block -> used}) && {block -> size >= size}} (do
                 (return block)
             ))
 
@@ -189,7 +189,7 @@
 
     (struct Vec
         (data (& void))
-        (length u32)
+        (size u32)
         (capacity u32)
         (item_size u32)
         (alloc_id u32)
@@ -215,7 +215,7 @@
     ))
 
     (fn Vec/len [(self (& Vec))] u32 (
-        (return {self -> length})
+        (return {self -> size})
     ))
 
     (struct Slice
@@ -226,7 +226,7 @@
     (fn Vec/as_slice [(self (& Vec))] Slice (
         (return (Slice
             :data {self -> data}
-            :size {self -> length}
+            :size {self -> size}
         ))
     ))
 
@@ -259,8 +259,8 @@
     ))
 
     (fn Vec/push_u8 [(self (& Vec)) (item u8)] void (
-        {index := {self -> length}}
-        {self -> length = {index + 1}}
+        {index := {self -> size}}
+        {self -> size = {index + 1}}
 
         (Vec/_grow_if_needed self)
 
@@ -268,8 +268,8 @@
     ))
 
     (fn Vec/push_all [(self (& Vec)) (items (& void)) (items_len u32)] void (
-        {old_len := {self -> length}}
-        {self -> length = {old_len + items_len}}
+        {old_len := {self -> size}}
+        {self -> size = {old_len + items_len}}
 
         (Vec/_grow_if_needed self)
 
@@ -281,21 +281,21 @@
     ))
 
     (fn Vec/push_undef [(self (& Vec))] (& void) (
-        {self -> length += 1}
+        {self -> size += 1}
 
         (Vec/_grow_if_needed self)
 
-        (return (Vec/at self {self -> length - 1}))
+        (return (Vec/at self {self -> size - 1}))
     ))
 
     (fn Vec/append [(self (& Vec)) (other (& Vec))] void (
         (Vec/push_all self {other -> data} (Vec/len other))
         ; TODO: ? add number inference
-        {other -> length = 0}
+        {other -> size = 0}
     ))
 
     (fn Vec/pop_unchecked [(self (& Vec))] (& void) (
-        {self -> length -= 1}
+        {self -> size -= 1}
         (return (Vec/at_unchecked self (Vec/len self)))
     ))
 
@@ -313,7 +313,7 @@
     ))
 
     (fn Vec/_grow_if_needed [(self (& Vec))] void (
-        (if {self -> length != {self -> capacity}} (do
+        (if {self -> size != {self -> capacity}} (do
             (return)
         ))
 
@@ -329,7 +329,7 @@
         {self -> capacity = {old_capacity * 2}}
         {self -> data = (alloc {self -> alloc_id} {self -> capacity * item_size})}
 
-        (Mem/copy old_data {self -> data} {self -> length * item_size})
+        (Mem/copy old_data {self -> data} {self -> size * item_size})
     ))
 
     (fn Vec/_panic_if_out_of_bounds [(self (& Vec)) (index u32)] void (
@@ -382,7 +382,7 @@
     ))
 
     (fn String/clone [(self (& String))] (& String) (
-        (return (String/from_slice {self -> data} {self -> length}))
+        (return (String/from_slice {self -> data} {self -> size}))
     ))
 
     (fn String/from_slice [(str StringSlice)] (& String) (

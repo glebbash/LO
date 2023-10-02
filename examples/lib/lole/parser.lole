@@ -147,7 +147,7 @@
 
     (Lole/Parser/next_char self) ; skip end quote
 
-    {loc . length = {self -> index - {loc . offset}}}
+    {loc . item_size = {self -> index - {loc . offset}}}
 
     (return (Lole/Parser/ParseResult
         :ok true
@@ -175,10 +175,10 @@
         (Lole/Parser/next_char self)
     ))
 
-    {loc . length = {self -> index - {loc . offset}}}
+    {loc . item_size = {self -> index - {loc . offset}}}
 
     {value := (String/from_slice
-        {self -> chars . data + {loc . offset}} {loc . length}) }
+        {self -> chars . data + {loc . offset}} {loc . item_size}) }
 
     (return (Lole/Parser/ParseResult
         :ok true
@@ -225,9 +225,9 @@
     {list_end_char := {res . data}}
     (Lole/Parser/next_char self) ; eat list end
 
-    {loc . length = {self -> index - {loc . offset}}}
+    {loc . item_size = {self -> index - {loc . offset}}}
 
-    (if {list_start_char == (char_code "{") & {(Vec/len items) >= 2}} (do
+    (if {list_start_char == (char_code "{") && {(Vec/len items) >= 2}} (do
         (return (Lole/Parser/m_expr_to_s_expr_and_validate items loc))
     ))
 
@@ -326,7 +326,7 @@
     (return (Lole/Ast/Location
         :file_name (StringSlice/clone {self -> file_name})
         :offset {self -> index}
-        :length 1
+        :item_size 1
         :line {self -> line}
         :col {self -> col}
     ))
@@ -337,7 +337,7 @@
         (return (Lole/Parser/ParseResult
             :ok false
             :data {(new Lole/Ast/CompileError (do
-                (String/from_slice "ParseError: Invalid m-expr: even length")
+                (String/from_slice "ParseError: Invalid m-expr: even item_size")
                 loc
             )) as (& void)}
         ))
@@ -403,9 +403,9 @@
 
 (fn Lole/Parser/is_valid_list_chars [(start u8) (end u8)] bool (
     (return {
-        {start == (char_code "(") & {end == (char_code ")")}} ||
-        {start == (char_code "{") & {end == (char_code "}")}} ||
-        {start == (char_code "[") & {end == (char_code "]")}}
+        {start == (char_code "(") && {end == (char_code ")")}} ||
+        {start == (char_code "{") && {end == (char_code "}")}} ||
+        {start == (char_code "[") && {end == (char_code "]")}}
     })
 ))
 
