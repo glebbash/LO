@@ -9,7 +9,7 @@
 
 (export main :as main)
 (fn main [] u32 (
-    {&p : (& Point2D) = (Stack/alloc (sizeof Point2D))}
+    {&p := {(Stack/alloc (sizeof Point2D)) as (& Point2D)}}
     (defer (Stack/free (sizeof Point2D)))
 
     {(* &p) = (Point2D :x 2 :y 3)}

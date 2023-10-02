@@ -12,14 +12,15 @@
 
     {file_path := (Args/get args 1)}
 
-    {(do {err : u32} {fd : u32}) = (WasiIO/fd_open file_path)}
-    (if {err != 0} (do
+    {open_res := (WasiIO/fd_open file_path)}
+    (if {open_res . err != 0} (do
         (return (Wasi/proc_exit 1))
     ))
+    {fd := {open_res . fd}}
     (defer (drop (Wasi/fd_close fd)))
 
-    {pipe_err := (WasiIO/fd_pipe fd Wasi/FD_STDOUT 256)}
-    (if {pipe_err != 0} (do
+    {err := (WasiIO/fd_pipe fd Wasi/FD_STDOUT 256)}
+    (if {err != 0} (do
         (return (Wasi/proc_exit 1))
     ))
 

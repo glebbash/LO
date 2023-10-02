@@ -74,7 +74,8 @@
 
         {fn_body := {Lole/Ir/FnBody @ (Vec/at &fn_bodies i)}}
 
-        {&fn_type : (& Lole/Wasm/WasmFnType) = (Vec/at &fn_types {fn_body . type_index})}
+        {&fn_type := {(Vec/at &fn_types {fn_body . type_index})
+            as (& Lole/Wasm/WasmFnType)}}
 
         {&fn_ctx := (new Lole/Ir/FnContext (do
             &ctx

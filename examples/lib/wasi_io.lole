@@ -38,11 +38,9 @@
     {&nread := {(Stack/alloc (sizeof u32)) as (& u32)}}
     (defer (Stack/free (sizeof u32)))
 
-    {io_res : u32}
-
     (loop (
         {&iov -> len = chunk_size}
-        {io_res = (Wasi/fd_read fd_in &iov 1 &nread)}
+        {io_res := (Wasi/fd_read fd_in &iov 1 &nread)}
         (if {io_res != 0} (do
             (return false)
         ))

@@ -34,7 +34,7 @@
     (print_u32 {br2 . x})
     (puts "\n")
 
-    {&br : (& Point2D) = {&r + (sizeof Point2D)}}
+    {&br := {&r + (sizeof Point2D) as (& Point2D)}}
     (print_u32 {&br -> x})
     (puts "\n")
 
