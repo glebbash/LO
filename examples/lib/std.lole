@@ -218,8 +218,16 @@
         (return {&self -> length})
     ))
 
-    (fn Vec/as_slice [(&self (& Vec))] (tuple (& void) u32) (
-        (return {&self -> &data} {&self -> length})
+    (struct Slice
+        (data (& void))
+        (size u32)
+    )
+
+    (fn Vec/as_slice [(&self (& Vec))] Slice (
+        (return (Slice
+            :data {&self -> &data}
+            :size {&self -> length}
+        ))
     ))
 
     (fn Vec/at [(&self (& Vec)) (index u32)] u32 (

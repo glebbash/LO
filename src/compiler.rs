@@ -2016,19 +2016,6 @@ fn parse_lole_type_checking_ref(
 
                 return Ok(LoleType::Pointer(Box::new(pointee)));
             }
-            [SExpr::Atom {
-                kind: AtomKind::Symbol,
-                value,
-                ..
-            }, type_exprs @ ..]
-                if value == "tuple" =>
-            {
-                let mut types = vec![];
-                for type_expr in type_exprs {
-                    types.push(parse_lole_type_checking_ref(type_expr, ctx, is_referenced)?);
-                }
-                return Ok(LoleType::Tuple(types));
-            }
             _ => {}
         },
         _ => {}

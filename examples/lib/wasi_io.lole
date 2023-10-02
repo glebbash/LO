@@ -1,3 +1,5 @@
+(mod lib/wasi)
+
 ; wasi_io expects host to preopen "." on fd 3
 (alias CWD_PREOPEN_FD 3)
 
@@ -58,7 +60,12 @@
     (return true)
 ))
 
-(fn WasiIO/fd_open [(file_path StringSlice)] (tuple u32 u32) (
+(struct FdOpenRes
+    (err Wasi/Err)
+    (fd u32)
+)
+
+(fn WasiIO/fd_open [(file_path StringSlice)] FdOpenRes (
     {&fd := (new u32 0 :using Alloc/STACK)}
     (defer (free Alloc/STACK &fd (sizeof u32)))
 
@@ -69,5 +76,5 @@
     )}
     {fd := (* &fd)}
 
-    (return (do err fd))
+    (return (FdOpenRes :err err :fd fd))
 ))

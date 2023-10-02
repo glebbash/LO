@@ -4,13 +4,16 @@
 (mod lib/lole/parser)
 
 (fn main [] void (
-    {(do {fd : u32} {file_name : StringSlice}) = (get_input_file)}
-    (defer (Heap/free {file_name . data}))
+    {input_file := (get_input_file)}
+    (defer (Heap/free {input_file . file_name . data}))
 
-    {&source := (WasiIO/fd_read_all fd)}
+    {&source := (WasiIO/fd_read_all {input_file . fd})}
     (defer (Vec/free &source))
 
-    {parse_res := (Lole/Parser/parse file_name (Vec/as_slice &source))}
+    {parse_res := (Lole/Parser/parse
+        {input_file . file_name}
+        (Vec/as_slice &source)
+    )}
     (if (not {parse_res . ok}) (do
         (return (print_err_and_exit {parse_res . data}))
     ))
@@ -55,7 +58,12 @@
     (puts ")")
 ))
 
-(fn get_input_file [] (tuple u32 StringSlice) (
+(struct InputFile
+    (fd u32)
+    (file_name StringSlice)
+)
+
+(fn get_input_file [] InputFile (
     {args := (Args/load)}
     (defer (Args/free args))
 
@@ -72,7 +80,10 @@
         (Wasi/proc_exit 1)
     ))
 
-    (return fd file_name)
+    (return (InputFile
+        :fd fd
+        :file_name file_name
+    ))
 ))
 
 (fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] void (
