@@ -28,7 +28,7 @@
         "types": {
             "patterns": [
                 {
-					"match": "(?<![A-Za-z])(f32|f64|i128|i16|i32|i64|i8|u128|u16|u32|u64|u8|ptr|bool)\\b",
+					"match": "(?<![A-Za-z0-9_])(void|bool|u8|i8|u16|i16|u32|i32|f32|u64|i64|f64)\\b",
 					"captures": {
 						"1": {
 							"name": "entity.name.type.numeric.lole-lisp"
@@ -53,7 +53,7 @@
 				},
                 {
                     "name": "variable.other.constant.lole-lisp",
-                    "match": "\\b([A-Z][A-Za-z_]*\\/)*&?[A-Z0-9_]+\\b"
+                    "match": "\\b([A-Z][A-Za-z_]*\\/)*[A-Z0-9_]+(?=(\\s|\\)|\\]|\\}))"
                 }
             ]
         },
@@ -61,15 +61,19 @@
 			"patterns": [
                 {
                     "name": "keyword.control.lole-lisp",
-                    "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct\\.new|struct|enum\\.kind|enum|break|not|continue|unreachable|mut|defer.eval|defer)\\b"
+                    "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct|break|not|continue|unreachable|mut|defer.eval|defer|mem|drop|import|alias|as)\\b"
 			    },
+                {
+                    "name": "constant.keyword.lole-lisp",
+                    "match": "(?<=(\\s|\\(|\\[|\\{)):[A-Za-z0-9_]+(?=(\\s|\\)|\\]|\\}))"
+                },
                 {
                     "name": "keyword.operator.lole-lisp",
                     "match": "(=|==|!|!=|&&|\\.|>=|<=|>|<|:|\\+|-|\\*|\\/|@|\\|\\|)"
                 },
                 {
                     "name": "keyword.operator.lole-lisp",
-                    "match": "(&)\\s"
+                    "match": "(&\\*?)\\s"
                 }
             ]
 		},
