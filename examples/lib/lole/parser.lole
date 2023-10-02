@@ -21,11 +21,11 @@
 
 ; public interface
 (fn Lole/Parser/parse [(file_name StringSlice) (script StringSlice)] Lole/Parser/ParseScriptResult (
-    {&parser := (new Lole/Parser (Lole/Parser/new file_name script)
+    {parser := (new Lole/Parser (Lole/Parser/new file_name script)
         :using Alloc/STACK)}
-    (defer (free Alloc/STACK &parser (sizeof Lole/Parser)))
+    (defer (free Alloc/STACK parser (sizeof Lole/Parser)))
 
-    (return (Lole/Parser/parse_all &parser))
+    (return (Lole/Parser/parse_all parser))
 ))
 
 (fn Lole/Parser/new [(file_name StringSlice) (script StringSlice)] Lole/Parser (
@@ -38,72 +38,72 @@
     ))
 ))
 
-(fn Lole/Parser/parse_all [(&self (& Lole/Parser))] Lole/Parser/ParseScriptResult (
-    (Lole/Parser/skip_space &self)
+(fn Lole/Parser/parse_all [(self (& Lole/Parser))] Lole/Parser/ParseScriptResult (
+    (Lole/Parser/skip_space self)
 
-    {&items := (Vec/new 10 (sizeof Lole/Ast/SExpr))}
+    {items := (Vec/new 10 (sizeof Lole/Ast/SExpr))}
 
     (loop (
         ; TODO: support chaining `->`
-        (if {&self -> index >= {&self -> chars . size}} (do
+        (if {self -> index >= {self -> chars . size}} (do
             (break)
         ))
 
-        {res := (Lole/Parser/current_char &self)}
+        {res := (Lole/Parser/current_char self)}
         (if (not {res . ok}) (return res))
 
         (if (not (Lole/Parser/is_list_start {res . data})) (do
             (return (Lole/Parser/ParseScriptResult
                 :ok false
-                :data {(Lole/Parser/err_unexpected_char &self) as (& void)}
+                :data {(Lole/Parser/err_unexpected_char self) as (& void)}
             ))
         ))
 
-        {expr_res := (Lole/Parser/parse_list &self)}
+        {expr_res := (Lole/Parser/parse_list self)}
         (if (not {expr_res . ok}) (return expr_res))
 
-        (Lole/Parser/skip_space &self)
+        (Lole/Parser/skip_space self)
 
-        (Vec/push_all &items {expr_res . data} 1)
+        (Vec/push_all items {expr_res . data} 1)
     ))
 
     (return (Lole/Parser/ParseScriptResult
         :ok true
-        :data {&items as (& void)}
+        :data {items as (& void)}
     ))
 ))
 
-(fn Lole/Parser/parse_expr [(&self (& Lole/Parser))] Lole/Parser/ParseResult (
-    {res := (Lole/Parser/current_char &self)}
+(fn Lole/Parser/parse_expr [(self (& Lole/Parser))] Lole/Parser/ParseResult (
+    {res := (Lole/Parser/current_char self)}
     (if (not {res . ok}) (return res))
 
     (if (Lole/Parser/is_list_start {res . data}) (do
-        (return (Lole/Parser/parse_list &self))
+        (return (Lole/Parser/parse_list self))
     ))
 
-    (return (Lole/Parser/parse_atom &self))
+    (return (Lole/Parser/parse_atom self))
 ))
 
-(fn Lole/Parser/parse_atom [(&self (& Lole/Parser))] Lole/Parser/ParseResult (
-    {res := (Lole/Parser/current_char &self)}
+(fn Lole/Parser/parse_atom [(self (& Lole/Parser))] Lole/Parser/ParseResult (
+    {res := (Lole/Parser/current_char self)}
     (if (not {res . ok}) (return res))
 
     (if {res . data == (char_code "\"")} (do
-        (return (Lole/Parser/parse_string &self))
+        (return (Lole/Parser/parse_string self))
     ))
 
-    (return (Lole/Parser/parse_symbol &self))
+    (return (Lole/Parser/parse_symbol self))
 ))
 
-(fn Lole/Parser/parse_string [(&self (& Lole/Parser))] Lole/Parser/ParseResult (
-    {loc := (Lole/Parser/loc &self)}
+(fn Lole/Parser/parse_string [(self (& Lole/Parser))] Lole/Parser/ParseResult (
+    {loc := (Lole/Parser/loc self)}
 
-    (Lole/Parser/next_char &self) ; skip start quote
+    (Lole/Parser/next_char self) ; skip start quote
 
-    {&value := (String/new 6)}
+    {value := (String/new 6)}
 
     (loop (
-        {res := (Lole/Parser/current_char &self)}
+        {res := (Lole/Parser/current_char self)}
         (if (not {res . ok}) (return res))
 
         (if {res . data == (char_code "\"")} (do
@@ -111,50 +111,50 @@
         ))
 
         (if {res . data != (char_code "\\")} (do
-            (Vec/push_u8 &value {res . data})
-            (Lole/Parser/next_char &self)
+            (Vec/push_u8 value {res . data})
+            (Lole/Parser/next_char self)
             (continue)
         ))
-        (Lole/Parser/next_char &self) ; skip '\'
+        (Lole/Parser/next_char self) ; skip '\'
 
-        {res = (Lole/Parser/current_char &self)}
+        {res = (Lole/Parser/current_char self)}
         (if (not {res . ok}) (return res))
 
         (if {res . data == (char_code "n")} (do
-            (Vec/push_u8 &value (char_code "\n"))
-            (Lole/Parser/next_char &self)
+            (Vec/push_u8 value (char_code "\n"))
+            (Lole/Parser/next_char self)
             (continue)
         ))
 
         (if {res . data == (char_code "t")} (do
-            (Vec/push_u8 &value (char_code "\t"))
-            (Lole/Parser/next_char &self)
+            (Vec/push_u8 value (char_code "\t"))
+            (Lole/Parser/next_char self)
             (continue)
         ))
 
         (if {res . data == (char_code "\\")
                 || {res . data == (char_code "\"")}} (do
-            (Vec/push_u8 &value {res . data})
-            (Lole/Parser/next_char &self)
+            (Vec/push_u8 value {res . data})
+            (Lole/Parser/next_char self)
             (continue)
         ))
 
         (return (Lole/Parser/ParseResult
             :ok false
-            :data {(Lole/Parser/err_unexpected_char &self) as (& void)}
+            :data {(Lole/Parser/err_unexpected_char self) as (& void)}
         ))
     ))
 
-    (Lole/Parser/next_char &self) ; skip end quote
+    (Lole/Parser/next_char self) ; skip end quote
 
-    {loc . length = {&self -> index - {loc . offset}}}
+    {loc . length = {self -> index - {loc . offset}}}
 
     (return (Lole/Parser/ParseResult
         :ok true
         :data {(new Lole/Ast/SExpr (do
             Lole/Ast/SExpr/ATOM
             (new Lole/Ast/SExpr/Atom (do
-                &value
+                value
                 Lole/Ast/AtomKind/STRING
                 loc
             ))
@@ -162,30 +162,30 @@
     ))
 ))
 
-(fn Lole/Parser/parse_symbol [(&self (& Lole/Parser))] Lole/Parser/ParseResult (
-    {loc := (Lole/Parser/loc &self)}
+(fn Lole/Parser/parse_symbol [(self (& Lole/Parser))] Lole/Parser/ParseResult (
+    {loc := (Lole/Parser/loc self)}
 
     (loop (
-        {res := (Lole/Parser/current_char &self)}
+        {res := (Lole/Parser/current_char self)}
         (if {(Lole/Parser/is_space {res . data})
                 || (Lole/Parser/is_list_end {res . data})
                 || {res . data == (char_code ";")}} (do
             (break)
         ))
-        (Lole/Parser/next_char &self)
+        (Lole/Parser/next_char self)
     ))
 
-    {loc . length = {&self -> index - {loc . offset}}}
+    {loc . length = {self -> index - {loc . offset}}}
 
-    {&value := (String/from_slice
-        {&self -> chars . data + {loc . offset}} {loc . length}) }
+    {value := (String/from_slice
+        {self -> chars . data + {loc . offset}} {loc . length}) }
 
     (return (Lole/Parser/ParseResult
         :ok true
         :data {(new Lole/Ast/SExpr (do
             Lole/Ast/SExpr/ATOM
             (new Lole/Ast/SExpr/Atom (do
-                &value
+                value
                 Lole/Ast/AtomKind/SYMBOL
                 loc
             ))
@@ -193,98 +193,98 @@
     ))
 ))
 
-(fn Lole/Parser/parse_list [(&self (& Lole/Parser))] Lole/Parser/ParseResult (
-    {loc := (Lole/Parser/loc &self)}
+(fn Lole/Parser/parse_list [(self (& Lole/Parser))] Lole/Parser/ParseResult (
+    {loc := (Lole/Parser/loc self)}
 
-    {res := (Lole/Parser/current_char &self)}
+    {res := (Lole/Parser/current_char self)}
     (if (not {res . ok}) (return res))
     {list_start_char := {res . data}}
-    (Lole/Parser/next_char &self) ; eat list start
+    (Lole/Parser/next_char self) ; eat list start
 
-    (Lole/Parser/skip_space &self)
+    (Lole/Parser/skip_space self)
 
-    {&items := (Vec/new 6 (sizeof Lole/Ast/SExpr))}
+    {items := (Vec/new 6 (sizeof Lole/Ast/SExpr))}
 
     (loop (
-        {res = (Lole/Parser/current_char &self)}
+        {res = (Lole/Parser/current_char self)}
         (if (not {res . ok}) (return res))
 
         (if (Lole/Parser/is_list_end {res . data}) (do
             (break)
         ))
 
-        {expr_res := (Lole/Parser/parse_expr &self)}
+        {expr_res := (Lole/Parser/parse_expr self)}
         (if (not {expr_res . ok}) (return expr_res))
-        (Vec/push_all &items {expr_res . data} 1)
+        (Vec/push_all items {expr_res . data} 1)
 
-        (Lole/Parser/skip_space &self)
+        (Lole/Parser/skip_space self)
     ))
 
-    {res = (Lole/Parser/current_char &self)}
+    {res = (Lole/Parser/current_char self)}
     (if (not {res . ok}) (return res))
     {list_end_char := {res . data}}
-    (Lole/Parser/next_char &self) ; eat list end
+    (Lole/Parser/next_char self) ; eat list end
 
-    {loc . length = {&self -> index - {loc . offset}}}
+    {loc . length = {self -> index - {loc . offset}}}
 
-    (if {list_start_char == (char_code "{") && {(Vec/len &items) >= 2}} (do
-        (return (Lole/Parser/m_expr_to_s_expr_and_validate &items loc))
+    (if {list_start_char == (char_code "{") & {(Vec/len items) >= 2}} (do
+        (return (Lole/Parser/m_expr_to_s_expr_and_validate items loc))
     ))
 
     (return (Lole/Parser/ParseResult
         :ok true
         :data {(new Lole/Ast/SExpr (do
             Lole/Ast/SExpr/LIST
-            (new Lole/Ast/SExpr/List (do &items loc))
+            (new Lole/Ast/SExpr/List (do items loc))
         )) as (& void)}
     ))
 ))
 
-(fn Lole/Parser/skip_space [(&self (& Lole/Parser))] void (
+(fn Lole/Parser/skip_space [(self (& Lole/Parser))] void (
     {res : Lole/Parser/CharAtResult}
 
     (loop (
-        {res = (Lole/Parser/current_char &self)}
+        {res = (Lole/Parser/current_char self)}
         (if (not {res . ok}) (return))
         (if (not (Lole/Parser/is_space {res . data})) (break))
 
-        (Lole/Parser/next_char &self)
+        (Lole/Parser/next_char self)
     ))
 
     (if {res . data != (char_code ";")} (do
         (return)
     ))
-    (Lole/Parser/next_char &self)
+    (Lole/Parser/next_char self)
 
     (loop (
-        {res = (Lole/Parser/current_char &self)}
+        {res = (Lole/Parser/current_char self)}
         (if (not {res . ok}) (return))
         (if {res . data == (char_code "\n")} (break))
-        (Lole/Parser/next_char &self)
+        (Lole/Parser/next_char self)
     ))
 
     (if {res . data == (char_code ";")} (do
-        (Lole/Parser/next_char &self)
+        (Lole/Parser/next_char self)
     ))
 
-    (Lole/Parser/skip_space &self)
+    (Lole/Parser/skip_space self)
 ))
 
-(fn Lole/Parser/next_char [(&self (& Lole/Parser))] void (
-    {&self -> index += 1}
+(fn Lole/Parser/next_char [(self (& Lole/Parser))] void (
+    {self -> index += 1}
 
-    {res := (Lole/Parser/current_char &self)}
+    {res := (Lole/Parser/current_char self)}
     (if (not {res . ok}) (do
         (return)
     ))
 
     (if {res . data == (char_code "\n")} (do
-        {&self -> col = 0}
-        {&self -> line += 1}
+        {self -> col = 0}
+        {self -> line += 1}
         (return)
     ))
 
-    {&self -> col += 1}
+    {self -> col += 1}
 ))
 
 (struct Lole/Parser/CharAtResult
@@ -292,48 +292,48 @@
     (data (& void)) ; u8 | (& CompileError)
 )
 
-(fn Lole/Parser/current_char [(&self (& Lole/Parser))] Lole/Parser/CharAtResult (
-    {chars := {&self -> chars}}
+(fn Lole/Parser/current_char [(self (& Lole/Parser))] Lole/Parser/CharAtResult (
+    {chars := {self -> chars}}
 
-    (if {&self -> index >= {chars . size}} (do
+    (if {self -> index >= {chars . size}} (do
         (return (Lole/Parser/CharAtResult
             :ok false
-            :data {(Lole/Parser/err_unexpected_eof &self) as (& void)}
+            :data {(Lole/Parser/err_unexpected_eof self) as (& void)}
         ))
     ))
 
     (return (Lole/Parser/CharAtResult
         :ok true
-        :data {(StringSlice/char_at chars {&self -> index}) as (& void)}
+        :data {(StringSlice/char_at chars {self -> index}) as (& void)}
     ))
 ))
 
-(fn Lole/Parser/err_unexpected_char [(&self (& Lole/Parser))] (& Lole/Ast/CompileError) (
+(fn Lole/Parser/err_unexpected_char [(self (& Lole/Parser))] (& Lole/Ast/CompileError) (
     (return (new Lole/Ast/CompileError (do
         (String/from_slice "ParseError: Unexpected character")
-        (Lole/Parser/loc &self)
+        (Lole/Parser/loc self)
     )))
 ))
 
-(fn Lole/Parser/err_unexpected_eof [(&self (& Lole/Parser))] (& Lole/Ast/CompileError) (
+(fn Lole/Parser/err_unexpected_eof [(self (& Lole/Parser))] (& Lole/Ast/CompileError) (
     (return (new Lole/Ast/CompileError (do
         (String/from_slice "ParseError: Unexpected EOF")
-        (Lole/Parser/loc &self)
+        (Lole/Parser/loc self)
     )))
 ))
 
-(fn Lole/Parser/loc [(&self (& Lole/Parser))] Lole/Ast/Location (
+(fn Lole/Parser/loc [(self (& Lole/Parser))] Lole/Ast/Location (
     (return (Lole/Ast/Location
-        :file_name (StringSlice/clone {&self -> file_name})
-        :offset {&self -> index}
+        :file_name (StringSlice/clone {self -> file_name})
+        :offset {self -> index}
         :length 1
-        :line {&self -> line}
-        :col {&self -> col}
+        :line {self -> line}
+        :col {self -> col}
     ))
 ))
 
-(fn Lole/Parser/m_expr_to_s_expr_and_validate [(&items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] Lole/Parser/ParseResult (
-    (if {(Vec/len &items) % 2 != 1} (do
+(fn Lole/Parser/m_expr_to_s_expr_and_validate [(items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] Lole/Parser/ParseResult (
+    (if {(Vec/len items) % 2 != 1} (do
         (return (Lole/Parser/ParseResult
             :ok false
             :data {(new Lole/Ast/CompileError (do
@@ -343,12 +343,12 @@
         ))
     ))
 
-    (if {(Vec/len &items) < 2} (do
+    (if {(Vec/len items) < 2} (do
         (return (Lole/Parser/ParseResult
             :ok true
             :data {(new Lole/Ast/SExpr (do
                 Lole/Ast/SExpr/LIST
-                (new Lole/Ast/SExpr/List (do &items loc))
+                (new Lole/Ast/SExpr/List (do items loc))
             )) as (& void)}
         ))
     ))
@@ -356,7 +356,7 @@
     (return (Lole/Parser/ParseResult
         :ok true
         :data {(new Lole/Ast/SExpr
-            (Lole/Parser/m_expr_to_s_expr &items loc)
+            (Lole/Parser/m_expr_to_s_expr items loc)
         ) as (& void)}
     ))
 ))
@@ -364,24 +364,24 @@
 ; ❓ {1 + 2 - 3 * 4}
 ; 🚫 (+ 1 (- 2 (* 3 4)))
 ; ✅ (* (- (+ 1 2) 3) 4)
-(fn Lole/Parser/m_expr_to_s_expr [(&items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] Lole/Ast/SExpr (
-    (if {(Vec/len &items) == 1} (do
-        (defer (Vec/free &items))
-        (return {Lole/Ast/SExpr @ (Vec/at &items 0)})
+(fn Lole/Parser/m_expr_to_s_expr [(items (& Vec<Lole/Ast/SExpr>)) (loc Lole/Ast/Location)] Lole/Ast/SExpr (
+    (if {(Vec/len items) == 1} (do
+        (defer (Vec/free items))
+        (return {Lole/Ast/SExpr @ (Vec/at items 0)})
     ))
 
-    {rhs := {Lole/Ast/SExpr @ (Vec/pop_unchecked &items)}}
-    {op := {Lole/Ast/SExpr @ (Vec/pop_unchecked &items)}}
-    {lhs := (Lole/Parser/m_expr_to_s_expr &items (Lole/Ast/Location/clone loc))}
+    {rhs := {Lole/Ast/SExpr @ (Vec/pop_unchecked items)}}
+    {op := {Lole/Ast/SExpr @ (Vec/pop_unchecked items)}}
+    {lhs := (Lole/Parser/m_expr_to_s_expr items (Lole/Ast/Location/clone loc))}
 
-    {&sexpr_items := (Vec/new 3 (sizeof Lole/Ast/SExpr))}
-    {Lole/Ast/SExpr @ (Vec/push_undef &sexpr_items) = op}
-    {Lole/Ast/SExpr @ (Vec/push_undef &sexpr_items) = lhs}
-    {Lole/Ast/SExpr @ (Vec/push_undef &sexpr_items) = rhs}
+    {sexpr_items := (Vec/new 3 (sizeof Lole/Ast/SExpr))}
+    {Lole/Ast/SExpr @ (Vec/push_undef sexpr_items) = op}
+    {Lole/Ast/SExpr @ (Vec/push_undef sexpr_items) = lhs}
+    {Lole/Ast/SExpr @ (Vec/push_undef sexpr_items) = rhs}
 
     (return (Lole/Ast/SExpr
         :kind Lole/Ast/SExpr/LIST
-        :&value {(new Lole/Ast/SExpr/List (do &sexpr_items loc)) as (& void)}
+        :value {(new Lole/Ast/SExpr/List (do sexpr_items loc)) as (& void)}
     ))
 ))
 
@@ -403,9 +403,9 @@
 
 (fn Lole/Parser/is_valid_list_chars [(start u8) (end u8)] bool (
     (return {
-        {start == (char_code "(") && {end == (char_code ")")}} ||
-        {start == (char_code "{") && {end == (char_code "}")}} ||
-        {start == (char_code "[") && {end == (char_code "]")}}
+        {start == (char_code "(") & {end == (char_code ")")}} ||
+        {start == (char_code "{") & {end == (char_code "}")}} ||
+        {start == (char_code "[") & {end == (char_code "]")}}
     })
 ))
 

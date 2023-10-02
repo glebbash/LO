@@ -23,31 +23,31 @@
     (print_u32 {r . br . x})
     (puts "\n")
 
-    {&r := (new Rect r :using Alloc/STACK)}
+    {r := (new Rect r :using Alloc/STACK)}
     (defer (Stack/free (sizeof Rect)))
 
-    {r2 := (* &r)}
+    {r2 := (* r)}
     (print_u32 {r2 . br . x})
     (puts "\n")
 
-    {br2 := {&r -> br}}
+    {br2 := {r -> br}}
     (print_u32 {br2 . x})
     (puts "\n")
 
-    {&br := {&r + (sizeof Point2D) as (& Point2D)}}
-    (print_u32 {&br -> x})
+    {br := {r + (sizeof Point2D) as (& Point2D)}}
+    (print_u32 {br -> x})
     (puts "\n")
 
-    (print_u32 {Point2D @ {&r + (sizeof Point2D)} . x})
+    (print_u32 {Point2D @ {r + (sizeof Point2D)} . x})
     (puts "\n")
 
     ; TODO: support chained `->`
-    (print_u32 {&r -> br . x})
+    (print_u32 {r -> br . x})
     (puts "\n")
 
     ; TODO: throws TypeError
     ; TODO: look into supporting nested references
-    ; {&br2 := {&r . br}}
-    ; (print_u32 {&br2 -> x})
+    ; {br2 := {r . br}}
+    ; (print_u32 {br2 -> x})
     ; (puts "\n")
 ))

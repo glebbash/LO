@@ -5,10 +5,10 @@
 
 ; TODO: implement
 (fn Lole/Expand/expand [
-    (&exprs (& Vec<Lole/Ast/SExpr>))
+    (exprs (& Vec<Lole/Ast/SExpr>))
 ] Lole/Expand/ExpandResult (
     (return (Lole/Expand/ExpandResult
         :ok true
-        :data {&exprs as (& void)}
+        :data {exprs as (& void)}
     ))
 ))

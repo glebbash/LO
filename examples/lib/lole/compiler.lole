@@ -8,19 +8,19 @@
 )
 
 (fn Lole/Compiler/compile [
-    (&exprs (& Vec<Lole/Ast/SExpr>)) (&wasm_module (& Lole/Wasm/WasmModule))
+    (exprs (& Vec<Lole/Ast/SExpr>)) (wasm_module (& Lole/Wasm/WasmModule))
 ] Lole/Compiler/CompileResult (
-    {&ctx := (Lole/Ir/ModuleContext/new &wasm_module)}
-    (defer (Lole/Ir/ModuleContext/free &ctx))
+    {ctx := (Lole/Ir/ModuleContext/new wasm_module)}
+    (defer (Lole/Ir/ModuleContext/free ctx))
 
     {i := 0}
     (loop (
-        (if {i == (Vec/len &exprs)} (break))
+        (if {i == (Vec/len exprs)} (break))
 
         {res :=
             (Lole/Compiler/compile_top_level_expr
-                {Lole/Ast/SExpr @ (Vec/at &exprs i)}
-                &ctx
+                {Lole/Ast/SExpr @ (Vec/at exprs i)}
+                ctx
             )
         }
         (if (not {res . ok}) (return res))
@@ -28,97 +28,97 @@
         {i += 1}
     ))
 
-    {&fn_defs := {&ctx -> &fn_defs}}
-    {&fn_exports := {&ctx -> &fn_exports}}
+    {fn_defs := {ctx -> fn_defs}}
+    {fn_exports := {ctx -> fn_exports}}
 
     ; push function exports
     {i = 0}
     (loop (
-        (if {i == (Vec/len &fn_exports)} (break))
+        (if {i == (Vec/len fn_exports)} (break))
 
-        {fn_export := {Lole/Ir/FnExport @ (Vec/at &fn_exports i)}}
+        {fn_export := {Lole/Ir/FnExport @ (Vec/at fn_exports i)}}
 
-        {fn_def_res := (Dict/get &fn_defs (Vec/as_slice {fn_export . &in_name}))}
+        {fn_def_res := (Dict/get fn_defs (Vec/as_slice {fn_export . in_name}))}
         (if (not {fn_def_res . ok}) (do
-            {&msg := (String/from_slice "Cannot export unknown function: ")}
-            (Vec/push_all &msg (Vec/as_slice {fn_export . &in_name}))
+            {msg := (String/from_slice "Cannot export unknown function: ")}
+            (Vec/push_all msg (Vec/as_slice {fn_export . in_name}))
 
             (return (Lole/Compiler/CompileResult
                 :ok false
                 :data {(new Lole/Ast/CompileError (do
-                    &msg
+                    msg
                     (Lole/Ast/Location/clone {fn_export . loc})
                 )) as (& void)}
             ))
         ))
-        {fn_def := {Lole/Ir/FnDef @ {fn_def_res . &value}}}
+        {fn_def := {Lole/Ir/FnDef @ {fn_def_res . value}}}
 
-        {&exports := {&wasm_module -> &exports}}
+        {exports := {wasm_module -> exports}}
 
-        {Lole/Wasm/WasmExport @ (Vec/push_undef &exports) = (Lole/Wasm/WasmExport
+        {Lole/Wasm/WasmExport @ (Vec/push_undef exports) = (Lole/Wasm/WasmExport
             :export_type Lole/Wasm/WasmExportType/FUNC
-            :export_name (String/clone {fn_export . &out_name})
-            :exported_item_index {&ctx -> imported_fns_count + {fn_def . fn_index}}
+            :export_name (String/clone {fn_export . out_name})
+            :exported_item_index {ctx -> imported_fns_count + {fn_def . fn_index}}
         )}
 
         {i += 1}
     ))
 
-    {&fn_bodies := {&ctx -> &fn_bodies}}
-    {&fn_types := {&wasm_module -> &types}}
+    {fn_bodies := {ctx -> fn_bodies}}
+    {fn_types := {wasm_module -> types}}
 
     ; push function codes
     {i = 0}
     (loop (
-        (if {i == (Vec/len &fn_bodies)} (break))
+        (if {i == (Vec/len fn_bodies)} (break))
 
-        {fn_body := {Lole/Ir/FnBody @ (Vec/at &fn_bodies i)}}
+        {fn_body := {Lole/Ir/FnBody @ (Vec/at fn_bodies i)}}
 
-        {&fn_type := {(Vec/at &fn_types {fn_body . type_index})
+        {fn_type := {(Vec/at fn_types {fn_body . type_index})
             as (& Lole/Wasm/WasmFnType)}}
 
-        {&fn_ctx := (new Lole/Ir/FnContext (do
-            &ctx
-            &fn_type
-            {fn_body . &locals}
+        {fn_ctx := (new Lole/Ir/FnContext (do
+            ctx
+            fn_type
+            {fn_body . locals}
             {fn_body . locals_last_index}
             (Vec/new 1 (sizeof Lole/Wasm/WasmType))
             (Dict/new 1 (sizeof Lole/Ast/SExpr))
         ))}
 
         {instrs_res := (Lole/Compiler/compile_block
-            {fn_body . &body} &fn_ctx
+            {fn_body . body} fn_ctx
         )}
         (if (not {instrs_res . ok}) (return instrs_res))
-        {&instrs := {instrs_res . data as (& Vec)}}
+        {instrs := {instrs_res . data as (& Vec)}}
 
         {deferred_res := (Lole/Compiler/get_deferred
             "return" ; TODO: this should be a constant
-            &fn_ctx
+            fn_ctx
         )}
         (if {deferred_res . ok} (do
-            (Vec/append &instrs {deferred_res . data})
+            (Vec/append instrs {deferred_res . data})
             (Vec/free {deferred_res . data})
         ))
 
-        {&locals := (Vec/new 1 (sizeof Lole/Wasm/WasmLocals))}
-        {&non_arg_locals := {&fn_ctx -> &non_arg_locals}}
+        {locals := (Vec/new 1 (sizeof Lole/Wasm/WasmLocals))}
+        {non_arg_locals := {fn_ctx -> non_arg_locals}}
 
         {j := 0}
         (loop (
-            (if {j == (Vec/len &non_arg_locals)} (break))
+            (if {j == (Vec/len non_arg_locals)} (break))
 
-            {local_type := {Lole/Wasm/WasmType @ (Vec/at &non_arg_locals j)}}
-            {locals_len := (Vec/len &locals)}
+            {local_type := {Lole/Wasm/WasmType @ (Vec/at non_arg_locals j)}}
+            {locals_len := (Vec/len locals)}
             (if {locals_len > 0} (do
-                {&wasm_locals := {(Vec/at &locals {locals_len - 1}) as (& Lole/Wasm/WasmLocals)}}
-                (if {&wasm_locals -> value_type == local_type} (do
-                    {&wasm_locals -> count += 1}
+                {wasm_locals := {(Vec/at locals {locals_len - 1}) as (& Lole/Wasm/WasmLocals)}}
+                (if {wasm_locals -> value_type == local_type} (do
+                    {wasm_locals -> count += 1}
                     (continue)
                 ))
             ))
 
-            {Lole/Wasm/WasmLocals @ (Vec/push_undef &locals) = (Lole/Wasm/WasmLocals
+            {Lole/Wasm/WasmLocals @ (Vec/push_undef locals) = (Lole/Wasm/WasmLocals
                 :count 1
                 :value_type local_type
             )}
@@ -126,10 +126,10 @@
             {j += 1}
         ))
 
-        {&codes := {&wasm_module -> &codes}}
-        {Lole/Wasm/WasmFn @ (Vec/push_undef &codes) = (Lole/Wasm/WasmFn
-            :&locals &locals
-            :expr (Lole/Wasm/WasmExpr :&instrs &instrs)
+        {codes := {wasm_module -> codes}}
+        {Lole/Wasm/WasmFn @ (Vec/push_undef codes) = (Lole/Wasm/WasmFn
+            :locals locals
+            :expr (Lole/Wasm/WasmExpr :instrs instrs)
         )}
 
         {i += 1}
@@ -140,7 +140,7 @@
 
 ; TODO: implement
 (fn Lole/Compiler/compile_top_level_expr [
-    (expr Lole/Ast/SExpr) (&ctx (& Lole/Ir/ModuleContext))
+    (expr Lole/Ast/SExpr) (ctx (& Lole/Ir/ModuleContext))
 ] Lole/Compiler/CompileResult (
     (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
         (return (Lole/Compiler/CompileResult
@@ -165,7 +165,7 @@
 
 ; TODO: implement
 (fn Lole/Compiler/compile_block [
-    (&exprs (& Vec<Lole/Ast/SExpr>)) (&ctx (& Lole/Ir/ModuleContext))
+    (exprs (& Vec<Lole/Ast/SExpr>)) (ctx (& Lole/Ir/ModuleContext))
 ] Lole/Compiler/CompileBlockResult (
     (return (Lole/Compiler/CompileBlockResult
         :ok true
@@ -180,7 +180,7 @@
 
 ; TODO: implement
 (fn Lole/Compiler/get_deferred [
-    (defer_label StringSlice) (&ctx (& Lole/Ir/ModuleContext))
+    (defer_label StringSlice) (ctx (& Lole/Ir/ModuleContext))
 ] Lole/Compiler/GetDefferedRes (
     (return (Lole/Compiler/GetDefferedRes
         :ok true

@@ -15,12 +15,12 @@
 ))
 
 (struct Lole/Ast/CompileError
-    (&message (& String))
+    (message (& String))
     (loc Lole/Ast/Location)
 )
 
 (fn Lole/Ast/CompileError/free [(self Lole/Ast/CompileError)] void (
-    (Vec/free {self . &message})
+    (Vec/free {self . message})
 ))
 
 (alias Lole/Ast/AtomKind u32)
@@ -31,48 +31,48 @@
 (alias Lole/Ast/SExpr/LIST 1)
 (struct Lole/Ast/SExpr
     (kind u32) ; Lole/Ast/SExpr/ATOM | Lole/Ast/SExpr/LIST
-    (&value (& void)) ; (& Lole/Ast/SExpr/Atom) | (& Lole/Ast/SExpr/List)
+    (value (& void)) ; (& Lole/Ast/SExpr/Atom) | (& Lole/Ast/SExpr/List)
 )
 (struct Lole/Ast/SExpr/Atom
-    (&value (& String))
+    (value (& String))
     (kind Lole/Ast/AtomKind)
     (loc Lole/Ast/Location)
 )
 (struct Lole/Ast/SExpr/List
-    (&value (& Vec<Lole/Ast/SExpr>))
+    (value (& Vec<Lole/Ast/SExpr>))
     (loc Lole/Ast/Location)
 )
 
 (fn Lole/Ast/SExpr/free [(self Lole/Ast/SExpr)] void (
     (if {self . kind == Lole/Ast/SExpr/ATOM} (do
-        {atom := {Lole/Ast/SExpr/Atom @ {self . &value}}}
-        (Vec/free {atom . &value})
+        {atom := {Lole/Ast/SExpr/Atom @ {self . value}}}
+        (Vec/free {atom . value})
         (return)
     ))
 
-    {list := {Lole/Ast/SExpr/List @ {self . &value}}}
-    (Vec<Lole/Ast/SExpr>/free {list . &value})
+    {list := {Lole/Ast/SExpr/List @ {self . value}}}
+    (Vec<Lole/Ast/SExpr>/free {list . value})
 ))
 
-(fn Vec<Lole/Ast/SExpr>/free [(&self (& Vec))] void (
+(fn Vec<Lole/Ast/SExpr>/free [(self (& Vec))] void (
     {i := 0}
     (loop (
-        (if {i == (Vec/len &self)} (break))
+        (if {i == (Vec/len self)} (break))
 
-        (Lole/Ast/SExpr/free {Lole/Ast/SExpr @ (Vec/at &self i)})
+        (Lole/Ast/SExpr/free {Lole/Ast/SExpr @ (Vec/at self i)})
 
         {i += 1}
     ))
 
-    (Vec/free &self)
+    (Vec/free self)
 ))
 
 (fn Lole/Ast/SExpr/loc [(self Lole/Ast/SExpr)] Lole/Ast/Location (
     (if {self . kind == Lole/Ast/SExpr/ATOM} (do
-        {atom := {Lole/Ast/SExpr/Atom @ {self . &value}}}
+        {atom := {Lole/Ast/SExpr/Atom @ {self . value}}}
         (return {atom . loc})
     ))
 
-    {list := {Lole/Ast/SExpr/List @ {self . &value}}}
+    {list := {Lole/Ast/SExpr/List @ {self . value}}}
     (return {list . loc})
 ))

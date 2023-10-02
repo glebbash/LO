@@ -25,7 +25,7 @@ fn main() {
     puts("\n")
 }
 
-fn dump_exprs(exprs: &Vec<SExpr>) {
+fn dump_exprs(exprs: Vec<SExpr>) {
     let i = 0
 
     loop {
@@ -78,7 +78,7 @@ fn get_input_file(): (u32, StringSlice) {
     return (fd, file_name)
 }
 
-fn print_err_and_exit(err: &CompileError) {
+fn print_err_and_exit(err: CompileError) {
     let parse_err = *err
     defer CompileError.free(parse_err)
 

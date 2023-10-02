@@ -67,38 +67,38 @@
 
 ; stack
 
-    (global mut Stack/&CURRENT u32 (data.size))
-    (global mut Stack/&BEGIN (& void) (data.size))
-    (global mut Stack/&END u32 1048576) ; 1MB
+    (global mut Stack/CURRENT u32 (data.size))
+    (global mut Stack/BEGIN (& void) (data.size))
+    (global mut Stack/END u32 1048576) ; 1MB
 
     (fn Stack/push_u32 [(value u32)] void (
         {u32 @ (Stack/alloc (sizeof u32)) = value}
     ))
 
     (fn Stack/read_u32 [] u32 (
-        (return {u32 @ {Stack/&CURRENT - (sizeof u32)}})
+        (return {u32 @ {Stack/CURRENT - (sizeof u32)}})
     ))
 
     (fn Stack/pop_u32 [] u32 (
         (Stack/free (sizeof u32))
 
-        (return {u32 @ Stack/&CURRENT})
+        (return {u32 @ Stack/CURRENT})
     ))
 
     (fn Stack/alloc [(size u32)] (& void) (
-        {Stack/&CURRENT += size}
+        {Stack/CURRENT += size}
 
-        (if {Stack/&CURRENT > Stack/&END} (do
+        (if {Stack/CURRENT > Stack/END} (do
             (panic "Stack overflow")
         ))
 
-        (return {Stack/&CURRENT - size})
+        (return {Stack/CURRENT - size})
     ))
 
     (fn Stack/free [(size u32)] void (
-        {Stack/&CURRENT -= size}
+        {Stack/CURRENT -= size}
 
-        (if {Stack/&CURRENT < Stack/&BEGIN} (do
+        (if {Stack/CURRENT < Stack/BEGIN} (do
             (panic "Stack underflow")
         ))
     ))
@@ -108,27 +108,27 @@
     (struct Heap/Block
         (size u32)
         (used bool)
-        (&next (& Heap/Block))
-        (&data (& void))
+        (next (& Heap/Block))
+        (data (& void))
     )
 
     (global mut Heap/TOTAL_ALLOCATED u32 1048576) ; starts after stack end
-    (global mut Heap/&FIRST_BLOCK (& Heap/Block) 0)
-    (global mut Heap/&CURRENT_BLOCK (& Heap/Block) 0)
+    (global mut Heap/FIRST_BLOCK (& Heap/Block) 0)
+    (global mut Heap/CURRENT_BLOCK (& Heap/Block) 0)
 
     ; http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
     (fn Heap/alloc [(size u32)] (& void) (
         {size = (Mem/align size)}
 
-        {&free_block := (Heap/find_free_block size)}
-        (if {&free_block != 0} (do
-            {&free_block -> used = true}
-            (return {&free_block -> &data})
+        {free_block := (Heap/find_free_block size)}
+        (if {free_block != 0} (do
+            {free_block -> used = true}
+            (return {free_block -> data})
         ))
 
         {total_size_to_alloc := {size + (sizeof Heap/Block)}}
 
-        {&block := {Heap/TOTAL_ALLOCATED as (& Heap/Block)}}
+        {block := {Heap/TOTAL_ALLOCATED as (& Heap/Block)}}
         {Heap/TOTAL_ALLOCATED += total_size_to_alloc}
 
         ; memory.grow enough if out of space
@@ -140,46 +140,46 @@
             ))
         ))
 
-        {&block -> size = size}
-        {&block -> used = true}
-        {&block -> &data = {&block + (sizeof Heap/Block) as (& void)}}
+        {block -> size = size}
+        {block -> used = true}
+        {block -> data = {block + (sizeof Heap/Block) as (& void)}}
 
         ; init heap
-        (if {Heap/&FIRST_BLOCK == 0} (do
-            {Heap/&FIRST_BLOCK = &block}
+        (if {Heap/FIRST_BLOCK == 0} (do
+            {Heap/FIRST_BLOCK = block}
         ))
 
         ; chain block
-        (if {Heap/&CURRENT_BLOCK != 0} (do
-            {Heap/&CURRENT_BLOCK -> &next = &block}
+        (if {Heap/CURRENT_BLOCK != 0} (do
+            {Heap/CURRENT_BLOCK -> next = block}
         ))
 
-        {Heap/&CURRENT_BLOCK = &block}
+        {Heap/CURRENT_BLOCK = block}
 
-        (return {&block -> &data})
+        (return {block -> data})
     ))
 
-    (fn Heap/free [(&ref (& void))] void (
-        {&block := (Heap/get_block &ref)}
-        {&block -> used = false}
+    (fn Heap/free [(ref (& void))] void (
+        {block := (Heap/get_block ref)}
+        {block -> used = false}
     ))
 
-    (fn Heap/get_block [(&ref (& void))] (& Heap/Block) (
-        (return {&ref - (sizeof Heap/Block)})
+    (fn Heap/get_block [(ref (& void))] (& Heap/Block) (
+        (return {ref - (sizeof Heap/Block)})
     ))
 
     ; first fit
     (fn Heap/find_free_block [(size u32)] (& Heap/Block) (
-        {&block := Heap/&FIRST_BLOCK}
+        {block := Heap/FIRST_BLOCK}
 
         (loop (
-            (if {&block == 0} (break))
+            (if {block == 0} (break))
 
-            (if {(not {&block -> used}) && {&block -> size >= size}} (do
-                (return &block)
+            (if {(not {block -> used}) & {block -> size >= size}} (do
+                (return block)
             ))
 
-            {&block = {&block -> &next}}
+            {block = {block -> next}}
         ))
 
         (return 0)
@@ -188,7 +188,7 @@
 ; vec
 
     (struct Vec
-        (&data (& void))
+        (data (& void))
         (length u32)
         (capacity u32)
         (item_size u32)
@@ -209,13 +209,13 @@
         ) :using alloc_id))
     ))
 
-    (fn Vec/free [(&self (& Vec))] void (
-        (free {&self -> alloc_id} &self (sizeof Vec))
-        (free {&self -> alloc_id} {&self -> &data} {&self -> capacity})
+    (fn Vec/free [(self (& Vec))] void (
+        (free {self -> alloc_id} self (sizeof Vec))
+        (free {self -> alloc_id} {self -> data} {self -> capacity})
     ))
 
-    (fn Vec/len [(&self (& Vec))] u32 (
-        (return {&self -> length})
+    (fn Vec/len [(self (& Vec))] u32 (
+        (return {self -> length})
     ))
 
     (struct Slice
@@ -223,117 +223,117 @@
         (size u32)
     )
 
-    (fn Vec/as_slice [(&self (& Vec))] Slice (
+    (fn Vec/as_slice [(self (& Vec))] Slice (
         (return (Slice
-            :data {&self -> &data}
-            :size {&self -> length}
+            :data {self -> data}
+            :size {self -> length}
         ))
     ))
 
-    (fn Vec/at [(&self (& Vec)) (index u32)] u32 (
-        (Vec/_panic_if_out_of_bounds &self index)
+    (fn Vec/at [(self (& Vec)) (index u32)] u32 (
+        (Vec/_panic_if_out_of_bounds self index)
 
-        (return {&self -> &data + {index * {&self -> item_size}}})
+        (return {self -> data + {index * {self -> item_size}}})
     ))
 
-    (fn Vec/at_unchecked [(&self (& Vec)) (index u32)] u32 (
-        (return {&self -> &data + {index * {&self -> item_size}}})
+    (fn Vec/at_unchecked [(self (& Vec)) (index u32)] u32 (
+        (return {self -> data + {index * {self -> item_size}}})
     ))
 
-    (fn Vec/get_u8 [(&self (& Vec)) (index u32)] u8 (
-        (Vec/_panic_if_out_of_bounds &self index)
+    (fn Vec/get_u8 [(self (& Vec)) (index u32)] u8 (
+        (Vec/_panic_if_out_of_bounds self index)
 
-        (return {u8 @ {&self -> &data + {index * {&self -> item_size}}}})
+        (return {u8 @ {self -> data + {index * {self -> item_size}}}})
     ))
 
-    (fn Vec/swap [(&self (& Vec)) (index1 u32) (index2 u32)] void (
-        (Vec/_panic_if_out_of_bounds &self index1)
-        (Vec/_panic_if_out_of_bounds &self index2)
+    (fn Vec/swap [(self (& Vec)) (index1 u32) (index2 u32)] void (
+        (Vec/_panic_if_out_of_bounds self index1)
+        (Vec/_panic_if_out_of_bounds self index2)
 
-        {item_size := {&self -> item_size}}
+        {item_size := {self -> item_size}}
         (Mem/swap
-            {&self -> &data + {index1 * item_size}}
-            {&self -> &data + {index2 * item_size}}
+            {self -> data + {index1 * item_size}}
+            {self -> data + {index2 * item_size}}
             item_size
         )
     ))
 
-    (fn Vec/push_u8 [(&self (& Vec)) (item u8)] void (
-        {index := {&self -> length}}
-        {&self -> length = {index + 1}}
+    (fn Vec/push_u8 [(self (& Vec)) (item u8)] void (
+        {index := {self -> length}}
+        {self -> length = {index + 1}}
 
-        (Vec/_grow_if_needed &self)
+        (Vec/_grow_if_needed self)
 
-        {u8 @ {&self -> &data + {index * {&self -> item_size}}} = item}
+        {u8 @ {self -> data + {index * {self -> item_size}}} = item}
     ))
 
-    (fn Vec/push_all [(&self (& Vec)) (&items (& void)) (items_len u32)] void (
-        {old_len := {&self -> length}}
-        {&self -> length = {old_len + items_len}}
+    (fn Vec/push_all [(self (& Vec)) (items (& void)) (items_len u32)] void (
+        {old_len := {self -> length}}
+        {self -> length = {old_len + items_len}}
 
-        (Vec/_grow_if_needed &self)
+        (Vec/_grow_if_needed self)
 
         (Mem/copy
-            &items
-            {&self -> &data + {old_len * {&self -> item_size}}}
-            {items_len * {&self -> item_size}}
+            items
+            {self -> data + {old_len * {self -> item_size}}}
+            {items_len * {self -> item_size}}
         )
     ))
 
-    (fn Vec/push_undef [(&self (& Vec))] (& void) (
-        {&self -> length += 1}
+    (fn Vec/push_undef [(self (& Vec))] (& void) (
+        {self -> length += 1}
 
-        (Vec/_grow_if_needed &self)
+        (Vec/_grow_if_needed self)
 
-        (return (Vec/at &self {&self -> length - 1}))
+        (return (Vec/at self {self -> length - 1}))
     ))
 
-    (fn Vec/append [(&self (& Vec)) (&other (& Vec))] void (
-        (Vec/push_all &self {&other -> &data} (Vec/len &other))
+    (fn Vec/append [(self (& Vec)) (other (& Vec))] void (
+        (Vec/push_all self {other -> data} (Vec/len other))
         ; TODO: ? add number inference
-        {&other -> length = 0}
+        {other -> length = 0}
     ))
 
-    (fn Vec/pop_unchecked [(&self (& Vec))] (& void) (
-        {&self -> length -= 1}
-        (return (Vec/at_unchecked &self (Vec/len &self)))
+    (fn Vec/pop_unchecked [(self (& Vec))] (& void) (
+        {self -> length -= 1}
+        (return (Vec/at_unchecked self (Vec/len self)))
     ))
 
-    (fn Vec/reverse [(&self (& Vec))] void (
+    (fn Vec/reverse [(self (& Vec))] void (
         {start := 0}
-        {end := {(Vec/len &self) - 1}}
+        {end := {(Vec/len self) - 1}}
 
         (loop (
             (if {start >= end} (break))
 
-            (Vec/swap &self start end)
+            (Vec/swap self start end)
             {start += 1}
             {end -= 1}
         ))
     ))
 
-    (fn Vec/_grow_if_needed [(&self (& Vec))] void (
-        (if {&self -> length != {&self -> capacity}} (do
+    (fn Vec/_grow_if_needed [(self (& Vec))] void (
+        (if {self -> length != {self -> capacity}} (do
             (return)
         ))
 
-        (if {&self -> alloc_id == Alloc/STACK} (do
+        (if {self -> alloc_id == Alloc/STACK} (do
             (panic "Attempt to grow stack allocated vector")
         ))
 
-        {item_size := {&self -> item_size}}
-        {old_capacity := {&self -> capacity}}
-        {&old_data := {&self -> &data}}
-        (defer (free {&self -> alloc_id} &old_data old_capacity))
+        {item_size := {self -> item_size}}
+        {old_capacity := {self -> capacity}}
+        {old_data := {self -> data}}
+        (defer (free {self -> alloc_id} old_data old_capacity))
 
-        {&self -> capacity = {old_capacity * 2}}
-        {&self -> &data = (alloc {&self -> alloc_id} {&self -> capacity * item_size})}
+        {self -> capacity = {old_capacity * 2}}
+        {self -> data = (alloc {self -> alloc_id} {self -> capacity * item_size})}
 
-        (Mem/copy &old_data {&self -> &data} {&self -> length * item_size})
+        (Mem/copy old_data {self -> data} {self -> length * item_size})
     ))
 
-    (fn Vec/_panic_if_out_of_bounds [(&self (& Vec)) (index u32)] void (
-        (if {{index < 0} || {index >= (Vec/len &self)}} (do
+    (fn Vec/_panic_if_out_of_bounds [(self (& Vec)) (index u32)] void (
+        (if {{index < 0} || {index >= (Vec/len self)}} (do
             (panic "Vec access out of bounds")
         ))
     ))
@@ -357,9 +357,9 @@
     ))
 
     (fn StringSlice/clone [(self StringSlice)] StringSlice (
-        {&cloned_data := {(Heap/alloc {self . size}) as (&* u8)}}
-        (Mem/copy {self . data} &cloned_data {self . size})
-        (return (StringSlice :data &cloned_data :size {self . size}))
+        {cloned_data := {(Heap/alloc {self . size}) as (&* u8)}}
+        (Mem/copy {self . data} cloned_data {self . size})
+        (return (StringSlice :data cloned_data :size {self . size}))
     ))
 
     (fn StringSlice/equals [(self StringSlice) (other StringSlice)] bool (
@@ -381,14 +381,14 @@
         (return true)
     ))
 
-    (fn String/clone [(&self (& String))] (& String) (
-        (return (String/from_slice {&self -> &data} {&self -> length}))
+    (fn String/clone [(self (& String))] (& String) (
+        (return (String/from_slice {self -> data} {self -> length}))
     ))
 
     (fn String/from_slice [(str StringSlice)] (& String) (
-        {&string := (String/new {str . size})}
-        (Vec/push_all &string str)
-        (return &string)
+        {string := (String/new {str . size})}
+        (Vec/push_all string str)
+        (return string)
     ))
 
 ; dict
@@ -399,33 +399,33 @@
         (return (Vec/new initial_capacity {value_size + (sizeof String)}))
     ))
 
-    (fn Dict/free [(&self (& Dict))] void (
-        (Vec/free &self)
+    (fn Dict/free [(self (& Dict))] void (
+        (Vec/free self)
     ))
 
-    (fn Dict/len [(&self (& Dict))] u32 (
-        (return (Vec/len &self))
+    (fn Dict/len [(self (& Dict))] u32 (
+        (return (Vec/len self))
     ))
 
-    (struct Dict/GetResult (ok bool) (&value (& void)))
+    (struct Dict/GetResult (ok bool) (value (& void)))
 
-    (fn Dict/get [(&self (& Dict)) (key StringSlice)] Dict/GetResult (
+    (fn Dict/get [(self (& Dict)) (key StringSlice)] Dict/GetResult (
         {i := 0}
         (loop (
-            (if {i == (Dict/len &self)} (break))
+            (if {i == (Dict/len self)} (break))
 
-            {&entry_key := {(Vec/at &self i) as (& String)}}
-            (if (StringSlice/equals key (Vec/as_slice &entry_key)) (do
+            {entry_key := {(Vec/at self i) as (& String)}}
+            (if (StringSlice/equals key (Vec/as_slice entry_key)) (do
                 (return (Dict/GetResult
                     :ok true
-                    :&value {&entry_key + (sizeof String) as (& void)}
+                    :value {entry_key + (sizeof String) as (& void)}
                 ))
             ))
 
             {i += 1}
         ))
 
-        (return (Dict/GetResult :ok false :&value {0 as (& void)}))
+        (return (Dict/GetResult :ok false :value {0 as (& void)}))
     ))
 
 ; conversions
@@ -435,35 +435,35 @@
     ))
 
     (fn std/u32_to_string_using [(input u32) (alloc_id u32)] (& String) (
-        {&output := (String/new_using 32 alloc_id)}
+        {output := (String/new_using 32 alloc_id)}
 
         (if {input == 0} (do
-            (Vec/push_u8 &output (char_code "0"))
-            (return &output)
+            (Vec/push_u8 output (char_code "0"))
+            (return output)
         ))
 
         (loop (
             {rem := {input % 10}}
 
-            (Vec/push_u8 &output {(char_code "0") + rem})
+            (Vec/push_u8 output {(char_code "0") + rem})
             {input = {input / 10}}
 
             (if {input == 0} (break))
         ))
 
-        (Vec/reverse &output)
+        (Vec/reverse output)
 
-        (return &output)
+        (return output)
     ))
 
-    (fn std/c_str_to_slice [(&str (&* u8))] StringSlice (
+    (fn std/c_str_to_slice [(str (&* u8))] StringSlice (
         {len := 0}
 
         (loop (
-            (if {{u8 @ {&str + len}} == 0} (break))
+            (if {{u8 @ {str + len}} == 0} (break))
 
             {len += 1}
         ))
 
-        (return (StringSlice :data &str :size len))
+        (return (StringSlice :data str :size len))
     ))

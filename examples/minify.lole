@@ -7,35 +7,35 @@
     {input_file := (get_input_file)}
     (defer (Heap/free {input_file . file_name . data}))
 
-    {&source := (WasiIO/fd_read_all {input_file . fd})}
-    (defer (Vec/free &source))
+    {source := (WasiIO/fd_read_all {input_file . fd})}
+    (defer (Vec/free source))
 
     {parse_res := (Lole/Parser/parse
         {input_file . file_name}
-        (Vec/as_slice &source)
+        (Vec/as_slice source)
     )}
     (if (not {parse_res . ok}) (do
         (return (print_err_and_exit {parse_res . data}))
     ))
 
-    {&exprs := {parse_res . data}}
-    (defer (Vec<Lole/Ast/SExpr>/free &exprs))
+    {exprs := {parse_res . data}}
+    (defer (Vec<Lole/Ast/SExpr>/free exprs))
 
-    (dump_exprs &exprs)
+    (dump_exprs exprs)
     (puts "\n")
 ))
 
-(fn dump_exprs [(&exprs (& Vec<Lole/Ast/SExpr>))] void (
+(fn dump_exprs [(exprs (& Vec<Lole/Ast/SExpr>))] void (
     {i := 0}
 
     (loop (
-        (if {i == (Vec/len &exprs)}
+        (if {i == (Vec/len exprs)}
             (break)
         )
 
-        (dump_expr {Lole/Ast/SExpr @ (Vec/at &exprs i)})
+        (dump_expr {Lole/Ast/SExpr @ (Vec/at exprs i)})
 
-        (if {i != {(Vec/len &exprs) - 1}} (do
+        (if {i != {(Vec/len exprs) - 1}} (do
             (puts " ")
         ))
 
@@ -45,15 +45,15 @@
 
 (fn dump_expr [(expr Lole/Ast/SExpr)] void (
     (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
-        {atom := {Lole/Ast/SExpr/Atom @ {expr . &value}}}
-        (print_str {atom . &value})
+        {atom := {Lole/Ast/SExpr/Atom @ {expr . value}}}
+        (print_str {atom . value})
         (return)
     ))
 
     (puts "(")
 
-    {list := {Lole/Ast/SExpr/List @ {expr . &value}}}
-    (dump_exprs {list . &value})
+    {list := {Lole/Ast/SExpr/List @ {expr . value}}}
+    (dump_exprs {list . value})
 
     (puts ")")
 ))
@@ -89,8 +89,8 @@
     ))
 ))
 
-(fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] void (
-    {parse_err := (* &err)}
+(fn print_err_and_exit [(err (& Lole/Ast/CompileError))] void (
+    {parse_err := (* err)}
     (defer (Lole/Ast/CompileError/free parse_err))
 
     (fputs Wasi/FD_STDERR {parse_err . loc . file_name})
@@ -99,7 +99,7 @@
     (fputs Wasi/FD_STDERR ":")
     (fprint_u32 Wasi/FD_STDERR {parse_err . loc . col})
     (fputs Wasi/FD_STDERR " - ")
-    (fprint_str Wasi/FD_STDERR {parse_err . &message})
+    (fprint_str Wasi/FD_STDERR {parse_err . message})
     (fputs Wasi/FD_STDERR "\n")
 
     (return (Wasi/proc_exit 1))

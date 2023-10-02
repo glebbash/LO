@@ -10,12 +10,12 @@
     {input_file := (get_input_file)}
     (defer (Heap/free {input_file . file_name . data}))
 
-    {&source := (WasiIO/fd_read_all {input_file . fd})}
-    (defer (Vec/free &source))
+    {source := (WasiIO/fd_read_all {input_file . fd})}
+    (defer (Vec/free source))
 
     {parse_res := (Lole/Parser/parse
         {input_file . file_name}
-        (Vec/as_slice &source)
+        (Vec/as_slice source)
     )}
     (if (not {parse_res . ok}) (do
         (return (print_err_and_exit {parse_res . data}))
@@ -28,18 +28,18 @@
     ))
     (defer (Vec<Lole/Ast/SExpr>/free {expand_res . data}))
 
-    {&wasm_module := (Lole/Wasm/WasmModule/new)}
-    (defer (Lole/Wasm/WasmModule/free &wasm_module))
+    {wasm_module := (Lole/Wasm/WasmModule/new)}
+    (defer (Lole/Wasm/WasmModule/free wasm_module))
 
-    {compile_res := (Lole/Compiler/compile {parse_res . data} &wasm_module)}
+    {compile_res := (Lole/Compiler/compile {parse_res . data} wasm_module)}
     (if (not {compile_res . ok}) (do
         (return (print_err_and_exit {compile_res . data}))
     ))
 
-    {&binary := (Lole/CodeGen/codegen &wasm_module)}
-    (defer (Vec/free &binary))
+    {binary := (Lole/CodeGen/codegen wasm_module)}
+    (defer (Vec/free binary))
 
-    (print_str &binary)
+    (print_str binary)
 ))
 
 (struct InputFile
@@ -73,8 +73,8 @@
     ))
 ))
 
-(fn print_err_and_exit [(&err (& Lole/Ast/CompileError))] void (
-    {parse_err := (* &err)}
+(fn print_err_and_exit [(err (& Lole/Ast/CompileError))] void (
+    {parse_err := (* err)}
     (defer (Lole/Ast/CompileError/free parse_err))
 
     (fputs Wasi/FD_STDERR {parse_err . loc . file_name})
@@ -83,7 +83,7 @@
     (fputs Wasi/FD_STDERR ":")
     (fprint_u32 Wasi/FD_STDERR {parse_err . loc . col})
     (fputs Wasi/FD_STDERR " - ")
-    (fprint_str Wasi/FD_STDERR {parse_err . &message})
+    (fprint_str Wasi/FD_STDERR {parse_err . message})
     (fputs Wasi/FD_STDERR "\n")
 
     (return (Wasi/proc_exit 1))

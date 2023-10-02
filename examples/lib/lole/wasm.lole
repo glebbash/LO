@@ -11,14 +11,14 @@
 (alias Vec<Lole/Wasm/WasmLocals> Vec)
 
 (struct Lole/Wasm/WasmModule
-    (&types (& Vec<Lole/Wasm/WasmFnType>))
-    (&imports (& Vec<Lole/Wasm/WasmImport>))
-    (&functions (& Vec<u32>))
-    (&memories (& Vec<Lole/Wasm/WasmLimits>))
-    (&globals (& Vec<Lole/Wasm/WasmGlobal>))
-    (&exports (& Vec<Lole/Wasm/WasmExport>))
-    (&codes (& Vec<Lole/Wasm/WasmFn>))
-    (&datas (& Vec<Lole/Wasm/WasmData>))
+    (types (& Vec<Lole/Wasm/WasmFnType>))
+    (imports (& Vec<Lole/Wasm/WasmImport>))
+    (functions (& Vec<u32>))
+    (memories (& Vec<Lole/Wasm/WasmLimits>))
+    (globals (& Vec<Lole/Wasm/WasmGlobal>))
+    (exports (& Vec<Lole/Wasm/WasmExport>))
+    (codes (& Vec<Lole/Wasm/WasmFn>))
+    (datas (& Vec<Lole/Wasm/WasmData>))
 )
 
 (struct Lole/Wasm/WasmFnType
@@ -62,11 +62,11 @@
 )
 
 (struct Lole/Wasm/WasmExpr
-    (&instrs (& Vec<Lole/Wasm/WasmInstr>))
+    (instrs (& Vec<Lole/Wasm/WasmInstr>))
 )
 
 (struct Lole/Wasm/WasmFn
-    (&locals (& Vec<Lole/Wasm/WasmLocals>))
+    (locals (& Vec<Lole/Wasm/WasmLocals>))
     (expr Lole/Wasm/WasmExpr)
 )
 
@@ -86,14 +86,14 @@
     )))
 ))
 
-(fn Lole/Wasm/WasmModule/free [(&self (& Lole/Wasm/WasmModule))] void (
-    {self := (* &self)}
-    (Vec/free {self . &types})
-    (Vec/free {self . &imports})
-    (Vec/free {self . &functions})
-    (Vec/free {self . &memories})
-    (Vec/free {self . &globals})
-    (Vec/free {self . &exports})
-    (Vec/free {self . &codes})
-    (Vec/free {self . &datas})
+(fn Lole/Wasm/WasmModule/free [(self (& Lole/Wasm/WasmModule))] void (
+    {self := (* self)}
+    (Vec/free {self . types})
+    (Vec/free {self . imports})
+    (Vec/free {self . functions})
+    (Vec/free {self . memories})
+    (Vec/free {self . globals})
+    (Vec/free {self . exports})
+    (Vec/free {self . codes})
+    (Vec/free {self . datas})
 ))

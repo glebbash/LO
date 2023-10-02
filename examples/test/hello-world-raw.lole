@@ -15,9 +15,9 @@
 
 (import fn Wasi/fd_write [
     (fd              u32) ; file_descriptor
-    (&iovs           (& void)) ; The pointer to the iov array
+    (iovs           (& void)) ; The pointer to the iov array
     (iovs_len        u32) ; Amount of Wasi/IOVec
-    (&nwritten       u32) ; Pointer to store the number of bytes written
+    (nwritten       u32) ; Pointer to store the number of bytes written
 ] u32 :from wasi_snapshot_preview1 fd_write)
 
 (mem m1 :min 1)
