@@ -1024,9 +1024,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
 
             LoleExpr::Branch { label_index }
         }
-        ("return", values) => {
-            let value = LoleExpr::MultiValueEmit {
-                values: compile_instrs(values, ctx)?,
+        ("return", values) if values.len() < 2 => {
+            let value = if let Some(value_expr) = values.get(0) {
+                compile_instr(value_expr, ctx)?
+            } else {
+                LoleExpr::MultiValueEmit { values: vec![] }
             };
 
             let return_type = get_type(ctx, &value);

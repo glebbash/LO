@@ -7,5 +7,8 @@
 (fn Lole/Expand/expand [
     (&exprs (& Vec<Lole/Ast/SExpr>))
 ] Lole/Expand/ExpandResult (
-    (return true &exprs)
+    (return (Lole/Expand/ExpandResult
+        :ok true
+        :data {&exprs as (& void)}
+    ))
 ))

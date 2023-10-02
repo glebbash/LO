@@ -416,13 +416,16 @@
 
             {&entry_key := {(Vec/at &self i) as (& String)}}
             (if (StringSlice/equals key (Vec/as_slice &entry_key)) (do
-                (return true {&entry_key + (sizeof String)})
+                (return (Dict/GetResult
+                    :ok true
+                    :&value {&entry_key + (sizeof String) as (& void)}
+                ))
             ))
 
             {i += 1}
         ))
 
-        (return false 0)
+        (return (Dict/GetResult :ok false :&value {0 as (& void)}))
     ))
 
 ; conversions

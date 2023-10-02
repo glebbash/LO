@@ -68,7 +68,10 @@
     (defer (Args/free args))
 
     (if {args . argc != 2} (do
-        (return Wasi/FD_STDIN (StringSlice/clone "<internal>"))
+        (return (InputFile
+            :fd Wasi/FD_STDIN
+            :file_name (StringSlice/clone "<internal>")
+        ))
     ))
 
     {file_name := (StringSlice/clone (Args/get args 1))}

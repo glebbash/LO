@@ -43,10 +43,13 @@
             {&msg := (String/from_slice "Cannot export unknown function: ")}
             (Vec/push_all &msg (Vec/as_slice {fn_export . &in_name}))
 
-            (return false (new Lole/Ast/CompileError (do
-                &msg
-                (Lole/Ast/Location/clone {fn_export . loc})
-            )))
+            (return (Lole/Compiler/CompileResult
+                :ok false
+                :data {(new Lole/Ast/CompileError (do
+                    &msg
+                    (Lole/Ast/Location/clone {fn_export . loc})
+                )) as (& void)}
+            ))
         ))
         {fn_def := {Lole/Ir/FnDef @ {fn_def_res . &value}}}
 
@@ -131,7 +134,7 @@
         {i += 1}
     ))
 
-    (return true 0)
+    (return (Lole/Compiler/CompileResult :ok true :data {0 as (& void)}))
 ))
 
 ; TODO: implement
@@ -139,13 +142,19 @@
     (expr Lole/Ast/SExpr) (&ctx (& Lole/Ir/ModuleContext))
 ] Lole/Compiler/CompileResult (
     (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
-        (return false (new Lole/Ast/CompileError (do
-            (String/from_slice "Unexpected atom")
-            (Lole/Ast/Location/clone (Lole/Ast/SExpr/loc expr))
-        )))
+        (return (Lole/Compiler/CompileResult
+            :ok false
+            :data {(new Lole/Ast/CompileError (do
+                (String/from_slice "Unexpected atom")
+                (Lole/Ast/Location/clone (Lole/Ast/SExpr/loc expr))
+            )) as (& void)}
+        ))
     ))
 
-    (return true 0)
+    (return (Lole/Compiler/CompileResult
+        :ok true
+        :data {0 as (& void)}
+    ))
 ))
 
 (struct Lole/Compiler/CompileBlockResult
@@ -157,7 +166,10 @@
 (fn Lole/Compiler/compile_block [
     (&exprs (& Vec<Lole/Ast/SExpr>)) (&ctx (& Lole/Ir/ModuleContext))
 ] Lole/Compiler/CompileBlockResult (
-    (return true 0)
+    (return (Lole/Compiler/CompileBlockResult
+        :ok true
+        :data {0 as (& void)}
+    ))
 ))
 
 (struct Lole/Compiler/GetDefferedRes
@@ -169,5 +181,8 @@
 (fn Lole/Compiler/get_deferred [
     (defer_label StringSlice) (&ctx (& Lole/Ir/ModuleContext))
 ] Lole/Compiler/GetDefferedRes (
-    (return true 0)
+    (return (Lole/Compiler/GetDefferedRes
+        :ok true
+        :data {0 as (& void)}
+    ))
 ))
