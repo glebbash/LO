@@ -12,12 +12,18 @@
     (alias Alloc/HEAP 1)
 
     (fn alloc [(alloc_id u32) (size u32)] (& void) (
-        (if {alloc_id == 0} (return (Stack/alloc size)))
+        (if {alloc_id == 0} (
+            (return (Stack/alloc size)))
+        )
+
         (return (Heap/alloc size))
     ))
 
     (fn free [(alloc_id u32) (ptr (& void)) (size u32)] void (
-        (if {alloc_id == 0} (return (Stack/free size)))
+        (if {alloc_id == 0} (
+            (return (Stack/free size)))
+        )
+
         (return (Heap/free ptr))
     ))
 
@@ -32,7 +38,7 @@
 
     (fn Mem/align_to [(size u32) (size_multiple u32)] u32 (
         {remaining_to_align := {size % size_multiple}}
-        (if {remaining_to_align == 0} (do
+        (if {remaining_to_align == 0} (
             (return size)
         ))
 
@@ -43,7 +49,10 @@
     ; TODO: use builtin mem.copy instr, check engine support
     (fn Mem/copy [(src (& void)) (dist (& void)) (size u32)] void (
         (loop (
-            (if {size == 0} (break))
+            (if {size == 0} (
+                (break)
+            ))
+
             {size -= 1}
 
             {u8 @ {dist + size} = {u8 @ {src + size}}}
@@ -52,16 +61,15 @@
 
     (fn Mem/swap [(ref1 (& void)) (ref2 (& void)) (size u32)] void (
         (loop (
-            (if {size == 0} (break))
+            (if {size == 0} (
+                (break)
+            ))
+
             {size -= 1}
 
-            {
-            (do {u8 @ {ref1 + size}}
-                {u8 @ {ref2 + size}})
-                =
-            (do {u8 @ {ref2 + size}}
-                {u8 @ {ref1 + size}})
-            }
+            {tmp := {u8 @ {ref1 + size}}}
+            {u8 @ {ref1 + size} = {u8 @ {ref2 + size}}}
+            {u8 @ {ref2 + size} = tmp}
         ))
     ))
 
@@ -88,7 +96,7 @@
     (fn Stack/alloc [(size u32)] (& void) (
         {Stack/CURRENT += size}
 
-        (if {Stack/CURRENT > Stack/END} (do
+        (if {Stack/CURRENT > Stack/END} (
             (panic "Stack overflow")
         ))
 
@@ -98,7 +106,7 @@
     (fn Stack/free [(size u32)] void (
         {Stack/CURRENT -= size}
 
-        (if {Stack/CURRENT < Stack/BEGIN} (do
+        (if {Stack/CURRENT < Stack/BEGIN} (
             (panic "Stack underflow")
         ))
     ))
@@ -121,7 +129,7 @@
         {size = (Mem/align size)}
 
         {free_block := (Heap/find_free_block size)}
-        (if {free_block != 0} (do
+        (if {free_block != 0} (
             {free_block -> used = true}
             (return {free_block -> data})
         ))
@@ -132,10 +140,10 @@
         {Heap/TOTAL_ALLOCATED += total_size_to_alloc}
 
         ; memory.grow enough if out of space
-        (if {Heap/TOTAL_ALLOCATED >= {(memory.size) * Mem/PAGE_SIZE}} (do
+        (if {Heap/TOTAL_ALLOCATED >= {(memory.size) * Mem/PAGE_SIZE}} (
             {pages_to_grow := (Mem/align_to total_size_to_alloc Mem/PAGE_SIZE)}
             {grow_res := (memory.grow pages_to_grow)}
-            (if {grow_res == {0 - 1}} (do
+            (if {grow_res == {0 - 1}} (
                 (panic "OOM")
             ))
         ))
@@ -145,12 +153,12 @@
         {block -> data = {block + (sizeof Heap/Block) as (& void)}}
 
         ; init heap
-        (if {Heap/FIRST_BLOCK == 0} (do
+        (if {Heap/FIRST_BLOCK == 0} (
             {Heap/FIRST_BLOCK = block}
         ))
 
         ; chain block
-        (if {Heap/CURRENT_BLOCK != 0} (do
+        (if {Heap/CURRENT_BLOCK != 0} (
             {Heap/CURRENT_BLOCK -> next = block}
         ))
 
@@ -173,9 +181,11 @@
         {block := Heap/FIRST_BLOCK}
 
         (loop (
-            (if {block == 0} (break))
+            (if {block == 0} (
+                (break)
+            ))
 
-            (if {(not {block -> used}) && {block -> size >= size}} (do
+            (if {(not {block -> used}) && {block -> size >= size}} (
                 (return block)
             ))
 
@@ -200,12 +210,12 @@
     ))
 
     (fn Vec/new_using [(capacity u32) (item_size u32) (alloc_id u32)] (& Vec) (
-        (return (new Vec (do
-            (alloc alloc_id {capacity * item_size})
-            0
-            capacity
-            item_size
-            alloc_id
+        (return (new Vec (Vec
+            :data (alloc alloc_id {capacity * item_size})
+            :size 0
+            :capacity capacity
+            :item_size item_size
+            :alloc_id alloc_id
         ) :using alloc_id))
     ))
 
@@ -300,7 +310,9 @@
         {end := {self -> size - 1}}
 
         (loop (
-            (if {start >= end} (break))
+            (if {start >= end} (
+                (break)
+            ))
 
             (Vec/swap self start end)
             {start += 1}
@@ -309,11 +321,11 @@
     ))
 
     (fn Vec/_grow_if_needed [(self (& Vec))] void (
-        (if {self -> size != {self -> capacity}} (do
+        (if {self -> size != {self -> capacity}} (
             (return)
         ))
 
-        (if {self -> alloc_id == Alloc/STACK} (do
+        (if {self -> alloc_id == Alloc/STACK} (
             (panic "Attempt to grow stack allocated vector")
         ))
 
@@ -329,7 +341,7 @@
     ))
 
     (fn Vec/_panic_if_out_of_bounds [(self (& Vec)) (index u32)] void (
-        (if {{index < 0} || {index >= {self -> size}}} (do
+        (if {{index < 0} || {index >= {self -> size}}} (
             (panic "Vec access out of bounds")
         ))
     ))
@@ -359,15 +371,17 @@
     ))
 
     (fn StringSlice/equals [(self StringSlice) (other StringSlice)] bool (
-        (if {self . size != {other . size}} (do
+        (if {self . size != {other . size}} (
             (return false)
         ))
 
         {i := 0}
         (loop (
-            (if {i == {self . size}} (break))
+            (if {i == {self . size}} (
+                (break)
+            ))
 
-            (if {u8 @ {self . data + i} != {u8 @ {other . data + i}}} (do
+            (if {u8 @ {self . data + i} != {u8 @ {other . data + i}}} (
                 (return false)
             ))
 
@@ -404,10 +418,12 @@
     (fn Dict/get [(self (& Dict)) (key StringSlice)] Dict/GetResult (
         {i := 0}
         (loop (
-            (if {i == {self -> size}} (break))
+            (if {i == {self -> size}} (
+                (break)
+            ))
 
             {entry_key := {(Vec/at self i) as (& String)}}
-            (if (StringSlice/equals key (Vec/as_slice entry_key)) (do
+            (if (StringSlice/equals key (Vec/as_slice entry_key)) (
                 (return (Dict/GetResult
                     :ok true
                     :value {entry_key + (sizeof String) as (& void)}
@@ -429,7 +445,7 @@
     (fn std/u32_to_string_using [(input u32) (alloc_id u32)] (& String) (
         {output := (String/new_using 32 alloc_id)}
 
-        (if {input == 0} (do
+        (if {input == 0} (
             (Vec/push_u8 output (char_code "0"))
             (return output)
         ))
@@ -440,7 +456,9 @@
             (Vec/push_u8 output {(char_code "0") + rem})
             {input = {input / 10}}
 
-            (if {input == 0} (break))
+            (if {input == 0} (
+                (break)
+            ))
         ))
 
         (Vec/reverse output)
@@ -452,7 +470,9 @@
         {len := 0}
 
         (loop (
-            (if {{u8 @ {str + len}} == 0} (break))
+            (if {{u8 @ {str + len}} == 0} (
+                (break)
+            ))
 
             {len += 1}
         ))

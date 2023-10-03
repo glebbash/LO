@@ -2,9 +2,9 @@
 
 (fn main [] void (
     (loop (
-        (if true (do
-            (if true (do
-                (if true (do
+        (if true (
+            (if true (
+                (if true (
                     (break)
                 ))
             ))

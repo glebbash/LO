@@ -8,12 +8,14 @@
     (defer scope1 (puts "defer(scope1): 1\n"))
     {i := 0}
     (loop (
-        (if {i == 10} (break))
+        (if {i == 10} (
+            (break)
+        ))
         ; exprs in loops are only deferred once
         (defer scope1 (puts "defer(scope1): 2\n"))
         {i += 1}
     ))
-    (if false (do
+    (if false (
         ; exprs are deferred even `if` body never executes
         (defer scope1 (puts "defer(scope1): 3\n"))
     ))

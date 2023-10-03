@@ -63,19 +63,19 @@
 (struct Lole/Ir/StructDef)
 
 (fn Lole/Ir/ModuleContext/new [(wasm_module (& Lole/Wasm/WasmModule))] (& Lole/Ir/ModuleContext) (
-    (return (new Lole/Ir/ModuleContext (do
-        wasm_module
-        (Vec/new 1 (sizeof String))
-        0
-        (Dict/new 1 (sizeof Lole/Ir/FnDef))
-        (Dict/new 1 (sizeof Lole/Ir/FnBody))
-        (Vec/new 1 (sizeof Lole/Ir/FnExport))
-        (Vec/new 1 (sizeof String))
-        (Dict/new 1 (sizeof Lole/Ir/StructDef))
-        (Dict/new 1 (sizeof u32))
-        (Dict/new 1 (sizeof Lole/Ir/GlobalDef))
-        (new u32 0)
-        (Dict/new 1 (sizeof u32))
+    (return (new Lole/Ir/ModuleContext (Lole/Ir/ModuleContext
+        :wasm_module wasm_module
+        :memory_names (Vec/new 1 (sizeof String))
+        :imported_fns_count 0
+        :fn_defs (Dict/new 1 (sizeof Lole/Ir/FnDef))
+        :fn_bodies (Dict/new 1 (sizeof Lole/Ir/FnBody))
+        :fn_exports (Vec/new 1 (sizeof Lole/Ir/FnExport))
+        :included_modules (Vec/new 1 (sizeof String))
+        :struct_defs (Dict/new 1 (sizeof Lole/Ir/StructDef))
+        :enum_kinds (Dict/new 1 (sizeof u32))
+        :globals (Dict/new 1 (sizeof Lole/Ir/GlobalDef))
+        :data_size (new u32 0)
+        :string_pool (Dict/new 1 (sizeof u32))
     )))
 ))
 
@@ -84,5 +84,11 @@
     (Vec/free {self -> memory_names})
     (Dict/free {self -> fn_defs})
     (Dict/free {self -> fn_bodies})
-    (Dict/free {self -> fn_exports})
+    (Vec/free {self -> fn_exports})
+    (Vec/free {self -> included_modules})
+    (Dict/free {self -> struct_defs})
+    (Dict/free {self -> enum_kinds})
+    (Dict/free {self -> globals})
+    (free Alloc/HEAP {self -> data_size} (sizeof u32))
+    (Dict/free {self -> string_pool})
 ))

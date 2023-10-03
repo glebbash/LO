@@ -15,7 +15,9 @@
 
     {i := 0}
     (loop (
-        (if {i == {exprs -> size}} (break))
+        (if {i == {exprs -> size}} (
+            (break)
+        ))
 
         {res :=
             (Lole/Compiler/compile_top_level_expr
@@ -23,7 +25,9 @@
                 ctx
             )
         }
-        (if (not {res . ok}) (return res))
+        (if (not {res . ok}) (
+            (return res)
+        ))
 
         {i += 1}
     ))
@@ -34,20 +38,22 @@
     ; push function exports
     {i = 0}
     (loop (
-        (if {i == {fn_exports -> size}} (break))
+        (if {i == {fn_exports -> size}} (
+            (break)
+        ))
 
         {fn_export := {Lole/Ir/FnExport @ (Vec/at fn_exports i)}}
 
         {fn_def_res := (Dict/get fn_defs (Vec/as_slice {fn_export . in_name}))}
-        (if (not {fn_def_res . ok}) (do
+        (if (not {fn_def_res . ok}) (
             {msg := (String/from_slice "Cannot export unknown function: ")}
             (Vec/push_all msg (Vec/as_slice {fn_export . in_name}))
 
             (return (Lole/Compiler/CompileResult
                 :ok false
-                :data {(new Lole/Ast/CompileError (do
-                    msg
-                    (Lole/Ast/Location/clone {fn_export . loc})
+                :data {(new Lole/Ast/CompileError (Lole/Ast/CompileError
+                    :message msg
+                    :loc (Lole/Ast/Location/clone {fn_export . loc})
                 )) as (& void)}
             ))
         ))
@@ -70,33 +76,37 @@
     ; push function codes
     {i = 0}
     (loop (
-        (if {i == {fn_bodies -> size}} (break))
+        (if {i == {fn_bodies -> size}} (
+            (break)
+        ))
 
         {fn_body := {Lole/Ir/FnBody @ (Vec/at fn_bodies i)}}
 
         {fn_type := {(Vec/at fn_types {fn_body . type_index})
             as (& Lole/Wasm/WasmFnType)}}
 
-        {fn_ctx := (new Lole/Ir/FnContext (do
-            ctx
-            fn_type
-            {fn_body . locals}
-            {fn_body . locals_last_index}
-            (Vec/new 1 (sizeof Lole/Wasm/WasmType))
-            (Dict/new 1 (sizeof Lole/Ast/SExpr))
+        {fn_ctx := (new Lole/Ir/FnContext (Lole/Ir/FnContext
+            :module ctx
+            :fn_type fn_type
+            :locals {fn_body . locals}
+            :locals_last_index {fn_body . locals_last_index}
+            :non_arg_locals (Vec/new 1 (sizeof Lole/Wasm/WasmType))
+            :defers (Dict/new 1 (sizeof Lole/Ast/SExpr))
         ))}
 
         {instrs_res := (Lole/Compiler/compile_block
             {fn_body . body} fn_ctx
         )}
-        (if (not {instrs_res . ok}) (return instrs_res))
+        (if (not {instrs_res . ok}) (
+            (return instrs_res)
+        ))
         {instrs := {instrs_res . data as (& Vec)}}
 
         {deferred_res := (Lole/Compiler/get_deferred
             "return" ; TODO: this should be a constant
             fn_ctx
         )}
-        (if {deferred_res . ok} (do
+        (if {deferred_res . ok} (
             (Vec/append instrs {deferred_res . data})
             (Vec/free {deferred_res . data})
         ))
@@ -106,13 +116,15 @@
 
         {j := 0}
         (loop (
-            (if {j == {non_arg_locals -> size}} (break))
+            (if {j == {non_arg_locals -> size}} (
+                (break)
+            ))
 
             {local_type := {Lole/Wasm/WasmType @ (Vec/at non_arg_locals j)}}
             {locals_len := {locals -> size}}
-            (if {locals_len > 0} (do
+            (if {locals_len > 0} (
                 {wasm_locals := {(Vec/at locals {locals_len - 1}) as (& Lole/Wasm/WasmLocals)}}
-                (if {wasm_locals -> value_type == local_type} (do
+                (if {wasm_locals -> value_type == local_type} (
                     {wasm_locals -> count += 1}
                     (continue)
                 ))
@@ -142,12 +154,12 @@
 (fn Lole/Compiler/compile_top_level_expr [
     (expr Lole/Ast/SExpr) (ctx (& Lole/Ir/ModuleContext))
 ] Lole/Compiler/CompileResult (
-    (if {expr . kind == Lole/Ast/SExpr/ATOM} (do
+    (if {expr . kind == Lole/Ast/SExpr/ATOM} (
         (return (Lole/Compiler/CompileResult
             :ok false
-            :data {(new Lole/Ast/CompileError (do
-                (String/from_slice "Unexpected atom")
-                (Lole/Ast/Location/clone (Lole/Ast/SExpr/loc expr))
+            :data {(new Lole/Ast/CompileError (Lole/Ast/CompileError
+                :message (String/from_slice "Unexpected atom")
+                :loc (Lole/Ast/Location/clone (Lole/Ast/SExpr/loc expr))
             )) as (& void)}
         ))
     ))

@@ -1,6 +1,8 @@
 (export factorial :as factorial)
 (fn factorial [(x u32)] u32 (
-    (if {x < 2} (return x))
+    (if {x < 2} (
+        (return x)
+    ))
 
     (return {x * (factorial {x - 1})})
 ))

@@ -6,7 +6,9 @@
 
     {i := 0}
     (loop (
-        (if {i == {args . argc}} (break))
+        (if {i == {args . argc}} (
+            (break)
+        ))
 
         {arg := (Args/get args i)}
 

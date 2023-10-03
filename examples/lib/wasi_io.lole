@@ -20,7 +20,9 @@
 
         {nread := (* nread_ref)}
 
-        (if {nread == 0} (break))
+        (if {nread == 0} (
+            (break)
+        ))
 
         (Vec/push_all output chunk nread)
     ))
@@ -32,7 +34,7 @@
     {chunk := {(Stack/alloc chunk_size) as (&* u8)}}
     (defer (Stack/free chunk_size))
 
-    {iov := (new Wasi/IOVec (do chunk 0) :using Alloc/STACK)}
+    {iov := (new Wasi/IOVec (Wasi/IOVec :base chunk :size 0) :using Alloc/STACK)}
     (defer (Stack/free (sizeof Wasi/IOVec)))
 
     {nread_ref := {(Stack/alloc (sizeof u32)) as (& u32)}}
@@ -41,16 +43,18 @@
     (loop (
         {iov -> size = chunk_size}
         {io_res := (Wasi/fd_read fd_in iov 1 nread_ref)}
-        (if {io_res != 0} (do
+        (if {io_res != 0} (
             (return false)
         ))
 
         {nread := (* nread_ref)}
-        (if {nread == 0} (break))
+        (if {nread == 0} (
+            (break)
+        ))
 
         {iov -> size = nread}
         {io_res = (Wasi/fd_write fd_out iov 1 nread)}
-        (if {io_res != 0} (do
+        (if {io_res != 0} (
             (return false)
         ))
     ))

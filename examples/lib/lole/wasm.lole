@@ -74,15 +74,15 @@
 (struct Lole/Wasm/WasmData)
 
 (fn Lole/Wasm/WasmModule/new [] (& Lole/Wasm/WasmModule) (
-    (return (new Lole/Wasm/WasmModule (do
-        (Vec/new 1 (sizeof Lole/Wasm/WasmFnType))
-        (Vec/new 1 (sizeof Lole/Wasm/WasmImport))
-        (Vec/new 1 (sizeof u32))
-        (Vec/new 1 (sizeof Lole/Wasm/WasmLimits))
-        (Vec/new 1 (sizeof Lole/Wasm/WasmGlobal))
-        (Vec/new 1 (sizeof Lole/Wasm/WasmExport))
-        (Vec/new 1 (sizeof Lole/Wasm/WasmFn))
-        (Vec/new 1 (sizeof Lole/Wasm/WasmData))
+    (return (new Lole/Wasm/WasmModule (Lole/Wasm/WasmModule
+        :types (Vec/new 1 (sizeof Lole/Wasm/WasmFnType))
+        :imports (Vec/new 1 (sizeof Lole/Wasm/WasmImport))
+        :functions (Vec/new 1 (sizeof u32))
+        :memories (Vec/new 1 (sizeof Lole/Wasm/WasmLimits))
+        :globals (Vec/new 1 (sizeof Lole/Wasm/WasmGlobal))
+        :exports (Vec/new 1 (sizeof Lole/Wasm/WasmExport))
+        :codes (Vec/new 1 (sizeof Lole/Wasm/WasmFn))
+        :datas (Vec/new 1 (sizeof Lole/Wasm/WasmData))
     )))
 ))
 

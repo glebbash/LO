@@ -44,7 +44,7 @@
 )
 
 (fn Lole/Ast/SExpr/free [(self Lole/Ast/SExpr)] void (
-    (if {self . kind == Lole/Ast/SExpr/ATOM} (do
+    (if {self . kind == Lole/Ast/SExpr/ATOM} (
         {atom := {Lole/Ast/SExpr/Atom @ {self . value}}}
         (Vec/free {atom . value})
         (return)
@@ -57,7 +57,9 @@
 (fn Vec<Lole/Ast/SExpr>/free [(self (& Vec))] void (
     {i := 0}
     (loop (
-        (if {i == {self -> size}} (break))
+        (if {i == {self -> size}} (
+            (break)
+        ))
 
         (Lole/Ast/SExpr/free {Lole/Ast/SExpr @ (Vec/at self i)})
 
@@ -68,7 +70,7 @@
 ))
 
 (fn Lole/Ast/SExpr/loc [(self Lole/Ast/SExpr)] Lole/Ast/Location (
-    (if {self . kind == Lole/Ast/SExpr/ATOM} (do
+    (if {self . kind == Lole/Ast/SExpr/ATOM} (
         {atom := {Lole/Ast/SExpr/Atom @ {self . value}}}
         (return {atom . loc})
     ))

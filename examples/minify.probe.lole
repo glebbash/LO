@@ -17,7 +17,7 @@
         {input_file . file_name}
         (Vec/as_slice source)
     )}
-    (if (! {parse_res . ok}) (do
+    (if (! {parse_res . ok}) (
         (return (print_err_and_exit {parse_res . data}))
     ))
 
@@ -38,7 +38,7 @@
 
         (dump_expr {SExpr @ (Vec/at exprs i)})
 
-        (if {i != {exprs -> size - 1}} (do
+        (if {i != {exprs -> size - 1}} (
             (puts " ")
         ))
 
@@ -47,7 +47,7 @@
 ))
 
 (fn dump_expr [(expr SExpr)] void (
-    (if {expr . kind == SExpr/ATOM} (do
+    (if {expr . kind == SExpr/ATOM} (
         {atom := {SExpr/Atom @ {expr . value}}}
         (print_str {atom . value})
         (return)
@@ -70,13 +70,13 @@
     {args := (Args/load)}
     (defer (Args/free args))
 
-    (if {args . argc != 2} (do
+    (if {args . argc != 2} (
         (return Wasi/FD_STDIN (StringSlice/clone "<internal>"))
     ))
 
     {file_name := (StringSlice/clone (Args/get args 1))}
-    {(do err fd) := (WasiIO/fd_open file_name)}
-    (if {err != 0} (do
+    {open_res := (WasiIO/fd_open file_name)}
+    (if {open_res . err != 0} (
         (fputs Wasi/FD_STDERR "Error: cannot read file: ")
         (fputs Wasi/FD_STDERR file_name)
         (fputs Wasi/FD_STDERR "\n")
@@ -84,7 +84,7 @@
     ))
 
     (return (InputFile
-        :fd fd
+        :fd {open_res . fd}
         :file_name file_name
     ))
 ))

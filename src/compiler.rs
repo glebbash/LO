@@ -7,7 +7,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{cell::RefCell, slice};
+use core::cell::RefCell;
 
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: u32 = 1;
@@ -100,8 +100,8 @@ fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleExpr
             continue;
         }
 
-        let types = get_type(ctx, instr);
-        if types.len() > 0 {
+        let instr_type = get_lole_type(ctx, instr);
+        if instr_type != LoleType::Void {
             return Err(CompileError {
                 message: format!("TypeError: Excess values"),
                 loc: exprs[i].loc().clone(),
@@ -913,9 +913,18 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             ));
             LoleExpr::MultiValueEmit { values: vec![] }
         }
-        ("if", [block_type_expr, cond, then_branch, else_branch]) => {
+        (
+            "if",
+            [cond, SExpr::List {
+                value: then_branch,
+                loc: _,
+            }, SExpr::List {
+                value: else_branch,
+                loc: _,
+            }],
+        ) => {
             let then_branch = compile_block(
-                slice::from_ref(then_branch),
+                then_branch,
                 &mut BlockContext {
                     module: ctx.module,
                     fn_ctx: ctx.fn_ctx,
@@ -927,7 +936,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             )?;
 
             let else_branch = Some(compile_block(
-                slice::from_ref(else_branch),
+                else_branch,
                 &mut BlockContext {
                     module: ctx.module,
                     fn_ctx: ctx.fn_ctx,
@@ -938,28 +947,24 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 },
             )?);
 
-            let block_type = parse_lole_type(block_type_expr, ctx.module)?;
-            if let None = block_type.to_wasm_type() {
-                let LoleType::Void = block_type else {
-                    return Err(CompileError {
-                        message: format!("Unsupported type: {block_type_expr}"),
-                        loc: block_type_expr.loc().clone(),
-                    });
-                };
-            }
-
             LoleExpr::If {
-                block_type,
+                block_type: LoleType::Void,
                 cond: Box::new(compile_instr(cond, ctx)?),
                 then_branch,
                 else_branch,
             }
         }
-        ("if", [cond, then_branch]) => LoleExpr::If {
+        (
+            "if",
+            [cond, SExpr::List {
+                value: then_branch,
+                loc: _,
+            }],
+        ) => LoleExpr::If {
             block_type: LoleType::Void,
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
-                slice::from_ref(then_branch),
+                then_branch,
                 &mut BlockContext {
                     module: ctx.module,
                     fn_ctx: ctx.fn_ctx,
@@ -1049,7 +1054,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
             if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, ctx) {
                 let mut values = values?;
                 values.push(return_expr);
-                LoleExpr::MultiValueEmit { values }
+                LoleExpr::Casted {
+                    value_type: LoleType::Void,
+                    expr: Box::new(LoleExpr::MultiValueEmit { values }),
+                }
             } else {
                 return_expr
             }
@@ -1078,7 +1086,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
 
             deferred.push(defer_expr.clone());
 
-            LoleExpr::MultiValueEmit { values: vec![] }
+            LoleExpr::Casted {
+                value_type: LoleType::Void,
+                expr: Box::new(LoleExpr::MultiValueEmit { values: vec![] }),
+            }
         }
         (
             "defer.eval",
@@ -1095,7 +1106,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleExpr, Compi
                 });
             };
 
-            LoleExpr::MultiValueEmit { values: values? }
+            LoleExpr::Casted {
+                value_type: LoleType::Void,
+                expr: Box::new(LoleExpr::MultiValueEmit { values: values? }),
+            }
         }
         ("as", [value_expr, type_expr]) => {
             let lole_expr = compile_instr(value_expr, ctx)?;
