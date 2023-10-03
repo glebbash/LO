@@ -2,5 +2,6 @@
 (mod lib/wasi_io)
 
 (fn main [] u32 (
-    (return (WasiIO/fd_pipe Wasi/FD_STDIN Wasi/FD_STDOUT 256))
+    {res := (WasiIO/fd_pipe Wasi/FD_STDIN Wasi/FD_STDOUT 256)}
+    (return {res as u32})
 ))

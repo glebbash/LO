@@ -36,7 +36,7 @@ pub struct LoleFnType {
 
 pub struct FnContext<'a> {
     pub module: &'a ModuleContext,
-    pub fn_type: &'a WasmFnType,
+    pub fn_lole_type: &'a LoleFnType,
     pub locals: &'a mut BTreeMap<String, LocalDef>,
     pub locals_last_index: u32,
     pub non_arg_locals: Vec<WasmType>,
@@ -336,33 +336,33 @@ impl FnDef {
 }
 
 #[derive(Clone, Debug)]
-pub enum LoleExpr {
+pub enum LoleInstr {
     Unreachable,
     Drop {
-        value: Box<LoleExpr>,
-        drop_count: usize,
+        value: Box<LoleInstr>,
+        drop_count: u32,
     },
     BinaryOp {
         kind: WasmBinaryOpKind,
-        lhs: Box<LoleExpr>,
-        rhs: Box<LoleExpr>,
+        lhs: Box<LoleInstr>,
+        rhs: Box<LoleInstr>,
     },
     MemorySize,
     MemoryGrow {
-        size: Box<LoleExpr>,
+        size: Box<LoleInstr>,
     },
     Load {
         kind: LoleType,
         align: u32,
         offset: u32,
-        address_instr: Box<LoleExpr>,
+        address_instr: Box<LoleInstr>,
     },
     StructLoad {
         struct_name: String,
-        address_instr: Box<LoleExpr>,
+        address_instr: Box<LoleInstr>,
         address_local_index: u32,
         base_byte_offset: u32,
-        primitive_loads: Vec<LoleExpr>,
+        primitive_loads: Vec<LoleInstr>,
     },
     TypedLocalGet {
         local_index: u32,
@@ -377,7 +377,7 @@ pub enum LoleExpr {
     StructGet {
         struct_name: String,
         base_index: u32,
-        primitive_gets: Vec<LoleExpr>,
+        primitive_gets: Vec<LoleInstr>,
     },
     U32ConstLazy {
         value: Rc<RefCell<u32>>,
@@ -392,21 +392,21 @@ pub enum LoleExpr {
         bind: LoleSetBind,
     },
     Return {
-        value: Box<LoleExpr>,
+        value: Box<LoleInstr>,
     },
     Block {
         block_type: LoleType,
-        body: Vec<LoleExpr>,
+        body: Vec<LoleInstr>,
     },
     Loop {
         block_type: LoleType,
-        body: Vec<LoleExpr>,
+        body: Vec<LoleInstr>,
     },
     If {
         block_type: LoleType,
-        cond: Box<LoleExpr>,
-        then_branch: Vec<LoleExpr>,
-        else_branch: Option<Vec<LoleExpr>>,
+        cond: Box<LoleInstr>,
+        then_branch: Vec<LoleInstr>,
+        else_branch: Option<Vec<LoleInstr>>,
     },
     Branch {
         label_index: u32,
@@ -414,18 +414,18 @@ pub enum LoleExpr {
     Call {
         fn_index: u32,
         return_type: LoleType,
-        args: Vec<LoleExpr>,
+        args: Vec<LoleInstr>,
     },
     MultiValueEmit {
-        values: Vec<LoleExpr>,
+        values: Vec<LoleInstr>,
     },
     Casted {
         value_type: LoleType,
-        expr: Box<LoleExpr>,
+        expr: Box<LoleInstr>,
     },
     // will not be written to binary, used for types only
     NoEmit {
-        expr: Box<LoleExpr>,
+        expr: Box<LoleInstr>,
     },
 }
 
@@ -441,7 +441,7 @@ pub enum LoleSetBind {
         align: u32,
         offset: u32,
         kind: WasmStoreKind,
-        address_instr: Box<LoleExpr>,
+        address_instr: Box<LoleInstr>,
         value_local_index: u32,
     },
 }

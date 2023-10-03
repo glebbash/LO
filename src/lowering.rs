@@ -1,32 +1,32 @@
 use crate::{ir::*, wasm::*};
 use alloc::vec::Vec;
 
-pub fn lower_exprs(out: &mut Vec<WasmInstr>, exprs: Vec<LoleExpr>) {
+pub fn lower_exprs(out: &mut Vec<WasmInstr>, exprs: Vec<LoleInstr>) {
     for expr in exprs.into_iter() {
         lower_expr(out, expr);
     }
 }
 
-pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
+pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleInstr) {
     match expr {
-        LoleExpr::Unreachable => out.push(WasmInstr::Unreachable),
-        LoleExpr::Drop { value, drop_count } => {
+        LoleInstr::Unreachable => out.push(WasmInstr::Unreachable),
+        LoleInstr::Drop { value, drop_count } => {
             lower_expr(out, *value);
             for _ in 0..drop_count {
                 out.push(WasmInstr::Drop);
             }
         }
-        LoleExpr::BinaryOp { kind, lhs, rhs } => {
+        LoleInstr::BinaryOp { kind, lhs, rhs } => {
             lower_expr(out, *lhs);
             lower_expr(out, *rhs);
             out.push(WasmInstr::BinaryOp { kind })
         }
-        LoleExpr::MemorySize => out.push(WasmInstr::MemorySize),
-        LoleExpr::MemoryGrow { size } => {
+        LoleInstr::MemorySize => out.push(WasmInstr::MemorySize),
+        LoleInstr::MemoryGrow { size } => {
             lower_expr(out, *size);
             out.push(WasmInstr::MemoryGrow);
         }
-        LoleExpr::Load {
+        LoleInstr::Load {
             kind,
             align,
             offset,
@@ -39,7 +39,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
                 offset,
             });
         }
-        LoleExpr::StructLoad {
+        LoleInstr::StructLoad {
             struct_name: _,
             address_instr,
             address_local_index,
@@ -52,27 +52,27 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             });
             lower_exprs(out, primitive_loads);
         }
-        LoleExpr::LocalGet { local_index }
-        | LoleExpr::TypedLocalGet {
+        LoleInstr::LocalGet { local_index }
+        | LoleInstr::TypedLocalGet {
             local_index,
             value_type: _,
         } => out.push(WasmInstr::LocalGet { local_index }),
-        LoleExpr::GlobalGet { global_index } => out.push(WasmInstr::GlobalGet { global_index }),
-        LoleExpr::StructGet {
+        LoleInstr::GlobalGet { global_index } => out.push(WasmInstr::GlobalGet { global_index }),
+        LoleInstr::StructGet {
             struct_name: _,
             base_index: _,
             primitive_gets,
         } => {
             lower_exprs(out, primitive_gets);
         }
-        LoleExpr::U32ConstLazy { value } => out.push(WasmInstr::I32Const {
+        LoleInstr::U32ConstLazy { value } => out.push(WasmInstr::I32Const {
             value: *value.borrow() as i32,
         }),
-        LoleExpr::U32Const { value } => out.push(WasmInstr::I32Const {
+        LoleInstr::U32Const { value } => out.push(WasmInstr::I32Const {
             value: value as i32,
         }),
-        LoleExpr::I64Const { value } => out.push(WasmInstr::I64Const { value }),
-        LoleExpr::Set { bind } => match bind {
+        LoleInstr::I64Const { value } => out.push(WasmInstr::I64Const { value }),
+        LoleInstr::Set { bind } => match bind {
             LoleSetBind::Local { index } => out.push(WasmInstr::LocalSet { local_index: index }),
             LoleSetBind::Global { index } => out.push(WasmInstr::GlobalSet {
                 global_index: index,
@@ -98,11 +98,11 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
                 });
             }
         },
-        LoleExpr::Return { value } => {
+        LoleInstr::Return { value } => {
             lower_expr(out, *value);
             out.push(WasmInstr::Return);
         }
-        LoleExpr::Block { block_type, body } => {
+        LoleInstr::Block { block_type, body } => {
             out.push(WasmInstr::BlockStart {
                 block_type: WasmBlockType::Block,
                 return_type: block_type.to_wasm_type(),
@@ -110,7 +110,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             lower_exprs(out, body);
             out.push(WasmInstr::BlockEnd);
         }
-        LoleExpr::Loop { block_type, body } => {
+        LoleInstr::Loop { block_type, body } => {
             out.push(WasmInstr::BlockStart {
                 block_type: WasmBlockType::Loop,
                 return_type: block_type.to_wasm_type(),
@@ -118,7 +118,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             lower_exprs(out, body);
             out.push(WasmInstr::BlockEnd);
         }
-        LoleExpr::If {
+        LoleInstr::If {
             block_type,
             cond,
             then_branch,
@@ -136,8 +136,8 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             }
             out.push(WasmInstr::BlockEnd);
         }
-        LoleExpr::Branch { label_index } => out.push(WasmInstr::Branch { label_index }),
-        LoleExpr::Call {
+        LoleInstr::Branch { label_index } => out.push(WasmInstr::Branch { label_index }),
+        LoleInstr::Call {
             fn_index,
             args,
             return_type: _,
@@ -147,11 +147,11 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleExpr) {
             }
             out.push(WasmInstr::Call { fn_index });
         }
-        LoleExpr::MultiValueEmit { values } => {
+        LoleInstr::MultiValueEmit { values } => {
             lower_exprs(out, values);
         }
-        LoleExpr::NoEmit { expr: _ } => {}
-        LoleExpr::Casted {
+        LoleInstr::NoEmit { expr: _ } => {}
+        LoleInstr::Casted {
             expr,
             value_type: _,
         } => {

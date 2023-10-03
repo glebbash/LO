@@ -13,16 +13,16 @@
 
     (fn alloc [(alloc_id u32) (size u32)] (& void) (
         (if {alloc_id == 0} (
-            (return (Stack/alloc size)))
-        )
+            (return (Stack/alloc size))
+        ))
 
         (return (Heap/alloc size))
     ))
 
     (fn free [(alloc_id u32) (ptr (& void)) (size u32)] void (
         (if {alloc_id == 0} (
-            (return (Stack/free size)))
-        )
+            (return (Stack/free size))
+        ))
 
         (return (Heap/free ptr))
     ))
@@ -100,7 +100,7 @@
             (panic "Stack overflow")
         ))
 
-        (return {Stack/CURRENT - size})
+        (return {Stack/CURRENT - size as (& void)})
     ))
 
     (fn Stack/free [(size u32)] void (
@@ -173,7 +173,7 @@
     ))
 
     (fn Heap/get_block [(ref (& void))] (& Heap/Block) (
-        (return {ref - (sizeof Heap/Block)})
+        (return {ref - (sizeof Heap/Block) as (& Heap/Block)})
     ))
 
     ; first fit
@@ -192,7 +192,7 @@
             {block = {block -> next}}
         ))
 
-        (return 0)
+        (return {0 as (& Heap/Block)})
     ))
 
 ; vec
@@ -236,13 +236,13 @@
         ))
     ))
 
-    (fn Vec/at [(self (& Vec)) (index u32)] u32 (
+    (fn Vec/at [(self (& Vec)) (index u32)] (& void) (
         (Vec/_panic_if_out_of_bounds self index)
 
         (return {self -> data + {index * {self -> item_size}}})
     ))
 
-    (fn Vec/at_unchecked [(self (& Vec)) (index u32)] u32 (
+    (fn Vec/at_unchecked [(self (& Vec)) (index u32)] (& void) (
         (return {self -> data + {index * {self -> item_size}}})
     ))
 

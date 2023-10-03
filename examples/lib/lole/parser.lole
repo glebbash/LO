@@ -51,7 +51,7 @@
 
         {res := (Lole/Parser/current_char self)}
         (if (not {res . ok}) (
-            (return res)
+            (return {res as Lole/Parser/ParseScriptResult})
         ))
 
         (if (not (Lole/Parser/is_list_start {res . data})) (
@@ -63,7 +63,7 @@
 
         {expr_res := (Lole/Parser/parse_list self)}
         (if (not {expr_res . ok}) (
-            (return expr_res)
+            (return {expr_res as Lole/Parser/ParseScriptResult})
         ))
 
         (Lole/Parser/skip_space self)
@@ -80,7 +80,7 @@
 (fn Lole/Parser/parse_expr [(self (& Lole/Parser))] Lole/Parser/ParseResult (
     {res := (Lole/Parser/current_char self)}
     (if (not {res . ok}) (
-        (return res)
+        (return {res as Lole/Parser/ParseResult})
     ))
 
     (if (Lole/Parser/is_list_start {res . data}) (
@@ -93,7 +93,7 @@
 (fn Lole/Parser/parse_atom [(self (& Lole/Parser))] Lole/Parser/ParseResult (
     {res := (Lole/Parser/current_char self)}
     (if (not {res . ok}) (
-        (return res)
+        (return {res as Lole/Parser/ParseResult})
     ))
 
     (if {res . data == (char_code "\"")} (
@@ -113,7 +113,7 @@
     (loop (
         {res := (Lole/Parser/current_char self)}
         (if (not {res . ok}) (
-            (return res)
+            (return {res as Lole/Parser/ParseResult})
         ))
 
         (if {res . data == (char_code "\"")} (
@@ -129,7 +129,7 @@
 
         {res = (Lole/Parser/current_char self)}
         (if (not {res . ok}) (
-            (return res)
+            (return {res as Lole/Parser/ParseResult})
         ))
 
         (if {res . data == (char_code "n")} (
@@ -210,7 +210,7 @@
 
     {res := (Lole/Parser/current_char self)}
     (if (not {res . ok}) (
-        (return res)
+        (return {res as Lole/Parser/ParseResult})
     ))
     {list_start_char := {res . data}}
     (Lole/Parser/next_char self) ; eat list start
@@ -222,7 +222,7 @@
     (loop (
         {res = (Lole/Parser/current_char self)}
         (if (not {res . ok}) (
-            (return res)
+            (return {res as Lole/Parser/ParseResult})
         ))
 
         (if (Lole/Parser/is_list_end {res . data}) (
@@ -240,7 +240,7 @@
 
     {res = (Lole/Parser/current_char self)}
     (if (not {res . ok}) (
-        (return res)
+        (return {res as Lole/Parser/ParseResult})
     ))
     {list_end_char := {res . data}}
     (Lole/Parser/next_char self) ; eat list end

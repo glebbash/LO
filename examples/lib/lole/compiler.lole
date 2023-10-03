@@ -98,7 +98,7 @@
             {fn_body . body} fn_ctx
         )}
         (if (not {instrs_res . ok}) (
-            (return instrs_res)
+            (return {instrs_res as Lole/Compiler/CompileResult})
         ))
         {instrs := {instrs_res . data as (& Vec)}}
 
