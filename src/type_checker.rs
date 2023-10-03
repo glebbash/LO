@@ -1,13 +1,5 @@
-use crate::{ir::*, wasm::*};
-use alloc::{vec, vec::Vec};
-
-pub fn get_wasm_type(ctx: &BlockContext, instr: &LoleInstr) -> Vec<WasmType> {
-    let lole_type = get_lole_type(ctx, instr);
-
-    let mut wasm_types = vec![];
-    lole_type.emit_components(ctx.module, &mut wasm_types);
-    wasm_types
-}
+use crate::ir::*;
+use alloc::vec;
 
 pub fn get_lole_type(ctx: &BlockContext, instr: &LoleInstr) -> LoleType {
     match instr {

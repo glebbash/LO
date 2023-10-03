@@ -1164,19 +1164,16 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 }
             };
 
-            let init_instr = compile_instr(init_expr, ctx)?;
-            let init_types = get_wasm_type(ctx, &init_instr);
-
             let value_type = parse_lole_type(type_expr, ctx.module)?;
 
-            let mut comp_types = vec![];
-            value_type.emit_components(ctx.module, &mut comp_types);
+            let init_instr = compile_instr(init_expr, ctx)?;
+            let init_type = get_lole_type(ctx, &init_instr);
 
-            if init_types != comp_types {
+            if init_type != value_type {
                 return Err(CompileError {
                     message: format!(
                         "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
-                        comp_types, init_types
+                        value_type, init_type
                     ),
                     loc: op_loc.clone(),
                 });
@@ -1299,34 +1296,15 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             let bind_instr = compile_instr(bind, ctx)?;
 
             // TODO: enable this once tests pass
-            // let value_type = get_lole_type(ctx, &value_instr).map_err(|message| CompileError {
-            //     message,
-            //     loc: value.loc().clone(),
-            // })?;
-            // let bind_type = get_lole_type(ctx, &bind_instr).map_err(|message| CompileError {
-            //     message,
-            //     loc: value.loc().clone(),
-            // })?;
+            let value_type = get_lole_type(ctx, &value_instr);
+            let bind_type = get_lole_type(ctx, &bind_instr);
 
-            // if value_type != bind_type {
-            //     return Err(CompileError {
-            //         message: format!(
-            //             "TypeError: Invalid types for '{op}', \
-            //             needed {bind_type}, \
-            //             got {value_type}",
-            //         ),
-            //         loc: op_loc.clone(),
-            //     });
-            // }
-
-            let value_types = get_wasm_type(ctx, &value_instr);
-            let bind_types = get_wasm_type(ctx, &bind_instr);
-
-            if value_types != bind_types {
+            if value_type != bind_type {
                 return Err(CompileError {
                     message: format!(
-                        "TypeError: Invalid types for '{op}', needed {:?}, got {:?}",
-                        bind_types, value_types
+                        "TypeError: Invalid types for '{op}', \
+                        needed {bind_type}, \
+                        got {value_type}",
                     ),
                     loc: op_loc.clone(),
                 });
@@ -1640,10 +1618,13 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 .types
                 .get(fn_type_index as usize)
                 .ok_or_else(|| CompileError::unreachable(file!(), line!()))?;
+
             let mut arg_types = vec![];
             for arg in &args {
-                arg_types.append(&mut get_wasm_type(ctx, &arg));
+                let lole_type = get_lole_type(ctx, arg);
+                lole_type.emit_components(ctx.module, &mut arg_types);
             }
+
             if fn_type.inputs != arg_types {
                 return Err(CompileError {
                     message: format!(
@@ -1655,6 +1636,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     loc: op_loc.clone(),
                 });
             }
+
             // TODO: use this eventually
             // let mut arg_types = vec![];
             // for arg in &args {
