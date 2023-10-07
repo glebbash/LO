@@ -917,7 +917,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     loc: expr.loc().clone(),
                 })
             ));
-            LoleInstr::MultiValueEmit { values: vec![] }
+            LoleInstr::Casted {
+                value_type: LoleType::Void,
+                expr: Box::new(LoleInstr::MultiValueEmit { values: vec![] }),
+            }
         }
         (
             "if",
@@ -1694,6 +1697,25 @@ fn compile_load(
         });
     }
 
+    if let LoleType::Tuple(item_types) = value_type {
+        let mut item_gets = vec![];
+        let mut item_byte_offset = 0;
+        for item_type in item_types {
+            item_gets.push(compile_load(
+                ctx,
+                item_type,
+                address_instr.clone(),
+                base_byte_offset + item_byte_offset,
+            )?);
+            item_byte_offset += item_type.sized_comp_stats(ctx.module)?.byte_length;
+        }
+
+        return Ok(LoleInstr::Casted {
+            value_type: value_type.clone(),
+            expr: Box::new(LoleInstr::MultiValueEmit { values: item_gets }),
+        });
+    }
+
     let LoleType::StructInstance { name } = value_type else {
         return Err(format!("Unsupported type for compile_load: {value_type:?}"));
     };
@@ -1741,6 +1763,18 @@ fn compile_local_get(
         return Ok(LoleInstr::TypedLocalGet {
             local_index: base_index,
             value_type: value_type.clone(),
+        });
+    }
+
+    if let LoleType::Tuple(item_types) = value_type {
+        let mut item_gets = vec![];
+        for (item_index, item_type) in (0..).zip(item_types) {
+            item_gets.push(compile_local_get(ctx, base_index + item_index, item_type)?);
+        }
+
+        return Ok(LoleInstr::Casted {
+            value_type: value_type.clone(),
+            expr: Box::new(LoleInstr::MultiValueEmit { values: item_gets }),
         });
     }
 
@@ -2022,6 +2056,19 @@ fn parse_lole_type_checking_ref(
                 let pointee = parse_lole_type_checking_ref(ptr_data, ctx, true)?;
 
                 return Ok(LoleType::Pointer(Box::new(pointee)));
+            }
+            [SExpr::Atom {
+                kind: AtomKind::Symbol,
+                value,
+                ..
+            }, type_exprs @ ..]
+                if value == "tuple" =>
+            {
+                let mut types = vec![];
+                for type_expr in type_exprs {
+                    types.push(parse_lole_type_checking_ref(type_expr, ctx, is_referenced)?);
+                }
+                return Ok(LoleType::Tuple(types));
             }
             _ => {}
         },
