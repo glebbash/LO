@@ -9,6 +9,9 @@
 
     {source := (WasiIO/fd_read_all {input_file . fd})}
     (defer (Vec/free source))
+    (if {input_file . fd != 0} (
+        (drop (Wasi/fd_close {input_file . fd}))
+    ))
 
     {parse_res := (Lole/Parser/parse
         {input_file . file_name}

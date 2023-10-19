@@ -119,7 +119,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
         });
     };
 
-    let [SExpr::Atom { value: op, loc: op_loc, kind }, other @ ..] = &items[..] else {
+    let [SExpr::Atom { value: op, loc: op_loc, kind }, args @ ..] = &items[..] else {
         return Err(CompileError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone()
@@ -134,7 +134,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
     }
 
     match op.as_str() {
-        "mem" => match other {
+        "mem" => match args {
             [SExpr::Atom {
                 value: mem_name,
                 loc: mem_name_loc,
@@ -199,7 +199,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 })
             }
         },
-        "fn" => match other {
+        "fn" => match args {
             [SExpr::Atom {
                 value: fn_name,
                 loc: fn_name_loc,
@@ -297,7 +297,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 })
             }
         },
-        "import" => match other {
+        "import" => match args {
             [SExpr::Atom {
                 value: fn_literal, ..
             }, SExpr::Atom {
@@ -398,7 +398,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 })
             }
         },
-        "export" => match other {
+        "export" => match args {
             [SExpr::Atom {
                 value: mem_literal,
                 loc: _,
@@ -450,7 +450,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 })
             }
         },
-        "struct" => match other {
+        "struct" => match args {
             [SExpr::Atom {
                 value: struct_name,
                 loc: name_loc,
@@ -485,7 +485,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             }
         },
         "global" => {
-            let (mutable, global_name, global_type_expr, global_value, name_loc) = match other {
+            let (mutable, global_name, global_type_expr, global_value, name_loc) = match args {
                 [SExpr::Atom {
                     value: mutable_literal,
                     loc: _,
@@ -556,7 +556,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
             let [
                 SExpr::Atom { value: offset, loc, kind: AtomKind::Symbol, },
                 SExpr::Atom { value: data_base64, loc: _, kind }
-            ] = other else {
+            ] = args else {
                 return Err(CompileError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),

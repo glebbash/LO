@@ -12,6 +12,9 @@
 
     {source := (WasiIO/fd_read_all {input_file . fd})}
     (defer (Vec/free source))
+    (if {input_file . fd != 0} (
+        (drop (Wasi/fd_close {input_file . fd}))
+    ))
 
     {parse_res := (Lole/Parser/parse
         {input_file . file_name}
@@ -61,7 +64,7 @@
     {file_name := (StringSlice/clone (Args/get args 1))}
     {open_res := (WasiIO/fd_open file_name)}
     (if {open_res . err != 0} (
-        (fputs Wasi/FD_STDERR "Error: cannot read file: ")
+        (fputs Wasi/FD_STDERR "Error: cannot open file: ")
         (fputs Wasi/FD_STDERR file_name)
         (fputs Wasi/FD_STDERR "\n")
         (Wasi/proc_exit 1)
@@ -74,16 +77,15 @@
 ))
 
 (fn print_err_and_exit [(err (& Lole/Ast/CompileError))] void (
-    {parse_err := (* err)}
-    (defer (Lole/Ast/CompileError/free parse_err))
+    (defer (Lole/Ast/CompileError/free (* err)))
 
-    (fputs Wasi/FD_STDERR {parse_err . loc . file_name})
+    (fputs Wasi/FD_STDERR {err -> loc . file_name})
     (fputs Wasi/FD_STDERR ":")
-    (fprint_u32 Wasi/FD_STDERR {parse_err . loc . line})
+    (fprint_u32 Wasi/FD_STDERR {err -> loc . line})
     (fputs Wasi/FD_STDERR ":")
-    (fprint_u32 Wasi/FD_STDERR {parse_err . loc . col})
+    (fprint_u32 Wasi/FD_STDERR {err -> loc . col})
     (fputs Wasi/FD_STDERR " - ")
-    (fprint_str Wasi/FD_STDERR {parse_err . message})
+    (fprint_str Wasi/FD_STDERR {err -> message})
     (fputs Wasi/FD_STDERR "\n")
 
     (return (Wasi/proc_exit 1))
