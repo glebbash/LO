@@ -5,8 +5,17 @@
 
 (fn WasiIO/fd_read_all [(fd u32)] (& String) (
     {output := (Vec/new 256 (sizeof u8))}
-    {chunk := {(Stack/alloc 256) as (&* u8)}}
-    (defer (Stack/free 256))
+    {chunk := {(alloc Alloc/HEAP 256) as (&* u8)}}
+    (defer (free Alloc/HEAP chunk 256))
+
+    ; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ; TODO: this does not work for some reason:
+    ; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    ; {chunk := {(alloc Alloc/STACK 256) as (&* u8)}}
+    ; (defer (free Alloc/STACK chunk 256))
+
+    ; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     {in_vec := (new Wasi/IOVec (Wasi/IOVec :base chunk :size 256)
         :using Alloc/STACK)}

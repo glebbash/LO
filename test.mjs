@@ -279,6 +279,24 @@ test("compiles minify", async () => {
     );
 });
 
+test("compiles minify (using file input)", async () => {
+    const program = await compile("./examples/minify.lole");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, {
+            stdout: stdout.fd,
+            args: ["minify.lole", "test/42.lole"],
+            preopens: { ".": "examples" },
+        });
+        return readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(
+        output,
+        "(export main :as main) (fn main () u32 ((return 42)))\n"
+    );
+});
+
 // utils
 
 /**
@@ -287,12 +305,7 @@ test("compiles minify", async () => {
  */
 async function loadCompilerWithFuncAPI(compilerPath) {
     const compiler = await loadWasm(await readFile(compilerPath), {
-        wasi_snapshot_preview1: {
-            path_open: () => "stub",
-            fd_read: () => "stub",
-            fd_write: () => "stub",
-            proc_exit: () => "stub",
-        },
+        wasi_snapshot_preview1: new Proxy({}, { get: () => () => 0 }),
     });
 
     return async (sourcePath) => {
