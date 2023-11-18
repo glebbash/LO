@@ -121,7 +121,7 @@
         ))
 
         (if {res . data != (char_code "\\")} (
-            (Vec/push_u8 value {res . data})
+            {u8 @ (Vec/push value) = {res . data as u8}}
             (Lole/Parser/next_char self)
             (continue)
         ))
@@ -133,20 +133,20 @@
         ))
 
         (if {res . data == (char_code "n")} (
-            (Vec/push_u8 value (char_code "\n"))
+            {u8 @ (Vec/push value) = {(char_code "\n") as u8}}
             (Lole/Parser/next_char self)
             (continue)
         ))
 
         (if {res . data == (char_code "t")} (
-            (Vec/push_u8 value (char_code "\t"))
+            {u8 @ (Vec/push value) = {(char_code "\t") as u8}}
             (Lole/Parser/next_char self)
             (continue)
         ))
 
         (if {res . data == (char_code "\\")
                 || {res . data == (char_code "\"")}} (
-            (Vec/push_u8 value {res . data})
+            {u8 @ (Vec/push value) = {res . data as u8}}
             (Lole/Parser/next_char self)
             (continue)
         ))
@@ -409,9 +409,9 @@
     {lhs := (Lole/Parser/m_expr_to_s_expr items (Lole/Ast/Location/clone loc))}
 
     {sexpr_items := (Vec/new 3 (sizeof Lole/Ast/SExpr))}
-    {Lole/Ast/SExpr @ (Vec/push_undef sexpr_items) = op}
-    {Lole/Ast/SExpr @ (Vec/push_undef sexpr_items) = lhs}
-    {Lole/Ast/SExpr @ (Vec/push_undef sexpr_items) = rhs}
+    {Lole/Ast/SExpr @ (Vec/push sexpr_items) = op}
+    {Lole/Ast/SExpr @ (Vec/push sexpr_items) = lhs}
+    {Lole/Ast/SExpr @ (Vec/push sexpr_items) = rhs}
 
     (return (Lole/Ast/SExpr
         :kind Lole/Ast/SExpr/LIST

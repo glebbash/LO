@@ -61,7 +61,7 @@
 
         {exports := {wasm_module -> exports}}
 
-        {Lole/Wasm/WasmExport @ (Vec/push_undef exports) = (Lole/Wasm/WasmExport
+        {Lole/Wasm/WasmExport @ (Vec/push exports) = (Lole/Wasm/WasmExport
             :export_type Lole/Wasm/WasmExportType/FUNC
             :export_name (String/clone {fn_export . out_name})
             :exported_item_index {ctx -> imported_fns_count + {fn_def . fn_index}}
@@ -130,7 +130,7 @@
                 ))
             ))
 
-            {Lole/Wasm/WasmLocals @ (Vec/push_undef locals) = (Lole/Wasm/WasmLocals
+            {Lole/Wasm/WasmLocals @ (Vec/push locals) = (Lole/Wasm/WasmLocals
                 :count 1
                 :value_type local_type
             )}
@@ -139,7 +139,7 @@
         ))
 
         {codes := {wasm_module -> codes}}
-        {Lole/Wasm/WasmFn @ (Vec/push_undef codes) = (Lole/Wasm/WasmFn
+        {Lole/Wasm/WasmFn @ (Vec/push codes) = (Lole/Wasm/WasmFn
             :locals locals
             :expr (Lole/Wasm/WasmExpr :instrs instrs)
         )}

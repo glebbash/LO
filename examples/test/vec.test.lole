@@ -6,12 +6,20 @@
 (export mem m1 :as memory)
 
 (export Vec/new :as vec_new)
-(export Vec/get_u8 :as vec_get_u8)
 (export Vec/swap :as vec_swap)
-(export Vec/push_u8 :as vec_push_u8)
 (export Vec/push_all :as vec_push_all)
 
 (export vec_len :as vec_len)
 (fn vec_len [(vec (& Vec))] u32 (
     (return {vec -> size})
+))
+
+(export vec_push_u8 :as vec_push_u8)
+(fn vec_push_u8 [(vec (& Vec)) (item u8)] void (
+    {u8 @ (Vec/push vec) = item}
+))
+
+(export vec_get_u8 :as vec_get_u8)
+(fn vec_get_u8 [(vec (& Vec)) (index u32)] u8 (
+    (return {u8 @ (Vec/at vec index)})
 ))

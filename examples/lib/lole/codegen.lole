@@ -37,13 +37,13 @@
 ))
 
 (fn Lole/CodeGen/write_magic_and_version [(out (& Vec<u8>))] void (
-    (Vec/push_u8 out 0)
+    {u8 @ (Vec/push out) = 0}
     (Vec/push_all out "asm")
 
-    (Vec/push_u8 out 1)
-    (Vec/push_u8 out 0)
-    (Vec/push_u8 out 0)
-    (Vec/push_u8 out 0)
+    {u8 @ (Vec/push out) = 1}
+    {u8 @ (Vec/push out) = 0}
+    {u8 @ (Vec/push out) = 0}
+    {u8 @ (Vec/push out) = 0}
 ))
 
 (fn Lole/CodeGen/write_section [(out (& Vec<u8>)) (section (& Vec<u8>)) (section_code u8)] void (
