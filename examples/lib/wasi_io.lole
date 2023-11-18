@@ -25,7 +25,7 @@
     (defer (Stack/free (sizeof u32)))
 
     (loop (
-        {err := (Wasi/fd_read fd in_vec 1 nread_ref)}
+        {_err := (Wasi/fd_read fd in_vec 1 nread_ref)}
 
         {nread := (* nread_ref)}
 

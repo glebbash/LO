@@ -1,0 +1,34 @@
+{Result :: (macro [T E] (variant
+    :ok T
+    :err E
+))}
+
+{main :: (fn [] void (
+    {res := (compile)}
+    (if {err := {res . err}} (
+        (fprint_str STDERR {err -> message})
+        (proc_exit 1)
+    ))
+))}
+
+{compile :: (fn [] (Result void CompileError) (
+    {exprs := (try (parse))}
+    ; {exprs := (do
+    ;     {res := (parse)}
+    ;     (if {res . err != 0} (
+    ;         (return res)
+    ;     ))
+
+    ;     (block.return {res . ok})
+    ; )}
+    (return (((Result void CompileError)) :ok (do)))
+))}
+
+{parse :: (fn [] (Result (Vec SExpr) CompileError) (
+    (return ((Result (Vec SExpr) CompileError) :err
+        (CompileError
+            :message (String/new "Not implemented")
+            :loc (Location/internal)
+        )
+    ))
+))}

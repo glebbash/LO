@@ -1,0 +1,99 @@
+(mod "lib/cli")
+(mod "lib/wasi_io")
+
+; solve the problem
+
+; to solve the problem:
+;     you take each x and y of permutations of numbers
+;         and when the sum of x and y is equal to 2020
+;             you print the product of x and y
+
+; to get the numbers:
+;     you create a list of integers
+
+;     you read the text file "1txt"
+;     you split it by "\n" into lines
+;     you take each line of lines and parse it as a number
+;         and you put it into the list
+
+; input_numbers = std.read_file!("1.txt")
+;     .split("\n")
+;     .map(int.parse!)
+; permutations(input_numbers, 2).each([x, y] => {
+;     if x + y == 2020:
+;         print x * y
+; })
+
+(fn main [] void (
+    {input := (fs/read_text_file "aoc2020/1.txt")}
+    (defer (Vec/free input))
+
+    {expense_report := (Vec/new 0 (sizeof u32))}
+    {lines_iter := (String/split input "\n")}
+    (loop (
+        (if (not (Iter/has_next lines_iter)) (
+            (break)
+        ))
+
+        {line := {StringSlice @ (Iter/next lines_iter)}}
+        (Vec/push expense_report (std/parse_u32 line))
+    ))
+
+    {i := 0}
+    (loop (
+        (if {i == (Vec/len expense_report)} (
+            (break)
+        ))
+        {x := {u32 @ (Vec/at expense_report i)}}
+
+        {j := 0}
+        (loop (
+            (if {j == (Vec/len expense_report)} (
+                (break)
+            ))
+            {y := {u32 @ (Vec/at expense_report j)}}
+
+            (if {x + y == 2020} (
+                (print_u32 {x * y})
+                (break 2)
+            ))
+            {j += 1}
+        ))
+        {i += 1}
+    ))
+
+    {n := (Vec/len expense_report)}
+    (for {i := 0} {i < n} {i += 1} (
+        {x := {u32 @ (Vec/at expense_report i)}}
+        (for {j := 0} {j < n} {j += 1} (
+            {y := {u32 @ (Vec/at expense_report j)}}
+            (if {x + y == 2020} (
+                (print_u32 {x * y})
+            ))
+        ))
+    ))
+
+    n = expense_report.len()
+    for i in 0..n {
+        x = expense_report[i]
+        for j in 0..n {
+            y = expense_report[j]
+            if x + y == 2020 {
+                print(x * y)
+            }
+        }
+    }
+))
+
+(fn fs/read_text_file [(file_name StringSlice)] (& String) (
+    {open_res := (WasiIO/fd_open "aoc2020/1.txt")}
+    (if {open_res . err != 0} (
+        (fputs Wasi/FD_STDERR "Error opening file\n")
+        (Wasi/proc_exit 1)
+    ))
+    {fd := {open_res . fd}}
+    (defer (drop (Wasi/fd_close fd)))
+
+    {input := (WasiIO/fd_read_all fd)}
+    (return input)
+))
