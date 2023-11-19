@@ -114,7 +114,8 @@ impl BlockContext<'_, '_> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LolePrimitiveType {
+pub enum LoleType {
+    Void,
     Bool,
     U8,
     I8,
@@ -126,46 +127,6 @@ pub enum LolePrimitiveType {
     U64,
     I64,
     F64,
-}
-
-impl LolePrimitiveType {
-    pub fn byte_length(&self) -> u32 {
-        match self {
-            LolePrimitiveType::Bool => 1,
-            LolePrimitiveType::U8 => 1,
-            LolePrimitiveType::I8 => 1,
-            LolePrimitiveType::U16 => 2,
-            LolePrimitiveType::I16 => 2,
-            LolePrimitiveType::U32 => 4,
-            LolePrimitiveType::I32 => 4,
-            LolePrimitiveType::F32 => 4,
-            LolePrimitiveType::U64 => 8,
-            LolePrimitiveType::I64 => 8,
-            LolePrimitiveType::F64 => 8,
-        }
-    }
-
-    pub fn to_wasm_type(&self) -> WasmType {
-        match self {
-            LolePrimitiveType::Bool => WasmType::I32,
-            LolePrimitiveType::U8 => WasmType::I32,
-            LolePrimitiveType::I8 => WasmType::I32,
-            LolePrimitiveType::U16 => WasmType::I32,
-            LolePrimitiveType::I16 => WasmType::I32,
-            LolePrimitiveType::U32 => WasmType::I32,
-            LolePrimitiveType::I32 => WasmType::I32,
-            LolePrimitiveType::F32 => WasmType::F32,
-            LolePrimitiveType::U64 => WasmType::I64,
-            LolePrimitiveType::I64 => WasmType::I64,
-            LolePrimitiveType::F64 => WasmType::F64,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LoleType {
-    Void,
-    Primitive(LolePrimitiveType),
     Pointer(Box<LoleType>),
     Tuple(Vec<LoleType>),
     StructInstance { name: String },
@@ -173,23 +134,20 @@ pub enum LoleType {
 
 impl core::fmt::Display for LoleType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        use LolePrimitiveType::*;
         use LoleType::*;
         match self {
             Void => f.write_str("void"),
-            Primitive(primitive) => match primitive {
-                Bool => f.write_str("bool"),
-                U8 => f.write_str("u8"),
-                I8 => f.write_str("i8"),
-                U16 => f.write_str("u16"),
-                I16 => f.write_str("i16"),
-                U32 => f.write_str("u32"),
-                I32 => f.write_str("i32"),
-                F32 => f.write_str("f32"),
-                U64 => f.write_str("u64"),
-                I64 => f.write_str("i64"),
-                F64 => f.write_str("f64"),
-            },
+            Bool => f.write_str("bool"),
+            U8 => f.write_str("u8"),
+            I8 => f.write_str("i8"),
+            U16 => f.write_str("u16"),
+            I16 => f.write_str("i16"),
+            U32 => f.write_str("u32"),
+            I32 => f.write_str("i32"),
+            F32 => f.write_str("f32"),
+            U64 => f.write_str("u64"),
+            I64 => f.write_str("i64"),
+            F64 => f.write_str("f64"),
             Pointer(pointee) => f.write_fmt(format_args!("(& {pointee})")),
             Tuple(types) => {
                 f.write_str("(tuple")?;
@@ -206,7 +164,7 @@ impl core::fmt::Display for LoleType {
 
 pub struct ValueComponent {
     pub byte_offset: u32,
-    pub value_type: LolePrimitiveType,
+    pub value_type: LoleType,
 }
 
 #[derive(Default)]
@@ -217,11 +175,14 @@ pub struct EmitComponentStats {
 
 impl LoleType {
     pub fn to_wasm_type(&self) -> Option<WasmType> {
-        match self {
-            LoleType::Primitive(primitive) => Some(primitive.to_wasm_type()),
-            LoleType::Pointer(_) => Some(WasmType::I32),
-            _ => None,
-        }
+        Some(match self {
+            LoleType::Bool | LoleType::U8 | LoleType::I8 | LoleType::U16 => WasmType::I32,
+            LoleType::I16 | LoleType::U32 | LoleType::I32 | LoleType::Pointer(_) => WasmType::I32,
+            LoleType::F32 => WasmType::F32,
+            LoleType::U64 | LoleType::I64 => WasmType::I64,
+            LoleType::F64 => WasmType::F64,
+            _ => return None,
+        })
     }
 
     pub fn emit_sized_component_stats(
@@ -230,27 +191,15 @@ impl LoleType {
         stats: &mut EmitComponentStats,
         components: &mut Vec<ValueComponent>,
     ) -> Result<(), String> {
+        let mut byte_len = None;
         match self {
             LoleType::Void => {}
-            LoleType::Primitive(primitive) => {
-                let component = ValueComponent {
-                    byte_offset: stats.byte_length,
-                    value_type: primitive.clone(),
-                };
-
-                stats.count += 1;
-                stats.byte_length += component.value_type.byte_length();
-                components.push(component);
+            LoleType::Bool | LoleType::U8 | LoleType::I8 => byte_len = Some(1),
+            LoleType::U16 | LoleType::I16 => byte_len = Some(2),
+            LoleType::U32 | LoleType::I32 | LoleType::F32 | LoleType::Pointer(_) => {
+                byte_len = Some(4)
             }
-            LoleType::Pointer(_) => {
-                let component = ValueComponent {
-                    byte_offset: stats.byte_length,
-                    value_type: LolePrimitiveType::U32,
-                };
-                stats.count += 1;
-                stats.byte_length += component.value_type.byte_length();
-                components.push(component);
-            }
+            LoleType::U64 | LoleType::I64 | LoleType::F64 => byte_len = Some(8),
             LoleType::Tuple(types) => {
                 for lole_type in types {
                     lole_type.emit_sized_component_stats(ctx, stats, components)?;
@@ -267,20 +216,28 @@ impl LoleType {
                 }
             }
         };
+
+        if let Some(byte_len) = byte_len {
+            let component = ValueComponent {
+                byte_offset: stats.byte_length,
+                value_type: self.clone(),
+            };
+
+            stats.count += 1;
+            stats.byte_length += byte_len;
+            components.push(component);
+        }
         Ok(())
     }
 
     pub fn emit_components(&self, ctx: &ModuleContext, components: &mut Vec<WasmType>) -> u32 {
+        if let Some(wasm_type) = self.to_wasm_type() {
+            components.push(wasm_type);
+            return 1;
+        }
+
         match self {
             LoleType::Void => 0,
-            LoleType::Pointer(_) => {
-                components.push(WasmType::I32);
-                1
-            }
-            LoleType::Primitive(value_type) => {
-                components.push(value_type.to_wasm_type());
-                1
-            }
             LoleType::Tuple(types) => {
                 let mut count = 0;
                 for lole_type in types {
@@ -298,6 +255,7 @@ impl LoleType {
                 }
                 count
             }
+            _ => unreachable!(),
         }
     }
 
@@ -310,19 +268,17 @@ impl LoleType {
 
     pub fn to_load_kind(&self) -> Result<WasmLoadKind, String> {
         match self {
-            LoleType::Primitive(primitive) => match primitive {
-                LolePrimitiveType::Bool => return Ok(WasmLoadKind::I32),
-                LolePrimitiveType::U8 => return Ok(WasmLoadKind::I32U8),
-                LolePrimitiveType::I8 => return Ok(WasmLoadKind::I32I8),
-                LolePrimitiveType::U16 => return Ok(WasmLoadKind::I32U16),
-                LolePrimitiveType::I16 => return Ok(WasmLoadKind::I32I16),
-                LolePrimitiveType::U32 => return Ok(WasmLoadKind::I32),
-                LolePrimitiveType::I32 => return Ok(WasmLoadKind::I32),
-                LolePrimitiveType::F32 => return Ok(WasmLoadKind::F32),
-                LolePrimitiveType::U64 => return Ok(WasmLoadKind::I64),
-                LolePrimitiveType::I64 => return Ok(WasmLoadKind::I64),
-                LolePrimitiveType::F64 => return Ok(WasmLoadKind::F64),
-            },
+            LoleType::Bool => return Ok(WasmLoadKind::I32),
+            LoleType::U8 => return Ok(WasmLoadKind::I32U8),
+            LoleType::I8 => return Ok(WasmLoadKind::I32I8),
+            LoleType::U16 => return Ok(WasmLoadKind::I32U16),
+            LoleType::I16 => return Ok(WasmLoadKind::I32I16),
+            LoleType::U32 => return Ok(WasmLoadKind::I32),
+            LoleType::I32 => return Ok(WasmLoadKind::I32),
+            LoleType::F32 => return Ok(WasmLoadKind::F32),
+            LoleType::U64 => return Ok(WasmLoadKind::I64),
+            LoleType::I64 => return Ok(WasmLoadKind::I64),
+            LoleType::F64 => return Ok(WasmLoadKind::F64),
             LoleType::Pointer(_) => return Ok(WasmLoadKind::I32),
             _ => {}
         };

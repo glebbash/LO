@@ -4,9 +4,9 @@ use alloc::vec;
 pub fn get_lole_type(ctx: &BlockContext, instr: &LoleInstr) -> LoleType {
     match instr {
         LoleInstr::Unreachable => LoleType::Void,
-        LoleInstr::U32ConstLazy { value: _ } => LoleType::Primitive(LolePrimitiveType::U32),
-        LoleInstr::U32Const { value: _ } => LoleType::Primitive(LolePrimitiveType::U32),
-        LoleInstr::I64Const { value: _ } => LoleType::Primitive(LolePrimitiveType::I64),
+        LoleInstr::U32ConstLazy { value: _ } => LoleType::U32,
+        LoleInstr::U32Const { value: _ } => LoleType::U32,
+        LoleInstr::I64Const { value: _ } => LoleType::I64,
         LoleInstr::UntypedLocalGet { local_index: _ } => unreachable!(),
 
         LoleInstr::MultiValueEmit { values } => {
@@ -43,8 +43,8 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleInstr) -> LoleType {
             drop_count: _,
         } => LoleType::Void,
         LoleInstr::Return { value: _ } => LoleType::Void,
-        LoleInstr::MemorySize => LoleType::Primitive(LolePrimitiveType::I32),
-        LoleInstr::MemoryGrow { size: _ } => LoleType::Primitive(LolePrimitiveType::I32),
+        LoleInstr::MemorySize => LoleType::I32,
+        LoleInstr::MemoryGrow { size: _ } => LoleType::I32,
 
         LoleInstr::BinaryOp {
             kind: _,

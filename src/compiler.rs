@@ -699,14 +699,14 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
 
             if value == "true" {
                 return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    value_type: LoleType::Bool,
                     expr: Box::new(LoleInstr::U32Const { value: 1 }),
                 });
             }
 
             if value == "false" {
                 return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    value_type: LoleType::Bool,
                     expr: Box::new(LoleInstr::U32Const { value: 0 }),
                 });
             }
@@ -832,7 +832,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         ("&&", [lhs, rhs]) => LoleInstr::Casted {
-            value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+            value_type: LoleType::Bool,
             expr: Box::new(LoleInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32And,
                 lhs: Box::new(compile_instr(lhs, ctx)?),
@@ -840,7 +840,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             }),
         },
         ("||", [lhs, rhs]) => LoleInstr::Casted {
-            value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+            value_type: LoleType::Bool,
             expr: Box::new(LoleInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Or,
                 lhs: Box::new(compile_instr(lhs, ctx)?),
@@ -898,7 +898,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             let size = compile_instr(size_expr, ctx)?;
             let size_type = get_lole_type(ctx, &size);
 
-            if size_type != LoleType::Primitive(LolePrimitiveType::U32) {
+            if size_type != LoleType::U32 {
                 return Err(CompileError {
                     message: format!("Invalid arguments for {op}"),
                     loc: size_expr.loc().clone(),
@@ -1718,7 +1718,7 @@ fn compile_load(
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
         primitive_loads.push(LoleInstr::Load {
-            kind: LoleType::Primitive(comp.value_type),
+            kind: comp.value_type,
             align: 1,
             offset: comp.byte_offset,
             address_instr: Box::new(LoleInstr::UntypedLocalGet {
@@ -1796,14 +1796,14 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInstr, C
 
             if value == "true" {
                 return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    value_type: LoleType::Bool,
                     expr: Box::new(LoleInstr::U32Const { value: 1 }),
                 });
             }
 
             if value == "false" {
                 return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Primitive(LolePrimitiveType::Bool),
+                    value_type: LoleType::Bool,
                     expr: Box::new(LoleInstr::U32Const { value: 0 }),
                 });
             }
@@ -2004,17 +2004,17 @@ fn parse_lole_type_checking_ref(
             ..
         } => match &name[..] {
             "void" => return Ok(LoleType::Void),
-            "bool" => return Ok(LoleType::Primitive(LolePrimitiveType::Bool)),
-            "u8" => return Ok(LoleType::Primitive(LolePrimitiveType::U8)),
-            "i8" => return Ok(LoleType::Primitive(LolePrimitiveType::I8)),
-            "u16" => return Ok(LoleType::Primitive(LolePrimitiveType::U16)),
-            "i16" => return Ok(LoleType::Primitive(LolePrimitiveType::I16)),
-            "u32" => return Ok(LoleType::Primitive(LolePrimitiveType::U32)),
-            "i32" => return Ok(LoleType::Primitive(LolePrimitiveType::I32)),
-            "f32" => return Ok(LoleType::Primitive(LolePrimitiveType::F32)),
-            "u64" => return Ok(LoleType::Primitive(LolePrimitiveType::U64)),
-            "i64" => return Ok(LoleType::Primitive(LolePrimitiveType::I64)),
-            "f64" => return Ok(LoleType::Primitive(LolePrimitiveType::F64)),
+            "bool" => return Ok(LoleType::Bool),
+            "u8" => return Ok(LoleType::U8),
+            "i8" => return Ok(LoleType::I8),
+            "u16" => return Ok(LoleType::U16),
+            "i16" => return Ok(LoleType::I16),
+            "u32" => return Ok(LoleType::U32),
+            "i32" => return Ok(LoleType::I32),
+            "f32" => return Ok(LoleType::F32),
+            "u64" => return Ok(LoleType::U64),
+            "i64" => return Ok(LoleType::I64),
+            "f64" => return Ok(LoleType::F64),
             _ => {
                 if let Some(struct_def) = ctx.struct_defs.get(name) {
                     if !struct_def.fully_defined && !is_referenced {
