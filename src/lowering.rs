@@ -52,8 +52,8 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoleInstr) {
             });
             lower_exprs(out, primitive_loads);
         }
-        LoleInstr::LocalGet { local_index }
-        | LoleInstr::TypedLocalGet {
+        LoleInstr::UntypedLocalGet { local_index }
+        | LoleInstr::LocalGet {
             local_index,
             value_type: _,
         } => out.push(WasmInstr::LocalGet { local_index }),

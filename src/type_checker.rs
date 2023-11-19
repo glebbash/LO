@@ -7,6 +7,7 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleInstr) -> LoleType {
         LoleInstr::U32ConstLazy { value: _ } => LoleType::Primitive(LolePrimitiveType::U32),
         LoleInstr::U32Const { value: _ } => LoleType::Primitive(LolePrimitiveType::U32),
         LoleInstr::I64Const { value: _ } => LoleType::Primitive(LolePrimitiveType::I64),
+        LoleInstr::UntypedLocalGet { local_index: _ } => unreachable!(),
 
         LoleInstr::MultiValueEmit { values } => {
             let mut types = vec![];
@@ -66,20 +67,10 @@ pub fn get_lole_type(ctx: &BlockContext, instr: &LoleInstr) -> LoleType {
 
             global_def.value_type.clone()
         }
-        LoleInstr::TypedLocalGet {
+        LoleInstr::LocalGet {
             local_index: _,
             value_type,
         } => value_type.clone(),
-        LoleInstr::LocalGet { local_index } => {
-            let local_def = ctx
-                .fn_ctx
-                .locals
-                .values()
-                .find(|local| local.index == *local_index)
-                .unwrap();
-
-            local_def.value_type.clone()
-        }
         LoleInstr::Call {
             return_type,
             fn_index: _,

@@ -7,7 +7,6 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::cell::RefCell;
 
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: u32 = 1;
@@ -46,9 +45,8 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
         let mut fn_ctx = FnContext {
             module: &ctx,
             fn_lole_type: &fn_def.kind,
-            locals: &mut fn_body.locals.borrow_mut(),
             locals_last_index: fn_body.locals_last_index,
-            non_arg_locals: vec![],
+            non_arg_wasm_locals: vec![],
             defers: BTreeMap::default(),
         };
 
@@ -57,7 +55,8 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
             fn_ctx: &mut fn_ctx,
             block: Block {
                 block_type: BlockType::Function,
-                parent: None,
+                parent: Some(&fn_body.block),
+                locals: BTreeMap::new(),
             },
         };
 
@@ -67,7 +66,7 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, CompileError> {
         };
 
         let mut locals = Vec::<WasmLocals>::new();
-        for local_type in &block_ctx.fn_ctx.non_arg_locals {
+        for local_type in &block_ctx.fn_ctx.non_arg_wasm_locals {
             if let Some(wasm_locals) = locals.last_mut() {
                 if (*wasm_locals).value_type == *local_type {
                     wasm_locals.count += 1;
@@ -214,8 +213,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                     });
                 }
 
-                let mut locals = BTreeMap::new();
-                let mut locals_last_index = 0;
+                let mut block = Block {
+                    block_type: BlockType::Block,
+                    parent: Option::None,
+                    locals: BTreeMap::new(),
+                };
 
                 let mut lole_inputs = vec![];
                 let mut wasm_inputs = vec![];
@@ -236,7 +238,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         });
                     };
 
-                    if locals.contains_key(p_name) {
+                    if block.locals.contains_key(p_name) {
                         return Err(CompileError {
                             message: format!(
                                 "Found function param with conflicting name: {p_name}"
@@ -245,19 +247,18 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                         });
                     }
 
+                    let local_index = wasm_inputs.len() as u32;
                     let value_type = parse_lole_type(p_type, &ctx)?;
-                    let comp_count = value_type.emit_components(&ctx, &mut wasm_inputs);
+                    value_type.emit_components(&ctx, &mut wasm_inputs);
 
-                    locals.insert(
+                    block.locals.insert(
                         p_name.clone(),
                         LocalDef {
-                            index: locals_last_index,
+                            index: local_index,
                             value_type: value_type.clone(),
                         },
                     );
                     lole_inputs.push(value_type);
-
-                    locals_last_index += comp_count;
                 }
 
                 let lole_output = parse_lole_type(output_expr, &ctx)?;
@@ -265,6 +266,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 lole_output.emit_components(&ctx, &mut wasm_outputs);
 
                 let fn_index = ctx.wasm_module.functions.len() as u32;
+                let locals_last_index = wasm_inputs.len() as u32;
 
                 let type_index = ctx.insert_fn_type(WasmFnType {
                     inputs: wasm_inputs,
@@ -285,7 +287,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), C
                 ctx.fn_bodies.push(FnBody {
                     fn_index,
                     type_index,
-                    locals: RefCell::new(locals),
+                    block,
                     locals_last_index,
                     body: body.clone(),
                 });
@@ -724,14 +726,14 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 });
             };
 
-            let Some(local) = ctx.fn_ctx.locals.get(value.as_str()) else {
+            let Some(local) = ctx.block.get_local(value.as_str()) else {
                 return Err(CompileError {
                     message: format!("Reading unknown variable: {value}"),
                     loc: loc.clone()
                 });
             };
 
-            return compile_local_get(ctx.module, local.index, &local.value_type).map_err(
+            return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(
                 |message| CompileError {
                     message,
                     loc: expr.loc().clone(),
@@ -752,7 +754,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
         ("drop", [expr]) => {
             let instr = compile_instr(expr, ctx)?;
             let instr_type = get_lole_type(ctx, &instr);
-            let drop_count = instr_type.emit_components(ctx.module, &mut vec![]);
+            let drop_count = instr_type.emit_components(&ctx.module, &mut vec![]);
 
             LoleInstr::Drop {
                 value: Box::new(instr),
@@ -940,6 +942,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     block: Block {
                         block_type: BlockType::Block,
                         parent: Some(&ctx.block),
+                        locals: BTreeMap::new(),
                     },
                 },
             )?;
@@ -952,6 +955,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     block: Block {
                         block_type: BlockType::Block,
                         parent: Some(&ctx.block),
+                        locals: BTreeMap::new(),
                     },
                 },
             )?);
@@ -980,6 +984,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     block: Block {
                         block_type: BlockType::Block,
                         parent: Some(&ctx.block),
+                        locals: BTreeMap::new(),
                     },
                 },
             )?,
@@ -992,6 +997,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 block: Block {
                     block_type: BlockType::Loop,
                     parent: Some(&ctx.block),
+                    locals: BTreeMap::new(),
                 },
             };
 
@@ -1032,7 +1038,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     break;
                 }
 
-                current_block = current_block.parent.unwrap();
+                current_block = &current_block.parent.unwrap();
                 label_index += 1;
             }
 
@@ -1125,7 +1131,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
         }
         ("as", [value_expr, type_expr]) => {
             let lole_expr = compile_instr(value_expr, ctx)?;
-            let value_type = parse_lole_type(type_expr, ctx.module)?;
+            let value_type = parse_lole_type(type_expr, &ctx.module)?;
 
             LoleInstr::Casted {
                 value_type,
@@ -1133,11 +1139,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             }
         }
         ("sizeof", [type_expr]) => {
-            let value_type = parse_lole_type(type_expr, ctx.module)?;
+            let value_type = parse_lole_type(type_expr, &ctx.module)?;
 
             LoleInstr::U32Const {
                 value: value_type
-                    .sized_comp_stats(ctx.module)
+                    .sized_comp_stats(&ctx.module)
                     .map_err(|err| CompileError {
                         message: err,
                         loc: op_loc.clone(),
@@ -1167,7 +1173,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 }
             };
 
-            let value_type = parse_lole_type(type_expr, ctx.module)?;
+            let value_type = parse_lole_type(type_expr, &ctx.module)?;
 
             let init_instr = compile_instr(init_expr, ctx)?;
             let init_type = get_lole_type(ctx, &init_instr);
@@ -1190,10 +1196,10 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     message: format!("`alloc` not defined, required for using {}", op),
                     loc: op_loc.clone(),
                 })?;
-            let alloc_fn_index = alloc_fn_def.get_absolute_index(ctx.module);
+            let alloc_fn_index = alloc_fn_def.get_absolute_index(&ctx.module);
 
             let value_size = value_type
-                .sized_comp_stats(ctx.module)
+                .sized_comp_stats(&ctx.module)
                 .map_err(|err| CompileError {
                     message: err,
                     loc: op_loc.clone(),
@@ -1201,13 +1207,13 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 .byte_length;
 
             let return_addr_local_index = ctx.fn_ctx.locals_last_index;
-            ctx.fn_ctx.non_arg_locals.push(WasmType::I32);
+            ctx.fn_ctx.non_arg_wasm_locals.push(WasmType::I32);
             ctx.fn_ctx.locals_last_index += 1;
 
             let init_load = compile_load(
                 ctx,
                 &value_type,
-                Box::new(LoleInstr::LocalGet {
+                Box::new(LoleInstr::UntypedLocalGet {
                     local_index: return_addr_local_index,
                 }),
                 0,
@@ -1239,7 +1245,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                             },
                         },
                         init_store_instr,
-                        LoleInstr::LocalGet {
+                        LoleInstr::UntypedLocalGet {
                             local_index: return_addr_local_index,
                         },
                     ],
@@ -1261,30 +1267,18 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 });
             };
 
-            if ctx.fn_ctx.locals.contains_key(local_name) {
+            if ctx.block.get_own_local(local_name).is_some() {
                 return Err(CompileError {
                     message: format!("Duplicate local definition: {local_name}"),
                     loc: name_loc.clone(),
                 });
             }
 
-            let value_type = parse_lole_type(value_type, ctx.module)?;
+            let value_type = parse_lole_type(value_type, &ctx.module)?;
+            let local_indicies = ctx.push_local(local_name.clone(), value_type.clone());
 
-            let start_index = ctx.fn_ctx.locals_last_index;
-            let comp_count =
-                value_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_locals);
-
-            ctx.fn_ctx.locals_last_index += comp_count;
-            ctx.fn_ctx.locals.insert(
-                local_name.clone(),
-                LocalDef {
-                    index: start_index,
-                    value_type: value_type.clone(),
-                },
-            );
-
-            let values = (start_index..(start_index + comp_count))
-                .map(|i| LoleInstr::LocalGet { local_index: i })
+            let values = local_indicies
+                .map(|i| LoleInstr::UntypedLocalGet { local_index: i })
                 .collect();
 
             LoleInstr::NoEmit {
@@ -1330,7 +1324,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 });
             };
 
-            if ctx.fn_ctx.locals.contains_key(local_name) {
+            if ctx.block.get_own_local(local_name).is_some() {
                 return Err(CompileError {
                     message: format!("Duplicate local definition: {local_name}"),
                     loc: name_loc.clone(),
@@ -1338,22 +1332,11 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             }
 
             let value_instr = compile_instr(value, ctx)?;
-            let lole_type = get_lole_type(ctx, &value_instr);
+            let value_type = get_lole_type(ctx, &value_instr);
+            let local_indicies = ctx.push_local(local_name.clone(), value_type.clone());
 
-            let start_index = ctx.fn_ctx.locals_last_index;
-            let comp_count = lole_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_locals);
-
-            ctx.fn_ctx.locals_last_index += comp_count;
-            ctx.fn_ctx.locals.insert(
-                local_name.clone(),
-                LocalDef {
-                    index: start_index,
-                    value_type: lole_type,
-                },
-            );
-
-            let values = (start_index..(start_index + comp_count))
-                .map(|i| LoleInstr::LocalGet { local_index: i })
+            let values = local_indicies
+                .map(|i| LoleInstr::UntypedLocalGet { local_index: i })
                 .collect();
 
             let bind_instr = LoleInstr::MultiValueEmit { values };
@@ -1381,7 +1364,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                     });
                 };
 
-                let Some(local) = ctx.fn_ctx.locals.get(local_name.as_str()) else {
+                let Some(local) = ctx.block.get_local(local_name.as_str()) else {
                     return Err(CompileError {
                         message: format!("Reading unknown variable: {local_name}"),
                         loc: name_loc.clone(),
@@ -1406,7 +1389,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 };
 
                 return compile_local_get(
-                    ctx.module,
+                    &ctx.module,
                     local.index + field.field_index,
                     &field.value_type,
                 )
@@ -1435,7 +1418,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
                 };
 
                 return compile_local_get(
-                    ctx.module,
+                    &ctx.module,
                     base_index + field.field_index,
                     &field.value_type,
                 )
@@ -1537,7 +1520,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
         // TODO(feat): support custom aligns and offsets
         ("@", [load_kind_expr, address_expr]) => {
             let address_instr = Box::new(compile_instr(address_expr, ctx)?);
-            let value_type = parse_lole_type(&load_kind_expr, ctx.module)?;
+            let value_type = parse_lole_type(&load_kind_expr, &ctx.module)?;
 
             compile_load(ctx, &value_type, address_instr, 0).map_err(|err| CompileError {
                 message: err,
@@ -1625,7 +1608,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             let mut arg_types = vec![];
             for arg in &args {
                 let lole_type = get_lole_type(ctx, arg);
-                lole_type.emit_components(ctx.module, &mut arg_types);
+                lole_type.emit_components(&ctx.module, &mut arg_types);
             }
 
             if fn_type.inputs != arg_types {
@@ -1658,7 +1641,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Comp
             // }
 
             LoleInstr::Call {
-                fn_index: fn_def.get_absolute_index(ctx.module),
+                fn_index: fn_def.get_absolute_index(&ctx.module),
                 args,
                 return_type: fn_def.kind.output.clone(),
             }
@@ -1707,7 +1690,7 @@ fn compile_load(
                 address_instr.clone(),
                 base_byte_offset + item_byte_offset,
             )?);
-            item_byte_offset += item_type.sized_comp_stats(ctx.module)?.byte_length;
+            item_byte_offset += item_type.sized_comp_stats(&ctx.module)?.byte_length;
         }
 
         return Ok(LoleInstr::Casted {
@@ -1726,10 +1709,10 @@ fn compile_load(
         byte_length: base_byte_offset,
     };
 
-    value_type.emit_sized_component_stats(ctx.module, &mut stats, &mut components)?;
+    value_type.emit_sized_component_stats(&ctx.module, &mut stats, &mut components)?;
 
     let address_local_index = ctx.fn_ctx.locals_last_index;
-    ctx.fn_ctx.non_arg_locals.push(WasmType::I32);
+    ctx.fn_ctx.non_arg_wasm_locals.push(WasmType::I32);
     ctx.fn_ctx.locals_last_index += 1;
 
     let mut primitive_loads = vec![];
@@ -1738,7 +1721,7 @@ fn compile_load(
             kind: LoleType::Primitive(comp.value_type),
             align: 1,
             offset: comp.byte_offset,
-            address_instr: Box::new(LoleInstr::LocalGet {
+            address_instr: Box::new(LoleInstr::UntypedLocalGet {
                 local_index: address_local_index,
             }),
         });
@@ -1760,7 +1743,7 @@ fn compile_local_get(
 ) -> Result<LoleInstr, String> {
     let comp_count = value_type.emit_components(ctx, &mut vec![]);
     if comp_count == 1 {
-        return Ok(LoleInstr::TypedLocalGet {
+        return Ok(LoleInstr::LocalGet {
             local_index: base_index,
             value_type: value_type.clone(),
         });
@@ -1784,7 +1767,7 @@ fn compile_local_get(
 
     let mut primitive_gets = vec![];
     for field_index in 0..comp_count {
-        primitive_gets.push(LoleInstr::LocalGet {
+        primitive_gets.push(LoleInstr::UntypedLocalGet {
             local_index: base_index + field_index as u32,
         });
     }
@@ -1908,11 +1891,11 @@ fn compile_set_binds(
     address_index: Option<u32>,
 ) -> Result<(), CompileError> {
     Ok(match bind_instr {
-        LoleInstr::TypedLocalGet {
+        LoleInstr::LocalGet {
             local_index,
             value_type: _,
         }
-        | LoleInstr::LocalGet { local_index } => {
+        | LoleInstr::UntypedLocalGet { local_index } => {
             output.push(LoleInstr::Set {
                 bind: LoleSetBind::Local { index: local_index },
             });
@@ -1931,11 +1914,13 @@ fn compile_set_binds(
             address_instr,
         } => {
             let value_local_index = ctx.fn_ctx.locals_last_index;
-            ctx.fn_ctx.non_arg_locals.push(kind.to_wasm_type().unwrap());
+            ctx.fn_ctx
+                .non_arg_wasm_locals
+                .push(kind.to_wasm_type().unwrap());
             ctx.fn_ctx.locals_last_index += 1;
 
             let address_instr = match address_index {
-                Some(local_index) => Box::new(LoleInstr::LocalGet { local_index }),
+                Some(local_index) => Box::new(LoleInstr::UntypedLocalGet { local_index }),
                 None => address_instr,
             };
 

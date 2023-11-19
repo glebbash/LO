@@ -3,10 +3,10 @@ use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, v
 use core::cell::RefCell;
 
 #[derive(Default)]
-pub struct ModuleContext {
+pub struct ModuleContext<'a> {
     pub wasm_module: WasmModule,
     pub fn_defs: BTreeMap<String, FnDef>,
-    pub fn_bodies: Vec<FnBody>,
+    pub fn_bodies: Vec<FnBody<'a>>,
     pub fn_exports: Vec<FnExport>,
     pub memory_names: Vec<String>,
     pub struct_defs: BTreeMap<String, StructDef>,
@@ -16,7 +16,7 @@ pub struct ModuleContext {
     pub string_pool: RefCell<BTreeMap<String, u32>>,
 }
 
-impl ModuleContext {
+impl ModuleContext<'_> {
     pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
         let type_index = self.wasm_module.types.iter().position(|ft| *ft == fn_type);
         if let Some(type_index) = type_index {
@@ -35,30 +35,82 @@ pub struct LoleFnType {
 }
 
 pub struct FnContext<'a> {
-    pub module: &'a ModuleContext,
+    pub module: &'a ModuleContext<'a>,
     pub fn_lole_type: &'a LoleFnType,
-    pub locals: &'a mut BTreeMap<String, LocalDef>,
     pub locals_last_index: u32,
-    pub non_arg_locals: Vec<WasmType>,
+    pub non_arg_wasm_locals: Vec<WasmType>,
     pub defers: BTreeMap<String, Vec<SExpr>>,
 }
 
 #[derive(PartialEq)]
 pub enum BlockType {
     Function,
-    Loop,
     Block,
+    Loop,
 }
 
 pub struct Block<'a> {
     pub block_type: BlockType,
+    pub locals: BTreeMap<String, LocalDef>,
     pub parent: Option<&'a Block<'a>>,
 }
 
+impl Block<'_> {
+    pub fn get_local(&self, local_name: &str) -> Option<&LocalDef> {
+        if let Some(local_def) = self.locals.get(local_name) {
+            return Some(local_def);
+        }
+
+        if let Some(parent) = self.parent {
+            return parent.get_local(local_name);
+        }
+
+        return None;
+    }
+
+    pub fn get_own_local(&self, local_name: &str) -> Option<&LocalDef> {
+        if let Some(local_def) = self.locals.get(local_name) {
+            return Some(local_def);
+        }
+
+        if self.block_type == BlockType::Function {
+            if let Some(parent) = self.parent {
+                return parent.get_local(local_name);
+            }
+        }
+
+        return None;
+    }
+}
+
 pub struct BlockContext<'a, 'b> {
-    pub module: &'a ModuleContext,
+    pub module: &'a ModuleContext<'b>,
     pub fn_ctx: &'a mut FnContext<'b>,
     pub block: Block<'a>,
+}
+
+impl BlockContext<'_, '_> {
+    pub fn push_local(
+        &mut self,
+        local_name: String,
+        value_type: LoleType,
+    ) -> core::ops::Range<u32> {
+        let local_index = self.fn_ctx.locals_last_index;
+        let comp_count =
+            value_type.emit_components(&self.module, &mut self.fn_ctx.non_arg_wasm_locals);
+
+        self.fn_ctx.locals_last_index += comp_count;
+
+        self.block.locals.insert(
+            local_name.clone(),
+            LocalDef {
+                index: local_index,
+                value_type,
+            },
+        );
+
+        local_index..local_index + comp_count
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -289,10 +341,10 @@ pub struct GlobalDef {
     pub value_type: LoleType,
 }
 
-pub struct FnBody {
+pub struct FnBody<'a> {
     pub fn_index: u32,
     pub type_index: u32,
-    pub locals: RefCell<BTreeMap<String, LocalDef>>,
+    pub block: Block<'a>,
     pub locals_last_index: u32,
     pub body: Vec<SExpr>,
 }
@@ -364,11 +416,11 @@ pub enum LoleInstr {
         base_byte_offset: u32,
         primitive_loads: Vec<LoleInstr>,
     },
-    TypedLocalGet {
+    LocalGet {
         local_index: u32,
         value_type: LoleType,
     },
-    LocalGet {
+    UntypedLocalGet {
         local_index: u32,
     },
     GlobalGet {
