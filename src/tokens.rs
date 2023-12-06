@@ -18,6 +18,21 @@ pub struct LoleToken {
     pub loc: LoleLocation,
 }
 
+impl LoleToken {
+    pub fn to_sexpr(self) -> SExpr {
+        SExpr::Atom {
+            value: self.value,
+            kind: if self.type_ == LoleTokenType::StringLiteral {
+                AtomKind::String
+            } else {
+                AtomKind::Symbol
+            },
+            loc: self.loc,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct LoleTokenStream {
     pub tokens: Vec<LoleToken>,
     pub index: usize,

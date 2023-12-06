@@ -3,10 +3,10 @@ use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, v
 use core::cell::RefCell;
 
 #[derive(Default)]
-pub struct ModuleContext<'a> {
+pub struct ModuleContext {
     pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
-    pub fn_bodies: Vec<FnBody<'a>>,
+    pub fn_bodies: Vec<FnBody>,
     pub fn_exports: Vec<FnExport>,
     pub memory_names: Vec<String>,
     pub struct_defs: BTreeMap<String, StructDef>,
@@ -14,8 +14,6 @@ pub struct ModuleContext<'a> {
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
-
-    pub v2: ModuleContextV2,
 }
 
 // v2
@@ -27,10 +25,10 @@ pub struct ModuleContextV2 {
 
 pub struct FnDef2 {
     // TODO: look for a lighter solution
-    pub raw_exprs: Vec<LoleTokenStream>,
+    pub body: Vec<LoleTokenStream>,
 }
 
-impl ModuleContext<'_> {
+impl ModuleContext {
     pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
         let mut wasm_module = self.wasm_module.borrow_mut();
 
@@ -51,7 +49,7 @@ pub struct LoleFnType {
 }
 
 pub struct FnContext<'a> {
-    pub module: &'a ModuleContext<'a>,
+    pub module: &'a ModuleContext,
     pub fn_lole_type: &'a LoleFnType,
     pub locals_last_index: u32,
     pub non_arg_wasm_locals: Vec<WasmType>,
@@ -100,7 +98,7 @@ impl Block<'_> {
 }
 
 pub struct BlockContext<'a, 'b> {
-    pub module: &'a ModuleContext<'b>,
+    pub module: &'a ModuleContext,
     pub fn_ctx: &'a mut FnContext<'b>,
     pub block: Block<'a>,
 }
@@ -313,12 +311,17 @@ pub struct GlobalDef {
     pub value_type: LoleType,
 }
 
-pub struct FnBody<'a> {
+pub struct FnBody {
     pub fn_index: u32,
     pub type_index: u32,
-    pub block: Block<'a>,
+    pub locals: RefCell<BTreeMap<String, LocalDef>>,
     pub locals_last_index: u32,
-    pub body: Vec<SExpr>,
+    pub body: FnBodyExprs,
+}
+
+pub enum FnBodyExprs {
+    V1(Vec<SExpr>),
+    V2(RefCell<Vec<LoleTokenStream>>),
 }
 
 pub struct FnExport {

@@ -10,7 +10,7 @@ pub struct LoleError {
 impl LoleError {
     pub fn unreachable(file: &str, line: u32) -> LoleError {
         LoleError {
-            message: format!("Unreachable in {}, {}", file, line),
+            message: format!("Unreachable in {}:{}", file, line),
             loc: LoleLocation::internal(),
         }
     }

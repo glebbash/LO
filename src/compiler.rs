@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, lowering::*, wasm::*};
+use crate::{ast::*, ir::*, lowering::*, parser2::parse_expr, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -7,6 +7,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use core::cell::RefCell;
 
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: u32 = 1;
@@ -18,6 +19,13 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
         compile_top_level_expr(&expr, &mut ctx)?;
     }
 
+    process_delayed_actions(&mut ctx)?;
+
+    Ok(ctx.wasm_module.take())
+}
+
+// pub to use from v2
+pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError> {
     // push function exports
     for fn_export in &ctx.fn_exports {
         let Some(fn_def) = ctx.fn_defs.get(&fn_export.in_name) else {
@@ -55,12 +63,21 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
             fn_ctx: &mut fn_ctx,
             block: Block {
                 block_type: BlockType::Function,
-                parent: Some(&fn_body.block),
-                locals: BTreeMap::new(),
+                parent: None,
+                locals: fn_body.locals.take(),
             },
         };
 
-        let mut lole_exprs = compile_block(&fn_body.body, &mut block_ctx)?;
+        let mut lole_exprs = match &fn_body.body {
+            FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
+            FnBodyExprs::V2(body) => {
+                let mut exprs = vec![];
+                for mut tokens in body.take() {
+                    exprs.push(parse_expr(ctx, &mut tokens)?);
+                }
+                exprs
+            }
+        };
         if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
             lole_exprs.append(&mut values?);
         };
@@ -89,7 +106,7 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
         });
     }
 
-    Ok(ctx.wasm_module.take())
+    Ok(())
 }
 
 fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInstr>, LoleError> {
@@ -213,11 +230,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     });
                 }
 
-                let mut block = Block {
-                    block_type: BlockType::Block,
-                    parent: None,
-                    locals: BTreeMap::new(),
-                };
+                let mut locals = BTreeMap::new();
 
                 let mut lole_inputs = vec![];
                 let mut wasm_inputs = vec![];
@@ -238,7 +251,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                         });
                     };
 
-                    if block.locals.contains_key(p_name) {
+                    if locals.contains_key(p_name) {
                         return Err(LoleError {
                             message: format!(
                                 "Found function param with conflicting name: {p_name}"
@@ -251,7 +264,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     let value_type = parse_lole_type(p_type, &ctx)?;
                     value_type.emit_components(&ctx, &mut wasm_inputs);
 
-                    block.locals.insert(
+                    locals.insert(
                         p_name.clone(),
                         LocalDef {
                             index: local_index,
@@ -287,9 +300,9 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 ctx.fn_bodies.push(FnBody {
                     fn_index,
                     type_index,
-                    block,
+                    locals: RefCell::new(locals),
                     locals_last_index,
-                    body: body.clone(),
+                    body: FnBodyExprs::V1(body.clone()),
                 });
             }
             _ => {
@@ -656,7 +669,7 @@ fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleIns
     exprs.iter().map(|expr| compile_instr(expr, ctx)).collect()
 }
 
-fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, LoleError> {
+pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, LoleError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom { value, loc, kind } => {
@@ -1983,7 +1996,8 @@ fn compile_set_binds(
 
 // types
 
-fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, LoleError> {
+// pub for use from v1
+pub fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, LoleError> {
     parse_lole_type_checking_ref(expr, ctx, false)
 }
 
