@@ -140,7 +140,7 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError> {
         ctx.wasm_module.borrow_mut().codes.push(WasmFn {
             locals: vec![],
             expr: WasmExpr {
-                instrs: vec![WasmInstr::I32Const { value: 42 }],
+                instrs: vec![WasmInstr::I32Const { value: 42 }, WasmInstr::Return],
             },
         });
     }
