@@ -22,7 +22,7 @@ pub struct ModuleContext<'a> {
 
 #[derive(Default)]
 pub struct ModuleContextV2 {
-    pub fn_defs: RefCell<BTreeMap<String, FnDef2>>,
+    pub fn_defs: RefCell<Vec<FnDef2>>,
 }
 
 pub struct FnDef2 {

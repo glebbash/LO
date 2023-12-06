@@ -49,7 +49,7 @@ fn parse_fn_def(
     exported: bool,
 ) -> Result<(), LoleError> {
     let fn_name = tokens.expect_any(Symbol)?.clone();
-    if ctx.v2.fn_defs.borrow().contains_key(&fn_name.value) {
+    if ctx.fn_defs.contains_key(&fn_name.value) {
         return Err(LoleError {
             message: format!("Cannot redefine function: {}", fn_name.value),
             loc: fn_name.loc.clone(),
@@ -82,21 +82,18 @@ fn parse_fn_def(
         if let Some(semi) = tokens.eat(Delim, ";")? {
             last_expr_tokens.terminal_token = semi.clone();
             raw_exprs.push(last_expr_tokens);
-            last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
-            continue;
-        }
 
-        last_expr_tokens.tokens.push(tokens.next().unwrap().clone());
+            last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
+        } else {
+            last_expr_tokens.tokens.push(tokens.next().unwrap().clone());
+        }
     }
     if last_expr_tokens.tokens.len() != 0 {
         // TODO: add error message about missing semicolon
         return Err(LoleError::unreachable(file!(), line!()));
     }
 
-    ctx.v2
-        .fn_defs
-        .borrow_mut()
-        .insert(fn_name.clone().value, FnDef2 { raw_exprs });
+    ctx.v2.fn_defs.borrow_mut().push(FnDef2 { raw_exprs });
 
     // v1 infra reuse
     {
@@ -141,18 +138,17 @@ fn parse_fn_def(
 
 fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError> {
     // v2
-    for (_fn_name, fn_def) in ctx.v2.fn_defs.take() {
+    for fn_def in ctx.v2.fn_defs.take() {
         let mut wasm_instrs = vec![];
         for mut tokens in fn_def.raw_exprs {
             let expr = parse_expr(ctx, &mut tokens)?;
             lower_expr(&mut wasm_instrs, expr);
         }
 
-        // TODO: implement function body creation
         ctx.wasm_module.borrow_mut().codes.push(WasmFn {
             locals: vec![],
             expr: WasmExpr {
-                instrs: vec![WasmInstr::I32Const { value: 42 }, WasmInstr::Return],
+                instrs: wasm_instrs,
             },
         });
     }
