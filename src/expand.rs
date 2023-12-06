@@ -73,7 +73,7 @@ fn expand_top_level_expr(
                 };
 
                 let file_name = format!("{}.lole", mod_name);
-                let mod_fd = open(&file_name).map_err(|err| LoleError {
+                let mod_fd = fd_open(&file_name).map_err(|err| LoleError {
                     message: format!("Cannot load file {file_name}: {err}"),
                     loc: mod_name_loc.clone(),
                 })?;

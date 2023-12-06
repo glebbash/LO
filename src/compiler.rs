@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, lowering::*, type_checker::*, wasm::*};
+use crate::{ast::*, ir::*, lowering::*, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -27,7 +27,7 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
             });
         };
 
-        ctx.wasm_module.exports.push(WasmExport {
+        ctx.wasm_module.borrow_mut().exports.push(WasmExport {
             export_type: WasmExportType::Func,
             export_name: fn_export.out_name.clone(),
             exported_item_index: ctx.imported_fns_count + fn_def.fn_index,
@@ -75,7 +75,7 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
             }
             locals.push(WasmLocals {
                 count: 1,
-                value_type: *local_type,
+                value_type: local_type.clone(),
             });
         }
 
@@ -83,13 +83,13 @@ pub fn compile(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
         let mut instrs = vec![];
         lower_exprs(&mut instrs, lole_exprs);
 
-        ctx.wasm_module.codes.push(WasmFn {
+        ctx.wasm_module.borrow_mut().codes.push(WasmFn {
             locals,
             expr: WasmExpr { instrs },
         });
     }
 
-    Ok(ctx.wasm_module)
+    Ok(ctx.wasm_module.take())
 }
 
 fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInstr>, LoleError> {
@@ -99,7 +99,7 @@ fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInst
             continue;
         }
 
-        let instr_type = get_lole_type(ctx, instr);
+        let instr_type = instr.get_type(ctx.module);
         if instr_type != LoleType::Void {
             return Err(LoleError {
                 message: format!("TypeError: Excess values"),
@@ -186,7 +186,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 };
 
                 ctx.memory_names.push(mem_name.clone());
-                ctx.wasm_module.memories.push(WasmLimits {
+                ctx.wasm_module.borrow_mut().memories.push(WasmLimits {
                     min: min_memory,
                     max: max_memory,
                 });
@@ -265,7 +265,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 let mut wasm_outputs = vec![];
                 lole_output.emit_components(&ctx, &mut wasm_outputs);
 
-                let fn_index = ctx.wasm_module.functions.len() as u32;
+                let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32;
                 let locals_last_index = wasm_inputs.len() as u32;
 
                 let type_index = ctx.insert_fn_type(WasmFnType {
@@ -273,7 +273,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     outputs: wasm_outputs,
                 });
 
-                ctx.wasm_module.functions.push(type_index);
+                ctx.wasm_module.borrow_mut().functions.push(type_index);
                 let fn_def = FnDef {
                     local: true,
                     fn_index,
@@ -387,7 +387,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     },
                 };
                 ctx.fn_defs.insert(fn_name.clone(), fn_def);
-                ctx.wasm_module.imports.push(WasmImport {
+                ctx.wasm_module.borrow_mut().imports.push(WasmImport {
                     module_name: module_name.clone(),
                     item_name: extern_fn_name.clone(),
                     item_desc: WasmImportDesc::Func { type_index },
@@ -423,7 +423,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     });
                 }
 
-                ctx.wasm_module.exports.push(WasmExport {
+                ctx.wasm_module.borrow_mut().exports.push(WasmExport {
                     export_type: WasmExportType::Mem,
                     export_name: out_name.clone(),
                     exported_item_index: ctx.memory_names.iter().position(|n| n == in_name).unwrap()
@@ -546,7 +546,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 },
             );
 
-            ctx.wasm_module.globals.push(WasmGlobal {
+            ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
                 kind: WasmGlobalKind {
                     value_type: wasm_type,
                     mutable,
@@ -576,7 +576,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
             };
 
             // TODO: move to better place
-            ctx.wasm_module.datas.borrow_mut().push(WasmData::Active {
+            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
                 offset: WasmExpr {
                     instrs: vec![WasmInstr::I32Const { value: offset }],
                 },
@@ -674,8 +674,8 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
                         *ctx.module.data_size.borrow_mut() += string_len;
                         ctx.module
                             .wasm_module
-                            .datas
                             .borrow_mut()
+                            .datas
                             .push(WasmData::Active {
                                 // TODO: move to better place
                                 offset: WasmExpr {
@@ -753,7 +753,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
         ("unreachable", []) => LoleInstr::Unreachable {},
         ("drop", [expr]) => {
             let instr = compile_instr(expr, ctx)?;
-            let instr_type = get_lole_type(ctx, &instr);
+            let instr_type = instr.get_type(ctx.module);
             let drop_count = instr_type.emit_components(&ctx.module, &mut vec![]);
 
             LoleInstr::Drop {
@@ -896,7 +896,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
         ("memory.size", []) => LoleInstr::MemorySize {},
         ("memory.grow", [size_expr]) => {
             let size = compile_instr(size_expr, ctx)?;
-            let size_type = get_lole_type(ctx, &size);
+            let size_type = size.get_type(ctx.module);
 
             if size_type != LoleType::U32 {
                 return Err(LoleError {
@@ -910,8 +910,8 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
             }
         }
         ("debug.typeof", [sub_expr]) => {
-            let lole_expr = compile_instr(sub_expr, ctx)?;
-            let lole_type = get_lole_type(ctx, &lole_expr);
+            let lole_instr = compile_instr(sub_expr, ctx)?;
+            let lole_type = lole_instr.get_type(ctx.module);
             crate::wasi_io::debug(format!(
                 "{}",
                 String::from(LoleError {
@@ -1054,7 +1054,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
                 }
             };
 
-            let return_type = get_lole_type(ctx, &value);
+            let return_type = value.get_type(ctx.module);
             if return_type != ctx.fn_ctx.fn_lole_type.output {
                 return Err(LoleError {
                     message: format!(
@@ -1176,7 +1176,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
             let value_type = parse_lole_type(type_expr, &ctx.module)?;
 
             let init_instr = compile_instr(init_expr, ctx)?;
-            let init_type = get_lole_type(ctx, &init_instr);
+            let init_type = init_instr.get_type(ctx.module);
 
             if init_type != value_type {
                 return Err(LoleError {
@@ -1289,8 +1289,8 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
             let bind_instr = compile_instr(bind, ctx)?;
 
             // TODO: enable this once tests pass
-            let value_type = get_lole_type(ctx, &value_instr);
-            let bind_type = get_lole_type(ctx, &bind_instr);
+            let value_type = value_instr.get_type(ctx.module);
+            let bind_type = bind_instr.get_type(ctx.module);
 
             if value_type != bind_type {
                 return Err(LoleError {
@@ -1328,7 +1328,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
             }
 
             let value_instr = compile_instr(value, ctx)?;
-            let value_type = get_lole_type(ctx, &value_instr);
+            let value_type = value_instr.get_type(ctx.module);
             let local_indicies = ctx.push_local(local_name.clone(), value_type.clone());
 
             let values = local_indicies
@@ -1460,7 +1460,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
         }
         ("*", [pointer_expr]) => {
             let pointer_instr = Box::new(compile_instr(pointer_expr, ctx)?);
-            let lole_type = get_lole_type(ctx, &pointer_instr);
+            let lole_type = pointer_instr.get_type(ctx.module);
 
             let LoleType::Pointer(pointee_type) = lole_type else {
                 return Err(LoleError {
@@ -1483,7 +1483,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
             }],
         ) => {
             let struct_ref_instr = Box::new(compile_instr(struct_ref_expr, ctx)?);
-            let lole_type = get_lole_type(ctx, &struct_ref_instr);
+            let lole_type = struct_ref_instr.get_type(ctx.module);
 
             let LoleType::Pointer(pointee_type) = &lole_type else {
                 return Err(LoleError {
@@ -1560,7 +1560,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
                     }
 
                     let field_value = compile_instr(field_value_expr, ctx)?;
-                    let field_value_type = get_lole_type(ctx, &field_value);
+                    let field_value_type = field_value.get_type(ctx.module);
 
                     let field_type = &struct_field.value_type;
                     if field_value_type != *field_type {
@@ -1594,16 +1594,15 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
             let args = compile_instrs(args, ctx)?;
 
             let fn_type_index = fn_def.type_index;
-            let fn_type = ctx
-                .module
-                .wasm_module
+            let wasm_module = ctx.module.wasm_module.borrow_mut();
+            let fn_type = wasm_module
                 .types
                 .get(fn_type_index as usize)
                 .ok_or_else(|| LoleError::unreachable(file!(), line!()))?;
 
             let mut arg_types = vec![];
             for arg in &args {
-                let lole_type = get_lole_type(ctx, arg);
+                let lole_type = arg.get_type(ctx.module);
                 lole_type.emit_components(&ctx.module, &mut arg_types);
             }
 
@@ -1622,7 +1621,7 @@ fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, Lole
             // TODO: use this eventually
             // let mut arg_types = vec![];
             // for arg in &args {
-            //     arg_types.push(get_lole_type(ctx, &arg));
+            //     ctx,.get_typeactx((ctx, &arg));
             // }
             // if arg_types != fn_def.kind.inputs {
             //     return Err(CompileError {

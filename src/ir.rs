@@ -4,7 +4,7 @@ use core::cell::RefCell;
 
 #[derive(Default)]
 pub struct ModuleContext<'a> {
-    pub wasm_module: WasmModule,
+    pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: Vec<FnBody<'a>>,
     pub fn_exports: Vec<FnExport>,
@@ -18,13 +18,15 @@ pub struct ModuleContext<'a> {
 
 impl ModuleContext<'_> {
     pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
-        let type_index = self.wasm_module.types.iter().position(|ft| *ft == fn_type);
+        let mut wasm_module = self.wasm_module.borrow_mut();
+
+        let type_index = wasm_module.types.iter().position(|ft| *ft == fn_type);
         if let Some(type_index) = type_index {
             return type_index as u32;
         }
 
-        self.wasm_module.types.push(fn_type);
-        self.wasm_module.types.len() as u32 - 1
+        wasm_module.types.push(fn_type);
+        wasm_module.types.len() as u32 - 1
     }
 }
 
@@ -452,4 +454,98 @@ pub enum LoleSetBind {
         address_instr: Box<LoleInstr>,
         value_local_index: u32,
     },
+}
+
+impl LoleInstr {
+    pub fn get_type(&self, ctx: &ModuleContext) -> LoleType {
+        match self {
+            LoleInstr::Unreachable => LoleType::Void,
+            LoleInstr::U32ConstLazy { value: _ } => LoleType::U32,
+            LoleInstr::U32Const { value: _ } => LoleType::U32,
+            LoleInstr::I64Const { value: _ } => LoleType::I64,
+            LoleInstr::UntypedLocalGet { local_index: _ } => unreachable!(),
+
+            LoleInstr::MultiValueEmit { values } => {
+                let mut types = Vec::new();
+                for value in values {
+                    types.push(value.get_type(ctx));
+                }
+                LoleType::Tuple(types)
+            }
+            LoleInstr::NoEmit { expr } => expr.get_type(ctx),
+            LoleInstr::StructLoad {
+                struct_name,
+                address_instr: _,
+                address_local_index: _,
+                base_byte_offset: _,
+                primitive_loads: _,
+            }
+            | LoleInstr::StructGet {
+                struct_name,
+                base_index: _,
+                primitive_gets: _,
+            } => LoleType::StructInstance {
+                name: struct_name.clone(),
+            },
+
+            // type-checked in the complier:
+            LoleInstr::Casted {
+                value_type,
+                expr: _,
+            } => value_type.clone(),
+            LoleInstr::Set { bind: _ } => LoleType::Void,
+            LoleInstr::Drop {
+                value: _,
+                drop_count: _,
+            } => LoleType::Void,
+            LoleInstr::Return { value: _ } => LoleType::Void,
+            LoleInstr::MemorySize => LoleType::I32,
+            LoleInstr::MemoryGrow { size: _ } => LoleType::I32,
+
+            LoleInstr::BinaryOp {
+                kind: _,
+                lhs,
+                rhs: _,
+            } => lhs.get_type(ctx),
+            LoleInstr::Load {
+                kind,
+                align: _,
+                offset: _,
+                address_instr: _,
+            } => kind.clone(),
+            LoleInstr::GlobalGet { global_index } => {
+                let global_def = ctx
+                    .globals
+                    .values()
+                    .find(|global| global.index == *global_index)
+                    .unwrap();
+
+                global_def.value_type.clone()
+            }
+            LoleInstr::LocalGet {
+                local_index: _,
+                value_type,
+            } => value_type.clone(),
+            LoleInstr::Call {
+                return_type,
+                fn_index: _,
+                args: _,
+            } => return_type.clone(),
+            LoleInstr::If {
+                block_type,
+                cond: _,
+                then_branch: _,
+                else_branch: _,
+            }
+            | LoleInstr::Block {
+                block_type,
+                body: _,
+            }
+            | LoleInstr::Loop {
+                block_type,
+                body: _,
+            } => block_type.clone(),
+            LoleInstr::Branch { label_index: _ } => LoleType::Void,
+        }
+    }
 }

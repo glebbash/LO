@@ -1,15 +1,13 @@
 use alloc::{string::String, vec::Vec};
-use wasi::{
-    fd_read, fd_write, path_open, proc_exit, Ciovec, Errno, Iovec, FD_STDERR, FD_STDIN, FD_STDOUT,
-};
+use wasi::*;
 
 const CWD_PREOPEN_FD: u32 = 3;
 
-pub fn exit(exit_code: u32) {
-    unsafe { proc_exit(exit_code) };
+pub fn proc_exit(exit_code: u32) {
+    unsafe { wasi::proc_exit(exit_code) };
 }
 
-pub fn open(file_path: &str) -> Result<u32, Errno> {
+pub fn fd_open(file_path: &str) -> Result<u32, Errno> {
     unsafe { path_open(CWD_PREOPEN_FD, 0, &file_path, 0, 2, 0, 0) }
 }
 

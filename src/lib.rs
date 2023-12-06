@@ -4,13 +4,11 @@
 extern crate alloc;
 
 mod ast;
-mod codegen;
 mod compiler;
 mod expand;
 mod ir;
 mod lowering;
 mod parser;
-mod type_checker;
 mod wasi_io;
 mod wasm;
 
@@ -49,7 +47,8 @@ fn exec_pipeline(script: &str) -> Result<Vec<u8>, String> {
         let exprs = expand::expand(raw_exprs)?;
         compiler::compile(&exprs)?
     };
-    let binary = codegen::codegen(&module);
+    let mut binary = Vec::new();
+    module.dump(&mut binary);
     Ok(binary)
 }
 
@@ -69,7 +68,7 @@ mod wasi_api {
             Err(mut message) => {
                 message.push('\n');
                 stderr_write(message.as_bytes());
-                exit(1);
+                proc_exit(1);
             }
         };
     }
