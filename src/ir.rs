@@ -14,6 +14,21 @@ pub struct ModuleContext<'a> {
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
+
+    pub v2: ModuleContextV2,
+}
+
+// v2
+
+#[derive(Default)]
+pub struct ModuleContextV2 {
+    pub fn_defs: BTreeMap<String, FnDef2>,
+}
+
+#[derive(Debug)]
+pub struct FnDef2 {
+    pub body_start: usize,
+    pub body_end: usize,
 }
 
 impl ModuleContext<'_> {

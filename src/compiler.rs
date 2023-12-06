@@ -215,7 +215,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
 
                 let mut block = Block {
                     block_type: BlockType::Block,
-                    parent: Option::None,
+                    parent: None,
                     locals: BTreeMap::new(),
                 };
 

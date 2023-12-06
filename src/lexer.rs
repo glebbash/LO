@@ -52,19 +52,26 @@ impl Lexer {
     fn lex_token(&mut self) -> LexResult {
         let char = self.current_char()?;
 
-        if char.is_alphabetic() {
-            return self.lex_symbol();
-        }
-
-        if char.is_numeric() {
-            return self.lex_int_literal();
-        }
-
         if char == '"' {
             return self.lex_string();
         }
+        if char.is_numeric() {
+            return self.lex_int_literal();
+        }
+        if char.is_alphabetic() {
+            return self.lex_symbol();
+        }
+        if is_delim_char(char) {
+            return self.lex_delim();
+        }
+        if is_operator_char(char) {
+            return self.lex_operator();
+        }
 
-        return self.lex_punct();
+        return Err(LoleError {
+            message: format!("Unexpected char: {char}"),
+            loc: self.loc(),
+        });
     }
 
     fn lex_int_literal(&mut self) -> LexResult {
@@ -134,23 +141,35 @@ impl Lexer {
         loc.length = self.index - loc.offset;
 
         Ok(LoleToken {
-            type_: LoleTokenType::String,
+            type_: LoleTokenType::StringLiteral,
             value,
             loc,
         })
     }
 
-    fn lex_punct(&mut self) -> LexResult {
+    fn lex_delim(&mut self) -> LexResult {
+        let loc = self.loc();
+
+        self.next_char(); // skip delimiter char
+
+        Ok(LoleToken {
+            type_: LoleTokenType::Delim,
+            value: self.chars[loc.offset].into(),
+            loc,
+        })
+    }
+
+    fn lex_operator(&mut self) -> LexResult {
         let mut loc = self.loc();
 
-        while is_punct_char(self.current_char()?) {
+        while is_operator_char(self.current_char()?) {
             self.next_char();
         }
 
         loc.length = self.index - loc.offset;
 
         Ok(LoleToken {
-            type_: LoleTokenType::Punct,
+            type_: LoleTokenType::Operator,
             value: self.chars[loc.offset..self.index].iter().collect(),
             loc,
         })
@@ -237,6 +256,10 @@ fn is_symbol_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-fn is_punct_char(c: char) -> bool {
-    "(){}[]!$%&*+,-./:;<=>?@\\^~|".contains(c)
+fn is_delim_char(c: char) -> bool {
+    "(){}[],;".contains(c)
+}
+
+fn is_operator_char(c: char) -> bool {
+    "!$%&*+-./:<=>?@\\^~|".contains(c)
 }

@@ -1,16 +1,17 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 
 use crate::ast::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LoleTokenType {
-    String,
+    StringLiteral,
     IntLiteral,
     Symbol,
-    Punct,
+    Delim,
+    Operator,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoleToken {
     pub type_: LoleTokenType,
     pub value: String,
@@ -19,8 +20,8 @@ pub struct LoleToken {
 
 pub struct LoleTokenStream {
     tokens: Vec<LoleToken>,
-    index: usize,
     eof_location: LoleLocation,
+    pub index: usize,
 }
 
 impl LoleTokenStream {
@@ -32,31 +33,46 @@ impl LoleTokenStream {
         }
     }
 
-    pub fn expect_symbol(&mut self) -> Result<&LoleToken, LoleError> {
+    pub fn expect_any(&mut self, type_: LoleTokenType) -> Result<&LoleToken, LoleError> {
         match self.peek() {
-            Some(token) => {
-                if token.type_ == LoleTokenType::Symbol {
-                    Ok(self.next().unwrap())
-                } else {
-                    Err(LoleError {
-                        message: String::from("unexpected token, symbol expected"),
-                        loc: token.loc.clone(),
-                    })
-                }
-            }
+            Some(token) if token.type_ == type_ => Ok(self.next().unwrap()),
+            Some(token) => Err(LoleError {
+                message: format!("unexpected token {:?}, wanted {type_:?}", token.type_),
+                loc: token.loc.clone(),
+            }),
             _ => Err(LoleError {
-                message: String::from("unexpected token, symbol expected"),
+                message: format!("unexpected EOF, wanted {type_:?}"),
                 loc: self.eof_location.clone(),
             }),
         }
     }
 
-    pub fn eat_symbol(&mut self, value: &str) -> Option<&LoleToken> {
+    pub fn expect(&mut self, type_: LoleTokenType, value: &str) -> Result<&LoleToken, LoleError> {
         match self.peek() {
-            Some(token) if token.type_ == LoleTokenType::Symbol && token.value == value => {
-                self.next()
-            }
-            _ => None,
+            Some(token) if token.type_ == type_ && token.value == value => Ok(self.next().unwrap()),
+            Some(token) => Err(LoleError {
+                message: format!("unexpected token '{}', wanted '{value}'", token.value),
+                loc: token.loc.clone(),
+            }),
+            _ => Err(LoleError {
+                message: format!("unexpected EOF, wanted '{value}'"),
+                loc: self.eof_location.clone(),
+            }),
+        }
+    }
+
+    pub fn eat(
+        &mut self,
+        type_: LoleTokenType,
+        value: &str,
+    ) -> Result<Option<&LoleToken>, LoleError> {
+        match self.peek() {
+            Some(token) if token.type_ == type_ && token.value == value => Ok(self.next()),
+            Some(_) => Ok(None),
+            _ => Err(LoleError {
+                message: format!("unexpected EOF, wanted '{value}'"),
+                loc: self.eof_location.clone(),
+            }),
         }
     }
 

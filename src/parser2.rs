@@ -9,6 +9,7 @@ pub fn parse(mut tokens: LoleTokenStream) -> Result<WasmModule, LoleError> {
 
     while tokens.peek().is_some() {
         parse_top_level_expr(&mut ctx, &mut tokens)?;
+        tokens.expect(LoleTokenType::Delim, ";")?;
     }
 
     process_delayed_actions(&mut ctx)?;
@@ -17,32 +18,133 @@ pub fn parse(mut tokens: LoleTokenStream) -> Result<WasmModule, LoleError> {
 }
 
 fn parse_top_level_expr(
-    _ctx: &mut ModuleContext,
+    ctx: &mut ModuleContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<(), LoleError> {
-    if let Some(_) = tokens.eat_symbol("export") {
-        if let Some(_) = tokens.eat_symbol("fn") {
-            let _fn_name = tokens.expect_symbol()?;
+    use LoleTokenType::*;
 
-            return Err(LoleError {
-                message: format!("TODO: handle function exports"),
-                loc: LoleLocation::internal(),
-            });
+    if tokens.peek().is_none() {
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "fn")? {
+        return parse_fn_def(ctx, tokens, false);
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "export")? {
+        if let Some(_) = tokens.eat(Symbol, "fn")? {
+            return parse_fn_def(ctx, tokens, true);
         }
 
+        // TODO: implement other exports
+        return Err(LoleError::unreachable(file!(), line!()));
+    }
+
+    // TODO: implement everything else
+    return Err(LoleError::unreachable(file!(), line!()));
+}
+
+fn parse_fn_def(
+    ctx: &mut ModuleContext,
+    tokens: &mut LoleTokenStream,
+    exported: bool,
+) -> Result<(), LoleError> {
+    use LoleTokenType::*;
+
+    let fn_name = tokens.expect_any(Symbol)?.clone();
+    if ctx.v2.fn_defs.contains_key(&fn_name.value) {
         return Err(LoleError {
-            message: format!("TODO: handle other exports"),
-            loc: LoleLocation::internal(),
+            message: format!("Cannot redefine function: {}", fn_name.value),
+            loc: fn_name.loc.clone(),
         });
     }
 
-    return Err(LoleError {
-        message: format!("TODO: handle everything else"),
-        loc: LoleLocation::internal(),
-    });
+    tokens.expect(Delim, "(")?;
+    // TODO: handle parameters
+    tokens.expect(Delim, ")")?;
+
+    let lole_output = if let Some(_) = tokens.eat(Operator, "->")? {
+        let token = tokens.expect_any(Symbol)?.clone();
+        parse_lole_type(
+            &SExpr::Atom {
+                value: token.value.clone(),
+                kind: AtomKind::Symbol,
+                loc: token.loc.clone(),
+            },
+            ctx,
+        )?
+    } else {
+        LoleType::Void
+    };
+
+    let body_start = tokens.index;
+    tokens.expect(Delim, "{")?;
+    while tokens.eat(Delim, "}")?.is_none() {
+        tokens.next();
+    }
+    let body_end = tokens.index;
+
+    ctx.v2.fn_defs.insert(
+        fn_name.clone().value,
+        FnDef2 {
+            body_start,
+            body_end,
+        },
+    );
+
+    // v1 infra reuse
+    {
+        if exported {
+            ctx.fn_exports.push(FnExport {
+                in_name: fn_name.value.clone(),
+                out_name: fn_name.value.clone(),
+                loc: fn_name.loc.clone(),
+            });
+        }
+
+        let mut wasm_outputs = vec![];
+        lole_output.emit_components(&ctx, &mut wasm_outputs);
+
+        let lole_fn_type = LoleFnType {
+            inputs: vec![], // TODO: implement
+            output: lole_output,
+        };
+        let wasm_fn_type = WasmFnType {
+            inputs: vec![], // TODO: implement
+            outputs: wasm_outputs,
+        };
+
+        let type_index = ctx.insert_fn_type(wasm_fn_type);
+        ctx.wasm_module.borrow_mut().functions.push(type_index);
+
+        let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32 - 1;
+
+        ctx.fn_defs.insert(
+            fn_name.value.clone(),
+            FnDef {
+                local: true,
+                fn_index,
+                type_index,
+                kind: lole_fn_type,
+            },
+        );
+    }
+
+    return Ok(());
 }
 
 fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError> {
+    // v2
+    for (_fn_name, _fn_def) in &ctx.v2.fn_defs {
+        // TODO: implement function body creation
+        ctx.wasm_module.borrow_mut().codes.push(WasmFn {
+            locals: vec![],
+            expr: WasmExpr {
+                instrs: vec![WasmInstr::I32Const { value: 42 }],
+            },
+        });
+    }
+
     // push function exports
     for fn_export in &ctx.fn_exports {
         let Some(fn_def) = ctx.fn_defs.get(&fn_export.in_name) else {
