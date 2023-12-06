@@ -1,0 +1,1173 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "comment": "adapted from https://github.com/dustypomerleau/rust-syntax/blob/main/syntaxes/rust.tmLanguage.json",
+    "name": "lole2",
+    "fileTypes": ["lole2"],
+    "scopeName": "source.lole2",
+    "patterns": [
+        {
+            "comment": "boxed slice literal",
+            "begin": "(<)(\\[)",
+            "beginCaptures": {
+                "1": {
+                    "name": "punctuation.brackets.angle.lole2"
+                },
+                "2": {
+                    "name": "punctuation.brackets.square.lole2"
+                }
+            },
+            "end": ">",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.brackets.angle.lole2"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#block-comments"
+                },
+                {
+                    "include": "#comments"
+                },
+                {
+                    "include": "#gtypes"
+                },
+                {
+                    "include": "#lvariables"
+                },
+                {
+                    "include": "#lifetimes"
+                },
+                {
+                    "include": "#punctuation"
+                },
+                {
+                    "include": "#types"
+                }
+            ]
+        },
+        {
+            "comment": "macro type metavariables",
+            "name": "meta.macro.metavariable.type.lole2",
+            "match": "(\\$)((crate)|([A-Z][A-Za-z0-9_]*))((:)(block|expr|ident|item|lifetime|literal|meta|path?|stmt|tt|ty|vis))?",
+            "captures": {
+                "1": {
+                    "name": "keyword.operator.macro.dollar.lole2"
+                },
+                "3": {
+                    "name": "keyword.other.crate.lole2"
+                },
+                "4": {
+                    "name": "entity.name.type.metavariable.lole2"
+                },
+                "6": {
+                    "name": "keyword.operator.key-value.lole2"
+                },
+                "7": {
+                    "name": "variable.other.metavariable.specifier.lole2"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#keywords"
+                }
+            ]
+        },
+        {
+            "comment": "macro metavariables",
+            "name": "meta.macro.metavariable.lole2",
+            "match": "(\\$)([a-z][A-Za-z0-9_]*)((:)(block|expr|ident|item|lifetime|literal|meta|path?|stmt|tt|ty|vis))?",
+            "captures": {
+                "1": {
+                    "name": "keyword.operator.macro.dollar.lole2"
+                },
+                "2": {
+                    "name": "variable.other.metavariable.name.lole2"
+                },
+                "4": {
+                    "name": "keyword.operator.key-value.lole2"
+                },
+                "5": {
+                    "name": "variable.other.metavariable.specifier.lole2"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#keywords"
+                }
+            ]
+        },
+        {
+            "comment": "macro rules",
+            "name": "meta.macro.rules.lole2",
+            "match": "\\b(macro_rules!)\\s+(([a-z0-9_]+)|([A-Z][a-z0-9_]*))\\s+(\\{)",
+            "captures": {
+                "1": {
+                    "name": "entity.name.function.macro.rules.lole2"
+                },
+                "3": {
+                    "name": "entity.name.function.macro.lole2"
+                },
+                "4": {
+                    "name": "entity.name.type.macro.lole2"
+                },
+                "5": {
+                    "name": "punctuation.brackets.curly.lole2"
+                }
+            }
+        },
+        {
+            "comment": "modules",
+            "match": "(mod)\\s+((?:r#(?!crate|[Ss]elf|super))?[a-z][A-Za-z0-9_]*)",
+            "captures": {
+                "1": {
+                    "name": "storage.type.lole2"
+                },
+                "2": {
+                    "name": "entity.name.module.lole2"
+                }
+            }
+        },
+        {
+            "comment": "external crate imports",
+            "name": "meta.import.lole2",
+            "begin": "\\b(extern)\\s+(crate)",
+            "beginCaptures": {
+                "1": {
+                    "name": "storage.type.lole2"
+                },
+                "2": {
+                    "name": "keyword.other.crate.lole2"
+                }
+            },
+            "end": ";",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.semi.lole2"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#block-comments"
+                },
+                {
+                    "include": "#comments"
+                },
+                {
+                    "include": "#keywords"
+                },
+                {
+                    "include": "#punctuation"
+                }
+            ]
+        },
+        {
+            "comment": "use statements",
+            "name": "meta.use.lole2",
+            "begin": "\\b(use)\\s",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.other.lole2"
+                }
+            },
+            "end": ";",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.semi.lole2"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#block-comments"
+                },
+                {
+                    "include": "#comments"
+                },
+                {
+                    "include": "#keywords"
+                },
+                {
+                    "include": "#namespaces"
+                },
+                {
+                    "include": "#punctuation"
+                },
+                {
+                    "include": "#types"
+                },
+                {
+                    "include": "#lvariables"
+                }
+            ]
+        },
+        {
+            "include": "#block-comments"
+        },
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#attributes"
+        },
+        {
+            "include": "#lvariables"
+        },
+        {
+            "include": "#constants"
+        },
+        {
+            "include": "#gtypes"
+        },
+        {
+            "include": "#functions"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#lifetimes"
+        },
+        {
+            "include": "#macros"
+        },
+        {
+            "include": "#namespaces"
+        },
+        {
+            "include": "#punctuation"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#variables"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "comment": "documentation comments",
+                    "name": "comment.line.documentation.lole2",
+                    "match": "^\\s*///.*"
+                },
+                {
+                    "comment": "line comments",
+                    "name": "comment.line.double-slash.lole2",
+                    "match": "\\s*//.*"
+                }
+            ]
+        },
+        "block-comments": {
+            "patterns": [
+                {
+                    "comment": "empty block comments",
+                    "name": "comment.block.lole2",
+                    "match": "/\\*\\*/"
+                },
+                {
+                    "comment": "block documentation comments",
+                    "name": "comment.block.documentation.lole2",
+                    "begin": "/\\*\\*",
+                    "end": "\\*/",
+                    "patterns": [
+                        {
+                            "include": "#block-comments"
+                        }
+                    ]
+                },
+                {
+                    "comment": "block comments",
+                    "name": "comment.block.lole2",
+                    "begin": "/\\*(?!\\*)",
+                    "end": "\\*/",
+                    "patterns": [
+                        {
+                            "include": "#block-comments"
+                        }
+                    ]
+                }
+            ]
+        },
+        "constants": {
+            "patterns": [
+                {
+                    "comment": "ALL CAPS constants",
+                    "name": "constant.other.caps.lole2",
+                    "match": "\\b[A-Z]{2}[A-Z0-9_]*\\b"
+                },
+                {
+                    "comment": "constant declarations",
+                    "match": "\\b(const)\\s+([A-Z][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "storage.type.lole2"
+                        },
+                        "2": {
+                            "name": "constant.other.caps.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "decimal integers and floats",
+                    "name": "constant.numeric.decimal.lole2",
+                    "match": "\\b\\d[\\d_]*(\\.?)[\\d_]*(?:(E|e)([+-]?)([\\d_]+))?(f32|f64|i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.separator.dot.decimal.lole2"
+                        },
+                        "2": {
+                            "name": "keyword.operator.exponent.lole2"
+                        },
+                        "3": {
+                            "name": "keyword.operator.exponent.sign.lole2"
+                        },
+                        "4": {
+                            "name": "constant.numeric.decimal.exponent.mantissa.lole2"
+                        },
+                        "5": {
+                            "name": "entity.name.type.numeric.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "hexadecimal integers",
+                    "name": "constant.numeric.hex.lole2",
+                    "match": "\\b0x[\\da-fA-F_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.numeric.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "octal integers",
+                    "name": "constant.numeric.oct.lole2",
+                    "match": "\\b0o[0-7_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.numeric.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "binary integers",
+                    "name": "constant.numeric.bin.lole2",
+                    "match": "\\b0b[01_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.numeric.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "booleans",
+                    "name": "constant.language.bool.lole2",
+                    "match": "\\b(true|false)\\b"
+                }
+            ]
+        },
+        "escapes": {
+            "comment": "escapes: ASCII, byte, Unicode, quote, regex",
+            "name": "constant.character.escape.lole2",
+            "match": "(\\\\)(?:(?:(x[0-7][\\da-fA-F])|(u(\\{)[\\da-fA-F]{4,6}(\\}))|.))",
+            "captures": {
+                "1": {
+                    "name": "constant.character.escape.backslash.lole2"
+                },
+                "2": {
+                    "name": "constant.character.escape.bit.lole2"
+                },
+                "3": {
+                    "name": "constant.character.escape.unicode.lole2"
+                },
+                "4": {
+                    "name": "constant.character.escape.unicode.punctuation.lole2"
+                },
+                "5": {
+                    "name": "constant.character.escape.unicode.punctuation.lole2"
+                }
+            }
+        },
+        "attributes": {
+            "comment": "attributes",
+            "name": "meta.attribute.lole2",
+            "begin": "(#)(\\!?)(\\[)",
+            "beginCaptures": {
+                "1": {
+                    "name": "punctuation.definition.attribute.lole2"
+                },
+                "3": {
+                    "name": "punctuation.brackets.attribute.lole2"
+                }
+            },
+            "end": "\\]",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.brackets.attribute.lole2"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#block-comments"
+                },
+                {
+                    "include": "#comments"
+                },
+                {
+                    "include": "#keywords"
+                },
+                {
+                    "include": "#lifetimes"
+                },
+                {
+                    "include": "#punctuation"
+                },
+                {
+                    "include": "#strings"
+                },
+                {
+                    "include": "#gtypes"
+                },
+                {
+                    "include": "#types"
+                }
+            ]
+        },
+        "functions": {
+            "patterns": [
+                {
+                    "comment": "exporting a function",
+                    "match": "\\b(export)(\\()",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.brackets.round.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "function definition",
+                    "name": "meta.function.definition.lole2",
+                    "begin": "\\b(fn)\\s+((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)((\\()|(<))",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.other.fn.lole2"
+                        },
+                        "2": {
+                            "name": "entity.name.function.lole2"
+                        },
+                        "4": {
+                            "name": "punctuation.brackets.round.lole2"
+                        },
+                        "5": {
+                            "name": "punctuation.brackets.angle.lole2"
+                        }
+                    },
+                    "end": "\\{|;",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.brackets.curly.lole2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#block-comments"
+                        },
+                        {
+                            "include": "#comments"
+                        },
+                        {
+                            "include": "#keywords"
+                        },
+                        {
+                            "include": "#lvariables"
+                        },
+                        {
+                            "include": "#constants"
+                        },
+                        {
+                            "include": "#gtypes"
+                        },
+                        {
+                            "include": "#functions"
+                        },
+                        {
+                            "include": "#lifetimes"
+                        },
+                        {
+                            "include": "#macros"
+                        },
+                        {
+                            "include": "#namespaces"
+                        },
+                        {
+                            "include": "#punctuation"
+                        },
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#types"
+                        },
+                        {
+                            "include": "#variables"
+                        }
+                    ]
+                },
+                {
+                    "comment": "function/method calls, chaining",
+                    "name": "meta.function.call.lole2",
+                    "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(\\()",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "entity.name.function.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.brackets.round.lole2"
+                        }
+                    },
+                    "end": "\\)",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.brackets.round.lole2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#block-comments"
+                        },
+                        {
+                            "include": "#comments"
+                        },
+                        {
+                            "include": "#attributes"
+                        },
+                        {
+                            "include": "#keywords"
+                        },
+                        {
+                            "include": "#lvariables"
+                        },
+                        {
+                            "include": "#constants"
+                        },
+                        {
+                            "include": "#gtypes"
+                        },
+                        {
+                            "include": "#functions"
+                        },
+                        {
+                            "include": "#lifetimes"
+                        },
+                        {
+                            "include": "#macros"
+                        },
+                        {
+                            "include": "#namespaces"
+                        },
+                        {
+                            "include": "#punctuation"
+                        },
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#types"
+                        },
+                        {
+                            "include": "#variables"
+                        }
+                    ]
+                },
+                {
+                    "comment": "function/method calls with turbofish",
+                    "name": "meta.function.call.lole2",
+                    "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(?=::<.*>\\()",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "entity.name.function.lole2"
+                        }
+                    },
+                    "end": "\\)",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.brackets.round.lole2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#block-comments"
+                        },
+                        {
+                            "include": "#comments"
+                        },
+                        {
+                            "include": "#attributes"
+                        },
+                        {
+                            "include": "#keywords"
+                        },
+                        {
+                            "include": "#lvariables"
+                        },
+                        {
+                            "include": "#constants"
+                        },
+                        {
+                            "include": "#gtypes"
+                        },
+                        {
+                            "include": "#functions"
+                        },
+                        {
+                            "include": "#lifetimes"
+                        },
+                        {
+                            "include": "#macros"
+                        },
+                        {
+                            "include": "#namespaces"
+                        },
+                        {
+                            "include": "#punctuation"
+                        },
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#types"
+                        },
+                        {
+                            "include": "#variables"
+                        }
+                    ]
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "comment": "control flow keywords",
+                    "name": "keyword.control.lole2",
+                    "match": "\\b(await|break|continue|do|else|for|if|loop|match|return|try|while|yield)\\b"
+                },
+                {
+                    "comment": "storage keywords",
+                    "name": "keyword.other.lole2 storage.type.lole2",
+                    "match": "\\b(extern|let|macro|mod)\\b"
+                },
+                {
+                    "comment": "const keyword",
+                    "name": "storage.modifier.lole2",
+                    "match": "\\b(const)\\b"
+                },
+                {
+                    "comment": "type keyword",
+                    "name": "keyword.declaration.type.lole2 storage.type.lole2",
+                    "match": "\\b(type)\\b"
+                },
+                {
+                    "comment": "enum keyword",
+                    "name": "keyword.declaration.enum.lole2 storage.type.lole2",
+                    "match": "\\b(enum)\\b"
+                },
+                {
+                    "comment": "trait keyword",
+                    "name": "keyword.declaration.trait.lole2 storage.type.lole2",
+                    "match": "\\b(trait)\\b"
+                },
+                {
+                    "comment": "struct keyword",
+                    "name": "keyword.declaration.struct.lole2 storage.type.lole2",
+                    "match": "\\b(struct)\\b"
+                },
+                {
+                    "comment": "storage modifiers",
+                    "name": "storage.modifier.lole2",
+                    "match": "\\b(abstract|static)\\b"
+                },
+                {
+                    "comment": "other keywords",
+                    "name": "keyword.other.lole2",
+                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|export|ref|typeof|union|unsafe|unsized|use|virtual|where)\\b"
+                },
+                {
+                    "comment": "fn",
+                    "name": "keyword.other.fn.lole2",
+                    "match": "\\bfn\\b"
+                },
+                {
+                    "comment": "crate",
+                    "name": "keyword.other.crate.lole2",
+                    "match": "\\bcrate\\b"
+                },
+                {
+                    "comment": "mut",
+                    "name": "storage.modifier.mut.lole2",
+                    "match": "\\bmut\\b"
+                },
+                {
+                    "comment": "logical operators",
+                    "name": "keyword.operator.logical.lole2",
+                    "match": "(\\^|\\||\\|\\||&&|<<|>>|!)(?!=)"
+                },
+                {
+                    "comment": "logical AND, borrow references",
+                    "name": "keyword.operator.borrow.and.lole2",
+                    "match": "&(?![&=])"
+                },
+                {
+                    "comment": "assignment operators",
+                    "name": "keyword.operator.assignment.lole2",
+                    "match": "(\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|<<=|>>=)"
+                },
+                {
+                    "comment": "single equal",
+                    "name": "keyword.operator.assignment.equal.lole2",
+                    "match": "(?<![<>])=(?!=|>)"
+                },
+                {
+                    "comment": "comparison operators",
+                    "name": "keyword.operator.comparison.lole2",
+                    "match": "(=(=)?(?!>)|!=|<=|(?<!=)>=)"
+                },
+                {
+                    "comment": "math operators",
+                    "name": "keyword.operator.math.lole2",
+                    "match": "(([+%]|(\\*(?!\\w)))(?!=))|(-(?!>))|(/(?!/))"
+                },
+                {
+                    "comment": "less than, greater than (special case)",
+                    "match": "(?:\\b|(?:(\\))|(\\])|(\\})))[ \\t]+([<>])[ \\t]+(?:\\b|(?:(\\()|(\\[)|(\\{)))",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.brackets.round.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.brackets.square.lole2"
+                        },
+                        "3": {
+                            "name": "punctuation.brackets.curly.lole2"
+                        },
+                        "4": {
+                            "name": "keyword.operator.comparison.lole2"
+                        },
+                        "5": {
+                            "name": "punctuation.brackets.round.lole2"
+                        },
+                        "6": {
+                            "name": "punctuation.brackets.square.lole2"
+                        },
+                        "7": {
+                            "name": "punctuation.brackets.curly.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "namespace operator",
+                    "name": "keyword.operator.namespace.lole2",
+                    "match": "::"
+                },
+                {
+                    "comment": "dereference asterisk",
+                    "match": "(\\*)(?=\\w+)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.operator.dereference.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "subpattern binding",
+                    "name": "keyword.operator.subpattern.lole2",
+                    "match": "@"
+                },
+                {
+                    "comment": "dot access",
+                    "name": "keyword.operator.access.dot.lole2",
+                    "match": "\\.(?!\\.)"
+                },
+                {
+                    "comment": "ranges, range patterns",
+                    "name": "keyword.operator.range.lole2",
+                    "match": "\\.{2}(=|\\.)?"
+                },
+                {
+                    "comment": "colon",
+                    "name": "keyword.operator.key-value.lole2",
+                    "match": ":(?!:)"
+                },
+                {
+                    "comment": "dashrocket, skinny arrow",
+                    "name": "keyword.operator.arrow.skinny.lole2",
+                    "match": "->"
+                },
+                {
+                    "comment": "hashrocket, fat arrow",
+                    "name": "keyword.operator.arrow.fat.lole2",
+                    "match": "=>"
+                },
+                {
+                    "comment": "dollar macros",
+                    "name": "keyword.operator.macro.dollar.lole2",
+                    "match": "\\$"
+                },
+                {
+                    "comment": "question mark operator, questionably sized, macro kleene matcher",
+                    "name": "keyword.operator.question.lole2",
+                    "match": "\\?"
+                }
+            ]
+        },
+        "interpolations": {
+            "comment": "curly brace interpolations",
+            "name": "meta.interpolation.lole2",
+            "match": "({)[^\"{}]*(})",
+            "captures": {
+                "1": {
+                    "name": "punctuation.definition.interpolation.lole2"
+                },
+                "2": {
+                    "name": "punctuation.definition.interpolation.lole2"
+                }
+            }
+        },
+        "lifetimes": {
+            "patterns": [
+                {
+                    "comment": "named lifetime parameters",
+                    "match": "(['])([a-zA-Z_][0-9a-zA-Z_]*)(?!['])\\b",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.lifetime.lole2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.lifetime.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "borrowing references to named lifetimes",
+                    "match": "(\\&)(['])([a-zA-Z_][0-9a-zA-Z_]*)(?!['])\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.operator.borrow.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.definition.lifetime.lole2"
+                        },
+                        "3": {
+                            "name": "entity.name.type.lifetime.lole2"
+                        }
+                    }
+                }
+            ]
+        },
+        "macros": {
+            "patterns": [
+                {
+                    "comment": "macros",
+                    "name": "meta.macro.lole2",
+                    "match": "(([a-z_][A-Za-z0-9_]*!)|([A-Z_][A-Za-z0-9_]*!))",
+                    "captures": {
+                        "2": {
+                            "name": "entity.name.function.macro.lole2"
+                        },
+                        "3": {
+                            "name": "entity.name.type.macro.lole2"
+                        }
+                    }
+                }
+            ]
+        },
+        "namespaces": {
+            "patterns": [
+                {
+                    "comment": "namespace (non-type, non-function path segment)",
+                    "match": "(?<![A-Za-z0-9_])([A-Za-z0-9_]+)((?<!super|self)::)",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.namespace.lole2"
+                        },
+                        "2": {
+                            "name": "keyword.operator.namespace.lole2"
+                        }
+                    }
+                }
+            ]
+        },
+        "types": {
+            "patterns": [
+                {
+                    "comment": "numeric types",
+                    "match": "(?<![A-Za-z])(f32|f64|i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.numeric.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "parameterized types",
+                    "begin": "\\b(_?[A-Z][A-Za-z0-9_]*)(<)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "entity.name.type.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.brackets.angle.lole2"
+                        }
+                    },
+                    "end": ">",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.brackets.angle.lole2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#block-comments"
+                        },
+                        {
+                            "include": "#comments"
+                        },
+                        {
+                            "include": "#keywords"
+                        },
+                        {
+                            "include": "#lvariables"
+                        },
+                        {
+                            "include": "#lifetimes"
+                        },
+                        {
+                            "include": "#punctuation"
+                        },
+                        {
+                            "include": "#types"
+                        },
+                        {
+                            "include": "#variables"
+                        }
+                    ]
+                },
+                {
+                    "comment": "primitive types",
+                    "name": "entity.name.type.primitive.lole2",
+                    "match": "\\b(bool|char|str)\\b"
+                },
+                {
+                    "comment": "trait declarations",
+                    "match": "\\b(trait)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.trait.lole2 storage.type.lole2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.trait.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "struct declarations",
+                    "match": "\\b(struct)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.struct.lole2 storage.type.lole2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.struct.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "enum declarations",
+                    "match": "\\b(enum)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.enum.lole2 storage.type.lole2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.enum.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "type declarations",
+                    "match": "\\b(type)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.type.lole2 storage.type.lole2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.declaration.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "types",
+                    "name": "entity.name.type.lole2",
+                    "match": "\\b_?[A-Z][A-Za-z0-9_]*\\b(?!!)"
+                }
+            ]
+        },
+        "gtypes": {
+            "patterns": [
+                {
+                    "comment": "option types",
+                    "name": "entity.name.type.option.lole2",
+                    "match": "\\b(Some|None)\\b"
+                },
+                {
+                    "comment": "result types",
+                    "name": "entity.name.type.result.lole2",
+                    "match": "\\b(Ok|Err)\\b"
+                }
+            ]
+        },
+        "punctuation": {
+            "patterns": [
+                {
+                    "comment": "comma",
+                    "name": "punctuation.comma.lole2",
+                    "match": ","
+                },
+                {
+                    "comment": "curly braces",
+                    "name": "punctuation.brackets.curly.lole2",
+                    "match": "[{}]"
+                },
+                {
+                    "comment": "parentheses, round brackets",
+                    "name": "punctuation.brackets.round.lole2",
+                    "match": "[()]"
+                },
+                {
+                    "comment": "semicolon",
+                    "name": "punctuation.semi.lole2",
+                    "match": ";"
+                },
+                {
+                    "comment": "square brackets",
+                    "name": "punctuation.brackets.square.lole2",
+                    "match": "[\\[\\]]"
+                },
+                {
+                    "comment": "angle brackets",
+                    "name": "punctuation.brackets.angle.lole2",
+                    "match": "(?<!=)[<>]"
+                }
+            ]
+        },
+        "strings": {
+            "patterns": [
+                {
+                    "comment": "double-quoted strings and byte strings",
+                    "name": "string.quoted.double.lole2",
+                    "begin": "(b?)(\")",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "string.quoted.byte.raw.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.definition.string.lole2"
+                        }
+                    },
+                    "end": "\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.lole2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#escapes"
+                        },
+                        {
+                            "include": "#interpolations"
+                        }
+                    ]
+                },
+                {
+                    "comment": "double-quoted raw strings and raw byte strings",
+                    "name": "string.quoted.double.lole2",
+                    "begin": "(b?r)(#*)(\")",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "string.quoted.byte.raw.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.definition.string.raw.lole2"
+                        },
+                        "3": {
+                            "name": "punctuation.definition.string.lole2"
+                        }
+                    },
+                    "end": "(\")(\\2)",
+                    "endCaptures": {
+                        "1": {
+                            "name": "punctuation.definition.string.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.definition.string.raw.lole2"
+                        }
+                    }
+                },
+                {
+                    "comment": "characters and bytes",
+                    "name": "string.quoted.single.char.lole2",
+                    "begin": "(b)?(')",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "string.quoted.byte.raw.lole2"
+                        },
+                        "2": {
+                            "name": "punctuation.definition.char.lole2"
+                        }
+                    },
+                    "end": "'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.char.lole2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#escapes"
+                        }
+                    ]
+                }
+            ]
+        },
+        "lvariables": {
+            "patterns": [
+                {
+                    "comment": "self",
+                    "name": "variable.language.self.lole2",
+                    "match": "\\b[Ss]elf\\b"
+                },
+                {
+                    "comment": "super",
+                    "name": "variable.language.super.lole2",
+                    "match": "\\bsuper\\b"
+                }
+            ]
+        },
+        "variables": {
+            "patterns": [
+                {
+                    "comment": "variables",
+                    "name": "variable.other.lole2",
+                    "match": "\\b(?<!(?<!\\.)\\.)(?:r#(?!(crate|[Ss]elf|super)))?[a-z0-9_]+\\b"
+                }
+            ]
+        }
+    }
+}

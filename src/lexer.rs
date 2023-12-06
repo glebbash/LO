@@ -181,7 +181,11 @@ impl Lexer {
         }
 
         // skip comment
-        if let Ok('#') = self.current_char() {
+        if let Ok('/') = self.current_char() {
+            let Ok('/') = self.peek_next_char() else {
+                return;
+            };
+
             loop {
                 self.next_char();
 
@@ -216,6 +220,13 @@ impl Lexer {
     fn current_char(&mut self) -> Result<char, LoleError> {
         self.chars
             .get(self.index)
+            .copied()
+            .ok_or_else(|| self.err_unexpected_eof())
+    }
+
+    fn peek_next_char(&mut self) -> Result<char, LoleError> {
+        self.chars
+            .get(self.index + 1)
             .copied()
             .ok_or_else(|| self.err_unexpected_eof())
     }
@@ -261,5 +272,5 @@ fn is_delim_char(c: char) -> bool {
 }
 
 fn is_operator_char(c: char) -> bool {
-    "!$%&*+-./:<=>?@\\^~|".contains(c)
+    "!#$%&*+-./:<=>?@\\^~|".contains(c)
 }

@@ -2,7 +2,7 @@
   "name": "lole-lisp",
   "displayName": "lole-lisp",
   "description": "lole-lisp language support",
-  "version": "0.0.50",
+  "version": "0.0.53",
   "engines": {
     "vscode": "^1.81.0"
   },
@@ -15,13 +15,26 @@
       {
         "id": "lole-lisp",
         "aliases": [
-          "lole-lisp",
           "lole-lisp"
         ],
         "extensions": [
           ".lole"
         ],
-        "configuration": "./language-configuration.json",
+        "configuration": "./syntaxes/lole-lisp.config.json",
+        "icon": {
+          "light": "./icons/lole-lisp.svg",
+          "dark": "./icons/lole-lisp.svg"
+        }
+      },
+      {
+        "id": "lole2",
+        "aliases": [
+          "lole2"
+        ],
+        "extensions": [
+          ".lole2"
+        ],
+        "configuration": "./syntaxes/lole2.config.json",
         "icon": {
           "light": "./icons/lole-lisp.svg",
           "dark": "./icons/lole-lisp.svg"
@@ -33,6 +46,11 @@
         "language": "lole-lisp",
         "scopeName": "source.lole",
         "path": "./syntaxes/lole-lisp.tmLanguage.json"
+      },
+      {
+        "language": "lole2",
+        "scopeName": "source.lole2",
+        "path": "./syntaxes/lole2.tmLanguage.json"
       }
     ]
   },
