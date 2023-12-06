@@ -19,9 +19,9 @@ pub struct LoleToken {
 }
 
 pub struct LoleTokenStream {
-    tokens: Vec<LoleToken>,
-    eof_location: LoleLocation,
+    pub tokens: Vec<LoleToken>,
     pub index: usize,
+    pub terminal_token: LoleToken,
 }
 
 impl LoleTokenStream {
@@ -29,7 +29,11 @@ impl LoleTokenStream {
         Self {
             tokens,
             index: 0,
-            eof_location,
+            terminal_token: LoleToken {
+                type_: LoleTokenType::Symbol,
+                value: "<EOF>".into(),
+                loc: eof_location,
+            },
         }
     }
 
@@ -42,7 +46,7 @@ impl LoleTokenStream {
             }),
             _ => Err(LoleError {
                 message: format!("unexpected EOF, wanted {type_:?}"),
-                loc: self.eof_location.clone(),
+                loc: self.terminal_token.loc.clone(),
             }),
         }
     }
@@ -56,7 +60,18 @@ impl LoleTokenStream {
             }),
             _ => Err(LoleError {
                 message: format!("unexpected EOF, wanted '{value}'"),
-                loc: self.eof_location.clone(),
+                loc: self.terminal_token.loc.clone(),
+            }),
+        }
+    }
+
+    pub fn eat_any(&mut self, type_: LoleTokenType) -> Result<Option<&LoleToken>, LoleError> {
+        match self.peek() {
+            Some(token) if token.type_ == type_ => Ok(self.next()),
+            Some(_) => Ok(None),
+            _ => Err(LoleError {
+                message: format!("unexpected EOF"),
+                loc: self.terminal_token.loc.clone(),
             }),
         }
     }
@@ -70,8 +85,8 @@ impl LoleTokenStream {
             Some(token) if token.type_ == type_ && token.value == value => Ok(self.next()),
             Some(_) => Ok(None),
             _ => Err(LoleError {
-                message: format!("unexpected EOF, wanted '{value}'"),
-                loc: self.eof_location.clone(),
+                message: format!("unexpected EOF"),
+                loc: self.terminal_token.loc.clone(),
             }),
         }
     }

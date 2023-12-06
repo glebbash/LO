@@ -1,4 +1,4 @@
-use crate::{ast::*, wasm::*};
+use crate::{ast::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
@@ -22,13 +22,12 @@ pub struct ModuleContext<'a> {
 
 #[derive(Default)]
 pub struct ModuleContextV2 {
-    pub fn_defs: BTreeMap<String, FnDef2>,
+    pub fn_defs: RefCell<BTreeMap<String, FnDef2>>,
 }
 
-#[derive(Debug)]
 pub struct FnDef2 {
-    pub body_start: usize,
-    pub body_end: usize,
+    // TODO: look for a lighter solution
+    pub raw_exprs: Vec<LoleTokenStream>,
 }
 
 impl ModuleContext<'_> {

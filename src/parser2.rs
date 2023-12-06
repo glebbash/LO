@@ -1,5 +1,6 @@
 use crate::{ast::*, ir::*, lowering::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
+use LoleTokenType::*;
 
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: u32 = 1;
@@ -21,8 +22,6 @@ fn parse_top_level_expr(
     ctx: &mut ModuleContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<(), LoleError> {
-    use LoleTokenType::*;
-
     if tokens.peek().is_none() {
         return Ok(());
     }
@@ -49,10 +48,8 @@ fn parse_fn_def(
     tokens: &mut LoleTokenStream,
     exported: bool,
 ) -> Result<(), LoleError> {
-    use LoleTokenType::*;
-
     let fn_name = tokens.expect_any(Symbol)?.clone();
-    if ctx.v2.fn_defs.contains_key(&fn_name.value) {
+    if ctx.v2.fn_defs.borrow().contains_key(&fn_name.value) {
         return Err(LoleError {
             message: format!("Cannot redefine function: {}", fn_name.value),
             loc: fn_name.loc.clone(),
@@ -77,20 +74,29 @@ fn parse_fn_def(
         LoleType::Void
     };
 
-    let body_start = tokens.index;
+    let mut raw_exprs = vec![];
+    let mut last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
+
     tokens.expect(Delim, "{")?;
     while tokens.eat(Delim, "}")?.is_none() {
-        tokens.next();
-    }
-    let body_end = tokens.index;
+        if let Some(semi) = tokens.eat(Delim, ";")? {
+            last_expr_tokens.terminal_token = semi.clone();
+            raw_exprs.push(last_expr_tokens);
+            last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
+            continue;
+        }
 
-    ctx.v2.fn_defs.insert(
-        fn_name.clone().value,
-        FnDef2 {
-            body_start,
-            body_end,
-        },
-    );
+        last_expr_tokens.tokens.push(tokens.next().unwrap().clone());
+    }
+    if last_expr_tokens.tokens.len() != 0 {
+        // TODO: add error message about missing semicolon
+        return Err(LoleError::unreachable(file!(), line!()));
+    }
+
+    ctx.v2
+        .fn_defs
+        .borrow_mut()
+        .insert(fn_name.clone().value, FnDef2 { raw_exprs });
 
     // v1 infra reuse
     {
@@ -135,7 +141,13 @@ fn parse_fn_def(
 
 fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError> {
     // v2
-    for (_fn_name, _fn_def) in &ctx.v2.fn_defs {
+    for (_fn_name, fn_def) in ctx.v2.fn_defs.take() {
+        let mut wasm_instrs = vec![];
+        for mut tokens in fn_def.raw_exprs {
+            let expr = parse_expr(ctx, &mut tokens)?;
+            lower_expr(&mut wasm_instrs, expr);
+        }
+
         // TODO: implement function body creation
         ctx.wasm_module.borrow_mut().codes.push(WasmFn {
             locals: vec![],
@@ -217,6 +229,27 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError> {
     }
 
     Ok(())
+}
+
+fn parse_expr(
+    ctx: &mut ModuleContext,
+    tokens: &mut LoleTokenStream,
+) -> Result<LoleInstr, LoleError> {
+    if let Some(int) = tokens.eat_any(IntLiteral)? {
+        return Ok(LoleInstr::U32Const {
+            // TODO: check for overflow
+            value: int.value.parse().unwrap(),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "return")? {
+        return Ok(LoleInstr::Return {
+            value: Box::new(parse_expr(ctx, tokens)?),
+        });
+    }
+
+    // TODO: implement
+    return Err(LoleError::unreachable(file!(), line!()));
 }
 
 fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInstr>, LoleError> {
