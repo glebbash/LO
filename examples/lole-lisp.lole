@@ -57,7 +57,7 @@
     (if {args . argc != 2} (
         (return (InputFile
             :fd Wasi/FD_STDIN
-            :file_name (StringSlice/clone "<internal>")
+            :file_name (StringSlice/clone "<stdin>")
         ))
     ))
 

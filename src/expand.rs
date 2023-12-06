@@ -78,7 +78,7 @@ fn expand_top_level_expr(
                     loc: mod_name_loc.clone(),
                 })?;
 
-                let source_buf = fd_read_all(mod_fd);
+                let source_buf = fd_read_all_and_close(mod_fd);
                 let source = str::from_utf8(source_buf.as_slice()).unwrap();
 
                 let raw_exprs = parse(&file_name, source)?;

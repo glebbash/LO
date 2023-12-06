@@ -63,7 +63,7 @@ fn get_input_file(): (u32, StringSlice) {
     defer Args.free(args)
 
     if args.argc != 2 {
-        return (Wasi.FD_STDIN, StringSlice.clone("<internal>"))
+        return (Wasi.FD_STDIN, StringSlice.clone("<stdin>"))
     }
 
     let file_name = StringSlice.clone(Args.get(args, 1))
