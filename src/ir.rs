@@ -6,7 +6,7 @@ use core::cell::RefCell;
 pub struct ModuleContext {
     pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
-    pub fn_bodies: Vec<FnBody>,
+    pub fn_bodies: RefCell<Vec<FnBody>>,
     pub fn_exports: Vec<FnExport>,
     pub memory_names: Vec<String>,
     pub struct_defs: BTreeMap<String, StructDef>,
@@ -314,14 +314,14 @@ pub struct GlobalDef {
 pub struct FnBody {
     pub fn_index: u32,
     pub type_index: u32,
-    pub locals: RefCell<BTreeMap<String, LocalDef>>,
+    pub locals: BTreeMap<String, LocalDef>,
     pub locals_last_index: u32,
     pub body: FnBodyExprs,
 }
 
 pub enum FnBodyExprs {
     V1(Vec<SExpr>),
-    V2(RefCell<Vec<LoleTokenStream>>),
+    V2(Vec<LoleTokenStream>),
 }
 
 pub struct FnExport {

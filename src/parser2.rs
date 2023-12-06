@@ -1,5 +1,3 @@
-use core::cell::RefCell;
-
 use crate::{ast::*, compiler::*, ir::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
 use LoleTokenType::*;
@@ -142,12 +140,12 @@ fn parse_fn_def(
             },
         );
 
-        ctx.fn_bodies.push(FnBody {
+        ctx.fn_bodies.borrow_mut().push(FnBody {
             fn_index,
             type_index,
-            locals: RefCell::new(locals),
+            locals,
             locals_last_index,
-            body: FnBodyExprs::V2(RefCell::new(body)),
+            body: FnBodyExprs::V2(body),
         });
     }
 

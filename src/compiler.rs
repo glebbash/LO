@@ -7,7 +7,6 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::cell::RefCell;
 
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: u32 = 1;
@@ -43,7 +42,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
     }
 
     // push function codes
-    for fn_body in &ctx.fn_bodies {
+    for fn_body in ctx.fn_bodies.take() {
         let fn_def = ctx
             .fn_defs
             .values()
@@ -64,15 +63,15 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
             block: Block {
                 block_type: BlockType::Function,
                 parent: None,
-                locals: fn_body.locals.take(),
+                locals: fn_body.locals,
             },
         };
 
-        let mut lole_exprs = match &fn_body.body {
+        let mut lole_exprs = match fn_body.body {
             FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
             FnBodyExprs::V2(body) => {
                 let mut exprs = vec![];
-                for mut tokens in body.take() {
+                for mut tokens in body {
                     exprs.push(parse_expr(ctx, &mut tokens)?);
                 }
                 exprs
@@ -297,10 +296,10 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     },
                 };
                 ctx.fn_defs.insert(fn_name.clone(), fn_def);
-                ctx.fn_bodies.push(FnBody {
+                ctx.fn_bodies.borrow_mut().push(FnBody {
                     fn_index,
                     type_index,
-                    locals: RefCell::new(locals),
+                    locals,
                     locals_last_index,
                     body: FnBodyExprs::V1(body.clone()),
                 });
