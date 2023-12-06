@@ -308,7 +308,7 @@ pub struct FnBody<'a> {
 pub struct FnExport {
     pub in_name: String,
     pub out_name: String,
-    pub loc: Location,
+    pub loc: LoleLocation,
 }
 
 #[derive(Clone)]

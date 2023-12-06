@@ -14,7 +14,7 @@ struct ExpandContext {
     pub aliases: BTreeMap<String, Vec<SExpr>>,
 }
 
-pub fn expand(raw_exprs: Vec<SExpr>) -> Result<Vec<SExpr>, CompileError> {
+pub fn expand(raw_exprs: Vec<SExpr>) -> Result<Vec<SExpr>, LoleError> {
     let mut ctx = ExpandContext::default();
     let mut exprs = vec![];
 
@@ -29,7 +29,7 @@ fn expand_top_level_expr(
     ctx: &mut ExpandContext,
     expr: SExpr,
     exprs: &mut Vec<SExpr>,
-) -> Result<(), CompileError> {
+) -> Result<(), LoleError> {
     let SExpr::List { value: items, .. } = &expr else {
         expand_expr(ctx, expr, exprs);
         return Ok(());
@@ -48,14 +48,14 @@ fn expand_top_level_expr(
                 kind: AtomKind::Symbol,
             }, other @ ..] => {
                 if let Some(_) = ctx.aliases.insert(alias.clone(), (*other).to_vec()) {
-                    return Err(CompileError {
+                    return Err(LoleError {
                         message: format!("Duplicate alias: {alias}"),
                         loc: alias_loc.clone(),
                     });
                 };
             }
             _ => {
-                return Err(CompileError {
+                return Err(LoleError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 });
@@ -73,7 +73,7 @@ fn expand_top_level_expr(
                 };
 
                 let file_name = format!("{}.lole", mod_name);
-                let mod_fd = open(&file_name).map_err(|err| CompileError {
+                let mod_fd = open(&file_name).map_err(|err| LoleError {
                     message: format!("Cannot load file {file_name}: {err}"),
                     loc: mod_name_loc.clone(),
                 })?;
@@ -88,7 +88,7 @@ fn expand_top_level_expr(
                 }
             }
             _ => {
-                return Err(CompileError {
+                return Err(LoleError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 });

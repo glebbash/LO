@@ -3,7 +3,7 @@ use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 // TODO: add parser tests
 
-pub type ParseResult = Result<SExpr, CompileError>;
+pub type ParseResult = Result<SExpr, LoleError>;
 
 #[derive(Clone)]
 struct Parser {
@@ -14,7 +14,7 @@ struct Parser {
     col: usize,
 }
 
-pub fn parse(file_name: &str, script: &str) -> Result<Vec<SExpr>, CompileError> {
+pub fn parse(file_name: &str, script: &str) -> Result<Vec<SExpr>, LoleError> {
     Parser::new(file_name, script).parse_all()
 }
 
@@ -29,7 +29,7 @@ impl Parser {
         }
     }
 
-    fn parse_all(&mut self) -> Result<Vec<SExpr>, CompileError> {
+    fn parse_all(&mut self) -> Result<Vec<SExpr>, LoleError> {
         self.skip_space();
 
         let mut items = Vec::new();
@@ -192,29 +192,29 @@ impl Parser {
         self.col += 1;
     }
 
-    fn current_char(&mut self) -> Result<char, CompileError> {
+    fn current_char(&mut self) -> Result<char, LoleError> {
         self.chars
             .get(self.index)
             .copied()
             .ok_or_else(|| self.err_unexpected_eof())
     }
 
-    fn err_unexpected_char(&self) -> CompileError {
-        CompileError {
+    fn err_unexpected_char(&self) -> LoleError {
+        LoleError {
             message: format!("ParseError: Unexpected character"),
             loc: self.loc(),
         }
     }
 
-    fn err_unexpected_eof(&self) -> CompileError {
-        CompileError {
+    fn err_unexpected_eof(&self) -> LoleError {
+        LoleError {
             message: format!("ParseError: Unexpected EOF"),
             loc: self.loc(),
         }
     }
 
-    fn loc(&self) -> Location {
-        Location {
+    fn loc(&self) -> LoleLocation {
+        LoleLocation {
             file_name: self.file_name.clone(),
             offset: self.index,
             length: 1,
@@ -224,9 +224,9 @@ impl Parser {
     }
 }
 
-fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: Location) -> ParseResult {
+fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: LoleLocation) -> ParseResult {
     if items.len() % 2 != 1 {
-        return Err(CompileError {
+        return Err(LoleError {
             message: format!("ParseError: Invalid m-expr: even length"),
             loc,
         });
@@ -242,7 +242,7 @@ fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: Location) -> ParseResul
 // ❓ {1 + 2 - 3 * 4}
 // 🚫 (+ 1 (- 2 (* 3 4)))
 // ✅ (* (- (+ 1 2) 3) 4)
-fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: Location) -> SExpr {
+fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: LoleLocation) -> SExpr {
     if items.len() == 1 {
         return items.into_iter().next().unwrap();
     }

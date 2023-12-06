@@ -14,6 +14,10 @@ mod type_checker;
 mod wasi_io;
 mod wasm;
 
+mod lexer;
+mod parser2;
+mod tokens;
+
 use alloc::{string::String, vec::Vec};
 
 #[cfg(target_arch = "wasm32")]
@@ -36,9 +40,15 @@ mod wasm_target {
 }
 
 fn exec_pipeline(script: &str) -> Result<Vec<u8>, String> {
-    let raw_exprs = parser::parse("<input>", script)?;
-    let exprs = expand::expand(raw_exprs)?;
-    let module = compiler::compile(&exprs)?;
+    let file_name = "<input>";
+    let module = if script.starts_with("@new_syntax\n") {
+        let tokens = lexer::lex(file_name, script)?;
+        parser2::parse(tokens)?
+    } else {
+        let raw_exprs = parser::parse(file_name, script)?;
+        let exprs = expand::expand(raw_exprs)?;
+        compiler::compile(&exprs)?
+    };
     let binary = codegen::codegen(&module);
     Ok(binary)
 }
