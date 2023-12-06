@@ -5,7 +5,7 @@ use crate::{ast::*, tokens::*};
 type LexResult = Result<LoleToken, LoleError>;
 
 #[derive(Clone)]
-struct Lexer {
+pub struct Lexer {
     file_name: Box<str>,
     chars: Vec<char>,
     index: usize,
@@ -13,14 +13,8 @@ struct Lexer {
     col: usize,
 }
 
-pub fn lex(file_name: &str, script: &str) -> Result<LoleTokenStream, LoleError> {
-    let mut lexer = Lexer::new(file_name, script);
-    let tokens = lexer.lex_all()?;
-    Ok(LoleTokenStream::new(tokens, lexer.loc()))
-}
-
 impl Lexer {
-    fn new(file_name: &str, script: &str) -> Self {
+    pub fn new(file_name: &str, script: &str) -> Self {
         Self {
             file_name: file_name.into(),
             chars: script.chars().collect::<Vec<_>>(),
@@ -30,23 +24,17 @@ impl Lexer {
         }
     }
 
-    fn lex_all(&mut self) -> Result<Vec<LoleToken>, LoleError> {
-        if self.current_char()? == '@' {
-            for _ in 0.."@new_syntax\n".len() {
-                self.next_char();
-            }
-        }
-
-        let mut items = Vec::new();
+    pub fn lex_all(&mut self) -> Result<LoleTokenStream, LoleError> {
+        let mut tokens = Vec::new();
 
         self.skip_space();
 
         while self.index < self.chars.len() {
-            items.push(self.lex_token()?);
+            tokens.push(self.lex_token()?);
             self.skip_space();
         }
 
-        Ok(items)
+        Ok(LoleTokenStream::new(tokens, self.loc()))
     }
 
     fn lex_token(&mut self) -> LexResult {
@@ -201,7 +189,8 @@ impl Lexer {
         }
     }
 
-    fn next_char(&mut self) {
+    // pub to skip V2 syntax marker
+    pub fn next_char(&mut self) {
         self.index += 1;
 
         let Ok(char) = self.current_char() else {

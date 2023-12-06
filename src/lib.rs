@@ -37,11 +37,16 @@ mod wasm_target {
     }
 }
 
+pub const V2_SYNTAX_MARKER: &str = "#![new_syntax]";
+
 fn exec_pipeline(script: &str) -> Result<Vec<u8>, String> {
     let file_name = "<input>";
-    let module = if script.starts_with("@new_syntax\n") {
-        let tokens = lexer::lex(file_name, script)?;
-        parser2::parse(tokens)?
+    let module = if script.starts_with(V2_SYNTAX_MARKER) {
+        let mut lexer = lexer::Lexer::new(file_name, script);
+        for _ in 0..V2_SYNTAX_MARKER.len() {
+            lexer.next_char();
+        }
+        parser2::parse(lexer.lex_all()?)?
     } else {
         let raw_exprs = parser::parse(file_name, script)?;
         let exprs = expand::expand(raw_exprs)?;
