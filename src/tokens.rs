@@ -106,7 +106,7 @@ impl LoleTokenStream {
         }
     }
 
-    pub fn check_next(&mut self, type_: LoleTokenType, value: &str) -> Result<bool, LoleError> {
+    pub fn next_is(&mut self, type_: LoleTokenType, value: &str) -> Result<bool, LoleError> {
         match self.peek() {
             Some(token) if token.type_ == type_ && token.value == value => Ok(true),
             Some(_) => Ok(false),

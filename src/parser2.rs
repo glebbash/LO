@@ -143,7 +143,7 @@ fn parse_fn_decl(
         let p_name = tokens.expect_any(Symbol)?.clone();
         tokens.expect(Operator, ":")?;
         let p_type = parse_lole_type2(ctx, tokens)?;
-        if !tokens.check_next(Delim, ")")? {
+        if !tokens.next_is(Delim, ")")? {
             tokens.expect(Delim, ",")?;
         }
 
@@ -262,17 +262,13 @@ fn parse_expr(
     ctx: &mut BlockContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<LoleInstr, LoleError> {
-    let lhs = parse_operand(ctx, tokens)?;
+    let lhs = parse_primary(ctx, tokens)?;
 
-    if tokens.peek().is_none() {
-        return Ok(lhs);
-    }
-
-    let Some(op) = tokens.eat_any(Operator)?.cloned() else {
+    let Ok(op) = tokens.expect_any(Operator).cloned() else {
         return Ok(lhs);
     };
 
-    let rhs = parse_operand(ctx, tokens)?;
+    let rhs = parse_primary(ctx, tokens)?;
 
     match op.value.as_str() {
         "<" => Ok(LoleInstr::BinaryOp {
@@ -299,7 +295,7 @@ fn parse_expr(
     }
 }
 
-fn parse_operand(
+fn parse_primary(
     ctx: &mut BlockContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<LoleInstr, LoleError> {
