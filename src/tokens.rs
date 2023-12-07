@@ -56,11 +56,11 @@ impl LoleTokenStream {
         match self.peek() {
             Some(token) if token.type_ == type_ => Ok(self.next().unwrap()),
             Some(token) => Err(LoleError {
-                message: format!("unexpected token {:?}, wanted {type_:?}", token.type_),
+                message: format!("Unexpected token '{}', wanted {type_:?}", token.value),
                 loc: token.loc.clone(),
             }),
             _ => Err(LoleError {
-                message: format!("unexpected EOF, wanted {type_:?}"),
+                message: format!("Unexpected EOF, wanted {type_:?}"),
                 loc: self.terminal_token.loc.clone(),
             }),
         }
@@ -70,11 +70,11 @@ impl LoleTokenStream {
         match self.peek() {
             Some(token) if token.type_ == type_ && token.value == value => Ok(self.next().unwrap()),
             Some(token) => Err(LoleError {
-                message: format!("unexpected token '{}', wanted '{value}'", token.value),
+                message: format!("Unexpected token '{}', wanted '{value}'", token.value),
                 loc: token.loc.clone(),
             }),
             _ => Err(LoleError {
-                message: format!("unexpected EOF, wanted '{value}'"),
+                message: format!("Unexpected EOF, wanted '{value}'"),
                 loc: self.terminal_token.loc.clone(),
             }),
         }
@@ -85,7 +85,7 @@ impl LoleTokenStream {
             Some(token) if token.type_ == type_ => Ok(self.next()),
             Some(_) => Ok(None),
             _ => Err(LoleError {
-                message: format!("unexpected EOF"),
+                message: format!("Unexpected EOF"),
                 loc: self.terminal_token.loc.clone(),
             }),
         }
@@ -100,7 +100,7 @@ impl LoleTokenStream {
             Some(token) if token.type_ == type_ && token.value == value => Ok(self.next()),
             Some(_) => Ok(None),
             _ => Err(LoleError {
-                message: format!("unexpected EOF"),
+                message: format!("Unexpected EOF"),
                 loc: self.terminal_token.loc.clone(),
             }),
         }
@@ -111,7 +111,7 @@ impl LoleTokenStream {
             Some(token) if token.type_ == type_ && token.value == value => Ok(true),
             Some(_) => Ok(false),
             _ => Err(LoleError {
-                message: format!("unexpected EOF"),
+                message: format!("Unexpected EOF"),
                 loc: self.terminal_token.loc.clone(),
             }),
         }

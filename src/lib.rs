@@ -4,15 +4,17 @@
 extern crate alloc;
 
 mod ast;
-mod compiler;
 mod expand;
 mod ir;
+mod lexer;
 mod lowering;
 mod parser;
 mod wasi_io;
 mod wasm;
 
-mod lexer;
+// v2
+mod lexer2;
+mod operators;
 mod parser2;
 mod tokens;
 
@@ -41,15 +43,12 @@ pub const V2_SYNTAX_MARKER: &str = "#![new_syntax]";
 
 fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
     let module = if script.starts_with(V2_SYNTAX_MARKER) {
-        let mut lexer = lexer::Lexer::new(file_name, script);
-        for _ in 0..V2_SYNTAX_MARKER.len() {
-            lexer.next_char();
-        }
-        parser2::parse(lexer.lex_all()?)?
+        let tokens = lexer2::lex_all(file_name, script, V2_SYNTAX_MARKER)?;
+        parser2::parse(tokens)?
     } else {
-        let raw_exprs = parser::parse(file_name, script)?;
+        let raw_exprs = lexer::lex_all(file_name, script)?;
         let exprs = expand::expand(raw_exprs)?;
-        compiler::compile(&exprs)?
+        parser::parse(&exprs)?
     };
     let mut binary = Vec::new();
     module.dump(&mut binary);

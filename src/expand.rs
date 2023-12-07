@@ -1,4 +1,4 @@
-use crate::{ast::*, parser::*, wasi_io::*};
+use crate::{ast::*, lexer::*, wasi_io::*};
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
@@ -81,7 +81,7 @@ fn expand_top_level_expr(
                 let source_buf = fd_read_all_and_close(mod_fd);
                 let source = str::from_utf8(source_buf.as_slice()).unwrap();
 
-                let raw_exprs = parse(&file_name, source)?;
+                let raw_exprs = lex_all(&file_name, source)?;
 
                 for expr in raw_exprs {
                     expand_top_level_expr(ctx, expr, exprs)?;

@@ -2,8 +2,8 @@
 
 export fn main() -> u32 {
     let p1 = Point2D { x: 0, y: 0 };
-    (p1.x) = 1;
-    (p1.y) = 2;
+    p1.x = 1;
+    p1.y = 2;
 
     let sum = p1.add(Point2D { x: 1, y: 1 });
     return sum.len_squared();
@@ -16,11 +16,11 @@ struct Point2D {
 
 fn Point2D.add(other: Point2D) -> Point2D {
     return Point2D {
-        x: (self.x) + (other.x),
-        y: (self.y) + (other.y),
+        x: self.x + other.x,
+        y: self.y + other.y,
     };
 };
 
 fn Point2D.len_squared() -> u32 {
-    return ((self.x) * (self.x)) + ((self.y) * (self.y));
+    return self.x * self.x + self.y * self.y;
 };
