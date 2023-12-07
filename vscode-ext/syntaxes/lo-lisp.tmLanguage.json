@@ -1,6 +1,6 @@
 {
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-	"name": "lole-lisp",
+	"name": "lo-lisp",
 	"patterns": [
         {
             "include": "#constructs"
@@ -31,12 +31,12 @@
 					"match": "(?<![A-Za-z0-9_])(void|bool|u8|i8|u16|i16|u32|i32|f32|u64|i64|f64)\\b",
 					"captures": {
 						"1": {
-							"name": "entity.name.type.numeric.lole-lisp"
+							"name": "entity.name.type.numeric.lo-lisp"
 						}
 					}
 				},
                 {
-                    "name": "entity.name.type.lole-lisp",
+                    "name": "entity.name.type.lo-lisp",
                     "match": "\\b(_*[A-Z][A-Za-z_]*\\/)*_*[A-Z][A-Za-z0-9_]*\\b"
                 }
             ]
@@ -44,15 +44,15 @@
         "constants": {
             "patterns": [
                 {
-					"name": "constant.language.boolean.lole-lisp",
+					"name": "constant.language.boolean.lo-lisp",
 					"match": "(true|false)"
 				},
                 {
-					"name": "constant.numeric.long.lole-lisp",
+					"name": "constant.numeric.long.lo-lisp",
 					"match": "\\b\\d+"
 				},
                 {
-                    "name": "variable.other.constant.lole-lisp",
+                    "name": "variable.other.constant.lo-lisp",
                     "match": "\\b([A-Z][A-Za-z_]*\\/)*[A-Z0-9_]+(?=(\\s|\\)|\\]|\\}))"
                 }
             ]
@@ -60,19 +60,19 @@
 		"keywords": {
 			"patterns": [
                 {
-                    "name": "keyword.control.lole-lisp",
+                    "name": "keyword.control.lo-lisp",
                     "match": "\\b(if|loop|export|return|fn|do|mod|global|sizeof|struct|break|not|continue|unreachable|mut|defer.eval|defer|mem|drop|import|alias|as)\\b"
 			    },
                 {
-                    "name": "constant.keyword.lole-lisp",
+                    "name": "constant.keyword.lo-lisp",
                     "match": "(?<=(\\s|\\(|\\[|\\{)):[A-Za-z0-9_]+(?=(\\s|\\)|\\]|\\}))"
                 },
                 {
-                    "name": "keyword.operator.lole-lisp",
+                    "name": "keyword.operator.lo-lisp",
                     "match": "(=|==|!|!=|&&|\\.|>=|<=|>|<|:|\\+|-|\\*|\\/|@|\\|\\|)"
                 },
                 {
-                    "name": "keyword.operator.lole-lisp",
+                    "name": "keyword.operator.lo-lisp",
                     "match": "(&\\*?)\\s"
                 }
             ]
@@ -83,10 +83,10 @@
 					"begin": "\\b(fn)\\s+([A-Za-z0-9_/]+)",
 					"beginCaptures": {
 						"1": {
-							"name": "keyword.control.lole-lisp"
+							"name": "keyword.control.lo-lisp"
 						},
                         "2": {
-							"name": "entity.name.function.lole-lisp"
+							"name": "entity.name.function.lo-lisp"
 						}
 					},
                     "end": "\\s"
@@ -99,7 +99,7 @@
 					"match": "(?<=\\()([^;]+?)(?=\\s|\\))",
 					"captures": {
 						"1": {
-							"name": "entity.name.function.lole-lisp"
+							"name": "entity.name.function.lo-lisp"
 						}
 					},
 					"patterns": [
@@ -111,12 +111,12 @@
             ]
         },
 		"strings": {
-			"name": "string.quoted.double.lole-lisp",
+			"name": "string.quoted.double.lo-lisp",
 			"begin": "\"",
 			"end": "\"",
 			"patterns": [
 				{
-					"name": "constant.character.escape.lole-lisp",
+					"name": "constant.character.escape.lo-lisp",
 					"match": "\\\\."
 				}
 			]
@@ -124,7 +124,7 @@
         "comments": {
 			"patterns": [
 				{
-					"name": "comment.line.double-slash.lole-lisp",
+					"name": "comment.line.double-slash.lo-lisp",
 					"match": "\\s*;.*"
 				}
 			]

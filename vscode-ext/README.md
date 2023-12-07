@@ -1,3 +1,3 @@
-# lole-lisp language support
+# LO language support
 
 Yep

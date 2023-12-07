@@ -1,7 +1,7 @@
 (mod lib/cli)
 (mod lib/wasi_io)
 (mod lib/args)
-(mod lib/lole/parser)
+(mod lib/lo/parser)
 
 (fn main [] void (
     {input_file := (get_input_file)}
@@ -13,7 +13,7 @@
         (drop (Wasi/fd_close {input_file . fd}))
     ))
 
-    {parse_res := (Lole/Parser/parse
+    {parse_res := (Lo/Parser/parse
         {input_file . file_name}
         (Vec/as_slice source)
     )}
@@ -22,13 +22,13 @@
     ))
 
     {exprs := {parse_res . data}}
-    (defer (Vec<Lole/Ast/SExpr>/free exprs))
+    (defer (Vec<Lo/Ast/SExpr>/free exprs))
 
     (dump_exprs exprs)
     (puts "\n")
 ))
 
-(fn dump_exprs [(exprs (& Vec<Lole/Ast/SExpr>))] void (
+(fn dump_exprs [(exprs (& Vec<Lo/Ast/SExpr>))] void (
     {i := 0}
 
     (loop (
@@ -36,7 +36,7 @@
             (break)
         ))
 
-        (dump_expr {Lole/Ast/SExpr @ (Vec/at exprs i)})
+        (dump_expr {Lo/Ast/SExpr @ (Vec/at exprs i)})
 
         (if {i != {exprs -> size - 1}} (
             (puts " ")
@@ -46,16 +46,16 @@
     ))
 ))
 
-(fn dump_expr [(expr Lole/Ast/SExpr)] void (
-    (if {expr . kind == Lole/Ast/SExpr/ATOM} (
-        {atom := {Lole/Ast/SExpr/Atom @ {expr . value}}}
+(fn dump_expr [(expr Lo/Ast/SExpr)] void (
+    (if {expr . kind == Lo/Ast/SExpr/ATOM} (
+        {atom := {Lo/Ast/SExpr/Atom @ {expr . value}}}
         (print_str {atom . value})
         (return)
     ))
 
     (puts "(")
 
-    {list := {Lole/Ast/SExpr/List @ {expr . value}}}
+    {list := {Lo/Ast/SExpr/List @ {expr . value}}}
     (dump_exprs {list . value})
 
     (puts ")")
@@ -94,9 +94,9 @@
     ))
 ))
 
-(fn print_err_and_exit [(err (& Lole/Ast/CompileError))] void (
+(fn print_err_and_exit [(err (& Lo/Ast/CompileError))] void (
     {parse_err := (* err)}
-    (defer (Lole/Ast/CompileError/free parse_err))
+    (defer (Lo/Ast/CompileError/free parse_err))
 
     (fputs Wasi/FD_STDERR {parse_err . loc . file_name})
     (fputs Wasi/FD_STDERR ":")

@@ -11,7 +11,7 @@ use alloc::{
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: u32 = 1;
 
-pub fn parse(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
+pub fn parse(exprs: &Vec<SExpr>) -> Result<WasmModule, LoError> {
     let mut ctx = ModuleContext::default();
 
     for expr in exprs {
@@ -24,11 +24,11 @@ pub fn parse(exprs: &Vec<SExpr>) -> Result<WasmModule, LoleError> {
 }
 
 // pub to use from v2
-pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError> {
+pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
     // push function exports
     for fn_export in &ctx.fn_exports {
         let Some(fn_def) = ctx.fn_defs.get(&fn_export.in_name) else {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Cannot export unknown function {}", fn_export.in_name),
                 loc: fn_export.loc.clone(),
             });
@@ -51,7 +51,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
 
         let mut fn_ctx = FnContext {
             module: &ctx,
-            fn_lole_type: &fn_def.kind,
+            lo_fn_type: &fn_def.kind,
             locals_last_index: fn_body.locals_last_index,
             non_arg_wasm_locals: vec![],
             defers: BTreeMap::default(),
@@ -73,12 +73,12 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
             },
         };
 
-        let mut lole_exprs = match fn_body.body {
+        let mut lo_exprs = match fn_body.body {
             FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
             FnBodyExprs::V2(body) => parse_exprs(&mut block_ctx, body)?,
         };
         if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
-            lole_exprs.append(&mut values?);
+            lo_exprs.append(&mut values?);
         };
 
         let mut locals = Vec::<WasmLocals>::new();
@@ -97,7 +97,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
 
         // TODO: move to better place
         let mut instrs = vec![];
-        lower_exprs(&mut instrs, lole_exprs);
+        lower_exprs(&mut instrs, lo_exprs);
 
         ctx.wasm_module.borrow_mut().codes.push(WasmFn {
             locals,
@@ -108,16 +108,16 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
     Ok(())
 }
 
-fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInstr>, LoleError> {
+fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoInstr>, LoError> {
     let instrs = compile_instrs(exprs, ctx)?;
     for (instr, expr) in instrs.iter().zip(exprs) {
-        if let LoleInstr::NoEmit { .. } = instr {
+        if let LoInstr::NoEmit { .. } = instr {
             continue;
         }
 
         let instr_type = instr.get_type(ctx.module);
-        if instr_type != LoleType::Void {
-            return Err(LoleError {
+        if instr_type != LoType::Void {
+            return Err(LoError {
                 message: format!("TypeError: Excess values"),
                 loc: expr.loc().clone(),
             });
@@ -126,23 +126,23 @@ fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInst
     Ok(instrs)
 }
 
-fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), LoleError> {
+fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), LoError> {
     let SExpr::List { value: items, .. } = expr else {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Unexpected atom"),
             loc: expr.loc().clone()
         });
     };
 
     let [SExpr::Atom { value: op, loc: op_loc, kind }, args @ ..] = &items[..] else {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone()
         });
     };
 
     if *kind != AtomKind::Symbol {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Expected operation, got a string"),
             loc: expr.loc().clone(),
         });
@@ -166,13 +166,13 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 if min_literal == ":min" =>
             {
                 if ctx.memory_names.contains(mem_name) {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Duplicate memory definition: {mem_name}"),
                         loc: mem_name_loc.clone(),
                     });
                 }
 
-                let min_memory = min_memory.parse().map_err(|_| LoleError {
+                let min_memory = min_memory.parse().map_err(|_| LoError {
                     message: format!("Parsing {op} :min (u32) failed"),
                     loc: min_memory_loc.clone(),
                 })?;
@@ -187,14 +187,14 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                         loc: max_memory_loc,
                         kind: AtomKind::Symbol,
                     }] if max_literal == ":max" => {
-                        Some(max_memory.parse::<u32>().map_err(|_| LoleError {
+                        Some(max_memory.parse::<u32>().map_err(|_| LoError {
                             message: format!("Parsing {op} :max (u32) failed"),
                             loc: max_memory_loc.clone(),
                         })?)
                     }
                     [] => None,
                     _ => {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!("Invalid arguments for {op}"),
                             loc: op_loc.clone(),
                         })
@@ -208,7 +208,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 });
             }
             _ => {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 })
@@ -223,7 +223,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 value: input_exprs, ..
             }, output_expr, SExpr::List { value: body, .. }] => {
                 if ctx.fn_defs.contains_key(fn_name) {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Cannot redefine function: {fn_name}"),
                         loc: fn_name_loc.clone(),
                     });
@@ -231,11 +231,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
 
                 let mut locals = BTreeMap::new();
 
-                let mut lole_inputs = vec![];
+                let mut lo_inputs = vec![];
                 let mut wasm_inputs = vec![];
                 for input_expr in input_exprs.iter() {
                     let SExpr::List{ value: name_and_type, .. } = input_expr else {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!("Unexpected atom in function params list"),
                             loc: input_expr.loc().clone()
                         });
@@ -244,14 +244,14 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     let [SExpr::Atom {
                         value: p_name, loc: p_name_loc, kind: AtomKind::Symbol,
                     }, p_type] = &name_and_type[..] else {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!("Expected name and parameter pairs in function params list"),
                             loc: input_expr.loc().clone()
                         });
                     };
 
                     if locals.contains_key(p_name) {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!(
                                 "Found function param with conflicting name: {p_name}"
                             ),
@@ -260,7 +260,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     }
 
                     let local_index = wasm_inputs.len() as u32;
-                    let value_type = parse_lole_type(p_type, &ctx)?;
+                    let value_type = parse_lo_type(p_type, &ctx)?;
                     value_type.emit_components(&ctx, &mut wasm_inputs);
 
                     locals.insert(
@@ -270,12 +270,12 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                             value_type: value_type.clone(),
                         },
                     );
-                    lole_inputs.push(value_type);
+                    lo_inputs.push(value_type);
                 }
 
-                let lole_output = parse_lole_type(output_expr, &ctx)?;
+                let lo_output = parse_lo_type(output_expr, &ctx)?;
                 let mut wasm_outputs = vec![];
-                lole_output.emit_components(&ctx, &mut wasm_outputs);
+                lo_output.emit_components(&ctx, &mut wasm_outputs);
 
                 let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32;
                 let locals_last_index = wasm_inputs.len() as u32;
@@ -290,9 +290,9 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     local: true,
                     fn_index,
                     type_index,
-                    kind: LoleFnType {
-                        inputs: lole_inputs,
-                        output: lole_output,
+                    kind: LoFnType {
+                        inputs: lo_inputs,
+                        output: lo_output,
                     },
                 };
                 ctx.fn_defs.insert(fn_name.clone(), fn_def);
@@ -305,7 +305,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 });
             }
             _ => {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 })
@@ -334,7 +334,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 kind: _,
             }] if fn_literal == "fn" && from_literal == ":from" => {
                 if ctx.fn_defs.contains_key(fn_name) {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Cannot redefine function: {fn_name}"),
                         loc: fn_name_loc.clone(),
                     });
@@ -342,11 +342,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
 
                 let mut param_names = BTreeSet::new();
 
-                let mut lole_inputs = vec![];
+                let mut lo_inputs = vec![];
                 let mut wasm_inputs = vec![];
                 for input_expr in input_exprs.iter() {
                     let SExpr::List { value: name_and_type, .. } = input_expr else {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!("Unexpected atom in function params list"),
                             loc: input_expr.loc().clone()
                         });
@@ -355,14 +355,14 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     let [SExpr::Atom {
                         value: p_name, loc: name_loc,kind: AtomKind::Symbol,
                     }, p_type] = &name_and_type[..] else {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!("Expected name and parameter pairs in function params list"),
                             loc: input_expr.loc().clone()
                         });
                     };
 
                     if param_names.contains(p_name) {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!(
                                 "Found function param with conflicting name: {p_name}"
                             ),
@@ -370,16 +370,16 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                         });
                     }
 
-                    let value_type = parse_lole_type(p_type, &ctx)?;
+                    let value_type = parse_lo_type(p_type, &ctx)?;
                     value_type.emit_components(&ctx, &mut wasm_inputs);
-                    lole_inputs.push(value_type);
+                    lo_inputs.push(value_type);
 
                     param_names.insert(p_name.clone());
                 }
 
                 let mut wasm_outputs = vec![];
-                let lole_output = parse_lole_type(output_expr, &ctx)?;
-                lole_output.emit_components(&ctx, &mut wasm_outputs);
+                let lo_output = parse_lo_type(output_expr, &ctx)?;
+                lo_output.emit_components(&ctx, &mut wasm_outputs);
 
                 let type_index = ctx.insert_fn_type(WasmFnType {
                     inputs: wasm_inputs,
@@ -393,9 +393,9 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     local: false,
                     fn_index,
                     type_index,
-                    kind: LoleFnType {
-                        inputs: lole_inputs,
-                        output: lole_output,
+                    kind: LoFnType {
+                        inputs: lo_inputs,
+                        output: lo_output,
                     },
                 };
                 ctx.fn_defs.insert(fn_name.clone(), fn_def);
@@ -406,7 +406,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 });
             }
             _ => {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 })
@@ -429,7 +429,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 kind: _,
             }] if mem_literal == "mem" && as_literal == ":as" => {
                 if !ctx.memory_names.contains(in_name) {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Cannot export mem {in_name}, not found"),
                         loc: name_loc.clone(),
                     });
@@ -458,7 +458,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 });
             }
             _ => {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 })
@@ -471,7 +471,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 kind: AtomKind::Symbol,
             }, field_defs @ ..] => {
                 if ctx.struct_defs.contains_key(struct_name) {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Cannot redefine struct {struct_name}"),
                         loc: name_loc.clone(),
                     });
@@ -492,7 +492,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 struct_def.fully_defined = true;
             }
             _ => {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 })
@@ -521,7 +521,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     (false, global_name, global_type, global_value, name_loc)
                 }
                 _ => {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Invalid arguments for {op}"),
                         loc: op_loc.clone(),
                     })
@@ -529,15 +529,15 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
             };
 
             if ctx.globals.contains_key(global_name) {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Cannot redefine global: {global_name}"),
                     loc: name_loc.clone(),
                 });
             }
 
-            let lole_type = parse_lole_type(global_type_expr, ctx)?;
-            let Some(wasm_type) = lole_type.to_wasm_type() else {
-                return Err(LoleError {
+            let lo_type = parse_lo_type(global_type_expr, ctx)?;
+            let Some(wasm_type) = lo_type.to_wasm_type() else {
+                return Err(LoError {
                     message: format!("Unsupported type: {global_type_expr}"),
                     loc: global_type_expr.loc().clone(),
                 });
@@ -548,7 +548,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 GlobalDef {
                     index: ctx.globals.len() as u32,
                     mutable,
-                    value_type: lole_type,
+                    value_type: lo_type,
                 },
             );
 
@@ -570,13 +570,13 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 SExpr::Atom { value: offset, loc, kind: AtomKind::Symbol, },
                 SExpr::Atom { value: data_base64, loc: _, kind }
             ] = args else {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
                 })
             };
 
-            let offset = offset.parse().map_err(|_| LoleError {
+            let offset = offset.parse().map_err(|_| LoError {
                 message: format!("Parsing i32 (implicit) failed"),
                 loc: loc.clone(),
             })?;
@@ -595,7 +595,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
             });
         }
         _ => {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Unknown operation: {op}"),
                 loc: op_loc.clone(),
             })
@@ -609,14 +609,14 @@ fn build_struct_fields(
     exprs: &[SExpr],
     struct_name: &str,
     ctx: &ModuleContext,
-) -> Result<Vec<StructField>, LoleError> {
+) -> Result<Vec<StructField>, LoError> {
     let mut field_index = 0;
     let mut byte_offset = 0;
 
     let mut fields = Vec::<StructField>::new();
     for field_def in exprs {
         let SExpr::List { value: name_and_type, .. } = field_def else {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Unexpected atom in fields list of struct {struct_name}"),
                 loc: field_def.loc().clone()
             });
@@ -625,14 +625,14 @@ fn build_struct_fields(
         let [SExpr::Atom {
             value: f_name, loc: name_loc, kind: AtomKind::Symbol,
         }, f_type_expr] = &name_and_type[..] else {
-            return Err(LoleError{
+            return Err(LoError{
                 message: format!("Expected name and parameter pairs in fields list of struct {struct_name}"),
                 loc: field_def.loc().clone(),
             });
         };
 
         if fields.iter().find(|f| &f.name == f_name).is_some() {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!(
                     "Found duplicate struct field name: '{f_name}' of struct {struct_name}"
                 ),
@@ -640,12 +640,12 @@ fn build_struct_fields(
             });
         }
 
-        let field_type = parse_lole_type(f_type_expr, ctx)?;
+        let field_type = parse_lo_type(f_type_expr, ctx)?;
 
         let mut stats = EmitComponentStats::default();
         field_type
             .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
-            .map_err(|err| LoleError {
+            .map_err(|err| LoError {
                 message: err,
                 loc: f_type_expr.loc().clone(),
             })?;
@@ -663,11 +663,11 @@ fn build_struct_fields(
     Ok(fields)
 }
 
-fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInstr>, LoleError> {
+fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoInstr>, LoError> {
     exprs.iter().map(|expr| compile_instr(expr, ctx)).collect()
 }
 
-pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, LoleError> {
+pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, LoError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom { value, loc, kind } => {
@@ -700,31 +700,31 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                         string_ptr
                     });
 
-                return Ok(LoleInstr::MultiValueEmit {
+                return Ok(LoInstr::MultiValueEmit {
                     values: vec![
-                        LoleInstr::U32Const { value: string_ptr },
-                        LoleInstr::U32Const { value: string_len },
+                        LoInstr::U32Const { value: string_ptr },
+                        LoInstr::U32Const { value: string_len },
                     ],
                 });
             }
 
             if value == "true" {
-                return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Bool,
-                    expr: Box::new(LoleInstr::U32Const { value: 1 }),
+                return Ok(LoInstr::Casted {
+                    value_type: LoType::Bool,
+                    expr: Box::new(LoInstr::U32Const { value: 1 }),
                 });
             }
 
             if value == "false" {
-                return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Bool,
-                    expr: Box::new(LoleInstr::U32Const { value: 0 }),
+                return Ok(LoInstr::Casted {
+                    value_type: LoType::Bool,
+                    expr: Box::new(LoInstr::U32Const { value: 0 }),
                 });
             }
 
             if value.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(LoleInstr::U32Const {
-                    value: (value.parse().map_err(|_| LoleError {
+                return Ok(LoInstr::U32Const {
+                    value: (value.parse().map_err(|_| LoError {
                         message: format!("Parsing u32 (implicit) failed"),
                         loc: loc.clone(),
                     })?),
@@ -732,20 +732,20 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             }
 
             if let Some(global) = ctx.module.globals.get(value.as_str()) {
-                return Ok(LoleInstr::GlobalGet {
+                return Ok(LoInstr::GlobalGet {
                     global_index: global.index,
                 });
             };
 
             let Some(local) = ctx.block.get_local(value.as_str()) else {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Reading unknown variable: {value}"),
                     loc: loc.clone()
                 });
             };
 
             return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(
-                |message| LoleError {
+                |message| LoError {
                     message,
                     loc: expr.loc().clone(),
                 },
@@ -754,25 +754,25 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
     };
 
     let [SExpr::Atom { value: op, loc: op_loc, .. }, args @ ..] = &items[..] else {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone()
         });
     };
 
     let instr = match (op.as_str(), &args[..]) {
-        ("unreachable", []) => LoleInstr::Unreachable {},
+        ("unreachable", []) => LoInstr::Unreachable {},
         ("drop", [expr]) => {
             let instr = compile_instr(expr, ctx)?;
             let instr_type = instr.get_type(ctx.module);
             let drop_count = instr_type.emit_components(&ctx.module, &mut vec![]);
 
-            LoleInstr::Drop {
+            LoInstr::Drop {
                 value: Box::new(instr),
                 drop_count,
             }
         }
-        ("do", exprs) => LoleInstr::MultiValueEmit {
+        ("do", exprs) => LoInstr::MultiValueEmit {
             values: compile_instrs(exprs, ctx)?,
         },
         (
@@ -782,8 +782,8 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 loc,
                 kind: AtomKind::Symbol,
             }],
-        ) => LoleInstr::U32Const {
-            value: value.parse().map_err(|_| LoleError {
+        ) => LoInstr::U32Const {
+            value: value.parse().map_err(|_| LoError {
                 message: format!("Parsing i32 failed"),
                 loc: loc.clone(),
             })?,
@@ -795,9 +795,9 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 loc,
                 kind: AtomKind::Symbol,
             }],
-        ) => LoleInstr::I64Const {
+        ) => LoInstr::I64Const {
             // TODO(3rd-party-bug): figure out why I can't use parse::<i64>
-            value: value.parse::<i32>().map_err(|_| LoleError {
+            value: value.parse::<i32>().map_err(|_| LoError {
                 message: format!("Parsing i64 failed"),
                 loc: loc.clone(),
             })? as i64,
@@ -809,130 +809,130 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 kind: AtomKind::String,
                 ..
             }],
-        ) => LoleInstr::U32Const {
+        ) => LoInstr::U32Const {
             value: value.chars().next().unwrap() as u32,
         },
-        ("==", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("==", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("!=", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("!=", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32NotEqual,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("not", [lhs]) => LoleInstr::BinaryOp {
+        ("not", [lhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equals,
             lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(LoleInstr::U32Const { value: 0 }),
+            rhs: Box::new(LoInstr::U32Const { value: 0 }),
         },
-        ("<", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("<", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        (">", [lhs, rhs]) => LoleInstr::BinaryOp {
+        (">", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterThenUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        (">=", [lhs, rhs]) => LoleInstr::BinaryOp {
+        (">=", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("&&", [lhs, rhs]) => LoleInstr::Casted {
-            value_type: LoleType::Bool,
-            expr: Box::new(LoleInstr::BinaryOp {
+        ("&&", [lhs, rhs]) => LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32And,
                 lhs: Box::new(compile_instr(lhs, ctx)?),
                 rhs: Box::new(compile_instr(rhs, ctx)?),
             }),
         },
-        ("||", [lhs, rhs]) => LoleInstr::Casted {
-            value_type: LoleType::Bool,
-            expr: Box::new(LoleInstr::BinaryOp {
+        ("||", [lhs, rhs]) => LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Or,
                 lhs: Box::new(compile_instr(lhs, ctx)?),
                 rhs: Box::new(compile_instr(rhs, ctx)?),
             }),
         },
-        ("+", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("+", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         ("+=", [lhs, rhs]) => {
             let bind = compile_instr(lhs, ctx)?;
-            let value = LoleInstr::BinaryOp {
+            let value = LoInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Add,
                 lhs: Box::new(bind.clone()),
                 rhs: Box::new(compile_instr(rhs, ctx)?),
             };
             compile_set(ctx, value, bind, lhs.loc())?
         }
-        ("-", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("-", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         ("-=", [lhs, rhs]) => {
             let bind = compile_instr(lhs, ctx)?;
-            let value = LoleInstr::BinaryOp {
+            let value = LoInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Sub,
                 lhs: Box::new(bind.clone()),
                 rhs: Box::new(compile_instr(rhs, ctx)?),
             };
             compile_set(ctx, value, bind, lhs.loc())?
         }
-        ("*", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("*", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("/", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("/", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32DivUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("%", [lhs, rhs]) => LoleInstr::BinaryOp {
+        ("%", [lhs, rhs]) => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32RemUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
-        ("data.size", []) => LoleInstr::U32ConstLazy {
+        ("data.size", []) => LoInstr::U32ConstLazy {
             value: ctx.module.data_size.clone(),
         },
-        ("memory.size", []) => LoleInstr::MemorySize {},
+        ("memory.size", []) => LoInstr::MemorySize {},
         ("memory.grow", [size_expr]) => {
             let size = compile_instr(size_expr, ctx)?;
             let size_type = size.get_type(ctx.module);
 
-            if size_type != LoleType::U32 {
-                return Err(LoleError {
+            if size_type != LoType::U32 {
+                return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: size_expr.loc().clone(),
                 });
             };
 
-            LoleInstr::MemoryGrow {
+            LoInstr::MemoryGrow {
                 size: Box::new(size),
             }
         }
         ("debug.typeof", [sub_expr]) => {
-            let lole_instr = compile_instr(sub_expr, ctx)?;
-            let lole_type = lole_instr.get_type(ctx.module);
+            let lo_instr = compile_instr(sub_expr, ctx)?;
+            let lo_type = lo_instr.get_type(ctx.module);
             crate::wasi_io::debug(format!(
                 "{}",
-                String::from(LoleError {
-                    message: format!("{expr} = {:?}", lole_type),
+                String::from(LoError {
+                    message: format!("{expr} = {:?}", lo_type),
                     loc: expr.loc().clone(),
                 })
             ));
-            LoleInstr::Casted {
-                value_type: LoleType::Void,
-                expr: Box::new(LoleInstr::MultiValueEmit { values: vec![] }),
+            LoInstr::Casted {
+                value_type: LoType::Void,
+                expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
             }
         }
         (
@@ -971,8 +971,8 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 },
             )?);
 
-            LoleInstr::If {
-                block_type: LoleType::Void,
+            LoInstr::If {
+                block_type: LoType::Void,
                 cond: Box::new(compile_instr(cond, ctx)?),
                 then_branch,
                 else_branch,
@@ -984,8 +984,8 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 value: then_branch,
                 loc: _,
             }],
-        ) => LoleInstr::If {
-            block_type: LoleType::Void,
+        ) => LoInstr::If {
+            block_type: LoType::Void,
             cond: Box::new(compile_instr(cond, ctx)?),
             then_branch: compile_block(
                 then_branch,
@@ -1015,12 +1015,12 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             let mut body = compile_block(exprs, &mut ctx)?;
 
             // add implicit continue
-            body.push(LoleInstr::Branch { label_index: 0 });
+            body.push(LoInstr::Branch { label_index: 0 });
 
-            LoleInstr::Block {
-                block_type: LoleType::Void,
-                body: vec![LoleInstr::Loop {
-                    block_type: LoleType::Void,
+            LoInstr::Block {
+                block_type: LoType::Void,
+                body: vec![LoInstr::Loop {
+                    block_type: LoType::Void,
                     body,
                 }],
             }
@@ -1038,7 +1038,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 label_index += 1;
             }
 
-            LoleInstr::Branch { label_index }
+            LoInstr::Branch { label_index }
         }
         ("continue", []) => {
             let mut label_index = 0; // 0 = loop
@@ -1053,39 +1053,39 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 label_index += 1;
             }
 
-            LoleInstr::Branch { label_index }
+            LoInstr::Branch { label_index }
         }
         ("return", values) if values.len() < 2 => {
             let value = if let Some(value_expr) = values.get(0) {
                 compile_instr(value_expr, ctx)?
             } else {
-                LoleInstr::Casted {
-                    value_type: LoleType::Void,
-                    expr: Box::new(LoleInstr::MultiValueEmit { values: vec![] }),
+                LoInstr::Casted {
+                    value_type: LoType::Void,
+                    expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
                 }
             };
 
             let return_type = value.get_type(ctx.module);
-            if return_type != ctx.fn_ctx.fn_lole_type.output {
-                return Err(LoleError {
+            if return_type != ctx.fn_ctx.lo_fn_type.output {
+                return Err(LoError {
                     message: format!(
                         "TypeError: Invalid return type, \
                             expected {output:?}, got {return_type:?}",
-                        output = ctx.fn_ctx.fn_lole_type.output,
+                        output = ctx.fn_ctx.lo_fn_type.output,
                     ),
                     loc: op_loc.clone(),
                 });
             }
 
-            let return_expr = LoleInstr::Return {
+            let return_expr = LoInstr::Return {
                 value: Box::new(value),
             };
             if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, ctx) {
                 let mut values = values?;
                 values.push(return_expr);
-                LoleInstr::Casted {
-                    value_type: LoleType::Void,
-                    expr: Box::new(LoleInstr::MultiValueEmit { values }),
+                LoInstr::Casted {
+                    value_type: LoType::Void,
+                    expr: Box::new(LoInstr::MultiValueEmit { values }),
                 }
             } else {
                 return_expr
@@ -1100,7 +1100,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 }] => defer_label.clone(),
                 [] => String::from(DEFER_UNTIL_RETURN_LABEL),
                 _ => {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Invalid arguments for {op}"),
                         loc: op_loc.clone(),
                     })
@@ -1115,9 +1115,9 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
 
             deferred.push(defer_expr.clone());
 
-            LoleInstr::Casted {
-                value_type: LoleType::Void,
-                expr: Box::new(LoleInstr::MultiValueEmit { values: vec![] }),
+            LoInstr::Casted {
+                value_type: LoType::Void,
+                expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
             }
         }
         (
@@ -1129,33 +1129,33 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             }],
         ) => {
             let Some(values) = get_deferred(defer_label, ctx) else {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Unknown defer scope: {defer_label}"),
                     loc: defer_label_loc.clone(),
                 });
             };
 
-            LoleInstr::Casted {
-                value_type: LoleType::Void,
-                expr: Box::new(LoleInstr::MultiValueEmit { values: values? }),
+            LoInstr::Casted {
+                value_type: LoType::Void,
+                expr: Box::new(LoInstr::MultiValueEmit { values: values? }),
             }
         }
         ("as", [value_expr, type_expr]) => {
-            let lole_expr = compile_instr(value_expr, ctx)?;
-            let value_type = parse_lole_type(type_expr, &ctx.module)?;
+            let lo_expr = compile_instr(value_expr, ctx)?;
+            let value_type = parse_lo_type(type_expr, &ctx.module)?;
 
-            LoleInstr::Casted {
+            LoInstr::Casted {
                 value_type,
-                expr: Box::new(lole_expr),
+                expr: Box::new(lo_expr),
             }
         }
         ("sizeof", [type_expr]) => {
-            let value_type = parse_lole_type(type_expr, &ctx.module)?;
+            let value_type = parse_lo_type(type_expr, &ctx.module)?;
 
-            LoleInstr::U32Const {
+            LoInstr::U32Const {
                 value: value_type
                     .sized_comp_stats(&ctx.module)
-                    .map_err(|err| LoleError {
+                    .map_err(|err| LoError {
                         message: err,
                         loc: op_loc.clone(),
                     })?
@@ -1164,7 +1164,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
         }
         ("new", [type_expr, init_expr, other @ ..]) => {
             let alloc_id_instr = match other {
-                [] => LoleInstr::U32Const {
+                [] => LoInstr::U32Const {
                     value: HEAP_ALLOC_ID,
                 },
                 [SExpr::Atom {
@@ -1177,20 +1177,20 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                     compile_instr(alloc_id_expr, ctx)?
                 }
                 _ => {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Invalid arguments for {op}"),
                         loc: op_loc.clone(),
                     });
                 }
             };
 
-            let value_type = parse_lole_type(type_expr, &ctx.module)?;
+            let value_type = parse_lo_type(type_expr, &ctx.module)?;
 
             let init_instr = compile_instr(init_expr, ctx)?;
             let init_type = init_instr.get_type(ctx.module);
 
             if init_type != value_type {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!(
                         "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
                         value_type, init_type
@@ -1199,7 +1199,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 });
             }
 
-            let alloc_fn_def = ctx.module.fn_defs.get("alloc").ok_or_else(|| LoleError {
+            let alloc_fn_def = ctx.module.fn_defs.get("alloc").ok_or_else(|| LoError {
                 message: format!("`alloc` not defined, required for using {}", op),
                 loc: op_loc.clone(),
             })?;
@@ -1207,7 +1207,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
 
             let value_size = value_type
                 .sized_comp_stats(&ctx.module)
-                .map_err(|err| LoleError {
+                .map_err(|err| LoError {
                     message: err,
                     loc: op_loc.clone(),
                 })?
@@ -1220,39 +1220,39 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             let init_load = compile_load(
                 ctx,
                 &value_type,
-                Box::new(LoleInstr::UntypedLocalGet {
+                Box::new(LoInstr::UntypedLocalGet {
                     local_index: return_addr_local_index,
                 }),
                 0,
             )
-            .map_err(|err| LoleError {
+            .map_err(|err| LoError {
                 message: err,
                 loc: op_loc.clone(),
             })?;
 
             let init_store_instr = compile_set(ctx, init_instr, init_load, op_loc)?;
 
-            LoleInstr::Casted {
-                value_type: LoleType::Pointer(Box::new(value_type)),
-                expr: Box::new(LoleInstr::MultiValueEmit {
+            LoInstr::Casted {
+                value_type: LoType::Pointer(Box::new(value_type)),
+                expr: Box::new(LoInstr::MultiValueEmit {
                     values: vec![
-                        LoleInstr::Call {
+                        LoInstr::Call {
                             fn_index: alloc_fn_index,
-                            return_type: LoleType::Void, // won't be typechecked
+                            return_type: LoType::Void, // won't be typechecked
                             args: vec![
                                 alloc_id_instr,
-                                LoleInstr::U32Const {
+                                LoInstr::U32Const {
                                     value: value_size as u32,
                                 },
                             ],
                         },
-                        LoleInstr::Set {
-                            bind: LoleSetBind::Local {
+                        LoInstr::Set {
+                            bind: LoSetBind::Local {
                                 index: return_addr_local_index,
                             },
                         },
                         init_store_instr,
-                        LoleInstr::UntypedLocalGet {
+                        LoInstr::UntypedLocalGet {
                             local_index: return_addr_local_index,
                         },
                     ],
@@ -1268,30 +1268,30 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             }, value_type],
         ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Local name collides with global: {local_name}"),
                     loc: name_loc.clone(),
                 });
             };
 
             if ctx.block.get_own_local(local_name).is_some() {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Duplicate local definition: {local_name}"),
                     loc: name_loc.clone(),
                 });
             }
 
-            let value_type = parse_lole_type(value_type, &ctx.module)?;
+            let value_type = parse_lo_type(value_type, &ctx.module)?;
             let local_indicies = ctx.push_local(local_name.clone(), value_type.clone());
 
             let values = local_indicies
-                .map(|i| LoleInstr::UntypedLocalGet { local_index: i })
+                .map(|i| LoInstr::UntypedLocalGet { local_index: i })
                 .collect();
 
-            LoleInstr::NoEmit {
-                expr: Box::new(LoleInstr::Casted {
+            LoInstr::NoEmit {
+                expr: Box::new(LoInstr::Casted {
                     value_type,
-                    expr: Box::new(LoleInstr::MultiValueEmit { values }),
+                    expr: Box::new(LoInstr::MultiValueEmit { values }),
                 }),
             }
         }
@@ -1303,7 +1303,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             let bind_type = bind_instr.get_type(ctx.module);
 
             if value_type != bind_type {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!(
                         "TypeError: Invalid types for '{op}', \
                         needed {bind_type}, got {value_type}",
@@ -1323,14 +1323,14 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             }, value],
         ) => {
             if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Local name collides with global: {local_name}"),
                     loc: name_loc.clone(),
                 });
             };
 
             if ctx.block.get_own_local(local_name).is_some() {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Duplicate local definition: {local_name}"),
                     loc: name_loc.clone(),
                 });
@@ -1341,10 +1341,10 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             let local_indicies = ctx.push_local(local_name.clone(), value_type.clone());
 
             let values = local_indicies
-                .map(|i| LoleInstr::UntypedLocalGet { local_index: i })
+                .map(|i| LoInstr::UntypedLocalGet { local_index: i })
                 .collect();
 
-            let bind_instr = LoleInstr::MultiValueEmit { values };
+            let bind_instr = LoInstr::MultiValueEmit { values };
 
             compile_set(ctx, value_instr, bind_instr, op_loc)?
         }
@@ -1363,21 +1363,21 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             } = lhs
             {
                 if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Getting struct field from global variable: {local_name}"),
                         loc: name_loc.clone(),
                     });
                 };
 
                 let Some(local) = ctx.block.get_local(local_name.as_str()) else {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Reading unknown variable: {local_name}"),
                         loc: name_loc.clone(),
                     });
                 };
 
-                let LoleType::StructInstance { name: s_name } = &local.value_type else {
-                    return Err(LoleError {
+                let LoType::StructInstance { name: s_name } = &local.value_type else {
+                    return Err(LoError {
                         message: format!("Trying to get field '{f_name}' on non struct: {local_name}"),
                         loc: f_name_loc.clone(),
                     });
@@ -1387,7 +1387,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 let struct_def = ctx.module.struct_defs.get(s_name).unwrap();
 
                 let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Unknown field {f_name} in struct {s_name}"),
                         loc: f_name_loc.clone(),
                     });
@@ -1398,7 +1398,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                     local.index + field.field_index,
                     &field.value_type,
                 )
-                .map_err(|message| LoleError {
+                .map_err(|message| LoError {
                     message,
                     loc: lhs.loc().clone(),
                 });
@@ -1406,7 +1406,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
 
             let lhs_instr = compile_instr(lhs, ctx)?;
 
-            if let LoleInstr::StructGet {
+            if let LoInstr::StructGet {
                 struct_name,
                 base_index,
                 ..
@@ -1416,7 +1416,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
 
                 let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Unknown field {f_name} in struct {struct_name}"),
                         loc: f_name_loc.clone(),
                     });
@@ -1427,13 +1427,13 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                     base_index + field.field_index,
                     &field.value_type,
                 )
-                .map_err(|message| LoleError {
+                .map_err(|message| LoError {
                     message,
                     loc: lhs.loc().clone(),
                 });
             };
 
-            if let LoleInstr::StructLoad {
+            if let LoInstr::StructLoad {
                 struct_name,
                 address_instr,
                 base_byte_offset,
@@ -1444,7 +1444,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
 
                 let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Unknown field {f_name} in struct {struct_name}"),
                         loc: f_name_loc.clone(),
                     });
@@ -1456,29 +1456,29 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                     address_instr,
                     base_byte_offset + field.byte_offset,
                 )
-                .map_err(|e| LoleError {
+                .map_err(|e| LoError {
                     message: e,
                     loc: op_loc.clone(),
                 });
             }
 
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Invalid arguments for {op}"),
                 loc: op_loc.clone(),
             });
         }
         ("*", [pointer_expr]) => {
             let pointer_instr = Box::new(compile_instr(pointer_expr, ctx)?);
-            let lole_type = pointer_instr.get_type(ctx.module);
+            let lo_type = pointer_instr.get_type(ctx.module);
 
-            let LoleType::Pointer(pointee_type) = lole_type else {
-                return Err(LoleError {
-                    message: format!("Cannot dereference {lole_type:?}"),
+            let LoType::Pointer(pointee_type) = lo_type else {
+                return Err(LoError {
+                    message: format!("Cannot dereference {lo_type:?}"),
                     loc: op_loc.clone(),
                 })
             };
 
-            compile_load(ctx, &pointee_type, pointer_instr, 0).map_err(|err| LoleError {
+            compile_load(ctx, &pointee_type, pointer_instr, 0).map_err(|err| LoError {
                 message: err,
                 loc: op_loc.clone(),
             })?
@@ -1492,31 +1492,31 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             }],
         ) => {
             let struct_ref_instr = Box::new(compile_instr(struct_ref_expr, ctx)?);
-            let lole_type = struct_ref_instr.get_type(ctx.module);
+            let lo_type = struct_ref_instr.get_type(ctx.module);
 
-            let LoleType::Pointer(pointee_type) = &lole_type else {
-                return Err(LoleError {
-                    message: format!("Cannot dereference {lole_type:?}"),
+            let LoType::Pointer(pointee_type) = &lo_type else {
+                return Err(LoError {
+                    message: format!("Cannot dereference {lo_type:?}"),
                     loc: op_loc.clone(),
                 })
             };
-            let LoleType::StructInstance { name: s_name } = pointee_type.as_ref() else {
-                return Err(LoleError {
-                    message: format!("Cannot dereference {lole_type:?}"),
+            let LoType::StructInstance { name: s_name } = pointee_type.as_ref() else {
+                return Err(LoError {
+                    message: format!("Cannot dereference {lo_type:?}"),
                     loc: op_loc.clone(),
                 })
             };
 
             let struct_def = ctx.module.struct_defs.get(s_name).unwrap();
             let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Unknown field {f_name} in struct {s_name}"),
                     loc: f_name_loc.clone(),
                 });
             };
 
             compile_load(ctx, &field.value_type, struct_ref_instr, field.byte_offset).map_err(
-                |e| LoleError {
+                |e| LoError {
                     message: e,
                     loc: op_loc.clone(),
                 },
@@ -1525,9 +1525,9 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
         // TODO(feat): support custom aligns and offsets
         ("@", [load_kind_expr, address_expr]) => {
             let address_instr = Box::new(compile_instr(address_expr, ctx)?);
-            let value_type = parse_lole_type(&load_kind_expr, &ctx.module)?;
+            let value_type = parse_lo_type(&load_kind_expr, &ctx.module)?;
 
-            compile_load(ctx, &value_type, address_instr, 0).map_err(|err| LoleError {
+            compile_load(ctx, &value_type, address_instr, 0).map_err(|err| LoError {
                 message: err,
                 loc: op_loc.clone(),
             })?
@@ -1536,7 +1536,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             if let Some(struct_def) = ctx.module.struct_defs.get(fn_name) {
                 let struct_name = fn_name;
                 if args.len() / 2 != struct_def.fields.len() {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!(
                             "Invalid number of struct fields, expected: {}",
                             struct_def.fields.len()
@@ -1552,7 +1552,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                     let field_value_expr = &args[i * 2 + 1];
 
                     let SExpr::Atom { value: field_name, kind: AtomKind::Symbol, loc: _ } = field_name_expr else {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!("Field name expected, got {field_name_expr}"),
                             loc: field_name_expr.loc().clone(),
                         });
@@ -1560,7 +1560,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
 
                     let expected_field_name = format!(":{}", struct_field.name);
                     if field_name != &expected_field_name[..] {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!(
                                 "Unexpected field name, expecting: `{expected_field_name}`"
                             ),
@@ -1573,7 +1573,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
 
                     let field_type = &struct_field.value_type;
                     if field_value_type != *field_type {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!(
                                 "Invalid type for field {struct_name}{field_name}, \
                                 expected: {field_type}, \
@@ -1585,16 +1585,16 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                     values.push(field_value);
                 }
 
-                return Ok(LoleInstr::Casted {
-                    value_type: LoleType::StructInstance {
+                return Ok(LoInstr::Casted {
+                    value_type: LoType::StructInstance {
                         name: struct_name.into(),
                     },
-                    expr: Box::new(LoleInstr::MultiValueEmit { values }),
+                    expr: Box::new(LoInstr::MultiValueEmit { values }),
                 });
             };
 
             let Some(fn_def) = ctx.module.fn_defs.get(fn_name) else {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Unknown instruction or function: {fn_name}"),
                     loc: op_loc.clone()
                 });
@@ -1607,16 +1607,16 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             let fn_type = wasm_module
                 .types
                 .get(fn_type_index as usize)
-                .ok_or_else(|| LoleError::unreachable(file!(), line!()))?;
+                .ok_or_else(|| LoError::unreachable(file!(), line!()))?;
 
             let mut arg_types = vec![];
             for arg in &args {
-                let lole_type = arg.get_type(ctx.module);
-                lole_type.emit_components(&ctx.module, &mut arg_types);
+                let lo_type = arg.get_type(ctx.module);
+                lo_type.emit_components(&ctx.module, &mut arg_types);
             }
 
             if fn_type.inputs != arg_types {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!(
                         "TypeError: Mismatched arguments for function \
                             '{fn_name}', expected {inputs:?}, got {args:?}",
@@ -1644,7 +1644,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             //     });
             // }
 
-            LoleInstr::Call {
+            LoInstr::Call {
                 fn_index: fn_def.get_absolute_index(&ctx.module),
                 args,
                 return_type: fn_def.kind.output.clone(),
@@ -1658,7 +1658,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
 fn get_deferred(
     defer_label: &str,
     ctx: &mut BlockContext,
-) -> Option<Result<Vec<LoleInstr>, LoleError>> {
+) -> Option<Result<Vec<LoInstr>, LoError>> {
     let Some(deferred) = ctx.fn_ctx.defers.get(defer_label) else {
         return None;
     };
@@ -1671,12 +1671,12 @@ fn get_deferred(
 
 fn compile_load(
     ctx: &mut BlockContext,
-    value_type: &LoleType,
-    address_instr: Box<LoleInstr>,
+    value_type: &LoType,
+    address_instr: Box<LoInstr>,
     base_byte_offset: u32,
-) -> Result<LoleInstr, String> {
+) -> Result<LoInstr, String> {
     if let Ok(_) = value_type.to_load_kind() {
-        return Ok(LoleInstr::Load {
+        return Ok(LoInstr::Load {
             kind: value_type.clone(),
             align: 0,
             offset: base_byte_offset,
@@ -1684,7 +1684,7 @@ fn compile_load(
         });
     }
 
-    if let LoleType::Tuple(item_types) = value_type {
+    if let LoType::Tuple(item_types) = value_type {
         let mut item_gets = vec![];
         let mut item_byte_offset = 0;
         for item_type in item_types {
@@ -1697,13 +1697,13 @@ fn compile_load(
             item_byte_offset += item_type.sized_comp_stats(&ctx.module)?.byte_length;
         }
 
-        return Ok(LoleInstr::Casted {
+        return Ok(LoInstr::Casted {
             value_type: value_type.clone(),
-            expr: Box::new(LoleInstr::MultiValueEmit { values: item_gets }),
+            expr: Box::new(LoInstr::MultiValueEmit { values: item_gets }),
         });
     }
 
-    let LoleType::StructInstance { name } = value_type else {
+    let LoType::StructInstance { name } = value_type else {
         return Err(format!("Unsupported type for compile_load: {value_type:?}"));
     };
 
@@ -1721,17 +1721,17 @@ fn compile_load(
 
     let mut primitive_loads = vec![];
     for comp in components.into_iter() {
-        primitive_loads.push(LoleInstr::Load {
+        primitive_loads.push(LoInstr::Load {
             kind: comp.value_type,
             align: 1,
             offset: comp.byte_offset,
-            address_instr: Box::new(LoleInstr::UntypedLocalGet {
+            address_instr: Box::new(LoInstr::UntypedLocalGet {
                 local_index: address_local_index,
             }),
         });
     }
 
-    Ok(LoleInstr::StructLoad {
+    Ok(LoInstr::StructLoad {
         struct_name: name.clone(),
         address_instr,
         address_local_index,
@@ -1744,47 +1744,47 @@ fn compile_load(
 pub fn compile_local_get(
     ctx: &ModuleContext,
     base_index: u32,
-    value_type: &LoleType,
-) -> Result<LoleInstr, String> {
+    value_type: &LoType,
+) -> Result<LoInstr, String> {
     let comp_count = value_type.emit_components(ctx, &mut vec![]);
     if comp_count == 1 {
-        return Ok(LoleInstr::LocalGet {
+        return Ok(LoInstr::LocalGet {
             local_index: base_index,
             value_type: value_type.clone(),
         });
     }
 
-    if let LoleType::Tuple(item_types) = value_type {
+    if let LoType::Tuple(item_types) = value_type {
         let mut item_gets = vec![];
         for (item_index, item_type) in (0..).zip(item_types) {
             item_gets.push(compile_local_get(ctx, base_index + item_index, item_type)?);
         }
 
-        return Ok(LoleInstr::Casted {
+        return Ok(LoInstr::Casted {
             value_type: value_type.clone(),
-            expr: Box::new(LoleInstr::MultiValueEmit { values: item_gets }),
+            expr: Box::new(LoInstr::MultiValueEmit { values: item_gets }),
         });
     }
 
-    let LoleType::StructInstance { name } = value_type else {
+    let LoType::StructInstance { name } = value_type else {
         return Err(format!("Unsupported type for compile_load: {value_type:?}"));
     };
 
     let mut primitive_gets = vec![];
     for field_index in 0..comp_count {
-        primitive_gets.push(LoleInstr::UntypedLocalGet {
+        primitive_gets.push(LoInstr::UntypedLocalGet {
             local_index: base_index + field_index as u32,
         });
     }
 
-    Ok(LoleInstr::StructGet {
+    Ok(LoInstr::StructGet {
         struct_name: name.clone(),
         base_index,
         primitive_gets,
     })
 }
 
-pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInstr, LoleError> {
+pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoInstr, LoError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom {
@@ -1793,29 +1793,29 @@ pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInst
             kind,
         } => {
             if *kind != AtomKind::Symbol {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Strings are not allowed in globals"),
                     loc: expr.loc().clone(),
                 });
             }
 
             if value == "true" {
-                return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Bool,
-                    expr: Box::new(LoleInstr::U32Const { value: 1 }),
+                return Ok(LoInstr::Casted {
+                    value_type: LoType::Bool,
+                    expr: Box::new(LoInstr::U32Const { value: 1 }),
                 });
             }
 
             if value == "false" {
-                return Ok(LoleInstr::Casted {
-                    value_type: LoleType::Bool,
-                    expr: Box::new(LoleInstr::U32Const { value: 0 }),
+                return Ok(LoInstr::Casted {
+                    value_type: LoType::Bool,
+                    expr: Box::new(LoInstr::U32Const { value: 0 }),
                 });
             }
 
             if value.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(LoleInstr::U32Const {
-                    value: value.parse().map_err(|_| LoleError {
+                return Ok(LoInstr::U32Const {
+                    value: value.parse().map_err(|_| LoError {
                         message: format!("Parsing u32 (implicit) failed"),
                         loc: op_loc.clone(),
                     })?,
@@ -1823,44 +1823,44 @@ pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInst
             }
 
             let Some(global) = ctx.globals.get(value.as_str()) else {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Reading unknown global: {value}"),
                     loc: op_loc.clone(),
                 });
             };
 
-            return Ok(LoleInstr::GlobalGet {
+            return Ok(LoInstr::GlobalGet {
                 global_index: global.index,
             });
         }
     };
 
     let [SExpr::Atom { value: op, loc: op_loc, kind }, args @ ..] = &items[..] else {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone(),
         });
     };
 
     if *kind != AtomKind::Symbol {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Expected operation, got a string"),
             loc: expr.loc().clone(),
         });
     }
 
     let instr = match (op.as_str(), &args[..]) {
-        ("i32", [SExpr::Atom { value, .. }]) => LoleInstr::U32Const {
-            value: value.parse().map_err(|_| LoleError {
+        ("i32", [SExpr::Atom { value, .. }]) => LoInstr::U32Const {
+            value: value.parse().map_err(|_| LoError {
                 message: format!("Parsing i32 failed"),
                 loc: op_loc.clone(),
             })?,
         },
-        ("data.size", []) => LoleInstr::U32ConstLazy {
+        ("data.size", []) => LoInstr::U32ConstLazy {
             value: ctx.data_size.clone(),
         },
         (instr_name, _args) => {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Unknown instruction: {instr_name}"),
                 loc: op_loc.clone(),
             });
@@ -1873,47 +1873,47 @@ pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInst
 // pub for use in v2
 pub fn compile_set(
     ctx: &mut BlockContext,
-    value_instr: LoleInstr,
-    bind_instr: LoleInstr,
-    bind_loc: &LoleLocation,
-) -> Result<LoleInstr, LoleError> {
+    value_instr: LoInstr,
+    bind_instr: LoInstr,
+    bind_loc: &LoLocation,
+) -> Result<LoInstr, LoError> {
     let mut values = vec![];
     compile_set_binds(&mut values, ctx, bind_instr, bind_loc, None)?;
     values.push(value_instr);
     values.reverse();
 
-    Ok(LoleInstr::Casted {
-        value_type: LoleType::Void,
-        expr: Box::new(LoleInstr::MultiValueEmit { values }),
+    Ok(LoInstr::Casted {
+        value_type: LoType::Void,
+        expr: Box::new(LoInstr::MultiValueEmit { values }),
     })
 }
 
 // TODO: figure out better location
 fn compile_set_binds(
-    output: &mut Vec<LoleInstr>,
+    output: &mut Vec<LoInstr>,
     ctx: &mut BlockContext,
-    bind_instr: LoleInstr,
-    bind_loc: &LoleLocation,
+    bind_instr: LoInstr,
+    bind_loc: &LoLocation,
     address_index: Option<u32>,
-) -> Result<(), LoleError> {
+) -> Result<(), LoError> {
     Ok(match bind_instr {
-        LoleInstr::LocalGet {
+        LoInstr::LocalGet {
             local_index,
             value_type: _,
         }
-        | LoleInstr::UntypedLocalGet { local_index } => {
-            output.push(LoleInstr::Set {
-                bind: LoleSetBind::Local { index: local_index },
+        | LoInstr::UntypedLocalGet { local_index } => {
+            output.push(LoInstr::Set {
+                bind: LoSetBind::Local { index: local_index },
             });
         }
-        LoleInstr::GlobalGet { global_index } => {
-            output.push(LoleInstr::Set {
-                bind: LoleSetBind::Global {
+        LoInstr::GlobalGet { global_index } => {
+            output.push(LoInstr::Set {
+                bind: LoSetBind::Global {
                     index: global_index,
                 },
             });
         }
-        LoleInstr::Load {
+        LoInstr::Load {
             kind,
             align,
             offset,
@@ -1926,12 +1926,12 @@ fn compile_set_binds(
             ctx.fn_ctx.locals_last_index += 1;
 
             let address_instr = match address_index {
-                Some(local_index) => Box::new(LoleInstr::UntypedLocalGet { local_index }),
+                Some(local_index) => Box::new(LoInstr::UntypedLocalGet { local_index }),
                 None => address_instr,
             };
 
-            output.push(LoleInstr::Set {
-                bind: LoleSetBind::Memory {
+            output.push(LoInstr::Set {
+                bind: LoSetBind::Memory {
                     align,
                     offset,
                     kind: WasmStoreKind::from_load_kind(&kind.to_load_kind().unwrap()),
@@ -1940,7 +1940,7 @@ fn compile_set_binds(
                 },
             });
         }
-        LoleInstr::StructLoad {
+        LoInstr::StructLoad {
             primitive_loads,
             address_instr,
             address_local_index,
@@ -1952,8 +1952,8 @@ fn compile_set_binds(
                 compile_set_binds(&mut values, ctx, value, bind_loc, Some(address_local_index))?;
             }
 
-            values.push(LoleInstr::Set {
-                bind: LoleSetBind::Local {
+            values.push(LoInstr::Set {
+                bind: LoSetBind::Local {
                     index: address_local_index,
                 },
             });
@@ -1961,30 +1961,30 @@ fn compile_set_binds(
 
             values.reverse();
 
-            output.push(LoleInstr::MultiValueEmit { values });
+            output.push(LoInstr::MultiValueEmit { values });
         }
         // TODO: improve this? (StructGet/MultiValueEmit/NoEmit)
-        LoleInstr::StructGet { primitive_gets, .. } => {
+        LoInstr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
                 compile_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
-        LoleInstr::MultiValueEmit { values } => {
+        LoInstr::MultiValueEmit { values } => {
             for value in values {
                 compile_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
-        LoleInstr::NoEmit { expr: instr } => {
+        LoInstr::NoEmit { expr: instr } => {
             compile_set_binds(output, ctx, *instr, bind_loc, address_index)?;
         }
-        LoleInstr::Casted {
+        LoInstr::Casted {
             expr: instr,
             value_type: _,
         } => {
             compile_set_binds(output, ctx, *instr, bind_loc, address_index)?;
         }
         _ => {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Invalid bind"),
                 loc: bind_loc.clone(),
             });
@@ -1995,43 +1995,43 @@ fn compile_set_binds(
 // types
 
 // pub for use from v2
-pub fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, LoleError> {
-    parse_lole_type_checking_ref(expr, ctx, false)
+pub fn parse_lo_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoType, LoError> {
+    parse_lo_type_checking_ref(expr, ctx, false)
 }
 
-fn parse_lole_type_checking_ref(
+fn parse_lo_type_checking_ref(
     expr: &SExpr,
     ctx: &ModuleContext,
     is_referenced: bool,
-) -> Result<LoleType, LoleError> {
+) -> Result<LoType, LoError> {
     match expr {
         SExpr::Atom {
             kind: AtomKind::Symbol,
             value: name,
             ..
         } => match &name[..] {
-            "void" => return Ok(LoleType::Void),
-            "bool" => return Ok(LoleType::Bool),
-            "u8" => return Ok(LoleType::U8),
-            "i8" => return Ok(LoleType::I8),
-            "u16" => return Ok(LoleType::U16),
-            "i16" => return Ok(LoleType::I16),
-            "u32" => return Ok(LoleType::U32),
-            "i32" => return Ok(LoleType::I32),
-            "f32" => return Ok(LoleType::F32),
-            "u64" => return Ok(LoleType::U64),
-            "i64" => return Ok(LoleType::I64),
-            "f64" => return Ok(LoleType::F64),
+            "void" => return Ok(LoType::Void),
+            "bool" => return Ok(LoType::Bool),
+            "u8" => return Ok(LoType::U8),
+            "i8" => return Ok(LoType::I8),
+            "u16" => return Ok(LoType::U16),
+            "i16" => return Ok(LoType::I16),
+            "u32" => return Ok(LoType::U32),
+            "i32" => return Ok(LoType::I32),
+            "f32" => return Ok(LoType::F32),
+            "u64" => return Ok(LoType::U64),
+            "i64" => return Ok(LoType::I64),
+            "f64" => return Ok(LoType::F64),
             _ => {
                 if let Some(struct_def) = ctx.struct_defs.get(name) {
                     if !struct_def.fully_defined && !is_referenced {
-                        return Err(LoleError {
+                        return Err(LoError {
                             message: format!("Cannot use partially defined struct"),
                             loc: expr.loc().clone(),
                         });
                     }
 
-                    return Ok(LoleType::StructInstance {
+                    return Ok(LoType::StructInstance {
                         name: String::from(name),
                     });
                 }
@@ -2045,9 +2045,9 @@ fn parse_lole_type_checking_ref(
             }, ptr_data]
                 if value == "&" || value == "&*" =>
             {
-                let pointee = parse_lole_type_checking_ref(ptr_data, ctx, true)?;
+                let pointee = parse_lo_type_checking_ref(ptr_data, ctx, true)?;
 
-                return Ok(LoleType::Pointer(Box::new(pointee)));
+                return Ok(LoType::Pointer(Box::new(pointee)));
             }
             [SExpr::Atom {
                 kind: AtomKind::Symbol,
@@ -2058,16 +2058,16 @@ fn parse_lole_type_checking_ref(
             {
                 let mut types = vec![];
                 for type_expr in type_exprs {
-                    types.push(parse_lole_type_checking_ref(type_expr, ctx, is_referenced)?);
+                    types.push(parse_lo_type_checking_ref(type_expr, ctx, is_referenced)?);
                 }
-                return Ok(LoleType::Tuple(types));
+                return Ok(LoType::Tuple(types));
             }
             _ => {}
         },
         _ => {}
     };
 
-    Err(LoleError {
+    Err(LoError {
         message: format!("Unknown value type: {expr}"),
         loc: expr.loc().clone(),
     })

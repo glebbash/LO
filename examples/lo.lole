@@ -1,10 +1,10 @@
 (mod lib/cli)
 (mod lib/wasi_io)
 (mod lib/args)
-(mod lib/lole/parser)
-(mod lib/lole/expand)
-(mod lib/lole/compiler)
-(mod lib/lole/codegen)
+(mod lib/lo/parser)
+(mod lib/lo/expand)
+(mod lib/lo/compiler)
+(mod lib/lo/codegen)
 
 (fn main [] void (
     {input_file := (get_input_file)}
@@ -16,30 +16,30 @@
         (drop (Wasi/fd_close {input_file . fd}))
     ))
 
-    {parse_res := (Lole/Parser/parse
+    {parse_res := (Lo/Parser/parse
         {input_file . file_name}
         (Vec/as_slice source)
     )}
     (if (not {parse_res . ok}) (
         (return (print_err_and_exit {parse_res . data}))
     ))
-    (defer (Vec<Lole/Ast/SExpr>/free {parse_res . data}))
+    (defer (Vec<Lo/Ast/SExpr>/free {parse_res . data}))
 
-    {expand_res := (Lole/Expand/expand {parse_res . data})}
+    {expand_res := (Lo/Expand/expand {parse_res . data})}
     (if (not {expand_res . ok}) (
         (return (print_err_and_exit {expand_res . data}))
     ))
-    (defer (Vec<Lole/Ast/SExpr>/free {expand_res . data}))
+    (defer (Vec<Lo/Ast/SExpr>/free {expand_res . data}))
 
-    {wasm_module := (Lole/Wasm/WasmModule/new)}
-    (defer (Lole/Wasm/WasmModule/free wasm_module))
+    {wasm_module := (Lo/Wasm/WasmModule/new)}
+    (defer (Lo/Wasm/WasmModule/free wasm_module))
 
-    {compile_res := (Lole/Compiler/compile {parse_res . data} wasm_module)}
+    {compile_res := (Lo/Compiler/compile {parse_res . data} wasm_module)}
     (if (not {compile_res . ok}) (
         (return (print_err_and_exit {compile_res . data}))
     ))
 
-    {binary := (Lole/CodeGen/codegen wasm_module)}
+    {binary := (Lo/CodeGen/codegen wasm_module)}
     (defer (Vec/free binary))
 
     (print_str binary)
@@ -76,8 +76,8 @@
     ))
 ))
 
-(fn print_err_and_exit [(err (& Lole/Ast/CompileError))] void (
-    (defer (Lole/Ast/CompileError/free (* err)))
+(fn print_err_and_exit [(err (& Lo/Ast/CompileError))] void (
+    (defer (Lo/Ast/CompileError/free (* err)))
 
     (fputs Wasi/FD_STDERR {err -> loc . file_name})
     (fputs Wasi/FD_STDERR ":")

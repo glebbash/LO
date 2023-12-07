@@ -2,23 +2,23 @@ use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::fmt::Write;
 
 #[derive(PartialEq)]
-pub struct LoleError {
+pub struct LoError {
     pub message: String,
-    pub loc: LoleLocation,
+    pub loc: LoLocation,
 }
 
-impl LoleError {
-    pub fn unreachable(file: &str, line: u32) -> LoleError {
-        LoleError {
+impl LoError {
+    pub fn unreachable(file: &str, line: u32) -> LoError {
+        LoError {
             message: format!("Unreachable in {}:{}", file, line),
-            loc: LoleLocation::internal(),
+            loc: LoLocation::internal(),
         }
     }
 }
 
-impl From<LoleError> for String {
-    fn from(err: LoleError) -> Self {
-        let LoleLocation {
+impl From<LoError> for String {
+    fn from(err: LoError) -> Self {
+        let LoLocation {
             file_name,
             line,
             col,
@@ -30,7 +30,7 @@ impl From<LoleError> for String {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct LoleLocation {
+pub struct LoLocation {
     pub file_name: Box<str>,
     pub offset: usize,
     pub length: usize,
@@ -38,9 +38,9 @@ pub struct LoleLocation {
     pub col: usize,
 }
 
-impl LoleLocation {
+impl LoLocation {
     pub fn internal() -> Self {
-        LoleLocation {
+        LoLocation {
             file_name: "<internal>".into(),
             offset: 0,
             length: 0,
@@ -61,16 +61,16 @@ pub enum SExpr {
     Atom {
         value: String,
         kind: AtomKind,
-        loc: LoleLocation,
+        loc: LoLocation,
     },
     List {
         value: Vec<SExpr>,
-        loc: LoleLocation,
+        loc: LoLocation,
     },
 }
 
 impl SExpr {
-    pub fn loc(&self) -> &LoleLocation {
+    pub fn loc(&self) -> &LoLocation {
         match self {
             Self::Atom { loc, .. } => loc,
             Self::List { loc, .. } => loc,

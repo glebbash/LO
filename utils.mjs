@@ -6,7 +6,7 @@ import process from "node:process";
 import { randomUUID } from "node:crypto";
 import { open, readFile, unlink } from "node:fs/promises";
 
-const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
+const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo_lisp.wasm";
 
 const COMMANDS = {
     compile: compileCommand,
@@ -58,7 +58,7 @@ async function runCommand() {
     await runWASI(program, {
         preopens: { ".": "examples" },
         returnOnExit: false,
-        args: ["main.lole", ...process.argv.slice(3)],
+        args: ["main.lo", ...process.argv.slice(3)],
     });
 }
 

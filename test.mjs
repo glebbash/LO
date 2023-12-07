@@ -6,7 +6,7 @@ import { open, readFile, unlink, writeFile } from "node:fs/promises";
 import { WASI } from "node:wasi";
 import { randomUUID } from "node:crypto";
 
-const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
+const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo.wasm";
 
 const compile = await loadCompilerWithWasiAPI(COMPILER_PATH);
 

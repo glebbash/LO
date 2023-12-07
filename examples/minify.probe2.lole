@@ -3,8 +3,8 @@ import "lib/std" { Heap, Vec, StringSlice }
 import "lib/wasi" as Wasi
 import "lib/wasi_io" as WasiIO
 import "lib/args" as Args
-import "lib/lole/ast" { SExpr, CompileError }
-import "lib/lole/parser" as Parser
+import "lib/lo/ast" { SExpr, CompileError }
+import "lib/lo/parser" as Parser
 
 fn main() {
     let (fd, file_name) = get_input_file()

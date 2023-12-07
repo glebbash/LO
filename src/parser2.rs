@@ -1,19 +1,19 @@
 use crate::{ast::*, ir::*, lowering::*, operators::*, parser::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
-use LoleTokenType::*;
+use LoTokenType::*;
 
 const RECEIVER_PARAM_NAME: &str = "self";
 
-pub fn parse(mut tokens: LoleTokenStream) -> Result<WasmModule, LoleError> {
+pub fn parse(mut tokens: LoTokenStream) -> Result<WasmModule, LoError> {
     let mut ctx = ModuleContext::default();
 
     while tokens.peek().is_some() {
         parse_top_level_expr(&mut ctx, &mut tokens)?;
-        tokens.expect(LoleTokenType::Delim, ";")?;
+        tokens.expect(LoTokenType::Delim, ";")?;
     }
 
     if let Some(unexpected) = tokens.peek() {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!(
                 "Unexpected token after top level expression: {}",
                 unexpected.value
@@ -29,8 +29,8 @@ pub fn parse(mut tokens: LoleTokenStream) -> Result<WasmModule, LoleError> {
 
 fn parse_top_level_expr(
     ctx: &mut ModuleContext,
-    tokens: &mut LoleTokenStream,
-) -> Result<(), LoleError> {
+    tokens: &mut LoTokenStream,
+) -> Result<(), LoError> {
     if tokens.peek().is_none() {
         return Ok(());
     }
@@ -53,10 +53,10 @@ fn parse_top_level_expr(
         while let None = tokens.eat(Delim, "}")? {
             tokens.expect(Symbol, "fn")?;
             let fn_decl = parse_fn_decl(ctx, tokens)?;
-            tokens.expect(LoleTokenType::Delim, ";")?;
+            tokens.expect(LoTokenType::Delim, ";")?;
 
             if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Cannot redefine function: {}", fn_decl.fn_name),
                     loc: fn_decl.loc,
                 });
@@ -71,7 +71,7 @@ fn parse_top_level_expr(
                 local: false,
                 fn_index,
                 type_index,
-                kind: fn_decl.lole_type,
+                kind: fn_decl.lo_type,
             };
             ctx.fn_defs.insert(fn_decl.fn_name.clone(), fn_def);
             ctx.wasm_module.borrow_mut().imports.push(WasmImport {
@@ -91,17 +91,17 @@ fn parse_top_level_expr(
 
         let global_value = parse_const_expr(ctx, tokens, 0)?;
 
-        let lole_type = global_value.get_type(ctx);
-        let Some(wasm_type) = lole_type.to_wasm_type() else {
-            return Err(LoleError {
-                message: format!("Unsupported type: {lole_type}"),
+        let lo_type = global_value.get_type(ctx);
+        let Some(wasm_type) = lo_type.to_wasm_type() else {
+            return Err(LoError {
+                message: format!("Unsupported type: {lo_type}"),
                 // TODO: value.loc() is not available
                 loc: let_token.loc,
             });
         };
 
         if ctx.globals.contains_key(&global_name.value) {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Cannot redefine global: {}", global_name.value),
                 loc: global_name.loc,
             });
@@ -112,7 +112,7 @@ fn parse_top_level_expr(
             GlobalDef {
                 index: ctx.globals.len() as u32,
                 mutable,
-                value_type: lole_type,
+                value_type: lo_type,
             },
         );
 
@@ -134,7 +134,7 @@ fn parse_top_level_expr(
         let struct_name = tokens.expect_any(Symbol)?.clone();
 
         if ctx.struct_defs.contains_key(&struct_name.value) {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Cannot redefine struct {}", struct_name.value),
                 loc: struct_name.loc,
             });
@@ -157,7 +157,7 @@ fn parse_top_level_expr(
         while let None = tokens.eat(Delim, "}")? {
             let field_name = tokens.expect_any(Symbol)?.clone();
             tokens.expect(Operator, ":")?;
-            let field_type = parse_lole_type2(ctx, tokens)?;
+            let field_type = parse_lo_type2(ctx, tokens)?;
             if !tokens.next_is(Delim, "}")? {
                 tokens.expect(Delim, ",")?;
             }
@@ -167,7 +167,7 @@ fn parse_top_level_expr(
                 .find(|f| f.name == field_name.value)
                 .is_some()
             {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!(
                         "Found duplicate struct field name: '{}' of struct {}",
                         field_name.value, struct_name.value,
@@ -179,7 +179,7 @@ fn parse_top_level_expr(
             let mut stats = EmitComponentStats::default();
             field_type
                 .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
-                .map_err(|err| LoleError {
+                .map_err(|err| LoError {
                     message: err,
                     // TODO: field_type.loc() is not available
                     loc: field_name.loc,
@@ -204,7 +204,7 @@ fn parse_top_level_expr(
     }
 
     let unexpected = tokens.peek().unwrap();
-    return Err(LoleError {
+    return Err(LoError {
         message: format!("Unexpected top level token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
@@ -212,14 +212,14 @@ fn parse_top_level_expr(
 
 fn parse_fn_def(
     ctx: &mut ModuleContext,
-    tokens: &mut LoleTokenStream,
+    tokens: &mut LoTokenStream,
     exported: bool,
-) -> Result<(), LoleError> {
+) -> Result<(), LoError> {
     let fn_decl = parse_fn_decl(ctx, tokens)?;
     let body = parse_block(ctx, tokens)?;
 
     if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Cannot redefine function: {}", fn_decl.fn_name),
             loc: fn_decl.loc,
         });
@@ -245,7 +245,7 @@ fn parse_fn_def(
             local: true,
             fn_index,
             type_index,
-            kind: fn_decl.lole_type,
+            kind: fn_decl.lo_type,
         },
     );
 
@@ -262,16 +262,13 @@ fn parse_fn_def(
 
 struct FnDecl {
     fn_name: String,
-    loc: LoleLocation,
-    lole_type: LoleFnType,
+    loc: LoLocation,
+    lo_type: LoFnType,
     wasm_type: WasmFnType,
     locals: BTreeMap<String, LocalDef>,
 }
 
-fn parse_fn_decl(
-    ctx: &mut ModuleContext,
-    tokens: &mut LoleTokenStream,
-) -> Result<FnDecl, LoleError> {
+fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<FnDecl, LoError> {
     let (receiver_name, method_name) = {
         let method_name = tokens.expect_any(Symbol)?.clone();
         if let None = tokens.eat(Operator, ".")? {
@@ -284,9 +281,9 @@ fn parse_fn_decl(
     let mut fn_decl = FnDecl {
         fn_name: method_name.value,
         loc: method_name.loc,
-        lole_type: LoleFnType {
+        lo_type: LoFnType {
             inputs: vec![],
-            output: LoleType::Void,
+            output: LoType::Void,
         },
         wasm_type: WasmFnType {
             inputs: vec![],
@@ -296,7 +293,7 @@ fn parse_fn_decl(
     };
 
     if let Some(receiver_name) = receiver_name {
-        let receiver_type = parse_lole_type(&receiver_name.to_sexpr(), ctx)?;
+        let receiver_type = parse_lo_type(&receiver_name.to_sexpr(), ctx)?;
         fn_decl.fn_name = fn_name_for_method(&receiver_type, &fn_decl.fn_name);
         add_fn_param(ctx, &mut fn_decl, RECEIVER_PARAM_NAME.into(), receiver_type);
     }
@@ -305,13 +302,13 @@ fn parse_fn_decl(
     while let None = tokens.eat(Delim, ")")? {
         let p_name = tokens.expect_any(Symbol)?.clone();
         tokens.expect(Operator, ":")?;
-        let p_type = parse_lole_type2(ctx, tokens)?;
+        let p_type = parse_lo_type2(ctx, tokens)?;
         if !tokens.next_is(Delim, ")")? {
             tokens.expect(Delim, ",")?;
         }
 
         if fn_decl.locals.contains_key(&p_name.value) {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!(
                     "Found function param with conflicting name: {}",
                     p_name.value
@@ -323,19 +320,19 @@ fn parse_fn_decl(
         add_fn_param(ctx, &mut fn_decl, p_name.value, p_type);
     }
 
-    let lole_output = if let Some(_) = tokens.eat(Operator, "->")? {
-        parse_lole_type2(ctx, tokens)?
+    let lo_output = if let Some(_) = tokens.eat(Operator, "->")? {
+        parse_lo_type2(ctx, tokens)?
     } else {
-        LoleType::Void
+        LoType::Void
     };
 
-    lole_output.emit_components(&ctx, &mut fn_decl.wasm_type.outputs);
-    fn_decl.lole_type.output = lole_output;
+    lo_output.emit_components(&ctx, &mut fn_decl.wasm_type.outputs);
+    fn_decl.lo_type.output = lo_output;
 
     Ok(fn_decl)
 }
 
-fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_type: LoleType) {
+fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_type: LoType) {
     let local_def = LocalDef {
         index: fn_decl.wasm_type.inputs.len() as u32,
         value_type: p_type.clone(),
@@ -343,15 +340,15 @@ fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_typ
     fn_decl.locals.insert(p_name.clone(), local_def);
 
     p_type.emit_components(ctx, &mut fn_decl.wasm_type.inputs);
-    fn_decl.lole_type.inputs.push(p_type);
+    fn_decl.lo_type.inputs.push(p_type);
 }
 
 fn parse_block(
     _ctx: &ModuleContext,
-    tokens: &mut LoleTokenStream,
-) -> Result<Vec<LoleTokenStream>, LoleError> {
+    tokens: &mut LoTokenStream,
+) -> Result<Vec<LoTokenStream>, LoError> {
     let mut raw_exprs = vec![];
-    let mut last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
+    let mut last_expr_tokens = LoTokenStream::new(vec![], LoLocation::internal());
 
     let mut depth = 0;
     tokens.expect(Delim, "{")?;
@@ -373,7 +370,7 @@ fn parse_block(
             if let Some(semi) = tokens.eat(Delim, ";")? {
                 last_expr_tokens.terminal_token = semi.clone();
                 raw_exprs.push(last_expr_tokens);
-                last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
+                last_expr_tokens = LoTokenStream::new(vec![], LoLocation::internal());
                 continue;
             }
         }
@@ -388,19 +385,16 @@ fn parse_block(
 }
 
 // TODO: support complex types
-fn parse_lole_type2(
-    ctx: &mut ModuleContext,
-    tokens: &mut LoleTokenStream,
-) -> Result<LoleType, LoleError> {
+fn parse_lo_type2(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<LoType, LoError> {
     let return_type = tokens.expect_any(Symbol)?.clone();
-    parse_lole_type(&return_type.to_sexpr(), ctx)
+    parse_lo_type(&return_type.to_sexpr(), ctx)
 }
 
 // pub for use in v1
 pub fn parse_exprs(
     ctx: &mut BlockContext,
-    body: Vec<LoleTokenStream>,
-) -> Result<Vec<LoleInstr>, LoleError> {
+    body: Vec<LoTokenStream>,
+) -> Result<Vec<LoInstr>, LoError> {
     let mut exprs = vec![];
     for mut tokens in body {
         exprs.push(parse_expr_to_end(ctx, &mut tokens)?);
@@ -410,12 +404,12 @@ pub fn parse_exprs(
 
 fn parse_expr_to_end(
     ctx: &mut BlockContext,
-    tokens: &mut LoleTokenStream,
-) -> Result<LoleInstr, LoleError> {
+    tokens: &mut LoTokenStream,
+) -> Result<LoInstr, LoError> {
     let expr = parse_expr(ctx, tokens, 0)?;
 
     if let Some(unexpected) = tokens.peek() {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Unexpected token after expression: {}", unexpected.value),
             loc: unexpected.loc.clone(),
         });
@@ -426,9 +420,9 @@ fn parse_expr_to_end(
 
 fn parse_expr(
     ctx: &mut BlockContext,
-    tokens: &mut LoleTokenStream,
+    tokens: &mut LoTokenStream,
     min_bp: u32,
-) -> Result<LoleInstr, LoleError> {
+) -> Result<LoInstr, LoError> {
     let mut primary = parse_primary(ctx, tokens)?;
 
     while tokens.peek().is_some() {
@@ -448,10 +442,7 @@ fn parse_expr(
     Ok(primary)
 }
 
-fn parse_primary(
-    ctx: &mut BlockContext,
-    tokens: &mut LoleTokenStream,
-) -> Result<LoleInstr, LoleError> {
+fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
     if let Some(int) = tokens.eat_any(IntLiteral)?.cloned() {
         return parse_int_literal(int);
     }
@@ -463,7 +454,7 @@ fn parse_primary(
     }
 
     if let Some(_) = tokens.eat(Symbol, "return")? {
-        return Ok(LoleInstr::Return {
+        return Ok(LoInstr::Return {
             value: Box::new(parse_expr(ctx, tokens, 0)?),
         });
     }
@@ -474,8 +465,8 @@ fn parse_primary(
         let then_branch_tokens = parse_block(ctx.module, tokens)?;
         let then_branch = parse_exprs(ctx, then_branch_tokens)?;
 
-        return Ok(LoleInstr::If {
-            block_type: LoleType::Void,
+        return Ok(LoInstr::If {
+            block_type: LoType::Void,
             cond: Box::new(cond),
             then_branch,
             else_branch: None,
@@ -491,21 +482,21 @@ fn parse_primary(
         if local_name.value == "_" {
             let drop_count = value_type.emit_components(&ctx.module, &mut vec![]);
 
-            return Ok(LoleInstr::Drop {
+            return Ok(LoInstr::Drop {
                 value: Box::new(value),
                 drop_count,
             });
         }
 
         if let Some(_) = ctx.module.globals.get(&local_name.value) {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Local name collides with global: {}", local_name.value),
                 loc: local_name.loc.clone(),
             });
         };
 
         if ctx.block.get_own_local(&local_name.value).is_some() {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Duplicate local definition: {}", local_name.value),
                 loc: local_name.loc.clone(),
             });
@@ -513,9 +504,9 @@ fn parse_primary(
 
         let local_indicies = ctx.push_local(local_name.value.clone(), value_type.clone());
         let values = local_indicies
-            .map(|i| LoleInstr::UntypedLocalGet { local_index: i })
+            .map(|i| LoInstr::UntypedLocalGet { local_index: i })
             .collect();
-        let bind_instr = LoleInstr::MultiValueEmit { values };
+        let bind_instr = LoInstr::MultiValueEmit { values };
         return compile_set(ctx, value, bind_instr, &let_token.loc);
     }
 
@@ -524,7 +515,7 @@ fn parse_primary(
             let mut args = vec![];
             parse_fn_call_args(ctx, tokens, &mut args)?;
 
-            return Ok(LoleInstr::Call {
+            return Ok(LoInstr::Call {
                 fn_index: fn_def.fn_index,
                 return_type: fn_def.kind.output.clone(),
                 args,
@@ -547,14 +538,14 @@ fn parse_primary(
 
                 let field_index = values.len();
                 let Some(struct_field) = struct_def.fields.get(field_index) else {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Excess field values"),
                         loc: field_name.loc,
                     });
                 };
 
                 if &field_name.value != &struct_field.name {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!(
                             "Unexpected field name, expecting: `{}`",
                             struct_field.name
@@ -565,7 +556,7 @@ fn parse_primary(
 
                 let field_value_type = field_value.get_type(ctx.module);
                 if field_value_type != struct_field.value_type {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!(
                             "Invalid type for field {}.{}, expected: {}, got: {}",
                             struct_name.value,
@@ -580,29 +571,29 @@ fn parse_primary(
                 values.push(field_value);
             }
 
-            return Ok(LoleInstr::Casted {
-                value_type: LoleType::StructInstance {
+            return Ok(LoInstr::Casted {
+                value_type: LoType::StructInstance {
                     name: struct_name.value,
                 },
-                expr: Box::new(LoleInstr::MultiValueEmit { values }),
+                expr: Box::new(LoInstr::MultiValueEmit { values }),
             });
         };
 
         if let Some(global) = ctx.module.globals.get(&value.value) {
-            return Ok(LoleInstr::GlobalGet {
+            return Ok(LoInstr::GlobalGet {
                 global_index: global.index,
             });
         };
 
         let Some(local) = ctx.block.get_local(&value.value) else {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Reading unknown variable: {}", value.value),
                 loc: value.loc
             });
         };
 
         return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
-            LoleError {
+            LoError {
                 message,
                 loc: value.loc,
             }
@@ -610,7 +601,7 @@ fn parse_primary(
     }
 
     let unexpected = tokens.peek().unwrap();
-    return Err(LoleError {
+    return Err(LoError {
         message: format!("Unexpected token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
@@ -618,29 +609,29 @@ fn parse_primary(
 
 fn parse_postfix(
     ctx: &mut BlockContext,
-    tokens: &mut LoleTokenStream,
-    primary: LoleInstr,
+    tokens: &mut LoTokenStream,
+    primary: LoInstr,
     op: Op,
-) -> Result<LoleInstr, LoleError> {
+) -> Result<LoInstr, LoError> {
     let min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
-        OpTag::Less => LoleInstr::BinaryOp {
+        OpTag::Less => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
-        OpTag::Add => LoleInstr::BinaryOp {
+        OpTag::Add => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
-        OpTag::Sub => LoleInstr::BinaryOp {
+        OpTag::Sub => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
-        OpTag::Mul => LoleInstr::BinaryOp {
+        OpTag::Mul => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
@@ -651,7 +642,7 @@ fn parse_postfix(
             let bind_type = primary.get_type(ctx.module);
 
             if value_type != bind_type {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!(
                         "TypeError: Invalid types for '{}', \
                         needed {bind_type}, got {value_type}",
@@ -664,7 +655,7 @@ fn parse_postfix(
             compile_set(ctx, value, primary, &op.token.loc)?
         }
         OpTag::AddAssign => {
-            let value = LoleInstr::BinaryOp {
+            let value = LoInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Add,
                 lhs: Box::new(primary.clone()),
                 rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
@@ -677,9 +668,9 @@ fn parse_postfix(
             if !tokens.next_is(Delim, "(").unwrap_or(false) {
                 let field_name = field_or_method_name;
 
-                let LoleInstr::StructGet { struct_name, base_index, .. } = &primary else {
+                let LoInstr::StructGet { struct_name, base_index, .. } = &primary else {
                     let lhs_type = primary.get_type(ctx.module);
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Trying to get field '{}' on non struct: {lhs_type}", field_name.value),
                         loc: field_name.loc,
                     });
@@ -687,7 +678,7 @@ fn parse_postfix(
 
                 let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
                 let Some(field) = struct_def.fields.iter().find(|f| &f.name == &field_name.value) else {
-                    return Err(LoleError {
+                    return Err(LoError {
                         message: format!("Unknown field {} in struct {struct_name}", field_name.value),
                         loc: field_name.loc,
                     });
@@ -698,7 +689,7 @@ fn parse_postfix(
                     base_index + field.field_index,
                     &field.value_type,
                 )
-                .map_err(|message| LoleError {
+                .map_err(|message| LoError {
                     message,
                     // TODO: lhs.loc() is not available
                     loc: op.token.loc,
@@ -715,13 +706,13 @@ fn parse_postfix(
 
             let fn_name = fn_name_for_method(&recevier_type, &method_name.value);
             let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
-                return Err(LoleError {
+                return Err(LoError {
                     message: format!("Unknown function: {fn_name}"),
                     loc: method_name.loc,
                 });
             };
 
-            LoleInstr::Call {
+            LoInstr::Call {
                 fn_index: fn_def.fn_index,
                 return_type: fn_def.kind.output.clone(),
                 args,
@@ -732,9 +723,9 @@ fn parse_postfix(
 
 fn parse_fn_call_args(
     ctx: &mut BlockContext,
-    tokens: &mut LoleTokenStream,
-    args: &mut Vec<LoleInstr>,
-) -> Result<(), LoleError> {
+    tokens: &mut LoTokenStream,
+    args: &mut Vec<LoInstr>,
+) -> Result<(), LoError> {
     tokens.expect(Delim, "(")?;
     while let None = tokens.eat(Delim, ")")? {
         args.push(parse_expr(ctx, tokens, 0)?);
@@ -749,9 +740,9 @@ fn parse_fn_call_args(
 
 fn parse_const_expr(
     ctx: &ModuleContext,
-    tokens: &mut LoleTokenStream,
+    tokens: &mut LoTokenStream,
     min_bp: u32,
-) -> Result<LoleInstr, LoleError> {
+) -> Result<LoInstr, LoError> {
     let mut primary = parse_const_primary(ctx, tokens)?;
 
     while tokens.peek().is_some() {
@@ -773,27 +764,27 @@ fn parse_const_expr(
 
 fn parse_const_primary(
     ctx: &ModuleContext,
-    tokens: &mut LoleTokenStream,
-) -> Result<LoleInstr, LoleError> {
+    tokens: &mut LoTokenStream,
+) -> Result<LoInstr, LoError> {
     if let Some(int) = tokens.eat_any(IntLiteral)?.cloned() {
         return parse_int_literal(int);
     }
 
     if let Some(global_name) = tokens.eat_any(Symbol)?.cloned() {
         let Some(global) = ctx.globals.get(&global_name.value) else {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Reading unknown global: {}", global_name.value),
                 loc: global_name.loc,
             });
         };
 
-        return Ok(LoleInstr::GlobalGet {
+        return Ok(LoInstr::GlobalGet {
             global_index: global.index,
         });
     }
 
     let unexpected = tokens.peek().unwrap();
-    return Err(LoleError {
+    return Err(LoError {
         message: format!("Unexpected token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
@@ -801,35 +792,35 @@ fn parse_const_primary(
 
 fn parse_const_postfix(
     ctx: &ModuleContext,
-    tokens: &mut LoleTokenStream,
-    primary: LoleInstr,
+    tokens: &mut LoTokenStream,
+    primary: LoInstr,
     op: Op,
-) -> Result<LoleInstr, LoleError> {
+) -> Result<LoInstr, LoError> {
     let min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
-        OpTag::Less => LoleInstr::BinaryOp {
+        OpTag::Less => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        OpTag::Add => LoleInstr::BinaryOp {
+        OpTag::Add => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        OpTag::Sub => LoleInstr::BinaryOp {
+        OpTag::Sub => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        OpTag::Mul => LoleInstr::BinaryOp {
+        OpTag::Mul => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
         _ => {
-            return Err(LoleError {
+            return Err(LoError {
                 message: format!("Unsupported operator in const context: {}", op.token.value),
                 loc: op.token.loc,
             });
@@ -837,15 +828,15 @@ fn parse_const_postfix(
     })
 }
 
-fn parse_int_literal(int: LoleToken) -> Result<LoleInstr, LoleError> {
-    let value = int.value.parse().map_err(|_| LoleError {
+fn parse_int_literal(int: LoToken) -> Result<LoInstr, LoError> {
+    let value = int.value.parse().map_err(|_| LoError {
         message: format!("Parsing u32 (implicit) failed"),
         loc: int.loc,
     })?;
 
-    Ok(LoleInstr::U32Const { value })
+    Ok(LoInstr::U32Const { value })
 }
 
-fn fn_name_for_method(receiver_type: &LoleType, method_name: &str) -> String {
+fn fn_name_for_method(receiver_type: &LoType, method_name: &str) -> String {
     format!("{receiver_type}_{method_name}")
 }

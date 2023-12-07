@@ -1,17 +1,17 @@
 (mod lib/std)
-(mod lib/lole/ir)
-(mod lib/lole/parser)
+(mod lib/lo/ir)
+(mod lib/lo/parser)
 
-(struct Lole/Compiler/CompileResult
+(struct Lo/Compiler/CompileResult
     (ok bool)
-    (data (& void)) ; 0 | (& Lole/Ast/CompileError)
+    (data (& void)) ; 0 | (& Lo/Ast/CompileError)
 )
 
-(fn Lole/Compiler/compile [
-    (exprs (& Vec<Lole/Ast/SExpr>)) (wasm_module (& Lole/Wasm/WasmModule))
-] Lole/Compiler/CompileResult (
-    {ctx := (Lole/Ir/ModuleContext/new wasm_module)}
-    (defer (Lole/Ir/ModuleContext/free ctx))
+(fn Lo/Compiler/compile [
+    (exprs (& Vec<Lo/Ast/SExpr>)) (wasm_module (& Lo/Wasm/WasmModule))
+] Lo/Compiler/CompileResult (
+    {ctx := (Lo/Ir/ModuleContext/new wasm_module)}
+    (defer (Lo/Ir/ModuleContext/free ctx))
 
     {i := 0}
     (loop (
@@ -20,8 +20,8 @@
         ))
 
         {res :=
-            (Lole/Compiler/compile_top_level_expr
-                {Lole/Ast/SExpr @ (Vec/at exprs i)}
+            (Lo/Compiler/compile_top_level_expr
+                {Lo/Ast/SExpr @ (Vec/at exprs i)}
                 ctx
             )
         }
@@ -42,27 +42,27 @@
             (break)
         ))
 
-        {fn_export := {Lole/Ir/FnExport @ (Vec/at fn_exports i)}}
+        {fn_export := {Lo/Ir/FnExport @ (Vec/at fn_exports i)}}
 
         {fn_def_res := (Dict/get fn_defs (Vec/as_slice {fn_export . in_name}))}
         (if (not {fn_def_res . ok}) (
             {msg := (String/from_slice "Cannot export unknown function: ")}
             (Vec/push_all msg (Vec/as_slice {fn_export . in_name}))
 
-            (return (Lole/Compiler/CompileResult
+            (return (Lo/Compiler/CompileResult
                 :ok false
-                :data {(new Lole/Ast/CompileError (Lole/Ast/CompileError
+                :data {(new Lo/Ast/CompileError (Lo/Ast/CompileError
                     :message msg
-                    :loc (Lole/Ast/Location/clone {fn_export . loc})
+                    :loc (Lo/Ast/Location/clone {fn_export . loc})
                 )) as (& void)}
             ))
         ))
-        {fn_def := {Lole/Ir/FnDef @ {fn_def_res . value}}}
+        {fn_def := {Lo/Ir/FnDef @ {fn_def_res . value}}}
 
         {exports := {wasm_module -> exports}}
 
-        {Lole/Wasm/WasmExport @ (Vec/push exports) = (Lole/Wasm/WasmExport
-            :export_type Lole/Wasm/WasmExportType/FUNC
+        {Lo/Wasm/WasmExport @ (Vec/push exports) = (Lo/Wasm/WasmExport
+            :export_type Lo/Wasm/WasmExportType/FUNC
             :export_name (String/clone {fn_export . out_name})
             :exported_item_index {ctx -> imported_fns_count + {fn_def . fn_index}}
         )}
@@ -80,29 +80,29 @@
             (break)
         ))
 
-        {fn_body := {Lole/Ir/FnBody @ (Vec/at fn_bodies i)}}
+        {fn_body := {Lo/Ir/FnBody @ (Vec/at fn_bodies i)}}
 
         {fn_type := {(Vec/at fn_types {fn_body . type_index})
-            as (& Lole/Wasm/WasmFnType)}}
+            as (& Lo/Wasm/WasmFnType)}}
 
-        {fn_ctx := (new Lole/Ir/FnContext (Lole/Ir/FnContext
+        {fn_ctx := (new Lo/Ir/FnContext (Lo/Ir/FnContext
             :module ctx
             :fn_type fn_type
             :locals {fn_body . locals}
             :locals_last_index {fn_body . locals_last_index}
-            :non_arg_locals (Vec/new 1 (sizeof Lole/Wasm/WasmType))
-            :defers (Dict/new 1 (sizeof Lole/Ast/SExpr))
+            :non_arg_locals (Vec/new 1 (sizeof Lo/Wasm/WasmType))
+            :defers (Dict/new 1 (sizeof Lo/Ast/SExpr))
         ))}
 
-        {instrs_res := (Lole/Compiler/compile_block
+        {instrs_res := (Lo/Compiler/compile_block
             {fn_body . body} fn_ctx
         )}
         (if (not {instrs_res . ok}) (
-            (return {instrs_res as Lole/Compiler/CompileResult})
+            (return {instrs_res as Lo/Compiler/CompileResult})
         ))
         {instrs := {instrs_res . data as (& Vec)}}
 
-        {deferred_res := (Lole/Compiler/get_deferred
+        {deferred_res := (Lo/Compiler/get_deferred
             "return" ; TODO: this should be a constant
             fn_ctx
         )}
@@ -111,7 +111,7 @@
             (Vec/free {deferred_res . data})
         ))
 
-        {locals := (Vec/new 1 (sizeof Lole/Wasm/WasmLocals))}
+        {locals := (Vec/new 1 (sizeof Lo/Wasm/WasmLocals))}
         {non_arg_locals := {fn_ctx -> non_arg_locals}}
 
         {j := 0}
@@ -120,17 +120,17 @@
                 (break)
             ))
 
-            {local_type := {Lole/Wasm/WasmType @ (Vec/at non_arg_locals j)}}
+            {local_type := {Lo/Wasm/WasmType @ (Vec/at non_arg_locals j)}}
             {locals_len := {locals -> size}}
             (if {locals_len > 0} (
-                {wasm_locals := {(Vec/at locals {locals_len - 1}) as (& Lole/Wasm/WasmLocals)}}
+                {wasm_locals := {(Vec/at locals {locals_len - 1}) as (& Lo/Wasm/WasmLocals)}}
                 (if {wasm_locals -> value_type == local_type} (
                     {wasm_locals -> count += 1}
                     (continue)
                 ))
             ))
 
-            {Lole/Wasm/WasmLocals @ (Vec/push locals) = (Lole/Wasm/WasmLocals
+            {Lo/Wasm/WasmLocals @ (Vec/push locals) = (Lo/Wasm/WasmLocals
                 :count 1
                 :value_type local_type
             )}
@@ -139,62 +139,62 @@
         ))
 
         {codes := {wasm_module -> codes}}
-        {Lole/Wasm/WasmFn @ (Vec/push codes) = (Lole/Wasm/WasmFn
+        {Lo/Wasm/WasmFn @ (Vec/push codes) = (Lo/Wasm/WasmFn
             :locals locals
-            :expr (Lole/Wasm/WasmExpr :instrs instrs)
+            :expr (Lo/Wasm/WasmExpr :instrs instrs)
         )}
 
         {i += 1}
     ))
 
-    (return (Lole/Compiler/CompileResult :ok true :data {0 as (& void)}))
+    (return (Lo/Compiler/CompileResult :ok true :data {0 as (& void)}))
 ))
 
 ; TODO: implement
-(fn Lole/Compiler/compile_top_level_expr [
-    (expr Lole/Ast/SExpr) (ctx (& Lole/Ir/ModuleContext))
-] Lole/Compiler/CompileResult (
-    (if {expr . kind == Lole/Ast/SExpr/ATOM} (
-        (return (Lole/Compiler/CompileResult
+(fn Lo/Compiler/compile_top_level_expr [
+    (expr Lo/Ast/SExpr) (ctx (& Lo/Ir/ModuleContext))
+] Lo/Compiler/CompileResult (
+    (if {expr . kind == Lo/Ast/SExpr/ATOM} (
+        (return (Lo/Compiler/CompileResult
             :ok false
-            :data {(new Lole/Ast/CompileError (Lole/Ast/CompileError
+            :data {(new Lo/Ast/CompileError (Lo/Ast/CompileError
                 :message (String/from_slice "Unexpected atom")
-                :loc (Lole/Ast/Location/clone (Lole/Ast/SExpr/loc expr))
+                :loc (Lo/Ast/Location/clone (Lo/Ast/SExpr/loc expr))
             )) as (& void)}
         ))
     ))
 
-    (return (Lole/Compiler/CompileResult
+    (return (Lo/Compiler/CompileResult
         :ok true
         :data {0 as (& void)}
     ))
 ))
 
-(struct Lole/Compiler/CompileBlockResult
+(struct Lo/Compiler/CompileBlockResult
     (ok bool)
-    (data (& void)) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
+    (data (& void)) ; (& Vec<Lo/Wasm/WasmInstr>) | (& Lo/Ast/CompileError)
 )
 
 ; TODO: implement
-(fn Lole/Compiler/compile_block [
-    (exprs (& Vec<Lole/Ast/SExpr>)) (ctx (& Lole/Ir/ModuleContext))
-] Lole/Compiler/CompileBlockResult (
-    (return (Lole/Compiler/CompileBlockResult
+(fn Lo/Compiler/compile_block [
+    (exprs (& Vec<Lo/Ast/SExpr>)) (ctx (& Lo/Ir/ModuleContext))
+] Lo/Compiler/CompileBlockResult (
+    (return (Lo/Compiler/CompileBlockResult
         :ok true
         :data {0 as (& void)}
     ))
 ))
 
-(struct Lole/Compiler/GetDefferedRes
+(struct Lo/Compiler/GetDefferedRes
     (ok bool)
-    (data (& void)) ; (& Vec<Lole/Wasm/WasmInstr>) | (& Lole/Ast/CompileError)
+    (data (& void)) ; (& Vec<Lo/Wasm/WasmInstr>) | (& Lo/Ast/CompileError)
 )
 
 ; TODO: implement
-(fn Lole/Compiler/get_deferred [
-    (defer_label StringSlice) (ctx (& Lole/Ir/ModuleContext))
-] Lole/Compiler/GetDefferedRes (
-    (return (Lole/Compiler/GetDefferedRes
+(fn Lo/Compiler/get_deferred [
+    (defer_label StringSlice) (ctx (& Lo/Ir/ModuleContext))
+] Lo/Compiler/GetDefferedRes (
+    (return (Lo/Compiler/GetDefferedRes
         :ok true
         :data {0 as (& void)}
     ))

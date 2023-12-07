@@ -1,7 +1,7 @@
 use crate::{ast::*, tokens::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
-type LexResult = Result<LoleToken, LoleError>;
+type LexResult = Result<LoToken, LoError>;
 
 #[derive(Clone)]
 struct Lexer2 {
@@ -12,11 +12,7 @@ struct Lexer2 {
     col: usize,
 }
 
-pub fn lex_all(
-    file_name: &str,
-    script: &str,
-    v2_marker: &str,
-) -> Result<LoleTokenStream, LoleError> {
+pub fn lex_all(file_name: &str, script: &str, v2_marker: &str) -> Result<LoTokenStream, LoError> {
     let mut lexer = Lexer2::new(file_name, script);
     if script.starts_with(v2_marker) {
         for _ in 0..v2_marker.len() {
@@ -37,7 +33,7 @@ impl Lexer2 {
         }
     }
 
-    fn lex_all(&mut self) -> Result<LoleTokenStream, LoleError> {
+    fn lex_all(&mut self) -> Result<LoTokenStream, LoError> {
         let mut tokens = Vec::new();
 
         self.skip_space();
@@ -47,7 +43,7 @@ impl Lexer2 {
             self.skip_space();
         }
 
-        Ok(LoleTokenStream::new(tokens, self.loc()))
+        Ok(LoTokenStream::new(tokens, self.loc()))
     }
 
     fn lex_token(&mut self) -> LexResult {
@@ -69,7 +65,7 @@ impl Lexer2 {
             return self.lex_operator();
         }
 
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("Unexpected char: {char}"),
             loc: self.loc(),
         });
@@ -84,8 +80,8 @@ impl Lexer2 {
 
         loc.length = self.index - loc.offset;
 
-        Ok(LoleToken {
-            type_: LoleTokenType::IntLiteral,
+        Ok(LoToken {
+            type_: LoTokenType::IntLiteral,
             value: self.chars[loc.offset..self.index].iter().collect(),
             loc,
         })
@@ -100,8 +96,8 @@ impl Lexer2 {
 
         loc.length = self.index - loc.offset;
 
-        Ok(LoleToken {
-            type_: LoleTokenType::Symbol,
+        Ok(LoToken {
+            type_: LoTokenType::Symbol,
             value: self.chars[loc.offset..self.index].iter().collect(),
             loc,
         })
@@ -141,8 +137,8 @@ impl Lexer2 {
 
         loc.length = self.index - loc.offset;
 
-        Ok(LoleToken {
-            type_: LoleTokenType::StringLiteral,
+        Ok(LoToken {
+            type_: LoTokenType::StringLiteral,
             value,
             loc,
         })
@@ -153,8 +149,8 @@ impl Lexer2 {
 
         self.next_char(); // skip delimiter char
 
-        Ok(LoleToken {
-            type_: LoleTokenType::Delim,
+        Ok(LoToken {
+            type_: LoTokenType::Delim,
             value: self.chars[loc.offset].into(),
             loc,
         })
@@ -169,8 +165,8 @@ impl Lexer2 {
 
         loc.length = self.index - loc.offset;
 
-        Ok(LoleToken {
-            type_: LoleTokenType::Operator,
+        Ok(LoToken {
+            type_: LoTokenType::Operator,
             value: self.chars[loc.offset..self.index].iter().collect(),
             loc,
         })
@@ -218,36 +214,36 @@ impl Lexer2 {
         self.col += 1;
     }
 
-    fn current_char(&mut self) -> Result<char, LoleError> {
+    fn current_char(&mut self) -> Result<char, LoError> {
         self.chars
             .get(self.index)
             .copied()
             .ok_or_else(|| self.err_unexpected_eof())
     }
 
-    fn peek_next_char(&mut self) -> Result<char, LoleError> {
+    fn peek_next_char(&mut self) -> Result<char, LoError> {
         self.chars
             .get(self.index + 1)
             .copied()
             .ok_or_else(|| self.err_unexpected_eof())
     }
 
-    fn err_unexpected_char(&self) -> LoleError {
-        LoleError {
+    fn err_unexpected_char(&self) -> LoError {
+        LoError {
             message: format!("ParseError: Unexpected character"),
             loc: self.loc(),
         }
     }
 
-    fn err_unexpected_eof(&self) -> LoleError {
-        LoleError {
+    fn err_unexpected_eof(&self) -> LoError {
+        LoError {
             message: format!("ParseError: Unexpected EOF"),
             loc: self.loc(),
         }
     }
 
-    fn loc(&self) -> LoleLocation {
-        LoleLocation {
+    fn loc(&self) -> LoLocation {
+        LoLocation {
             file_name: self.file_name.clone(),
             offset: self.index,
             length: 1,

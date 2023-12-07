@@ -1,7 +1,7 @@
 use crate::ast::*;
 use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
-type LexResult = Result<SExpr, LoleError>;
+type LexResult = Result<SExpr, LoError>;
 
 #[derive(Clone)]
 struct Lexer {
@@ -12,7 +12,7 @@ struct Lexer {
     col: usize,
 }
 
-pub fn lex_all(file_name: &str, script: &str) -> Result<Vec<SExpr>, LoleError> {
+pub fn lex_all(file_name: &str, script: &str) -> Result<Vec<SExpr>, LoError> {
     Lexer::new(file_name, script).lex_all()
 }
 
@@ -27,7 +27,7 @@ impl Lexer {
         }
     }
 
-    fn lex_all(&mut self) -> Result<Vec<SExpr>, LoleError> {
+    fn lex_all(&mut self) -> Result<Vec<SExpr>, LoError> {
         self.skip_space();
 
         let mut items = Vec::new();
@@ -190,29 +190,29 @@ impl Lexer {
         self.col += 1;
     }
 
-    fn current_char(&mut self) -> Result<char, LoleError> {
+    fn current_char(&mut self) -> Result<char, LoError> {
         self.chars
             .get(self.index)
             .copied()
             .ok_or_else(|| self.err_unexpected_eof())
     }
 
-    fn err_unexpected_char(&self) -> LoleError {
-        LoleError {
+    fn err_unexpected_char(&self) -> LoError {
+        LoError {
             message: format!("ParseError: Unexpected character"),
             loc: self.loc(),
         }
     }
 
-    fn err_unexpected_eof(&self) -> LoleError {
-        LoleError {
+    fn err_unexpected_eof(&self) -> LoError {
+        LoError {
             message: format!("ParseError: Unexpected EOF"),
             loc: self.loc(),
         }
     }
 
-    fn loc(&self) -> LoleLocation {
-        LoleLocation {
+    fn loc(&self) -> LoLocation {
+        LoLocation {
             file_name: self.file_name.clone(),
             offset: self.index,
             length: 1,
@@ -222,9 +222,9 @@ impl Lexer {
     }
 }
 
-fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: LoleLocation) -> LexResult {
+fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: LoLocation) -> LexResult {
     if items.len() % 2 != 1 {
-        return Err(LoleError {
+        return Err(LoError {
             message: format!("ParseError: Invalid m-expr: even length"),
             loc,
         });
@@ -240,7 +240,7 @@ fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: LoleLocation) -> LexRes
 // ❓ {1 + 2 - 3 * 4}
 // 🚫 (+ 1 (- 2 (* 3 4)))
 // ✅ (* (- (+ 1 2) 3) 4)
-fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: LoleLocation) -> SExpr {
+fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: LoLocation) -> SExpr {
     if items.len() == 1 {
         return items.into_iter().next().unwrap();
     }

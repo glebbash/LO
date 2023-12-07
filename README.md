@@ -1,9 +1,9 @@
-# lole-lisp
+# LO
 
-Low level language with LISP-like syntax using WASM backend
+LO - Low level WASM native language with focus on full control
 
 ## Docs
 
 Nothing yet.
 
-You can check out the [DevLog](https://carrot-blog.deno.dev/?tag=lole-lisp) instead :)
+You can check out the [DevLog](https://carrot-blog.deno.dev/?tag=lo) instead :)

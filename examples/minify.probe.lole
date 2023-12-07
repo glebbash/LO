@@ -3,8 +3,8 @@
 (import "lib/wasi" :as Wasi)
 (import "lib/wasi_io" :as WasiIO)
 (import "lib/args" :as Args)
-(import "lib/lole/ast" :use { SExpr, CompileError })
-(import "lib/lole/parser" :as Parser)
+(import "lib/lo/ast" :use { SExpr, CompileError })
+(import "lib/lo/parser" :as Parser)
 
 (fn main [] void (
     {input_file := (get_input_file)}

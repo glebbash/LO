@@ -11,7 +11,7 @@ pub enum OpTag {
 }
 
 impl OpTag {
-    fn parse(token: &LoleToken) -> Option<Self> {
+    fn parse(token: &LoToken) -> Option<Self> {
         Some(match token.value.as_str() {
             "=" => OpTag::Assign,
             "+=" => OpTag::AddAssign,
@@ -64,11 +64,11 @@ impl OpInfo {
 pub struct Op {
     pub tag: OpTag,
     pub info: OpInfo,
-    pub token: LoleToken,
+    pub token: LoToken,
 }
 
 impl Op {
-    pub fn parse(token: LoleToken) -> Option<Self> {
+    pub fn parse(token: LoToken) -> Option<Self> {
         let tag = OpTag::parse(&token)?;
         let info = tag.get_info();
         Some(Self { tag, info, token })
