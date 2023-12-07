@@ -726,7 +726,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             if value.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(LoleInstr::U32Const {
                     value: (value.parse().map_err(|_| LoleError {
-                        message: format!("Parsing i32 (implicit) failed"),
+                        message: format!("Parsing u32 (implicit) failed"),
                         loc: loc.clone(),
                     })?),
                 });
@@ -1818,7 +1818,7 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInstr, L
             if value.chars().all(|c| c.is_ascii_digit()) {
                 return Ok(LoleInstr::U32Const {
                     value: value.parse().map_err(|_| LoleError {
-                        message: format!("Parsing i32 (implicit) failed"),
+                        message: format!("Parsing u32 (implicit) failed"),
                         loc: op_loc.clone(),
                     })?,
                 });

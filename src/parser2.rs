@@ -204,8 +204,10 @@ pub fn parse_expr(
 ) -> Result<LoleInstr, LoleError> {
     if let Some(int) = tokens.eat_any(IntLiteral)? {
         return Ok(LoleInstr::U32Const {
-            // TODO: check for overflow
-            value: int.value.parse().unwrap(),
+            value: int.value.parse().map_err(|_| LoleError {
+                message: format!("Parsing u32 (implicit) failed"),
+                loc: int.loc.clone(),
+            })?,
         });
     }
 
