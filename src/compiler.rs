@@ -1743,7 +1743,7 @@ fn compile_load(
     })
 }
 
-// pub for use in v1
+// pub for use in v2
 pub fn compile_local_get(
     ctx: &ModuleContext,
     base_index: u32,
@@ -1873,7 +1873,8 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInstr, L
     Ok(instr)
 }
 
-fn compile_set(
+// pub for use in v2
+pub fn compile_set(
     ctx: &mut BlockContext,
     value_instr: LoleInstr,
     bind_instr: LoleInstr,
@@ -1996,7 +1997,7 @@ fn compile_set_binds(
 
 // types
 
-// pub for use from v1
+// pub for use from v2
 pub fn parse_lole_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleType, LoleError> {
     parse_lole_type_checking_ref(expr, ctx, false)
 }

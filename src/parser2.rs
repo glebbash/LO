@@ -31,15 +31,13 @@ fn parse_top_level_expr(
         if let Some(_) = tokens.eat(Symbol, "fn")? {
             return parse_fn_def(ctx, tokens, true);
         }
-
-        // TODO: implement other exports
-        crate::wasi_io::debug(format!("\nunhandled: {:?}", tokens.peek()));
-        return Err(LoleError::unreachable(file!(), line!()));
     }
 
-    // TODO: implement everything else
-    crate::wasi_io::debug(format!("\nunhandled: {:?}", tokens.peek()));
-    return Err(LoleError::unreachable(file!(), line!()));
+    let unexpected = tokens.peek().unwrap();
+    return Err(LoleError {
+        message: format!("Unexpected token: {}", unexpected.value),
+        loc: unexpected.loc.clone(),
+    });
 }
 
 fn parse_fn_def(
@@ -65,7 +63,7 @@ fn parse_fn_def(
         tokens.expect(Operator, ":")?;
         let p_type = parse_lole_type2(ctx, tokens)?;
         if !tokens.check_next(Delim, ")")? {
-            tokens.expect(Operator, ",")?;
+            tokens.expect(Delim, ",")?;
         }
 
         if locals.contains_key(&p_name.value) {
@@ -285,6 +283,37 @@ fn parse_operand(
         });
     }
 
+    if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
+        let local_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+        let value = parse_expr(ctx, tokens)?;
+
+        if let Some(_) = ctx.module.globals.get(&local_name.value) {
+            return Err(LoleError {
+                message: format!("Local name collides with global: {}", local_name.value),
+                loc: local_name.loc.clone(),
+            });
+        };
+
+        if ctx.block.get_own_local(&local_name.value).is_some() {
+            return Err(LoleError {
+                message: format!("Duplicate local definition: {}", local_name.value),
+                loc: local_name.loc.clone(),
+            });
+        }
+
+        let value_type = value.get_type(ctx.module);
+        let local_indicies = ctx.push_local(local_name.value.clone(), value_type.clone());
+
+        let values = local_indicies
+            .map(|i| LoleInstr::UntypedLocalGet { local_index: i })
+            .collect();
+
+        let bind_instr = LoleInstr::MultiValueEmit { values };
+
+        return compile_set(ctx, value, bind_instr, &let_token.loc);
+    }
+
     if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
         if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
             tokens.expect(Delim, "(")?;
@@ -314,7 +343,9 @@ fn parse_operand(
         });
     }
 
-    // TODO: implement
-    crate::wasi_io::debug(format!("\nunhandled: {:?}", tokens.peek()));
-    return Err(LoleError::unreachable(file!(), line!()));
+    let unexpected = tokens.peek().unwrap();
+    return Err(LoleError {
+        message: format!("Unexpected token: {}", unexpected.value),
+        loc: unexpected.loc.clone(),
+    });
 }

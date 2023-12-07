@@ -68,6 +68,13 @@ test("compiles locals", async () => {
     assert.deepEqual(program.sub(5, 3), 2);
 });
 
+test("compiles locals (v2)", async () => {
+    const output = await compile("./examples/test/locals.lole2");
+
+    const program = await loadWasm(output);
+    assert.deepEqual(program.sub(5, 3), 2);
+});
+
 test("compiles struct", async () => {
     const output = await compile("./examples/test/struct.lole");
 
