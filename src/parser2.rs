@@ -1,4 +1,4 @@
-use crate::{ast::*, compiler::*, ir::*, tokens::*, wasm::*};
+use crate::{ast::*, compiler::*, ir::*, lowering::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use LoleTokenType::*;
 
@@ -61,6 +61,52 @@ fn parse_top_level_expr(
                 item_desc: WasmImportDesc::Func { type_index },
             });
         }
+
+        return Ok(());
+    }
+
+    if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
+        let mutable = true;
+        let global_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+
+        let global_value = parse_const_expr(ctx, tokens)?;
+
+        let lole_type = global_value.get_type(ctx);
+        let Some(wasm_type) = lole_type.to_wasm_type() else {
+            return Err(LoleError {
+                message: format!("Unsupported type: {lole_type}"),
+                // TODO: value.loc() is needed but not available
+                loc: let_token.loc,
+            });
+        };
+
+        if ctx.globals.contains_key(&global_name.value) {
+            return Err(LoleError {
+                message: format!("Cannot redefine global: {}", global_name.value),
+                loc: global_name.loc,
+            });
+        }
+
+        ctx.globals.insert(
+            global_name.value.clone(),
+            GlobalDef {
+                index: ctx.globals.len() as u32,
+                mutable,
+                value_type: lole_type,
+            },
+        );
+
+        let mut initial_value = WasmExpr { instrs: vec![] };
+        lower_expr(&mut initial_value.instrs, global_value);
+
+        ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
+            kind: WasmGlobalKind {
+                value_type: wasm_type,
+                mutable,
+            },
+            initial_value,
+        });
 
         return Ok(());
     }
@@ -286,6 +332,15 @@ fn parse_expr(
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         }),
+        "+=" => {
+            let value = LoleInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Add,
+                lhs: Box::new(lhs.clone()),
+                rhs: Box::new(rhs),
+            };
+            // TODO: lhs.loc() is needed but not available
+            compile_set(ctx, value, lhs, &op.loc)
+        }
         _ => {
             return Err(LoleError {
                 message: format!("Unknown operator: {}", op.value),
@@ -300,12 +355,7 @@ fn parse_primary(
     tokens: &mut LoleTokenStream,
 ) -> Result<LoleInstr, LoleError> {
     if let Some(int) = tokens.eat_any(IntLiteral)?.cloned() {
-        return Ok(LoleInstr::U32Const {
-            value: int.value.parse().map_err(|_| LoleError {
-                message: format!("Parsing u32 (implicit) failed"),
-                loc: int.loc.clone(),
-            })?,
-        });
+        return parse_int_literal(int);
     }
 
     if let Some(_) = tokens.eat(Symbol, "return")? {
@@ -332,6 +382,16 @@ fn parse_primary(
         let local_name = tokens.expect_any(Symbol)?.clone();
         tokens.expect(Operator, "=")?;
         let value = parse_expr(ctx, tokens)?;
+        let value_type = value.get_type(ctx.module);
+
+        if local_name.value == "_" {
+            let drop_count = value_type.emit_components(&ctx.module, &mut vec![]);
+
+            return Ok(LoleInstr::Drop {
+                value: Box::new(value),
+                drop_count,
+            });
+        }
 
         if let Some(_) = ctx.module.globals.get(&local_name.value) {
             return Err(LoleError {
@@ -347,15 +407,11 @@ fn parse_primary(
             });
         }
 
-        let value_type = value.get_type(ctx.module);
         let local_indicies = ctx.push_local(local_name.value.clone(), value_type.clone());
-
         let values = local_indicies
             .map(|i| LoleInstr::UntypedLocalGet { local_index: i })
             .collect();
-
         let bind_instr = LoleInstr::MultiValueEmit { values };
-
         return compile_set(ctx, value, bind_instr, &let_token.loc);
     }
 
@@ -372,6 +428,12 @@ fn parse_primary(
                 args: vec![arg],
             });
         }
+
+        if let Some(global) = ctx.module.globals.get(&value.value) {
+            return Ok(LoleInstr::GlobalGet {
+                global_index: global.index,
+            });
+        };
 
         let Some(local) = ctx.block.get_local(&value.value) else {
             return Err(LoleError {
@@ -393,4 +455,78 @@ fn parse_primary(
         message: format!("Unexpected token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
+}
+
+fn parse_const_expr(
+    ctx: &ModuleContext,
+    tokens: &mut LoleTokenStream,
+) -> Result<LoleInstr, LoleError> {
+    let lhs = parse_const_primary(ctx, tokens)?;
+
+    let Ok(op) = tokens.expect_any(Operator).cloned() else {
+        return Ok(lhs);
+    };
+
+    let rhs = parse_const_primary(ctx, tokens)?;
+
+    match op.value.as_str() {
+        "<" => Ok(LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32LessThenUnsigned,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }),
+        "*" => Ok(LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Mul,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }),
+        "-" => Ok(LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Sub,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }),
+        _ => {
+            return Err(LoleError {
+                message: format!("Unknown operator: {}", op.value),
+                loc: op.loc.clone(),
+            });
+        }
+    }
+}
+
+fn parse_const_primary(
+    ctx: &ModuleContext,
+    tokens: &mut LoleTokenStream,
+) -> Result<LoleInstr, LoleError> {
+    if let Some(int) = tokens.eat_any(IntLiteral)?.cloned() {
+        return parse_int_literal(int);
+    }
+
+    if let Some(global_name) = tokens.eat_any(Symbol)?.cloned() {
+        let Some(global) = ctx.globals.get(&global_name.value) else {
+            return Err(LoleError {
+                message: format!("Reading unknown global: {}", global_name.value),
+                loc: global_name.loc,
+            });
+        };
+
+        return Ok(LoleInstr::GlobalGet {
+            global_index: global.index,
+        });
+    }
+
+    let unexpected = tokens.peek().unwrap();
+    return Err(LoleError {
+        message: format!("Unexpected token: {}", unexpected.value),
+        loc: unexpected.loc.clone(),
+    });
+}
+
+fn parse_int_literal(int: LoleToken) -> Result<LoleInstr, LoleError> {
+    let value = int.value.parse().map_err(|_| LoleError {
+        message: format!("Parsing u32 (implicit) failed"),
+        loc: int.loc,
+    })?;
+
+    Ok(LoleInstr::U32Const { value })
 }

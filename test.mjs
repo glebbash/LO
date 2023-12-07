@@ -108,6 +108,15 @@ test("compiles globals", async () => {
     assert.strictEqual(result, 69);
 });
 
+test("compiles globals (v2)", async () => {
+    const output = await compile("./examples/test/globals.lole2");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 69);
+});
+
 test("compiles struct", async () => {
     const output = await compile("./examples/test/struct.lole");
 

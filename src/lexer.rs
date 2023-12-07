@@ -46,7 +46,7 @@ impl Lexer {
         if char.is_numeric() {
             return self.lex_int_literal();
         }
-        if char.is_alphabetic() {
+        if is_symbol_char(char) {
             return self.lex_symbol();
         }
         if is_delim_char(char) {
@@ -164,7 +164,7 @@ impl Lexer {
     }
 
     fn skip_space(&mut self) {
-        while self.current_char().map(is_space).unwrap_or(false) {
+        while self.current_char().map(is_space_char).unwrap_or(false) {
             self.next_char();
         }
 
@@ -245,7 +245,7 @@ impl Lexer {
     }
 }
 
-fn is_space(c: char) -> bool {
+fn is_space_char(c: char) -> bool {
     match c {
         ' ' | '\n' | '\t' => true,
         _ => false,

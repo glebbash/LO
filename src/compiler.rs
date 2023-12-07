@@ -543,12 +543,6 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 });
             };
 
-            // TODO: move to better place
-            let mut instrs = vec![];
-            lower_expr(&mut instrs, compile_const_instr(global_value, &ctx)?);
-
-            let initial_value = WasmExpr { instrs };
-
             ctx.globals.insert(
                 global_name.clone(),
                 GlobalDef {
@@ -557,6 +551,11 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     value_type: lole_type,
                 },
             );
+
+            // TODO: move to better place
+            let global_instr = compile_const_instr(global_value, &ctx)?;
+            let mut initial_value = WasmExpr { instrs: vec![] };
+            lower_expr(&mut initial_value.instrs, global_instr);
 
             ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
                 kind: WasmGlobalKind {
@@ -1787,7 +1786,7 @@ pub fn compile_local_get(
     })
 }
 
-fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInstr, LoleError> {
+pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInstr, LoleError> {
     let items = match expr {
         SExpr::List { value: items, .. } => items,
         SExpr::Atom {
@@ -1827,7 +1826,7 @@ fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoleInstr, L
 
             let Some(global) = ctx.globals.get(value.as_str()) else {
                 return Err(LoleError {
-                    message: format!("Unknown location for global.get: {value}"),
+                    message: format!("Reading unknown global: {value}"),
                     loc: op_loc.clone(),
                 });
             };
