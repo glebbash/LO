@@ -43,6 +43,15 @@ test("compiles 42 (v2)", async () => {
     assert.strictEqual(result, 42);
 });
 
+test("compiles factorial (v2)", async () => {
+    const output = await compile("./examples/test/factorial.lole2");
+
+    const program = await loadWasm(output);
+    const result = program.factorial(5);
+
+    assert.strictEqual(result, 120);
+});
+
 test("compiles factorial", async () => {
     const output = await compile("./examples/test/factorial.lole");
 

@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, lowering::*, parser2::parse_expr, wasm::*};
+use crate::{ast::*, ir::*, lowering::*, parser2::*, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -57,25 +57,25 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
             defers: BTreeMap::default(),
         };
 
+        let locals_block = Block {
+            block_type: BlockType::Block,
+            parent: None,
+            locals: fn_body.locals,
+        };
+
         let mut block_ctx = BlockContext {
             module: &ctx,
             fn_ctx: &mut fn_ctx,
             block: Block {
                 block_type: BlockType::Function,
-                parent: None,
-                locals: fn_body.locals,
+                parent: Some(&locals_block),
+                locals: BTreeMap::new(),
             },
         };
 
         let mut lole_exprs = match fn_body.body {
             FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
-            FnBodyExprs::V2(body) => {
-                let mut exprs = vec![];
-                for mut tokens in body {
-                    exprs.push(parse_expr(ctx, &mut tokens)?);
-                }
-                exprs
-            }
+            FnBodyExprs::V2(body) => parse_exprs(&mut block_ctx, body)?,
         };
         if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
             lole_exprs.append(&mut values?);
@@ -110,7 +110,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoleError>
 
 fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInstr>, LoleError> {
     let instrs = compile_instrs(exprs, ctx)?;
-    for (instr, i) in instrs.iter().zip(0..) {
+    for (instr, expr) in instrs.iter().zip(exprs) {
         if let LoleInstr::NoEmit { .. } = instr {
             continue;
         }
@@ -119,7 +119,7 @@ fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoleInst
         if instr_type != LoleType::Void {
             return Err(LoleError {
                 message: format!("TypeError: Excess values"),
-                loc: exprs[i].loc().clone(),
+                loc: expr.loc().clone(),
             });
         }
     }
@@ -1743,7 +1743,8 @@ fn compile_load(
     })
 }
 
-fn compile_local_get(
+// pub for use in v1
+pub fn compile_local_get(
     ctx: &ModuleContext,
     base_index: u32,
     value_type: &LoleType,

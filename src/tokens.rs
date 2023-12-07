@@ -106,6 +106,17 @@ impl LoleTokenStream {
         }
     }
 
+    pub fn check_next(&mut self, type_: LoleTokenType, value: &str) -> Result<bool, LoleError> {
+        match self.peek() {
+            Some(token) if token.type_ == type_ && token.value == value => Ok(true),
+            Some(_) => Ok(false),
+            _ => Err(LoleError {
+                message: format!("unexpected EOF"),
+                loc: self.terminal_token.loc.clone(),
+            }),
+        }
+    }
+
     pub fn peek(&self) -> Option<&LoleToken> {
         self.tokens.get(self.index)
     }

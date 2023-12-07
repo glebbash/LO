@@ -37,8 +37,6 @@ fn parse_top_level_expr(
         return Err(LoleError::unreachable(file!(), line!()));
     }
 
-    crate::wasi_io::debug(format!("{:?}", tokens.peek()));
-
     // TODO: implement everything else
     crate::wasi_io::debug(format!("\nunhandled: {:?}", tokens.peek()));
     return Err(LoleError::unreachable(file!(), line!()));
@@ -66,10 +64,9 @@ fn parse_fn_def(
         let p_name = tokens.expect_any(Symbol)?.clone();
         tokens.expect(Operator, ":")?;
         let p_type = parse_lole_type2(ctx, tokens)?;
-        if let Some(_) = tokens.eat(Delim, ")")? {
-            break;
-        };
-        tokens.expect(Operator, ",")?;
+        if !tokens.check_next(Delim, ")")? {
+            tokens.expect(Operator, ",")?;
+        }
 
         if locals.contains_key(&p_name.value) {
             return Err(LoleError {
@@ -162,23 +159,28 @@ fn parse_block(
     let mut depth = 0;
     tokens.expect(Delim, "{")?;
     loop {
-        if let Some(_) = tokens.eat(Delim, "{")? {
+        if let Some(t) = tokens.eat(Delim, "{")? {
+            last_expr_tokens.tokens.push(t.clone());
             depth += 1;
+            continue;
         }
-        if let Some(_) = tokens.eat(Delim, "}")? {
+        if let Some(t) = tokens.eat(Delim, "}")? {
             if depth == 0 {
                 break;
             }
+            last_expr_tokens.tokens.push(t.clone());
             depth -= 1;
+            continue;
         }
-        if let Some(semi) = tokens.eat(Delim, ";")? {
-            last_expr_tokens.terminal_token = semi.clone();
-            raw_exprs.push(last_expr_tokens);
-
-            last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
-        } else {
-            last_expr_tokens.tokens.push(tokens.next().unwrap().clone());
+        if depth == 0 {
+            if let Some(semi) = tokens.eat(Delim, ";")? {
+                last_expr_tokens.terminal_token = semi.clone();
+                raw_exprs.push(last_expr_tokens);
+                last_expr_tokens = LoleTokenStream::new(vec![], LoleLocation::internal());
+                continue;
+            }
         }
+        last_expr_tokens.tokens.push(tokens.next().unwrap().clone());
     }
     if last_expr_tokens.tokens.len() != 0 {
         // reports error about missing semicolon
@@ -198,11 +200,63 @@ fn parse_lole_type2(
 }
 
 // pub for use in v1
-pub fn parse_expr(
-    ctx: &ModuleContext,
+pub fn parse_exprs(
+    ctx: &mut BlockContext,
+    body: Vec<LoleTokenStream>,
+) -> Result<Vec<LoleInstr>, LoleError> {
+    let mut exprs = vec![];
+    for mut tokens in body {
+        exprs.push(parse_expr(ctx, &mut tokens)?);
+    }
+    Ok(exprs)
+}
+
+fn parse_expr(
+    ctx: &mut BlockContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<LoleInstr, LoleError> {
-    if let Some(int) = tokens.eat_any(IntLiteral)? {
+    let lhs = parse_operand(ctx, tokens)?;
+
+    if tokens.peek().is_none() {
+        return Ok(lhs);
+    }
+
+    let Some(op) = tokens.eat_any(Operator)?.cloned() else {
+        return Ok(lhs);
+    };
+
+    let rhs = parse_operand(ctx, tokens)?;
+
+    match op.value.as_str() {
+        "<" => Ok(LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Add,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }),
+        "*" => Ok(LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Mul,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }),
+        "-" => Ok(LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Sub,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }),
+        _ => {
+            return Err(LoleError {
+                message: format!("Unknown operator: {}", op.value),
+                loc: op.loc.clone(),
+            });
+        }
+    }
+}
+
+fn parse_operand(
+    ctx: &mut BlockContext,
+    tokens: &mut LoleTokenStream,
+) -> Result<LoleInstr, LoleError> {
+    if let Some(int) = tokens.eat_any(IntLiteral)?.cloned() {
         return Ok(LoleInstr::U32Const {
             value: int.value.parse().map_err(|_| LoleError {
                 message: format!("Parsing u32 (implicit) failed"),
@@ -217,12 +271,34 @@ pub fn parse_expr(
         });
     }
 
+    // TODO: support `else`
     if let Some(_) = tokens.eat(Symbol, "if")? {
         let cond = parse_expr(ctx, tokens)?;
-        let body = parse_block(ctx, tokens)?;
+        let then_branch_tokens = parse_block(ctx.module, tokens)?;
+        let then_branch = parse_exprs(ctx, then_branch_tokens)?;
 
-        crate::wasi_io::debug(format!("\ncond: {cond:?}\nbody.len(): {}", body.len()));
-        return Err(LoleError::unreachable(file!(), line!()));
+        return Ok(LoleInstr::If {
+            block_type: LoleType::Void,
+            cond: Box::new(cond),
+            then_branch,
+            else_branch: None,
+        });
+    }
+
+    if let Some(value) = tokens.eat_any(Symbol)? {
+        let Some(local) = ctx.block.get_local(&value.value) else {
+            return Err(LoleError {
+                message: format!("Reading unknown variable: {}", value.value),
+                loc: value.loc.clone()
+            });
+        };
+
+        return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
+            LoleError {
+                message,
+                loc: value.loc.clone(),
+            }
+        });
     }
 
     // TODO: implement
