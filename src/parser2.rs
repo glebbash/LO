@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, lowering::*, parser::*, tokens::*, wasm::*};
+use crate::{ast::*, ir::*, lowering::*, operators::*, parser::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use LoleTokenType::*;
 
@@ -432,23 +432,17 @@ fn parse_expr(
     let mut primary = parse_primary(ctx, tokens)?;
 
     while tokens.peek().is_some() {
-        let op = tokens.peek().unwrap();
-        if op.type_ != Operator {
-            break; // not gready
+        let op_symbol = tokens.peek().unwrap().clone();
+        let Some(op) = Op::parse(op_symbol) else {
+            break;
         };
 
-        let Some((l_bp, r_bp)) = get_infix_binding_power(&op.value) else {
-            return Err(LoleError {
-                message: format!("Unknown operator: {}", op.value),
-                loc: op.loc.clone(),
-            });
-        };
-
-        if l_bp < min_bp {
+        if op.info.bp < min_bp {
             break;
         }
 
-        primary = parse_postfix(ctx, tokens, primary, r_bp)?;
+        tokens.next(); // skip operator
+        primary = parse_postfix(ctx, tokens, primary, op)?;
     }
 
     Ok(primary)
@@ -626,34 +620,32 @@ fn parse_postfix(
     ctx: &mut BlockContext,
     tokens: &mut LoleTokenStream,
     primary: LoleInstr,
-    min_bp: u32,
+    op: Op,
 ) -> Result<LoleInstr, LoleError> {
-    let Ok(op) = tokens.expect_any(Operator).cloned() else {
-        return Ok(primary);
-    };
+    let min_bp = op.info.get_min_bp_for_next();
 
-    Ok(match op.value.as_str() {
-        "<" => LoleInstr::BinaryOp {
+    Ok(match op.tag {
+        OpTag::Less => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
-        "+" => LoleInstr::BinaryOp {
+        OpTag::Add => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
-        "-" => LoleInstr::BinaryOp {
+        OpTag::Sub => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
-        "*" => LoleInstr::BinaryOp {
+        OpTag::Mul => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
-        "=" => {
+        OpTag::Assign => {
             let value = parse_expr(ctx, tokens, min_bp)?;
             let value_type = value.get_type(ctx.module);
             let bind_type = primary.get_type(ctx.module);
@@ -663,24 +655,24 @@ fn parse_postfix(
                     message: format!(
                         "TypeError: Invalid types for '{}', \
                         needed {bind_type}, got {value_type}",
-                        op.value
+                        op.token.value
                     ),
-                    loc: op.loc.clone(),
+                    loc: op.token.loc.clone(),
                 });
             }
 
-            compile_set(ctx, value, primary, &op.loc)?
+            compile_set(ctx, value, primary, &op.token.loc)?
         }
-        "+=" => {
+        OpTag::AddAssign => {
             let value = LoleInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Add,
                 lhs: Box::new(primary.clone()),
                 rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
             };
             // TODO: lhs.loc() is not available
-            compile_set(ctx, value, primary, &op.loc)?
+            compile_set(ctx, value, primary, &op.token.loc)?
         }
-        "." => {
+        OpTag::Dot => {
             let field_or_method_name = tokens.expect_any(Symbol)?.clone();
             if !tokens.next_is(Delim, "(").unwrap_or(false) {
                 let field_name = field_or_method_name;
@@ -709,7 +701,7 @@ fn parse_postfix(
                 .map_err(|message| LoleError {
                     message,
                     // TODO: lhs.loc() is not available
-                    loc: op.loc,
+                    loc: op.token.loc,
                 })?;
 
                 return Ok(res);
@@ -734,12 +726,6 @@ fn parse_postfix(
                 return_type: fn_def.kind.output.clone(),
                 args,
             }
-        }
-        _ => {
-            return Err(LoleError {
-                message: format!("Unknown operator: {}", op.value),
-                loc: op.loc,
-            })
         }
     })
 }
@@ -769,23 +755,17 @@ fn parse_const_expr(
     let mut primary = parse_const_primary(ctx, tokens)?;
 
     while tokens.peek().is_some() {
-        let op = tokens.peek().unwrap();
-        if op.type_ != Operator {
-            break; // not gready
+        let op_symbol = tokens.peek().unwrap().clone();
+        let Some(op) = Op::parse(op_symbol) else {
+            break;
         };
 
-        let Some((l_bp, r_bp)) = get_infix_binding_power(&op.value) else {
-            return Err(LoleError {
-                message: format!("Unknown operator: {}", op.value),
-                loc: op.loc.clone(),
-            })
-        };
-
-        if l_bp < min_bp {
+        if op.info.bp < min_bp {
             break;
         }
 
-        primary = parse_const_postfix(ctx, tokens, primary, r_bp)?;
+        tokens.next(); // skip operator
+        primary = parse_const_postfix(ctx, tokens, primary, op)?;
     }
 
     Ok(primary)
@@ -823,37 +803,35 @@ fn parse_const_postfix(
     ctx: &ModuleContext,
     tokens: &mut LoleTokenStream,
     primary: LoleInstr,
-    min_bp: u32,
+    op: Op,
 ) -> Result<LoleInstr, LoleError> {
-    let Ok(op) = tokens.expect_any(Operator).cloned() else {
-        return Ok(primary);
-    };
+    let min_bp = op.info.get_min_bp_for_next();
 
-    Ok(match op.value.as_str() {
-        "<" => LoleInstr::BinaryOp {
+    Ok(match op.tag {
+        OpTag::Less => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        "+" => LoleInstr::BinaryOp {
+        OpTag::Add => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        "-" => LoleInstr::BinaryOp {
+        OpTag::Sub => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        "*" => LoleInstr::BinaryOp {
+        OpTag::Mul => LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
         _ => {
             return Err(LoleError {
-                message: format!("Unknown operator: {}", op.value),
-                loc: op.loc.clone(),
+                message: format!("Unsupported operator in const context: {}", op.token.value),
+                loc: op.token.loc,
             });
         }
     })
@@ -870,15 +848,4 @@ fn parse_int_literal(int: LoleToken) -> Result<LoleInstr, LoleError> {
 
 fn fn_name_for_method(receiver_type: &LoleType, method_name: &str) -> String {
     format!("{receiver_type}_{method_name}")
-}
-
-fn get_infix_binding_power(op: &str) -> Option<(u32, u32)> {
-    Some(match op {
-        "=" | "+=" => (2, 1),
-        "<" => (3, 4),
-        "+" | "-" => (5, 6),
-        "*" | "/" => (7, 8),
-        "." => (9, 10),
-        _ => return None,
-    })
 }
