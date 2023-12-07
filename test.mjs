@@ -35,7 +35,7 @@ test("compiles 42", async () => {
 });
 
 test("compiles 42 (v2)", async () => {
-    const output = await compile("./examples/test/42.lole2");
+    const output = await compile("./examples/test/42.lo");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -44,7 +44,7 @@ test("compiles 42 (v2)", async () => {
 });
 
 test("compiles factorial (v2)", async () => {
-    const output = await compile("./examples/test/factorial.lole2");
+    const output = await compile("./examples/test/factorial.lo");
 
     const program = await loadWasm(output);
     const result = program.factorial(5);
@@ -69,7 +69,7 @@ test("compiles locals", async () => {
 });
 
 test("compiles locals (v2)", async () => {
-    const output = await compile("./examples/test/locals.lole2");
+    const output = await compile("./examples/test/locals.lo");
 
     const program = await loadWasm(output);
     assert.deepEqual(program.sub(5, 3), 2);
@@ -88,7 +88,7 @@ test("compiles import", async () => {
 });
 
 test("compiles import (v2)", async () => {
-    const output = await compile("./examples/test/import.lole2");
+    const output = await compile("./examples/test/import.lo");
 
     const logs = [];
     const program = await loadWasm(output, {
@@ -109,7 +109,7 @@ test("compiles globals", async () => {
 });
 
 test("compiles globals (v2)", async () => {
-    const output = await compile("./examples/test/globals.lole2");
+    const output = await compile("./examples/test/globals.lo");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -118,7 +118,7 @@ test("compiles globals (v2)", async () => {
 });
 
 test("compiles methods (v2)", async () => {
-    const output = await compile("./examples/test/methods.lole2");
+    const output = await compile("./examples/test/methods.lo");
 
     const program = await loadWasm(output);
     const result = program.main();
@@ -136,7 +136,7 @@ test("compiles struct", async () => {
 });
 
 test("compiles struct (v2)", async () => {
-    const output = await compile("./examples/test/struct.lole2");
+    const output = await compile("./examples/test/struct.lo");
 
     const program = await loadWasm(output);
     const result = program.main();

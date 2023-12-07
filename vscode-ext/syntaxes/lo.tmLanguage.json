@@ -1,25 +1,25 @@
 {
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "comment": "adapted from https://github.com/dustypomerleau/rust-syntax/blob/main/syntaxes/rust.tmLanguage.json",
-    "name": "lole2",
-    "fileTypes": ["lole2"],
-    "scopeName": "source.lole2",
+    "name": "lo",
+    "fileTypes": ["lo"],
+    "scopeName": "source.lo",
     "patterns": [
         {
             "comment": "boxed slice literal",
             "begin": "(<)(\\[)",
             "beginCaptures": {
                 "1": {
-                    "name": "punctuation.brackets.angle.lole2"
+                    "name": "punctuation.brackets.angle.lo"
                 },
                 "2": {
-                    "name": "punctuation.brackets.square.lole2"
+                    "name": "punctuation.brackets.square.lo"
                 }
             },
             "end": ">",
             "endCaptures": {
                 "0": {
-                    "name": "punctuation.brackets.angle.lole2"
+                    "name": "punctuation.brackets.angle.lo"
                 }
             },
             "patterns": [
@@ -48,23 +48,23 @@
         },
         {
             "comment": "macro type metavariables",
-            "name": "meta.macro.metavariable.type.lole2",
+            "name": "meta.macro.metavariable.type.lo",
             "match": "(\\$)((crate)|([A-Z][A-Za-z0-9_]*))((:)(block|expr|ident|item|lifetime|literal|meta|path?|stmt|tt|ty|vis))?",
             "captures": {
                 "1": {
-                    "name": "keyword.operator.macro.dollar.lole2"
+                    "name": "keyword.operator.macro.dollar.lo"
                 },
                 "3": {
-                    "name": "keyword.other.crate.lole2"
+                    "name": "keyword.other.crate.lo"
                 },
                 "4": {
-                    "name": "entity.name.type.metavariable.lole2"
+                    "name": "entity.name.type.metavariable.lo"
                 },
                 "6": {
-                    "name": "keyword.operator.key-value.lole2"
+                    "name": "keyword.operator.key-value.lo"
                 },
                 "7": {
-                    "name": "variable.other.metavariable.specifier.lole2"
+                    "name": "variable.other.metavariable.specifier.lo"
                 }
             },
             "patterns": [
@@ -75,20 +75,20 @@
         },
         {
             "comment": "macro metavariables",
-            "name": "meta.macro.metavariable.lole2",
+            "name": "meta.macro.metavariable.lo",
             "match": "(\\$)([a-z][A-Za-z0-9_]*)((:)(block|expr|ident|item|lifetime|literal|meta|path?|stmt|tt|ty|vis))?",
             "captures": {
                 "1": {
-                    "name": "keyword.operator.macro.dollar.lole2"
+                    "name": "keyword.operator.macro.dollar.lo"
                 },
                 "2": {
-                    "name": "variable.other.metavariable.name.lole2"
+                    "name": "variable.other.metavariable.name.lo"
                 },
                 "4": {
-                    "name": "keyword.operator.key-value.lole2"
+                    "name": "keyword.operator.key-value.lo"
                 },
                 "5": {
-                    "name": "variable.other.metavariable.specifier.lole2"
+                    "name": "variable.other.metavariable.specifier.lo"
                 }
             },
             "patterns": [
@@ -99,20 +99,20 @@
         },
         {
             "comment": "macro rules",
-            "name": "meta.macro.rules.lole2",
+            "name": "meta.macro.rules.lo",
             "match": "\\b(macro_rules!)\\s+(([a-z0-9_]+)|([A-Z][a-z0-9_]*))\\s+(\\{)",
             "captures": {
                 "1": {
-                    "name": "entity.name.function.macro.rules.lole2"
+                    "name": "entity.name.function.macro.rules.lo"
                 },
                 "3": {
-                    "name": "entity.name.function.macro.lole2"
+                    "name": "entity.name.function.macro.lo"
                 },
                 "4": {
-                    "name": "entity.name.type.macro.lole2"
+                    "name": "entity.name.type.macro.lo"
                 },
                 "5": {
-                    "name": "punctuation.brackets.curly.lole2"
+                    "name": "punctuation.brackets.curly.lo"
                 }
             }
         },
@@ -121,29 +121,29 @@
             "match": "(mod)\\s+((?:r#(?!crate|[Ss]elf|super))?[a-z][A-Za-z0-9_]*)",
             "captures": {
                 "1": {
-                    "name": "storage.type.lole2"
+                    "name": "storage.type.lo"
                 },
                 "2": {
-                    "name": "entity.name.module.lole2"
+                    "name": "entity.name.module.lo"
                 }
             }
         },
         {
             "comment": "external crate imports",
-            "name": "meta.import.lole2",
+            "name": "meta.import.lo",
             "begin": "\\b(extern)\\s+(crate)",
             "beginCaptures": {
                 "1": {
-                    "name": "storage.type.lole2"
+                    "name": "storage.type.lo"
                 },
                 "2": {
-                    "name": "keyword.other.crate.lole2"
+                    "name": "keyword.other.crate.lo"
                 }
             },
             "end": ";",
             "endCaptures": {
                 "0": {
-                    "name": "punctuation.semi.lole2"
+                    "name": "punctuation.semi.lo"
                 }
             },
             "patterns": [
@@ -163,17 +163,17 @@
         },
         {
             "comment": "use statements",
-            "name": "meta.use.lole2",
+            "name": "meta.use.lo",
             "begin": "\\b(use)\\s",
             "beginCaptures": {
                 "1": {
-                    "name": "keyword.other.lole2"
+                    "name": "keyword.other.lo"
                 }
             },
             "end": ";",
             "endCaptures": {
                 "0": {
-                    "name": "punctuation.semi.lole2"
+                    "name": "punctuation.semi.lo"
                 }
             },
             "patterns": [
@@ -251,12 +251,12 @@
             "patterns": [
                 {
                     "comment": "documentation comments",
-                    "name": "comment.line.documentation.lole2",
+                    "name": "comment.line.documentation.lo",
                     "match": "^\\s*///.*"
                 },
                 {
                     "comment": "line comments",
-                    "name": "comment.line.double-slash.lole2",
+                    "name": "comment.line.double-slash.lo",
                     "match": "\\s*//.*"
                 }
             ]
@@ -265,12 +265,12 @@
             "patterns": [
                 {
                     "comment": "empty block comments",
-                    "name": "comment.block.lole2",
+                    "name": "comment.block.lo",
                     "match": "/\\*\\*/"
                 },
                 {
                     "comment": "block documentation comments",
-                    "name": "comment.block.documentation.lole2",
+                    "name": "comment.block.documentation.lo",
                     "begin": "/\\*\\*",
                     "end": "\\*/",
                     "patterns": [
@@ -281,7 +281,7 @@
                 },
                 {
                     "comment": "block comments",
-                    "name": "comment.block.lole2",
+                    "name": "comment.block.lo",
                     "begin": "/\\*(?!\\*)",
                     "end": "\\*/",
                     "patterns": [
@@ -296,7 +296,7 @@
             "patterns": [
                 {
                     "comment": "ALL CAPS constants",
-                    "name": "constant.other.caps.lole2",
+                    "name": "constant.other.caps.lo",
                     "match": "\\b[A-Z]{2}[A-Z0-9_]*\\b"
                 },
                 {
@@ -304,110 +304,110 @@
                     "match": "\\b(const)\\s+([A-Z][A-Za-z0-9_]*)\\b",
                     "captures": {
                         "1": {
-                            "name": "storage.type.lole2"
+                            "name": "storage.type.lo"
                         },
                         "2": {
-                            "name": "constant.other.caps.lole2"
+                            "name": "constant.other.caps.lo"
                         }
                     }
                 },
                 {
                     "comment": "decimal integers and floats",
-                    "name": "constant.numeric.decimal.lole2",
+                    "name": "constant.numeric.decimal.lo",
                     "match": "\\b\\d[\\d_]*(\\.?)[\\d_]*(?:(E|e)([+-]?)([\\d_]+))?(f32|f64|i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
                     "captures": {
                         "1": {
-                            "name": "punctuation.separator.dot.decimal.lole2"
+                            "name": "punctuation.separator.dot.decimal.lo"
                         },
                         "2": {
-                            "name": "keyword.operator.exponent.lole2"
+                            "name": "keyword.operator.exponent.lo"
                         },
                         "3": {
-                            "name": "keyword.operator.exponent.sign.lole2"
+                            "name": "keyword.operator.exponent.sign.lo"
                         },
                         "4": {
-                            "name": "constant.numeric.decimal.exponent.mantissa.lole2"
+                            "name": "constant.numeric.decimal.exponent.mantissa.lo"
                         },
                         "5": {
-                            "name": "entity.name.type.numeric.lole2"
+                            "name": "entity.name.type.numeric.lo"
                         }
                     }
                 },
                 {
                     "comment": "hexadecimal integers",
-                    "name": "constant.numeric.hex.lole2",
+                    "name": "constant.numeric.hex.lo",
                     "match": "\\b0x[\\da-fA-F_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
                     "captures": {
                         "1": {
-                            "name": "entity.name.type.numeric.lole2"
+                            "name": "entity.name.type.numeric.lo"
                         }
                     }
                 },
                 {
                     "comment": "octal integers",
-                    "name": "constant.numeric.oct.lole2",
+                    "name": "constant.numeric.oct.lo",
                     "match": "\\b0o[0-7_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
                     "captures": {
                         "1": {
-                            "name": "entity.name.type.numeric.lole2"
+                            "name": "entity.name.type.numeric.lo"
                         }
                     }
                 },
                 {
                     "comment": "binary integers",
-                    "name": "constant.numeric.bin.lole2",
+                    "name": "constant.numeric.bin.lo",
                     "match": "\\b0b[01_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
                     "captures": {
                         "1": {
-                            "name": "entity.name.type.numeric.lole2"
+                            "name": "entity.name.type.numeric.lo"
                         }
                     }
                 },
                 {
                     "comment": "booleans",
-                    "name": "constant.language.bool.lole2",
+                    "name": "constant.language.bool.lo",
                     "match": "\\b(true|false)\\b"
                 }
             ]
         },
         "escapes": {
             "comment": "escapes: ASCII, byte, Unicode, quote, regex",
-            "name": "constant.character.escape.lole2",
+            "name": "constant.character.escape.lo",
             "match": "(\\\\)(?:(?:(x[0-7][\\da-fA-F])|(u(\\{)[\\da-fA-F]{4,6}(\\}))|.))",
             "captures": {
                 "1": {
-                    "name": "constant.character.escape.backslash.lole2"
+                    "name": "constant.character.escape.backslash.lo"
                 },
                 "2": {
-                    "name": "constant.character.escape.bit.lole2"
+                    "name": "constant.character.escape.bit.lo"
                 },
                 "3": {
-                    "name": "constant.character.escape.unicode.lole2"
+                    "name": "constant.character.escape.unicode.lo"
                 },
                 "4": {
-                    "name": "constant.character.escape.unicode.punctuation.lole2"
+                    "name": "constant.character.escape.unicode.punctuation.lo"
                 },
                 "5": {
-                    "name": "constant.character.escape.unicode.punctuation.lole2"
+                    "name": "constant.character.escape.unicode.punctuation.lo"
                 }
             }
         },
         "attributes": {
             "comment": "attributes",
-            "name": "meta.attribute.lole2",
+            "name": "meta.attribute.lo",
             "begin": "(#)(\\!?)(\\[)",
             "beginCaptures": {
                 "1": {
-                    "name": "punctuation.definition.attribute.lole2"
+                    "name": "punctuation.definition.attribute.lo"
                 },
                 "3": {
-                    "name": "punctuation.brackets.attribute.lole2"
+                    "name": "punctuation.brackets.attribute.lo"
                 }
             },
             "end": "\\]",
             "endCaptures": {
                 "0": {
-                    "name": "punctuation.brackets.attribute.lole2"
+                    "name": "punctuation.brackets.attribute.lo"
                 }
             },
             "patterns": [
@@ -444,35 +444,35 @@
                     "match": "\\b(export)(\\()",
                     "captures": {
                         "1": {
-                            "name": "keyword.other.lole2"
+                            "name": "keyword.other.lo"
                         },
                         "2": {
-                            "name": "punctuation.brackets.round.lole2"
+                            "name": "punctuation.brackets.round.lo"
                         }
                     }
                 },
                 {
                     "comment": "function definition",
-                    "name": "meta.function.definition.lole2",
+                    "name": "meta.function.definition.lo",
                     "begin": "\\b(fn)\\s+((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)((\\()|(<))",
                     "beginCaptures": {
                         "1": {
-                            "name": "keyword.other.fn.lole2"
+                            "name": "keyword.other.fn.lo"
                         },
                         "2": {
-                            "name": "entity.name.function.lole2"
+                            "name": "entity.name.function.lo"
                         },
                         "4": {
-                            "name": "punctuation.brackets.round.lole2"
+                            "name": "punctuation.brackets.round.lo"
                         },
                         "5": {
-                            "name": "punctuation.brackets.angle.lole2"
+                            "name": "punctuation.brackets.angle.lo"
                         }
                     },
                     "end": "\\{|;",
                     "endCaptures": {
                         "0": {
-                            "name": "punctuation.brackets.curly.lole2"
+                            "name": "punctuation.brackets.curly.lo"
                         }
                     },
                     "patterns": [
@@ -522,20 +522,20 @@
                 },
                 {
                     "comment": "function/method calls, chaining",
-                    "name": "meta.function.call.lole2",
+                    "name": "meta.function.call.lo",
                     "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(\\()",
                     "beginCaptures": {
                         "1": {
-                            "name": "entity.name.function.lole2"
+                            "name": "entity.name.function.lo"
                         },
                         "2": {
-                            "name": "punctuation.brackets.round.lole2"
+                            "name": "punctuation.brackets.round.lo"
                         }
                     },
                     "end": "\\)",
                     "endCaptures": {
                         "0": {
-                            "name": "punctuation.brackets.round.lole2"
+                            "name": "punctuation.brackets.round.lo"
                         }
                     },
                     "patterns": [
@@ -588,17 +588,17 @@
                 },
                 {
                     "comment": "function/method calls with turbofish",
-                    "name": "meta.function.call.lole2",
+                    "name": "meta.function.call.lo",
                     "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(?=::<.*>\\()",
                     "beginCaptures": {
                         "1": {
-                            "name": "entity.name.function.lole2"
+                            "name": "entity.name.function.lo"
                         }
                     },
                     "end": "\\)",
                     "endCaptures": {
                         "0": {
-                            "name": "punctuation.brackets.round.lole2"
+                            "name": "punctuation.brackets.round.lo"
                         }
                     },
                     "patterns": [
@@ -655,92 +655,92 @@
             "patterns": [
                 {
                     "comment": "control flow keywords",
-                    "name": "keyword.control.lole2",
+                    "name": "keyword.control.lo",
                     "match": "\\b(await|break|continue|do|else|for|if|loop|match|return|try|while|yield)\\b"
                 },
                 {
                     "comment": "storage keywords",
-                    "name": "keyword.other.lole2 storage.type.lole2",
+                    "name": "keyword.other.lo storage.type.lo",
                     "match": "\\b(extern|let|macro|mod)\\b"
                 },
                 {
                     "comment": "const keyword",
-                    "name": "storage.modifier.lole2",
+                    "name": "storage.modifier.lo",
                     "match": "\\b(const)\\b"
                 },
                 {
                     "comment": "type keyword",
-                    "name": "keyword.declaration.type.lole2 storage.type.lole2",
+                    "name": "keyword.declaration.type.lo storage.type.lo",
                     "match": "\\b(type)\\b"
                 },
                 {
                     "comment": "enum keyword",
-                    "name": "keyword.declaration.enum.lole2 storage.type.lole2",
+                    "name": "keyword.declaration.enum.lo storage.type.lo",
                     "match": "\\b(enum)\\b"
                 },
                 {
                     "comment": "trait keyword",
-                    "name": "keyword.declaration.trait.lole2 storage.type.lole2",
+                    "name": "keyword.declaration.trait.lo storage.type.lo",
                     "match": "\\b(trait)\\b"
                 },
                 {
                     "comment": "struct keyword",
-                    "name": "keyword.declaration.struct.lole2 storage.type.lole2",
+                    "name": "keyword.declaration.struct.lo storage.type.lo",
                     "match": "\\b(struct)\\b"
                 },
                 {
                     "comment": "storage modifiers",
-                    "name": "storage.modifier.lole2",
+                    "name": "storage.modifier.lo",
                     "match": "\\b(abstract|static)\\b"
                 },
                 {
                     "comment": "other keywords",
-                    "name": "keyword.other.lole2",
+                    "name": "keyword.other.lo",
                     "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|ref|typeof|union|unsafe|unsized|use|virtual|where|export|import|from)\\b"
                 },
                 {
                     "comment": "fn",
-                    "name": "keyword.other.fn.lole2",
+                    "name": "keyword.other.fn.lo",
                     "match": "\\bfn\\b"
                 },
                 {
                     "comment": "crate",
-                    "name": "keyword.other.crate.lole2",
+                    "name": "keyword.other.crate.lo",
                     "match": "\\bcrate\\b"
                 },
                 {
                     "comment": "mut",
-                    "name": "storage.modifier.mut.lole2",
+                    "name": "storage.modifier.mut.lo",
                     "match": "\\bmut\\b"
                 },
                 {
                     "comment": "logical operators",
-                    "name": "keyword.operator.logical.lole2",
+                    "name": "keyword.operator.logical.lo",
                     "match": "(\\^|\\||\\|\\||&&|<<|>>|!)(?!=)"
                 },
                 {
                     "comment": "logical AND, borrow references",
-                    "name": "keyword.operator.borrow.and.lole2",
+                    "name": "keyword.operator.borrow.and.lo",
                     "match": "&(?![&=])"
                 },
                 {
                     "comment": "assignment operators",
-                    "name": "keyword.operator.assignment.lole2",
+                    "name": "keyword.operator.assignment.lo",
                     "match": "(\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|<<=|>>=)"
                 },
                 {
                     "comment": "single equal",
-                    "name": "keyword.operator.assignment.equal.lole2",
+                    "name": "keyword.operator.assignment.equal.lo",
                     "match": "(?<![<>])=(?!=|>)"
                 },
                 {
                     "comment": "comparison operators",
-                    "name": "keyword.operator.comparison.lole2",
+                    "name": "keyword.operator.comparison.lo",
                     "match": "(=(=)?(?!>)|!=|<=|(?<!=)>=)"
                 },
                 {
                     "comment": "math operators",
-                    "name": "keyword.operator.math.lole2",
+                    "name": "keyword.operator.math.lo",
                     "match": "(([+%]|(\\*(?!\\w)))(?!=))|(-(?!>))|(/(?!/))"
                 },
                 {
@@ -748,31 +748,31 @@
                     "match": "(?:\\b|(?:(\\))|(\\])|(\\})))[ \\t]+([<>])[ \\t]+(?:\\b|(?:(\\()|(\\[)|(\\{)))",
                     "captures": {
                         "1": {
-                            "name": "punctuation.brackets.round.lole2"
+                            "name": "punctuation.brackets.round.lo"
                         },
                         "2": {
-                            "name": "punctuation.brackets.square.lole2"
+                            "name": "punctuation.brackets.square.lo"
                         },
                         "3": {
-                            "name": "punctuation.brackets.curly.lole2"
+                            "name": "punctuation.brackets.curly.lo"
                         },
                         "4": {
-                            "name": "keyword.operator.comparison.lole2"
+                            "name": "keyword.operator.comparison.lo"
                         },
                         "5": {
-                            "name": "punctuation.brackets.round.lole2"
+                            "name": "punctuation.brackets.round.lo"
                         },
                         "6": {
-                            "name": "punctuation.brackets.square.lole2"
+                            "name": "punctuation.brackets.square.lo"
                         },
                         "7": {
-                            "name": "punctuation.brackets.curly.lole2"
+                            "name": "punctuation.brackets.curly.lo"
                         }
                     }
                 },
                 {
                     "comment": "namespace operator",
-                    "name": "keyword.operator.namespace.lole2",
+                    "name": "keyword.operator.namespace.lo",
                     "match": "::"
                 },
                 {
@@ -780,62 +780,62 @@
                     "match": "(\\*)(?=\\w+)",
                     "captures": {
                         "1": {
-                            "name": "keyword.operator.dereference.lole2"
+                            "name": "keyword.operator.dereference.lo"
                         }
                     }
                 },
                 {
                     "comment": "subpattern binding",
-                    "name": "keyword.operator.subpattern.lole2",
+                    "name": "keyword.operator.subpattern.lo",
                     "match": "@"
                 },
                 {
                     "comment": "dot access",
-                    "name": "keyword.operator.access.dot.lole2",
+                    "name": "keyword.operator.access.dot.lo",
                     "match": "\\.(?!\\.)"
                 },
                 {
                     "comment": "ranges, range patterns",
-                    "name": "keyword.operator.range.lole2",
+                    "name": "keyword.operator.range.lo",
                     "match": "\\.{2}(=|\\.)?"
                 },
                 {
                     "comment": "colon",
-                    "name": "keyword.operator.key-value.lole2",
+                    "name": "keyword.operator.key-value.lo",
                     "match": ":(?!:)"
                 },
                 {
                     "comment": "dashrocket, skinny arrow",
-                    "name": "keyword.operator.arrow.skinny.lole2",
+                    "name": "keyword.operator.arrow.skinny.lo",
                     "match": "->"
                 },
                 {
                     "comment": "hashrocket, fat arrow",
-                    "name": "keyword.operator.arrow.fat.lole2",
+                    "name": "keyword.operator.arrow.fat.lo",
                     "match": "=>"
                 },
                 {
                     "comment": "dollar macros",
-                    "name": "keyword.operator.macro.dollar.lole2",
+                    "name": "keyword.operator.macro.dollar.lo",
                     "match": "\\$"
                 },
                 {
                     "comment": "question mark operator, questionably sized, macro kleene matcher",
-                    "name": "keyword.operator.question.lole2",
+                    "name": "keyword.operator.question.lo",
                     "match": "\\?"
                 }
             ]
         },
         "interpolations": {
             "comment": "curly brace interpolations",
-            "name": "meta.interpolation.lole2",
+            "name": "meta.interpolation.lo",
             "match": "({)[^\"{}]*(})",
             "captures": {
                 "1": {
-                    "name": "punctuation.definition.interpolation.lole2"
+                    "name": "punctuation.definition.interpolation.lo"
                 },
                 "2": {
-                    "name": "punctuation.definition.interpolation.lole2"
+                    "name": "punctuation.definition.interpolation.lo"
                 }
             }
         },
@@ -846,10 +846,10 @@
                     "match": "(['])([a-zA-Z_][0-9a-zA-Z_]*)(?!['])\\b",
                     "captures": {
                         "1": {
-                            "name": "punctuation.definition.lifetime.lole2"
+                            "name": "punctuation.definition.lifetime.lo"
                         },
                         "2": {
-                            "name": "entity.name.type.lifetime.lole2"
+                            "name": "entity.name.type.lifetime.lo"
                         }
                     }
                 },
@@ -858,13 +858,13 @@
                     "match": "(\\&)(['])([a-zA-Z_][0-9a-zA-Z_]*)(?!['])\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.operator.borrow.lole2"
+                            "name": "keyword.operator.borrow.lo"
                         },
                         "2": {
-                            "name": "punctuation.definition.lifetime.lole2"
+                            "name": "punctuation.definition.lifetime.lo"
                         },
                         "3": {
-                            "name": "entity.name.type.lifetime.lole2"
+                            "name": "entity.name.type.lifetime.lo"
                         }
                     }
                 }
@@ -874,14 +874,14 @@
             "patterns": [
                 {
                     "comment": "macros",
-                    "name": "meta.macro.lole2",
+                    "name": "meta.macro.lo",
                     "match": "(([a-z_][A-Za-z0-9_]*!)|([A-Z_][A-Za-z0-9_]*!))",
                     "captures": {
                         "2": {
-                            "name": "entity.name.function.macro.lole2"
+                            "name": "entity.name.function.macro.lo"
                         },
                         "3": {
-                            "name": "entity.name.type.macro.lole2"
+                            "name": "entity.name.type.macro.lo"
                         }
                     }
                 }
@@ -894,10 +894,10 @@
                     "match": "(?<![A-Za-z0-9_])([A-Za-z0-9_]+)((?<!super|self)::)",
                     "captures": {
                         "1": {
-                            "name": "entity.name.namespace.lole2"
+                            "name": "entity.name.namespace.lo"
                         },
                         "2": {
-                            "name": "keyword.operator.namespace.lole2"
+                            "name": "keyword.operator.namespace.lo"
                         }
                     }
                 }
@@ -910,7 +910,7 @@
                     "match": "(?<![A-Za-z])(f32|f64|i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)\\b",
                     "captures": {
                         "1": {
-                            "name": "entity.name.type.numeric.lole2"
+                            "name": "entity.name.type.numeric.lo"
                         }
                     }
                 },
@@ -919,16 +919,16 @@
                     "begin": "\\b(_?[A-Z][A-Za-z0-9_]*)(<)",
                     "beginCaptures": {
                         "1": {
-                            "name": "entity.name.type.lole2"
+                            "name": "entity.name.type.lo"
                         },
                         "2": {
-                            "name": "punctuation.brackets.angle.lole2"
+                            "name": "punctuation.brackets.angle.lo"
                         }
                     },
                     "end": ">",
                     "endCaptures": {
                         "0": {
-                            "name": "punctuation.brackets.angle.lole2"
+                            "name": "punctuation.brackets.angle.lo"
                         }
                     },
                     "patterns": [
@@ -960,7 +960,7 @@
                 },
                 {
                     "comment": "primitive types",
-                    "name": "entity.name.type.primitive.lole2",
+                    "name": "entity.name.type.primitive.lo",
                     "match": "\\b(bool|char|str)\\b"
                 },
                 {
@@ -968,10 +968,10 @@
                     "match": "\\b(trait)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.declaration.trait.lole2 storage.type.lole2"
+                            "name": "keyword.declaration.trait.lo storage.type.lo"
                         },
                         "2": {
-                            "name": "entity.name.type.trait.lole2"
+                            "name": "entity.name.type.trait.lo"
                         }
                     }
                 },
@@ -980,10 +980,10 @@
                     "match": "\\b(struct)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.declaration.struct.lole2 storage.type.lole2"
+                            "name": "keyword.declaration.struct.lo storage.type.lo"
                         },
                         "2": {
-                            "name": "entity.name.type.struct.lole2"
+                            "name": "entity.name.type.struct.lo"
                         }
                     }
                 },
@@ -992,10 +992,10 @@
                     "match": "\\b(enum)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.declaration.enum.lole2 storage.type.lole2"
+                            "name": "keyword.declaration.enum.lo storage.type.lo"
                         },
                         "2": {
-                            "name": "entity.name.type.enum.lole2"
+                            "name": "entity.name.type.enum.lo"
                         }
                     }
                 },
@@ -1004,16 +1004,16 @@
                     "match": "\\b(type)\\s+(_?[A-Z][A-Za-z0-9_]*)\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.declaration.type.lole2 storage.type.lole2"
+                            "name": "keyword.declaration.type.lo storage.type.lo"
                         },
                         "2": {
-                            "name": "entity.name.type.declaration.lole2"
+                            "name": "entity.name.type.declaration.lo"
                         }
                     }
                 },
                 {
                     "comment": "types",
-                    "name": "entity.name.type.lole2",
+                    "name": "entity.name.type.lo",
                     "match": "\\b_?[A-Z][A-Za-z0-9_]*\\b(?!!)"
                 }
             ]
@@ -1022,12 +1022,12 @@
             "patterns": [
                 {
                     "comment": "option types",
-                    "name": "entity.name.type.option.lole2",
+                    "name": "entity.name.type.option.lo",
                     "match": "\\b(Some|None)\\b"
                 },
                 {
                     "comment": "result types",
-                    "name": "entity.name.type.result.lole2",
+                    "name": "entity.name.type.result.lo",
                     "match": "\\b(Ok|Err)\\b"
                 }
             ]
@@ -1036,32 +1036,32 @@
             "patterns": [
                 {
                     "comment": "comma",
-                    "name": "punctuation.comma.lole2",
+                    "name": "punctuation.comma.lo",
                     "match": ","
                 },
                 {
                     "comment": "curly braces",
-                    "name": "punctuation.brackets.curly.lole2",
+                    "name": "punctuation.brackets.curly.lo",
                     "match": "[{}]"
                 },
                 {
                     "comment": "parentheses, round brackets",
-                    "name": "punctuation.brackets.round.lole2",
+                    "name": "punctuation.brackets.round.lo",
                     "match": "[()]"
                 },
                 {
                     "comment": "semicolon",
-                    "name": "punctuation.semi.lole2",
+                    "name": "punctuation.semi.lo",
                     "match": ";"
                 },
                 {
                     "comment": "square brackets",
-                    "name": "punctuation.brackets.square.lole2",
+                    "name": "punctuation.brackets.square.lo",
                     "match": "[\\[\\]]"
                 },
                 {
                     "comment": "angle brackets",
-                    "name": "punctuation.brackets.angle.lole2",
+                    "name": "punctuation.brackets.angle.lo",
                     "match": "(?<!=)[<>]"
                 }
             ]
@@ -1070,20 +1070,20 @@
             "patterns": [
                 {
                     "comment": "double-quoted strings and byte strings",
-                    "name": "string.quoted.double.lole2",
+                    "name": "string.quoted.double.lo",
                     "begin": "(b?)(\")",
                     "beginCaptures": {
                         "1": {
-                            "name": "string.quoted.byte.raw.lole2"
+                            "name": "string.quoted.byte.raw.lo"
                         },
                         "2": {
-                            "name": "punctuation.definition.string.lole2"
+                            "name": "punctuation.definition.string.lo"
                         }
                     },
                     "end": "\"",
                     "endCaptures": {
                         "0": {
-                            "name": "punctuation.definition.string.lole2"
+                            "name": "punctuation.definition.string.lo"
                         }
                     },
                     "patterns": [
@@ -1097,45 +1097,45 @@
                 },
                 {
                     "comment": "double-quoted raw strings and raw byte strings",
-                    "name": "string.quoted.double.lole2",
+                    "name": "string.quoted.double.lo",
                     "begin": "(b?r)(#*)(\")",
                     "beginCaptures": {
                         "1": {
-                            "name": "string.quoted.byte.raw.lole2"
+                            "name": "string.quoted.byte.raw.lo"
                         },
                         "2": {
-                            "name": "punctuation.definition.string.raw.lole2"
+                            "name": "punctuation.definition.string.raw.lo"
                         },
                         "3": {
-                            "name": "punctuation.definition.string.lole2"
+                            "name": "punctuation.definition.string.lo"
                         }
                     },
                     "end": "(\")(\\2)",
                     "endCaptures": {
                         "1": {
-                            "name": "punctuation.definition.string.lole2"
+                            "name": "punctuation.definition.string.lo"
                         },
                         "2": {
-                            "name": "punctuation.definition.string.raw.lole2"
+                            "name": "punctuation.definition.string.raw.lo"
                         }
                     }
                 },
                 {
                     "comment": "characters and bytes",
-                    "name": "string.quoted.single.char.lole2",
+                    "name": "string.quoted.single.char.lo",
                     "begin": "(b)?(')",
                     "beginCaptures": {
                         "1": {
-                            "name": "string.quoted.byte.raw.lole2"
+                            "name": "string.quoted.byte.raw.lo"
                         },
                         "2": {
-                            "name": "punctuation.definition.char.lole2"
+                            "name": "punctuation.definition.char.lo"
                         }
                     },
                     "end": "'",
                     "endCaptures": {
                         "0": {
-                            "name": "punctuation.definition.char.lole2"
+                            "name": "punctuation.definition.char.lo"
                         }
                     },
                     "patterns": [
@@ -1150,12 +1150,12 @@
             "patterns": [
                 {
                     "comment": "self",
-                    "name": "variable.language.self.lole2",
+                    "name": "variable.language.self.lo",
                     "match": "\\b[Ss]elf\\b"
                 },
                 {
                     "comment": "super",
-                    "name": "variable.language.super.lole2",
+                    "name": "variable.language.super.lo",
                     "match": "\\bsuper\\b"
                 }
             ]
@@ -1164,7 +1164,7 @@
             "patterns": [
                 {
                     "comment": "variables",
-                    "name": "variable.other.lole2",
+                    "name": "variable.other.lo",
                     "match": "\\b(?<!(?<!\\.)\\.)(?:r#(?!(crate|[Ss]elf|super)))?[a-z0-9_]+\\b"
                 }
             ]
