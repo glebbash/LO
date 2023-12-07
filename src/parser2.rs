@@ -12,6 +12,16 @@ pub fn parse(mut tokens: LoleTokenStream) -> Result<WasmModule, LoleError> {
         tokens.expect(LoleTokenType::Delim, ";")?;
     }
 
+    if let Some(unexpected) = tokens.peek() {
+        return Err(LoleError {
+            message: format!(
+                "Unexpected token after top level expression: {}",
+                unexpected.value
+            ),
+            loc: unexpected.loc.clone(),
+        });
+    }
+
     process_delayed_actions(&mut ctx)?;
 
     Ok(ctx.wasm_module.take())
@@ -116,6 +126,79 @@ fn parse_top_level_expr(
             },
             initial_value,
         });
+
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "struct")? {
+        let struct_name = tokens.expect_any(Symbol)?.clone();
+
+        if ctx.struct_defs.contains_key(&struct_name.value) {
+            return Err(LoleError {
+                message: format!("Cannot redefine struct {}", struct_name.value),
+                loc: struct_name.loc,
+            });
+        }
+
+        // declare not fully defined struct to use in self-references
+        ctx.struct_defs.insert(
+            struct_name.value.clone(),
+            StructDef {
+                fields: vec![],
+                fully_defined: false,
+            },
+        );
+
+        let mut field_index = 0;
+        let mut byte_offset = 0;
+        let mut struct_fields = Vec::<StructField>::new();
+
+        tokens.expect(Delim, "{")?;
+        while let None = tokens.eat(Delim, "}")? {
+            let field_name = tokens.expect_any(Symbol)?.clone();
+            tokens.expect(Operator, ":")?;
+            let field_type = parse_lole_type2(ctx, tokens)?;
+            if !tokens.next_is(Delim, "}")? {
+                tokens.expect(Delim, ",")?;
+            }
+
+            if struct_fields
+                .iter()
+                .find(|f| f.name == field_name.value)
+                .is_some()
+            {
+                return Err(LoleError {
+                    message: format!(
+                        "Found duplicate struct field name: '{}' of struct {}",
+                        field_name.value, struct_name.value,
+                    ),
+                    loc: field_name.loc,
+                });
+            }
+
+            let mut stats = EmitComponentStats::default();
+            field_type
+                .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
+                .map_err(|err| LoleError {
+                    message: err,
+                    // TODO: field_type.loc() is not available
+                    loc: field_name.loc,
+                })?;
+
+            struct_fields.push(StructField {
+                name: field_name.value,
+                value_type: field_type,
+                field_index,
+                byte_offset,
+            });
+
+            field_index += stats.count;
+            byte_offset += stats.byte_length;
+        }
+
+        let struct_def = ctx.struct_defs.get_mut(&struct_name.value).unwrap();
+        struct_def.fields.append(&mut struct_fields);
+        struct_def.fully_defined = true;
 
         return Ok(());
     }
@@ -247,6 +330,7 @@ fn parse_fn_decl(
     };
 
     lole_output.emit_components(&ctx, &mut fn_decl.wasm_type.outputs);
+    fn_decl.lole_type.output = lole_output;
 
     Ok(fn_decl)
 }
@@ -319,74 +403,33 @@ pub fn parse_exprs(
 ) -> Result<Vec<LoleInstr>, LoleError> {
     let mut exprs = vec![];
     for mut tokens in body {
-        exprs.push(parse_expr(ctx, &mut tokens)?);
+        exprs.push(parse_expr_to_end(ctx, &mut tokens)?);
     }
     Ok(exprs)
+}
+
+fn parse_expr_to_end(
+    ctx: &mut BlockContext,
+    tokens: &mut LoleTokenStream,
+) -> Result<LoleInstr, LoleError> {
+    let expr = parse_expr(ctx, tokens)?;
+
+    if let Some(unexpected) = tokens.peek() {
+        return Err(LoleError {
+            message: format!("Unexpected token after expression: {}", unexpected.value),
+            loc: unexpected.loc.clone(),
+        });
+    }
+
+    Ok(expr)
 }
 
 fn parse_expr(
     ctx: &mut BlockContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<LoleInstr, LoleError> {
-    let lhs = parse_primary(ctx, tokens)?;
-
-    let Ok(op) = tokens.expect_any(Operator).cloned() else {
-        return Ok(lhs);
-    };
-
-    match op.value.as_str() {
-        "<" => Ok(LoleInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32LessThenUnsigned,
-            lhs: Box::new(lhs),
-            rhs: Box::new(parse_primary(ctx, tokens)?),
-        }),
-        "*" => Ok(LoleInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Mul,
-            lhs: Box::new(lhs),
-            rhs: Box::new(parse_primary(ctx, tokens)?),
-        }),
-        "-" => Ok(LoleInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Sub,
-            lhs: Box::new(lhs),
-            rhs: Box::new(parse_primary(ctx, tokens)?),
-        }),
-        "+=" => {
-            let value = LoleInstr::BinaryOp {
-                kind: WasmBinaryOpKind::I32Add,
-                lhs: Box::new(lhs.clone()),
-                rhs: Box::new(parse_primary(ctx, tokens)?),
-            };
-            // TODO: lhs.loc() is not available
-            compile_set(ctx, value, lhs, &op.loc)
-        }
-        "." => {
-            let recevier_type = lhs.get_type(ctx.module);
-            let method_name = tokens.expect_any(Symbol)?.clone();
-
-            let mut args = vec![lhs];
-            parse_fn_call_args(ctx, tokens, &mut args)?;
-
-            let fn_name = fn_name_for_method(&recevier_type, &method_name.value);
-            let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
-                return Err(LoleError {
-                    message: format!("Unknown function: {fn_name}"),
-                    loc: method_name.loc,
-                });
-            };
-
-            Ok(LoleInstr::Call {
-                fn_index: fn_def.fn_index,
-                return_type: fn_def.kind.output.clone(),
-                args,
-            })
-        }
-        _ => {
-            return Err(LoleError {
-                message: format!("Unknown operator: {}", op.value),
-                loc: op.loc.clone(),
-            });
-        }
-    }
+    let primary = parse_primary(ctx, tokens)?;
+    parse_postfix(ctx, tokens, primary)
 }
 
 fn parse_primary(
@@ -395,6 +438,12 @@ fn parse_primary(
 ) -> Result<LoleInstr, LoleError> {
     if let Some(int) = tokens.eat_any(IntLiteral)?.cloned() {
         return parse_int_literal(int);
+    }
+
+    if let Some(_) = tokens.eat(Delim, "(")? {
+        let expr = parse_expr(ctx, tokens)?;
+        tokens.expect(Delim, ")")?;
+        return Ok(expr);
     }
 
     if let Some(_) = tokens.eat(Symbol, "return")? {
@@ -466,6 +515,63 @@ fn parse_primary(
             });
         }
 
+        if let Some(struct_def) = ctx.module.struct_defs.get(&value.value) {
+            let struct_name = value;
+
+            let mut values = vec![];
+            tokens.expect(Delim, "{")?;
+            while let None = tokens.eat(Delim, "}")? {
+                let field_name = tokens.expect_any(Symbol)?.clone();
+                tokens.expect(Operator, ":")?;
+                let field_value = parse_expr(ctx, tokens)?;
+
+                if !tokens.next_is(Delim, "}")? {
+                    tokens.expect(Delim, ",")?;
+                }
+
+                let field_index = values.len();
+                let Some(struct_field) = struct_def.fields.get(field_index) else {
+                    return Err(LoleError {
+                        message: format!("Excess field values"),
+                        loc: field_name.loc,
+                    });
+                };
+
+                if &field_name.value != &struct_field.name {
+                    return Err(LoleError {
+                        message: format!(
+                            "Unexpected field name, expecting: `{}`",
+                            struct_field.name
+                        ),
+                        loc: field_name.loc,
+                    });
+                }
+
+                let field_value_type = field_value.get_type(ctx.module);
+                if field_value_type != struct_field.value_type {
+                    return Err(LoleError {
+                        message: format!(
+                            "Invalid type for field {}.{}, expected: {}, got: {}",
+                            struct_name.value,
+                            field_name.value,
+                            struct_field.value_type,
+                            field_value_type
+                        ),
+                        // TODO: field_value.loc() is not available
+                        loc: field_name.loc.clone(),
+                    });
+                }
+                values.push(field_value);
+            }
+
+            return Ok(LoleInstr::Casted {
+                value_type: LoleType::StructInstance {
+                    name: struct_name.value,
+                },
+                expr: Box::new(LoleInstr::MultiValueEmit { values }),
+            });
+        };
+
         if let Some(global) = ctx.module.globals.get(&value.value) {
             return Ok(LoleInstr::GlobalGet {
                 global_index: global.index,
@@ -494,6 +600,127 @@ fn parse_primary(
     });
 }
 
+fn parse_postfix(
+    ctx: &mut BlockContext,
+    tokens: &mut LoleTokenStream,
+    primary: LoleInstr,
+) -> Result<LoleInstr, LoleError> {
+    let Ok(op) = tokens.expect_any(Operator).cloned() else {
+        return Ok(primary);
+    };
+
+    Ok(match op.value.as_str() {
+        "<" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32LessThenUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens)?),
+        },
+        "+" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Add,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens)?),
+        },
+        "-" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Sub,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens)?),
+        },
+        "*" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Mul,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens)?),
+        },
+        "=" => {
+            let value = parse_expr(ctx, tokens)?;
+            let value_type = value.get_type(ctx.module);
+            let bind_type = primary.get_type(ctx.module);
+
+            if value_type != bind_type {
+                return Err(LoleError {
+                    message: format!(
+                        "TypeError: Invalid types for '{}', \
+                        needed {bind_type}, got {value_type}",
+                        op.value
+                    ),
+                    loc: op.loc.clone(),
+                });
+            }
+
+            compile_set(ctx, value, primary, &op.loc)?
+        }
+        "+=" => {
+            let value = LoleInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Add,
+                lhs: Box::new(primary.clone()),
+                rhs: Box::new(parse_expr(ctx, tokens)?),
+            };
+            // TODO: lhs.loc() is not available
+            compile_set(ctx, value, primary, &op.loc)?
+        }
+        "." => {
+            let field_or_method_name = tokens.expect_any(Symbol)?.clone();
+            if !tokens.next_is(Delim, "(").unwrap_or(false) {
+                let field_name = field_or_method_name;
+
+                let LoleInstr::StructGet { struct_name, base_index, .. } = &primary else {
+                    let lhs_type = primary.get_type(ctx.module);
+                    return Err(LoleError {
+                        message: format!("Trying to get field '{}' on non struct: {lhs_type}", field_name.value),
+                        loc: field_name.loc,
+                    });
+                };
+
+                let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
+                let Some(field) = struct_def.fields.iter().find(|f| &f.name == &field_name.value) else {
+                    return Err(LoleError {
+                        message: format!("Unknown field {} in struct {struct_name}", field_name.value),
+                        loc: field_name.loc,
+                    });
+                };
+
+                let res = compile_local_get(
+                    &ctx.module,
+                    base_index + field.field_index,
+                    &field.value_type,
+                )
+                .map_err(|message| LoleError {
+                    message,
+                    // TODO: lhs.loc() is not available
+                    loc: op.loc,
+                })?;
+
+                return Ok(res);
+            }
+
+            let method_name = field_or_method_name;
+            let recevier_type = primary.get_type(ctx.module);
+
+            let mut args = vec![primary];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
+
+            let fn_name = fn_name_for_method(&recevier_type, &method_name.value);
+            let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
+                return Err(LoleError {
+                    message: format!("Unknown function: {fn_name}"),
+                    loc: method_name.loc,
+                });
+            };
+
+            LoleInstr::Call {
+                fn_index: fn_def.fn_index,
+                return_type: fn_def.kind.output.clone(),
+                args,
+            }
+        }
+        _ => {
+            return Err(LoleError {
+                message: format!("Unknown operator: {}", op.value),
+                loc: op.loc,
+            })
+        }
+    })
+}
+
 fn parse_fn_call_args(
     ctx: &mut BlockContext,
     tokens: &mut LoleTokenStream,
@@ -515,37 +742,8 @@ fn parse_const_expr(
     ctx: &ModuleContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<LoleInstr, LoleError> {
-    let lhs = parse_const_primary(ctx, tokens)?;
-
-    let Ok(op) = tokens.expect_any(Operator).cloned() else {
-        return Ok(lhs);
-    };
-
-    let rhs = parse_const_primary(ctx, tokens)?;
-
-    match op.value.as_str() {
-        "<" => Ok(LoleInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32LessThenUnsigned,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        }),
-        "*" => Ok(LoleInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Mul,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        }),
-        "-" => Ok(LoleInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Sub,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        }),
-        _ => {
-            return Err(LoleError {
-                message: format!("Unknown operator: {}", op.value),
-                loc: op.loc.clone(),
-            });
-        }
-    }
+    let primary = parse_const_primary(ctx, tokens)?;
+    parse_const_postfix(ctx, tokens, primary)
 }
 
 fn parse_const_primary(
@@ -574,6 +772,45 @@ fn parse_const_primary(
         message: format!("Unexpected token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
+}
+
+fn parse_const_postfix(
+    ctx: &ModuleContext,
+    tokens: &mut LoleTokenStream,
+    primary: LoleInstr,
+) -> Result<LoleInstr, LoleError> {
+    let Ok(op) = tokens.expect_any(Operator).cloned() else {
+        return Ok(primary);
+    };
+
+    Ok(match op.value.as_str() {
+        "<" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32LessThenUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens)?),
+        },
+        "+" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Add,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens)?),
+        },
+        "-" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Sub,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens)?),
+        },
+        "*" => LoleInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Mul,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens)?),
+        },
+        _ => {
+            return Err(LoleError {
+                message: format!("Unknown operator: {}", op.value),
+                loc: op.loc.clone(),
+            });
+        }
+    })
 }
 
 fn parse_int_literal(int: LoleToken) -> Result<LoleInstr, LoleError> {

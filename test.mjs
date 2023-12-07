@@ -135,6 +135,15 @@ test("compiles struct", async () => {
     assert.strictEqual(result, 13);
 });
 
+test("compiles struct (v2)", async () => {
+    const output = await compile("./examples/test/struct.lole2");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 13);
+});
+
 test("compiles struct-ref", async () => {
     const output = await compile("./examples/test/struct-ref.lole");
 

@@ -1299,7 +1299,6 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
             let value_instr = compile_instr(value, ctx)?;
             let bind_instr = compile_instr(bind, ctx)?;
 
-            // TODO: enable this once tests pass
             let value_type = value_instr.get_type(ctx.module);
             let bind_type = bind_instr.get_type(ctx.module);
 
@@ -1307,8 +1306,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoleInstr, 
                 return Err(LoleError {
                     message: format!(
                         "TypeError: Invalid types for '{op}', \
-                        needed {bind_type}, \
-                        got {value_type}",
+                        needed {bind_type}, got {value_type}",
                     ),
                     loc: op_loc.clone(),
                 });
