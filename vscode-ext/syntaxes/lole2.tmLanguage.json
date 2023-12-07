@@ -696,7 +696,7 @@
                 {
                     "comment": "other keywords",
                     "name": "keyword.other.lole2",
-                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|export|ref|typeof|union|unsafe|unsized|use|virtual|where)\\b"
+                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|ref|typeof|union|unsafe|unsized|use|virtual|where|export|import|from)\\b"
                 },
                 {
                     "comment": "fn",

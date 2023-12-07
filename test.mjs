@@ -75,13 +75,28 @@ test("compiles locals (v2)", async () => {
     assert.deepEqual(program.sub(5, 3), 2);
 });
 
-test("compiles struct", async () => {
-    const output = await compile("./examples/test/struct.lole");
+test("compiles import", async () => {
+    const output = await compile("./examples/test/import.lole");
 
-    const program = await loadWasm(output);
-    const result = program.main();
+    const logs = [];
+    const program = await loadWasm(output, {
+        utils: { debug: (x) => logs.push(x) },
+    });
 
-    assert.strictEqual(result, 13);
+    program.main();
+    assert.deepEqual(logs, [1, 2, 3]);
+});
+
+test("compiles import (v2)", async () => {
+    const output = await compile("./examples/test/import.lole2");
+
+    const logs = [];
+    const program = await loadWasm(output, {
+        utils: { debug: (x) => logs.push(x) },
+    });
+
+    program.main();
+    assert.deepEqual(logs, [1, 2, 3]);
 });
 
 test("compiles globals", async () => {
@@ -93,6 +108,15 @@ test("compiles globals", async () => {
     assert.strictEqual(result, 69);
 });
 
+test("compiles struct", async () => {
+    const output = await compile("./examples/test/struct.lole");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 13);
+});
+
 test("compiles struct-ref", async () => {
     const output = await compile("./examples/test/struct-ref.lole");
 
@@ -100,18 +124,6 @@ test("compiles struct-ref", async () => {
     const result = program.main();
 
     assert.strictEqual(result, 3);
-});
-
-test("compiles import", async () => {
-    const output = await compile("./examples/test/import.lole");
-
-    const logs = [];
-    const program = await loadWasm(output, {
-        utils: { debug: (x) => logs.push(x) },
-    });
-
-    program.main();
-    assert.deepEqual(logs, [1, 2, 3]);
 });
 
 test("compiles vec", async () => {

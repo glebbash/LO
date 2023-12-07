@@ -1,5 +1,5 @@
 use crate::{ast::*, compiler::*, ir::*, tokens::*, wasm::*};
-use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use LoleTokenType::*;
 
 pub fn parse(mut tokens: LoleTokenStream) -> Result<WasmModule, LoleError> {
@@ -33,9 +33,41 @@ fn parse_top_level_expr(
         }
     }
 
+    if let Some(_) = tokens.eat(Symbol, "import")? {
+        tokens.expect(Symbol, "from")?;
+        let module_name = tokens.expect_any(StringLiteral)?.clone();
+
+        tokens.expect(Delim, "{")?;
+        while let None = tokens.eat(Delim, "}")? {
+            tokens.expect(Symbol, "fn")?;
+            let fn_decl = parse_fn_decl(ctx, tokens)?;
+            tokens.expect(LoleTokenType::Delim, ";")?;
+
+            let type_index = ctx.insert_fn_type(fn_decl.wasm_type);
+
+            let fn_index = ctx.imported_fns_count;
+            ctx.imported_fns_count += 1;
+
+            let fn_def = FnDef {
+                local: false,
+                fn_index,
+                type_index,
+                kind: fn_decl.lole_type,
+            };
+            ctx.fn_defs.insert(fn_decl.fn_name.value.clone(), fn_def);
+            ctx.wasm_module.borrow_mut().imports.push(WasmImport {
+                module_name: module_name.value.clone(),
+                item_name: fn_decl.fn_name.value.clone(),
+                item_desc: WasmImportDesc::Func { type_index },
+            });
+        }
+
+        return Ok(());
+    }
+
     let unexpected = tokens.peek().unwrap();
     return Err(LoleError {
-        message: format!("Unexpected token: {}", unexpected.value),
+        message: format!("Unexpected top level token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
 }
@@ -45,6 +77,55 @@ fn parse_fn_def(
     tokens: &mut LoleTokenStream,
     exported: bool,
 ) -> Result<(), LoleError> {
+    let fn_decl = parse_fn_decl(ctx, tokens)?;
+    let body = parse_block(ctx, tokens)?;
+
+    if exported {
+        ctx.fn_exports.push(FnExport {
+            in_name: fn_decl.fn_name.value.clone(),
+            out_name: fn_decl.fn_name.value.clone(),
+            loc: fn_decl.fn_name.loc.clone(),
+        });
+    }
+
+    let locals_last_index = fn_decl.wasm_type.inputs.len() as u32;
+    let type_index = ctx.insert_fn_type(fn_decl.wasm_type);
+    ctx.wasm_module.borrow_mut().functions.push(type_index);
+
+    let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32 - 1;
+
+    ctx.fn_defs.insert(
+        fn_decl.fn_name.value.clone(),
+        FnDef {
+            local: true,
+            fn_index,
+            type_index,
+            kind: fn_decl.lole_type,
+        },
+    );
+
+    ctx.fn_bodies.borrow_mut().push(FnBody {
+        fn_index,
+        type_index,
+        locals: fn_decl.locals,
+        locals_last_index,
+        body: FnBodyExprs::V2(body),
+    });
+
+    return Ok(());
+}
+
+struct FnDecl {
+    fn_name: LoleToken,
+    lole_type: LoleFnType,
+    wasm_type: WasmFnType,
+    locals: BTreeMap<String, LocalDef>,
+}
+
+fn parse_fn_decl(
+    ctx: &mut ModuleContext,
+    tokens: &mut LoleTokenStream,
+) -> Result<FnDecl, LoleError> {
     let fn_name = tokens.expect_any(Symbol)?.clone();
     if ctx.fn_defs.contains_key(&fn_name.value) {
         return Err(LoleError {
@@ -95,56 +176,24 @@ fn parse_fn_def(
         LoleType::Void
     };
 
-    let body = parse_block(ctx, tokens)?;
+    let mut wasm_outputs = vec![];
+    lole_output.emit_components(&ctx, &mut wasm_outputs);
 
-    // v1 infra reuse
-    {
-        if exported {
-            ctx.fn_exports.push(FnExport {
-                in_name: fn_name.value.clone(),
-                out_name: fn_name.value.clone(),
-                loc: fn_name.loc.clone(),
-            });
-        }
+    let lole_type = LoleFnType {
+        inputs: lole_inputs,
+        output: lole_output,
+    };
+    let wasm_type = WasmFnType {
+        inputs: wasm_inputs,
+        outputs: wasm_outputs,
+    };
 
-        let mut wasm_outputs = vec![];
-        lole_output.emit_components(&ctx, &mut wasm_outputs);
-
-        let lole_fn_type = LoleFnType {
-            inputs: lole_inputs,
-            output: lole_output,
-        };
-        let locals_last_index = wasm_inputs.len() as u32;
-        let wasm_fn_type = WasmFnType {
-            inputs: wasm_inputs,
-            outputs: wasm_outputs,
-        };
-
-        let type_index = ctx.insert_fn_type(wasm_fn_type);
-        ctx.wasm_module.borrow_mut().functions.push(type_index);
-
-        let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32 - 1;
-
-        ctx.fn_defs.insert(
-            fn_name.value.clone(),
-            FnDef {
-                local: true,
-                fn_index,
-                type_index,
-                kind: lole_fn_type,
-            },
-        );
-
-        ctx.fn_bodies.borrow_mut().push(FnBody {
-            fn_index,
-            type_index,
-            locals,
-            locals_last_index,
-            body: FnBodyExprs::V2(body),
-        });
-    }
-
-    return Ok(());
+    Ok(FnDecl {
+        fn_name,
+        lole_type,
+        wasm_type,
+        locals,
+    })
 }
 
 fn parse_block(
