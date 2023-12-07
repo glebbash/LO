@@ -2,6 +2,8 @@ use crate::{ast::*, compiler::*, ir::*, lowering::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use LoleTokenType::*;
 
+const RECEIVER_PARAM_NAME: &str = "self";
+
 pub fn parse(mut tokens: LoleTokenStream) -> Result<WasmModule, LoleError> {
     let mut ctx = ModuleContext::default();
 
@@ -43,6 +45,13 @@ fn parse_top_level_expr(
             let fn_decl = parse_fn_decl(ctx, tokens)?;
             tokens.expect(LoleTokenType::Delim, ";")?;
 
+            if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
+                return Err(LoleError {
+                    message: format!("Cannot redefine function: {}", fn_decl.fn_name),
+                    loc: fn_decl.loc,
+                });
+            }
+
             let type_index = ctx.insert_fn_type(fn_decl.wasm_type);
 
             let fn_index = ctx.imported_fns_count;
@@ -54,10 +63,10 @@ fn parse_top_level_expr(
                 type_index,
                 kind: fn_decl.lole_type,
             };
-            ctx.fn_defs.insert(fn_decl.fn_name.value.clone(), fn_def);
+            ctx.fn_defs.insert(fn_decl.fn_name.clone(), fn_def);
             ctx.wasm_module.borrow_mut().imports.push(WasmImport {
                 module_name: module_name.value.clone(),
-                item_name: fn_decl.fn_name.value.clone(),
+                item_name: fn_decl.fn_name,
                 item_desc: WasmImportDesc::Func { type_index },
             });
         }
@@ -76,7 +85,7 @@ fn parse_top_level_expr(
         let Some(wasm_type) = lole_type.to_wasm_type() else {
             return Err(LoleError {
                 message: format!("Unsupported type: {lole_type}"),
-                // TODO: value.loc() is needed but not available
+                // TODO: value.loc() is not available
                 loc: let_token.loc,
             });
         };
@@ -126,11 +135,18 @@ fn parse_fn_def(
     let fn_decl = parse_fn_decl(ctx, tokens)?;
     let body = parse_block(ctx, tokens)?;
 
+    if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
+        return Err(LoleError {
+            message: format!("Cannot redefine function: {}", fn_decl.fn_name),
+            loc: fn_decl.loc,
+        });
+    }
+
     if exported {
         ctx.fn_exports.push(FnExport {
-            in_name: fn_decl.fn_name.value.clone(),
-            out_name: fn_decl.fn_name.value.clone(),
-            loc: fn_decl.fn_name.loc.clone(),
+            in_name: fn_decl.fn_name.clone(),
+            out_name: fn_decl.fn_name.clone(),
+            loc: fn_decl.loc.clone(),
         });
     }
 
@@ -141,7 +157,7 @@ fn parse_fn_def(
     let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32 - 1;
 
     ctx.fn_defs.insert(
-        fn_decl.fn_name.value.clone(),
+        fn_decl.fn_name,
         FnDef {
             local: true,
             fn_index,
@@ -162,7 +178,8 @@ fn parse_fn_def(
 }
 
 struct FnDecl {
-    fn_name: LoleToken,
+    fn_name: String,
+    loc: LoleLocation,
     lole_type: LoleFnType,
     wasm_type: WasmFnType,
     locals: BTreeMap<String, LocalDef>,
@@ -172,17 +189,34 @@ fn parse_fn_decl(
     ctx: &mut ModuleContext,
     tokens: &mut LoleTokenStream,
 ) -> Result<FnDecl, LoleError> {
-    let fn_name = tokens.expect_any(Symbol)?.clone();
-    if ctx.fn_defs.contains_key(&fn_name.value) {
-        return Err(LoleError {
-            message: format!("Cannot redefine function: {}", fn_name.value),
-            loc: fn_name.loc.clone(),
-        });
-    }
+    let (receiver_name, method_name) = {
+        let method_name = tokens.expect_any(Symbol)?.clone();
+        if let None = tokens.eat(Operator, ".")? {
+            (None, method_name)
+        } else {
+            (Some(method_name), tokens.expect_any(Symbol)?.clone())
+        }
+    };
 
-    let mut lole_inputs = vec![];
-    let mut wasm_inputs = vec![];
-    let mut locals = BTreeMap::new();
+    let mut fn_decl = FnDecl {
+        fn_name: method_name.value,
+        loc: method_name.loc,
+        lole_type: LoleFnType {
+            inputs: vec![],
+            output: LoleType::Void,
+        },
+        wasm_type: WasmFnType {
+            inputs: vec![],
+            outputs: vec![],
+        },
+        locals: BTreeMap::new(),
+    };
+
+    if let Some(receiver_name) = receiver_name {
+        let receiver_type = parse_lole_type(&receiver_name.to_sexpr(), ctx)?;
+        fn_decl.fn_name = fn_name_for_method(&receiver_type, &fn_decl.fn_name);
+        add_fn_param(ctx, &mut fn_decl, RECEIVER_PARAM_NAME.into(), receiver_type);
+    }
 
     tokens.expect(Delim, "(")?;
     while let None = tokens.eat(Delim, ")")? {
@@ -193,7 +227,7 @@ fn parse_fn_decl(
             tokens.expect(Delim, ",")?;
         }
 
-        if locals.contains_key(&p_name.value) {
+        if fn_decl.locals.contains_key(&p_name.value) {
             return Err(LoleError {
                 message: format!(
                     "Found function param with conflicting name: {}",
@@ -203,17 +237,7 @@ fn parse_fn_decl(
             });
         }
 
-        let local_index = wasm_inputs.len() as u32;
-        p_type.emit_components(&ctx, &mut wasm_inputs);
-
-        locals.insert(
-            p_name.value.clone(),
-            LocalDef {
-                index: local_index,
-                value_type: p_type.clone(),
-            },
-        );
-        lole_inputs.push(p_type);
+        add_fn_param(ctx, &mut fn_decl, p_name.value, p_type);
     }
 
     let lole_output = if let Some(_) = tokens.eat(Operator, "->")? {
@@ -222,24 +246,20 @@ fn parse_fn_decl(
         LoleType::Void
     };
 
-    let mut wasm_outputs = vec![];
-    lole_output.emit_components(&ctx, &mut wasm_outputs);
+    lole_output.emit_components(&ctx, &mut fn_decl.wasm_type.outputs);
 
-    let lole_type = LoleFnType {
-        inputs: lole_inputs,
-        output: lole_output,
-    };
-    let wasm_type = WasmFnType {
-        inputs: wasm_inputs,
-        outputs: wasm_outputs,
-    };
+    Ok(fn_decl)
+}
 
-    Ok(FnDecl {
-        fn_name,
-        lole_type,
-        wasm_type,
-        locals,
-    })
+fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_type: LoleType) {
+    let local_def = LocalDef {
+        index: fn_decl.wasm_type.inputs.len() as u32,
+        value_type: p_type.clone(),
+    };
+    fn_decl.locals.insert(p_name.clone(), local_def);
+
+    p_type.emit_components(ctx, &mut fn_decl.wasm_type.inputs);
+    fn_decl.lole_type.inputs.push(p_type);
 }
 
 fn parse_block(
@@ -314,32 +334,51 @@ fn parse_expr(
         return Ok(lhs);
     };
 
-    let rhs = parse_primary(ctx, tokens)?;
-
     match op.value.as_str() {
         "<" => Ok(LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
+            rhs: Box::new(parse_primary(ctx, tokens)?),
         }),
         "*" => Ok(LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
+            rhs: Box::new(parse_primary(ctx, tokens)?),
         }),
         "-" => Ok(LoleInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
             lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
+            rhs: Box::new(parse_primary(ctx, tokens)?),
         }),
         "+=" => {
             let value = LoleInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Add,
                 lhs: Box::new(lhs.clone()),
-                rhs: Box::new(rhs),
+                rhs: Box::new(parse_primary(ctx, tokens)?),
             };
-            // TODO: lhs.loc() is needed but not available
+            // TODO: lhs.loc() is not available
             compile_set(ctx, value, lhs, &op.loc)
+        }
+        "." => {
+            let recevier_type = lhs.get_type(ctx.module);
+            let method_name = tokens.expect_any(Symbol)?.clone();
+
+            let mut args = vec![lhs];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
+
+            let fn_name = fn_name_for_method(&recevier_type, &method_name.value);
+            let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
+                return Err(LoleError {
+                    message: format!("Unknown function: {fn_name}"),
+                    loc: method_name.loc,
+                });
+            };
+
+            Ok(LoleInstr::Call {
+                fn_index: fn_def.fn_index,
+                return_type: fn_def.kind.output.clone(),
+                args,
+            })
         }
         _ => {
             return Err(LoleError {
@@ -417,15 +456,13 @@ fn parse_primary(
 
     if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
         if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
-            tokens.expect(Delim, "(")?;
-            // TODO: support multiple arguments
-            let arg = parse_expr(ctx, tokens)?;
-            tokens.expect(Delim, ")")?;
+            let mut args = vec![];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
 
             return Ok(LoleInstr::Call {
                 fn_index: fn_def.fn_index,
                 return_type: fn_def.kind.output.clone(),
-                args: vec![arg],
+                args,
             });
         }
 
@@ -455,6 +492,23 @@ fn parse_primary(
         message: format!("Unexpected token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
+}
+
+fn parse_fn_call_args(
+    ctx: &mut BlockContext,
+    tokens: &mut LoleTokenStream,
+    args: &mut Vec<LoleInstr>,
+) -> Result<(), LoleError> {
+    tokens.expect(Delim, "(")?;
+    while let None = tokens.eat(Delim, ")")? {
+        args.push(parse_expr(ctx, tokens)?);
+
+        if !tokens.next_is(Delim, ")")? {
+            tokens.expect(Delim, ",")?;
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_const_expr(
@@ -529,4 +583,8 @@ fn parse_int_literal(int: LoleToken) -> Result<LoleInstr, LoleError> {
     })?;
 
     Ok(LoleInstr::U32Const { value })
+}
+
+fn fn_name_for_method(receiver_type: &LoleType, method_name: &str) -> String {
+    format!("{receiver_type}_{method_name}")
 }
