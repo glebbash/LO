@@ -229,7 +229,7 @@ fn parse_expr(
 
     match op.value.as_str() {
         "<" => Ok(LoleInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Add,
+            kind: WasmBinaryOpKind::I32LessThenUnsigned,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         }),
@@ -285,18 +285,31 @@ fn parse_operand(
         });
     }
 
-    if let Some(value) = tokens.eat_any(Symbol)? {
+    if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
+        if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
+            tokens.expect(Delim, "(")?;
+            // TODO: support multiple arguments
+            let arg = parse_expr(ctx, tokens)?;
+            tokens.expect(Delim, ")")?;
+
+            return Ok(LoleInstr::Call {
+                fn_index: fn_def.fn_index,
+                return_type: fn_def.kind.output.clone(),
+                args: vec![arg],
+            });
+        }
+
         let Some(local) = ctx.block.get_local(&value.value) else {
             return Err(LoleError {
                 message: format!("Reading unknown variable: {}", value.value),
-                loc: value.loc.clone()
+                loc: value.loc
             });
         };
 
         return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
             LoleError {
                 message,
-                loc: value.loc.clone(),
+                loc: value.loc,
             }
         });
     }
