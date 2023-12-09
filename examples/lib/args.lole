@@ -1,3 +1,6 @@
+(mod lib/std)
+(mod lib/wasi)
+
 (struct Args
     (argc u32)
     (argv (&* (&* u8)))
