@@ -14,6 +14,8 @@ pub struct ModuleContext {
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
+    pub type_aliases: RefCell<BTreeMap<String, LoType>>,
+    pub constants: RefCell<BTreeMap<String, LoInstr>>,
 }
 
 impl ModuleContext {

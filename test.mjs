@@ -180,6 +180,18 @@ test("compiles struct-ref (v2)", async () => {
     assert.strictEqual(result, 3);
 });
 
+test("compiles wasi (v2)", async () => {
+    const output = await compile("./examples/lib/wasi.lo");
+
+    const wasi = new WASI({ version: "preview1" });
+    const wasm = await WebAssembly.compile(output);
+    await WebAssembly.instantiate(
+        wasm,
+        // @ts-ignore
+        wasi.getImportObject()
+    );
+});
+
 test("compiles vec", async () => {
     const output = await compile("./examples/test/vec.test.lole");
 

@@ -81,7 +81,7 @@ fn parse_top_level_expr(
             ctx.fn_defs.insert(fn_decl.fn_name.clone(), fn_def);
             ctx.wasm_module.borrow_mut().imports.push(WasmImport {
                 module_name: module_name.value.clone(),
-                item_name: fn_decl.fn_name,
+                item_name: fn_decl.method_name,
                 item_desc: WasmImportDesc::Func { type_index },
             });
         }
@@ -208,6 +208,44 @@ fn parse_top_level_expr(
         return Ok(());
     }
 
+    if let Some(_) = tokens.eat(Symbol, "type")?.cloned() {
+        let type_alias = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+        let actual_type = parse_lo_type(ctx, tokens)?;
+
+        if ctx.type_aliases.borrow().contains_key(&type_alias.value) {
+            return Err(LoError {
+                message: format!("Duplicate type alias: {}", type_alias.value),
+                loc: type_alias.loc.clone(),
+            });
+        }
+
+        ctx.type_aliases
+            .borrow_mut()
+            .insert(type_alias.value, actual_type);
+
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "const")?.cloned() {
+        let const_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+        let const_value = parse_const_expr(ctx, tokens, 0)?;
+
+        if ctx.constants.borrow().contains_key(&const_name.value) {
+            return Err(LoError {
+                message: format!("Duplicate constant: {}", const_name.value),
+                loc: const_name.loc.clone(),
+            });
+        }
+
+        ctx.constants
+            .borrow_mut()
+            .insert(const_name.value, const_value);
+
+        return Ok(());
+    }
+
     let unexpected = tokens.peek().unwrap();
     return Err(LoError {
         message: format!("Unexpected top level token: {}", unexpected.value),
@@ -320,6 +358,7 @@ fn parse_fn_def(
 
 struct FnDecl {
     fn_name: String,
+    method_name: String,
     loc: LoLocation,
     lo_type: LoFnType,
     wasm_type: WasmFnType,
@@ -343,7 +382,8 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
     let method_name = tokens.expect_any(Symbol)?.clone();
 
     let mut fn_decl = FnDecl {
-        fn_name: method_name.value,
+        fn_name: method_name.value.clone(),
+        method_name: method_name.value,
         loc: method_name.loc,
         lo_type: LoFnType {
             inputs: vec![],
@@ -677,6 +717,10 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
+        if let Some(const_value) = ctx.module.constants.borrow().get(&value.value) {
+            return Ok(const_value.clone());
+        }
+
         if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
             let mut args = vec![];
             parse_fn_call_args(ctx, tokens, &mut args)?;
@@ -1085,9 +1129,18 @@ fn parse_lo_type_checking_ref(
         return Ok(LoType::Pointer(Box::new(pointee)));
     }
 
+    if let Some(_) = tokens.eat(Operator, "&*")? {
+        let pointee = parse_lo_type_checking_ref(ctx, tokens, true)?;
+        return Ok(LoType::Pointer(Box::new(pointee)));
+    }
+
+    if let Some(_) = tokens.eat(Delim, "(")? {
+        tokens.expect(Delim, ")")?;
+        return Ok(LoType::Void);
+    }
+
     let token = tokens.expect_any(Symbol)?;
     match token.value.as_str() {
-        "void" => Ok(LoType::Void),
         "bool" => Ok(LoType::Bool),
         "u8" => Ok(LoType::U8),
         "i8" => Ok(LoType::I8),
@@ -1100,6 +1153,10 @@ fn parse_lo_type_checking_ref(
         "i64" => Ok(LoType::I64),
         "f64" => Ok(LoType::F64),
         _ => {
+            if let Some(actual_type) = ctx.type_aliases.borrow().get(&token.value) {
+                return Ok(actual_type.clone());
+            }
+
             if let Some(struct_def) = ctx.struct_defs.get(&token.value) {
                 if !struct_def.fully_defined && !is_referenced {
                     return Err(LoError {
