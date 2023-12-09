@@ -417,7 +417,6 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
         runWithTmpFile(async (stderr, stderrFile) =>
             runWithTmpFile(async (stdout, stdoutFile) => {
                 const wasi = new WASI({
-                    // @ts-ignore
                     version: "preview1",
                     stdin: stdinFd,
                     stdout: stdout.fd,
@@ -487,10 +486,9 @@ function storeData(memory, ptr, data) {
 
 /**
  * @param {BufferSource} data
- * @param {import("node:wasi").WASIOptions} [wasiOptions]
+ * @param {Omit<import("node:wasi").WASIOptions, 'version'>} [wasiOptions]
  */
 async function runWASI(data, wasiOptions) {
-    // @ts-ignore
     const wasi = new WASI({ version: "preview1", ...wasiOptions });
 
     const wasm = await WebAssembly.compile(data);
