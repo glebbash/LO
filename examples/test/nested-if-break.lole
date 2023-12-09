@@ -1,6 +1,5 @@
-(mod lib/cli)
-
-(fn main [] void (
+(export main :as main)
+(fn main [] u32 (
     (loop (
         (if true (
             (if true (
@@ -10,5 +9,5 @@
             ))
         ))
     ))
-    (puts "all good\n")
+    (return 1)
 ))

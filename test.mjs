@@ -43,8 +43,8 @@ test("compiles 42 (v2)", async () => {
     assert.strictEqual(result, 42);
 });
 
-test("compiles factorial (v2)", async () => {
-    const output = await compile("./examples/test/factorial.lo");
+test("compiles factorial", async () => {
+    const output = await compile("./examples/test/factorial.lole");
 
     const program = await loadWasm(output);
     const result = program.factorial(5);
@@ -52,8 +52,8 @@ test("compiles factorial (v2)", async () => {
     assert.strictEqual(result, 120);
 });
 
-test("compiles factorial", async () => {
-    const output = await compile("./examples/test/factorial.lole");
+test("compiles factorial (v2)", async () => {
+    const output = await compile("./examples/test/factorial.lo");
 
     const program = await loadWasm(output);
     const result = program.factorial(5);
@@ -142,6 +142,24 @@ test("compiles struct (v2)", async () => {
     const result = program.main();
 
     assert.strictEqual(result, 13);
+});
+
+test("compiles nested-if-break", async () => {
+    const output = await compile("./examples/test/nested-if-break.lole");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 1);
+});
+
+test("compiles nested-if-break (v2)", async () => {
+    const output = await compile("./examples/test/nested-if-break.lo");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 1);
 });
 
 test("compiles struct-ref", async () => {
@@ -261,17 +279,6 @@ test("compiles struct-in-struct", async () => {
     });
 
     assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
-});
-
-test("compiles nested-if-break", async () => {
-    const program = await compile("./examples/test/nested-if-break.lole");
-
-    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-        await runWASI(program, { stdout: stdout.fd });
-        return readFile(stdoutFile, { encoding: "utf-8" });
-    });
-
-    assert.strictEqual(output, "all good\n");
 });
 
 test("compiles heap-alloc", async () => {

@@ -75,7 +75,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
 
         let mut lo_exprs = match fn_body.body {
             FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
-            FnBodyExprs::V2(mut body) => parse_exprs(&mut block_ctx, &mut body)?,
+            FnBodyExprs::V2(mut body) => parse_block_contents(&mut block_ctx, &mut body)?,
         };
         if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
             lo_exprs.append(&mut values?);

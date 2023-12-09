@@ -216,7 +216,7 @@ fn parse_fn_def(
     exported: bool,
 ) -> Result<(), LoError> {
     let fn_decl = parse_fn_decl(ctx, tokens)?;
-    let body = parse_block(ctx, tokens)?;
+    let contents = parse_block_extract_contents(ctx, tokens)?;
 
     if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
         return Err(LoError {
@@ -254,7 +254,7 @@ fn parse_fn_def(
         type_index,
         locals: fn_decl.locals,
         locals_last_index,
-        body: FnBodyExprs::V2(body),
+        body: FnBodyExprs::V2(contents),
     });
 
     return Ok(());
@@ -343,7 +343,18 @@ fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_typ
     fn_decl.lo_type.inputs.push(p_type);
 }
 
-fn parse_block(_ctx: &ModuleContext, tokens: &mut LoTokenStream) -> Result<LoTokenStream, LoError> {
+fn parse_block(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+) -> Result<Vec<LoInstr>, LoError> {
+    let mut contents = parse_block_extract_contents(ctx.module, tokens)?;
+    parse_block_contents(ctx, &mut contents)
+}
+
+fn parse_block_extract_contents(
+    _ctx: &ModuleContext,
+    tokens: &mut LoTokenStream,
+) -> Result<LoTokenStream, LoError> {
     let mut output = LoTokenStream::new(vec![], LoLocation::internal());
 
     let mut depth = 0;
@@ -369,20 +380,30 @@ fn parse_block(_ctx: &ModuleContext, tokens: &mut LoTokenStream) -> Result<LoTok
     Ok(output)
 }
 
-// TODO: support complex types
-fn parse_lo_type2(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<LoType, LoError> {
-    let return_type = tokens.expect_any(Symbol)?.clone();
-    parse_lo_type(&return_type.to_sexpr(), ctx)
-}
-
 // pub for use in v1
-pub fn parse_exprs(
+pub fn parse_block_contents(
     ctx: &mut BlockContext,
     tokens: &mut LoTokenStream,
 ) -> Result<Vec<LoInstr>, LoError> {
     let mut exprs = vec![];
     while tokens.peek().is_some() {
-        exprs.push(parse_expr(ctx, tokens, 0)?);
+        let expr_start = tokens.peek().unwrap().loc.clone();
+        let expr = parse_expr(ctx, tokens, 0)?;
+
+        match expr {
+            LoInstr::NoEmit { .. } => {}
+            _ => {
+                let expr_type = expr.get_type(ctx.module);
+                if expr_type != LoType::Void {
+                    return Err(LoError {
+                        message: format!("TypeError: Excess values"),
+                        loc: expr_start,
+                    });
+                }
+            }
+        };
+
+        exprs.push(expr);
         tokens.expect(Delim, ";")?;
     }
     Ok(exprs)
@@ -417,6 +438,20 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return parse_int_literal(int);
     }
 
+    if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 1 }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "false")?.cloned() {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 0 }),
+        });
+    }
+
     if let Some(_) = tokens.eat(Delim, "(")? {
         let expr = parse_expr(ctx, tokens, 0)?;
         tokens.expect(Delim, ")")?;
@@ -432,8 +467,19 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     // TODO: support `else`
     if let Some(_) = tokens.eat(Symbol, "if")? {
         let cond = parse_expr(ctx, tokens, 0)?;
-        let mut then_branch_tokens = parse_block(ctx.module, tokens)?;
-        let then_branch = parse_exprs(ctx, &mut then_branch_tokens)?;
+
+        let then_branch = parse_block(
+            &mut BlockContext {
+                module: ctx.module,
+                fn_ctx: ctx.fn_ctx,
+                block: Block {
+                    block_type: BlockType::Block,
+                    parent: Some(&ctx.block),
+                    locals: BTreeMap::new(),
+                },
+            },
+            tokens,
+        )?;
 
         return Ok(LoInstr::If {
             block_type: LoType::Void,
@@ -441,6 +487,47 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             then_branch,
             else_branch: None,
         });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "loop")? {
+        let mut ctx = BlockContext {
+            module: ctx.module,
+            fn_ctx: ctx.fn_ctx,
+            block: Block {
+                block_type: BlockType::Loop,
+                parent: Some(&ctx.block),
+                locals: BTreeMap::new(),
+            },
+        };
+
+        let mut body = parse_block(&mut ctx, tokens)?;
+
+        // add implicit continue
+        body.push(LoInstr::Branch { label_index: 0 });
+
+        return Ok(LoInstr::Block {
+            block_type: LoType::Void,
+            body: vec![LoInstr::Loop {
+                block_type: LoType::Void,
+                body,
+            }],
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "break")? {
+        let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
+
+        let mut current_block = &ctx.block;
+        loop {
+            if current_block.block_type == BlockType::Loop {
+                break;
+            }
+
+            current_block = current_block.parent.unwrap();
+            label_index += 1;
+        }
+
+        return Ok(LoInstr::Branch { label_index });
     }
 
     if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
@@ -755,6 +842,20 @@ fn parse_const_primary(
         return parse_int_literal(int);
     }
 
+    if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 1 }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "false")?.cloned() {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 0 }),
+        });
+    }
+
     if let Some(global_name) = tokens.eat_any(Symbol)?.cloned() {
         let Some(global) = ctx.globals.get(&global_name.value) else {
             return Err(LoError {
@@ -811,6 +912,12 @@ fn parse_const_postfix(
             });
         }
     })
+}
+
+// TODO: support complex types
+fn parse_lo_type2(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<LoType, LoError> {
+    let return_type = tokens.expect_any(Symbol)?.clone();
+    parse_lo_type(&return_type.to_sexpr(), ctx)
 }
 
 fn parse_int_literal(int: LoToken) -> Result<LoInstr, LoError> {
