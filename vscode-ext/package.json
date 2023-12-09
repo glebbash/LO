@@ -1,38 +1,56 @@
 {
-  "name": "lole-lisp",
-  "displayName": "lole-lisp",
-  "description": "lole-lisp language support",
-  "version": "0.0.50",
+  "name": "lo",
+  "displayName": "LO",
+  "description": "LO language support",
+  "version": "0.0.59",
   "engines": {
     "vscode": "^1.81.0"
   },
   "categories": [
     "Programming Languages"
   ],
-  "repository": "https://github.com/glebbash/lole-lisp",
+  "repository": "https://github.com/glebbash/lo",
   "contributes": {
     "languages": [
       {
-        "id": "lole-lisp",
+        "id": "lo-lisp",
         "aliases": [
-          "lole-lisp",
-          "lole-lisp"
+          "lo-lisp"
         ],
         "extensions": [
           ".lole"
         ],
-        "configuration": "./language-configuration.json",
+        "configuration": "./syntaxes/lo-lisp.config.json",
         "icon": {
-          "light": "./icons/lole-lisp.svg",
-          "dark": "./icons/lole-lisp.svg"
+          "light": "./icons/lo-lisp.svg",
+          "dark": "./icons/lo-lisp.svg"
+        }
+      },
+      {
+        "id": "lo",
+        "aliases": [
+          "lo"
+        ],
+        "extensions": [
+          ".lo"
+        ],
+        "configuration": "./syntaxes/lo.config.json",
+        "icon": {
+          "light": "./icons/lo.svg",
+          "dark": "./icons/lo.svg"
         }
       }
     ],
     "grammars": [
       {
-        "language": "lole-lisp",
+        "language": "lo-lisp",
         "scopeName": "source.lole",
-        "path": "./syntaxes/lole-lisp.tmLanguage.json"
+        "path": "./syntaxes/lo-lisp.tmLanguage.json"
+      },
+      {
+        "language": "lo",
+        "scopeName": "source.lo",
+        "path": "./syntaxes/lo.tmLanguage.json"
       }
     ]
   },

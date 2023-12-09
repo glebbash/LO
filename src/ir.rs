@@ -1,12 +1,12 @@
-use crate::{ast::*, wasm::*};
+use crate::{ast::*, tokens::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
-pub struct ModuleContext<'a> {
-    pub wasm_module: WasmModule,
+pub struct ModuleContext {
+    pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
-    pub fn_bodies: Vec<FnBody<'a>>,
+    pub fn_bodies: RefCell<Vec<FnBody>>,
     pub fn_exports: Vec<FnExport>,
     pub memory_names: Vec<String>,
     pub struct_defs: BTreeMap<String, StructDef>,
@@ -16,27 +16,41 @@ pub struct ModuleContext<'a> {
     pub string_pool: RefCell<BTreeMap<String, u32>>,
 }
 
-impl ModuleContext<'_> {
+// v2
+
+#[derive(Default)]
+pub struct ModuleContextV2 {
+    pub fn_defs: RefCell<Vec<FnDef2>>,
+}
+
+pub struct FnDef2 {
+    // TODO: look for a lighter solution
+    pub body: Vec<LoTokenStream>,
+}
+
+impl ModuleContext {
     pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
-        let type_index = self.wasm_module.types.iter().position(|ft| *ft == fn_type);
+        let mut wasm_module = self.wasm_module.borrow_mut();
+
+        let type_index = wasm_module.types.iter().position(|ft| *ft == fn_type);
         if let Some(type_index) = type_index {
             return type_index as u32;
         }
 
-        self.wasm_module.types.push(fn_type);
-        self.wasm_module.types.len() as u32 - 1
+        wasm_module.types.push(fn_type);
+        wasm_module.types.len() as u32 - 1
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct LoleFnType {
-    pub inputs: Vec<LoleType>,
-    pub output: LoleType,
+pub struct LoFnType {
+    pub inputs: Vec<LoType>,
+    pub output: LoType,
 }
 
 pub struct FnContext<'a> {
-    pub module: &'a ModuleContext<'a>,
-    pub fn_lole_type: &'a LoleFnType,
+    pub module: &'a ModuleContext,
+    pub lo_fn_type: &'a LoFnType,
     pub locals_last_index: u32,
     pub non_arg_wasm_locals: Vec<WasmType>,
     pub defers: BTreeMap<String, Vec<SExpr>>,
@@ -84,17 +98,13 @@ impl Block<'_> {
 }
 
 pub struct BlockContext<'a, 'b> {
-    pub module: &'a ModuleContext<'b>,
+    pub module: &'a ModuleContext,
     pub fn_ctx: &'a mut FnContext<'b>,
     pub block: Block<'a>,
 }
 
 impl BlockContext<'_, '_> {
-    pub fn push_local(
-        &mut self,
-        local_name: String,
-        value_type: LoleType,
-    ) -> core::ops::Range<u32> {
+    pub fn push_local(&mut self, local_name: String, value_type: LoType) -> core::ops::Range<u32> {
         let local_index = self.fn_ctx.locals_last_index;
         let comp_count =
             value_type.emit_components(&self.module, &mut self.fn_ctx.non_arg_wasm_locals);
@@ -114,7 +124,7 @@ impl BlockContext<'_, '_> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LoleType {
+pub enum LoType {
     Void,
     Bool,
     U8,
@@ -127,14 +137,14 @@ pub enum LoleType {
     U64,
     I64,
     F64,
-    Pointer(Box<LoleType>),
-    Tuple(Vec<LoleType>),
+    Pointer(Box<LoType>),
+    Tuple(Vec<LoType>),
     StructInstance { name: String },
 }
 
-impl core::fmt::Display for LoleType {
+impl core::fmt::Display for LoType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        use LoleType::*;
+        use LoType::*;
         match self {
             Void => f.write_str("void"),
             Bool => f.write_str("bool"),
@@ -164,7 +174,7 @@ impl core::fmt::Display for LoleType {
 
 pub struct ValueComponent {
     pub byte_offset: u32,
-    pub value_type: LoleType,
+    pub value_type: LoType,
 }
 
 #[derive(Default)]
@@ -173,14 +183,14 @@ pub struct EmitComponentStats {
     pub byte_length: u32,
 }
 
-impl LoleType {
+impl LoType {
     pub fn to_wasm_type(&self) -> Option<WasmType> {
         Some(match self {
-            LoleType::Bool | LoleType::U8 | LoleType::I8 | LoleType::U16 => WasmType::I32,
-            LoleType::I16 | LoleType::U32 | LoleType::I32 | LoleType::Pointer(_) => WasmType::I32,
-            LoleType::F32 => WasmType::F32,
-            LoleType::U64 | LoleType::I64 => WasmType::I64,
-            LoleType::F64 => WasmType::F64,
+            LoType::Bool | LoType::U8 | LoType::I8 | LoType::U16 => WasmType::I32,
+            LoType::I16 | LoType::U32 | LoType::I32 | LoType::Pointer(_) => WasmType::I32,
+            LoType::F32 => WasmType::F32,
+            LoType::U64 | LoType::I64 => WasmType::I64,
+            LoType::F64 => WasmType::F64,
             _ => return None,
         })
     }
@@ -193,19 +203,17 @@ impl LoleType {
     ) -> Result<(), String> {
         let mut byte_len = None;
         match self {
-            LoleType::Void => {}
-            LoleType::Bool | LoleType::U8 | LoleType::I8 => byte_len = Some(1),
-            LoleType::U16 | LoleType::I16 => byte_len = Some(2),
-            LoleType::U32 | LoleType::I32 | LoleType::F32 | LoleType::Pointer(_) => {
-                byte_len = Some(4)
-            }
-            LoleType::U64 | LoleType::I64 | LoleType::F64 => byte_len = Some(8),
-            LoleType::Tuple(types) => {
-                for lole_type in types {
-                    lole_type.emit_sized_component_stats(ctx, stats, components)?;
+            LoType::Void => {}
+            LoType::Bool | LoType::U8 | LoType::I8 => byte_len = Some(1),
+            LoType::U16 | LoType::I16 => byte_len = Some(2),
+            LoType::U32 | LoType::I32 | LoType::F32 | LoType::Pointer(_) => byte_len = Some(4),
+            LoType::U64 | LoType::I64 | LoType::F64 => byte_len = Some(8),
+            LoType::Tuple(types) => {
+                for lo_type in types {
+                    lo_type.emit_sized_component_stats(ctx, stats, components)?;
                 }
             }
-            LoleType::StructInstance { name } => {
+            LoType::StructInstance { name } => {
                 // safe, validation is done when creating StructInstance
                 let struct_def = ctx.struct_defs.get(name).unwrap();
 
@@ -237,15 +245,15 @@ impl LoleType {
         }
 
         match self {
-            LoleType::Void => 0,
-            LoleType::Tuple(types) => {
+            LoType::Void => 0,
+            LoType::Tuple(types) => {
                 let mut count = 0;
-                for lole_type in types {
-                    count += lole_type.emit_components(ctx, components);
+                for lo_type in types {
+                    count += lo_type.emit_components(ctx, components);
                 }
                 count
             }
-            LoleType::StructInstance { name } => {
+            LoType::StructInstance { name } => {
                 // safe, validation is done when creating StructInstance
                 let struct_def = ctx.struct_defs.get(name).unwrap();
 
@@ -268,18 +276,18 @@ impl LoleType {
 
     pub fn to_load_kind(&self) -> Result<WasmLoadKind, String> {
         match self {
-            LoleType::Bool => return Ok(WasmLoadKind::I32),
-            LoleType::U8 => return Ok(WasmLoadKind::I32U8),
-            LoleType::I8 => return Ok(WasmLoadKind::I32I8),
-            LoleType::U16 => return Ok(WasmLoadKind::I32U16),
-            LoleType::I16 => return Ok(WasmLoadKind::I32I16),
-            LoleType::U32 => return Ok(WasmLoadKind::I32),
-            LoleType::I32 => return Ok(WasmLoadKind::I32),
-            LoleType::F32 => return Ok(WasmLoadKind::F32),
-            LoleType::U64 => return Ok(WasmLoadKind::I64),
-            LoleType::I64 => return Ok(WasmLoadKind::I64),
-            LoleType::F64 => return Ok(WasmLoadKind::F64),
-            LoleType::Pointer(_) => return Ok(WasmLoadKind::I32),
+            LoType::Bool => return Ok(WasmLoadKind::I32),
+            LoType::U8 => return Ok(WasmLoadKind::I32U8),
+            LoType::I8 => return Ok(WasmLoadKind::I32I8),
+            LoType::U16 => return Ok(WasmLoadKind::I32U16),
+            LoType::I16 => return Ok(WasmLoadKind::I32I16),
+            LoType::U32 => return Ok(WasmLoadKind::I32),
+            LoType::I32 => return Ok(WasmLoadKind::I32),
+            LoType::F32 => return Ok(WasmLoadKind::F32),
+            LoType::U64 => return Ok(WasmLoadKind::I64),
+            LoType::I64 => return Ok(WasmLoadKind::I64),
+            LoType::F64 => return Ok(WasmLoadKind::F64),
+            LoType::Pointer(_) => return Ok(WasmLoadKind::I32),
             _ => {}
         };
         return Err(format!("Unsupported type for load: {self:?}"));
@@ -288,27 +296,32 @@ impl LoleType {
 
 pub struct LocalDef {
     pub index: u32,
-    pub value_type: LoleType,
+    pub value_type: LoType,
 }
 
 pub struct GlobalDef {
     pub index: u32,
     pub mutable: bool,
-    pub value_type: LoleType,
+    pub value_type: LoType,
 }
 
-pub struct FnBody<'a> {
+pub struct FnBody {
     pub fn_index: u32,
     pub type_index: u32,
-    pub block: Block<'a>,
+    pub locals: BTreeMap<String, LocalDef>,
     pub locals_last_index: u32,
-    pub body: Vec<SExpr>,
+    pub body: FnBodyExprs,
+}
+
+pub enum FnBodyExprs {
+    V1(Vec<SExpr>),
+    V2(Vec<LoTokenStream>),
 }
 
 pub struct FnExport {
     pub in_name: String,
     pub out_name: String,
-    pub loc: Location,
+    pub loc: LoLocation,
 }
 
 #[derive(Clone)]
@@ -320,7 +333,7 @@ pub struct StructDef {
 #[derive(Clone)]
 pub struct StructField {
     pub name: String,
-    pub value_type: LoleType,
+    pub value_type: LoType,
     pub field_index: u32,
     pub byte_offset: u32,
 }
@@ -330,7 +343,7 @@ pub struct FnDef {
     pub local: bool,
     pub fn_index: u32,
     pub type_index: u32,
-    pub kind: LoleFnType,
+    pub kind: LoFnType,
 }
 
 impl FnDef {
@@ -344,37 +357,37 @@ impl FnDef {
 }
 
 #[derive(Clone, Debug)]
-pub enum LoleInstr {
+pub enum LoInstr {
     Unreachable,
     Drop {
-        value: Box<LoleInstr>,
+        value: Box<LoInstr>,
         drop_count: u32,
     },
     BinaryOp {
         kind: WasmBinaryOpKind,
-        lhs: Box<LoleInstr>,
-        rhs: Box<LoleInstr>,
+        lhs: Box<LoInstr>,
+        rhs: Box<LoInstr>,
     },
     MemorySize,
     MemoryGrow {
-        size: Box<LoleInstr>,
+        size: Box<LoInstr>,
     },
     Load {
-        kind: LoleType,
+        kind: LoType,
         align: u32,
         offset: u32,
-        address_instr: Box<LoleInstr>,
+        address_instr: Box<LoInstr>,
     },
     StructLoad {
         struct_name: String,
-        address_instr: Box<LoleInstr>,
+        address_instr: Box<LoInstr>,
         address_local_index: u32,
         base_byte_offset: u32,
-        primitive_loads: Vec<LoleInstr>,
+        primitive_loads: Vec<LoInstr>,
     },
     LocalGet {
         local_index: u32,
-        value_type: LoleType,
+        value_type: LoType,
     },
     UntypedLocalGet {
         local_index: u32,
@@ -385,7 +398,7 @@ pub enum LoleInstr {
     StructGet {
         struct_name: String,
         base_index: u32,
-        primitive_gets: Vec<LoleInstr>,
+        primitive_gets: Vec<LoInstr>,
     },
     U32ConstLazy {
         value: Rc<RefCell<u32>>,
@@ -397,48 +410,48 @@ pub enum LoleInstr {
         value: i64,
     },
     Set {
-        bind: LoleSetBind,
+        bind: LoSetBind,
     },
     Return {
-        value: Box<LoleInstr>,
+        value: Box<LoInstr>,
     },
     Block {
-        block_type: LoleType,
-        body: Vec<LoleInstr>,
+        block_type: LoType,
+        body: Vec<LoInstr>,
     },
     Loop {
-        block_type: LoleType,
-        body: Vec<LoleInstr>,
+        block_type: LoType,
+        body: Vec<LoInstr>,
     },
     If {
-        block_type: LoleType,
-        cond: Box<LoleInstr>,
-        then_branch: Vec<LoleInstr>,
-        else_branch: Option<Vec<LoleInstr>>,
+        block_type: LoType,
+        cond: Box<LoInstr>,
+        then_branch: Vec<LoInstr>,
+        else_branch: Option<Vec<LoInstr>>,
     },
     Branch {
         label_index: u32,
     },
     Call {
         fn_index: u32,
-        return_type: LoleType,
-        args: Vec<LoleInstr>,
+        return_type: LoType,
+        args: Vec<LoInstr>,
     },
     MultiValueEmit {
-        values: Vec<LoleInstr>,
+        values: Vec<LoInstr>,
     },
     Casted {
-        value_type: LoleType,
-        expr: Box<LoleInstr>,
+        value_type: LoType,
+        expr: Box<LoInstr>,
     },
     // will not be written to binary, used for types only
     NoEmit {
-        expr: Box<LoleInstr>,
+        expr: Box<LoInstr>,
     },
 }
 
 #[derive(Clone, Debug)]
-pub enum LoleSetBind {
+pub enum LoSetBind {
     Local {
         index: u32,
     },
@@ -449,7 +462,101 @@ pub enum LoleSetBind {
         align: u32,
         offset: u32,
         kind: WasmStoreKind,
-        address_instr: Box<LoleInstr>,
+        address_instr: Box<LoInstr>,
         value_local_index: u32,
     },
+}
+
+impl LoInstr {
+    pub fn get_type(&self, ctx: &ModuleContext) -> LoType {
+        match self {
+            LoInstr::Unreachable => LoType::Void,
+            LoInstr::U32ConstLazy { value: _ } => LoType::U32,
+            LoInstr::U32Const { value: _ } => LoType::U32,
+            LoInstr::I64Const { value: _ } => LoType::I64,
+            LoInstr::UntypedLocalGet { local_index: _ } => unreachable!(),
+
+            LoInstr::MultiValueEmit { values } => {
+                let mut types = Vec::new();
+                for value in values {
+                    types.push(value.get_type(ctx));
+                }
+                LoType::Tuple(types)
+            }
+            LoInstr::NoEmit { expr } => expr.get_type(ctx),
+            LoInstr::StructLoad {
+                struct_name,
+                address_instr: _,
+                address_local_index: _,
+                base_byte_offset: _,
+                primitive_loads: _,
+            }
+            | LoInstr::StructGet {
+                struct_name,
+                base_index: _,
+                primitive_gets: _,
+            } => LoType::StructInstance {
+                name: struct_name.clone(),
+            },
+
+            // type-checked in the complier:
+            LoInstr::Casted {
+                value_type,
+                expr: _,
+            } => value_type.clone(),
+            LoInstr::Set { bind: _ } => LoType::Void,
+            LoInstr::Drop {
+                value: _,
+                drop_count: _,
+            } => LoType::Void,
+            LoInstr::Return { value: _ } => LoType::Void,
+            LoInstr::MemorySize => LoType::I32,
+            LoInstr::MemoryGrow { size: _ } => LoType::I32,
+
+            LoInstr::BinaryOp {
+                kind: _,
+                lhs,
+                rhs: _,
+            } => lhs.get_type(ctx),
+            LoInstr::Load {
+                kind,
+                align: _,
+                offset: _,
+                address_instr: _,
+            } => kind.clone(),
+            LoInstr::GlobalGet { global_index } => {
+                let global_def = ctx
+                    .globals
+                    .values()
+                    .find(|global| global.index == *global_index)
+                    .unwrap();
+
+                global_def.value_type.clone()
+            }
+            LoInstr::LocalGet {
+                local_index: _,
+                value_type,
+            } => value_type.clone(),
+            LoInstr::Call {
+                return_type,
+                fn_index: _,
+                args: _,
+            } => return_type.clone(),
+            LoInstr::If {
+                block_type,
+                cond: _,
+                then_branch: _,
+                else_branch: _,
+            }
+            | LoInstr::Block {
+                block_type,
+                body: _,
+            }
+            | LoInstr::Loop {
+                block_type,
+                body: _,
+            } => block_type.clone(),
+            LoInstr::Branch { label_index: _ } => LoType::Void,
+        }
+    }
 }

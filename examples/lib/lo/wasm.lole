@@ -1,0 +1,98 @@
+(alias Vec<Lo/Wasm/WasmFnType> Vec)
+(alias Vec<Lo/Wasm/WasmImport> Vec)
+(alias Vec<u32> Vec)
+(alias Vec<Lo/Wasm/WasmLimits> Vec)
+(alias Vec<Lo/Wasm/WasmGlobal> Vec)
+(alias Vec<Lo/Wasm/WasmExport> Vec)
+(alias Vec<Lo/Wasm/WasmFn> Vec)
+(alias Vec<Lo/Wasm/WasmData> Vec)
+(alias Vec<Lo/Wasm/WasmType> Vec)
+(alias Vec<Lo/Wasm/WasmInstr> Vec)
+(alias Vec<Lo/Wasm/WasmLocals> Vec)
+
+(struct Lo/Wasm/WasmModule
+    (types (& Vec<Lo/Wasm/WasmFnType>))
+    (imports (& Vec<Lo/Wasm/WasmImport>))
+    (functions (& Vec<u32>))
+    (memories (& Vec<Lo/Wasm/WasmLimits>))
+    (globals (& Vec<Lo/Wasm/WasmGlobal>))
+    (exports (& Vec<Lo/Wasm/WasmExport>))
+    (codes (& Vec<Lo/Wasm/WasmFn>))
+    (datas (& Vec<Lo/Wasm/WasmData>))
+)
+
+(struct Lo/Wasm/WasmFnType
+    (inputs (& Vec<Lo/Wasm/WasmType>))
+    (outputs (& Vec<Lo/Wasm/WasmType>))
+)
+
+; TODO: implement
+(struct Lo/Wasm/WasmImport)
+
+; TODO: implement
+(struct Lo/Wasm/WasmLimits)
+
+; TODO: implement
+(struct Lo/Wasm/WasmGlobal)
+
+; values correspond to binary output
+(alias Lo/Wasm/WasmExportType u32)
+(alias Lo/Wasm/WasmExportType/FUNC 0) ; 0x00
+(alias Lo/Wasm/WasmExportType/MEM 2) ; 0x02
+
+(struct Lo/Wasm/WasmExport
+    (export_type Lo/Wasm/WasmExportType)
+    (export_name (& String))
+    (exported_item_index u32)
+)
+
+; values correspond to binary output
+(alias Lo/Wasm/WasmType i32)
+(alias Lo/Wasm/WasmType/I32 127) ; 0x7F
+(alias Lo/Wasm/WasmType/I64 126) ; 0x7E
+(alias Lo/Wasm/WasmType/F32 125) ; 0x7D
+(alias Lo/Wasm/WasmType/F64 124) ; 0x7C
+(alias Lo/Wasm/WasmType/V128 123) ; 0x7B
+(alias Lo/Wasm/WasmType/FUNC_REF 112) ; 0x70
+(alias Lo/Wasm/WasmType/EXTERN_REF 111) ; 0x6F
+
+(struct Lo/Wasm/WasmLocals
+    (count u32)
+    (value_type Lo/Wasm/WasmType)
+)
+
+(struct Lo/Wasm/WasmExpr
+    (instrs (& Vec<Lo/Wasm/WasmInstr>))
+)
+
+(struct Lo/Wasm/WasmFn
+    (locals (& Vec<Lo/Wasm/WasmLocals>))
+    (expr Lo/Wasm/WasmExpr)
+)
+
+; TODO: implement
+(struct Lo/Wasm/WasmData)
+
+(fn Lo/Wasm/WasmModule/new [] (& Lo/Wasm/WasmModule) (
+    (return (new Lo/Wasm/WasmModule (Lo/Wasm/WasmModule
+        :types (Vec/new 1 (sizeof Lo/Wasm/WasmFnType))
+        :imports (Vec/new 1 (sizeof Lo/Wasm/WasmImport))
+        :functions (Vec/new 1 (sizeof u32))
+        :memories (Vec/new 1 (sizeof Lo/Wasm/WasmLimits))
+        :globals (Vec/new 1 (sizeof Lo/Wasm/WasmGlobal))
+        :exports (Vec/new 1 (sizeof Lo/Wasm/WasmExport))
+        :codes (Vec/new 1 (sizeof Lo/Wasm/WasmFn))
+        :datas (Vec/new 1 (sizeof Lo/Wasm/WasmData))
+    )))
+))
+
+(fn Lo/Wasm/WasmModule/free [(self (& Lo/Wasm/WasmModule))] void (
+    (Vec/free {self -> types})
+    (Vec/free {self -> imports})
+    (Vec/free {self -> functions})
+    (Vec/free {self -> memories})
+    (Vec/free {self -> globals})
+    (Vec/free {self -> exports})
+    (Vec/free {self -> codes})
+    (Vec/free {self -> datas})
+))

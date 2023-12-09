@@ -3,8 +3,8 @@ import "lib/std" { Heap, Vec, StringSlice }
 import "lib/wasi" as Wasi
 import "lib/wasi_io" as WasiIO
 import "lib/args" as Args
-import "lib/lole/ast" { SExpr, CompileError }
-import "lib/lole/parser" as Parser
+import "lib/lo/ast" { SExpr, CompileError }
+import "lib/lo/parser" as Parser
 
 fn main() {
     let (fd, file_name) = get_input_file()
@@ -63,7 +63,7 @@ fn get_input_file(): (u32, StringSlice) {
     defer Args.free(args)
 
     if args.argc != 2 {
-        return (Wasi.FD_STDIN, StringSlice.clone("<internal>"))
+        return (Wasi.FD_STDIN, StringSlice.clone("<stdin>"))
     }
 
     let file_name = StringSlice.clone(Args.get(args, 1))

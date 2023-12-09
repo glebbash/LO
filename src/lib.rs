@@ -4,15 +4,19 @@
 extern crate alloc;
 
 mod ast;
-mod codegen;
-mod compiler;
 mod expand;
 mod ir;
+mod lexer;
 mod lowering;
 mod parser;
-mod type_checker;
 mod wasi_io;
 mod wasm;
+
+// v2
+mod lexer2;
+mod operators;
+mod parser2;
+mod tokens;
 
 use alloc::{string::String, vec::Vec};
 
@@ -35,31 +39,49 @@ mod wasm_target {
     }
 }
 
-fn exec_pipeline(script: &str) -> Result<Vec<u8>, String> {
-    let raw_exprs = parser::parse("<input>", script)?;
-    let exprs = expand::expand(raw_exprs)?;
-    let module = compiler::compile(&exprs)?;
-    let binary = codegen::codegen(&module);
+pub const V2_SYNTAX_MARKER: &str = "#![new_syntax]";
+
+fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
+    let module = if script.starts_with(V2_SYNTAX_MARKER) {
+        let tokens = lexer2::lex_all(file_name, script, V2_SYNTAX_MARKER)?;
+        parser2::parse(tokens)?
+    } else {
+        let raw_exprs = lexer::lex_all(file_name, script)?;
+        let exprs = expand::expand(raw_exprs)?;
+        parser::parse(&exprs)?
+    };
+    let mut binary = Vec::new();
+    module.dump(&mut binary);
     Ok(binary)
 }
 
 mod wasi_api {
     use super::exec_pipeline;
     use super::wasi_io::*;
-    use core::str;
 
     #[no_mangle]
     pub extern "C" fn _start() {
-        let source = stdin_read();
+        let args = WasiArgs::load().unwrap();
+        let (file_name, source) = if args.len() == 2 {
+            let file_name = args.get(1).unwrap();
+            let fd = fd_open(file_name).unwrap_or_else(|err| {
+                let msg = alloc::format!("Error: cannot open file {file_name}: {err}");
+                stderr_write(msg.as_bytes());
+                proc_exit(1);
+            });
+            (file_name, fd_read_all_and_close(fd))
+        } else {
+            ("<stdin>", stdin_read())
+        };
 
-        match exec_pipeline(str::from_utf8(&source).unwrap()) {
+        match exec_pipeline(file_name, core::str::from_utf8(&source).unwrap()) {
             Ok(binary) => {
                 stdout_write(binary.as_slice());
             }
             Err(mut message) => {
                 message.push('\n');
                 stderr_write(message.as_bytes());
-                exit(1);
+                proc_exit(1);
             }
         };
     }
@@ -94,7 +116,7 @@ mod fn_api {
             return ParseResult::from(Err(format!("ParseError: Cannot process input")));
         };
 
-        ParseResult::from(exec_pipeline(script))
+        ParseResult::from(exec_pipeline("<stdin>", script))
     }
 
     impl ParseResult {

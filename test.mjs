@@ -6,17 +6,23 @@ import { open, readFile, unlink, writeFile } from "node:fs/promises";
 import { WASI } from "node:wasi";
 import { randomUUID } from "node:crypto";
 
-const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lole_lisp.wasm";
+const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo.wasm";
 
 const compile = await loadCompilerWithWasiAPI(COMPILER_PATH);
 
-test("single file modules can be compiled using simpler function API", async () => {
+test("ffi, file and stdin inputs all work the same", async () => {
     const compileFuncAPI = await loadCompilerWithFuncAPI(COMPILER_PATH);
+    const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
+        COMPILER_PATH,
+        true
+    );
 
-    const output1 = await compileFuncAPI("./examples/test/42.lole");
-    const output2 = await compile("./examples/test/42.lole");
+    const output1 = await compile("./examples/test/42.lole");
+    const output2 = await compileFuncAPI("./examples/test/42.lole");
+    const output3 = await compileMockedStdinAPI("./examples/test/42.lole");
 
-    assert.deepEqual(output1.buffer, output2.buffer);
+    assert.deepStrictEqual(output1.buffer, output2.buffer);
+    assert.deepStrictEqual(output2.buffer, output3.buffer);
 });
 
 test("compiles 42", async () => {
@@ -26,6 +32,24 @@ test("compiles 42", async () => {
     const result = program.main();
 
     assert.strictEqual(result, 42);
+});
+
+test("compiles 42 (v2)", async () => {
+    const output = await compile("./examples/test/42.lo");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 42);
+});
+
+test("compiles factorial (v2)", async () => {
+    const output = await compile("./examples/test/factorial.lo");
+
+    const program = await loadWasm(output);
+    const result = program.factorial(5);
+
+    assert.strictEqual(result, 120);
 });
 
 test("compiles factorial", async () => {
@@ -44,31 +68,11 @@ test("compiles locals", async () => {
     assert.deepEqual(program.sub(5, 3), 2);
 });
 
-test("compiles struct", async () => {
-    const output = await compile("./examples/test/struct.lole");
+test("compiles locals (v2)", async () => {
+    const output = await compile("./examples/test/locals.lo");
 
     const program = await loadWasm(output);
-    const result = program.main();
-
-    assert.strictEqual(result, 13);
-});
-
-test("compiles globals", async () => {
-    const output = await compile("./examples/test/globals.lole");
-
-    const program = await loadWasm(output);
-    const result = program.main();
-
-    assert.strictEqual(result, 69);
-});
-
-test("compiles struct-ref", async () => {
-    const output = await compile("./examples/test/struct-ref.lole");
-
-    const program = await loadWasm(output);
-    const result = program.main();
-
-    assert.strictEqual(result, 3);
+    assert.deepEqual(program.sub(5, 3), 2);
 });
 
 test("compiles import", async () => {
@@ -81,6 +85,72 @@ test("compiles import", async () => {
 
     program.main();
     assert.deepEqual(logs, [1, 2, 3]);
+});
+
+test("compiles import (v2)", async () => {
+    const output = await compile("./examples/test/import.lo");
+
+    const logs = [];
+    const program = await loadWasm(output, {
+        utils: { debug: (x) => logs.push(x) },
+    });
+
+    program.main();
+    assert.deepEqual(logs, [1, 2, 3]);
+});
+
+test("compiles globals", async () => {
+    const output = await compile("./examples/test/globals.lole");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 69);
+});
+
+test("compiles globals (v2)", async () => {
+    const output = await compile("./examples/test/globals.lo");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 69);
+});
+
+test("compiles methods (v2)", async () => {
+    const output = await compile("./examples/test/methods.lo");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 25);
+});
+
+test("compiles struct", async () => {
+    const output = await compile("./examples/test/struct.lole");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 13);
+});
+
+test("compiles struct (v2)", async () => {
+    const output = await compile("./examples/test/struct.lo");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 13);
+});
+
+test("compiles struct-ref", async () => {
+    const output = await compile("./examples/test/struct-ref.lole");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 3);
 });
 
 test("compiles vec", async () => {
@@ -336,46 +406,60 @@ async function loadCompilerWithFuncAPI(compilerPath) {
  * @param {string} compilerPath
  * @returns {Promise<(sourcePath: string) => Promise<Promise<Buffer>>>}
  */
-async function loadCompilerWithWasiAPI(compilerPath) {
+async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
     const mod = await WebAssembly.compile(await readFile(compilerPath));
+
+    /**
+     * @param {string} [fileName]
+     * @param {number} [stdinFd]
+     */
+    const compile = (fileName, stdinFd) =>
+        runWithTmpFile(async (stderr, stderrFile) =>
+            runWithTmpFile(async (stdout, stdoutFile) => {
+                const wasi = new WASI({
+                    // @ts-ignore
+                    version: "preview1",
+                    stdin: stdinFd,
+                    stdout: stdout.fd,
+                    stderr: stderr.fd,
+                    args: [
+                        "compiler.wasm",
+                        ...(fileName !== undefined ? [fileName] : []),
+                    ],
+                    preopens: { ".": "examples" },
+                });
+
+                const instance = await WebAssembly.instantiate(
+                    mod,
+                    // @ts-ignore
+                    wasi.getImportObject()
+                );
+
+                const exitCode = /** @type {unknown} */ (wasi.start(instance));
+
+                if (exitCode ?? 0 !== 0) {
+                    throw new Error(await readFile(stderrFile, "utf-8"));
+                }
+
+                return readFile(stdoutFile);
+            })
+        );
 
     /**
      * @param {string} sourcePath
      */
-    return (sourcePath) =>
-        runWithTmpFile(async (stderr, stderrFile) =>
-            runWithTmpFile(async (stdin, stdinFile) => {
-                await writeFile(stdinFile, await readFile(sourcePath));
+    return (sourcePath) => {
+        if (!mockStdin) {
+            sourcePath = sourcePath.slice("./examples/".length);
+            return compile(sourcePath);
+        }
 
-                return runWithTmpFile(async (stdout, stdoutFile) => {
-                    const wasi = new WASI({
-                        // @ts-ignore
-                        version: "preview1",
-                        stdin: stdin.fd,
-                        stdout: stdout.fd,
-                        stderr: stderr.fd,
-                        args: ["compiler.wasm"],
-                        preopens: { ".": "examples" },
-                    });
+        return runWithTmpFile(async (stdin, stdinFile) => {
+            await writeFile(stdinFile, await readFile(sourcePath));
 
-                    const instance = await WebAssembly.instantiate(
-                        mod,
-                        // @ts-ignore
-                        wasi.getImportObject()
-                    );
-
-                    const exitCode = /** @type {unknown} */ (
-                        wasi.start(instance)
-                    );
-
-                    if (exitCode ?? 0 !== 0) {
-                        throw new Error(await readFile(stderrFile, "utf-8"));
-                    }
-
-                    return readFile(stdoutFile);
-                });
-            })
-        );
+            return compile(undefined, stdin.fd);
+        });
+    };
 }
 
 /**

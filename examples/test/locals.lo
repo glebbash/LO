@@ -1,0 +1,8 @@
+#![new_syntax]
+
+export fn sub(arg1: u32, arg2: u32) -> u32 {
+    let local1 = arg1;
+    let local2 = arg2;
+
+    return local1 - local2;
+};

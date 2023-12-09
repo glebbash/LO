@@ -1,5 +1,5 @@
 [package]
-name = "lole-lisp"
+name = "lo"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 lol_alloc = "0.4.0"
-mini_leb128 = "0.1.1"
 wasi = { version = "0.11.0", default-features = false }
 
 [lib]
