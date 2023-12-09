@@ -343,45 +343,30 @@ fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_typ
     fn_decl.lo_type.inputs.push(p_type);
 }
 
-fn parse_block(
-    _ctx: &ModuleContext,
-    tokens: &mut LoTokenStream,
-) -> Result<Vec<LoTokenStream>, LoError> {
-    let mut raw_exprs = vec![];
-    let mut last_expr_tokens = LoTokenStream::new(vec![], LoLocation::internal());
+fn parse_block(_ctx: &ModuleContext, tokens: &mut LoTokenStream) -> Result<LoTokenStream, LoError> {
+    let mut output = LoTokenStream::new(vec![], LoLocation::internal());
 
     let mut depth = 0;
     tokens.expect(Delim, "{")?;
     loop {
         if let Some(t) = tokens.eat(Delim, "{")? {
-            last_expr_tokens.tokens.push(t.clone());
+            output.tokens.push(t.clone());
             depth += 1;
             continue;
         }
         if let Some(t) = tokens.eat(Delim, "}")? {
             if depth == 0 {
+                output.terminal_token = t.clone();
                 break;
             }
-            last_expr_tokens.tokens.push(t.clone());
+            output.tokens.push(t.clone());
             depth -= 1;
             continue;
         }
-        if depth == 0 {
-            if let Some(semi) = tokens.eat(Delim, ";")? {
-                last_expr_tokens.terminal_token = semi.clone();
-                raw_exprs.push(last_expr_tokens);
-                last_expr_tokens = LoTokenStream::new(vec![], LoLocation::internal());
-                continue;
-            }
-        }
-        last_expr_tokens.tokens.push(tokens.next().unwrap().clone());
-    }
-    if last_expr_tokens.tokens.len() != 0 {
-        // reports error about missing semicolon
-        tokens.expect(Delim, ";")?;
+        output.tokens.push(tokens.next().unwrap().clone());
     }
 
-    Ok(raw_exprs)
+    Ok(output)
 }
 
 // TODO: support complex types
@@ -393,29 +378,14 @@ fn parse_lo_type2(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result
 // pub for use in v1
 pub fn parse_exprs(
     ctx: &mut BlockContext,
-    body: Vec<LoTokenStream>,
+    tokens: &mut LoTokenStream,
 ) -> Result<Vec<LoInstr>, LoError> {
     let mut exprs = vec![];
-    for mut tokens in body {
-        exprs.push(parse_expr_to_end(ctx, &mut tokens)?);
+    while tokens.peek().is_some() {
+        exprs.push(parse_expr(ctx, tokens, 0)?);
+        tokens.expect(Delim, ";")?;
     }
     Ok(exprs)
-}
-
-fn parse_expr_to_end(
-    ctx: &mut BlockContext,
-    tokens: &mut LoTokenStream,
-) -> Result<LoInstr, LoError> {
-    let expr = parse_expr(ctx, tokens, 0)?;
-
-    if let Some(unexpected) = tokens.peek() {
-        return Err(LoError {
-            message: format!("Unexpected token after expression: {}", unexpected.value),
-            loc: unexpected.loc.clone(),
-        });
-    }
-
-    Ok(expr)
 }
 
 fn parse_expr(
@@ -462,8 +432,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     // TODO: support `else`
     if let Some(_) = tokens.eat(Symbol, "if")? {
         let cond = parse_expr(ctx, tokens, 0)?;
-        let then_branch_tokens = parse_block(ctx.module, tokens)?;
-        let then_branch = parse_exprs(ctx, then_branch_tokens)?;
+        let mut then_branch_tokens = parse_block(ctx.module, tokens)?;
+        let then_branch = parse_exprs(ctx, &mut then_branch_tokens)?;
 
         return Ok(LoInstr::If {
             block_type: LoType::Void,
@@ -588,7 +558,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let Some(local) = ctx.block.get_local(&value.value) else {
             return Err(LoError {
                 message: format!("Reading unknown variable: {}", value.value),
-                loc: value.loc
+                loc: value.loc,
             });
         };
 
@@ -668,18 +638,33 @@ fn parse_postfix(
             if !tokens.next_is(Delim, "(").unwrap_or(false) {
                 let field_name = field_or_method_name;
 
-                let LoInstr::StructGet { struct_name, base_index, .. } = &primary else {
+                let LoInstr::StructGet {
+                    struct_name,
+                    base_index,
+                    ..
+                } = &primary
+                else {
                     let lhs_type = primary.get_type(ctx.module);
                     return Err(LoError {
-                        message: format!("Trying to get field '{}' on non struct: {lhs_type}", field_name.value),
+                        message: format!(
+                            "Trying to get field '{}' on non struct: {lhs_type}",
+                            field_name.value
+                        ),
                         loc: field_name.loc,
                     });
                 };
 
                 let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
-                let Some(field) = struct_def.fields.iter().find(|f| &f.name == &field_name.value) else {
+                let Some(field) = struct_def
+                    .fields
+                    .iter()
+                    .find(|f| &f.name == &field_name.value)
+                else {
                     return Err(LoError {
-                        message: format!("Unknown field {} in struct {struct_name}", field_name.value),
+                        message: format!(
+                            "Unknown field {} in struct {struct_name}",
+                            field_name.value
+                        ),
                         loc: field_name.loc,
                     });
                 };

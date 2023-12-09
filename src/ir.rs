@@ -315,7 +315,7 @@ pub struct FnBody {
 
 pub enum FnBodyExprs {
     V1(Vec<SExpr>),
-    V2(Vec<LoTokenStream>),
+    V2(LoTokenStream),
 }
 
 pub struct FnExport {

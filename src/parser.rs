@@ -75,7 +75,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
 
         let mut lo_exprs = match fn_body.body {
             FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
-            FnBodyExprs::V2(body) => parse_exprs(&mut block_ctx, body)?,
+            FnBodyExprs::V2(mut body) => parse_exprs(&mut block_ctx, &mut body)?,
         };
         if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
             lo_exprs.append(&mut values?);
@@ -130,14 +130,19 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
     let SExpr::List { value: items, .. } = expr else {
         return Err(LoError {
             message: format!("Unexpected atom"),
-            loc: expr.loc().clone()
+            loc: expr.loc().clone(),
         });
     };
 
-    let [SExpr::Atom { value: op, loc: op_loc, kind }, args @ ..] = &items[..] else {
+    let [SExpr::Atom {
+        value: op,
+        loc: op_loc,
+        kind,
+    }, args @ ..] = &items[..]
+    else {
         return Err(LoError {
             message: format!("Expected operation, got a simple list"),
-            loc: expr.loc().clone()
+            loc: expr.loc().clone(),
         });
     };
 
@@ -234,19 +239,28 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 let mut lo_inputs = vec![];
                 let mut wasm_inputs = vec![];
                 for input_expr in input_exprs.iter() {
-                    let SExpr::List{ value: name_and_type, .. } = input_expr else {
+                    let SExpr::List {
+                        value: name_and_type,
+                        ..
+                    } = input_expr
+                    else {
                         return Err(LoError {
                             message: format!("Unexpected atom in function params list"),
-                            loc: input_expr.loc().clone()
+                            loc: input_expr.loc().clone(),
                         });
                     };
 
                     let [SExpr::Atom {
-                        value: p_name, loc: p_name_loc, kind: AtomKind::Symbol,
-                    }, p_type] = &name_and_type[..] else {
+                        value: p_name,
+                        loc: p_name_loc,
+                        kind: AtomKind::Symbol,
+                    }, p_type] = &name_and_type[..]
+                    else {
                         return Err(LoError {
-                            message: format!("Expected name and parameter pairs in function params list"),
-                            loc: input_expr.loc().clone()
+                            message: format!(
+                                "Expected name and parameter pairs in function params list"
+                            ),
+                            loc: input_expr.loc().clone(),
                         });
                     };
 
@@ -345,19 +359,28 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 let mut lo_inputs = vec![];
                 let mut wasm_inputs = vec![];
                 for input_expr in input_exprs.iter() {
-                    let SExpr::List { value: name_and_type, .. } = input_expr else {
+                    let SExpr::List {
+                        value: name_and_type,
+                        ..
+                    } = input_expr
+                    else {
                         return Err(LoError {
                             message: format!("Unexpected atom in function params list"),
-                            loc: input_expr.loc().clone()
+                            loc: input_expr.loc().clone(),
                         });
                     };
 
                     let [SExpr::Atom {
-                        value: p_name, loc: name_loc,kind: AtomKind::Symbol,
-                    }, p_type] = &name_and_type[..] else {
+                        value: p_name,
+                        loc: name_loc,
+                        kind: AtomKind::Symbol,
+                    }, p_type] = &name_and_type[..]
+                    else {
                         return Err(LoError {
-                            message: format!("Expected name and parameter pairs in function params list"),
-                            loc: input_expr.loc().clone()
+                            message: format!(
+                                "Expected name and parameter pairs in function params list"
+                            ),
+                            loc: input_expr.loc().clone(),
                         });
                     };
 
@@ -566,14 +589,20 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
             });
         }
         "data" => {
-            let [
-                SExpr::Atom { value: offset, loc, kind: AtomKind::Symbol, },
-                SExpr::Atom { value: data_base64, loc: _, kind }
-            ] = args else {
+            let [SExpr::Atom {
+                value: offset,
+                loc,
+                kind: AtomKind::Symbol,
+            }, SExpr::Atom {
+                value: data_base64,
+                loc: _,
+                kind,
+            }] = args
+            else {
                 return Err(LoError {
                     message: format!("Invalid arguments for {op}"),
                     loc: op_loc.clone(),
-                })
+                });
             };
 
             let offset = offset.parse().map_err(|_| LoError {
@@ -615,18 +644,27 @@ fn build_struct_fields(
 
     let mut fields = Vec::<StructField>::new();
     for field_def in exprs {
-        let SExpr::List { value: name_and_type, .. } = field_def else {
+        let SExpr::List {
+            value: name_and_type,
+            ..
+        } = field_def
+        else {
             return Err(LoError {
                 message: format!("Unexpected atom in fields list of struct {struct_name}"),
-                loc: field_def.loc().clone()
+                loc: field_def.loc().clone(),
             });
         };
 
         let [SExpr::Atom {
-            value: f_name, loc: name_loc, kind: AtomKind::Symbol,
-        }, f_type_expr] = &name_and_type[..] else {
-            return Err(LoError{
-                message: format!("Expected name and parameter pairs in fields list of struct {struct_name}"),
+            value: f_name,
+            loc: name_loc,
+            kind: AtomKind::Symbol,
+        }, f_type_expr] = &name_and_type[..]
+        else {
+            return Err(LoError {
+                message: format!(
+                    "Expected name and parameter pairs in fields list of struct {struct_name}"
+                ),
                 loc: field_def.loc().clone(),
             });
         };
@@ -740,7 +778,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             let Some(local) = ctx.block.get_local(value.as_str()) else {
                 return Err(LoError {
                     message: format!("Reading unknown variable: {value}"),
-                    loc: loc.clone()
+                    loc: loc.clone(),
                 });
             };
 
@@ -753,10 +791,15 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
         }
     };
 
-    let [SExpr::Atom { value: op, loc: op_loc, .. }, args @ ..] = &items[..] else {
+    let [SExpr::Atom {
+        value: op,
+        loc: op_loc,
+        ..
+    }, args @ ..] = &items[..]
+    else {
         return Err(LoError {
             message: format!("Expected operation, got a simple list"),
-            loc: expr.loc().clone()
+            loc: expr.loc().clone(),
         });
     };
 
@@ -1378,7 +1421,9 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
 
                 let LoType::StructInstance { name: s_name } = &local.value_type else {
                     return Err(LoError {
-                        message: format!("Trying to get field '{f_name}' on non struct: {local_name}"),
+                        message: format!(
+                            "Trying to get field '{f_name}' on non struct: {local_name}"
+                        ),
                         loc: f_name_loc.clone(),
                     });
                 };
@@ -1475,7 +1520,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                 return Err(LoError {
                     message: format!("Cannot dereference {lo_type:?}"),
                     loc: op_loc.clone(),
-                })
+                });
             };
 
             compile_load(ctx, &pointee_type, pointer_instr, 0).map_err(|err| LoError {
@@ -1498,13 +1543,13 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                 return Err(LoError {
                     message: format!("Cannot dereference {lo_type:?}"),
                     loc: op_loc.clone(),
-                })
+                });
             };
             let LoType::StructInstance { name: s_name } = pointee_type.as_ref() else {
                 return Err(LoError {
                     message: format!("Cannot dereference {lo_type:?}"),
                     loc: op_loc.clone(),
-                })
+                });
             };
 
             let struct_def = ctx.module.struct_defs.get(s_name).unwrap();
@@ -1551,7 +1596,12 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                     let field_name_expr = &args[i * 2];
                     let field_value_expr = &args[i * 2 + 1];
 
-                    let SExpr::Atom { value: field_name, kind: AtomKind::Symbol, loc: _ } = field_name_expr else {
+                    let SExpr::Atom {
+                        value: field_name,
+                        kind: AtomKind::Symbol,
+                        loc: _,
+                    } = field_name_expr
+                    else {
                         return Err(LoError {
                             message: format!("Field name expected, got {field_name_expr}"),
                             loc: field_name_expr.loc().clone(),
@@ -1596,7 +1646,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             let Some(fn_def) = ctx.module.fn_defs.get(fn_name) else {
                 return Err(LoError {
                     message: format!("Unknown instruction or function: {fn_name}"),
-                    loc: op_loc.clone()
+                    loc: op_loc.clone(),
                 });
             };
 
@@ -1835,7 +1885,12 @@ pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoInstr,
         }
     };
 
-    let [SExpr::Atom { value: op, loc: op_loc, kind }, args @ ..] = &items[..] else {
+    let [SExpr::Atom {
+        value: op,
+        loc: op_loc,
+        kind,
+    }, args @ ..] = &items[..]
+    else {
         return Err(LoError {
             message: format!("Expected operation, got a simple list"),
             loc: expr.loc().clone(),

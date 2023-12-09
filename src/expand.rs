@@ -35,7 +35,12 @@ fn expand_top_level_expr(
         return Ok(());
     };
 
-    let [SExpr::Atom { value: op, loc: op_loc, kind: AtomKind::Symbol }, other @ ..] = &items[..] else {
+    let [SExpr::Atom {
+        value: op,
+        loc: op_loc,
+        kind: AtomKind::Symbol,
+    }, other @ ..] = &items[..]
+    else {
         expand_expr(ctx, expr, exprs);
         return Ok(());
     };
