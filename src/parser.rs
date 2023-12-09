@@ -170,7 +170,7 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
             }, optional @ ..]
                 if min_literal == ":min" =>
             {
-                if ctx.memory_names.contains(mem_name) {
+                if ctx.memories.contains_key(mem_name) {
                     return Err(LoError {
                         message: format!("Duplicate memory definition: {mem_name}"),
                         loc: mem_name_loc.clone(),
@@ -206,7 +206,8 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                     }
                 };
 
-                ctx.memory_names.push(mem_name.clone());
+                let memory_index = ctx.wasm_module.borrow().memories.len() as u32;
+                ctx.memories.insert(mem_name.clone(), memory_index);
                 ctx.wasm_module.borrow_mut().memories.push(WasmLimits {
                     min: min_memory,
                     max: max_memory,
@@ -451,18 +452,17 @@ fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), L
                 loc: _,
                 kind: _,
             }] if mem_literal == "mem" && as_literal == ":as" => {
-                if !ctx.memory_names.contains(in_name) {
+                let Some(memory_index) = ctx.memories.get(in_name).cloned() else {
                     return Err(LoError {
                         message: format!("Cannot export mem {in_name}, not found"),
                         loc: name_loc.clone(),
                     });
-                }
+                };
 
                 ctx.wasm_module.borrow_mut().exports.push(WasmExport {
                     export_type: WasmExportType::Mem,
                     export_name: out_name.clone(),
-                    exported_item_index: ctx.memory_names.iter().position(|n| n == in_name).unwrap()
-                        as u32,
+                    exported_item_index: memory_index,
                 });
             }
             [SExpr::Atom {
@@ -712,13 +712,15 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             if *kind == AtomKind::String {
                 let string_len = value.as_bytes().len() as u32;
 
-                let string_ptr = *ctx
-                    .module
-                    .string_pool
-                    .borrow_mut()
-                    .entry(value.clone())
-                    .or_insert_with(|| {
-                        let string_ptr = *ctx.module.data_size.borrow();
+                let string_ptr_ = ctx.module.string_pool.borrow().get(value).cloned();
+                let string_ptr = match string_ptr_ {
+                    Some(string_ptr) => string_ptr,
+                    None => {
+                        let new_string_ptr = *ctx.module.data_size.borrow();
+                        ctx.module
+                            .string_pool
+                            .borrow_mut()
+                            .insert(value.clone(), new_string_ptr);
 
                         *ctx.module.data_size.borrow_mut() += string_len;
                         ctx.module
@@ -729,14 +731,14 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                                 // TODO: move to better place
                                 offset: WasmExpr {
                                     instrs: vec![WasmInstr::I32Const {
-                                        value: string_ptr as i32,
+                                        value: new_string_ptr as i32,
                                     }],
                                 },
                                 bytes: value.as_bytes().to_vec(),
                             });
-
-                        string_ptr
-                    });
+                        new_string_ptr
+                    }
+                };
 
                 return Ok(LoInstr::MultiValueEmit {
                     values: vec![

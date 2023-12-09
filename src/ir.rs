@@ -8,24 +8,12 @@ pub struct ModuleContext {
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: RefCell<Vec<FnBody>>,
     pub fn_exports: Vec<FnExport>,
-    pub memory_names: Vec<String>,
+    pub memories: BTreeMap<String, u32>,
     pub struct_defs: BTreeMap<String, StructDef>,
     pub globals: BTreeMap<String, GlobalDef>,
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
-}
-
-// v2
-
-#[derive(Default)]
-pub struct ModuleContextV2 {
-    pub fn_defs: RefCell<Vec<FnDef2>>,
-}
-
-pub struct FnDef2 {
-    // TODO: look for a lighter solution
-    pub body: Vec<LoTokenStream>,
 }
 
 impl ModuleContext {
