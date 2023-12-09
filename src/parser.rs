@@ -1721,7 +1721,8 @@ fn get_deferred(
     Some(compile_instrs(&deferred, ctx))
 }
 
-fn compile_load(
+// pub for use in v2
+pub fn compile_load(
     ctx: &mut BlockContext,
     value_type: &LoType,
     address_instr: Box<LoInstr>,
@@ -2051,8 +2052,7 @@ fn compile_set_binds(
 
 // types
 
-// pub for use from v2
-pub fn parse_lo_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoType, LoError> {
+fn parse_lo_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoType, LoError> {
     parse_lo_type_checking_ref(expr, ctx, false)
 }
 

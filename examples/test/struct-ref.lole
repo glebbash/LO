@@ -1,6 +1,4 @@
-(mod lib/std)
-
-(mem m :min 100)
+(mem m :min 10)
 
 (struct Point2D
     (x u32)
@@ -9,8 +7,7 @@
 
 (export main :as main)
 (fn main [] u32 (
-    {p := {(Stack/alloc (sizeof Point2D)) as (& Point2D)}}
-    (defer (Stack/free (sizeof Point2D)))
+    {p := {0 as (& Point2D)}}
 
     {(* p) = (Point2D :x 2 :y 3)}
     {y := {p -> y}}

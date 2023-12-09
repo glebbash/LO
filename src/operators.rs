@@ -1,41 +1,62 @@
 use crate::tokens::*;
 
-pub enum OpTag {
+pub enum InfixOpTag {
     Assign,
     AddAssign,
     Less,
     Add,
     Sub,
     Mul,
-    Dot,
+    Cast,
+    FieldAccess,
+    RefFieldAccess,
 }
 
-impl OpTag {
-    fn parse(token: &LoToken) -> Option<Self> {
-        Some(match token.value.as_str() {
-            "=" => OpTag::Assign,
-            "+=" => OpTag::AddAssign,
-            "<" => OpTag::Less,
-            "+" => OpTag::Add,
-            "-" => OpTag::Sub,
-            "*" => OpTag::Mul,
-            "." => OpTag::Dot,
-            _ => return None,
-        })
-    }
+pub struct InfixOp {
+    pub tag: InfixOpTag,
+    pub info: OpInfo,
+    pub token: LoToken,
+}
 
-    fn get_info(&self) -> OpInfo {
+impl InfixOp {
+    pub fn parse(token: LoToken) -> Option<Self> {
+        use InfixOpTag::*;
         use OpAssoc::*;
+        let (tag, info) = match token.value.as_str() {
+            "=" => (Assign, OpInfo { bp: 1, assoc: None }),
+            "+=" => (AddAssign, OpInfo { bp: 1, assoc: None }),
+            "<" => (Less, OpInfo { bp: 2, assoc: L }),
+            "+" => (Add, OpInfo { bp: 3, assoc: L }),
+            "-" => (Sub, OpInfo { bp: 3, assoc: L }),
+            "*" => (Mul, OpInfo { bp: 4, assoc: L }),
+            "as" => (Cast, OpInfo { bp: 5, assoc: L }),
+            "." => (FieldAccess, OpInfo { bp: 6, assoc: L }),
+            "->" => (RefFieldAccess, OpInfo { bp: 6, assoc: L }),
+            _ => return Option::None,
+        };
+        Some(Self { tag, info, token })
+    }
+}
 
-        match self {
-            OpTag::Assign => OpInfo { bp: 1, assoc: None },
-            OpTag::AddAssign => OpInfo { bp: 1, assoc: None },
-            OpTag::Less => OpInfo { bp: 2, assoc: L },
-            OpTag::Add => OpInfo { bp: 3, assoc: L },
-            OpTag::Sub => OpInfo { bp: 3, assoc: L },
-            OpTag::Mul => OpInfo { bp: 4, assoc: L },
-            OpTag::Dot => OpInfo { bp: 5, assoc: L },
-        }
+pub enum PrefixOpTag {
+    Dereference,
+}
+
+pub struct PrefixOp {
+    pub tag: PrefixOpTag,
+    pub info: OpInfo,
+    pub token: LoToken,
+}
+
+impl PrefixOp {
+    pub fn parse(token: LoToken) -> Option<Self> {
+        use OpAssoc::*;
+        use PrefixOpTag::*;
+        let (tag, info) = match token.value.as_str() {
+            "*" => (Dereference, OpInfo { bp: 7, assoc: L }),
+            _ => return Option::None,
+        };
+        Some(Self { tag, info, token })
     }
 }
 
@@ -58,19 +79,5 @@ impl OpInfo {
         } else {
             self.bp
         }
-    }
-}
-
-pub struct Op {
-    pub tag: OpTag,
-    pub info: OpInfo,
-    pub token: LoToken,
-}
-
-impl Op {
-    pub fn parse(token: LoToken) -> Option<Self> {
-        let tag = OpTag::parse(&token)?;
-        let info = tag.get_info();
-        Some(Self { tag, info, token })
     }
 }

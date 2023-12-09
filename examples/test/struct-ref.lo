@@ -1,0 +1,16 @@
+#![new_syntax]
+
+memory { min_pages: 10 };
+
+struct Point2D {
+    x: u32,
+    y: u32,
+};
+
+export fn main() -> u32 {
+    let p = 0 as &Point2D;
+
+    *p = Point2D { x: 2, y: 3 };
+    let y = p->y;
+    return y;
+};

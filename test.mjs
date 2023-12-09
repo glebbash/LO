@@ -171,6 +171,15 @@ test("compiles struct-ref", async () => {
     assert.strictEqual(result, 3);
 });
 
+test("compiles struct-ref (v2)", async () => {
+    const output = await compile("./examples/test/struct-ref.lo");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 3);
+});
+
 test("compiles vec", async () => {
     const output = await compile("./examples/test/vec.test.lole");
 

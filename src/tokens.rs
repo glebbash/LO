@@ -2,7 +2,7 @@ use alloc::{format, string::String, vec::Vec};
 
 use crate::ast::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum LoTokenType {
     StringLiteral,
     IntLiteral,
@@ -19,16 +19,12 @@ pub struct LoToken {
 }
 
 impl LoToken {
-    pub fn to_sexpr(self) -> SExpr {
-        SExpr::Atom {
-            value: self.value,
-            kind: if self.type_ == LoTokenType::StringLiteral {
-                AtomKind::String
-            } else {
-                AtomKind::Symbol
-            },
-            loc: self.loc,
-        }
+    pub fn is_any(&self, type_: LoTokenType) -> bool {
+        return self.type_ == type_;
+    }
+
+    pub fn is(&self, type_: LoTokenType, value: &str) -> bool {
+        return self.is_any(type_) && self.value == value;
     }
 }
 
@@ -54,62 +50,53 @@ impl LoTokenStream {
 
     pub fn expect_any(&mut self, type_: LoTokenType) -> Result<&LoToken, LoError> {
         match self.peek() {
-            Some(token) if token.type_ == type_ => Ok(self.next().unwrap()),
-            Some(token) => Err(LoError {
-                message: format!("Unexpected token '{}', wanted {type_:?}", token.value),
-                loc: token.loc.clone(),
-            }),
-            _ => Err(LoError {
-                message: format!("Unexpected EOF, wanted {type_:?}"),
-                loc: self.terminal_token.loc.clone(),
-            }),
+            Some(token) if token.is_any(type_) => Ok(self.next().unwrap()),
+            other => {
+                let unexpected = other.unwrap_or(&self.terminal_token);
+                Err(LoError {
+                    message: format!("Unexpected token '{}', wanted {type_:?}", unexpected.value),
+                    loc: unexpected.loc.clone(),
+                })
+            }
         }
     }
 
     pub fn expect(&mut self, type_: LoTokenType, value: &str) -> Result<&LoToken, LoError> {
         match self.peek() {
-            Some(token) if token.type_ == type_ && token.value == value => Ok(self.next().unwrap()),
-            Some(token) => Err(LoError {
-                message: format!("Unexpected token '{}', wanted '{value}'", token.value),
-                loc: token.loc.clone(),
-            }),
-            _ => Err(LoError {
-                message: format!("Unexpected EOF, wanted '{value}'"),
-                loc: self.terminal_token.loc.clone(),
-            }),
+            Some(token) if token.is(type_, value) => Ok(self.next().unwrap()),
+            other => {
+                let unexpected = other.unwrap_or(&self.terminal_token);
+                Err(LoError {
+                    message: format!("Unexpected token '{}', wanted '{value}'", unexpected.value),
+                    loc: unexpected.loc.clone(),
+                })
+            }
         }
     }
 
     pub fn eat_any(&mut self, type_: LoTokenType) -> Result<Option<&LoToken>, LoError> {
-        match self.peek() {
-            Some(token) if token.type_ == type_ => Ok(self.next()),
-            Some(_) => Ok(None),
-            _ => Err(LoError {
-                message: format!("Unexpected EOF"),
-                loc: self.terminal_token.loc.clone(),
-            }),
+        let was_some = self.peek().is_some();
+        match self.expect_any(type_) {
+            Ok(t) => Ok(Some(t)),
+            Err(_) if was_some => Ok(None),
+            Err(err) => Err(err),
         }
     }
 
     pub fn eat(&mut self, type_: LoTokenType, value: &str) -> Result<Option<&LoToken>, LoError> {
-        match self.peek() {
-            Some(token) if token.type_ == type_ && token.value == value => Ok(self.next()),
-            Some(_) => Ok(None),
-            _ => Err(LoError {
-                message: format!("Unexpected EOF"),
-                loc: self.terminal_token.loc.clone(),
-            }),
+        let was_some = self.peek().is_some();
+        match self.expect(type_, value) {
+            Ok(t) => Ok(Some(t)),
+            Err(_) if was_some => Ok(None),
+            Err(err) => Err(err),
         }
     }
 
     pub fn next_is(&mut self, type_: LoTokenType, value: &str) -> Result<bool, LoError> {
         match self.peek() {
-            Some(token) if token.type_ == type_ && token.value == value => Ok(true),
+            Some(token) if token.is(type_, value) => Ok(true),
             Some(_) => Ok(false),
-            _ => Err(LoError {
-                message: format!("Unexpected EOF"),
-                loc: self.terminal_token.loc.clone(),
-            }),
+            _ => self.err_eof(format!("Unexpected EOF")),
         }
     }
 
@@ -117,9 +104,22 @@ impl LoTokenStream {
         self.tokens.get(self.index)
     }
 
+    pub fn peek2(&self) -> Option<(&LoToken, &LoToken)> {
+        let t1 = self.tokens.get(self.index)?;
+        let t2 = self.tokens.get(self.index + 1)?;
+        Some((t1, t2))
+    }
+
     pub fn next(&mut self) -> Option<&LoToken> {
         let token = self.tokens.get(self.index);
         self.index += 1;
         token
+    }
+
+    fn err_eof<T>(&self, message: String) -> Result<T, LoError> {
+        Err(LoError {
+            message,
+            loc: self.terminal_token.loc.clone(),
+        })
     }
 }
