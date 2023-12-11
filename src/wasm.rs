@@ -50,9 +50,9 @@ pub struct WasmExpr {
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum WasmBinaryOpKind {
-    I32Equals = 0x46,
+    I32Equal = 0x46,
     I32LessThenUnsigned = 0x49,
-    I32GreaterThenUnsigned = 0x4B,
+    I32GreaterThanUnsigned = 0x4B,
     I32GreaterEqualUnsigned = 0x4F,
     I32NotEqual = 0x47,
     I32Add = 0x6A,

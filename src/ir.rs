@@ -1,5 +1,12 @@
 use crate::{ast::*, tokens::*, wasm::*};
-use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec::Vec};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    format,
+    rc::Rc,
+    string::String,
+    vec::Vec,
+};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -16,6 +23,7 @@ pub struct ModuleContext {
     pub string_pool: RefCell<BTreeMap<String, u32>>,
     pub type_aliases: RefCell<BTreeMap<String, LoType>>,
     pub constants: RefCell<BTreeMap<String, LoInstr>>,
+    pub included_modules: BTreeSet<String>,
 }
 
 impl ModuleContext {
@@ -43,7 +51,7 @@ pub struct FnContext<'a> {
     pub lo_fn_type: &'a LoFnType,
     pub locals_last_index: u32,
     pub non_arg_wasm_locals: Vec<WasmType>,
-    pub defers: BTreeMap<String, Vec<SExpr>>,
+    pub defers: BTreeMap<String, Vec<LoInstr>>,
 }
 
 #[derive(PartialEq)]

@@ -1,14 +1,21 @@
-use crate::{ast::*, ir::*, lowering::*, operators::*, parser::*, tokens::*, wasm::*};
-use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
+use crate::{
+    ast::*, ir::*, lexer2::*, lowering::*, operators::*, parser::*, tokens::*, wasi_io::*, wasm::*,
+};
+use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
 use LoTokenType::*;
 
 const RECEIVER_PARAM_NAME: &str = "self";
 
 pub fn parse(mut tokens: LoTokenStream) -> Result<WasmModule, LoError> {
     let mut ctx = ModuleContext::default();
+    parse_file(&mut ctx, &mut tokens)?;
+    process_delayed_actions(&mut ctx)?;
+    Ok(ctx.wasm_module.take())
+}
 
+fn parse_file(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
     while tokens.peek().is_some() {
-        parse_top_level_expr(&mut ctx, &mut tokens)?;
+        parse_top_level_expr(ctx, tokens)?;
         tokens.expect(LoTokenType::Delim, ";")?;
     }
 
@@ -19,9 +26,7 @@ pub fn parse(mut tokens: LoTokenStream) -> Result<WasmModule, LoError> {
         });
     }
 
-    process_delayed_actions(&mut ctx)?;
-
-    Ok(ctx.wasm_module.take())
+    Ok(())
 }
 
 fn parse_top_level_expr(
@@ -244,6 +249,27 @@ fn parse_top_level_expr(
             .insert(const_name.value, const_value);
 
         return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "include")? {
+        let module_path = tokens.expect_any(StringLiteral)?;
+
+        if !ctx.included_modules.insert(module_path.value.clone()) {
+            // do not include module twice
+            return Ok(());
+        };
+
+        let file_name = format!("{}.lo", module_path.value);
+        let mod_fd = fd_open(&file_name).map_err(|err| LoError {
+            message: format!("Cannot load file {file_name}: {err}"),
+            loc: module_path.loc.clone(),
+        })?;
+
+        let source_buf = fd_read_all_and_close(mod_fd);
+        let source = str::from_utf8(source_buf.as_slice()).unwrap();
+
+        let mut tokens = lex_all(&file_name, source)?;
+        return parse_file(ctx, &mut tokens);
     }
 
     let unexpected = tokens.peek().unwrap();
@@ -492,6 +518,7 @@ pub fn parse_block_contents(
     while tokens.peek().is_some() {
         let expr_start = tokens.peek().unwrap().loc.clone();
         let expr = parse_expr(ctx, tokens, 0)?;
+        tokens.expect(Delim, ";")?;
 
         match expr {
             LoInstr::NoEmit { .. } => {}
@@ -507,7 +534,6 @@ pub fn parse_block_contents(
         };
 
         exprs.push(expr);
-        tokens.expect(Delim, ";")?;
     }
     Ok(exprs)
 }
@@ -557,19 +583,162 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
+    if let Some(_) = tokens.eat(Symbol, "unreachable")? {
+        return Ok(LoInstr::Unreachable);
+    }
+
+    if let Some(value) = tokens.eat_any(StringLiteral)? {
+        let string_len = value.value.as_bytes().len() as u32;
+
+        let string_ptr_ = ctx.module.string_pool.borrow().get(&value.value).cloned();
+        let string_ptr = match string_ptr_ {
+            Some(string_ptr) => string_ptr,
+            None => {
+                let new_string_ptr = *ctx.module.data_size.borrow();
+                ctx.module
+                    .string_pool
+                    .borrow_mut()
+                    .insert(value.value.clone(), new_string_ptr);
+
+                *ctx.module.data_size.borrow_mut() += string_len;
+                ctx.module
+                    .wasm_module
+                    .borrow_mut()
+                    .datas
+                    .push(WasmData::Active {
+                        offset: WasmExpr {
+                            instrs: vec![WasmInstr::I32Const {
+                                value: new_string_ptr as i32,
+                            }],
+                        },
+                        bytes: value.value.as_bytes().to_vec(),
+                    });
+                new_string_ptr
+            }
+        };
+
+        return Ok(LoInstr::MultiValueEmit {
+            values: vec![
+                LoInstr::U32Const { value: string_ptr },
+                LoInstr::U32Const { value: string_len },
+            ],
+        });
+    }
+
     if let Some(_) = tokens.eat(Delim, "(")? {
         let expr = parse_expr(ctx, tokens, 0)?;
         tokens.expect(Delim, ")")?;
         return Ok(expr);
     }
 
-    if let Some(_) = tokens.eat(Symbol, "return")? {
-        return Ok(LoInstr::Return {
-            value: Box::new(parse_expr(ctx, tokens, 0)?),
+    if let Some(return_token) = tokens.eat(Symbol, "return")?.cloned() {
+        let value = if tokens.peek().is_none() || tokens.next_is(Delim, ";")? {
+            LoInstr::Casted {
+                value_type: LoType::Void,
+                expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
+            }
+        } else {
+            parse_expr(ctx, tokens, 0)?
+        };
+
+        let return_type = value.get_type(ctx.module);
+        if return_type != ctx.fn_ctx.lo_fn_type.output {
+            return Err(LoError {
+                message: format!(
+                    "TypeError: Invalid return type, \
+                        expected {output:?}, got {return_type:?}",
+                    output = ctx.fn_ctx.lo_fn_type.output,
+                ),
+                loc: return_token.loc,
+            });
+        }
+
+        let return_expr = LoInstr::Return {
+            value: Box::new(value),
+        };
+        if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
+            let mut values = values?;
+            values.push(return_expr);
+            return Ok(LoInstr::Casted {
+                value_type: LoType::Void,
+                expr: Box::new(LoInstr::MultiValueEmit { values }),
+            });
+        } else {
+            return Ok(return_expr);
+        }
+    }
+
+    if let Some(t) = tokens.eat(Symbol, "sizeof")?.cloned() {
+        let value_type = parse_lo_type(ctx.module, tokens)?;
+
+        return Ok(LoInstr::U32Const {
+            value: value_type
+                .sized_comp_stats(&ctx.module)
+                .map_err(|err| LoError {
+                    message: err,
+                    loc: t.loc.clone(),
+                })?
+                .byte_length as u32,
         });
     }
 
-    if let Some(t) = tokens.eat(Symbol, "debug_typeof")?.cloned() {
+    if let Some(_) = tokens.eat(Symbol, "char_code")?.cloned() {
+        let value = tokens.expect_any(StringLiteral)?;
+
+        let Some(char) = value.value.chars().next() else {
+            return Err(LoError {
+                message: format!("String must not be empty"),
+                loc: value.loc.clone(),
+            });
+        };
+
+        return Ok(LoInstr::U32Const { value: char as u32 });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "defer")? {
+        let defer_label = String::from(DEFER_UNTIL_RETURN_LABEL);
+        let deffered_expr = parse_expr(ctx, tokens, 0)?;
+
+        let deferred = ctx
+            .fn_ctx
+            .defers
+            .entry(defer_label)
+            .or_insert_with(|| vec![]);
+
+        deferred.push(deffered_expr);
+
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Void,
+            expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "__memory_size")? {
+        tokens.expect(Delim, "(")?;
+        tokens.expect(Delim, ")")?;
+        return Ok(LoInstr::MemorySize {});
+    }
+
+    if let Some(t) = tokens.eat(Symbol, "__memory_grow")?.cloned() {
+        tokens.expect(Delim, "(")?;
+        let size = parse_expr(ctx, tokens, 0)?;
+        tokens.expect(Delim, ")")?;
+
+        let size_type = size.get_type(ctx.module);
+
+        if size_type != LoType::U32 {
+            return Err(LoError {
+                message: format!("Invalid arguments for {}", t.value),
+                loc: t.loc,
+            });
+        };
+
+        return Ok(LoInstr::MemoryGrow {
+            size: Box::new(size),
+        });
+    }
+
+    if let Some(t) = tokens.eat(Symbol, "__debug_typeof")?.cloned() {
         let loc = tokens.peek().unwrap_or(&t).loc.clone();
 
         let expr = parse_expr(ctx, tokens, 0)?;
@@ -696,6 +865,13 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             tokens.next(); // skip operator
 
             match op.tag {
+                PrefixOpTag::Not => {
+                    return Ok(LoInstr::BinaryOp {
+                        kind: WasmBinaryOpKind::I32Equal,
+                        lhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+                        rhs: Box::new(LoInstr::U32Const { value: 0 }),
+                    });
+                }
                 PrefixOpTag::Dereference => {
                     let pointer = Box::new(parse_expr(ctx, tokens, min_bp)?);
                     let pointer_type = pointer.get_type(ctx.module);
@@ -826,8 +1002,38 @@ fn parse_postfix(
     let min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
+        InfixOpTag::Equal => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Equal,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::NotEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32NotEqual,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::And => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32And,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Or => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Or,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
         InfixOpTag::Less => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Greater => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32GreaterThanUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::GreaterEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
@@ -843,6 +1049,16 @@ fn parse_postfix(
         },
         InfixOpTag::Mul => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Div => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32DivUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Mod => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32RemUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
@@ -873,14 +1089,19 @@ fn parse_postfix(
             // TODO: lhs.loc() is not available
             compile_set(ctx, value, primary, &op.token.loc)?
         }
-        InfixOpTag::Cast => {
-            let value_type = parse_lo_type(ctx.module, tokens)?;
-
-            LoInstr::Casted {
-                value_type,
-                expr: Box::new(primary),
-            }
+        InfixOpTag::SubAssign => {
+            let value = LoInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Sub,
+                lhs: Box::new(primary.clone()),
+                rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+            };
+            // TODO: lhs.loc() is not available
+            compile_set(ctx, value, primary, &op.token.loc)?
         }
+        InfixOpTag::Cast => LoInstr::Casted {
+            value_type: parse_lo_type(ctx.module, tokens)?,
+            expr: Box::new(primary),
+        },
         InfixOpTag::FieldAccess => {
             let field_or_method_name = tokens.expect_any(Symbol)?.clone();
             if !tokens.next_is(Delim, "(").unwrap_or(false) {
@@ -1043,25 +1264,35 @@ fn parse_const_primary(
         });
     }
 
-    if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
+    if let Some(_) = tokens.eat(Symbol, "true")? {
         return Ok(LoInstr::Casted {
             value_type: LoType::Bool,
             expr: Box::new(LoInstr::U32Const { value: 1 }),
         });
     }
 
-    if let Some(_) = tokens.eat(Symbol, "false")?.cloned() {
+    if let Some(_) = tokens.eat(Symbol, "false")? {
         return Ok(LoInstr::Casted {
             value_type: LoType::Bool,
             expr: Box::new(LoInstr::U32Const { value: 0 }),
         });
     }
 
-    if let Some(global_name) = tokens.eat_any(Symbol)?.cloned() {
-        let Some(global) = ctx.globals.get(&global_name.value) else {
+    if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
+        return Ok(LoInstr::U32ConstLazy {
+            value: ctx.data_size.clone(),
+        });
+    }
+
+    if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
+        if let Some(const_value) = ctx.constants.borrow().get(&value.value) {
+            return Ok(const_value.clone());
+        }
+
+        let Some(global) = ctx.globals.get(&value.value) else {
             return Err(LoError {
-                message: format!("Reading unknown global: {}", global_name.value),
-                loc: global_name.loc,
+                message: format!("Reading unknown variable: {}", value.value),
+                loc: value.loc,
             });
         };
 
@@ -1086,8 +1317,38 @@ fn parse_const_postfix(
     let min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
+        InfixOpTag::Equal => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Equal,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::NotEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32NotEqual,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::And => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32And,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Or => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Or,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
         InfixOpTag::Less => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Greater => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32GreaterThanUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::GreaterEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
@@ -1105,6 +1366,20 @@ fn parse_const_postfix(
             kind: WasmBinaryOpKind::I32Mul,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Div => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32DivUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Mod => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32RemUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Cast => LoInstr::Casted {
+            value_type: parse_lo_type(ctx, tokens)?,
+            expr: Box::new(primary),
         },
         _ => {
             return Err(LoError {

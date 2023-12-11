@@ -8,7 +8,8 @@ use alloc::{
     vec::Vec,
 };
 
-const DEFER_UNTIL_RETURN_LABEL: &str = "return";
+// pub for use in v2
+pub const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const HEAP_ALLOC_ID: u32 = 1;
 
 pub fn parse(exprs: &Vec<SExpr>) -> Result<WasmModule, LoError> {
@@ -77,7 +78,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
             FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
             FnBodyExprs::V2(mut body) => parse_block_contents(&mut block_ctx, &mut body)?,
         };
-        if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, &mut block_ctx) {
+        if let Some(values) = get_deferred(&mut block_ctx, DEFER_UNTIL_RETURN_LABEL) {
             lo_exprs.append(&mut values?);
         };
 
@@ -858,7 +859,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             value: value.chars().next().unwrap() as u32,
         },
         ("==", [lhs, rhs]) => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Equals,
+            kind: WasmBinaryOpKind::I32Equal,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
@@ -868,7 +869,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         ("not", [lhs]) => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Equals,
+            kind: WasmBinaryOpKind::I32Equal,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(LoInstr::U32Const { value: 0 }),
         },
@@ -878,7 +879,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
         (">", [lhs, rhs]) => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32GreaterThenUnsigned,
+            kind: WasmBinaryOpKind::I32GreaterThanUnsigned,
             lhs: Box::new(compile_instr(lhs, ctx)?),
             rhs: Box::new(compile_instr(rhs, ctx)?),
         },
@@ -1125,7 +1126,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             let return_expr = LoInstr::Return {
                 value: Box::new(value),
             };
-            if let Some(values) = get_deferred(DEFER_UNTIL_RETURN_LABEL, ctx) {
+            if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
                 let mut values = values?;
                 values.push(return_expr);
                 LoInstr::Casted {
@@ -1137,6 +1138,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             }
         }
         ("defer", [defer_label_exprs @ .., defer_expr]) => {
+            let defer_instr = compile_instr(defer_expr, ctx)?;
             let defer_label = match &defer_label_exprs[..] {
                 [SExpr::Atom {
                     kind: AtomKind::Symbol,
@@ -1158,7 +1160,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                 .entry(defer_label)
                 .or_insert_with(|| vec![]);
 
-            deferred.push(defer_expr.clone());
+            deferred.push(defer_instr);
 
             LoInstr::Casted {
                 value_type: LoType::Void,
@@ -1173,7 +1175,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                 loc: defer_label_loc,
             }],
         ) => {
-            let Some(values) = get_deferred(defer_label, ctx) else {
+            let Some(values) = get_deferred(ctx, defer_label) else {
                 return Err(LoError {
                     message: format!("Unknown defer scope: {defer_label}"),
                     loc: defer_label_loc.clone(),
@@ -1707,9 +1709,10 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
     Ok(instr)
 }
 
-fn get_deferred(
-    defer_label: &str,
+// pub for use from v2
+pub fn get_deferred(
     ctx: &mut BlockContext,
+    defer_label: &str,
 ) -> Option<Result<Vec<LoInstr>, LoError>> {
     let Some(deferred) = ctx.fn_ctx.defers.get(defer_label) else {
         return None;
@@ -1718,7 +1721,7 @@ fn get_deferred(
     let mut deferred = deferred.clone();
     deferred.reverse();
 
-    Some(compile_instrs(&deferred, ctx))
+    Some(Ok(deferred))
 }
 
 // pub for use in v2

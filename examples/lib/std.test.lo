@@ -1,0 +1,6 @@
+#![new_syntax]
+
+// required to build module
+memory { min_pages: 1 };
+
+include "lib/std";

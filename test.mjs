@@ -192,6 +192,12 @@ test("compiles wasi (v2)", async () => {
     );
 });
 
+test("compiles std (v2)", async () => {
+    const output = await compile("./examples/lib/std.test.lo");
+
+    await loadWasm(output);
+});
+
 test("compiles vec", async () => {
     const output = await compile("./examples/test/vec.test.lole");
 

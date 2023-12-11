@@ -3,10 +3,19 @@ use crate::tokens::*;
 pub enum InfixOpTag {
     Assign,
     AddAssign,
+    SubAssign,
+    And,
+    Or,
+    Equal,
+    NotEqual,
     Less,
+    Greater,
+    GreaterEqual,
     Add,
     Sub,
     Mul,
+    Div,
+    Mod,
     Cast,
     FieldAccess,
     RefFieldAccess,
@@ -25,13 +34,23 @@ impl InfixOp {
         let (tag, info) = match token.value.as_str() {
             "=" => (Assign, OpInfo { bp: 1, assoc: None }),
             "+=" => (AddAssign, OpInfo { bp: 1, assoc: None }),
-            "<" => (Less, OpInfo { bp: 2, assoc: L }),
-            "+" => (Add, OpInfo { bp: 3, assoc: L }),
-            "-" => (Sub, OpInfo { bp: 3, assoc: L }),
-            "*" => (Mul, OpInfo { bp: 4, assoc: L }),
-            "as" => (Cast, OpInfo { bp: 5, assoc: L }),
-            "." => (FieldAccess, OpInfo { bp: 6, assoc: L }),
-            "->" => (RefFieldAccess, OpInfo { bp: 6, assoc: L }),
+            "-=" => (SubAssign, OpInfo { bp: 1, assoc: None }),
+            "||" => (Or, OpInfo { bp: 2, assoc: L }),
+            "&&" => (And, OpInfo { bp: 3, assoc: L }),
+            "==" => (Equal, OpInfo { bp: 4, assoc: None }),
+            "!=" => (NotEqual, OpInfo { bp: 4, assoc: None }),
+            "<" => (Less, OpInfo { bp: 4, assoc: L }),
+            ">" => (Greater, OpInfo { bp: 4, assoc: L }),
+            ">=" => (GreaterEqual, OpInfo { bp: 4, assoc: L }),
+            "+" => (Add, OpInfo { bp: 5, assoc: L }),
+            "-" => (Sub, OpInfo { bp: 5, assoc: L }),
+            "*" => (Mul, OpInfo { bp: 6, assoc: L }),
+            "/" => (Div, OpInfo { bp: 6, assoc: L }),
+            "%" => (Mod, OpInfo { bp: 6, assoc: L }),
+            "as" => (Cast, OpInfo { bp: 7, assoc: L }),
+            // TODO: check if `!block->used` is parsed properly
+            "." => (FieldAccess, OpInfo { bp: 8, assoc: L }),
+            "->" => (RefFieldAccess, OpInfo { bp: 8, assoc: L }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })
@@ -39,6 +58,7 @@ impl InfixOp {
 }
 
 pub enum PrefixOpTag {
+    Not,
     Dereference,
 }
 
@@ -53,7 +73,8 @@ impl PrefixOp {
         use OpAssoc::*;
         use PrefixOpTag::*;
         let (tag, info) = match token.value.as_str() {
-            "*" => (Dereference, OpInfo { bp: 7, assoc: L }),
+            "!" => (Not, OpInfo { bp: 9, assoc: L }),
+            "*" => (Dereference, OpInfo { bp: 9, assoc: L }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })

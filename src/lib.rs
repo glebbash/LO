@@ -43,7 +43,7 @@ pub const V2_SYNTAX_MARKER: &str = "#![new_syntax]";
 
 fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
     let module = if script.starts_with(V2_SYNTAX_MARKER) {
-        let tokens = lexer2::lex_all(file_name, script, V2_SYNTAX_MARKER)?;
+        let tokens = lexer2::lex_all(file_name, script)?;
         parser2::parse(tokens)?
     } else {
         let raw_exprs = lexer::lex_all(file_name, script)?;
