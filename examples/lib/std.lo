@@ -261,7 +261,7 @@
     };
 
     fn Vec_push(self: &Vec) -> &() {
-        self -> size += 1;
+        self->size += 1;
         Vec__grow_if_needed(self);
 
         return Vec_at_unchecked(self, self->size - 1);
