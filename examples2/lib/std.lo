@@ -76,10 +76,9 @@
 
 // stack
 
-    // TODO: `STACK_BEGIN` and `STACK_END` should be const
-    let STACK_BEGIN = __DATA_SIZE__;
-    let STACK_END = 1_048_576; // 1MB, ~20 pages (65_536b)
     let Stack_CURRENT = __DATA_SIZE__;
+    let STACK_BEGIN = __DATA_SIZE__; // TODO: this should be const
+    const STACK_END = 1_048_576; // 1MB, ~20 pages (65_536b)
 
     fn Stack_push_u32(value: u32) {
         *(Stack_alloc(sizeof u32) as &u32) = value;
@@ -122,8 +121,7 @@
         data: &(),
     };
 
-    // TODO: this should be `STACK_END`
-    let Heap_TOTAL_ALLOCATED = 1_048_576;
+    let Heap_TOTAL_ALLOCATED = STACK_END;
     let Heap_FIRST_BLOCK = 0 as &Heap_Block;
     let Heap_CURRENT_BLOCK = 0 as &Heap_Block;
 
@@ -210,7 +208,7 @@
 
     fn Vec_new_using(capacity: u32, item_size: u32, alloc_id: u32) -> &Vec {
         // TODO: look into `new`
-        let self_ptr = alloc(alloc_id, sizeof &Vec) as &Vec;
+        let self_ptr = alloc(alloc_id, sizeof Vec) as &Vec;
         *self_ptr = Vec {
             data: alloc(alloc_id, capacity * item_size),
             size: 0,

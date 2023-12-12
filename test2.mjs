@@ -478,6 +478,7 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
     const instance = await WebAssembly.instantiate(wasm, {
         // @ts-expect-error
         ...wasi.getImportObject(),
+        ...{ console },
         ...additionalImports,
     });
 
