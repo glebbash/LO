@@ -842,8 +842,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                 kind: AtomKind::Symbol,
             }],
         ) => LoInstr::I64Const {
-            // TODO(3rd-party-bug): figure out why I can't use parse::<i64>
-            value: value.parse::<i32>().map_err(|_| LoError {
+            value: value.parse::<i64>().map_err(|_| LoError {
                 message: format!("Parsing i64 failed"),
                 loc: loc.clone(),
             })? as i64,

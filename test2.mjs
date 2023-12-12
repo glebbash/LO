@@ -167,7 +167,7 @@ test("compiles hello world", async () => {
 });
 
 test.skip("compiles echo", async () => {
-    const program = await compile("./examples2/echo.lole");
+    const program = await compile("./examples2/echo.lo");
 
     const output = await runWithTmpFile(async (stdin, stdinFile) => {
         await fs.writeFile(stdinFile, "abc");
@@ -181,7 +181,7 @@ test.skip("compiles echo", async () => {
 });
 
 test.skip("compiles args", async () => {
-    const program = await compile("./examples2/test/args.test.lole");
+    const program = await compile("./examples2/test/args.test.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, {
@@ -195,12 +195,12 @@ test.skip("compiles args", async () => {
 });
 
 test.skip("compiles cat", async () => {
-    const program = await compile("./examples2/cat.lole");
+    const program = await compile("./examples2/cat.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, {
             stdout: stdout.fd,
-            args: ["args.lole", "examples2/test/42.lole"],
+            args: ["args.lo", "examples2/test/42.lo"],
             preopens: { ".": "." },
         });
         return fs.readFile(stdoutFile, { encoding: "utf-8" });
@@ -208,12 +208,12 @@ test.skip("compiles cat", async () => {
 
     assert.strictEqual(
         output,
-        await fs.readFile("examples2/test/42.lole", "utf-8")
+        await fs.readFile("examples2/test/42.lo", "utf-8")
     );
 });
 
 test.skip("compiles string-pooling", async () => {
-    const program = await compile("./examples2/test/string-pooling.lole");
+    const program = await compile("./examples2/test/string-pooling.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
@@ -224,7 +224,7 @@ test.skip("compiles string-pooling", async () => {
 });
 
 test.skip("compiles struct-in-struct", async () => {
-    const program = await compile("./examples2/test/struct-in-struct.lole");
+    const program = await compile("./examples2/test/struct-in-struct.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
@@ -235,7 +235,7 @@ test.skip("compiles struct-in-struct", async () => {
 });
 
 test.skip("compiles heap-alloc", async () => {
-    const program = await compile("./examples2/test/heap-alloc.lole");
+    const program = await compile("./examples2/test/heap-alloc.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
@@ -255,7 +255,7 @@ test.skip("compiles heap-alloc", async () => {
 });
 
 test.skip("compiles defer", async () => {
-    const program = await compile("./examples2/test/defer.lole");
+    const program = await compile("./examples2/test/defer.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
@@ -293,7 +293,7 @@ test.skip("compiles minify", async () => {
         ))
         `;
 
-    const program = await compile("./examples2/minify.lole");
+    const program = await compile("./examples2/minify.lo");
 
     const output = await runWithTmpFile(async (stdin, stdinFile) => {
         await fs.writeFile(stdinFile, testSource);
@@ -310,12 +310,12 @@ test.skip("compiles minify", async () => {
 });
 
 test.skip("compiles minify (using file input)", async () => {
-    const program = await compile("./examples2/minify.lole");
+    const program = await compile("./examples2/minify.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, {
             stdout: stdout.fd,
-            args: ["minify.lole", "test/42.lole"],
+            args: ["minify.lo", "test/42.lo"],
             preopens: { ".": "examples2" },
         });
         return fs.readFile(stdoutFile, { encoding: "utf-8" });
