@@ -1,4 +1,4 @@
-use crate::{ast::*, lexer::*, wasi_io::*};
+use crate::{ast::*, lexer_lisp::*, wasi_io::*};
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,

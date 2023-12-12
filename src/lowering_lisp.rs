@@ -1,4 +1,4 @@
-use crate::{ir::*, wasm::*};
+use crate::{ir_lisp::*, wasm::*};
 use alloc::vec::Vec;
 
 pub fn lower_exprs(out: &mut Vec<WasmInstr>, exprs: Vec<LoInstr>) {
@@ -150,6 +150,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
         LoInstr::MultiValueEmit { values } => {
             lower_exprs(out, values);
         }
+        LoInstr::NoEmit { expr: _ } => {}
         LoInstr::Casted {
             expr,
             value_type: _,

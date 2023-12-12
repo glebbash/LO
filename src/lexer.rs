@@ -1,7 +1,7 @@
-use crate::ast::*;
-use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
+use crate::{ast::*, tokens::*};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 
-type LexResult = Result<SExpr, LoError>;
+type LexResult = Result<LoToken, LoError>;
 
 #[derive(Clone)]
 struct Lexer {
@@ -12,7 +12,7 @@ struct Lexer {
     col: usize,
 }
 
-pub fn lex_all(file_name: &str, script: &str) -> Result<Vec<SExpr>, LoError> {
+pub fn lex_all(file_name: &str, script: &str) -> Result<LoTokenStream, LoError> {
     Lexer::new(file_name, script).lex_all()
 }
 
@@ -27,37 +27,84 @@ impl Lexer {
         }
     }
 
-    fn lex_all(&mut self) -> Result<Vec<SExpr>, LoError> {
+    fn lex_all(&mut self) -> Result<LoTokenStream, LoError> {
+        let mut tokens = Vec::new();
+
         self.skip_space();
 
-        let mut items = Vec::new();
-
         while self.index < self.chars.len() {
-            if !is_list_start(self.current_char()?) {
-                return Err(self.err_unexpected_char());
-            }
-
-            let res = self.lex_list()?;
+            tokens.push(self.lex_token()?);
             self.skip_space();
-            items.push(res);
         }
 
-        Ok(items)
+        Ok(LoTokenStream::new(tokens, self.loc()))
     }
 
-    fn lex_expr(&mut self) -> LexResult {
-        if is_list_start(self.current_char()?) {
-            self.lex_list()
-        } else {
-            self.lex_atom()
+    fn lex_token(&mut self) -> LexResult {
+        let char = self.current_char()?;
+
+        if char == '"' {
+            return self.lex_string();
         }
+        if char.is_numeric() {
+            return self.lex_int_literal();
+        }
+        if is_symbol_char(char) {
+            return self.lex_symbol();
+        }
+        if is_delim_char(char) {
+            return self.lex_delim();
+        }
+        if is_operator_char(char) {
+            return self.lex_operator();
+        }
+
+        return Err(LoError {
+            message: format!("Unexpected char: {char}"),
+            loc: self.loc(),
+        });
     }
 
-    fn lex_atom(&mut self) -> LexResult {
-        match self.current_char()? {
-            '"' => self.lex_string(),
-            _ => self.lex_symbol(),
+    fn lex_int_literal(&mut self) -> LexResult {
+        let mut loc = self.loc();
+        let mut value = String::new();
+
+        loop {
+            match self.current_char() {
+                Ok('_') => {
+                    self.next_char();
+                }
+                Ok(c @ '0'..='9') => {
+                    value.push(c);
+                    self.next_char();
+                }
+                _ => break,
+            }
         }
+
+        loc.length = self.index - loc.offset;
+
+        Ok(LoToken {
+            type_: LoTokenType::IntLiteral,
+            value,
+            loc,
+        })
+    }
+
+    fn lex_symbol(&mut self) -> LexResult {
+        let mut loc = self.loc();
+
+        while is_symbol_char(self.current_char()?) {
+            self.next_char();
+        }
+
+        loc.length = self.index - loc.offset;
+
+        Ok(LoToken {
+            type_: LoTokenType::Symbol,
+            value: self.chars[loc.offset..self.index].iter().collect(),
+            loc,
+        })
     }
 
     fn lex_string(&mut self) -> LexResult {
@@ -94,84 +141,65 @@ impl Lexer {
 
         loc.length = self.index - loc.offset;
 
-        Ok(SExpr::Atom {
+        Ok(LoToken {
+            type_: LoTokenType::StringLiteral,
             value,
-            kind: AtomKind::String,
             loc,
         })
     }
 
-    fn lex_symbol(&mut self) -> LexResult {
+    fn lex_delim(&mut self) -> LexResult {
+        let loc = self.loc();
+
+        self.next_char(); // skip delimiter char
+
+        Ok(LoToken {
+            type_: LoTokenType::Delim,
+            value: self.chars[loc.offset].into(),
+            loc,
+        })
+    }
+
+    fn lex_operator(&mut self) -> LexResult {
         let mut loc = self.loc();
 
-        loop {
-            let c = self.current_char()?;
-            if is_space(c) || is_list_end(c) || c == ';' {
-                break;
-            }
+        while is_operator_char(self.current_char()?) {
             self.next_char();
         }
 
         loc.length = self.index - loc.offset;
 
-        Ok(SExpr::Atom {
+        Ok(LoToken {
+            type_: LoTokenType::Operator,
             value: self.chars[loc.offset..self.index].iter().collect(),
-            kind: AtomKind::Symbol,
             loc,
         })
-    }
-
-    fn lex_list(&mut self) -> LexResult {
-        let mut loc = self.loc();
-
-        let list_start_char = self.current_char()?;
-        self.next_char(); // eat list start
-
-        self.skip_space();
-
-        let mut items = Vec::new();
-
-        while !is_list_end(self.current_char()?) {
-            let res = self.lex_expr()?;
-            self.skip_space();
-            items.push(res);
-        }
-
-        let list_end_char = self.current_char()?;
-        self.next_char(); // eat list end
-
-        if !is_valid_list_chars(list_start_char, list_end_char) {
-            return Err(self.err_unexpected_char());
-        }
-
-        loc.length = self.index - loc.offset;
-
-        if list_start_char == '{' && items.len() >= 2 {
-            return m_expr_to_s_expr_and_validate(items, loc);
-        }
-
-        Ok(SExpr::List { value: items, loc })
     }
 
     fn skip_space(&mut self) {
-        while self.current_char().map(is_space).unwrap_or(false) {
+        while self.current_char().map(is_space_char).unwrap_or(false) {
             self.next_char();
         }
 
-        let Ok(';') = self.current_char() else {
-            return;
-        };
-        self.next_char();
+        // skip comment
+        if let Ok('/') = self.current_char() {
+            let Ok('/') = self.peek_next_char() else {
+                return;
+            };
 
-        while self.current_char().map(|c| c != '\n').unwrap_or(false) {
-            self.next_char();
+            loop {
+                self.next_char();
+
+                let Ok(char) = self.current_char() else {
+                    return;
+                };
+
+                if char == '\n' {
+                    self.skip_space();
+                    break;
+                }
+            }
         }
-
-        if let Ok('\n') = self.current_char() {
-            self.next_char();
-        }
-
-        self.skip_space();
     }
 
     fn next_char(&mut self) {
@@ -193,6 +221,13 @@ impl Lexer {
     fn current_char(&mut self) -> Result<char, LoError> {
         self.chars
             .get(self.index)
+            .copied()
+            .ok_or_else(|| self.err_unexpected_eof())
+    }
+
+    fn peek_next_char(&mut self) -> Result<char, LoError> {
+        self.chars
+            .get(self.index + 1)
             .copied()
             .ok_or_else(|| self.err_unexpected_eof())
     }
@@ -222,65 +257,21 @@ impl Lexer {
     }
 }
 
-fn m_expr_to_s_expr_and_validate(items: Vec<SExpr>, loc: LoLocation) -> LexResult {
-    if items.len() % 2 != 1 {
-        return Err(LoError {
-            message: format!("ParseError: Invalid m-expr: even length"),
-            loc,
-        });
-    }
-
-    if items.len() < 2 {
-        return Ok(SExpr::List { value: items, loc });
-    }
-
-    return Ok(m_expr_to_s_expr(items, loc));
-}
-
-// ❓ {1 + 2 - 3 * 4}
-// 🚫 (+ 1 (- 2 (* 3 4)))
-// ✅ (* (- (+ 1 2) 3) 4)
-fn m_expr_to_s_expr(mut items: Vec<SExpr>, loc: LoLocation) -> SExpr {
-    if items.len() == 1 {
-        return items.into_iter().next().unwrap();
-    }
-
-    let rhs = items.pop().unwrap();
-    let op = items.pop().unwrap();
-    let lhs = m_expr_to_s_expr(items, loc.clone());
-
-    SExpr::List {
-        value: vec![op, lhs, rhs],
-        loc,
-    }
-}
-
-fn is_list_start(c: char) -> bool {
-    match c {
-        '(' | '{' | '[' => true,
-        _ => false,
-    }
-}
-
-fn is_list_end(c: char) -> bool {
-    match c {
-        ')' | '}' | ']' => true,
-        _ => false,
-    }
-}
-
-fn is_valid_list_chars(start: char, end: char) -> bool {
-    match (start, end) {
-        ('(', ')') => true,
-        ('{', '}') => true,
-        ('[', ']') => true,
-        _ => false,
-    }
-}
-
-fn is_space(c: char) -> bool {
+fn is_space_char(c: char) -> bool {
     match c {
         ' ' | '\n' | '\t' => true,
         _ => false,
     }
+}
+
+fn is_symbol_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+fn is_delim_char(c: char) -> bool {
+    "(){}[],;".contains(c)
+}
+
+fn is_operator_char(c: char) -> bool {
+    "!#$%&*+-./:<=>?@\\^~|".contains(c)
 }

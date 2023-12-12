@@ -4,19 +4,21 @@
 extern crate alloc;
 
 mod ast;
-mod expand;
 mod ir;
 mod lexer;
 mod lowering;
+mod operators;
 mod parser;
+mod tokens;
 mod wasi_io;
 mod wasm;
 
-// v2
-mod lexer2;
-mod operators;
-mod parser2;
-mod tokens;
+// v1
+mod expand_lisp;
+mod ir_lisp;
+mod lexer_lisp;
+mod lowering_lisp;
+mod parser_lisp;
 
 use alloc::{string::String, vec::Vec};
 
@@ -41,12 +43,12 @@ mod wasm_target {
 
 fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
     let module = if file_name.ends_with(".lo") {
-        let tokens = lexer2::lex_all(file_name, script)?;
-        parser2::parse(tokens)?
+        let tokens = lexer::lex_all(file_name, script)?;
+        parser::parse(tokens)?
     } else {
-        let raw_exprs = lexer::lex_all(file_name, script)?;
-        let exprs = expand::expand(raw_exprs)?;
-        parser::parse(&exprs)?
+        let raw_exprs = lexer_lisp::lex_all(file_name, script)?;
+        let exprs = expand_lisp::expand(raw_exprs)?;
+        parser_lisp::parse(&exprs)?
     };
     let mut binary = Vec::new();
     module.dump(&mut binary);

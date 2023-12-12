@@ -1,4 +1,4 @@
-use crate::{ast::*, tokens::*, wasm::*};
+use crate::{ast::*, lexer_lisp::*, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -311,7 +311,7 @@ pub struct FnBody {
     pub type_index: u32,
     pub locals: BTreeMap<String, LocalDef>,
     pub locals_last_index: u32,
-    pub body: LoTokenStream,
+    pub body: Vec<SExpr>,
 }
 
 pub struct FnExport {
@@ -440,6 +440,10 @@ pub enum LoInstr {
         value_type: LoType,
         expr: Box<LoInstr>,
     },
+    // will not be written to binary, used for types only
+    NoEmit {
+        expr: Box<LoInstr>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -475,6 +479,7 @@ impl LoInstr {
                 }
                 LoType::Tuple(types)
             }
+            LoInstr::NoEmit { expr } => expr.get_type(ctx),
             LoInstr::StructLoad {
                 struct_name,
                 address_instr: _,

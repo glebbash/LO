@@ -1,31 +1,35 @@
-use crate::{ast::*, ir::*, lowering::*, parser2::*, wasm::*};
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, BTreeSet},
-    format, str,
-    string::String,
-    vec,
-    vec::Vec,
-};
+use crate::{ast::*, ir::*, lexer::*, lowering::*, operators::*, tokens::*, wasi_io::*, wasm::*};
+use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
+use LoTokenType::*;
 
-// pub for use in v2
-pub const DEFER_UNTIL_RETURN_LABEL: &str = "return";
-const HEAP_ALLOC_ID: u32 = 1;
+const DEFER_UNTIL_RETURN_LABEL: &str = "return";
+const RECEIVER_PARAM_NAME: &str = "self";
 
-pub fn parse(exprs: &Vec<SExpr>) -> Result<WasmModule, LoError> {
+pub fn parse(mut tokens: LoTokenStream) -> Result<WasmModule, LoError> {
     let mut ctx = ModuleContext::default();
-
-    for expr in exprs {
-        compile_top_level_expr(&expr, &mut ctx)?;
-    }
-
+    parse_file(&mut ctx, &mut tokens)?;
     process_delayed_actions(&mut ctx)?;
-
     Ok(ctx.wasm_module.take())
 }
 
-// pub to use from v2
-pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
+fn parse_file(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
+    while tokens.peek().is_some() {
+        parse_top_level_expr(ctx, tokens)?;
+        tokens.expect(LoTokenType::Delim, ";")?;
+    }
+
+    if let Some(unexpected) = tokens.peek() {
+        return Err(LoError {
+            message: format!("Unexpected token on top level: {}", unexpected.value),
+            loc: unexpected.loc.clone(),
+        });
+    }
+
+    Ok(())
+}
+
+// TODO: copied from v1, review
+fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
     // push function exports
     for fn_export in &ctx.fn_exports {
         let Some(fn_def) = ctx.fn_defs.get(&fn_export.in_name) else {
@@ -43,7 +47,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
     }
 
     // push function codes
-    for fn_body in ctx.fn_bodies.take() {
+    for mut fn_body in ctx.fn_bodies.take() {
         let fn_def = ctx
             .fn_defs
             .values()
@@ -74,10 +78,7 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
             },
         };
 
-        let mut lo_exprs = match fn_body.body {
-            FnBodyExprs::V1(body) => compile_block(&body, &mut block_ctx)?,
-            FnBodyExprs::V2(mut body) => parse_block_contents(&mut block_ctx, &mut body)?,
-        };
+        let mut lo_exprs = parse_block_contents(&mut block_ctx, &mut fn_body.body)?;
         if let Some(values) = get_deferred(&mut block_ctx, DEFER_UNTIL_RETURN_LABEL) {
             lo_exprs.append(&mut values?);
         };
@@ -109,1557 +110,1565 @@ pub fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
     Ok(())
 }
 
-fn compile_block(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoInstr>, LoError> {
-    let instrs = compile_instrs(exprs, ctx)?;
-    for (instr, expr) in instrs.iter().zip(exprs) {
-        if let LoInstr::NoEmit { .. } = instr {
-            continue;
+fn parse_top_level_expr(
+    ctx: &mut ModuleContext,
+    tokens: &mut LoTokenStream,
+) -> Result<(), LoError> {
+    if tokens.peek().is_none() {
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "fn")? {
+        return parse_fn_def(ctx, tokens, false);
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "memory")? {
+        return parse_memory(ctx, tokens, false);
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "export")? {
+        if let Some(_) = tokens.eat(Symbol, "fn")? {
+            return parse_fn_def(ctx, tokens, true);
         }
 
-        let instr_type = instr.get_type(ctx.module);
-        if instr_type != LoType::Void {
-            return Err(LoError {
-                message: format!("TypeError: Excess values"),
-                loc: expr.loc().clone(),
+        if let Some(_) = tokens.eat(Symbol, "memory")? {
+            return parse_memory(ctx, tokens, true);
+        }
+
+        if let Some(_) = tokens.eat(Symbol, "existing")? {
+            tokens.expect(Symbol, "fn")?;
+            let in_name = tokens.expect_any(Symbol)?.clone();
+            tokens.expect(Symbol, "as")?;
+            let out_name = tokens.expect_any(StringLiteral)?.clone();
+
+            ctx.fn_exports.push(FnExport {
+                in_name: in_name.value,
+                out_name: out_name.value,
+                loc: in_name.loc,
+            });
+
+            return Ok(());
+        }
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "import")? {
+        tokens.expect(Symbol, "from")?;
+        let module_name = tokens.expect_any(StringLiteral)?.clone();
+
+        tokens.expect(Delim, "{")?;
+        while let None = tokens.eat(Delim, "}")? {
+            tokens.expect(Symbol, "fn")?;
+            let fn_decl = parse_fn_decl(ctx, tokens)?;
+            tokens.expect(LoTokenType::Delim, ";")?;
+
+            if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
+                return Err(LoError {
+                    message: format!("Cannot redefine function: {}", fn_decl.fn_name),
+                    loc: fn_decl.loc,
+                });
+            }
+
+            let type_index = ctx.insert_fn_type(fn_decl.wasm_type);
+
+            let fn_index = ctx.imported_fns_count;
+            ctx.imported_fns_count += 1;
+
+            let fn_def = FnDef {
+                local: false,
+                fn_index,
+                type_index,
+                kind: fn_decl.lo_type,
+            };
+            ctx.fn_defs.insert(fn_decl.fn_name.clone(), fn_def);
+            ctx.wasm_module.borrow_mut().imports.push(WasmImport {
+                module_name: module_name.value.clone(),
+                item_name: fn_decl.method_name,
+                item_desc: WasmImportDesc::Func { type_index },
             });
         }
-    }
-    Ok(instrs)
-}
 
-fn compile_top_level_expr(expr: &SExpr, ctx: &mut ModuleContext) -> Result<(), LoError> {
-    let SExpr::List { value: items, .. } = expr else {
-        return Err(LoError {
-            message: format!("Unexpected atom"),
-            loc: expr.loc().clone(),
-        });
-    };
-
-    let [SExpr::Atom {
-        value: op,
-        loc: op_loc,
-        kind,
-    }, args @ ..] = &items[..]
-    else {
-        return Err(LoError {
-            message: format!("Expected operation, got a simple list"),
-            loc: expr.loc().clone(),
-        });
-    };
-
-    if *kind != AtomKind::Symbol {
-        return Err(LoError {
-            message: format!("Expected operation, got a string"),
-            loc: expr.loc().clone(),
-        });
+        return Ok(());
     }
 
-    match op.as_str() {
-        "mem" => match args {
-            [SExpr::Atom {
-                value: mem_name,
-                loc: mem_name_loc,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
-                value: min_literal,
-                loc: _,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
-                value: min_memory,
-                loc: min_memory_loc,
-                kind: AtomKind::Symbol,
-            }, optional @ ..]
-                if min_literal == ":min" =>
+    if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
+        let mutable = true;
+        let global_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+
+        let global_value = parse_const_expr(ctx, tokens, 0)?;
+
+        let lo_type = global_value.get_type(ctx);
+        let Some(wasm_type) = lo_type.to_wasm_type() else {
+            return Err(LoError {
+                message: format!("Unsupported type: {lo_type}"),
+                // TODO: value.loc() is not available
+                loc: let_token.loc,
+            });
+        };
+
+        if ctx.globals.contains_key(&global_name.value) {
+            return Err(LoError {
+                message: format!("Cannot redefine global: {}", global_name.value),
+                loc: global_name.loc,
+            });
+        }
+
+        ctx.globals.insert(
+            global_name.value.clone(),
+            GlobalDef {
+                index: ctx.globals.len() as u32,
+                mutable,
+                value_type: lo_type,
+            },
+        );
+
+        let mut initial_value = WasmExpr { instrs: vec![] };
+        lower_expr(&mut initial_value.instrs, global_value);
+
+        ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
+            kind: WasmGlobalKind {
+                value_type: wasm_type,
+                mutable,
+            },
+            initial_value,
+        });
+
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "struct")? {
+        let struct_name = tokens.expect_any(Symbol)?.clone();
+
+        if ctx.struct_defs.contains_key(&struct_name.value) {
+            return Err(LoError {
+                message: format!("Cannot redefine struct {}", struct_name.value),
+                loc: struct_name.loc,
+            });
+        }
+
+        // declare not fully defined struct to use in self-references
+        ctx.struct_defs.insert(
+            struct_name.value.clone(),
+            StructDef {
+                fields: vec![],
+                fully_defined: false,
+            },
+        );
+
+        let mut field_index = 0;
+        let mut byte_offset = 0;
+        let mut struct_fields = Vec::<StructField>::new();
+
+        tokens.expect(Delim, "{")?;
+        while let None = tokens.eat(Delim, "}")? {
+            let field_name = tokens.expect_any(Symbol)?.clone();
+            tokens.expect(Operator, ":")?;
+            let field_type = parse_lo_type(ctx, tokens)?;
+            if !tokens.next_is(Delim, "}")? {
+                tokens.expect(Delim, ",")?;
+            }
+
+            if struct_fields
+                .iter()
+                .find(|f| f.name == field_name.value)
+                .is_some()
             {
-                if ctx.memories.contains_key(mem_name) {
-                    return Err(LoError {
-                        message: format!("Duplicate memory definition: {mem_name}"),
-                        loc: mem_name_loc.clone(),
-                    });
-                }
+                return Err(LoError {
+                    message: format!(
+                        "Found duplicate struct field name: '{}' of struct {}",
+                        field_name.value, struct_name.value,
+                    ),
+                    loc: field_name.loc,
+                });
+            }
 
-                let min_memory = min_memory.parse().map_err(|_| LoError {
-                    message: format!("Parsing {op} :min (u32) failed"),
-                    loc: min_memory_loc.clone(),
+            let mut stats = EmitComponentStats::default();
+            field_type
+                .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
+                .map_err(|err| LoError {
+                    message: err,
+                    // TODO: field_type.loc() is not available
+                    loc: field_name.loc,
                 })?;
 
-                let max_memory = match optional {
-                    [SExpr::Atom {
-                        value: max_literal,
-                        loc: _,
-                        kind: AtomKind::Symbol,
-                    }, SExpr::Atom {
-                        value: max_memory,
-                        loc: max_memory_loc,
-                        kind: AtomKind::Symbol,
-                    }] if max_literal == ":max" => {
-                        Some(max_memory.parse::<u32>().map_err(|_| LoError {
-                            message: format!("Parsing {op} :max (u32) failed"),
-                            loc: max_memory_loc.clone(),
-                        })?)
-                    }
-                    [] => None,
-                    _ => {
-                        return Err(LoError {
-                            message: format!("Invalid arguments for {op}"),
-                            loc: op_loc.clone(),
-                        })
-                    }
-                };
+            struct_fields.push(StructField {
+                name: field_name.value,
+                value_type: field_type,
+                field_index,
+                byte_offset,
+            });
 
-                let memory_index = ctx.wasm_module.borrow().memories.len() as u32;
-                ctx.memories.insert(mem_name.clone(), memory_index);
-                ctx.wasm_module.borrow_mut().memories.push(WasmLimits {
-                    min: min_memory,
-                    max: max_memory,
-                });
-            }
-            _ => {
-                return Err(LoError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
-                })
-            }
-        },
-        "fn" => match args {
-            [SExpr::Atom {
-                value: fn_name,
-                loc: fn_name_loc,
-                kind: AtomKind::Symbol,
-            }, SExpr::List {
-                value: input_exprs, ..
-            }, output_expr, SExpr::List { value: body, .. }] => {
-                if ctx.fn_defs.contains_key(fn_name) {
-                    return Err(LoError {
-                        message: format!("Cannot redefine function: {fn_name}"),
-                        loc: fn_name_loc.clone(),
-                    });
-                }
+            field_index += stats.count;
+            byte_offset += stats.byte_length;
+        }
 
-                let mut locals = BTreeMap::new();
+        let struct_def = ctx.struct_defs.get_mut(&struct_name.value).unwrap();
+        struct_def.fields.append(&mut struct_fields);
+        struct_def.fully_defined = true;
 
-                let mut lo_inputs = vec![];
-                let mut wasm_inputs = vec![];
-                for input_expr in input_exprs.iter() {
-                    let SExpr::List {
-                        value: name_and_type,
-                        ..
-                    } = input_expr
-                    else {
-                        return Err(LoError {
-                            message: format!("Unexpected atom in function params list"),
-                            loc: input_expr.loc().clone(),
-                        });
-                    };
+        return Ok(());
+    }
 
-                    let [SExpr::Atom {
-                        value: p_name,
-                        loc: p_name_loc,
-                        kind: AtomKind::Symbol,
-                    }, p_type] = &name_and_type[..]
-                    else {
-                        return Err(LoError {
-                            message: format!(
-                                "Expected name and parameter pairs in function params list"
-                            ),
-                            loc: input_expr.loc().clone(),
-                        });
-                    };
+    if let Some(_) = tokens.eat(Symbol, "type")?.cloned() {
+        let type_alias = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+        let actual_type = parse_lo_type(ctx, tokens)?;
 
-                    if locals.contains_key(p_name) {
-                        return Err(LoError {
-                            message: format!(
-                                "Found function param with conflicting name: {p_name}"
-                            ),
-                            loc: p_name_loc.clone(),
-                        });
-                    }
-
-                    let local_index = wasm_inputs.len() as u32;
-                    let value_type = parse_lo_type(p_type, &ctx)?;
-                    value_type.emit_components(&ctx, &mut wasm_inputs);
-
-                    locals.insert(
-                        p_name.clone(),
-                        LocalDef {
-                            index: local_index,
-                            value_type: value_type.clone(),
-                        },
-                    );
-                    lo_inputs.push(value_type);
-                }
-
-                let lo_output = parse_lo_type(output_expr, &ctx)?;
-                let mut wasm_outputs = vec![];
-                lo_output.emit_components(&ctx, &mut wasm_outputs);
-
-                let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32;
-                let locals_last_index = wasm_inputs.len() as u32;
-
-                let type_index = ctx.insert_fn_type(WasmFnType {
-                    inputs: wasm_inputs,
-                    outputs: wasm_outputs,
-                });
-
-                ctx.wasm_module.borrow_mut().functions.push(type_index);
-                let fn_def = FnDef {
-                    local: true,
-                    fn_index,
-                    type_index,
-                    kind: LoFnType {
-                        inputs: lo_inputs,
-                        output: lo_output,
-                    },
-                };
-                ctx.fn_defs.insert(fn_name.clone(), fn_def);
-                ctx.fn_bodies.borrow_mut().push(FnBody {
-                    fn_index,
-                    type_index,
-                    locals,
-                    locals_last_index,
-                    body: FnBodyExprs::V1(body.clone()),
-                });
-            }
-            _ => {
-                return Err(LoError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
-                })
-            }
-        },
-        "import" => match args {
-            [SExpr::Atom {
-                value: fn_literal, ..
-            }, SExpr::Atom {
-                value: fn_name,
-                loc: fn_name_loc,
-                kind: AtomKind::Symbol,
-            }, SExpr::List {
-                value: input_exprs, ..
-            }, output_expr, SExpr::Atom {
-                value: from_literal,
-                loc: _,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
-                value: module_name,
-                loc: _,
-                kind: _,
-            }, SExpr::Atom {
-                value: extern_fn_name,
-                loc: _,
-                kind: _,
-            }] if fn_literal == "fn" && from_literal == ":from" => {
-                if ctx.fn_defs.contains_key(fn_name) {
-                    return Err(LoError {
-                        message: format!("Cannot redefine function: {fn_name}"),
-                        loc: fn_name_loc.clone(),
-                    });
-                }
-
-                let mut param_names = BTreeSet::new();
-
-                let mut lo_inputs = vec![];
-                let mut wasm_inputs = vec![];
-                for input_expr in input_exprs.iter() {
-                    let SExpr::List {
-                        value: name_and_type,
-                        ..
-                    } = input_expr
-                    else {
-                        return Err(LoError {
-                            message: format!("Unexpected atom in function params list"),
-                            loc: input_expr.loc().clone(),
-                        });
-                    };
-
-                    let [SExpr::Atom {
-                        value: p_name,
-                        loc: name_loc,
-                        kind: AtomKind::Symbol,
-                    }, p_type] = &name_and_type[..]
-                    else {
-                        return Err(LoError {
-                            message: format!(
-                                "Expected name and parameter pairs in function params list"
-                            ),
-                            loc: input_expr.loc().clone(),
-                        });
-                    };
-
-                    if param_names.contains(p_name) {
-                        return Err(LoError {
-                            message: format!(
-                                "Found function param with conflicting name: {p_name}"
-                            ),
-                            loc: name_loc.clone(),
-                        });
-                    }
-
-                    let value_type = parse_lo_type(p_type, &ctx)?;
-                    value_type.emit_components(&ctx, &mut wasm_inputs);
-                    lo_inputs.push(value_type);
-
-                    param_names.insert(p_name.clone());
-                }
-
-                let mut wasm_outputs = vec![];
-                let lo_output = parse_lo_type(output_expr, &ctx)?;
-                lo_output.emit_components(&ctx, &mut wasm_outputs);
-
-                let type_index = ctx.insert_fn_type(WasmFnType {
-                    inputs: wasm_inputs,
-                    outputs: wasm_outputs,
-                });
-
-                let fn_index = ctx.imported_fns_count;
-                ctx.imported_fns_count += 1;
-
-                let fn_def = FnDef {
-                    local: false,
-                    fn_index,
-                    type_index,
-                    kind: LoFnType {
-                        inputs: lo_inputs,
-                        output: lo_output,
-                    },
-                };
-                ctx.fn_defs.insert(fn_name.clone(), fn_def);
-                ctx.wasm_module.borrow_mut().imports.push(WasmImport {
-                    module_name: module_name.clone(),
-                    item_name: extern_fn_name.clone(),
-                    item_desc: WasmImportDesc::Func { type_index },
-                });
-            }
-            _ => {
-                return Err(LoError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
-                })
-            }
-        },
-        "export" => match args {
-            [SExpr::Atom {
-                value: mem_literal,
-                loc: _,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
-                value: in_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
-                value: as_literal, ..
-            }, SExpr::Atom {
-                value: out_name,
-                loc: _,
-                kind: _,
-            }] if mem_literal == "mem" && as_literal == ":as" => {
-                let Some(memory_index) = ctx.memories.get(in_name).cloned() else {
-                    return Err(LoError {
-                        message: format!("Cannot export mem {in_name}, not found"),
-                        loc: name_loc.clone(),
-                    });
-                };
-
-                ctx.wasm_module.borrow_mut().exports.push(WasmExport {
-                    export_type: WasmExportType::Mem,
-                    export_name: out_name.clone(),
-                    exported_item_index: memory_index,
-                });
-            }
-            [SExpr::Atom {
-                value: in_name,
-                loc: in_name_loc,
-                ..
-            }, SExpr::Atom {
-                value: as_literal, ..
-            }, SExpr::Atom {
-                value: out_name, ..
-            }] if as_literal == ":as" => {
-                ctx.fn_exports.push(FnExport {
-                    in_name: in_name.clone(),
-                    out_name: out_name.clone(),
-                    loc: in_name_loc.clone(),
-                });
-            }
-            _ => {
-                return Err(LoError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
-                })
-            }
-        },
-        "struct" => match args {
-            [SExpr::Atom {
-                value: struct_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, field_defs @ ..] => {
-                if ctx.struct_defs.contains_key(struct_name) {
-                    return Err(LoError {
-                        message: format!("Cannot redefine struct {struct_name}"),
-                        loc: name_loc.clone(),
-                    });
-                }
-
-                ctx.struct_defs.insert(
-                    struct_name.clone(),
-                    StructDef {
-                        fields: vec![],
-                        fully_defined: false,
-                    },
-                );
-
-                let mut struct_fields = build_struct_fields(field_defs, struct_name, ctx)?;
-
-                let struct_def = ctx.struct_defs.get_mut(struct_name).unwrap();
-                struct_def.fields.append(&mut struct_fields);
-                struct_def.fully_defined = true;
-            }
-            _ => {
-                return Err(LoError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
-                })
-            }
-        },
-        "global" => {
-            let (mutable, global_name, global_type_expr, global_value, name_loc) = match args {
-                [SExpr::Atom {
-                    value: mutable_literal,
-                    loc: _,
-                    kind: AtomKind::Symbol,
-                }, SExpr::Atom {
-                    value: global_name,
-                    loc: name_loc,
-                    kind: AtomKind::Symbol,
-                }, global_type, global_value]
-                    if mutable_literal == "mut" =>
-                {
-                    (true, global_name, global_type, global_value, name_loc)
-                }
-                [SExpr::Atom {
-                    value: global_name,
-                    loc: name_loc,
-                    kind: AtomKind::Symbol,
-                }, global_type, global_value] => {
-                    (false, global_name, global_type, global_value, name_loc)
-                }
-                _ => {
-                    return Err(LoError {
-                        message: format!("Invalid arguments for {op}"),
-                        loc: op_loc.clone(),
-                    })
-                }
-            };
-
-            if ctx.globals.contains_key(global_name) {
-                return Err(LoError {
-                    message: format!("Cannot redefine global: {global_name}"),
-                    loc: name_loc.clone(),
-                });
-            }
-
-            let lo_type = parse_lo_type(global_type_expr, ctx)?;
-            let Some(wasm_type) = lo_type.to_wasm_type() else {
-                return Err(LoError {
-                    message: format!("Unsupported type: {global_type_expr}"),
-                    loc: global_type_expr.loc().clone(),
-                });
-            };
-
-            ctx.globals.insert(
-                global_name.clone(),
-                GlobalDef {
-                    index: ctx.globals.len() as u32,
-                    mutable,
-                    value_type: lo_type,
-                },
-            );
-
-            // TODO: move to better place
-            let global_instr = compile_const_instr(global_value, &ctx)?;
-            let mut initial_value = WasmExpr { instrs: vec![] };
-            lower_expr(&mut initial_value.instrs, global_instr);
-
-            ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
-                kind: WasmGlobalKind {
-                    value_type: wasm_type,
-                    mutable,
-                },
-                initial_value,
+        if ctx.type_aliases.borrow().contains_key(&type_alias.value) {
+            return Err(LoError {
+                message: format!("Duplicate type alias: {}", type_alias.value),
+                loc: type_alias.loc.clone(),
             });
         }
-        "data" => {
-            let [SExpr::Atom {
-                value: offset,
+
+        ctx.type_aliases
+            .borrow_mut()
+            .insert(type_alias.value, actual_type);
+
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "const")?.cloned() {
+        let const_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+        let const_value = parse_const_expr(ctx, tokens, 0)?;
+
+        if ctx.constants.borrow().contains_key(&const_name.value) {
+            return Err(LoError {
+                message: format!("Duplicate constant: {}", const_name.value),
+                loc: const_name.loc.clone(),
+            });
+        }
+
+        ctx.constants
+            .borrow_mut()
+            .insert(const_name.value, const_value);
+
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "include")? {
+        let module_path = tokens.expect_any(StringLiteral)?;
+
+        if !ctx.included_modules.insert(module_path.value.clone()) {
+            // do not include module twice
+            return Ok(());
+        };
+
+        let file_name = format!("{}.lo", module_path.value);
+        let mod_fd = fd_open(&file_name).map_err(|err| LoError {
+            message: format!("Cannot load file {file_name}: {err}"),
+            loc: module_path.loc.clone(),
+        })?;
+
+        let source_buf = fd_read_all_and_close(mod_fd);
+        let source = str::from_utf8(source_buf.as_slice()).unwrap();
+
+        let mut tokens = lex_all(&file_name, source)?;
+        return parse_file(ctx, &mut tokens);
+    }
+
+    let unexpected = tokens.peek().unwrap();
+    return Err(LoError {
+        message: format!("Unexpected top level token: {}", unexpected.value),
+        loc: unexpected.loc.clone(),
+    });
+}
+
+fn parse_memory(
+    ctx: &mut ModuleContext,
+    tokens: &mut LoTokenStream,
+    exported: bool,
+) -> Result<(), LoError> {
+    if let Some(_) = tokens.eat(Operator, "@")? {
+        let offset = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+        tokens.expect(Operator, "=")?;
+        let data = tokens.expect_any(StringLiteral)?;
+
+        let bytes = data.value.as_bytes().iter().map(|b| *b).collect();
+
+        ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
+            offset: WasmExpr {
+                instrs: vec![WasmInstr::I32Const {
+                    value: offset as i32,
+                }],
+            },
+            bytes,
+        });
+
+        return Ok(());
+    }
+
+    let memory_name = String::from("memory");
+    if ctx.memories.contains_key(&memory_name) {
+        return Err(LoError {
+            message: format!("Duplicate memory definition: {memory_name}"),
+            loc: tokens.peek().unwrap().loc.clone(),
+        });
+    }
+
+    let mut memory_limits = WasmLimits { min: 0, max: None };
+
+    tokens.expect(Delim, "{")?;
+    while let None = tokens.eat(Delim, "}")? {
+        let prop = tokens.expect_any(Symbol)?.clone();
+        match prop.value.as_str() {
+            "min_pages" => {
+                tokens.expect(Operator, ":")?;
+                let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+                memory_limits.min = value;
+            }
+            "max_pages" => {
+                tokens.expect(Operator, ":")?;
+                let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+                memory_limits.max = Some(value);
+            }
+            _ => {
+                return Err(LoError {
+                    message: format!("ayo"),
+                    loc: prop.loc,
+                })
+            }
+        }
+    }
+
+    let memory_index = ctx.wasm_module.borrow().memories.len() as u32;
+    ctx.wasm_module.borrow_mut().memories.push(memory_limits);
+    ctx.memories.insert(memory_name.clone(), memory_index);
+
+    if exported {
+        ctx.wasm_module.borrow_mut().exports.push(WasmExport {
+            export_type: WasmExportType::Mem,
+            export_name: "memory".into(),
+            exported_item_index: memory_index,
+        });
+    }
+
+    Ok(())
+}
+
+fn parse_fn_def(
+    ctx: &mut ModuleContext,
+    tokens: &mut LoTokenStream,
+    exported: bool,
+) -> Result<(), LoError> {
+    let fn_decl = parse_fn_decl(ctx, tokens)?;
+    let contents = parse_block_extract_contents(ctx, tokens)?;
+
+    if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
+        return Err(LoError {
+            message: format!("Cannot redefine function: {}", fn_decl.fn_name),
+            loc: fn_decl.loc,
+        });
+    }
+
+    if exported {
+        ctx.fn_exports.push(FnExport {
+            in_name: fn_decl.fn_name.clone(),
+            out_name: fn_decl.fn_name.clone(),
+            loc: fn_decl.loc.clone(),
+        });
+    }
+
+    let locals_last_index = fn_decl.wasm_type.inputs.len() as u32;
+    let type_index = ctx.insert_fn_type(fn_decl.wasm_type);
+    ctx.wasm_module.borrow_mut().functions.push(type_index);
+
+    let fn_index = ctx.wasm_module.borrow_mut().functions.len() as u32 - 1;
+
+    ctx.fn_defs.insert(
+        fn_decl.fn_name,
+        FnDef {
+            local: true,
+            fn_index,
+            type_index,
+            kind: fn_decl.lo_type,
+        },
+    );
+
+    ctx.fn_bodies.borrow_mut().push(FnBody {
+        fn_index,
+        type_index,
+        locals: fn_decl.locals,
+        locals_last_index,
+        body: contents,
+    });
+
+    return Ok(());
+}
+
+struct FnDecl {
+    fn_name: String,
+    method_name: String,
+    loc: LoLocation,
+    lo_type: LoFnType,
+    wasm_type: WasmFnType,
+    locals: BTreeMap<String, LocalDef>,
+}
+
+fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<FnDecl, LoError> {
+    let is_plain_fn = if let Some((t1, t2)) = tokens.peek2() {
+        t1.is_any(Symbol) && t2.is(Delim, "(")
+    } else {
+        false
+    };
+
+    let receiver_type = if !is_plain_fn {
+        let receiver_type = parse_lo_type(ctx, tokens)?;
+        tokens.expect(Operator, ".")?;
+        Some(receiver_type)
+    } else {
+        None
+    };
+    let method_name = tokens.expect_any(Symbol)?.clone();
+
+    let mut fn_decl = FnDecl {
+        fn_name: method_name.value.clone(),
+        method_name: method_name.value,
+        loc: method_name.loc,
+        lo_type: LoFnType {
+            inputs: vec![],
+            output: LoType::Void,
+        },
+        wasm_type: WasmFnType {
+            inputs: vec![],
+            outputs: vec![],
+        },
+        locals: BTreeMap::new(),
+    };
+
+    if let Some(receiver_type) = receiver_type {
+        fn_decl.fn_name = fn_name_for_method(&receiver_type, &fn_decl.fn_name);
+        add_fn_param(ctx, &mut fn_decl, RECEIVER_PARAM_NAME.into(), receiver_type);
+    }
+
+    tokens.expect(Delim, "(")?;
+    while let None = tokens.eat(Delim, ")")? {
+        let p_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, ":")?;
+        let p_type = parse_lo_type(ctx, tokens)?;
+        if !tokens.next_is(Delim, ")")? {
+            tokens.expect(Delim, ",")?;
+        }
+
+        if fn_decl.locals.contains_key(&p_name.value) {
+            return Err(LoError {
+                message: format!(
+                    "Found function param with conflicting name: {}",
+                    p_name.value
+                ),
+                loc: p_name.loc.clone(),
+            });
+        }
+
+        add_fn_param(ctx, &mut fn_decl, p_name.value, p_type);
+    }
+
+    let lo_output = if let Some(_) = tokens.eat(Operator, "->")? {
+        parse_lo_type(ctx, tokens)?
+    } else {
+        LoType::Void
+    };
+
+    lo_output.emit_components(&ctx, &mut fn_decl.wasm_type.outputs);
+    fn_decl.lo_type.output = lo_output;
+
+    Ok(fn_decl)
+}
+
+fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_type: LoType) {
+    let local_def = LocalDef {
+        index: fn_decl.wasm_type.inputs.len() as u32,
+        value_type: p_type.clone(),
+    };
+    fn_decl.locals.insert(p_name.clone(), local_def);
+
+    p_type.emit_components(ctx, &mut fn_decl.wasm_type.inputs);
+    fn_decl.lo_type.inputs.push(p_type);
+}
+
+fn parse_block(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+) -> Result<Vec<LoInstr>, LoError> {
+    let mut contents = parse_block_extract_contents(ctx.module, tokens)?;
+    parse_block_contents(ctx, &mut contents)
+}
+
+fn parse_block_extract_contents(
+    _ctx: &ModuleContext,
+    tokens: &mut LoTokenStream,
+) -> Result<LoTokenStream, LoError> {
+    let mut output = LoTokenStream::new(vec![], LoLocation::internal());
+
+    let mut depth = 0;
+    tokens.expect(Delim, "{")?;
+    loop {
+        if let Some(t) = tokens.eat(Delim, "{")? {
+            output.tokens.push(t.clone());
+            depth += 1;
+            continue;
+        }
+        if let Some(t) = tokens.eat(Delim, "}")? {
+            if depth == 0 {
+                output.terminal_token = t.clone();
+                break;
+            }
+            output.tokens.push(t.clone());
+            depth -= 1;
+            continue;
+        }
+        output.tokens.push(tokens.next().unwrap().clone());
+    }
+
+    Ok(output)
+}
+
+// pub for use in v1
+pub fn parse_block_contents(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+) -> Result<Vec<LoInstr>, LoError> {
+    let mut exprs = vec![];
+    while tokens.peek().is_some() {
+        let expr_start = tokens.peek().unwrap().loc.clone();
+        let expr = parse_expr(ctx, tokens, 0)?;
+        tokens.expect(Delim, ";")?;
+
+        let expr_type = expr.get_type(ctx.module);
+        if expr_type != LoType::Void {
+            return Err(LoError {
+                message: format!("TypeError: Excess values"),
+                loc: expr_start,
+            });
+        }
+
+        exprs.push(expr);
+    }
+    Ok(exprs)
+}
+
+fn parse_expr(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+    min_bp: u32,
+) -> Result<LoInstr, LoError> {
+    let mut primary = parse_primary(ctx, tokens)?;
+
+    while tokens.peek().is_some() {
+        let op_symbol = tokens.peek().unwrap().clone();
+        let Some(op) = InfixOp::parse(op_symbol) else {
+            break;
+        };
+
+        if op.info.bp < min_bp {
+            break;
+        }
+
+        tokens.next(); // skip operator
+        primary = parse_postfix(ctx, tokens, primary, op)?;
+    }
+
+    Ok(primary)
+}
+
+fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
+    if let Some(int) = tokens.eat_any(IntLiteral)? {
+        return Ok(LoInstr::U32Const {
+            value: parse_u32_literal(&int)?,
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "i64")? {
+        let int = tokens.expect_any(IntLiteral)?;
+        return Ok(LoInstr::I64Const {
+            value: parse_i64_literal(&int)?,
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 1 }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "false")?.cloned() {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 0 }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
+        return Ok(LoInstr::U32ConstLazy {
+            value: ctx.module.data_size.clone(),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "unreachable")? {
+        return Ok(LoInstr::Unreachable);
+    }
+
+    if let Some(value) = tokens.eat_any(StringLiteral)? {
+        let string_len = value.value.as_bytes().len() as u32;
+
+        let string_ptr_ = ctx.module.string_pool.borrow().get(&value.value).cloned();
+        let string_ptr = match string_ptr_ {
+            Some(string_ptr) => string_ptr,
+            None => {
+                let new_string_ptr = *ctx.module.data_size.borrow();
+                ctx.module
+                    .string_pool
+                    .borrow_mut()
+                    .insert(value.value.clone(), new_string_ptr);
+
+                *ctx.module.data_size.borrow_mut() += string_len;
+                ctx.module
+                    .wasm_module
+                    .borrow_mut()
+                    .datas
+                    .push(WasmData::Active {
+                        offset: WasmExpr {
+                            instrs: vec![WasmInstr::I32Const {
+                                value: new_string_ptr as i32,
+                            }],
+                        },
+                        bytes: value.value.as_bytes().to_vec(),
+                    });
+                new_string_ptr
+            }
+        };
+
+        return Ok(LoInstr::MultiValueEmit {
+            values: vec![
+                LoInstr::U32Const { value: string_ptr },
+                LoInstr::U32Const { value: string_len },
+            ],
+        });
+    }
+
+    if let Some(_) = tokens.eat(Delim, "(")? {
+        let expr = parse_expr(ctx, tokens, 0)?;
+        tokens.expect(Delim, ")")?;
+        return Ok(expr);
+    }
+
+    if let Some(return_token) = tokens.eat(Symbol, "return")?.cloned() {
+        let value = if tokens.peek().is_none() || tokens.next_is(Delim, ";")? {
+            LoInstr::Casted {
+                value_type: LoType::Void,
+                expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
+            }
+        } else {
+            parse_expr(ctx, tokens, 0)?
+        };
+
+        let return_type = value.get_type(ctx.module);
+        if return_type != ctx.fn_ctx.lo_fn_type.output {
+            return Err(LoError {
+                message: format!(
+                    "TypeError: Invalid return type, \
+                        expected {output:?}, got {return_type:?}",
+                    output = ctx.fn_ctx.lo_fn_type.output,
+                ),
+                loc: return_token.loc,
+            });
+        }
+
+        let return_expr = LoInstr::Return {
+            value: Box::new(value),
+        };
+        if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
+            let mut values = values?;
+            values.push(return_expr);
+            return Ok(LoInstr::Casted {
+                value_type: LoType::Void,
+                expr: Box::new(LoInstr::MultiValueEmit { values }),
+            });
+        } else {
+            return Ok(return_expr);
+        }
+    }
+
+    if let Some(t) = tokens.eat(Symbol, "sizeof")?.cloned() {
+        let value_type = parse_lo_type(ctx.module, tokens)?;
+
+        return Ok(LoInstr::U32Const {
+            value: value_type
+                .sized_comp_stats(&ctx.module)
+                .map_err(|err| LoError {
+                    message: err,
+                    loc: t.loc.clone(),
+                })?
+                .byte_length as u32,
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "char_code")?.cloned() {
+        let value = tokens.expect_any(StringLiteral)?;
+
+        let Some(char) = value.value.chars().next() else {
+            return Err(LoError {
+                message: format!("String must not be empty"),
+                loc: value.loc.clone(),
+            });
+        };
+
+        return Ok(LoInstr::U32Const { value: char as u32 });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "defer")? {
+        let defer_label = if let Some(_) = tokens.eat(Operator, "@")? {
+            tokens.expect_any(Symbol)?.value.clone()
+        } else {
+            String::from(DEFER_UNTIL_RETURN_LABEL)
+        };
+        let deffered_expr = parse_expr(ctx, tokens, 0)?;
+
+        let deferred = ctx
+            .fn_ctx
+            .defers
+            .entry(defer_label)
+            .or_insert_with(|| vec![]);
+
+        deferred.push(deffered_expr);
+
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Void,
+            expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "defer_eval")? {
+        tokens.expect(Operator, "@")?;
+        let defer_label = tokens.expect_any(Symbol)?.clone();
+
+        let Some(values) = get_deferred(ctx, &defer_label.value) else {
+            return Err(LoError {
+                message: format!("Unknown defer scope: {}", defer_label.value),
+                loc: defer_label.loc.clone(),
+            });
+        };
+
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Void,
+            expr: Box::new(LoInstr::MultiValueEmit { values: values? }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "__memory_size")? {
+        tokens.expect(Delim, "(")?;
+        tokens.expect(Delim, ")")?;
+        return Ok(LoInstr::MemorySize {});
+    }
+
+    if let Some(t) = tokens.eat(Symbol, "__memory_grow")?.cloned() {
+        tokens.expect(Delim, "(")?;
+        let size = parse_expr(ctx, tokens, 0)?;
+        tokens.expect(Delim, ")")?;
+
+        let size_type = size.get_type(ctx.module);
+        if size_type != LoType::U32 {
+            return Err(LoError {
+                message: format!("Invalid arguments for {}", t.value),
+                loc: t.loc,
+            });
+        };
+
+        return Ok(LoInstr::MemoryGrow {
+            size: Box::new(size),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "__debug_here")?.cloned() {
+        debug(format!(
+            "imported fn count: {}",
+            ctx.module.imported_fns_count
+        ));
+        for fn_name in ctx.module.fn_defs.keys() {
+            debug(format!("{fn_name}"));
+        }
+        return Err(LoError::unreachable(file!(), line!()));
+    }
+
+    if let Some(t) = tokens.eat(Symbol, "__debug_typeof")?.cloned() {
+        let loc = tokens.peek().unwrap_or(&t).loc.clone();
+
+        let expr = parse_expr(ctx, tokens, 0)?;
+        let expr_type = expr.get_type(ctx.module);
+        crate::wasi_io::debug(format!(
+            "{}",
+            String::from(LoError {
+                message: format!("{expr_type:?}"),
                 loc,
-                kind: AtomKind::Symbol,
-            }, SExpr::Atom {
-                value: data_base64,
-                loc: _,
-                kind,
-            }] = args
+            })
+        ));
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Void,
+            expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
+        });
+    }
+
+    // TODO: support `else`
+    if let Some(_) = tokens.eat(Symbol, "if")? {
+        let cond = parse_expr(ctx, tokens, 0)?;
+
+        let then_branch = parse_block(
+            &mut BlockContext {
+                module: ctx.module,
+                fn_ctx: ctx.fn_ctx,
+                block: Block {
+                    block_type: BlockType::Block,
+                    parent: Some(&ctx.block),
+                    locals: BTreeMap::new(),
+                },
+            },
+            tokens,
+        )?;
+
+        return Ok(LoInstr::If {
+            block_type: LoType::Void,
+            cond: Box::new(cond),
+            then_branch,
+            else_branch: None,
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "loop")? {
+        let mut ctx = BlockContext {
+            module: ctx.module,
+            fn_ctx: ctx.fn_ctx,
+            block: Block {
+                block_type: BlockType::Loop,
+                parent: Some(&ctx.block),
+                locals: BTreeMap::new(),
+            },
+        };
+
+        let mut body = parse_block(&mut ctx, tokens)?;
+
+        // add implicit continue
+        body.push(LoInstr::Branch { label_index: 0 });
+
+        return Ok(LoInstr::Block {
+            block_type: LoType::Void,
+            body: vec![LoInstr::Loop {
+                block_type: LoType::Void,
+                body,
+            }],
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "break")? {
+        let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
+
+        let mut current_block = &ctx.block;
+        loop {
+            if current_block.block_type == BlockType::Loop {
+                break;
+            }
+
+            current_block = current_block.parent.unwrap();
+            label_index += 1;
+        }
+
+        return Ok(LoInstr::Branch { label_index });
+    }
+
+    if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
+        let local_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, "=")?;
+        let value = parse_expr(ctx, tokens, 0)?;
+        let value_type = value.get_type(ctx.module);
+
+        if local_name.value == "_" {
+            let drop_count = value_type.emit_components(&ctx.module, &mut vec![]);
+
+            return Ok(LoInstr::Drop {
+                value: Box::new(value),
+                drop_count,
+            });
+        }
+
+        if let Some(_) = ctx.module.globals.get(&local_name.value) {
+            return Err(LoError {
+                message: format!("Local name collides with global: {}", local_name.value),
+                loc: local_name.loc.clone(),
+            });
+        };
+
+        if ctx.block.get_own_local(&local_name.value).is_some() {
+            return Err(LoError {
+                message: format!("Duplicate local definition: {}", local_name.value),
+                loc: local_name.loc.clone(),
+            });
+        }
+
+        let local_indicies = ctx.push_local(local_name.value.clone(), value_type.clone());
+        let values = local_indicies
+            .map(|i| LoInstr::UntypedLocalGet { local_index: i })
+            .collect();
+        let bind_instr = LoInstr::MultiValueEmit { values };
+        return compile_set(ctx, value, bind_instr, &let_token.loc);
+    }
+
+    if let Some(token) = tokens.peek().cloned() {
+        if let Some(op) = PrefixOp::parse(token) {
+            let min_bp = op.info.get_min_bp_for_next();
+            tokens.next(); // skip operator
+
+            match op.tag {
+                PrefixOpTag::Not => {
+                    return Ok(LoInstr::BinaryOp {
+                        kind: WasmBinaryOpKind::I32Equal,
+                        lhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+                        rhs: Box::new(LoInstr::U32Const { value: 0 }),
+                    });
+                }
+                PrefixOpTag::Dereference => {
+                    let pointer = Box::new(parse_expr(ctx, tokens, min_bp)?);
+                    let pointer_type = pointer.get_type(ctx.module);
+
+                    let LoType::Pointer(pointee_type) = pointer_type else {
+                        return Err(LoError {
+                            message: format!("Cannot dereference {pointer_type:?}"),
+                            loc: op.token.loc,
+                        });
+                    };
+
+                    return compile_load(ctx, &pointee_type, pointer, 0).map_err(|err| LoError {
+                        message: err,
+                        loc: op.token.loc,
+                    });
+                }
+            }
+        }
+    }
+
+    if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
+        if let Some(const_value) = ctx.module.constants.borrow().get(&value.value) {
+            return Ok(const_value.clone());
+        }
+
+        if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
+            let mut args = vec![];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
+
+            return Ok(LoInstr::Call {
+                fn_index: fn_def.get_absolute_index(ctx.module),
+                return_type: fn_def.kind.output.clone(),
+                args,
+            });
+        }
+
+        if let Some(struct_def) = ctx.module.struct_defs.get(&value.value) {
+            let struct_name = value;
+
+            let mut values = vec![];
+            tokens.expect(Delim, "{")?;
+            while let None = tokens.eat(Delim, "}")? {
+                let field_name = tokens.expect_any(Symbol)?.clone();
+                tokens.expect(Operator, ":")?;
+                let field_value = parse_expr(ctx, tokens, 0)?;
+
+                if !tokens.next_is(Delim, "}")? {
+                    tokens.expect(Delim, ",")?;
+                }
+
+                let field_index = values.len();
+                let Some(struct_field) = struct_def.fields.get(field_index) else {
+                    return Err(LoError {
+                        message: format!("Excess field values"),
+                        loc: field_name.loc,
+                    });
+                };
+
+                if &field_name.value != &struct_field.name {
+                    return Err(LoError {
+                        message: format!(
+                            "Unexpected field name, expecting: `{}`",
+                            struct_field.name
+                        ),
+                        loc: field_name.loc,
+                    });
+                }
+
+                let field_value_type = field_value.get_type(ctx.module);
+                if field_value_type != struct_field.value_type {
+                    return Err(LoError {
+                        message: format!(
+                            "Invalid type for field {}.{}, expected: {}, got: {}",
+                            struct_name.value,
+                            field_name.value,
+                            struct_field.value_type,
+                            field_value_type
+                        ),
+                        // TODO: field_value.loc() is not available
+                        loc: field_name.loc.clone(),
+                    });
+                }
+                values.push(field_value);
+            }
+
+            return Ok(LoInstr::Casted {
+                value_type: LoType::StructInstance {
+                    name: struct_name.value,
+                },
+                expr: Box::new(LoInstr::MultiValueEmit { values }),
+            });
+        };
+
+        if let Some(global) = ctx.module.globals.get(&value.value) {
+            return Ok(LoInstr::GlobalGet {
+                global_index: global.index,
+            });
+        };
+
+        let Some(local) = ctx.block.get_local(&value.value) else {
+            return Err(LoError {
+                message: format!("Reading unknown variable: {}", value.value),
+                loc: value.loc,
+            });
+        };
+
+        return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
+            LoError {
+                message,
+                loc: value.loc,
+            }
+        });
+    }
+
+    let unexpected = tokens.peek().unwrap();
+    return Err(LoError {
+        message: format!("Unexpected token: {}", unexpected.value),
+        loc: unexpected.loc.clone(),
+    });
+}
+
+fn parse_postfix(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+    primary: LoInstr,
+    op: InfixOp,
+) -> Result<LoInstr, LoError> {
+    let min_bp = op.info.get_min_bp_for_next();
+
+    // TODO: typecheck that operands are actually numbers
+    Ok(match op.tag {
+        InfixOpTag::Equal => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Equal,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::NotEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32NotEqual,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::And => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32And,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Or => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Or,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Less => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32LessThenUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Greater => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32GreaterThanUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::GreaterEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Add => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Add,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Sub => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Sub,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Mul => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Mul,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Div => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32DivUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Mod => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32RemUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Assign => {
+            let value = parse_expr(ctx, tokens, min_bp)?;
+            let value_type = value.get_type(ctx.module);
+            let bind_type = primary.get_type(ctx.module);
+
+            if value_type != bind_type {
+                return Err(LoError {
+                    message: format!(
+                        "TypeError: Invalid types for '{}', \
+                        needed {bind_type}, got {value_type}",
+                        op.token.value
+                    ),
+                    loc: op.token.loc.clone(),
+                });
+            }
+
+            compile_set(ctx, value, primary, &op.token.loc)?
+        }
+        InfixOpTag::AddAssign => {
+            let value = LoInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Add,
+                lhs: Box::new(primary.clone()),
+                rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+            };
+            // TODO: lhs.loc() is not available
+            compile_set(ctx, value, primary, &op.token.loc)?
+        }
+        InfixOpTag::SubAssign => {
+            let value = LoInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Sub,
+                lhs: Box::new(primary.clone()),
+                rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+            };
+            // TODO: lhs.loc() is not available
+            compile_set(ctx, value, primary, &op.token.loc)?
+        }
+        InfixOpTag::Cast => LoInstr::Casted {
+            value_type: parse_lo_type(ctx.module, tokens)?,
+            expr: Box::new(primary),
+        },
+        InfixOpTag::FieldAccess => {
+            let field_or_method_name = tokens.expect_any(Symbol)?.clone();
+            if !tokens.next_is(Delim, "(").unwrap_or(false) {
+                let field_name = field_or_method_name;
+
+                if let LoInstr::StructGet {
+                    struct_name,
+                    base_index,
+                    ..
+                } = &primary
+                {
+                    let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
+                    let Some(field) = struct_def
+                        .fields
+                        .iter()
+                        .find(|f| &f.name == &field_name.value)
+                    else {
+                        return Err(LoError {
+                            message: format!(
+                                "Unknown field {} in struct {struct_name}",
+                                field_name.value
+                            ),
+                            loc: field_name.loc,
+                        });
+                    };
+
+                    return compile_local_get(
+                        &ctx.module,
+                        base_index + field.field_index,
+                        &field.value_type,
+                    )
+                    .map_err(|message| LoError {
+                        message,
+                        // TODO: lhs.loc() is not available
+                        loc: op.token.loc,
+                    });
+                };
+
+                if let LoInstr::StructLoad {
+                    struct_name,
+                    address_instr,
+                    base_byte_offset,
+                    ..
+                } = primary
+                {
+                    // safe to unwrap as it was already checked in `StructLoad`
+                    let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
+
+                    let Some(field) = struct_def
+                        .fields
+                        .iter()
+                        .find(|f| f.name == *field_name.value)
+                    else {
+                        return Err(LoError {
+                            message: format!(
+                                "Unknown field {} in struct {struct_name}",
+                                field_name.value
+                            ),
+                            loc: field_name.loc,
+                        });
+                    };
+
+                    return compile_load(
+                        ctx,
+                        &field.value_type,
+                        address_instr,
+                        base_byte_offset + field.byte_offset,
+                    )
+                    .map_err(|e| LoError {
+                        message: e,
+                        loc: op.token.loc,
+                    });
+                }
+
+                let lhs_type = primary.get_type(ctx.module);
+                return Err(LoError {
+                    message: format!(
+                        "Trying to get field '{}' on non struct: {lhs_type}",
+                        field_name.value
+                    ),
+                    loc: field_name.loc,
+                });
+            }
+
+            let method_name = field_or_method_name;
+            let recevier_type = primary.get_type(ctx.module);
+
+            let mut args = vec![primary];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
+
+            let fn_name = fn_name_for_method(&recevier_type, &method_name.value);
+            let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
+                return Err(LoError {
+                    message: format!("Unknown function: {fn_name}"),
+                    loc: method_name.loc,
+                });
+            };
+
+            LoInstr::Call {
+                fn_index: fn_def.fn_index,
+                return_type: fn_def.kind.output.clone(),
+                args,
+            }
+        }
+        InfixOpTag::RefFieldAccess => {
+            let field_name = tokens.expect_any(Symbol)?;
+
+            let struct_ref = Box::new(primary);
+            let struct_ref_type = struct_ref.get_type(ctx.module);
+
+            let LoType::Pointer(pointee_type) = &struct_ref_type else {
+                return Err(LoError {
+                    message: format!("Cannot dereference {struct_ref_type:?}"),
+                    loc: op.token.loc.clone(),
+                });
+            };
+            let LoType::StructInstance { name: struct_name } = pointee_type.as_ref() else {
+                return Err(LoError {
+                    message: format!("Cannot dereference {struct_ref_type:?}"),
+                    loc: op.token.loc.clone(),
+                });
+            };
+
+            let struct_def = ctx.module.struct_defs.get(struct_name).unwrap();
+            let Some(field) = struct_def
+                .fields
+                .iter()
+                .find(|f| f.name == *field_name.value)
             else {
                 return Err(LoError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: op_loc.clone(),
+                    message: format!("Unknown field {} in struct {struct_name}", field_name.value),
+                    loc: field_name.loc.clone(),
                 });
             };
 
-            let offset = offset.parse().map_err(|_| LoError {
-                message: format!("Parsing i32 (implicit) failed"),
-                loc: loc.clone(),
-            })?;
-
-            let bytes = match *kind {
-                AtomKind::String => data_base64.as_bytes().iter().map(|b| *b).collect(),
-                AtomKind::Symbol => base64_decode(data_base64.as_bytes()),
-            };
-
-            // TODO: move to better place
-            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
-                offset: WasmExpr {
-                    instrs: vec![WasmInstr::I32Const { value: offset }],
-                },
-                bytes,
-            });
+            compile_load(ctx, &field.value_type, struct_ref, field.byte_offset).map_err(|e| {
+                LoError {
+                    message: e,
+                    loc: op.token.loc.clone(),
+                }
+            })?
         }
-        _ => {
-            return Err(LoError {
-                message: format!("Unknown operation: {op}"),
-                loc: op_loc.clone(),
-            })
+    })
+}
+
+fn parse_fn_call_args(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+    args: &mut Vec<LoInstr>,
+) -> Result<(), LoError> {
+    tokens.expect(Delim, "(")?;
+    while let None = tokens.eat(Delim, ")")? {
+        args.push(parse_expr(ctx, tokens, 0)?);
+
+        if !tokens.next_is(Delim, ")")? {
+            tokens.expect(Delim, ",")?;
         }
     }
 
     Ok(())
 }
 
-fn build_struct_fields(
-    exprs: &[SExpr],
-    struct_name: &str,
+fn parse_const_expr(
     ctx: &ModuleContext,
-) -> Result<Vec<StructField>, LoError> {
-    let mut field_index = 0;
-    let mut byte_offset = 0;
+    tokens: &mut LoTokenStream,
+    min_bp: u32,
+) -> Result<LoInstr, LoError> {
+    let mut primary = parse_const_primary(ctx, tokens)?;
 
-    let mut fields = Vec::<StructField>::new();
-    for field_def in exprs {
-        let SExpr::List {
-            value: name_and_type,
-            ..
-        } = field_def
-        else {
-            return Err(LoError {
-                message: format!("Unexpected atom in fields list of struct {struct_name}"),
-                loc: field_def.loc().clone(),
-            });
+    while tokens.peek().is_some() {
+        let op_symbol = tokens.peek().unwrap().clone();
+        let Some(op) = InfixOp::parse(op_symbol) else {
+            break;
         };
 
-        let [SExpr::Atom {
-            value: f_name,
-            loc: name_loc,
-            kind: AtomKind::Symbol,
-        }, f_type_expr] = &name_and_type[..]
-        else {
-            return Err(LoError {
-                message: format!(
-                    "Expected name and parameter pairs in fields list of struct {struct_name}"
-                ),
-                loc: field_def.loc().clone(),
-            });
-        };
-
-        if fields.iter().find(|f| &f.name == f_name).is_some() {
-            return Err(LoError {
-                message: format!(
-                    "Found duplicate struct field name: '{f_name}' of struct {struct_name}"
-                ),
-                loc: name_loc.clone(),
-            });
+        if op.info.bp < min_bp {
+            break;
         }
 
-        let field_type = parse_lo_type(f_type_expr, ctx)?;
-
-        let mut stats = EmitComponentStats::default();
-        field_type
-            .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
-            .map_err(|err| LoError {
-                message: err,
-                loc: f_type_expr.loc().clone(),
-            })?;
-
-        fields.push(StructField {
-            name: f_name.clone(),
-            value_type: field_type,
-            field_index,
-            byte_offset,
-        });
-
-        field_index += stats.count;
-        byte_offset += stats.byte_length;
+        tokens.next(); // skip operator
+        primary = parse_const_postfix(ctx, tokens, primary, op)?;
     }
-    Ok(fields)
+
+    Ok(primary)
 }
 
-fn compile_instrs(exprs: &[SExpr], ctx: &mut BlockContext) -> Result<Vec<LoInstr>, LoError> {
-    exprs.iter().map(|expr| compile_instr(expr, ctx)).collect()
-}
-
-pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, LoError> {
-    let items = match expr {
-        SExpr::List { value: items, .. } => items,
-        SExpr::Atom { value, loc, kind } => {
-            if *kind == AtomKind::String {
-                let string_len = value.as_bytes().len() as u32;
-
-                let string_ptr_ = ctx.module.string_pool.borrow().get(value).cloned();
-                let string_ptr = match string_ptr_ {
-                    Some(string_ptr) => string_ptr,
-                    None => {
-                        let new_string_ptr = *ctx.module.data_size.borrow();
-                        ctx.module
-                            .string_pool
-                            .borrow_mut()
-                            .insert(value.clone(), new_string_ptr);
-
-                        *ctx.module.data_size.borrow_mut() += string_len;
-                        ctx.module
-                            .wasm_module
-                            .borrow_mut()
-                            .datas
-                            .push(WasmData::Active {
-                                // TODO: move to better place
-                                offset: WasmExpr {
-                                    instrs: vec![WasmInstr::I32Const {
-                                        value: new_string_ptr as i32,
-                                    }],
-                                },
-                                bytes: value.as_bytes().to_vec(),
-                            });
-                        new_string_ptr
-                    }
-                };
-
-                return Ok(LoInstr::MultiValueEmit {
-                    values: vec![
-                        LoInstr::U32Const { value: string_ptr },
-                        LoInstr::U32Const { value: string_len },
-                    ],
-                });
-            }
-
-            if value == "true" {
-                return Ok(LoInstr::Casted {
-                    value_type: LoType::Bool,
-                    expr: Box::new(LoInstr::U32Const { value: 1 }),
-                });
-            }
-
-            if value == "false" {
-                return Ok(LoInstr::Casted {
-                    value_type: LoType::Bool,
-                    expr: Box::new(LoInstr::U32Const { value: 0 }),
-                });
-            }
-
-            if value.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(LoInstr::U32Const {
-                    value: (value.parse().map_err(|_| LoError {
-                        message: format!("Parsing u32 (implicit) failed"),
-                        loc: loc.clone(),
-                    })?),
-                });
-            }
-
-            if let Some(global) = ctx.module.globals.get(value.as_str()) {
-                return Ok(LoInstr::GlobalGet {
-                    global_index: global.index,
-                });
-            };
-
-            let Some(local) = ctx.block.get_local(value.as_str()) else {
-                return Err(LoError {
-                    message: format!("Reading unknown variable: {value}"),
-                    loc: loc.clone(),
-                });
-            };
-
-            return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(
-                |message| LoError {
-                    message,
-                    loc: expr.loc().clone(),
-                },
-            );
-        }
-    };
-
-    let [SExpr::Atom {
-        value: op,
-        loc: op_loc,
-        ..
-    }, args @ ..] = &items[..]
-    else {
-        return Err(LoError {
-            message: format!("Expected operation, got a simple list"),
-            loc: expr.loc().clone(),
+fn parse_const_primary(
+    ctx: &ModuleContext,
+    tokens: &mut LoTokenStream,
+) -> Result<LoInstr, LoError> {
+    if let Some(int) = tokens.eat_any(IntLiteral)? {
+        return Ok(LoInstr::U32Const {
+            value: parse_u32_literal(&int)?,
         });
-    };
+    }
 
-    let instr = match (op.as_str(), &args[..]) {
-        ("unreachable", []) => LoInstr::Unreachable {},
-        ("drop", [expr]) => {
-            let instr = compile_instr(expr, ctx)?;
-            let instr_type = instr.get_type(ctx.module);
-            let drop_count = instr_type.emit_components(&ctx.module, &mut vec![]);
+    if let Some(_) = tokens.eat(Symbol, "i64")? {
+        let int = tokens.expect_any(IntLiteral)?;
+        return Ok(LoInstr::I64Const {
+            value: parse_i64_literal(&int)?,
+        });
+    }
 
-            LoInstr::Drop {
-                value: Box::new(instr),
-                drop_count,
-            }
+    if let Some(_) = tokens.eat(Symbol, "true")? {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 1 }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "false")? {
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Bool,
+            expr: Box::new(LoInstr::U32Const { value: 0 }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
+        return Ok(LoInstr::U32ConstLazy {
+            value: ctx.data_size.clone(),
+        });
+    }
+
+    if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
+        if let Some(const_value) = ctx.constants.borrow().get(&value.value) {
+            return Ok(const_value.clone());
         }
-        ("do", exprs) => LoInstr::MultiValueEmit {
-            values: compile_instrs(exprs, ctx)?,
-        },
-        (
-            "i32",
-            [SExpr::Atom {
-                value,
-                loc,
-                kind: AtomKind::Symbol,
-            }],
-        ) => LoInstr::U32Const {
-            value: value.parse().map_err(|_| LoError {
-                message: format!("Parsing i32 failed"),
-                loc: loc.clone(),
-            })?,
-        },
-        (
-            "i64",
-            [SExpr::Atom {
-                value,
-                loc,
-                kind: AtomKind::Symbol,
-            }],
-        ) => LoInstr::I64Const {
-            value: value.parse::<i64>().map_err(|_| LoError {
-                message: format!("Parsing i64 failed"),
-                loc: loc.clone(),
-            })? as i64,
-        },
-        (
-            "char_code",
-            [SExpr::Atom {
-                value,
-                kind: AtomKind::String,
-                ..
-            }],
-        ) => LoInstr::U32Const {
-            value: value.chars().next().unwrap() as u32,
-        },
-        ("==", [lhs, rhs]) => LoInstr::BinaryOp {
+
+        let Some(global) = ctx.globals.get(&value.value) else {
+            return Err(LoError {
+                message: format!("Reading unknown variable: {}", value.value),
+                loc: value.loc,
+            });
+        };
+
+        return Ok(LoInstr::GlobalGet {
+            global_index: global.index,
+        });
+    }
+
+    let unexpected = tokens.peek().unwrap();
+    return Err(LoError {
+        message: format!("Unexpected token in const context: {}", unexpected.value),
+        loc: unexpected.loc.clone(),
+    });
+}
+
+fn parse_const_postfix(
+    ctx: &ModuleContext,
+    tokens: &mut LoTokenStream,
+    primary: LoInstr,
+    op: InfixOp,
+) -> Result<LoInstr, LoError> {
+    let min_bp = op.info.get_min_bp_for_next();
+
+    Ok(match op.tag {
+        InfixOpTag::Equal => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equal,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("!=", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::NotEqual => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32NotEqual,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("not", [lhs]) => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Equal,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(LoInstr::U32Const { value: 0 }),
+        InfixOpTag::And => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32And,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("<", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::Or => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32Or,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::Less => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        (">", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::Greater => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterThanUnsigned,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        (">=", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::GreaterEqual => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("&&", [lhs, rhs]) => LoInstr::Casted {
-            value_type: LoType::Bool,
-            expr: Box::new(LoInstr::BinaryOp {
-                kind: WasmBinaryOpKind::I32And,
-                lhs: Box::new(compile_instr(lhs, ctx)?),
-                rhs: Box::new(compile_instr(rhs, ctx)?),
-            }),
-        },
-        ("||", [lhs, rhs]) => LoInstr::Casted {
-            value_type: LoType::Bool,
-            expr: Box::new(LoInstr::BinaryOp {
-                kind: WasmBinaryOpKind::I32Or,
-                lhs: Box::new(compile_instr(lhs, ctx)?),
-                rhs: Box::new(compile_instr(rhs, ctx)?),
-            }),
-        },
-        ("+", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::Add => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Add,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("+=", [lhs, rhs]) => {
-            let bind = compile_instr(lhs, ctx)?;
-            let value = LoInstr::BinaryOp {
-                kind: WasmBinaryOpKind::I32Add,
-                lhs: Box::new(bind.clone()),
-                rhs: Box::new(compile_instr(rhs, ctx)?),
-            };
-            compile_set(ctx, value, bind, lhs.loc())?
-        }
-        ("-", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::Sub => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Sub,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("-=", [lhs, rhs]) => {
-            let bind = compile_instr(lhs, ctx)?;
-            let value = LoInstr::BinaryOp {
-                kind: WasmBinaryOpKind::I32Sub,
-                lhs: Box::new(bind.clone()),
-                rhs: Box::new(compile_instr(rhs, ctx)?),
-            };
-            compile_set(ctx, value, bind, lhs.loc())?
-        }
-        ("*", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::Mul => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Mul,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("/", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::Div => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32DivUnsigned,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("%", [lhs, rhs]) => LoInstr::BinaryOp {
+        InfixOpTag::Mod => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32RemUnsigned,
-            lhs: Box::new(compile_instr(lhs, ctx)?),
-            rhs: Box::new(compile_instr(rhs, ctx)?),
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },
-        ("data.size", []) => LoInstr::U32ConstLazy {
-            value: ctx.module.data_size.clone(),
+        InfixOpTag::Cast => LoInstr::Casted {
+            value_type: parse_lo_type(ctx, tokens)?,
+            expr: Box::new(primary),
         },
-        ("memory.size", []) => LoInstr::MemorySize {},
-        ("memory.grow", [size_expr]) => {
-            let size = compile_instr(size_expr, ctx)?;
-            let size_type = size.get_type(ctx.module);
-
-            if size_type != LoType::U32 {
-                return Err(LoError {
-                    message: format!("Invalid arguments for {op}"),
-                    loc: size_expr.loc().clone(),
-                });
-            };
-
-            LoInstr::MemoryGrow {
-                size: Box::new(size),
-            }
+        _ => {
+            return Err(LoError {
+                message: format!("Unsupported operator in const context: {}", op.token.value),
+                loc: op.token.loc,
+            });
         }
-        ("debug.typeof", [sub_expr]) => {
-            let lo_instr = compile_instr(sub_expr, ctx)?;
-            let lo_type = lo_instr.get_type(ctx.module);
-            crate::wasi_io::debug(format!(
-                "{}",
-                String::from(LoError {
-                    message: format!("{expr} = {}", lo_type),
-                    loc: expr.loc().clone(),
-                })
-            ));
-            LoInstr::Casted {
-                value_type: LoType::Void,
-                expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
-            }
-        }
-        (
-            "if",
-            [cond, SExpr::List {
-                value: then_branch,
-                loc: _,
-            }, SExpr::List {
-                value: else_branch,
-                loc: _,
-            }],
-        ) => {
-            let then_branch = compile_block(
-                then_branch,
-                &mut BlockContext {
-                    module: ctx.module,
-                    fn_ctx: ctx.fn_ctx,
-                    block: Block {
-                        block_type: BlockType::Block,
-                        parent: Some(&ctx.block),
-                        locals: BTreeMap::new(),
-                    },
-                },
-            )?;
+    })
+}
 
-            let else_branch = Some(compile_block(
-                else_branch,
-                &mut BlockContext {
-                    module: ctx.module,
-                    fn_ctx: ctx.fn_ctx,
-                    block: Block {
-                        block_type: BlockType::Block,
-                        parent: Some(&ctx.block),
-                        locals: BTreeMap::new(),
-                    },
-                },
-            )?);
+fn parse_lo_type(ctx: &ModuleContext, tokens: &mut LoTokenStream) -> Result<LoType, LoError> {
+    parse_lo_type_checking_ref(ctx, tokens, false)
+}
 
-            LoInstr::If {
-                block_type: LoType::Void,
-                cond: Box::new(compile_instr(cond, ctx)?),
-                then_branch,
-                else_branch,
-            }
-        }
-        (
-            "if",
-            [cond, SExpr::List {
-                value: then_branch,
-                loc: _,
-            }],
-        ) => LoInstr::If {
-            block_type: LoType::Void,
-            cond: Box::new(compile_instr(cond, ctx)?),
-            then_branch: compile_block(
-                then_branch,
-                &mut BlockContext {
-                    module: ctx.module,
-                    fn_ctx: ctx.fn_ctx,
-                    block: Block {
-                        block_type: BlockType::Block,
-                        parent: Some(&ctx.block),
-                        locals: BTreeMap::new(),
-                    },
-                },
-            )?,
-            else_branch: None,
-        },
-        ("loop", [SExpr::List { value: exprs, .. }]) => {
-            let mut ctx = BlockContext {
-                module: ctx.module,
-                fn_ctx: ctx.fn_ctx,
-                block: Block {
-                    block_type: BlockType::Loop,
-                    parent: Some(&ctx.block),
-                    locals: BTreeMap::new(),
-                },
-            };
+fn parse_lo_type_checking_ref(
+    ctx: &ModuleContext,
+    tokens: &mut LoTokenStream,
+    is_referenced: bool,
+) -> Result<LoType, LoError> {
+    if let Some(_) = tokens.eat(Operator, "&")? {
+        let pointee = parse_lo_type_checking_ref(ctx, tokens, true)?;
+        return Ok(LoType::Pointer(Box::new(pointee)));
+    }
 
-            let mut body = compile_block(exprs, &mut ctx)?;
+    if let Some(_) = tokens.eat(Operator, "&*")? {
+        let pointee = parse_lo_type_checking_ref(ctx, tokens, true)?;
+        return Ok(LoType::Pointer(Box::new(pointee)));
+    }
 
-            // add implicit continue
-            body.push(LoInstr::Branch { label_index: 0 });
+    if let Some(_) = tokens.eat(Delim, "(")? {
+        tokens.expect(Delim, ")")?;
+        return Ok(LoType::Void);
+    }
 
-            LoInstr::Block {
-                block_type: LoType::Void,
-                body: vec![LoInstr::Loop {
-                    block_type: LoType::Void,
-                    body,
-                }],
-            }
-        }
-        ("break", []) => {
-            let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
-
-            let mut current_block = &ctx.block;
-            loop {
-                if current_block.block_type == BlockType::Loop {
-                    break;
-                }
-
-                current_block = current_block.parent.unwrap();
-                label_index += 1;
+    let token = tokens.expect_any(Symbol)?;
+    match token.value.as_str() {
+        "bool" => Ok(LoType::Bool),
+        "u8" => Ok(LoType::U8),
+        "i8" => Ok(LoType::I8),
+        "u16" => Ok(LoType::U16),
+        "i16" => Ok(LoType::I16),
+        "u32" => Ok(LoType::U32),
+        "i32" => Ok(LoType::I32),
+        "f32" => Ok(LoType::F32),
+        "u64" => Ok(LoType::U64),
+        "i64" => Ok(LoType::I64),
+        "f64" => Ok(LoType::F64),
+        _ => {
+            if let Some(actual_type) = ctx.type_aliases.borrow().get(&token.value) {
+                return Ok(actual_type.clone());
             }
 
-            LoInstr::Branch { label_index }
-        }
-        ("continue", []) => {
-            let mut label_index = 0; // 0 = loop
-
-            let mut current_block = &ctx.block;
-            loop {
-                if current_block.block_type == BlockType::Loop {
-                    break;
-                }
-
-                current_block = &current_block.parent.unwrap();
-                label_index += 1;
-            }
-
-            LoInstr::Branch { label_index }
-        }
-        ("return", values) if values.len() < 2 => {
-            let value = if let Some(value_expr) = values.get(0) {
-                compile_instr(value_expr, ctx)?
-            } else {
-                LoInstr::Casted {
-                    value_type: LoType::Void,
-                    expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
-                }
-            };
-
-            let return_type = value.get_type(ctx.module);
-            if return_type != ctx.fn_ctx.lo_fn_type.output {
-                return Err(LoError {
-                    message: format!(
-                        "TypeError: Invalid return type, \
-                            expected {output:?}, got {return_type:?}",
-                        output = ctx.fn_ctx.lo_fn_type.output,
-                    ),
-                    loc: op_loc.clone(),
-                });
-            }
-
-            let return_expr = LoInstr::Return {
-                value: Box::new(value),
-            };
-            if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
-                let mut values = values?;
-                values.push(return_expr);
-                LoInstr::Casted {
-                    value_type: LoType::Void,
-                    expr: Box::new(LoInstr::MultiValueEmit { values }),
-                }
-            } else {
-                return_expr
-            }
-        }
-        ("defer", [defer_label_exprs @ .., defer_expr]) => {
-            let defer_instr = compile_instr(defer_expr, ctx)?;
-            let defer_label = match &defer_label_exprs[..] {
-                [SExpr::Atom {
-                    kind: AtomKind::Symbol,
-                    value: defer_label,
-                    loc: _,
-                }] => defer_label.clone(),
-                [] => String::from(DEFER_UNTIL_RETURN_LABEL),
-                _ => {
+            if let Some(struct_def) = ctx.struct_defs.get(&token.value) {
+                if !struct_def.fully_defined && !is_referenced {
                     return Err(LoError {
-                        message: format!("Invalid arguments for {op}"),
-                        loc: op_loc.clone(),
-                    })
-                }
-            };
-
-            let deferred = ctx
-                .fn_ctx
-                .defers
-                .entry(defer_label)
-                .or_insert_with(|| vec![]);
-
-            deferred.push(defer_instr);
-
-            LoInstr::Casted {
-                value_type: LoType::Void,
-                expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
-            }
-        }
-        (
-            "defer.eval",
-            [SExpr::Atom {
-                kind: AtomKind::Symbol,
-                value: defer_label,
-                loc: defer_label_loc,
-            }],
-        ) => {
-            let Some(values) = get_deferred(ctx, defer_label) else {
-                return Err(LoError {
-                    message: format!("Unknown defer scope: {defer_label}"),
-                    loc: defer_label_loc.clone(),
-                });
-            };
-
-            LoInstr::Casted {
-                value_type: LoType::Void,
-                expr: Box::new(LoInstr::MultiValueEmit { values: values? }),
-            }
-        }
-        ("as", [value_expr, type_expr]) => {
-            let lo_expr = compile_instr(value_expr, ctx)?;
-            let value_type = parse_lo_type(type_expr, ctx.module)?;
-
-            LoInstr::Casted {
-                value_type,
-                expr: Box::new(lo_expr),
-            }
-        }
-        ("sizeof", [type_expr]) => {
-            let value_type = parse_lo_type(type_expr, &ctx.module)?;
-
-            LoInstr::U32Const {
-                value: value_type
-                    .sized_comp_stats(&ctx.module)
-                    .map_err(|err| LoError {
-                        message: err,
-                        loc: op_loc.clone(),
-                    })?
-                    .byte_length as u32,
-            }
-        }
-        ("new", [type_expr, init_expr, other @ ..]) => {
-            let alloc_id_instr = match other {
-                [] => LoInstr::U32Const {
-                    value: HEAP_ALLOC_ID,
-                },
-                [SExpr::Atom {
-                    value: using_literal,
-                    kind: AtomKind::Symbol,
-                    ..
-                }, alloc_id_expr]
-                    if using_literal == ":using" =>
-                {
-                    compile_instr(alloc_id_expr, ctx)?
-                }
-                _ => {
-                    return Err(LoError {
-                        message: format!("Invalid arguments for {op}"),
-                        loc: op_loc.clone(),
+                        message: format!("Cannot use partially defined struct"),
+                        loc: token.loc.clone(),
                     });
                 }
-            };
 
-            let value_type = parse_lo_type(type_expr, &ctx.module)?;
-
-            let init_instr = compile_instr(init_expr, ctx)?;
-            let init_type = init_instr.get_type(ctx.module);
-
-            if init_type != value_type {
-                return Err(LoError {
-                    message: format!(
-                        "TypeError: Invalid types for {op}, needed {:?}, got {:?}",
-                        value_type, init_type
-                    ),
-                    loc: op_loc.clone(),
-                });
-            }
-
-            let alloc_fn_def = ctx.module.fn_defs.get("alloc").ok_or_else(|| LoError {
-                message: format!("`alloc` not defined, required for using {}", op),
-                loc: op_loc.clone(),
-            })?;
-            let alloc_fn_index = alloc_fn_def.get_absolute_index(&ctx.module);
-
-            let value_size = value_type
-                .sized_comp_stats(&ctx.module)
-                .map_err(|err| LoError {
-                    message: err,
-                    loc: op_loc.clone(),
-                })?
-                .byte_length;
-
-            let return_addr_local_index = ctx.fn_ctx.locals_last_index;
-            ctx.fn_ctx.non_arg_wasm_locals.push(WasmType::I32);
-            ctx.fn_ctx.locals_last_index += 1;
-
-            let init_load = compile_load(
-                ctx,
-                &value_type,
-                Box::new(LoInstr::UntypedLocalGet {
-                    local_index: return_addr_local_index,
-                }),
-                0,
-            )
-            .map_err(|err| LoError {
-                message: err,
-                loc: op_loc.clone(),
-            })?;
-
-            let init_store_instr = compile_set(ctx, init_instr, init_load, op_loc)?;
-
-            LoInstr::Casted {
-                value_type: LoType::Pointer(Box::new(value_type)),
-                expr: Box::new(LoInstr::MultiValueEmit {
-                    values: vec![
-                        LoInstr::Call {
-                            fn_index: alloc_fn_index,
-                            return_type: LoType::Void, // won't be typechecked
-                            args: vec![
-                                alloc_id_instr,
-                                LoInstr::U32Const {
-                                    value: value_size as u32,
-                                },
-                            ],
-                        },
-                        LoInstr::Set {
-                            bind: LoSetBind::Local {
-                                index: return_addr_local_index,
-                            },
-                        },
-                        init_store_instr,
-                        LoInstr::UntypedLocalGet {
-                            local_index: return_addr_local_index,
-                        },
-                    ],
-                }),
-            }
-        }
-        (
-            ":",
-            [SExpr::Atom {
-                value: local_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, value_type],
-        ) => {
-            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                return Err(LoError {
-                    message: format!("Local name collides with global: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            };
-
-            if ctx.block.get_own_local(local_name).is_some() {
-                return Err(LoError {
-                    message: format!("Duplicate local definition: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            }
-
-            let value_type = parse_lo_type(value_type, &ctx.module)?;
-            let local_indicies = ctx.push_local(local_name.clone(), value_type.clone());
-
-            let values = local_indicies
-                .map(|i| LoInstr::UntypedLocalGet { local_index: i })
-                .collect();
-
-            LoInstr::NoEmit {
-                expr: Box::new(LoInstr::Casted {
-                    value_type,
-                    expr: Box::new(LoInstr::MultiValueEmit { values }),
-                }),
-            }
-        }
-        ("=", [bind, value]) => {
-            let value_instr = compile_instr(value, ctx)?;
-            let bind_instr = compile_instr(bind, ctx)?;
-
-            let value_type = value_instr.get_type(ctx.module);
-            let bind_type = bind_instr.get_type(ctx.module);
-
-            if value_type != bind_type {
-                return Err(LoError {
-                    message: format!(
-                        "TypeError: Invalid types for '{op}', \
-                        needed {bind_type}, got {value_type}",
-                    ),
-                    loc: op_loc.clone(),
-                });
-            }
-
-            compile_set(ctx, value_instr, bind_instr, op_loc)?
-        }
-        (
-            ":=",
-            [SExpr::Atom {
-                value: local_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            }, value],
-        ) => {
-            if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                return Err(LoError {
-                    message: format!("Local name collides with global: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            };
-
-            if ctx.block.get_own_local(local_name).is_some() {
-                return Err(LoError {
-                    message: format!("Duplicate local definition: {local_name}"),
-                    loc: name_loc.clone(),
-                });
-            }
-
-            let value_instr = compile_instr(value, ctx)?;
-            let value_type = value_instr.get_type(ctx.module);
-            let local_indicies = ctx.push_local(local_name.clone(), value_type.clone());
-
-            let values = local_indicies
-                .map(|i| LoInstr::UntypedLocalGet { local_index: i })
-                .collect();
-
-            let bind_instr = LoInstr::MultiValueEmit { values };
-
-            compile_set(ctx, value_instr, bind_instr, op_loc)?
-        }
-        (
-            ".",
-            [lhs, SExpr::Atom {
-                value: f_name,
-                loc: f_name_loc,
-                kind: AtomKind::Symbol,
-            }],
-        ) => {
-            let lhs_instr = compile_instr(lhs, ctx)?;
-
-            if let LoInstr::StructGet {
-                struct_name,
-                base_index,
-                ..
-            } = lhs_instr
-            {
-                // safe to unwrap as it was already checked in `StructGet`
-                let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
-
-                let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                    return Err(LoError {
-                        message: format!("Unknown field {f_name} in struct {struct_name}"),
-                        loc: f_name_loc.clone(),
-                    });
-                };
-
-                return compile_local_get(
-                    &ctx.module,
-                    base_index + field.field_index,
-                    &field.value_type,
-                )
-                .map_err(|message| LoError {
-                    message,
-                    loc: lhs.loc().clone(),
-                });
-            };
-
-            if let LoInstr::StructLoad {
-                struct_name,
-                address_instr,
-                base_byte_offset,
-                ..
-            } = lhs_instr
-            {
-                // safe to unwrap as it was already checked in `StructLoad`
-                let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
-
-                let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                    return Err(LoError {
-                        message: format!("Unknown field {f_name} in struct {struct_name}"),
-                        loc: f_name_loc.clone(),
-                    });
-                };
-
-                return compile_load(
-                    ctx,
-                    &field.value_type,
-                    address_instr,
-                    base_byte_offset + field.byte_offset,
-                )
-                .map_err(|e| LoError {
-                    message: e,
-                    loc: op_loc.clone(),
+                return Ok(LoType::StructInstance {
+                    name: token.value.clone(),
                 });
             }
 
             return Err(LoError {
-                message: format!("Invalid arguments for {op}"),
-                loc: op_loc.clone(),
+                message: format!("Unexpected token in type: {}", token.value),
+                loc: token.loc.clone(),
             });
         }
-        ("*", [pointer_expr]) => {
-            let pointer_instr = compile_instr(pointer_expr, ctx)?;
-            let lo_type = pointer_instr.get_type(ctx.module);
-
-            let LoType::Pointer(pointee_type) = lo_type else {
-                return Err(LoError {
-                    message: format!("Cannot dereference {lo_type:?}"),
-                    loc: op_loc.clone(),
-                });
-            };
-
-            compile_load(ctx, &pointee_type, Box::new(pointer_instr), 0).map_err(|err| LoError {
-                message: err,
-                loc: op_loc.clone(),
-            })?
-        }
-        (
-            "->",
-            [struct_ref_expr, SExpr::Atom {
-                value: f_name,
-                loc: f_name_loc,
-                kind: AtomKind::Symbol,
-            }],
-        ) => {
-            let struct_ref_instr = Box::new(compile_instr(struct_ref_expr, ctx)?);
-            let lo_type = struct_ref_instr.get_type(ctx.module);
-
-            let LoType::Pointer(pointee_type) = &lo_type else {
-                return Err(LoError {
-                    message: format!("Cannot dereference {lo_type:?}"),
-                    loc: op_loc.clone(),
-                });
-            };
-            let LoType::StructInstance { name: s_name } = pointee_type.as_ref() else {
-                return Err(LoError {
-                    message: format!("Cannot dereference {lo_type:?}"),
-                    loc: op_loc.clone(),
-                });
-            };
-
-            let struct_def = ctx.module.struct_defs.get(s_name).unwrap();
-            let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                return Err(LoError {
-                    message: format!("Unknown field {f_name} in struct {s_name}"),
-                    loc: f_name_loc.clone(),
-                });
-            };
-
-            compile_load(ctx, &field.value_type, struct_ref_instr, field.byte_offset).map_err(
-                |e| LoError {
-                    message: e,
-                    loc: op_loc.clone(),
-                },
-            )?
-        }
-        // TODO(feat): support custom aligns and offsets
-        ("@", [load_kind_expr, address_expr]) => {
-            let address_instr = Box::new(compile_instr(address_expr, ctx)?);
-            let value_type = parse_lo_type(&load_kind_expr, &ctx.module)?;
-
-            compile_load(ctx, &value_type, address_instr, 0).map_err(|err| LoError {
-                message: err,
-                loc: op_loc.clone(),
-            })?
-        }
-        (fn_name, args) => {
-            if let Some(struct_def) = ctx.module.struct_defs.get(fn_name) {
-                let struct_name = fn_name;
-                if args.len() / 2 != struct_def.fields.len() {
-                    return Err(LoError {
-                        message: format!(
-                            "Invalid number of struct fields, expected: {}",
-                            struct_def.fields.len()
-                        ),
-                        loc: op_loc.clone(),
-                    });
-                }
-
-                let mut values = vec![];
-                for i in 0..args.len() / 2 {
-                    let struct_field = &struct_def.fields[i];
-                    let field_name_expr = &args[i * 2];
-                    let field_value_expr = &args[i * 2 + 1];
-
-                    let SExpr::Atom {
-                        value: field_name,
-                        kind: AtomKind::Symbol,
-                        loc: _,
-                    } = field_name_expr
-                    else {
-                        return Err(LoError {
-                            message: format!("Field name expected, got {field_name_expr}"),
-                            loc: field_name_expr.loc().clone(),
-                        });
-                    };
-
-                    let expected_field_name = format!(":{}", struct_field.name);
-                    if field_name != &expected_field_name[..] {
-                        return Err(LoError {
-                            message: format!(
-                                "Unexpected field name, expecting: `{expected_field_name}`"
-                            ),
-                            loc: field_name_expr.loc().clone(),
-                        });
-                    }
-
-                    let field_value = compile_instr(field_value_expr, ctx)?;
-                    let field_value_type = field_value.get_type(ctx.module);
-
-                    let field_type = &struct_field.value_type;
-                    if field_value_type != *field_type {
-                        return Err(LoError {
-                            message: format!(
-                                "Invalid type for field {struct_name}{field_name}, \
-                                expected: {field_type}, \
-                                got: {field_value_type}"
-                            ),
-                            loc: field_value_expr.loc().clone(),
-                        });
-                    }
-                    values.push(field_value);
-                }
-
-                return Ok(LoInstr::Casted {
-                    value_type: LoType::StructInstance {
-                        name: struct_name.into(),
-                    },
-                    expr: Box::new(LoInstr::MultiValueEmit { values }),
-                });
-            };
-
-            let Some(fn_def) = ctx.module.fn_defs.get(fn_name) else {
-                return Err(LoError {
-                    message: format!("Unknown instruction or function: {fn_name}"),
-                    loc: op_loc.clone(),
-                });
-            };
-
-            let args = compile_instrs(args, ctx)?;
-
-            let fn_type_index = fn_def.type_index;
-            let wasm_module = ctx.module.wasm_module.borrow_mut();
-            let fn_type = wasm_module
-                .types
-                .get(fn_type_index as usize)
-                .ok_or_else(|| LoError::unreachable(file!(), line!()))?;
-
-            let mut arg_types = vec![];
-            for arg in &args {
-                let lo_type = arg.get_type(ctx.module);
-                lo_type.emit_components(&ctx.module, &mut arg_types);
-            }
-
-            if fn_type.inputs != arg_types {
-                return Err(LoError {
-                    message: format!(
-                        "TypeError: Mismatched arguments for function \
-                            '{fn_name}', expected {inputs:?}, got {args:?}",
-                        inputs = fn_type.inputs,
-                        args = arg_types,
-                    ),
-                    loc: op_loc.clone(),
-                });
-            }
-
-            // TODO: use this eventually
-            // let mut arg_types = vec![];
-            // for arg in &args {
-            //     ctx,.get_typeactx((ctx, &arg));
-            // }
-            // if arg_types != fn_def.kind.inputs {
-            //     return Err(CompileError {
-            //         message: format!(
-            //             "TypeError: Mismatched arguments for function \
-            //                         '{fn_name}', expected {inputs:?}, got {args:?}",
-            //             inputs = fn_def.kind.inputs,
-            //             args = arg_types,
-            //         ),
-            //         loc: op_loc.clone(),
-            //     });
-            // }
-
-            LoInstr::Call {
-                fn_index: fn_def.get_absolute_index(&ctx.module),
-                args,
-                return_type: fn_def.kind.output.clone(),
-            }
-        }
-    };
-
-    Ok(instr)
+    }
 }
 
-// pub for use from v2
-pub fn get_deferred(
+fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
+    int.value.parse().map_err(|_| LoError {
+        message: format!("Parsing u32 (implicit) failed"),
+        loc: int.loc.clone(),
+    })
+}
+
+fn parse_i64_literal(int: &LoToken) -> Result<i64, LoError> {
+    int.value.parse().map_err(|_| LoError {
+        message: format!("Parsing i64 failed"),
+        loc: int.loc.clone(),
+    })
+}
+
+fn fn_name_for_method(receiver_type: &LoType, method_name: &str) -> String {
+    format!("{receiver_type}_{method_name}")
+}
+
+// TODO: copied from v1, review
+fn get_deferred(
     ctx: &mut BlockContext,
     defer_label: &str,
 ) -> Option<Result<Vec<LoInstr>, LoError>> {
@@ -1673,8 +1682,8 @@ pub fn get_deferred(
     Some(Ok(deferred))
 }
 
-// pub for use in v2
-pub fn compile_load(
+// TODO: copied from v1, review
+fn compile_load(
     ctx: &mut BlockContext,
     value_type: &LoType,
     address_instr: Box<LoInstr>,
@@ -1745,8 +1754,8 @@ pub fn compile_load(
     })
 }
 
-// pub for use in v2
-pub fn compile_local_get(
+// TODO: copied from v1, review
+fn compile_local_get(
     ctx: &ModuleContext,
     base_index: u32,
     value_type: &LoType,
@@ -1789,99 +1798,8 @@ pub fn compile_local_get(
     })
 }
 
-pub fn compile_const_instr(expr: &SExpr, ctx: &ModuleContext) -> Result<LoInstr, LoError> {
-    let items = match expr {
-        SExpr::List { value: items, .. } => items,
-        SExpr::Atom {
-            value,
-            loc: op_loc,
-            kind,
-        } => {
-            if *kind != AtomKind::Symbol {
-                return Err(LoError {
-                    message: format!("Strings are not allowed in globals"),
-                    loc: expr.loc().clone(),
-                });
-            }
-
-            if value == "true" {
-                return Ok(LoInstr::Casted {
-                    value_type: LoType::Bool,
-                    expr: Box::new(LoInstr::U32Const { value: 1 }),
-                });
-            }
-
-            if value == "false" {
-                return Ok(LoInstr::Casted {
-                    value_type: LoType::Bool,
-                    expr: Box::new(LoInstr::U32Const { value: 0 }),
-                });
-            }
-
-            if value.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(LoInstr::U32Const {
-                    value: value.parse().map_err(|_| LoError {
-                        message: format!("Parsing u32 (implicit) failed"),
-                        loc: op_loc.clone(),
-                    })?,
-                });
-            }
-
-            let Some(global) = ctx.globals.get(value.as_str()) else {
-                return Err(LoError {
-                    message: format!("Reading unknown global: {value}"),
-                    loc: op_loc.clone(),
-                });
-            };
-
-            return Ok(LoInstr::GlobalGet {
-                global_index: global.index,
-            });
-        }
-    };
-
-    let [SExpr::Atom {
-        value: op,
-        loc: op_loc,
-        kind,
-    }, args @ ..] = &items[..]
-    else {
-        return Err(LoError {
-            message: format!("Expected operation, got a simple list"),
-            loc: expr.loc().clone(),
-        });
-    };
-
-    if *kind != AtomKind::Symbol {
-        return Err(LoError {
-            message: format!("Expected operation, got a string"),
-            loc: expr.loc().clone(),
-        });
-    }
-
-    let instr = match (op.as_str(), &args[..]) {
-        ("i32", [SExpr::Atom { value, .. }]) => LoInstr::U32Const {
-            value: value.parse().map_err(|_| LoError {
-                message: format!("Parsing i32 failed"),
-                loc: op_loc.clone(),
-            })?,
-        },
-        ("data.size", []) => LoInstr::U32ConstLazy {
-            value: ctx.data_size.clone(),
-        },
-        (instr_name, _args) => {
-            return Err(LoError {
-                message: format!("Unknown instruction: {instr_name}"),
-                loc: op_loc.clone(),
-            });
-        }
-    };
-
-    Ok(instr)
-}
-
-// pub for use in v2
-pub fn compile_set(
+// TODO: copied from v1, review
+fn compile_set(
     ctx: &mut BlockContext,
     value_instr: LoInstr,
     bind_instr: LoInstr,
@@ -1898,7 +1816,7 @@ pub fn compile_set(
     })
 }
 
-// TODO: figure out better location
+// TODO: copied from v1, review
 fn compile_set_binds(
     output: &mut Vec<LoInstr>,
     ctx: &mut BlockContext,
@@ -1984,9 +1902,6 @@ fn compile_set_binds(
                 compile_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
-        LoInstr::NoEmit { expr: instr } => {
-            compile_set_binds(output, ctx, *instr, bind_loc, address_index)?;
-        }
         LoInstr::Casted {
             expr: instr,
             value_type: _,
@@ -2000,112 +1915,4 @@ fn compile_set_binds(
             });
         }
     })
-}
-
-// types
-
-fn parse_lo_type(expr: &SExpr, ctx: &ModuleContext) -> Result<LoType, LoError> {
-    parse_lo_type_checking_ref(expr, ctx, false)
-}
-
-fn parse_lo_type_checking_ref(
-    expr: &SExpr,
-    ctx: &ModuleContext,
-    is_referenced: bool,
-) -> Result<LoType, LoError> {
-    match expr {
-        SExpr::Atom {
-            kind: AtomKind::Symbol,
-            value: name,
-            ..
-        } => match &name[..] {
-            "void" => return Ok(LoType::Void),
-            "bool" => return Ok(LoType::Bool),
-            "u8" => return Ok(LoType::U8),
-            "i8" => return Ok(LoType::I8),
-            "u16" => return Ok(LoType::U16),
-            "i16" => return Ok(LoType::I16),
-            "u32" => return Ok(LoType::U32),
-            "i32" => return Ok(LoType::I32),
-            "f32" => return Ok(LoType::F32),
-            "u64" => return Ok(LoType::U64),
-            "i64" => return Ok(LoType::I64),
-            "f64" => return Ok(LoType::F64),
-            _ => {
-                if let Some(struct_def) = ctx.struct_defs.get(name) {
-                    if !struct_def.fully_defined && !is_referenced {
-                        return Err(LoError {
-                            message: format!("Cannot use partially defined struct"),
-                            loc: expr.loc().clone(),
-                        });
-                    }
-
-                    return Ok(LoType::StructInstance {
-                        name: String::from(name),
-                    });
-                }
-            }
-        },
-        SExpr::List { value, .. } => match &value[..] {
-            [SExpr::Atom {
-                kind: AtomKind::Symbol,
-                value,
-                ..
-            }, ptr_data]
-                if value == "&" || value == "&*" =>
-            {
-                let pointee = parse_lo_type_checking_ref(ptr_data, ctx, true)?;
-
-                return Ok(LoType::Pointer(Box::new(pointee)));
-            }
-            [SExpr::Atom {
-                kind: AtomKind::Symbol,
-                value,
-                ..
-            }, type_exprs @ ..]
-                if value == "tuple" =>
-            {
-                let mut types = vec![];
-                for type_expr in type_exprs {
-                    types.push(parse_lo_type_checking_ref(type_expr, ctx, is_referenced)?);
-                }
-                return Ok(LoType::Tuple(types));
-            }
-            _ => {}
-        },
-        _ => {}
-    };
-
-    Err(LoError {
-        message: format!("Unknown value type: {expr}"),
-        loc: expr.loc().clone(),
-    })
-}
-
-// Stolen from https://keyboardsmash.dev/posts/base64-implementation-in-rust-decoding/
-fn base64_decode(input: &[u8]) -> Vec<u8> {
-    const BASE_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    fn decode_char(input: u8) -> u8 {
-        BASE_CHARS.iter().position(|&c| c == input).unwrap_or(0) as u8
-    }
-
-    let mut output: Vec<u8> = Vec::new();
-
-    for chunk in input.chunks(4) {
-        let a = decode_char(chunk[0]);
-        let b = decode_char(chunk[1]);
-        let c = decode_char(chunk[2]);
-        let d = decode_char(chunk[3]);
-
-        let dec1 = ((a << 2) | (b & 0x30) >> 4) as u8;
-        let dec2 = (((b & 0x0F) << 4) | (c & 0x3C) >> 2) as u8;
-        let dec3 = (((c & 0x03) << 6) | (d)) as u8;
-
-        output.push(dec1);
-        output.push(dec2);
-        output.push(dec3);
-    }
-
-    output
 }
