@@ -3,14 +3,10 @@
 
 extern crate alloc;
 
-mod ast;
 mod ir;
 mod lexer;
-mod lowering;
-mod operators;
 mod parser;
-mod tokens;
-mod wasi_io;
+mod utils;
 mod wasm;
 
 use alloc::{string::String, vec::Vec};
@@ -44,7 +40,7 @@ fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
 
 mod wasi_api {
     use super::exec_pipeline;
-    use super::wasi_io::*;
+    use super::utils::*;
 
     #[no_mangle]
     pub extern "C" fn _start() {

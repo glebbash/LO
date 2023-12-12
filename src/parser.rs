@@ -1,4 +1,4 @@
-use crate::{ast::*, ir::*, lexer::*, lowering::*, operators::*, tokens::*, wasi_io::*, wasm::*};
+use crate::{ir::*, lexer::*, utils::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
 use LoTokenType::*;
 
@@ -42,7 +42,7 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
         ctx.wasm_module.borrow_mut().exports.push(WasmExport {
             export_type: WasmExportType::Func,
             export_name: fn_export.out_name.clone(),
-            exported_item_index: ctx.imported_fns_count + fn_def.fn_index,
+            exported_item_index: fn_def.get_absolute_index(ctx),
         });
     }
 
@@ -896,7 +896,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let expr = parse_expr(ctx, tokens, 0)?;
         let expr_type = expr.get_type(ctx.module);
-        crate::wasi_io::debug(format!(
+        crate::utils::debug(format!(
             "{}",
             String::from(LoError {
                 message: format!("{expr_type:?}"),
