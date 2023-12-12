@@ -1,0 +1,19 @@
+include "lib/cli";
+include "lib/args";
+
+fn main() {
+    let args = Args_load();
+
+    let i = 0;
+    loop {
+        if i == args.argc {
+            break;
+        };
+
+        let arg = Args_get(args, i);
+        puts(arg);
+        puts("\n");
+
+        i += 1;
+    };
+};

@@ -180,7 +180,7 @@ test("compiles echo", async () => {
     assert.strictEqual(output, "abc");
 });
 
-test.skip("compiles args", async () => {
+test("compiles args", async () => {
     const program = await compile("./examples2/test/args.test.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {

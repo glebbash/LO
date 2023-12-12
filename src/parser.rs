@@ -971,7 +971,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             crate::wasi_io::debug(format!(
                 "{}",
                 String::from(LoError {
-                    message: format!("{expr} = {:?}", lo_type),
+                    message: format!("{expr} = {}", lo_type),
                     loc: expr.loc().clone(),
                 })
             ));
@@ -1188,7 +1188,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
         }
         ("as", [value_expr, type_expr]) => {
             let lo_expr = compile_instr(value_expr, ctx)?;
-            let value_type = parse_lo_type(type_expr, &ctx.module)?;
+            let value_type = parse_lo_type(type_expr, ctx.module)?;
 
             LoInstr::Casted {
                 value_type,
@@ -1516,7 +1516,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
             });
         }
         ("*", [pointer_expr]) => {
-            let pointer_instr = Box::new(compile_instr(pointer_expr, ctx)?);
+            let pointer_instr = compile_instr(pointer_expr, ctx)?;
             let lo_type = pointer_instr.get_type(ctx.module);
 
             let LoType::Pointer(pointee_type) = lo_type else {
@@ -1526,7 +1526,7 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                 });
             };
 
-            compile_load(ctx, &pointee_type, pointer_instr, 0).map_err(|err| LoError {
+            compile_load(ctx, &pointee_type, Box::new(pointer_instr), 0).map_err(|err| LoError {
                 message: err,
                 loc: op_loc.clone(),
             })?

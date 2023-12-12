@@ -106,7 +106,7 @@ async function runWasiCommand(args) {
 
 /**
  * @param {BufferSource} data
- * @param {import("node:wasi").WASIOptions} [wasiOptions]
+ * @param {Omit<import("node:wasi").WASIOptions, "version">} [wasiOptions]
  */
 async function runWASI(data, wasiOptions) {
     // @ts-ignore
