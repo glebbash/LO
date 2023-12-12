@@ -1,29 +1,9 @@
-// todo for running from self-hosted compiler:
-// - types: &(), u32, &u32
-// - function imports
-// - memory declaration + export
-// - data definition
-// - function definition + export
-// - instructions:
-//   - store instruction:
-//     - load with type metadata
-//     - load to store convertor
-//   - function call
-//   - drop
-
 import from "wasi_snapshot_preview1" {
-    fn fd_write(
-        fd: u32,       // file_descriptor
-        iovs: &(),     // The pointer to the iov array
-        iovs_len: u32, // Amount of Wasi/IOVec
-        nwritten: u32, // Pointer to store the number of bytes written
-    ) -> u32;
+    fn fd_write(fd: u32, iovs: &(), iovs_len: u32, nwritten: u32) -> u32;
 };
 
 export memory { min_pages: 1 };
-
-// TODO: ? implement
-data { loc: 12, bytes: "Hello World!\n" };
+memory @ 12 = "Hello World!\n";
 
 export fn _start() {
     // Wasi_IOVec.base = "Hello World!\n".ptr
@@ -33,9 +13,9 @@ export fn _start() {
     *(8 as &u32) = 13; 
 
     let _ = fd_write(
-        1, // file_descriptor
+        1, // file_descriptor, STDOUT = 1
         4, // The pointer to the iov array
         1, // Amount of Wasi_IOVec
         0, // Pointer to store the number of bytes written
     );
-}
+};

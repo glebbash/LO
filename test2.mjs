@@ -166,7 +166,7 @@ test("compiles hello world", async () => {
     assert.strictEqual(output, "Hello World!\n");
 });
 
-test.skip("compiles hello world (raw)", async () => {
+test("compiles hello world (raw)", async () => {
     const program = await compile("./examples2/hello-world-raw.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {

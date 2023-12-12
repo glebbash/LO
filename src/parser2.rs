@@ -299,6 +299,25 @@ fn parse_memory(
     tokens: &mut LoTokenStream,
     exported: bool,
 ) -> Result<(), LoError> {
+    if let Some(_) = tokens.eat(Operator, "@")? {
+        let offset = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+        tokens.expect(Operator, "=")?;
+        let data = tokens.expect_any(StringLiteral)?;
+
+        let bytes = data.value.as_bytes().iter().map(|b| *b).collect();
+
+        ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
+            offset: WasmExpr {
+                instrs: vec![WasmInstr::I32Const {
+                    value: offset as i32,
+                }],
+            },
+            bytes,
+        });
+
+        return Ok(());
+    }
+
     let memory_name = String::from("memory");
     if ctx.memories.contains_key(&memory_name) {
         return Err(LoError {
