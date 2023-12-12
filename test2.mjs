@@ -294,50 +294,6 @@ test("compiles defer", async () => {
     );
 });
 
-test.skip("compiles minify", async () => {
-    const testSource = `
-        ; std + wasi
-        (mod lib/cli)
-
-        (fn main [] void (
-            (puts "Hello World!\n")
-        ))
-        `;
-
-    const program = await compile("./examples2/minify.lo");
-
-    const output = await runWithTmpFile(async (stdin, stdinFile) => {
-        await fs.writeFile(stdinFile, testSource);
-        return runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdin: stdin.fd, stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
-    });
-
-    assert.strictEqual(
-        output,
-        "(mod lib/cli) (fn main () void ((puts Hello World!\n)))\n"
-    );
-});
-
-test.skip("compiles minify (using file input)", async () => {
-    const program = await compile("./examples2/minify.lo");
-
-    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-        await runWASI(program, {
-            stdout: stdout.fd,
-            args: ["minify.lo", "test/42.lo"],
-            preopens: { ".": "examples2" },
-        });
-        return fs.readFile(stdoutFile, { encoding: "utf-8" });
-    });
-
-    assert.strictEqual(
-        output,
-        "(export main :as main) (fn main () u32 ((return 42)))\n"
-    );
-});
-
 // utils
 
 /**
