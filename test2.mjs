@@ -245,7 +245,7 @@ test("compiles struct-in-struct", async () => {
     assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
 });
 
-test.skip("compiles heap-alloc", async () => {
+test("compiles heap-alloc", async () => {
     const program = await compile("./examples2/test/heap-alloc.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -256,11 +256,11 @@ test.skip("compiles heap-alloc", async () => {
     assert.strictEqual(
         output,
         dropPadding(`
-            Heap_TOTAL_ALLOCATED = 1048576
-            let p = Heap_alloc(1) // 1048589
-            Heap_free(p)
-            p = Heap_alloc(1) // 1048589
-            p = Heap_alloc(1) // 1048606
+            Heap_TOTAL_ALLOCATED; // 1048576
+            let p = Heap_alloc(1); // 1048589
+            Heap_free(p);
+            p = Heap_alloc(1); // 1048589
+            p = Heap_alloc(1); // 1048606
         `)
     );
 });

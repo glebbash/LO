@@ -142,30 +142,33 @@ pub enum LoType {
 
 impl core::fmt::Display for LoType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        use LoType::*;
         match self {
-            Void => f.write_str("void"),
-            Bool => f.write_str("bool"),
-            U8 => f.write_str("u8"),
-            I8 => f.write_str("i8"),
-            U16 => f.write_str("u16"),
-            I16 => f.write_str("i16"),
-            U32 => f.write_str("u32"),
-            I32 => f.write_str("i32"),
-            F32 => f.write_str("f32"),
-            U64 => f.write_str("u64"),
-            I64 => f.write_str("i64"),
-            F64 => f.write_str("f64"),
-            Pointer(pointee) => f.write_fmt(format_args!("(& {pointee})")),
-            Tuple(types) => {
-                f.write_str("(tuple")?;
-                for item in types {
-                    f.write_str(" ")?;
+            LoType::Void => f.write_str("void"),
+            LoType::Bool => f.write_str("bool"),
+            LoType::U8 => f.write_str("u8"),
+            LoType::I8 => f.write_str("i8"),
+            LoType::U16 => f.write_str("u16"),
+            LoType::I16 => f.write_str("i16"),
+            LoType::U32 => f.write_str("u32"),
+            LoType::I32 => f.write_str("i32"),
+            LoType::F32 => f.write_str("f32"),
+            LoType::U64 => f.write_str("u64"),
+            LoType::I64 => f.write_str("i64"),
+            LoType::F64 => f.write_str("f64"),
+            LoType::Pointer(pointee) => f.write_fmt(format_args!("&{pointee}")),
+            LoType::Tuple(types) => {
+                f.write_str("(")?;
+                let mut types_iter = types.iter();
+                if let Some(item) = types_iter.next() {
+                    f.write_fmt(format_args!("{item}"))?;
+                }
+                for item in types_iter {
+                    f.write_str(", ")?;
                     f.write_fmt(format_args!("{item}"))?;
                 }
                 f.write_str(")")
             }
-            StructInstance { name } => f.write_str(name),
+            LoType::StructInstance { name } => f.write_str(name),
         }
     }
 }
