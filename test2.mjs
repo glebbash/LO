@@ -194,7 +194,7 @@ test("compiles args", async () => {
     assert.strictEqual(output, "123\n456\n789\n");
 });
 
-test.skip("compiles cat", async () => {
+test("compiles cat", async () => {
     const program = await compile("./examples2/cat.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
