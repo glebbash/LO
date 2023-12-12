@@ -11,7 +11,7 @@
 
 // alloc
 
-    const Alloc_STACK = 0;
+    const ALLOC_STACK = 0;
     const ALLOC_HEAP  = 1;
 
     fn alloc(alloc_id: u32, size: u32) -> &() {
@@ -310,7 +310,7 @@
             return;
         };
 
-        if self->alloc_id == Alloc_STACK {
+        if self->alloc_id == ALLOC_STACK {
             panic("Attempt to grow stack allocated vector");
         };
 

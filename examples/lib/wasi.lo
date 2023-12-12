@@ -1,12 +1,12 @@
 #![new_syntax]
 
 type Wasi_Err = u32;
-const Wasi_Err_SUCCESS = 0;
-const Wasi_Err_BADF    = 8;
+const WASI_ERR_SUCCESS = 0;
+const WASI_ERR_BADF    = 8;
 
-const Wasi_FD_STDIN  = 0;
-const Wasi_FD_STDOUT = 1;
-const Wasi_FD_STDERR = 2;
+const WASI_FD_STDIN  = 0;
+const WASI_FD_STDOUT = 1;
+const WASI_FD_STDERR = 2;
 
 struct Wasi_IOVec {
     base: &*u8,

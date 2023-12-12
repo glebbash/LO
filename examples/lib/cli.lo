@@ -1,0 +1,9 @@
+#![new_syntax]
+
+include "lib/std";
+include "lib/wasi";
+include "lib/print";
+
+export memory { min_pages: 100 };
+
+export existing fn main as "_start";
