@@ -13,20 +13,6 @@
   "contributes": {
     "languages": [
       {
-        "id": "lo-lisp",
-        "aliases": [
-          "lo-lisp"
-        ],
-        "extensions": [
-          ".lole"
-        ],
-        "configuration": "./syntaxes/lo-lisp.config.json",
-        "icon": {
-          "light": "./icons/lo-lisp.svg",
-          "dark": "./icons/lo-lisp.svg"
-        }
-      },
-      {
         "id": "lo",
         "aliases": [
           "lo"
@@ -42,11 +28,6 @@
       }
     ],
     "grammars": [
-      {
-        "language": "lo-lisp",
-        "scopeName": "source.lole",
-        "path": "./syntaxes/lo-lisp.tmLanguage.json"
-      },
       {
         "language": "lo",
         "scopeName": "source.lo",

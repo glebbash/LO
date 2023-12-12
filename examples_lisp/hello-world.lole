@@ -1,5 +1,0 @@
-(mod lib/cli)
-
-(fn main [] void (
-    (puts "Hello World!\n")
-))

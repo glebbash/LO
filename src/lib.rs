@@ -13,13 +13,6 @@ mod tokens;
 mod wasi_io;
 mod wasm;
 
-// v1
-mod expand_lisp;
-mod ir_lisp;
-mod lexer_lisp;
-mod lowering_lisp;
-mod parser_lisp;
-
 use alloc::{string::String, vec::Vec};
 
 #[cfg(target_arch = "wasm32")]
@@ -42,14 +35,8 @@ mod wasm_target {
 }
 
 fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
-    let module = if file_name.ends_with(".lo") {
-        let tokens = lexer::lex_all(file_name, script)?;
-        parser::parse(tokens)?
-    } else {
-        let raw_exprs = lexer_lisp::lex_all(file_name, script)?;
-        let exprs = expand_lisp::expand(raw_exprs)?;
-        parser_lisp::parse(&exprs)?
-    };
+    let tokens = lexer::lex_all(file_name, script)?;
+    let module = parser::parse(tokens)?;
     let mut binary = Vec::new();
     module.dump(&mut binary);
     Ok(binary)
@@ -70,8 +57,6 @@ mod wasi_api {
                 proc_exit(1);
             });
             (file_name, fd_read_all_and_close(fd))
-        } else if args.len() == 1 && args.get(0).unwrap().contains("lisp") {
-            ("<stdin>.lole", stdin_read())
         } else {
             ("<stdin>.lo", stdin_read())
         };

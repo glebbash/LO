@@ -6,7 +6,7 @@ import process from "node:process";
 import { randomUUID } from "node:crypto";
 import { open, readFile, unlink } from "node:fs/promises";
 
-const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo_lisp.wasm";
+const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo.wasm";
 
 const COMMANDS = {
     compile: compileCommand,
