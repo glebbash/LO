@@ -2,7 +2,7 @@
   "name": "lo",
   "displayName": "LO",
   "description": "LO language support",
-  "version": "0.0.69",
+  "version": "0.0.70",
   "engines": {
     "vscode": "^1.81.0"
   },

@@ -1,0 +1,36 @@
+include "lib/cli";
+
+fn main() {
+    defer puts("defer(return): 1\n");
+    defer puts("defer(return): 2\n");
+    defer puts("defer(return): 3\n");
+
+    defer @scope1 puts("defer(scope1): 1\n");
+    let i = 0;
+    loop {
+        if i == 10 {
+            break;
+        };
+        // exprs in loops are only deferred once
+        defer @scope1 puts("defer(scope1): 2\n");
+        i += 1;
+    };
+    if false {
+        // exprs are deferred even `if` body never executes
+        defer @scope1 puts("defer(scope1): 3\n");
+    };
+    defer_eval @scope1;
+
+    puts("-------------\n");
+
+    defer @scope2 puts("defer(scope2): 1\n");
+    defer @scope2 puts("defer(scope2): 2\n");
+    defer_eval @scope2;
+
+    puts("-------------\n");
+
+    defer @scope2 puts("defer(scope2): 3\n");
+    defer_eval @scope2;
+
+    puts("-------------\n");
+};

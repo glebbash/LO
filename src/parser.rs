@@ -1402,56 +1402,6 @@ pub fn compile_instr(expr: &SExpr, ctx: &mut BlockContext) -> Result<LoInstr, Lo
                 kind: AtomKind::Symbol,
             }],
         ) => {
-            if let SExpr::Atom {
-                value: local_name,
-                loc: name_loc,
-                kind: AtomKind::Symbol,
-            } = lhs
-            {
-                if let Some(_) = ctx.module.globals.get(local_name.as_str()) {
-                    return Err(LoError {
-                        message: format!("Getting struct field from global variable: {local_name}"),
-                        loc: name_loc.clone(),
-                    });
-                };
-
-                let Some(local) = ctx.block.get_local(local_name.as_str()) else {
-                    return Err(LoError {
-                        message: format!("Reading unknown variable: {local_name}"),
-                        loc: name_loc.clone(),
-                    });
-                };
-
-                let LoType::StructInstance { name: s_name } = &local.value_type else {
-                    return Err(LoError {
-                        message: format!(
-                            "Trying to get field '{f_name}' on non struct: {local_name}"
-                        ),
-                        loc: f_name_loc.clone(),
-                    });
-                };
-
-                // safe
-                let struct_def = ctx.module.struct_defs.get(s_name).unwrap();
-
-                let Some(field) = struct_def.fields.iter().find(|f| f.name == *f_name) else {
-                    return Err(LoError {
-                        message: format!("Unknown field {f_name} in struct {s_name}"),
-                        loc: f_name_loc.clone(),
-                    });
-                };
-
-                return compile_local_get(
-                    &ctx.module,
-                    local.index + field.field_index,
-                    &field.value_type,
-                )
-                .map_err(|message| LoError {
-                    message,
-                    loc: lhs.loc().clone(),
-                });
-            }
-
             let lhs_instr = compile_instr(lhs, ctx)?;
 
             if let LoInstr::StructGet {

@@ -139,6 +139,17 @@ test("compiles hello world", async () => {
     assert.strictEqual(output, "Hello World!\n");
 });
 
+test("compiles hello world (raw)", async () => {
+    const program = await compile("./examples/hello-world-raw.lole");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, "Hello World!\n");
+});
+
 test("compiles echo", async () => {
     const program = await compile("./examples/echo.lole");
 

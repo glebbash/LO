@@ -724,7 +724,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(_) = tokens.eat(Symbol, "defer")? {
-        let defer_label = String::from(DEFER_UNTIL_RETURN_LABEL);
+        let defer_label = if let Some(_) = tokens.eat(Operator, "@")? {
+            tokens.expect_any(Symbol)?.value.clone()
+        } else {
+            String::from(DEFER_UNTIL_RETURN_LABEL)
+        };
         let deffered_expr = parse_expr(ctx, tokens, 0)?;
 
         let deferred = ctx
@@ -738,6 +742,23 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(LoInstr::Casted {
             value_type: LoType::Void,
             expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "defer_eval")? {
+        tokens.expect(Operator, "@")?;
+        let defer_label = tokens.expect_any(Symbol)?.clone();
+
+        let Some(values) = get_deferred(ctx, &defer_label.value) else {
+            return Err(LoError {
+                message: format!("Unknown defer scope: {}", defer_label.value),
+                loc: defer_label.loc.clone(),
+            });
+        };
+
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Void,
+            expr: Box::new(LoInstr::MultiValueEmit { values: values? }),
         });
     }
 
@@ -1146,49 +1167,83 @@ fn parse_postfix(
             if !tokens.next_is(Delim, "(").unwrap_or(false) {
                 let field_name = field_or_method_name;
 
-                let LoInstr::StructGet {
+                if let LoInstr::StructGet {
                     struct_name,
                     base_index,
                     ..
                 } = &primary
-                else {
-                    let lhs_type = primary.get_type(ctx.module);
-                    return Err(LoError {
-                        message: format!(
-                            "Trying to get field '{}' on non struct: {lhs_type}",
-                            field_name.value
-                        ),
-                        loc: field_name.loc,
+                {
+                    let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
+                    let Some(field) = struct_def
+                        .fields
+                        .iter()
+                        .find(|f| &f.name == &field_name.value)
+                    else {
+                        return Err(LoError {
+                            message: format!(
+                                "Unknown field {} in struct {struct_name}",
+                                field_name.value
+                            ),
+                            loc: field_name.loc,
+                        });
+                    };
+
+                    return compile_local_get(
+                        &ctx.module,
+                        base_index + field.field_index,
+                        &field.value_type,
+                    )
+                    .map_err(|message| LoError {
+                        message,
+                        // TODO: lhs.loc() is not available
+                        loc: op.token.loc,
                     });
                 };
 
-                let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
-                let Some(field) = struct_def
-                    .fields
-                    .iter()
-                    .find(|f| &f.name == &field_name.value)
-                else {
-                    return Err(LoError {
-                        message: format!(
-                            "Unknown field {} in struct {struct_name}",
-                            field_name.value
-                        ),
-                        loc: field_name.loc,
+                if let LoInstr::StructLoad {
+                    struct_name,
+                    address_instr,
+                    base_byte_offset,
+                    ..
+                } = primary
+                {
+                    // safe to unwrap as it was already checked in `StructLoad`
+                    let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
+
+                    let Some(field) = struct_def
+                        .fields
+                        .iter()
+                        .find(|f| f.name == *field_name.value)
+                    else {
+                        return Err(LoError {
+                            message: format!(
+                                "Unknown field {} in struct {struct_name}",
+                                field_name.value
+                            ),
+                            loc: field_name.loc,
+                        });
+                    };
+
+                    return compile_load(
+                        ctx,
+                        &field.value_type,
+                        address_instr,
+                        base_byte_offset + field.byte_offset,
+                    )
+                    .map_err(|e| LoError {
+                        message: e,
+                        loc: op.token.loc,
                     });
-                };
+                }
 
-                let res = compile_local_get(
-                    &ctx.module,
-                    base_index + field.field_index,
-                    &field.value_type,
-                )
-                .map_err(|message| LoError {
-                    message,
-                    // TODO: lhs.loc() is not available
-                    loc: op.token.loc,
-                })?;
-
-                return Ok(res);
+                let lhs_type = primary.get_type(ctx.module);
+                return Err(LoError {
+                    message: format!(
+                        "Trying to get field '{}' on non struct: {lhs_type}",
+                        field_name.value
+                    ),
+                    loc: field_name.loc,
+                });
             }
 
             let method_name = field_or_method_name;

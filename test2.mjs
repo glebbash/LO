@@ -166,6 +166,17 @@ test("compiles hello world", async () => {
     assert.strictEqual(output, "Hello World!\n");
 });
 
+test.skip("compiles hello world (raw)", async () => {
+    const program = await compile("./examples2/hello-world-raw.lo");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, "Hello World!\n");
+});
+
 test("compiles echo", async () => {
     const program = await compile("./examples2/echo.lo");
 
@@ -245,16 +256,16 @@ test.skip("compiles heap-alloc", async () => {
     assert.strictEqual(
         output,
         dropPadding(`
-            Heap/TOTAL_ALLOCATED = 1048576
-            p = (Heap/alloc 1) // 1048589
-            (Heap/free p)
-            p = (Heap/alloc 1) // 1048589
-            p = (Heap/alloc 1) // 1048606
+            Heap_TOTAL_ALLOCATED = 1048576
+            let p = Heap_alloc(1) // 1048589
+            Heap_free(p)
+            p = Heap_alloc(1) // 1048589
+            p = Heap_alloc(1) // 1048606
         `)
     );
 });
 
-test.skip("compiles defer", async () => {
+test("compiles defer", async () => {
     const program = await compile("./examples2/test/defer.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
