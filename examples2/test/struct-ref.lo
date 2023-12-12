@@ -1,4 +1,4 @@
-memory { min_pages: 10 };
+memory { min_pages: 1 };
 
 struct Point2D {
     x: u32,

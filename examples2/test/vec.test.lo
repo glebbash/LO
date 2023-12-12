@@ -1,7 +1,6 @@
 // exports vec api for testing
 
-// TODO: this test should be fine with min_pages: 1
-export memory { min_pages: 100 };
+export memory { min_pages: 20 };
 
 include "lib/std";
 

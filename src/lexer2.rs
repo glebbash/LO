@@ -67,16 +67,26 @@ impl Lexer2 {
 
     fn lex_int_literal(&mut self) -> LexResult {
         let mut loc = self.loc();
+        let mut value = String::new();
 
-        while self.current_char()?.is_numeric() {
-            self.next_char();
+        loop {
+            match self.current_char() {
+                Ok('_') => {
+                    self.next_char();
+                }
+                Ok(c @ '0'..='9') => {
+                    value.push(c);
+                    self.next_char();
+                }
+                _ => break,
+            }
         }
 
         loc.length = self.index - loc.offset;
 
         Ok(LoToken {
             type_: LoTokenType::IntLiteral,
-            value: self.chars[loc.offset..self.index].iter().collect(),
+            value,
             loc,
         })
     }

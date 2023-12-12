@@ -78,7 +78,7 @@
 
     // TODO: `STACK_BEGIN` and `STACK_END` should be const
     let STACK_BEGIN = __DATA_SIZE__;
-    let STACK_END = 1048576; // 1MB
+    let STACK_END = 1_048_576; // 1MB, ~20 pages (65_536b)
     let Stack_CURRENT = __DATA_SIZE__;
 
     fn Stack_push_u32(value: u32) {
@@ -123,7 +123,7 @@
     };
 
     // TODO: this should be `STACK_END`
-    let Heap_TOTAL_ALLOCATED = 1048576;
+    let Heap_TOTAL_ALLOCATED = 1_048_576;
     let Heap_FIRST_BLOCK = 0 as &Heap_Block;
     let Heap_CURRENT_BLOCK = 0 as &Heap_Block;
 

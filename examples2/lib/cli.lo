@@ -2,6 +2,6 @@ include "lib/std";
 include "lib/wasi";
 include "lib/print";
 
-export memory { min_pages: 100 };
+export memory { min_pages: 40 }; // 1MB stack + 1MB heap
 
 export existing fn main as "_start";
