@@ -78,9 +78,10 @@
 
 // stack
 
-    const STACK_BEGIN = __DATA_SIZE__ as &();
+    // TODO: this should be const, but `__DATA_SIZE__` needs to be resolved later
+    let STACK_BEGIN = __DATA_SIZE__;
+    let Stack_CURRENT = __DATA_SIZE__;
     const STACK_END = 1048576; // 1MB
-    let Stack_CURRENT = STACK_BEGIN;
 
     fn Stack_push_u32(value: u32) {
         *(Stack_alloc(sizeof u32) as &u32) = value;

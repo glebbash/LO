@@ -7,9 +7,8 @@ fn puts(str: StringSlice) {
     return fputs(WASI_FD_STDOUT, str);
 };
 fn fputs(fd: u32, value: StringSlice) {
-    // TODO: use ALLOC_STACK, but it fails for some reason
-    let value_ptr = alloc(ALLOC_HEAP, sizeof StringSlice) as &StringSlice;
-    defer free(ALLOC_HEAP, value_ptr, sizeof StringSlice);
+    let value_ptr = alloc(ALLOC_STACK, sizeof StringSlice) as &StringSlice;
+    defer free(ALLOC_STACK, value_ptr, sizeof StringSlice);
     *value_ptr = value;
 
     fprint_str(fd, value_ptr);
@@ -29,9 +28,8 @@ fn print_str(str: &StringSlice) {
     return fprint_str(WASI_FD_STDOUT, str);
 };
 fn fprint_str(fd: u32, value: &StringSlice) {
-    // TODO: use ALLOC_STACK, but it fails for some reason
-    let nwritten = alloc(ALLOC_HEAP, sizeof u32) as &u32;
-    defer free(ALLOC_HEAP, nwritten, sizeof u32);
+    let nwritten = alloc(ALLOC_STACK, sizeof u32) as &u32;
+    defer free(ALLOC_STACK, nwritten, sizeof u32);
 
     let _ = Wasi_fd_write(fd, value, 1, nwritten);
 };

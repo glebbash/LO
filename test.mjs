@@ -577,15 +577,15 @@ function storeData(memory, ptr, data) {
  * @param {BufferSource} data
  * @param {Omit<import("node:wasi").WASIOptions, 'version'>} [wasiOptions]
  */
-async function runWASI(data, wasiOptions) {
+async function runWASI(data, wasiOptions, additionalImports = {}) {
     const wasi = new WASI({ version: "preview1", ...wasiOptions });
 
     const wasm = await WebAssembly.compile(data);
-    const instance = await WebAssembly.instantiate(
-        wasm,
-        // @ts-ignore
-        wasi.getImportObject()
-    );
+    const instance = await WebAssembly.instantiate(wasm, {
+        // @ts-expect-error
+        ...wasi.getImportObject(),
+        ...additionalImports,
+    });
 
     wasi.start(instance);
 }
