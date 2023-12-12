@@ -624,8 +624,7 @@ fn parse_block_extract_contents(
     Ok(output)
 }
 
-// pub for use in v1
-pub fn parse_block_contents(
+fn parse_block_contents(
     ctx: &mut BlockContext,
     tokens: &mut LoTokenStream,
 ) -> Result<Vec<LoInstr>, LoError> {

@@ -1,8 +1,0 @@
-(mod lib/std)
-(mod lib/wasi)
-(mod lib/print)
-
-(mem m1 :min 100)
-(export mem m1 :as memory)
-
-(export main :as _start)

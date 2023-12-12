@@ -1,8 +1,0 @@
-(import fn debug [(x u32)] void :from utils debug)
-
-(export main :as main)
-(fn main [] void (
-    (debug 1)
-    (debug 2)
-    (debug 3)
-))
