@@ -25,6 +25,21 @@ test("ffi, file and stdin inputs all work the same", async () => {
     assert.deepStrictEqual(output2.buffer, output3.buffer);
 });
 
+test("ffi, file and stdin inputs all work the same (v2)", async () => {
+    const compileFuncAPI = await loadCompilerWithFuncAPI(COMPILER_PATH);
+    const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
+        COMPILER_PATH,
+        true
+    );
+
+    const output1 = await compile("./examples/test/42.lo");
+    const output2 = await compileFuncAPI("./examples/test/42.lo");
+    const output3 = await compileMockedStdinAPI("./examples/test/42.lo");
+
+    assert.deepStrictEqual(output1.buffer, output2.buffer);
+    assert.deepStrictEqual(output2.buffer, output3.buffer);
+});
+
 test("compiles 42", async () => {
     const output = await compile("./examples/test/42.lole");
 
@@ -200,7 +215,36 @@ test("compiles std (v2)", async () => {
 
 test("compiles vec", async () => {
     const output = await compile("./examples/test/vec.test.lole");
+    const lib = await loadWasm(output);
 
+    const vec = lib.vec_new(4, 1);
+
+    lib.vec_push_u8(vec, 1);
+
+    lib.vec_push_u8(vec, 3);
+    lib.vec_push_u8(vec, 2);
+    lib.vec_swap(vec, 1, 2);
+
+    storeData(lib.memory, 1000, new Uint8Array([4, 5]));
+    lib.vec_push_all(vec, 1000, 2);
+
+    storeData(lib.memory, 1000, new Uint8Array([6]));
+    lib.vec_push_all(vec, 1000, 1);
+
+    lib.vec_push_u8(vec, 7);
+
+    assert.strictEqual(lib.vec_get_u8(vec, 0), 1);
+    assert.strictEqual(lib.vec_get_u8(vec, 1), 2);
+    assert.strictEqual(lib.vec_get_u8(vec, 2), 3);
+    assert.strictEqual(lib.vec_get_u8(vec, 3), 4);
+    assert.strictEqual(lib.vec_get_u8(vec, 4), 5);
+    assert.strictEqual(lib.vec_get_u8(vec, 5), 6);
+    assert.strictEqual(lib.vec_get_u8(vec, 6), 7);
+    assert.strictEqual(lib.vec_len(vec), 7);
+});
+
+test("compiles vec (v2)", async () => {
+    const output = await compile("./examples/test/vec.test.lo");
     const lib = await loadWasm(output);
 
     const vec = lib.vec_new(4, 1);

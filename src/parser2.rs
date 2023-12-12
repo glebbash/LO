@@ -53,6 +53,21 @@ fn parse_top_level_expr(
         if let Some(_) = tokens.eat(Symbol, "memory")? {
             return parse_memory(ctx, tokens, true);
         }
+
+        if let Some(_) = tokens.eat(Symbol, "existing")? {
+            tokens.expect(Symbol, "fn")?;
+            let in_name = tokens.expect_any(Symbol)?.clone();
+            tokens.expect(Symbol, "as")?;
+            let out_name = tokens.expect_any(StringLiteral)?.clone();
+
+            ctx.fn_exports.push(FnExport {
+                in_name: in_name.value,
+                out_name: out_name.value,
+                loc: in_name.loc,
+            });
+
+            return Ok(());
+        }
     }
 
     if let Some(_) = tokens.eat(Symbol, "import")? {
@@ -725,7 +740,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         tokens.expect(Delim, ")")?;
 
         let size_type = size.get_type(ctx.module);
-
         if size_type != LoType::U32 {
             return Err(LoError {
                 message: format!("Invalid arguments for {}", t.value),
@@ -736,6 +750,17 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(LoInstr::MemoryGrow {
             size: Box::new(size),
         });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "__debug_here")?.cloned() {
+        debug(format!(
+            "imported fn count: {}",
+            ctx.module.imported_fns_count
+        ));
+        for fn_name in ctx.module.fn_defs.keys() {
+            debug(format!("{fn_name}"));
+        }
+        return Err(LoError::unreachable(file!(), line!()));
     }
 
     if let Some(t) = tokens.eat(Symbol, "__debug_typeof")?.cloned() {
@@ -902,7 +927,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             parse_fn_call_args(ctx, tokens, &mut args)?;
 
             return Ok(LoInstr::Call {
-                fn_index: fn_def.fn_index,
+                fn_index: fn_def.get_absolute_index(ctx.module),
                 return_type: fn_def.kind.output.clone(),
                 args,
             });
@@ -1001,6 +1026,7 @@ fn parse_postfix(
 ) -> Result<LoInstr, LoError> {
     let min_bp = op.info.get_min_bp_for_next();
 
+    // TODO: typecheck that operands are actually numbers
     Ok(match op.tag {
         InfixOpTag::Equal => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32Equal,

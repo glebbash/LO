@@ -48,9 +48,8 @@ impl InfixOp {
             "/" => (Div, OpInfo { bp: 6, assoc: L }),
             "%" => (Mod, OpInfo { bp: 6, assoc: L }),
             "as" => (Cast, OpInfo { bp: 7, assoc: L }),
-            // TODO: check if `!block->used` is parsed properly
-            "." => (FieldAccess, OpInfo { bp: 8, assoc: L }),
-            "->" => (RefFieldAccess, OpInfo { bp: 8, assoc: L }),
+            "." => (FieldAccess, OpInfo { bp: 9, assoc: L }),
+            "->" => (RefFieldAccess, OpInfo { bp: 9, assoc: L }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })
@@ -73,8 +72,8 @@ impl PrefixOp {
         use OpAssoc::*;
         use PrefixOpTag::*;
         let (tag, info) = match token.value.as_str() {
-            "!" => (Not, OpInfo { bp: 9, assoc: L }),
-            "*" => (Dereference, OpInfo { bp: 9, assoc: L }),
+            "!" => (Not, OpInfo { bp: 8, assoc: L }),
+            "*" => (Dereference, OpInfo { bp: 8, assoc: L }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })
