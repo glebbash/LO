@@ -223,7 +223,7 @@ test("compiles cat", async () => {
     );
 });
 
-test.skip("compiles string-pooling", async () => {
+test("compiles string-pooling", async () => {
     const program = await compile("./examples2/test/string-pooling.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -234,7 +234,7 @@ test.skip("compiles string-pooling", async () => {
     assert.strictEqual(output, "108\n");
 });
 
-test.skip("compiles struct-in-struct", async () => {
+test("compiles struct-in-struct", async () => {
     const program = await compile("./examples2/test/struct-in-struct.lo");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {

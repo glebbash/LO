@@ -16,7 +16,8 @@ fn print_u32(num: u32) {
     return fprint_u32(WASI_FD_STDOUT, num);
 };
 fn fprint_u32(fd: u32, num: u32) {
-    let out = std_u32_to_string_using(num, ALLOC_STACK);
+    // TODO: use ALLOC_STACK
+    let out = std_u32_to_string_using(num, ALLOC_HEAP);
     defer Vec_free(out);
 
     fprint_str(fd, out);
