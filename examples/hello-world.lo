@@ -1,5 +1,0 @@
-include "lib/cli";
-
-fn main() {
-    puts("Hello World!\n");
-};

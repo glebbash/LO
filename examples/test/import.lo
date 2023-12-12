@@ -1,9 +1,0 @@
-import from "utils" {
-    fn debug(x: u32);
-};
-
-export fn main() {
-    debug(1);
-    debug(2);
-    debug(3);
-};

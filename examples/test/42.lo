@@ -1,3 +1,0 @@
-export fn main() -> u32 {
-    return 42;
-};

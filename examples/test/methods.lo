@@ -1,7 +1,0 @@
-export fn main() -> u32 {
-    return 5.squared(); // 25
-};
-
-fn u32.squared() -> u32 {
-    return self * self;
-};

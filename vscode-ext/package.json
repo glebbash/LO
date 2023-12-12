@@ -25,20 +25,6 @@
           "light": "./icons/lo-lisp.svg",
           "dark": "./icons/lo-lisp.svg"
         }
-      },
-      {
-        "id": "lo",
-        "aliases": [
-          "lo"
-        ],
-        "extensions": [
-          ".lo"
-        ],
-        "configuration": "./syntaxes/lo.config.json",
-        "icon": {
-          "light": "./icons/lo.svg",
-          "dark": "./icons/lo.svg"
-        }
       }
     ],
     "grammars": [
@@ -46,11 +32,6 @@
         "language": "lo-lisp",
         "scopeName": "source.lole",
         "path": "./syntaxes/lo-lisp.tmLanguage.json"
-      },
-      {
-        "language": "lo",
-        "scopeName": "source.lo",
-        "path": "./syntaxes/lo.tmLanguage.json"
       }
     ]
   },
