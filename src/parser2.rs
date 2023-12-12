@@ -315,12 +315,12 @@ fn parse_memory(
         match prop.value.as_str() {
             "min_pages" => {
                 tokens.expect(Operator, ":")?;
-                let value = parse_int_literal(tokens.expect_any(IntLiteral)?)?;
+                let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
                 memory_limits.min = value;
             }
             "max_pages" => {
                 tokens.expect(Operator, ":")?;
-                let value = parse_int_literal(tokens.expect_any(IntLiteral)?)?;
+                let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
                 memory_limits.max = Some(value);
             }
             _ => {
@@ -580,7 +580,14 @@ fn parse_expr(
 fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
     if let Some(int) = tokens.eat_any(IntLiteral)? {
         return Ok(LoInstr::U32Const {
-            value: parse_int_literal(&int)?,
+            value: parse_u32_literal(&int)?,
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "i64")? {
+        let int = tokens.expect_any(IntLiteral)?;
+        return Ok(LoInstr::I64Const {
+            value: parse_i64_literal(&int)?,
         });
     }
 
@@ -1286,7 +1293,14 @@ fn parse_const_primary(
 ) -> Result<LoInstr, LoError> {
     if let Some(int) = tokens.eat_any(IntLiteral)? {
         return Ok(LoInstr::U32Const {
-            value: parse_int_literal(&int)?,
+            value: parse_u32_literal(&int)?,
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "i64")? {
+        let int = tokens.expect_any(IntLiteral)?;
+        return Ok(LoInstr::I64Const {
+            value: parse_i64_literal(&int)?,
         });
     }
 
@@ -1479,9 +1493,16 @@ fn parse_lo_type_checking_ref(
     }
 }
 
-fn parse_int_literal(int: &LoToken) -> Result<u32, LoError> {
+fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
     int.value.parse().map_err(|_| LoError {
         message: format!("Parsing u32 (implicit) failed"),
+        loc: int.loc.clone(),
+    })
+}
+
+fn parse_i64_literal(int: &LoToken) -> Result<i64, LoError> {
+    int.value.parse().map_err(|_| LoError {
+        message: format!("Parsing i64 failed"),
         loc: int.loc.clone(),
     })
 }

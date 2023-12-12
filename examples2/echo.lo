@@ -1,0 +1,6 @@
+include "lib/cli";
+include "lib/wasi_io";
+
+fn main() {
+    let _err = WasiIO_fd_pipe(WASI_FD_STDIN, WASI_FD_STDOUT, 256);
+};

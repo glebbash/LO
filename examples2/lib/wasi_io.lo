@@ -1,0 +1,83 @@
+include "lib/wasi";
+
+// wasi_io expects host to preopen "." on fd 3
+const CWD_PREOPEN_FD = 3;
+
+fn WasiIO_fd_read_all(fd: u32) -> &String {
+    let output = Vec_new(256, sizeof u8);
+    
+    // TODO: use ALLOC_STACK here when testing `parser.lo`
+    let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
+    defer free(ALLOC_HEAP, chunk, 256);
+    
+    let in_vec = alloc(ALLOC_STACK, sizeof Wasi_IOVec) as &Wasi_IOVec;
+    *in_vec = Wasi_IOVec { base: chunk, size: 256 };
+    defer free(ALLOC_STACK, in_vec, sizeof Wasi_IOVec);
+
+    let nread_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
+    defer Stack_free(sizeof u32);
+
+    loop {
+        let _err = Wasi_fd_read(fd, in_vec, 1, nread_ref);
+        
+        let nread = *nread_ref;
+        if nread == 0 {
+            break;
+        };
+
+        Vec_push_all(output, chunk, nread);
+    };
+
+    return output;
+};
+
+fn WasiIO_fd_pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
+    let chunk = Stack_alloc(chunk_size) as &*u8;
+    defer Stack_free(chunk_size);
+
+    let iov = alloc(ALLOC_STACK, sizeof Wasi_IOVec) as &Wasi_IOVec;
+    *iov = Wasi_IOVec { base: chunk, size: 0 };
+    defer free(ALLOC_STACK, iov, sizeof Wasi_IOVec);
+
+    let nread_ref = Stack_alloc(sizeof u32) as &u32;
+    defer Stack_free(sizeof u32);
+
+    loop {
+        iov->size = chunk_size;
+        let io_res = Wasi_fd_read(fd_in, iov, 1, nread_ref);
+        if io_res != 0 {
+            return false;
+        };
+
+        let nread = *nread_ref;
+        if nread == 0 {
+            break;
+        };
+
+        iov->size = nread;
+        io_res = Wasi_fd_write(fd_out, iov, 1, nread);
+        if io_res != 0 {
+            return false;
+        };
+    };
+
+    return true;
+};
+
+struct FdOpenRes {
+    err: Wasi_Err,
+    fd: u32,
+};
+
+fn WasiIO_fd_open(file_path: StringSlice) -> FdOpenRes {
+    let fd_ref = alloc(ALLOC_STACK, sizeof u32) as &u32; 
+    defer free(ALLOC_STACK, fd_ref, sizeof u32);
+
+    let err = Wasi_path_open(
+        CWD_PREOPEN_FD, 0,
+        file_path, 0, i64 2, i64 0, 0,
+        fd_ref,
+    );
+
+    return FdOpenRes { err: err, fd: *fd_ref };
+};
