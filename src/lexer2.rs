@@ -1,4 +1,4 @@
-use crate::{ast::*, tokens::*, V2_SYNTAX_MARKER};
+use crate::{ast::*, tokens::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 type LexResult = Result<LoToken, LoError>;
@@ -13,13 +13,7 @@ struct Lexer2 {
 }
 
 pub fn lex_all(file_name: &str, script: &str) -> Result<LoTokenStream, LoError> {
-    let mut lexer = Lexer2::new(file_name, script);
-    if script.starts_with(V2_SYNTAX_MARKER) {
-        for _ in 0..V2_SYNTAX_MARKER.len() {
-            lexer.next_char();
-        }
-    }
-    lexer.lex_all()
+    Lexer2::new(file_name, script).lex_all()
 }
 
 impl Lexer2 {

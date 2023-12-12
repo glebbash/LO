@@ -2,9 +2,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { open, readFile, unlink, writeFile } from "node:fs/promises";
+import fs from "node:fs/promises";
 import { WASI } from "node:wasi";
-import { randomUUID } from "node:crypto";
+import crypto from "node:crypto";
 
 const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo.wasm";
 
@@ -133,7 +133,7 @@ test("compiles hello world", async () => {
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(output, "Hello World!\n");
@@ -143,10 +143,10 @@ test("compiles echo", async () => {
     const program = await compile("./examples/echo.lole");
 
     const output = await runWithTmpFile(async (stdin, stdinFile) => {
-        await writeFile(stdinFile, "abc");
+        await fs.writeFile(stdinFile, "abc");
         return runWithTmpFile(async (stdout, stdoutFile) => {
             await runWASI(program, { stdin: stdin.fd, stdout: stdout.fd });
-            return readFile(stdoutFile, { encoding: "utf-8" });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
         });
     });
 
@@ -161,7 +161,7 @@ test("compiles args", async () => {
             stdout: stdout.fd,
             args: ["123", "456", "789"],
         });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(output, "123\n456\n789\n");
@@ -176,12 +176,12 @@ test("compiles cat", async () => {
             args: ["args.lole", "examples/test/42.lole"],
             preopens: { ".": "." },
         });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(
         output,
-        await readFile("examples/test/42.lole", "utf-8")
+        await fs.readFile("examples/test/42.lole", "utf-8")
     );
 });
 
@@ -190,18 +190,21 @@ test("compiles string-pooling", async () => {
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(output, "108\n");
 });
 
 test("compiles struct-in-struct", async () => {
+    // TODO: check why segfault happens if this line is commented out
+    await fs.readFile(COMPILER_PATH);
+
     const program = await compile("./examples/test/struct-in-struct.lole");
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
@@ -212,7 +215,7 @@ test("compiles heap-alloc", async () => {
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(
@@ -232,7 +235,7 @@ test("compiles defer", async () => {
 
     const output = await runWithTmpFile(async (stdout, stdoutFile) => {
         await runWASI(program, { stdout: stdout.fd });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(
@@ -269,10 +272,10 @@ test("compiles minify", async () => {
     const program = await compile("./examples/minify.lole");
 
     const output = await runWithTmpFile(async (stdin, stdinFile) => {
-        await writeFile(stdinFile, testSource);
+        await fs.writeFile(stdinFile, testSource);
         return runWithTmpFile(async (stdout, stdoutFile) => {
             await runWASI(program, { stdin: stdin.fd, stdout: stdout.fd });
-            return readFile(stdoutFile, { encoding: "utf-8" });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
         });
     });
 
@@ -291,7 +294,7 @@ test("compiles minify (using file input)", async () => {
             args: ["minify.lole", "test/42.lole"],
             preopens: { ".": "examples" },
         });
-        return readFile(stdoutFile, { encoding: "utf-8" });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
     });
 
     assert.strictEqual(
@@ -307,19 +310,31 @@ test("compiles minify (using file input)", async () => {
  * @returns {Promise<(sourcePath: string) => Promise<Uint8Array>>}
  */
 async function loadCompilerWithFuncAPI(compilerPath) {
-    const compiler = await loadWasm(await readFile(compilerPath), {
+    const compiler = await loadWasm(await fs.readFile(compilerPath), {
         wasi_snapshot_preview1: new Proxy({}, { get: () => () => 0 }),
     });
 
     return async (sourcePath) => {
-        const source = await readFile(sourcePath);
-        const src = storeData(
+        const fileNameBuf = Buffer.from("<stdin>.lole");
+        const fileName = storeData(
             compiler.memory,
-            compiler.mem_alloc(source.byteLength),
-            source
+            compiler.mem_alloc(fileNameBuf.byteLength),
+            fileNameBuf
         );
 
-        const [ok, outPtr, outSize] = compiler.compile(src.ptr, src.size);
+        const srcBuf = await fs.readFile(sourcePath);
+        const src = storeData(
+            compiler.memory,
+            compiler.mem_alloc(srcBuf.byteLength),
+            srcBuf
+        );
+
+        const [ok, outPtr, outSize] = compiler.compile(
+            fileName.ptr,
+            fileName.size,
+            src.ptr,
+            src.size
+        );
 
         const output = new Uint8Array(outSize);
         output.set(new Uint8Array(compiler.memory.buffer, outPtr, outSize));
@@ -340,7 +355,7 @@ async function loadCompilerWithFuncAPI(compilerPath) {
  * @returns {Promise<(sourcePath: string) => Promise<Promise<Buffer>>>}
  */
 async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
-    const mod = await WebAssembly.compile(await readFile(compilerPath));
+    const mod = await WebAssembly.compile(await fs.readFile(compilerPath));
 
     /**
      * @param {string} [fileName]
@@ -355,7 +370,7 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
                     stdout: stdout.fd,
                     stderr: stderr.fd,
                     args: [
-                        "compiler.wasm",
+                        "lo-lisp.wasm",
                         ...(fileName !== undefined ? [fileName] : []),
                     ],
                     preopens: { ".": "examples" },
@@ -370,10 +385,10 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
                 const exitCode = /** @type {unknown} */ (wasi.start(instance));
 
                 if (exitCode ?? 0 !== 0) {
-                    throw new Error(await readFile(stderrFile, "utf-8"));
+                    throw new Error(await fs.readFile(stderrFile, "utf-8"));
                 }
 
-                return readFile(stdoutFile);
+                return fs.readFile(stdoutFile);
             })
         );
 
@@ -387,7 +402,7 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
         }
 
         return runWithTmpFile(async (stdin, stdinFile) => {
-            await writeFile(stdinFile, await readFile(sourcePath));
+            await fs.writeFile(stdinFile, await fs.readFile(sourcePath));
 
             return compile(undefined, stdin.fd);
         });
@@ -439,14 +454,14 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
  * @param {(file: import("node:fs/promises").FileHandle, fileName: string) => T} run
  */
 async function runWithTmpFile(run) {
-    const mockOutputFileName = `${randomUUID()}.tmp`;
-    const mockOutputFile = await open(mockOutputFileName, "w+");
+    const mockOutputFileName = `tmp/${crypto.randomUUID()}.tmp`;
+    const mockOutputFile = await fs.open(mockOutputFileName, "w+");
 
     try {
         return await run(mockOutputFile, mockOutputFileName);
     } finally {
         await mockOutputFile.close();
-        await unlink(mockOutputFileName);
+        await fs.unlink(mockOutputFileName);
     }
 }
 

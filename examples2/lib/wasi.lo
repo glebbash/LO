@@ -1,5 +1,3 @@
-#![new_syntax]
-
 type Wasi_Err = u32;
 const WASI_ERR_SUCCESS = 0;
 const WASI_ERR_BADF    = 8;

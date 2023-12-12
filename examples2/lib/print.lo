@@ -1,5 +1,3 @@
-#![new_syntax]
-
 include "lib/std";
 include "lib/wasi";
 

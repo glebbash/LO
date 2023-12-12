@@ -1,5 +1,3 @@
-#![new_syntax]
-
 // panic
 
     fn panic(message_ptr: &*u8, message_len: u32) {

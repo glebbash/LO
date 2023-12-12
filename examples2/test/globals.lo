@@ -1,5 +1,3 @@
-#![new_syntax]
-
 let HEAP_INDEX = 0;
 
 export fn main() -> u32 {

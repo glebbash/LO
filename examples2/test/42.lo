@@ -1,5 +1,3 @@
-#![new_syntax]
-
 export fn main() -> u32 {
     return 42;
 };

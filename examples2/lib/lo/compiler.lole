@@ -1,0 +1,201 @@
+(mod lib/std)
+(mod lib/lo/ir)
+(mod lib/lo/parser)
+
+(struct Lo/Compiler/CompileResult
+    (ok bool)
+    (data (& void)) ; 0 | (& Lo/Ast/CompileError)
+)
+
+(fn Lo/Compiler/compile [
+    (exprs (& Vec<Lo/Ast/SExpr>)) (wasm_module (& Lo/Wasm/WasmModule))
+] Lo/Compiler/CompileResult (
+    {ctx := (Lo/Ir/ModuleContext/new wasm_module)}
+    (defer (Lo/Ir/ModuleContext/free ctx))
+
+    {i := 0}
+    (loop (
+        (if {i == {exprs -> size}} (
+            (break)
+        ))
+
+        {res :=
+            (Lo/Compiler/compile_top_level_expr
+                {Lo/Ast/SExpr @ (Vec/at exprs i)}
+                ctx
+            )
+        }
+        (if (not {res . ok}) (
+            (return res)
+        ))
+
+        {i += 1}
+    ))
+
+    {fn_defs := {ctx -> fn_defs}}
+    {fn_exports := {ctx -> fn_exports}}
+
+    ; push function exports
+    {i = 0}
+    (loop (
+        (if {i == {fn_exports -> size}} (
+            (break)
+        ))
+
+        {fn_export := {Lo/Ir/FnExport @ (Vec/at fn_exports i)}}
+
+        {fn_def_res := (Dict/get fn_defs (Vec/as_slice {fn_export . in_name}))}
+        (if (not {fn_def_res . ok}) (
+            {msg := (String/from_slice "Cannot export unknown function: ")}
+            (Vec/push_all msg (Vec/as_slice {fn_export . in_name}))
+
+            (return (Lo/Compiler/CompileResult
+                :ok false
+                :data {(new Lo/Ast/CompileError (Lo/Ast/CompileError
+                    :message msg
+                    :loc (Lo/Ast/Location/clone {fn_export . loc})
+                )) as (& void)}
+            ))
+        ))
+        {fn_def := {Lo/Ir/FnDef @ {fn_def_res . value}}}
+
+        {exports := {wasm_module -> exports}}
+
+        {Lo/Wasm/WasmExport @ (Vec/push exports) = (Lo/Wasm/WasmExport
+            :export_type Lo/Wasm/WasmExportType/FUNC
+            :export_name (String/clone {fn_export . out_name})
+            :exported_item_index {ctx -> imported_fns_count + {fn_def . fn_index}}
+        )}
+
+        {i += 1}
+    ))
+
+    {fn_bodies := {ctx -> fn_bodies}}
+    {fn_types := {wasm_module -> types}}
+
+    ; push function codes
+    {i = 0}
+    (loop (
+        (if {i == {fn_bodies -> size}} (
+            (break)
+        ))
+
+        {fn_body := {Lo/Ir/FnBody @ (Vec/at fn_bodies i)}}
+
+        {fn_type := {(Vec/at fn_types {fn_body . type_index})
+            as (& Lo/Wasm/WasmFnType)}}
+
+        {fn_ctx := (new Lo/Ir/FnContext (Lo/Ir/FnContext
+            :module ctx
+            :fn_type fn_type
+            :locals {fn_body . locals}
+            :locals_last_index {fn_body . locals_last_index}
+            :non_arg_locals (Vec/new 1 (sizeof Lo/Wasm/WasmType))
+            :defers (Dict/new 1 (sizeof Lo/Ast/SExpr))
+        ))}
+
+        {instrs_res := (Lo/Compiler/compile_block
+            {fn_body . body} fn_ctx
+        )}
+        (if (not {instrs_res . ok}) (
+            (return {instrs_res as Lo/Compiler/CompileResult})
+        ))
+        {instrs := {instrs_res . data as (& Vec)}}
+
+        {deferred_res := (Lo/Compiler/get_deferred
+            "return" ; TODO: this should be a constant
+            fn_ctx
+        )}
+        (if {deferred_res . ok} (
+            (Vec/append instrs {deferred_res . data})
+            (Vec/free {deferred_res . data})
+        ))
+
+        {locals := (Vec/new 1 (sizeof Lo/Wasm/WasmLocals))}
+        {non_arg_locals := {fn_ctx -> non_arg_locals}}
+
+        {j := 0}
+        (loop (
+            (if {j == {non_arg_locals -> size}} (
+                (break)
+            ))
+
+            {local_type := {Lo/Wasm/WasmType @ (Vec/at non_arg_locals j)}}
+            {locals_len := {locals -> size}}
+            (if {locals_len > 0} (
+                {wasm_locals := {(Vec/at locals {locals_len - 1}) as (& Lo/Wasm/WasmLocals)}}
+                (if {wasm_locals -> value_type == local_type} (
+                    {wasm_locals -> count += 1}
+                    (continue)
+                ))
+            ))
+
+            {Lo/Wasm/WasmLocals @ (Vec/push locals) = (Lo/Wasm/WasmLocals
+                :count 1
+                :value_type local_type
+            )}
+
+            {j += 1}
+        ))
+
+        {codes := {wasm_module -> codes}}
+        {Lo/Wasm/WasmFn @ (Vec/push codes) = (Lo/Wasm/WasmFn
+            :locals locals
+            :expr (Lo/Wasm/WasmExpr :instrs instrs)
+        )}
+
+        {i += 1}
+    ))
+
+    (return (Lo/Compiler/CompileResult :ok true :data {0 as (& void)}))
+))
+
+; TODO: implement
+(fn Lo/Compiler/compile_top_level_expr [
+    (expr Lo/Ast/SExpr) (ctx (& Lo/Ir/ModuleContext))
+] Lo/Compiler/CompileResult (
+    (if {expr . kind == Lo/Ast/SExpr/ATOM} (
+        (return (Lo/Compiler/CompileResult
+            :ok false
+            :data {(new Lo/Ast/CompileError (Lo/Ast/CompileError
+                :message (String/from_slice "Unexpected atom")
+                :loc (Lo/Ast/Location/clone (Lo/Ast/SExpr/loc expr))
+            )) as (& void)}
+        ))
+    ))
+
+    (return (Lo/Compiler/CompileResult
+        :ok true
+        :data {0 as (& void)}
+    ))
+))
+
+(struct Lo/Compiler/CompileBlockResult
+    (ok bool)
+    (data (& void)) ; (& Vec<Lo/Wasm/WasmInstr>) | (& Lo/Ast/CompileError)
+)
+
+; TODO: implement
+(fn Lo/Compiler/compile_block [
+    (exprs (& Vec<Lo/Ast/SExpr>)) (ctx (& Lo/Ir/ModuleContext))
+] Lo/Compiler/CompileBlockResult (
+    (return (Lo/Compiler/CompileBlockResult
+        :ok true
+        :data {0 as (& void)}
+    ))
+))
+
+(struct Lo/Compiler/GetDefferedRes
+    (ok bool)
+    (data (& void)) ; (& Vec<Lo/Wasm/WasmInstr>) | (& Lo/Ast/CompileError)
+)
+
+; TODO: implement
+(fn Lo/Compiler/get_deferred [
+    (defer_label StringSlice) (ctx (& Lo/Ir/ModuleContext))
+] Lo/Compiler/GetDefferedRes (
+    (return (Lo/Compiler/GetDefferedRes
+        :ok true
+        :data {0 as (& void)}
+    ))
+))

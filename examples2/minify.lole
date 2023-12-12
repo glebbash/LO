@@ -1,0 +1,111 @@
+(mod lib/cli)
+(mod lib/wasi_io)
+(mod lib/args)
+(mod lib/lo/parser)
+
+(fn main [] void (
+    {input_file := (get_input_file)}
+    (defer (Heap/free {input_file . file_name . data}))
+
+    {source := (WasiIO/fd_read_all {input_file . fd})}
+    (defer (Vec/free source))
+    (if {input_file . fd != 0} (
+        (drop (Wasi/fd_close {input_file . fd}))
+    ))
+
+    {parse_res := (Lo/Parser/parse
+        {input_file . file_name}
+        (Vec/as_slice source)
+    )}
+    (if (not {parse_res . ok}) (
+        (return (print_err_and_exit {parse_res . data}))
+    ))
+
+    {exprs := {parse_res . data}}
+    (defer (Vec<Lo/Ast/SExpr>/free exprs))
+
+    (dump_exprs exprs)
+    (puts "\n")
+))
+
+(fn dump_exprs [(exprs (& Vec<Lo/Ast/SExpr>))] void (
+    {i := 0}
+
+    (loop (
+        (if {i == {exprs -> size}} (
+            (break)
+        ))
+
+        (dump_expr {Lo/Ast/SExpr @ (Vec/at exprs i)})
+
+        (if {i != {exprs -> size - 1}} (
+            (puts " ")
+        ))
+
+        {i += 1}
+    ))
+))
+
+(fn dump_expr [(expr Lo/Ast/SExpr)] void (
+    (if {expr . kind == Lo/Ast/SExpr/ATOM} (
+        {atom := {Lo/Ast/SExpr/Atom @ {expr . value}}}
+        (print_str {atom . value})
+        (return)
+    ))
+
+    (puts "(")
+
+    {list := {Lo/Ast/SExpr/List @ {expr . value}}}
+    (dump_exprs {list . value})
+
+    (puts ")")
+))
+
+(struct InputFile
+    (fd u32)
+    (file_name StringSlice)
+)
+
+(fn get_input_file [] InputFile (
+    {args := (Args/load)}
+    (defer (Args/free args))
+
+    (if {args . argc != 2} (
+        (return (InputFile
+            :fd Wasi/FD_STDIN
+            :file_name (StringSlice/clone "<stdin>")
+        ))
+    ))
+
+    {file_name := (StringSlice/clone (Args/get args 1))}
+    {open_res := (WasiIO/fd_open file_name)}
+    (if {open_res . err != 0} (
+        (fputs Wasi/FD_STDERR "Error: cannot open file for reading: ")
+        (fputs Wasi/FD_STDERR file_name)
+        (fputs Wasi/FD_STDERR ", code=")
+        (fprint_u32 Wasi/FD_STDERR {open_res . err})
+        (fputs Wasi/FD_STDERR "\n")
+        (Wasi/proc_exit 1)
+    ))
+
+    (return (InputFile
+        :fd {open_res . fd}
+        :file_name file_name
+    ))
+))
+
+(fn print_err_and_exit [(err (& Lo/Ast/CompileError))] void (
+    {parse_err := (* err)}
+    (defer (Lo/Ast/CompileError/free parse_err))
+
+    (fputs Wasi/FD_STDERR {parse_err . loc . file_name})
+    (fputs Wasi/FD_STDERR ":")
+    (fprint_u32 Wasi/FD_STDERR {parse_err . loc . line})
+    (fputs Wasi/FD_STDERR ":")
+    (fprint_u32 Wasi/FD_STDERR {parse_err . loc . col})
+    (fputs Wasi/FD_STDERR " - ")
+    (fprint_str Wasi/FD_STDERR {parse_err . message})
+    (fputs Wasi/FD_STDERR "\n")
+
+    (return (Wasi/proc_exit 1))
+))

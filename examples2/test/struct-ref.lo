@@ -1,5 +1,3 @@
-#![new_syntax]
-
 memory { min_pages: 10 };
 
 struct Point2D {

@@ -39,10 +39,8 @@ mod wasm_target {
     }
 }
 
-pub const V2_SYNTAX_MARKER: &str = "#![new_syntax]";
-
 fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
-    let module = if script.starts_with(V2_SYNTAX_MARKER) {
+    let module = if file_name.ends_with(".lo") {
         let tokens = lexer2::lex_all(file_name, script)?;
         parser2::parse(tokens)?
     } else {
@@ -70,8 +68,10 @@ mod wasi_api {
                 proc_exit(1);
             });
             (file_name, fd_read_all_and_close(fd))
+        } else if args.len() == 1 && args.get(0).unwrap().contains("lisp") {
+            ("<stdin>.lole", stdin_read())
         } else {
-            ("<stdin>", stdin_read())
+            ("<stdin>.lo", stdin_read())
         };
 
         match exec_pipeline(file_name, core::str::from_utf8(&source).unwrap()) {
@@ -110,13 +110,27 @@ mod fn_api {
     }
 
     #[no_mangle]
-    pub extern "C" fn compile(script_ptr: *const u8, script_len: usize) -> ParseResult {
-        let bytes = unsafe { slice::from_raw_parts(script_ptr, script_len) };
-        let Ok(script) = str::from_utf8(bytes) else {
-            return ParseResult::from(Err(format!("ParseError: Cannot process input")));
+    pub extern "C" fn compile(
+        file_name_ptr: *const u8,
+        file_name_len: usize,
+        script_ptr: *const u8,
+        script_len: usize,
+    ) -> ParseResult {
+        let file_name_bytes = unsafe { slice::from_raw_parts(file_name_ptr, file_name_len) };
+        let Ok(file_name) = str::from_utf8(file_name_bytes) else {
+            return ParseResult::from(Err(format!(
+                "ParseError: file_name is not a valid utf8 string"
+            )));
         };
 
-        ParseResult::from(exec_pipeline("<stdin>", script))
+        let script_bytes = unsafe { slice::from_raw_parts(script_ptr, script_len) };
+        let Ok(script) = str::from_utf8(script_bytes) else {
+            return ParseResult::from(Err(format!(
+                "ParseError: script is not a valid utf8 string"
+            )));
+        };
+
+        ParseResult::from(exec_pipeline(file_name, script))
     }
 
     impl ParseResult {

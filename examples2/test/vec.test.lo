@@ -1,5 +1,3 @@
-#![new_syntax]
-
 // exports vec api for testing
 
 // TODO: this test should be fine with min_pages: 1

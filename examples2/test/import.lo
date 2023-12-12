@@ -1,5 +1,3 @@
-#![new_syntax]
-
 import from "utils" {
     fn debug(x: u32);
 };

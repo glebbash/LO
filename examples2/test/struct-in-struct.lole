@@ -1,0 +1,53 @@
+(mod lib/cli)
+
+(struct Point2D
+    (x u32)
+    (y u32)
+)
+
+(struct Rect
+    (tl Point2D)
+    (br Point2D)
+)
+
+(fn main [] void (
+    {r := (Rect
+        :tl (Point2D :x 1 :y 2)
+        :br (Point2D :x 3 :y 4)
+    )}
+
+    {br := {r . br}}
+    (print_u32 {br . x})
+    (puts "\n")
+
+    (print_u32 {r . br . x})
+    (puts "\n")
+
+    {r_ref := (new Rect r :using Alloc/STACK)}
+    (defer (Stack/free (sizeof Rect)))
+
+    {r2 := (* r_ref)}
+    (print_u32 {r2 . br . x})
+    (puts "\n")
+
+    {br2 := {r_ref -> br}}
+    (print_u32 {br2 . x})
+    (puts "\n")
+
+    {br_ref := {r_ref + (sizeof Point2D) as (& Point2D)}}
+    (print_u32 {br_ref -> x})
+    (puts "\n")
+
+    (print_u32 {Point2D @ {r_ref + (sizeof Point2D)} . x})
+    (puts "\n")
+
+    ; TODO: support chained `->`
+    (print_u32 {r_ref -> br . x})
+    (puts "\n")
+
+    ; TODO: throws TypeError
+    ; TODO: look into supporting nested references
+    ; {br2 := {r . br}}
+    ; (print_u32 {br2 -> x})
+    ; (puts "\n")
+))

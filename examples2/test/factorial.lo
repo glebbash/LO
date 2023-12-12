@@ -1,5 +1,3 @@
-#![new_syntax]
-
 export fn factorial(x: u32) -> u32 {
     if x < 2 {
         return x;

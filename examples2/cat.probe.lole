@@ -1,0 +1,25 @@
+@include("./lib/cli.lole");
+@include("./lib/wasi_io.lole");
+@include("./lib/args.lole");
+
+const main = fn() {
+    const args = Args.load();
+    defer Args.free(args);
+
+    if args.argc != 2 {
+        return Wasi.proc_exit(1);
+    };
+
+    const file_path = Args.get(args, 1);
+
+    const fd = WasiIO.fd_open(file_path) catch {
+        return Wasi.proc_exit(1);
+    };
+    defer Wasi.fd_close(fd);
+
+    WasiIO.fd_pipe(fd, Wasi.FD_STDOUT, 256) catch {
+        return Wasi.proc_exit(1);
+    };
+
+    return Wasi.proc_exit(0);
+}

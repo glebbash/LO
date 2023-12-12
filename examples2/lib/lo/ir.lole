@@ -1,0 +1,94 @@
+(mod lib/lo/wasm)
+(mod lib/lo/ast)
+
+(alias Vec<String> Vec)
+(alias Dict<Lo/Ir/FnDef> Dict)
+(alias Dict<Lo/Ir/FnBody> Dict)
+(alias Vec<Lo/Ir/FnExport> Vec)
+(alias Dict<bool> Dict)
+(alias Dict<Lo/Ir/StructDef> Dict)
+(alias Dict<u32> Dict)
+(alias Dict<Lo/Ir/GlobalDef> Dict)
+(alias Dict<Lo/Ir/LocalDef> Dict)
+(alias Dict<Lo/Ast/SExpr> Dict)
+
+(struct Lo/Ir/ModuleContext
+    (wasm_module (& Lo/Wasm/WasmModule)) ; not owned
+    (memory_names (& Vec<String>))
+    (imported_fns_count u32)
+    (fn_defs (& Dict<Lo/Ir/FnDef>))
+    (fn_bodies (& Dict<Lo/Ir/FnBody>))
+    (fn_exports (& Vec<Lo/Ir/FnExport>))
+    (included_modules (& Vec<String>)) ; BTreeSet<String>
+    (struct_defs (& Dict<Lo/Ir/StructDef>))
+    (enum_kinds (& Dict<u32>))
+    (globals (& Dict<Lo/Ir/GlobalDef>))
+    (data_size (& u32)) ; Rc<RefCell<u32>>
+    (string_pool (& Dict<u32>)) ; RefCell<BTreeMap<String, i32>>
+)
+
+(struct Lo/Ir/FnContext
+    (module (& Lo/Ir/ModuleContext)) ; 'a
+    (fn_type (& Lo/Wasm/WasmFnType)) ; 'a
+    (locals (& Dict<Lo/Ir/LocalDef>)) ; 'a mut
+    (locals_last_index u32)
+    (non_arg_locals (& Vec<Lo/Wasm/WasmType>))
+    (defers (& Dict<Lo/Ast/SExpr>))
+)
+
+(struct Lo/Ir/FnDef
+    (local bool)
+    (fn_index u32)
+    (type_index u32)
+)
+
+; TODO: implement
+(struct Lo/Ir/GlobalDef)
+
+(struct Lo/Ir/FnBody
+    (fn_index u32)
+    (type_index u32)
+    (locals (& Dict<Lo/Ir/LocalDef>)) ; RefCell<BTreeMap<String, LocalDef>>
+    (locals_last_index u32)
+    (body (& Vec<Lo/Ast/SExpr>))
+)
+
+(struct Lo/Ir/FnExport
+    (in_name (& String))
+    (out_name (& String))
+    (loc Lo/Ast/Location)
+)
+
+; TODO: implement
+(struct Lo/Ir/StructDef)
+
+(fn Lo/Ir/ModuleContext/new [(wasm_module (& Lo/Wasm/WasmModule))] (& Lo/Ir/ModuleContext) (
+    (return (new Lo/Ir/ModuleContext (Lo/Ir/ModuleContext
+        :wasm_module wasm_module
+        :memory_names (Vec/new 1 (sizeof String))
+        :imported_fns_count 0
+        :fn_defs (Dict/new 1 (sizeof Lo/Ir/FnDef))
+        :fn_bodies (Dict/new 1 (sizeof Lo/Ir/FnBody))
+        :fn_exports (Vec/new 1 (sizeof Lo/Ir/FnExport))
+        :included_modules (Vec/new 1 (sizeof String))
+        :struct_defs (Dict/new 1 (sizeof Lo/Ir/StructDef))
+        :enum_kinds (Dict/new 1 (sizeof u32))
+        :globals (Dict/new 1 (sizeof Lo/Ir/GlobalDef))
+        :data_size (new u32 0)
+        :string_pool (Dict/new 1 (sizeof u32))
+    )))
+))
+
+; NOTE: this doesn't free `wasm_module` as it doesn't "own" it
+(fn Lo/Ir/ModuleContext/free [(self (& Lo/Ir/ModuleContext))] void (
+    (Vec/free {self -> memory_names})
+    (Dict/free {self -> fn_defs})
+    (Dict/free {self -> fn_bodies})
+    (Vec/free {self -> fn_exports})
+    (Vec/free {self -> included_modules})
+    (Dict/free {self -> struct_defs})
+    (Dict/free {self -> enum_kinds})
+    (Dict/free {self -> globals})
+    (free Alloc/HEAP {self -> data_size} (sizeof u32))
+    (Dict/free {self -> string_pool})
+))
