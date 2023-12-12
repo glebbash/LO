@@ -1,0 +1,20 @@
+include "lib/cli";
+
+fn main() {
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    let _ = "Hello World!\n";
+    
+    print_u32(__DATA_SIZE__);
+    puts("\n");
+};
