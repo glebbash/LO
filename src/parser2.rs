@@ -605,6 +605,12 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
+    if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
+        return Ok(LoInstr::U32ConstLazy {
+            value: ctx.module.data_size.clone(),
+        });
+    }
+
     if let Some(_) = tokens.eat(Symbol, "unreachable")? {
         return Ok(LoInstr::Unreachable);
     }

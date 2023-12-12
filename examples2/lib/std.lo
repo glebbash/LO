@@ -344,7 +344,7 @@
         return Vec_new(len, sizeof u8);
     };
 
-    fn String_new_using (len: u32, alloc_id: u32) -> &String {
+    fn String_new_using(len: u32, alloc_id: u32) -> &String {
         return Vec_new_using(len, sizeof u8, alloc_id);
     };
 
