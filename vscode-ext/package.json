@@ -4,7 +4,7 @@
     "description": "LO language support",
     "author": "glebbash",
     "license": "MIT",
-    "version": "0.0.86",
+    "version": "0.0.88",
     "publisher": "glebbash",
     "engines": {
         "vscode": "^1.85.0"
@@ -14,7 +14,7 @@
         "Programming Languages"
     ],
     "activationEvents": [],
-    "browser": "./client/dist/browserClientMain",
+    "browser": "./client/dist/browserClientMain.js",
     "contributes": {
         "languages": [
             {
@@ -72,8 +72,7 @@
         "watch": "webpack --watch",
         "package": "webpack && npm version patch && vsce package -o lo.vsix",
         "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
-        "chrome": "npm run compile && npm run chrome-serve",
-        "chrome-serve": "vscode-test-web --browser none --quality stable --extensionDevelopmentPath=. ../examples"
+        "serve-dev": "vscode-test-web --browser none --quality stable --extensionDevelopmentPath=. ../examples"
     },
     "devDependencies": {
         "@types/vscode": "^1.85.0",
