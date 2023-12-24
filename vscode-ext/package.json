@@ -1,44 +1,88 @@
 {
-  "name": "lo",
-  "displayName": "LO",
-  "description": "LO language support",
-  "version": "0.0.70",
-  "engines": {
-    "vscode": "^1.81.0"
-  },
-  "categories": [
-    "Programming Languages"
-  ],
-  "repository": "https://github.com/glebbash/lo",
-  "contributes": {
-    "languages": [
-      {
-        "id": "lo",
-        "aliases": [
-          "lo"
-        ],
-        "extensions": [
-          ".lo"
-        ],
-        "configuration": "./syntaxes/lo.config.json",
-        "icon": {
-          "light": "./icons/lo.svg",
-          "dark": "./icons/lo.svg"
-        }
-      }
+    "name": "lo",
+    "displayName": "LO",
+    "description": "LO language support",
+    "author": "glebbash",
+    "license": "MIT",
+    "version": "0.0.86",
+    "publisher": "glebbash",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "repository": "https://github.com/glebbash/lo",
+    "categories": [
+        "Programming Languages"
     ],
-    "grammars": [
-      {
-        "language": "lo",
-        "scopeName": "source.lo",
-        "path": "./syntaxes/lo.tmLanguage.json"
-      }
-    ]
-  },
-  "devDependencies": {
-    "@vscode/vsce": "^2.20.1"
-  },
-  "scripts": {
-    "package": "npm version patch && npx @vscode/vsce package"
-  }
+    "activationEvents": [],
+    "browser": "./client/dist/browserClientMain",
+    "contributes": {
+        "languages": [
+            {
+                "id": "lo",
+                "aliases": [
+                    "lo"
+                ],
+                "extensions": [
+                    ".lo"
+                ],
+                "configuration": "./syntaxes/lo.config.json",
+                "icon": {
+                    "light": "./icons/lo.svg",
+                    "dark": "./icons/lo.svg"
+                }
+            }
+        ],
+        "grammars": [
+            {
+                "language": "lo",
+                "scopeName": "source.lo",
+                "path": "./syntaxes/lo.tmLanguage.json"
+            }
+        ],
+        "commands": [
+            {
+                "command": "lo.helloWorld",
+                "title": "LO: Hello World"
+            }
+        ],
+        "configuration": [
+            {
+                "order": 22,
+                "id": "lo",
+                "title": "LO",
+                "properties": {
+                    "lo.trace.server": {
+                        "type": "string",
+                        "scope": "window",
+                        "enum": [
+                            "off",
+                            "messages",
+                            "verbose"
+                        ],
+                        "default": "off",
+                        "description": "Traces the communication between VS Code and the LO language server."
+                    }
+                }
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "webpack",
+        "watch": "webpack --watch",
+        "package": "webpack && npm version patch && vsce package -o lo.vsix",
+        "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+        "chrome": "npm run compile && npm run chrome-serve",
+        "chrome-serve": "vscode-test-web --browser none --quality stable --extensionDevelopmentPath=. ../examples"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.85.0",
+        "@vscode/test-web": "^0.0.50",
+        "@vscode/vsce": "^2.22.0",
+        "path-browserify": "^1.0.1",
+        "ts-loader": "^9.5.1",
+        "typescript": "^5.3.3",
+        "webpack": "^5.89.0",
+        "webpack-cli": "^5.1.4"
+    }
 }
