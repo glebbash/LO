@@ -66,7 +66,9 @@ impl WasiArgs {
 
         let mut argv = vec![core::ptr::null::<u8>() as *mut u8; argv_size];
         let mut _argv_buf = vec![0u8; argv_buf_size];
-        unsafe { wasi::args_get(argv.as_mut_ptr() as *mut *mut u8, _argv_buf.as_mut_ptr()) }?;
+        if argv_size != 0 {
+            unsafe { wasi::args_get(argv.as_mut_ptr() as *mut *mut u8, _argv_buf.as_mut_ptr()) }?;
+        }
 
         Ok(Self {
             size: argv_size,

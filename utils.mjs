@@ -109,7 +109,6 @@ async function runWasiCommand(args) {
  * @param {Omit<import("node:wasi").WASIOptions, "version">} [wasiOptions]
  */
 async function runWASI(data, wasiOptions) {
-    // @ts-ignore
     const wasi = new WASI({ version: "preview1", ...wasiOptions });
 
     const wasm = await WebAssembly.compile(data);
