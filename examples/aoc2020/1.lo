@@ -3,16 +3,15 @@ include "lib/fs";
 
 type Vec_u32 = Vec;
 
-// Goal:
-// - find the two entries that sum to 2020
-// - and then multiply those two numbers together
+// TODO: add proper error handling for fs_read_file
+// TODO: usage of Vec.* methods would be nice
+// TODO: for loops would make code more concise
 fn main() -> u32 {
-    // TODO: add proper error handling
     let input = fs_read_file("./aoc2020/1.txt");
-    defer Vec_free(input); // TODO: should be input.free();
+    defer Vec_free(input);
 
     let numbers = parse_numbers(input);
-    defer Vec_free(numbers); // TODO: should be input.free();
+    defer Vec_free(numbers);
 
     let i = 0;
     loop {
