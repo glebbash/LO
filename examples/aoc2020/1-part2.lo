@@ -1,0 +1,82 @@
+include "lib/cli";
+include "lib/fs";
+
+type Vec_u32 = Vec;
+
+// TODO: add proper error handling for fs_read_file
+// TODO: usage of Vec.* methods would be nice
+// TODO: for loops would make code more concise
+fn main() -> u32 {
+    let input = fs_read_file("./aoc2020/1.txt");
+    defer Vec_free(input);
+
+    let numbers = parse_numbers(input);
+    defer Vec_free(numbers);
+
+    let i = 0;
+    loop {
+        if i == numbers->size {
+            break;
+        };
+
+        let a = *(Vec_at(numbers, i) as &u32);
+
+        let j = 0;
+        loop {
+            if j == numbers->size {
+                break;
+            };
+
+            let b = *(Vec_at(numbers, j) as &u32);
+
+            let k = 0;
+            loop {
+                if k == numbers->size {
+                    break;
+                };
+
+                let c = *(Vec_at(numbers, k) as &u32);
+                if a + b + c == 2020 {
+                    print_u32(a * b * c);
+                    puts("\n");
+                    return 0;
+                };
+
+                k += 1;
+            };
+
+            j += 1;
+        };
+
+        i += 1;
+    };
+
+    return 0;
+};
+
+fn parse_numbers(input: &String) -> &Vec_u32 {
+    let numbers = Vec_new(10, sizeof u32);
+    let current_number = 0;
+
+    let i = 0;
+    loop {
+        if i == input->size {
+            break;
+        };
+
+        let char = *(Vec_at(input, i) as &u8);
+        if char >= char_code "0" && char <= char_code "9" {
+            current_number *= 10;
+            current_number += char - char_code "0";
+        };
+
+        if char == char_code "\n" {
+            *(Vec_push(numbers) as &u32) = current_number;
+            current_number = 0;
+        };
+
+        i += 1;
+    };
+
+    return numbers;
+};

@@ -1181,6 +1181,11 @@ fn parse_postfix(
             lhs: Box::new(primary),
             rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
         },
+        InfixOpTag::LessEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32LessEqualUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+        },
         InfixOpTag::Greater => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32GreaterThanUnsigned,
             lhs: Box::new(primary),
@@ -1246,6 +1251,15 @@ fn parse_postfix(
         InfixOpTag::SubAssign => {
             let value = LoInstr::BinaryOp {
                 kind: WasmBinaryOpKind::I32Sub,
+                lhs: Box::new(primary.clone()),
+                rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
+            };
+            // TODO: lhs.loc() is not available
+            compile_set(ctx, value, primary, &op.token.loc)?
+        }
+        InfixOpTag::MulAssign => {
+            let value = LoInstr::BinaryOp {
+                kind: WasmBinaryOpKind::I32Mul,
                 lhs: Box::new(primary.clone()),
                 rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
             };
@@ -1534,6 +1548,11 @@ fn parse_const_postfix(
         },
         InfixOpTag::Less => LoInstr::BinaryOp {
             kind: WasmBinaryOpKind::I32LessThenUnsigned,
+            lhs: Box::new(primary),
+            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
+        },
+        InfixOpTag::LessEqual => LoInstr::BinaryOp {
+            kind: WasmBinaryOpKind::I32LessEqualUnsigned,
             lhs: Box::new(primary),
             rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
         },

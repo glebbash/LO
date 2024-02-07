@@ -333,7 +333,7 @@
 
     type Vec_u8 = Vec;
     type String = Vec_u8;
-    
+
     struct StringSlice {
         data: &*u8,
         size: u32,

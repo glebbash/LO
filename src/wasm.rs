@@ -52,6 +52,7 @@ pub struct WasmExpr {
 pub enum WasmBinaryOpKind {
     I32Equal = 0x46,
     I32LessThenUnsigned = 0x49,
+    I32LessEqualUnsigned = 0x4D,
     I32GreaterThanUnsigned = 0x4B,
     I32GreaterEqualUnsigned = 0x4F,
     I32NotEqual = 0x47,
