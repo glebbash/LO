@@ -1,0 +1,93 @@
+include "lib/cli";
+include "lib/fs";
+
+const STEP_READ_MIN_OCCURANCES = 0;
+const STEP_READ_MAX_OCCURANCES = 1;
+const STEP_READ_CHAR_TO_COUNT = 2;
+const STEP_COUNT_OCCURANCES = 3;
+
+struct PasswordCheckState {
+    step: u32,
+    min_occurances: u32,
+    max_occurances: u32,
+    current_occurances: u32,
+    char_to_count: u8,
+};
+
+fn initial_check_state() -> PasswordCheckState {
+    return PasswordCheckState {
+        step: STEP_READ_MIN_OCCURANCES,
+        min_occurances: 0,
+        max_occurances: 0,
+        current_occurances: 0,
+        char_to_count: 0 as u8,
+    };
+};
+
+fn main() -> u32 {
+    let input = fs_read_file("./aoc2020/2.txt");
+    defer Vec_free(input);
+
+    let valid_passwords_count = 0;
+
+    let state = initial_check_state();
+
+    let i = 0;
+    loop {
+        if i == input->size {
+            break;
+        };
+
+        let char = *(Vec_at(input, i) as &u8);
+        if state.step == STEP_READ_MIN_OCCURANCES {
+            if char == char_code "-" {
+                i += 1;
+                state.step = STEP_READ_MAX_OCCURANCES;
+                continue;
+            };
+
+            state.min_occurances *= 10;
+            state.min_occurances += char - char_code "0";
+        };
+        if state.step == STEP_READ_MAX_OCCURANCES {
+            if char == char_code " " {
+                i += 1;
+                state.step = STEP_READ_CHAR_TO_COUNT;
+                continue;
+            };
+
+            state.max_occurances *= 10;
+            state.max_occurances += char - char_code "0";
+        };
+        if state.step == STEP_READ_CHAR_TO_COUNT {
+            state.char_to_count = char;
+            i += 3; // skip `${char}: `
+            state.step = STEP_COUNT_OCCURANCES;
+            continue;
+        };
+        if state.step == STEP_COUNT_OCCURANCES {
+            if char == char_code "\n" {
+                if state.current_occurances >= state.min_occurances
+                && state.current_occurances <= state.max_occurances {
+                    valid_passwords_count += 1;
+                };
+
+                i += 1;
+
+                state = initial_check_state();
+                continue;
+            };
+
+            if char == state.char_to_count {
+                state.current_occurances += 1;
+            };
+        };
+
+        i += 1;
+    };
+
+    print_u32(valid_passwords_count);
+    puts("\n");
+
+    return 0;
+};

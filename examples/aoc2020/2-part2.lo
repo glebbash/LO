@@ -1,0 +1,99 @@
+include "lib/cli";
+include "lib/fs";
+
+const STEP_READ_START_INDEX = 0;
+const STEP_READ_END_INDEX = 1;
+const STEP_READ_CHAR_TO_FIND = 2;
+const STEP_CHECK_PASSWORD = 3;
+
+struct PasswordCheckState {
+    step: u32,
+    start_index: u32,
+    end_index: u32,
+    current_index: u32,
+    match_found: bool,
+    char_to_check: u8,
+};
+
+fn initial_check_state() -> PasswordCheckState {
+    return PasswordCheckState {
+        step: STEP_READ_START_INDEX,
+        start_index: 0,
+        end_index: 0,
+        current_index: 0,
+        match_found: false,
+        char_to_check: 0 as u8,
+    };
+};
+
+fn main() -> u32 {
+    let input = fs_read_file("./aoc2020/2.txt");
+    defer Vec_free(input);
+
+    let valid_passwords_count = 0;
+
+    let state = initial_check_state();
+
+    let i = 0;
+    loop {
+        if i == input->size {
+            break;
+        };
+
+        let char = *(Vec_at(input, i) as &u8);
+        if state.step == STEP_READ_START_INDEX {
+            if char == char_code "-" {
+                i += 1;
+                state.step = STEP_READ_END_INDEX;
+                continue;
+            };
+
+            state.start_index *= 10;
+            state.start_index += char - char_code "0";
+        };
+        if state.step == STEP_READ_END_INDEX {
+            if char == char_code " " {
+                i += 1;
+                state.step = STEP_READ_CHAR_TO_FIND;
+                continue;
+            };
+
+            state.end_index *= 10;
+            state.end_index += char - char_code "0";
+        };
+        if state.step == STEP_READ_CHAR_TO_FIND {
+            state.char_to_check = char;
+            i += 3; // skip `${char}: `
+            state.step = STEP_CHECK_PASSWORD;
+            continue;
+        };
+        if state.step == STEP_CHECK_PASSWORD {
+            if char == char_code "\n" {
+                i += 1;
+
+                state = initial_check_state();
+                continue;
+            };
+
+            state.current_index += 1;
+            if state.current_index == state.start_index {
+                state.match_found = (char == state.char_to_check) as bool;
+            };
+            if state.current_index == state.end_index {
+                if char == state.char_to_check && !state.match_found {
+                    valid_passwords_count += 1;
+                };
+                if char != state.char_to_check && state.match_found {
+                    valid_passwords_count += 1;
+                };
+            };
+        };
+
+        i += 1;
+    };
+
+    print_u32(valid_passwords_count);
+    puts("\n");
+
+    return 0;
+};

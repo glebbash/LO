@@ -975,6 +975,22 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(LoInstr::Branch { label_index });
     }
 
+    if let Some(_) = tokens.eat(Symbol, "continue")? {
+        let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
+
+        let mut current_block = &ctx.block;
+        loop {
+            if current_block.block_type == BlockType::Loop {
+                break;
+            }
+
+            current_block = current_block.parent.unwrap();
+            label_index += 1;
+        }
+
+        return Ok(LoInstr::Branch { label_index });
+    }
+
     if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
         let local_name = tokens.expect_any(Symbol)?.clone();
         tokens.expect(Operator, "=")?;
