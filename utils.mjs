@@ -11,7 +11,6 @@ const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo.wasm";
 const COMMANDS = {
     compile: compileCommand,
     run: runCommand,
-    minify: minifyCommand,
     runWasi: runWasiCommand,
 };
 
@@ -60,36 +59,6 @@ async function runCommand() {
         returnOnExit: false,
         args: ["main.lo", ...process.argv.slice(3)],
     });
-}
-
-/** @param {string[]} args */
-async function minifyCommand(args) {
-    const filePath = new URL(args[0], import.meta.url);
-    const input = await readFile(filePath, "utf-8");
-    const minified = doMinify(input);
-    console.log(minified);
-
-    /** @param {string} input */
-    function doMinify(input) {
-        while (true) {
-            const trimmed = input
-                .replace(/;.*\n/g, "")
-                .replace(/\s+/g, " ")
-                .replace(/ ([\)\}\]])/g, "$1")
-                .replace(/([\(\{\[]) ([\(\{\[])/g, "$1$2")
-                .replace(/([\)\}\]]) ([\(\{\[])/g, "$1$2");
-
-            if (trimmed.length === input.length) break;
-            input = trimmed;
-        }
-
-        return input
-            .replace(/\(export /g, "\n(export ")
-            .replace(/\(fn /g, "\n(fn ")
-            .replace(/\(struct /g, "\n(struct ")
-            .replace(/\(enum /g, "\n(enum ")
-            .replace(/\(global /g, "\n(global ");
-    }
 }
 
 /** @param {string[]} args */

@@ -1,0 +1,60 @@
+include "lib/std";
+
+type str = StringSlice;
+
+// fs expects host to preopen "." on fd 3
+const CWD_PREOPEN_FD = 3;
+
+fn fs_read_file(file_name: str) -> &String {
+    let fd = try fs__open_file(file_name) catch err {
+        fputs(WASI_FD_STDERR, "Error opening file: ");
+        fputs(WASI_FD_STDERR, file_name);
+        fputs(WASI_FD_STDERR, ", error code = ");
+        fprint_u32(WASI_FD_STDERR, err);
+        fputs(WASI_FD_STDERR, "\n");
+        Wasi_proc_exit(1);
+    };
+
+    let output = Vec_new(256, sizeof u8);
+
+    // TODO(bug): ALLOC_STACK is messing stuff up for some reason
+    let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
+    defer free(ALLOC_HEAP, chunk, 256);
+
+    let in_vec = alloc(ALLOC_STACK, sizeof Wasi_IOVec) as &Wasi_IOVec;
+    *in_vec = Wasi_IOVec { base: chunk, size: 256 };
+    defer free(ALLOC_STACK, in_vec, sizeof Wasi_IOVec);
+
+    let nread_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
+    defer Stack_free(sizeof u32);
+
+    loop {
+        let _err = Wasi_fd_read(fd, in_vec, 1, nread_ref);
+
+        let nread = *nread_ref;
+        if nread == 0 {
+            break;
+        };
+
+        Vec_push_all(output, chunk, nread);
+    };
+
+    return output;
+};
+
+fn fs__open_file(file_path: str) -> u32 throws Wasi_Err {
+    let fd_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
+    defer free(ALLOC_STACK, fd_ref, sizeof u32);
+
+    let err = Wasi_path_open(
+        CWD_PREOPEN_FD, 0,
+        file_path, 0, i64 2, i64 0, 0,
+        fd_ref,
+    );
+
+    if err != WASI_ERR_SUCCESS {
+        throw err;
+    };
+
+    return *fd_ref;
+};
