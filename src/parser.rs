@@ -887,17 +887,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
-    if let Some(_) = tokens.eat(Symbol, "__debug_here")?.cloned() {
-        debug(format!(
-            "imported fn count: {}",
-            ctx.module.imported_fns_count
-        ));
-        for fn_name in ctx.module.fn_defs.keys() {
-            debug(format!("{fn_name}"));
-        }
-        return Err(LoError::unreachable(file!(), line!()));
-    }
-
     if let Some(t) = tokens.eat(Symbol, "__debug_typeof")?.cloned() {
         let loc = tokens.peek().unwrap_or(&t).loc.clone();
 
