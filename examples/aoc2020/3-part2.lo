@@ -16,22 +16,16 @@ fn main() -> u32 {
     defer Map_free(map);
 
     let result = u64 1
-        * debug_u64(count_trees_on_slope(map, 1, 1) as u64)
-        * debug_u64(count_trees_on_slope(map, 1, 3) as u64)
-        * debug_u64(count_trees_on_slope(map, 1, 5) as u64)
-        * debug_u64(count_trees_on_slope(map, 1, 7) as u64)
-        * debug_u64(count_trees_on_slope(map, 2, 1) as u64);
+        * count_trees_on_slope(map, 1, 1) as u64
+        * count_trees_on_slope(map, 1, 3) as u64
+        * count_trees_on_slope(map, 1, 5) as u64
+        * count_trees_on_slope(map, 1, 7) as u64
+        * count_trees_on_slope(map, 2, 1) as u64;
 
     print_u64(result);
     puts("\n");
 
     return 0;
-};
-
-fn debug_u64(x: u64) -> u64 {
-    print_u64(x);
-    puts("\n");
-    return x;
 };
 
 fn count_trees_on_slope(map: &Vec_Vec_Tile, slope_i: u32, slope_j: u32) -> u32 {
