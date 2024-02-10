@@ -277,7 +277,7 @@ impl LoType {
 
     pub fn to_load_kind(&self) -> Result<WasmLoadKind, String> {
         match self {
-            LoType::Bool => return Ok(WasmLoadKind::I32),
+            LoType::Bool => return Ok(WasmLoadKind::I32U8),
             LoType::U8 => return Ok(WasmLoadKind::I32U8),
             LoType::I8 => return Ok(WasmLoadKind::I32I8),
             LoType::U16 => return Ok(WasmLoadKind::I32U16),

@@ -1,7 +1,7 @@
 include "lib/cli";
 include "lib/fs";
 
-type Tile = u8;
+type Tile = bool;
 type Vec_Tile = Vec;
 type Vec_Vec_Tile = Vec;
 
