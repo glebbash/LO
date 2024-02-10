@@ -22,6 +22,16 @@ fn fprint_u32(fd: u32, num: u32) {
     fprint_str(fd, out);
 };
 
+fn print_u64(num: u64) {
+    return fprint_u64(WASI_FD_STDOUT, num);
+};
+fn fprint_u64(fd: u32, num: u64) {
+    let out = std_u64_to_string_using(num, ALLOC_STACK);
+    defer Vec_free(out);
+
+    fprint_str(fd, out);
+};
+
 fn print_str(str: &StringSlice) {
     return fprint_str(WASI_FD_STDOUT, str);
 };

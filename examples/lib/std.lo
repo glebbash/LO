@@ -56,7 +56,7 @@
 
             size -= 1;
 
-            *((dist + size) as &u8) = *((src + size) as &u8);
+            *((dist as u32 + size) as &u8) = *((src as u32 + size) as &u8);
         };
     };
 
@@ -68,9 +68,9 @@
 
             size -= 1;
 
-            let tmp = *((ref1 + size) as &u8);
-            *((ref1 + size) as &u8) = *((ref2 + size) as &u8);
-            *((ref2 + size) as &u8) = tmp;
+            let tmp = *((ref1 as u32 + size) as &u8);
+            *((ref1 as u32 + size) as &u8) = *((ref2 as u32 + size) as &u8);
+            *((ref2 as u32 + size) as &u8) = tmp;
         };
     };
 
@@ -130,7 +130,7 @@
         size = Mem_align(size);
 
         let free_block = Heap_find_free_block(size);
-        if free_block != 0 {
+        if free_block as u32 != 0 {
             free_block->used = true;
             return free_block->data;
         };
@@ -141,25 +141,25 @@
         Heap_TOTAL_ALLOCATED += total_size_to_alloc;
 
         // grow enough memory if we are out of space
-        if Heap_TOTAL_ALLOCATED >= __memory_size() * MEM_PAGE_SIZE {
+        if Heap_TOTAL_ALLOCATED >= __memory_size() * MEM_PAGE_SIZE as i32 {
             let pages_to_grow = Mem_align_to(total_size_to_alloc, MEM_PAGE_SIZE);
             let grow_res = __memory_grow(pages_to_grow);
-            if grow_res == (0 - 1) {
+            if grow_res == (0 - 1) as i32 {
                 panic("OOM");
             };
         };
 
         block->size = size;
         block->used = true;
-        block->data = (block + sizeof Heap_Block) as &();
+        block->data = (block as u32 + sizeof Heap_Block) as &();
 
         // init heap
-        if Heap_FIRST_BLOCK == 0 {
+        if Heap_FIRST_BLOCK as u32 == 0 {
             Heap_FIRST_BLOCK = block;
         };
 
         // chain block
-        if Heap_CURRENT_BLOCK != 0 {
+        if Heap_CURRENT_BLOCK as u32 != 0 {
             Heap_CURRENT_BLOCK->next = block;
         };
 
@@ -182,7 +182,7 @@
         let block = Heap_FIRST_BLOCK;
 
         loop {
-            if block == 0 || (!block->used && block->size >= size) {
+            if block as u32 == 0 || (!block->used && block->size >= size) {
                 break;
             };
 
@@ -239,11 +239,11 @@
     fn Vec_at(self: &Vec, index: u32) -> &() {
         Vec__panic_if_out_of_bounds(self, index);
 
-        return self->data + index * self->item_size;
+        return (self->data as u32 + index * self->item_size) as &();
     };
 
     fn Vec_at_unchecked(self: &Vec, index: u32) -> &() {
-        return self->data + index * self->item_size;
+        return (self->data as u32 + index * self->item_size) as &();
     };
 
     fn Vec_swap(self: &Vec, index1: u32, index2: u32) {
@@ -252,8 +252,8 @@
 
         let item_size = self->item_size;
         Mem_swap(
-            self->data + index1 * item_size,
-            self->data + index2 * item_size,
+            (self->data as u32 + index1 * item_size) as &(),
+            (self->data as u32 + index2 * item_size) as &(),
             item_size,
         );
     };
@@ -273,7 +273,7 @@
 
         Mem_copy(
             items,
-            self->data + old_len * self->item_size,
+            (self->data as u32 + old_len * self->item_size) as &(),
             items_len * self->item_size,
         );
     };
@@ -348,7 +348,7 @@
     };
 
     fn StringSlice_char_at(self: StringSlice, index: u32) -> u8 {
-        return *((self.data + index) as &u8);
+        return *((self.data as u32 + index) as &u8);
     };
 
     fn StringSlice_clone(self: StringSlice) -> StringSlice {
@@ -371,7 +371,7 @@
                 break;
             };
 
-            if *((self.data + i) as &u8) != *((other.data + i) as &u8) {
+            if *((self.data as u32 + i) as &u8) != *((other.data as u32 + i) as &u8) {
                 return false;
             };
 
@@ -419,7 +419,7 @@
             if StringSlice_equals(key, Vec_as_slice(entry_key)) {
                 return Dict_GetResult {
                     ok: true,
-                    value: (entry_key + sizeof String) as &(),
+                    value: (entry_key as u32 + sizeof String) as &(),
                 };
             };
 
@@ -459,11 +459,39 @@
         return output;
     };
 
+    fn std_u64_to_string(input: u64) -> &String {
+        return std_u64_to_string_using(input, ALLOC_HEAP);
+    };
+
+    fn std_u64_to_string_using(input: u64, alloc_id: u32) -> &String {
+        let output = String_new_using(32, alloc_id);
+
+        if input == u64 0 {
+            *(Vec_push(output) as &u8) = char_code "0" as u8;
+            return output;
+        };
+
+        loop {
+            let rem = input % u64 10;
+
+            *(Vec_push(output) as &u8) = (char_code "0" as u64 + rem) as u32 as u8;
+            input = input / u64 10;
+
+            if input == u64 0 {
+                break;
+            };
+        };
+
+        Vec_reverse(output);
+
+        return output;
+    };
+
     fn std_c_str_to_slice(str: &*u8) -> StringSlice {
         let len = 0;
 
         loop {
-            if *((str + len) as &u8) == 0 {
+            if *((str as u32 + len) as &u8) == 0 as u8 {
                 break;
             };
 

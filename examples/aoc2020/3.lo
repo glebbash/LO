@@ -1,7 +1,7 @@
 include "lib/cli";
 include "lib/fs";
 
-type Tile = bool;
+type Tile = u8;
 type Vec_Tile = Vec;
 type Vec_Vec_Tile = Vec;
 
@@ -51,13 +51,13 @@ fn Map_parse(input: &String) -> &Vec_Vec_Tile {
         };
 
         let char = *(Vec_at(input, i) as &u8);
-        if char == char_code "#" {
+        if char == char_code "#" as u8 {
             *(Vec_push(row) as &Tile) = TREE;
         };
-        if char == char_code "." {
+        if char == char_code "." as u8 {
             *(Vec_push(row) as &Tile) = EMPTY;
         };
-        if char == char_code "\n" {
+        if char == char_code "\n" as u8 {
             *(Vec_push(map) as & &Vec_Tile) = row;
             row = Vec_new(4, sizeof Tile);
         };

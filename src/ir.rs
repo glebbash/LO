@@ -408,6 +408,15 @@ pub enum LoInstr {
     I64Const {
         value: i64,
     },
+    I64FromI32Unsigned {
+        expr: Box<LoInstr>,
+    },
+    I64FromI32Signed {
+        expr: Box<LoInstr>,
+    },
+    I32FromI64 {
+        expr: Box<LoInstr>,
+    },
     Set {
         bind: LoSetBind,
     },
@@ -468,8 +477,11 @@ impl LoInstr {
             LoInstr::Unreachable => LoType::Void,
             LoInstr::U32ConstLazy { value: _ } => LoType::U32,
             LoInstr::U32Const { value: _ } => LoType::U32,
+            LoInstr::I32FromI64 { expr: _ } => LoType::I32,
             LoInstr::U64Const { value: _ } => LoType::U64,
             LoInstr::I64Const { value: _ } => LoType::I64,
+            LoInstr::I64FromI32Signed { expr: _ } => LoType::I64,
+            LoInstr::I64FromI32Unsigned { expr: _ } => LoType::I64,
             LoInstr::UntypedLocalGet { local_index: _ } => unreachable!(),
 
             LoInstr::MultiValueEmit { values } => {
@@ -630,6 +642,18 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
         LoInstr::U64Const { value } => out.push(WasmInstr::I64Const {
             value: value as i64,
         }),
+        LoInstr::I64FromI32Signed { expr } => {
+            lower_expr(out, *expr);
+            out.push(WasmInstr::I64ExtendI32s);
+        }
+        LoInstr::I64FromI32Unsigned { expr } => {
+            lower_expr(out, *expr);
+            out.push(WasmInstr::I64ExtendI32u);
+        }
+        LoInstr::I32FromI64 { expr } => {
+            lower_expr(out, *expr);
+            out.push(WasmInstr::I32WrapI64);
+        }
         LoInstr::Set { bind } => match bind {
             LoSetBind::Local { index } => out.push(WasmInstr::LocalSet { local_index: index }),
             LoSetBind::Global { index } => out.push(WasmInstr::GlobalSet {

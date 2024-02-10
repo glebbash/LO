@@ -59,10 +59,20 @@ pub enum WasmBinaryOpKind {
     I32Add = 0x6A,
     I32Sub = 0x6B,
     I32Mul = 0x6C,
+    I32DivSigned = 0x6D,
     I32DivUnsigned = 0x6E,
+    I32RemSigned = 0x6f,
     I32RemUnsigned = 0x70,
     I32And = 0x71,
     I32Or = 0x72,
+    I64Equal = 0x51,
+    I64GreaterThanUnsigned = 0x56,
+    I64Add = 0x7c,
+    I64Mul = 0x7e,
+    I64DivSigned = 0x7f,
+    I64DivUnsigned = 0x80,
+    I64RemSigned = 0x81,
+    I64RemUnsigned = 0x82,
 }
 
 #[repr(u8)]
@@ -119,6 +129,9 @@ pub enum WasmInstr {
     I64Const {
         value: i64,
     },
+    I64ExtendI32u,
+    I64ExtendI32s,
+    I32WrapI64,
     LocalGet {
         local_index: u32,
     },
@@ -412,6 +425,15 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::I64Const { value } => {
             write_u8(out, 0x42);
             write_i64(out, *value);
+        }
+        WasmInstr::I64ExtendI32s => {
+            write_u8(out, 0xac);
+        }
+        WasmInstr::I64ExtendI32u => {
+            write_u8(out, 0xad);
+        }
+        WasmInstr::I32WrapI64 => {
+            write_u8(out, 0xa7);
         }
         WasmInstr::LocalGet { local_index } => {
             write_u8(out, 0x20);

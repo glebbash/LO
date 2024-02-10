@@ -1,7 +1,7 @@
 include "lib/cli";
 include "lib/fs";
 
-type Tile = bool;
+type Tile = u8;
 type Vec_Tile = Vec;
 type Vec_Vec_Tile = Vec;
 
@@ -15,18 +15,23 @@ fn main() -> u32 {
     let map = Map_parse(input);
     defer Map_free(map);
 
-    // TODO: this needs to be u64 as count is too large and u32 wraps around
-    let result = 1
-        * count_trees_on_slope(map, 1, 1)
-        * count_trees_on_slope(map, 1, 3)
-        * count_trees_on_slope(map, 1, 5)
-        * count_trees_on_slope(map, 1, 7)
-        * count_trees_on_slope(map, 2, 1);
+    let result = u64 1
+        * debug_u64(count_trees_on_slope(map, 1, 1) as u64)
+        * debug_u64(count_trees_on_slope(map, 1, 3) as u64)
+        * debug_u64(count_trees_on_slope(map, 1, 5) as u64)
+        * debug_u64(count_trees_on_slope(map, 1, 7) as u64)
+        * debug_u64(count_trees_on_slope(map, 2, 1) as u64);
 
-    print_u32(result);
+    print_u64(result);
     puts("\n");
 
     return 0;
+};
+
+fn debug_u64(x: u64) -> u64 {
+    print_u64(x);
+    puts("\n");
+    return x;
 };
 
 fn count_trees_on_slope(map: &Vec_Vec_Tile, slope_i: u32, slope_j: u32) -> u32 {
@@ -61,13 +66,13 @@ fn Map_parse(input: &String) -> &Vec_Vec_Tile {
         };
 
         let char = *(Vec_at(input, i) as &u8);
-        if char == char_code "#" {
+        if char == char_code "#" as u8 {
             *(Vec_push(row) as &Tile) = TREE;
         };
-        if char == char_code "." {
+        if char == char_code "." as u8 {
             *(Vec_push(row) as &Tile) = EMPTY;
         };
-        if char == char_code "\n" {
+        if char == char_code "\n" as u8 {
             *(Vec_push(map) as & &Vec_Tile) = row;
             row = Vec_new(4, sizeof Tile);
         };

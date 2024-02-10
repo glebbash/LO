@@ -20,7 +20,7 @@ fn main() {
     defer let _ = Wasi_fd_close(fd);
 
     let err = WasiIO_fd_pipe(fd, WASI_FD_STDOUT, 256);
-    if err != 0 {
+    if err {
         return Wasi_proc_exit(1);
     };
 

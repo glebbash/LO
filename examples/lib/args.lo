@@ -34,6 +34,6 @@ fn Args_free(self: Args) {
 };
 
 fn Args_get(self: Args, i: u32) -> StringSlice {
-    let arg = *(self.argv + i * sizeof &*u8) as &* &*u8;
+    let arg = *((self.argv as u32 + i * sizeof &*u8) as &* &*u8);
     return std_c_str_to_slice(arg);
 };
