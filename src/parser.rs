@@ -1539,74 +1539,9 @@ fn parse_const_postfix(
     primary: LoInstr,
     op: InfixOp,
 ) -> Result<LoInstr, LoError> {
-    let min_bp = op.info.get_min_bp_for_next();
+    let _min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
-        InfixOpTag::Equal => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Equal,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::NotEqual => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32NotEqual,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::And => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32And,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Or => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Or,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Less => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32LessThenUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::LessEqual => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32LessEqualUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Greater => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32GreaterThanUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::GreaterEqual => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Add => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Add,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Sub => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Sub,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Mul => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Mul,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Div => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32DivUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Mod => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32RemUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_const_expr(ctx, tokens, min_bp)?),
-        },
         InfixOpTag::Cast => LoInstr::Casted {
             value_type: parse_lo_type(ctx, tokens)?,
             expr: Box::new(primary),
