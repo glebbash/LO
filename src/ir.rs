@@ -402,6 +402,9 @@ pub enum LoInstr {
     U32Const {
         value: u32,
     },
+    U64Const {
+        value: u64,
+    },
     I64Const {
         value: i64,
     },
@@ -465,6 +468,7 @@ impl LoInstr {
             LoInstr::Unreachable => LoType::Void,
             LoInstr::U32ConstLazy { value: _ } => LoType::U32,
             LoInstr::U32Const { value: _ } => LoType::U32,
+            LoInstr::U64Const { value: _ } => LoType::U64,
             LoInstr::I64Const { value: _ } => LoType::I64,
             LoInstr::UntypedLocalGet { local_index: _ } => unreachable!(),
 
@@ -623,6 +627,9 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             value: value as i32,
         }),
         LoInstr::I64Const { value } => out.push(WasmInstr::I64Const { value }),
+        LoInstr::U64Const { value } => out.push(WasmInstr::I64Const {
+            value: value as i64,
+        }),
         LoInstr::Set { bind } => match bind {
             LoSetBind::Local { index } => out.push(WasmInstr::LocalSet { local_index: index }),
             LoSetBind::Global { index } => out.push(WasmInstr::GlobalSet {

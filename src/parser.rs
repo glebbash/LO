@@ -685,6 +685,13 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
+    if let Some(_) = tokens.eat(Symbol, "u64")? {
+        let int = tokens.expect_any(IntLiteral)?;
+        return Ok(LoInstr::U64Const {
+            value: parse_u64_literal(&int)?,
+        });
+    }
+
     if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
         return Ok(LoInstr::Casted {
             value_type: LoType::Bool,
@@ -1489,6 +1496,13 @@ fn parse_const_primary(
         });
     }
 
+    if let Some(_) = tokens.eat(Symbol, "u64")? {
+        let int = tokens.expect_any(IntLiteral)?;
+        return Ok(LoInstr::U64Const {
+            value: parse_u64_literal(&int)?,
+        });
+    }
+
     if let Some(_) = tokens.eat(Symbol, "true")? {
         return Ok(LoInstr::Casted {
             value_type: LoType::Bool,
@@ -1628,6 +1642,13 @@ fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
 fn parse_i64_literal(int: &LoToken) -> Result<i64, LoError> {
     int.value.parse().map_err(|_| LoError {
         message: format!("Parsing i64 failed"),
+        loc: int.loc.clone(),
+    })
+}
+
+fn parse_u64_literal(int: &LoToken) -> Result<u64, LoError> {
+    int.value.parse().map_err(|_| LoError {
+        message: format!("Parsing u64 failed"),
         loc: int.loc.clone(),
     })
 }
