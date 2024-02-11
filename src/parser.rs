@@ -922,11 +922,28 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             tokens,
         )?;
 
+        let else_branch = if let Some(_) = tokens.eat(Symbol, "else")? {
+            Some(parse_block(
+                &mut BlockContext {
+                    module: ctx.module,
+                    fn_ctx: ctx.fn_ctx,
+                    block: Block {
+                        block_type: BlockType::Block,
+                        parent: Some(&ctx.block),
+                        locals: BTreeMap::new(),
+                    },
+                },
+                tokens,
+            )?)
+        } else {
+            None
+        };
+
         return Ok(LoInstr::If {
             block_type: LoType::Void,
             cond: Box::new(cond),
             then_branch,
-            else_branch: None,
+            else_branch,
         });
     }
 
