@@ -315,7 +315,7 @@
         let item_size = self->item_size;
         let old_capacity = self->capacity;
         let old_data = self->data;
-        defer free(self->alloc_id, old_data, old_capacity);
+        defer free(self->alloc_id, old_data, old_capacity * item_size);
 
         self->capacity = old_capacity * 2;
         self->data = alloc(self->alloc_id, self->capacity * item_size);
@@ -345,6 +345,10 @@
 
     fn String_new_using(len: u32, alloc_id: u32) -> &String {
         return Vec_new_using(len, sizeof u8, alloc_id);
+    };
+
+    fn String_to_slice(self: &String) -> StringSlice {
+        return StringSlice { data: self->data as &u8, size: self->size };
     };
 
     fn StringSlice_char_at(self: StringSlice, index: u32) -> u8 {
