@@ -1,17 +1,17 @@
-type Wasi::Err = u32;
-const WASI_ERR_SUCCESS = 0;
-const WASI_ERR_BADF    = 8;
+struct Wasi {};
 
-const WASI_FD_STDIN  = 0;
-const WASI_FD_STDOUT = 1;
-const WASI_FD_STDERR = 2;
+type Wasi::Err = u32;
+const Wasi::Err::SUCCESS = 0;
+const Wasi::Err::BADF    = 8;
+
+const Wasi::FD_STDIN  = 0;
+const Wasi::FD_STDOUT = 1;
+const Wasi::FD_STDERR = 2;
 
 struct Wasi::IOVec {
     base: &*u8,
     size: u32,
 };
-
-struct Wasi {};
 
 import from "wasi_snapshot_preview1" {
     fn Wasi::path_open(
@@ -28,14 +28,14 @@ import from "wasi_snapshot_preview1" {
 
     fn Wasi::fd_read(
         fd:                   u32, // file_descriptor
-        iovs:        &*Wasi::IOVec, // The pointer to the iov array
+        iovs:       &*Wasi::IOVec, // The pointer to the iov array
         iovs_len:             u32, // Amount of Wasi::IOVec
         nread:                u32, // Pointer to store the number of bytes read
     ) -> Wasi::Err;
 
     fn Wasi::fd_write(
         fd:                   u32, // file_descriptor
-        iovs:        &*Wasi::IOVec, // The pointer to the iov array
+        iovs:       &*Wasi::IOVec, // The pointer to the iov array
         iovs_len:             u32, // Amount of Wasi::IOVec
         nwritten:             u32, // Pointer to store the number of bytes written
     ) -> Wasi::Err;

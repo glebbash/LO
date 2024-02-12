@@ -8,7 +8,7 @@
 fn fs::open_file(file_path: str) -> u32 throws Wasi::Err {
     // ...
 
-    if err != WASI_ERR_SUCCESS { // 0
+    if err != Wasi::Err::SUCCESS { // 0
         throw err;
     };
 
@@ -17,11 +17,11 @@ fn fs::open_file(file_path: str) -> u32 throws Wasi::Err {
 
 fn fs::read_file(file_name: str) -> &String {
     let fd = try fs::open_file(file_name) catch err {
-        fputs(WASI_FD_STDERR, "Error opening file: ");
-        fputs(WASI_FD_STDERR, file_name);
-        fputs(WASI_FD_STDERR, ", error code = ");
-        fprint_u32(WASI_FD_STDERR, err);
-        fputs(WASI_FD_STDERR, "\n");
+        fputs(Wasi::FD_STDERR, "Error opening file: ");
+        fputs(Wasi::FD_STDERR, file_name);
+        fputs(Wasi::FD_STDERR, ", error code = ");
+        fprint_u32(Wasi::FD_STDERR, err);
+        fputs(Wasi::FD_STDERR, "\n");
         Wasi::proc_exit(1);
     };
 

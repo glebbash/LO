@@ -7,7 +7,7 @@ struct Args {
     argv_buf: &*u8,
 };
 
-fn Args_load() -> Args {
+fn Args::load() -> Args {
     let argc_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, argc_ref, sizeof u32);
     let argv_buf_size_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
@@ -28,12 +28,12 @@ fn Args_load() -> Args {
     };
 };
 
-fn Args_free(self: Args) {
-    heap::free(self.argv);
-    heap::free(self.argv_buf);
-};
-
-fn Args_get(self: Args, i: u32) -> StringSlice {
+fn Args::get(self, i: u32) -> StringSlice {
     let arg = *((self.argv as u32 + i * sizeof &*u8) as &* &*u8);
     return std_c_str_to_slice(arg);
+};
+
+fn Args::free(self) {
+    heap::free(self.argv);
+    heap::free(self.argv_buf);
 };

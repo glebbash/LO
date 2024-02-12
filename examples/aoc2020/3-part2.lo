@@ -13,37 +13,16 @@ fn main() -> u32 {
     defer map.free();
 
     let result = 1u64
-        * count_trees_on_slope(map, 1, 1) as u64
-        * count_trees_on_slope(map, 1, 3) as u64
-        * count_trees_on_slope(map, 1, 5) as u64
-        * count_trees_on_slope(map, 1, 7) as u64
-        * count_trees_on_slope(map, 2, 1) as u64;
+        * map.count_trees_on_slope(1, 1) as u64
+        * map.count_trees_on_slope(1, 3) as u64
+        * map.count_trees_on_slope(1, 5) as u64
+        * map.count_trees_on_slope(1, 7) as u64
+        * map.count_trees_on_slope(2, 1) as u64;
 
     print_u64(result);
     puts("\n");
 
     return 0;
-};
-
-fn count_trees_on_slope(map: Map, slope_i: u32, slope_j: u32) -> u32 {
-    let tree_count = 0;
-    let i = 0;
-    let j = 0;
-
-    loop {
-        i += slope_i;
-        j += slope_j;
-
-        if i >= map->size {
-            break;
-        };
-
-        if map.get(i, j) == TREE {
-            tree_count += 1;
-        };
-    };
-
-    return tree_count;
 };
 
 type Vec::Tile = Vec;
@@ -79,6 +58,27 @@ fn Map::parse(input: &String) -> Map {
     };
 
     return Map { cols: cols };
+};
+
+fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32) -> u32 {
+    let tree_count = 0;
+    let i = 0;
+    let j = 0;
+
+    loop {
+        i += slope_i;
+        j += slope_j;
+
+        if i >= self.cols->size {
+            break;
+        };
+
+        if self.get(i, j) == Tile::TREE {
+            tree_count += 1;
+        };
+    };
+
+    return tree_count;
 };
 
 fn Map::get(self, i: u32, j: u32) -> Tile {
