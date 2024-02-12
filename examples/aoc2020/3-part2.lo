@@ -2,18 +2,15 @@ include "lib/cli";
 include "lib/fs";
 
 type Tile = bool;
-type Vec::Tile = Vec;
-type Vec::Vec::Tile = Vec;
-
-const TREE = 1 as Tile;
-const EMPTY = 0 as Tile;
+const Tile::TREE = 1 as Tile;
+const Tile::EMPTY = 0 as Tile;
 
 fn main() -> u32 {
     let input = fs::read_file("./aoc2020/3.txt");
-    defer Vec::free(input);
+    defer input.free();
 
-    let map = Map_parse(input);
-    defer Map_free(map);
+    let map = Map::parse(input);
+    defer map.free();
 
     let result = 1u64
         * count_trees_on_slope(map, 1, 1) as u64
@@ -28,7 +25,7 @@ fn main() -> u32 {
     return 0;
 };
 
-fn count_trees_on_slope(map: &Vec::Vec::Tile, slope_i: u32, slope_j: u32) -> u32 {
+fn count_trees_on_slope(map: Map, slope_i: u32, slope_j: u32) -> u32 {
     let tree_count = 0;
     let i = 0;
     let j = 0;
@@ -41,7 +38,7 @@ fn count_trees_on_slope(map: &Vec::Vec::Tile, slope_i: u32, slope_j: u32) -> u32
             break;
         };
 
-        if Map_get(map, i, j) == TREE {
+        if map.get(i, j) == TREE {
             tree_count += 1;
         };
     };
@@ -49,8 +46,15 @@ fn count_trees_on_slope(map: &Vec::Vec::Tile, slope_i: u32, slope_j: u32) -> u32
     return tree_count;
 };
 
-fn Map_parse(input: &String) -> &Vec::Vec::Tile {
-    let map = Vec::new(4, sizeof &Vec::Tile);
+type Vec::Tile = Vec;
+type Vec::Vec::Tile = Vec;
+
+struct Map {
+    cols: &Vec::Vec::Tile,
+};
+
+fn Map::parse(input: &String) -> Map {
+    let cols = Vec::new(4, sizeof &Vec::Tile);
     let row = Vec::new(4, sizeof Tile);
 
     let i = 0;
@@ -59,41 +63,40 @@ fn Map_parse(input: &String) -> &Vec::Vec::Tile {
             break;
         };
 
-        let char = *(Vec::at(input, i) as &u8);
+        let char = *(input.at(i) as &u8);
         if char == char_code "#" as u8 {
-            *(Vec::push(row) as &Tile) = TREE;
+            *(row.push() as &Tile) = Tile::TREE;
         };
         if char == char_code "." as u8 {
-            *(Vec::push(row) as &Tile) = EMPTY;
+            *(row.push() as &Tile) = Tile::EMPTY;
         };
         if char == char_code "\n" as u8 {
-            *(Vec::push(map) as & &Vec::Tile) = row;
+            *(cols.push() as & &Vec::Tile) = row;
             row = Vec::new(4, sizeof Tile);
         };
 
         i += 1;
     };
 
-    return map;
+    return Map { cols: cols };
 };
 
-fn Map_get(map: &Vec::Vec::Tile, i: u32, j: u32) -> Tile {
-    let row = *(Vec::at(map, i) as & &Vec::Tile);
-    return *(Vec::at(row, j % row->size) as &Tile);
+fn Map::get(self, i: u32, j: u32) -> Tile {
+    let row = *(self.cols.at(i) as & &Vec::Tile);
+    return *(row.at(j % row->size) as &Tile);
 };
 
-fn Map_free(map: &Vec::Vec::Tile) {
+fn Map::free(self) {
     let i = 0;
     loop {
-        if i == map->size {
+        if i == self.cols->size {
             break;
         };
 
-        let row = Vec::at(map, i) as & &Vec::Tile;
-        Vec::free(row);
+        let row = self.cols.at(i) as & &Vec::Tile;
+        row.free();
 
         i += 1;
     };
-
-    Vec::free(map);
+    self.cols.free();
 };
