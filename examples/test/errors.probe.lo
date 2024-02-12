@@ -1,0 +1,29 @@
+// pointer to error is added to return value
+// - real return type is struct { error: &Wasi::Err, result: u32 }
+// - 0 is placed on the stack when `return` is encountered
+// - `throw` puts its value on the stack and fills return values with defaults
+// - throwable values must be fittable into `u32`, where 0 would indicate the absence of an error
+//   - error codes fit nicely
+//   - other errors should be passed by a nullabe pointer
+fn fs::open_file(file_path: str) -> u32 throws Wasi::Err {
+    // ...
+
+    if err != WASI_ERR_SUCCESS { // 0
+        throw err;
+    };
+
+    return *fd_ref;
+};
+
+fn fs::read_file(file_name: str) -> &String {
+    let fd = try fs::open_file(file_name) catch err {
+        fputs(WASI_FD_STDERR, "Error opening file: ");
+        fputs(WASI_FD_STDERR, file_name);
+        fputs(WASI_FD_STDERR, ", error code = ");
+        fprint_u32(WASI_FD_STDERR, err);
+        fputs(WASI_FD_STDERR, "\n");
+        Wasi::proc_exit(1);
+    };
+
+    // ...
+};
