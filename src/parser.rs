@@ -1969,14 +1969,6 @@ fn compile_local_get(
     base_index: u32,
     value_type: &LoType,
 ) -> Result<LoInstr, String> {
-    let comp_count = value_type.emit_components(ctx, &mut vec![]);
-    if comp_count == 1 {
-        return Ok(LoInstr::LocalGet {
-            local_index: base_index,
-            value_type: value_type.clone(),
-        });
-    }
-
     if let LoType::Tuple(item_types) = value_type {
         let mut item_gets = vec![];
         for (item_index, item_type) in (0..).zip(item_types) {
@@ -1989,7 +1981,16 @@ fn compile_local_get(
         });
     }
 
+    let comp_count = value_type.emit_components(ctx, &mut vec![]);
+
     let LoType::StructInstance { name } = value_type else {
+        if comp_count == 1 {
+            return Ok(LoInstr::LocalGet {
+                local_index: base_index,
+                value_type: value_type.clone(),
+            });
+        }
+
         return Err(format!("Unsupported type for compile_load: {value_type:?}"));
     };
 
