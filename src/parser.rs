@@ -515,7 +515,7 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
 
     let receiver_type = if !is_plain_fn {
         let receiver_type = parse_lo_type(ctx, tokens)?;
-        tokens.expect(Operator, ".")?;
+        tokens.expect(Operator, "::")?;
         Some(receiver_type)
     } else {
         None
@@ -537,12 +537,33 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
         locals: BTreeMap::new(),
     };
 
-    if let Some(receiver_type) = receiver_type {
-        fn_decl.fn_name = fn_name_for_method(&receiver_type, &fn_decl.fn_name);
-        add_fn_param(ctx, &mut fn_decl, RECEIVER_PARAM_NAME.into(), receiver_type);
-    }
-
     tokens.expect(Delim, "(")?;
+    if let Some(receiver_type) = &receiver_type {
+        fn_decl.fn_name = fn_name_for_method(&receiver_type, &fn_decl.fn_name);
+
+        if let Some(_) = tokens.eat(Symbol, RECEIVER_PARAM_NAME)? {
+            if !tokens.next_is(Delim, ")")? {
+                tokens.expect(Delim, ",")?;
+            }
+            add_fn_param(
+                ctx,
+                &mut fn_decl,
+                String::from(RECEIVER_PARAM_NAME),
+                receiver_type.clone(),
+            );
+        } else if let Some(_) = tokens.eat(Operator, "&")? {
+            tokens.expect(Symbol, RECEIVER_PARAM_NAME)?;
+            if !tokens.next_is(Delim, ")")? {
+                tokens.expect(Delim, ",")?;
+            }
+            add_fn_param(
+                ctx,
+                &mut fn_decl,
+                String::from(RECEIVER_PARAM_NAME),
+                LoType::Pointer(Box::new(receiver_type.clone())),
+            );
+        };
+    }
     while let None = tokens.eat(Delim, ")")? {
         let p_name = tokens.expect_any(Symbol)?.clone();
         tokens.expect(Operator, ":")?;
@@ -1075,6 +1096,30 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
+        if let Some(path_separator) = tokens.eat(Operator, "::")?.cloned() {
+            let receiver_type = parse_lo_type(
+                ctx.module,
+                &mut LoTokenStream::new(vec![value], path_separator.loc.clone()),
+            )?;
+            let method_name = tokens.expect_any(Symbol)?;
+            let fn_name = fn_name_for_method(&receiver_type, &method_name.value);
+            let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
+                return Err(LoError {
+                    message: format!("Unknown function: {fn_name}"),
+                    loc: method_name.loc.clone(),
+                });
+            };
+
+            let mut args = vec![];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
+
+            return Ok(LoInstr::Call {
+                fn_index: fn_def.fn_index,
+                return_type: fn_def.kind.output.clone(),
+                args,
+            });
+        };
+
         if let Some(const_value) = ctx.module.constants.borrow().get(&value.value) {
             return Ok(const_value.clone());
         }
@@ -1540,12 +1585,12 @@ fn parse_postfix(
             }
 
             let method_name = field_or_method_name;
-            let recevier_type = primary.get_type(ctx.module);
+            let receiver_type = primary.get_type(ctx.module);
 
             let mut args = vec![primary];
             parse_fn_call_args(ctx, tokens, &mut args)?;
 
-            let fn_name = fn_name_for_method(&recevier_type, &method_name.value);
+            let fn_name = fn_name_for_method(&receiver_type, &method_name.value);
             let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
                 return Err(LoError {
                     message: format!("Unknown function: {fn_name}"),
@@ -1724,7 +1769,7 @@ fn parse_const_primary(
 
         let Some(global) = ctx.globals.get(&value.value) else {
             return Err(LoError {
-                message: format!("Reading unknown variable: {}", value.value),
+                message: format!("Reading unknown variable in const context: {}", value.value),
                 loc: value.loc,
             });
         };
@@ -1848,7 +1893,8 @@ fn parse_u64_literal(int: &LoToken) -> Result<u64, LoError> {
 }
 
 fn fn_name_for_method(receiver_type: &LoType, method_name: &str) -> String {
-    format!("{receiver_type}_{method_name}")
+    let resolved_receiver_type = receiver_type.deref_rec();
+    format!("{resolved_receiver_type}_{method_name}")
 }
 
 // TODO: copied from v1, review

@@ -77,7 +77,7 @@ test("compiles methods", async () => {
     const program = await loadWasm(output);
     const result = program.main();
 
-    assert.strictEqual(result, 25);
+    assert.strictEqual(result, 1);
 });
 
 test("compiles struct", async () => {

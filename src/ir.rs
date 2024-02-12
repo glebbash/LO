@@ -140,6 +140,15 @@ pub enum LoType {
     StructInstance { name: String },
 }
 
+impl LoType {
+    pub fn deref_rec(&self) -> &LoType {
+        match self {
+            LoType::Pointer(pointee) => pointee.deref_rec(),
+            other => other,
+        }
+    }
+}
+
 impl core::fmt::Display for LoType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {

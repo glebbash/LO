@@ -1,7 +1,0 @@
-fn (self: u32).squared() -> u32 {
-    return self * self;
-};
-
-fn (self: &Vec).len() -> u32 {
-    return self.size;
-};
