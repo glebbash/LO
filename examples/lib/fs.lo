@@ -11,10 +11,10 @@ const fs::CWD_PREOPEN_FD = 3;
 fn fs::read_file(file_name: str) -> &String {
     let open_res = fs::open(file_name);
     if open_res.err != 0 {
-        fputs(Wasi::FD_STDERR, "Error opening file: ");
-        fputs(Wasi::FD_STDERR, file_name);
-        fputs(Wasi::FD_STDERR, "\n");
-        Wasi::proc_exit(1);
+        fputs(wasi::FD_STDERR, "Error opening file: ");
+        fputs(wasi::FD_STDERR, file_name);
+        fputs(wasi::FD_STDERR, "\n");
+        wasi::proc_exit(1);
     };
     let fd = open_res.fd;
 
@@ -22,7 +22,7 @@ fn fs::read_file(file_name: str) -> &String {
 };
 
 struct fs::FdOpenRes {
-    err: Wasi::Err,
+    err: wasi::Err,
     fd: u32,
 };
 
@@ -30,7 +30,7 @@ fn fs::open(file_path: str) -> fs::FdOpenRes {
     let fd_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, fd_ref, sizeof u32);
 
-    let err = Wasi::path_open(
+    let err = wasi::path_open(
         fs::CWD_PREOPEN_FD, 0,
         file_path, 0, 2i64, 0i64, 0,
         fd_ref,
@@ -46,15 +46,15 @@ fn fs::read_fd(fd: u32) -> &String {
     let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
     defer free(ALLOC_HEAP, chunk, 256);
 
-    let in_vec = alloc(ALLOC_STACK, sizeof Wasi::IOVec) as &Wasi::IOVec;
-    *in_vec = Wasi::IOVec { base: chunk, size: 256 };
-    defer free(ALLOC_STACK, in_vec, sizeof Wasi::IOVec);
+    let in_vec = alloc(ALLOC_STACK, sizeof wasi::IOVec) as &wasi::IOVec;
+    *in_vec = wasi::IOVec { base: chunk, size: 256 };
+    defer free(ALLOC_STACK, in_vec, sizeof wasi::IOVec);
 
     let nread_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer stack::free(sizeof u32);
 
     loop {
-        let _err = Wasi::fd_read(fd, in_vec, 1, nread_ref);
+        let _err = wasi::fd_read(fd, in_vec, 1, nread_ref);
 
         let nread = *nread_ref;
         if nread == 0 {
@@ -72,16 +72,16 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
     let chunk = stack::alloc(chunk_size) as &*u8;
     defer stack::free(chunk_size);
 
-    let iov = alloc(ALLOC_STACK, sizeof Wasi::IOVec) as &Wasi::IOVec;
-    *iov = Wasi::IOVec { base: chunk, size: 0 };
-    defer free(ALLOC_STACK, iov, sizeof Wasi::IOVec);
+    let iov = alloc(ALLOC_STACK, sizeof wasi::IOVec) as &wasi::IOVec;
+    *iov = wasi::IOVec { base: chunk, size: 0 };
+    defer free(ALLOC_STACK, iov, sizeof wasi::IOVec);
 
     let nread_ref = stack::alloc(sizeof u32) as &u32;
     defer stack::free(sizeof u32);
 
     loop {
         iov->size = chunk_size;
-        let io_res = Wasi::fd_read(fd_in, iov, 1, nread_ref);
+        let io_res = wasi::fd_read(fd_in, iov, 1, nread_ref);
         if io_res != 0 {
             return false;
         };
@@ -92,7 +92,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
         };
 
         iov->size = nread;
-        io_res = Wasi::fd_write(fd_out, iov, 1, nread);
+        io_res = wasi::fd_write(fd_out, iov, 1, nread);
         if io_res != 0 {
             return false;
         };
@@ -102,5 +102,5 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
 };
 
 fn fs::close(fd: u32) {
-    let _ = Wasi::fd_close(fd); // TODO: ignore close error?
+    let _ = wasi::fd_close(fd); // TODO: ignore close error?
 };

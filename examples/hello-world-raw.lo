@@ -6,16 +6,16 @@ export memory { min_pages: 1 };
 memory @ 12 = "Hello World!\n";
 
 export fn _start() {
-    // Wasi::IOVec.base = "Hello World!\n".ptr
+    // wasi::IOVec.base = "Hello World!\n".ptr
     *(4 as &u32) = 12;
 
-    // Wasi::IOVec.size = "Hello World!\n".length
+    // wasi::IOVec.size = "Hello World!\n".length
     *(8 as &u32) = 13;
 
     let _ = fd_write(
         1, // file_descriptor, STDOUT = 1
         4, // The pointer to the iov array
-        1, // Amount of Wasi::IOVec
+        1, // Amount of wasi::IOVec
         0, // Pointer to store the number of bytes written
     );
 };

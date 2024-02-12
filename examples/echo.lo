@@ -2,5 +2,5 @@ include "lib/cli";
 include "lib/fs";
 
 fn main() {
-    let _err = fs::pipe(Wasi::FD_STDIN, Wasi::FD_STDOUT, 256);
+    let _err = fs::pipe(wasi::FD_STDIN, wasi::FD_STDOUT, 256);
 };

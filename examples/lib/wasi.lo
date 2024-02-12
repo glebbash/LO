@@ -1,20 +1,20 @@
-struct Wasi {};
+struct wasi {};
 
-type Wasi::Err = u32;
-const Wasi::Err::SUCCESS = 0;
-const Wasi::Err::BADF    = 8;
+type wasi::Err = u32;
+const wasi::Err::SUCCESS = 0;
+const wasi::Err::BADF    = 8;
 
-const Wasi::FD_STDIN  = 0;
-const Wasi::FD_STDOUT = 1;
-const Wasi::FD_STDERR = 2;
+const wasi::FD_STDIN  = 0;
+const wasi::FD_STDOUT = 1;
+const wasi::FD_STDERR = 2;
 
-struct Wasi::IOVec {
+struct wasi::IOVec {
     base: &*u8,
     size: u32,
 };
 
 import from "wasi_snapshot_preview1" {
-    fn Wasi::path_open(
+    fn wasi::path_open(
         dirfd:                u32, // The file descriptor representing the directory that the file is located in.
         dirflags:             u32, // Flags specifying how the path will be resolved.
         path:                &*u8, // A wasm pointer to a null-terminated string containing the path of the file or directory to open.
@@ -23,38 +23,38 @@ import from "wasi_snapshot_preview1" {
         fs_rights_base:       u64, // The rights of the created file descriptor.
         fs_rights_inheriting: u64, // The rights of file descriptors derived from the created file descriptor.
         fdflags:              u32, // The flags of the file descriptor.
-        fd:                  &u32, // A wasm pointer to a WasiFd variable where the new file descriptor will be stored.
-    ) -> Wasi::Err;
+        fd:                  &u32, // A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
+    ) -> wasi::Err;
 
-    fn Wasi::fd_read(
+    fn wasi::fd_read(
         fd:                   u32, // file_descriptor
-        iovs:       &*Wasi::IOVec, // The pointer to the iov array
-        iovs_len:             u32, // Amount of Wasi::IOVec
+        iovs:       &*wasi::IOVec, // The pointer to the iov array
+        iovs_len:             u32, // Amount of wasi::IOVec
         nread:                u32, // Pointer to store the number of bytes read
-    ) -> Wasi::Err;
+    ) -> wasi::Err;
 
-    fn Wasi::fd_write(
+    fn wasi::fd_write(
         fd:                   u32, // file_descriptor
-        iovs:       &*Wasi::IOVec, // The pointer to the iov array
-        iovs_len:             u32, // Amount of Wasi::IOVec
+        iovs:       &*wasi::IOVec, // The pointer to the iov array
+        iovs_len:             u32, // Amount of wasi::IOVec
         nwritten:             u32, // Pointer to store the number of bytes written
-    ) -> Wasi::Err;
+    ) -> wasi::Err;
 
-    fn Wasi::fd_close(
+    fn wasi::fd_close(
         fd:                   u32, // file_descriptor
-    ) -> Wasi::Err;
+    ) -> wasi::Err;
 
-    fn Wasi::args_sizes_get(
+    fn wasi::args_sizes_get(
         argc:                &u32, // Pointer to where the number of arguments will be written.
         argv_buf_size:       &u32, // Pointer to where the size of the argument string data will be written.
-    ) -> Wasi::Err;
+    ) -> wasi::Err;
 
-    fn Wasi::args_get(
+    fn wasi::args_get(
         argv:                &u32, // Pointer to a buffer where the argument pointers will be written.
         argv_buf:            &u32, // Pointer to a buffer where the argument string data will be written.
-    ) -> Wasi::Err;
+    ) -> wasi::Err;
 
-    fn Wasi::proc_exit(
+    fn wasi::proc_exit(
         code:                 u32, // exit code
     );
 };

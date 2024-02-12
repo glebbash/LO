@@ -1,39 +1,39 @@
 include "lib/std";
 include "lib/wasi";
 
-struct Args {
+struct args {
     argc: u32,
     argv: &* &*u8,
     argv_buf: &*u8,
 };
 
-fn Args::load() -> Args {
+fn args::load() -> args {
     let argc_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, argc_ref, sizeof u32);
     let argv_buf_size_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, argv_buf_size_ref, sizeof u32);
 
-    let _ = Wasi::args_sizes_get(argc_ref, argv_buf_size_ref);
+    let _ = wasi::args_sizes_get(argc_ref, argv_buf_size_ref);
     let argv_buf_size = *argv_buf_size_ref;
     let argc = *argc_ref;
 
     let argv = heap::alloc(argc * sizeof &*u8) as &* &*u8;
     let argv_buf = heap::alloc(argv_buf_size) as &* u8;
-    let _ = Wasi::args_get(argv, argv_buf);
+    let _ = wasi::args_get(argv, argv_buf);
 
-    return Args {
+    return args {
         argc: argc,
         argv: argv,
         argv_buf: argv_buf,
     };
 };
 
-fn Args::get(self, i: u32) -> StringSlice {
+fn args::get(self, i: u32) -> StringSlice {
     let arg = *((self.argv as u32 + i * sizeof &*u8) as &* &*u8);
     return std_c_str_to_slice(arg);
 };
 
-fn Args::free(self) {
+fn args::free(self) {
     heap::free(self.argv);
     heap::free(self.argv_buf);
 };

@@ -2,7 +2,7 @@ include "lib/cli";
 include "lib/args";
 
 fn main() {
-    let args = Args::load();
+    let args = args::load();
 
     let i = 0;
     loop {

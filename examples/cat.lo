@@ -3,26 +3,26 @@ include "lib/args";
 include "lib/fs";
 
 fn main() {
-    let args = Args::load();
+    let args = args::load();
     defer args.free();
 
     if args.argc != 2 {
-        return Wasi::proc_exit(1);
+        return wasi::proc_exit(1);
     };
 
     let file_path = args.get(1);
 
     let open_res = fs::open(file_path);
     if open_res.err != 0 {
-        return Wasi::proc_exit(1);
+        return wasi::proc_exit(1);
     };
     let fd = open_res.fd;
     defer let _ = fs::close(fd);
 
-    let err = fs::pipe(fd, Wasi::FD_STDOUT, 256);
+    let err = fs::pipe(fd, wasi::FD_STDOUT, 256);
     if err {
-        return Wasi::proc_exit(1);
+        return wasi::proc_exit(1);
     };
 
-    return Wasi::proc_exit(0);
+    return wasi::proc_exit(0);
 };
