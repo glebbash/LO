@@ -39,5 +39,5 @@ fn fprint_str(fd: u32, value: &StringSlice) {
     let nwritten = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, nwritten, sizeof u32);
 
-    let _ = Wasi_fd_write(fd, value, 1, nwritten);
+    let _ = Wasi::fd_write(fd, value, 1, nwritten);
 };

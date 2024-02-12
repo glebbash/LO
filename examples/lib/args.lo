@@ -13,13 +13,13 @@ fn Args_load() -> Args {
     let argv_buf_size_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, argv_buf_size_ref, sizeof u32);
 
-    let _ = Wasi_args_sizes_get(argc_ref, argv_buf_size_ref);
+    let _ = Wasi::args_sizes_get(argc_ref, argv_buf_size_ref);
     let argv_buf_size = *argv_buf_size_ref;
     let argc = *argc_ref;
 
     let argv = Heap_alloc(argc * sizeof &*u8) as &* &*u8;
     let argv_buf = Heap_alloc(argv_buf_size) as &* u8;
-    let _ = Wasi_args_get(argv, argv_buf);
+    let _ = Wasi::args_get(argv, argv_buf);
 
     return Args {
         argc: argc,

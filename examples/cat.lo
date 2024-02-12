@@ -7,22 +7,22 @@ fn main() {
     defer Args_free(args);
 
     if args.argc != 2 {
-        return Wasi_proc_exit(1);
+        return Wasi::proc_exit(1);
     };
 
     let file_path = Args_get(args, 1);
 
     let open_res = WasiIO_fd_open(file_path);
     if open_res.err != 0 {
-        return Wasi_proc_exit(1);
+        return Wasi::proc_exit(1);
     };
     let fd = open_res.fd;
-    defer let _ = Wasi_fd_close(fd);
+    defer let _ = Wasi::fd_close(fd);
 
     let err = WasiIO_fd_pipe(fd, WASI_FD_STDOUT, 256);
     if err {
-        return Wasi_proc_exit(1);
+        return Wasi::proc_exit(1);
     };
 
-    return Wasi_proc_exit(0);
+    return Wasi::proc_exit(0);
 };

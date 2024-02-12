@@ -237,7 +237,7 @@ fn parse_top_level_expr(
     }
 
     if let Some(_) = tokens.eat(Symbol, "struct")? {
-        let struct_name = tokens.expect_any(Symbol)?.clone();
+        let struct_name = parse_nested_symbol(tokens)?;
 
         if ctx.struct_defs.contains_key(&struct_name.value) {
             return Err(LoError {
@@ -310,7 +310,7 @@ fn parse_top_level_expr(
     }
 
     if let Some(_) = tokens.eat(Symbol, "type")?.cloned() {
-        let type_alias = tokens.expect_any(Symbol)?.clone();
+        let type_alias = parse_nested_symbol(tokens)?;
         tokens.expect(Operator, "=")?;
         let actual_type = parse_lo_type(ctx, tokens)?;
 
@@ -507,25 +507,13 @@ struct FnDecl {
 }
 
 fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<FnDecl, LoError> {
-    let is_plain_fn = if let Some((t1, t2)) = tokens.peek2() {
-        t1.is_any(Symbol) && t2.is(Delim, "(")
-    } else {
-        false
-    };
-
-    let receiver_type = if !is_plain_fn {
-        let receiver_type = parse_lo_type(ctx, tokens)?;
-        tokens.expect(Operator, "::")?;
-        Some(receiver_type)
-    } else {
-        None
-    };
-    let method_name = tokens.expect_any(Symbol)?.clone();
+    let fn_name = parse_nested_symbol(tokens)?;
+    let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &fn_name)?;
 
     let mut fn_decl = FnDecl {
-        fn_name: method_name.value.clone(),
-        method_name: method_name.value,
-        loc: method_name.loc,
+        fn_name: fn_name.value.clone(),
+        method_name,
+        loc: fn_name.loc.clone(),
         lo_type: LoFnType {
             inputs: vec![],
             output: LoType::Void,
@@ -539,8 +527,6 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
 
     tokens.expect(Delim, "(")?;
     if let Some(receiver_type) = &receiver_type {
-        fn_decl.fn_name = fn_name_for_method(&receiver_type, &fn_decl.fn_name);
-
         if let Some(_) = tokens.eat(Symbol, RECEIVER_PARAM_NAME)? {
             if !tokens.next_is(Delim, ")")? {
                 tokens.expect(Delim, ",")?;
@@ -1095,128 +1081,95 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         }
     }
 
-    if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
-        if let Some(path_separator) = tokens.eat(Operator, "::")?.cloned() {
-            let receiver_type = parse_lo_type(
-                ctx.module,
-                &mut LoTokenStream::new(vec![value], path_separator.loc.clone()),
-            )?;
-            let method_name = tokens.expect_any(Symbol)?;
-            let fn_name = fn_name_for_method(&receiver_type, &method_name.value);
-            let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
-                return Err(LoError {
-                    message: format!("Unknown function: {fn_name}"),
-                    loc: method_name.loc.clone(),
-                });
-            };
+    let value = parse_nested_symbol(tokens)?;
 
-            let mut args = vec![];
-            parse_fn_call_args(ctx, tokens, &mut args)?;
+    if let Some(const_value) = ctx.module.constants.borrow().get(&value.value) {
+        return Ok(const_value.clone());
+    }
 
-            return Ok(LoInstr::Call {
-                fn_index: fn_def.fn_index,
-                return_type: fn_def.kind.output.clone(),
-                args,
-            });
-        };
+    if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
+        let mut args = vec![];
+        parse_fn_call_args(ctx, tokens, &mut args)?;
 
-        if let Some(const_value) = ctx.module.constants.borrow().get(&value.value) {
-            return Ok(const_value.clone());
-        }
-
-        if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
-            let mut args = vec![];
-            parse_fn_call_args(ctx, tokens, &mut args)?;
-
-            return Ok(LoInstr::Call {
-                fn_index: fn_def.get_absolute_index(ctx.module),
-                return_type: fn_def.kind.output.clone(),
-                args,
-            });
-        }
-
-        if let Some(struct_def) = ctx.module.struct_defs.get(&value.value) {
-            let struct_name = value;
-
-            let mut values = vec![];
-            tokens.expect(Delim, "{")?;
-            while let None = tokens.eat(Delim, "}")? {
-                let field_name = tokens.expect_any(Symbol)?.clone();
-                tokens.expect(Operator, ":")?;
-                let field_value = parse_expr(ctx, tokens, 0)?;
-
-                if !tokens.next_is(Delim, "}")? {
-                    tokens.expect(Delim, ",")?;
-                }
-
-                let field_index = values.len();
-                let Some(struct_field) = struct_def.fields.get(field_index) else {
-                    return Err(LoError {
-                        message: format!("Excess field values"),
-                        loc: field_name.loc,
-                    });
-                };
-
-                if &field_name.value != &struct_field.name {
-                    return Err(LoError {
-                        message: format!(
-                            "Unexpected field name, expecting: `{}`",
-                            struct_field.name
-                        ),
-                        loc: field_name.loc,
-                    });
-                }
-
-                let field_value_type = field_value.get_type(ctx.module);
-                if field_value_type != struct_field.value_type {
-                    return Err(LoError {
-                        message: format!(
-                            "Invalid type for field {}.{}, expected: {}, got: {}",
-                            struct_name.value,
-                            field_name.value,
-                            struct_field.value_type,
-                            field_value_type
-                        ),
-                        // TODO: field_value.loc() is not available
-                        loc: field_name.loc.clone(),
-                    });
-                }
-                values.push(field_value);
-            }
-
-            return Ok(LoInstr::Casted {
-                value_type: LoType::StructInstance {
-                    name: struct_name.value,
-                },
-                expr: Box::new(LoInstr::MultiValueEmit { values }),
-            });
-        };
-
-        if let Some(global) = ctx.module.globals.get(&value.value) {
-            return Ok(LoInstr::GlobalGet {
-                global_index: global.index,
-            });
-        };
-
-        let Some(local) = ctx.block.get_local(&value.value) else {
-            return Err(LoError {
-                message: format!("Reading unknown variable: {}", value.value),
-                loc: value.loc,
-            });
-        };
-
-        return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
-            LoError {
-                message,
-                loc: value.loc,
-            }
+        return Ok(LoInstr::Call {
+            fn_index: fn_def.get_absolute_index(ctx.module),
+            return_type: fn_def.kind.output.clone(),
+            args,
         });
     }
 
-    let unexpected = tokens.peek().unwrap();
-    return Err(LoError {
-        message: format!("Unexpected token: {}", unexpected.value),
-        loc: unexpected.loc.clone(),
+    if let Some(struct_def) = ctx.module.struct_defs.get(&value.value) {
+        let struct_name = value;
+
+        let mut values = vec![];
+        tokens.expect(Delim, "{")?;
+        while let None = tokens.eat(Delim, "}")? {
+            let field_name = tokens.expect_any(Symbol)?.clone();
+            tokens.expect(Operator, ":")?;
+            let field_value = parse_expr(ctx, tokens, 0)?;
+
+            if !tokens.next_is(Delim, "}")? {
+                tokens.expect(Delim, ",")?;
+            }
+
+            let field_index = values.len();
+            let Some(struct_field) = struct_def.fields.get(field_index) else {
+                return Err(LoError {
+                    message: format!("Excess field values"),
+                    loc: field_name.loc,
+                });
+            };
+
+            if &field_name.value != &struct_field.name {
+                return Err(LoError {
+                    message: format!("Unexpected field name, expecting: `{}`", struct_field.name),
+                    loc: field_name.loc,
+                });
+            }
+
+            let field_value_type = field_value.get_type(ctx.module);
+            if field_value_type != struct_field.value_type {
+                return Err(LoError {
+                    message: format!(
+                        "Invalid type for field {}.{}, expected: {}, got: {}",
+                        struct_name.value,
+                        field_name.value,
+                        struct_field.value_type,
+                        field_value_type
+                    ),
+                    // TODO: field_value.loc() is not available
+                    loc: field_name.loc.clone(),
+                });
+            }
+            values.push(field_value);
+        }
+
+        return Ok(LoInstr::Casted {
+            value_type: LoType::StructInstance {
+                name: struct_name.value,
+            },
+            expr: Box::new(LoInstr::MultiValueEmit { values }),
+        });
+    };
+
+    if let Some(global) = ctx.module.globals.get(&value.value) {
+        return Ok(LoInstr::GlobalGet {
+            global_index: global.index,
+        });
+    };
+
+    let Some(local) = ctx.block.get_local(&value.value) else {
+        return Err(LoError {
+            message: format!("Reading unknown variable: {}", value.value),
+            loc: value.loc,
+        });
+    };
+
+    return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
+        LoError {
+            message,
+            loc: value.loc,
+        }
     });
 }
 
@@ -1590,7 +1543,7 @@ fn parse_postfix(
             let mut args = vec![primary];
             parse_fn_call_args(ctx, tokens, &mut args)?;
 
-            let fn_name = fn_name_for_method(&receiver_type, &method_name.value);
+            let fn_name = get_fn_name_from_method(&receiver_type, &method_name.value);
             let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
                 return Err(LoError {
                     message: format!("Unknown function: {fn_name}"),
@@ -1832,7 +1785,15 @@ fn parse_lo_type_checking_ref(
         return Ok(LoType::Void);
     }
 
-    let token = tokens.expect_any(Symbol)?;
+    let token = parse_nested_symbol(tokens)?;
+    get_type_by_name(ctx, &token, is_referenced)
+}
+
+fn get_type_by_name(
+    ctx: &ModuleContext,
+    token: &LoToken,
+    is_referenced: bool,
+) -> Result<LoType, LoError> {
     match token.value.as_str() {
         "bool" => Ok(LoType::Bool),
         "u8" => Ok(LoType::U8),
@@ -1863,12 +1824,48 @@ fn parse_lo_type_checking_ref(
                 });
             }
 
-            return Err(LoError {
-                message: format!("Unexpected token in type: {}", token.value),
+            Err(LoError {
+                message: format!("Unknown type: {}", token.value),
                 loc: token.loc.clone(),
-            });
+            })
         }
     }
+}
+
+fn parse_nested_symbol(tokens: &mut LoTokenStream) -> Result<LoToken, LoError> {
+    let mut nested_symbol = tokens.expect_any(Symbol)?.clone();
+    while let Some(_) = tokens.eat(Operator, "::")? {
+        let path_part = tokens.expect_any(Symbol)?;
+        nested_symbol.value += "::";
+        nested_symbol.value += path_part.value.as_str();
+        nested_symbol.loc.end_offset = path_part.loc.end_offset;
+    }
+    Ok(nested_symbol)
+}
+
+fn extract_method_receiver_and_name(
+    ctx: &ModuleContext,
+    token: &LoToken,
+) -> Result<(Option<LoType>, String), LoError> {
+    Ok(match token.value.rsplitn(2, "::").collect::<Vec<_>>()[..] {
+        [method_name, receiver_name] => {
+            let mut token = LoToken {
+                type_: LoTokenType::Symbol,
+                value: String::from(receiver_name),
+                loc: token.loc.clone(),
+            };
+
+            // TODO: correct `end_offset` info is lost during creation of nested_symbol
+            token.loc.end_offset = token.loc.offset;
+
+            (
+                Some(get_type_by_name(ctx, &token, false)?),
+                String::from(method_name),
+            )
+        }
+        [fn_name] => (None, String::from(fn_name)),
+        _ => unreachable!(),
+    })
 }
 
 fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
@@ -1892,9 +1889,9 @@ fn parse_u64_literal(int: &LoToken) -> Result<u64, LoError> {
     })
 }
 
-fn fn_name_for_method(receiver_type: &LoType, method_name: &str) -> String {
+fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {
     let resolved_receiver_type = receiver_type.deref_rec();
-    format!("{resolved_receiver_type}_{method_name}")
+    format!("{resolved_receiver_type}::{method_name}")
 }
 
 // TODO: copied from v1, review

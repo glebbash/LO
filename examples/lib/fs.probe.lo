@@ -12,7 +12,7 @@ fn fs_read_file(file_name: str) -> &String {
         fputs(WASI_FD_STDERR, ", error code = ");
         fprint_u32(WASI_FD_STDERR, err);
         fputs(WASI_FD_STDERR, "\n");
-        Wasi_proc_exit(1);
+        Wasi::proc_exit(1);
     };
 
     let output = Vec_new(256, sizeof u8);
@@ -21,15 +21,15 @@ fn fs_read_file(file_name: str) -> &String {
     let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
     defer free(ALLOC_HEAP, chunk, 256);
 
-    let in_vec = alloc(ALLOC_STACK, sizeof Wasi_IOVec) as &Wasi_IOVec;
-    *in_vec = Wasi_IOVec { base: chunk, size: 256 };
-    defer free(ALLOC_STACK, in_vec, sizeof Wasi_IOVec);
+    let in_vec = alloc(ALLOC_STACK, sizeof Wasi::IOVec) as &Wasi::IOVec;
+    *in_vec = Wasi::IOVec { base: chunk, size: 256 };
+    defer free(ALLOC_STACK, in_vec, sizeof Wasi::IOVec);
 
     let nread_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer Stack_free(sizeof u32);
 
     loop {
-        let _err = Wasi_fd_read(fd, in_vec, 1, nread_ref);
+        let _err = Wasi::fd_read(fd, in_vec, 1, nread_ref);
 
         let nread = *nread_ref;
         if nread == 0 {
@@ -42,11 +42,11 @@ fn fs_read_file(file_name: str) -> &String {
     return output;
 };
 
-fn fs__open_file(file_path: str) -> u32 throws Wasi_Err {
+fn fs__open_file(file_path: str) -> u32 throws Wasi::Err {
     let fd_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, fd_ref, sizeof u32);
 
-    let err = Wasi_path_open(
+    let err = Wasi::path_open(
         CWD_PREOPEN_FD, 0,
         file_path, 0, i64 2, i64 0, 0,
         fd_ref,

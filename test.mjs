@@ -80,6 +80,15 @@ test("compiles methods", async () => {
     assert.strictEqual(result, 1);
 });
 
+test("compiles nesting", async () => {
+    const output = await compile("./examples/test/nesting.lo");
+
+    const program = await loadWasm(output);
+    const result = program.main();
+
+    assert.strictEqual(result, 16);
+});
+
 test("compiles struct", async () => {
     const output = await compile("./examples/test/struct.lo");
 

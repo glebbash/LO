@@ -1,0 +1,16 @@
+struct std {};
+struct std::mem {};
+
+export fn main() -> u32 {
+    return std::mem::align_to(12, 8);
+};
+
+fn std::mem::align_to(size: u32, size_multiple: u32) -> u32 {
+    let remaining_to_align = size % size_multiple;
+    if remaining_to_align == 0 {
+        return size;
+    };
+
+    let padding = size_multiple - remaining_to_align;
+    return size + padding;
+};

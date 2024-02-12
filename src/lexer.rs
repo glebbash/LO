@@ -103,12 +103,6 @@ impl LoTokenStream {
         self.tokens.get(self.index)
     }
 
-    pub fn peek2(&self) -> Option<(&LoToken, &LoToken)> {
-        let t1 = self.tokens.get(self.index)?;
-        let t2 = self.tokens.get(self.index + 1)?;
-        Some((t1, t2))
-    }
-
     pub fn next(&mut self) -> Option<&LoToken> {
         let token = self.tokens.get(self.index);
         self.index += 1;
