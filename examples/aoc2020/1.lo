@@ -3,8 +3,6 @@ include "lib/fs";
 
 type Vec::u32 = Vec;
 
-// TODO: add proper error handling for fs::read_file
-// TODO: for loops would make code more concise
 fn main() -> u32 {
     let input = fs::read_file("./aoc2020/1.txt");
     defer input.free();

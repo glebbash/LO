@@ -7,6 +7,7 @@ struct fs {};
 // fs expects host to preopen "." on fd 3
 const fs::CWD_PREOPEN_FD = 3;
 
+// TODO: return errors instead of exiting with logs
 fn fs::read_file(file_name: str) -> &String {
     let open_res = fs::_open_file(file_name);
     if open_res.err != 0 {
