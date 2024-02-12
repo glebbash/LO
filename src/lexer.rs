@@ -204,7 +204,7 @@ impl Lexer {
             }
         }
 
-        loc.length = self.index - loc.offset;
+        loc.end_offset = self.index;
 
         Ok(LoToken {
             type_: LoTokenType::IntLiteral,
@@ -220,7 +220,7 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.length = self.index - loc.offset;
+        loc.end_offset = self.index;
 
         Ok(LoToken {
             type_: LoTokenType::Symbol,
@@ -261,7 +261,7 @@ impl Lexer {
 
         self.next_char(); // skip end quote
 
-        loc.length = self.index - loc.offset;
+        loc.end_offset = self.index;
 
         Ok(LoToken {
             type_: LoTokenType::StringLiteral,
@@ -289,7 +289,7 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.length = self.index - loc.offset;
+        loc.end_offset = self.index;
 
         Ok(LoToken {
             type_: LoTokenType::Operator,
@@ -372,7 +372,7 @@ impl Lexer {
         LoLocation {
             file_name: self.file_name.clone(),
             offset: self.index,
-            length: 1,
+            end_offset: self.index,
             line: self.line,
             col: self.col,
         }

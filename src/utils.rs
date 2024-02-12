@@ -35,7 +35,7 @@ impl From<LoError> for String {
 pub struct LoLocation {
     pub file_name: Box<str>,
     pub offset: usize,
-    pub length: usize,
+    pub end_offset: usize,
     pub line: usize,
     pub col: usize,
 }
@@ -45,7 +45,7 @@ impl LoLocation {
         LoLocation {
             file_name: "<internal>".into(),
             offset: 0,
-            length: 0,
+            end_offset: 0,
             line: 0,
             col: 0,
         }
