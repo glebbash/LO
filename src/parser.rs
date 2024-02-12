@@ -1536,7 +1536,7 @@ fn parse_postfix(
             };
 
             LoInstr::Call {
-                fn_index: fn_def.fn_index,
+                fn_index: fn_def.get_absolute_index(ctx.module),
                 return_type: fn_def.kind.output.clone(),
                 args,
             }
