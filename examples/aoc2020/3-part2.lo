@@ -9,7 +9,7 @@ const TREE = 1 as Tile;
 const EMPTY = 0 as Tile;
 
 fn main() -> u32 {
-    let input = fs_read_file("./aoc2020/3.txt");
+    let input = fs::read_file("./aoc2020/3.txt");
     defer Vec::free(input);
 
     let map = Map_parse(input);

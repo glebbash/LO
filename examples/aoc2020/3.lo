@@ -2,16 +2,17 @@ include "lib/cli";
 include "lib/fs";
 
 type Tile = bool;
+const Tile::TREE = 1 as Tile;
+const Tile::EMPTY = 0 as Tile;
+
 type Vec::Tile = Vec;
 type Vec::Vec::Tile = Vec;
 
-const TREE = 1 as Tile;
-const EMPTY = 0 as Tile;
 const SLOPE_RIGHT = 3;
 const SLOPE_DOWN = 1;
 
 fn main() -> u32 {
-    let input = fs_read_file("./aoc2020/3.txt");
+    let input = fs::read_file("./aoc2020/3.txt");
     defer Vec::free(input);
 
     let map = Map_parse(input);
@@ -29,7 +30,7 @@ fn main() -> u32 {
             break;
         };
 
-        if Map_get(map, i, j) == TREE {
+        if Map_get(map, i, j) == Tile::TREE {
             tree_count += 1;
         };
     };
@@ -52,10 +53,10 @@ fn Map_parse(input: &String) -> &Vec::Vec::Tile {
 
         let char = *(Vec::at(input, i) as &u8);
         if char == char_code "#" as u8 {
-            *(Vec::push(row) as &Tile) = TREE;
+            *(Vec::push(row) as &Tile) = Tile::TREE;
         };
         if char == char_code "." as u8 {
-            *(Vec::push(row) as &Tile) = EMPTY;
+            *(Vec::push(row) as &Tile) = Tile::EMPTY;
         };
         if char == char_code "\n" as u8 {
             *(Vec::push(map) as & &Vec::Tile) = row;

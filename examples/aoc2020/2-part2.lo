@@ -27,8 +27,8 @@ fn initial_check_state() -> PasswordCheckState {
 };
 
 fn main() -> u32 {
-    let input = fs_read_file("./aoc2020/2.txt");
-    defer Vec::free(input);
+    let input = fs::read_file("./aoc2020/2.txt");
+    defer input.free();
 
     let valid_passwords_count = 0;
 
@@ -40,7 +40,7 @@ fn main() -> u32 {
             break;
         };
 
-        let char = *(Vec::at(input, i) as &u8);
+        let char = *(input.at(i) as &u8);
         if state.step == STEP_READ_START_INDEX {
             if char == char_code "-" as u8 {
                 i += 1;

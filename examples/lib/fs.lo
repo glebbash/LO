@@ -2,11 +2,13 @@ include "lib/std";
 
 type str = StringSlice;
 
-// fs expects host to preopen "." on fd 3
-const CWD_PREOPEN_FD = 3;
+struct fs {};
 
-fn fs_read_file(file_name: str) -> &String {
-    let open_res = fs__open_file(file_name);
+// fs expects host to preopen "." on fd 3
+const fs::CWD_PREOPEN_FD = 3;
+
+fn fs::read_file(file_name: str) -> &String {
+    let open_res = fs::_open_file(file_name);
     if open_res.err != 0 {
         fputs(WASI_FD_STDERR, "Error opening file: ");
         fputs(WASI_FD_STDERR, file_name);
@@ -42,20 +44,20 @@ fn fs_read_file(file_name: str) -> &String {
     return output;
 };
 
-struct Fs_FdOpenRes {
+struct fs::FdOpenRes {
     err: Wasi::Err,
     fd: u32,
 };
 
-fn fs__open_file(file_path: str) -> Fs_FdOpenRes {
+fn fs::_open_file(file_path: str) -> fs::FdOpenRes {
     let fd_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, fd_ref, sizeof u32);
 
     let err = Wasi::path_open(
-        CWD_PREOPEN_FD, 0,
+        fs::CWD_PREOPEN_FD, 0,
         file_path, 0, 2i64, 0i64, 0,
         fd_ref,
     );
 
-    return Fs_FdOpenRes { err: err, fd: *fd_ref };
+    return fs::FdOpenRes { err: err, fd: *fd_ref };
 };

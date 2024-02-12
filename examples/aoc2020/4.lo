@@ -2,7 +2,7 @@ include "lib/cli";
 include "lib/fs";
 
 fn main() -> u32 {
-    let input = fs_read_file("./aoc2020/4.test.txt");
+    let input = fs::read_file("./aoc2020/4.test.txt");
     defer Vec::free(input);
 
     let valid_passwords = 0;
