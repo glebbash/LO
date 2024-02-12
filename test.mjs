@@ -265,11 +265,11 @@ test("compiles heap-alloc", async () => {
     assert.strictEqual(
         output,
         dropPadding(`
-            Heap_TOTAL_ALLOCATED; // 1048576
-            let p = Heap_alloc(1); // 1048589
-            Heap_free(p);
-            p = Heap_alloc(1); // 1048589
-            p = Heap_alloc(1); // 1048606
+            heap::TOTAL_ALLOCATED; // 1048576
+            let p = heap::alloc(1); // 1048589
+            heap::free(p);
+            p = heap::alloc(1); // 1048589
+            p = heap::alloc(1); // 1048606
         `)
     );
 });
@@ -302,6 +302,44 @@ test("compiles defer", async () => {
             `)
     );
 });
+
+{
+    test("aoc 2020 day 1", async () => {
+        const part1 = await runAoc("./examples/aoc2020/1.lo");
+        assert.strictEqual(part1, "157059\n");
+
+        const part2 = await runAoc("./examples/aoc2020/1-part2.lo");
+        assert.strictEqual(part2, "165080960\n");
+    });
+
+    test("aoc 2020 day 2", async () => {
+        const part1 = await runAoc("./examples/aoc2020/2.lo");
+        assert.strictEqual(part1, "560\n");
+
+        const part2 = await runAoc("./examples/aoc2020/2-part2.lo");
+        assert.strictEqual(part2, "303\n");
+    });
+
+    test("aoc 2020 day 3", async () => {
+        const part1 = await runAoc("./examples/aoc2020/3.lo");
+        assert.strictEqual(part1, "151\n");
+
+        const part2 = await runAoc("./examples/aoc2020/3-part2.lo");
+        assert.strictEqual(part2, "7540141059\n");
+    });
+
+    async function runAoc(path) {
+        const program = await compile(path);
+
+        return await runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, {
+                stdout: stdout.fd,
+                preopens: { ".": "examples" },
+            });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
+        });
+    }
+}
 
 // utils
 

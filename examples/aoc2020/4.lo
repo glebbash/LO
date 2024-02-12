@@ -3,16 +3,16 @@ include "lib/fs";
 
 fn main() -> u32 {
     let input = fs_read_file("./aoc2020/4.test.txt");
-    defer Vec_free(input);
+    defer Vec::free(input);
 
     let valid_passwords = 0;
 
-    let passwords = Stack_alloc(sizeof StringSlice) as &StringSlice;
-    *passwords = String_to_slice(input);
-    defer Stack_free(sizeof StringSlice);
+    let passwords = stack::alloc(sizeof StringSlice) as &StringSlice;
+    *passwords = String::to_slice(input);
+    defer stack::free(sizeof StringSlice);
 
     loop {
-        let password = StringSlice_cut_at(passwords, "\n\n");
+        let password = StringSlice::cut_at(passwords, "\n\n");
 
         // TODO: validate password
 
@@ -31,7 +31,7 @@ fn main() -> u32 {
     return 0;
 };
 
-fn StringSlice_cut_at(self: &StringSlice, delim: StringSlice) -> StringSlice {
+fn StringSlice::cut_at(self: &StringSlice, delim: StringSlice) -> StringSlice {
     let cut_start = 0;
     let cut_width = 0;
     loop {
@@ -39,8 +39,8 @@ fn StringSlice_cut_at(self: &StringSlice, delim: StringSlice) -> StringSlice {
             break;
         };
 
-        if StringSlice_char_at(*self, cut_start)
-                == StringSlice_char_at(delim, cut_width) {
+        if StringSlice::char_at(*self, cut_start)
+                == StringSlice::char_at(delim, cut_width) {
             cut_width += 1;
         } else {
             cut_width = 0;

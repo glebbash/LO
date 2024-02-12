@@ -137,7 +137,7 @@ fn parse_top_level_expr(
 
         if let Some(_) = tokens.eat(Symbol, "existing")? {
             tokens.expect(Symbol, "fn")?;
-            let in_name = tokens.expect_any(Symbol)?.clone();
+            let in_name = parse_nested_symbol(tokens)?;
             tokens.expect(Symbol, "as")?;
             let out_name = tokens.expect_any(StringLiteral)?.clone();
 
@@ -192,7 +192,7 @@ fn parse_top_level_expr(
 
     if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
         let mutable = true;
-        let global_name = tokens.expect_any(Symbol)?.clone();
+        let global_name = parse_nested_symbol(tokens)?;
         tokens.expect(Operator, "=")?;
 
         let global_value = parse_const_expr(ctx, tokens, 0)?;
@@ -329,7 +329,7 @@ fn parse_top_level_expr(
     }
 
     if let Some(_) = tokens.eat(Symbol, "const")?.cloned() {
-        let const_name = tokens.expect_any(Symbol)?.clone();
+        let const_name = parse_nested_symbol(tokens)?;
         tokens.expect(Operator, "=")?;
         let const_value = parse_const_expr(ctx, tokens, 0)?;
 
@@ -679,24 +679,8 @@ fn parse_expr(
 }
 
 fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
-    if let Some(int) = tokens.eat_any(IntLiteral)? {
-        return Ok(LoInstr::U32Const {
-            value: parse_u32_literal(&int)?,
-        });
-    }
-
-    if let Some(_) = tokens.eat(Symbol, "i64")? {
-        let int = tokens.expect_any(IntLiteral)?;
-        return Ok(LoInstr::I64Const {
-            value: parse_i64_literal(&int)?,
-        });
-    }
-
-    if let Some(_) = tokens.eat(Symbol, "u64")? {
-        let int = tokens.expect_any(IntLiteral)?;
-        return Ok(LoInstr::U64Const {
-            value: parse_u64_literal(&int)?,
-        });
+    if tokens.next_is_any(IntLiteral)? {
+        return parse_const_int(tokens);
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
@@ -1675,24 +1659,8 @@ fn parse_const_primary(
     ctx: &ModuleContext,
     tokens: &mut LoTokenStream,
 ) -> Result<LoInstr, LoError> {
-    if let Some(int) = tokens.eat_any(IntLiteral)? {
-        return Ok(LoInstr::U32Const {
-            value: parse_u32_literal(&int)?,
-        });
-    }
-
-    if let Some(_) = tokens.eat(Symbol, "i64")? {
-        let int = tokens.expect_any(IntLiteral)?;
-        return Ok(LoInstr::I64Const {
-            value: parse_i64_literal(&int)?,
-        });
-    }
-
-    if let Some(_) = tokens.eat(Symbol, "u64")? {
-        let int = tokens.expect_any(IntLiteral)?;
-        return Ok(LoInstr::U64Const {
-            value: parse_u64_literal(&int)?,
-        });
+    if tokens.next_is_any(IntLiteral)? {
+        return parse_const_int(tokens);
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")? {
@@ -1715,27 +1683,21 @@ fn parse_const_primary(
         });
     }
 
-    if let Some(value) = tokens.eat_any(Symbol)?.cloned() {
-        if let Some(const_value) = ctx.constants.borrow().get(&value.value) {
-            return Ok(const_value.clone());
-        }
+    let value = parse_nested_symbol(tokens)?;
 
-        let Some(global) = ctx.globals.get(&value.value) else {
-            return Err(LoError {
-                message: format!("Reading unknown variable in const context: {}", value.value),
-                loc: value.loc,
-            });
-        };
-
-        return Ok(LoInstr::GlobalGet {
-            global_index: global.index,
-        });
+    if let Some(const_value) = ctx.constants.borrow().get(&value.value) {
+        return Ok(const_value.clone());
     }
 
-    let unexpected = tokens.peek().unwrap();
-    return Err(LoError {
-        message: format!("Unexpected token in const context: {}", unexpected.value),
-        loc: unexpected.loc.clone(),
+    let Some(global) = ctx.globals.get(&value.value) else {
+        return Err(LoError {
+            message: format!("Reading unknown variable in const context: {}", value.value),
+            loc: value.loc,
+        });
+    };
+
+    return Ok(LoInstr::GlobalGet {
+        global_index: global.index,
     });
 }
 
@@ -1873,6 +1835,26 @@ fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
         message: format!("Parsing u32 (implicit) failed"),
         loc: int.loc.clone(),
     })
+}
+
+fn parse_const_int(tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
+    let int_literal = tokens.expect_any(IntLiteral)?.clone();
+
+    if let Some(_) = tokens.eat(Symbol, "i64")? {
+        return Ok(LoInstr::I64Const {
+            value: parse_i64_literal(&int_literal)?,
+        });
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "u64")? {
+        return Ok(LoInstr::U64Const {
+            value: parse_u64_literal(&int_literal)?,
+        });
+    }
+
+    return Ok(LoInstr::U32Const {
+        value: parse_u32_literal(&int_literal)?,
+    });
 }
 
 fn parse_i64_literal(int: &LoToken) -> Result<i64, LoError> {

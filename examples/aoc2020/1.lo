@@ -1,17 +1,17 @@
 include "lib/cli";
 include "lib/fs";
 
-type Vec_u32 = Vec;
+type Vec::u32 = Vec;
 
 // TODO: add proper error handling for fs_read_file
 // TODO: usage of Vec.* methods would be nice
 // TODO: for loops would make code more concise
 fn main() -> u32 {
     let input = fs_read_file("./aoc2020/1.txt");
-    defer Vec_free(input);
+    defer Vec::free(input);
 
     let numbers = parse_numbers(input);
-    defer Vec_free(numbers);
+    defer Vec::free(numbers);
 
     let i = 0;
     loop {
@@ -19,7 +19,7 @@ fn main() -> u32 {
             break;
         };
 
-        let a = *(Vec_at(numbers, i) as &u32);
+        let a = *(Vec::at(numbers, i) as &u32);
 
         let j = 0;
         loop {
@@ -27,7 +27,7 @@ fn main() -> u32 {
                 break;
             };
 
-            let b = *(Vec_at(numbers, j) as &u32);
+            let b = *(Vec::at(numbers, j) as &u32);
             if a + b == 2020 {
                 print_u32(a * b);
                 puts("\n");
@@ -43,8 +43,8 @@ fn main() -> u32 {
     return 0;
 };
 
-fn parse_numbers(input: &String) -> &Vec_u32 {
-    let numbers = Vec_new(10, sizeof u32);
+fn parse_numbers(input: &String) -> &Vec::u32 {
+    let numbers = Vec::new(10, sizeof u32);
     let current_number = 0;
 
     let i = 0;
@@ -53,14 +53,14 @@ fn parse_numbers(input: &String) -> &Vec_u32 {
             break;
         };
 
-        let char = *(Vec_at(input, i) as &u8);
+        let char = *(Vec::at(input, i) as &u8);
         if char >= char_code "0" && char <= char_code "9" {
             current_number *= 10;
-            current_number += char - char_code "0";
+            current_number += char as u32 - char_code "0";
         };
 
-        if char == char_code "\n" {
-            *(Vec_push(numbers) as &u32) = current_number;
+        if char == char_code "\n" as u8 {
+            *(Vec::push(numbers) as &u32) = current_number;
             current_number = 0;
         };
 

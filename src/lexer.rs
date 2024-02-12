@@ -99,6 +99,14 @@ impl LoTokenStream {
         }
     }
 
+    pub fn next_is_any(&mut self, type_: LoTokenType) -> Result<bool, LoError> {
+        match self.peek() {
+            Some(token) if token.is_any(type_) => Ok(true),
+            Some(_) => Ok(false),
+            _ => self.err_eof(format!("Unexpected EOF")),
+        }
+    }
+
     pub fn peek(&self) -> Option<&LoToken> {
         self.tokens.get(self.index)
     }

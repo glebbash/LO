@@ -23,9 +23,9 @@ fn main() {
     print_u32(r.br.x);
     puts("\n");
 
-    let r_ref = Stack_alloc(sizeof Rect) as &Rect;
+    let r_ref = stack::alloc(sizeof Rect) as &Rect;
     *r_ref = r;
-    defer Stack_free(sizeof Rect);
+    defer stack::free(sizeof Rect);
 
     let r2 = *r_ref;
     print_u32(r2.br.x);

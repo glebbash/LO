@@ -14,30 +14,32 @@
 
     fn alloc(alloc_id: u32, size: u32) -> &() {
         if alloc_id == 0 {
-            return Stack_alloc(size);
+            return stack::alloc(size);
         };
 
-        return Heap_alloc(size);
+        return heap::alloc(size);
     };
 
     fn free(alloc_id: u32, ptr: &(), size: u32) {
         if alloc_id == 0 {
-            return Stack_free(size);
+            return stack::free(size);
         };
 
-        return Heap_free(ptr);
+        return heap::free(ptr);
     };
 
 // memory instructions
 
-    const MEM_POINTER_SIZE = 4;
-    const MEM_PAGE_SIZE = 65536;
+    struct mem {};
 
-    fn Mem_align(size: u32) -> u32 {
-        return Mem_align_to(size, MEM_POINTER_SIZE);
+    const mem::POINTER_SIZE = 4;
+    const mem::PAGE_SIZE = 65536;
+
+    fn mem::align(size: u32) -> u32 {
+        return mem::align_to(size, mem::POINTER_SIZE);
     };
 
-    fn Mem_align_to(size: u32, size_multiple: u32) -> u32 {
+    fn mem::align_to(size: u32, size_multiple: u32) -> u32 {
         let remaining_to_align = size % size_multiple;
         if remaining_to_align == 0 {
             return size;
@@ -48,7 +50,7 @@
     };
 
     // TODO: use builtin mem.copy instr, check engine support
-    fn Mem_copy(src: &(), dist: &(), size: u32) {
+    fn mem::copy(src: &(), dist: &(), size: u32) {
         loop {
             if size == 0 {
                 break;
@@ -60,7 +62,7 @@
         };
     };
 
-    fn Mem_swap(ref1: &(), ref2: &(), size: u32) {
+    fn mem::swap(ref1: &(), ref2: &(), size: u32) {
         loop {
             if size == 0 {
                 break;
@@ -76,73 +78,77 @@
 
 // stack
 
-    let Stack_CURRENT = __DATA_SIZE__;
-    let STACK_BEGIN = __DATA_SIZE__; // TODO: this should be const
-    const STACK_END = 1_048_576; // 1MB, ~20 pages (65_536b)
+    struct stack {};
 
-    fn Stack_push_u32(value: u32) {
-        *(Stack_alloc(sizeof u32) as &u32) = value;
+    let stack::CURRENT = __DATA_SIZE__;
+    let stack::BEGIN = __DATA_SIZE__; // TODO: this should be const
+    const stack::END = 1_048_576; // 1MB, ~20 pages (65_536b)
+
+    fn stack::push_u32(value: u32) {
+        *(stack::alloc(sizeof u32) as &u32) = value;
     };
 
-    fn Stack_read_u32() -> u32 {
-        return *((Stack_CURRENT - sizeof u32) as &u32);
+    fn stack::read_u32() -> u32 {
+        return *((stack::CURRENT - sizeof u32) as &u32);
     };
 
-    fn Stack_pop_u32() -> u32 {
-        Stack_free(sizeof u32);
+    fn stack::pop_u32() -> u32 {
+        stack::free(sizeof u32);
 
-        return *(Stack_CURRENT as &u32);
+        return *(stack::CURRENT as &u32);
     };
 
-    fn Stack_alloc(size: u32) -> &() {
-        Stack_CURRENT += size;
+    fn stack::alloc(size: u32) -> &() {
+        stack::CURRENT += size;
 
-        if Stack_CURRENT > STACK_END {
+        if stack::CURRENT > stack::END {
             panic("Stack overflow");
         };
 
-        return (Stack_CURRENT - size) as &();
+        return (stack::CURRENT - size) as &();
     };
 
-    fn Stack_free(size: u32) {
-        Stack_CURRENT -= size;
+    fn stack::free(size: u32) {
+        stack::CURRENT -= size;
 
-        if Stack_CURRENT < STACK_BEGIN {
+        if stack::CURRENT < stack::BEGIN {
             panic("Stack underflow");
         };
     };
 
 // heap
 
-    struct Heap_Block {
+    struct heap {};
+
+    struct heap::Block {
         size: u32,
         used: bool,
-        next: & Heap_Block,
+        next: & heap::Block,
         data: &(),
     };
 
-    let Heap_TOTAL_ALLOCATED = STACK_END;
-    let Heap_FIRST_BLOCK = 0 as &Heap_Block;
-    let Heap_CURRENT_BLOCK = 0 as &Heap_Block;
+    let heap::TOTAL_ALLOCATED = stack::END;
+    let heap::FIRST_BLOCK = 0 as &heap::Block;
+    let heap::CURRENT_BLOCK = 0 as &heap::Block;
 
     // http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
-    fn Heap_alloc(size: u32) -> &() {
-        size = Mem_align(size);
+    fn heap::alloc(size: u32) -> &() {
+        size = mem::align(size);
 
-        let free_block = Heap_find_free_block(size);
+        let free_block = heap::find_free_block(size);
         if free_block as u32 != 0 {
             free_block->used = true;
             return free_block->data;
         };
 
-        let total_size_to_alloc = size + sizeof Heap_Block;
+        let total_size_to_alloc = size + sizeof heap::Block;
 
-        let block = Heap_TOTAL_ALLOCATED as &Heap_Block;
-        Heap_TOTAL_ALLOCATED += total_size_to_alloc;
+        let block = heap::TOTAL_ALLOCATED as &heap::Block;
+        heap::TOTAL_ALLOCATED += total_size_to_alloc;
 
         // grow enough memory if we are out of space
-        if Heap_TOTAL_ALLOCATED >= __memory_size() * MEM_PAGE_SIZE as i32 {
-            let pages_to_grow = Mem_align_to(total_size_to_alloc, MEM_PAGE_SIZE);
+        if heap::TOTAL_ALLOCATED >= __memory_size() * mem::PAGE_SIZE as i32 {
+            let pages_to_grow = mem::align_to(total_size_to_alloc, mem::PAGE_SIZE);
             let grow_res = __memory_grow(pages_to_grow);
             if grow_res == (0 - 1) as i32 {
                 panic("OOM");
@@ -151,35 +157,35 @@
 
         block->size = size;
         block->used = true;
-        block->data = (block as u32 + sizeof Heap_Block) as &();
+        block->data = (block as u32 + sizeof heap::Block) as &();
 
         // init heap
-        if Heap_FIRST_BLOCK as u32 == 0 {
-            Heap_FIRST_BLOCK = block;
+        if heap::FIRST_BLOCK as u32 == 0 {
+            heap::FIRST_BLOCK = block;
         };
 
         // chain block
-        if Heap_CURRENT_BLOCK as u32 != 0 {
-            Heap_CURRENT_BLOCK->next = block;
+        if heap::CURRENT_BLOCK as u32 != 0 {
+            heap::CURRENT_BLOCK->next = block;
         };
 
-        Heap_CURRENT_BLOCK = block;
+        heap::CURRENT_BLOCK = block;
 
         return block->data;
     };
 
-    fn Heap_free(ptr: & ()) {
-        let block = Heap_get_block(ptr);
+    fn heap::free(ptr: & ()) {
+        let block = heap::get_block(ptr);
         block->used = false;
     };
 
-    fn Heap_get_block(ptr: &()) -> &Heap_Block {
-        return (ptr - sizeof Heap_Block) as &Heap_Block;
+    fn heap::get_block(ptr: &()) -> &heap::Block {
+        return (ptr - sizeof heap::Block) as &heap::Block;
     };
 
     // first fit
-    fn Heap_find_free_block(size: u32) -> &Heap_Block {
-        let block = Heap_FIRST_BLOCK;
+    fn heap::find_free_block(size: u32) -> &heap::Block {
+        let block = heap::FIRST_BLOCK;
 
         loop {
             if block as u32 == 0 || (!block->used && block->size >= size) {
@@ -202,11 +208,11 @@
         alloc_id: u32,
     };
 
-    fn Vec_new(capacity: u32, item_size: u32) -> &Vec {
-        return Vec_new_using(capacity, item_size, ALLOC_HEAP);
+    fn Vec::new(capacity: u32, item_size: u32) -> &Vec {
+        return Vec::new_using(capacity, item_size, ALLOC_HEAP);
     };
 
-    fn Vec_new_using(capacity: u32, item_size: u32, alloc_id: u32) -> &Vec {
+    fn Vec::new_using(capacity: u32, item_size: u32, alloc_id: u32) -> &Vec {
         // TODO: look into `new`
         let self_ptr = alloc(alloc_id, sizeof Vec) as &Vec;
         *self_ptr = Vec {
@@ -219,7 +225,7 @@
         return self_ptr;
     };
 
-    fn Vec_free(self: &Vec) {
+    fn Vec::free(&self) {
         free(self->alloc_id, self, sizeof Vec);
         free(self->alloc_id, self->data, self->capacity);
     };
@@ -229,66 +235,66 @@
         size: u32,
     };
 
-    fn Vec_as_slice(self: &Vec) -> Slice {
+    fn Vec::as_slice(&self) -> Slice {
         return Slice {
             data: self->data,
             size: self->size,
         };
     };
 
-    fn Vec_at(self: &Vec, index: u32) -> &() {
-        Vec__panic_if_out_of_bounds(self, index);
+    fn Vec::at(&self, index: u32) -> &() {
+        Vec::_panic_if_out_of_bounds(self, index);
 
         return (self->data as u32 + index * self->item_size) as &();
     };
 
-    fn Vec_at_unchecked(self: &Vec, index: u32) -> &() {
+    fn Vec::at_unchecked(&self, index: u32) -> &() {
         return (self->data as u32 + index * self->item_size) as &();
     };
 
-    fn Vec_swap(self: &Vec, index1: u32, index2: u32) {
-        Vec__panic_if_out_of_bounds(self, index1);
-        Vec__panic_if_out_of_bounds(self, index2);
+    fn Vec::swap(&self, index1: u32, index2: u32) {
+        Vec::_panic_if_out_of_bounds(self, index1);
+        Vec::_panic_if_out_of_bounds(self, index2);
 
         let item_size = self->item_size;
-        Mem_swap(
+        mem::swap(
             (self->data as u32 + index1 * item_size) as &(),
             (self->data as u32 + index2 * item_size) as &(),
             item_size,
         );
     };
 
-    fn Vec_push(self: &Vec) -> &() {
+    fn Vec::push(&self) -> &() {
         self->size += 1;
-        Vec__grow_if_needed(self);
+        Vec::_grow_if_needed(self);
 
-        return Vec_at_unchecked(self, self->size - 1);
+        return Vec::at_unchecked(self, self->size - 1);
     };
 
-    fn Vec_push_all(self: &Vec, items: &(), items_len: u32) {
+    fn Vec::push_all(&self, items: &(), items_len: u32) {
         let old_len = self->size;
         self->size = old_len + items_len;
 
-        Vec__grow_if_needed(self);
+        Vec::_grow_if_needed(self);
 
-        Mem_copy(
+        mem::copy(
             items,
             (self->data as u32 + old_len * self->item_size) as &(),
             items_len * self->item_size,
         );
     };
 
-    fn Vec_append(self: &Vec, other: &Vec) {
-        Vec_push_all(self, other->data, other->size);
+    fn Vec::append(&self, other: &Vec) {
+        Vec::push_all(self, other->data, other->size);
         other->size = 0;
     };
 
-    fn Vec_pop_unchecked(self: &Vec) -> &() {
+    fn Vec::pop_unchecked(&self) -> &() {
         self->size -= 1;
-        return Vec_at_unchecked(self, self->size);
+        return Vec::at_unchecked(self, self->size);
     };
 
-    fn Vec_reverse(self: &Vec) {
+    fn Vec::reverse(&self) {
         let start = 0;
         let end = self->size - 1;
 
@@ -297,13 +303,13 @@
                 break;
             };
 
-            Vec_swap(self, start, end);
+            Vec::swap(self, start, end);
             start += 1;
             end -= 1;
         };
     };
 
-    fn Vec__grow_if_needed(self: &Vec) {
+    fn Vec::_grow_if_needed(&self) {
         if self->size != self->capacity {
             return;
         };
@@ -320,10 +326,10 @@
         self->capacity = old_capacity * 2;
         self->data = alloc(self->alloc_id, self->capacity * item_size);
 
-        Mem_copy(old_data, self->data, self->size * item_size);
+        mem::copy(old_data, self->data, self->size * item_size);
     };
 
-    fn Vec__panic_if_out_of_bounds(self: &Vec, index: u32) {
+    fn Vec::_panic_if_out_of_bounds(&self, index: u32) {
         if index < 0 || index >= self->size {
             panic("Vec access out of bounds");
         };
@@ -331,40 +337,40 @@
 
 // string
 
-    type Vec_u8 = Vec;
-    type String = Vec_u8;
+    type Vec::u8 = Vec;
+    type String = Vec::u8;
+
+    fn String::new(len: u32) -> &String {
+        return Vec::new(len, sizeof u8);
+    };
+
+    fn String::new_using(len: u32, alloc_id: u32) -> &String {
+        return Vec::new_using(len, sizeof u8, alloc_id);
+    };
 
     struct StringSlice {
         data: &*u8,
         size: u32,
     };
 
-    fn String_new(len: u32) -> &String {
-        return Vec_new(len, sizeof u8);
-    };
-
-    fn String_new_using(len: u32, alloc_id: u32) -> &String {
-        return Vec_new_using(len, sizeof u8, alloc_id);
-    };
-
-    fn String_to_slice(self: &String) -> StringSlice {
+    fn String::to_slice(&self) -> StringSlice {
         return StringSlice { data: self->data as &u8, size: self->size };
     };
 
-    fn StringSlice_char_at(self: StringSlice, index: u32) -> u8 {
+    fn StringSlice::char_at(self, index: u32) -> u8 {
         return *((self.data as u32 + index) as &u8);
     };
 
-    fn StringSlice_clone(self: StringSlice) -> StringSlice {
-        let cloned_data = Heap_alloc(self.size) as &*u8;
-        Mem_copy(self.data, cloned_data, self.size);
+    fn StringSlice::clone(self) -> StringSlice {
+        let cloned_data = heap::alloc(self.size) as &*u8;
+        mem::copy(self.data, cloned_data, self.size);
         return StringSlice {
             data: cloned_data,
             size: self.size,
         };
     };
 
-    fn StringSlice_equals(self: StringSlice, other: StringSlice) -> bool {
+    fn StringSlice::equals(self, other: StringSlice) -> bool {
         if self.size != other.size {
             return false;
         };
@@ -385,72 +391,34 @@
         return true;
     };
 
-    fn String_clone(self: &String) -> &String {
-        return String_from_slice(self->data, self->size);
+    fn String::clone(&self) -> &String {
+        return String::from_slice(self->data, self->size);
     };
 
-    fn String_from_slice(str_slice: StringSlice) -> &String {
-        let string = String_new(str_slice.size);
-        Vec_push_all(string, str_slice);
+    fn String::from_slice(str_slice: StringSlice) -> &String {
+        let string = String::new(str_slice.size);
+        Vec::push_all(string, str_slice);
         return string;
-    };
-
-// dict
-
-    type Dict = Vec;
-
-    fn Dict_new(initial_capacity: u32, value_size: u32) -> &Dict {
-        return Vec_new(initial_capacity, value_size + sizeof String);
-    };
-
-    fn Dict_free(self: &Dict) {
-        Vec_free(self);
-    };
-
-    struct Dict_GetResult {
-        ok: bool,
-        value: &(),
-    };
-
-    fn Dict_get(self: &Dict, key: StringSlice) -> Dict_GetResult {
-        let i = 0;
-        loop {
-            if i == self->size {
-                break;
-            };
-
-            let entry_key = Vec_at(self, i) as &String;
-            if StringSlice_equals(key, Vec_as_slice(entry_key)) {
-                return Dict_GetResult {
-                    ok: true,
-                    value: (entry_key as u32 + sizeof String) as &(),
-                };
-            };
-
-            i += 1;
-        };
-
-        return Dict_GetResult { ok: false, value: 0 as &() };
     };
 
 // conversions
 
-    fn std_u32_to_string(input: u32) -> &String {
-        return std_u32_to_string_using(input, ALLOC_HEAP);
+    fn u32::to_string(input: u32) -> &String {
+        return u32::to_string_using(input, ALLOC_HEAP);
     };
 
-    fn std_u32_to_string_using(input: u32, alloc_id: u32) -> &String {
-        let output = String_new_using(32, alloc_id);
+    fn u32::to_string_using(input: u32, alloc_id: u32) -> &String {
+        let output = String::new_using(32, alloc_id);
 
         if input == 0 {
-            *(Vec_push(output) as &u8) = char_code "0" as u8;
+            *(Vec::push(output) as &u8) = char_code "0" as u8;
             return output;
         };
 
         loop {
             let rem = input % 10;
 
-            *(Vec_push(output) as &u8) = (char_code "0" + rem) as u8;
+            *(Vec::push(output) as &u8) = (char_code "0" + rem) as u8;
             input = input / 10;
 
             if input == 0 {
@@ -458,35 +426,35 @@
             };
         };
 
-        Vec_reverse(output);
+        Vec::reverse(output);
 
         return output;
     };
 
-    fn std_u64_to_string(input: u64) -> &String {
-        return std_u64_to_string_using(input, ALLOC_HEAP);
+    fn u64::to_string(input: u64) -> &String {
+        return u64::to_string_using(input, ALLOC_HEAP);
     };
 
-    fn std_u64_to_string_using(input: u64, alloc_id: u32) -> &String {
-        let output = String_new_using(32, alloc_id);
+    fn u64::to_string_using(input: u64, alloc_id: u32) -> &String {
+        let output = String::new_using(32, alloc_id);
 
-        if input == u64 0 {
-            *(Vec_push(output) as &u8) = char_code "0" as u8;
+        if input == 0u64 {
+            *(Vec::push(output) as &u8) = char_code "0" as u8;
             return output;
         };
 
         loop {
-            let rem = input % u64 10;
+            let rem = input % 10u64;
 
-            *(Vec_push(output) as &u8) = (char_code "0" as u64 + rem) as u32 as u8;
-            input = input / u64 10;
+            *(Vec::push(output) as &u8) = (char_code "0" as u64 + rem) as u32 as u8;
+            input = input / 10u64;
 
-            if input == u64 0 {
+            if input == 0u64 {
                 break;
             };
         };
 
-        Vec_reverse(output);
+        Vec::reverse(output);
 
         return output;
     };

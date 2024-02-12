@@ -17,8 +17,8 @@ fn Args_load() -> Args {
     let argv_buf_size = *argv_buf_size_ref;
     let argc = *argc_ref;
 
-    let argv = Heap_alloc(argc * sizeof &*u8) as &* &*u8;
-    let argv_buf = Heap_alloc(argv_buf_size) as &* u8;
+    let argv = heap::alloc(argc * sizeof &*u8) as &* &*u8;
+    let argv_buf = heap::alloc(argv_buf_size) as &* u8;
     let _ = Wasi::args_get(argv, argv_buf);
 
     return Args {
@@ -29,8 +29,8 @@ fn Args_load() -> Args {
 };
 
 fn Args_free(self: Args) {
-    Heap_free(self.argv);
-    Heap_free(self.argv_buf);
+    heap::free(self.argv);
+    heap::free(self.argv_buf);
 };
 
 fn Args_get(self: Args, i: u32) -> StringSlice {

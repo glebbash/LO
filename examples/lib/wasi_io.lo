@@ -4,7 +4,7 @@ include "lib/wasi";
 const CWD_PREOPEN_FD = 3;
 
 fn WasiIO_fd_read_all(fd: u32) -> &String {
-    let output = Vec_new(256, sizeof u8);
+    let output = Vec::new(256, sizeof u8);
 
     // TODO: use ALLOC_STACK here when testing `parser.lo`
     let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
@@ -15,7 +15,7 @@ fn WasiIO_fd_read_all(fd: u32) -> &String {
     defer free(ALLOC_STACK, in_vec, sizeof Wasi::IOVec);
 
     let nread_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer Stack_free(sizeof u32);
+    defer stack::free(sizeof u32);
 
     loop {
         let _err = Wasi::fd_read(fd, in_vec, 1, nread_ref);
@@ -25,22 +25,22 @@ fn WasiIO_fd_read_all(fd: u32) -> &String {
             break;
         };
 
-        Vec_push_all(output, chunk, nread);
+        Vec::push_all(output, chunk, nread);
     };
 
     return output;
 };
 
 fn WasiIO_fd_pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
-    let chunk = Stack_alloc(chunk_size) as &*u8;
-    defer Stack_free(chunk_size);
+    let chunk = stack::alloc(chunk_size) as &*u8;
+    defer stack::free(chunk_size);
 
     let iov = alloc(ALLOC_STACK, sizeof Wasi::IOVec) as &Wasi::IOVec;
     *iov = Wasi::IOVec { base: chunk, size: 0 };
     defer free(ALLOC_STACK, iov, sizeof Wasi::IOVec);
 
-    let nread_ref = Stack_alloc(sizeof u32) as &u32;
-    defer Stack_free(sizeof u32);
+    let nread_ref = stack::alloc(sizeof u32) as &u32;
+    defer stack::free(sizeof u32);
 
     loop {
         iov->size = chunk_size;
@@ -75,7 +75,7 @@ fn WasiIO_fd_open(file_path: StringSlice) -> FdOpenRes {
 
     let err = Wasi::path_open(
         CWD_PREOPEN_FD, 0,
-        file_path, 0, i64 2, i64 0, 0,
+        file_path, 0, 2i64, 0i64, 0,
         fd_ref,
     );
 
