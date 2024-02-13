@@ -8,7 +8,7 @@ const Tile::EMPTY = 0 as Tile;
 const SLOPE_I = 1;
 const SLOPE_J = 3;
 
-fn main() -> u32 {
+fn main() {
     let input = fs::read_file("./aoc2020/3.txt");
     defer input.free();
 
@@ -34,8 +34,6 @@ fn main() -> u32 {
 
     print_u32(tree_count);
     puts("\n");
-
-    return 0;
 };
 
 type Vec::Tile = Vec;

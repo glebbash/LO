@@ -3,7 +3,7 @@ include "lib/fs";
 
 type Vec::u32 = Vec;
 
-fn main() -> u32 {
+fn main() {
     let input = fs::read_file("./aoc2020/1.txt");
     defer input.free();
 
@@ -28,7 +28,7 @@ fn main() -> u32 {
             if a + b == 2020 {
                 print_u32(a * b);
                 puts("\n");
-                return 0;
+                return;
             };
 
             j += 1;
@@ -36,8 +36,6 @@ fn main() -> u32 {
 
         i += 1;
     };
-
-    return 0;
 };
 
 fn parse_numbers(input: &String) -> &Vec::u32 {

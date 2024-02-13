@@ -5,7 +5,7 @@ type Tile = bool;
 const Tile::TREE = 1 as Tile;
 const Tile::EMPTY = 0 as Tile;
 
-fn main() -> u32 {
+fn main() {
     let input = fs::read_file("./aoc2020/3.txt");
     defer input.free();
 
@@ -21,8 +21,6 @@ fn main() -> u32 {
 
     print_u64(result);
     puts("\n");
-
-    return 0;
 };
 
 type Vec::Tile = Vec;

@@ -24,7 +24,7 @@ fn initial_check_state() -> PasswordCheckState {
     };
 };
 
-fn main() -> u32 {
+fn main() {
     let input = fs::read_file("./aoc2020/2.txt");
     defer input.free();
 
@@ -88,6 +88,4 @@ fn main() -> u32 {
 
     print_u32(valid_passwords_count);
     puts("\n");
-
-    return 0;
 };
