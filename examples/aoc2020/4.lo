@@ -1,77 +1,64 @@
 include "lib/cli";
 include "lib/fs";
+include "lib/str_cutter";
 
-fn main() -> u32 {
-    let input = fs::read_file("./aoc2020/4.test.txt");
+fn main() {
+    let input = fs::read_file("./aoc2020/4.txt");
     defer Vec::free(input);
 
     let valid_passwords = 0;
 
-    let passwords = StringSlice::from_string(input).stack_store();
-    // defer passwords.stack_free();
-
+    let passwords = StrCutter::new(StringSlice::from_string(input));
     loop {
-        let password = passwords.cut_at("\n\n");
-        if is_valid_password(password) {
+        let has_byr = false;
+        let has_iyr = false;
+        let has_eyr = false;
+        let has_hgt = false;
+        let has_hcl = false;
+        let has_ecl = false;
+        let has_pid = false;
+
+        passwords = passwords.cut_at("\n\n");
+
+        let lines = StrCutter::new(passwords.piece);
+        loop {
+            lines = lines.cut_at("\n");
+
+            let fields = StrCutter::new(lines.piece);
+            loop {
+                fields = fields.cut_at(" ");
+
+                let field_parts = StrCutter::new(fields.piece).cut_at(":");
+                let field_name = field_parts.piece;
+                let field_value = field_parts.rest;
+
+                if field_name.equals("byr") { has_byr = true; };
+                if field_name.equals("iyr") { has_iyr = true; };
+                if field_name.equals("eyr") { has_eyr = true; };
+                if field_name.equals("hgt") { has_hgt = true; };
+                if field_name.equals("hcl") { has_hcl = true; };
+                if field_name.equals("ecl") { has_ecl = true; };
+                if field_name.equals("pid") { has_pid = true; };
+
+                if fields.rest.size == 0 {
+                    break;
+                };
+            };
+
+            if lines.rest.size == 0 {
+                break;
+            };
+        };
+
+        if has_byr && has_iyr && has_eyr && has_hgt && has_hcl && has_ecl && has_pid {
             valid_passwords += 1;
         };
 
-        if passwords->size == 0 {
+        if passwords.rest.size == 0 {
             break;
         };
     };
 
     print_u32(valid_passwords);
     puts("\n");
-
-    return 0;
-};
-
-fn is_valid_password(str: StringSlice) -> bool {
-    // TODO: validate password
-    fputs(wasi::FD_STDERR, str);
-    fputs(wasi::FD_STDERR, "\n------------------\n");
-    return false;
-};
-
-fn StringSlice::stack_store(self) -> &StringSlice {
-    let ptr = stack::alloc(sizeof StringSlice) as &StringSlice;
-    *ptr = self;
-    return ptr;
-};
-
-fn StringSlice::stack_free(&self) {
-    stack::free(sizeof StringSlice);
-};
-
-fn StringSlice::cut_at(&self, delim: StringSlice) -> StringSlice {
-    let cut_start = 0;
-    let cut_width = 0;
-    loop {
-        if cut_start == self->size {
-            break;
-        };
-
-        if (*self).char_at(cut_start) == delim.char_at(cut_width) {
-            cut_width += 1;
-        } else {
-            cut_width = 0;
-        };
-
-        if cut_width == delim.size {
-            break;
-        };
-
-        cut_start += 1;
-    };
-
-    let piece = StringSlice {
-        data: self->data,
-        size: cut_start - cut_width - 1
-    };
-
-    self->data as u32 += cut_start + 1;
-    self->size -= cut_start;
-
-    return piece;
 };
