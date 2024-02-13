@@ -1,0 +1,60 @@
+include "lib/std";
+
+struct ParseIntResult {
+    value: u32,
+    chars_consumed: u32,
+};
+
+fn parse_u32(input: StringSlice) -> ParseIntResult {
+    let result = ParseIntResult {
+        value: 0,
+        chars_consumed: 0,
+    };
+
+    loop {
+        if result.chars_consumed == input.size {
+            break;
+        };
+
+        let char = input.char_at(result.chars_consumed);
+        if char >= char_code "0" as u8 && char <= char_code "9" as u8 {
+            result.value *= 10;
+            result.value += char as u32 - char_code "0";
+        } else {
+            break;
+        };
+
+        result.chars_consumed += 1;
+    };
+
+    return result;
+};
+
+fn parse_u32_hex(input: StringSlice) -> ParseIntResult {
+    let result = ParseIntResult {
+        value: 0,
+        chars_consumed: 0,
+    };
+
+    loop {
+        if result.chars_consumed == input.size {
+            break;
+        };
+
+        // TODO: consider proper `else if` support
+        let char = input.char_at(result.chars_consumed);
+        if char >= char_code "0" as u8 && char <= char_code "9" as u8 {
+            result.value *= 16;
+            result.value += char as u32 - char_code "0";
+        } else {if char >= char_code "a" as u8 && char <= char_code "f" as u8 {
+            result.value *= 16;
+            result.value += 11 + char as u32 - char_code "a";
+        } else {
+            break;
+        };};
+
+        result.chars_consumed += 1;
+    };
+
+    return result;
+};

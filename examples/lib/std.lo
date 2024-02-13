@@ -391,6 +391,17 @@
         return true;
     };
 
+    fn StringSlice::skip_chars(self, char_count: u32) -> StringSlice {
+        if self.size < char_count {
+            return self;
+        };
+
+        return StringSlice {
+            data: (self.data as u32 + char_count) as &*u8,
+            size: self.size - char_count
+        };
+    };
+
     fn String::clone(&self) -> &String {
         return String::from_slice(self->data, self->size);
     };

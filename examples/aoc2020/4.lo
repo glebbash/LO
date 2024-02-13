@@ -4,7 +4,7 @@ include "lib/str_cutter";
 
 fn main() {
     let input = fs::read_file("./aoc2020/4.txt");
-    defer Vec::free(input);
+    defer input.free();
 
     let valid_passwords = 0;
 
