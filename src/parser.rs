@@ -1067,9 +1067,24 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     let value = parse_nested_symbol(tokens)?;
 
+    if let Some(local) = ctx.block.get_local(&value.value) {
+        return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
+            LoError {
+                message,
+                loc: value.loc,
+            }
+        });
+    };
+
     if let Some(const_value) = ctx.module.constants.borrow().get(&value.value) {
         return Ok(const_value.clone());
     }
+
+    if let Some(global) = ctx.module.globals.get(&value.value) {
+        return Ok(LoInstr::GlobalGet {
+            global_index: global.index,
+        });
+    };
 
     if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
         let mut args = vec![];
@@ -1136,24 +1151,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     };
 
-    if let Some(global) = ctx.module.globals.get(&value.value) {
-        return Ok(LoInstr::GlobalGet {
-            global_index: global.index,
-        });
-    };
-
-    let Some(local) = ctx.block.get_local(&value.value) else {
-        return Err(LoError {
-            message: format!("Reading unknown variable: {}", value.value),
-            loc: value.loc,
-        });
-    };
-
-    return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
-        LoError {
-            message,
-            loc: value.loc,
-        }
+    return Err(LoError {
+        message: format!("Reading unknown variable: {}", value.value),
+        loc: value.loc,
     });
 }
 

@@ -7,31 +7,44 @@ fn main() -> u32 {
 
     let valid_passwords = 0;
 
-    let passwords = stack::alloc(sizeof StringSlice) as &StringSlice;
-    *passwords = String::to_slice(input);
-    defer stack::free(sizeof StringSlice);
+    let passwords = StringSlice::from_string(input).stack_store();
+    // defer passwords.stack_free();
 
     loop {
-        let password = StringSlice::cut_at(passwords, "\n\n");
-
-        // TODO: validate password
-
-        puts(password);
-        puts("\n------------------\n");
+        let password = passwords.cut_at("\n\n");
+        if is_valid_password(password) {
+            valid_passwords += 1;
+        };
 
         if passwords->size == 0 {
             break;
         };
     };
 
-    puts("valid passwords: ");
     print_u32(valid_passwords);
     puts("\n");
 
     return 0;
 };
 
-fn StringSlice::cut_at(self: &StringSlice, delim: StringSlice) -> StringSlice {
+fn is_valid_password(str: StringSlice) -> bool {
+    // TODO: validate password
+    fputs(wasi::FD_STDERR, str);
+    fputs(wasi::FD_STDERR, "\n------------------\n");
+    return false;
+};
+
+fn StringSlice::stack_store(self) -> &StringSlice {
+    let ptr = stack::alloc(sizeof StringSlice) as &StringSlice;
+    *ptr = self;
+    return ptr;
+};
+
+fn StringSlice::stack_free(&self) {
+    stack::free(sizeof StringSlice);
+};
+
+fn StringSlice::cut_at(&self, delim: StringSlice) -> StringSlice {
     let cut_start = 0;
     let cut_width = 0;
     loop {
@@ -39,8 +52,7 @@ fn StringSlice::cut_at(self: &StringSlice, delim: StringSlice) -> StringSlice {
             break;
         };
 
-        if StringSlice::char_at(*self, cut_start)
-                == StringSlice::char_at(delim, cut_width) {
+        if (*self).char_at(cut_start) == delim.char_at(cut_width) {
             cut_width += 1;
         } else {
             cut_width = 0;

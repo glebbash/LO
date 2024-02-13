@@ -328,6 +328,14 @@ test("compiles defer", async () => {
         assert.strictEqual(part2, "7540141059\n");
     });
 
+    test("aoc 2020 day 3", async () => {
+        const part1 = await runAoc("./examples/aoc2020/4.lo");
+        assert.strictEqual(part1, "?\n");
+
+        const part2 = await runAoc("./examples/aoc2020/4-part2.lo");
+        assert.strictEqual(part2, "?\n");
+    });
+
     async function runAoc(path) {
         const program = await compile(path);
 

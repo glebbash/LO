@@ -353,8 +353,8 @@
         size: u32,
     };
 
-    fn String::to_slice(&self) -> StringSlice {
-        return StringSlice { data: self->data as &u8, size: self->size };
+    fn StringSlice::from_string(str: &String) -> StringSlice {
+        return StringSlice { data: str->data as &u8, size: str->size };
     };
 
     fn StringSlice::char_at(self, index: u32) -> u8 {
