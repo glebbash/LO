@@ -18,16 +18,15 @@ impl LoError {
     }
 }
 
+impl core::fmt::Display for LoError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{loc} - {msg}", loc = self.loc, msg = self.message)
+    }
+}
+
 impl From<LoError> for String {
     fn from(err: LoError) -> Self {
-        let LoLocation {
-            file_name,
-            line,
-            col,
-            ..
-        } = err.loc;
-
-        format!("{file_name}:{line}:{col} - {msg}", msg = err.message,)
+        format!("{err}")
     }
 }
 
@@ -49,6 +48,12 @@ impl LoLocation {
             line: 0,
             col: 0,
         }
+    }
+}
+
+impl core::fmt::Display for LoLocation {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}:{}:{}", self.file_name, self.line, self.col)
     }
 }
 

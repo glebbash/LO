@@ -1,0 +1,5 @@
+include "lib/cli";
+
+fn main() {
+    puts(dbg "hello there\n");
+};

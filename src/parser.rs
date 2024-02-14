@@ -683,6 +683,10 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return parse_const_int(tokens);
     }
 
+    if let Some(value) = tokens.eat_any(StringLiteral)? {
+        return Ok(build_const_str_instr(ctx.module, &value.value));
+    }
+
     if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
         return Ok(LoInstr::Casted {
             value_type: LoType::Bool,
@@ -705,44 +709,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(_) = tokens.eat(Symbol, "unreachable")? {
         return Ok(LoInstr::Unreachable);
-    }
-
-    if let Some(value) = tokens.eat_any(StringLiteral)? {
-        let string_len = value.value.as_bytes().len() as u32;
-
-        let string_ptr_ = ctx.module.string_pool.borrow().get(&value.value).cloned();
-        let string_ptr = match string_ptr_ {
-            Some(string_ptr) => string_ptr,
-            None => {
-                let new_string_ptr = *ctx.module.data_size.borrow();
-                ctx.module
-                    .string_pool
-                    .borrow_mut()
-                    .insert(value.value.clone(), new_string_ptr);
-
-                *ctx.module.data_size.borrow_mut() += string_len;
-                ctx.module
-                    .wasm_module
-                    .borrow_mut()
-                    .datas
-                    .push(WasmData::Active {
-                        offset: WasmExpr {
-                            instrs: vec![WasmInstr::I32Const {
-                                value: new_string_ptr as i32,
-                            }],
-                        },
-                        bytes: value.value.as_bytes().to_vec(),
-                    });
-                new_string_ptr
-            }
-        };
-
-        return Ok(LoInstr::MultiValueEmit {
-            values: vec![
-                LoInstr::U32Const { value: string_ptr },
-                LoInstr::U32Const { value: string_len },
-            ],
-        });
     }
 
     if let Some(_) = tokens.eat(Delim, "(")? {
@@ -885,15 +851,21 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let expr_type = expr.get_type(ctx.module);
         crate::utils::debug(format!(
             "{}",
-            String::from(LoError {
+            LoError {
                 message: format!("{expr_type:?}"),
                 loc,
-            })
+            }
         ));
         return Ok(LoInstr::Casted {
             value_type: LoType::Void,
             expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
         });
+    }
+
+    if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
+        let message = tokens.expect_any(StringLiteral)?;
+        let debug_mesage = format!("{} - {}", dbg_token.loc, message.value);
+        return Ok(build_const_str_instr(ctx.module, &debug_mesage));
     }
 
     // TODO: support `else`
@@ -1155,6 +1127,39 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         message: format!("Reading unknown variable: {}", value.value),
         loc: value.loc,
     });
+}
+
+fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
+    let string_len = value.as_bytes().len() as u32;
+
+    let string_ptr = ctx.string_pool.borrow().get(value).cloned();
+    let string_ptr = match string_ptr {
+        Some(string_ptr) => string_ptr,
+        None => {
+            let new_string_ptr = *ctx.data_size.borrow();
+            ctx.string_pool
+                .borrow_mut()
+                .insert(String::from(value), new_string_ptr);
+
+            *ctx.data_size.borrow_mut() += string_len;
+            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
+                offset: WasmExpr {
+                    instrs: vec![WasmInstr::I32Const {
+                        value: new_string_ptr as i32,
+                    }],
+                },
+                bytes: value.as_bytes().to_vec(),
+            });
+            new_string_ptr
+        }
+    };
+
+    LoInstr::MultiValueEmit {
+        values: vec![
+            LoInstr::U32Const { value: string_ptr },
+            LoInstr::U32Const { value: string_len },
+        ],
+    }
 }
 
 fn parse_postfix(
@@ -1661,6 +1666,10 @@ fn parse_const_primary(
 ) -> Result<LoInstr, LoError> {
     if tokens.next_is_any(IntLiteral)? {
         return parse_const_int(tokens);
+    }
+
+    if let Some(value) = tokens.eat_any(StringLiteral)? {
+        return Ok(build_const_str_instr(ctx, &value.value));
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")? {

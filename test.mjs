@@ -243,6 +243,17 @@ test("compiles string-pooling", async () => {
     assert.strictEqual(output, "108\n");
 });
 
+test("compiles tracing", async () => {
+    const program = await compile("./examples/test/tracing.lo");
+
+    const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+        await runWASI(program, { stdout: stdout.fd });
+        return fs.readFile(stdoutFile, { encoding: "utf-8" });
+    });
+
+    assert.strictEqual(output, "test/tracing.lo:4:10 - hello there\n");
+});
+
 test("compiles struct-in-struct", async () => {
     const program = await compile("./examples/test/struct-in-struct.lo");
 
