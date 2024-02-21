@@ -77,7 +77,7 @@ impl Block<'_> {
             return parent.get_local(local_name);
         }
 
-        return None;
+        None
     }
 
     pub fn get_own_local(&self, local_name: &str) -> Option<&LocalDef> {
@@ -91,7 +91,7 @@ impl Block<'_> {
             }
         }
 
-        return None;
+        None
     }
 }
 

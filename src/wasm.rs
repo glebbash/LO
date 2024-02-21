@@ -10,6 +10,7 @@ pub struct WasmModule {
     pub exports: Vec<WasmExport>,
     pub codes: Vec<WasmFn>,
     pub datas: Vec<WasmData>,
+    pub custom: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -254,6 +255,9 @@ impl WasmModule {
 
         self.write_data_section(section_buffer);
         write_section(output, section_buffer, 0x0B);
+
+        self.write_custom_section(section_buffer);
+        write_section(output, section_buffer, 0x00);
     }
 
     fn write_type_section(&self, out: &mut Vec<u8>) {
@@ -369,9 +373,13 @@ impl WasmModule {
             write_all(out, bytes);
         }
     }
+
+    fn write_custom_section(&self, out: &mut Vec<u8>) {
+        write_all(out, &self.custom);
+    }
 }
 
-fn write_section(out: &mut Vec<u8>, section: &mut Vec<u8>, section_code: u8) {
+pub fn write_section(out: &mut Vec<u8>, section: &mut Vec<u8>, section_code: u8) {
     write_u8(out, section_code);
     write_u32(out, section.len() as u32);
     out.append(section);
@@ -498,7 +506,7 @@ fn write_u8(out: &mut Vec<u8>, value: u8) {
     out.push(value);
 }
 
-fn write_u32(out: &mut Vec<u8>, value: u32) {
+pub fn write_u32(out: &mut Vec<u8>, value: u32) {
     leb128_write_unsigned(out, value as u64);
 }
 
@@ -510,7 +518,7 @@ fn write_i64(out: &mut Vec<u8>, value: i64) {
     leb128_write_signed(out, value);
 }
 
-fn write_all(out: &mut Vec<u8>, value: &[u8]) {
+pub fn write_all(out: &mut Vec<u8>, value: &[u8]) {
     out.extend_from_slice(value);
 }
 

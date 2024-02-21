@@ -9,6 +9,7 @@ pub fn parse(mut tokens: LoTokenStream) -> Result<WasmModule, LoError> {
     let mut ctx = ModuleContext::default();
     parse_file(&mut ctx, &mut tokens)?;
     process_delayed_actions(&mut ctx)?;
+    write_debug_info(&mut ctx)?;
     Ok(ctx.wasm_module.take())
 }
 
@@ -105,6 +106,46 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
             locals,
             expr: WasmExpr { instrs },
         });
+    }
+
+    Ok(())
+}
+
+// TODO: consider adding module name if needed
+// TODO: add local names (requires sizable refactoring to achieve)
+fn write_debug_info(ctx: &mut ModuleContext) -> Result<(), LoError> {
+    use crate::wasm::*;
+
+    let mut wasm_module = ctx.wasm_module.borrow_mut();
+
+    let section_name = "name";
+    write_u32(&mut wasm_module.custom, section_name.len() as u32);
+    write_all(&mut wasm_module.custom, section_name.as_bytes());
+
+    let mut subsection_buf = Vec::new();
+
+    let first_own_fn_index = ctx.imported_fns_count;
+    let own_fns_count = wasm_module.functions.len() as u32;
+
+    /* function names */
+    {
+        write_u32(&mut subsection_buf, own_fns_count);
+
+        for fn_index in first_own_fn_index..first_own_fn_index + own_fns_count {
+            // TODO: this is really bad
+            let fn_name = ctx
+                .fn_defs
+                .iter()
+                .find(|(_, v)| v.get_absolute_index(ctx) == fn_index)
+                .unwrap()
+                .0;
+
+            write_u32(&mut subsection_buf, fn_index);
+            write_u32(&mut subsection_buf, fn_name.len() as u32);
+            write_all(&mut subsection_buf, fn_name.as_bytes());
+        }
+
+        write_section(&mut wasm_module.custom, &mut subsection_buf, 1);
     }
 
     Ok(())
