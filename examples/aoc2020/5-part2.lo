@@ -6,7 +6,7 @@ type Vec_u32 = Vec;
 fn main() {
     let input_buf = fs::read_file("./aoc2020/5.txt");
     defer input_buf.free();
-    let input = StringSlice::from_string(input_buf);
+    let input = str::from_string(input_buf);
 
     let tickets_count = input.size / 11; // 10 chars seat + newline
     let seat_ids = Vec::new(tickets_count, sizeof u32);
@@ -73,7 +73,7 @@ fn bubble_sort(items: &Vec_u32) {
     };
 };
 
-fn parse_seat_id(input: StringSlice) -> u32 {
+fn parse_seat_id(input: str) -> u32 {
     let row_max = 128;
     let row_hi = row_max - 1;
     let row_lo = 0;

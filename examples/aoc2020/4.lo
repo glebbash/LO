@@ -8,7 +8,7 @@ fn main() {
 
     let valid_passwords = 0;
 
-    let passwords = StrCutter::new(StringSlice::from_string(input));
+    let passwords = StrCutter::new(str::from_string(input));
     loop {
         let has_byr = false;
         let has_iyr = false;

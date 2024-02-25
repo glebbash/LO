@@ -1,6 +1,6 @@
 include "lib/std";
 
-type str = StringSlice;
+type str = str;
 
 struct fs {};
 

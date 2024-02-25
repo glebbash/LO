@@ -19,11 +19,11 @@ pub struct LoToken {
 
 impl LoToken {
     pub fn is_any(&self, type_: LoTokenType) -> bool {
-        return self.type_ == type_;
+        self.type_ == type_
     }
 
     pub fn is(&self, type_: LoTokenType, value: &str) -> bool {
-        return self.is_any(type_) && self.value == value;
+        self.is_any(type_) && self.value == value
     }
 }
 

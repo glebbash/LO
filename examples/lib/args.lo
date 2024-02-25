@@ -28,9 +28,9 @@ fn args::load() -> args {
     };
 };
 
-fn args::get(self, i: u32) -> StringSlice {
+fn args::get(self, i: u32) -> str {
     let arg = *((self.argv as u32 + i * sizeof &*u8) as &* &*u8);
-    return std_c_str_to_slice(arg);
+    return cstr_to_str(arg);
 };
 
 fn args::free(self) {

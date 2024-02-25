@@ -1,12 +1,12 @@
 include "lib/std";
 include "lib/wasi";
 
-fn puts(str: StringSlice) {
-    return fputs(wasi::FD_STDOUT, str);
+fn puts(value: str) {
+    return fputs(wasi::FD_STDOUT, value);
 };
-fn fputs(fd: u32, value: StringSlice) {
-    let value_ptr = alloc(ALLOC_STACK, sizeof StringSlice) as &StringSlice;
-    defer free(ALLOC_STACK, value_ptr, sizeof StringSlice);
+fn fputs(fd: u32, value: str) {
+    let value_ptr = alloc(ALLOC_STACK, sizeof str) as &str;
+    defer free(ALLOC_STACK, value_ptr, sizeof str);
     *value_ptr = value;
 
     fprint_str(fd, value_ptr);
@@ -32,10 +32,10 @@ fn fprint_u64(fd: u32, num: u64) {
     fprint_str(fd, out);
 };
 
-fn print_str(str: &StringSlice) {
-    return fprint_str(wasi::FD_STDOUT, str);
+fn print_str(value: &str) {
+    return fprint_str(wasi::FD_STDOUT, value);
 };
-fn fprint_str(fd: u32, value: &StringSlice) {
+fn fprint_str(fd: u32, value: &str) {
     let nwritten = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer free(ALLOC_STACK, nwritten, sizeof u32);
 

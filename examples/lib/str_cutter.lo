@@ -1,15 +1,15 @@
 include "lib/std";
 
 struct StrCutter {
-    piece: StringSlice,
-    rest: StringSlice,
+    piece: str,
+    rest: str,
 };
 
-fn StrCutter::new(source: StringSlice) -> StrCutter {
-    return StrCutter { piece: "" as StringSlice, rest: source };
+fn StrCutter::new(source: str) -> StrCutter {
+    return StrCutter { piece: "" as str, rest: source };
 };
 
-fn StrCutter::cut_at(self, delim: StringSlice) -> StrCutter {
+fn StrCutter::cut_at(self, delim: str) -> StrCutter {
     let cut_start = 0;
     let cut_width = 0;
     loop {
@@ -32,11 +32,11 @@ fn StrCutter::cut_at(self, delim: StringSlice) -> StrCutter {
     };
 
     return StrCutter {
-        piece: StringSlice {
+        piece: str {
             data: self.rest.data,
             size: cut_start - cut_width - 1,
         },
-        rest: StringSlice {
+        rest: str {
             data: (self.rest.data as u32 + cut_start + 1) as &* u8,
             size: self.rest.size - cut_start + 1,
         },

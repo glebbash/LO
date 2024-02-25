@@ -230,18 +230,6 @@
         free(self->alloc_id, self->data, self->capacity);
     };
 
-    struct Slice {
-        data: &(),
-        size: u32,
-    };
-
-    fn Vec::as_slice(&self) -> Slice {
-        return Slice {
-            data: self->data,
-            size: self->size,
-        };
-    };
-
     fn Vec::at(&self, index: u32) -> &() {
         Vec::_panic_if_out_of_bounds(self, index);
 
@@ -348,29 +336,29 @@
         return Vec::new_using(len, sizeof u8, alloc_id);
     };
 
-    struct StringSlice {
+    struct str {
         data: &*u8,
         size: u32,
     };
 
-    fn StringSlice::from_string(str: &String) -> StringSlice {
-        return StringSlice { data: str->data as &u8, size: str->size };
+    fn str::from_string(value: &String) -> str {
+        return str { data: value->data as &u8, size: value->size };
     };
 
-    fn StringSlice::char_at(self, index: u32) -> u8 {
+    fn str::char_at(self, index: u32) -> u8 {
         return *((self.data as u32 + index) as &u8);
     };
 
-    fn StringSlice::clone(self) -> StringSlice {
+    fn str::clone(self) -> str {
         let cloned_data = heap::alloc(self.size) as &*u8;
         mem::copy(self.data, cloned_data, self.size);
-        return StringSlice {
+        return str {
             data: cloned_data,
             size: self.size,
         };
     };
 
-    fn StringSlice::equals(self, other: StringSlice) -> bool {
+    fn str::equals(self, other: str) -> bool {
         if self.size != other.size {
             return false;
         };
@@ -391,24 +379,24 @@
         return true;
     };
 
-    fn StringSlice::skip_chars(self, char_count: u32) -> StringSlice {
+    fn str::skip_chars(self, char_count: u32) -> str {
         if self.size < char_count {
             return self;
         };
 
-        return StringSlice {
+        return str {
             data: (self.data as u32 + char_count) as &*u8,
             size: self.size - char_count
         };
     };
 
     fn String::clone(&self) -> &String {
-        return String::from_slice(self->data, self->size);
+        return String::from_str(self->data, self->size);
     };
 
-    fn String::from_slice(str_slice: StringSlice) -> &String {
-        let string = String::new(str_slice.size);
-        Vec::push_all(string, str_slice);
+    fn String::from_str(value: str) -> &String {
+        let string = String::new(value.size);
+        Vec::push_all(string, value);
         return string;
     };
 
@@ -470,16 +458,16 @@
         return output;
     };
 
-    fn std_c_str_to_slice(str: &*u8) -> StringSlice {
+    fn cstr_to_str(value: &*u8) -> str {
         let len = 0;
 
         loop {
-            if *((str as u32 + len) as &u8) == 0 as u8 {
+            if *((value as u32 + len) as &u8) == 0 as u8 {
                 break;
             };
 
             len += 1;
         };
 
-        return StringSlice { data: str, size: len };
+        return str { data: value, size: len };
     };
