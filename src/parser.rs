@@ -1376,6 +1376,23 @@ fn parse_postfix(
             // TODO: lhs.loc() is not available
             compile_set(ctx, value, primary, &op.token.loc)?
         }
+        InfixOpTag::DivAssign => {
+            let rhs = parse_expr(ctx, tokens, min_bp)?;
+            let value = LoInstr::BinaryOp {
+                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
+                    LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32DivUnsigned,
+                    LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32DivSigned,
+                    LoType::I64 => WasmBinaryOpKind::I64DivSigned,
+                    LoType::U64 => WasmBinaryOpKind::I64DivUnsigned,
+                    operand_type => return err_incompatible_op(op, operand_type),
+                },
+                lhs: Box::new(primary.clone()),
+                rhs: Box::new(rhs),
+            };
+
+            // TODO: lhs.loc() is not available
+            compile_set(ctx, value, primary, &op.token.loc)?
+        }
         InfixOpTag::Assign => {
             let value = parse_expr(ctx, tokens, min_bp)?;
             let value_type = value.get_type(ctx.module);

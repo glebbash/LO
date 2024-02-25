@@ -1,0 +1,123 @@
+include "lib/cli";
+include "lib/fs";
+
+type Vec_u32 = Vec;
+
+fn main() {
+    let input_buf = fs::read_file("./aoc2020/5.txt");
+    defer input_buf.free();
+    let input = StringSlice::from_string(input_buf);
+
+    let tickets_count = input.size / 11; // 10 chars seat + newline
+    let seat_ids = Vec::new(tickets_count, sizeof u32);
+
+    let i = 0;
+    loop {
+        if i == tickets_count {
+            break;
+        };
+
+        let seat_id = parse_seat_id(input.skip_chars(i * 11));
+        *(seat_ids.push() as &u32) = seat_id;
+
+        i += 1;
+    };
+
+    bubble_sort(seat_ids);
+
+    let prev_seat_id = 0;
+
+    i = 0;
+    loop {
+        if i == tickets_count {
+            break;
+        };
+
+        let seat_id = *(seat_ids.at(i) as &u32);
+        if prev_seat_id + 2 == seat_id {
+            print_u32(prev_seat_id + 1); puts("\n");
+            break;
+        };
+        prev_seat_id = seat_id;
+
+        i += 1;
+    };
+};
+
+// https://en.wikipedia.org/wiki/Bubble_sort
+fn bubble_sort(items: &Vec_u32) {
+    let n = items->size;
+    loop {
+        let swapped = false;
+
+        let i = 1;
+        loop {
+            if i == n {
+                break;
+            };
+
+            let a = *(items.at(i - 1) as &u32);
+            let b = *(items.at(i) as &u32);
+            if a > b {
+                *(items.at(i - 1) as &u32) = b;
+                *(items.at(i) as &u32) = a;
+                swapped = true;
+            };
+
+            i += 1;
+        };
+
+        if !swapped {
+            break;
+        };
+    };
+};
+
+fn parse_seat_id(input: StringSlice) -> u32 {
+    let row_max = 128;
+    let row_hi = row_max - 1;
+    let row_lo = 0;
+    let row_i = 0;
+    loop {
+        if row_i == 7 {
+            break;
+        };
+
+        let char = input.char_at(row_i);
+        if char == char_code "F" as u8 {
+            row_max /= 2;
+            row_hi -= row_max;
+        };
+        if char == char_code "B" as u8 {
+            row_max /= 2;
+            row_lo += row_max;
+        };
+
+        row_i += 1;
+    };
+
+    let col_max = 8;
+    let col_hi = col_max - 1;
+    let col_lo = 0;
+    let col_i = 0;
+    loop {
+        if col_i == 3 {
+            break;
+        };
+
+        let char = input.char_at(col_i + 7);
+        if char == char_code "L" as u8 {
+            col_max /= 2;
+            col_hi -= col_max;
+        };
+        if char == char_code "R" as u8 {
+            col_max /= 2;
+            col_lo += col_max;
+        };
+
+        col_i += 1;
+    };
+
+    let seat_id = row_lo * 8 + col_lo;
+    return seat_id;
+};

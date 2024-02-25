@@ -36,11 +36,21 @@ async function compileCommand() {
 }
 
 async function runCommand() {
+    let compilerArgs = process.argv.slice(3);
+    let programArgs = [];
+
+    let programArgsSeparator = compilerArgs.indexOf("--");
+    if (programArgsSeparator !== -1) {
+        compilerArgs = compilerArgs.slice(0, programArgsSeparator);
+        programArgs = compilerArgs.slice(programArgsSeparator + 1);
+    }
+
     const program = await runWithTmpFile(async (stdout, stdoutFile) => {
         const exitCode = /** @type {unknown} */ (
             await runWASI(await readFile(COMPILER_PATH), {
                 stdout: stdout.fd,
                 preopens: { ".": "examples" },
+                args: ["compiler.wasm", ...compilerArgs],
             })
         );
 
@@ -57,7 +67,7 @@ async function runCommand() {
     await runWASI(program, {
         preopens: { ".": "examples" },
         returnOnExit: false,
-        args: ["main.lo", ...process.argv.slice(3)],
+        args: ["main.lo", ...programArgs],
     });
 }
 

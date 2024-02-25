@@ -118,7 +118,18 @@ pub fn fd_read_all_and_close(fd: u32) -> Vec<u8> {
     }];
 
     loop {
-        let nread = unsafe { fd_read(fd, &in_vec) }.unwrap();
+        let nread = match unsafe { fd_read(fd, &in_vec) } {
+            Ok(nread) => nread,
+            Err(err) => {
+                // stdin is empty
+                if fd == 0 && err == ERRNO_AGAIN {
+                    break;
+                }
+
+                stderr_write(alloc::format!("Error reading file: fd={fd}, err={err}\n").as_bytes());
+                unreachable!()
+            }
+        };
 
         if nread == 0 {
             break;
