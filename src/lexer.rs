@@ -183,10 +183,10 @@ impl Lexer {
             return self.lex_operator();
         }
 
-        return Err(LoError {
+        Err(LoError {
             message: format!("Unexpected char: {char}"),
             loc: self.loc(),
-        });
+        })
     }
 
     fn lex_int_literal(&mut self) -> LexResult {
