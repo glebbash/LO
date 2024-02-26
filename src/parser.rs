@@ -783,6 +783,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let return_expr = LoInstr::Return {
             value: Box::new(value),
         };
+
         if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
             let mut values = values?;
             values.push(return_expr);
@@ -790,9 +791,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                 value_type: LoType::Void,
                 expr: Box::new(LoInstr::MultiValueEmit { values }),
             });
-        } else {
-            return Ok(return_expr);
         }
+
+        return Ok(return_expr);
     }
 
     if let Some(t) = tokens.eat(Symbol, "sizeof")?.cloned() {
