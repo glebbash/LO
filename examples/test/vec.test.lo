@@ -4,7 +4,7 @@ export memory { min_pages: 20 };
 
 include "lib/std";
 
-export existing fn Vec::new as "vec_new";
+export existing fn Vec::with_capacity as "vec_new";
 export existing fn Vec::swap as "vec_swap";
 export existing fn Vec::push_all as "vec_push_all";
 

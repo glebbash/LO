@@ -9,7 +9,7 @@ fn main() {
     let input = str::from_string(input_buf);
 
     let tickets_count = input.size / 11; // 10 chars seat + newline
-    let seat_ids = Vec::new(tickets_count, sizeof u32);
+    let seat_ids = Vec::with_capacity(tickets_count, sizeof u32);
 
     let i = 0;
     loop {

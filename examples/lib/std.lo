@@ -1,9 +1,10 @@
 // panic
 
     fn panic(message_ptr: &*u8, message_len: u32) {
+        *(0 as &u32) = 69420; // error indicator
         // TODO: &&*u8 should be parsed fine without a space
-        *(0 as & &*u8) = message_ptr;
-        *(4 as &u32) = message_len;
+        *(4 as & &*u8) = message_ptr;
+        *(8 as &u32) = message_len;
         unreachable;
     };
 
@@ -208,11 +209,19 @@
         alloc_id: u32,
     };
 
-    fn Vec::new(capacity: u32, item_size: u32) -> &Vec {
-        return Vec::new_using(capacity, item_size, ALLOC_HEAP);
+    fn Vec::new(item_size: u32) -> &Vec {
+        return Vec::with_capacity(10, item_size);
     };
 
-    fn Vec::new_using(capacity: u32, item_size: u32, alloc_id: u32) -> &Vec {
+    fn Vec::new_using(item_size: u32, alloc_id: u32) -> &Vec {
+        return Vec::with_capacity_using(10, item_size, alloc_id);
+    };
+
+    fn Vec::with_capacity(capacity: u32, item_size: u32) -> &Vec {
+        return Vec::with_capacity_using(capacity, item_size, ALLOC_HEAP);
+    };
+
+    fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32) -> &Vec {
         // TODO: look into `new`
         let self_ptr = alloc(alloc_id, sizeof Vec) as &Vec;
         *self_ptr = Vec {
@@ -333,7 +342,7 @@
     };
 
     fn String::new_using(len: u32, alloc_id: u32) -> &String {
-        return Vec::new_using(len, sizeof u8, alloc_id);
+        return Vec::with_capacity_using(len, sizeof u8, alloc_id);
     };
 
     struct str {

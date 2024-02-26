@@ -31,8 +31,8 @@ struct Map {
 };
 
 fn Map::parse(input: &String) -> Map {
-    let cols = Vec::new(4, sizeof &Vec::Tile);
-    let row = Vec::new(4, sizeof Tile);
+    let cols = Vec::new(sizeof &Vec::Tile);
+    let row = Vec::new(sizeof Tile);
 
     let i = 0;
     loop {
@@ -49,7 +49,7 @@ fn Map::parse(input: &String) -> Map {
         };
         if char == char_code "\n" as u8 {
             *(cols.push() as & &Vec::Tile) = row;
-            row = Vec::new(4, sizeof Tile);
+            row = Vec::new(sizeof Tile);
         };
 
         i += 1;

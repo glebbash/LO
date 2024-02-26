@@ -40,7 +40,7 @@ fn fs::open(file_path: str) -> fs::FdOpenRes {
 };
 
 fn fs::read_fd(fd: u32) -> &String {
-    let output = Vec::new(256, sizeof u8);
+    let output = Vec::with_capacity(256, sizeof u8);
 
     // TODO(bug): ALLOC_STACK is messing stuff up for some reason
     let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
