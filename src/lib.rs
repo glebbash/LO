@@ -87,7 +87,7 @@ mod fn_api {
 
     #[repr(C)]
     pub struct ParseResult {
-        ok: u32, // 0 | 1
+        ok: bool,
         data: *mut u8,
         size: usize,
     }
@@ -119,12 +119,12 @@ mod fn_api {
     impl ParseResult {
         fn from(res: Result<Vec<u8>, String>) -> Self {
             match res {
-                Ok(binary) => Self::new(1, binary),
-                Err(message) => Self::new(0, message.into()),
+                Ok(binary) => Self::new(true, binary),
+                Err(message) => Self::new(false, message.into()),
             }
         }
 
-        fn new(ok: u32, vec: Vec<u8>) -> Self {
+        fn new(ok: bool, vec: Vec<u8>) -> Self {
             let mut vec = ManuallyDrop::new(vec);
 
             vec.shrink_to_fit();

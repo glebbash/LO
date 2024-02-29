@@ -1,0 +1,62 @@
+include "lib/std";
+include "lib/wasi";
+include "lib/print";
+
+export memory { min_pages: 40 }; // 1MB stack + 1MB heap
+
+type Result_Vec_u8_String = Vec;
+
+export fn _start() {
+    let file_name: str;
+    let source: String;
+    let args = args::load();
+    defer args.free();
+    if args->size == 2 {
+        file_name = args.get(1);
+        let fd = fd_open(file_name) catch |err| {
+            defer err.free();
+            fputs(wasi::FD_STDERR, "Error: cannot open file ");
+            fputs(wasi::FD_STDERR, file_name);
+            fputs(wasi::FD_STDERR, ": ");
+            fputs(wasi::FD_STDERR, err.as_str());
+            proc_exit(1);
+        };
+        source = fd_read_all_and_close(fd);
+    } else {
+        file_name = "<stdin>.lo";
+        source = fd_read();
+    };
+
+    let binary = exec_pipeline(file_name, source) catch |err_message| {
+        *(message.push() as &u8) = char_code "\n" as u8;
+        fputs(wasi::FD_STDERR, message.as_str());
+        proc_exit(1);
+    };
+    puts(binary.as_str());
+};
+
+export fn mem_alloc(length: u32) -> &() {
+    return heap::alloc(length);
+};
+
+export fn mem_free(ptr: &(), length: u32) {
+    heap::free(ptr);
+};
+
+struct ParseResult {
+    ok: bool,
+    data: &(),
+    size: u32,
+};
+
+export fn compile(file_name: str, script: str) -> ParseResult {
+    return ParseResult::from(exec_pipeline(file_name, script));
+};
+
+fn exec_pipeline(file_name: str, script: str) -> Result_Vec_u8_String {
+    let tokens = lexer::lex_all(file_name, script)?;
+    let module = parser::parse(tokens)?;
+    let binary = Vec::new();
+    module.dump(binary);
+    return Ok(binary);
+};

@@ -363,6 +363,7 @@ impl FnDef {
 
 #[derive(Clone, Debug)]
 pub enum LoInstr {
+    NoInstr,
     Unreachable,
     Drop {
         value: Box<LoInstr>,
@@ -483,6 +484,7 @@ pub enum LoSetBind {
 impl LoInstr {
     pub fn get_type(&self, ctx: &ModuleContext) -> LoType {
         match self {
+            LoInstr::NoInstr => LoType::Void,
             LoInstr::Unreachable => LoType::Void,
             LoInstr::U32ConstLazy { value: _ } => LoType::U32,
             LoInstr::U32Const { value: _ } => LoType::U32,
@@ -585,6 +587,7 @@ pub fn lower_exprs(out: &mut Vec<WasmInstr>, exprs: Vec<LoInstr>) {
 
 pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
     match expr {
+        LoInstr::NoInstr => {}
         LoInstr::Unreachable => out.push(WasmInstr::Unreachable),
         LoInstr::Drop { value, drop_count } => {
             lower_expr(out, *value);

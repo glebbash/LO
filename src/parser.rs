@@ -760,10 +760,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(return_token) = tokens.eat(Symbol, "return")?.cloned() {
         let value = if tokens.peek().is_none() || tokens.next_is(Delim, ";")? {
-            LoInstr::Casted {
-                value_type: LoType::Void,
-                expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
-            }
+            LoInstr::NoInstr
         } else {
             parse_expr(ctx, tokens, 0)?
         };
@@ -839,10 +836,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         deferred.push(deffered_expr);
 
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Void,
-            expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
-        });
+        return Ok(LoInstr::NoInstr);
     }
 
     if let Some(_) = tokens.eat(Symbol, "defer_eval")? {
@@ -898,10 +892,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                 loc,
             }
         ));
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Void,
-            expr: Box::new(LoInstr::MultiValueEmit { values: vec![] }),
-        });
+        return Ok(LoInstr::NoInstr);
     }
 
     if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
