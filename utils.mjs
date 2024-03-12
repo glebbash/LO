@@ -206,7 +206,7 @@ async function testCommand() {
     });
 
     test("compiles std", async () => {
-        const output = await compile("./examples/lib/std.test.lo");
+        const output = await compile("./examples/test/std.test.lo");
 
         await loadWasm(output);
     });
