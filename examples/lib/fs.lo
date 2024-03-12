@@ -1,7 +1,5 @@
 include "lib/std";
 
-type str = str;
-
 struct fs {};
 
 // fs expects host to preopen "." on fd 3
