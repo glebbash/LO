@@ -48,7 +48,7 @@ mod wasi_api {
         let (file_name, source) = if args.len() == 2 {
             let file_name = args.get(1).unwrap();
             let fd = fd_open(file_name).unwrap_or_else(|err| {
-                let msg = alloc::format!("Error: cannot open file {file_name}: {err}");
+                let msg = alloc::format!("Error: cannot open file {file_name}: {err}\n");
                 stderr_write(msg.as_bytes());
                 proc_exit(1);
             });

@@ -19,6 +19,7 @@ export fn _start() {
             fputs(wasi::FD_STDERR, file_name);
             fputs(wasi::FD_STDERR, ": ");
             fputs(wasi::FD_STDERR, err.as_str());
+            fputs(wasi::FD_STDERR, "\n");
             proc_exit(1);
         };
         source = fd_read_all_and_close(fd);
