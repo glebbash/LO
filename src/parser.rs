@@ -901,7 +901,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(build_const_str_instr(ctx.module, &debug_mesage));
     }
 
-    // TODO: support `else`
     if let Some(_) = tokens.eat(Symbol, "if")? {
         let cond = parse_expr(ctx, tokens, 0)?;
 
@@ -1095,6 +1094,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let mut args = vec![];
         parse_fn_call_args(ctx, tokens, &mut args)?;
 
+        // TODO: typecheck arguments with function signature
         return Ok(LoInstr::Call {
             fn_index: fn_def.get_absolute_index(ctx.module),
             return_type: fn_def.kind.output.clone(),
@@ -1590,6 +1590,7 @@ fn parse_postfix(
                 });
             };
 
+            // TODO: typecheck arguments with function signature
             LoInstr::Call {
                 fn_index: fn_def.get_absolute_index(ctx.module),
                 return_type: fn_def.kind.output.clone(),
