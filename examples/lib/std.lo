@@ -1,10 +1,17 @@
+// str literal type
+
+    struct str {
+        data: &*u8,
+        size: u32,
+    };
+
 // panic
 
-    fn panic(message_ptr: &*u8, message_len: u32) {
+    fn panic(message: str) {
         *(0 as &u32) = 69420; // error indicator
         // TODO: &&*u8 should be parsed fine without a space
-        *(4 as & &*u8) = message_ptr;
-        *(8 as &u32) = message_len;
+        *(4 as & &*u8) = message.data;
+        *(8 as &u32) = message.size;
         unreachable;
     };
 
@@ -235,7 +242,7 @@
     };
 
     fn Vec::free(&self) {
-        free(self->alloc_id, self, sizeof Vec);
+        free(self->alloc_id, self as &(), sizeof Vec);
         free(self->alloc_id, self->data, self->capacity);
     };
 
@@ -337,18 +344,28 @@
     type Vec::u8 = Vec;
     type String = Vec::u8;
 
-    fn String::new(len: u32) -> &String {
-        return Vec::new(len, sizeof u8);
+    fn String::new(capacity: u32) -> &String {
+        return Vec::with_capacity(capacity, sizeof u8);
     };
 
-    fn String::new_using(len: u32, alloc_id: u32) -> &String {
-        return Vec::with_capacity_using(len, sizeof u8, alloc_id);
+    fn String::new_using(capacity: u32, alloc_id: u32) -> &String {
+        return Vec::with_capacity_using(capacity, sizeof u8, alloc_id);
     };
 
-    struct str {
-        data: &*u8,
-        size: u32,
+    fn String::clone(&self) -> &String {
+        return String::from_str(str {
+            data: self->data as &*u8,
+            size: self->size,
+        });
     };
+
+    fn String::from_str(value: str) -> &String {
+        let string = String::new(value.size);
+        Vec::push_all(string, value.data as &(), value.size);
+        return string;
+    };
+
+// str utils
 
     fn str::from_string(value: &String) -> str {
         return str { data: value->data as &u8, size: value->size };
@@ -360,7 +377,7 @@
 
     fn str::clone(self) -> str {
         let cloned_data = heap::alloc(self.size) as &*u8;
-        mem::copy(self.data, cloned_data, self.size);
+        mem::copy(self.data as &(), cloned_data as &(), self.size);
         return str {
             data: cloned_data,
             size: self.size,
@@ -397,16 +414,6 @@
             data: (self.data as u32 + char_count) as &*u8,
             size: self.size - char_count
         };
-    };
-
-    fn String::clone(&self) -> &String {
-        return String::from_str(self->data, self->size);
-    };
-
-    fn String::from_str(value: str) -> &String {
-        let string = String::new(value.size);
-        Vec::push_all(string, value);
-        return string;
     };
 
 // conversions

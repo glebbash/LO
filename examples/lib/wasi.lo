@@ -30,14 +30,14 @@ import from "wasi_snapshot_preview1" {
         fd:                   u32, // file_descriptor
         iovs:       &*wasi::IOVec, // The pointer to the iov array
         iovs_len:             u32, // Amount of wasi::IOVec
-        nread:                u32, // Pointer to store the number of bytes read
+        nread:               &u32, // Pointer to store the number of bytes read
     ) -> wasi::Err;
 
     fn wasi::fd_write(
         fd:                   u32, // file_descriptor
         iovs:       &*wasi::IOVec, // The pointer to the iov array
         iovs_len:             u32, // Amount of wasi::IOVec
-        nwritten:             u32, // Pointer to store the number of bytes written
+        nwritten:            &u32, // Pointer to store the number of bytes written
     ) -> wasi::Err;
 
     fn wasi::fd_close(
@@ -50,8 +50,8 @@ import from "wasi_snapshot_preview1" {
     ) -> wasi::Err;
 
     fn wasi::args_get(
-        argv:                &u32, // Pointer to a buffer where the argument pointers will be written.
-        argv_buf:            &u32, // Pointer to a buffer where the argument string data will be written.
+        argv:              & &*u8, // Pointer to a buffer where the argument pointers will be written.
+        argv_buf:            &*u8, // Pointer to a buffer where the argument string data will be written.
     ) -> wasi::Err;
 
     fn wasi::proc_exit(

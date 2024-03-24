@@ -57,7 +57,7 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
 
         let mut fn_ctx = FnContext {
             module: &ctx,
-            lo_fn_type: &fn_def.kind,
+            lo_fn_type: &fn_def.type_,
             locals_last_index: fn_body.locals_last_index,
             non_arg_wasm_locals: vec![],
             defers: BTreeMap::default(),
@@ -218,7 +218,7 @@ fn parse_top_level_expr(
                 local: false,
                 fn_index,
                 type_index,
-                kind: fn_decl.lo_type,
+                type_: fn_decl.lo_type,
             };
             ctx.fn_defs.insert(fn_decl.fn_name.clone(), fn_def);
             ctx.wasm_module.borrow_mut().imports.push(WasmImport {
@@ -523,7 +523,7 @@ fn parse_fn_def(
             local: true,
             fn_index,
             type_index,
-            kind: fn_decl.lo_type,
+            type_: fn_decl.lo_type,
         },
     );
 
@@ -1093,11 +1093,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
         let mut args = vec![];
         parse_fn_call_args(ctx, tokens, &mut args)?;
+        typecheck_fn_call_args(ctx.module, &fn_def, &args, &value.value, &value.loc)?;
 
-        // TODO: typecheck arguments with function signature
         return Ok(LoInstr::Call {
             fn_index: fn_def.get_absolute_index(ctx.module),
-            return_type: fn_def.kind.output.clone(),
+            return_type: fn_def.type_.output.clone(),
             args,
         });
     }
@@ -1187,11 +1187,16 @@ fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
         }
     };
 
-    LoInstr::MultiValueEmit {
-        values: vec![
-            LoInstr::U32Const { value: string_ptr },
-            LoInstr::U32Const { value: string_len },
-        ],
+    LoInstr::Casted {
+        value_type: LoType::StructInstance {
+            name: format!("str"),
+        },
+        expr: Box::new(LoInstr::MultiValueEmit {
+            values: vec![
+                LoInstr::U32Const { value: string_ptr },
+                LoInstr::U32Const { value: string_len },
+            ],
+        }),
     }
 }
 
@@ -1579,9 +1584,6 @@ fn parse_postfix(
             let method_name = field_or_method_name;
             let receiver_type = primary.get_type(ctx.module);
 
-            let mut args = vec![primary];
-            parse_fn_call_args(ctx, tokens, &mut args)?;
-
             let fn_name = get_fn_name_from_method(&receiver_type, &method_name.value);
             let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
                 return Err(LoError {
@@ -1590,10 +1592,13 @@ fn parse_postfix(
                 });
             };
 
-            // TODO: typecheck arguments with function signature
+            let mut args = vec![primary];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
+            typecheck_fn_call_args(ctx.module, fn_def, &args, &fn_name, &method_name.loc)?;
+
             LoInstr::Call {
                 fn_index: fn_def.get_absolute_index(ctx.module),
-                return_type: fn_def.kind.output.clone(),
+                return_type: fn_def.type_.output.clone(),
                 args,
             }
         }
@@ -1682,6 +1687,33 @@ fn parse_fn_call_args(
         if !tokens.next_is(Delim, ")")? {
             tokens.expect(Delim, ",")?;
         }
+    }
+
+    Ok(())
+}
+
+fn typecheck_fn_call_args(
+    ctx: &ModuleContext,
+    fn_def: &FnDef,
+    args: &Vec<LoInstr>,
+    fn_name: &str,
+    fn_call_loc: &LoLocation,
+) -> Result<(), LoError> {
+    let mut arg_types = vec![];
+    for arg in args {
+        arg_types.push(arg.get_type(ctx));
+    }
+
+    if arg_types != fn_def.type_.inputs {
+        return Err(LoError {
+            message: format!(
+                "Invalid arguments for `{}` call: {}, expected: {}",
+                fn_name,
+                LoTypes(&arg_types),
+                LoTypes(&fn_def.type_.inputs)
+            ),
+            loc: fn_call_loc.clone(),
+        });
     }
 
     Ok(())

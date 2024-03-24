@@ -6,16 +6,16 @@ fn main() {
 
     let p = heap::alloc(1);
     puts("let p = heap::alloc(1); // ");
-    print_u32(p); puts("\n");
+    print_u32(p as u32); puts("\n");
 
     puts("heap::free(p);\n");
     heap::free(p);
 
     p = heap::alloc(1);
     puts("p = heap::alloc(1); // ");
-    print_u32(p); puts("\n");
+    print_u32(p as u32); puts("\n");
 
     p = heap::alloc(1);
     puts("p = heap::alloc(1); // ");
-    print_u32(p); puts("\n");
+    print_u32(p as u32); puts("\n");
 };

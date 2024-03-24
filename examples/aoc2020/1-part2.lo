@@ -50,8 +50,7 @@ fn main() {
 };
 
 fn parse_numbers(input: &String) -> &Vec::u32 {
-    // TODO: check why this works, Vec::new only accepts 1 argument
-    let numbers = Vec::new(10, sizeof u32);
+    let numbers = Vec::new(sizeof u32);
     let current_number = 0;
 
     let i = 0;

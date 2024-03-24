@@ -9,9 +9,9 @@ struct args {
 
 fn args::load() -> args {
     let argc_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer free(ALLOC_STACK, argc_ref, sizeof u32);
+    defer free(ALLOC_STACK, argc_ref as &(), sizeof u32);
     let argv_buf_size_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer free(ALLOC_STACK, argv_buf_size_ref, sizeof u32);
+    defer free(ALLOC_STACK, argv_buf_size_ref as &(), sizeof u32);
 
     let _ = wasi::args_sizes_get(argc_ref, argv_buf_size_ref);
     let argv_buf_size = *argv_buf_size_ref;
@@ -34,6 +34,6 @@ fn args::get(self, i: u32) -> str {
 };
 
 fn args::free(self) {
-    heap::free(self.argv);
-    heap::free(self.argv_buf);
+    heap::free(self.argv as &());
+    heap::free(self.argv_buf as &());
 };

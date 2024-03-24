@@ -26,11 +26,11 @@ struct fs::FdOpenRes {
 
 fn fs::open(file_path: str) -> fs::FdOpenRes {
     let fd_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer free(ALLOC_STACK, fd_ref, sizeof u32);
+    defer free(ALLOC_STACK, fd_ref as &(), sizeof u32);
 
     let err = wasi::path_open(
         fs::CWD_PREOPEN_FD, 0,
-        file_path, 0, 2i64, 0i64, 0,
+        file_path.data, file_path.size, 0, 2u64, 0u64, 0,
         fd_ref,
     );
 
@@ -42,11 +42,11 @@ fn fs::read_fd(fd: u32) -> &String {
 
     // TODO(bug): ALLOC_STACK is messing stuff up for some reason
     let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
-    defer free(ALLOC_HEAP, chunk, 256);
+    defer free(ALLOC_HEAP, chunk as &(), 256);
 
     let in_vec = alloc(ALLOC_STACK, sizeof wasi::IOVec) as &wasi::IOVec;
     *in_vec = wasi::IOVec { base: chunk, size: 256 };
-    defer free(ALLOC_STACK, in_vec, sizeof wasi::IOVec);
+    defer free(ALLOC_STACK, in_vec as &(), sizeof wasi::IOVec);
 
     let nread_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
     defer stack::free(sizeof u32);
@@ -59,7 +59,7 @@ fn fs::read_fd(fd: u32) -> &String {
             break;
         };
 
-        Vec::push_all(output, chunk, nread);
+        Vec::push_all(output, chunk as &(), nread);
     };
 
     return output;
@@ -72,7 +72,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
 
     let iov = alloc(ALLOC_STACK, sizeof wasi::IOVec) as &wasi::IOVec;
     *iov = wasi::IOVec { base: chunk, size: 0 };
-    defer free(ALLOC_STACK, iov, sizeof wasi::IOVec);
+    defer free(ALLOC_STACK, iov as &(), sizeof wasi::IOVec);
 
     let nread_ref = stack::alloc(sizeof u32) as &u32;
     defer stack::free(sizeof u32);
@@ -90,7 +90,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
         };
 
         iov->size = nread;
-        io_res = wasi::fd_write(fd_out, iov, 1, nread);
+        io_res = wasi::fd_write(fd_out, iov, 1, nread_ref);
         if io_res != 0 {
             return false;
         };

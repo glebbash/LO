@@ -7,7 +7,7 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Write};
 
 #[derive(Default)]
 pub struct ModuleContext {
@@ -152,7 +152,7 @@ impl LoType {
 impl core::fmt::Display for LoType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            LoType::Void => f.write_str("void"),
+            LoType::Void => f.write_str("()"),
             LoType::Bool => f.write_str("bool"),
             LoType::U8 => f.write_str("u8"),
             LoType::I8 => f.write_str("i8"),
@@ -179,6 +179,22 @@ impl core::fmt::Display for LoType {
             }
             LoType::StructInstance { name } => f.write_str(name),
         }
+    }
+}
+
+pub struct LoTypes<'a>(pub &'a Vec<LoType>);
+
+impl<'a> core::fmt::Display for LoTypes<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_char('[')?;
+        let mut iter = self.0.iter();
+        if let Some(item) = iter.next() {
+            write!(f, "{item}")?;
+        }
+        for item in iter {
+            write!(f, ", {item}")?;
+        }
+        f.write_char(']')
     }
 }
 
@@ -348,7 +364,7 @@ pub struct FnDef {
     pub local: bool,
     pub fn_index: u32,
     pub type_index: u32,
-    pub kind: LoFnType,
+    pub type_: LoFnType,
 }
 
 impl FnDef {

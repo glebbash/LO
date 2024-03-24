@@ -472,7 +472,8 @@ async function loadCompilerWithFuncAPI(compilerPath) {
             srcBuf
         );
 
-        const [ok, outPtr, outSize] = compiler.compile(
+        // TODO: figure out where `_a, _b, _c` come from
+        const [ok, _a, _b, _c, outPtr, outSize] = compiler.compile(
             fileName.ptr,
             fileName.size,
             src.ptr,

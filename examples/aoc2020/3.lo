@@ -83,7 +83,7 @@ fn Map::free(self) {
             break;
         };
 
-        let row = self.cols.at(i) as & &Vec::Tile;
+        let row = *(self.cols.at(i) as & &Vec::Tile);
         row.free();
 
         i += 1;
