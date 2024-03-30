@@ -193,6 +193,15 @@ async function testCommand() {
         assert.strictEqual(result, 3);
     });
 
+    test("compiles macro", async () => {
+        const output = await compile("./examples/test/macro.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 16);
+    });
+
     test("compiles wasi", async () => {
         const output = await compile("./examples/lib/wasi.lo");
 

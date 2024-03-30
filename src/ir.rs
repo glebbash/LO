@@ -10,7 +10,7 @@ use alloc::{
 use core::{cell::RefCell, fmt::Write};
 
 #[derive(Default)]
-pub struct ModuleContext {
+pub struct ModuleContext<'a> {
     pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: RefCell<Vec<FnBody>>,
@@ -21,12 +21,13 @@ pub struct ModuleContext {
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
-    pub type_aliases: RefCell<BTreeMap<String, LoType>>,
     pub constants: RefCell<BTreeMap<String, LoInstr>>,
     pub included_modules: BTreeSet<String>,
+    pub macros: BTreeMap<String, MacroDef>,
+    pub type_scope: LoTypeScope<'a>,
 }
 
-impl ModuleContext {
+impl<'a> ModuleContext<'a> {
     pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
         let mut wasm_module = self.wasm_module.borrow_mut();
 
@@ -47,7 +48,7 @@ pub struct LoFnType {
 }
 
 pub struct FnContext<'a> {
-    pub module: &'a ModuleContext,
+    pub module: &'a ModuleContext<'a>,
     pub lo_fn_type: &'a LoFnType,
     pub locals_last_index: u32,
     pub non_arg_wasm_locals: Vec<WasmType>,
@@ -61,9 +62,18 @@ pub enum BlockType {
     Loop,
 }
 
+impl Default for BlockType {
+    fn default() -> Self {
+        Self::Block
+    }
+}
+
+#[derive(Default)]
 pub struct Block<'a> {
     pub block_type: BlockType,
     pub locals: BTreeMap<String, LocalDef>,
+    pub macro_args: Option<BTreeMap<String, LoInstr>>,
+    pub type_scope: Option<LoTypeScope<'a>>,
     pub parent: Option<&'a Block<'a>>,
 }
 
@@ -96,28 +106,32 @@ impl Block<'_> {
 }
 
 pub struct BlockContext<'a, 'b> {
-    pub module: &'a ModuleContext,
+    pub module: &'a ModuleContext<'a>,
     pub fn_ctx: &'a mut FnContext<'b>,
     pub block: Block<'a>,
 }
 
-impl BlockContext<'_, '_> {
-    pub fn push_local(&mut self, local_name: String, value_type: LoType) -> core::ops::Range<u32> {
-        let local_index = self.fn_ctx.locals_last_index;
-        let comp_count =
-            value_type.emit_components(&self.module, &mut self.fn_ctx.non_arg_wasm_locals);
+#[derive(Default)]
+pub struct LoTypeScope<'a> {
+    pub types: BTreeMap<String, LoType>,
+    pub parent: Option<&'a LoTypeScope<'a>>,
+}
 
-        self.fn_ctx.locals_last_index += comp_count;
+impl<'a> LoTypeScope<'a> {
+    pub fn get(&self, name: &str) -> Option<&LoType> {
+        if let Some(type_) = self.types.get(name) {
+            return Some(type_);
+        }
 
-        self.block.locals.insert(
-            local_name.clone(),
-            LocalDef {
-                index: local_index,
-                value_type,
-            },
-        );
+        if let Some(parent) = &self.parent {
+            return parent.get(name);
+        }
 
-        local_index..local_index + comp_count
+        None
+    }
+
+    pub fn insert(&mut self, name: String, type_: LoType) {
+        self.types.insert(name, type_);
     }
 }
 
@@ -138,6 +152,7 @@ pub enum LoType {
     Pointer(Box<LoType>),
     Tuple(Vec<LoType>),
     StructInstance { name: String },
+    MacroTypeArg { name: String },
 }
 
 impl LoType {
@@ -145,6 +160,24 @@ impl LoType {
         match self {
             LoType::Pointer(pointee) => pointee.deref_rec(),
             other => other,
+        }
+    }
+
+    pub fn resolve_macro_type_args(&self, type_scope: &LoTypeScope) -> LoType {
+        match self {
+            Self::Pointer(pointee) => {
+                Self::Pointer(Box::new(pointee.resolve_macro_type_args(type_scope)))
+            }
+            Self::Tuple(items) => {
+                let mut resolved_items = Vec::new();
+                for item in items {
+                    resolved_items.push(item.resolve_macro_type_args(type_scope));
+                }
+                Self::Tuple(resolved_items)
+            }
+            // TODO: is it safe to unwrap here?
+            Self::MacroTypeArg { name } => type_scope.get(name).unwrap().clone(),
+            _ => self.clone(),
         }
     }
 }
@@ -178,6 +211,7 @@ impl core::fmt::Display for LoType {
                 f.write_str(")")
             }
             LoType::StructInstance { name } => f.write_str(name),
+            LoType::MacroTypeArg { name } => f.write_str(name),
         }
     }
 }
@@ -248,6 +282,9 @@ impl LoType {
                         .value_type
                         .emit_sized_component_stats(ctx, stats, components)?;
                 }
+            }
+            LoType::MacroTypeArg { name } => {
+                return Err(format!("Cannot get size of macro arg: {name}"));
             }
         };
 
@@ -375,6 +412,22 @@ impl FnDef {
             self.fn_index
         }
     }
+}
+
+#[derive(Clone)]
+pub struct FnParam {
+    pub name: String,
+    pub type_: LoType,
+}
+
+#[derive(Clone)]
+pub struct MacroDef {
+    pub receiver_type: Option<LoType>,
+    pub method_name: String,
+    pub type_params: Vec<String>,
+    pub params: Vec<FnParam>,
+    pub return_type: LoType,
+    pub body: LoTokenStream,
 }
 
 #[derive(Clone, Debug)]

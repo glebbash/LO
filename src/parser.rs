@@ -64,18 +64,17 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
         };
 
         let locals_block = Block {
-            block_type: BlockType::Block,
-            parent: None,
             locals: fn_body.locals,
+            ..Default::default()
         };
 
         let mut block_ctx = BlockContext {
             module: &ctx,
             fn_ctx: &mut fn_ctx,
             block: Block {
-                block_type: BlockType::Function,
                 parent: Some(&locals_block),
-                locals: BTreeMap::new(),
+                block_type: BlockType::Function,
+                ..Default::default()
             },
         };
 
@@ -161,6 +160,10 @@ fn parse_top_level_expr(
 
     if let Some(_) = tokens.eat(Symbol, "fn")? {
         return parse_fn_def(ctx, tokens, false);
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "macro")? {
+        return parse_macro_def(ctx, tokens);
     }
 
     if let Some(_) = tokens.eat(Symbol, "memory")? {
@@ -296,6 +299,13 @@ fn parse_top_level_expr(
             },
         );
 
+        ctx.type_scope.insert(
+            struct_name.value.clone(),
+            LoType::StructInstance {
+                name: struct_name.value.clone(),
+            },
+        );
+
         let mut field_index = 0;
         let mut byte_offset = 0;
         let mut struct_fields = Vec::<StructField>::new();
@@ -304,7 +314,7 @@ fn parse_top_level_expr(
         while let None = tokens.eat(Delim, "}")? {
             let field_name = tokens.expect_any(Symbol)?.clone();
             tokens.expect(Operator, ":")?;
-            let field_type = parse_lo_type(ctx, tokens)?;
+            let field_type = parse_const_lo_type(ctx, tokens)?;
             if !tokens.next_is(Delim, "}")? {
                 tokens.expect(Delim, ",")?;
             }
@@ -353,18 +363,16 @@ fn parse_top_level_expr(
     if let Some(_) = tokens.eat(Symbol, "type")?.cloned() {
         let type_alias = parse_nested_symbol(tokens)?;
         tokens.expect(Operator, "=")?;
-        let actual_type = parse_lo_type(ctx, tokens)?;
+        let actual_type = parse_const_lo_type(ctx, tokens)?;
 
-        if ctx.type_aliases.borrow().contains_key(&type_alias.value) {
+        if let Some(_) = ctx.type_scope.get(&type_alias.value) {
             return Err(LoError {
                 message: format!("Duplicate type alias: {}", type_alias.value),
                 loc: type_alias.loc.clone(),
             });
         }
 
-        ctx.type_aliases
-            .borrow_mut()
-            .insert(type_alias.value, actual_type);
+        ctx.type_scope.insert(type_alias.value, actual_type);
 
         return Ok(());
     }
@@ -494,7 +502,7 @@ fn parse_fn_def(
     exported: bool,
 ) -> Result<(), LoError> {
     let fn_decl = parse_fn_decl(ctx, tokens)?;
-    let contents = parse_block_extract_contents(ctx, tokens)?;
+    let body = parse_block_extract_contents(tokens)?;
 
     if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
         return Err(LoError {
@@ -532,8 +540,77 @@ fn parse_fn_def(
         type_index,
         locals: fn_decl.locals,
         locals_last_index,
-        body: contents,
+        body,
     });
+
+    return Ok(());
+}
+
+fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
+    let macro_name = parse_nested_symbol(tokens)?;
+    let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &macro_name)?;
+    let mut type_params = Vec::<String>::new();
+
+    // TODO: `::<` should parse as 2 operators
+    tokens.expect(Operator, "::<")?;
+
+    while let None = tokens.eat(Operator, ">")? {
+        let p_name = tokens.expect_any(Symbol)?.clone();
+        if !tokens.next_is(Operator, ">")? {
+            tokens.expect(Delim, ",")?;
+        }
+
+        if get_type_by_name(ctx, &ctx.type_scope, &p_name, false).is_ok() {
+            return Err(LoError {
+                message: format!("Type parameter shadows existing type: {}", p_name.value),
+                loc: p_name.loc.clone(),
+            });
+        }
+
+        for param in &type_params {
+            if *param == p_name.value {
+                return Err(LoError {
+                    message: format!("Found duplicate type parameter: {}", p_name.value),
+                    loc: p_name.loc.clone(),
+                });
+            }
+        }
+
+        type_params.push(p_name.value);
+    }
+
+    let mut new_type_scope = LoTypeScope {
+        parent: Some(&ctx.type_scope),
+        ..Default::default()
+    };
+    for type_param in &type_params {
+        new_type_scope.insert(
+            type_param.clone(),
+            LoType::MacroTypeArg {
+                name: type_param.clone(),
+            },
+        )
+    }
+
+    let params = parse_fn_params(ctx, &new_type_scope, tokens, &receiver_type)?;
+    let return_type = if let Some(_) = tokens.eat(Operator, "->")? {
+        parse_lo_type_(ctx, &new_type_scope, tokens, false)?
+    } else {
+        LoType::Void
+    };
+    let body = parse_block_extract_contents(tokens)?;
+
+    ctx.macros.insert(
+        macro_name.value.clone(),
+        MacroDef {
+            receiver_type,
+            method_name,
+            type_params,
+            params,
+            return_type,
+            body,
+        },
+    );
 
     return Ok(());
 }
@@ -566,54 +643,23 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
         locals: BTreeMap::new(),
     };
 
-    tokens.expect(Delim, "(")?;
-    if let Some(receiver_type) = &receiver_type {
-        if let Some(_) = tokens.eat(Symbol, RECEIVER_PARAM_NAME)? {
-            if !tokens.next_is(Delim, ")")? {
-                tokens.expect(Delim, ",")?;
-            }
-            add_fn_param(
-                ctx,
-                &mut fn_decl,
-                String::from(RECEIVER_PARAM_NAME),
-                receiver_type.clone(),
-            );
-        } else if let Some(_) = tokens.eat(Operator, "&")? {
-            tokens.expect(Symbol, RECEIVER_PARAM_NAME)?;
-            if !tokens.next_is(Delim, ")")? {
-                tokens.expect(Delim, ",")?;
-            }
-            add_fn_param(
-                ctx,
-                &mut fn_decl,
-                String::from(RECEIVER_PARAM_NAME),
-                LoType::Pointer(Box::new(receiver_type.clone())),
-            );
+    let params = parse_fn_params(ctx, &ctx.type_scope, tokens, &receiver_type)?;
+    for param in params {
+        let local_def = LocalDef {
+            index: fn_decl.wasm_type.inputs.len() as u32,
+            value_type: param.type_.clone(),
         };
-    }
-    while let None = tokens.eat(Delim, ")")? {
-        let p_name = tokens.expect_any(Symbol)?.clone();
-        tokens.expect(Operator, ":")?;
-        let p_type = parse_lo_type(ctx, tokens)?;
-        if !tokens.next_is(Delim, ")")? {
-            tokens.expect(Delim, ",")?;
-        }
+        fn_decl.locals.insert(param.name, local_def);
 
-        if fn_decl.locals.contains_key(&p_name.value) {
-            return Err(LoError {
-                message: format!(
-                    "Found function param with conflicting name: {}",
-                    p_name.value
-                ),
-                loc: p_name.loc.clone(),
-            });
-        }
+        param
+            .type_
+            .emit_components(ctx, &mut fn_decl.wasm_type.inputs);
 
-        add_fn_param(ctx, &mut fn_decl, p_name.value, p_type);
+        fn_decl.lo_type.inputs.push(param.type_);
     }
 
     let lo_output = if let Some(_) = tokens.eat(Operator, "->")? {
-        parse_lo_type(ctx, tokens)?
+        parse_const_lo_type(ctx, tokens)?
     } else {
         LoType::Void
     };
@@ -624,29 +670,77 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
     Ok(fn_decl)
 }
 
-fn add_fn_param(ctx: &ModuleContext, fn_decl: &mut FnDecl, p_name: String, p_type: LoType) {
-    let local_def = LocalDef {
-        index: fn_decl.wasm_type.inputs.len() as u32,
-        value_type: p_type.clone(),
-    };
-    fn_decl.locals.insert(p_name.clone(), local_def);
+fn parse_fn_params(
+    ctx: &ModuleContext,
+    type_scope: &LoTypeScope,
+    tokens: &mut LoTokenStream,
+    receiver_type: &Option<LoType>,
+) -> Result<Vec<FnParam>, LoError> {
+    let mut params = Vec::new();
 
-    p_type.emit_components(ctx, &mut fn_decl.wasm_type.inputs);
-    fn_decl.lo_type.inputs.push(p_type);
+    tokens.expect(Delim, "(")?;
+
+    if let Some(receiver_type) = &receiver_type {
+        if let Some(_) = tokens.eat(Symbol, RECEIVER_PARAM_NAME)? {
+            if !tokens.next_is(Delim, ")")? {
+                tokens.expect(Delim, ",")?;
+            }
+
+            params.push(FnParam {
+                name: String::from(RECEIVER_PARAM_NAME),
+                type_: receiver_type.clone(),
+            });
+        } else if let Some(_) = tokens.eat(Operator, "&")? {
+            tokens.expect(Symbol, RECEIVER_PARAM_NAME)?;
+            if !tokens.next_is(Delim, ")")? {
+                tokens.expect(Delim, ",")?;
+            }
+
+            params.push(FnParam {
+                name: String::from(RECEIVER_PARAM_NAME),
+                type_: LoType::Pointer(Box::new(receiver_type.clone())),
+            });
+        };
+    }
+
+    while let None = tokens.eat(Delim, ")")? {
+        let p_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, ":")?;
+        let p_type = parse_lo_type_(ctx, type_scope, tokens, false)?;
+        if !tokens.next_is(Delim, ")")? {
+            tokens.expect(Delim, ",")?;
+        }
+
+        for param in &params {
+            if param.name == p_name.value {
+                return Err(LoError {
+                    message: format!(
+                        "Found function param with conflicting name: {}",
+                        p_name.value
+                    ),
+                    loc: p_name.loc.clone(),
+                });
+            }
+        }
+
+        params.push(FnParam {
+            name: p_name.value,
+            type_: p_type,
+        });
+    }
+
+    Ok(params)
 }
 
 fn parse_block(
     ctx: &mut BlockContext,
     tokens: &mut LoTokenStream,
 ) -> Result<Vec<LoInstr>, LoError> {
-    let mut contents = parse_block_extract_contents(ctx.module, tokens)?;
+    let mut contents = parse_block_extract_contents(tokens)?;
     parse_block_contents(ctx, &mut contents)
 }
 
-fn parse_block_extract_contents(
-    _ctx: &ModuleContext,
-    tokens: &mut LoTokenStream,
-) -> Result<LoTokenStream, LoError> {
+fn parse_block_extract_contents(tokens: &mut LoTokenStream) -> Result<LoTokenStream, LoError> {
     let mut output = LoTokenStream::new(vec![], LoLocation::internal());
 
     let mut depth = 0;
@@ -794,7 +888,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(t) = tokens.eat(Symbol, "sizeof")?.cloned() {
-        let value_type = parse_lo_type(ctx.module, tokens)?;
+        let value_type = parse_lo_type(ctx, tokens)?;
 
         return Ok(LoInstr::U32Const {
             value: value_type
@@ -909,9 +1003,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                 module: ctx.module,
                 fn_ctx: ctx.fn_ctx,
                 block: Block {
-                    block_type: BlockType::Block,
                     parent: Some(&ctx.block),
-                    locals: BTreeMap::new(),
+                    ..Default::default()
                 },
             },
             tokens,
@@ -923,9 +1016,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                     module: ctx.module,
                     fn_ctx: ctx.fn_ctx,
                     block: Block {
-                        block_type: BlockType::Block,
                         parent: Some(&ctx.block),
-                        locals: BTreeMap::new(),
+                        ..Default::default()
                     },
                 },
                 tokens,
@@ -947,9 +1039,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             module: ctx.module,
             fn_ctx: ctx.fn_ctx,
             block: Block {
-                block_type: BlockType::Loop,
                 parent: Some(&ctx.block),
-                locals: BTreeMap::new(),
+                block_type: BlockType::Loop,
+                ..Default::default()
             },
         };
 
@@ -1028,7 +1120,20 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             });
         }
 
-        let local_indicies = ctx.push_local(local_name.value.clone(), value_type.clone());
+        let local_index = ctx.fn_ctx.locals_last_index;
+        let comp_count =
+            value_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_wasm_locals);
+        ctx.fn_ctx.locals_last_index += comp_count;
+
+        ctx.block.locals.insert(
+            local_name.value.clone(),
+            LocalDef {
+                index: local_index,
+                value_type,
+            },
+        );
+
+        let local_indicies = local_index..local_index + comp_count;
         let values = local_indicies
             .map(|i| LoInstr::UntypedLocalGet { local_index: i })
             .collect();
@@ -1093,13 +1198,119 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
         let mut args = vec![];
         parse_fn_call_args(ctx, tokens, &mut args)?;
-        typecheck_fn_call_args(ctx.module, &fn_def, &args, &value.value, &value.loc)?;
+        typecheck_fn_call_args(
+            ctx.module,
+            &fn_def.type_.inputs,
+            &args,
+            &value.value,
+            &value.loc,
+        )?;
 
         return Ok(LoInstr::Call {
             fn_index: fn_def.get_absolute_index(ctx.module),
             return_type: fn_def.type_.output.clone(),
             args,
         });
+    }
+
+    if let Some(macro_args) = &ctx.block.macro_args {
+        if let Some(macro_value) = macro_args.get(&value.value) {
+            return Ok(macro_value.clone());
+        }
+    }
+
+    if let Some(macro_def) = ctx.module.macros.get(&value.value) {
+        // TODO: `::<` should parse as 2 operators
+        tokens.expect(Operator, "::<")?;
+
+        let mut type_scope = {
+            let mut type_args = Vec::new();
+            while let None = tokens.eat(Operator, ">")? {
+                let macro_arg = parse_lo_type(ctx, tokens)?;
+                type_args.push(macro_arg);
+                if !tokens.next_is(Operator, ">")? {
+                    tokens.expect(Delim, ",")?;
+                }
+            }
+
+            if type_args.len() != macro_def.type_params.len() {
+                return Err(LoError {
+                    message: format!(
+                        "Invalid number of type params, expected {}, got {}",
+                        macro_def.type_params.len(),
+                        type_args.len()
+                    ),
+                    loc: value.loc,
+                });
+            }
+
+            let mut type_scope = LoTypeScope::default();
+            for (name, value) in macro_def.type_params.iter().zip(type_args) {
+                type_scope.insert(name.clone(), value.clone());
+            }
+
+            type_scope
+        };
+        let return_type = macro_def.return_type.resolve_macro_type_args(&type_scope);
+
+        let macro_args = {
+            let mut args = vec![];
+            parse_fn_call_args(ctx, tokens, &mut args)?;
+
+            let mut params = Vec::new();
+            for param in &macro_def.params {
+                params.push(param.type_.resolve_macro_type_args(&type_scope));
+            }
+            typecheck_fn_call_args(ctx.module, &params, &args, &value.value, &value.loc)?;
+
+            let mut macro_args = BTreeMap::new();
+            for (param, value) in macro_def.params.iter().zip(args) {
+                macro_args.insert(param.name.clone(), value.clone());
+            }
+
+            macro_args
+        };
+
+        // TODO: this smells
+        if let Some(parent) = &ctx.block.type_scope {
+            type_scope.parent = Some(parent);
+        } else {
+            type_scope.parent = Some(&ctx.module.type_scope);
+        }
+
+        let macro_ctx = &mut BlockContext {
+            module: ctx.module,
+            fn_ctx: ctx.fn_ctx,
+            block: Block {
+                parent: Some(&ctx.block),
+                type_scope: Some(type_scope),
+                macro_args: Some(macro_args),
+                ..Default::default()
+            },
+        };
+
+        let macro_tokens = &mut macro_def.body.clone();
+        let expr = parse_expr(macro_ctx, macro_tokens, 0)?;
+        macro_tokens.expect(Delim, ";")?;
+
+        if let Some(t) = macro_tokens.peek() {
+            return Err(LoError {
+                message: format!("Macro body must contain a single expression"),
+                loc: t.loc.clone(),
+            });
+        }
+
+        let resolved_type = expr.get_type(macro_ctx.module);
+        if resolved_type != return_type {
+            return Err(LoError {
+                message: format!(
+                    "Macro resolved to {resolved_type} but {return_type} was expected"
+                ),
+                loc: value.loc,
+            });
+        }
+
+        return Ok(expr);
     }
 
     if let Some(struct_def) = ctx.module.struct_defs.get(&value.value) {
@@ -1410,7 +1621,7 @@ fn parse_postfix(
         }
         InfixOpTag::Cast => {
             let actual_type = primary.get_type(ctx.module);
-            let wanted_type = parse_lo_type(ctx.module, tokens)?;
+            let wanted_type = parse_lo_type(ctx, tokens)?;
 
             if wanted_type == LoType::Bool || wanted_type == LoType::I8 || wanted_type == LoType::U8
             {
@@ -1594,7 +1805,13 @@ fn parse_postfix(
 
             let mut args = vec![primary];
             parse_fn_call_args(ctx, tokens, &mut args)?;
-            typecheck_fn_call_args(ctx.module, fn_def, &args, &fn_name, &method_name.loc)?;
+            typecheck_fn_call_args(
+                ctx.module,
+                &fn_def.type_.inputs,
+                &args,
+                &fn_name,
+                &method_name.loc,
+            )?;
 
             LoInstr::Call {
                 fn_index: fn_def.get_absolute_index(ctx.module),
@@ -1694,7 +1911,7 @@ fn parse_fn_call_args(
 
 fn typecheck_fn_call_args(
     ctx: &ModuleContext,
-    fn_def: &FnDef,
+    params: &Vec<LoType>,
     args: &Vec<LoInstr>,
     fn_name: &str,
     fn_call_loc: &LoLocation,
@@ -1704,13 +1921,13 @@ fn typecheck_fn_call_args(
         arg_types.push(arg.get_type(ctx));
     }
 
-    if arg_types != fn_def.type_.inputs {
+    if arg_types != *params {
         return Err(LoError {
             message: format!(
                 "Invalid arguments for `{}` call: {}, expected: {}",
                 fn_name,
                 LoTypes(&arg_types),
-                LoTypes(&fn_def.type_.inputs)
+                LoTypes(params)
             ),
             loc: fn_call_loc.clone(),
         });
@@ -1803,7 +2020,7 @@ fn parse_const_postfix(
 
     Ok(match op.tag {
         InfixOpTag::Cast => LoInstr::Casted {
-            value_type: parse_lo_type(ctx, tokens)?,
+            value_type: parse_const_lo_type(ctx, tokens)?,
             expr: Box::new(primary),
         },
         _ => {
@@ -1815,22 +2032,31 @@ fn parse_const_postfix(
     })
 }
 
-fn parse_lo_type(ctx: &ModuleContext, tokens: &mut LoTokenStream) -> Result<LoType, LoError> {
-    parse_lo_type_checking_ref(ctx, tokens, false)
+fn parse_const_lo_type(ctx: &ModuleContext, tokens: &mut LoTokenStream) -> Result<LoType, LoError> {
+    parse_lo_type_(ctx, &ctx.type_scope, tokens, false)
 }
 
-fn parse_lo_type_checking_ref(
+fn parse_lo_type(ctx: &BlockContext, tokens: &mut LoTokenStream) -> Result<LoType, LoError> {
+    if let Some(type_scope) = &ctx.block.type_scope {
+        parse_lo_type_(ctx.module, &type_scope, tokens, false)
+    } else {
+        parse_const_lo_type(ctx.module, tokens)
+    }
+}
+
+fn parse_lo_type_(
     ctx: &ModuleContext,
+    type_scope: &LoTypeScope,
     tokens: &mut LoTokenStream,
     is_referenced: bool,
 ) -> Result<LoType, LoError> {
     if let Some(_) = tokens.eat(Operator, "&")? {
-        let pointee = parse_lo_type_checking_ref(ctx, tokens, true)?;
+        let pointee = parse_lo_type_(ctx, type_scope, tokens, true)?;
         return Ok(LoType::Pointer(Box::new(pointee)));
     }
 
     if let Some(_) = tokens.eat(Operator, "&*")? {
-        let pointee = parse_lo_type_checking_ref(ctx, tokens, true)?;
+        let pointee = parse_lo_type_(ctx, type_scope, tokens, true)?;
         return Ok(LoType::Pointer(Box::new(pointee)));
     }
 
@@ -1840,11 +2066,12 @@ fn parse_lo_type_checking_ref(
     }
 
     let token = parse_nested_symbol(tokens)?;
-    get_type_by_name(ctx, &token, is_referenced)
+    get_type_by_name(ctx, type_scope, &token, is_referenced)
 }
 
 fn get_type_by_name(
     ctx: &ModuleContext,
+    type_scope: &LoTypeScope,
     token: &LoToken,
     is_referenced: bool,
 ) -> Result<LoType, LoError> {
@@ -1861,27 +2088,24 @@ fn get_type_by_name(
         "i64" => Ok(LoType::I64),
         "f64" => Ok(LoType::F64),
         _ => {
-            if let Some(actual_type) = ctx.type_aliases.borrow().get(&token.value) {
-                return Ok(actual_type.clone());
-            }
+            let Some(type_) = type_scope.get(&token.value) else {
+                return Err(LoError {
+                    message: format!("Unknown type: {}", token.value),
+                    loc: token.loc.clone(),
+                });
+            };
 
-            if let Some(struct_def) = ctx.struct_defs.get(&token.value) {
+            if let LoType::StructInstance { name } = type_ {
+                let struct_def = ctx.struct_defs.get(name).unwrap(); // safe because of if let
                 if !struct_def.fully_defined && !is_referenced {
                     return Err(LoError {
-                        message: format!("Cannot use partially defined struct"),
+                        message: format!("Cannot use partially defined struct: {name}"),
                         loc: token.loc.clone(),
                     });
                 }
-
-                return Ok(LoType::StructInstance {
-                    name: token.value.clone(),
-                });
             }
 
-            Err(LoError {
-                message: format!("Unknown type: {}", token.value),
-                loc: token.loc.clone(),
-            })
+            return Ok(type_.clone());
         }
     }
 }
@@ -1913,7 +2137,7 @@ fn extract_method_receiver_and_name(
             token.loc.end_offset = token.loc.offset;
 
             (
-                Some(get_type_by_name(ctx, &token, false)?),
+                Some(get_type_by_name(ctx, &ctx.type_scope, &token, false)?),
                 String::from(method_name),
             )
         }
