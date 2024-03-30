@@ -179,7 +179,7 @@ impl Lexer {
         if is_delim_char(char) {
             return self.lex_delim();
         }
-        if is_operator_char(char) {
+        if is_operator_start_char(char) {
             return self.lex_operator();
         }
 
@@ -286,16 +286,25 @@ impl Lexer {
 
     fn lex_operator(&mut self) -> LexResult {
         let mut loc = self.loc();
+        let mut value = String::new();
 
-        while is_operator_char(self.current_char()?) {
-            self.next_char();
+        'adding_chars: loop {
+            value.push(self.current_char()?);
+            for operator in OPERATORS {
+                if operator.starts_with(&value) {
+                    self.next_char();
+                    continue 'adding_chars;
+                }
+            }
+            value.pop();
+            break;
         }
 
         loc.end_offset = self.index;
 
         Ok(LoToken {
             type_: LoTokenType::Operator,
-            value: self.chars[loc.offset..self.index].iter().collect(),
+            value,
             loc,
         })
     }
@@ -396,8 +405,55 @@ fn is_delim_char(c: char) -> bool {
     "(){}[],;".contains(c)
 }
 
-fn is_operator_char(c: char) -> bool {
-    "!#$%&*+-./:<=>?@\\^~|".contains(c)
+static OPERATORS: &[&str] = &[
+    "=",   // Assignment
+    "==",  // Equality comparison
+    "!=",  // Nonequality comparison
+    "!",   // Logical NOT
+    "&&",  // Short-circuiting logical AND
+    "||",  // Short-circuiting logical OR
+    "<",   // Less than comparison
+    "<=",  // Less than or equal to comparison
+    ">",   // Greater than comparison
+    ">=",  // Greater than or equal to comparison
+    "+",   // Arithmetic addition
+    "+=",  // Arithmetic addition and assignment
+    "-",   // Arithmetic subtraction
+    "-=",  // Arithmetic subtraction and assignment
+    "*",   // Arithmetic multiplication
+    "*=",  // Arithmetic multiplication and assignment
+    "/",   // Arithmetic division
+    "/=",  // Arithmetic division and assignment
+    "%",   // Arithmetic remainder
+    "%=",  // Arithmetic remainder and assignment
+    "&",   // Bitwise AND / Pointer to one
+    "&*",  // Pointer to any amount
+    "&=",  // Bitwise AND and assignment
+    "<<",  // Left-shift
+    "<<=", // Left-shift and assignment
+    "=>",  // Part of match arm syntax
+    ">>",  // Right-shift
+    ">>=", // Right-shift and assignment
+    "^",   // Bitwise exclusive OR
+    "^=",  // Bitwise exclusive OR and assignment
+    "|",   // Bitwise OR
+    "|=",  // Bitwise OR and assignment
+    "->",  // Function return type
+    ".",   // Member access
+    ":",   // Type separator
+    "::",  // Path separator
+    // TODO: make it 2 operators? (`::`, `<`)
+    "::<", // Start of macro parameters (little hack)
+    "@",   // Memory index separator, defer label prefix
+];
+
+fn is_operator_start_char(c: char) -> bool {
+    for operator in OPERATORS {
+        if operator.starts_with(c) {
+            return true;
+        }
+    }
+    return false;
 }
 
 pub enum InfixOpTag {
