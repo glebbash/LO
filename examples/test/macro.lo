@@ -1,11 +1,11 @@
 export fn main() -> u32 {
-    let ptr = heap::alloc_many::<u32>(4);
+    let ptr = heap::alloc_many!<u32>(4);
     return ptr as u32;
 };
 
 struct heap {};
 
-macro heap::alloc_many::<T>(count: u32) -> &*T {
+macro heap::alloc_many!<T>(count: u32) -> &*T {
     heap::alloc(count * sizeof T) as &*T;
 };
 

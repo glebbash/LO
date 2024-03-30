@@ -106,7 +106,7 @@
         return *(stack::CURRENT as &u32);
     };
 
-    macro stack::alloc2::<T>() -> &T {
+    macro stack::alloc!<T>() -> &T {
         stack::alloc(sizeof T) as &T;
     };
 
@@ -120,7 +120,7 @@
         return (stack::CURRENT - size) as &();
     };
 
-    macro stack::free2::<T>() {
+    macro stack::free!<T>() {
         stack::free(sizeof T);
     };
 
@@ -147,7 +147,7 @@
     let heap::FIRST_BLOCK = 0 as &heap::Block;
     let heap::CURRENT_BLOCK = 0 as &heap::Block;
 
-    macro heap::alloc_many::<T>(count: u32) -> &T {
+    macro heap::alloc_many!<T>(count: u32) -> &T {
         heap::alloc(count * sizeof T) as &T;
     };
 
