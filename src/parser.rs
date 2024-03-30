@@ -510,6 +510,15 @@ fn parse_fn_def(
             loc: fn_decl.loc,
         });
     }
+    if ctx.macros.contains_key(&fn_decl.fn_name) {
+        return Err(LoError {
+            message: format!(
+                "Cannot define function with the same name as a macro: {}",
+                fn_decl.fn_name
+            ),
+            loc: fn_decl.loc,
+        });
+    }
 
     if exported {
         ctx.fn_exports.push(FnExport {
@@ -548,10 +557,25 @@ fn parse_fn_def(
 
 fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
     let macro_name = parse_nested_symbol(tokens)?;
+    if ctx.macros.contains_key(&macro_name.value) {
+        return Err(LoError {
+            message: format!("Cannot redefine macro: {}", macro_name.value),
+            loc: macro_name.loc,
+        });
+    }
+    if ctx.fn_defs.contains_key(&macro_name.value) {
+        return Err(LoError {
+            message: format!(
+                "Cannot define macro with the same name as a function: {}",
+                macro_name.value
+            ),
+            loc: macro_name.loc,
+        });
+    }
+
     let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &macro_name)?;
     let mut type_params = Vec::<String>::new();
 
-    // TODO: `::<` should parse as 2 operators
     tokens.expect(Operator, "::<")?;
 
     while let None = tokens.eat(Operator, ">")? {
@@ -1196,6 +1220,13 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     };
 
     if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
+        if let Some(t) = tokens.eat(Operator, "::<")? {
+            return Err(LoError {
+                message: format!("Cannot pass type arguments to a function"),
+                loc: t.loc.clone(),
+            });
+        }
+
         let mut args = vec![];
         parse_fn_call_args(ctx, tokens, &mut args)?;
         typecheck_fn_call_args(
@@ -1220,7 +1251,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(macro_def) = ctx.module.macros.get(&value.value) {
-        // TODO: `::<` should parse as 2 operators
         tokens.expect(Operator, "::<")?;
 
         let mut type_scope = {

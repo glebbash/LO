@@ -106,6 +106,10 @@
         return *(stack::CURRENT as &u32);
     };
 
+    macro stack::alloc2::<T>() -> &T {
+        stack::alloc(sizeof T) as &T;
+    };
+
     fn stack::alloc(size: u32) -> &() {
         stack::CURRENT += size;
 
@@ -114,6 +118,10 @@
         };
 
         return (stack::CURRENT - size) as &();
+    };
+
+    macro stack::free2::<T>() {
+        stack::free(sizeof T);
     };
 
     fn stack::free(size: u32) {
@@ -138,6 +146,10 @@
     let heap::TOTAL_ALLOCATED = stack::END;
     let heap::FIRST_BLOCK = 0 as &heap::Block;
     let heap::CURRENT_BLOCK = 0 as &heap::Block;
+
+    macro heap::alloc_many::<T>(count: u32) -> &T {
+        heap::alloc(count * sizeof T) as &T;
+    };
 
     // http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
     fn heap::alloc(size: u32) -> &() {

@@ -8,17 +8,18 @@ struct args {
 };
 
 fn args::load() -> args {
-    let argc_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer free(ALLOC_STACK, argc_ref as &(), sizeof u32);
-    let argv_buf_size_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer free(ALLOC_STACK, argv_buf_size_ref as &(), sizeof u32);
+    let argc_ref = stack::alloc2::<u32>();
+    defer stack::free2::<u32>();
+
+    let argv_buf_size_ref = stack::alloc2::<u32>();
+    defer stack::free2::<u32>();
 
     let _ = wasi::args_sizes_get(argc_ref, argv_buf_size_ref);
     let argv_buf_size = *argv_buf_size_ref;
     let argc = *argc_ref;
 
-    let argv = heap::alloc(argc * sizeof &*u8) as &* &*u8;
-    let argv_buf = heap::alloc(argv_buf_size) as &* u8;
+    let argv = heap::alloc_many::<&*u8>(argc);
+    let argv_buf = heap::alloc_many::<u8>(argv_buf_size);
     let _ = wasi::args_get(argv, argv_buf);
 
     return args {

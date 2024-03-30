@@ -1,5 +1,9 @@
-#!/usr/bin/env -S node --no-warnings
+#!/usr/bin/env -S node --no-warnings --experimental-network-imports
 // @ts-check
+
+// TODO: why this prevents random segfaults?
+import "https://esm.sh/@wasmer/wasi@1.0.0";
+// await import("segfault-handler").then((h) => h.default.registerHandler());
 
 import { WASI } from "node:wasi";
 import process from "node:process";
