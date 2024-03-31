@@ -484,6 +484,7 @@ static OPERATORS: &[&str] = &[
     "|=",  // Bitwise OR and assignment
     "->",  // Function return type
     ".",   // Member access
+    "..",  // Range operator
     ":",   // Type separator
     "::",  // Path separator
     // TODO: make it 2 operators? (`::`, `<`)

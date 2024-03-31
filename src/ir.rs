@@ -60,6 +60,7 @@ pub enum BlockType {
     Function,
     Block,
     Loop,
+    ForLoop,
 }
 
 impl Default for BlockType {

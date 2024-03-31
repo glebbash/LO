@@ -1,0 +1,27 @@
+include "lib/cli";
+
+fn main() {
+    for i in 0..10 {
+        print_u32(i); puts(" ");
+    };
+    puts("\n");
+
+    for i in 0..10 {
+        print_u32(i); puts(" ");
+        if i == 7 { break; };
+    };
+    puts("\n");
+
+    for i in 0..10 {
+        if i == 4 { continue; };
+        print_u32(i); puts(" ");
+    };
+    puts("\n");
+
+    for i in 0..10 {
+        if i == 4 { continue; };
+        print_u32(i); puts(" ");
+        if i == 7 { break; };
+    };
+    puts("\n");
+};

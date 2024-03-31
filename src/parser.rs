@@ -1047,8 +1047,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let mut body = parse_block(&mut ctx, tokens)?;
 
-        // add implicit continue
-        body.push(LoInstr::Branch { label_index: 0 });
+        let implicit_continue = LoInstr::Branch { label_index: 0 };
+        body.push(implicit_continue);
 
         return Ok(LoInstr::Block {
             block_type: LoType::Void,
@@ -1059,12 +1059,160 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
+    if let Some(for_loop) = tokens.eat(Symbol, "for")?.cloned() {
+        let counter = tokens.expect_any(Symbol).cloned()?;
+        tokens.expect(Symbol, "in")?;
+        let counter_ctx = &mut BlockContext {
+            module: ctx.module,
+            fn_ctx: ctx.fn_ctx,
+            block: Block {
+                parent: Some(&ctx.block),
+                block_type: BlockType::Block,
+                ..Default::default()
+            },
+        };
+
+        let start_count = parse_expr(counter_ctx, tokens, 0)?;
+        tokens.expect(Operator, "..")?;
+        let end_count = parse_expr(counter_ctx, tokens, 0)?;
+
+        let counter_type = start_count.get_type(counter_ctx.module);
+        if end_count.get_type(counter_ctx.module) != counter_type {
+            return Err(LoError {
+                message: format!(
+                    "Invalid end count type: {}, expected: {counter_type}",
+                    end_count.get_type(counter_ctx.module)
+                ),
+                loc: for_loop.loc,
+            });
+        }
+
+        let check_op_kind;
+        let add_op_kind;
+        let step_instr;
+        match counter_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                check_op_kind = WasmBinaryOpKind::I32Equal;
+                add_op_kind = WasmBinaryOpKind::I32Add;
+                step_instr = LoInstr::U32Const { value: 1 };
+            }
+            LoType::I64 | LoType::U64 => {
+                check_op_kind = WasmBinaryOpKind::I64Equal;
+                add_op_kind = WasmBinaryOpKind::I64Add;
+                step_instr = LoInstr::U64Const { value: 1 };
+            }
+            _ => {
+                return Err(LoError {
+                    message: format!("Invalid counter type: {counter_type}",),
+                    loc: for_loop.loc,
+                })
+            }
+        };
+
+        let init_instr = define_local(counter_ctx, &counter, start_count, counter_type.clone())?;
+        let get_counter_instr = LoInstr::LocalGet {
+            local_index: counter_ctx
+                .block
+                .get_own_local(&counter.value)
+                .unwrap()
+                .index,
+            value_type: counter_type.clone(),
+        };
+
+        let break_instr = LoInstr::Branch { label_index: 2 };
+        let implicit_continue = LoInstr::Branch { label_index: 0 };
+
+        let end_check_instr = LoInstr::If {
+            block_type: LoType::Void,
+            cond: Box::new(LoInstr::BinaryOp {
+                kind: check_op_kind,
+                lhs: Box::new(get_counter_instr.clone()),
+                rhs: Box::new(end_count),
+            }),
+            then_branch: vec![break_instr],
+            else_branch: None,
+        };
+        let update_instr = compile_set(
+            counter_ctx,
+            LoInstr::BinaryOp {
+                kind: add_op_kind,
+                lhs: Box::new(get_counter_instr.clone()),
+                rhs: Box::new(step_instr),
+            },
+            get_counter_instr,
+            &for_loop.loc,
+        )?;
+
+        let loop_body_ctx = &mut BlockContext {
+            module: counter_ctx.module,
+            fn_ctx: counter_ctx.fn_ctx,
+            block: Block {
+                parent: Some(&counter_ctx.block),
+                block_type: BlockType::ForLoop,
+                ..Default::default()
+            },
+        };
+        let loop_body = parse_block(loop_body_ctx, tokens)?;
+
+        let instrs = vec![
+            init_instr,
+            LoInstr::Block {
+                block_type: LoType::Void,
+                body: vec![LoInstr::Loop {
+                    body: vec![
+                        end_check_instr,
+                        LoInstr::Block {
+                            block_type: LoType::Void,
+                            body: loop_body,
+                        },
+                        update_instr,
+                        implicit_continue,
+                    ],
+                    block_type: LoType::Void,
+                }],
+            },
+        ];
+
+        return Ok(LoInstr::Casted {
+            value_type: LoType::Void,
+            expr: Box::new(LoInstr::MultiValueEmit { values: instrs }),
+        });
+
+        // let mut ctx = BlockContext {
+        //     module: ctx.module,
+        //     fn_ctx: ctx.fn_ctx,
+        //     block: Block {
+        //         parent: Some(&ctx.block),
+        //         block_type: BlockType::Loop,
+        //         ..Default::default()
+        //     },
+        // };
+
+        // let mut body = parse_block(&mut ctx, tokens)?;
+
+        // let implicit_continue = LoInstr::Branch { label_index: 0 };
+        // body.push(implicit_continue);
+
+        // return Ok(LoInstr::Block {
+        //     block_type: LoType::Void,
+        //     body: vec![LoInstr::Loop {
+        //         block_type: LoType::Void,
+        //         body,
+        //     }],
+        // });
+    }
+
     if let Some(_) = tokens.eat(Symbol, "break")? {
         let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
 
         let mut current_block = &ctx.block;
         loop {
             if current_block.block_type == BlockType::Loop {
+                break;
+            }
+
+            if current_block.block_type == BlockType::ForLoop {
+                label_index += 1;
                 break;
             }
 
@@ -1084,6 +1232,10 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                 break;
             }
 
+            if current_block.block_type == BlockType::ForLoop {
+                break;
+            }
+
             current_block = current_block.parent.unwrap();
             label_index += 1;
         }
@@ -1091,7 +1243,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(LoInstr::Branch { label_index });
     }
 
-    if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
+    if let Some(_) = tokens.eat(Symbol, "let")?.cloned() {
         let local_name = tokens.expect_any(Symbol)?.clone();
         tokens.expect(Operator, "=")?;
         let value = parse_expr(ctx, tokens, 0)?;
@@ -1113,32 +1265,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             });
         };
 
-        if ctx.block.get_own_local(&local_name.value).is_some() {
-            return Err(LoError {
-                message: format!("Duplicate local definition: {}", local_name.value),
-                loc: local_name.loc.clone(),
-            });
-        }
-
-        let local_index = ctx.fn_ctx.locals_last_index;
-        let comp_count =
-            value_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_wasm_locals);
-        ctx.fn_ctx.locals_last_index += comp_count;
-
-        ctx.block.locals.insert(
-            local_name.value.clone(),
-            LocalDef {
-                index: local_index,
-                value_type,
-            },
-        );
-
-        let local_indicies = local_index..local_index + comp_count;
-        let values = local_indicies
-            .map(|i| LoInstr::UntypedLocalGet { local_index: i })
-            .collect();
-        let bind_instr = LoInstr::MultiValueEmit { values };
-        return compile_set(ctx, value, bind_instr, &let_token.loc);
+        return define_local(ctx, &local_name, value, value_type);
     }
 
     if let Some(token) = tokens.peek().cloned() {
@@ -1281,6 +1408,39 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         message: format!("Reading unknown variable: {}", value.value),
         loc: value.loc,
     });
+}
+
+fn define_local(
+    ctx: &mut BlockContext,
+    local_name: &LoToken,
+    value: LoInstr,
+    value_type: LoType,
+) -> Result<LoInstr, LoError> {
+    if ctx.block.get_own_local(&local_name.value).is_some() {
+        return Err(LoError {
+            message: format!("Duplicate local definition: {}", local_name.value),
+            loc: local_name.loc.clone(),
+        });
+    }
+
+    let local_index = ctx.fn_ctx.locals_last_index;
+    let comp_count = value_type.emit_components(&ctx.module, &mut ctx.fn_ctx.non_arg_wasm_locals);
+    ctx.fn_ctx.locals_last_index += comp_count;
+
+    ctx.block.locals.insert(
+        local_name.value.clone(),
+        LocalDef {
+            index: local_index,
+            value_type,
+        },
+    );
+
+    let local_indicies = local_index..local_index + comp_count;
+    let values = local_indicies
+        .map(|i| LoInstr::UntypedLocalGet { local_index: i })
+        .collect();
+    let bind_instr = LoInstr::MultiValueEmit { values };
+    return compile_set(ctx, value, bind_instr, &local_name.loc);
 }
 
 fn parse_macro_call(

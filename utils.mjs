@@ -212,11 +212,8 @@ async function testCommand() {
 
         const wasi = new WASI({ version: "preview1" });
         const wasm = await WebAssembly.compile(output);
-        await WebAssembly.instantiate(
-            wasm,
-            // @ts-ignore
-            wasi.getImportObject()
-        );
+        // @ts-ignore
+        await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
 
     test("compiles std", async () => {
@@ -354,6 +351,27 @@ async function testCommand() {
         });
 
         assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
+    });
+
+    test("compiles for-loop", async () => {
+        const program = await compile("./examples/test/for-loop.lo");
+
+        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, { stdout: stdout.fd });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
+        });
+
+        assert.strictEqual(
+            output,
+            [
+                "0 1 2 3 4 5 6 7 8 9 ",
+                "0 1 2 3 4 5 6 7 ",
+                "0 1 2 3 5 6 7 8 9 ",
+                "0 1 2 3 5 6 7 ",
+            ]
+                .map((x) => x + "\n")
+                .join("")
+        );
     });
 
     test("compiles heap-alloc", async () => {
@@ -534,9 +552,9 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
                     preopens: { ".": "examples" },
                 });
 
+                // @ts-ignore
                 const instance = await WebAssembly.instantiate(
                     mod,
-                    // @ts-ignore
                     wasi.getImportObject()
                 );
 
@@ -598,8 +616,8 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
     const wasi = new WASI({ version: "preview1", ...wasiOptions });
 
     const wasm = await WebAssembly.compile(data);
+    // @ts-ignore
     const instance = await WebAssembly.instantiate(wasm, {
-        // @ts-expect-error
         ...wasi.getImportObject(),
         ...{ console },
         ...additionalImports,
