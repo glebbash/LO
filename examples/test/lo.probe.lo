@@ -29,7 +29,7 @@ export fn _start() {
     };
 
     let binary = exec_pipeline(file_name, source) catch |err_message| {
-        *(message.push() as &u8) = char_code "\n" as u8;
+        *(message.push() as &u8) = '\n' as u8;
         fputs(wasi::FD_STDERR, message.as_str());
         proc_exit(1);
     };

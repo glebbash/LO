@@ -825,6 +825,12 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return parse_const_int(tokens);
     }
 
+    if let Some(value) = tokens.eat_any(CharLiteral)? {
+        return Ok(LoInstr::U32Const {
+            value: value.value.chars().next().unwrap() as u32,
+        });
+    }
+
     if let Some(value) = tokens.eat_any(StringLiteral)? {
         return Ok(build_const_str_instr(ctx.module, &value.value));
     }
@@ -906,19 +912,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                 })?
                 .byte_length as u32,
         });
-    }
-
-    if let Some(_) = tokens.eat(Symbol, "char_code")?.cloned() {
-        let value = tokens.expect_any(StringLiteral)?;
-
-        let Some(char) = value.value.chars().next() else {
-            return Err(LoError {
-                message: format!("String must not be empty"),
-                loc: value.loc.clone(),
-            });
-        };
-
-        return Ok(LoInstr::U32Const { value: char as u32 });
     }
 
     if let Some(_) = tokens.eat(Symbol, "defer")? {
@@ -1209,103 +1202,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(_) = tokens.eat(Operator, "!")? {
-        let Some(macro_def) = ctx.module.macros.get(&value.value) else {
-            return Err(LoError {
-                message: format!("Unknown macro: {}", value.value),
-                loc: value.loc,
-            });
-        };
-
-        let mut type_scope = {
-            let mut type_args = Vec::new();
-
-            tokens.expect(Operator, "<")?;
-            while let None = tokens.eat(Operator, ">")? {
-                let macro_arg = parse_lo_type(ctx, tokens)?;
-                type_args.push(macro_arg);
-                if !tokens.next_is(Operator, ">")? {
-                    tokens.expect(Delim, ",")?;
-                }
-            }
-
-            if type_args.len() != macro_def.type_params.len() {
-                return Err(LoError {
-                    message: format!(
-                        "Invalid number of type params, expected {}, got {}",
-                        macro_def.type_params.len(),
-                        type_args.len()
-                    ),
-                    loc: value.loc,
-                });
-            }
-
-            let mut type_scope = LoTypeScope::default();
-            for (name, value) in macro_def.type_params.iter().zip(type_args) {
-                type_scope.insert(name.clone(), value.clone());
-            }
-
-            type_scope
-        };
-        let return_type = macro_def.return_type.resolve_macro_type_args(&type_scope);
-
-        let macro_args = {
-            let mut args = vec![];
-            parse_fn_call_args(ctx, tokens, &mut args)?;
-
-            let mut params = Vec::new();
-            for param in &macro_def.params {
-                params.push(param.type_.resolve_macro_type_args(&type_scope));
-            }
-            typecheck_fn_call_args(ctx.module, &params, &args, &value.value, &value.loc)?;
-
-            let mut macro_args = BTreeMap::new();
-            for (param, value) in macro_def.params.iter().zip(args) {
-                macro_args.insert(param.name.clone(), value.clone());
-            }
-
-            macro_args
-        };
-
-        // TODO: this smells
-        if let Some(parent) = &ctx.block.type_scope {
-            type_scope.parent = Some(parent);
-        } else {
-            type_scope.parent = Some(&ctx.module.type_scope);
-        }
-
-        let macro_ctx = &mut BlockContext {
-            module: ctx.module,
-            fn_ctx: ctx.fn_ctx,
-            block: Block {
-                parent: Some(&ctx.block),
-                type_scope: Some(type_scope),
-                macro_args: Some(macro_args),
-                ..Default::default()
-            },
-        };
-
-        let macro_tokens = &mut macro_def.body.clone();
-        let expr = parse_expr(macro_ctx, macro_tokens, 0)?;
-        macro_tokens.expect(Delim, ";")?;
-
-        if let Some(t) = macro_tokens.peek() {
-            return Err(LoError {
-                message: format!("Macro body must contain a single expression"),
-                loc: t.loc.clone(),
-            });
-        }
-
-        let resolved_type = expr.get_type(macro_ctx.module);
-        if resolved_type != return_type {
-            return Err(LoError {
-                message: format!(
-                    "Macro resolved to {resolved_type} but {return_type} was expected"
-                ),
-                loc: value.loc,
-            });
-        }
-
-        return Ok(expr);
+        return parse_macro_call(ctx, tokens, &value, None);
     }
 
     if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
@@ -1384,6 +1281,119 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         message: format!("Reading unknown variable: {}", value.value),
         loc: value.loc,
     });
+}
+
+fn parse_macro_call(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+    macro_token: &LoToken,
+    receiver: Option<LoInstr>,
+) -> Result<LoInstr, LoError> {
+    let macro_name = if let Some(receiver) = &receiver {
+        let receiver_type = receiver.get_type(ctx.module);
+        get_fn_name_from_method(&receiver_type, &macro_token.value)
+    } else {
+        macro_token.value.clone()
+    };
+
+    let Some(macro_def) = ctx.module.macros.get(&macro_name) else {
+        return Err(LoError {
+            message: format!("Unknown macro: {}", macro_name),
+            loc: macro_token.loc.clone(),
+        });
+    };
+
+    let mut type_scope = {
+        let mut type_args = Vec::new();
+
+        tokens.expect(Operator, "<")?;
+        while let None = tokens.eat(Operator, ">")? {
+            let macro_arg = parse_lo_type(ctx, tokens)?;
+            type_args.push(macro_arg);
+            if !tokens.next_is(Operator, ">")? {
+                tokens.expect(Delim, ",")?;
+            }
+        }
+
+        if type_args.len() != macro_def.type_params.len() {
+            return Err(LoError {
+                message: format!(
+                    "Invalid number of type params, expected {}, got {}",
+                    macro_def.type_params.len(),
+                    type_args.len()
+                ),
+                loc: macro_token.loc.clone(),
+            });
+        }
+
+        let mut type_scope = LoTypeScope::default();
+        for (name, value) in macro_def.type_params.iter().zip(type_args) {
+            type_scope.insert(name.clone(), value.clone());
+        }
+
+        type_scope
+    };
+    let return_type = macro_def.return_type.resolve_macro_type_args(&type_scope);
+
+    let macro_args = {
+        let mut args = vec![];
+        if let Some(receiver) = receiver {
+            args.push(receiver);
+        }
+        parse_fn_call_args(ctx, tokens, &mut args)?;
+
+        let mut params = Vec::new();
+        for param in &macro_def.params {
+            params.push(param.type_.resolve_macro_type_args(&type_scope));
+        }
+        typecheck_fn_call_args(ctx.module, &params, &args, &macro_name, &macro_token.loc)?;
+
+        let mut macro_args = BTreeMap::new();
+        for (param, value) in macro_def.params.iter().zip(args) {
+            macro_args.insert(param.name.clone(), value.clone());
+        }
+
+        macro_args
+    };
+
+    // TODO: this smells
+    if let Some(parent) = &ctx.block.type_scope {
+        type_scope.parent = Some(parent);
+    } else {
+        type_scope.parent = Some(&ctx.module.type_scope);
+    }
+
+    let macro_ctx = &mut BlockContext {
+        module: ctx.module,
+        fn_ctx: ctx.fn_ctx,
+        block: Block {
+            parent: Some(&ctx.block),
+            type_scope: Some(type_scope),
+            macro_args: Some(macro_args),
+            ..Default::default()
+        },
+    };
+
+    let macro_tokens = &mut macro_def.body.clone();
+    let expr = parse_expr(macro_ctx, macro_tokens, 0)?;
+    macro_tokens.expect(Delim, ";")?;
+
+    if let Some(t) = macro_tokens.peek() {
+        return Err(LoError {
+            message: format!("Macro body must contain a single expression"),
+            loc: t.loc.clone(),
+        });
+    }
+
+    let resolved_type = expr.get_type(macro_ctx.module);
+    if resolved_type != return_type {
+        return Err(LoError {
+            message: format!("Macro resolved to {resolved_type} but {return_type} was expected"),
+            loc: macro_token.loc.clone(),
+        });
+    }
+
+    return Ok(expr);
 }
 
 fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
@@ -1723,6 +1733,10 @@ fn parse_postfix(
         }
         InfixOpTag::FieldAccess => {
             let field_or_method_name = tokens.expect_any(Symbol)?.clone();
+            if let Some(_) = tokens.eat(Operator, "!")? {
+                return parse_macro_call(ctx, tokens, &field_or_method_name, Some(primary));
+            }
+
             if !tokens.next_is(Delim, "(").unwrap_or(false) {
                 let field_name = field_or_method_name;
 
@@ -1979,6 +1993,12 @@ fn parse_const_primary(
 ) -> Result<LoInstr, LoError> {
     if tokens.next_is_any(IntLiteral)? {
         return parse_const_int(tokens);
+    }
+
+    if let Some(value) = tokens.eat_any(CharLiteral)? {
+        return Ok(LoInstr::U32Const {
+            value: value.value.chars().next().unwrap() as u32,
+        });
     }
 
     if let Some(value) = tokens.eat_any(StringLiteral)? {

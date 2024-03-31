@@ -41,13 +41,13 @@ fn Map::parse(input: &String) -> Map {
         };
 
         let char = *(input.at(i) as &u8);
-        if char == char_code "#" as u8 {
+        if char == '#' as u8 {
             *(row.push() as &Tile) = Tile::TREE;
         };
-        if char == char_code "." as u8 {
+        if char == '.' as u8 {
             *(row.push() as &Tile) = Tile::EMPTY;
         };
-        if char == char_code "\n" as u8 {
+        if char == '\n' as u8 {
             *(cols.push() as & &Vec::Tile) = row;
             row = Vec::new(sizeof Tile);
         };

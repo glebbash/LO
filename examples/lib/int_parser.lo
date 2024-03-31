@@ -17,9 +17,9 @@ fn parse_u32(input: str) -> ParseIntResult {
         };
 
         let char = input.char_at(result.chars_consumed);
-        if char >= char_code "0" as u8 && char <= char_code "9" as u8 {
+        if char >= '0' as u8 && char <= '9' as u8 {
             result.value *= 10;
-            result.value += char as u32 - char_code "0";
+            result.value += char as u32 - '0';
         } else {
             break;
         };
@@ -43,12 +43,12 @@ fn parse_u32_hex(input: str) -> ParseIntResult {
 
         // TODO: consider proper `else if` support
         let char = input.char_at(result.chars_consumed);
-        if char >= char_code "0" as u8 && char <= char_code "9" as u8 {
+        if char >= '0' as u8 && char <= '9' as u8 {
             result.value *= 16;
-            result.value += char as u32 - char_code "0";
-        } else {if char >= char_code "a" as u8 && char <= char_code "f" as u8 {
+            result.value += char as u32 - '0';
+        } else {if char >= 'a' as u8 && char <= 'f' as u8 {
             result.value *= 16;
-            result.value += 11 + char as u32 - char_code "a";
+            result.value += 11 + char as u32 - 'a';
         } else {
             break;
         };};

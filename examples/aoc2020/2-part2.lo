@@ -42,24 +42,24 @@ fn main() {
 
         let char = *(input.at(i) as &u8);
         if state.step == STEP_READ_START_INDEX {
-            if char == char_code "-" as u8 {
+            if char == '-' as u8 {
                 i += 1;
                 state.step = STEP_READ_END_INDEX;
                 continue;
             };
 
             state.start_index *= 10;
-            state.start_index += char as u32 - char_code "0";
+            state.start_index += char as u32 - '0';
         };
         if state.step == STEP_READ_END_INDEX {
-            if char == char_code " " as u8 {
+            if char == ' ' as u8 {
                 i += 1;
                 state.step = STEP_READ_CHAR_TO_FIND;
                 continue;
             };
 
             state.end_index *= 10;
-            state.end_index += char as u32 - char_code "0";
+            state.end_index += char as u32 - '0';
         };
         if state.step == STEP_READ_CHAR_TO_FIND {
             state.char_to_check = char;
@@ -68,7 +68,7 @@ fn main() {
             continue;
         };
         if state.step == STEP_CHECK_PASSWORD {
-            if char == char_code "\n" as u8 {
+            if char == '\n' as u8 {
                 i += 1;
 
                 state = initial_check_state();

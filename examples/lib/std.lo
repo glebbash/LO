@@ -92,20 +92,6 @@
     let stack::BEGIN = __DATA_SIZE__; // TODO: this should be const
     const stack::END = 1_048_576; // 1MB, ~20 pages (65_536b)
 
-    fn stack::push_u32(value: u32) {
-        *(stack::alloc(sizeof u32) as &u32) = value;
-    };
-
-    fn stack::read_u32() -> u32 {
-        return *((stack::CURRENT - sizeof u32) as &u32);
-    };
-
-    fn stack::pop_u32() -> u32 {
-        stack::free(sizeof u32);
-
-        return *(stack::CURRENT as &u32);
-    };
-
     macro stack::alloc!<T>() -> &T {
         stack::alloc(sizeof T) as &T;
     };
@@ -228,6 +214,10 @@
         alloc_id: u32,
     };
 
+    macro Vec::new!<T>() -> &Vec {
+        Vec::new(sizeof T);
+    };
+
     fn Vec::new(item_size: u32) -> &Vec {
         return Vec::with_capacity(10, item_size);
     };
@@ -258,6 +248,14 @@
         free(self->alloc_id, self->data, self->capacity);
     };
 
+    macro Vec::get!<T>(&self, index: u32) -> T {
+        *(self.at(index) as &T);
+    };
+
+    macro Vec::set!<T>(&self, index: u32, item: T) {
+        *(self.at(index) as &T) = item;
+    };
+
     fn Vec::at(&self, index: u32) -> &() {
         Vec::_panic_if_out_of_bounds(self, index);
 
@@ -278,6 +276,10 @@
             (self->data as u32 + index2 * item_size) as &(),
             item_size,
         );
+    };
+
+    macro Vec::push!<T>(&self, item: T) {
+        *(self.push() as &T) = item;
     };
 
     fn Vec::push(&self) -> &() {
@@ -438,14 +440,14 @@
         let output = String::new_using(32, alloc_id);
 
         if input == 0 {
-            *(Vec::push(output) as &u8) = char_code "0" as u8;
+            *(Vec::push(output) as &u8) = '0' as u8;
             return output;
         };
 
         loop {
             let rem = input % 10;
 
-            *(Vec::push(output) as &u8) = (char_code "0" + rem) as u8;
+            *(Vec::push(output) as &u8) = ('0' + rem) as u8;
             input = input / 10;
 
             if input == 0 {
@@ -466,14 +468,14 @@
         let output = String::new_using(32, alloc_id);
 
         if input == 0u64 {
-            *(Vec::push(output) as &u8) = char_code "0" as u8;
+            *(Vec::push(output) as &u8) = '0' as u8;
             return output;
         };
 
         loop {
             let rem = input % 10u64;
 
-            *(Vec::push(output) as &u8) = (char_code "0" as u64 + rem) as u32 as u8;
+            *(Vec::push(output) as &u8) = ('0' as u64 + rem) as u32 as u8;
             input = input / 10u64;
 
             if input == 0u64 {

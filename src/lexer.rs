@@ -4,6 +4,7 @@ use alloc::{boxed::Box, format, string::String, vec::Vec};
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum LoTokenType {
     StringLiteral,
+    CharLiteral,
     IntLiteral,
     Symbol,
     Delim,
@@ -167,6 +168,9 @@ impl Lexer {
     fn lex_token(&mut self) -> LexResult {
         let char = self.current_char()?;
 
+        if char == '\'' {
+            return self.lex_char();
+        }
         if char == '"' {
             return self.lex_string();
         }
@@ -227,6 +231,46 @@ impl Lexer {
         Ok(LoToken {
             type_: LoTokenType::Symbol,
             value: self.chars[loc.offset..self.index].iter().collect(),
+            loc,
+        })
+    }
+
+    fn lex_char(&mut self) -> LexResult {
+        let mut loc = self.loc();
+
+        self.next_char(); // skip start quote
+
+        let mut value = String::new();
+
+        let c = self.current_char()?;
+        if c == '\\' {
+            self.next_char();
+            match self.current_char()? {
+                'n' => value.push('\n'),
+                't' => value.push('\t'),
+                '\\' => value.push('\\'),
+                '\'' => value.push('\''),
+                _ => {
+                    return Err(self.err_unexpected_char());
+                }
+            }
+        } else {
+            value.push(c);
+        }
+
+        self.next_char(); // skip actual character
+
+        if self.current_char()? != '\'' {
+            return Err(self.err_unexpected_char());
+        }
+
+        self.next_char(); // skip end quote
+
+        loc.end_offset = self.index;
+
+        Ok(LoToken {
+            type_: LoTokenType::CharLiteral,
+            value,
             loc,
         })
     }

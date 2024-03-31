@@ -37,11 +37,11 @@ fn parse_seat_id(input: str) -> u32 {
         };
 
         let char = input.char_at(row_i);
-        if char == char_code "F" as u8 {
+        if char == 'F' as u8 {
             row_max /= 2;
             row_hi -= row_max;
         };
-        if char == char_code "B" as u8 {
+        if char == 'B' as u8 {
             row_max /= 2;
             row_lo += row_max;
         };
@@ -59,11 +59,11 @@ fn parse_seat_id(input: str) -> u32 {
         };
 
         let char = input.char_at(col_i + 7);
-        if char == char_code "L" as u8 {
+        if char == 'L' as u8 {
             col_max /= 2;
             col_hi -= col_max;
         };
-        if char == char_code "R" as u8 {
+        if char == 'R' as u8 {
             col_max /= 2;
             col_lo += col_max;
         };

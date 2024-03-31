@@ -3,6 +3,7 @@
 
 // TODO: why this prevents random segfaults?
 import "https://esm.sh/@wasmer/wasi@1.0.0";
+import "https://esm.sh/@wasmer/wasi@1.2.0";
 // await import("segfault-handler").then((h) => h.default.registerHandler());
 
 import { WASI } from "node:wasi";
