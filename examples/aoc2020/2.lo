@@ -1,13 +1,14 @@
 include "lib/cli";
 include "lib/fs";
 
-const STEP_READ_MIN_OCCURANCES = 0;
-const STEP_READ_MAX_OCCURANCES = 1;
-const STEP_READ_CHAR_TO_COUNT = 2;
-const STEP_COUNT_OCCURANCES = 3;
+type Step = u32;
+const Step::READ_MIN_OCCURANCES = 0;
+const Step::READ_MAX_OCCURANCES = 1;
+const Step::READ_CHAR_TO_COUNT = 2;
+const Step::COUNT_OCCURANCES = 3;
 
 struct PasswordCheckState {
-    step: u32,
+    step: Step,
     min_occurances: u32,
     max_occurances: u32,
     current_occurances: u32,
@@ -16,7 +17,7 @@ struct PasswordCheckState {
 
 fn initial_check_state() -> PasswordCheckState {
     return PasswordCheckState {
-        step: STEP_READ_MIN_OCCURANCES,
+        step: Step::READ_MIN_OCCURANCES,
         min_occurances: 0,
         max_occurances: 0,
         current_occurances: 0,
@@ -32,47 +33,38 @@ fn main() {
 
     let state = initial_check_state();
 
-    let i = 0;
-    loop {
-        if i == input->size {
-            break;
-        };
-
-        let char = *(input.at(i) as &u8);
-        if state.step == STEP_READ_MIN_OCCURANCES {
+    for i in 0..input->size {
+        let char = input.get!<u8>(i);
+        if state.step == Step::READ_MIN_OCCURANCES {
             if char == '-' as u8 {
-                i += 1;
-                state.step = STEP_READ_MAX_OCCURANCES;
+                state.step = Step::READ_MAX_OCCURANCES;
                 continue;
             };
 
             state.min_occurances *= 10;
             state.min_occurances += char as u32 - '0';
         };
-        if state.step == STEP_READ_MAX_OCCURANCES {
+        if state.step == Step::READ_MAX_OCCURANCES {
             if char == ' ' as u8 {
-                i += 1;
-                state.step = STEP_READ_CHAR_TO_COUNT;
+                state.step = Step::READ_CHAR_TO_COUNT;
                 continue;
             };
 
             state.max_occurances *= 10;
             state.max_occurances += char as u32 - '0';
         };
-        if state.step == STEP_READ_CHAR_TO_COUNT {
+        if state.step == Step::READ_CHAR_TO_COUNT {
             state.char_to_count = char;
-            i += 3; // skip `${char}: `
-            state.step = STEP_COUNT_OCCURANCES;
+            i += 2; // skip `${char}: `, (+1 will be skipped by loop)
+            state.step = Step::COUNT_OCCURANCES;
             continue;
         };
-        if state.step == STEP_COUNT_OCCURANCES {
+        if state.step == Step::COUNT_OCCURANCES {
             if char == '\n' as u8 {
                 if state.current_occurances >= state.min_occurances
                 && state.current_occurances <= state.max_occurances {
                     valid_passwords_count += 1;
                 };
-
-                i += 1;
 
                 state = initial_check_state();
                 continue;
@@ -82,8 +74,6 @@ fn main() {
                 state.current_occurances += 1;
             };
         };
-
-        i += 1;
     };
 
     print_u32(valid_passwords_count);

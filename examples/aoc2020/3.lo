@@ -2,8 +2,8 @@ include "lib/cli";
 include "lib/fs";
 
 type Tile = bool;
-const Tile::TREE = 1 as Tile;
-const Tile::EMPTY = 0 as Tile;
+const Tile::TREE = true;
+const Tile::EMPTY = false;
 
 const SLOPE_I = 1;
 const SLOPE_J = 3;
@@ -23,7 +23,7 @@ fn main() {
         i += SLOPE_I;
         j += SLOPE_J;
 
-        if i == map.cols->size {
+        if i == map.rows->size {
             break;
         };
 
@@ -40,53 +40,43 @@ type Vec::Tile = Vec;
 type Vec::Vec::Tile = Vec;
 
 struct Map {
-    cols: &Vec::Vec::Tile,
+    rows: &Vec::Vec::Tile,
 };
 
 fn Map::parse(input: &String) -> Map {
-    let cols = Vec::new(sizeof &Vec::Tile);
-    let row = Vec::new(sizeof Tile);
+    let rows = Vec::new!<&Vec::Tile>();
+    let current_row = Vec::new!<Tile>();
 
-    let i = 0;
-    loop {
-        if i == input->size {
-            break;
-        };
-
-        let char = *(input.at(i) as &u8);
+    for i in 0..input->size {
+        let char = input.get!<u8>(i);
         if char == '#' as u8 {
-            *(row.push() as &Tile) = Tile::TREE;
+            current_row.push!<Tile>(Tile::TREE);
         };
         if char == '.' as u8 {
-            *(row.push() as &Tile) = Tile::EMPTY;
+            current_row.push!<Tile>(Tile::EMPTY);
         };
         if char == '\n' as u8 {
-            *(cols.push() as & &Vec::Tile) = row;
-            row = Vec::new(sizeof Tile);
+            rows.push!<&Vec::Tile>(current_row);
+            current_row = Vec::new!<Tile>();
         };
-
-        i += 1;
     };
 
-    return Map { cols: cols };
+    return Map { rows: rows };
 };
 
 fn Map::get(self, i: u32, j: u32) -> Tile {
-    let row = *(self.cols.at(i) as & &Vec::Tile);
+    // TODO: this is not working:
+    // let row = self.rows.get!<&Vec::Tile>(i);
+    let row = *(self.rows.at(i) as & &Vec::Tile);
     return *(row.at(j % row->size) as &Tile);
 };
 
 fn Map::free(self) {
-    let i = 0;
-    loop {
-        if i == self.cols->size {
-            break;
-        };
-
-        let row = *(self.cols.at(i) as & &Vec::Tile);
+    for i in 0..self.rows->size {
+        // TODO: this is not working:
+        // let row = self.rows.get!<&Vec::Tile>(i);
+        let row = *(self.rows.at(i) as & &Vec::Tile);
         row.free();
-
-        i += 1;
     };
-    self.cols.free();
+    self.rows.free();
 };

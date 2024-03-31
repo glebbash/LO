@@ -1,13 +1,14 @@
 include "lib/cli";
 include "lib/fs";
 
-const STEP_READ_START_INDEX = 0;
-const STEP_READ_END_INDEX = 1;
-const STEP_READ_CHAR_TO_FIND = 2;
-const STEP_CHECK_PASSWORD = 3;
+type Step = u32;
+const Step::READ_START_INDEX = 0;
+const Step::READ_END_INDEX = 1;
+const Step::READ_CHAR_TO_FIND = 2;
+const Step::CHECK_PASSWORD = 3;
 
 struct PasswordCheckState {
-    step: u32,
+    step: Step,
     start_index: u32,
     end_index: u32,
     current_index: u32,
@@ -17,7 +18,7 @@ struct PasswordCheckState {
 
 fn initial_check_state() -> PasswordCheckState {
     return PasswordCheckState {
-        step: STEP_READ_START_INDEX,
+        step: Step::READ_START_INDEX,
         start_index: 0,
         end_index: 0,
         current_index: 0,
@@ -34,43 +35,34 @@ fn main() {
 
     let state = initial_check_state();
 
-    let i = 0;
-    loop {
-        if i == input->size {
-            break;
-        };
-
-        let char = *(input.at(i) as &u8);
-        if state.step == STEP_READ_START_INDEX {
+    for i in 0..input->size {
+        let char = input.get!<u8>(i);
+        if state.step == Step::READ_START_INDEX {
             if char == '-' as u8 {
-                i += 1;
-                state.step = STEP_READ_END_INDEX;
+                state.step = Step::READ_END_INDEX;
                 continue;
             };
 
             state.start_index *= 10;
             state.start_index += char as u32 - '0';
         };
-        if state.step == STEP_READ_END_INDEX {
+        if state.step == Step::READ_END_INDEX {
             if char == ' ' as u8 {
-                i += 1;
-                state.step = STEP_READ_CHAR_TO_FIND;
+                state.step = Step::READ_CHAR_TO_FIND;
                 continue;
             };
 
             state.end_index *= 10;
             state.end_index += char as u32 - '0';
         };
-        if state.step == STEP_READ_CHAR_TO_FIND {
+        if state.step == Step::READ_CHAR_TO_FIND {
             state.char_to_check = char;
-            i += 3; // skip `${char}: `
-            state.step = STEP_CHECK_PASSWORD;
+            i += 2; // skip `${char}: `, (+1 will be skipped by loop)
+            state.step = Step::CHECK_PASSWORD;
             continue;
         };
-        if state.step == STEP_CHECK_PASSWORD {
+        if state.step == Step::CHECK_PASSWORD {
             if char == '\n' as u8 {
-                i += 1;
-
                 state = initial_check_state();
                 continue;
             };
@@ -88,8 +80,6 @@ fn main() {
                 };
             };
         };
-
-        i += 1;
     };
 
     print_u32(valid_passwords_count);

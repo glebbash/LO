@@ -2,8 +2,8 @@ include "lib/cli";
 include "lib/fs";
 
 type Tile = bool;
-const Tile::TREE = 1 as Tile;
-const Tile::EMPTY = 0 as Tile;
+const Tile::TREE = true;
+const Tile::EMPTY = false;
 
 fn main() {
     let input = fs::read_file("./aoc2020/3.txt");
@@ -31,28 +31,21 @@ struct Map {
 };
 
 fn Map::parse(input: &String) -> Map {
-    let cols = Vec::new(sizeof &Vec::Tile);
-    let row = Vec::new(sizeof Tile);
+    let cols = Vec::new!<&Vec::Tile>();
+    let row = Vec::new!<Tile>();
 
-    let i = 0;
-    loop {
-        if i == input->size {
-            break;
-        };
-
-        let char = *(input.at(i) as &u8);
+    for i in 0..input->size {
+        let char = input.get!<u8>(i);
         if char == '#' as u8 {
-            *(row.push() as &Tile) = Tile::TREE;
+            row.push!<Tile>(Tile::TREE);
         };
         if char == '.' as u8 {
-            *(row.push() as &Tile) = Tile::EMPTY;
+            row.push!<Tile>(Tile::EMPTY);
         };
         if char == '\n' as u8 {
-            *(cols.push() as & &Vec::Tile) = row;
-            row = Vec::new(sizeof Tile);
+            cols.push!<&Vec::Tile>(row);
+            row = Vec::new!<Tile>();
         };
-
-        i += 1;
     };
 
     return Map { cols: cols };
@@ -80,21 +73,18 @@ fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32) -> u32 {
 };
 
 fn Map::get(self, i: u32, j: u32) -> Tile {
+    // TODO: this is not working:
+    // let row = self.rows.get!<&Vec::Tile>(i);
     let row = *(self.cols.at(i) as & &Vec::Tile);
     return *(row.at(j % row->size) as &Tile);
 };
 
 fn Map::free(self) {
-    let i = 0;
-    loop {
-        if i == self.cols->size {
-            break;
-        };
-
+    for i in 0..self.cols->size {
+        // TODO: this is not working:
+        // let row = self.rows.get!<&Vec::Tile>(i);
         let row = *(self.cols.at(i) as & &Vec::Tile);
         row.free();
-
-        i += 1;
     };
     self.cols.free();
 };

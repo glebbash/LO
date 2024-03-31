@@ -9,38 +9,24 @@ fn main() {
     let input = str::from_string(input_buf);
 
     let tickets_count = input.size / 11; // 10 chars seat + newline
-    let seat_ids = Vec::with_capacity(tickets_count, sizeof u32);
+    let seat_ids = Vec::with_capacity!<u32>(tickets_count);
 
-    let i = 0;
-    loop {
-        if i == tickets_count {
-            break;
-        };
-
+    for i in 0..tickets_count {
         let seat_id = parse_seat_id(input.skip_chars(i * 11));
-        *(seat_ids.push() as &u32) = seat_id;
-
-        i += 1;
+        seat_ids.push!<u32>(seat_id);
     };
 
     bubble_sort(seat_ids);
 
     let prev_seat_id = 0;
 
-    i = 0;
-    loop {
-        if i == tickets_count {
-            break;
-        };
-
-        let seat_id = *(seat_ids.at(i) as &u32);
+    for i in 0..tickets_count {
+        let seat_id = seat_ids.get!<u32>(i);
         if prev_seat_id + 2 == seat_id {
             print_u32(prev_seat_id + 1); puts("\n");
             break;
         };
         prev_seat_id = seat_id;
-
-        i += 1;
     };
 };
 
@@ -50,21 +36,14 @@ fn bubble_sort(items: &Vec_u32) {
     loop {
         let swapped = false;
 
-        let i = 1;
-        loop {
-            if i == n {
-                break;
-            };
-
-            let a = *(items.at(i - 1) as &u32);
-            let b = *(items.at(i) as &u32);
+        for i in 1..n {
+            let a = items.get!<u32>(i - 1);
+            let b = items.get!<u32>(i);
             if a > b {
-                *(items.at(i - 1) as &u32) = b;
-                *(items.at(i) as &u32) = a;
+                items.set!<u32>(i - 1, b);
+                items.set!<u32>(i, a);
                 swapped = true;
             };
-
-            i += 1;
         };
 
         if !swapped {
@@ -77,12 +56,7 @@ fn parse_seat_id(input: str) -> u32 {
     let row_max = 128;
     let row_hi = row_max - 1;
     let row_lo = 0;
-    let row_i = 0;
-    loop {
-        if row_i == 7 {
-            break;
-        };
-
+    for row_i in 0..7 {
         let char = input.char_at(row_i);
         if char == 'F' as u8 {
             row_max /= 2;
@@ -92,19 +66,12 @@ fn parse_seat_id(input: str) -> u32 {
             row_max /= 2;
             row_lo += row_max;
         };
-
-        row_i += 1;
     };
 
     let col_max = 8;
     let col_hi = col_max - 1;
     let col_lo = 0;
-    let col_i = 0;
-    loop {
-        if col_i == 3 {
-            break;
-        };
-
+    for col_i in 0..3 {
         let char = input.char_at(col_i + 7);
         if char == 'L' as u8 {
             col_max /= 2;
@@ -114,8 +81,6 @@ fn parse_seat_id(input: str) -> u32 {
             col_max /= 2;
             col_lo += col_max;
         };
-
-        col_i += 1;
     };
 
     let seat_id = row_lo * 8 + col_lo;

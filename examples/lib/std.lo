@@ -226,6 +226,10 @@
         return Vec::with_capacity_using(10, item_size, alloc_id);
     };
 
+    macro Vec::with_capacity!<T>(capacity: u32) -> &Vec {
+        Vec::with_capacity(capacity, sizeof T);
+    };
+
     fn Vec::with_capacity(capacity: u32, item_size: u32) -> &Vec {
         return Vec::with_capacity_using(capacity, item_size, ALLOC_HEAP);
     };

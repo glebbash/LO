@@ -9,18 +9,11 @@ fn main() {
     let tickets_count = input.size / 11; // 10 chars seat + newline
     let max_seat_id = 0;
 
-    let i = 0;
-    loop {
-        if i == tickets_count {
-            break;
-        };
-
+    for i in 0..tickets_count {
         let seat_id = parse_seat_id(input.skip_chars(i * 11));
         if seat_id >= max_seat_id {
             max_seat_id = seat_id;
         };
-
-        i += 1;
     };
 
     print_u32(max_seat_id); puts("\n");
@@ -30,12 +23,7 @@ fn parse_seat_id(input: str) -> u32 {
     let row_max = 128;
     let row_hi = row_max - 1;
     let row_lo = 0;
-    let row_i = 0;
-    loop {
-        if row_i == 7 {
-            break;
-        };
-
+    for row_i in 0..7 {
         let char = input.char_at(row_i);
         if char == 'F' as u8 {
             row_max /= 2;
@@ -45,19 +33,12 @@ fn parse_seat_id(input: str) -> u32 {
             row_max /= 2;
             row_lo += row_max;
         };
-
-        row_i += 1;
     };
 
     let col_max = 8;
     let col_hi = col_max - 1;
     let col_lo = 0;
-    let col_i = 0;
-    loop {
-        if col_i == 3 {
-            break;
-        };
-
+    for col_i in 0..3 {
         let char = input.char_at(col_i + 7);
         if char == 'L' as u8 {
             col_max /= 2;
@@ -67,8 +48,6 @@ fn parse_seat_id(input: str) -> u32 {
             col_max /= 2;
             col_lo += col_max;
         };
-
-        col_i += 1;
     };
 
     let seat_id = row_lo * 8 + col_lo;
