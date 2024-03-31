@@ -29,7 +29,7 @@ export fn _start() {
     };
 
     let binary = exec_pipeline(file_name, source) catch |err_message| {
-        *(message.push() as &u8) = '\n' as u8;
+        message.push!<u8>('\n' as u8);
         fputs(wasi::FD_STDERR, message.as_str());
         proc_exit(1);
     };
@@ -57,7 +57,7 @@ export fn compile(file_name: str, script: str) -> ParseResult {
 fn exec_pipeline(file_name: str, script: str) -> Result_Vec_u8_String {
     let tokens = lexer::lex_all(file_name, script)?;
     let module = parser::parse(tokens)?;
-    let binary = Vec::new();
+    let binary = Vec::new!<u8>();
     module.dump(binary);
     return Ok(binary);
 };

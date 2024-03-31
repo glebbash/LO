@@ -17,8 +17,16 @@
 
 // alloc
 
-    const ALLOC_STACK = 0;
-    const ALLOC_HEAP  = 1;
+    const alloc::STACK = 0;
+    const alloc::HEAP  = 1;
+
+    macro alloc!<T>(alloc_id: u32) -> &T {
+        alloc(alloc_id, sizeof T) as &T;
+    };
+
+    macro alloc_many!<T>(alloc_id: u32, count: u32) -> &*T {
+        alloc(alloc_id, count * sizeof T) as &*T;
+    };
 
     fn alloc(alloc_id: u32, size: u32) -> &() {
         if alloc_id == 0 {
@@ -26,6 +34,14 @@
         };
 
         return heap::alloc(size);
+    };
+
+    macro free!<T>(alloc_id: u32, ptr: &T) {
+        free(alloc_id, ptr as &(), sizeof T);
+    };
+
+    macro free_many!<T>(alloc_id: u32, ptr: &*T, count: u32) {
+        free(alloc_id, ptr as &(), count * sizeof T);
     };
 
     fn free(alloc_id: u32, ptr: &(), size: u32) {
@@ -231,12 +247,12 @@
     };
 
     fn Vec::with_capacity(capacity: u32, item_size: u32) -> &Vec {
-        return Vec::with_capacity_using(capacity, item_size, ALLOC_HEAP);
+        return Vec::with_capacity_using(capacity, item_size, alloc::HEAP);
     };
 
     fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32) -> &Vec {
-        // TODO: look into `new`
-        let self_ptr = alloc(alloc_id, sizeof Vec) as &Vec;
+        // TODO: look into `new` keyword
+        let self_ptr = alloc!<Vec>(alloc_id);
         *self_ptr = Vec {
             data: alloc(alloc_id, capacity * item_size),
             size: 0,
@@ -248,7 +264,7 @@
     };
 
     fn Vec::free(&self) {
-        free(self->alloc_id, self as &(), sizeof Vec);
+        free!<Vec>(self->alloc_id, self);
         free(self->alloc_id, self->data, self->capacity);
     };
 
@@ -257,7 +273,7 @@
     };
 
     macro Vec::set!<T>(&self, index: u32, item: T) {
-        *(self.at(index) as &T) = item;
+        self.get!<T>(index) = item;
     };
 
     fn Vec::at(&self, index: u32) -> &() {
@@ -271,8 +287,8 @@
     };
 
     fn Vec::swap(&self, index1: u32, index2: u32) {
-        Vec::_panic_if_out_of_bounds(self, index1);
-        Vec::_panic_if_out_of_bounds(self, index2);
+        self._panic_if_out_of_bounds(index1);
+        self._panic_if_out_of_bounds(index2);
 
         let item_size = self->item_size;
         mem::swap(
@@ -288,16 +304,16 @@
 
     fn Vec::push(&self) -> &() {
         self->size += 1;
-        Vec::_grow_if_needed(self);
+        self._grow_if_needed();
 
-        return Vec::at_unchecked(self, self->size - 1);
+        return self.at_unchecked(self->size - 1);
     };
 
     fn Vec::push_all(&self, items: &(), items_len: u32) {
         let old_len = self->size;
         self->size = old_len + items_len;
 
-        Vec::_grow_if_needed(self);
+        self._grow_if_needed();
 
         mem::copy(
             items,
@@ -307,13 +323,13 @@
     };
 
     fn Vec::append(&self, other: &Vec) {
-        Vec::push_all(self, other->data, other->size);
+        self.push_all(other->data, other->size);
         other->size = 0;
     };
 
     fn Vec::pop_unchecked(&self) -> &() {
         self->size -= 1;
-        return Vec::at_unchecked(self, self->size);
+        return self.at_unchecked(self->size);
     };
 
     fn Vec::reverse(&self) {
@@ -325,7 +341,7 @@
                 break;
             };
 
-            Vec::swap(self, start, end);
+            self.swap(start, end);
             start += 1;
             end -= 1;
         };
@@ -336,7 +352,7 @@
             return;
         };
 
-        if self->alloc_id == ALLOC_STACK {
+        if self->alloc_id == alloc::STACK {
             panic("Attempt to grow stack allocated vector");
         };
 
@@ -363,7 +379,7 @@
     type String = Vec::u8;
 
     fn String::new(capacity: u32) -> &String {
-        return Vec::with_capacity(capacity, sizeof u8);
+        return Vec::with_capacity!<u8>(capacity);
     };
 
     fn String::new_using(capacity: u32, alloc_id: u32) -> &String {
@@ -379,7 +395,7 @@
 
     fn String::from_str(value: str) -> &String {
         let string = String::new(value.size);
-        Vec::push_all(string, value.data as &(), value.size);
+        string.push_all(value.data as &(), value.size);
         return string;
     };
 
@@ -394,7 +410,7 @@
     };
 
     fn str::clone(self) -> str {
-        let cloned_data = heap::alloc(self.size) as &*u8;
+        let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size);
         mem::copy(self.data as &(), cloned_data as &(), self.size);
         return str {
             data: cloned_data,
@@ -437,21 +453,21 @@
 // conversions
 
     fn u32::to_string(input: u32) -> &String {
-        return u32::to_string_using(input, ALLOC_HEAP);
+        return u32::to_string_using(input, alloc::HEAP);
     };
 
     fn u32::to_string_using(input: u32, alloc_id: u32) -> &String {
         let output = String::new_using(32, alloc_id);
 
         if input == 0 {
-            *(Vec::push(output) as &u8) = '0' as u8;
+            output.push!<u8>('0' as u8);
             return output;
         };
 
         loop {
             let rem = input % 10;
 
-            *(Vec::push(output) as &u8) = ('0' + rem) as u8;
+            output.push!<u8>(('0' + rem) as u8);
             input = input / 10;
 
             if input == 0 {
@@ -459,27 +475,27 @@
             };
         };
 
-        Vec::reverse(output);
+        output.reverse();
 
         return output;
     };
 
     fn u64::to_string(input: u64) -> &String {
-        return u64::to_string_using(input, ALLOC_HEAP);
+        return u64::to_string_using(input, alloc::HEAP);
     };
 
     fn u64::to_string_using(input: u64, alloc_id: u32) -> &String {
         let output = String::new_using(32, alloc_id);
 
         if input == 0u64 {
-            *(Vec::push(output) as &u8) = '0' as u8;
+            output.push!<u8>('0' as u8);
             return output;
         };
 
         loop {
             let rem = input % 10u64;
 
-            *(Vec::push(output) as &u8) = ('0' as u64 + rem) as u32 as u8;
+            output.push!<u8>(('0' + rem as u32) as u8);
             input = input / 10u64;
 
             if input == 0u64 {
@@ -487,7 +503,7 @@
             };
         };
 
-        Vec::reverse(output);
+        output.reverse();
 
         return output;
     };

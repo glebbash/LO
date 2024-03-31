@@ -601,11 +601,18 @@ impl LoInstr {
             LoInstr::MemorySize => LoType::I32,
             LoInstr::MemoryGrow { size: _ } => LoType::I32,
 
-            LoInstr::BinaryOp {
-                kind: _,
-                lhs,
-                rhs: _,
-            } => lhs.get_type(ctx),
+            LoInstr::BinaryOp { kind, lhs, rhs: _ } => match kind {
+                WasmBinaryOpKind::I32Equal
+                | WasmBinaryOpKind::I32LessThenUnsigned
+                | WasmBinaryOpKind::I32LessEqualUnsigned
+                | WasmBinaryOpKind::I32GreaterThanUnsigned
+                | WasmBinaryOpKind::I32GreaterEqualUnsigned
+                | WasmBinaryOpKind::I32NotEqual
+                | WasmBinaryOpKind::I32And
+                | WasmBinaryOpKind::I32Or
+                | WasmBinaryOpKind::I64Equal => LoType::Bool,
+                _ => lhs.get_type(ctx),
+            },
             LoInstr::Load {
                 kind,
                 align: _,

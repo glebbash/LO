@@ -25,8 +25,8 @@ struct fs::FdOpenRes {
 };
 
 fn fs::open(file_path: str) -> fs::FdOpenRes {
-    let fd_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer free(ALLOC_STACK, fd_ref as &(), sizeof u32);
+    let fd_ref = alloc!<u32>(alloc::STACK);
+    defer free!<u32>(alloc::STACK, fd_ref);
 
     let err = wasi::path_open(
         fs::CWD_PREOPEN_FD, 0,
@@ -38,18 +38,18 @@ fn fs::open(file_path: str) -> fs::FdOpenRes {
 };
 
 fn fs::read_fd(fd: u32) -> &String {
-    let output = Vec::with_capacity(256, sizeof u8);
+    let output = Vec::with_capacity!<u8>(256);
 
-    // TODO(bug): ALLOC_STACK is messing stuff up for some reason
-    let chunk = alloc(ALLOC_HEAP, 256) as &*u8;
-    defer free(ALLOC_HEAP, chunk as &(), 256);
+    // TODO(bug): alloc::STACK is messing stuff up for some reason
+    let chunk = alloc_many!<u8>(alloc::HEAP, 256);
+    defer free_many!<u8>(alloc::HEAP, chunk, 256);
 
-    let in_vec = alloc(ALLOC_STACK, sizeof wasi::IOVec) as &wasi::IOVec;
+    let in_vec = alloc!<wasi::IOVec>(alloc::STACK);
+    defer free!<wasi::IOVec>(alloc::STACK, in_vec);
     *in_vec = wasi::IOVec { base: chunk, size: 256 };
-    defer free(ALLOC_STACK, in_vec as &(), sizeof wasi::IOVec);
 
-    let nread_ref = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer stack::free(sizeof u32);
+    let nread_ref = alloc!<u32>(alloc::STACK);
+    defer free!<u32>(alloc::STACK, nread_ref);
 
     loop {
         let _err = wasi::fd_read(fd, in_vec, 1, nread_ref);
@@ -59,7 +59,7 @@ fn fs::read_fd(fd: u32) -> &String {
             break;
         };
 
-        Vec::push_all(output, chunk as &(), nread);
+        output.push_all(chunk as &(), nread);
     };
 
     return output;
@@ -67,15 +67,15 @@ fn fs::read_fd(fd: u32) -> &String {
 
 
 fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
-    let chunk = stack::alloc(chunk_size) as &*u8;
-    defer stack::free(chunk_size);
+    let chunk = alloc_many!<u8>(alloc::STACK, chunk_size);
+    defer free_many!<u8>(alloc::STACK, chunk, chunk_size);
 
-    let iov = alloc(ALLOC_STACK, sizeof wasi::IOVec) as &wasi::IOVec;
+    let iov = alloc!<wasi::IOVec>(alloc::STACK);
+    defer free!<wasi::IOVec>(alloc::STACK, iov);
     *iov = wasi::IOVec { base: chunk, size: 0 };
-    defer free(ALLOC_STACK, iov as &(), sizeof wasi::IOVec);
 
-    let nread_ref = stack::alloc(sizeof u32) as &u32;
-    defer stack::free(sizeof u32);
+    let nread_ref = alloc!<u32>(alloc::STACK);
+    defer free!<u32>(alloc::STACK, nread_ref);
 
     loop {
         iov->size = chunk_size;

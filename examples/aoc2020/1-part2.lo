@@ -33,13 +33,13 @@ fn parse_numbers(input: &String) -> &Vec::u32 {
     let current_number = 0;
 
     for i in 0..input->size {
-        let char = input.get!<u8>(i);
+        let char = input.get!<u8>(i) as u32;
         if char >= '0' && char <= '9' {
             current_number *= 10;
-            current_number += char as u32 - '0';
+            current_number += char - '0';
         };
 
-        if char == '\n' as u8 {
+        if char == '\n' {
             numbers.push!<u32>(current_number);
             current_number = 0;
         };

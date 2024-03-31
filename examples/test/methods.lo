@@ -1,4 +1,4 @@
-export fn main() -> u32 {
+export fn main() -> bool {
     return 5.squared() == 25
         && u32::squared(5) == 25;
 };

@@ -12,7 +12,7 @@ struct PasswordCheckState {
     min_occurances: u32,
     max_occurances: u32,
     current_occurances: u32,
-    char_to_count: u8,
+    char_to_count: u32,
 };
 
 fn initial_check_state() -> PasswordCheckState {
@@ -21,7 +21,7 @@ fn initial_check_state() -> PasswordCheckState {
         min_occurances: 0,
         max_occurances: 0,
         current_occurances: 0,
-        char_to_count: 0 as u8,
+        char_to_count: 0,
     };
 };
 
@@ -34,24 +34,24 @@ fn main() {
     let state = initial_check_state();
 
     for i in 0..input->size {
-        let char = input.get!<u8>(i);
+        let char = input.get!<u8>(i) as u32;
         if state.step == Step::READ_MIN_OCCURANCES {
-            if char == '-' as u8 {
+            if char == '-' {
                 state.step = Step::READ_MAX_OCCURANCES;
                 continue;
             };
 
             state.min_occurances *= 10;
-            state.min_occurances += char as u32 - '0';
+            state.min_occurances += char - '0';
         };
         if state.step == Step::READ_MAX_OCCURANCES {
-            if char == ' ' as u8 {
+            if char == ' ' {
                 state.step = Step::READ_CHAR_TO_COUNT;
                 continue;
             };
 
             state.max_occurances *= 10;
-            state.max_occurances += char as u32 - '0';
+            state.max_occurances += char - '0';
         };
         if state.step == Step::READ_CHAR_TO_COUNT {
             state.char_to_count = char;
@@ -60,7 +60,7 @@ fn main() {
             continue;
         };
         if state.step == Step::COUNT_OCCURANCES {
-            if char == '\n' as u8 {
+            if char == '\n' {
                 if state.current_occurances >= state.min_occurances
                 && state.current_occurances <= state.max_occurances {
                     valid_passwords_count += 1;

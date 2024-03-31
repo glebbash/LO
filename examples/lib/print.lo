@@ -5,8 +5,8 @@ fn puts(value: str) {
     return fputs(wasi::FD_STDOUT, value);
 };
 fn fputs(fd: u32, value: str) {
-    let value_ptr = alloc(ALLOC_STACK, sizeof str) as &str;
-    defer free(ALLOC_STACK, value_ptr as &(), sizeof str);
+    let value_ptr = alloc(alloc::STACK, sizeof str) as &str;
+    defer free(alloc::STACK, value_ptr as &(), sizeof str);
     *value_ptr = value;
 
     fprint_str(fd, value_ptr);
@@ -16,7 +16,7 @@ fn print_u32(num: u32) {
     return fprint_u32(wasi::FD_STDOUT, num);
 };
 fn fprint_u32(fd: u32, num: u32) {
-    let out = u32::to_string_using(num, ALLOC_STACK);
+    let out = u32::to_string_using(num, alloc::STACK);
     defer out.free();
 
     fprint_str(fd, out as &str);
@@ -26,7 +26,7 @@ fn print_u64(num: u64) {
     return fprint_u64(wasi::FD_STDOUT, num);
 };
 fn fprint_u64(fd: u32, num: u64) {
-    let out = u64::to_string_using(num, ALLOC_STACK);
+    let out = u64::to_string_using(num, alloc::STACK);
     defer out.free();
 
     fprint_str(fd, out as &str);
@@ -36,8 +36,8 @@ fn print_str(value: &str) {
     return fprint_str(wasi::FD_STDOUT, value);
 };
 fn fprint_str(fd: u32, value: &str) {
-    let nwritten = alloc(ALLOC_STACK, sizeof u32) as &u32;
-    defer free(ALLOC_STACK, nwritten as &(), sizeof u32);
+    let nwritten = alloc(alloc::STACK, sizeof u32) as &u32;
+    defer free(alloc::STACK, nwritten as &(), sizeof u32);
 
     let _ = wasi::fd_write(fd, value as &wasi::IOVec, 1, nwritten);
 };

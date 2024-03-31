@@ -48,14 +48,14 @@ fn Map::parse(input: &String) -> Map {
     let current_row = Vec::new!<Tile>();
 
     for i in 0..input->size {
-        let char = input.get!<u8>(i);
-        if char == '#' as u8 {
+        let char = input.get!<u8>(i) as u32;
+        if char == '#' {
             current_row.push!<Tile>(Tile::TREE);
         };
-        if char == '.' as u8 {
+        if char == '.' {
             current_row.push!<Tile>(Tile::EMPTY);
         };
-        if char == '\n' as u8 {
+        if char == '\n' {
             rows.push!<&Vec::Tile>(current_row);
             current_row = Vec::new!<Tile>();
         };
