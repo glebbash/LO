@@ -16,7 +16,7 @@ fn main() {
             break;
         };
 
-        let a = *(numbers.at(i) as &u32);
+        let a = numbers.get!<u32>(i);
 
         let j = 0;
         loop {
@@ -24,7 +24,7 @@ fn main() {
                 break;
             };
 
-            let b = *(numbers.at(j) as &u32);
+            let b = numbers.get!<u32>(j);
 
             let k = 0;
             loop {
@@ -32,7 +32,7 @@ fn main() {
                     break;
                 };
 
-                let c = *(numbers.at(k) as &u32);
+                let c = numbers.get!<u32>(k);
                 if a + b + c == 2020 {
                     print_u32(a * b * c);
                     puts("\n");
