@@ -3,7 +3,7 @@ include "lib/wasi";
 
 struct args {
     argc: u32,
-    argv: &* &*u8,
+    argv: &*&*u8,
     argv_buf: &*u8,
 };
 
@@ -30,7 +30,7 @@ fn args::load() -> args {
 };
 
 fn args::get(self, i: u32) -> str {
-    let arg = *((self.argv as u32 + i * sizeof &*u8) as &* &*u8);
+    let arg = *((self.argv as u32 + i * sizeof &*u8) as &*&*u8);
     return cstr_to_str(arg);
 };
 
