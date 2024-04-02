@@ -283,9 +283,9 @@ fn parse_top_level_expr(
     if let Some(_) = tokens.eat(Symbol, "struct")? {
         let struct_name = parse_nested_symbol(tokens)?;
 
-        if ctx.struct_defs.contains_key(&struct_name.value) {
+        if let Some(_) = ctx.type_scope.get(&struct_name.value) {
             return Err(LoError {
-                message: format!("Cannot redefine struct {}", struct_name.value),
+                message: format!("Cannot redefine type {}", struct_name.value),
                 loc: struct_name.loc,
             });
         }
@@ -367,7 +367,7 @@ fn parse_top_level_expr(
 
         if let Some(_) = ctx.type_scope.get(&type_alias.value) {
             return Err(LoError {
-                message: format!("Duplicate type alias: {}", type_alias.value),
+                message: format!("Cannot redefine type: {}", type_alias.value),
                 loc: type_alias.loc.clone(),
             });
         }
