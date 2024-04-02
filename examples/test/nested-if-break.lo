@@ -1,4 +1,4 @@
-export fn main() -> u32 {
+export fn main(): u32 {
     loop {
         if true {
             if true {

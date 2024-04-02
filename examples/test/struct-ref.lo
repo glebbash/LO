@@ -5,7 +5,7 @@ struct Point2D {
     y: u32,
 };
 
-export fn main() -> u32 {
+export fn main(): u32 {
     let p = 0 as &Point2D;
 
     *p = Point2D { x: 1, y: 2 };
@@ -13,6 +13,6 @@ export fn main() -> u32 {
     return p.x + p.get_y();
 };
 
-fn Point2D::get_y(&self) -> u32 {
+fn Point2D::get_y(&self): u32 {
     return self.y;
 };

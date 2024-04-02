@@ -1,5 +1,5 @@
 import from "wasi_snapshot_preview1" {
-    fn fd_write(fd: u32, iovs: &(), iovs_len: u32, nwritten: u32) -> u32;
+    fn fd_write(fd: u32, iovs: &(), iovs_len: u32, nwritten: u32): u32;
 };
 
 export memory { min_pages: 1 };

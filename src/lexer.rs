@@ -482,7 +482,6 @@ static OPERATORS: &[&str] = &[
     "^=",  // Bitwise exclusive OR and assignment
     "|",   // Bitwise OR
     "|=",  // Bitwise OR and assignment
-    "->",  // Function return type
     ".",   // Member access
     "..",  // Range operator
     ":",   // Type separator

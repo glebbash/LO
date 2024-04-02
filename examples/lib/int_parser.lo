@@ -5,7 +5,7 @@ struct ParseIntResult {
     chars_consumed: u32,
 };
 
-fn parse_u32(input: str) -> ParseIntResult {
+fn parse_u32(input: str): ParseIntResult {
     let result = ParseIntResult {
         value: 0,
         chars_consumed: 0,
@@ -30,7 +30,7 @@ fn parse_u32(input: str) -> ParseIntResult {
     return result;
 };
 
-fn parse_u32_hex(input: str) -> ParseIntResult {
+fn parse_u32_hex(input: str): ParseIntResult {
     let result = ParseIntResult {
         value: 0,
         chars_consumed: 0,

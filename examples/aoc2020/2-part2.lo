@@ -16,7 +16,7 @@ struct PasswordCheckState {
     char_to_check: u32,
 };
 
-fn initial_check_state() -> PasswordCheckState {
+fn initial_check_state(): PasswordCheckState {
     return PasswordCheckState {
         step: Step::READ_START_INDEX,
         start_index: 0,

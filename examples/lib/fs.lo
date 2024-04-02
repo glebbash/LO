@@ -6,7 +6,7 @@ struct fs {};
 const fs::CWD_PREOPEN_FD = 3;
 
 // TODO: return errors instead of exiting with logs
-fn fs::read_file(file_name: str) -> &String {
+fn fs::read_file(file_name: str): &String {
     let open_res = fs::open(file_name);
     if open_res.err != 0 {
         fputs(wasi::FD_STDERR, "Error opening file: ");
@@ -24,7 +24,7 @@ struct fs::FdOpenRes {
     fd: u32,
 };
 
-fn fs::open(file_path: str) -> fs::FdOpenRes {
+fn fs::open(file_path: str): fs::FdOpenRes {
     let fd_ref = alloc!<u32>(alloc::STACK);
     defer free!<u32>(alloc::STACK, fd_ref);
 
@@ -37,7 +37,7 @@ fn fs::open(file_path: str) -> fs::FdOpenRes {
     return fs::FdOpenRes { err: err, fd: *fd_ref };
 };
 
-fn fs::read_fd(fd: u32) -> &String {
+fn fs::read_fd(fd: u32): &String {
     let output = Vec::with_capacity!<u8>(256);
 
     // TODO(bug): alloc::STACK is messing stuff up for some reason
@@ -66,7 +66,7 @@ fn fs::read_fd(fd: u32) -> &String {
 };
 
 
-fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
+fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): bool {
     let chunk = alloc_many!<u8>(alloc::STACK, chunk_size);
     defer free_many!<u8>(alloc::STACK, chunk, chunk_size);
 

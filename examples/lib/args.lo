@@ -7,7 +7,7 @@ struct args {
     argv_buf: &*u8,
 };
 
-fn args::load() -> args {
+fn args::load(): args {
     let argc_ref = stack::alloc!<u32>();
     defer stack::free!<u32>();
 
@@ -29,7 +29,7 @@ fn args::load() -> args {
     };
 };
 
-fn args::get(self, i: u32) -> str {
+fn args::get(self, i: u32): str {
     let arg = *((self.argv as u32 + i * sizeof &*u8) as &*&*u8);
     return cstr_to_str(arg);
 };

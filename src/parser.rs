@@ -600,7 +600,7 @@ fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Resul
     }
 
     let params = parse_fn_params(ctx, &new_type_scope, tokens, &receiver_type)?;
-    let return_type = if let Some(_) = tokens.eat(Operator, "->")? {
+    let return_type = if let Some(_) = tokens.eat(Operator, ":")? {
         parse_lo_type_(ctx, &new_type_scope, tokens, false)?
     } else {
         LoType::Void
@@ -665,7 +665,7 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
         fn_decl.lo_type.inputs.push(param.type_);
     }
 
-    let lo_output = if let Some(_) = tokens.eat(Operator, "->")? {
+    let lo_output = if let Some(_) = tokens.eat(Operator, ":")? {
         parse_const_lo_type(ctx, tokens)?
     } else {
         LoType::Void

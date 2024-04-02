@@ -5,11 +5,11 @@ struct StrCutter {
     rest: str,
 };
 
-fn StrCutter::new(source: str) -> StrCutter {
+fn StrCutter::new(source: str): StrCutter {
     return StrCutter { piece: "" as str, rest: source };
 };
 
-fn StrCutter::cut_at(self, delim: str) -> StrCutter {
+fn StrCutter::cut_at(self, delim: str): StrCutter {
     let cut_start = 0;
     let cut_width = 0;
     loop {

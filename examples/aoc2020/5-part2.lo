@@ -52,7 +52,7 @@ fn bubble_sort(items: &Vec_u32) {
     };
 };
 
-fn parse_seat_id(input: str) -> u32 {
+fn parse_seat_id(input: str): u32 {
     let row_max = 128;
     let row_hi = row_max - 1;
     let row_lo = 0;

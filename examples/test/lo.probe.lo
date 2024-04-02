@@ -36,7 +36,7 @@ export fn _start() {
     puts(binary.as_str());
 };
 
-export fn mem_alloc(length: u32) -> &() {
+export fn mem_alloc(length: u32): &() {
     return heap::alloc(length);
 };
 
@@ -50,11 +50,11 @@ struct ParseResult {
     size: u32,
 };
 
-export fn compile(file_name: str, script: str) -> ParseResult {
+export fn compile(file_name: str, script: str): ParseResult {
     return ParseResult::from(exec_pipeline(file_name, script));
 };
 
-fn exec_pipeline(file_name: str, script: str) -> Result_Vec_u8_String {
+fn exec_pipeline(file_name: str, script: str): Result_Vec_u8_String {
     let tokens = lexer::lex_all(file_name, script)?;
     let module = parser::parse(tokens)?;
     let binary = Vec::new!<u8>();

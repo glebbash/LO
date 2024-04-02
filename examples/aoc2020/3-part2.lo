@@ -30,7 +30,7 @@ struct Map {
     cols: &Vec::Vec::Tile,
 };
 
-fn Map::parse(input: &String) -> Map {
+fn Map::parse(input: &String): Map {
     let cols = Vec::new!<&Vec::Tile>();
     let row = Vec::new!<Tile>();
 
@@ -51,7 +51,7 @@ fn Map::parse(input: &String) -> Map {
     return Map { cols: cols };
 };
 
-fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32) -> u32 {
+fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
     let tree_count = 0;
     let i = 0;
     let j = 0;
@@ -72,7 +72,7 @@ fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32) -> u32 {
     return tree_count;
 };
 
-fn Map::get(self, i: u32, j: u32) -> Tile {
+fn Map::get(self, i: u32, j: u32): Tile {
     // TODO: this is not working:
     // let row = self.rows.get!<&Vec::Tile>(i);
     let row = *(self.cols.at(i) as & &Vec::Tile);

@@ -43,7 +43,7 @@ struct Map {
     rows: &Vec::Vec::Tile,
 };
 
-fn Map::parse(input: &String) -> Map {
+fn Map::parse(input: &String): Map {
     let rows = Vec::new!<&Vec::Tile>();
     let current_row = Vec::new!<Tile>();
 
@@ -64,7 +64,7 @@ fn Map::parse(input: &String) -> Map {
     return Map { rows: rows };
 };
 
-fn Map::get(self, i: u32, j: u32) -> Tile {
+fn Map::get(self, i: u32, j: u32): Tile {
     // TODO: this is not working:
     // let row = self.rows.get!<&Vec::Tile>(i);
     let row = *(self.rows.at(i) as & &Vec::Tile);

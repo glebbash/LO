@@ -1,8 +1,8 @@
-export fn main() -> bool {
+export fn main(): bool {
     return 5.squared() == 25
         && u32::squared(5) == 25;
 };
 
-fn u32::squared(self) -> u32 {
+fn u32::squared(self): u32 {
     return self * self;
 };

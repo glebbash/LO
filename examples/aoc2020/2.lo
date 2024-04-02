@@ -15,7 +15,7 @@ struct PasswordCheckState {
     char_to_count: u32,
 };
 
-fn initial_check_state() -> PasswordCheckState {
+fn initial_check_state(): PasswordCheckState {
     return PasswordCheckState {
         step: Step::READ_MIN_OCCURANCES,
         min_occurances: 0,

@@ -5,7 +5,7 @@
 // - throwable values must be fittable into `u32`, where 0 would indicate the absence of an error
 //   - error codes fit nicely
 //   - other errors should be passed by a nullabe pointer
-fn fs::open_file(file_path: str) -> u32 throws wasi::Err {
+fn fs::open_file(file_path: str): u32 throws wasi::Err {
     // ...
 
     if err != wasi::Err::SUCCESS { // 0
@@ -15,7 +15,7 @@ fn fs::open_file(file_path: str) -> u32 throws wasi::Err {
     return *fd_ref;
 };
 
-fn fs::read_file(file_name: str) -> &String {
+fn fs::read_file(file_name: str): &String {
     let fd = try fs::open_file(file_name) catch err {
         fputs(wasi::FD_STDERR, "Error opening file: ");
         fputs(wasi::FD_STDERR, file_name);
