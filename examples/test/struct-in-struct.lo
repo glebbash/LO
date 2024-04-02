@@ -31,24 +31,23 @@ fn main() {
     print_u32(r2.br.x);
     puts("\n");
 
-    let br2 = r_ref->br;
+    let br2 = r_ref.br;
     print_u32(br2.x);
     puts("\n");
 
     let br_ref = (r_ref as u32 + sizeof Point2D) as &Point2D;
-    print_u32(br_ref->x);
+    print_u32(br_ref.x);
     puts("\n");
 
     print_u32((*br_ref).x);
     puts("\n");
 
-    // TODO: support chained `->`
-    print_u32(r_ref->br.x);
+    print_u32(r_ref.br.x);
     puts("\n");
 
     // TODO: throws TypeError
     // TODO: look into supporting nested references
     // let br2 = r.br;
-    // print_u32(br2->x);
+    // print_u32(br2.x);
     // puts("\n");
 };

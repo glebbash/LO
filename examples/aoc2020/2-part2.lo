@@ -35,7 +35,7 @@ fn main() {
 
     let state = initial_check_state();
 
-    for i in 0..input->size {
+    for i in 0..input.size {
         let char = input.get!<u8>(i) as u32;
         if state.step == Step::READ_START_INDEX {
             if char == '-' {

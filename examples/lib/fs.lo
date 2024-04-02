@@ -78,7 +78,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
     defer free!<u32>(alloc::STACK, nread_ref);
 
     loop {
-        iov->size = chunk_size;
+        iov.size = chunk_size;
         let io_res = wasi::fd_read(fd_in, iov, 1, nread_ref);
         if io_res != 0 {
             return false;
@@ -89,7 +89,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32) -> bool {
             break;
         };
 
-        iov->size = nread;
+        iov.size = nread;
         io_res = wasi::fd_write(fd_out, iov, 1, nread_ref);
         if io_res != 0 {
             return false;

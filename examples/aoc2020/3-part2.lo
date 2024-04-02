@@ -34,7 +34,7 @@ fn Map::parse(input: &String) -> Map {
     let cols = Vec::new!<&Vec::Tile>();
     let row = Vec::new!<Tile>();
 
-    for i in 0..input->size {
+    for i in 0..input.size {
         let char = input.get!<u8>(i) as u32;
         if char == '#' {
             row.push!<Tile>(Tile::TREE);
@@ -60,7 +60,7 @@ fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32) -> u32 {
         i += slope_i;
         j += slope_j;
 
-        if i >= self.cols->size {
+        if i >= self.cols.size {
             break;
         };
 
@@ -76,11 +76,11 @@ fn Map::get(self, i: u32, j: u32) -> Tile {
     // TODO: this is not working:
     // let row = self.rows.get!<&Vec::Tile>(i);
     let row = *(self.cols.at(i) as & &Vec::Tile);
-    return *(row.at(j % row->size) as &Tile);
+    return *(row.at(j % row.size) as &Tile);
 };
 
 fn Map::free(self) {
-    for i in 0..self.cols->size {
+    for i in 0..self.cols.size {
         // TODO: this is not working:
         // let row = self.rows.get!<&Vec::Tile>(i);
         let row = *(self.cols.at(i) as & &Vec::Tile);

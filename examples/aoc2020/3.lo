@@ -23,7 +23,7 @@ fn main() {
         i += SLOPE_I;
         j += SLOPE_J;
 
-        if i == map.rows->size {
+        if i == map.rows.size {
             break;
         };
 
@@ -47,7 +47,7 @@ fn Map::parse(input: &String) -> Map {
     let rows = Vec::new!<&Vec::Tile>();
     let current_row = Vec::new!<Tile>();
 
-    for i in 0..input->size {
+    for i in 0..input.size {
         let char = input.get!<u8>(i) as u32;
         if char == '#' {
             current_row.push!<Tile>(Tile::TREE);
@@ -68,11 +68,11 @@ fn Map::get(self, i: u32, j: u32) -> Tile {
     // TODO: this is not working:
     // let row = self.rows.get!<&Vec::Tile>(i);
     let row = *(self.rows.at(i) as & &Vec::Tile);
-    return *(row.at(j % row->size) as &Tile);
+    return *(row.at(j % row.size) as &Tile);
 };
 
 fn Map::free(self) {
-    for i in 0..self.rows->size {
+    for i in 0..self.rows.size {
         // TODO: this is not working:
         // let row = self.rows.get!<&Vec::Tile>(i);
         let row = *(self.rows.at(i) as & &Vec::Tile);

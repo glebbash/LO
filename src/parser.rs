@@ -1897,52 +1897,109 @@ fn parse_postfix(
                 return parse_macro_call(ctx, tokens, &field_or_method_name, Some(primary));
             }
 
-            if !tokens.next_is(Delim, "(").unwrap_or(false) {
-                let field_name = field_or_method_name;
+            if tokens.next_is(Delim, "(").unwrap_or(false) {
+                let method_name = field_or_method_name;
+                let receiver_type = primary.get_type(ctx.module);
 
-                if let LoInstr::StructGet {
-                    struct_name,
-                    base_index,
-                    ..
-                } = &primary
-                {
-                    let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
-                    let Some(field) = struct_def
-                        .fields
-                        .iter()
-                        .find(|f| &f.name == &field_name.value)
-                    else {
-                        return Err(LoError {
-                            message: format!(
-                                "Unknown field {} in struct {struct_name}",
-                                field_name.value
-                            ),
-                            loc: field_name.loc,
-                        });
-                    };
-
-                    return compile_local_get(
-                        &ctx.module,
-                        base_index + field.field_index,
-                        &field.value_type,
-                    )
-                    .map_err(|message| LoError {
-                        message,
-                        // TODO: lhs.loc() is not available
-                        loc: op.token.loc,
+                let fn_name = get_fn_name_from_method(&receiver_type, &method_name.value);
+                let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
+                    return Err(LoError {
+                        message: format!("Unknown function: {fn_name}"),
+                        loc: method_name.loc,
                     });
                 };
 
-                if let LoInstr::StructLoad {
-                    struct_name,
-                    address_instr,
-                    base_byte_offset,
-                    ..
-                } = primary
-                {
-                    // safe to unwrap as it was already checked in `StructLoad`
-                    let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
+                let mut args = vec![primary];
+                parse_fn_call_args(ctx, tokens, &mut args)?;
+                typecheck_fn_call_args(
+                    ctx.module,
+                    &fn_def.type_.inputs,
+                    &args,
+                    &fn_name,
+                    &method_name.loc,
+                )?;
 
+                return Ok(LoInstr::Call {
+                    fn_index: fn_def.get_absolute_index(ctx.module),
+                    return_type: fn_def.type_.output.clone(),
+                    args,
+                });
+            }
+
+            let field_name = field_or_method_name;
+
+            if let LoInstr::StructGet {
+                struct_name,
+                base_index,
+                ..
+            } = &primary
+            {
+                let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
+                let Some(field) = struct_def
+                    .fields
+                    .iter()
+                    .find(|f| &f.name == &field_name.value)
+                else {
+                    return Err(LoError {
+                        message: format!(
+                            "Unknown field {} in struct {struct_name}",
+                            field_name.value
+                        ),
+                        loc: field_name.loc,
+                    });
+                };
+
+                return compile_local_get(
+                    &ctx.module,
+                    base_index + field.field_index,
+                    &field.value_type,
+                )
+                .map_err(|message| LoError {
+                    message,
+                    // TODO: lhs.loc() is not available
+                    loc: op.token.loc,
+                });
+            };
+
+            if let LoInstr::StructLoad {
+                struct_name,
+                address_instr,
+                base_byte_offset,
+                ..
+            } = primary
+            {
+                // safe to unwrap as it was already checked in `StructLoad`
+                let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
+
+                let Some(field) = struct_def
+                    .fields
+                    .iter()
+                    .find(|f| f.name == *field_name.value)
+                else {
+                    return Err(LoError {
+                        message: format!(
+                            "Unknown field {} in struct {struct_name}",
+                            field_name.value
+                        ),
+                        loc: field_name.loc,
+                    });
+                };
+
+                return compile_load(
+                    ctx,
+                    &field.value_type,
+                    address_instr,
+                    base_byte_offset + field.byte_offset,
+                )
+                .map_err(|e| LoError {
+                    message: e,
+                    loc: op.token.loc,
+                });
+            }
+
+            if let LoType::Pointer(pointee_type) = primary.get_type(ctx.module) {
+                if let LoType::StructInstance { name: struct_name } = pointee_type.as_ref() {
+                    let struct_def = ctx.module.struct_defs.get(struct_name).unwrap();
                     let Some(field) = struct_def
                         .fields
                         .iter()
@@ -1953,96 +2010,31 @@ fn parse_postfix(
                                 "Unknown field {} in struct {struct_name}",
                                 field_name.value
                             ),
-                            loc: field_name.loc,
+                            loc: field_name.loc.clone(),
                         });
                     };
 
                     return compile_load(
                         ctx,
                         &field.value_type,
-                        address_instr,
-                        base_byte_offset + field.byte_offset,
+                        Box::new(primary),
+                        field.byte_offset,
                     )
                     .map_err(|e| LoError {
                         message: e,
-                        loc: op.token.loc,
+                        loc: op.token.loc.clone(),
                     });
-                }
-
-                let lhs_type = primary.get_type(ctx.module);
-                return Err(LoError {
-                    message: format!(
-                        "Trying to get field '{}' on non struct: {lhs_type}",
-                        field_name.value
-                    ),
-                    loc: field_name.loc,
-                });
-            }
-
-            let method_name = field_or_method_name;
-            let receiver_type = primary.get_type(ctx.module);
-
-            let fn_name = get_fn_name_from_method(&receiver_type, &method_name.value);
-            let Some(fn_def) = ctx.module.fn_defs.get(&fn_name) else {
-                return Err(LoError {
-                    message: format!("Unknown function: {fn_name}"),
-                    loc: method_name.loc,
-                });
+                };
             };
 
-            let mut args = vec![primary];
-            parse_fn_call_args(ctx, tokens, &mut args)?;
-            typecheck_fn_call_args(
-                ctx.module,
-                &fn_def.type_.inputs,
-                &args,
-                &fn_name,
-                &method_name.loc,
-            )?;
-
-            LoInstr::Call {
-                fn_index: fn_def.get_absolute_index(ctx.module),
-                return_type: fn_def.type_.output.clone(),
-                args,
-            }
-        }
-        InfixOpTag::RefFieldAccess => {
-            let field_name = tokens.expect_any(Symbol)?;
-
-            let struct_ref = Box::new(primary);
-            let struct_ref_type = struct_ref.get_type(ctx.module);
-
-            let LoType::Pointer(pointee_type) = &struct_ref_type else {
-                return Err(LoError {
-                    message: format!("Cannot dereference {struct_ref_type:?}"),
-                    loc: op.token.loc.clone(),
-                });
-            };
-            let LoType::StructInstance { name: struct_name } = pointee_type.as_ref() else {
-                return Err(LoError {
-                    message: format!("Cannot dereference {struct_ref_type:?}"),
-                    loc: op.token.loc.clone(),
-                });
-            };
-
-            let struct_def = ctx.module.struct_defs.get(struct_name).unwrap();
-            let Some(field) = struct_def
-                .fields
-                .iter()
-                .find(|f| f.name == *field_name.value)
-            else {
-                return Err(LoError {
-                    message: format!("Unknown field {} in struct {struct_name}", field_name.value),
-                    loc: field_name.loc.clone(),
-                });
-            };
-
-            compile_load(ctx, &field.value_type, struct_ref, field.byte_offset).map_err(|e| {
-                LoError {
-                    message: e,
-                    loc: op.token.loc.clone(),
-                }
-            })?
+            let lhs_type = primary.get_type(ctx.module);
+            return Err(LoError {
+                message: format!(
+                    "Trying to get field '{}' on non struct: {lhs_type}",
+                    field_name.value
+                ),
+                loc: field_name.loc,
+            });
         }
     })
 }

@@ -32,7 +32,7 @@ fn main() {
 
 // https://en.wikipedia.org/wiki/Bubble_sort
 fn bubble_sort(items: &Vec_u32) {
-    let n = items->size;
+    let n = items.size;
     loop {
         let swapped = false;
 

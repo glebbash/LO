@@ -159,8 +159,8 @@
 
         let free_block = heap::find_free_block(size);
         if free_block as u32 != 0 {
-            free_block->used = true;
-            return free_block->data;
+            free_block.used = true;
+            return free_block.data;
         };
 
         let total_size_to_alloc = size + sizeof heap::Block;
@@ -177,9 +177,9 @@
             };
         };
 
-        block->size = size;
-        block->used = true;
-        block->data = (block as u32 + sizeof heap::Block) as &();
+        block.size = size;
+        block.used = true;
+        block.data = (block as u32 + sizeof heap::Block) as &();
 
         // init heap
         if heap::FIRST_BLOCK as u32 == 0 {
@@ -188,17 +188,17 @@
 
         // chain block
         if heap::CURRENT_BLOCK as u32 != 0 {
-            heap::CURRENT_BLOCK->next = block;
+            heap::CURRENT_BLOCK.next = block;
         };
 
         heap::CURRENT_BLOCK = block;
 
-        return block->data;
+        return block.data;
     };
 
     fn heap::free(ptr: & ()) {
         let block = heap::get_block(ptr);
-        block->used = false;
+        block.used = false;
     };
 
     fn heap::get_block(ptr: &()) -> &heap::Block {
@@ -210,11 +210,11 @@
         let block = heap::FIRST_BLOCK;
 
         loop {
-            if block as u32 == 0 || (!block->used && block->size >= size) {
+            if block as u32 == 0 || (!block.used && block.size >= size) {
                 break;
             };
 
-            block = block->next;
+            block = block.next;
         };
 
         return block;
@@ -264,8 +264,8 @@
     };
 
     fn Vec::free(&self) {
-        free!<Vec>(self->alloc_id, self);
-        free(self->alloc_id, self->data, self->capacity);
+        free!<Vec>(self.alloc_id, self);
+        free(self.alloc_id, self.data, self.capacity);
     };
 
     macro Vec::get!<T>(&self, index: u32) -> T {
@@ -279,21 +279,21 @@
     fn Vec::at(&self, index: u32) -> &() {
         Vec::_panic_if_out_of_bounds(self, index);
 
-        return (self->data as u32 + index * self->item_size) as &();
+        return (self.data as u32 + index * self.item_size) as &();
     };
 
     fn Vec::at_unchecked(&self, index: u32) -> &() {
-        return (self->data as u32 + index * self->item_size) as &();
+        return (self.data as u32 + index * self.item_size) as &();
     };
 
     fn Vec::swap(&self, index1: u32, index2: u32) {
         self._panic_if_out_of_bounds(index1);
         self._panic_if_out_of_bounds(index2);
 
-        let item_size = self->item_size;
+        let item_size = self.item_size;
         mem::swap(
-            (self->data as u32 + index1 * item_size) as &(),
-            (self->data as u32 + index2 * item_size) as &(),
+            (self.data as u32 + index1 * item_size) as &(),
+            (self.data as u32 + index2 * item_size) as &(),
             item_size,
         );
     };
@@ -303,38 +303,38 @@
     };
 
     fn Vec::push(&self) -> &() {
-        self->size += 1;
+        self.size += 1;
         self._grow_if_needed();
 
-        return self.at_unchecked(self->size - 1);
+        return self.at_unchecked(self.size - 1);
     };
 
     fn Vec::push_all(&self, items: &(), items_len: u32) {
-        let old_len = self->size;
-        self->size = old_len + items_len;
+        let old_len = self.size;
+        self.size = old_len + items_len;
 
         self._grow_if_needed();
 
         mem::copy(
             items,
-            (self->data as u32 + old_len * self->item_size) as &(),
-            items_len * self->item_size,
+            (self.data as u32 + old_len * self.item_size) as &(),
+            items_len * self.item_size,
         );
     };
 
     fn Vec::append(&self, other: &Vec) {
-        self.push_all(other->data, other->size);
-        other->size = 0;
+        self.push_all(other.data, other.size);
+        other.size = 0;
     };
 
     fn Vec::pop_unchecked(&self) -> &() {
-        self->size -= 1;
-        return self.at_unchecked(self->size);
+        self.size -= 1;
+        return self.at_unchecked(self.size);
     };
 
     fn Vec::reverse(&self) {
         let start = 0;
-        let end = self->size - 1;
+        let end = self.size - 1;
 
         loop {
             if start >= end {
@@ -348,27 +348,27 @@
     };
 
     fn Vec::_grow_if_needed(&self) {
-        if self->size != self->capacity {
+        if self.size != self.capacity {
             return;
         };
 
-        if self->alloc_id == alloc::STACK {
+        if self.alloc_id == alloc::STACK {
             panic("Attempt to grow stack allocated vector");
         };
 
-        let item_size = self->item_size;
-        let old_capacity = self->capacity;
-        let old_data = self->data;
-        defer free(self->alloc_id, old_data, old_capacity * item_size);
+        let item_size = self.item_size;
+        let old_capacity = self.capacity;
+        let old_data = self.data;
+        defer free(self.alloc_id, old_data, old_capacity * item_size);
 
-        self->capacity = old_capacity * 2;
-        self->data = alloc(self->alloc_id, self->capacity * item_size);
+        self.capacity = old_capacity * 2;
+        self.data = alloc(self.alloc_id, self.capacity * item_size);
 
-        mem::copy(old_data, self->data, self->size * item_size);
+        mem::copy(old_data, self.data, self.size * item_size);
     };
 
     fn Vec::_panic_if_out_of_bounds(&self, index: u32) {
-        if index < 0 || index >= self->size {
+        if index < 0 || index >= self.size {
             panic("Vec access out of bounds");
         };
     };
@@ -388,8 +388,8 @@
 
     fn String::clone(&self) -> &String {
         return String::from_str(str {
-            data: self->data as &*u8,
-            size: self->size,
+            data: self.data as &*u8,
+            size: self.size,
         });
     };
 
@@ -402,7 +402,7 @@
 // str utils
 
     fn str::from_string(value: &String) -> str {
-        return str { data: value->data as &u8, size: value->size };
+        return str { data: value.data as &u8, size: value.size };
     };
 
     fn str::char_at(self, index: u32) -> u8 {
