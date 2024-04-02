@@ -1304,6 +1304,17 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     let value = parse_nested_symbol(tokens)?;
 
+    // must go first, macro values shadow locals
+    if let Some(macro_args) = &ctx.block.macro_args {
+        if let Some(macro_value) = macro_args.get(&value.value) {
+            return Ok(macro_value.clone());
+        }
+    }
+
+    if let Some(_) = tokens.eat(Operator, "!")? {
+        return parse_macro_call(ctx, tokens, &value, None);
+    }
+
     if let Some(local) = ctx.block.get_local(&value.value) {
         return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
             LoError {
@@ -1322,16 +1333,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             global_index: global.index,
         });
     };
-
-    if let Some(macro_args) = &ctx.block.macro_args {
-        if let Some(macro_value) = macro_args.get(&value.value) {
-            return Ok(macro_value.clone());
-        }
-    }
-
-    if let Some(_) = tokens.eat(Operator, "!")? {
-        return parse_macro_call(ctx, tokens, &value, None);
-    }
 
     if let Some(fn_def) = ctx.module.fn_defs.get(&value.value) {
         let mut args = vec![];
@@ -1537,17 +1538,36 @@ fn parse_macro_call(
     };
 
     let macro_tokens = &mut macro_def.body.clone();
-    let expr = parse_expr(macro_ctx, macro_tokens, 0)?;
-    macro_tokens.expect(Delim, ";")?;
+    let mut resolved_type = LoType::Void;
+
+    let mut exprs = vec![];
+    while macro_tokens.peek().is_some() {
+        let expr_loc = macro_tokens.peek().unwrap().loc.clone();
+        let expr = parse_expr(macro_ctx, macro_tokens, 0)?;
+        macro_tokens.expect(Delim, ";")?;
+
+        let expr_type = expr.get_type(ctx.module);
+        if expr_type != LoType::Void {
+            if resolved_type != LoType::Void {
+                return Err(LoError {
+                    message: format!("Macro body must contain a single non-void expression"),
+                    loc: expr_loc,
+                });
+            }
+
+            resolved_type = expr_type;
+        }
+
+        exprs.push(expr);
+    }
 
     if let Some(t) = macro_tokens.peek() {
         return Err(LoError {
-            message: format!("Macro body must contain a single expression"),
+            message: format!("Macro body must contain a single non-void expression"),
             loc: t.loc.clone(),
         });
     }
 
-    let resolved_type = expr.get_type(macro_ctx.module);
     if resolved_type != return_type {
         return Err(LoError {
             message: format!("Macro resolved to {resolved_type} but {return_type} was expected"),
@@ -1555,7 +1575,10 @@ fn parse_macro_call(
         });
     }
 
-    return Ok(expr);
+    return Ok(LoInstr::Casted {
+        value_type: resolved_type,
+        expr: Box::new(LoInstr::MultiValueEmit { values: exprs }),
+    });
 }
 
 fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {

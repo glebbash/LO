@@ -65,17 +65,13 @@ fn Map::parse(input: &String): Map {
 };
 
 fn Map::get(self, i: u32, j: u32): Tile {
-    // TODO: this is not working:
-    // let row = self.rows.get!<&Vec::Tile>(i);
-    let row = *(self.rows.at(i) as & &Vec::Tile);
+    let row = self.rows.get!<&Vec::Tile>(i);
     return *(row.at(j % row.size) as &Tile);
 };
 
 fn Map::free(self) {
     for i in 0..self.rows.size {
-        // TODO: this is not working:
-        // let row = self.rows.get!<&Vec::Tile>(i);
-        let row = *(self.rows.at(i) as & &Vec::Tile);
+        let row = self.rows.get!<&Vec::Tile>(i);
         row.free();
     };
     self.rows.free();

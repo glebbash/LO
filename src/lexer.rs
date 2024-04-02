@@ -486,8 +486,6 @@ static OPERATORS: &[&str] = &[
     "..",  // Range operator
     ":",   // Type separator
     "::",  // Path separator
-    // TODO: make it 2 operators? (`::`, `<`)
-    "::<", // Start of macro parameters (little hack)
     "@",   // Memory index separator, defer label prefix
 ];
 

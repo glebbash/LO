@@ -27,28 +27,28 @@ type Vec::Tile = Vec;
 type Vec::Vec::Tile = Vec;
 
 struct Map {
-    cols: &Vec::Vec::Tile,
+    rows: &Vec::Vec::Tile,
 };
 
 fn Map::parse(input: &String): Map {
-    let cols = Vec::new!<&Vec::Tile>();
-    let row = Vec::new!<Tile>();
+    let rows = Vec::new!<&Vec::Tile>();
+    let current_row = Vec::new!<Tile>();
 
     for i in 0..input.size {
         let char = input.get!<u8>(i) as u32;
         if char == '#' {
-            row.push!<Tile>(Tile::TREE);
+            current_row.push!<Tile>(Tile::TREE);
         };
         if char == '.' {
-            row.push!<Tile>(Tile::EMPTY);
+            current_row.push!<Tile>(Tile::EMPTY);
         };
         if char == '\n' {
-            cols.push!<&Vec::Tile>(row);
-            row = Vec::new!<Tile>();
+            rows.push!<&Vec::Tile>(current_row);
+            current_row = Vec::new!<Tile>();
         };
     };
 
-    return Map { cols: cols };
+    return Map { rows: rows };
 };
 
 fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
@@ -60,7 +60,7 @@ fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
         i += slope_i;
         j += slope_j;
 
-        if i >= self.cols.size {
+        if i >= self.rows.size {
             break;
         };
 
@@ -73,18 +73,14 @@ fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
 };
 
 fn Map::get(self, i: u32, j: u32): Tile {
-    // TODO: this is not working:
-    // let row = self.rows.get!<&Vec::Tile>(i);
-    let row = *(self.cols.at(i) as & &Vec::Tile);
+    let row = self.rows.get!<&Vec::Tile>(i);
     return *(row.at(j % row.size) as &Tile);
 };
 
 fn Map::free(self) {
-    for i in 0..self.cols.size {
-        // TODO: this is not working:
-        // let row = self.rows.get!<&Vec::Tile>(i);
-        let row = *(self.cols.at(i) as & &Vec::Tile);
+    for i in 0..self.rows.size {
+        let row = self.rows.get!<&Vec::Tile>(i);
         row.free();
     };
-    self.cols.free();
+    self.rows.free();
 };
