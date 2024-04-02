@@ -423,17 +423,10 @@
             return false;
         };
 
-        let i = 0;
-        loop {
-            if i == self.size {
-                break;
-            };
-
+        for i in 0..self.size {
             if *((self.data as u32 + i) as &u8) != *((other.data as u32 + i) as &u8) {
                 return false;
             };
-
-            i += 1;
         };
 
         return true;

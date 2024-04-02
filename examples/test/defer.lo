@@ -6,14 +6,9 @@ fn main() {
     defer puts("defer(return): 3\n");
 
     defer @scope1 puts("defer(scope1): 1\n");
-    let i = 0;
-    loop {
-        if i == 10 {
-            break;
-        };
+    for i in 0..10 {
         // exprs in loops are only deferred once
         defer @scope1 puts("defer(scope1): 2\n");
-        i += 1;
     };
     if false {
         // exprs are deferred even `if` body never executes

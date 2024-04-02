@@ -4,16 +4,9 @@ include "lib/args";
 fn main() {
     let args = args::load();
 
-    let i = 0;
-    loop {
-        if i == args.argc {
-            break;
-        };
-
+    for i in 0..args.argc {
         let arg = args.get(i);
         puts(arg);
         puts("\n");
-
-        i += 1;
     };
 };
