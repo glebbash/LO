@@ -549,7 +549,6 @@ fn parse_fn_def(
 fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
     let macro_name = parse_nested_symbol(tokens)?;
     tokens.expect(Operator, "!")?;
-    tokens.expect(Operator, "<")?;
 
     if ctx.macros.contains_key(&macro_name.value) {
         return Err(LoError {
@@ -561,29 +560,31 @@ fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Resul
     let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &macro_name)?;
     let mut type_params = Vec::<String>::new();
 
-    while let None = tokens.eat(Operator, ">")? {
-        let p_name = tokens.expect_any(Symbol)?.clone();
-        if !tokens.next_is(Operator, ">")? {
-            tokens.expect(Delim, ",")?;
-        }
+    if let Some(_) = tokens.eat(Operator, "<")? {
+        while let None = tokens.eat(Operator, ">")? {
+            let p_name = tokens.expect_any(Symbol)?.clone();
+            if !tokens.next_is(Operator, ">")? {
+                tokens.expect(Delim, ",")?;
+            }
 
-        if get_type_by_name(ctx, &ctx.type_scope, &p_name, false).is_ok() {
-            return Err(LoError {
-                message: format!("Type parameter shadows existing type: {}", p_name.value),
-                loc: p_name.loc.clone(),
-            });
-        }
-
-        for param in &type_params {
-            if *param == p_name.value {
+            if get_type_by_name(ctx, &ctx.type_scope, &p_name, false).is_ok() {
                 return Err(LoError {
-                    message: format!("Found duplicate type parameter: {}", p_name.value),
+                    message: format!("Type parameter shadows existing type: {}", p_name.value),
                     loc: p_name.loc.clone(),
                 });
             }
-        }
 
-        type_params.push(p_name.value);
+            for param in &type_params {
+                if *param == p_name.value {
+                    return Err(LoError {
+                        message: format!("Found duplicate type parameter: {}", p_name.value),
+                        loc: p_name.loc.clone(),
+                    });
+                }
+            }
+
+            type_params.push(p_name.value);
+        }
     }
 
     let mut new_type_scope = LoTypeScope {
@@ -1466,12 +1467,13 @@ fn parse_macro_call(
     let mut type_scope = {
         let mut type_args = Vec::new();
 
-        tokens.expect(Operator, "<")?;
-        while let None = tokens.eat(Operator, ">")? {
-            let macro_arg = parse_lo_type(ctx, tokens)?;
-            type_args.push(macro_arg);
-            if !tokens.next_is(Operator, ">")? {
-                tokens.expect(Delim, ",")?;
+        if let Some(_) = tokens.eat(Operator, "<")? {
+            while let None = tokens.eat(Operator, ">")? {
+                let macro_arg = parse_lo_type(ctx, tokens)?;
+                type_args.push(macro_arg);
+                if !tokens.next_is(Operator, ">")? {
+                    tokens.expect(Delim, ",")?;
+                }
             }
         }
 

@@ -277,7 +277,7 @@
     };
 
     fn Vec::at(&self, index: u32): &() {
-        Vec::_panic_if_out_of_bounds(self, index);
+        self._panic_if_out_of_bounds!(index);
 
         return (self.data as u32 + index * self.item_size) as &();
     };
@@ -287,8 +287,8 @@
     };
 
     fn Vec::swap(&self, index1: u32, index2: u32) {
-        self._panic_if_out_of_bounds(index1);
-        self._panic_if_out_of_bounds(index2);
+        self._panic_if_out_of_bounds!(index1);
+        self._panic_if_out_of_bounds!(index2);
 
         let item_size = self.item_size;
         mem::swap(
@@ -367,7 +367,7 @@
         mem::copy(old_data, self.data, self.size * item_size);
     };
 
-    fn Vec::_panic_if_out_of_bounds(&self, index: u32) {
+    macro Vec::_panic_if_out_of_bounds!(&self, index: u32) {
         if index < 0 || index >= self.size {
             panic("Vec access out of bounds");
         };
