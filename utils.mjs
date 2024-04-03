@@ -37,8 +37,11 @@ function main() {
 }
 
 async function compileCommand() {
+    let compilerArgs = process.argv.slice(3);
+
     return runWASI(await fs.readFile(COMPILER_PATH), {
         preopens: { ".": "examples" },
+        args: ["compiler.wasm", ...compilerArgs],
         returnOnExit: false,
     });
 }
