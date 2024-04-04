@@ -331,7 +331,7 @@ async function testCommand() {
             return fs.readFile(stdoutFile, { encoding: "utf-8" });
         });
 
-        assert.strictEqual(output, "108\n");
+        assert.strictEqual(output, "14\n");
     });
 
     test("compiles tracing", async () => {
@@ -388,12 +388,12 @@ async function testCommand() {
         assert.strictEqual(
             output,
             dropPadding(`
-            heap::TOTAL_ALLOCATED; // 1048576
-            let p = heap::alloc(1); // 1048589
-            heap::free(p);
-            p = heap::alloc(1); // 1048589
-            p = heap::alloc(1); // 1048606
-        `)
+                heap::TOTAL_ALLOCATED; // 1048576
+                let p = heap::alloc(1); // 1048589
+                heap::free(p);
+                p = heap::alloc(1); // 1048589
+                p = heap::alloc(1); // 1048606
+            `)
         );
     });
 
@@ -408,20 +408,20 @@ async function testCommand() {
         assert.strictEqual(
             output,
             dropPadding(`
-            defer(scope1): 3
-            defer(scope1): 2
-            defer(scope1): 1
-            -------------
-            defer(scope2): 2
-            defer(scope2): 1
-            -------------
-            defer(scope2): 3
-            defer(scope2): 2
-            defer(scope2): 1
-            -------------
-            defer(return): 3
-            defer(return): 2
-            defer(return): 1
+                defer(scope1): 3
+                defer(scope1): 2
+                defer(scope1): 1
+                -------------
+                defer(scope2): 2
+                defer(scope2): 1
+                -------------
+                defer(scope2): 3
+                defer(scope2): 2
+                defer(scope2): 1
+                -------------
+                defer(return): 3
+                defer(return): 2
+                defer(return): 1
             `)
         );
     });

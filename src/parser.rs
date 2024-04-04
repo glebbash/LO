@@ -107,6 +107,16 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
         });
     }
 
+    // lower global values (a hack to resolve __DATA_SIZE__ after all strings were seen)
+    for GlobalDef { index, value, .. } in ctx.globals.values() {
+        lower_expr(
+            &mut ctx.wasm_module.borrow_mut().globals[*index as usize]
+                .initial_value
+                .instrs,
+            value.clone(),
+        );
+    }
+
     Ok(())
 }
 
@@ -263,18 +273,16 @@ fn parse_top_level_expr(
                 index: ctx.globals.len() as u32,
                 mutable,
                 value_type: lo_type,
+                value: global_value,
             },
         );
-
-        let mut initial_value = WasmExpr { instrs: vec![] };
-        lower_expr(&mut initial_value.instrs, global_value);
 
         ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
             kind: WasmGlobalKind {
                 value_type: wasm_type,
                 mutable,
             },
-            initial_value,
+            initial_value: WasmExpr { instrs: vec![] }, // will be filled in `process_delayed_actions`
         });
 
         return Ok(());

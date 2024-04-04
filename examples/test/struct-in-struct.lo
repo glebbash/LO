@@ -23,8 +23,7 @@ fn main() {
     print_u32(r.br.x);
     puts("\n");
 
-    let r_ref = alloc!<Rect>(alloc::STACK);
-    defer free!<Rect>(alloc::STACK, r_ref);
+    let r_ref = tmp_alloc!<Rect>();
     *r_ref = r;
 
     let r2 = *r_ref;

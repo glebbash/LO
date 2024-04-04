@@ -5,13 +5,19 @@
         size: u32,
     };
 
-// panic
+// abort
 
-    fn panic(message: str) {
+    type AbortCode = u32;
+    const AbortCode::OOM               = 0;
+    const AbortCode::STACK_OVERFLOW    = 1;
+    const AbortCode::STACK_UNDERFLOW   = 2;
+    const AbortCode::VEC_OUT_OF_BOUNDS = 3;
+    const AbortCode::STACK_VECTOR_GROW = 4;
+
+    fn abort(abort_code: u32) {
         *(0 as &u32) = 69420; // error indicator
         // TODO: &&*u8 should be parsed fine without a space
-        *(4 as & &*u8) = message.data;
-        *(8 as &u32) = message.size;
+        *(4 as &u32) = abort_code;
         unreachable;
     };
 
@@ -104,22 +110,22 @@
 
     struct stack {};
 
-    let stack::CURRENT = __DATA_SIZE__;
-    let stack::BEGIN = __DATA_SIZE__; // TODO: this should be const
-    const stack::END = 1_048_576; // 1MB, ~20 pages (65_536b)
+    let stack::NOW = __DATA_SIZE__;
+    const stack::MIN = __DATA_SIZE__;
+    const stack::MAX = 1_048_576; // 1MB, ~20 pages (65_536b)
 
     macro stack::alloc!<T>(): &T {
         stack::alloc(sizeof T) as &T;
     };
 
     fn stack::alloc(size: u32): &() {
-        stack::CURRENT += size;
+        stack::NOW += size;
 
-        if stack::CURRENT > stack::END {
-            panic("Stack overflow");
+        if stack::NOW > stack::MAX {
+            abort(AbortCode::STACK_OVERFLOW);
         };
 
-        return (stack::CURRENT - size) as &();
+        return (stack::NOW - size) as &();
     };
 
     macro stack::free!<T>() {
@@ -127,11 +133,23 @@
     };
 
     fn stack::free(size: u32) {
-        stack::CURRENT -= size;
+        stack::NOW -= size;
 
-        if stack::CURRENT < stack::BEGIN {
-            panic("Stack underflow");
+        if stack::NOW < stack::MIN {
+            abort(AbortCode::STACK_UNDERFLOW);
         };
+    };
+
+// tmp alloc
+
+    macro tmp_alloc!<T>(): &T {
+        stack::alloc(sizeof T) as &T;
+        defer stack::free(sizeof T);
+    };
+
+    macro tmp_alloc_many!<T>(count: u32): &T {
+        stack::alloc(count * sizeof T) as &T;
+        defer stack::free(count * sizeof T);
     };
 
 // heap
@@ -145,7 +163,7 @@
         data: &(),
     };
 
-    let heap::TOTAL_ALLOCATED = stack::END;
+    let heap::TOTAL_ALLOCATED = stack::MAX;
     let heap::FIRST_BLOCK = 0 as &heap::Block;
     let heap::CURRENT_BLOCK = 0 as &heap::Block;
 
@@ -173,7 +191,7 @@
             let pages_to_grow = mem::align_to(total_size_to_alloc, mem::PAGE_SIZE);
             let grow_res = __memory_grow(pages_to_grow);
             if grow_res == (0 - 1) as i32 {
-                panic("OOM");
+                abort(AbortCode::OOM);
             };
         };
 
@@ -196,7 +214,7 @@
         return block.data;
     };
 
-    fn heap::free(ptr: & ()) {
+    fn heap::free(ptr: &()) {
         let block = heap::get_block(ptr);
         block.used = false;
     };
@@ -353,7 +371,7 @@
         };
 
         if self.alloc_id == alloc::STACK {
-            panic("Attempt to grow stack allocated vector");
+            abort(AbortCode::STACK_VECTOR_GROW);
         };
 
         let item_size = self.item_size;
@@ -369,7 +387,7 @@
 
     macro Vec::_panic_if_out_of_bounds!(&self, index: u32) {
         if index < 0 || index >= self.size {
-            panic("Vec access out of bounds");
+            abort(AbortCode::VEC_OUT_OF_BOUNDS);
         };
     };
 

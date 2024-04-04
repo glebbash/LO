@@ -367,6 +367,7 @@ pub struct GlobalDef {
     pub index: u32,
     pub mutable: bool,
     pub value_type: LoType,
+    pub value: LoInstr,
 }
 
 pub struct FnBody {
