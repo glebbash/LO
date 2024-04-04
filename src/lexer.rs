@@ -118,6 +118,14 @@ impl LoTokenStream {
         token
     }
 
+    pub fn loc(&self) -> &LoLocation {
+        if let Some(token) = self.tokens.get(self.index) {
+            &token.loc
+        } else {
+            &self.terminal_token.loc
+        }
+    }
+
     fn err_eof<T>(&self, message: String) -> Result<T, LoError> {
         Err(LoError {
             message,
@@ -250,8 +258,11 @@ impl Lexer {
                 't' => value.push('\t'),
                 '\\' => value.push('\\'),
                 '\'' => value.push('\''),
-                _ => {
-                    return Err(self.err_unexpected_char());
+                c => {
+                    return Err(LoError {
+                        message: format!("ParseError: Invalid escape sequence: \\{c}"),
+                        loc: self.loc(),
+                    });
                 }
             }
         } else {
@@ -261,7 +272,10 @@ impl Lexer {
         self.next_char(); // skip actual character
 
         if self.current_char()? != '\'' {
-            return Err(self.err_unexpected_char());
+            return Err(LoError {
+                message: format!("ParseError: Unexpected character `{c}`, expected `'`"),
+                loc: self.loc(),
+            });
         }
 
         self.next_char(); // skip end quote
@@ -294,7 +308,10 @@ impl Lexer {
                         '\\' => value.push('\\'),
                         '"' => value.push('"'),
                         _ => {
-                            return Err(self.err_unexpected_char());
+                            return Err(LoError {
+                                message: format!("ParseError: Invalid escape sequence: \\{c}"),
+                                loc: self.loc(),
+                            });
                         }
                     }
                 }
@@ -407,13 +424,6 @@ impl Lexer {
             .get(self.index + 1)
             .copied()
             .ok_or_else(|| self.err_unexpected_eof())
-    }
-
-    fn err_unexpected_char(&self) -> LoError {
-        LoError {
-            message: format!("ParseError: Unexpected character"),
-            loc: self.loc(),
-        }
     }
 
     fn err_unexpected_eof(&self) -> LoError {

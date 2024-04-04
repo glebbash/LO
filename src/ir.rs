@@ -556,14 +556,14 @@ impl LoInstr {
         match self {
             LoInstr::NoInstr => LoType::Void,
             LoInstr::Unreachable => LoType::Void,
-            LoInstr::U32ConstLazy { value: _ } => LoType::U32,
-            LoInstr::U32Const { value: _ } => LoType::U32,
-            LoInstr::I32FromI64 { expr: _ } => LoType::I32,
-            LoInstr::U64Const { value: _ } => LoType::U64,
-            LoInstr::I64Const { value: _ } => LoType::I64,
-            LoInstr::I64FromI32Signed { expr: _ } => LoType::I64,
-            LoInstr::I64FromI32Unsigned { expr: _ } => LoType::I64,
-            LoInstr::UntypedLocalGet { local_index: _ } => unreachable!(),
+            LoInstr::U32ConstLazy { .. } => LoType::U32,
+            LoInstr::U32Const { .. } => LoType::U32,
+            LoInstr::I32FromI64 { .. } => LoType::I32,
+            LoInstr::U64Const { .. } => LoType::U64,
+            LoInstr::I64Const { .. } => LoType::I64,
+            LoInstr::I64FromI32Signed { .. } => LoType::I64,
+            LoInstr::I64FromI32Unsigned { .. } => LoType::I64,
+            LoInstr::UntypedLocalGet { .. } => unreachable!(),
 
             LoInstr::MultiValueEmit { values } => {
                 let mut types = Vec::new();
@@ -572,36 +572,21 @@ impl LoInstr {
                 }
                 LoType::Tuple(types)
             }
-            LoInstr::StructLoad {
-                struct_name,
-                address_instr: _,
-                address_local_index: _,
-                base_byte_offset: _,
-                primitive_loads: _,
+            LoInstr::StructLoad { struct_name, .. } | LoInstr::StructGet { struct_name, .. } => {
+                LoType::StructInstance {
+                    name: struct_name.clone(),
+                }
             }
-            | LoInstr::StructGet {
-                struct_name,
-                base_index: _,
-                primitive_gets: _,
-            } => LoType::StructInstance {
-                name: struct_name.clone(),
-            },
 
             // type-checked in the complier:
-            LoInstr::Casted {
-                value_type,
-                expr: _,
-            } => value_type.clone(),
-            LoInstr::Set { bind: _ } => LoType::Void,
-            LoInstr::Drop {
-                value: _,
-                drop_count: _,
-            } => LoType::Void,
-            LoInstr::Return { value: _ } => LoType::Void,
+            LoInstr::Casted { value_type, .. } => value_type.clone(),
+            LoInstr::Set { .. } => LoType::Void,
+            LoInstr::Drop { .. } => LoType::Void,
+            LoInstr::Return { .. } => LoType::Void,
             LoInstr::MemorySize => LoType::I32,
-            LoInstr::MemoryGrow { size: _ } => LoType::I32,
+            LoInstr::MemoryGrow { .. } => LoType::I32,
 
-            LoInstr::BinaryOp { kind, lhs, rhs: _ } => match kind {
+            LoInstr::BinaryOp { kind, lhs, .. } => match kind {
                 WasmBinaryOpKind::I32Equal
                 | WasmBinaryOpKind::I32LessThenUnsigned
                 | WasmBinaryOpKind::I32LessEqualUnsigned
@@ -613,12 +598,7 @@ impl LoInstr {
                 | WasmBinaryOpKind::I64Equal => LoType::Bool,
                 _ => lhs.get_type(ctx),
             },
-            LoInstr::Load {
-                kind,
-                align: _,
-                offset: _,
-                address_instr: _,
-            } => kind.clone(),
+            LoInstr::Load { kind, .. } => kind.clone(),
             LoInstr::GlobalGet { global_index } => {
                 let global_def = ctx
                     .globals
@@ -628,30 +608,12 @@ impl LoInstr {
 
                 global_def.value_type.clone()
             }
-            LoInstr::LocalGet {
-                local_index: _,
-                value_type,
-            } => value_type.clone(),
-            LoInstr::Call {
-                return_type,
-                fn_index: _,
-                args: _,
-            } => return_type.clone(),
-            LoInstr::If {
-                block_type,
-                cond: _,
-                then_branch: _,
-                else_branch: _,
-            }
-            | LoInstr::Block {
-                block_type,
-                body: _,
-            }
-            | LoInstr::Loop {
-                block_type,
-                body: _,
-            } => block_type.clone(),
-            LoInstr::Branch { label_index: _ } => LoType::Void,
+            LoInstr::LocalGet { value_type, .. } => value_type.clone(),
+            LoInstr::Call { return_type, .. } => return_type.clone(),
+            LoInstr::If { block_type, .. }
+            | LoInstr::Block { block_type, .. }
+            | LoInstr::Loop { block_type, .. } => block_type.clone(),
+            LoInstr::Branch { .. } => LoType::Void,
         }
     }
 }
@@ -696,11 +658,10 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             });
         }
         LoInstr::StructLoad {
-            struct_name: _,
             address_instr,
             address_local_index,
-            base_byte_offset: _,
             primitive_loads,
+            ..
         } => {
             lower_expr(out, *address_instr);
             out.push(WasmInstr::LocalSet {
@@ -708,17 +669,11 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             });
             lower_exprs(out, primitive_loads);
         }
-        LoInstr::UntypedLocalGet { local_index }
-        | LoInstr::LocalGet {
-            local_index,
-            value_type: _,
-        } => out.push(WasmInstr::LocalGet { local_index }),
+        LoInstr::UntypedLocalGet { local_index } | LoInstr::LocalGet { local_index, .. } => {
+            out.push(WasmInstr::LocalGet { local_index })
+        }
         LoInstr::GlobalGet { global_index } => out.push(WasmInstr::GlobalGet { global_index }),
-        LoInstr::StructGet {
-            struct_name: _,
-            base_index: _,
-            primitive_gets,
-        } => {
+        LoInstr::StructGet { primitive_gets, .. } => {
             lower_exprs(out, primitive_gets);
         }
         LoInstr::U32ConstLazy { value } => out.push(WasmInstr::I32Const {
@@ -808,11 +763,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             out.push(WasmInstr::BlockEnd);
         }
         LoInstr::Branch { label_index } => out.push(WasmInstr::Branch { label_index }),
-        LoInstr::Call {
-            fn_index,
-            args,
-            return_type: _,
-        } => {
+        LoInstr::Call { fn_index, args, .. } => {
             for arg in args {
                 lower_expr(out, arg);
             }
@@ -821,10 +772,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
         LoInstr::MultiValueEmit { values } => {
             lower_exprs(out, values);
         }
-        LoInstr::Casted {
-            expr,
-            value_type: _,
-        } => {
+        LoInstr::Casted { expr, .. } => {
             lower_expr(out, *expr);
         }
     }

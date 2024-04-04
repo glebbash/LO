@@ -135,12 +135,11 @@ fn write_debug_info(ctx: &mut ModuleContext) -> Result<(), LoError> {
 
         for fn_index in first_own_fn_index..first_own_fn_index + own_fns_count {
             // TODO: this is really bad
-            let fn_name = ctx
+            let (fn_name, _) = ctx
                 .fn_defs
                 .iter()
                 .find(|(_, v)| v.get_absolute_index(ctx) == fn_index)
-                .unwrap()
-                .0;
+                .unwrap();
 
             write_u32(&mut subsection_buf, fn_index);
             write_u32(&mut subsection_buf, fn_name.len() as u32);
@@ -243,19 +242,19 @@ fn parse_top_level_expr(
         return Ok(());
     }
 
-    if let Some(let_token) = tokens.eat(Symbol, "let")?.cloned() {
+    if let Some(_) = tokens.eat(Symbol, "let")?.cloned() {
         let mutable = true;
         let global_name = parse_nested_symbol(tokens)?;
         tokens.expect(Operator, "=")?;
 
+        let global_value_loc = tokens.loc().clone();
         let global_value = parse_const_expr(ctx, tokens, 0)?;
 
         let lo_type = global_value.get_type(ctx);
         let Some(wasm_type) = lo_type.to_wasm_type() else {
             return Err(LoError {
                 message: format!("Unsupported type: {lo_type}"),
-                // TODO: value.loc() is not available
-                loc: let_token.loc,
+                loc: global_value_loc,
             });
         };
 
@@ -321,6 +320,7 @@ fn parse_top_level_expr(
         while let None = tokens.eat(Delim, "}")? {
             let field_name = tokens.expect_any(Symbol)?.clone();
             tokens.expect(Operator, ":")?;
+            let field_type_loc = tokens.loc().clone();
             let field_type = parse_const_lo_type(ctx, tokens)?;
             if !tokens.next_is(Delim, "}")? {
                 tokens.expect(Delim, ",")?;
@@ -345,8 +345,7 @@ fn parse_top_level_expr(
                 .emit_sized_component_stats(ctx, &mut stats, &mut vec![])
                 .map_err(|err| LoError {
                     message: err,
-                    // TODO: field_type.loc() is not available
-                    loc: field_name.loc,
+                    loc: field_type_loc,
                 })?;
 
             struct_fields.push(StructField {
@@ -1366,6 +1365,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         while let None = tokens.eat(Delim, "}")? {
             let field_name = tokens.expect_any(Symbol)?.clone();
             tokens.expect(Operator, ":")?;
+            let field_value_loc = tokens.loc().clone();
             let field_value = parse_expr(ctx, tokens, 0)?;
 
             if !tokens.next_is(Delim, "}")? {
@@ -1397,8 +1397,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                         struct_field.value_type,
                         field_value_type
                     ),
-                    // TODO: field_value.loc() is not available
-                    loc: field_name.loc.clone(),
+                    loc: field_value_loc,
                 });
             }
             values.push(field_value);
@@ -1525,7 +1524,6 @@ fn parse_macro_call(
         macro_args
     };
 
-    // TODO: this smells
     if let Some(parent) = &ctx.block.type_scope {
         type_scope.parent = Some(parent);
     } else {
@@ -2408,7 +2406,6 @@ fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String 
     format!("{resolved_receiver_type}::{method_name}")
 }
 
-// TODO: copied from v1, review
 fn get_deferred(
     ctx: &mut BlockContext,
     defer_label: &str,
@@ -2423,7 +2420,6 @@ fn get_deferred(
     Some(Ok(deferred))
 }
 
-// TODO: copied from v1, review
 fn compile_load(
     ctx: &mut BlockContext,
     value_type: &LoType,
@@ -2495,7 +2491,6 @@ fn compile_load(
     })
 }
 
-// TODO: copied from v1, review
 fn compile_local_get(
     ctx: &ModuleContext,
     base_index: u32,
@@ -2540,7 +2535,6 @@ fn compile_local_get(
     })
 }
 
-// TODO: copied from v1, review
 fn compile_set(
     ctx: &mut BlockContext,
     value_instr: LoInstr,
@@ -2558,7 +2552,6 @@ fn compile_set(
     })
 }
 
-// TODO: copied from v1, review
 fn compile_set_binds(
     output: &mut Vec<LoInstr>,
     ctx: &mut BlockContext,
@@ -2567,11 +2560,7 @@ fn compile_set_binds(
     address_index: Option<u32>,
 ) -> Result<(), LoError> {
     Ok(match bind_instr {
-        LoInstr::LocalGet {
-            local_index,
-            value_type: _,
-        }
-        | LoInstr::UntypedLocalGet { local_index } => {
+        LoInstr::LocalGet { local_index, .. } | LoInstr::UntypedLocalGet { local_index } => {
             output.push(LoInstr::Set {
                 bind: LoSetBind::Local { index: local_index },
             });
@@ -2633,7 +2622,6 @@ fn compile_set_binds(
 
             output.push(LoInstr::MultiValueEmit { values });
         }
-        // TODO: improve this? (StructGet/MultiValueEmit/NoEmit)
         LoInstr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
                 compile_set_binds(output, ctx, value, bind_loc, address_index)?;
@@ -2644,15 +2632,12 @@ fn compile_set_binds(
                 compile_set_binds(output, ctx, value, bind_loc, address_index)?;
             }
         }
-        LoInstr::Casted {
-            expr: instr,
-            value_type: _,
-        } => {
-            compile_set_binds(output, ctx, *instr, bind_loc, address_index)?;
+        LoInstr::Casted { expr, .. } => {
+            compile_set_binds(output, ctx, *expr, bind_loc, address_index)?;
         }
         _ => {
             return Err(LoError {
-                message: format!("Invalid bind"),
+                message: format!("Invalid left-hand side in assignment"),
                 loc: bind_loc.clone(),
             });
         }
