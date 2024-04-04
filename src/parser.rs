@@ -29,16 +29,10 @@ fn parse_file(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(),
     Ok(())
 }
 
-// TODO: copied from v1, review
 fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
     // push function exports
     for fn_export in &ctx.fn_exports {
-        let Some(fn_def) = ctx.fn_defs.get(&fn_export.in_name) else {
-            return Err(LoError {
-                message: format!("Cannot export unknown function {}", fn_export.in_name),
-                loc: fn_export.loc.clone(),
-            });
-        };
+        let fn_def = ctx.fn_defs.get(&fn_export.in_name).unwrap(); // safe
 
         ctx.wasm_module.borrow_mut().exports.push(WasmExport {
             export_type: WasmExportType::Func,
@@ -97,7 +91,6 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
             });
         }
 
-        // TODO: move to better place
         let mut instrs = vec![];
         lower_exprs(&mut instrs, lo_exprs);
 
@@ -192,13 +185,19 @@ fn parse_top_level_expr(
         if let Some(_) = tokens.eat(Symbol, "existing")? {
             tokens.expect(Symbol, "fn")?;
             let in_name = parse_nested_symbol(tokens)?;
+            if let None = ctx.fn_defs.get(&in_name.value) {
+                return Err(LoError {
+                    message: format!("Cannot export unknown function {}", in_name.value),
+                    loc: in_name.loc,
+                });
+            }
+
             tokens.expect(Symbol, "as")?;
             let out_name = tokens.expect_any(StringLiteral)?.clone();
 
             ctx.fn_exports.push(FnExport {
                 in_name: in_name.value,
                 out_name: out_name.value,
-                loc: in_name.loc,
             });
 
             return Ok(());
@@ -523,7 +522,6 @@ fn parse_fn_def(
         ctx.fn_exports.push(FnExport {
             in_name: fn_decl.fn_name.clone(),
             out_name: fn_decl.fn_name.clone(),
-            loc: fn_decl.loc.clone(),
         });
     }
 

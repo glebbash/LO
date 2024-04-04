@@ -1,4 +1,4 @@
-use crate::{lexer::*, utils::*, wasm::*};
+use crate::{lexer::*, wasm::*};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
@@ -381,7 +381,6 @@ pub struct FnBody {
 pub struct FnExport {
     pub in_name: String,
     pub out_name: String,
-    pub loc: LoLocation,
 }
 
 #[derive(Clone)]
