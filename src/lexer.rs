@@ -1,5 +1,5 @@
 use crate::utils::*;
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{format, rc::Rc, string::String, vec::Vec};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum LoTokenType {
@@ -138,7 +138,7 @@ type LexResult = Result<LoToken, LoError>;
 
 #[derive(Clone)]
 struct Lexer {
-    file_name: Box<str>,
+    file_name: Rc<str>,
     chars: Vec<char>,
     index: usize,
     line: usize,

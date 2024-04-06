@@ -1,5 +1,4 @@
-use alloc::{boxed::Box, format, string::String};
-use alloc::{vec, vec::Vec};
+use alloc::{format, rc::Rc, string::String, vec, vec::Vec};
 use core::ffi::CStr;
 use wasi::*;
 
@@ -32,7 +31,7 @@ impl From<LoError> for String {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct LoLocation {
-    pub file_name: Box<str>,
+    pub file_name: Rc<str>,
     pub offset: usize,
     pub end_offset: usize,
     pub line: usize,
