@@ -1,5 +1,5 @@
-include "lib/std";
-include "lib/wasi";
+include "./std.lo";
+include "./wasi.lo";
 
 struct args {
     argc: u32,

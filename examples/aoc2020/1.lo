@@ -1,10 +1,10 @@
-include "lib/cli";
-include "lib/fs";
+include "../lib/cli.lo";
+include "../lib/fs.lo";
 
 type Vec::u32 = Vec;
 
 fn main() {
-    let input = fs::read_file("./aoc2020/1.txt");
+    let input = fs::read_file("./examples/aoc2020/1.txt");
     defer input.free();
 
     let numbers = parse_numbers(input);

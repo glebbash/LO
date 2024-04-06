@@ -2,7 +2,7 @@
 
 export memory { min_pages: 20 };
 
-include "lib/std";
+include "../lib/std.lo";
 
 export existing fn Vec::with_capacity as "vec_new";
 export existing fn Vec::swap as "vec_swap";

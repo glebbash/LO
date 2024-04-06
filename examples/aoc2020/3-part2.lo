@@ -1,12 +1,12 @@
-include "lib/cli";
-include "lib/fs";
+include "../lib/cli.lo";
+include "../lib/fs.lo";
 
 type Tile = bool;
 const Tile::TREE = true;
 const Tile::EMPTY = false;
 
 fn main() {
-    let input = fs::read_file("./aoc2020/3.txt");
+    let input = fs::read_file("./examples/aoc2020/3.txt");
     defer input.free();
 
     let map = Map::parse(input);

@@ -1,4 +1,4 @@
-include "lib/cli";
+include "../lib/cli.lo";
 
 fn main() {
     for i in 0..10 {

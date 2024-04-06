@@ -1,6 +1,6 @@
-include "lib/cli";
-include "lib/args";
-include "lib/fs";
+include "./lib/cli.lo";
+include "./lib/args.lo";
+include "./lib/fs.lo";
 
 fn main() {
     let args = args::load();

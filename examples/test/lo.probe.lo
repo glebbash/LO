@@ -1,6 +1,6 @@
-include "lib/std";
-include "lib/wasi";
-include "lib/print";
+include "../lib/std.lo";
+include "../lib/wasi.lo";
+include "../lib/print.lo";
 
 export memory { min_pages: 40 }; // 1MB stack + 1MB heap
 

@@ -1,5 +1,5 @@
-include "lib/std";
-include "lib/wasi";
+include "./std.lo";
+include "./wasi.lo";
 
 fn puts(value: str) {
     return fputs(wasi::FD_STDOUT, value);

@@ -40,7 +40,7 @@ async function compileCommand() {
     let compilerArgs = process.argv.slice(3);
 
     return runWASI(await fs.readFile(COMPILER_PATH), {
-        preopens: { ".": "examples" },
+        preopens: { ".": "." },
         args: ["compiler.wasm", ...compilerArgs],
         returnOnExit: false,
     });
@@ -60,7 +60,7 @@ async function runCommand() {
         const exitCode = /** @type {unknown} */ (
             await runWASI(await fs.readFile(COMPILER_PATH), {
                 stdout: stdout.fd,
-                preopens: { ".": "examples" },
+                preopens: { ".": "." },
                 args: ["compiler.wasm", ...compilerArgs],
             })
         );
@@ -76,7 +76,7 @@ async function runCommand() {
     });
 
     await runWASI(program, {
-        preopens: { ".": "examples" },
+        preopens: { ".": "." },
         returnOnExit: false,
         args: ["main.lo", ...programArgs],
     });
@@ -342,7 +342,10 @@ async function testCommand() {
             return fs.readFile(stdoutFile, { encoding: "utf-8" });
         });
 
-        assert.strictEqual(output, "test/tracing.lo:4:10 - hello there\n");
+        assert.strictEqual(
+            output,
+            "./examples/test/tracing.lo:4:10 - hello there\n"
+        );
     });
 
     test("compiles struct-in-struct", async () => {
@@ -471,10 +474,17 @@ async function testCommand() {
             const program = await compile(path);
 
             return await runWithTmpFile(async (stdout, stdoutFile) => {
-                await runWASI(program, {
+                const exitCode = await runWASI(program, {
                     stdout: stdout.fd,
-                    preopens: { ".": "examples" },
+                    preopens: { ".": "." },
                 });
+
+                if (exitCode !== 0) {
+                    throw new Error(
+                        `Process exited with error code: ${exitCode}`
+                    );
+                }
+
                 return fs.readFile(stdoutFile, { encoding: "utf-8" });
             });
         }
@@ -552,7 +562,7 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
                         "lo.wasm",
                         ...(fileName !== undefined ? [fileName] : []),
                     ],
-                    preopens: { ".": "examples" },
+                    preopens: { ".": "." },
                 });
 
                 // @ts-ignore
@@ -576,7 +586,6 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
      */
     return (sourcePath) => {
         if (!mockStdin) {
-            sourcePath = sourcePath.slice("./examples/".length);
             return compile(sourcePath);
         }
 

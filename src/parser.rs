@@ -402,24 +402,24 @@ fn parse_top_level_expr(
         return Ok(());
     }
 
-    if let Some(_) = tokens.eat(Symbol, "include")? {
-        let module_path = tokens.expect_any(StringLiteral)?;
+    if let Some(include) = tokens.eat(Symbol, "include")?.cloned() {
+        let file_path = tokens.expect_any(StringLiteral)?;
+        let file_path = resolve_path(&file_path.value, &file_path.loc.file_name);
 
-        if !ctx.included_modules.insert(module_path.value.clone()) {
-            // do not include module twice
+        // do not include module twice
+        if !ctx.included_modules.insert(file_path.clone()) {
             return Ok(());
         };
 
-        let file_name = format!("{}.lo", module_path.value);
-        let mod_fd = fd_open(&file_name).map_err(|err| LoError {
-            message: format!("Cannot load file {file_name}: {err}"),
-            loc: module_path.loc.clone(),
+        let mod_fd = fd_open(&file_path).map_err(|err| LoError {
+            message: format!("Cannot load file {file_path}: {err}"),
+            loc: include.loc.clone(),
         })?;
 
         let source_buf = fd_read_all_and_close(mod_fd);
         let source = str::from_utf8(source_buf.as_slice()).unwrap();
 
-        let mut tokens = lex_all(&file_name, source)?;
+        let mut tokens = lex_all(&file_path, source)?;
         return parse_file(ctx, &mut tokens);
     }
 
@@ -428,6 +428,38 @@ fn parse_top_level_expr(
         message: format!("Unexpected top level token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
+}
+
+fn resolve_path(file_path: &str, relative_to: &str) -> String {
+    if !file_path.starts_with('.') || !relative_to.contains('/') {
+        return file_path.into();
+    }
+
+    let mut path_items = relative_to.split('/').collect::<Vec<_>>();
+    path_items.pop(); // remove `relative_to`'s file name
+    path_items.extend(file_path.split('/')); // prepend `relative_to`'s folder to file_path
+
+    let mut i = 0;
+    loop {
+        if i >= path_items.len() {
+            break;
+        }
+
+        if path_items[i] == "." {
+            path_items.remove(i);
+            continue;
+        }
+
+        if path_items[i] == ".." && i > 0 {
+            path_items.remove(i - 1);
+            path_items.remove(i - 1);
+            continue;
+        }
+
+        i += 1;
+    }
+
+    path_items.join("/")
 }
 
 fn parse_memory(
