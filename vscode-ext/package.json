@@ -4,7 +4,7 @@
     "description": "LO language support",
     "author": "glebbash",
     "license": "MIT",
-    "version": "0.0.125",
+    "version": "0.0.126",
     "publisher": "glebbash",
     "engines": {
         "vscode": "^1.88.0"
@@ -50,6 +50,9 @@
             }
         ]
     },
+    "extensionDependencies": [
+        "ms-vscode.wasm-wasi-core"
+    ],
     "scripts": {
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
