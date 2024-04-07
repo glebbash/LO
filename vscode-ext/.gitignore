@@ -1,4 +1,2 @@
-node_modules
-dist
-/client/server
-/.vscode-test-web
+/node_modules/
+/out/

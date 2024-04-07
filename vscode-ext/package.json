@@ -4,17 +4,17 @@
     "description": "LO language support",
     "author": "glebbash",
     "license": "MIT",
-    "version": "0.0.88",
+    "version": "0.0.125",
     "publisher": "glebbash",
     "engines": {
-        "vscode": "^1.85.0"
+        "vscode": "^1.88.0"
     },
     "repository": "https://github.com/glebbash/lo",
     "categories": [
         "Programming Languages"
     ],
     "activationEvents": [],
-    "browser": "./client/dist/browserClientMain.js",
+    "main": "./out/extension.js",
     "contributes": {
         "languages": [
             {
@@ -41,47 +41,33 @@
         ],
         "commands": [
             {
-                "command": "lo.helloWorld",
-                "title": "LO: Hello World"
-            }
-        ],
-        "configuration": [
+                "command": "lo.loadCompiler",
+                "title": "LO: Load compiler"
+            },
             {
-                "order": 22,
-                "id": "lo",
-                "title": "LO",
-                "properties": {
-                    "lo.trace.server": {
-                        "type": "string",
-                        "scope": "window",
-                        "enum": [
-                            "off",
-                            "messages",
-                            "verbose"
-                        ],
-                        "default": "off",
-                        "description": "Traces the communication between VS Code and the LO language server."
-                    }
-                }
+                "command": "lo.runFile",
+                "title": "LO: Run current file"
             }
         ]
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
-        "compile": "webpack",
-        "watch": "webpack --watch",
-        "package": "webpack && npm version patch && vsce package -o lo.vsix",
-        "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
-        "serve-dev": "vscode-test-web --browser none --quality stable --extensionDevelopmentPath=. ../examples"
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "lint": "eslint src --ext ts",
+        "package": "npm version patch && vsce package -o lo.vsix"
     },
     "devDependencies": {
-        "@types/vscode": "^1.85.0",
-        "@vscode/test-web": "^0.0.50",
-        "@vscode/vsce": "^2.22.0",
-        "path-browserify": "^1.0.1",
-        "ts-loader": "^9.5.1",
+        "@types/node": "18.x",
+        "@types/vscode": "^1.88.0",
+        "@typescript-eslint/eslint-plugin": "^7.4.0",
+        "@typescript-eslint/parser": "^7.4.0",
+        "@vscode/vsce": "^2.24.0",
+        "eslint": "^8.57.0",
         "typescript": "^5.3.3",
-        "webpack": "^5.89.0",
-        "webpack-cli": "^5.1.4"
+        "vsce": "^2.15.0"
+    },
+    "dependencies": {
+        "@vscode/wasm-wasi": "^0.11.0-next.0"
     }
 }
