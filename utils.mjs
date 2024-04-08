@@ -667,14 +667,14 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
  * @param {(file: import("node:fs/promises").FileHandle, fileName: string) => T} run
  */
 async function runWithTmpFile(run) {
-    const mockOutputFileName = `tmp/${crypto.randomUUID()}.tmp`;
-    const mockOutputFile = await fs.open(mockOutputFileName, "w+");
+    const fileName = `tmp/${crypto.randomUUID()}.tmp`;
+    const fileHandle = await fs.open(fileName, "w+");
 
     try {
-        return await run(mockOutputFile, mockOutputFileName);
+        return await run(fileHandle, fileName);
     } finally {
-        await mockOutputFile.close();
-        await fs.unlink(mockOutputFileName);
+        await fileHandle.close();
+        await fs.unlink(fileName);
     }
 }
 

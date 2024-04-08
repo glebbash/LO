@@ -110,7 +110,7 @@
     struct stack {};
 
     let stack::NOW = __DATA_SIZE__;
-    const stack::MIN = __DATA_SIZE__;
+    let stack::MIN = __DATA_SIZE__;
     const stack::MAX = 1_048_576; // 1MB, ~20 pages (65_536b)
 
     macro stack::alloc!<T>(): &T {
@@ -118,6 +118,14 @@
     };
 
     fn stack::alloc(size: u32): &() {
+        size = mem::align(size);
+
+        // fix stack::MIN alignment
+        if stack::NOW == stack::MIN {
+            stack::MIN = mem::align(stack::MIN);
+            stack::NOW = stack::MIN;
+        };
+
         stack::NOW += size;
 
         if stack::NOW > stack::MAX {
@@ -132,6 +140,8 @@
     };
 
     fn stack::free(size: u32) {
+        size = mem::align(size);
+
         stack::NOW -= size;
 
         if stack::NOW < stack::MIN {

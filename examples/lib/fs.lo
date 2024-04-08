@@ -1,4 +1,6 @@
 include "./std.lo";
+include "./wasi.lo";
+include "./print.lo";
 
 struct fs {};
 
