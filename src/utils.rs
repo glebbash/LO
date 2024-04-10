@@ -1,6 +1,5 @@
 use alloc::{format, rc::Rc, string::String, vec, vec::Vec};
 use core::ffi::CStr;
-use wasi::*;
 
 #[derive(PartialEq)]
 pub struct LoError {
@@ -99,29 +98,41 @@ pub fn proc_exit(exit_code: u32) -> ! {
     unreachable!(); // needed for typesystem
 }
 
-pub fn fd_open(file_path: &str) -> Result<u32, Errno> {
-    unsafe { path_open(CWD_PREOPEN_FD, 0, &file_path, 0, 2, 0, 0) }
+// Hack for https://github.com/microsoft/vscode-wasm/issues/161
+pub fn do_cwd_extra_steps() -> Result<(), wasi::Errno> {
+    use alloc::alloc::*;
+    let prestat = unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD) }?;
+    let path_len = unsafe { prestat.u.dir.pr_name_len };
+    let path_buf = unsafe { alloc_zeroed(Layout::from_size_align(path_len, 8).unwrap()) };
+    let _ = unsafe { wasi::fd_prestat_dir_name(CWD_PREOPEN_FD, path_buf, path_len) }?;
+    let _ = unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD + 1) };
+    let _ = unsafe { wasi::fd_fdstat_get(CWD_PREOPEN_FD) };
+    Ok(())
+}
+
+pub fn fd_open(file_path: &str) -> Result<u32, wasi::Errno> {
+    unsafe { wasi::path_open(CWD_PREOPEN_FD, 1, &file_path, 0, 264240830, 268435455, 0) }
 }
 
 pub fn stdin_read() -> Vec<u8> {
-    fd_read_all_and_close(FD_STDIN)
+    fd_read_all_and_close(wasi::FD_STDIN)
 }
 
 pub fn fd_read_all_and_close(fd: u32) -> Vec<u8> {
     let mut output = Vec::<u8>::new();
     let mut chunk = [0; 256];
 
-    let in_vec = [Iovec {
+    let in_vec = [wasi::Iovec {
         buf: chunk.as_mut_ptr(),
         buf_len: chunk.len(),
     }];
 
     loop {
-        let nread = match unsafe { fd_read(fd, &in_vec) } {
+        let nread = match unsafe { wasi::fd_read(fd, &in_vec) } {
             Ok(nread) => nread,
             Err(err) => {
                 // stdin is empty
-                if fd == 0 && err == ERRNO_AGAIN {
+                if fd == 0 && err == wasi::ERRNO_AGAIN {
                     break;
                 }
 
@@ -145,33 +156,33 @@ pub fn fd_read_all_and_close(fd: u32) -> Vec<u8> {
 }
 
 pub fn stdout_write(message: &[u8]) {
-    fputs(FD_STDOUT, message);
+    fputs(wasi::FD_STDOUT, message);
 }
 
 pub fn stderr_write(message: &[u8]) {
-    fputs(FD_STDERR, message);
+    fputs(wasi::FD_STDERR, message);
 }
 
 pub fn fputs(fd: u32, message: &[u8]) {
-    let out_vec = [Ciovec {
+    let out_vec = [wasi::Ciovec {
         buf: message.as_ptr(),
         buf_len: message.len(),
     }];
 
-    unsafe { fd_write(fd, &out_vec) }.unwrap();
+    unsafe { wasi::fd_write(fd, &out_vec) }.unwrap();
 }
 
 #[allow(dead_code)]
 pub fn debug(msg: String) {
     unsafe {
-        fd_write(
-            FD_STDERR,
+        wasi::fd_write(
+            wasi::FD_STDERR,
             &[
-                Ciovec {
+                wasi::Ciovec {
                     buf: msg.as_ptr(),
                     buf_len: msg.as_bytes().len(),
                 },
-                Ciovec {
+                wasi::Ciovec {
                     buf: "\n".as_ptr(),
                     buf_len: 1,
                 },

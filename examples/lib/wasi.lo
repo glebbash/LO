@@ -13,6 +13,18 @@ struct wasi::IOVec {
     size: u32,
 };
 
+struct wasi::prestat {
+    tag: u32,
+    pr_name_len: u32,
+};
+
+struct wasi::fdstat {
+    fs_filetype: u8,
+    fs_flags: u16,
+    fs_rights_base: u64,
+    fs_rights_inheriting: u64,
+};
+
 import from "wasi_snapshot_preview1" {
     fn wasi::path_open(
         dirfd:                u32, // The file descriptor representing the directory that the file is located in.
@@ -55,6 +67,22 @@ import from "wasi_snapshot_preview1" {
     ): wasi::Err;
 
     fn wasi::proc_exit(
-        code:                 u32, // exit code
+        code:                 u32, // The exit code to return to the operating system.
     );
+
+    fn wasi::fd_prestat_get(
+        fd:                   u32, // The preopened file descriptor to query.
+        buf:       &wasi::prestat, // A pointer to a Prestat structure where the metadata will be written.
+    ): wasi::Err;
+
+    fn wasi::fd_prestat_dir_name(
+        fd:                   u32, // The preopened file descriptor to query.
+        path:                &*u8, // A pointer to a buffer where the directory name will be written.
+        path_len:             u32, // The maximum length of the buffer.
+    ): wasi::Err;
+
+    fn wasi::fd_fdstat_get(
+        fd:                   u32, // The file descriptor whose metadata will be accessed.
+        buf:        &wasi::fdstat, // A WebAssembly pointer to a memory location where the metadata will be written.
+    ): wasi::Err;
 };

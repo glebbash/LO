@@ -11,5 +11,7 @@
                 "fontStyle": ""
             }
         }
-    }
+    },
+    "lo.compilerPath": "${workspaceFolder}/target/wasm32-unknown-unknown/release/lo.wasm",
+    "lo.useNodeWasi": false,
 }

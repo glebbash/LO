@@ -46,6 +46,7 @@ mod wasi_api {
     pub extern "C" fn _start() {
         let args = WasiArgs::load().unwrap();
         let (file_name, source) = if args.len() == 2 {
+            do_cwd_extra_steps().unwrap();
             let file_name = args.get(1).unwrap();
             let fd = fd_open(file_name).unwrap_or_else(|err| {
                 let msg = alloc::format!("Error: cannot open file {file_name}: {err}\n");
