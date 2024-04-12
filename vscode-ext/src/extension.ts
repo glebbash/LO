@@ -61,7 +61,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand("lo.runFile", async () => {
             const config = vscode.workspace.getConfiguration("lo");
-            const useNodeWasi = config.get<boolean>("useNodeWasi");
+            const useNodeWasi = config.get<boolean>("useNodeWasi") ?? false;
             let compilerPath =
                 config.get<string | undefined>("compilerPath") ??
                 "${workspaceFolder}/target/wasm32-unknown-unknown/release/lo.wasm";
@@ -71,22 +71,74 @@ export async function activate(context: vscode.ExtensionContext) {
                 workspaceUri.fsPath
             );
 
-            const compiler = await WebAssembly.compile(
-                await vscode.workspace.fs.readFile(
-                    vscode.Uri.file(compilerPath)
-                )
-            );
+            let compilerModule: WebAssembly.Module;
+            try {
+                compilerModule = await WebAssembly.compile(
+                    await vscode.workspace.fs.readFile(
+                        vscode.Uri.file(compilerPath)
+                    )
+                );
+            } catch (err) {
+                return vscode.window.showErrorMessage(
+                    "Compiler loading error",
+                    { modal: true, detail: "" + err }
+                );
+            }
 
             const currentFile = vscode.window.activeTextEditor?.document;
             if (currentFile === undefined) {
                 return vscode.window.showErrorMessage("No files opened");
             }
 
-            if (useNodeWasi) {
-                await runCompilerNode(workspaceUri, currentFile.uri, compiler);
-            } else {
-                await runCompilerCode(workspaceUri, currentFile.uri, compiler);
+            const compilerResult = await runProgram({
+                useNodeWasi,
+                processName: "compiler.wasm",
+                cwdUri: workspaceUri,
+                args: ["./" + vscode.workspace.asRelativePath(currentFile.uri)],
+                module: compilerModule,
+            });
+            if (compilerResult.exitCode !== 0) {
+                return vscode.window.showErrorMessage(
+                    `Compiler errored (exit code: ${compilerResult.exitCode})`,
+                    {
+                        modal: true,
+                        detail: new TextDecoder().decode(compilerResult.stderr),
+                    }
+                );
             }
+
+            let programModule: WebAssembly.Module;
+            try {
+                programModule = await WebAssembly.compile(
+                    compilerResult.stdout
+                );
+            } catch (err) {
+                return vscode.window.showErrorMessage("Program loading error", {
+                    modal: true,
+                    detail: "" + err,
+                });
+            }
+            const programResult = await runProgram({
+                useNodeWasi,
+                processName: currentFile.uri.fsPath,
+                cwdUri: workspaceUri,
+                args: [],
+                module: programModule,
+            });
+            if (programResult.exitCode !== 0) {
+                return vscode.window.showErrorMessage(
+                    `Program errored (exit code: ${programResult.exitCode})`,
+                    {
+                        modal: true,
+                        detail: new TextDecoder().decode(programResult.stderr),
+                    }
+                );
+            }
+
+            return vscode.window.showInformationMessage("Program output", {
+                modal: true,
+                detail: new TextDecoder().decode(programResult.stdout),
+            });
         })
     );
 
@@ -147,12 +199,29 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log("LO extension activated");
 }
 
-async function runCompilerNode(
-    workspaceUri: vscode.Uri,
-    sourceUri: vscode.Uri,
-    compilerModule: WebAssembly.Module
-) {
-    const tmpDir = workspaceUri.fsPath + "/tmp";
+type ProgramOptions = {
+    processName: string;
+    args: string[];
+    cwdUri: vscode.Uri;
+    module: WebAssembly.Module;
+};
+
+type ProgramResult = {
+    exitCode: number;
+    stdout: Uint8Array;
+    stderr: Uint8Array;
+};
+
+async function runProgram(
+    options: ProgramOptions & { useNodeWasi: boolean }
+): Promise<ProgramResult> {
+    return options.useNodeWasi
+        ? runProgramNode(options)
+        : runProgramCode(options);
+}
+
+async function runProgramNode(options: ProgramOptions): Promise<ProgramResult> {
+    const tmpDir = options.cwdUri.fsPath + "/tmp";
     const stdoutFile = `${tmpDir}/${crypto.randomUUID()}.tmp`;
     const stderrFile = `${tmpDir}/${crypto.randomUUID()}.tmp`;
     let stdoutHandle: fs.FileHandle | undefined;
@@ -165,35 +234,20 @@ async function runCompilerNode(
         const wasi = new WASI({
             stdout: stdoutHandle.fd,
             stderr: stderrHandle.fd,
-            args: [
-                "compiler.wasm",
-                "./" + vscode.workspace.asRelativePath(sourceUri),
-            ],
-            preopens: { ".": workspaceUri.fsPath },
+            args: [options.processName, ...options.args],
+            preopens: { ".": options.cwdUri.fsPath },
             returnOnExit: true,
         });
 
-        const instance = await WebAssembly.instantiate(compilerModule, {
-            wasi_snapshot_preview1: {
-                ...wasi.wasiImport,
-                path_open: (...args: any[]) => {
-                    console.log({ path_open: { args: fixBigNums(args) } });
-                    return wasi.wasiImport.path_open(...args);
-                },
-            },
+        const instance = await WebAssembly.instantiate(options.module, {
+            wasi_snapshot_preview1: wasi.wasiImport,
         });
         const exitCode = wasi.start(instance);
-        if (exitCode !== 0) {
-            const output = await fs.readFile(stderrFile, "utf-8");
-            return vscode.window.showErrorMessage(
-                `exit_code=${exitCode}\n` + output
-            );
-        }
-
-        const output = await fs.readFile(stdoutFile, "utf-8");
-        return vscode.window.showInformationMessage(output);
-    } catch (error) {
-        return vscode.window.showErrorMessage((error as Error).message);
+        return {
+            exitCode,
+            stdout: await fs.readFile(stdoutFile),
+            stderr: await fs.readFile(stderrFile),
+        };
     } finally {
         await stdoutHandle?.close();
         await fs.unlink(stdoutFile);
@@ -203,50 +257,37 @@ async function runCompilerNode(
     }
 }
 
-async function runCompilerCode(
-    workspaceUri: vscode.Uri,
-    sourceUri: vscode.Uri,
-    compilerModule: WebAssembly.Module
-) {
+async function runProgramCode(options: ProgramOptions): Promise<ProgramResult> {
     const wasm = await Wasm.api();
     const stdin = wasm.createWritable();
     const [stdout, stdoutBytes] = accumulateBytes(wasm.createReadable());
     const [stderr, stderrBytes] = accumulateBytes(wasm.createReadable());
 
-    try {
-        const process = await wasm.createProcess(
-            "compiler.wasm",
-            compilerModule,
-            {
-                stdio: {
-                    in: { kind: "pipeIn", pipe: stdin },
-                    out: { kind: "pipeOut", pipe: stdout },
-                    err: { kind: "pipeOut", pipe: stderr },
+    const process = await wasm.createProcess(
+        options.processName,
+        options.module,
+        {
+            stdio: {
+                in: { kind: "pipeIn", pipe: stdin },
+                out: { kind: "pipeOut", pipe: stdout },
+                err: { kind: "pipeOut", pipe: stderr },
+            },
+            args: options.args,
+            mountPoints: [
+                {
+                    kind: "vscodeFileSystem",
+                    uri: options.cwdUri,
+                    mountPoint: "/",
                 },
-                args: ["./" + vscode.workspace.asRelativePath(sourceUri)],
-                mountPoints: [
-                    {
-                        kind: "vscodeFileSystem",
-                        uri: workspaceUri,
-                        mountPoint: "/",
-                    },
-                ],
-                trace: true,
-            }
-        );
-        const exitCode = await process.run();
-        if (exitCode !== 0) {
-            const output = new TextDecoder().decode(stderrBytes.get());
-            return vscode.window.showErrorMessage(
-                `exit_code=${exitCode}\n` + output
-            );
+            ],
         }
-
-        const output = new TextDecoder().decode(stdoutBytes.get());
-        return vscode.window.showInformationMessage(output);
-    } catch (error) {
-        return vscode.window.showErrorMessage((error as Error).message);
-    }
+    );
+    const exitCode = await process.run();
+    return {
+        exitCode,
+        stdout: stdoutBytes.get(),
+        stderr: stderrBytes.get(),
+    };
 }
 
 function accumulateBytes(
@@ -260,12 +301,4 @@ function accumulateBytes(
         data = newData;
     });
     return [readable, { get: () => data }];
-}
-
-function fixBigNums(x: any) {
-    return JSON.parse(
-        JSON.stringify(x, (_key, value) =>
-            typeof value === "bigint" ? Number(value) : value
-        )
-    );
 }
