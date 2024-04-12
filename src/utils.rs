@@ -98,9 +98,10 @@ pub fn proc_exit(exit_code: u32) -> ! {
     unreachable!(); // needed for typesystem
 }
 
-// Hack for https://github.com/microsoft/vscode-wasm/issues/161
+/// Hack for https://github.com/microsoft/vscode-wasm/issues/161
 pub fn do_cwd_extra_steps() -> Result<(), wasi::Errno> {
     use alloc::alloc::*;
+
     let prestat = unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD) }?;
     let path_len = unsafe { prestat.u.dir.pr_name_len };
     let path_buf = unsafe { alloc_zeroed(Layout::from_size_align(path_len, 8).unwrap()) };
@@ -157,6 +158,11 @@ pub fn fd_read_all_and_close(fd: u32) -> Vec<u8> {
 
 pub fn stdout_write(message: &[u8]) {
     fputs(wasi::FD_STDOUT, message);
+}
+
+pub fn stdout_writeln(message: impl AsRef<str>) {
+    stdout_write(message.as_ref().as_bytes());
+    stdout_write("\n".as_bytes());
 }
 
 pub fn stderr_write(message: &[u8]) {

@@ -41,7 +41,7 @@ async function compileCommand() {
 
     return runWASI(await fs.readFile(COMPILER_PATH), {
         preopens: { ".": "." },
-        args: ["compiler.wasm", ...compilerArgs],
+        args: ["lo", ...compilerArgs],
         returnOnExit: false,
     });
 }
@@ -61,7 +61,7 @@ async function runCommand() {
             await runWASI(await fs.readFile(COMPILER_PATH), {
                 stdout: stdout.fd,
                 preopens: { ".": "." },
-                args: ["compiler.wasm", ...compilerArgs],
+                args: ["lo", ...compilerArgs],
             })
         );
 
@@ -558,10 +558,7 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
                     stdin: stdinFd,
                     stdout: stdout.fd,
                     stderr: stderr.fd,
-                    args: [
-                        "lo.wasm",
-                        ...(fileName !== undefined ? [fileName] : []),
-                    ],
+                    args: ["lo", fileName ?? "-i"],
                     preopens: { ".": "." },
                 });
 

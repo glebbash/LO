@@ -11,6 +11,7 @@ use core::{cell::RefCell, fmt::Write};
 
 #[derive(Default)]
 pub struct ModuleContext<'a> {
+    pub inspect_mode: bool,
     pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: RefCell<Vec<FnBody>>,

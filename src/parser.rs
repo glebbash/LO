@@ -5,15 +5,41 @@ use LoTokenType::*;
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const RECEIVER_PARAM_NAME: &str = "self";
 
-pub fn parse(mut tokens: LoTokenStream) -> Result<WasmModule, LoError> {
-    let mut ctx = ModuleContext::default();
-    parse_file(&mut ctx, &mut tokens)?;
-    process_delayed_actions(&mut ctx)?;
-    write_debug_info(&mut ctx)?;
-    Ok(ctx.wasm_module.take())
+pub fn parse_file(
+    ctx: &mut ModuleContext,
+    file_path: &str,
+    loc: &LoLocation,
+) -> Result<(), LoError> {
+    let file = fd_open(&file_path).map_err(|err| LoError {
+        message: format!("Cannot load file {file_path}: error code {err}"),
+        loc: loc.clone(),
+    })?;
+
+    let file_contents = &fd_read_all_and_close(file);
+
+    return parse_file_with_contents(ctx, file_path, file_contents);
 }
 
-fn parse_file(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
+pub fn parse_file_with_contents(
+    ctx: &mut ModuleContext,
+    file_path: &str,
+    file_contents: &[u8],
+) -> Result<(), LoError> {
+    let Ok(file_contents) = str::from_utf8(file_contents) else {
+        return Err(LoError {
+            message: format!("ParseError: contents of `{file_path}` are not valid UTF-8"),
+            loc: LoLocation {
+                file_name: file_path.into(),
+                ..LoLocation::internal()
+            },
+        });
+    };
+
+    let mut tokens = lex_all(&file_path, file_contents)?;
+    return parse_file_tokens(ctx, &mut tokens);
+}
+
+fn parse_file_tokens(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
     while tokens.peek().is_some() {
         parse_top_level_expr(ctx, tokens)?;
         tokens.expect(LoTokenType::Delim, ";")?;
@@ -29,7 +55,7 @@ fn parse_file(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(),
     Ok(())
 }
 
-fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
+pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
     // push function exports
     for fn_export in &ctx.fn_exports {
         let fn_def = ctx.fn_defs.get(&fn_export.in_name).unwrap(); // safe
@@ -108,6 +134,57 @@ fn process_delayed_actions(ctx: &mut ModuleContext) -> Result<(), LoError> {
                 .instrs,
             value.clone(),
         );
+    }
+
+    write_debug_info(ctx)?;
+
+    if ctx.inspect_mode {
+        stdout_writeln("[");
+
+        stdout_writeln(
+            "{ \"type\": \"file\", \
+               \"index\": 0, \
+               \"path\": \"./examples/hello-world.lo\" }, ",
+        );
+
+        stdout_writeln(
+            "{ \"type\": \"file\", \
+               \"index\": 1, \
+               \"path\": \"./examples/lib/cli.lo\" }, ",
+        );
+
+        stdout_writeln(
+            "{ \"type\": \"file\", \
+               \"index\": 2, \
+               \"path\": \"./examples/lib/print.lo\" }, ",
+        );
+
+        stdout_writeln(
+            "{ \"type\": \"hover\", \
+               \"source\": 0, \
+               \"range\": \"3:4-3:8\", \
+               \"content\": \"fn puts(value: str)\" }, ",
+        );
+
+        stdout_writeln(
+            "{ \"type\": \"link\", \
+               \"source\": 0, \
+               \"sourceRange\": \"0:9-0:21\", \
+               \"target\": 1, \
+               \"targetRange\": \"0:0-0:0\" }, ",
+        );
+
+        stdout_writeln(
+            "{ \"type\": \"link\", \
+               \"source\": 0, \
+               \"sourceRange\": \"3:4-3:8\", \
+               \"target\": 2, \
+               \"targetRange\": \"3:3-3:7\" }, ",
+        );
+
+        stdout_writeln("{ \"type\": \"end\" }");
+
+        stdout_writeln("]");
     }
 
     Ok(())
@@ -280,7 +357,7 @@ fn parse_top_level_expr(
                 value_type: wasm_type,
                 mutable,
             },
-            initial_value: WasmExpr { instrs: vec![] }, // will be filled in `process_delayed_actions`
+            initial_value: WasmExpr { instrs: vec![] }, // will be filled in `finalize`
         });
 
         return Ok(());
@@ -411,16 +488,7 @@ fn parse_top_level_expr(
             return Ok(());
         };
 
-        let mod_fd = fd_open(&file_path).map_err(|err| LoError {
-            message: format!("Cannot load file {file_path}: {err}"),
-            loc: include.loc.clone(),
-        })?;
-
-        let source_buf = fd_read_all_and_close(mod_fd);
-        let source = str::from_utf8(source_buf.as_slice()).unwrap();
-
-        let mut tokens = lex_all(&file_path, source)?;
-        return parse_file(ctx, &mut tokens);
+        return parse_file(ctx, &file_path, &include.loc);
     }
 
     let unexpected = tokens.peek().unwrap();

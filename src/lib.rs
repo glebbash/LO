@@ -9,8 +9,6 @@ mod parser;
 mod utils;
 mod wasm;
 
-use alloc::{string::String, vec::Vec};
-
 #[cfg(target_arch = "wasm32")]
 mod wasm_target {
     use lol_alloc::{FreeListAllocator, LockedAllocator};
@@ -30,49 +28,51 @@ mod wasm_target {
     }
 }
 
-fn exec_pipeline(file_name: &str, script: &str) -> Result<Vec<u8>, String> {
-    let tokens = lexer::lex_all(file_name, script)?;
-    let module = parser::parse(tokens)?;
-    let mut binary = Vec::new();
-    module.dump(&mut binary);
-    Ok(binary)
-}
-
 mod wasi_api {
-    use super::exec_pipeline;
-    use super::utils::*;
+    use super::{ir, parser, utils::*};
+    use alloc::{format, string::String, vec::Vec};
 
     #[no_mangle]
     pub extern "C" fn _start() {
-        let args = WasiArgs::load().unwrap();
-        let (file_name, source) = if args.len() == 2 {
-            do_cwd_extra_steps().unwrap();
-            let file_name = args.get(1).unwrap();
-            let fd = fd_open(file_name).unwrap_or_else(|err| {
-                let msg = alloc::format!("Error: cannot open file {file_name}: {err}\n");
-                stderr_write(msg.as_bytes());
-                proc_exit(1);
-            });
-            (file_name, fd_read_all_and_close(fd))
-        } else {
-            ("<stdin>.lo", stdin_read())
-        };
+        start().unwrap_or_else(|mut err_message| {
+            err_message.push('\n');
+            stderr_write(err_message.as_bytes());
+            proc_exit(1);
+        });
+    }
 
-        match exec_pipeline(file_name, core::str::from_utf8(&source).unwrap()) {
-            Ok(binary) => {
-                stdout_write(binary.as_slice());
-            }
-            Err(mut message) => {
-                message.push('\n');
-                stderr_write(message.as_bytes());
-                proc_exit(1);
-            }
-        };
+    fn start() -> Result<(), String> {
+        let args = WasiArgs::load().unwrap();
+        if args.len() < 2 {
+            return Err(format!("Usage: lo <file> [options]"));
+        }
+
+        let ctx = &mut ir::ModuleContext::default();
+        ctx.inspect_mode = args.get(2) == Some("--inspect");
+
+        let file_name = args.get(1).unwrap();
+        if file_name == "-i" {
+            parser::parse_file_with_contents(ctx, "<stdin>", &stdin_read())?;
+        } else {
+            do_cwd_extra_steps().unwrap();
+            parser::parse_file(ctx, file_name, &LoLocation::internal())?;
+        }
+
+        parser::finalize(ctx)?;
+
+        if ctx.inspect_mode {
+            return Ok(());
+        }
+
+        let mut binary = Vec::new();
+        ctx.wasm_module.take().dump(&mut binary);
+        stdout_write(binary.as_slice());
+        return Ok(());
     }
 }
 
 mod fn_api {
-    use super::exec_pipeline;
+    use super::{ir, parser};
     use alloc::{format, string::String, vec::Vec};
     use core::{alloc::Layout, mem::ManuallyDrop, slice, str};
 
@@ -97,34 +97,43 @@ mod fn_api {
     pub extern "C" fn compile(
         file_name_ptr: *const u8,
         file_name_len: usize,
-        script_ptr: *const u8,
-        script_len: usize,
+        file_contents_ptr: *const u8,
+        file_contents_len: usize,
     ) -> ParseResult {
+        match _compile(
+            file_name_ptr,
+            file_name_len,
+            file_contents_ptr,
+            file_contents_len,
+        ) {
+            Ok(bytes) => ParseResult::new(true, bytes),
+            Err(message) => ParseResult::new(false, message.into_bytes()),
+        }
+    }
+
+    fn _compile(
+        file_name_ptr: *const u8,
+        file_name_len: usize,
+        file_contents_ptr: *const u8,
+        file_contents_len: usize,
+    ) -> Result<Vec<u8>, String> {
         let file_name_bytes = unsafe { slice::from_raw_parts(file_name_ptr, file_name_len) };
         let Ok(file_name) = str::from_utf8(file_name_bytes) else {
-            return ParseResult::from(Err(format!(
-                "ParseError: file_name is not a valid utf8 string"
-            )));
+            return Err(format!("ParseError: file_name is not a valid UTF-8 string"));
         };
 
-        let script_bytes = unsafe { slice::from_raw_parts(script_ptr, script_len) };
-        let Ok(script) = str::from_utf8(script_bytes) else {
-            return ParseResult::from(Err(format!(
-                "ParseError: script is not a valid utf8 string"
-            )));
-        };
+        let file_contents = unsafe { slice::from_raw_parts(file_contents_ptr, file_contents_len) };
 
-        ParseResult::from(exec_pipeline(file_name, script))
+        let ctx = &mut ir::ModuleContext::default();
+        parser::parse_file_with_contents(ctx, file_name, file_contents)?;
+        parser::finalize(ctx)?;
+
+        let mut binary = Vec::new();
+        ctx.wasm_module.take().dump(&mut binary);
+        Ok(binary)
     }
 
     impl ParseResult {
-        fn from(res: Result<Vec<u8>, String>) -> Self {
-            match res {
-                Ok(binary) => Self::new(true, binary),
-                Err(message) => Self::new(false, message.into()),
-            }
-        }
-
         fn new(ok: bool, vec: Vec<u8>) -> Self {
             let mut vec = ManuallyDrop::new(vec);
 

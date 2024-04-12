@@ -4,7 +4,7 @@
     "description": "LO language support",
     "author": "glebbash",
     "license": "MIT",
-    "version": "0.0.159",
+    "version": "0.0.170",
     "publisher": "glebbash",
     "engines": {
         "vscode": "^1.88.0"
@@ -40,10 +40,6 @@
             }
         ],
         "commands": [
-            {
-                "command": "lo.loadCompiler",
-                "title": "LO: Load compiler"
-            },
             {
                 "command": "lo.runFile",
                 "title": "LO: Run current file"
