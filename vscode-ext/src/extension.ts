@@ -15,7 +15,7 @@ type DiagnisticItem =
       }
     | { type: "end" };
 
-type FileDiagnostic = {
+type FileAnalysis = {
     uri: vscode.Uri;
     hovers: vscode.Hover[];
     links: vscode.LocationLink[];
@@ -23,9 +23,11 @@ type FileDiagnostic = {
 
 export async function activate(context: vscode.ExtensionContext) {
     const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri!;
+    const diagnosticCollection =
+        vscode.languages.createDiagnosticCollection("lo");
 
-    const diagsPerIndex = new Map<number, FileDiagnostic>();
-    const diagsPerUri = new Map<string, FileDiagnostic>();
+    const analysisPerIndex = new Map<number, FileAnalysis>();
+    const analysisPerUri = new Map<string, FileAnalysis>();
 
     const parseRange = (raw: string) => {
         type Pos = [number, number];
@@ -37,31 +39,28 @@ export async function activate(context: vscode.ExtensionContext) {
     };
 
     const processDocument = async (document: vscode.TextDocument) => {
-        diagsPerUri.clear();
-        diagsPerIndex.clear();
+        analysisPerUri.clear();
+        analysisPerIndex.clear();
 
         const ctx = await loadCompilerCtx();
         if (!ctx) {
             return;
         }
 
+        diagnosticCollection.clear();
         const compilerResult = await runProgram({
             useNodeWasi: ctx.useNodeWasi,
             processName: "lo",
             cwdUri: workspaceUri,
-            args: [
-                "./" + vscode.workspace.asRelativePath(document.uri),
-                "--inspect",
-            ],
+            args: [vscode.workspace.asRelativePath(document.uri), "--inspect"],
             module: ctx.compilerModule,
         });
         if (compilerResult.exitCode !== 0) {
-            return vscode.window.showErrorMessage(
-                `Compiler errored (exit code: ${compilerResult.exitCode})`,
-                {
-                    modal: true,
-                    detail: new TextDecoder().decode(compilerResult.stderr),
-                }
+            return showCompilerError(
+                workspaceUri,
+                diagnosticCollection,
+                new TextDecoder().decode(compilerResult.stderr),
+                compilerResult.exitCode
             );
         }
 
@@ -73,12 +72,12 @@ export async function activate(context: vscode.ExtensionContext) {
             if (d.type === "file") {
                 const uri = vscode.Uri.joinPath(workspaceUri, d.path);
                 const diag = { uri, hovers: [], links: [] };
-                diagsPerIndex.set(d.index, diag);
-                diagsPerUri.set(uri.toString(true), diag);
+                analysisPerIndex.set(d.index, diag);
+                analysisPerUri.set(uri.toString(true), diag);
             }
 
             if (d.type === "hover") {
-                const fileDiagnostic = diagsPerIndex.get(d.source)!;
+                const fileDiagnostic = analysisPerIndex.get(d.source)!;
                 fileDiagnostic.hovers.push(
                     new vscode.Hover(
                         new vscode.MarkdownString().appendCodeblock(
@@ -91,10 +90,10 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
             if (d.type === "link") {
-                const fileDiagnostic = diagsPerIndex.get(d.source)!;
+                const fileDiagnostic = analysisPerIndex.get(d.source)!;
                 fileDiagnostic.links.push({
                     originSelectionRange: parseRange(d.sourceRange),
-                    targetUri: diagsPerIndex.get(d.target)!.uri,
+                    targetUri: analysisPerIndex.get(d.target)!.uri,
                     targetRange: parseRange(d.targetRange),
                 });
             }
@@ -113,20 +112,20 @@ export async function activate(context: vscode.ExtensionContext) {
                 return vscode.window.showErrorMessage("No files opened");
             }
 
+            diagnosticCollection.clear();
             const compilerResult = await runProgram({
                 useNodeWasi: ctx.useNodeWasi,
                 processName: "lo",
                 cwdUri: workspaceUri,
-                args: ["./" + vscode.workspace.asRelativePath(currentFile.uri)],
+                args: [vscode.workspace.asRelativePath(currentFile.uri)],
                 module: ctx.compilerModule,
             });
             if (compilerResult.exitCode !== 0) {
-                return vscode.window.showErrorMessage(
-                    `Compiler errored (exit code: ${compilerResult.exitCode})`,
-                    {
-                        modal: true,
-                        detail: new TextDecoder().decode(compilerResult.stderr),
-                    }
+                return showCompilerError(
+                    workspaceUri,
+                    diagnosticCollection,
+                    new TextDecoder().decode(compilerResult.stderr),
+                    compilerResult.exitCode
                 );
             }
 
@@ -177,7 +176,8 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerDefinitionProvider("lo", {
             provideDefinition(document, position, _token) {
                 const links =
-                    diagsPerUri.get(document.uri.toString(true))?.links ?? [];
+                    analysisPerUri.get(document.uri.toString(true))?.links ??
+                    [];
                 for (const ref of links) {
                     if (ref.originSelectionRange!.contains(position)) {
                         return [ref];
@@ -193,7 +193,8 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerHoverProvider("lo", {
             provideHover(document, position, _token) {
                 const hovers =
-                    diagsPerUri.get(document.uri.toString(true))?.hovers ?? [];
+                    analysisPerUri.get(document.uri.toString(true))?.hovers ??
+                    [];
                 for (const hover of hovers) {
                     if (hover.range!.contains(position)) {
                         return hover;
@@ -340,4 +341,42 @@ function accumulateBytes(
         data = newData;
     });
     return [readable, { get: () => data }];
+}
+
+async function showCompilerError(
+    workspaceUri: vscode.Uri,
+    diagnosticCollection: vscode.DiagnosticCollection,
+    errorMessage: string,
+    exitCode: number
+) {
+    const match = errorMessage.match(/^(.+):(\d+):(\d+) - (.+)\n$/);
+    if (match === null) {
+        return vscode.window.showErrorMessage(
+            `Compiler errored (exit code: ${exitCode})`,
+            { modal: true, detail: errorMessage }
+        );
+    }
+
+    const filePath = match[1];
+    const lineNumber = Number(match[2]);
+    const columnNumber = Number(match[3]);
+    const message = match[4];
+
+    const fileUri = vscode.Uri.joinPath(workspaceUri, filePath);
+
+    const range = new vscode.Range(
+        new vscode.Position(lineNumber - 1, columnNumber - 1),
+        new vscode.Position(lineNumber - 1, columnNumber)
+    );
+
+    const diagnostic = new vscode.Diagnostic(
+        range,
+        message,
+        vscode.DiagnosticSeverity.Error
+    );
+
+    diagnosticCollection.set(fileUri, [
+        ...(diagnosticCollection.get(fileUri) ?? []),
+        diagnostic,
+    ]);
 }
