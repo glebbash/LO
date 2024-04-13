@@ -70,8 +70,6 @@ export async function activate(context: vscode.ExtensionContext) {
             new TextDecoder().decode(compilerResult.stdout)
         );
 
-        console.log({ diagnostics });
-
         for (const d of diagnostics) {
             if (d.type === "file") {
                 const uri = vscode.Uri.joinPath(workspaceUri, d.path);
