@@ -30,11 +30,13 @@ export async function activate(context: vscode.ExtensionContext) {
     const analysisPerUri = new Map<string, FileAnalysis>();
 
     const parseRange = (raw: string) => {
-        type Pos = [number, number];
-        const [start, end] = raw.split("-");
+        const [startPos, endPos] = raw.split("-");
+        const [startLine, startCol] = startPos.split(":").map(Number);
+        const [endLine, endCol] = endPos.split(":").map(Number);
+
         return new vscode.Range(
-            new vscode.Position(...(start.split(":").map(Number) as Pos)),
-            new vscode.Position(...(end.split(":").map(Number) as Pos))
+            new vscode.Position(startLine - 1, startCol - 1),
+            new vscode.Position(endLine - 1, endCol - 1)
         );
     };
 
@@ -67,6 +69,8 @@ export async function activate(context: vscode.ExtensionContext) {
         const diagnostics: DiagnisticItem[] = JSON.parse(
             new TextDecoder().decode(compilerResult.stdout)
         );
+
+        console.log({ diagnostics });
 
         for (const d of diagnostics) {
             if (d.type === "file") {
@@ -366,7 +370,7 @@ async function showCompilerError(
 
     const range = new vscode.Range(
         new vscode.Position(lineNumber - 1, columnNumber - 1),
-        new vscode.Position(lineNumber - 1, columnNumber)
+        new vscode.Position(lineNumber - 1, columnNumber - 1)
     );
 
     const diagnostic = new vscode.Diagnostic(

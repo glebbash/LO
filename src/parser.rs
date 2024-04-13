@@ -5,26 +5,42 @@ use LoTokenType::*;
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const RECEIVER_PARAM_NAME: &str = "self";
 
+pub fn init<'a>(inspect_mode: bool) -> ModuleContext<'a> {
+    let mut ctx = ModuleContext::default();
+    ctx.inspect_mode = inspect_mode;
+
+    if ctx.inspect_mode {
+        stdout_writeln("[");
+    }
+
+    return ctx;
+}
+
 pub fn parse_file(
     ctx: &mut ModuleContext,
     file_path: &str,
     loc: &LoLocation,
-) -> Result<(), LoError> {
+) -> Result<Option<u32>, LoError> {
+    let file_path = resolve_path(file_path, &loc.file_name);
+    if ctx.included_modules.contains_key(&file_path) {
+        return Ok(None);
+    }
+
     let file = fd_open(&file_path).map_err(|err| LoError {
         message: format!("Cannot load file {file_path}: error code {err}"),
         loc: loc.clone(),
     })?;
 
     let file_contents = &fd_read_all_and_close(file);
-
-    return parse_file_with_contents(ctx, file_path, file_contents);
+    let file_index = parse_file_contents(ctx, file_path, file_contents)?;
+    return Ok(Some(file_index));
 }
 
-pub fn parse_file_with_contents(
+pub fn parse_file_contents(
     ctx: &mut ModuleContext,
-    file_path: &str,
+    file_path: String,
     file_contents: &[u8],
-) -> Result<(), LoError> {
+) -> Result<u32, LoError> {
     let Ok(file_contents) = str::from_utf8(file_contents) else {
         return Err(LoError {
             message: format!("ParseError: contents of `{file_path}` are not valid UTF-8"),
@@ -36,7 +52,20 @@ pub fn parse_file_with_contents(
     };
 
     let mut tokens = lex_all(&file_path, file_contents)?;
-    return parse_file_tokens(ctx, &mut tokens);
+
+    let file_index = ctx.included_modules.len() as u32;
+    if ctx.inspect_mode {
+        stdout_writeln(format!(
+            "{{ \"type\": \"file\", \
+                \"index\": {file_index}, \
+                \"path\": \"{file_path}\" }}, "
+        ));
+    }
+    ctx.included_modules.insert(file_path, file_index);
+
+    parse_file_tokens(ctx, &mut tokens)?;
+
+    return Ok(file_index);
 }
 
 fn parse_file_tokens(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<(), LoError> {
@@ -56,15 +85,17 @@ fn parse_file_tokens(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Res
 }
 
 pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
-    // push function exports
-    for fn_export in &ctx.fn_exports {
-        let fn_def = ctx.fn_defs.get(&fn_export.in_name).unwrap(); // safe
+    if !ctx.inspect_mode {
+        // push function exports
+        for fn_export in &ctx.fn_exports {
+            let fn_def = ctx.fn_defs.get(&fn_export.in_name).unwrap(); // safe
 
-        ctx.wasm_module.borrow_mut().exports.push(WasmExport {
-            export_type: WasmExportType::Func,
-            export_name: fn_export.out_name.clone(),
-            exported_item_index: fn_def.get_absolute_index(ctx),
-        });
+            ctx.wasm_module.borrow_mut().exports.push(WasmExport {
+                export_type: WasmExportType::Func,
+                export_name: fn_export.out_name.clone(),
+                exported_item_index: fn_def.get_absolute_index(ctx),
+            });
+        }
     }
 
     // push function codes
@@ -126,61 +157,38 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         });
     }
 
-    // lower global values (a hack to resolve __DATA_SIZE__ after all strings were seen)
-    for GlobalDef { index, value, .. } in ctx.globals.values() {
-        lower_expr(
-            &mut ctx.wasm_module.borrow_mut().globals[*index as usize]
-                .initial_value
-                .instrs,
-            value.clone(),
-        );
+    if !ctx.inspect_mode {
+        // lower global values (a hack to resolve __DATA_SIZE__ after all strings were seen)
+        for GlobalDef { index, value, .. } in ctx.globals.values() {
+            lower_expr(
+                &mut ctx.wasm_module.borrow_mut().globals[*index as usize]
+                    .initial_value
+                    .instrs,
+                value.clone(),
+            );
+        }
     }
 
-    write_debug_info(ctx)?;
+    if !ctx.inspect_mode {
+        write_debug_info(ctx)?;
+    }
 
     if ctx.inspect_mode {
-        stdout_writeln("[");
+        // TODO: support hovers
+        // stdout_writeln(
+        //     "{ \"type\": \"hover\", \
+        //        \"source\": 0, \
+        //        \"range\": \"3:4-3:8\", \
+        //        \"content\": \"fn puts(value: str)\" }, ",
+        // );
 
-        stdout_writeln(
-            "{ \"type\": \"file\", \
-               \"index\": 0, \
-               \"path\": \"./examples/hello-world.lo\" }, ",
-        );
-
-        stdout_writeln(
-            "{ \"type\": \"file\", \
-               \"index\": 1, \
-               \"path\": \"./examples/lib/cli.lo\" }, ",
-        );
-
-        stdout_writeln(
-            "{ \"type\": \"file\", \
-               \"index\": 2, \
-               \"path\": \"./examples/lib/print.lo\" }, ",
-        );
-
-        stdout_writeln(
-            "{ \"type\": \"hover\", \
-               \"source\": 0, \
-               \"range\": \"3:4-3:8\", \
-               \"content\": \"fn puts(value: str)\" }, ",
-        );
-
-        stdout_writeln(
-            "{ \"type\": \"link\", \
-               \"source\": 0, \
-               \"sourceRange\": \"0:9-0:21\", \
-               \"target\": 1, \
-               \"targetRange\": \"0:0-0:0\" }, ",
-        );
-
-        stdout_writeln(
-            "{ \"type\": \"link\", \
-               \"source\": 0, \
-               \"sourceRange\": \"3:4-3:8\", \
-               \"target\": 2, \
-               \"targetRange\": \"3:3-3:7\" }, ",
-        );
+        // stdout_writeln(
+        //     "{ \"type\": \"link\", \
+        //        \"source\": 0, \
+        //        \"sourceRange\": \"3:4-3:8\", \
+        //        \"target\": 2, \
+        //        \"targetRange\": \"3:3-3:7\" }, ",
+        // );
 
         stdout_writeln("{ \"type\": \"end\" }");
 
@@ -479,16 +487,34 @@ fn parse_top_level_expr(
         return Ok(());
     }
 
-    if let Some(include) = tokens.eat(Symbol, "include")?.cloned() {
+    if let Some(_) = tokens.eat(Symbol, "include")?.cloned() {
         let file_path = tokens.expect_any(StringLiteral)?;
-        let file_path = resolve_path(&file_path.value, &file_path.loc.file_name);
-
-        // do not include module twice
-        if !ctx.included_modules.insert(file_path.clone()) {
+        let target_index = parse_file(ctx, &file_path.value, &file_path.loc)?;
+        let Some(target_index) = target_index else {
             return Ok(());
         };
 
-        return parse_file(ctx, &file_path, &include.loc);
+        if ctx.inspect_mode {
+            let source_index = ctx
+                .included_modules
+                .get(&file_path.loc.file_name as &str)
+                .unwrap();
+
+            let sl = file_path.loc.pos.line;
+            let sc = file_path.loc.pos.col;
+            let el = file_path.loc.end_pos.line;
+            let ec = file_path.loc.end_pos.col;
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"link\", \
+                    \"source\": {source_index}, \
+                    \"sourceRange\": \"{sl}:{sc}-{el}:{ec}\", \
+                    \"target\": {target_index}, \
+                    \"targetRange\": \"1:1-1:1\" }}, ",
+            ));
+        }
+
+        return Ok(());
     }
 
     let unexpected = tokens.peek().unwrap();
@@ -496,38 +522,6 @@ fn parse_top_level_expr(
         message: format!("Unexpected top level token: {}", unexpected.value),
         loc: unexpected.loc.clone(),
     });
-}
-
-fn resolve_path(file_path: &str, relative_to: &str) -> String {
-    if !file_path.starts_with('.') || !relative_to.contains('/') {
-        return file_path.into();
-    }
-
-    let mut path_items = relative_to.split('/').collect::<Vec<_>>();
-    path_items.pop(); // remove `relative_to`'s file name
-    path_items.extend(file_path.split('/')); // prepend `relative_to`'s folder to file_path
-
-    let mut i = 0;
-    loop {
-        if i >= path_items.len() {
-            break;
-        }
-
-        if path_items[i] == "." {
-            path_items.remove(i);
-            continue;
-        }
-
-        if path_items[i] == ".." && i > 0 {
-            path_items.remove(i - 1);
-            path_items.remove(i - 1);
-            continue;
-        }
-
-        i += 1;
-    }
-
-    path_items.join("/")
 }
 
 fn parse_memory(
@@ -2430,7 +2424,7 @@ fn parse_nested_symbol(tokens: &mut LoTokenStream) -> Result<LoToken, LoError> {
         let path_part = tokens.expect_any(Symbol)?;
         nested_symbol.value += "::";
         nested_symbol.value += path_part.value.as_str();
-        nested_symbol.loc.end_offset = path_part.loc.end_offset;
+        nested_symbol.loc.end_pos.offset = path_part.loc.end_pos.offset;
     }
     Ok(nested_symbol)
 }
@@ -2447,8 +2441,8 @@ fn extract_method_receiver_and_name(
                 loc: token.loc.clone(),
             };
 
-            // TODO: correct `end_offset` info is lost during creation of nested_symbol
-            token.loc.end_offset = token.loc.offset;
+            // TODO: correct `end_pos` info is lost during creation of nested_symbol
+            token.loc.end_pos = token.loc.pos.clone();
 
             (
                 Some(get_type_by_name(ctx, &ctx.type_scope, &token, false)?),

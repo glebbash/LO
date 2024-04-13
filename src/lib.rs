@@ -29,7 +29,7 @@ mod wasm_target {
 }
 
 mod wasi_api {
-    use super::{ir, parser, utils::*};
+    use super::{parser, utils::*};
     use alloc::{format, string::String, vec::Vec};
 
     #[no_mangle]
@@ -47,12 +47,11 @@ mod wasi_api {
             return Err(format!("Usage: lo <file> [options]"));
         }
 
-        let ctx = &mut ir::ModuleContext::default();
-        ctx.inspect_mode = args.get(2) == Some("--inspect");
+        let ctx = &mut parser::init(args.get(2) == Some("--inspect"));
 
         let file_name = args.get(1).unwrap();
         if file_name == "-i" {
-            parser::parse_file_with_contents(ctx, "<stdin>", &stdin_read())?;
+            parser::parse_file_contents(ctx, String::from("<stdin>"), &stdin_read())?;
         } else {
             do_cwd_extra_steps().unwrap();
             parser::parse_file(ctx, file_name, &LoLocation::internal())?;
@@ -72,7 +71,7 @@ mod wasi_api {
 }
 
 mod fn_api {
-    use super::{ir, parser};
+    use super::parser;
     use alloc::{format, string::String, vec::Vec};
     use core::{alloc::Layout, mem::ManuallyDrop, slice, str};
 
@@ -124,8 +123,8 @@ mod fn_api {
 
         let file_contents = unsafe { slice::from_raw_parts(file_contents_ptr, file_contents_len) };
 
-        let ctx = &mut ir::ModuleContext::default();
-        parser::parse_file_with_contents(ctx, file_name, file_contents)?;
+        let ctx = &mut parser::init(false);
+        parser::parse_file_contents(ctx, String::from(file_name), file_contents)?;
         parser::finalize(ctx)?;
 
         let mut binary = Vec::new();

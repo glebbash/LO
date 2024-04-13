@@ -29,29 +29,41 @@ impl From<LoError> for String {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct LoLocation {
-    pub file_name: Rc<str>,
+pub struct LoPosition {
     pub offset: usize,
-    pub end_offset: usize,
     pub line: usize,
     pub col: usize,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct LoLocation {
+    pub file_name: Rc<str>,
+
+    pub pos: LoPosition,
+    pub end_pos: LoPosition,
 }
 
 impl LoLocation {
     pub fn internal() -> Self {
         LoLocation {
             file_name: "<internal>".into(),
-            offset: 0,
-            end_offset: 0,
-            line: 0,
-            col: 0,
+            pos: LoPosition {
+                offset: 0,
+                line: 1,
+                col: 1,
+            },
+            end_pos: LoPosition {
+                offset: 0,
+                line: 1,
+                col: 1,
+            },
         }
     }
 }
 
 impl core::fmt::Display for LoLocation {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}:{}:{}", self.file_name, self.line, self.col)
+        write!(f, "{}:{}:{}", self.file_name, self.pos.line, self.pos.col)
     }
 }
 
@@ -196,4 +208,36 @@ pub fn debug(msg: String) {
         )
         .unwrap();
     }
+}
+
+pub fn resolve_path(file_path: &str, relative_to: &str) -> String {
+    if !file_path.starts_with('.') || !relative_to.contains('/') {
+        return file_path.into();
+    }
+
+    let mut path_items = relative_to.split('/').collect::<Vec<_>>();
+    path_items.pop(); // remove `relative_to`'s file name
+    path_items.extend(file_path.split('/')); // prepend `relative_to`'s folder to file_path
+
+    let mut i = 0;
+    loop {
+        if i >= path_items.len() {
+            break;
+        }
+
+        if path_items[i] == "." {
+            path_items.remove(i);
+            continue;
+        }
+
+        if path_items[i] == ".." && i > 0 {
+            path_items.remove(i - 1);
+            path_items.remove(i - 1);
+            continue;
+        }
+
+        i += 1;
+    }
+
+    path_items.join("/")
 }

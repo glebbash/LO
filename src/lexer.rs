@@ -218,7 +218,7 @@ impl Lexer {
             }
         }
 
-        loc.end_offset = self.index;
+        loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::IntLiteral,
@@ -234,11 +234,11 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.end_offset = self.index;
+        loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::Symbol,
-            value: self.chars[loc.offset..self.index].iter().collect(),
+            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
     }
@@ -280,7 +280,7 @@ impl Lexer {
 
         self.next_char(); // skip end quote
 
-        loc.end_offset = self.index;
+        loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::CharLiteral,
@@ -324,7 +324,7 @@ impl Lexer {
 
         self.next_char(); // skip end quote
 
-        loc.end_offset = self.index;
+        loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::StringLiteral,
@@ -340,7 +340,7 @@ impl Lexer {
 
         Ok(LoToken {
             type_: LoTokenType::Delim,
-            value: self.chars[loc.offset].into(),
+            value: self.chars[loc.pos.offset].into(),
             loc,
         })
     }
@@ -361,7 +361,7 @@ impl Lexer {
             break;
         }
 
-        loc.end_offset = self.index;
+        loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::Operator,
@@ -436,8 +436,15 @@ impl Lexer {
     fn loc(&self) -> LoLocation {
         LoLocation {
             file_name: self.file_name.clone(),
+
+            pos: self.pos(),
+            end_pos: self.pos(),
+        }
+    }
+
+    fn pos(&self) -> LoPosition {
+        LoPosition {
             offset: self.index,
-            end_offset: self.index,
             line: self.line,
             col: self.col,
         }

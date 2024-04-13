@@ -4,7 +4,7 @@
     "description": "LO language support",
     "author": "glebbash",
     "license": "MIT",
-    "version": "0.0.179",
+    "version": "0.0.186",
     "publisher": "glebbash",
     "engines": {
         "vscode": "^1.88.0"

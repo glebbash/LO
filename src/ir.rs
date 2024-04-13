@@ -1,12 +1,5 @@
 use crate::{lexer::*, wasm::*};
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, BTreeSet},
-    format,
-    rc::Rc,
-    string::String,
-    vec::Vec,
-};
+use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec::Vec};
 use core::{cell::RefCell, fmt::Write};
 
 #[derive(Default)]
@@ -23,7 +16,7 @@ pub struct ModuleContext<'a> {
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
     pub constants: RefCell<BTreeMap<String, LoInstr>>,
-    pub included_modules: BTreeSet<String>,
+    pub included_modules: BTreeMap<String, u32>,
     pub macros: BTreeMap<String, MacroDef>,
     pub type_scope: LoTypeScope<'a>,
 }
