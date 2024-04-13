@@ -166,14 +166,6 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(async (doc) => {
-            if (doc.languageId === "lo") {
-                await processDocument(doc);
-            }
-        })
-    );
-
-    context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (doc) => {
             if (doc.languageId === "lo") {
                 await processDocument(doc);
