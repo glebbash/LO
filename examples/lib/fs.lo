@@ -9,6 +9,8 @@ const fs::CWD_PREOPEN_FD = 3;
 
 // TODO: return errors instead of exiting with logs
 fn fs::read_file(file_name: str): &String {
+    fs::_unlock();
+
     let open_res = fs::open(file_name);
     if open_res.err != 0 {
         fputs(wasi::FD_STDERR, "Error opening file: ");
@@ -21,6 +23,40 @@ fn fs::read_file(file_name: str): &String {
     return fs::read_fd(fd);
 };
 
+let fs::unlocked = false;
+
+// https://github.com/microsoft/vscode-wasm/issues/161
+fn fs::_unlock() {
+    if fs::unlocked {
+        return;
+    };
+
+    let err = 0;
+    defer if err != 0 {
+        fputs(wasi::FD_STDERR, "Error unlocking fs (code=");
+        fprint_u32(wasi::FD_STDERR, err);
+        fputs(wasi::FD_STDERR, ")\n");
+        wasi::proc_exit(1);
+    };
+
+    let prestat = tmp_alloc!<wasi::prestat>();
+    err = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD, prestat);
+    if err != 0 { return; };
+
+    let dir_path = tmp_alloc_many!<u8>(prestat.pr_name_len);
+    err = wasi::fd_prestat_dir_name(fs::CWD_PREOPEN_FD, dir_path, prestat.pr_name_len);
+    if err != 0 { return; };
+
+    let fdstat = tmp_alloc!<wasi::fdstat>();
+    err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat);
+    if err != 0 { return; };
+
+    let prestat2 = tmp_alloc!<wasi::prestat>();
+    let _ = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD + 1, prestat2);
+
+    fs::unlocked = true;
+};
+
 struct fs::FdOpenRes {
     err: wasi::Err,
     fd: u32,
@@ -30,8 +66,8 @@ fn fs::open(file_path: str): fs::FdOpenRes {
     let fd_ref = tmp_alloc!<u32>();
 
     let err = wasi::path_open(
-        fs::CWD_PREOPEN_FD, 0,
-        file_path.data, file_path.size, 0, 2u64, 0u64, 0,
+        fs::CWD_PREOPEN_FD,
+        1, file_path.data, file_path.size, 0, 264240830u64, 268435455u64, 0,
         fd_ref,
     );
 

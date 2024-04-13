@@ -19,7 +19,7 @@ fn main() {
     if err != 0 { wasi::proc_exit(err); };
 
     let prestat2 = tmp_alloc!<wasi::prestat>();
-    let _ = wasi::fd_prestat_get(4, prestat2);
+    let _ = wasi::fd_prestat_get(dir_fd + 1, prestat2);
 
     let file_fd = tmp_alloc!<u32>();
     err = wasi::path_open(
