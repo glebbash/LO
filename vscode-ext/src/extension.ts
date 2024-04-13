@@ -41,15 +41,11 @@ export async function activate(context: vscode.ExtensionContext) {
     };
 
     const processDocument = async (document: vscode.TextDocument) => {
-        analysisPerUri.clear();
-        analysisPerIndex.clear();
-
         const ctx = await loadCompilerCtx();
         if (!ctx) {
             return;
         }
 
-        diagnosticCollection.clear();
         const compilerResult = await runProgram({
             useNodeWasi: ctx.useNodeWasi,
             processName: "lo",
@@ -57,6 +53,9 @@ export async function activate(context: vscode.ExtensionContext) {
             args: [vscode.workspace.asRelativePath(document.uri), "--inspect"],
             module: ctx.compilerModule,
         });
+        analysisPerUri.clear();
+        analysisPerIndex.clear();
+        diagnosticCollection.clear();
         if (compilerResult.exitCode !== 0) {
             return showCompilerError(
                 workspaceUri,
@@ -114,7 +113,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 return vscode.window.showErrorMessage("No files opened");
             }
 
-            diagnosticCollection.clear();
             const compilerResult = await runProgram({
                 useNodeWasi: ctx.useNodeWasi,
                 processName: "lo",
@@ -122,6 +120,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 args: [vscode.workspace.asRelativePath(currentFile.uri)],
                 module: ctx.compilerModule,
             });
+            diagnosticCollection.clear();
             if (compilerResult.exitCode !== 0) {
                 return showCompilerError(
                     workspaceUri,
