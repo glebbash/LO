@@ -399,6 +399,15 @@ pub struct FnParam {
     pub type_: LoType,
 }
 
+impl core::fmt::Display for FnParam {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.name)?;
+        write!(f, ": ")?;
+        write!(f, "{}", self.type_)?;
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 pub struct MacroDef {
     pub receiver_type: Option<LoType>,

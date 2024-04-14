@@ -1755,17 +1755,9 @@ fn parse_macro_call(
         let el = macro_token.loc.end_pos.line;
         let ec = macro_token.loc.end_pos.col;
 
-        // TODO: this is temporary
-        let mut params = Vec::new();
-        for param in &macro_def.params {
-            params.push(
-                param
-                    .type_
-                    .resolve_macro_type_args(macro_ctx.block.type_scope.as_ref().unwrap()),
-            );
-        }
-        let params = ListDisplay(&params);
+        let params = ListDisplay(&macro_def.params);
         let type_params = ListDisplay(&macro_def.type_params);
+        let return_type = &macro_def.return_type;
 
         stdout_writeln(format!(
             "{{ \"type\": \"hover\", \
