@@ -1467,6 +1467,31 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             &value.loc,
         )?;
 
+        if ctx.module.inspect_mode {
+            let source_index = ctx
+                .module
+                .included_modules
+                .get(&value.loc.file_name as &str)
+                .unwrap();
+
+            let sl = value.loc.pos.line;
+            let sc = value.loc.pos.col;
+            let el = value.loc.end_pos.line;
+            let ec = value.loc.end_pos.col;
+
+            let fn_name = &value.value;
+            // TODO: this should also have param names
+            let params = ListDisplay(&fn_def.type_.inputs);
+            let return_type = &fn_def.type_.output;
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"hover\", \
+                   \"source\": {source_index}, \
+                   \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                   \"content\": \"fn {fn_name}({params}): {return_type}\" }}, "
+            ));
+        }
+
         return Ok(LoInstr::Call {
             fn_index: fn_def.get_absolute_index(ctx.module),
             return_type: fn_def.type_.output.clone(),
@@ -1716,6 +1741,38 @@ fn parse_macro_call(
             message: format!("Macro resolved to {resolved_type} but {return_type} was expected"),
             loc: macro_token.loc.clone(),
         });
+    }
+
+    if ctx.module.inspect_mode {
+        let source_index = ctx
+            .module
+            .included_modules
+            .get(&macro_token.loc.file_name as &str)
+            .unwrap();
+
+        let sl = macro_token.loc.pos.line;
+        let sc = macro_token.loc.pos.col;
+        let el = macro_token.loc.end_pos.line;
+        let ec = macro_token.loc.end_pos.col;
+
+        // TODO: this is temporary
+        let mut params = Vec::new();
+        for param in &macro_def.params {
+            params.push(
+                param
+                    .type_
+                    .resolve_macro_type_args(macro_ctx.block.type_scope.as_ref().unwrap()),
+            );
+        }
+        let params = ListDisplay(&params);
+        let type_params = ListDisplay(&macro_def.type_params);
+
+        stdout_writeln(format!(
+            "{{ \"type\": \"hover\", \
+               \"source\": {source_index}, \
+               \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+               \"content\": \"fn {macro_name}!<{type_params}>({params}): {return_type}\" }}, "
+        ));
     }
 
     return Ok(LoInstr::Casted {
@@ -2087,6 +2144,30 @@ fn parse_postfix(
                     &method_name.loc,
                 )?;
 
+                if ctx.module.inspect_mode {
+                    let source_index = ctx
+                        .module
+                        .included_modules
+                        .get(&method_name.loc.file_name as &str)
+                        .unwrap();
+
+                    let sl = method_name.loc.pos.line;
+                    let sc = method_name.loc.pos.col;
+                    let el = method_name.loc.end_pos.line;
+                    let ec = method_name.loc.end_pos.col;
+
+                    // TODO: this should also have param names
+                    let params = ListDisplay(&fn_def.type_.inputs);
+                    let return_type = &fn_def.type_.output;
+
+                    stdout_writeln(format!(
+                        "{{ \"type\": \"hover\", \
+                           \"source\": {source_index}, \
+                           \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                           \"content\": \"fn {fn_name}({params}): {return_type}\" }}, "
+                    ));
+                }
+
                 return Ok(LoInstr::Call {
                     fn_index: fn_def.get_absolute_index(ctx.module),
                     return_type: fn_def.type_.output.clone(),
@@ -2271,10 +2352,10 @@ fn typecheck_fn_call_args(
     if arg_types != *params {
         return Err(LoError {
             message: format!(
-                "Invalid arguments for `{}` call: {}, expected: {}",
+                "Invalid arguments for `{}` call: [{}], expected: [{}]",
                 fn_name,
-                LoTypes(&arg_types),
-                LoTypes(params)
+                ListDisplay(&arg_types),
+                ListDisplay(params)
             ),
             loc: fn_call_loc.clone(),
         });

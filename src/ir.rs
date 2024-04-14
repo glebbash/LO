@@ -1,6 +1,6 @@
 use crate::{lexer::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec::Vec};
-use core::{cell::RefCell, fmt::Write};
+use core::cell::RefCell;
 
 #[derive(Default)]
 pub struct ModuleContext<'a> {
@@ -208,22 +208,6 @@ impl core::fmt::Display for LoType {
             LoType::StructInstance { name } => f.write_str(name),
             LoType::MacroTypeArg { name } => f.write_str(name),
         }
-    }
-}
-
-pub struct LoTypes<'a>(pub &'a Vec<LoType>);
-
-impl<'a> core::fmt::Display for LoTypes<'a> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_char('[')?;
-        let mut iter = self.0.iter();
-        if let Some(item) = iter.next() {
-            write!(f, "{item}")?;
-        }
-        for item in iter {
-            write!(f, ", {item}")?;
-        }
-        f.write_char(']')
     }
 }
 

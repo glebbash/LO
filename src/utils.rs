@@ -241,3 +241,18 @@ pub fn resolve_path(file_path: &str, relative_to: &str) -> String {
 
     path_items.join("/")
 }
+
+pub struct ListDisplay<'a, T: core::fmt::Display>(pub &'a Vec<T>);
+
+impl<'a, T: core::fmt::Display> core::fmt::Display for ListDisplay<'a, T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut iter = self.0.iter();
+        if let Some(item) = iter.next() {
+            write!(f, "{item}")?;
+        }
+        for item in iter {
+            write!(f, ", {item}")?;
+        }
+        Ok(())
+    }
+}
