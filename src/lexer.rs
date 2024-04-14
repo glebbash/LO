@@ -143,6 +143,7 @@ struct Lexer {
     index: usize,
     line: usize,
     col: usize,
+    was_newline: bool,
 }
 
 pub fn lex_all(file_name: &str, script: &str) -> Result<LoTokenStream, LoError> {
@@ -157,6 +158,7 @@ impl Lexer {
             index: 0,
             line: 1,
             col: 1,
+            was_newline: false,
         }
     }
 
@@ -403,13 +405,22 @@ impl Lexer {
             return;
         };
 
+        self.col += 1;
+
         if char == '\n' {
-            self.col = 0;
-            self.line += 1;
+            if self.was_newline {
+                self.line += 1;
+            }
+            self.was_newline = true;
             return;
         }
 
-        self.col += 1;
+        if self.was_newline {
+            self.line += 1;
+            self.col = 1;
+            self.was_newline = false;
+            return;
+        }
     }
 
     fn current_char(&mut self) -> Result<char, LoError> {

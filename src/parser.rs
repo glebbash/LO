@@ -1415,6 +1415,29 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(local) = ctx.block.get_local(&value.value) {
+        if ctx.module.inspect_mode {
+            let value_type = &local.value_type;
+            let source_index = ctx
+                .module
+                .included_modules
+                .get(&value.loc.file_name as &str)
+                .unwrap();
+
+            let sl = value.loc.pos.line;
+            let sc = value.loc.pos.col;
+            let el = value.loc.end_pos.line;
+            let ec = value.loc.end_pos.col;
+
+            let local_name_str = &value.value;
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"hover\", \
+                   \"source\": {source_index}, \
+                   \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                   \"content\": \"let {local_name_str}: {value_type}\" }}, "
+            ));
+        }
+
         return compile_local_get(&ctx.module, local.index, &local.value_type).map_err(|message| {
             LoError {
                 message,
@@ -1522,6 +1545,28 @@ fn define_local(
             message: format!("Duplicate local definition: {}", local_name.value),
             loc: local_name.loc.clone(),
         });
+    }
+
+    if ctx.module.inspect_mode {
+        let source_index = ctx
+            .module
+            .included_modules
+            .get(&local_name.loc.file_name as &str)
+            .unwrap();
+
+        let sl = local_name.loc.pos.line;
+        let sc = local_name.loc.pos.col;
+        let el = local_name.loc.end_pos.line;
+        let ec = local_name.loc.end_pos.col;
+
+        let local_name_str = &local_name.value;
+
+        stdout_writeln(format!(
+            "{{ \"type\": \"hover\", \
+               \"source\": {source_index}, \
+               \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+               \"content\": \"let {local_name_str}: {value_type}\" }}, "
+        ));
     }
 
     let local_index = ctx.fn_ctx.locals_last_index;
@@ -2424,7 +2469,7 @@ fn parse_nested_symbol(tokens: &mut LoTokenStream) -> Result<LoToken, LoError> {
         let path_part = tokens.expect_any(Symbol)?;
         nested_symbol.value += "::";
         nested_symbol.value += path_part.value.as_str();
-        nested_symbol.loc.end_pos.offset = path_part.loc.end_pos.offset;
+        nested_symbol.loc.end_pos = path_part.loc.end_pos.clone();
     }
     Ok(nested_symbol)
 }
