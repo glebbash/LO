@@ -36,17 +36,17 @@ export fn _start() {
     puts(binary.as_str());
 };
 
-export fn mem_alloc(length: u32): &() {
+export fn mem_alloc(length: u32): &void {
     return heap::alloc(length);
 };
 
-export fn mem_free(ptr: &(), length: u32) {
+export fn mem_free(ptr: &void, length: u32) {
     heap::free(ptr);
 };
 
 struct ParseResult {
     ok: bool,
-    data: &(),
+    data: &void,
     size: u32,
 };
 

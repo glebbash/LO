@@ -33,7 +33,7 @@
         alloc(alloc_id, count * sizeof T) as &*T;
     };
 
-    fn alloc(alloc_id: u32, size: u32): &() {
+    fn alloc(alloc_id: u32, size: u32): &void {
         if alloc_id == 0 {
             return stack::alloc(size);
         };
@@ -42,14 +42,14 @@
     };
 
     macro free!<T>(alloc_id: u32, ptr: &T) {
-        free(alloc_id, ptr as &(), sizeof T);
+        free(alloc_id, ptr as &void, sizeof T);
     };
 
     macro free_many!<T>(alloc_id: u32, ptr: &*T, count: u32) {
-        free(alloc_id, ptr as &(), count * sizeof T);
+        free(alloc_id, ptr as &void, count * sizeof T);
     };
 
-    fn free(alloc_id: u32, ptr: &(), size: u32) {
+    fn free(alloc_id: u32, ptr: &void, size: u32) {
         if alloc_id == 0 {
             return stack::free(size);
         };
@@ -79,7 +79,7 @@
     };
 
     // TODO: use builtin mem.copy instr, check engine support
-    fn mem::copy(src: &(), dist: &(), size: u32) {
+    fn mem::copy(src: &void, dist: &void, size: u32) {
         loop {
             if size == 0 {
                 break;
@@ -91,7 +91,7 @@
         };
     };
 
-    fn mem::swap(ref1: &(), ref2: &(), size: u32) {
+    fn mem::swap(ref1: &void, ref2: &void, size: u32) {
         loop {
             if size == 0 {
                 break;
@@ -117,7 +117,7 @@
         stack::alloc(sizeof T) as &T;
     };
 
-    fn stack::alloc(size: u32): &() {
+    fn stack::alloc(size: u32): &void {
         size = mem::align(size);
 
         // fix stack::MIN alignment
@@ -132,7 +132,7 @@
             abort(AbortCode::STACK_OVERFLOW);
         };
 
-        return (stack::NOW - size) as &();
+        return (stack::NOW - size) as &void;
     };
 
     macro stack::free!<T>() {
@@ -169,7 +169,7 @@
         size: u32,
         used: bool,
         next: & heap::Block,
-        data: &(),
+        data: &void,
     };
 
     let heap::TOTAL_ALLOCATED = stack::MAX;
@@ -181,7 +181,7 @@
     };
 
     // http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
-    fn heap::alloc(size: u32): &() {
+    fn heap::alloc(size: u32): &void {
         size = mem::align(size);
 
         let free_block = heap::find_free_block(size);
@@ -206,7 +206,7 @@
 
         block.size = size;
         block.used = true;
-        block.data = (block as u32 + sizeof heap::Block) as &();
+        block.data = (block as u32 + sizeof heap::Block) as &void;
 
         // init heap
         if heap::FIRST_BLOCK as u32 == 0 {
@@ -223,12 +223,12 @@
         return block.data;
     };
 
-    fn heap::free(ptr: &()) {
+    fn heap::free(ptr: &void) {
         let block = heap::get_block(ptr);
         block.used = false;
     };
 
-    fn heap::get_block(ptr: &()): &heap::Block {
+    fn heap::get_block(ptr: &void): &heap::Block {
         return (ptr - sizeof heap::Block) as &heap::Block;
     };
 
@@ -250,7 +250,7 @@
 // vec
 
     struct Vec {
-        data: &(),
+        data: &void,
         size: u32,
         capacity: u32,
         item_size: u32,
@@ -303,14 +303,14 @@
         self.get!<T>(index) = item;
     };
 
-    fn Vec::at(&self, index: u32): &() {
+    fn Vec::at(&self, index: u32): &void {
         self._panic_if_out_of_bounds!(index);
 
-        return (self.data as u32 + index * self.item_size) as &();
+        return (self.data as u32 + index * self.item_size) as &void;
     };
 
-    fn Vec::at_unchecked(&self, index: u32): &() {
-        return (self.data as u32 + index * self.item_size) as &();
+    fn Vec::at_unchecked(&self, index: u32): &void {
+        return (self.data as u32 + index * self.item_size) as &void;
     };
 
     fn Vec::swap(&self, index1: u32, index2: u32) {
@@ -319,8 +319,8 @@
 
         let item_size = self.item_size;
         mem::swap(
-            (self.data as u32 + index1 * item_size) as &(),
-            (self.data as u32 + index2 * item_size) as &(),
+            (self.data as u32 + index1 * item_size) as &void,
+            (self.data as u32 + index2 * item_size) as &void,
             item_size,
         );
     };
@@ -329,14 +329,14 @@
         *(self.push() as &T) = item;
     };
 
-    fn Vec::push(&self): &() {
+    fn Vec::push(&self): &void {
         self.size += 1;
         self._grow_if_needed();
 
         return self.at_unchecked(self.size - 1);
     };
 
-    fn Vec::push_all(&self, items: &(), items_len: u32) {
+    fn Vec::push_all(&self, items: &void, items_len: u32) {
         let old_len = self.size;
         self.size = old_len + items_len;
 
@@ -344,7 +344,7 @@
 
         mem::copy(
             items,
-            (self.data as u32 + old_len * self.item_size) as &(),
+            (self.data as u32 + old_len * self.item_size) as &void,
             items_len * self.item_size,
         );
     };
@@ -354,7 +354,7 @@
         other.size = 0;
     };
 
-    fn Vec::pop_unchecked(&self): &() {
+    fn Vec::pop_unchecked(&self): &void {
         self.size -= 1;
         return self.at_unchecked(self.size);
     };
@@ -422,7 +422,7 @@
 
     fn String::from_str(value: str): &String {
         let string = String::new(value.size);
-        string.push_all(value.data as &(), value.size);
+        string.push_all(value.data as &void, value.size);
         return string;
     };
 
@@ -438,7 +438,7 @@
 
     fn str::clone(self): str {
         let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size);
-        mem::copy(self.data as &(), cloned_data as &(), self.size);
+        mem::copy(self.data as &void, cloned_data as &void, self.size);
         return str {
             data: cloned_data,
             size: self.size,

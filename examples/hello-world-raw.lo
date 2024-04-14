@@ -1,5 +1,5 @@
 import from "wasi_snapshot_preview1" {
-    fn fd_write(fd: u32, iovs: &(), iovs_len: u32, nwritten: u32): u32;
+    fn fd_write(fd: u32, iovs: &void, iovs_len: u32, nwritten: u32): u32;
 };
 
 export memory { min_pages: 1 };
@@ -14,7 +14,7 @@ export fn _start() {
 
     let _ = fd_write(
         1,        // file_descriptor, STDOUT = 1
-        4 as &(), // The pointer to the iov array
+        4 as &void, // The pointer to the iov array
         1,        // Amount of wasi::IOVec
         0,        // Pointer to store the number of bytes written
     );

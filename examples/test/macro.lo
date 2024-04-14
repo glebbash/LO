@@ -9,6 +9,6 @@ macro heap::alloc_many!<T>(count: u32): &*T {
     heap::alloc(count * sizeof T) as &*T;
 };
 
-fn heap::alloc(bytes: u32): &() {
-    return bytes as &(); // stub
+fn heap::alloc(bytes: u32): &void {
+    return bytes as &void; // stub
 };

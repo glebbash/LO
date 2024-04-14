@@ -180,7 +180,7 @@ impl LoType {
 impl core::fmt::Display for LoType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            LoType::Void => f.write_str("()"),
+            LoType::Void => f.write_str("void"),
             LoType::Bool => f.write_str("bool"),
             LoType::U8 => f.write_str("u8"),
             LoType::I8 => f.write_str("i8"),

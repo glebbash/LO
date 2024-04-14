@@ -961,7 +961,7 @@
                 {
                     "comment": "primitive types",
                     "name": "entity.name.type.primitive.lo",
-                    "match": "\\b(bool|char|str)\\b"
+                    "match": "\\b(void|bool|char|str)\\b"
                 },
                 {
                     "comment": "trait declarations",

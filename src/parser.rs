@@ -2494,11 +2494,6 @@ fn parse_lo_type_(
         return Ok(LoType::Pointer(Box::new(pointee)));
     }
 
-    if let Some(_) = tokens.eat(Delim, "(")? {
-        tokens.expect(Delim, ")")?;
-        return Ok(LoType::Void);
-    }
-
     let token = parse_nested_symbol(tokens)?;
     get_type_by_name(ctx, type_scope, &token, is_referenced)
 }
@@ -2510,6 +2505,7 @@ fn get_type_by_name(
     is_referenced: bool,
 ) -> Result<LoType, LoError> {
     match token.value.as_str() {
+        "void" => Ok(LoType::Void),
         "bool" => Ok(LoType::Bool),
         "u8" => Ok(LoType::U8),
         "i8" => Ok(LoType::I8),

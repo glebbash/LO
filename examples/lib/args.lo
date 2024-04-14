@@ -32,6 +32,6 @@ fn args::get(self, i: u32): str {
 };
 
 fn args::free(self) {
-    heap::free(self.argv as &());
-    heap::free(self.argv_buf as &());
+    heap::free(self.argv as &void);
+    heap::free(self.argv_buf as &void);
 };

@@ -92,7 +92,7 @@ fn fs::read_fd(fd: u32): &String {
             break;
         };
 
-        output.push_all(chunk as &(), nread);
+        output.push_all(chunk as &void, nread);
     };
 
     return output;
