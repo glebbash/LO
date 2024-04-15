@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
-import fs from "node:fs/promises";
-import crypto from "node:crypto";
-import { Wasm, Readable } from "@vscode/wasm-wasi";
+import * as wasi from "./wasi-runners";
+import { FileAnalysis, FileAnalysisCollection } from "./analysis";
 
 type DiagnisticItem =
     | { type: "file"; index: number; path: string }
@@ -15,19 +14,10 @@ type DiagnisticItem =
       }
     | { type: "end" };
 
-type FileAnalysis = {
-    uri: vscode.Uri;
-    hovers: vscode.Hover[];
-    links: vscode.LocationLink[];
-};
-
 export async function activate(context: vscode.ExtensionContext) {
     const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri!;
-    const diagnosticCollection =
-        vscode.languages.createDiagnosticCollection("lo");
-
-    const analysisPerIndex = new Map<number, FileAnalysis>();
-    const analysisPerUri = new Map<string, FileAnalysis>();
+    const analysis = new FileAnalysisCollection("lo");
+    analysis.registerProviders(context);
 
     const parseRange = (raw: string) => {
         const [startPos, endPos] = raw.split("-");
@@ -46,20 +36,19 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        const compilerResult = await runProgram({
+        const compilerResult = await wasi.runProgram({
             useNodeWasi: ctx.useNodeWasi,
             processName: "lo",
             cwdUri: workspaceUri,
             args: [vscode.workspace.asRelativePath(document.uri), "--inspect"],
             module: ctx.compilerModule,
         });
-        analysisPerUri.clear();
-        analysisPerIndex.clear();
-        diagnosticCollection.clear();
+        analysis.clear();
+
         if (compilerResult.exitCode !== 0) {
             return showCompilerError(
                 workspaceUri,
-                diagnosticCollection,
+                analysis,
                 new TextDecoder().decode(compilerResult.stderr),
                 compilerResult.exitCode
             );
@@ -69,12 +58,13 @@ export async function activate(context: vscode.ExtensionContext) {
             new TextDecoder().decode(compilerResult.stdout)
         );
 
+        const analysisPerIndex = new Map<number, FileAnalysis>();
         for (const d of diagnostics) {
             if (d.type === "file") {
                 const uri = vscode.Uri.joinPath(workspaceUri, d.path);
                 const diag = { uri, hovers: [], links: [] };
+                analysis.push(diag);
                 analysisPerIndex.set(d.index, diag);
-                analysisPerUri.set(uri.toString(true), diag);
             }
 
             if (d.type === "hover") {
@@ -113,18 +103,18 @@ export async function activate(context: vscode.ExtensionContext) {
                 return vscode.window.showErrorMessage("No files opened");
             }
 
-            const compilerResult = await runProgram({
+            const compilerResult = await wasi.runProgram({
                 useNodeWasi: ctx.useNodeWasi,
                 processName: "lo",
                 cwdUri: workspaceUri,
                 args: [vscode.workspace.asRelativePath(currentFile.uri)],
                 module: ctx.compilerModule,
             });
-            diagnosticCollection.clear();
+            analysis.clear();
             if (compilerResult.exitCode !== 0) {
                 return showCompilerError(
                     workspaceUri,
-                    diagnosticCollection,
+                    analysis,
                     new TextDecoder().decode(compilerResult.stderr),
                     compilerResult.exitCode
                 );
@@ -141,7 +131,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     detail: "" + err,
                 });
             }
-            const programResult = await runProgram({
+            const programResult = await wasi.runProgram({
                 useNodeWasi: ctx.useNodeWasi,
                 processName: currentFile.uri.fsPath,
                 cwdUri: workspaceUri,
@@ -170,40 +160,6 @@ export async function activate(context: vscode.ExtensionContext) {
             if (doc.languageId === "lo") {
                 await processDocument(doc);
             }
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.languages.registerDefinitionProvider("lo", {
-            provideDefinition(document, position, _token) {
-                const links =
-                    analysisPerUri.get(document.uri.toString(true))?.links ??
-                    [];
-                for (const ref of links) {
-                    if (ref.originSelectionRange!.contains(position)) {
-                        return [ref];
-                    }
-                }
-
-                return null;
-            },
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.languages.registerHoverProvider("lo", {
-            provideHover(document, position, _token) {
-                const hovers =
-                    analysisPerUri.get(document.uri.toString(true))?.hovers ??
-                    [];
-                for (const hover of hovers) {
-                    if (hover.range!.contains(position)) {
-                        return hover;
-                    }
-                }
-
-                return null;
-            },
         })
     );
 }
@@ -238,115 +194,9 @@ async function loadCompilerCtx() {
     return { workspaceUri, useNodeWasi, compilerModule };
 }
 
-type ProgramOptions = {
-    processName: string;
-    args: string[];
-    cwdUri: vscode.Uri;
-    module: WebAssembly.Module;
-};
-
-type ProgramResult = {
-    exitCode: number;
-    stdout: Uint8Array;
-    stderr: Uint8Array;
-};
-
-async function runProgram(
-    options: ProgramOptions & { useNodeWasi: boolean }
-): Promise<ProgramResult> {
-    return options.useNodeWasi
-        ? runProgramNode(options)
-        : runProgramCode(options);
-}
-
-async function runProgramNode(options: ProgramOptions): Promise<ProgramResult> {
-    const { WASI } = await import("node:wasi");
-
-    const tmpDir = options.cwdUri.fsPath + "/tmp";
-    const stdoutFile = `${tmpDir}/${crypto.randomUUID()}.tmp`;
-    const stderrFile = `${tmpDir}/${crypto.randomUUID()}.tmp`;
-    let stdoutHandle: fs.FileHandle | undefined;
-    let stderrHandle: fs.FileHandle | undefined;
-
-    try {
-        stdoutHandle = await fs.open(stdoutFile, "w+");
-        stderrHandle = await fs.open(stderrFile, "w+");
-
-        const wasi = new WASI({
-            stdout: stdoutHandle.fd,
-            stderr: stderrHandle.fd,
-            args: [options.processName, ...options.args],
-            preopens: { ".": options.cwdUri.fsPath },
-            returnOnExit: true,
-        });
-
-        const instance = await WebAssembly.instantiate(options.module, {
-            wasi_snapshot_preview1: wasi.wasiImport,
-        });
-        const exitCode = wasi.start(instance);
-        return {
-            exitCode,
-            stdout: await fs.readFile(stdoutFile),
-            stderr: await fs.readFile(stderrFile),
-        };
-    } finally {
-        await stdoutHandle?.close();
-        await fs.unlink(stdoutFile);
-
-        await stderrHandle?.close();
-        await fs.unlink(stderrFile);
-    }
-}
-
-async function runProgramCode(options: ProgramOptions): Promise<ProgramResult> {
-    const wasm = await Wasm.api();
-    const stdin = wasm.createWritable();
-    const [stdout, stdoutBytes] = accumulateBytes(wasm.createReadable());
-    const [stderr, stderrBytes] = accumulateBytes(wasm.createReadable());
-
-    const process = await wasm.createProcess(
-        options.processName,
-        options.module,
-        {
-            stdio: {
-                in: { kind: "pipeIn", pipe: stdin },
-                out: { kind: "pipeOut", pipe: stdout },
-                err: { kind: "pipeOut", pipe: stderr },
-            },
-            args: options.args,
-            mountPoints: [
-                {
-                    kind: "vscodeFileSystem",
-                    uri: options.cwdUri,
-                    mountPoint: "/",
-                },
-            ],
-        }
-    );
-    const exitCode = await process.run();
-    return {
-        exitCode,
-        stdout: stdoutBytes.get(),
-        stderr: stderrBytes.get(),
-    };
-}
-
-function accumulateBytes(
-    readable: Readable
-): [Readable, { get: () => Uint8Array }] {
-    let data = new Uint8Array();
-    readable.onData((chunk) => {
-        const newData = new Uint8Array(data.length + chunk.length);
-        newData.set(data);
-        newData.set(chunk, data.length);
-        data = newData;
-    });
-    return [readable, { get: () => data }];
-}
-
 async function showCompilerError(
     workspaceUri: vscode.Uri,
-    diagnosticCollection: vscode.DiagnosticCollection,
+    analysis: FileAnalysisCollection,
     errorMessage: string,
     exitCode: number
 ) {
@@ -376,8 +226,8 @@ async function showCompilerError(
         vscode.DiagnosticSeverity.Error
     );
 
-    diagnosticCollection.set(fileUri, [
-        ...(diagnosticCollection.get(fileUri) ?? []),
+    analysis.diagnosticCollection.set(fileUri, [
+        ...(analysis.diagnosticCollection.get(fileUri) ?? []),
         diagnostic,
     ]);
 }
