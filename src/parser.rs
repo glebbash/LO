@@ -174,22 +174,6 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
     }
 
     if ctx.inspect_mode {
-        // TODO: support hovers
-        // stdout_writeln(
-        //     "{ \"type\": \"hover\", \
-        //        \"source\": 0, \
-        //        \"range\": \"3:4-3:8\", \
-        //        \"content\": \"fn puts(value: str)\" }, ",
-        // );
-
-        // stdout_writeln(
-        //     "{ \"type\": \"link\", \
-        //        \"source\": 0, \
-        //        \"sourceRange\": \"3:4-3:8\", \
-        //        \"target\": 2, \
-        //        \"targetRange\": \"3:3-3:7\" }, ",
-        // );
-
         stdout_writeln("{ \"type\": \"end\" }");
 
         stdout_writeln("]");
