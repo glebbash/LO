@@ -1392,7 +1392,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                         });
                     };
 
-                    return compile_load(ctx, &pointee_type, pointer, 0).map_err(|err| LoError {
+                    return compile_load(ctx, &pointee_type, &pointer, 0).map_err(|err| LoError {
                         message: err,
                         loc: op.token.loc,
                     });
@@ -2190,6 +2190,29 @@ fn parse_postfix(
                     });
                 };
 
+                if ctx.module.inspect_mode {
+                    let source_index = ctx
+                        .module
+                        .included_modules
+                        .get(&field_name.loc.file_name as &str)
+                        .unwrap();
+
+                    let sl = field_name.loc.pos.line;
+                    let sc = field_name.loc.pos.col;
+                    let el = field_name.loc.end_pos.line;
+                    let ec = field_name.loc.end_pos.col;
+
+                    let field_name = &field_name.value;
+                    let field_type = &field.value_type;
+
+                    stdout_writeln(format!(
+                        "{{ \"type\": \"hover\", \
+                           \"source\": {source_index}, \
+                           \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                           \"content\": \"{struct_name}\\n{field_name}: {field_type}\" }}, "
+                    ));
+                }
+
                 return compile_local_get(
                     &ctx.module,
                     base_index + field.field_index,
@@ -2207,10 +2230,10 @@ fn parse_postfix(
                 address_instr,
                 base_byte_offset,
                 ..
-            } = primary
+            } = &primary
             {
                 // safe to unwrap as it was already checked in `StructLoad`
-                let struct_def = ctx.module.struct_defs.get(&struct_name).unwrap();
+                let struct_def = ctx.module.struct_defs.get(struct_name).unwrap();
 
                 let Some(field) = struct_def
                     .fields
@@ -2226,6 +2249,29 @@ fn parse_postfix(
                     });
                 };
 
+                if ctx.module.inspect_mode {
+                    let source_index = ctx
+                        .module
+                        .included_modules
+                        .get(&field_name.loc.file_name as &str)
+                        .unwrap();
+
+                    let sl = field_name.loc.pos.line;
+                    let sc = field_name.loc.pos.col;
+                    let el = field_name.loc.end_pos.line;
+                    let ec = field_name.loc.end_pos.col;
+
+                    let field_name = &field_name.value;
+                    let field_type = &field.value_type;
+
+                    stdout_writeln(format!(
+                        "{{ \"type\": \"hover\", \
+                           \"source\": {source_index}, \
+                           \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                           \"content\": \"{struct_name}\\n{field_name}: {field_type}\" }}, "
+                    ));
+                }
+
                 return compile_load(
                     ctx,
                     &field.value_type,
@@ -2238,7 +2284,8 @@ fn parse_postfix(
                 });
             }
 
-            if let LoType::Pointer(pointee_type) = primary.get_type(ctx.module) {
+            let primary_type = primary.get_type(ctx.module);
+            if let LoType::Pointer(pointee_type) = &primary_type {
                 if let LoType::StructInstance { name: struct_name } = pointee_type.as_ref() {
                     let struct_def = ctx.module.struct_defs.get(struct_name).unwrap();
                     let Some(field) = struct_def
@@ -2255,16 +2302,34 @@ fn parse_postfix(
                         });
                     };
 
-                    return compile_load(
-                        ctx,
-                        &field.value_type,
-                        Box::new(primary),
-                        field.byte_offset,
-                    )
-                    .map_err(|e| LoError {
-                        message: e,
-                        loc: op.token.loc.clone(),
-                    });
+                    if ctx.module.inspect_mode {
+                        let source_index = ctx
+                            .module
+                            .included_modules
+                            .get(&field_name.loc.file_name as &str)
+                            .unwrap();
+
+                        let sl = field_name.loc.pos.line;
+                        let sc = field_name.loc.pos.col;
+                        let el = field_name.loc.end_pos.line;
+                        let ec = field_name.loc.end_pos.col;
+
+                        let field_name = &field_name.value;
+                        let field_type = &field.value_type;
+
+                        stdout_writeln(format!(
+                            "{{ \"type\": \"hover\", \
+                               \"source\": {source_index}, \
+                               \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                               \"content\": \"{primary_type}\\n{field_name}: {field_type}\" }}, "
+                        ));
+                    }
+
+                    return compile_load(ctx, &field.value_type, &primary, field.byte_offset)
+                        .map_err(|e| LoError {
+                            message: e,
+                            loc: op.token.loc.clone(),
+                        });
                 };
             };
 
@@ -2631,7 +2696,7 @@ fn get_deferred(
 fn compile_load(
     ctx: &mut BlockContext,
     value_type: &LoType,
-    address_instr: Box<LoInstr>,
+    address_instr: &LoInstr,
     base_byte_offset: u32,
 ) -> Result<LoInstr, String> {
     if let Ok(_) = value_type.to_load_kind() {
@@ -2639,7 +2704,7 @@ fn compile_load(
             kind: value_type.clone(),
             align: 0,
             offset: base_byte_offset,
-            address_instr: address_instr.clone(),
+            address_instr: Box::new(address_instr.clone()),
         });
     }
 
@@ -2650,7 +2715,7 @@ fn compile_load(
             item_gets.push(compile_load(
                 ctx,
                 item_type,
-                address_instr.clone(),
+                address_instr,
                 base_byte_offset + item_byte_offset,
             )?);
             item_byte_offset += item_type.sized_comp_stats(&ctx.module)?.byte_length;
@@ -2692,7 +2757,7 @@ fn compile_load(
 
     Ok(LoInstr::StructLoad {
         struct_name: name.clone(),
-        address_instr,
+        address_instr: Box::new(address_instr.clone()),
         address_local_index,
         base_byte_offset,
         primitive_loads,
