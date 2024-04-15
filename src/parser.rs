@@ -350,6 +350,27 @@ fn parse_top_level_expr(
             });
         }
 
+        if ctx.inspect_mode {
+            let source_index = ctx
+                .included_modules
+                .get(&global_name.loc.file_name as &str)
+                .unwrap();
+
+            let sl = global_name.loc.pos.line;
+            let sc = global_name.loc.pos.col;
+            let el = global_name.loc.end_pos.line;
+            let ec = global_name.loc.end_pos.col;
+
+            let global_name = &global_name.value;
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"hover\", \
+                   \"source\": {source_index}, \
+                   \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                   \"content\": \"let {global_name}: {lo_type}\" }}, "
+            ));
+        }
+
         ctx.globals.insert(
             global_name.value.clone(),
             GlobalDef {
@@ -478,6 +499,28 @@ fn parse_top_level_expr(
                 message: format!("Duplicate constant: {}", const_name.value),
                 loc: const_name.loc.clone(),
             });
+        }
+
+        if ctx.inspect_mode {
+            let source_index = ctx
+                .included_modules
+                .get(&const_name.loc.file_name as &str)
+                .unwrap();
+
+            let sl = const_name.loc.pos.line;
+            let sc = const_name.loc.pos.col;
+            let el = const_name.loc.end_pos.line;
+            let ec = const_name.loc.end_pos.col;
+
+            let const_name = &const_name.value;
+            let const_type = const_value.get_type(ctx);
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"hover\", \
+                   \"source\": {source_index}, \
+                   \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                   \"content\": \"const {const_name}: {const_type}\" }}, "
+            ));
         }
 
         ctx.constants
@@ -1428,13 +1471,13 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             let el = value.loc.end_pos.line;
             let ec = value.loc.end_pos.col;
 
-            let local_name_str = &value.value;
+            let local_name = &value.value;
 
             stdout_writeln(format!(
                 "{{ \"type\": \"hover\", \
                    \"source\": {source_index}, \
                    \"range\": \"{sl}:{sc}-{el}:{ec}\", \
-                   \"content\": \"let {local_name_str}: {value_type}\" }}, "
+                   \"content\": \"let {local_name}: {value_type}\" }}, "
             ));
         }
 
@@ -1447,10 +1490,56 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     };
 
     if let Some(const_value) = ctx.module.constants.borrow().get(&value.value) {
+        if ctx.module.inspect_mode {
+            let source_index = ctx
+                .module
+                .included_modules
+                .get(&value.loc.file_name as &str)
+                .unwrap();
+
+            let sl = value.loc.pos.line;
+            let sc = value.loc.pos.col;
+            let el = value.loc.end_pos.line;
+            let ec = value.loc.end_pos.col;
+
+            let const_name = &value.value;
+            let const_type = const_value.get_type(ctx.module);
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"hover\", \
+                   \"source\": {source_index}, \
+                   \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                   \"content\": \"const {const_name}: {const_type}\" }}, "
+            ));
+        }
+
         return Ok(const_value.clone());
     }
 
     if let Some(global) = ctx.module.globals.get(&value.value) {
+        if ctx.module.inspect_mode {
+            let source_index = ctx
+                .module
+                .included_modules
+                .get(&value.loc.file_name as &str)
+                .unwrap();
+
+            let sl = value.loc.pos.line;
+            let sc = value.loc.pos.col;
+            let el = value.loc.end_pos.line;
+            let ec = value.loc.end_pos.col;
+
+            let global_name = &value.value;
+            let global_type = &global.value_type;
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"hover\", \
+                   \"source\": {source_index}, \
+                   \"range\": \"{sl}:{sc}-{el}:{ec}\", \
+                   \"content\": \"let {global_name}: {global_type}\" }}, "
+            ));
+        }
+
         return Ok(LoInstr::GlobalGet {
             global_index: global.index,
         });
@@ -1584,13 +1673,13 @@ fn define_local(
         let el = local_name.loc.end_pos.line;
         let ec = local_name.loc.end_pos.col;
 
-        let local_name_str = &local_name.value;
+        let local_name = &local_name.value;
 
         stdout_writeln(format!(
             "{{ \"type\": \"hover\", \
                \"source\": {source_index}, \
                \"range\": \"{sl}:{sc}-{el}:{ec}\", \
-               \"content\": \"let {local_name_str}: {value_type}\" }}, "
+               \"content\": \"let {local_name}: {value_type}\" }}, "
         ));
     }
 
