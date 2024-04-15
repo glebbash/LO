@@ -379,6 +379,7 @@ pub struct StructField {
 pub struct FnDef {
     pub local: bool,
     pub fn_index: u32,
+    pub fn_params: Vec<FnParam>,
     pub type_index: u32,
     pub type_: LoFnType,
 }
@@ -393,7 +394,7 @@ impl FnDef {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FnParam {
     pub name: String,
     pub type_: LoType,

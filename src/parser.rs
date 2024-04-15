@@ -297,6 +297,7 @@ fn parse_top_level_expr(
             let fn_def = FnDef {
                 local: false,
                 fn_index,
+                fn_params: fn_decl.fn_params,
                 type_index,
                 type_: fn_decl.lo_type,
             };
@@ -656,6 +657,7 @@ fn parse_fn_def(
         FnDef {
             local: true,
             fn_index,
+            fn_params: fn_decl.fn_params,
             type_index,
             type_: fn_decl.lo_type,
         },
@@ -753,6 +755,7 @@ struct FnDecl {
     fn_name: String,
     method_name: String,
     loc: LoLocation,
+    fn_params: Vec<FnParam>,
     lo_type: LoFnType,
     wasm_type: WasmFnType,
     locals: BTreeMap<String, LocalDef>,
@@ -762,8 +765,11 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
     let fn_name = parse_nested_symbol(tokens)?;
     let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &fn_name)?;
 
+    let params = parse_fn_params(ctx, &ctx.type_scope, tokens, &receiver_type)?;
+
     let mut fn_decl = FnDecl {
         fn_name: fn_name.value.clone(),
+        fn_params: params.clone(),
         method_name,
         loc: fn_name.loc.clone(),
         lo_type: LoFnType {
@@ -777,7 +783,6 @@ fn parse_fn_decl(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Result<
         locals: BTreeMap::new(),
     };
 
-    let params = parse_fn_params(ctx, &ctx.type_scope, tokens, &receiver_type)?;
     for param in params {
         let local_def = LocalDef {
             index: fn_decl.wasm_type.inputs.len() as u32,
@@ -1553,8 +1558,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             let ec = value.loc.end_pos.col;
 
             let fn_name = &value.value;
-            // TODO: this should also have param names
-            let params = ListDisplay(&fn_def.type_.inputs);
+            let params = ListDisplay(&fn_def.fn_params);
             let return_type = &fn_def.type_.output;
 
             stdout_writeln(format!(
@@ -2221,8 +2225,7 @@ fn parse_postfix(
                     let el = method_name.loc.end_pos.line;
                     let ec = method_name.loc.end_pos.col;
 
-                    // TODO: this should also have param names
-                    let params = ListDisplay(&fn_def.type_.inputs);
+                    let params = ListDisplay(&fn_def.fn_params);
                     let return_type = &fn_def.type_.output;
 
                     stdout_writeln(format!(
