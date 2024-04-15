@@ -5,27 +5,17 @@ fn main() {
     defer puts("defer(return): 2\n");
     defer puts("defer(return): 3\n");
 
-    defer @scope1 puts("defer(scope1): 1\n");
+    inner_fn();
+};
+
+fn inner_fn() {
+    defer puts("defer(inner_fn): 1\n");
     for i in 0..10 {
         // exprs in loops are only deferred once
-        defer @scope1 puts("defer(scope1): 2\n");
+        defer puts("defer(inner_fn): 2\n");
     };
     if false {
-        // exprs are deferred even `if` body never executes
-        defer @scope1 puts("defer(scope1): 3\n");
+        // exprs are deferred even if `if` body never executes
+        defer puts("defer(inner_fn): 3\n");
     };
-    defer_eval @scope1;
-
-    puts("-------------\n");
-
-    defer @scope2 puts("defer(scope2): 1\n");
-    defer @scope2 puts("defer(scope2): 2\n");
-    defer_eval @scope2;
-
-    puts("-------------\n");
-
-    defer @scope2 puts("defer(scope2): 3\n");
-    defer_eval @scope2;
-
-    puts("-------------\n");
 };

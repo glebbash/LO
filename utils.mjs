@@ -411,17 +411,9 @@ async function testCommand() {
         assert.strictEqual(
             output,
             dropPadding(`
-                defer(scope1): 3
-                defer(scope1): 2
-                defer(scope1): 1
-                -------------
-                defer(scope2): 2
-                defer(scope2): 1
-                -------------
-                defer(scope2): 3
-                defer(scope2): 2
-                defer(scope2): 1
-                -------------
+                defer(inner_fn): 3
+                defer(inner_fn): 2
+                defer(inner_fn): 1
                 defer(return): 3
                 defer(return): 2
                 defer(return): 1

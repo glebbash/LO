@@ -1065,23 +1065,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(LoInstr::NoInstr);
     }
 
-    if let Some(_) = tokens.eat(Symbol, "defer_eval")? {
-        tokens.expect(Operator, "@")?;
-        let defer_label = tokens.expect_any(Symbol)?.clone();
-
-        let Some(values) = get_deferred(ctx, &defer_label.value) else {
-            return Err(LoError {
-                message: format!("Unknown defer scope: {}", defer_label.value),
-                loc: defer_label.loc.clone(),
-            });
-        };
-
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Void,
-            expr: Box::new(LoInstr::MultiValueEmit { values: values? }),
-        });
-    }
-
     if let Some(_) = tokens.eat(Symbol, "__memory_size")? {
         tokens.expect(Delim, "(")?;
         tokens.expect(Delim, ")")?;

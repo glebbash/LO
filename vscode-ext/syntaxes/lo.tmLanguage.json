@@ -696,7 +696,7 @@
                 {
                     "comment": "other keywords",
                     "name": "keyword.other.lo",
-                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|ref|typeof|union|unsafe|unsized|use|virtual|where|export|import|from|memory|defer|defer_eval|sizeof|include)\\b"
+                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|ref|typeof|union|unsafe|unsized|use|virtual|where|export|import|from|memory|defer|sizeof|include)\\b"
                 },
                 {
                     "comment": "fn",
