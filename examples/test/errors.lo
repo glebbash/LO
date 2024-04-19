@@ -1,5 +1,14 @@
 include "../lib/cli.lo";
 
+// Explanation:
+// - `u32 throws DivideError` is the actual type
+//   - it is stored as the tuple: (u32, DivideError)
+// - `return` additionally emits default value of the error type
+// - `throw` puts default value return type and the error value
+// - default values of `error_type` indicate the absence of an error
+//   - error codes fit nicely (0 - no error)
+//   - other errors should be passed by a nullabe pointer (null - no error)
+
 fn main() {
     divide_and_print(10, 5);
     divide_and_print(10, 2);
