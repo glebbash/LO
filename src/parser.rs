@@ -2486,7 +2486,7 @@ fn parse_postfix(
                     bin_ok_instr,
                     LoInstr::If {
                         block_type: *ok_type.clone(),
-                        // TODO: see if this actually works
+                        // TODO: this only works for WasmType::I32
                         cond: Box::new(error_value), // error_value == 0 means no error
                         then_branch: catch_body,
                         else_branch: Some(vec![ok_value]),
