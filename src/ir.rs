@@ -1,5 +1,5 @@
 use crate::{lexer::*, wasm::*};
-use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -132,6 +132,7 @@ impl<'a> LoTypeScope<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LoType {
+    Never,
     Void,
     Bool,
     U8,
@@ -146,8 +147,16 @@ pub enum LoType {
     F64,
     Pointer(Box<LoType>),
     Tuple(Vec<LoType>),
-    StructInstance { name: String },
-    MacroTypeArg { name: String },
+    StructInstance {
+        name: String,
+    },
+    Result {
+        ok_type: Box<LoType>,
+        err_type: Box<LoType>,
+    },
+    MacroTypeArg {
+        name: String,
+    },
 }
 
 impl LoType {
@@ -180,6 +189,7 @@ impl LoType {
 impl core::fmt::Display for LoType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            LoType::Never => f.write_str("never"),
             LoType::Void => f.write_str("void"),
             LoType::Bool => f.write_str("bool"),
             LoType::U8 => f.write_str("u8"),
@@ -206,6 +216,9 @@ impl core::fmt::Display for LoType {
                 f.write_str(")")
             }
             LoType::StructInstance { name } => f.write_str(name),
+            LoType::Result { ok_type, err_type } => {
+                f.write_fmt(format_args!("{ok_type} throws {err_type}"))
+            }
             LoType::MacroTypeArg { name } => f.write_str(name),
         }
     }
@@ -242,6 +255,7 @@ impl LoType {
     ) -> Result<(), String> {
         let mut byte_len = None;
         match self {
+            LoType::Never => {}
             LoType::Void => {}
             LoType::Bool | LoType::U8 | LoType::I8 => byte_len = Some(1),
             LoType::U16 | LoType::I16 => byte_len = Some(2),
@@ -261,6 +275,10 @@ impl LoType {
                         .value_type
                         .emit_sized_component_stats(ctx, stats, components)?;
                 }
+            }
+            LoType::Result { ok_type, err_type } => {
+                ok_type.emit_sized_component_stats(ctx, stats, components)?;
+                err_type.emit_sized_component_stats(ctx, stats, components)?;
             }
             LoType::MacroTypeArg { name } => {
                 return Err(format!("Cannot get size of macro arg: {name}"));
@@ -305,6 +323,11 @@ impl LoType {
                 }
                 count
             }
+            LoType::Result { ok_type, err_type } => {
+                let ok_count = ok_type.emit_components(ctx, components);
+                let err_count = err_type.emit_components(ctx, components);
+                ok_count + err_count
+            }
             _ => unreachable!(),
         }
     }
@@ -333,6 +356,48 @@ impl LoType {
             _ => {}
         };
         return Err(format!("Unsupported type for load: {self:?}"));
+    }
+
+    pub fn get_default_value(&self, ctx: &ModuleContext) -> LoInstr {
+        match self {
+            LoType::Never => LoInstr::Unreachable,
+            LoType::Void => LoInstr::NoInstr,
+            LoType::Bool => LoInstr::U32Const { value: 0 }.casted(LoType::Bool),
+            LoType::U8 => LoInstr::U32Const { value: 0 }.casted(LoType::U8),
+            LoType::I8 => LoInstr::U32Const { value: 0 }.casted(LoType::I8),
+            LoType::U16 => LoInstr::U32Const { value: 0 }.casted(LoType::U16),
+            LoType::I16 => LoInstr::U32Const { value: 0 }.casted(LoType::I16),
+            LoType::U32 => LoInstr::U32Const { value: 0 },
+            LoType::I32 => LoInstr::U32Const { value: 0 }.casted(LoType::I32),
+            LoType::F32 => LoInstr::F32Const { value: 0.0 },
+            LoType::U64 => LoInstr::U64Const { value: 0 },
+            LoType::I64 => LoInstr::I64Const { value: 0 },
+            LoType::F64 => LoInstr::F64Const { value: 0.0 },
+            LoType::Pointer(pointee) => {
+                LoInstr::U32Const { value: 0 }.casted(LoType::Pointer(pointee.clone()))
+            }
+            LoType::Tuple(types) => {
+                let mut values = Vec::new();
+                for item_type in types {
+                    values.push(item_type.get_default_value(ctx));
+                }
+                LoInstr::MultiValueEmit { values }
+            }
+            LoType::StructInstance { name } => {
+                let mut values = Vec::new();
+                for field in &ctx.struct_defs.get(name).unwrap().fields {
+                    values.push(field.value_type.get_default_value(ctx));
+                }
+                LoInstr::MultiValueEmit { values }
+            }
+            LoType::Result { ok_type, err_type } => LoInstr::MultiValueEmit {
+                values: vec![
+                    ok_type.get_default_value(ctx),
+                    err_type.get_default_value(ctx),
+                ],
+            },
+            LoType::MacroTypeArg { .. } => unreachable!(),
+        }
     }
 }
 
@@ -476,6 +541,12 @@ pub enum LoInstr {
     I64Const {
         value: i64,
     },
+    F32Const {
+        value: f32,
+    },
+    F64Const {
+        value: f64,
+    },
     I64FromI32Unsigned {
         expr: Box<LoInstr>,
     },
@@ -542,13 +613,15 @@ pub enum LoSetBind {
 impl LoInstr {
     pub fn get_type(&self, ctx: &ModuleContext) -> LoType {
         match self {
+            LoInstr::Unreachable => LoType::Never,
             LoInstr::NoInstr => LoType::Void,
-            LoInstr::Unreachable => LoType::Void,
             LoInstr::U32ConstLazy { .. } => LoType::U32,
             LoInstr::U32Const { .. } => LoType::U32,
             LoInstr::I32FromI64 { .. } => LoType::I32,
             LoInstr::U64Const { .. } => LoType::U64,
             LoInstr::I64Const { .. } => LoType::I64,
+            LoInstr::F32Const { .. } => LoType::F32,
+            LoInstr::F64Const { .. } => LoType::F64,
             LoInstr::I64FromI32Signed { .. } => LoType::I64,
             LoInstr::I64FromI32Unsigned { .. } => LoType::I64,
             LoInstr::UntypedLocalGet { .. } => unreachable!(),
@@ -570,7 +643,7 @@ impl LoInstr {
             LoInstr::Casted { value_type, .. } => value_type.clone(),
             LoInstr::Set { .. } => LoType::Void,
             LoInstr::Drop { .. } => LoType::Void,
-            LoInstr::Return { .. } => LoType::Void,
+            LoInstr::Return { .. } => LoType::Never,
             LoInstr::MemorySize => LoType::I32,
             LoInstr::MemoryGrow { .. } => LoType::I32,
 
@@ -602,6 +675,13 @@ impl LoInstr {
             | LoInstr::Block { block_type, .. }
             | LoInstr::Loop { block_type, .. } => block_type.clone(),
             LoInstr::Branch { .. } => LoType::Void,
+        }
+    }
+
+    pub fn casted(self, type_: LoType) -> LoInstr {
+        LoInstr::Casted {
+            value_type: type_,
+            expr: Box::new(self),
         }
     }
 }
@@ -674,6 +754,8 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
         LoInstr::U64Const { value } => out.push(WasmInstr::I64Const {
             value: value as i64,
         }),
+        LoInstr::F32Const { value } => out.push(WasmInstr::F32Const { value }),
+        LoInstr::F64Const { value } => out.push(WasmInstr::F64Const { value }),
         LoInstr::I64FromI32Signed { expr } => {
             lower_expr(out, *expr);
             out.push(WasmInstr::I64ExtendI32s);

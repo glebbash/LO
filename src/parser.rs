@@ -129,7 +129,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
             },
         };
 
-        let mut lo_exprs = parse_block_contents(&mut block_ctx, &mut fn_body.body)?;
+        let mut lo_exprs = parse_block_contents(&mut block_ctx, &mut fn_body.body, LoType::Void)?;
         if let Some(values) = get_deferred(&mut block_ctx, DEFER_UNTIL_RETURN_LABEL) {
             lo_exprs.append(&mut values?);
         };
@@ -876,7 +876,7 @@ fn parse_block(
     tokens: &mut LoTokenStream,
 ) -> Result<Vec<LoInstr>, LoError> {
     let mut contents = parse_block_extract_contents(tokens)?;
-    parse_block_contents(ctx, &mut contents)
+    parse_block_contents(ctx, &mut contents, LoType::Void)
 }
 
 fn parse_block_extract_contents(tokens: &mut LoTokenStream) -> Result<LoTokenStream, LoError> {
@@ -903,29 +903,6 @@ fn parse_block_extract_contents(tokens: &mut LoTokenStream) -> Result<LoTokenStr
     }
 
     Ok(output)
-}
-
-fn parse_block_contents(
-    ctx: &mut BlockContext,
-    tokens: &mut LoTokenStream,
-) -> Result<Vec<LoInstr>, LoError> {
-    let mut exprs = vec![];
-    while tokens.peek().is_some() {
-        let expr_start = tokens.peek().unwrap().loc.clone();
-        let expr = parse_expr(ctx, tokens, 0)?;
-        tokens.expect(Delim, ";")?;
-
-        let expr_type = expr.get_type(ctx.module);
-        if expr_type != LoType::Void {
-            return Err(LoError {
-                message: format!("TypeError: Excess values"),
-                loc: expr_start,
-            });
-        }
-
-        exprs.push(expr);
-    }
-    Ok(exprs)
 }
 
 fn parse_expr(
@@ -968,17 +945,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Bool,
-            expr: Box::new(LoInstr::U32Const { value: 1 }),
-        });
+        return Ok(LoInstr::U32Const { value: 1 }.casted(LoType::Bool));
     }
 
     if let Some(_) = tokens.eat(Symbol, "false")?.cloned() {
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Bool,
-            expr: Box::new(LoInstr::U32Const { value: 0 }),
-        });
+        return Ok(LoInstr::U32Const { value: 0 }.casted(LoType::Bool));
     }
 
     if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
@@ -1005,28 +976,78 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         };
 
         let return_type = value.get_type(ctx.module);
-        if return_type != ctx.fn_ctx.lo_fn_type.output {
+        let (expected_return_type, error_type) =
+            if let LoType::Result { ok_type, err_type } = &ctx.fn_ctx.lo_fn_type.output {
+                (ok_type.as_ref(), Some(err_type))
+            } else {
+                (&ctx.fn_ctx.lo_fn_type.output, None)
+            };
+
+        if return_type != *expected_return_type {
             return Err(LoError {
                 message: format!(
                     "TypeError: Invalid return type, \
-                        expected {output:?}, got {return_type:?}",
-                    output = ctx.fn_ctx.lo_fn_type.output,
+                        expected {expected_return_type}, got {return_type}",
                 ),
                 loc: return_token.loc,
             });
         }
 
         let return_expr = LoInstr::Return {
-            value: Box::new(value),
+            value: Box::new(if let Some(error_type) = error_type {
+                LoInstr::MultiValueEmit {
+                    values: vec![value, error_type.get_default_value(ctx.module)],
+                }
+            } else {
+                value
+            }),
         };
 
         if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
             let mut values = values?;
             values.push(return_expr);
-            return Ok(LoInstr::Casted {
-                value_type: LoType::Void,
-                expr: Box::new(LoInstr::MultiValueEmit { values }),
+            return Ok(LoInstr::MultiValueEmit { values }.casted(LoType::Void));
+        }
+
+        return Ok(return_expr);
+    }
+
+    if let Some(throw_token) = tokens.eat(Symbol, "throw")?.cloned() {
+        let error = if tokens.peek().is_none() || tokens.next_is(Delim, ";")? {
+            LoInstr::NoInstr
+        } else {
+            parse_expr(ctx, tokens, 0)?
+        };
+
+        let error_type = error.get_type(ctx.module);
+        let LoType::Result { ok_type, err_type } = &ctx.fn_ctx.lo_fn_type.output else {
+            return Err(LoError {
+                message: format!(
+                    "TypeError: Cannot throw {error_type}, function can only return {output}",
+                    output = ctx.fn_ctx.lo_fn_type.output,
+                ),
+                loc: throw_token.loc,
             });
+        };
+        if error_type != **err_type {
+            return Err(LoError {
+                message: format!(
+                    "TypeError: Invalid throw type, expected {err_type}, got {error_type}",
+                ),
+                loc: throw_token.loc,
+            });
+        }
+
+        let return_expr = LoInstr::Return {
+            value: Box::new(LoInstr::MultiValueEmit {
+                values: vec![ok_type.get_default_value(ctx.module), error],
+            }),
+        };
+
+        if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
+            let mut values = values?;
+            values.push(return_expr);
+            return Ok(LoInstr::MultiValueEmit { values }.casted(LoType::Void));
         }
 
         return Ok(return_expr);
@@ -1288,10 +1309,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             },
         ];
 
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Void,
-            expr: Box::new(LoInstr::MultiValueEmit { values: instrs }),
-        });
+        return Ok(LoInstr::MultiValueEmit { values: instrs }.casted(LoType::Void));
 
         // let mut ctx = BlockContext {
         //     module: ctx.module,
@@ -1605,12 +1623,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             values.push(field_value);
         }
 
-        return Ok(LoInstr::Casted {
-            value_type: LoType::StructInstance {
+        return Ok(
+            LoInstr::MultiValueEmit { values }.casted(LoType::StructInstance {
                 name: struct_name.value,
-            },
-            expr: Box::new(LoInstr::MultiValueEmit { values }),
-        });
+            }),
+        );
     };
 
     return Err(LoError {
@@ -1765,43 +1782,7 @@ fn parse_macro_call(
         },
     };
 
-    let macro_tokens = &mut macro_def.body.clone();
-    let mut resolved_type = LoType::Void;
-
-    let mut exprs = vec![];
-    while macro_tokens.peek().is_some() {
-        let expr_loc = macro_tokens.peek().unwrap().loc.clone();
-        let expr = parse_expr(macro_ctx, macro_tokens, 0)?;
-        macro_tokens.expect(Delim, ";")?;
-
-        let expr_type = expr.get_type(ctx.module);
-        if expr_type != LoType::Void {
-            if resolved_type != LoType::Void {
-                return Err(LoError {
-                    message: format!("Macro body must contain a single non-void expression"),
-                    loc: expr_loc,
-                });
-            }
-
-            resolved_type = expr_type;
-        }
-
-        exprs.push(expr);
-    }
-
-    if let Some(t) = macro_tokens.peek() {
-        return Err(LoError {
-            message: format!("Macro body must contain a single non-void expression"),
-            loc: t.loc.clone(),
-        });
-    }
-
-    if resolved_type != return_type {
-        return Err(LoError {
-            message: format!("Macro resolved to {resolved_type} but {return_type} was expected"),
-            loc: macro_token.loc.clone(),
-        });
-    }
+    let exprs = parse_block_contents(macro_ctx, &mut macro_def.body.clone(), return_type.clone())?;
 
     if ctx.module.inspect_mode {
         let source_index = ctx
@@ -1827,10 +1808,55 @@ fn parse_macro_call(
         ));
     }
 
-    return Ok(LoInstr::Casted {
-        value_type: resolved_type,
-        expr: Box::new(LoInstr::MultiValueEmit { values: exprs }),
-    });
+    return Ok(LoInstr::MultiValueEmit { values: exprs }.casted(return_type));
+}
+
+fn parse_block_contents(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+    expected_type: LoType,
+) -> Result<Vec<LoInstr>, LoError> {
+    let mut resolved_type = LoType::Void;
+
+    let mut got_never = false;
+    let mut exprs = vec![];
+    while tokens.peek().is_some() {
+        let expr_loc = tokens.peek().unwrap().loc.clone();
+        let expr = parse_expr(ctx, tokens, 0)?;
+        tokens.expect(Delim, ";")?;
+
+        let expr_type = expr.get_type(ctx.module);
+        if expr_type == LoType::Never {
+            got_never = true;
+        } else if expr_type != LoType::Void {
+            if resolved_type != LoType::Void {
+                return Err(LoError {
+                    message: format!("Excess values"),
+                    loc: expr_loc,
+                });
+            }
+
+            resolved_type = expr_type;
+        }
+
+        exprs.push(expr);
+    }
+
+    if let Some(t) = tokens.peek() {
+        return Err(LoError {
+            message: format!("Unexpected token at the end of block: {t:?}"),
+            loc: t.loc.clone(),
+        });
+    }
+
+    if !got_never && resolved_type != expected_type {
+        return Err(LoError {
+            message: format!("Block resolved to {resolved_type} but {expected_type} was expected"),
+            loc: tokens.terminal_token.loc.clone(),
+        });
+    }
+
+    Ok(exprs)
 }
 
 fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
@@ -1858,17 +1884,15 @@ fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
         }
     };
 
-    LoInstr::Casted {
-        value_type: LoType::StructInstance {
-            name: format!("str"),
-        },
-        expr: Box::new(LoInstr::MultiValueEmit {
-            values: vec![
-                LoInstr::U32Const { value: string_ptr },
-                LoInstr::U32Const { value: string_len },
-            ],
-        }),
+    LoInstr::MultiValueEmit {
+        values: vec![
+            LoInstr::U32Const { value: string_ptr },
+            LoInstr::U32Const { value: string_len },
+        ],
     }
+    .casted(LoType::StructInstance {
+        name: format!("str"),
+    })
 }
 
 fn parse_postfix(
@@ -2090,10 +2114,7 @@ fn parse_postfix(
                     || actual_type == LoType::I64
                     || actual_type == LoType::U64
                 {
-                    return Ok(LoInstr::Casted {
-                        value_type: wanted_type,
-                        expr: Box::new(primary),
-                    });
+                    return Ok(primary.casted(wanted_type));
                 }
             }
 
@@ -2113,21 +2134,17 @@ fn parse_postfix(
 
             if wanted_type == LoType::U64 {
                 if actual_type == LoType::I32 {
-                    return Ok(LoInstr::Casted {
-                        value_type: wanted_type,
-                        expr: Box::new(LoInstr::I64FromI32Signed {
-                            expr: Box::new(primary),
-                        }),
-                    });
+                    return Ok(LoInstr::I64FromI32Signed {
+                        expr: Box::new(primary),
+                    }
+                    .casted(wanted_type));
                 }
 
                 if actual_type == LoType::U32 {
-                    return Ok(LoInstr::Casted {
-                        value_type: wanted_type,
-                        expr: Box::new(LoInstr::I64FromI32Unsigned {
-                            expr: Box::new(primary),
-                        }),
-                    });
+                    return Ok(LoInstr::I64FromI32Unsigned {
+                        expr: Box::new(primary),
+                    }
+                    .casted(wanted_type));
                 }
             }
 
@@ -2141,12 +2158,10 @@ fn parse_postfix(
 
             if wanted_type == LoType::U32 {
                 if actual_type == LoType::I64 || actual_type == LoType::U64 {
-                    return Ok(LoInstr::Casted {
-                        value_type: wanted_type,
-                        expr: Box::new(LoInstr::I32FromI64 {
-                            expr: Box::new(primary),
-                        }),
-                    });
+                    return Ok(LoInstr::I32FromI64 {
+                        expr: Box::new(primary),
+                    }
+                    .casted(wanted_type));
                 }
             }
 
@@ -2163,10 +2178,7 @@ fn parse_postfix(
                 });
             }
 
-            LoInstr::Casted {
-                value_type: wanted_type,
-                expr: Box::new(primary),
-            }
+            primary.casted(wanted_type)
         }
         InfixOpTag::FieldAccess => {
             let field_or_method_name = tokens.expect_any(Symbol)?.clone();
@@ -2401,6 +2413,87 @@ fn parse_postfix(
                 loc: field_name.loc,
             });
         }
+        InfixOpTag::Catch => {
+            let mut error_bind = tokens.expect_any(Symbol)?.clone();
+            if error_bind.value == "_" {
+                error_bind.value = "@err@".into(); // make sure it's not accesible
+            }
+
+            let mut catch_block = parse_block_extract_contents(tokens)?;
+
+            let primary_type = primary.get_type(ctx.module);
+            let LoType::Result { ok_type, err_type } = primary_type else {
+                return Err(LoError {
+                    message: format!(
+                        "Trying to catch the error from expression of type: {primary_type}",
+                    ),
+                    loc: op.token.loc,
+                });
+            };
+
+            let catch_ctx = &mut BlockContext {
+                module: ctx.module,
+                fn_ctx: ctx.fn_ctx,
+                block: Block {
+                    parent: Some(&ctx.block),
+                    ..Default::default()
+                },
+            };
+            let catch_body = parse_block_contents(catch_ctx, &mut catch_block, *ok_type.clone())?;
+
+            let bind_err_instr = define_local(
+                catch_ctx,
+                &error_bind,
+                LoInstr::NoInstr, // pop error value from the stack
+                *err_type.clone(),
+            )?;
+            let error_value = compile_local_get(
+                ctx.module,
+                catch_ctx
+                    .block
+                    .get_own_local(&error_bind.value)
+                    .unwrap() // safe
+                    .index,
+                &err_type,
+            )
+            .unwrap(); // safe
+
+            let tmp_ok_local_name = "<ok>";
+            let bin_ok_instr = define_local(
+                catch_ctx,
+                &LoToken {
+                    value: tmp_ok_local_name.into(),
+                    ..error_bind
+                },
+                LoInstr::NoInstr, // pop ok value from the stack
+                *ok_type.clone(),
+            )?;
+            let ok_value = compile_local_get(
+                ctx.module,
+                catch_ctx
+                    .block
+                    .get_own_local(tmp_ok_local_name)
+                    .unwrap() // safe
+                    .index,
+                &ok_type,
+            )
+            .unwrap(); // safe
+
+            LoInstr::MultiValueEmit {
+                values: vec![
+                    primary,
+                    bind_err_instr,
+                    bin_ok_instr,
+                    LoInstr::If {
+                        block_type: *ok_type.clone(),
+                        cond: Box::new(error_value), // error_value == 0 means no error
+                        then_branch: catch_body,
+                        else_branch: Some(vec![ok_value]),
+                    },
+                ],
+            }
+            .casted(*ok_type.clone())
+        }
     })
 }
 
@@ -2523,17 +2616,11 @@ fn parse_const_primary(
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")? {
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Bool,
-            expr: Box::new(LoInstr::U32Const { value: 1 }),
-        });
+        return Ok(LoInstr::U32Const { value: 1 }.casted(LoType::Bool));
     }
 
     if let Some(_) = tokens.eat(Symbol, "false")? {
-        return Ok(LoInstr::Casted {
-            value_type: LoType::Bool,
-            expr: Box::new(LoInstr::U32Const { value: 0 }),
-        });
+        return Ok(LoInstr::U32Const { value: 0 }.casted(LoType::Bool));
     }
 
     if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
@@ -2569,10 +2656,7 @@ fn parse_const_postfix(
     let _min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
-        InfixOpTag::Cast => LoInstr::Casted {
-            value_type: parse_const_lo_type(ctx, tokens)?,
-            expr: Box::new(primary),
-        },
+        InfixOpTag::Cast => primary.casted(parse_const_lo_type(ctx, tokens)?),
         _ => {
             return Err(LoError {
                 message: format!("Unsupported operator in const context: {}", op.token.value),
@@ -2611,7 +2695,18 @@ fn parse_lo_type_(
     }
 
     let token = parse_nested_symbol(tokens)?;
-    get_type_by_name(ctx, type_scope, &token, is_referenced)
+    let type_ = get_type_by_name(ctx, type_scope, &token, is_referenced)?;
+
+    if let Some(_) = tokens.eat(Symbol, "throws")? {
+        let error_type = parse_lo_type_(ctx, type_scope, tokens, is_referenced)?;
+
+        return Ok(LoType::Result {
+            ok_type: Box::new(type_),
+            err_type: Box::new(error_type),
+        });
+    }
+
+    return Ok(type_);
 }
 
 fn get_type_by_name(
@@ -2780,10 +2875,7 @@ fn compile_load(
             item_byte_offset += item_type.sized_comp_stats(&ctx.module)?.byte_length;
         }
 
-        return Ok(LoInstr::Casted {
-            value_type: value_type.clone(),
-            expr: Box::new(LoInstr::MultiValueEmit { values: item_gets }),
-        });
+        return Ok(LoInstr::MultiValueEmit { values: item_gets }.casted(value_type.clone()));
     }
 
     let LoType::StructInstance { name } = value_type else {
@@ -2834,10 +2926,7 @@ fn compile_local_get(
             item_gets.push(compile_local_get(ctx, base_index + item_index, item_type)?);
         }
 
-        return Ok(LoInstr::Casted {
-            value_type: value_type.clone(),
-            expr: Box::new(LoInstr::MultiValueEmit { values: item_gets }),
-        });
+        return Ok(LoInstr::MultiValueEmit { values: item_gets }.casted(value_type.clone()));
     }
 
     let comp_count = value_type.emit_components(ctx, &mut vec![]);
@@ -2878,10 +2967,7 @@ fn compile_set(
     values.push(value_instr);
     values.reverse();
 
-    Ok(LoInstr::Casted {
-        value_type: LoType::Void,
-        expr: Box::new(LoInstr::MultiValueEmit { values }),
-    })
+    Ok(LoInstr::MultiValueEmit { values }.casted(LoType::Void))
 }
 
 fn compile_set_binds(

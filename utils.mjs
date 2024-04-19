@@ -421,6 +421,24 @@ async function testCommand() {
         );
     });
 
+    test("compiles errors", async () => {
+        const program = await compile("./examples/test/errors.lo");
+
+        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, { stdout: stdout.fd });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
+        });
+
+        assert.strictEqual(
+            output,
+            dropPadding(`
+                10 / 5 = 2
+                10 / 2 = 5
+                10 / 0 is undefined
+            `)
+        );
+    });
+
     {
         test("aoc 2020 day 1", async () => {
             const part1 = await runAoc("./examples/aoc2020/1.lo");

@@ -547,6 +547,7 @@ pub enum InfixOpTag {
     Mod,
     Cast,
     FieldAccess,
+    Catch,
 }
 
 pub struct InfixOp {
@@ -580,6 +581,7 @@ impl InfixOp {
             "%" => (Mod, OpInfo { bp: 6, assoc: L }),
             "as" => (Cast, OpInfo { bp: 7, assoc: L }),
             "." => (FieldAccess, OpInfo { bp: 9, assoc: L }),
+            "catch" => (Catch, OpInfo { bp: 10, assoc: L }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })

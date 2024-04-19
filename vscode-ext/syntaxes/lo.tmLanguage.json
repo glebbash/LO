@@ -656,7 +656,7 @@
                 {
                     "comment": "control flow keywords",
                     "name": "keyword.control.lo",
-                    "match": "\\b(await|break|continue|do|else|for|if|loop|match|return|try|while|yield)\\b"
+                    "match": "\\b(await|break|continue|do|else|for|if|loop|match|return|try|while|yield|throw|catch)\\b"
                 },
                 {
                     "comment": "storage keywords",
@@ -696,7 +696,7 @@
                 {
                     "comment": "other keywords",
                     "name": "keyword.other.lo",
-                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|ref|typeof|union|unsafe|unsized|use|virtual|where|export|import|from|memory|defer|sizeof|include)\\b"
+                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|ref|typeof|union|unsafe|unsized|use|virtual|where|export|import|from|memory|defer|sizeof|include|throws)\\b"
                 },
                 {
                     "comment": "fn",
