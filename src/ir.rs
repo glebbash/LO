@@ -305,6 +305,7 @@ impl LoType {
         }
 
         match self {
+            LoType::Never => 0,
             LoType::Void => 0,
             LoType::Tuple(types) => {
                 let mut count = 0;

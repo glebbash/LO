@@ -11,14 +11,14 @@ const fs::CWD_PREOPEN_FD = 3;
 fn fs::read_file(file_name: str): &String {
     fs::_unlock();
 
-    let open_res = fs::open(file_name);
-    if open_res.err != 0 {
+    let fd = fs::open(file_name) catch _ {
         fputs(wasi::FD_STDERR, "Error opening file: ");
         fputs(wasi::FD_STDERR, file_name);
         fputs(wasi::FD_STDERR, "\n");
         wasi::proc_exit(1);
+        unreachable; // TODO: autoinsert unreachable
     };
-    let fd = open_res.fd;
+    defer let _ = wasi::fd_close(fd);
 
     return fs::read_fd(fd);
 };
@@ -62,7 +62,7 @@ struct fs::FdOpenRes {
     fd: u32,
 };
 
-fn fs::open(file_path: str): fs::FdOpenRes {
+fn fs::open(file_path: str): u32 throws wasi::Err {
     let fd_ref = tmp_alloc!<u32>();
 
     let err = wasi::path_open(
@@ -71,7 +71,11 @@ fn fs::open(file_path: str): fs::FdOpenRes {
         fd_ref,
     );
 
-    return fs::FdOpenRes { err: err, fd: *fd_ref };
+    if err != 0 {
+        throw err;
+    };
+
+    return *fd_ref;
 };
 
 fn fs::read_fd(fd: u32): &String {

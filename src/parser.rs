@@ -993,23 +993,23 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             });
         }
 
-        let return_expr = LoInstr::Return {
-            value: Box::new(if let Some(error_type) = error_type {
-                LoInstr::MultiValueEmit {
-                    values: vec![value, error_type.get_default_value(ctx.module)],
-                }
-            } else {
-                value
-            }),
+        let mut return_value = if let Some(error_type) = error_type {
+            LoInstr::MultiValueEmit {
+                values: vec![value, error_type.get_default_value(ctx.module)],
+            }
+        } else {
+            value
         };
 
         if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
             let mut values = values?;
-            values.push(return_expr);
-            return Ok(LoInstr::MultiValueEmit { values }.casted(LoType::Void));
+            values.insert(0, return_value);
+            return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
         }
 
-        return Ok(return_expr);
+        return Ok(LoInstr::Return {
+            value: Box::new(return_value),
+        });
     }
 
     if let Some(throw_token) = tokens.eat(Symbol, "throw")?.cloned() {
@@ -1038,19 +1038,19 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             });
         }
 
-        let return_expr = LoInstr::Return {
-            value: Box::new(LoInstr::MultiValueEmit {
-                values: vec![ok_type.get_default_value(ctx.module), error],
-            }),
+        let mut return_value = LoInstr::MultiValueEmit {
+            values: vec![ok_type.get_default_value(ctx.module), error],
         };
 
         if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
             let mut values = values?;
-            values.push(return_expr);
-            return Ok(LoInstr::MultiValueEmit { values }.casted(LoType::Void));
+            values.insert(0, return_value);
+            return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
         }
 
-        return Ok(return_expr);
+        return Ok(LoInstr::Return {
+            value: Box::new(return_value),
+        });
     }
 
     if let Some(t) = tokens.eat(Symbol, "sizeof")?.cloned() {
@@ -2716,6 +2716,7 @@ fn get_type_by_name(
     is_referenced: bool,
 ) -> Result<LoType, LoError> {
     match token.value.as_str() {
+        "never" => Ok(LoType::Never),
         "void" => Ok(LoType::Void),
         "bool" => Ok(LoType::Bool),
         "u8" => Ok(LoType::U8),

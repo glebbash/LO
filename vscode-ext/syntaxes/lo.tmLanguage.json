@@ -656,7 +656,7 @@
                 {
                     "comment": "control flow keywords",
                     "name": "keyword.control.lo",
-                    "match": "\\b(await|break|continue|do|else|for|if|loop|match|return|try|while|yield|throw|catch)\\b"
+                    "match": "\\b(await|break|continue|do|else|for|if|loop|match|return|try|while|yield|throw|catch|unreachable)\\b"
                 },
                 {
                     "comment": "storage keywords",
@@ -961,7 +961,7 @@
                 {
                     "comment": "primitive types",
                     "name": "entity.name.type.primitive.lo",
-                    "match": "\\b(void|bool|char|str)\\b"
+                    "match": "\\b(never|void|bool|char|str)\\b"
                 },
                 {
                     "comment": "trait declarations",
