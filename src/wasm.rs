@@ -167,6 +167,7 @@ pub enum WasmInstr {
     },
     MemorySize,
     MemoryGrow,
+    MemoryCopy,
     I32Const {
         value: i32,
     },
@@ -464,6 +465,12 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         }
         WasmInstr::MemoryGrow => {
             write_u8(out, 0x40);
+            write_u8(out, 0x00);
+        }
+        WasmInstr::MemoryCopy => {
+            write_u8(out, 0xFC);
+            write_u32(out, 10);
+            write_u8(out, 0x00);
             write_u8(out, 0x00);
         }
         WasmInstr::Load {

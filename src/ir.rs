@@ -500,7 +500,12 @@ pub enum LoInstr {
     },
     MemorySize,
     MemoryGrow {
-        size: Box<LoInstr>,
+        num_bytes: Box<LoInstr>,
+    },
+    MemoryCopy {
+        destination: Box<LoInstr>,
+        source: Box<LoInstr>,
+        num_bytes: Box<LoInstr>,
     },
     Load {
         kind: LoType,
@@ -647,6 +652,7 @@ impl LoInstr {
             LoInstr::Return { .. } => LoType::Never,
             LoInstr::MemorySize => LoType::I32,
             LoInstr::MemoryGrow { .. } => LoType::I32,
+            LoInstr::MemoryCopy { .. } => LoType::Void,
 
             LoInstr::BinaryOp { kind, lhs, .. } => match kind {
                 WasmBinaryOpKind::I32_EQ
@@ -728,9 +734,19 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             out.push(WasmInstr::BinaryOp { kind })
         }
         LoInstr::MemorySize => out.push(WasmInstr::MemorySize),
-        LoInstr::MemoryGrow { size } => {
-            lower_expr(out, *size);
+        LoInstr::MemoryGrow { num_bytes } => {
+            lower_expr(out, *num_bytes);
             out.push(WasmInstr::MemoryGrow);
+        }
+        LoInstr::MemoryCopy {
+            destination,
+            source,
+            num_bytes,
+        } => {
+            lower_expr(out, *destination);
+            lower_expr(out, *source);
+            lower_expr(out, *num_bytes);
+            out.push(WasmInstr::MemoryCopy);
         }
         LoInstr::Load {
             kind,

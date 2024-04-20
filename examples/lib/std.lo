@@ -78,17 +78,8 @@
         return size + padding;
     };
 
-    // TODO: use builtin mem.copy instr, check engine support
-    fn mem::copy(src: &void, dist: &void, size: u32) {
-        loop {
-            if size == 0 {
-                break;
-            };
-
-            size -= 1;
-
-            *((dist as u32 + size) as &u8) = *((src as u32 + size) as &u8);
-        };
+    macro mem::copy!(src: &void, dest: &void, size: u32) {
+        __memory_copy(dest as u32, src as u32, size);
     };
 
     fn mem::swap(ref1: &void, ref2: &void, size: u32) {
@@ -342,7 +333,7 @@
 
         self._grow_if_needed();
 
-        mem::copy(
+        mem::copy!(
             items,
             (self.data as u32 + old_len * self.item_size) as &void,
             items_len * self.item_size,
@@ -391,7 +382,7 @@
         self.capacity = old_capacity * 2;
         self.data = alloc(self.alloc_id, self.capacity * item_size);
 
-        mem::copy(old_data, self.data, self.size * item_size);
+        mem::copy!(old_data, self.data, self.size * item_size);
     };
 
     macro Vec::_panic_if_out_of_bounds!(&self, index: u32) {
@@ -438,7 +429,7 @@
 
     fn str::clone(self): str {
         let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size);
-        mem::copy(self.data as &void, cloned_data as &void, self.size);
+        mem::copy!(self.data as &void, cloned_data as &void, self.size);
         return str {
             data: cloned_data,
             size: self.size,

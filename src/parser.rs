@@ -1107,19 +1107,64 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(t) = tokens.eat(Symbol, "__memory_grow")?.cloned() {
         tokens.expect(Delim, "(")?;
-        let size = parse_expr(ctx, tokens, 0)?;
+        let num_bytes = parse_expr(ctx, tokens, 0)?;
+        tokens.eat(Delim, ",")?; // optional
         tokens.expect(Delim, ")")?;
 
-        let size_type = size.get_type(ctx.module);
-        if size_type != LoType::U32 {
+        let num_bytes_type = num_bytes.get_type(ctx.module);
+        if num_bytes_type != LoType::U32 {
             return Err(LoError {
-                message: format!("Invalid arguments for {}", t.value),
+                message: format!(
+                    "Invalid arguments for {}, got [{}], expected [{}]",
+                    t.value,
+                    num_bytes_type,
+                    LoType::U32
+                ),
                 loc: t.loc,
             });
         };
 
         return Ok(LoInstr::MemoryGrow {
-            size: Box::new(size),
+            num_bytes: Box::new(num_bytes),
+        });
+    }
+
+    if let Some(t) = tokens.eat(Symbol, "__memory_copy")?.cloned() {
+        tokens.expect(Delim, "(")?;
+
+        let destination = parse_expr(ctx, tokens, 0)?;
+        let destination_type = destination.get_type(ctx.module);
+        tokens.expect(Delim, ",")?;
+
+        let source = parse_expr(ctx, tokens, 0)?;
+        let source_type = source.get_type(ctx.module);
+        tokens.expect(Delim, ",")?;
+
+        let num_bytes = parse_expr(ctx, tokens, 0)?;
+        let num_bytes_type = num_bytes.get_type(ctx.module);
+        tokens.eat(Delim, ",")?; // optional
+
+        tokens.expect(Delim, ")")?;
+
+        if destination_type != LoType::U32
+            || source_type != LoType::U32
+            || num_bytes_type != LoType::U32
+        {
+            return Err(LoError {
+                message: format!(
+                    "Invalid arguments for {}, got [{}], expected [{}]",
+                    t.value,
+                    ListDisplay(&vec![destination_type, source_type, num_bytes_type]),
+                    ListDisplay(&vec![LoType::U32, LoType::U32, LoType::U32]),
+                ),
+                loc: t.loc,
+            });
+        };
+
+        return Ok(LoInstr::MemoryCopy {
+            destination: Box::new(destination),
+            source: Box::new(source),
+            num_bytes: Box::new(num_bytes),
         });
     }
 
