@@ -2041,83 +2041,10 @@ fn parse_postfix(
             }
             compile_set(ctx, value, primary, &op.token.loc)?
         }
-        // TODO: support all numeric types
         InfixOpTag::Cast => {
-            let actual_type = primary.get_type(ctx.module);
-            let wanted_type = parse_lo_type(ctx, tokens)?;
+            let cast_type = parse_lo_type(ctx, tokens)?;
 
-            if wanted_type == LoType::Bool || wanted_type == LoType::I8 || wanted_type == LoType::U8
-            {
-                if actual_type == LoType::I32
-                    || actual_type == LoType::U32
-                    || actual_type == LoType::I64
-                    || actual_type == LoType::U64
-                {
-                    return Ok(primary.casted(wanted_type));
-                }
-            }
-
-            if wanted_type == LoType::I64 {
-                if actual_type == LoType::I32 {
-                    return Ok(LoInstr::I64FromI32Signed {
-                        expr: Box::new(primary),
-                    });
-                }
-
-                if actual_type == LoType::U32 {
-                    return Ok(LoInstr::I64FromI32Unsigned {
-                        expr: Box::new(primary),
-                    });
-                }
-            }
-
-            if wanted_type == LoType::U64 {
-                if actual_type == LoType::I32 {
-                    return Ok(LoInstr::I64FromI32Signed {
-                        expr: Box::new(primary),
-                    }
-                    .casted(wanted_type));
-                }
-
-                if actual_type == LoType::U32 {
-                    return Ok(LoInstr::I64FromI32Unsigned {
-                        expr: Box::new(primary),
-                    }
-                    .casted(wanted_type));
-                }
-            }
-
-            if wanted_type == LoType::I32 {
-                if actual_type == LoType::I64 || actual_type == LoType::U64 {
-                    return Ok(LoInstr::I32FromI64 {
-                        expr: Box::new(primary),
-                    });
-                }
-            }
-
-            if wanted_type == LoType::U32 {
-                if actual_type == LoType::I64 || actual_type == LoType::U64 {
-                    return Ok(LoInstr::I32FromI64 {
-                        expr: Box::new(primary),
-                    }
-                    .casted(wanted_type));
-                }
-            }
-
-            let mut actual_wasm_types = vec![];
-            actual_type.emit_components(ctx.module, &mut actual_wasm_types);
-
-            let mut wanted_wasm_types = vec![];
-            wanted_type.emit_components(ctx.module, &mut wanted_wasm_types);
-
-            if actual_wasm_types != wanted_wasm_types {
-                return Err(LoError {
-                    message: format!("`{}` cannot be casted to `{}`", actual_type, wanted_type),
-                    loc: op.token.loc,
-                });
-            }
-
-            primary.casted(wanted_type)
+            build_cast(ctx.module, primary, cast_type, &op.token.loc)?
         }
         InfixOpTag::FieldAccess => {
             let field_or_method_name = tokens.expect_any(Symbol)?.clone();
@@ -2596,6 +2523,78 @@ fn err_incompatible_op<T>(op: &InfixOp, operand_type: LoType) -> Result<T, LoErr
     })
 }
 
+// TODO: support all numeric types
+fn build_cast(
+    ctx: &ModuleContext,
+    value: LoInstr,
+    wanted_type: LoType,
+    loc: &LoLocation,
+) -> Result<LoInstr, LoError> {
+    let actual_type = value.get_type(ctx);
+
+    if wanted_type == LoType::I64 {
+        if actual_type == LoType::I32 {
+            return Ok(LoInstr::I64FromI32Signed {
+                expr: Box::new(value),
+            });
+        }
+
+        if actual_type == LoType::U32 {
+            return Ok(LoInstr::I64FromI32Unsigned {
+                expr: Box::new(value),
+            });
+        }
+    }
+
+    if wanted_type == LoType::U64 {
+        if actual_type == LoType::I32 {
+            return Ok(LoInstr::I64FromI32Signed {
+                expr: Box::new(value),
+            }
+            .casted(wanted_type));
+        }
+
+        if actual_type == LoType::U32 {
+            return Ok(LoInstr::I64FromI32Unsigned {
+                expr: Box::new(value),
+            }
+            .casted(wanted_type));
+        }
+    }
+
+    if wanted_type == LoType::I32 {
+        if actual_type == LoType::I64 || actual_type == LoType::U64 {
+            return Ok(LoInstr::I32FromI64 {
+                expr: Box::new(value),
+            });
+        }
+    }
+
+    if wanted_type == LoType::U32 {
+        if actual_type == LoType::I64 || actual_type == LoType::U64 {
+            return Ok(LoInstr::I32FromI64 {
+                expr: Box::new(value),
+            }
+            .casted(wanted_type));
+        }
+    }
+
+    let mut actual_wasm_types = vec![];
+    actual_type.emit_components(ctx, &mut actual_wasm_types);
+
+    let mut wanted_wasm_types = vec![];
+    wanted_type.emit_components(ctx, &mut wanted_wasm_types);
+
+    if actual_wasm_types != wanted_wasm_types {
+        return Err(LoError {
+            message: format!("`{}` cannot be casted to `{}`", actual_type, wanted_type),
+            loc: loc.clone(),
+        });
+    }
+
+    Ok(value.casted(wanted_type))
+}
+
 fn parse_fn_call_args(
     ctx: &mut BlockContext,
     tokens: &mut LoTokenStream,
@@ -2723,8 +2722,11 @@ fn parse_const_postfix(
     let _min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
-        // TODO: use cast logic from `parse_postfix`
-        InfixOpTag::Cast => primary.casted(parse_const_lo_type(ctx, tokens)?),
+        InfixOpTag::Cast => {
+            let cast_type = parse_const_lo_type(ctx, tokens)?;
+
+            build_cast(ctx, primary, cast_type, &op.token.loc)?
+        }
         _ => {
             return Err(LoError {
                 message: format!("Unsupported operator in const context: {}", op.token.value),
