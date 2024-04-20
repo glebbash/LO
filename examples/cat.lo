@@ -17,8 +17,7 @@ fn main() {
     };
     defer let _ = fs::close(fd);
 
-    let err = fs::pipe(fd, wasi::FD_STDOUT, 256);
-    if err {
+    fs::pipe(fd, wasi::FD_STDOUT, 256) catch _ {
         wasi::proc_exit(1);
     };
 };

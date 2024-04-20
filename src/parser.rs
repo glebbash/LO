@@ -2,6 +2,7 @@ use crate::{ir::*, lexer::*, utils::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
 use LoTokenType::*;
 
+// TODO: drop defer labels
 const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const RECEIVER_PARAM_NAME: &str = "self";
 
@@ -129,10 +130,36 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
             },
         };
 
-        let mut lo_exprs = parse_block_contents(&mut block_ctx, &mut fn_body.body, LoType::Void)?;
-        if let Some(values) = get_deferred(&mut block_ctx, DEFER_UNTIL_RETURN_LABEL) {
-            lo_exprs.append(&mut values?);
-        };
+        let mut contents = parse_block_contents(&mut block_ctx, &mut fn_body.body, LoType::Void)?;
+
+        if !contents.has_return && !contents.has_never {
+            if let Some(values) = get_deferred(&mut block_ctx, DEFER_UNTIL_RETURN_LABEL) {
+                contents.exprs.append(&mut values?);
+            };
+
+            let return_type = &fn_def.type_.output;
+
+            match return_type {
+                LoType::Void => {}
+                LoType::Result { ok_type, err_type } if *ok_type.as_ref() == LoType::Void => {
+                    contents.exprs.push(err_type.get_default_value(ctx));
+                }
+                LoType::Never => {
+                    return Err(LoError {
+                        message: format!("This function terminates but is marked as `never`"),
+                        // TODO: this should point to function definition instead
+                        loc: fn_body.body.terminal_token.loc,
+                    });
+                }
+                _ => {
+                    return Err(LoError {
+                        message: format!("Missing return expression"),
+                        // TODO: this should point to function definition instead
+                        loc: fn_body.body.terminal_token.loc,
+                    });
+                }
+            }
+        }
 
         let mut locals = Vec::<WasmLocals>::new();
         for local_type in &block_ctx.fn_ctx.non_arg_wasm_locals {
@@ -149,7 +176,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         }
 
         let mut instrs = vec![];
-        lower_exprs(&mut instrs, lo_exprs);
+        lower_exprs(&mut instrs, contents.exprs);
 
         ctx.wasm_module.borrow_mut().codes.push(WasmFn {
             locals,
@@ -630,7 +657,7 @@ fn parse_fn_def(
     exported: bool,
 ) -> Result<(), LoError> {
     let fn_decl = parse_fn_decl(ctx, tokens)?;
-    let body = parse_block_extract_contents(tokens)?;
+    let body = collect_block_tokens(tokens)?;
 
     if ctx.fn_defs.contains_key(&fn_decl.fn_name) {
         return Err(LoError {
@@ -734,7 +761,7 @@ fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Resul
     } else {
         LoType::Void
     };
-    let body = parse_block_extract_contents(tokens)?;
+    let body = collect_block_tokens(tokens)?;
 
     ctx.macros.insert(
         macro_name.value.clone(),
@@ -875,11 +902,12 @@ fn parse_block(
     ctx: &mut BlockContext,
     tokens: &mut LoTokenStream,
 ) -> Result<Vec<LoInstr>, LoError> {
-    let mut contents = parse_block_extract_contents(tokens)?;
-    parse_block_contents(ctx, &mut contents, LoType::Void)
+    let mut block_tokens = collect_block_tokens(tokens)?;
+    let contents = parse_block_contents(ctx, &mut block_tokens, LoType::Void)?;
+    Ok(contents.exprs)
 }
 
-fn parse_block_extract_contents(tokens: &mut LoTokenStream) -> Result<LoTokenStream, LoError> {
+fn collect_block_tokens(tokens: &mut LoTokenStream) -> Result<LoTokenStream, LoError> {
     let mut output = LoTokenStream::new(vec![], LoLocation::internal());
 
     let mut depth = 0;
@@ -1782,7 +1810,8 @@ fn parse_macro_call(
         },
     };
 
-    let exprs = parse_block_contents(macro_ctx, &mut macro_def.body.clone(), return_type.clone())?;
+    let exprs =
+        parse_block_contents(macro_ctx, &mut macro_def.body.clone(), return_type.clone())?.exprs;
 
     if ctx.module.inspect_mode {
         let source_index = ctx
@@ -1811,15 +1840,24 @@ fn parse_macro_call(
     return Ok(LoInstr::MultiValueEmit { values: exprs }.casted(return_type));
 }
 
+struct BlockContents {
+    exprs: Vec<LoInstr>,
+    has_never: bool,
+    has_return: bool,
+}
+
 fn parse_block_contents(
     ctx: &mut BlockContext,
     tokens: &mut LoTokenStream,
     expected_type: LoType,
-) -> Result<Vec<LoInstr>, LoError> {
+) -> Result<BlockContents, LoError> {
     let mut resolved_type = LoType::Void;
+    let mut contents = BlockContents {
+        exprs: vec![],
+        has_never: false,
+        has_return: false,
+    };
 
-    let mut got_never = false;
-    let mut exprs = vec![];
     while tokens.peek().is_some() {
         let expr_loc = tokens.peek().unwrap().loc.clone();
         let expr = parse_expr(ctx, tokens, 0)?;
@@ -1827,19 +1865,29 @@ fn parse_block_contents(
 
         let expr_type = expr.get_type(ctx.module);
         if expr_type == LoType::Never {
-            got_never = true;
+            contents.has_never = true;
+            if let LoInstr::Return { .. } = &expr {
+                contents.has_return = true;
+            }
         } else if expr_type != LoType::Void {
-            if resolved_type != LoType::Void {
+            if expr_type != expected_type {
                 return Err(LoError {
-                    message: format!("Excess values"),
+                    message: format!("Expression resolved to `{expr_type}`, but block expected `{expected_type}`"),
                     loc: expr_loc,
                 });
-            }
+            } else if resolved_type != LoType::Void {
+                return Err(LoError {
+                    message: format!(
+                        "Multiple non-void expressions in the block are not supported"
+                    ),
+                    loc: expr_loc,
+                });
+            };
 
             resolved_type = expr_type;
         }
 
-        exprs.push(expr);
+        contents.exprs.push(expr);
     }
 
     if let Some(t) = tokens.peek() {
@@ -1849,7 +1897,7 @@ fn parse_block_contents(
         });
     }
 
-    if !got_never && resolved_type != expected_type {
+    if !contents.has_never && resolved_type != expected_type {
         return Err(LoError {
             message: format!("Block resolved to {resolved_type} but {expected_type} was expected"),
             loc: tokens.terminal_token.loc.clone(),
@@ -1857,12 +1905,11 @@ fn parse_block_contents(
     }
 
     // This hints the wasm compilers that the block won't terminate
-    // It's not actually needed if the block contained return instr, but gonna have it anyways
-    if got_never {
-        exprs.push(LoInstr::Unreachable);
+    if !contents.has_return && contents.has_never {
+        contents.exprs.push(LoInstr::Unreachable);
     }
 
-    Ok(exprs)
+    Ok(contents)
 }
 
 fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
@@ -2422,10 +2469,10 @@ fn parse_postfix(
         InfixOpTag::Catch => {
             let mut error_bind = tokens.expect_any(Symbol)?.clone();
             if error_bind.value == "_" {
-                error_bind.value = "@err@".into(); // make sure it's not accesible
+                error_bind.value = "<ignored error>".into(); // make sure it's not accesible
             }
 
-            let mut catch_block = parse_block_extract_contents(tokens)?;
+            let mut catch_block = collect_block_tokens(tokens)?;
 
             let primary_type = primary.get_type(ctx.module);
             let LoType::Result { ok_type, err_type } = primary_type else {
@@ -2464,37 +2511,43 @@ fn parse_postfix(
             )
             .unwrap(); // safe
 
-            let tmp_ok_local_name = "<ok>";
-            let bin_ok_instr = define_local(
-                catch_ctx,
-                &LoToken {
-                    value: tmp_ok_local_name.into(),
-                    ..error_bind
-                },
-                LoInstr::NoInstr, // pop ok value from the stack
-                *ok_type.clone(),
-            )?;
-            let ok_value = compile_local_get(
-                ctx.module,
-                catch_ctx
-                    .block
-                    .get_own_local(tmp_ok_local_name)
-                    .unwrap() // safe
-                    .index,
-                &ok_type,
-            )
-            .unwrap(); // safe
+            let (bind_ok_instr, ok_value) = if *ok_type != LoType::Void {
+                let tmp_ok_local_name = "<ok>";
+                let bind_ok_instr = define_local(
+                    catch_ctx,
+                    &LoToken {
+                        value: tmp_ok_local_name.into(),
+                        ..error_bind
+                    },
+                    LoInstr::NoInstr, // pop ok value from the stack
+                    *ok_type.clone(),
+                )?;
+                let ok_value = compile_local_get(
+                    ctx.module,
+                    catch_ctx
+                        .block
+                        .get_own_local(tmp_ok_local_name)
+                        .unwrap() // safe
+                        .index,
+                    &ok_type,
+                )
+                .unwrap(); // safe
+
+                (bind_ok_instr, ok_value)
+            } else {
+                (LoInstr::NoInstr, LoInstr::NoInstr)
+            };
 
             LoInstr::MultiValueEmit {
                 values: vec![
                     primary,
                     bind_err_instr,
-                    bin_ok_instr,
+                    bind_ok_instr,
                     LoInstr::If {
                         block_type: *ok_type.clone(),
                         // TODO: this only works for WasmType::I32
                         cond: Box::new(error_value), // error_value == 0 means no error
-                        then_branch: catch_body,
+                        then_branch: catch_body.exprs,
                         else_branch: Some(vec![ok_value]),
                     },
                 ],
