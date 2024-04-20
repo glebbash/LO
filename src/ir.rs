@@ -649,15 +649,34 @@ impl LoInstr {
             LoInstr::MemoryGrow { .. } => LoType::I32,
 
             LoInstr::BinaryOp { kind, lhs, .. } => match kind {
-                WasmBinaryOpKind::I32Equal
-                | WasmBinaryOpKind::I32LessThenUnsigned
-                | WasmBinaryOpKind::I32LessEqualUnsigned
-                | WasmBinaryOpKind::I32GreaterThanUnsigned
-                | WasmBinaryOpKind::I32GreaterEqualUnsigned
-                | WasmBinaryOpKind::I32NotEqual
-                | WasmBinaryOpKind::I32And
-                | WasmBinaryOpKind::I32Or
-                | WasmBinaryOpKind::I64Equal => LoType::Bool,
+                WasmBinaryOpKind::I32_EQ
+                | WasmBinaryOpKind::I32_NE
+                | WasmBinaryOpKind::I32_LT_U
+                | WasmBinaryOpKind::I32_GT_U
+                | WasmBinaryOpKind::I32_LE_U
+                | WasmBinaryOpKind::I32_GE_U
+                | WasmBinaryOpKind::I32_AND
+                | WasmBinaryOpKind::I32_OR
+                | WasmBinaryOpKind::I64_EQ
+                | WasmBinaryOpKind::I64_NE
+                | WasmBinaryOpKind::I64_LT_U
+                | WasmBinaryOpKind::I64_GT_U
+                | WasmBinaryOpKind::I64_LE_U
+                | WasmBinaryOpKind::I64_GE_U
+                | WasmBinaryOpKind::I64_AND
+                | WasmBinaryOpKind::I64_OR
+                | WasmBinaryOpKind::F32_EQ
+                | WasmBinaryOpKind::F32_NE
+                | WasmBinaryOpKind::F32_LT
+                | WasmBinaryOpKind::F32_GT
+                | WasmBinaryOpKind::F32_LE
+                | WasmBinaryOpKind::F32_GE
+                | WasmBinaryOpKind::F64_EQ
+                | WasmBinaryOpKind::F64_NE
+                | WasmBinaryOpKind::F64_LT
+                | WasmBinaryOpKind::F64_GT
+                | WasmBinaryOpKind::F64_LE
+                | WasmBinaryOpKind::F64_GE => LoType::Bool,
                 _ => lhs.get_type(ctx),
             },
             LoInstr::Load { kind, .. } => kind.clone(),

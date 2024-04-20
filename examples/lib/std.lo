@@ -196,7 +196,7 @@
         heap::TOTAL_ALLOCATED += total_size_to_alloc;
 
         // grow enough memory if we are out of space
-        if heap::TOTAL_ALLOCATED >= __memory_size() * mem::PAGE_SIZE as i32 {
+        if heap::TOTAL_ALLOCATED >= __memory_size() as u32 * mem::PAGE_SIZE {
             let pages_to_grow = mem::align_to(total_size_to_alloc, mem::PAGE_SIZE);
             let grow_res = __memory_grow(pages_to_grow);
             if grow_res == (0 - 1) as i32 {
@@ -229,7 +229,7 @@
     };
 
     fn heap::get_block(ptr: &void): &heap::Block {
-        return (ptr - sizeof heap::Block) as &heap::Block;
+        return (ptr as u32 - sizeof heap::Block) as &heap::Block;
     };
 
     // first fit

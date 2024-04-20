@@ -527,24 +527,27 @@ fn is_operator_start_char(c: char) -> bool {
 }
 
 pub enum InfixOpTag {
-    Assign,
-    AddAssign,
-    SubAssign,
-    MulAssign,
-    DivAssign,
-    And,
-    Or,
     Equal,
     NotEqual,
     Less,
-    LessEqual,
     Greater,
+    LessEqual,
     GreaterEqual,
+
     Add,
     Sub,
     Mul,
     Div,
     Mod,
+    And,
+    Or,
+
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+
     Cast,
     FieldAccess,
     Catch,

@@ -1241,13 +1241,13 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let step_instr;
         match counter_type {
             LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                check_op_kind = WasmBinaryOpKind::I32Equal;
-                add_op_kind = WasmBinaryOpKind::I32Add;
+                check_op_kind = WasmBinaryOpKind::I32_EQ;
+                add_op_kind = WasmBinaryOpKind::I32_ADD;
                 step_instr = LoInstr::U32Const { value: 1 };
             }
             LoType::I64 | LoType::U64 => {
-                check_op_kind = WasmBinaryOpKind::I64Equal;
-                add_op_kind = WasmBinaryOpKind::I64Add;
+                check_op_kind = WasmBinaryOpKind::I64_EQ;
+                add_op_kind = WasmBinaryOpKind::I64_ADD;
                 step_instr = LoInstr::U64Const { value: 1 };
             }
             _ => {
@@ -1422,7 +1422,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             match op.tag {
                 PrefixOpTag::Not => {
                     return Ok(LoInstr::BinaryOp {
-                        kind: WasmBinaryOpKind::I32Equal,
+                        kind: WasmBinaryOpKind::I32_EQ,
                         lhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
                         rhs: Box::new(LoInstr::U32Const { value: 0 }),
                     });
@@ -1937,191 +1937,48 @@ fn parse_postfix(
     ctx: &mut BlockContext,
     tokens: &mut LoTokenStream,
     primary: LoInstr,
-    op: InfixOp,
+    mut op: InfixOp,
 ) -> Result<LoInstr, LoError> {
     let min_bp = op.info.get_min_bp_for_next();
 
-    // TODO: typecheck that operands are actually numbers
-    // TODO: support all types for numeric instructions
     Ok(match op.tag {
-        InfixOpTag::Equal => {
+        InfixOpTag::Equal
+        | InfixOpTag::NotEqual
+        | InfixOpTag::Less
+        | InfixOpTag::Greater
+        | InfixOpTag::LessEqual
+        | InfixOpTag::GreaterEqual
+        | InfixOpTag::Add
+        | InfixOpTag::Sub
+        | InfixOpTag::Mul
+        | InfixOpTag::Div
+        | InfixOpTag::Mod
+        | InfixOpTag::And
+        | InfixOpTag::Or => {
+            let lhs = primary;
             let rhs = parse_expr(ctx, tokens, min_bp)?;
             LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                        WasmBinaryOpKind::I32Equal
-                    }
-                    LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64Equal,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary),
+                kind: get_binary_op(ctx.module, &op, &lhs, &rhs)?,
+                lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             }
         }
-        InfixOpTag::NotEqual => {
+        InfixOpTag::AddAssign
+        | InfixOpTag::SubAssign
+        | InfixOpTag::MulAssign
+        | InfixOpTag::DivAssign => {
+            op.tag = get_op_additional_to_assign(&op.tag)?;
+
+            let lhs = primary;
             let rhs = parse_expr(ctx, tokens, min_bp)?;
-            LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                        WasmBinaryOpKind::I32NotEqual
-                    }
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary),
-                rhs: Box::new(rhs),
-            }
-        }
-        InfixOpTag::And => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32And,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Or => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Or,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Less => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32LessThenUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::LessEqual => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32LessEqualUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Greater => {
-            let rhs = parse_expr(ctx, tokens, min_bp)?;
-            LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::U8 | LoType::U32 => {
-                        WasmBinaryOpKind::I32GreaterThanUnsigned
-                    }
-                    LoType::U64 => WasmBinaryOpKind::I64GreaterThanUnsigned,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary),
-                rhs: Box::new(rhs),
-            }
-        }
-        InfixOpTag::GreaterEqual => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32GreaterEqualUnsigned,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Add => {
-            let rhs = parse_expr(ctx, tokens, min_bp)?;
-            LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                        WasmBinaryOpKind::I32Add
-                    }
-                    LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64Add,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary),
-                rhs: Box::new(rhs),
-            }
-        }
-        InfixOpTag::Sub => LoInstr::BinaryOp {
-            kind: WasmBinaryOpKind::I32Sub,
-            lhs: Box::new(primary),
-            rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-        },
-        InfixOpTag::Mul => {
-            let rhs = parse_expr(ctx, tokens, min_bp)?;
-            LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                        WasmBinaryOpKind::I32Mul
-                    }
-                    LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64Mul,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary),
-                rhs: Box::new(rhs),
-            }
-        }
-        InfixOpTag::Div => {
-            let rhs = parse_expr(ctx, tokens, min_bp)?;
-            LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32DivUnsigned,
-                    LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32DivSigned,
-                    LoType::I64 => WasmBinaryOpKind::I64DivSigned,
-                    LoType::U64 => WasmBinaryOpKind::I64DivUnsigned,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary),
-                rhs: Box::new(rhs),
-            }
-        }
-        InfixOpTag::Mod => {
-            let rhs = parse_expr(ctx, tokens, min_bp)?;
-            LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32RemUnsigned,
-                    LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32RemSigned,
-                    LoType::U64 => WasmBinaryOpKind::I64RemUnsigned,
-                    LoType::I64 => WasmBinaryOpKind::I64RemSigned,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary),
-                rhs: Box::new(rhs),
-            }
-        }
-        InfixOpTag::AddAssign => {
-            let rhs = parse_expr(ctx, tokens, min_bp)?;
+
             let value = LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                        WasmBinaryOpKind::I32Add
-                    }
-                    LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64Add,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary.clone()),
+                kind: get_binary_op(ctx.module, &op, &lhs, &rhs)?,
+                lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
             };
 
-            // TODO: lhs.loc() is not available
-            compile_set(ctx, value, primary, &op.token.loc)?
-        }
-        InfixOpTag::SubAssign => {
-            let value = LoInstr::BinaryOp {
-                kind: WasmBinaryOpKind::I32Sub,
-                lhs: Box::new(primary.clone()),
-                rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-            };
-            // TODO: lhs.loc() is not available
-            compile_set(ctx, value, primary, &op.token.loc)?
-        }
-        InfixOpTag::MulAssign => {
-            let value = LoInstr::BinaryOp {
-                kind: WasmBinaryOpKind::I32Mul,
-                lhs: Box::new(primary.clone()),
-                rhs: Box::new(parse_expr(ctx, tokens, min_bp)?),
-            };
-            // TODO: lhs.loc() is not available
-            compile_set(ctx, value, primary, &op.token.loc)?
-        }
-        InfixOpTag::DivAssign => {
-            let rhs = parse_expr(ctx, tokens, min_bp)?;
-            let value = LoInstr::BinaryOp {
-                kind: match expect_same_type_for_op(ctx, &primary, &rhs, &op)? {
-                    LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32DivUnsigned,
-                    LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32DivSigned,
-                    LoType::I64 => WasmBinaryOpKind::I64DivSigned,
-                    LoType::U64 => WasmBinaryOpKind::I64DivUnsigned,
-                    operand_type => return err_incompatible_op(op, operand_type),
-                },
-                lhs: Box::new(primary.clone()),
-                rhs: Box::new(rhs),
-            };
-
-            // TODO: lhs.loc() is not available
-            compile_set(ctx, value, primary, &op.token.loc)?
+            compile_set(ctx, value, lhs, &op.token.loc)?
         }
         InfixOpTag::Assign => {
             let value = parse_expr(ctx, tokens, min_bp)?;
@@ -2131,16 +1988,15 @@ fn parse_postfix(
             if value_type != bind_type {
                 return Err(LoError {
                     message: format!(
-                        "TypeError: Invalid types for '{}', \
-                        needed {bind_type}, got {value_type}",
+                        "TypeError: Invalid types for '{}', needed {bind_type}, got {value_type}",
                         op.token.value
                     ),
                     loc: op.token.loc.clone(),
                 });
             }
-
             compile_set(ctx, value, primary, &op.token.loc)?
         }
+        // TODO: support all numeric types
         InfixOpTag::Cast => {
             let actual_type = primary.get_type(ctx.module);
             let wanted_type = parse_lo_type(ctx, tokens)?;
@@ -2329,7 +2185,6 @@ fn parse_postfix(
                 )
                 .map_err(|message| LoError {
                     message,
-                    // TODO: lhs.loc() is not available
                     loc: op.token.loc,
                 });
             };
@@ -2442,10 +2297,9 @@ fn parse_postfix(
                 };
             };
 
-            let lhs_type = primary.get_type(ctx.module);
             return Err(LoError {
                 message: format!(
-                    "Trying to get field '{}' on non struct: {lhs_type}",
+                    "Trying to get field '{}' on non struct: {primary_type}",
                     field_name.value
                 ),
                 loc: field_name.loc,
@@ -2542,14 +2396,24 @@ fn parse_postfix(
     })
 }
 
-fn expect_same_type_for_op(
-    ctx: &BlockContext,
+fn get_op_additional_to_assign(op: &InfixOpTag) -> Result<InfixOpTag, LoError> {
+    match op {
+        InfixOpTag::AddAssign => Ok(InfixOpTag::Add),
+        InfixOpTag::SubAssign => Ok(InfixOpTag::Sub),
+        InfixOpTag::MulAssign => Ok(InfixOpTag::Mul),
+        InfixOpTag::DivAssign => Ok(InfixOpTag::Div),
+        _ => return Err(LoError::unreachable(file!(), line!())),
+    }
+}
+
+fn get_binary_op(
+    ctx: &ModuleContext,
+    op: &InfixOp,
     lhs: &LoInstr,
     rhs: &LoInstr,
-    op: &InfixOp,
-) -> Result<LoType, LoError> {
-    let lhs_type = lhs.get_type(ctx.module);
-    let rhs_type = rhs.get_type(ctx.module);
+) -> Result<WasmBinaryOpKind, LoError> {
+    let lhs_type = lhs.get_type(ctx);
+    let rhs_type = rhs.get_type(ctx);
 
     if lhs_type != rhs_type {
         return Err(LoError {
@@ -2561,16 +2425,129 @@ fn expect_same_type_for_op(
         });
     }
 
-    Ok(lhs_type)
+    Ok(match op.tag {
+        InfixOpTag::Equal => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_EQ
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_EQ,
+            LoType::F32 => WasmBinaryOpKind::F32_EQ,
+            LoType::F64 => WasmBinaryOpKind::F64_EQ,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::NotEqual => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_NE
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_NE,
+            LoType::F32 => WasmBinaryOpKind::F32_NE,
+            LoType::F64 => WasmBinaryOpKind::F64_NE,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Less => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_LT_S,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_LT_U,
+            LoType::I64 => WasmBinaryOpKind::I64_LT_S,
+            LoType::U64 => WasmBinaryOpKind::I64_LT_U,
+            LoType::F32 => WasmBinaryOpKind::F32_LT,
+            LoType::F64 => WasmBinaryOpKind::F64_LT,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Greater => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_GT_S,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_GT_U,
+            LoType::I64 => WasmBinaryOpKind::I64_GT_S,
+            LoType::U64 => WasmBinaryOpKind::I64_GT_U,
+            LoType::F32 => WasmBinaryOpKind::F32_GT,
+            LoType::F64 => WasmBinaryOpKind::F64_GT,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::LessEqual => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_LE_S,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_LE_U,
+            LoType::I64 => WasmBinaryOpKind::I64_LE_S,
+            LoType::U64 => WasmBinaryOpKind::I64_LE_U,
+            LoType::F32 => WasmBinaryOpKind::F32_LE,
+            LoType::F64 => WasmBinaryOpKind::F64_LE,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::GreaterEqual => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_GE_S,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_GE_U,
+            LoType::I64 => WasmBinaryOpKind::I64_GE_S,
+            LoType::U64 => WasmBinaryOpKind::I64_GE_U,
+            LoType::F32 => WasmBinaryOpKind::F32_GE,
+            LoType::F64 => WasmBinaryOpKind::F64_GE,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Add => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_ADD
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_ADD,
+            LoType::F32 => WasmBinaryOpKind::F32_ADD,
+            LoType::F64 => WasmBinaryOpKind::F64_ADD,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Sub => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_SUB
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_SUB,
+            LoType::F32 => WasmBinaryOpKind::F32_SUB,
+            LoType::F64 => WasmBinaryOpKind::F64_SUB,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Mul => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_MUL
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_MUL,
+            LoType::F32 => WasmBinaryOpKind::F32_MUL,
+            LoType::F64 => WasmBinaryOpKind::F64_MUL,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Div => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_DIV_S,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_DIV_U,
+            LoType::I64 => WasmBinaryOpKind::I64_DIV_S,
+            LoType::U64 => WasmBinaryOpKind::I64_DIV_U,
+            LoType::F32 => WasmBinaryOpKind::F32_DIV,
+            LoType::F64 => WasmBinaryOpKind::F64_DIV,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Mod => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_REM_S,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_REM_U,
+            LoType::I64 => WasmBinaryOpKind::I64_REM_S,
+            LoType::U64 => WasmBinaryOpKind::I64_REM_U,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::And => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_AND
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_AND,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::Or => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_OR
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_OR,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        _ => return Err(LoError::unreachable(file!(), line!())),
+    })
 }
 
-fn err_incompatible_op<T>(op: InfixOp, operand_type: LoType) -> Result<T, LoError> {
+fn err_incompatible_op<T>(op: &InfixOp, operand_type: LoType) -> Result<T, LoError> {
     Err(LoError {
         message: format!(
             "Operator `{}` is incompatible with operands of type {}",
             op.token.value, operand_type
         ),
-        loc: op.token.loc,
+        loc: op.token.loc.clone(),
     })
 }
 
@@ -2701,6 +2678,7 @@ fn parse_const_postfix(
     let _min_bp = op.info.get_min_bp_for_next();
 
     Ok(match op.tag {
+        // TODO: use cast logic from `parse_postfix`
         InfixOpTag::Cast => primary.casted(parse_const_lo_type(ctx, tokens)?),
         _ => {
             return Err(LoError {
@@ -3003,10 +2981,13 @@ fn compile_set(
     ctx: &mut BlockContext,
     value_instr: LoInstr,
     bind_instr: LoInstr,
-    bind_loc: &LoLocation,
+    loc: &LoLocation,
 ) -> Result<LoInstr, LoError> {
     let mut values = vec![];
-    compile_set_binds(&mut values, ctx, bind_instr, bind_loc, None)?;
+    compile_set_binds(&mut values, ctx, bind_instr, None).map_err(|message| LoError {
+        message,
+        loc: loc.clone(),
+    })?;
     values.push(value_instr);
     values.reverse();
 
@@ -3017,9 +2998,8 @@ fn compile_set_binds(
     output: &mut Vec<LoInstr>,
     ctx: &mut BlockContext,
     bind_instr: LoInstr,
-    bind_loc: &LoLocation,
     address_index: Option<u32>,
-) -> Result<(), LoError> {
+) -> Result<(), String> {
     Ok(match bind_instr {
         LoInstr::LocalGet { local_index, .. } | LoInstr::UntypedLocalGet { local_index } => {
             output.push(LoInstr::Set {
@@ -3069,7 +3049,7 @@ fn compile_set_binds(
             let mut values = vec![];
 
             for value in primitive_loads {
-                compile_set_binds(&mut values, ctx, value, bind_loc, Some(address_local_index))?;
+                compile_set_binds(&mut values, ctx, value, Some(address_local_index))?;
             }
 
             values.push(LoInstr::Set {
@@ -3085,22 +3065,19 @@ fn compile_set_binds(
         }
         LoInstr::StructGet { primitive_gets, .. } => {
             for value in primitive_gets {
-                compile_set_binds(output, ctx, value, bind_loc, address_index)?;
+                compile_set_binds(output, ctx, value, address_index)?;
             }
         }
         LoInstr::MultiValueEmit { values } => {
             for value in values {
-                compile_set_binds(output, ctx, value, bind_loc, address_index)?;
+                compile_set_binds(output, ctx, value, address_index)?;
             }
         }
         LoInstr::Casted { expr, .. } => {
-            compile_set_binds(output, ctx, *expr, bind_loc, address_index)?;
+            compile_set_binds(output, ctx, *expr, address_index)?;
         }
         _ => {
-            return Err(LoError {
-                message: format!("Invalid left-hand side in assignment"),
-                loc: bind_loc.clone(),
-            });
+            return Err(format!("Invalid left-hand side in assignment"));
         }
     })
 }
