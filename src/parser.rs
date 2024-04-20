@@ -1856,6 +1856,12 @@ fn parse_block_contents(
         });
     }
 
+    // This hints the wasm compilers that the block won't terminate
+    // It's not actually needed if the block contained return instr, but gonna have it anyways
+    if got_never {
+        exprs.push(LoInstr::Unreachable);
+    }
+
     Ok(exprs)
 }
 

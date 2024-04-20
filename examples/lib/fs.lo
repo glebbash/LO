@@ -16,7 +16,6 @@ fn fs::read_file(file_name: str): &String {
         fputs(wasi::FD_STDERR, file_name);
         fputs(wasi::FD_STDERR, "\n");
         wasi::proc_exit(1);
-        unreachable; // TODO: autoinsert unreachable
     };
     defer let _ = wasi::fd_close(fd);
 
