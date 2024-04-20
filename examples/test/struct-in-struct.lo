@@ -43,10 +43,4 @@ fn main() {
 
     print_u32(r_ref.br.x);
     puts("\n");
-
-    // TODO: throws TypeError
-    // TODO: look into supporting nested references
-    // let br2 = r.br;
-    // print_u32(br2.x);
-    // puts("\n");
 };

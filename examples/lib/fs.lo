@@ -7,7 +7,6 @@ struct fs {};
 // fs expects host to preopen "." on fd 3
 const fs::CWD_PREOPEN_FD = 3;
 
-// TODO: return errors instead of exiting with logs
 fn fs::read_file(file_name: str): &String {
     fs::_unlock();
 

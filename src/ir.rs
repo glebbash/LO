@@ -46,7 +46,7 @@ pub struct FnContext<'a> {
     pub lo_fn_type: &'a LoFnType,
     pub locals_last_index: u32,
     pub non_arg_wasm_locals: Vec<WasmType>,
-    pub defers: BTreeMap<String, Vec<LoInstr>>,
+    pub defers: Vec<LoInstr>,
 }
 
 #[derive(PartialEq)]

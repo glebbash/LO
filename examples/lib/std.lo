@@ -278,7 +278,7 @@
     };
 
     fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32): &Vec {
-        // TODO: look into `new` keyword
+        // TODO: consider `new` keyword
         let self_ptr = alloc!<Vec>(alloc_id);
         *self_ptr = Vec {
             data: alloc(alloc_id, capacity * item_size),

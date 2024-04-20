@@ -2,8 +2,6 @@ use crate::{ir::*, lexer::*, utils::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
 use LoTokenType::*;
 
-// TODO: drop defer labels
-const DEFER_UNTIL_RETURN_LABEL: &str = "return";
 const RECEIVER_PARAM_NAME: &str = "self";
 
 pub fn init<'a>(inspect_mode: bool) -> ModuleContext<'a> {
@@ -112,7 +110,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
             lo_fn_type: &fn_def.type_,
             locals_last_index: fn_body.locals_last_index,
             non_arg_wasm_locals: vec![],
-            defers: BTreeMap::default(),
+            defers: vec![],
         };
 
         let locals_block = Block {
@@ -133,8 +131,8 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         let mut contents = parse_block_contents(&mut block_ctx, &mut fn_body.body, LoType::Void)?;
 
         if !contents.has_return && !contents.has_never {
-            if let Some(values) = get_deferred(&mut block_ctx, DEFER_UNTIL_RETURN_LABEL) {
-                contents.exprs.append(&mut values?);
+            if let Some(mut values) = get_deferred(&mut block_ctx) {
+                contents.exprs.append(&mut values);
             };
 
             let return_type = &fn_def.type_.output;
@@ -1029,8 +1027,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             value
         };
 
-        if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
-            let mut values = values?;
+        if let Some(mut values) = get_deferred(ctx) {
             values.insert(0, return_value);
             return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
         }
@@ -1070,8 +1067,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             values: vec![ok_type.get_default_value(ctx.module), error],
         };
 
-        if let Some(values) = get_deferred(ctx, DEFER_UNTIL_RETURN_LABEL) {
-            let mut values = values?;
+        if let Some(mut values) = get_deferred(ctx) {
             values.insert(0, return_value);
             return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
         }
@@ -1096,20 +1092,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(_) = tokens.eat(Symbol, "defer")? {
-        let defer_label = if let Some(_) = tokens.eat(Operator, "@")? {
-            tokens.expect_any(Symbol)?.value.clone()
-        } else {
-            String::from(DEFER_UNTIL_RETURN_LABEL)
-        };
         let deffered_expr = parse_expr(ctx, tokens, 0)?;
 
-        let deferred = ctx
-            .fn_ctx
-            .defers
-            .entry(defer_label)
-            .or_insert_with(|| vec![]);
-
-        deferred.push(deffered_expr);
+        ctx.fn_ctx.defers.push(deffered_expr);
 
         return Ok(LoInstr::NoInstr);
     }
@@ -2894,18 +2879,15 @@ fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String 
     format!("{resolved_receiver_type}::{method_name}")
 }
 
-fn get_deferred(
-    ctx: &mut BlockContext,
-    defer_label: &str,
-) -> Option<Result<Vec<LoInstr>, LoError>> {
-    let Some(deferred) = ctx.fn_ctx.defers.get(defer_label) else {
+fn get_deferred(ctx: &mut BlockContext) -> Option<Vec<LoInstr>> {
+    if ctx.fn_ctx.defers.len() == 0 {
         return None;
     };
 
-    let mut deferred = deferred.clone();
+    let mut deferred = ctx.fn_ctx.defers.clone();
     deferred.reverse();
 
-    Some(Ok(deferred))
+    Some(deferred)
 }
 
 fn compile_load(
