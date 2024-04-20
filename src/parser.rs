@@ -1368,29 +1368,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         ];
 
         return Ok(LoInstr::MultiValueEmit { values: instrs }.casted(LoType::Void));
-
-        // let mut ctx = BlockContext {
-        //     module: ctx.module,
-        //     fn_ctx: ctx.fn_ctx,
-        //     block: Block {
-        //         parent: Some(&ctx.block),
-        //         block_type: BlockType::Loop,
-        //         ..Default::default()
-        //     },
-        // };
-
-        // let mut body = parse_block(&mut ctx, tokens)?;
-
-        // let implicit_continue = LoInstr::Branch { label_index: 0 };
-        // body.push(implicit_continue);
-
-        // return Ok(LoInstr::Block {
-        //     block_type: LoType::Void,
-        //     body: vec![LoInstr::Loop {
-        //         block_type: LoType::Void,
-        //         body,
-        //     }],
-        // });
     }
 
     if let Some(_) = tokens.eat(Symbol, "break")? {
