@@ -4,7 +4,7 @@
     "description": "LO language support",
     "author": "glebbash",
     "license": "MIT",
-    "version": "0.0.194",
+    "version": "0.0.199",
     "publisher": "glebbash",
     "engines": {
         "vscode": "^1.88.0"
@@ -13,6 +13,7 @@
     "categories": [
         "Programming Languages"
     ],
+    "icon": "./icons/lo_128px.png",
     "activationEvents": [],
     "main": "./out/extension.js",
     "contributes": {
@@ -46,10 +47,18 @@
             }
         ],
         "configuration": {
-            "lo.useNodeWasi": {
-                "type": "boolean",
-                "default": false,
-                "description": "Whether to use `node:wasi` runtime instead of `@vscode/wasm-wasi`."
+            "title": "LO",
+            "properties": {
+                "lo.useNodeWasi": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether to use `node:wasi` runtime instead of `@vscode/wasm-wasi`."
+                },
+                "lo.compilerPath": {
+                    "type": "string",
+                    "default": "${workspaceFolder}/lo.wasm",
+                    "description": "Absolute path to the compiler. Supports ${workspaceFolder} variable."
+                }
             }
         }
     },
@@ -68,7 +77,7 @@
         "@types/vscode": "^1.88.0",
         "@typescript-eslint/eslint-plugin": "^7.4.0",
         "@typescript-eslint/parser": "^7.4.0",
-        "@vscode/vsce": "^2.25.0",
+        "@vscode/vsce": "^2.26.0",
         "eslint": "^8.57.0",
         "typescript": "^5.3.3",
         "vsce": "^2.15.0"
