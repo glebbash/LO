@@ -11,6 +11,5 @@
                 "fontStyle": ""
             }
         }
-    },
-    "lo.compilerPath": "target/wasm32-unknown-unknown/release/lo.wasm",
+    }
 }
