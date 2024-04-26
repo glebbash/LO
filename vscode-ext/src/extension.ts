@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import * as wasi from "./wasi-runners";
+import * as wasi from "./run-wasi";
 import { FileAnalysis, FileAnalysisCollection } from "./analysis";
 
 type DiagnisticItem =
@@ -35,16 +35,13 @@ export async function activate(context: vscode.ExtensionContext) {
         if (!ctx) {
             return;
         }
-
-        const compilerResult = await wasi.runProgram({
-            useNodeWasi: ctx.useNodeWasi,
+        const compilerResult = await wasi.runWasiProgram({
             processName: "lo",
             cwdUri: workspaceUri,
             args: [vscode.workspace.asRelativePath(document.uri), "--inspect"],
             module: ctx.compilerModule,
         });
         analysis.clear();
-
         if (compilerResult.exitCode !== 0) {
             return showCompilerError(
                 workspaceUri,
@@ -53,11 +50,9 @@ export async function activate(context: vscode.ExtensionContext) {
                 compilerResult.exitCode
             );
         }
-
         const diagnostics: DiagnisticItem[] = JSON.parse(
             new TextDecoder().decode(compilerResult.stdout)
         );
-
         const analysisPerIndex = new Map<number, FileAnalysis>();
         for (const d of diagnostics) {
             if (d.type === "file") {
@@ -66,7 +61,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 analysis.push(diag);
                 analysisPerIndex.set(d.index, diag);
             }
-
             if (d.type === "hover") {
                 const fileDiagnostic = analysisPerIndex.get(d.source)!;
                 fileDiagnostic.hovers.push(
@@ -79,7 +73,6 @@ export async function activate(context: vscode.ExtensionContext) {
                     )
                 );
             }
-
             if (d.type === "link") {
                 const fileDiagnostic = analysisPerIndex.get(d.source)!;
                 fileDiagnostic.links.push({
@@ -90,6 +83,33 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         }
     };
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("lo.initProject", async () => {
+            const initDir = vscode.Uri.joinPath(
+                context.extensionUri,
+                "assets/initial-project"
+            );
+
+            const initFiles = [
+                "lo.wasm",
+                "main.lo",
+                "lib/std.lo",
+                "lib/wasi.lo",
+                "lib/print.lo",
+                "lib/cli.lo",
+            ];
+
+            for (const file of initFiles) {
+                await vscode.workspace.fs.copy(
+                    vscode.Uri.joinPath(initDir, file),
+                    vscode.Uri.joinPath(workspaceUri, file)
+                );
+            }
+
+            await vscode.window.showInformationMessage("Project initialized");
+        })
+    );
 
     context.subscriptions.push(
         vscode.commands.registerCommand("lo.runFile", async () => {
@@ -103,8 +123,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 return vscode.window.showErrorMessage("No files opened");
             }
 
-            const compilerResult = await wasi.runProgram({
-                useNodeWasi: ctx.useNodeWasi,
+            const compilerResult = await wasi.runWasiProgram({
                 processName: "lo",
                 cwdUri: workspaceUri,
                 args: [vscode.workspace.asRelativePath(currentFile.uri)],
@@ -131,8 +150,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     detail: "" + err,
                 });
             }
-            const programResult = await wasi.runProgram({
-                useNodeWasi: ctx.useNodeWasi,
+            const programResult = await wasi.runWasiProgram({
                 processName: currentFile.uri.fsPath,
                 cwdUri: workspaceUri,
                 args: [],
@@ -168,20 +186,14 @@ async function loadCompilerCtx() {
     const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri!;
 
     const config = vscode.workspace.getConfiguration("lo");
-    const useNodeWasi = config.get<boolean>("useNodeWasi") ?? false;
-    let compilerPath =
-        config.get<string | undefined>("compilerPath") ??
-        "${workspaceFolder}/target/wasm32-unknown-unknown/release/lo.wasm";
-
-    compilerPath = compilerPath.replaceAll(
-        "${workspaceFolder}",
-        workspaceUri.fsPath
-    );
+    const compilerPath = config.get<string>("compilerPath")!;
 
     let compilerModule: WebAssembly.Module;
     try {
         compilerModule = await WebAssembly.compile(
-            await vscode.workspace.fs.readFile(vscode.Uri.file(compilerPath))
+            await vscode.workspace.fs.readFile(
+                vscode.Uri.joinPath(workspaceUri, compilerPath)
+            )
         );
     } catch (err) {
         vscode.window.showErrorMessage("Compiler loading error", {
@@ -191,7 +203,7 @@ async function loadCompilerCtx() {
         return undefined;
     }
 
-    return { workspaceUri, useNodeWasi, compilerModule };
+    return { workspaceUri, compilerModule };
 }
 
 async function showCompilerError(

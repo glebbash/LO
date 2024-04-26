@@ -1,0 +1,41 @@
+include "./std.lo";
+include "./wasi.lo";
+
+fn puts(value: str) {
+    return fputs(wasi::FD_STDOUT, value);
+};
+fn fputs(fd: u32, value: str) {
+    let value_ptr = tmp_alloc!<str>();
+    *value_ptr = value;
+
+    fprint_str(fd, value_ptr);
+};
+
+fn print_u32(num: u32) {
+    return fprint_u32(wasi::FD_STDOUT, num);
+};
+fn fprint_u32(fd: u32, num: u32) {
+    let out = u32::to_string_using(num, alloc::STACK);
+    defer out.free();
+
+    fprint_str(fd, out as &str);
+};
+
+fn print_u64(num: u64) {
+    return fprint_u64(wasi::FD_STDOUT, num);
+};
+fn fprint_u64(fd: u32, num: u64) {
+    let out = u64::to_string_using(num, alloc::STACK);
+    defer out.free();
+
+    fprint_str(fd, out as &str);
+};
+
+fn print_str(value: &str) {
+    return fprint_str(wasi::FD_STDOUT, value);
+};
+fn fprint_str(fd: u32, value: &str) {
+    let nwritten = tmp_alloc!<u32>();
+
+    let _ = wasi::fd_write(fd, value as &wasi::IOVec, 1, nwritten);
+};

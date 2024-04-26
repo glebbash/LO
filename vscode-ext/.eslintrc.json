@@ -9,13 +9,6 @@
         "@typescript-eslint"
     ],
     "rules": {
-        "@typescript-eslint/naming-convention": [
-            "warn",
-            {
-                "selector": "import",
-                "format": [ "camelCase", "PascalCase" ]
-            }
-        ],
         "@typescript-eslint/semi": "warn",
         "curly": "warn",
         "eqeqeq": "warn",
@@ -23,8 +16,6 @@
         "semi": "off"
     },
     "ignorePatterns": [
-        "out",
-        "dist",
         "**/*.d.ts"
     ]
 }

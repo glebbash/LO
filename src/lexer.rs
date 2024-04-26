@@ -257,6 +257,7 @@ impl Lexer {
             self.next_char();
             match self.current_char()? {
                 'n' => value.push('\n'),
+                'r' => value.push('\r'),
                 't' => value.push('\t'),
                 '\\' => value.push('\\'),
                 '\'' => value.push('\''),
@@ -306,6 +307,7 @@ impl Lexer {
                     self.next_char();
                     match self.current_char()? {
                         'n' => value.push('\n'),
+                        'r' => value.push('\r'),
                         't' => value.push('\t'),
                         '\\' => value.push('\\'),
                         '"' => value.push('"'),
@@ -464,7 +466,7 @@ impl Lexer {
 
 fn is_space_char(c: char) -> bool {
     match c {
-        ' ' | '\n' | '\t' => true,
+        ' ' | '\n' | '\t' | '\r' => true,
         _ => false,
     }
 }
