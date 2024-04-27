@@ -1,4 +1,4 @@
-use crate::{lexer::*, wasm::*};
+use crate::{lexer::*, utils::LoLocation, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 
@@ -15,7 +15,8 @@ pub struct ModuleContext<'a> {
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
-    pub constants: RefCell<BTreeMap<String, LoInstr>>,
+    pub constants: RefCell<BTreeMap<String, ConstDef>>,
+    // TODO: invert the mapping, it should be Vec<String>
     pub included_modules: BTreeMap<String, u32>,
     pub macros: BTreeMap<String, MacroDef>,
     pub type_scope: LoTypeScope<'a>,
@@ -32,6 +33,10 @@ impl<'a> ModuleContext<'a> {
 
         wasm_module.types.push(fn_type);
         wasm_module.types.len() as u32 - 1
+    }
+
+    pub fn get_loc_module_index(&self, loc: &LoLocation) -> u32 {
+        *self.included_modules.get(&loc.file_name as &str).unwrap() // safe
     }
 }
 
@@ -405,6 +410,7 @@ impl LoType {
 pub struct LocalDef {
     pub index: u32,
     pub value_type: LoType,
+    pub loc: LoLocation,
 }
 
 pub struct GlobalDef {
@@ -412,6 +418,12 @@ pub struct GlobalDef {
     pub mutable: bool,
     pub value_type: LoType,
     pub value: LoInstr,
+    pub loc: LoLocation,
+}
+
+pub struct ConstDef {
+    pub value: LoInstr,
+    pub loc: LoLocation,
 }
 
 pub struct FnBody {
@@ -439,6 +451,7 @@ pub struct StructField {
     pub value_type: LoType,
     pub field_index: u32,
     pub byte_offset: u32,
+    pub loc: LoLocation,
 }
 
 #[derive(Debug, Clone)]
@@ -448,6 +461,7 @@ pub struct FnDef {
     pub fn_params: Vec<FnParam>,
     pub type_index: u32,
     pub type_: LoFnType,
+    pub loc: LoLocation,
 }
 
 impl FnDef {
@@ -464,6 +478,7 @@ impl FnDef {
 pub struct FnParam {
     pub name: String,
     pub type_: LoType,
+    pub loc: LoLocation,
 }
 
 impl core::fmt::Display for FnParam {
@@ -483,6 +498,7 @@ pub struct MacroDef {
     pub params: Vec<FnParam>,
     pub return_type: LoType,
     pub body: LoTokenStream,
+    pub loc: LoLocation,
 }
 
 #[derive(Clone, Debug)]

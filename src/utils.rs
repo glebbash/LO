@@ -256,3 +256,17 @@ impl<'a, T: core::fmt::Display> core::fmt::Display for ListDisplay<'a, T> {
         Ok(())
     }
 }
+
+pub struct RangeDisplay<'a>(pub &'a LoLocation);
+
+impl<'a> core::fmt::Display for RangeDisplay<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let sl = self.0.pos.line;
+        let sc = self.0.pos.col;
+        let el = self.0.end_pos.line;
+        let ec = self.0.end_pos.col;
+
+        write!(f, "{sl}:{sc}-{el}:{ec}")?;
+        Ok(())
+    }
+}
