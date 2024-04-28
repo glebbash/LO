@@ -5,7 +5,7 @@
     "author": "glebbash",
     "publisher": "glebbash",
     "license": "MIT",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "engines": {
         "vscode": "^1.88.0"
     },
@@ -74,7 +74,17 @@
                     "description": "Path to the compiler, relative to workspace folder"
                 }
             }
-        }
+        },
+        "webShellMountPoints": [
+            {
+                "mountPoint": "/usr/bin/clear",
+                "command": "lo.webshell.clear"
+            },
+            {
+                "mountPoint": "/usr/bin/run",
+                "command": "lo.webshell.run"
+            }
+        ]
     },
     "scripts": {
         "vscode:prepublish": "npm run package",
@@ -101,5 +111,9 @@
     },
     "dependencies": {
         "@vscode/wasm-wasi": "^0.13.0-pre.1"
-    }
+    },
+    "extensionDependencies": [
+        "ms-vscode.wasm-wasi-core",
+        "ms-vscode.webshell"
+    ]
 }

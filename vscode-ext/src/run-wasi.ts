@@ -27,8 +27,8 @@ export async function runWasiProgram(
 
     const wasm = await Wasm.load();
     const stdin = wasm.createWritable();
-    const [stdout, stdoutBytes] = accumulateBytes(wasm.createReadable());
-    const [stderr, stderrBytes] = accumulateBytes(wasm.createReadable());
+    const stdout = accumulateBytes(wasm.createReadable());
+    const stderr = accumulateBytes(wasm.createReadable());
 
     const process = await wasm.createProcess(
         options.processName,
@@ -41,6 +41,8 @@ export async function runWasiProgram(
             },
             args: options.args,
             mountPoints: [
+                // TODO: figure out why this doesn't work
+                // { kind: "workspaceFolder" },
                 {
                     kind: "vscodeFileSystem",
                     uri: options.cwdUri,
@@ -53,8 +55,8 @@ export async function runWasiProgram(
 
     return {
         exitCode,
-        stdout: stdoutBytes.get(),
-        stderr: stderrBytes.get(),
+        stdout: stdout.get(),
+        stderr: stderr.get(),
     };
 }
 
@@ -77,9 +79,9 @@ function checkValidWasiModule(module: WebAssembly.Module) {
     return {};
 }
 
-function accumulateBytes(
+export function accumulateBytes(
     readable: Readable
-): [Readable, { get: () => Uint8Array }] {
+): Readable & { get: () => Uint8Array } {
     let data = new Uint8Array();
     readable.onData((chunk) => {
         const newData = new Uint8Array(data.length + chunk.length);
@@ -87,5 +89,5 @@ function accumulateBytes(
         newData.set(chunk, data.length);
         data = newData;
     });
-    return [readable, { get: () => data }];
+    return Object.assign(readable, { get: () => data });
 }

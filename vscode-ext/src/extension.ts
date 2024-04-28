@@ -1,6 +1,16 @@
 import * as vscode from "vscode";
 import * as wasi from "./run-wasi";
 import { FileAnalysis, FileAnalysisCollection } from "./analysis";
+import { Wasm, type RootFileSystem, type Stdio } from "@vscode/wasm-wasi";
+
+// WebShell 0.13.0-pre.1 interface
+export type WebShellCommandHandler = (
+    command: string,
+    args: string[],
+    cwd: string,
+    stdio: Stdio,
+    rootFileSystem: RootFileSystem
+) => Promise<number>;
 
 type DiagnisticItem =
     | { type: "file"; index: number; path: string }
@@ -171,6 +181,131 @@ export async function activate(context: vscode.ExtensionContext) {
                 detail: new TextDecoder().decode(programResult.stdout),
             });
         })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("lo.webshell.clear", (async (
+            _command,
+            _args,
+            _cwd,
+            stdio,
+            _rootFileSystem
+        ) => {
+            if (stdio.out?.kind === "terminal") {
+                await stdio.out.terminal.write(
+                    new TextEncoder().encode("\x1b[2J\x1b[H")
+                );
+            }
+            return 0;
+        }) satisfies WebShellCommandHandler)
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("lo.webshell.run", (async (
+            command,
+            args,
+            cwd,
+            stdio,
+            _rootFileSystem
+        ) => {
+            const wasm = await Wasm.load();
+
+            const programPath = args[0];
+            args = args.slice(1);
+            if (programPath === undefined) {
+                await logError("Missing program name");
+                return 1;
+            }
+
+            const processStdio = { ...stdio };
+
+            let stdoutRedirect:
+                | {
+                      fileName: string;
+                      pipe: ReturnType<typeof wasi.accumulateBytes>;
+                  }
+                | undefined;
+
+            const redirectIndex = args.indexOf(">");
+            if (redirectIndex !== -1) {
+                const [_, redirectTo] = args.slice(redirectIndex);
+                args = args.slice(0, redirectIndex);
+
+                if (redirectTo !== undefined) {
+                    stdoutRedirect = {
+                        fileName: redirectTo,
+                        pipe: wasi.accumulateBytes(wasm.createReadable()),
+                    };
+                    // TODO: this should use StdioFileDescriptor when workspaceFolder mount is setup
+                    processStdio.out = {
+                        kind: "pipeOut",
+                        pipe: stdoutRedirect.pipe,
+                    };
+                }
+            }
+
+            let programModule: WebAssembly.Module;
+            try {
+                const programBytes = await vscode.workspace.fs.readFile(
+                    vscode.Uri.joinPath(
+                        workspaceUri,
+                        cwd.slice("/workspace".length),
+                        programPath
+                    )
+                );
+                programModule = await WebAssembly.compile(programBytes);
+            } catch (err) {
+                await logError(`Error loading ${programPath}: ${err}`);
+                return 1;
+            }
+
+            try {
+                const process = await wasm.createProcess(
+                    command,
+                    programModule,
+                    // TODO: figure out why this doesn't work
+                    // { stdio: processStdio, args, rootFileSystem }
+                    {
+                        stdio: processStdio,
+                        args,
+                        mountPoints: [
+                            {
+                                kind: "vscodeFileSystem",
+                                uri: workspaceUri,
+                                mountPoint: "/",
+                            },
+                        ],
+                    }
+                );
+                return await process.run();
+            } catch (err) {
+                await logError(`Error running ${programPath}: ${err}`);
+                return 1;
+            } finally {
+                if (stdoutRedirect !== undefined) {
+                    try {
+                        await vscode.workspace.fs.writeFile(
+                            vscode.Uri.joinPath(
+                                workspaceUri,
+                                stdoutRedirect.fileName
+                            ),
+                            stdoutRedirect.pipe.get()
+                        );
+                    } catch (err) {
+                        console.error(
+                            `error redirecting stdout to ${stdoutRedirect.fileName}`,
+                            err
+                        );
+                    }
+                }
+            }
+
+            async function logError(errorMessage: string) {
+                if (stdio.err?.kind === "terminal") {
+                    await stdio.err.terminal.write(errorMessage + "\n");
+                }
+            }
+        }) satisfies WebShellCommandHandler)
     );
 
     context.subscriptions.push(

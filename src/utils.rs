@@ -111,7 +111,7 @@ pub fn proc_exit(exit_code: u32) -> ! {
 }
 
 /// Hack for https://github.com/microsoft/vscode-wasm/issues/161
-pub fn do_cwd_extra_steps() -> Result<(), wasi::Errno> {
+pub fn unlock_fs() -> Result<(), wasi::Errno> {
     use alloc::alloc::*;
 
     let prestat = unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD) }?;

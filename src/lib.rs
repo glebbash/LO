@@ -53,7 +53,9 @@ mod wasi_api {
         if file_name == "-i" {
             parser::parse_file_contents(ctx, String::from("<stdin>"), &stdin_read())?;
         } else {
-            do_cwd_extra_steps().unwrap();
+            if let Err(err) = unlock_fs() {
+                return Err(format!("Error unlocking fs: {err}"));
+            }
             parser::parse_file(ctx, file_name, &LoLocation::internal())?;
         }
 
