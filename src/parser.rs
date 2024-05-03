@@ -1654,6 +1654,21 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             values.push(field_value);
         }
 
+        if values.len() < struct_def.fields.len() {
+            let missing_fields = struct_def
+                .fields
+                .iter()
+                .skip(values.len())
+                .map(|f| &f.name)
+                .collect::<Vec<_>>();
+            let missing_fields = ListDisplay(&missing_fields);
+
+            return Err(LoError {
+                message: format!("Missing struct fields: {missing_fields}"),
+                loc: struct_name.loc,
+            });
+        }
+
         return Ok(
             LoInstr::MultiValueEmit { values }.casted(LoType::StructInstance {
                 name: struct_name.value,
