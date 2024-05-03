@@ -211,7 +211,7 @@ pub fn debug(msg: String) {
 }
 
 pub fn resolve_path(file_path: &str, relative_to: &str) -> String {
-    if !file_path.starts_with('.') || !relative_to.contains('/') {
+    if !file_path.starts_with('.') {
         return file_path.into();
     }
 
