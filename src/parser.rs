@@ -2527,6 +2527,20 @@ fn get_binary_op(
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_OR,
             operand_type => return err_incompatible_op(op, operand_type),
         },
+        InfixOpTag::BitAnd => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_AND
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_AND,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::BitOr => match lhs_type {
+            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                WasmBinaryOpKind::I32_OR
+            }
+            LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_OR,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
         _ => return Err(LoError::unreachable(file!(), line!())),
     })
 }
