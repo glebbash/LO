@@ -677,8 +677,6 @@ impl LoInstr {
                 | WasmBinaryOpKind::I32_GT_U
                 | WasmBinaryOpKind::I32_LE_U
                 | WasmBinaryOpKind::I32_GE_U
-                | WasmBinaryOpKind::I32_AND
-                | WasmBinaryOpKind::I32_OR
                 | WasmBinaryOpKind::I64_EQ
                 | WasmBinaryOpKind::I64_NE
                 | WasmBinaryOpKind::I64_LT_U

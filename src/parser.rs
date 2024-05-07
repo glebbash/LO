@@ -1980,9 +1980,7 @@ fn parse_postfix(
         | InfixOpTag::Mul
         | InfixOpTag::Div
         | InfixOpTag::Mod
-        | InfixOpTag::And
         | InfixOpTag::BitAnd
-        | InfixOpTag::Or
         | InfixOpTag::BitOr
         | InfixOpTag::ShiftLeft
         | InfixOpTag::ShiftRight => {
@@ -1993,6 +1991,16 @@ fn parse_postfix(
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             }
+        }
+        InfixOpTag::And | InfixOpTag::Or => {
+            let lhs = primary;
+            let rhs = parse_expr(ctx, tokens, min_bp)?;
+            LoInstr::BinaryOp {
+                kind: get_binary_op(ctx.module, &op, &lhs, &rhs)?,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            }
+            .casted(LoType::Bool)
         }
         InfixOpTag::AddAssign
         | InfixOpTag::SubAssign
