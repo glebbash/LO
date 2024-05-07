@@ -207,12 +207,27 @@ impl Lexer {
         let mut loc = self.loc();
         let mut value = String::new();
 
+        let hex = match (self.current_char(), self.peek_next_char()) {
+            (Ok('0'), Ok('x')) => {
+                value.push('0');
+                self.next_char();
+                value.push('x');
+                self.next_char();
+                true
+            }
+            _ => false,
+        };
+
         loop {
             match self.current_char() {
                 Ok('_') => {
                     self.next_char();
                 }
                 Ok(c @ '0'..='9') => {
+                    value.push(c);
+                    self.next_char();
+                }
+                Ok(c @ 'A'..='F') if hex => {
                     value.push(c);
                     self.next_char();
                 }
@@ -535,6 +550,8 @@ pub enum InfixOpTag {
     Greater,
     LessEqual,
     GreaterEqual,
+    ShiftLeft,
+    ShiftRight,
 
     Add,
     Sub,
@@ -581,12 +598,14 @@ impl InfixOp {
             ">=" => (GreaterEqual, OpInfo { bp: 4, assoc: L }),
             "+" => (Add, OpInfo { bp: 5, assoc: L }),
             "-" => (Sub, OpInfo { bp: 5, assoc: L }),
-            "*" => (Mul, OpInfo { bp: 6, assoc: L }),
-            "/" => (Div, OpInfo { bp: 6, assoc: L }),
-            "%" => (Mod, OpInfo { bp: 6, assoc: L }),
-            "as" => (Cast, OpInfo { bp: 7, assoc: L }),
-            "." => (FieldAccess, OpInfo { bp: 9, assoc: L }),
-            "catch" => (Catch, OpInfo { bp: 10, assoc: L }),
+            "<<" => (ShiftLeft, OpInfo { bp: 6, assoc: L }),
+            ">>" => (ShiftRight, OpInfo { bp: 6, assoc: L }),
+            "*" => (Mul, OpInfo { bp: 7, assoc: L }),
+            "/" => (Div, OpInfo { bp: 7, assoc: L }),
+            "%" => (Mod, OpInfo { bp: 7, assoc: L }),
+            "as" => (Cast, OpInfo { bp: 8, assoc: L }),
+            "." => (FieldAccess, OpInfo { bp: 10, assoc: L }),
+            "catch" => (Catch, OpInfo { bp: 11, assoc: L }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })

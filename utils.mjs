@@ -128,6 +128,15 @@ async function testCommand() {
         assert.strictEqual(result, 120);
     });
 
+    test("compiles hex-and-shifts", async () => {
+        const output = await compile("./examples/test/hex-and-shifts.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 31);
+    });
+
     test("compiles locals", async () => {
         const output = await compile("./examples/test/locals.lo");
 
@@ -344,7 +353,7 @@ async function testCommand() {
 
         assert.strictEqual(
             output,
-            "./examples/test/tracing.lo:4:10 - hello there\n"
+            "examples/test/tracing.lo:4:10 - hello there\n"
         );
     });
 
@@ -376,7 +385,7 @@ async function testCommand() {
                 "0 1 2 3 5 6 7 ",
             ]
                 .map((x) => x + "\n")
-                .join("")
+                .join("") // using this instead of multiline because trailing spaces are removed when formatting
         );
     });
 

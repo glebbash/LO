@@ -97,6 +97,9 @@ pub enum WasmBinaryOpKind {
     I32_REM_U = 0x70,
     I32_AND = 0x71,
     I32_OR = 0x72,
+    I32_SHL = 0x74,
+    I32_SHR_S = 0x75,
+    I32_SHR_U = 0x76,
 
     I64_ADD = 0x7C,
     I64_SUB = 0x7D,
@@ -107,6 +110,9 @@ pub enum WasmBinaryOpKind {
     I64_REM_U = 0x82,
     I64_AND = 0x83,
     I64_OR = 0x84,
+    I64_SHL = 0x86,
+    I64_SHR_S = 0x87,
+    I64_SHR_U = 0x88,
 
     F32_ADD = 0x92,
     F32_SUB = 0x93,

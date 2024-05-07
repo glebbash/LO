@@ -1981,7 +1981,9 @@ fn parse_postfix(
         | InfixOpTag::Div
         | InfixOpTag::Mod
         | InfixOpTag::And
-        | InfixOpTag::Or => {
+        | InfixOpTag::Or
+        | InfixOpTag::ShiftLeft
+        | InfixOpTag::ShiftRight => {
             let lhs = primary;
             let rhs = parse_expr(ctx, tokens, min_bp)?;
             LoInstr::BinaryOp {
@@ -2485,6 +2487,20 @@ fn get_binary_op(
             LoType::U64 => WasmBinaryOpKind::I64_REM_U,
             operand_type => return err_incompatible_op(op, operand_type),
         },
+        InfixOpTag::ShiftLeft => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_SHL,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_SHL,
+            LoType::I64 => WasmBinaryOpKind::I64_SHL,
+            LoType::U64 => WasmBinaryOpKind::I64_SHL,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
+        InfixOpTag::ShiftRight => match lhs_type {
+            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_SHR_S,
+            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_SHR_U,
+            LoType::I64 => WasmBinaryOpKind::I64_SHR_S,
+            LoType::U64 => WasmBinaryOpKind::I64_SHR_U,
+            operand_type => return err_incompatible_op(op, operand_type),
+        },
         InfixOpTag::And => match lhs_type {
             LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
                 WasmBinaryOpKind::I32_AND
@@ -2848,13 +2864,6 @@ fn extract_method_receiver_and_name(
     })
 }
 
-fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
-    int.value.parse().map_err(|_| LoError {
-        message: format!("Parsing u32 (implicit) failed"),
-        loc: int.loc.clone(),
-    })
-}
-
 fn parse_const_int(tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
     let int_literal = tokens.expect_any(IntLiteral)?.clone();
 
@@ -2875,15 +2884,40 @@ fn parse_const_int(tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
     });
 }
 
+fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
+    let result = if int.value.starts_with("0x") {
+        u32::from_str_radix(&int.value[2..], 16)
+    } else {
+        int.value.parse()
+    };
+
+    result.map_err(|_| LoError {
+        message: format!("Parsing u32 (implicit) failed: {}", int.value),
+        loc: int.loc.clone(),
+    })
+}
+
 fn parse_i64_literal(int: &LoToken) -> Result<i64, LoError> {
-    int.value.parse().map_err(|_| LoError {
+    let result = if int.value.starts_with("0x") {
+        i64::from_str_radix(&int.value[2..], 16)
+    } else {
+        int.value.parse()
+    };
+
+    result.map_err(|_| LoError {
         message: format!("Parsing i64 failed"),
         loc: int.loc.clone(),
     })
 }
 
 fn parse_u64_literal(int: &LoToken) -> Result<u64, LoError> {
-    int.value.parse().map_err(|_| LoError {
+    let result = if int.value.starts_with("0x") {
+        u64::from_str_radix(&int.value[2..], 16)
+    } else {
+        int.value.parse()
+    };
+
+    result.map_err(|_| LoError {
         message: format!("Parsing u64 failed"),
         loc: int.loc.clone(),
     })
