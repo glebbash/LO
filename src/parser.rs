@@ -1981,7 +1981,9 @@ fn parse_postfix(
         | InfixOpTag::Div
         | InfixOpTag::Mod
         | InfixOpTag::And
+        | InfixOpTag::BitAnd
         | InfixOpTag::Or
+        | InfixOpTag::BitOr
         | InfixOpTag::ShiftLeft
         | InfixOpTag::ShiftRight => {
             let lhs = primary;
@@ -1995,7 +1997,12 @@ fn parse_postfix(
         InfixOpTag::AddAssign
         | InfixOpTag::SubAssign
         | InfixOpTag::MulAssign
-        | InfixOpTag::DivAssign => {
+        | InfixOpTag::DivAssign
+        | InfixOpTag::ModAssign
+        | InfixOpTag::BitAndAssign
+        | InfixOpTag::BitOrAssign
+        | InfixOpTag::ShiftLeftAssign
+        | InfixOpTag::ShiftRightAssign => {
             op.tag = get_op_additional_to_assign(&op.tag)?;
 
             let lhs = primary;
@@ -2366,6 +2373,11 @@ fn get_op_additional_to_assign(op: &InfixOpTag) -> Result<InfixOpTag, LoError> {
         InfixOpTag::SubAssign => Ok(InfixOpTag::Sub),
         InfixOpTag::MulAssign => Ok(InfixOpTag::Mul),
         InfixOpTag::DivAssign => Ok(InfixOpTag::Div),
+        InfixOpTag::ModAssign => Ok(InfixOpTag::Mod),
+        InfixOpTag::BitAndAssign => Ok(InfixOpTag::BitAnd),
+        InfixOpTag::BitOrAssign => Ok(InfixOpTag::BitOr),
+        InfixOpTag::ShiftLeftAssign => Ok(InfixOpTag::ShiftLeft),
+        InfixOpTag::ShiftRightAssign => Ok(InfixOpTag::ShiftRight),
         _ => return Err(LoError::unreachable(file!(), line!())),
     }
 }

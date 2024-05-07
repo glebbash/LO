@@ -550,8 +550,6 @@ pub enum InfixOpTag {
     Greater,
     LessEqual,
     GreaterEqual,
-    ShiftLeft,
-    ShiftRight,
 
     Add,
     Sub,
@@ -559,13 +557,22 @@ pub enum InfixOpTag {
     Div,
     Mod,
     And,
+    BitAnd,
     Or,
+    BitOr,
+    ShiftLeft,
+    ShiftRight,
 
     Assign,
     AddAssign,
     SubAssign,
     MulAssign,
     DivAssign,
+    ModAssign,
+    BitAndAssign,
+    BitOrAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
 
     Cast,
     FieldAccess,
@@ -583,29 +590,46 @@ impl InfixOp {
         use InfixOpTag::*;
         use OpAssoc::*;
         let (tag, info) = match token.value.as_str() {
+            "catch" => (Catch, OpInfo { bp: 12, assoc: L }),
+
+            "." => (FieldAccess, OpInfo { bp: 11, assoc: L }),
+
+            "as" => (Cast, OpInfo { bp: 10, assoc: L }),
+
+            "%" => (Mod, OpInfo { bp: 9, assoc: L }),
+            "/" => (Div, OpInfo { bp: 9, assoc: L }),
+            "*" => (Mul, OpInfo { bp: 9, assoc: L }),
+
+            "-" => (Sub, OpInfo { bp: 8, assoc: L }),
+            "+" => (Add, OpInfo { bp: 8, assoc: L }),
+
+            ">>" => (ShiftRight, OpInfo { bp: 7, assoc: L }),
+            "<<" => (ShiftLeft, OpInfo { bp: 7, assoc: L }),
+
+            "&" => (BitAnd, OpInfo { bp: 6, assoc: L }),
+
+            "|" => (BitOr, OpInfo { bp: 5, assoc: L }),
+
+            ">=" => (GreaterEqual, OpInfo { bp: 4, assoc: L }),
+            ">" => (Greater, OpInfo { bp: 4, assoc: L }),
+            "<=" => (LessEqual, OpInfo { bp: 4, assoc: L }),
+            "<" => (Less, OpInfo { bp: 4, assoc: L }),
+            "!=" => (NotEqual, OpInfo { bp: 4, assoc: None }),
+            "==" => (Equal, OpInfo { bp: 4, assoc: None }),
+
+            "&&" => (And, OpInfo { bp: 3, assoc: L }),
+            "||" => (Or, OpInfo { bp: 2, assoc: L }),
+
             "=" => (Assign, OpInfo { bp: 1, assoc: None }),
             "+=" => (AddAssign, OpInfo { bp: 1, assoc: None }),
             "-=" => (SubAssign, OpInfo { bp: 1, assoc: None }),
             "*=" => (MulAssign, OpInfo { bp: 1, assoc: None }),
             "/=" => (DivAssign, OpInfo { bp: 1, assoc: None }),
-            "||" => (Or, OpInfo { bp: 2, assoc: L }),
-            "&&" => (And, OpInfo { bp: 3, assoc: L }),
-            "==" => (Equal, OpInfo { bp: 4, assoc: None }),
-            "!=" => (NotEqual, OpInfo { bp: 4, assoc: None }),
-            "<" => (Less, OpInfo { bp: 4, assoc: L }),
-            "<=" => (LessEqual, OpInfo { bp: 4, assoc: L }),
-            ">" => (Greater, OpInfo { bp: 4, assoc: L }),
-            ">=" => (GreaterEqual, OpInfo { bp: 4, assoc: L }),
-            "+" => (Add, OpInfo { bp: 5, assoc: L }),
-            "-" => (Sub, OpInfo { bp: 5, assoc: L }),
-            "<<" => (ShiftLeft, OpInfo { bp: 6, assoc: L }),
-            ">>" => (ShiftRight, OpInfo { bp: 6, assoc: L }),
-            "*" => (Mul, OpInfo { bp: 7, assoc: L }),
-            "/" => (Div, OpInfo { bp: 7, assoc: L }),
-            "%" => (Mod, OpInfo { bp: 7, assoc: L }),
-            "as" => (Cast, OpInfo { bp: 8, assoc: L }),
-            "." => (FieldAccess, OpInfo { bp: 10, assoc: L }),
-            "catch" => (Catch, OpInfo { bp: 11, assoc: L }),
+            "%=" => (ModAssign, OpInfo { bp: 1, assoc: None }),
+            "&=" => (BitAndAssign, OpInfo { bp: 1, assoc: None }),
+            "|=" => (BitOrAssign, OpInfo { bp: 1, assoc: None }),
+            "<<=" => (ShiftLeftAssign, OpInfo { bp: 1, assoc: None }),
+            ">>=" => (ShiftRightAssign, OpInfo { bp: 1, assoc: None }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })
