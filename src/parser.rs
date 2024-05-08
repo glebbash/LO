@@ -2794,29 +2794,44 @@ fn parse_lo_type_(
     tokens: &mut LoTokenStream,
     is_referenced: bool,
 ) -> Result<LoType, LoError> {
-    if let Some(_) = tokens.eat(Operator, "&")? {
-        let pointee = parse_lo_type_(ctx, type_scope, tokens, true)?;
-        return Ok(LoType::Pointer(Box::new(pointee)));
-    }
-
-    if let Some(_) = tokens.eat(Operator, "&*")? {
-        let pointee = parse_lo_type_(ctx, type_scope, tokens, true)?;
-        return Ok(LoType::Pointer(Box::new(pointee)));
-    }
-
-    let token = parse_nested_symbol(tokens)?;
-    let type_ = get_type_by_name(ctx, type_scope, &token, is_referenced)?;
+    let primary = parse_lo_type_primary(ctx, type_scope, tokens, is_referenced)?;
 
     if let Some(_) = tokens.eat(Symbol, "throws")? {
         let error_type = parse_lo_type_(ctx, type_scope, tokens, is_referenced)?;
 
         return Ok(LoType::Result {
-            ok_type: Box::new(type_),
+            ok_type: Box::new(primary),
             err_type: Box::new(error_type),
         });
     }
 
-    return Ok(type_);
+    return Ok(primary);
+}
+
+fn parse_lo_type_primary(
+    ctx: &ModuleContext,
+    type_scope: &LoTypeScope,
+    tokens: &mut LoTokenStream,
+    is_referenced: bool,
+) -> Result<LoType, LoError> {
+    if let Some(_) = tokens.eat(Delim, "(")? {
+        let type_ = parse_lo_type_(ctx, type_scope, tokens, false)?;
+        tokens.expect(Delim, ")")?;
+        return Ok(type_);
+    }
+
+    if let Some(_) = tokens.eat(Operator, "&")? {
+        let pointee = parse_lo_type_primary(ctx, type_scope, tokens, true)?;
+        return Ok(LoType::Pointer(Box::new(pointee)));
+    }
+
+    if let Some(_) = tokens.eat(Operator, "&*")? {
+        let pointee = parse_lo_type_primary(ctx, type_scope, tokens, true)?;
+        return Ok(LoType::Pointer(Box::new(pointee)));
+    }
+
+    let token = parse_nested_symbol(tokens)?;
+    get_type_by_name(ctx, type_scope, &token, is_referenced)
 }
 
 fn get_type_by_name(
