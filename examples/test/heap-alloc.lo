@@ -1,21 +1,16 @@
 include "../lib/cli.lo";
 
 fn main() {
-    puts("heap::TOTAL_ALLOCATED; // ");
-    print_u32(heap::TOTAL_ALLOCATED); puts("\n");
+    let p0 = heap::TOTAL_ALLOCATED;
+    puts("p0 = "); print_u32(p0 as u32); puts("\n");
 
-    let p = heap::alloc(1);
-    puts("let p = heap::alloc(1); // ");
-    print_u32(p as u32); puts("\n");
+    let p1 = heap::alloc(1);
+    puts("p1 = "); print_u32(p1 as u32); puts("\n");
+    heap::free(p1);
 
-    puts("heap::free(p);\n");
-    heap::free(p);
+    let p2 = heap::alloc(1);
+    puts("p2 = "); print_u32(p2 as u32); puts("\n");
 
-    p = heap::alloc(1);
-    puts("p = heap::alloc(1); // ");
-    print_u32(p as u32); puts("\n");
-
-    p = heap::alloc(1);
-    puts("p = heap::alloc(1); // ");
-    print_u32(p as u32); puts("\n");
+    let p3 = heap::alloc(1);
+    puts("p3 = "); print_u32(p3 as u32); puts("\n");
 };

@@ -27,7 +27,7 @@ fn eprint_u32(num: u32) {
     let _ = fprint_u32(wasi::FD_STDERR, num);
 };
 fn fprint_u32(fd: u32, num: u32): u32 throws wasi::Err {
-    let out = u32::to_string_using(num, alloc::STACK);
+    let out = u32::write(num, String::new(32));
     defer out.free();
 
     return fprint_str(fd, out as &str) catch err {
@@ -42,7 +42,7 @@ fn eprint_u64(num: u64) {
     let _ = fprint_u64(wasi::FD_STDERR, num);
 };
 fn fprint_u64(fd: u32, num: u64): u32 throws wasi::Err {
-    let out = u64::to_string_using(num, alloc::STACK);
+    let out = u64::write(num, String::new(32));
     defer out.free();
 
     return fprint_str(fd, out as &str) catch err {

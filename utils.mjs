@@ -400,11 +400,10 @@ async function testCommand() {
         assert.strictEqual(
             output,
             dropPadding(`
-                heap::TOTAL_ALLOCATED; // 1048576
-                let p = heap::alloc(1); // 1048589
-                heap::free(p);
-                p = heap::alloc(1); // 1048589
-                p = heap::alloc(1); // 1048606
+                p0 = 1048576
+                p1 = 1048589
+                p2 = 1048589
+                p3 = 1048622
             `)
         );
     });
