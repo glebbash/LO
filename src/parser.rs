@@ -19,10 +19,10 @@ pub fn parse_file(
     ctx: &mut ModuleContext,
     file_path: &str,
     loc: &LoLocation,
-) -> Result<Option<u32>, LoError> {
+) -> Result<u32, LoError> {
     let file_path = resolve_path(file_path, &loc.file_name);
-    if ctx.included_modules.contains_key(&file_path) {
-        return Ok(None);
+    if let Some(file_index) = ctx.included_modules.get(&file_path) {
+        return Ok(*file_index);
     }
 
     let file = fd_open(&file_path).map_err(|err| LoError {
@@ -32,7 +32,7 @@ pub fn parse_file(
 
     let file_contents = &fd_read_all_and_close(file);
     let file_index = parse_file_contents(ctx, file_path, file_contents)?;
-    return Ok(Some(file_index));
+    return Ok(file_index);
 }
 
 pub fn parse_file_contents(
@@ -532,9 +532,6 @@ fn parse_top_level_expr(
     if let Some(_) = tokens.eat(Symbol, "include")?.cloned() {
         let file_path = tokens.expect_any(StringLiteral)?;
         let target_index = parse_file(ctx, &file_path.value, &file_path.loc)?;
-        let Some(target_index) = target_index else {
-            return Ok(());
-        };
 
         if ctx.inspect_mode {
             let source_index = ctx.get_loc_module_index(&file_path.loc);
