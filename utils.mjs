@@ -85,8 +85,9 @@ async function runWasiCommand(args) {
     const filePath = new URL(args[0], import.meta.url);
     const input = await fs.readFile(filePath);
     await runWASI(input, {
-        args: args.slice(1),
+        args,
         env: process.env,
+        preopens: { ".": "." },
     });
 }
 
