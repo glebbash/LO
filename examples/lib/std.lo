@@ -167,6 +167,16 @@
     let heap::FIRST_BLOCK = 0 as &heap::Block;
     let heap::CURRENT_BLOCK = 0 as &heap::Block;
 
+    macro heap::new!<T>(value: T): &T {
+        let ref = heap::alloc!<T>();
+        *ref = value;
+        ref;
+    };
+
+    macro heap::alloc!<T>(): &T {
+        heap::alloc(sizeof T) as &T;
+    };
+
     macro heap::alloc_many!<T>(count: u32): &T {
         heap::alloc(count * sizeof T) as &T;
     };
@@ -286,8 +296,12 @@
         free(self.alloc_id, self.data, self.capacity);
     };
 
+    macro Vec::at!<T>(&self, index: u32): &T {
+        self.at(index) as &T;
+    };
+
     macro Vec::get!<T>(&self, index: u32): T {
-        *(self.at(index) as &T);
+        *self.at!<T>(index);
     };
 
     macro Vec::set!<T>(&self, index: u32, item: T) {
@@ -351,9 +365,10 @@
     };
 
     fn Vec::reverse(&self) {
-        let start = 0;
-        let end = self.size - 1;
+        self.reverse_range(0, self.size - 1);
+    };
 
+    fn Vec::reverse_range(&self, start: u32, end: u32) {
         loop {
             if start >= end {
                 break;

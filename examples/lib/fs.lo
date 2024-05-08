@@ -7,18 +7,25 @@ struct fs {};
 // fs expects host to preopen "." on fd 3
 const fs::CWD_PREOPEN_FD = 3;
 
-fn fs::read_file(file_name: str): &String {
+macro fs::read_file!(file_name: str): &String {
+    fs::read_file(file_name) catch err {
+        eputs("Error reading file '"); eputs(file_name);
+            eputs("': code "); eprint_u32(err); eputs("\n");
+        wasi::proc_exit(1);
+    };
+};
+
+fn fs::read_file(file_name: str): &String throws wasi::Err {
     fs::_unlock();
 
-    let fd = fs::open(file_name) catch _ {
-        fputs(wasi::FD_STDERR, "Error opening file: ");
-        fputs(wasi::FD_STDERR, file_name);
-        fputs(wasi::FD_STDERR, "\n");
-        wasi::proc_exit(1);
+    let fd = fs::open(file_name) catch err {
+        throw err;
     };
     defer let _ = wasi::fd_close(fd);
 
-    return fs::read_fd(fd);
+    return fs::read_fd(fd) catch err {
+        throw err;
+    };
 };
 
 let fs::unlocked = false;
@@ -31,23 +38,23 @@ fn fs::_unlock() {
 
     let err = 0;
     defer if err != 0 {
-        fputs(wasi::FD_STDERR, "Error unlocking fs (code=");
-        fprint_u32(wasi::FD_STDERR, err);
-        fputs(wasi::FD_STDERR, ")\n");
+        eputs("Error unlocking fs (code=");
+        eprint_u32(err);
+        eputs(")\n");
         wasi::proc_exit(1);
     };
 
     let prestat = tmp_alloc!<wasi::prestat>();
     err = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD, prestat);
-    if err != 0 { return; };
+    if err != wasi::Err::SUCCESS { return; };
 
     let dir_path = tmp_alloc_many!<u8>(prestat.pr_name_len);
     err = wasi::fd_prestat_dir_name(fs::CWD_PREOPEN_FD, dir_path, prestat.pr_name_len);
-    if err != 0 { return; };
+    if err != wasi::Err::SUCCESS { return; };
 
     let fdstat = tmp_alloc!<wasi::fdstat>();
     err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat);
-    if err != 0 { return; };
+    if err != wasi::Err::SUCCESS { return; };
 
     let prestat2 = tmp_alloc!<wasi::prestat>();
     let _ = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD + 1, prestat2);
@@ -64,14 +71,14 @@ fn fs::open(file_path: str): u32 throws wasi::Err {
         fd_ref,
     );
 
-    if err != 0 {
+    if err != wasi::Err::SUCCESS {
         throw err;
     };
 
     return *fd_ref;
 };
 
-fn fs::read_fd(fd: u32): &String {
+fn fs::read_fd(fd: u32): &String throws wasi::Err {
     let output = Vec::with_capacity!<u8>(256);
 
     let chunk = tmp_alloc_many!<u8>(256);
@@ -82,7 +89,10 @@ fn fs::read_fd(fd: u32): &String {
     let nread_ref = tmp_alloc!<u32>();
 
     loop {
-        let _err = wasi::fd_read(fd, in_vec, 1, nread_ref);
+        let err = wasi::fd_read(fd, in_vec, 1, nread_ref);
+        if err != wasi::Err::SUCCESS {
+            throw err;
+        };
 
         let nread = *nread_ref;
         if nread == 0 {
@@ -106,9 +116,9 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): void throws wasi::Err {
 
     loop {
         iov.size = chunk_size;
-        let io_res = wasi::fd_read(fd_in, iov, 1, nread_ref);
-        if io_res != 0 {
-            throw io_res;
+        let err = wasi::fd_read(fd_in, iov, 1, nread_ref);
+        if err != wasi::Err::SUCCESS {
+            throw err;
         };
 
         let nread = *nread_ref;
@@ -117,16 +127,16 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): void throws wasi::Err {
         };
 
         iov.size = nread;
-        io_res = wasi::fd_write(fd_out, iov, 1, nread_ref);
-        if io_res != 0 {
-            throw io_res;
+        err = wasi::fd_write(fd_out, iov, 1, nread_ref);
+        if err != wasi::Err::SUCCESS {
+            throw err;
         };
     };
 };
 
 fn fs::close(fd: u32): void throws wasi::Err {
     let err = wasi::fd_close(fd);
-    if err != 0 {
+    if err != wasi::Err::SUCCESS {
         throw err;
     };
 };

@@ -1,0 +1,27 @@
+include "./lib/cli.lo";
+include "./lib/args.lo";
+include "./lib/fs.lo";
+
+include "./lib/lo/core.lo";
+include "./lib/lo/wasm.lo";
+
+fn main() {
+    let args = args::load();
+    if args.argc < 2 {
+        eputs("Usage: lo <file> [options]\n");
+        wasi::proc_exit(1);
+    };
+
+    let ctx = LoContext::new();
+
+    let _ = ctx.include_file(args.get(1)) catch err {
+        eprint_str(err.message as &str);
+        wasi::proc_exit(1);
+    };
+
+    let binary = Vec::new!<u8>();
+    defer binary.free();
+
+    ctx.wasm_module.dump(binary);
+    puts(str::from_string(binary));
+};

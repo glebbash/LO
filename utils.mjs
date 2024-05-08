@@ -265,7 +265,7 @@ async function testCommand() {
     });
 
     test("compiles hello world", async () => {
-        const program = await compile("./examples/hello-world.lo");
+        const program = await compile("./examples/test/demos/hello-world.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
             await runWASI(program, { stdout: stdout.fd });
@@ -276,7 +276,7 @@ async function testCommand() {
     });
 
     test("compiles hello world (raw)", async () => {
-        const program = await compile("./examples/hello-world-raw.lo");
+        const program = await compile("./examples/test/demos/hello-world-raw.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
             await runWASI(program, { stdout: stdout.fd });
@@ -287,7 +287,7 @@ async function testCommand() {
     });
 
     test("compiles echo", async () => {
-        const program = await compile("./examples/echo.lo");
+        const program = await compile("./examples/test/demos/echo.lo");
 
         const output = await runWithTmpFile(async (stdin, stdinFile) => {
             await fs.writeFile(stdinFile, "abc");
@@ -315,7 +315,7 @@ async function testCommand() {
     });
 
     test("compiles cat", async () => {
-        const program = await compile("./examples/cat.lo");
+        const program = await compile("./examples/test/demos/cat.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
             await runWASI(program, {
@@ -450,42 +450,42 @@ async function testCommand() {
 
     {
         test("aoc 2020 day 1", async () => {
-            const part1 = await runAoc("./examples/aoc2020/1.lo");
+            const part1 = await runAoc("./examples/test/demos/aoc2020/1.lo");
             assert.strictEqual(part1, "157059\n");
 
-            const part2 = await runAoc("./examples/aoc2020/1-part2.lo");
+            const part2 = await runAoc("./examples/test/demos/aoc2020/1-part2.lo");
             assert.strictEqual(part2, "165080960\n");
         });
 
         test("aoc 2020 day 2", async () => {
-            const part1 = await runAoc("./examples/aoc2020/2.lo");
+            const part1 = await runAoc("./examples/test/demos/aoc2020/2.lo");
             assert.strictEqual(part1, "560\n");
 
-            const part2 = await runAoc("./examples/aoc2020/2-part2.lo");
+            const part2 = await runAoc("./examples/test/demos/aoc2020/2-part2.lo");
             assert.strictEqual(part2, "303\n");
         });
 
         test("aoc 2020 day 3", async () => {
-            const part1 = await runAoc("./examples/aoc2020/3.lo");
+            const part1 = await runAoc("./examples/test/demos/aoc2020/3.lo");
             assert.strictEqual(part1, "151\n");
 
-            const part2 = await runAoc("./examples/aoc2020/3-part2.lo");
+            const part2 = await runAoc("./examples/test/demos/aoc2020/3-part2.lo");
             assert.strictEqual(part2, "7540141059\n");
         });
 
         test("aoc 2020 day 4", async () => {
-            const part1 = await runAoc("./examples/aoc2020/4.lo");
+            const part1 = await runAoc("./examples/test/demos/aoc2020/4.lo");
             assert.strictEqual(part1, "264\n");
 
-            const part2 = await runAoc("./examples/aoc2020/4-part2.lo");
+            const part2 = await runAoc("./examples/test/demos/aoc2020/4-part2.lo");
             assert.strictEqual(part2, "224\n");
         });
 
         test("aoc 2020 day 5", async () => {
-            const part1 = await runAoc("./examples/aoc2020/5.lo");
+            const part1 = await runAoc("./examples/test/demos/aoc2020/5.lo");
             assert.strictEqual(part1, "947\n");
 
-            const part2 = await runAoc("./examples/aoc2020/5-part2.lo");
+            const part2 = await runAoc("./examples/test/demos/aoc2020/5-part2.lo");
             assert.strictEqual(part2, "636\n");
         });
 

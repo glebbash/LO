@@ -1,0 +1,49 @@
+include "../std.lo";
+
+struct WasmModule {};
+
+// https://webassembly.github.io/spec/core/binary/modules.html#binary-module
+fn WasmModule::dump(&self, out: &Vec::u8) {
+    // magic
+    out.push!<u8>(0x00 as u8);
+    out.push!<u8>(0x61 as u8);
+    out.push!<u8>(0x73 as u8);
+    out.push!<u8>(0x6D as u8);
+
+    // version
+    out.push!<u8>(0x01 as u8);
+    out.push!<u8>(0x00 as u8);
+    out.push!<u8>(0x00 as u8);
+    out.push!<u8>(0x00 as u8);
+
+    let tmp_section = Vec::new!<u8>();
+    defer tmp_section.free();
+
+    out.push!<u8>(0x01 as u8); // type section
+    self.dump_type_section(tmp_section);
+    WasmModule::dump_uleb128(out, tmp_section.size);
+    out.append(tmp_section);
+};
+
+fn WasmModule::dump_type_section(&self, out: &Vec::u8) {
+    WasmModule::dump_uleb128(out, 1); // types count
+
+    out.push!<u8>(0x60 as u8); // function type prefix
+    WasmModule::dump_uleb128(out, 0); // input count
+    WasmModule::dump_uleb128(out, 0); // output count
+};
+
+fn WasmModule::dump_uleb128(output: &Vec::u8, val: u32) {
+    loop {
+        let byte = (val & 0x7F) as u8;
+        val >>= 7;
+
+        if val == 0 {
+            output.push!<u8>(byte);
+            break;
+        };
+
+        byte |= 0x80 as u8;
+        output.push!<u8>(byte);
+    };
+};

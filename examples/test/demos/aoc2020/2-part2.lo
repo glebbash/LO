@@ -1,5 +1,5 @@
-include "../lib/cli.lo";
-include "../lib/fs.lo";
+include "../../../lib/cli.lo";
+include "../../../lib/fs.lo";
 
 type Step = u32;
 const Step::READ_START_INDEX = 0;
@@ -28,7 +28,7 @@ fn initial_check_state(): PasswordCheckState {
 };
 
 fn main() {
-    let input = fs::read_file("./examples/aoc2020/2.txt");
+    let input = fs::read_file!("./examples/test/demos/aoc2020/2.txt");
     defer input.free();
 
     let valid_passwords_count = 0;
