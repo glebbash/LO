@@ -38,9 +38,9 @@ fn fs::_unlock() {
 
     let err = 0;
     defer if err != 0 {
-        eputs("Error unlocking fs (code=");
+        eputs("Error unlocking fs: code ");
         eprint_u32(err);
-        eputs(")\n");
+        eputs("\n");
         wasi::proc_exit(1);
     };
 

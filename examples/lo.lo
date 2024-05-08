@@ -15,7 +15,7 @@ fn main() {
     let ctx = LoContext::new();
 
     let _ = ctx.include_file(args.get(1)) catch err {
-        eprint_str(err.message as &str);
+        eputs(str::from_string(err.message));
         wasi::proc_exit(1);
     };
 
