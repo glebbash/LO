@@ -1,11 +1,6 @@
 #!/usr/bin/env -S node --no-warnings --experimental-network-imports
 // @ts-check
 
-// TODO: why this prevents random segfaults?
-import "https://esm.sh/@wasmer/wasi@1.0.0";
-import "https://esm.sh/@wasmer/wasi@1.2.0";
-// await import("segfault-handler").then((h) => h.default.registerHandler());
-
 import { WASI } from "node:wasi";
 import process from "node:process";
 import { test } from "node:test";
@@ -13,7 +8,8 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 
-const COMPILER_PATH = "./target/wasm32-unknown-unknown/release/lo.wasm";
+const COMPILER_PATH = "lo.wasm";
+const TMP_DIR = "tmp";
 
 const COMMANDS = {
     compile: compileCommand,
@@ -25,6 +21,8 @@ const COMMANDS = {
 main();
 
 function main() {
+    process.chdir(import.meta.dirname);
+
     const command = process.argv[2];
     const args = process.argv.slice(3);
 
@@ -276,7 +274,9 @@ async function testCommand() {
     });
 
     test("compiles hello world (raw)", async () => {
-        const program = await compile("./examples/test/demos/hello-world-raw.lo");
+        const program = await compile(
+            "./examples/test/demos/hello-world-raw.lo"
+        );
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
             await runWASI(program, { stdout: stdout.fd });
@@ -453,7 +453,9 @@ async function testCommand() {
             const part1 = await runAoc("./examples/test/demos/aoc2020/1.lo");
             assert.strictEqual(part1, "157059\n");
 
-            const part2 = await runAoc("./examples/test/demos/aoc2020/1-part2.lo");
+            const part2 = await runAoc(
+                "./examples/test/demos/aoc2020/1-part2.lo"
+            );
             assert.strictEqual(part2, "165080960\n");
         });
 
@@ -461,7 +463,9 @@ async function testCommand() {
             const part1 = await runAoc("./examples/test/demos/aoc2020/2.lo");
             assert.strictEqual(part1, "560\n");
 
-            const part2 = await runAoc("./examples/test/demos/aoc2020/2-part2.lo");
+            const part2 = await runAoc(
+                "./examples/test/demos/aoc2020/2-part2.lo"
+            );
             assert.strictEqual(part2, "303\n");
         });
 
@@ -469,7 +473,9 @@ async function testCommand() {
             const part1 = await runAoc("./examples/test/demos/aoc2020/3.lo");
             assert.strictEqual(part1, "151\n");
 
-            const part2 = await runAoc("./examples/test/demos/aoc2020/3-part2.lo");
+            const part2 = await runAoc(
+                "./examples/test/demos/aoc2020/3-part2.lo"
+            );
             assert.strictEqual(part2, "7540141059\n");
         });
 
@@ -477,7 +483,9 @@ async function testCommand() {
             const part1 = await runAoc("./examples/test/demos/aoc2020/4.lo");
             assert.strictEqual(part1, "264\n");
 
-            const part2 = await runAoc("./examples/test/demos/aoc2020/4-part2.lo");
+            const part2 = await runAoc(
+                "./examples/test/demos/aoc2020/4-part2.lo"
+            );
             assert.strictEqual(part2, "224\n");
         });
 
@@ -485,7 +493,9 @@ async function testCommand() {
             const part1 = await runAoc("./examples/test/demos/aoc2020/5.lo");
             assert.strictEqual(part1, "947\n");
 
-            const part2 = await runAoc("./examples/test/demos/aoc2020/5-part2.lo");
+            const part2 = await runAoc(
+                "./examples/test/demos/aoc2020/5-part2.lo"
+            );
             assert.strictEqual(part2, "636\n");
         });
 
@@ -683,7 +693,7 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
  * @param {(file: import("node:fs/promises").FileHandle, fileName: string) => T} run
  */
 async function runWithTmpFile(run) {
-    const fileName = `tmp/${crypto.randomUUID()}.tmp`;
+    const fileName = `${TMP_DIR}/${crypto.randomUUID()}.tmp`;
     const fileHandle = await fs.open(fileName, "w+");
 
     try {
