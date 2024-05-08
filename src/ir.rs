@@ -103,6 +103,20 @@ impl Block<'_> {
 
         None
     }
+
+    pub fn get_macro_arg(&self, arg_name: &str) -> Option<&LoInstr> {
+        if let Some(macro_args) = &self.macro_args {
+            if let Some(macro_value) = macro_args.get(arg_name) {
+                return Some(macro_value);
+            }
+        }
+
+        if let Some(parent) = self.parent {
+            return parent.get_macro_arg(arg_name);
+        }
+
+        return None;
+    }
 }
 
 pub struct BlockContext<'a, 'b> {

@@ -1460,10 +1460,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     let value = parse_nested_symbol(tokens)?;
 
     // must go first, macro values shadow locals
-    if let Some(macro_args) = &ctx.block.macro_args {
-        if let Some(macro_value) = macro_args.get(&value.value) {
-            return Ok(macro_value.clone());
-        }
+    if let Some(macro_value) = ctx.block.get_macro_arg(&value.value) {
+        return Ok(macro_value.clone());
     }
 
     if let Some(_) = tokens.eat(Operator, "!")? {
@@ -2310,7 +2308,6 @@ fn parse_postfix(
                     ..Default::default()
                 },
             };
-            let catch_body = parse_block_contents(catch_ctx, &mut catch_block, *ok_type.clone())?;
 
             let bind_err_instr = define_local(
                 catch_ctx,
@@ -2318,6 +2315,9 @@ fn parse_postfix(
                 LoInstr::NoInstr, // pop error value from the stack
                 *err_type.clone(),
             )?;
+
+            let catch_body = parse_block_contents(catch_ctx, &mut catch_block, *ok_type.clone())?;
+
             let error_value = compile_local_get(
                 ctx.module,
                 catch_ctx

@@ -217,7 +217,8 @@ pub fn resolve_path(file_path: &str, relative_to: &str) -> String {
 
     let mut path_items = relative_to.split('/').collect::<Vec<_>>();
     path_items.pop(); // remove `relative_to`'s file name
-    path_items.extend(file_path.split('/')); // prepend `relative_to`'s folder to file_path
+
+    path_items.extend(file_path.split('/'));
 
     let mut i = 0;
     loop {
@@ -231,8 +232,9 @@ pub fn resolve_path(file_path: &str, relative_to: &str) -> String {
         }
 
         if path_items[i] == ".." && i > 0 {
-            path_items.remove(i - 1);
-            path_items.remove(i - 1);
+            i -= 1;
+            path_items.remove(i);
+            path_items.remove(i);
             continue;
         }
 
