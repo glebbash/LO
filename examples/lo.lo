@@ -1,15 +1,5 @@
 include "./lib/cli.lo";
 
-include "./lib/lo/core.lo";
-include "./lib/lo/wasm.lo";
-
 fn main() {
-    let ctx = LoContext::new();
-
-    let binary = Vec::new!<u8>();
-    defer binary.free();
-
-    ctx.wasm_module.write(binary);
-
-    print_str(binary as &str);
+    // starting from scratch
 };
