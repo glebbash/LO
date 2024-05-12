@@ -15,7 +15,7 @@ fn main() {
     let ctx = LoContext::new();
 
     let _ = ctx.include_file(args.get(1)) catch err {
-        eputs(str::from_string(err.message));
+        eprint_str(err.message as &str);
         wasi::proc_exit(1);
     };
 
@@ -23,5 +23,6 @@ fn main() {
     defer binary.free();
 
     ctx.wasm_module.dump(binary);
-    puts(str::from_string(binary));
+
+    print_str(binary as &str);
 };
