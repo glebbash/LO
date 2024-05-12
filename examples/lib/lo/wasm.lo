@@ -2,7 +2,7 @@ include "../std.lo";
 
 struct WasmModule {};
 
-// https://webassembly.github.io/spec/core/binary/modules.html#binary-module
+// https://webassembly.github.io/spec/core/bikeshed/#modules①⓪
 fn WasmModule::dump(&self, binary: &Vec::u8) {
     // magic
     binary.push!<u8>(0x00 as u8);
