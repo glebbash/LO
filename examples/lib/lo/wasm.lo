@@ -1,28 +1,31 @@
 include "../std.lo";
 
+type Section = u8;
+const Section::TYPE = 0x01 as u8;
+
 struct WasmModule {};
 
 // https://webassembly.github.io/spec/core/binary/modules.html#binary-module
-fn WasmModule::dump(&self, out: &Vec::u8) {
+fn WasmModule::dump(&self, binary: &Vec::u8) {
     // magic
-    out.push!<u8>(0x00 as u8);
-    out.push!<u8>(0x61 as u8);
-    out.push!<u8>(0x73 as u8);
-    out.push!<u8>(0x6D as u8);
+    binary.push!<u8>(0x00 as u8);
+    binary.push!<u8>(0x61 as u8);
+    binary.push!<u8>(0x73 as u8);
+    binary.push!<u8>(0x6D as u8);
 
     // version
-    out.push!<u8>(0x01 as u8);
-    out.push!<u8>(0x00 as u8);
-    out.push!<u8>(0x00 as u8);
-    out.push!<u8>(0x00 as u8);
+    binary.push!<u8>(0x01 as u8);
+    binary.push!<u8>(0x00 as u8);
+    binary.push!<u8>(0x00 as u8);
+    binary.push!<u8>(0x00 as u8);
 
-    let tmp_section = Vec::new!<u8>();
-    defer tmp_section.free();
+    let section_buffer = Vec::new!<u8>();
+    defer section_buffer.free();
 
-    out.push!<u8>(0x01 as u8); // type section
-    self.dump_type_section(tmp_section);
-    WasmModule::dump_uleb128(out, tmp_section.size);
-    out.append(tmp_section);
+    binary.push!<u8>(Section::TYPE);
+    self.dump_type_section(section_buffer);
+    WasmModule::dump_uleb128(binary, section_buffer.size);
+    binary.append(section_buffer);
 };
 
 fn WasmModule::dump_type_section(&self, out: &Vec::u8) {
@@ -33,12 +36,12 @@ fn WasmModule::dump_type_section(&self, out: &Vec::u8) {
     WasmModule::dump_uleb128(out, 0); // output count
 };
 
-fn WasmModule::dump_uleb128(output: &Vec::u8, val: u32) {
+fn WasmModule::dump_uleb128(output: &Vec::u8, value: u32) {
     loop {
-        let byte = (val & 0x7F) as u8;
-        val >>= 7;
+        let byte = (value & 0x7F) as u8;
+        value >>= 7;
 
-        if val == 0 {
+        if value == 0 {
             output.push!<u8>(byte);
             break;
         };
