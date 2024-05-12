@@ -9,7 +9,7 @@ fn main() {
     let binary = Vec::new!<u8>();
     defer binary.free();
 
-    ctx.wasm_module.dump(binary);
+    ctx.wasm_module.write(binary);
 
     print_str(binary as &str);
 };
