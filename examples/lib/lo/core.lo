@@ -1,0 +1,13 @@
+include "../std.lo";
+
+include "./wasm.lo";
+
+struct LoContext {
+    wasm_module: &WasmModule,
+};
+
+fn LoContext::new(): &LoContext {
+    return heap::new!<LoContext>(LoContext {
+        wasm_module: WasmModule::new(),
+    });
+};

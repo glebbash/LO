@@ -1,5 +1,50 @@
 include "./lib/cli.lo";
 
+include "./lib/lo/core.lo";
+
 fn main() {
-    // starting from scratch
+    let ctx = LoContext::new();
+
+    goal1(ctx);
+
+    let binary = Vec::new!<u8>();
+    defer binary.free();
+
+    ctx.wasm_module.write(binary);
+
+    print_str(binary as &str);
+};
+
+fn goal1(ctx: &LoContext) {
+    let get_answer_fn_type = WasmFnType {
+        inputs: Vec::new!<WasmValueType>(),
+        outputs: Vec::new!<WasmValueType>(),
+    };
+
+    get_answer_fn_type.outputs
+        .push!<WasmValueType>(WasmValueType::I32);
+
+    ctx.wasm_module.types.push!<WasmFnType>(get_answer_fn_type);
+
+    ctx.wasm_module.functions.push!<u32>(0);
+
+    ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
+        name: String::from_str("get_answer"),
+        item_type: WasmExportType::Fn,
+        item_index: 0,
+    });
+
+    let expr = Vec::new!<WasmInstr>();
+    expr.push!<WasmInstr>(WasmInstr {
+        op_code: 0x41, // i32.const
+        i32_const_value: 42,
+    });
+    expr.push!<WasmInstr>(WasmInstr {
+        op_code: 0x0F, // return
+        i32_const_value: 0, // ignore
+    });
+
+    ctx.wasm_module.codes.push!<WasmCode>(WasmCode {
+        expr: expr,
+    });
 };

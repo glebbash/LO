@@ -1,0 +1,185 @@
+include "../std.lo";
+
+type Section = u8;
+const Section::TYPES     = 01 as u8;
+const Section::FUNCTIONS = 03 as u8;
+const Section::EXPORTS   = 07 as u8;
+const Section::CODES     = 10 as u8;
+
+type WasmValueType = u8;
+const WasmValueType::I32 = 0x7F as u8;
+type Vec::WasmValueType = Vec;
+struct WasmFnType {
+    inputs: &Vec::WasmValueType,
+    outputs: &Vec::WasmValueType,
+};
+type Vec::WasmFnType = Vec;
+
+type WasmExportType = u32; // TODO: u8 causes problems with alignment
+const WasmExportType::Fn = 0x00;
+struct WasmExport {
+    name: &String,
+    item_type: WasmExportType,
+    item_index: u32,
+};
+type Vec::WasmExport = Vec;
+
+type Vec::u32 = Vec;
+
+struct WasmInstr {
+    op_code: u32, // TODO: use u8 when alignment is fixed
+    // TODO: find a better representation
+    i32_const_value: u32,
+};
+type Vec::WasmInstr = Vec;
+
+// TODO: add locals
+struct WasmCode {
+    expr: &Vec::WasmInstr,
+};
+type Vec::WasmCode = Vec;
+
+struct WasmModule {
+    types: &Vec::WasmFnType,
+    functions: &Vec::u32,
+    exports: &Vec::WasmExport,
+    codes: &Vec::WasmCode,
+};
+
+fn WasmModule::new(): &WasmModule {
+    return heap::new!<WasmModule>(WasmModule {
+        types: Vec::new!<WasmFnType>(),
+        functions: Vec::new!<u32>(),
+        exports: Vec::new!<WasmExport>(),
+        codes: Vec::new!<WasmCode>(),
+    });
+};
+
+fn WasmModule::write(&self, binary: &Vec::u8) {
+    self.write_preamble(binary);
+
+    let section_buffer = Vec::new!<u8>();
+    defer section_buffer.free();
+
+    binary.push!<u8>(Section::TYPES);
+    self.write_types_section(section_buffer);
+    WasmModule::write_uleb128(binary, section_buffer.size);
+    binary.append(section_buffer);
+
+    binary.push!<u8>(Section::FUNCTIONS);
+    self.write_functions_section(section_buffer);
+    WasmModule::write_uleb128(binary, section_buffer.size);
+    binary.append(section_buffer);
+
+    binary.push!<u8>(Section::EXPORTS);
+    self.write_exports_section(section_buffer);
+    WasmModule::write_uleb128(binary, section_buffer.size);
+    binary.append(section_buffer);
+
+    binary.push!<u8>(Section::CODES);
+    self.write_code_section(section_buffer);
+    WasmModule::write_uleb128(binary, section_buffer.size);
+    binary.append(section_buffer);
+};
+
+fn WasmModule::write_preamble(&self, binary: &Vec::u8) {
+    // magic
+    binary.push!<u8>(0x00 as u8);
+    binary.push!<u8>(0x61 as u8);
+    binary.push!<u8>(0x73 as u8);
+    binary.push!<u8>(0x6D as u8);
+
+    // version
+    binary.push!<u8>(0x01 as u8);
+    binary.push!<u8>(0x00 as u8);
+    binary.push!<u8>(0x00 as u8);
+    binary.push!<u8>(0x00 as u8);
+};
+
+fn WasmModule::write_types_section(&self, out: &Vec::u8) {
+    WasmModule::write_uleb128(out, self.types.size);
+    for i in 0..self.types.size {
+        let fn_type = self.types.get!<WasmFnType>(i);
+
+        out.push!<u8>(0x60 as u8);
+
+        WasmModule::write_uleb128(out, fn_type.inputs.size);
+        for j in 0..fn_type.inputs.size {
+            let input_type = fn_type.inputs.get!<WasmValueType>(j);
+            out.push!<u8>(input_type);
+        };
+
+        WasmModule::write_uleb128(out, fn_type.outputs.size);
+        for j in 0..fn_type.outputs.size {
+            let output_type = fn_type.outputs.get!<WasmValueType>(j);
+            out.push!<u8>(output_type);
+        };
+    };
+};
+
+fn WasmModule::write_functions_section(&self, out: &Vec::u8) {
+    WasmModule::write_uleb128(out, self.functions.size);
+    for i in 0..self.functions.size {
+        let fn_index = self.functions.get!<u32>(i);
+
+        WasmModule::write_uleb128(out, fn_index);
+    };
+};
+
+fn WasmModule::write_code_section(&self, out: &Vec::u8) {
+    WasmModule::write_uleb128(out, self.codes.size);
+
+    let code_buffer = Vec::new!<u8>();
+    defer code_buffer.free();
+
+    for i in 0..self.codes.size {
+        let code = self.codes.get!<WasmCode>(i);
+
+        WasmModule::write_uleb128(code_buffer, 0); // locals count
+        for i in 0..code.expr.size {
+            let instr = code.expr.get!<WasmInstr>(i);
+
+            if instr.op_code == 0x41 { // i32.const
+                code_buffer.push!<u8>(instr.op_code as u8);
+                WasmModule::write_uleb128(code_buffer, instr.i32_const_value);
+            };
+
+            if instr.op_code == 0x0F { // return
+                code_buffer.push!<u8>(instr.op_code as u8);
+            };
+
+            // TODO: handle other op codes
+        };
+        code_buffer.push!<u8>(0x0B as u8); // end op_code
+
+        WasmModule::write_uleb128(out, code_buffer.size);
+        out.append(code_buffer);
+    };
+};
+
+fn WasmModule::write_exports_section(&self, out: &Vec::u8) {
+    WasmModule::write_uleb128(out, self.exports.size);
+    for i in 0..self.exports.size {
+        let export_ = self.exports.get!<WasmExport>(i);
+
+        WasmModule::write_uleb128(out, export_.name.size);
+        out.push_all(export_.name.data as &void, export_.name.size);
+        out.push!<u8>(export_.item_type as u8);
+        WasmModule::write_uleb128(out, export_.item_index);
+    };
+};
+
+fn WasmModule::write_uleb128(output: &Vec::u8, value: u32) {
+    loop {
+        let byte = (value & 0x7F) as u8;
+        value >>= 7;
+
+        if value == 0 {
+            output.push!<u8>(byte);
+            break;
+        };
+
+        byte |= 0x80 as u8;
+        output.push!<u8>(byte);
+    };
+};
