@@ -29,6 +29,7 @@ pub struct WasmImport {
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum WasmImportDesc {
     Func { type_index: u32 },
+    Memory(WasmLimits),
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -344,8 +345,12 @@ impl WasmModule {
 
             match import.item_desc {
                 WasmImportDesc::Func { type_index } => {
-                    write_u32(out, 0x00); // fn
+                    write_u8(out, 0x00); // fn
                     write_u32(out, type_index);
+                }
+                WasmImportDesc::Memory(ref memory) => {
+                    write_u8(out, 0x02); // memory
+                    write_memory_limits(out, memory);
                 }
             }
         }
@@ -361,14 +366,7 @@ impl WasmModule {
     fn write_memory_section(&self, out: &mut Vec<u8>) {
         write_u32(out, self.memories.len() as u32);
         for memory in &self.memories {
-            if let Some(memory_max) = memory.max {
-                write_u8(out, 0x01);
-                write_u32(out, memory.min as u32);
-                write_u32(out, memory_max as u32);
-            } else {
-                write_u8(out, 0x00);
-                write_u32(out, memory.min as u32);
-            }
+            write_memory_limits(out, memory);
         }
     }
 
@@ -569,6 +567,17 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x0C);
             write_u32(out, *label_index);
         }
+    }
+}
+
+fn write_memory_limits(out: &mut Vec<u8>, memory: &WasmLimits) {
+    if let Some(memory_max) = memory.max {
+        write_u8(out, 0x01);
+        write_u32(out, memory.min as u32);
+        write_u32(out, memory_max as u32);
+    } else {
+        write_u8(out, 0x00);
+        write_u32(out, memory.min as u32);
     }
 }
 

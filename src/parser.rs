@@ -261,7 +261,27 @@ fn parse_top_level_expr(
     }
 
     if let Some(_) = tokens.eat(Symbol, "memory")? {
-        return parse_memory(ctx, tokens, false);
+        if let Some(_) = tokens.eat(Operator, "@")? {
+            let offset = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+            tokens.expect(Operator, "=")?;
+            let data = tokens.expect_any(StringLiteral)?;
+
+            let bytes = data.value.as_bytes().iter().map(|b| *b).collect();
+
+            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
+                offset: WasmExpr {
+                    instrs: vec![WasmInstr::I32Const {
+                        value: offset as i32,
+                    }],
+                },
+                bytes,
+            });
+
+            return Ok(());
+        }
+
+        parse_memory(ctx, tokens)?;
+        return Ok(());
     }
 
     if let Some(_) = tokens.eat(Symbol, "export")? {
@@ -270,7 +290,15 @@ fn parse_top_level_expr(
         }
 
         if let Some(_) = tokens.eat(Symbol, "memory")? {
-            return parse_memory(ctx, tokens, true);
+            let (memory_index, _) = parse_memory(ctx, tokens)?;
+
+            ctx.wasm_module.borrow_mut().exports.push(WasmExport {
+                export_type: WasmExportType::Mem,
+                export_name: "memory".into(),
+                exported_item_index: memory_index,
+            });
+
+            return Ok(());
         }
 
         if let Some(_) = tokens.eat(Symbol, "existing")? {
@@ -301,6 +329,19 @@ fn parse_top_level_expr(
 
         tokens.expect(Delim, "{")?;
         while let None = tokens.eat(Delim, "}")? {
+            if let Some(_) = tokens.eat(Symbol, "memory")? {
+                let (_, limits) = parse_memory(ctx, tokens)?;
+                tokens.expect(LoTokenType::Delim, ";")?;
+
+                ctx.wasm_module.borrow_mut().imports.push(WasmImport {
+                    module_name: module_name.value.clone(),
+                    item_name: "memory".into(),
+                    item_desc: WasmImportDesc::Memory(limits),
+                });
+
+                continue;
+            }
+
             tokens.expect(Symbol, "fn")?;
             let fn_decl = parse_fn_decl(ctx, tokens)?;
             tokens.expect(LoTokenType::Delim, ";")?;
@@ -559,27 +600,7 @@ fn parse_top_level_expr(
 fn parse_memory(
     ctx: &mut ModuleContext,
     tokens: &mut LoTokenStream,
-    exported: bool,
-) -> Result<(), LoError> {
-    if let Some(_) = tokens.eat(Operator, "@")? {
-        let offset = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
-        tokens.expect(Operator, "=")?;
-        let data = tokens.expect_any(StringLiteral)?;
-
-        let bytes = data.value.as_bytes().iter().map(|b| *b).collect();
-
-        ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
-            offset: WasmExpr {
-                instrs: vec![WasmInstr::I32Const {
-                    value: offset as i32,
-                }],
-            },
-            bytes,
-        });
-
-        return Ok(());
-    }
-
+) -> Result<(u32, WasmLimits), LoError> {
     let memory_name = String::from("memory");
     if ctx.memories.contains_key(&memory_name) {
         return Err(LoError {
@@ -614,18 +635,13 @@ fn parse_memory(
     }
 
     let memory_index = ctx.wasm_module.borrow().memories.len() as u32;
-    ctx.wasm_module.borrow_mut().memories.push(memory_limits);
+    ctx.wasm_module
+        .borrow_mut()
+        .memories
+        .push(memory_limits.clone());
     ctx.memories.insert(memory_name.clone(), memory_index);
 
-    if exported {
-        ctx.wasm_module.borrow_mut().exports.push(WasmExport {
-            export_type: WasmExportType::Mem,
-            export_name: "memory".into(),
-            exported_item_index: memory_index,
-        });
-    }
-
-    Ok(())
+    Ok((memory_index, memory_limits))
 }
 
 fn parse_fn_def(
