@@ -2,7 +2,14 @@
   <img src="./vscode-ext/assets/icons/lo.svg" />
 </p>
 
-LO - Low level programming language for WASM with focus on simplicity
+LO - small programming language targeting WASM that aims to be as simple as possible
+
+## 🏆 Goals
+
+- Make both the language and the compiler small and easy to understand
+- Have little to no dependencies
+- Be easy to use and modify
+- Emit WASM to have the biggest target coverage with little code
 
 ## 🪵 Development Log
 
@@ -11,6 +18,10 @@ LO - Low level programming language for WASM with focus on simplicity
 📺 [Parts [7..] - Building the self-hosted compiler. (YouTube playlist)](https://youtube.com/playlist?list=PL6qyEx0ybzWqkc0zG6jVgRx63nZkdu3DP&si=X8OyuWQ8TNDrfikL)
 
 ## 👀 Overview
+
+Check out example `.lo` programs including standard library sources and WIP self-hosted compiler in the [./examples](./examples/) folder.
+
+Here are some of them with syntax highlighting from the [LO VS Code extension](lo-extension):
 
 - Hello world [(source)](examples/test/demos/hello-world.lo):
 
@@ -26,10 +37,11 @@ LO - Low level programming language for WASM with focus on simplicity
 
 > This option also works in vscode.dev
 
-- Install the [LO VS Code extension](https://marketplace.visualstudio.com/items?itemName=glebbash.lo)
-- To run currently open file: Command Palette: `LO: Run current file`, or press ▶️ button in the top toolbar
+- Install the [LO VS Code extension](lo-extension)
+- To create a new project: Open empty folder, execute Command Palette: `LO: Initialize project in current workspace`
+- To run currently open file: execute Command Palette: `LO: Run current file`, or press ▶️ button in the top toolbar
 - Compiling files:
-  - Open Web Shell using Command Palette: `Terminal: Create New Web Shell`
+  - Open Web Shell: execute Command Palette: `Terminal: Create New Web Shell`
   - Run: `run lo.wasm <input>.lo > <output>.wasm`
 
 ### Option 2: Using wasmtime
@@ -62,3 +74,5 @@ LO - Low level programming language for WASM with focus on simplicity
 - Run `./utils.mjs test`
 
   > This runs tests defined in `utils.mjs`. Test programs are located in `examples/test`
+
+[lo-extension]: https://marketplace.visualstudio.com/items?itemName=glebbash.lo
