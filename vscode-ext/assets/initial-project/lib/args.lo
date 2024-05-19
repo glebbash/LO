@@ -1,0 +1,37 @@
+include "./std.lo";
+include "./wasi.lo";
+
+struct args {
+    argc: u32,
+    argv: &*&*u8,
+    argv_buf: &*u8,
+};
+
+fn args::load(): args {
+    let argc_ref = tmp_alloc!<u32>();
+    let argv_buf_size_ref = tmp_alloc!<u32>();
+
+    let _ = wasi::args_sizes_get(argc_ref, argv_buf_size_ref);
+    let argv_buf_size = *argv_buf_size_ref;
+    let argc = *argc_ref;
+
+    let argv = heap::alloc_many!<&*u8>(argc);
+    let argv_buf = heap::alloc_many!<u8>(argv_buf_size);
+    let _ = wasi::args_get(argv, argv_buf);
+
+    return args {
+        argc: argc,
+        argv: argv,
+        argv_buf: argv_buf,
+    };
+};
+
+fn args::get(self, i: u32): str {
+    let arg = *((self.argv as u32 + i * sizeof &*u8) as &*&*u8);
+    return cstr_to_str(arg);
+};
+
+fn args::free(self) {
+    heap::free(self.argv as &void);
+    heap::free(self.argv_buf as &void);
+};

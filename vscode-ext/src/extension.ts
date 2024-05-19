@@ -101,14 +101,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 "assets/initial-project"
             );
 
-            const initFiles = [
-                "lo.wasm",
-                "main.lo",
-                "lib/std.lo",
-                "lib/wasi.lo",
-                "lib/print.lo",
-                "lib/cli.lo",
-            ];
+            const initFiles = ["lo.wasm", "main.lo", "lib"];
 
             for (const file of initFiles) {
                 await vscode.workspace.fs.copy(
