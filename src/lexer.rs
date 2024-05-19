@@ -326,7 +326,7 @@ impl Lexer {
                         't' => value.push('\t'),
                         '\\' => value.push('\\'),
                         '"' => value.push('"'),
-                        _ => {
+                        c => {
                             return Err(LoError {
                                 message: format!("ParseError: Invalid escape sequence: \\{c}"),
                                 loc: self.loc(),
