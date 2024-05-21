@@ -3,7 +3,8 @@ import from "wasi_snapshot_preview1" {
 };
 
 export memory { min_pages: 1 };
-memory @ 12 = "Hello World!\n";
+
+*12 = "Hello World!\n";
 
 export fn _start() {
     // wasi::IOVec.base = "Hello World!\n".ptr
