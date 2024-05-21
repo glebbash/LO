@@ -38,9 +38,9 @@ const wasm4::BUTTON_RIGHT = 32 as u8;
 const wasm4::BUTTON_UP = 64 as u8;
 const wasm4::BUTTON_DOWN = 128 as u8;
 
-const wasm4::MOUSE_LEFT = 1;
-const wasm4::MOUSE_RIGHT = 2;
-const wasm4::MOUSE_MIDDLE = 4;
+const wasm4::MOUSE_LEFT = 1 as u8;
+const wasm4::MOUSE_RIGHT = 2 as u8;
+const wasm4::MOUSE_MIDDLE = 4 as u8;
 
 const wasm4::SYSTEM_PRESERVE_FRAMEBUFFER = 1;
 const wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2;
