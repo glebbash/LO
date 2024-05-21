@@ -260,26 +260,45 @@ fn parse_top_level_expr(
         return parse_macro_def(ctx, tokens);
     }
 
-    if let Some(_) = tokens.eat(Symbol, "memory")? {
-        if let Some(_) = tokens.eat(Operator, "@")? {
-            let offset = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
-            tokens.expect(Operator, "=")?;
-            let data = tokens.expect_any(StringLiteral)?;
-
-            let bytes = data.value.as_bytes().iter().map(|b| *b).collect();
-
-            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
-                offset: WasmExpr {
-                    instrs: vec![WasmInstr::I32Const {
-                        value: offset as i32,
-                    }],
-                },
-                bytes,
+    if let Some(_) = tokens.eat(Operator, "*")? {
+        let offset = parse_const_expr(ctx, tokens, 2)?;
+        let Some(WasmType::I32) = offset.get_type(ctx).to_wasm_type() else {
+            return Err(LoError {
+                message: format!("Invalid memory offset"),
+                loc: tokens.loc().clone(),
             });
+        };
 
-            return Ok(());
-        }
+        tokens.expect(Operator, "=")?;
 
+        let bytes = if let Some(data) = tokens.eat_any(StringLiteral)? {
+            data.value.as_bytes().iter().map(|b| *b).collect()
+        } else {
+            let mut bytes = vec![];
+            while let Some(byte) = tokens.eat_any(IntLiteral)? {
+                bytes.push(parse_u8_literal(byte)?);
+            }
+            if bytes.len() == 0 {
+                return Err(LoError {
+                    message: format!("Expected a sequence of bytes or a string for memory write"),
+                    loc: tokens.loc().clone(),
+                });
+            }
+            bytes
+        };
+
+        let mut instrs = vec![];
+        lower_expr(&mut instrs, offset);
+
+        ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
+            offset: WasmExpr { instrs },
+            bytes,
+        });
+
+        return Ok(());
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "memory")? {
         parse_memory(ctx, tokens)?;
         return Ok(());
     }
@@ -2946,6 +2965,19 @@ fn parse_const_int(tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
     });
 }
 
+fn parse_u8_literal(int: &LoToken) -> Result<u8, LoError> {
+    let result = if int.value.starts_with("0x") {
+        u8::from_str_radix(&int.value[2..], 16)
+    } else {
+        int.value.parse()
+    };
+
+    result.map_err(|_| LoError {
+        message: format!("Parsing u8 failed: {}", int.value),
+        loc: int.loc.clone(),
+    })
+}
+
 fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
     let result = if int.value.starts_with("0x") {
         u32::from_str_radix(&int.value[2..], 16)
@@ -2954,7 +2986,7 @@ fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
     };
 
     result.map_err(|_| LoError {
-        message: format!("Parsing u32 (implicit) failed: {}", int.value),
+        message: format!("Parsing u32 failed: {}", int.value),
         loc: int.loc.clone(),
     })
 }
