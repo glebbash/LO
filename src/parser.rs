@@ -274,17 +274,7 @@ fn parse_top_level_expr(
         let bytes = if let Some(data) = tokens.eat_any(StringLiteral)? {
             data.value.as_bytes().iter().map(|b| *b).collect()
         } else {
-            let mut bytes = vec![];
-            while let Some(byte) = tokens.eat_any(IntLiteral)? {
-                bytes.push(parse_u8_literal(byte)?);
-            }
-            if bytes.len() == 0 {
-                return Err(LoError {
-                    message: format!("Expected a sequence of bytes or a string for memory write"),
-                    loc: tokens.loc().clone(),
-                });
-            }
-            bytes
+            parse_const_byte_sequence(ctx, tokens)?
         };
 
         let mut instrs = vec![];
@@ -995,7 +985,16 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {
-        return build_const_str_instr(ctx.module, tokens, value.value);
+        return parse_const_str(ctx.module, tokens, value.value);
+    }
+
+    if let Some(_) = tokens.eat(Delim, "[")? {
+        let bytes = parse_const_byte_sequence(ctx.module, tokens)?;
+        let bytes_ptr = ctx.module.append_data(bytes);
+
+        return Ok(
+            LoInstr::U32Const { value: bytes_ptr }.casted(LoType::Pointer(Box::new(LoType::U8)))
+        );
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
@@ -1214,7 +1213,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
         let message = tokens.expect_any(StringLiteral)?;
         let debug_mesage = format!("{} - {}", dbg_token.loc, message.value);
-        return build_const_str_instr(ctx.module, tokens, debug_mesage);
+        return parse_const_str(ctx.module, tokens, debug_mesage);
     }
 
     if let Some(_) = tokens.eat(Symbol, "if")? {
@@ -2684,7 +2683,7 @@ fn typecheck_fn_call_args(
 }
 
 fn parse_const_expr(
-    ctx: &ModuleContext,
+    ctx: &mut ModuleContext,
     tokens: &mut LoTokenStream,
     min_bp: u32,
 ) -> Result<LoInstr, LoError> {
@@ -2708,7 +2707,7 @@ fn parse_const_expr(
 }
 
 fn parse_const_primary(
-    ctx: &ModuleContext,
+    ctx: &mut ModuleContext,
     tokens: &mut LoTokenStream,
 ) -> Result<LoInstr, LoError> {
     if tokens.next_is_any(IntLiteral)? {
@@ -2722,7 +2721,16 @@ fn parse_const_primary(
     }
 
     if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {
-        return build_const_str_instr(ctx, tokens, value.value);
+        return parse_const_str(ctx, tokens, value.value);
+    }
+
+    if let Some(_) = tokens.eat(Delim, "[")? {
+        let bytes = parse_const_byte_sequence(ctx, tokens)?;
+        let bytes_ptr = ctx.append_data(bytes);
+
+        return Ok(
+            LoInstr::U32Const { value: bytes_ptr }.casted(LoType::Pointer(Box::new(LoType::U8)))
+        );
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")? {
@@ -2881,7 +2889,7 @@ fn get_type_by_name(
     }
 }
 
-fn build_const_str_instr(
+fn parse_const_str(
     ctx: &ModuleContext,
     tokens: &mut LoTokenStream,
     mut value: String,
@@ -2904,21 +2912,8 @@ fn build_const_str_instr(
     let string_ptr = match string_ptr {
         Some(string_ptr) => string_ptr,
         None => {
-            let new_string_ptr = *ctx.data_size.borrow();
-            ctx.string_pool
-                .borrow_mut()
-                .insert(value.clone(), new_string_ptr);
-
-            *ctx.data_size.borrow_mut() += string_len;
-
-            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
-                offset: WasmExpr {
-                    instrs: vec![WasmInstr::I32Const {
-                        value: new_string_ptr as i32,
-                    }],
-                },
-                bytes: value.into_bytes(),
-            });
+            let new_string_ptr = ctx.append_data(value.clone().into_bytes());
+            ctx.string_pool.borrow_mut().insert(value, new_string_ptr);
             new_string_ptr
         }
     };
@@ -2938,6 +2933,34 @@ fn build_const_str_instr(
     .casted(LoType::StructInstance {
         name: format!("str"),
     }))
+}
+
+fn parse_const_byte_sequence(
+    ctx: &ModuleContext,
+    tokens: &mut LoTokenStream,
+) -> Result<Vec<u8>, LoError> {
+    let item_type = parse_const_lo_type(ctx, tokens)?;
+    if item_type != LoType::U8 {
+        return Err(LoError {
+            message: format!("Only byte sequences are supported for now"),
+            loc: tokens.loc().clone(),
+        });
+    }
+    tokens.expect(Delim, "]")?;
+
+    let mut bytes = vec![];
+
+    tokens.expect(Delim, "[")?;
+    while let None = tokens.eat(Delim, "]")? {
+        let byte = tokens.expect_any(IntLiteral)?;
+        bytes.push(parse_u8_literal(byte)?);
+
+        if !tokens.next_is(Delim, "]")? {
+            tokens.expect(Delim, ",")?;
+        }
+    }
+
+    Ok(bytes)
 }
 
 fn parse_nested_symbol(tokens: &mut LoTokenStream) -> Result<LoToken, LoError> {

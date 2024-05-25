@@ -35,6 +35,24 @@ impl<'a> ModuleContext<'a> {
         wasm_module.types.len() as u32 - 1
     }
 
+    pub fn append_data(&self, bytes: Vec<u8>) -> u32 {
+        let bytes_ptr = *self.data_size.borrow();
+        let bytes_len = bytes.len() as u32;
+
+        self.wasm_module.borrow_mut().datas.push(WasmData::Active {
+            offset: WasmExpr {
+                instrs: vec![WasmInstr::I32Const {
+                    value: bytes_ptr as i32,
+                }],
+            },
+            bytes,
+        });
+
+        *self.data_size.borrow_mut() += bytes_len;
+
+        bytes_ptr
+    }
+
     pub fn get_loc_module_index(&self, loc: &LoLocation) -> u32 {
         *self.included_modules.get(&loc.file_name as &str).unwrap() // safe
     }
