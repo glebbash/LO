@@ -1,19 +1,21 @@
 include "./lib/wasm4.lo";
 
-const HELLO = 6560 as &u8;
-*HELLO = "Hello from LO!";
-
-const SMILEY = 6660 as &u8;
-*SMILEY = 0xC3 0x81 0x24 0x24 0x00 0x24 0x99 0xC3;
-
-const BLINK = 6760 as &u8;
-*BLINK = "Press X to blink";
+const SMILEY = [u8][
+    0b11000011,
+    0b10000001,
+    0b00100100,
+    0b00100100,
+    0b00000000,
+    0b00100100,
+    0b10011001,
+    0b11000011,
+];
 
 export fn start() {};
 
 export fn update() {
     *wasm4::DRAW_COLORS = 2 as u16;
-    wasm4::text(HELLO, 10 as i32, 10 as i32);
+    wasm4::text("Hello from LO!"0, 10 as i32, 10 as i32);
 
     let gamepad = *wasm4::GAMEPAD1;
     if gamepad & wasm4::BUTTON_1 {
@@ -21,5 +23,5 @@ export fn update() {
     };
 
     wasm4::blit(SMILEY, 76 as i32, 76 as i32, 8, 8, wasm4::BLIT_1BPP);
-    wasm4::text(BLINK, 16 as i32, 90 as i32);
+    wasm4::text("Press X to blink"0, 16 as i32, 90 as i32);
 };

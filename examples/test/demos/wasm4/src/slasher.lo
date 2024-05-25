@@ -1,4 +1,4 @@
-include "./lib/std.lo";
+include "./lib/std-64k.lo";
 include "./lib/wasm4.lo";
 
 struct Pos {
@@ -96,7 +96,7 @@ macro swap!<T>(a: T, b: T) {
 
 fn render() {
     if mode == Mode::SLASH {
-        wasm4::text(cstr("Slash!!!"), 10 as i32, 10 as i32);
+        wasm4::text("Slash!!!"0, 10 as i32, 10 as i32);
 
         let health_txt = String::new(10);
         let msg = "HP: ";
@@ -109,7 +109,7 @@ fn render() {
     };
 
     if mode == Mode::DEFEND {
-        wasm4::text(cstr("Defend!!!"), 10 as i32, 10 as i32);
+        wasm4::text("Defend!!!"0, 10 as i32, 10 as i32);
     };
 
     render_trail(trail);
@@ -157,6 +157,3 @@ fn rand_u32(max: u32): u32 {
     return rand_seed % (max + 1);
 };
 
-fn cstr(value: str): &*u8 {
-    return value.data;
-};
