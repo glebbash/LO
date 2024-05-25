@@ -648,18 +648,6 @@ fn parse_memory(
                 let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
                 *ctx.data_size.borrow_mut() = value
             }
-            "null_terminate_const_strings" => {
-                if let Some(_) = tokens.eat(Symbol, "true")? {
-                    ctx.null_terminate_const_strings = true;
-                } else if let Some(_) = tokens.eat(Symbol, "true")? {
-                    ctx.null_terminate_const_strings = false;
-                } else {
-                    return Err(LoError {
-                        message: format!("Boolean value expected"),
-                        loc: tokens.loc().clone(),
-                    });
-                };
-            }
             _ => {
                 return Err(LoError {
                     message: format!("Invalid memory property"),
@@ -1006,8 +994,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
-    if let Some(value) = tokens.eat_any(StringLiteral)? {
-        return build_const_str_instr(ctx.module, &value.value, &value.loc);
+    if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {
+        return build_const_str_instr(ctx.module, tokens, value.value);
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
@@ -1226,7 +1214,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
         let message = tokens.expect_any(StringLiteral)?;
         let debug_mesage = format!("{} - {}", dbg_token.loc, message.value);
-        return build_const_str_instr(ctx.module, &debug_mesage, &message.loc);
+        return build_const_str_instr(ctx.module, tokens, debug_mesage);
     }
 
     if let Some(_) = tokens.eat(Symbol, "if")? {
@@ -1972,57 +1960,6 @@ fn parse_block_contents(
     }
 
     Ok(contents)
-}
-
-fn build_const_str_instr(
-    ctx: &ModuleContext,
-    value: &str,
-    loc: &LoLocation,
-) -> Result<LoInstr, LoError> {
-    if ctx.memories.len() == 0 {
-        return Err(LoError {
-            message: format!("Cannot use strings with no memories defined"),
-            loc: loc.clone(),
-        });
-    }
-
-    let string_len = value.as_bytes().len() as u32;
-
-    let string_ptr = ctx.string_pool.borrow().get(value).cloned();
-    let string_ptr = match string_ptr {
-        Some(string_ptr) => string_ptr,
-        None => {
-            let new_string_ptr = *ctx.data_size.borrow();
-            ctx.string_pool
-                .borrow_mut()
-                .insert(String::from(value), new_string_ptr);
-
-            *ctx.data_size.borrow_mut() += string_len;
-            if ctx.null_terminate_const_strings {
-                *ctx.data_size.borrow_mut() += 1;
-            }
-
-            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
-                offset: WasmExpr {
-                    instrs: vec![WasmInstr::I32Const {
-                        value: new_string_ptr as i32,
-                    }],
-                },
-                bytes: value.as_bytes().to_vec(),
-            });
-            new_string_ptr
-        }
-    };
-
-    Ok(LoInstr::MultiValueEmit {
-        values: vec![
-            LoInstr::U32Const { value: string_ptr },
-            LoInstr::U32Const { value: string_len },
-        ],
-    }
-    .casted(LoType::StructInstance {
-        name: format!("str"),
-    }))
 }
 
 fn parse_postfix(
@@ -2784,8 +2721,8 @@ fn parse_const_primary(
         });
     }
 
-    if let Some(value) = tokens.eat_any(StringLiteral)? {
-        return build_const_str_instr(ctx, &value.value, &value.loc);
+    if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {
+        return build_const_str_instr(ctx, tokens, value.value);
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")? {
@@ -2942,6 +2879,65 @@ fn get_type_by_name(
             return Ok(type_.clone());
         }
     }
+}
+
+fn build_const_str_instr(
+    ctx: &ModuleContext,
+    tokens: &mut LoTokenStream,
+    mut value: String,
+) -> Result<LoInstr, LoError> {
+    if ctx.memories.len() == 0 {
+        return Err(LoError {
+            message: format!("Cannot use strings with no memories defined"),
+            loc: tokens.loc().clone(),
+        });
+    }
+
+    let is_null_terminated = tokens.eat(IntLiteral, "0")?.is_some();
+    if is_null_terminated {
+        value.push('\0');
+    }
+
+    let string_len = value.as_bytes().len() as u32;
+
+    let string_ptr = ctx.string_pool.borrow().get(&value).cloned();
+    let string_ptr = match string_ptr {
+        Some(string_ptr) => string_ptr,
+        None => {
+            let new_string_ptr = *ctx.data_size.borrow();
+            ctx.string_pool
+                .borrow_mut()
+                .insert(value.clone(), new_string_ptr);
+
+            *ctx.data_size.borrow_mut() += string_len;
+
+            ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
+                offset: WasmExpr {
+                    instrs: vec![WasmInstr::I32Const {
+                        value: new_string_ptr as i32,
+                    }],
+                },
+                bytes: value.into_bytes(),
+            });
+            new_string_ptr
+        }
+    };
+
+    if is_null_terminated {
+        return Ok(
+            LoInstr::U32Const { value: string_ptr }.casted(LoType::Pointer(Box::new(LoType::U8)))
+        );
+    }
+
+    Ok(LoInstr::MultiValueEmit {
+        values: vec![
+            LoInstr::U32Const { value: string_ptr },
+            LoInstr::U32Const { value: string_len },
+        ],
+    }
+    .casted(LoType::StructInstance {
+        name: format!("str"),
+    }))
 }
 
 fn parse_nested_symbol(tokens: &mut LoTokenStream) -> Result<LoToken, LoError> {
