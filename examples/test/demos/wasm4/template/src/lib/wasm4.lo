@@ -1,7 +1,11 @@
 struct wasm4 {};
 
 import from "env" {
-    memory { min_pages: 1 };
+    memory {
+        min_pages: 1,
+        data_start: 6560,
+        null_terminate_const_strings: true,
+    };
 };
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
