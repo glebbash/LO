@@ -633,23 +633,43 @@ fn parse_memory(
     tokens.expect(Delim, "{")?;
     while let None = tokens.eat(Delim, "}")? {
         let prop = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, ":")?;
+
         match prop.value.as_str() {
             "min_pages" => {
-                tokens.expect(Operator, ":")?;
                 let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
-                memory_limits.min = value;
+                memory_limits.min = value
             }
             "max_pages" => {
-                tokens.expect(Operator, ":")?;
                 let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
-                memory_limits.max = Some(value);
+                memory_limits.max = Some(value)
+            }
+            "data_start" => {
+                let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+                *ctx.data_size.borrow_mut() = value
+            }
+            "null_terminate_const_strings" => {
+                if let Some(_) = tokens.eat(Symbol, "true")? {
+                    ctx.null_terminate_const_strings = true;
+                } else if let Some(_) = tokens.eat(Symbol, "true")? {
+                    ctx.null_terminate_const_strings = false;
+                } else {
+                    return Err(LoError {
+                        message: format!("Boolean value expected"),
+                        loc: tokens.loc().clone(),
+                    });
+                };
             }
             _ => {
                 return Err(LoError {
-                    message: format!("ayo"),
+                    message: format!("Invalid memory property"),
                     loc: prop.loc,
                 })
             }
+        }
+
+        if !tokens.next_is(Delim, "}")? {
+            tokens.expect(Delim, ",")?;
         }
     }
 
@@ -987,7 +1007,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(value) = tokens.eat_any(StringLiteral)? {
-        return Ok(build_const_str_instr(ctx.module, &value.value));
+        return build_const_str_instr(ctx.module, &value.value, &value.loc);
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")?.cloned() {
@@ -1206,7 +1226,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
         let message = tokens.expect_any(StringLiteral)?;
         let debug_mesage = format!("{} - {}", dbg_token.loc, message.value);
-        return Ok(build_const_str_instr(ctx.module, &debug_mesage));
+        return build_const_str_instr(ctx.module, &debug_mesage, &message.loc);
     }
 
     if let Some(_) = tokens.eat(Symbol, "if")? {
@@ -1954,7 +1974,18 @@ fn parse_block_contents(
     Ok(contents)
 }
 
-fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
+fn build_const_str_instr(
+    ctx: &ModuleContext,
+    value: &str,
+    loc: &LoLocation,
+) -> Result<LoInstr, LoError> {
+    if ctx.memories.len() == 0 {
+        return Err(LoError {
+            message: format!("Cannot use strings with no memories defined"),
+            loc: loc.clone(),
+        });
+    }
+
     let string_len = value.as_bytes().len() as u32;
 
     let string_ptr = ctx.string_pool.borrow().get(value).cloned();
@@ -1967,6 +1998,10 @@ fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
                 .insert(String::from(value), new_string_ptr);
 
             *ctx.data_size.borrow_mut() += string_len;
+            if ctx.null_terminate_const_strings {
+                *ctx.data_size.borrow_mut() += 1;
+            }
+
             ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
                 offset: WasmExpr {
                     instrs: vec![WasmInstr::I32Const {
@@ -1979,7 +2014,7 @@ fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
         }
     };
 
-    LoInstr::MultiValueEmit {
+    Ok(LoInstr::MultiValueEmit {
         values: vec![
             LoInstr::U32Const { value: string_ptr },
             LoInstr::U32Const { value: string_len },
@@ -1987,7 +2022,7 @@ fn build_const_str_instr(ctx: &ModuleContext, value: &str) -> LoInstr {
     }
     .casted(LoType::StructInstance {
         name: format!("str"),
-    })
+    }))
 }
 
 fn parse_postfix(
@@ -2750,7 +2785,7 @@ fn parse_const_primary(
     }
 
     if let Some(value) = tokens.eat_any(StringLiteral)? {
-        return Ok(build_const_str_instr(ctx, &value.value));
+        return build_const_str_instr(ctx, &value.value, &value.loc);
     }
 
     if let Some(_) = tokens.eat(Symbol, "true")? {

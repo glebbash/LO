@@ -14,6 +14,7 @@ pub struct ModuleContext<'a> {
     pub globals: BTreeMap<String, GlobalDef>,
     pub imported_fns_count: u32,
     pub data_size: Rc<RefCell<u32>>,
+    pub null_terminate_const_strings: bool,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
     pub constants: RefCell<BTreeMap<String, ConstDef>>,
     // TODO: invert the mapping, it should be Vec<String>
