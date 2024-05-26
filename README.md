@@ -31,7 +31,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](l
 
 ![AOC 2020 sample](./docs/assets/aoc-2020-day1.png)
 
-- Dark Maze (WASM-4 demo game) [play it here](//TODO: add githack link) or check the [source](examples/test/demos/wasm4/src/dark-maze.lo):
+- Dark Maze (WASM-4 demo game) [play it here](https://rawcdn.githack.com/glebbash/LO/da8305293f5438967619e91c6ecfd472111ccf91/examples/test/demos/wasm4/builds/dark-maze.html) or check the [source](examples/test/demos/wasm4/src/dark-maze.lo):
 
 ![Dark Maze gif](./docs/assets/dark-maze.gif)
 
