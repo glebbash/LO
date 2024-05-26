@@ -7,5 +7,5 @@ A collection of example games written in LO for the [WASM-4](https://wasm4.org) 
 Run any of the samples:
 
 ```shell
-wasmtime --dir=. ../../../../lo.wasm src/blink.lo | w4 run -n -
+wasmtime --dir=. lo.wasm src/blink.lo | w4 run -n -
 ```
