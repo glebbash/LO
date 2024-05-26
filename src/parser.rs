@@ -2414,26 +2414,34 @@ fn get_binary_op(
 
     Ok(match op.tag {
         InfixOpTag::Equal => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_EQ
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_EQ,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_EQ,
             LoType::F32 => WasmBinaryOpKind::F32_EQ,
             LoType::F64 => WasmBinaryOpKind::F64_EQ,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::NotEqual => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_NE
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_NE,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_NE,
             LoType::F32 => WasmBinaryOpKind::F32_NE,
             LoType::F64 => WasmBinaryOpKind::F64_NE,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Less => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_LT_S,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_LT_U,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_LT_S,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_LT_U,
             LoType::I64 => WasmBinaryOpKind::I64_LT_S,
             LoType::U64 => WasmBinaryOpKind::I64_LT_U,
             LoType::F32 => WasmBinaryOpKind::F32_LT,
@@ -2441,8 +2449,8 @@ fn get_binary_op(
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Greater => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_GT_S,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_GT_U,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_GT_S,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_GT_U,
             LoType::I64 => WasmBinaryOpKind::I64_GT_S,
             LoType::U64 => WasmBinaryOpKind::I64_GT_U,
             LoType::F32 => WasmBinaryOpKind::F32_GT,
@@ -2450,8 +2458,8 @@ fn get_binary_op(
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::LessEqual => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_LE_S,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_LE_U,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_LE_S,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_LE_U,
             LoType::I64 => WasmBinaryOpKind::I64_LE_S,
             LoType::U64 => WasmBinaryOpKind::I64_LE_U,
             LoType::F32 => WasmBinaryOpKind::F32_LE,
@@ -2459,8 +2467,8 @@ fn get_binary_op(
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::GreaterEqual => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_GE_S,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_GE_U,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_GE_S,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_GE_U,
             LoType::I64 => WasmBinaryOpKind::I64_GE_S,
             LoType::U64 => WasmBinaryOpKind::I64_GE_U,
             LoType::F32 => WasmBinaryOpKind::F32_GE,
@@ -2468,35 +2476,47 @@ fn get_binary_op(
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Add => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_ADD
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_ADD,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_ADD,
             LoType::F32 => WasmBinaryOpKind::F32_ADD,
             LoType::F64 => WasmBinaryOpKind::F64_ADD,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Sub => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_SUB
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_SUB,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_SUB,
             LoType::F32 => WasmBinaryOpKind::F32_SUB,
             LoType::F64 => WasmBinaryOpKind::F64_SUB,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Mul => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_MUL
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_MUL,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_MUL,
             LoType::F32 => WasmBinaryOpKind::F32_MUL,
             LoType::F64 => WasmBinaryOpKind::F64_MUL,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Div => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_DIV_S,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_DIV_U,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_DIV_S,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_DIV_U,
             LoType::I64 => WasmBinaryOpKind::I64_DIV_S,
             LoType::U64 => WasmBinaryOpKind::I64_DIV_U,
             LoType::F32 => WasmBinaryOpKind::F32_DIV,
@@ -2504,51 +2524,67 @@ fn get_binary_op(
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Mod => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_REM_S,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_REM_U,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_REM_S,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_REM_U,
             LoType::I64 => WasmBinaryOpKind::I64_REM_S,
             LoType::U64 => WasmBinaryOpKind::I64_REM_U,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::ShiftLeft => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_SHL,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_SHL,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_SHL,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_SHL,
             LoType::I64 => WasmBinaryOpKind::I64_SHL,
             LoType::U64 => WasmBinaryOpKind::I64_SHL,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::ShiftRight => match lhs_type {
-            LoType::I8 | LoType::I32 => WasmBinaryOpKind::I32_SHR_S,
-            LoType::Bool | LoType::U8 | LoType::U32 => WasmBinaryOpKind::I32_SHR_U,
+            LoType::I8 | LoType::I16 | LoType::I32 => WasmBinaryOpKind::I32_SHR_S,
+            LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => WasmBinaryOpKind::I32_SHR_U,
             LoType::I64 => WasmBinaryOpKind::I64_SHR_S,
             LoType::U64 => WasmBinaryOpKind::I64_SHR_U,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::And => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_AND
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_AND,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_AND,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::Or => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_OR
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_OR,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_OR,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::BitAnd => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_AND
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_AND,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_AND,
             operand_type => return err_incompatible_op(op, operand_type),
         },
         InfixOpTag::BitOr => match lhs_type {
-            LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
-                WasmBinaryOpKind::I32_OR
-            }
+            LoType::Bool
+            | LoType::I8
+            | LoType::U8
+            | LoType::I16
+            | LoType::U16
+            | LoType::I32
+            | LoType::U32 => WasmBinaryOpKind::I32_OR,
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_OR,
             operand_type => return err_incompatible_op(op, operand_type),
         },
