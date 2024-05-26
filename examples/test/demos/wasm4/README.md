@@ -4,7 +4,7 @@ A collection of example games written in LO for the [WASM-4](https://wasm4.org) 
 
 ## Running
 
-Build & run any of the samples:
+Run any of the samples:
 
 ```shell
 wasmtime --dir=. ../../../../lo.wasm src/blink.lo | w4 run -n -
