@@ -31,6 +31,10 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](l
 
 ![AOC 2020 sample](./docs/assets/aoc-2020-day1.png)
 
+- Dark Maze (WASM-4 demo game) [play it here](//TODO: add githack link) or check the [source](examples/test/demos/wasm4/src/dark-maze.lo):
+
+![Dark Maze gif](./docs/assets/dark-maze.gif)
+
 ## 🚀 Getting started
 
 ### Option 1 (recommended): Using VS Code extension only

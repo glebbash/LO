@@ -24,7 +24,6 @@ let prev_gamepad = 0 as u8;
 let pos_x = 42 as i32;
 let pos_y = 46 as i32;
 
-let time = 0;
 let rand_seed = 0;
 let light_checked = 0 as &Vec::u32;
 
@@ -55,15 +54,13 @@ export fn start() {
     light_checked = Vec::new!<u32>();
 
     // Palette (https://lospec.com/palette-list/empty-space-4)
-    *array_at!<u32>(wasm4::PALETTE, 0) = 0x000100;
-    *array_at!<u32>(wasm4::PALETTE, 1) = 0x431723;
-    *array_at!<u32>(wasm4::PALETTE, 2) = 0x46464F;
-    *array_at!<u32>(wasm4::PALETTE, 3) = 0x928E80;
+    *array_at!<u32>(wasm4::PALETTE, Color::BLACK - 1) = 0x000100;
+    *array_at!<u32>(wasm4::PALETTE, Color::RED   - 1) = 0x431723;
+    *array_at!<u32>(wasm4::PALETTE, Color::GRAY  - 1) = 0x46464F;
+    *array_at!<u32>(wasm4::PALETTE, Color::WHITE - 1) = 0x928E80;
 };
 
 export fn update() {
-    time += 1;
-
     prev_gamepad = gamepad;
     gamepad = *wasm4::GAMEPAD1;
 
@@ -103,7 +100,7 @@ fn title_screen_update() {
     set_draw_color(Color::GRAY);
     wasm4::text("@glebbash 2024"0, 24 as i32, 146 as i32);
 
-    if just_down(wasm4::BUTTON_1) {
+    if just_pressed(wasm4::BUTTON_1) {
         screen = Screen::GAME;
     };
 };
@@ -113,23 +110,22 @@ fn game_screen_update() {
     spread_light(pos_x, pos_y, 1, light_checked);
 
     let player_size = 4;
-    let sx = (wasm4::SCREEN_SIZE / 2 - player_size / 2) as i32;
-    let sy = (wasm4::SCREEN_SIZE / 2 - player_size / 2) as i32;
+    let center = (wasm4::SCREEN_SIZE / 2 - player_size / 2) as i32;
     set_draw_color(Color::RED);
-    wasm4::rect(sx, sy, player_size, player_size);
+    wasm4::rect(center, center, player_size, player_size);
 
     let prev_pos_x = pos_x;
     let prev_pos_y = pos_y;
-    if just_down(wasm4::BUTTON_LEFT ) { pos_x -= 1 as i32; };
-    if just_down(wasm4::BUTTON_RIGHT) { pos_x += 1 as i32; };
-    if just_down(wasm4::BUTTON_UP   ) { pos_y -= 1 as i32; };
-    if just_down(wasm4::BUTTON_DOWN ) { pos_y += 1 as i32; };
+    if just_pressed(wasm4::BUTTON_LEFT ) { pos_x -= 1 as i32; };
+    if just_pressed(wasm4::BUTTON_RIGHT) { pos_x += 1 as i32; };
+    if just_pressed(wasm4::BUTTON_UP   ) { pos_y -= 1 as i32; };
+    if just_pressed(wasm4::BUTTON_DOWN ) { pos_y += 1 as i32; };
     if is_wall(pos_x, pos_y) {
         pos_x = prev_pos_x;
         pos_y = prev_pos_y;
     };
 
-    if pos_x == 2 as i32 && pos_y == 4 as i32 {
+    if pos_x == 02 as i32 && pos_y == 04 as i32 {
         screen = Screen::END1;
     };
 
@@ -152,21 +148,21 @@ fn end2_screen_update() {
     play_notes(END2_NOTES, END2_NOTES_LEN, END2_NOTE_DURATION);
 };
 
-fn spread_light(x: i32, y: i32, brightness: u32, checked: &Vec::u32) {
+fn spread_light(x: i32, y: i32, dimness: u32, checked: &Vec::u32) {
     if is_wall(x, y) || !mark_checked(x, y, checked) {
         return;
     };
 
-    light_block(x - pos_x, y - pos_y, brightness);
+    light_block(x - pos_x, y - pos_y, dimness);
 
-    if brightness >= 16 {
+    if dimness >= 16 {
         return;
     };
 
-    spread_light(x + 1 as i32, y, brightness * 2, checked);
-    spread_light(x - 1 as i32, y, brightness * 2, checked);
-    spread_light(x, y + 1 as i32, brightness * 2, checked);
-    spread_light(x, y - 1 as i32, brightness * 2, checked);
+    spread_light(x + 1 as i32, y, dimness * 2, checked);
+    spread_light(x - 1 as i32, y, dimness * 2, checked);
+    spread_light(x, y + 1 as i32, dimness * 2, checked);
+    spread_light(x, y - 1 as i32, dimness * 2, checked);
 };
 
 fn mark_checked(x: i32, y: i32, checked: &Vec::u32): bool {
@@ -220,12 +216,7 @@ fn play_notes(notes: &*u8, notes_len: u32, note_duration: u32) {
 };
 
 fn rand_u32(max: u32): u32 {
-    if rand_seed == 0 {
-        rand_seed = time;
-    };
-
-    rand_seed = (1664525 * rand_seed + 101390423)
-        % 214748365;
+    rand_seed = (1664525 * rand_seed + 101390423) % 214748365;
 
     return rand_seed % (max + 1);
 };
@@ -241,7 +232,7 @@ fn set_draw_colors(c1: u32, c2: u32, c3: u32, c4: u32) {
                          | (c4 << 12)) as u16;
 };
 
-fn just_down(button: u8): bool {
+fn just_pressed(button: u8): bool {
     if gamepad & button {
         if !(prev_gamepad & button) {
             return true;
