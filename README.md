@@ -65,7 +65,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension][l
 - Requirements:
   - Install [rustup](https://www.rust-lang.org/tools/install)
   - Switch to nightly: `rustup toolchain install nightly`
-  - Add WASM target: `rustup target add  wasm32-unknown-unknown`
+  - Add WASM target: `rustup +nightly target add wasm32-unknown-unknown`
   - You can also find configs for GitHub Codespaces and GitPod in this repo
 - Run `./build.sh`
 
