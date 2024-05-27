@@ -21,7 +21,7 @@ LO - small programming language targeting WASM that aims to be as simple as poss
 
 Check out example `.lo` programs including standard library sources and WIP self-hosted compiler in the [./examples](./examples/) folder.
 
-Here are some of them with syntax highlighting from the [LO VS Code extension](lo-extension):
+Here are some of them with syntax highlighting from the [LO VS Code extension][lo-extension]:
 
 - Hello world [(source)](examples/test/demos/hello-world.lo):
 
@@ -41,7 +41,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](l
 
 > This option also works in vscode.dev
 
-- Install the [LO VS Code extension](lo-extension)
+- Install the [LO VS Code extension][lo-extension]
 - To create a new project: Open empty folder, execute Command Palette: `LO: Initialize project in current workspace`
 - To run currently open file: execute Command Palette: `LO: Run current file`, or press ▶️ button in the top toolbar
 - Compiling files:
