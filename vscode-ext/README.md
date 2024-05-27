@@ -10,9 +10,18 @@ To compile `.lo` files to `.wasm`:
 
 > Check [the source](https://github.com/glebbash/LO) for more info
 
+## Build the extension
+
+1. Navigate to the `vscode-ext` directory in your cli: `cd vscode-ext`
+2. Install node dependencies: `npm install`
+3. Build the source: `npm run compile`
+4. Build the `.vsix`: `npm run vsix`
+
 ## Install the VS Code extension
 
 > NOTE: This extension depends on [wasm-wasi-core](https://marketplace.visualstudio.com/items?itemName=ms-vscode.wasm-wasi-core) and [webshell](https://marketplace.visualstudio.com/items?itemName=ms-vscode.webshell) which currently have no release versions so you'll need to click `Install Pre-Release Version` to install them.
+
+> NOTE2: The extension must be built before it will run properly. See **Build the extension** above for instructions.
 
 1. Open the command palette in VS Code: `Cmd+Shift+P` (macOS) or `Ctrl+Shift+P` (Linux/Windows)
 2. Type and select `Extensions: Install from VSIX...`. The file selection prompt should open.
