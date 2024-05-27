@@ -12,7 +12,7 @@ To compile `.lo` files to `.wasm`:
 
 ## Install the VS Code extension
 
-> NOTE: This extension depends on [wasm-wasi-core](https://marketplace.visualstudio.com/items?itemName=ms-vscode.wasm-wasi-core) which currently has no release version so you'll need to click `Install Pre-Release Version` to install it.
+> NOTE: This extension depends on [wasm-wasi-core](https://marketplace.visualstudio.com/items?itemName=ms-vscode.wasm-wasi-core) and [webshell](https://marketplace.visualstudio.com/items?itemName=ms-vscode.webshell) which currently have no release versions so you'll need to click `Install Pre-Release Version` to install them.
 
 1. Open the command palette in VS Code: `Cmd+Shift+P` (macOS) or `Ctrl+Shift+P` (Linux/Windows)
 2. Type and select `Extensions: Install from VSIX...`. The file selection prompt should open.
