@@ -41,7 +41,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension][l
 
 > This option also works in vscode.dev
 
-- Install the [LO VS Code extension][lo-extension]
+- Install the [LO VS Code extension][vscode-ext]
 - To create a new project: Open empty folder, execute Command Palette: `LO: Initialize project in current workspace`
 - To run currently open file: execute Command Palette: `LO: Run current file`, or press ▶️ button in the top toolbar
 - Compiling files:
