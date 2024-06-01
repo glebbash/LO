@@ -2930,7 +2930,7 @@ fn parse_const_str(
     tokens: &mut LoTokenStream,
     mut value: String,
 ) -> Result<LoInstr, LoError> {
-    if ctx.memories.len() == 0 {
+    if ctx.memories.len() == 0 && !ctx.inspect_mode {
         return Err(LoError {
             message: format!("Cannot use strings with no memories defined"),
             loc: tokens.loc().clone(),
