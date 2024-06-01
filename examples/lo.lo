@@ -35,14 +35,8 @@ fn goal1(ctx: &LoContext) {
     });
 
     let expr = Vec::new!<WasmInstr>();
-    expr.push!<WasmInstr>(WasmInstr {
-        op_code: 0x41, // i32.const
-        i32_const_value: 42,
-    });
-    expr.push!<WasmInstr>(WasmInstr {
-        op_code: 0x0F, // return
-        i32_const_value: 0, // ignore
-    });
+    expr.push!<WasmInstr>(WasmInstr::I32Const::new(42 as i32));
+    expr.push!<WasmInstr>(WasmInstr::Return::new());
 
     ctx.wasm_module.codes.push!<WasmCode>(WasmCode {
         expr: expr,
