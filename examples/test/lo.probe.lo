@@ -9,7 +9,7 @@ type Result_Vec_u8_String = Vec;
 export fn _start() {
     let file_name: str;
     let source: String;
-    let args = args::load();
+    let args = Args::load();
     defer args.free();
     if args.size == 2 {
         file_name = args.get(1);

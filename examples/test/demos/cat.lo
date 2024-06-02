@@ -3,7 +3,7 @@ include "../../lib/args.lo";
 include "../../lib/fs.lo";
 
 fn main() {
-    let args = args::load();
+    let args = Args::load();
     defer args.free();
 
     if args.argc != 2 {
