@@ -15,6 +15,7 @@ const COMMANDS = {
     compile: compileCommand,
     run: runCommand, // compile + execute
     runWasi: runWasiCommand, // run arbitrary .wasm file with WASI
+    debugWasi: debugWasiCommand,
     test: testCommand,
 };
 
@@ -88,6 +89,53 @@ async function runWasiCommand(args) {
         args,
         env: process.env,
         preopens: { ".": "." },
+    });
+}
+
+/**
+ * Start an http server that runs provided WASI module for debugging with Dev Tools
+ * @param {string[]} args
+ */
+async function debugWasiCommand(args) {
+    const filePath = new URL(args[0], import.meta.url);
+
+    const http = await import("http");
+    http.createServer(async (req, res) => {
+        if (req.method === "GET" && req.url === "/") {
+            res.setHeader("Content-Type", "text/html");
+            res.end(`
+                <script type="module">
+                    import { init, WASI } from "https://esm.sh/@wasmer/wasi@1.2.2";
+
+                    const compilerModule = await WebAssembly.compile(
+                        await fetch('./index.wasm').then((r) => r.arrayBuffer())
+                    );
+
+                    await init();
+                    const wasi = new WASI({});
+                    await wasi.instantiate(compilerModule, {});
+                    const exitCode = wasi.start();
+                    console.log({
+                        exitCode,
+                        out: wasi.getStdoutString(),
+                        err: wasi.getStderrString(),
+                    });
+                </script>
+            `);
+            return;
+        }
+
+        if (req.method === "GET" && req.url === "/index.wasm") {
+            const wasmFile = await fs.readFile(filePath);
+            res.setHeader("Content-Type", "application/wasm");
+            res.end(wasmFile);
+            return;
+        }
+
+        res.statusCode = 404;
+        res.end("Not Found");
+    }).listen(6969, () => {
+        console.log("Debug server running at http://localhost:6969/");
     });
 }
 
