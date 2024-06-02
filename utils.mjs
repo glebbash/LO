@@ -48,10 +48,10 @@ async function runCommand() {
     let compilerArgs = process.argv.slice(3);
     let programArgs = [];
 
-    let programArgsSeparator = compilerArgs.indexOf("--");
-    if (programArgsSeparator !== -1) {
-        compilerArgs = compilerArgs.slice(0, programArgsSeparator);
-        programArgs = compilerArgs.slice(programArgsSeparator + 1);
+    let programArgsStart = compilerArgs.indexOf("--");
+    if (programArgsStart !== -1) {
+        programArgs = compilerArgs.slice(programArgsStart + 1);
+        compilerArgs = compilerArgs.slice(0, programArgsStart);
     }
 
     const program = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -592,10 +592,10 @@ async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
                 });
 
                 // @ts-ignore
-                const instance = await WebAssembly.instantiate(
-                    mod,
-                    wasi.getImportObject()
-                );
+                const instance = await WebAssembly.instantiate(mod, {
+                    ...wasi.getImportObject(),
+                    ...{ console },
+                });
 
                 const exitCode = /** @type {unknown} */ (wasi.start(instance));
 
