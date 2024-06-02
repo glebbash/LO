@@ -1,34 +1,36 @@
 include "../std.lo";
 
+type Vec::u32 = Vec;
+
 type Section = u8;
 const Section::TYPES     = 01 as u8;
 const Section::FUNCTIONS = 03 as u8;
 const Section::EXPORTS   = 07 as u8;
 const Section::CODES     = 10 as u8;
 
+type Vec::WasmValueType = Vec;
 type WasmValueType = u8;
 const WasmValueType::I32 = 0x7F as u8;
-type Vec::WasmValueType = Vec;
+
+type Vec::WasmFnType = Vec;
 struct WasmFnType {
     inputs: &Vec::WasmValueType,
     outputs: &Vec::WasmValueType,
 };
-type Vec::WasmFnType = Vec;
 
 type WasmExportType = u32; // TODO: u8 causes problems with alignment
 const WasmExportType::Fn = 0x00;
+
+type Vec::WasmExport = Vec;
 struct WasmExport {
     name: &String,
     item_type: WasmExportType,
     item_index: u32,
 };
-type Vec::WasmExport = Vec;
-
-type Vec::u32 = Vec;
 
 type Vec::WasmInstr = Vec;
 struct WasmInstr {
-    op_code: u32, // TODO: use u8 when alignment is fixed
+    op_code: u32, // TODO: u8 causes problems with alignment
     data: &void,
 };
 
@@ -54,11 +56,10 @@ fn WasmInstr::Return::new(): WasmInstr {
     };
 };
 
-// TODO: add locals
+type Vec::WasmCode = Vec;
 struct WasmCode {
     expr: &Vec::WasmInstr,
 };
-type Vec::WasmCode = Vec;
 
 struct WasmModule {
     types: &Vec::WasmFnType,
@@ -157,6 +158,7 @@ fn WasmModule::write_code_section(&self, out: &Vec::u8) {
         let code = self.codes.get!<WasmCode>(i);
 
         WasmModule::write_uleb128(code_buffer, 0); // locals count
+
         for i in 0..code.expr.size {
             let instr = code.expr.get!<WasmInstr>(i);
 

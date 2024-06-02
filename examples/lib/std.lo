@@ -198,6 +198,7 @@
 
         // grow enough memory if we are out of space
         if heap::TOTAL_ALLOCATED >= __memory_size() as u32 * mem::PAGE_SIZE {
+            // TODO: this is probably wrong
             let pages_to_grow = mem::align_to(total_size_to_alloc, mem::PAGE_SIZE);
             let grow_res = __memory_grow(pages_to_grow);
             if grow_res == (0 - 1) as i32 {
@@ -238,7 +239,16 @@
         let block = heap::FIRST_BLOCK;
 
         loop {
-            if block as u32 == 0 || (!block.used && block.size >= size) {
+            if block as u32 == 0  {
+                break;
+            };
+
+            // TODO: figure out how block got corrupted
+            if block as u32 >= heap::TOTAL_ALLOCATED  {
+                return 0 as &heap::Block;
+            };
+
+            if !block.used && block.size >= size {
                 break;
             };
 
