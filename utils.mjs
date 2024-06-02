@@ -669,18 +669,12 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
                 const memory = /** @type {WebAssembly.Memory} */ (
                     instance.exports.memory
                 );
-                const [errorIndicator, messagePtr, messageLen] =
-                    new Uint32Array(memory.buffer.slice(0, 12));
+                const [errorIndicator, errorCode] = new Uint32Array(
+                    memory.buffer.slice(0, 8)
+                );
 
                 if (errorIndicator === 69420) {
-                    const errorMessageBuf = memory.buffer.slice(
-                        messagePtr,
-                        messagePtr + messageLen
-                    );
-                    const errorMessage = new TextDecoder().decode(
-                        errorMessageBuf
-                    );
-                    err.message = "(panic) " + errorMessage;
+                    err.message = "Abort code " + errorCode;
                 }
             }
         }
