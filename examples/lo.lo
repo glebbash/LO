@@ -50,7 +50,6 @@ fn goal2(ctx: &LoContext) {
             outputs: Vec::new!<WasmValueType>(),
         };
 
-        // TODO(bug): having 0 or 3+ push! calls breaks something
         fd_write_fn_type.inputs.push!<WasmValueType>(WasmValueType::I32);
         fd_write_fn_type.inputs.push!<WasmValueType>(WasmValueType::I32);
         fd_write_fn_type.inputs.push!<WasmValueType>(WasmValueType::I32);
