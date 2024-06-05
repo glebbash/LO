@@ -6,9 +6,10 @@ type Section = u8;
 const Section::TYPES     = 01 as u8;
 const Section::IMPORTS   = 02 as u8;
 const Section::FUNCTIONS = 03 as u8;
-const Section::MEMORY    = 05 as u8;
+const Section::MEMORIES  = 05 as u8;
 const Section::EXPORTS   = 07 as u8;
 const Section::CODES     = 10 as u8;
+const Section::DATAS     = 11 as u8;
 
 // types:
     type Vec::WasmValueType = Vec;
@@ -41,31 +42,73 @@ const Section::CODES     = 10 as u8;
         data: &void,
     };
 
-    const WasmInstr::I32Const::OP_CODE = 0x41 as u8;
-    struct WasmInstr::I32Const {
-        value: i32,
-    };
-    fn WasmInstr::I32Const::new(value: i32): WasmInstr {
-        return WasmInstr {
-            op_code: WasmInstr::I32Const::OP_CODE,
-            data: heap::new!<WasmInstr::I32Const>(WasmInstr::I32Const {
-                value: value
-            }) as &void
+    // instrs:
+        const WasmInstr::Return::OP_CODE = 0x0F as u8;
+        struct WasmInstr::Return {};
+        fn WasmInstr::Return::new(): WasmInstr {
+            return WasmInstr {
+                op_code: WasmInstr::Return::OP_CODE,
+                data: 0 as &void // no data
+            };
         };
-    };
 
-    const WasmInstr::Return::OP_CODE = 0x0F as u8;
-    struct WasmInstr::Return {};
-    fn WasmInstr::Return::new(): WasmInstr {
-        return WasmInstr {
-            op_code: WasmInstr::Return::OP_CODE,
-            data: 0 as &void
+        const WasmInstr::Call::OP_CODE = 0x10 as u8;
+        struct WasmInstr::Call {
+            fn_index: u32,
         };
+        fn WasmInstr::Call::new(fn_index: u32): WasmInstr {
+            return WasmInstr {
+                op_code: WasmInstr::Call::OP_CODE,
+                data: heap::new!<WasmInstr::Call>(WasmInstr::Call {
+                    fn_index: fn_index
+                }) as &void
+            };
+        };
+
+        const WasmInstr::Drop::OP_CODE = 0x1A as u8;
+        struct WasmInstr::Drop {};
+        fn WasmInstr::Drop::new(): WasmInstr {
+            return WasmInstr {
+                op_code: WasmInstr::Drop::OP_CODE,
+                data: 0 as &void // no data
+            };
+        };
+
+        const WasmInstr::I32Store::OP_CODE = 0x36 as u8;
+        struct WasmInstr::I32Store {
+            align: u32,
+            offset: u32,
+        };
+        fn WasmInstr::I32Store::new(align: u32, offset: u32): WasmInstr {
+            return WasmInstr {
+                op_code: WasmInstr::I32Store::OP_CODE,
+                data: heap::new!<WasmInstr::I32Store>(WasmInstr::I32Store {
+                    align: align,
+                    offset: offset,
+                }) as &void
+            };
+        };
+
+        const WasmInstr::I32Const::OP_CODE = 0x41 as u8;
+        struct WasmInstr::I32Const {
+            value: i32,
+        };
+        fn WasmInstr::I32Const::new(value: i32): WasmInstr {
+            return WasmInstr {
+                op_code: WasmInstr::I32Const::OP_CODE,
+                data: heap::new!<WasmInstr::I32Const>(WasmInstr::I32Const {
+                    value: value
+                }) as &void
+            };
+        };
+
+    struct WasmExpr {
+        instrs: &Vec::WasmInstr,
     };
 
     type Vec::WasmCode = Vec;
     struct WasmCode {
-        expr: &Vec::WasmInstr,
+        expr: WasmExpr,
     };
 
 // memories:
@@ -87,6 +130,14 @@ const Section::CODES     = 10 as u8;
         item_index: u32,
     };
 
+// datas:
+    type Vec::WasmData = Vec;
+    // only active memory is supported
+    struct WasmData {
+        expr: WasmExpr,
+        bytes: &Vec::u8,
+    };
+
 // module:
     struct WasmModule {
         types: &Vec::WasmFnType,
@@ -95,6 +146,7 @@ const Section::CODES     = 10 as u8;
         memories: &Vec::WasmMemory,
         exports: &Vec::WasmExport,
         codes: &Vec::WasmCode,
+        datas: &Vec::WasmData,
     };
 
     fn WasmModule::new(): &WasmModule {
@@ -105,6 +157,7 @@ const Section::CODES     = 10 as u8;
             memories: Vec::new!<WasmMemory>(),
             exports: Vec::new!<WasmExport>(),
             codes: Vec::new!<WasmCode>(),
+            datas: Vec::new!<WasmData>(),
         });
     };
 
@@ -129,8 +182,8 @@ const Section::CODES     = 10 as u8;
         WasmModule::write_uleb128(binary, section_buffer.size);
         binary.append(section_buffer);
 
-        binary.push!<u8>(Section::MEMORY);
-        self.write_memory_section(section_buffer);
+        binary.push!<u8>(Section::MEMORIES);
+        self.write_memories_section(section_buffer);
         WasmModule::write_uleb128(binary, section_buffer.size);
         binary.append(section_buffer);
 
@@ -140,7 +193,12 @@ const Section::CODES     = 10 as u8;
         binary.append(section_buffer);
 
         binary.push!<u8>(Section::CODES);
-        self.write_code_section(section_buffer);
+        self.write_codes_section(section_buffer);
+        WasmModule::write_uleb128(binary, section_buffer.size);
+        binary.append(section_buffer);
+
+        binary.push!<u8>(Section::DATAS);
+        self.write_datas_section(section_buffer);
         WasmModule::write_uleb128(binary, section_buffer.size);
         binary.append(section_buffer);
     };
@@ -206,7 +264,7 @@ const Section::CODES     = 10 as u8;
         };
     };
 
-    fn WasmModule::write_memory_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_memories_section(&self, out: &Vec::u8) {
         WasmModule::write_uleb128(out, self.memories.size);
         for i in 0..self.memories.size {
             let memory_ = self.memories.get!<WasmMemory>(i);
@@ -234,7 +292,7 @@ const Section::CODES     = 10 as u8;
         };
     };
 
-    fn WasmModule::write_code_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_codes_section(&self, out: &Vec::u8) {
         WasmModule::write_uleb128(out, self.codes.size);
 
         let code_buffer = Vec::new!<u8>();
@@ -244,29 +302,66 @@ const Section::CODES     = 10 as u8;
             let code = self.codes.get!<WasmCode>(i);
 
             WasmModule::write_uleb128(code_buffer, 0); // locals count
-
-            for i in 0..code.expr.size {
-                let instr = code.expr.get!<WasmInstr>(i);
-
-                if instr.op_code == WasmInstr::I32Const::OP_CODE {
-                    code_buffer.push!<u8>(instr.op_code as u8);
-                    let value = (instr.data as &WasmInstr::I32Const).value;
-                    WasmModule::write_sleb128(code_buffer, value);
-                    continue;
-                };
-
-                if instr.op_code == WasmInstr::Return::OP_CODE {
-                    code_buffer.push!<u8>(instr.op_code as u8);
-                    continue;
-                };
-
-                unreachable;
-            };
-            code_buffer.push!<u8>(0x0B as u8); // end op_code
-
+            WasmModule::write_expr(code_buffer, code.expr);
             WasmModule::write_uleb128(out, code_buffer.size);
             out.append(code_buffer);
         };
+    };
+
+    fn WasmModule::write_datas_section(&self, out: &Vec::u8) {
+        WasmModule::write_uleb128(out, self.datas.size);
+
+        for i in 0..self.datas.size {
+            let data = self.datas.get!<WasmData>(i);
+
+            out.push!<u8>(0x00 as u8); // active mode
+
+            WasmModule::write_expr(out, data.expr);
+
+            WasmModule::write_uleb128(out, data.bytes.size);
+            out.append(data.bytes);
+        };
+    };
+
+    fn WasmModule::write_expr(output: &Vec::u8, expr: WasmExpr) {
+        for i in 0..expr.instrs.size {
+            let instr = expr.instrs.get!<WasmInstr>(i);
+
+            if instr.op_code == WasmInstr::Return::OP_CODE {
+                output.push!<u8>(instr.op_code as u8);
+                continue;
+            };
+
+            if instr.op_code == WasmInstr::Call::OP_CODE {
+                output.push!<u8>(instr.op_code as u8);
+                let data = instr.data as &WasmInstr::Call;
+                WasmModule::write_uleb128(output, data.fn_index);
+                continue;
+            };
+
+            if instr.op_code == WasmInstr::Drop::OP_CODE {
+                output.push!<u8>(instr.op_code as u8);
+                continue;
+            };
+
+            if instr.op_code == WasmInstr::I32Store::OP_CODE {
+                output.push!<u8>(instr.op_code as u8);
+                let data = instr.data as &WasmInstr::I32Store;
+                WasmModule::write_uleb128(output, data.align);
+                WasmModule::write_uleb128(output, data.offset);
+                continue;
+            };
+
+            if instr.op_code == WasmInstr::I32Const::OP_CODE {
+                output.push!<u8>(instr.op_code as u8);
+                let data = instr.data as &WasmInstr::I32Const;
+                WasmModule::write_sleb128(output, data.value);
+                continue;
+            };
+
+            unreachable;
+        };
+        output.push!<u8>(0x0B as u8); // end
     };
 
     fn WasmModule::write_uleb128(output: &Vec::u8, value: u32) {
