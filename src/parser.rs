@@ -3174,7 +3174,7 @@ fn compile_load(
     for comp in components.into_iter() {
         primitive_loads.push(LoInstr::Load {
             kind: comp.value_type,
-            align: 1,
+            align: 0,
             offset: comp.byte_offset,
             address_instr: Box::new(LoInstr::UntypedLocalGet {
                 local_index: address_local_index,

@@ -159,7 +159,7 @@
 
     struct heap::Block {
         size: u32,
-        used: u32, // TODO: u8 has aligment issues in wasmtime
+        used: bool,
         next: & heap::Block,
         data: &void,
     };
@@ -188,7 +188,7 @@
 
         let free_block = heap::find_free_block(size);
         if free_block as u32 != 0 {
-            free_block.used = true as u32;
+            free_block.used = true;
             return free_block.data;
         };
 
@@ -208,7 +208,7 @@
         };
 
         block.size = size;
-        block.used = true as u32;
+        block.used = true;
         block.data = (block as u32 + sizeof heap::Block) as &void;
 
         // init heap
@@ -228,7 +228,7 @@
 
     fn heap::free(ptr: &void) {
         let block = heap::get_block(ptr);
-        block.used = false as u32;
+        block.used = false;
     };
 
     fn heap::get_block(ptr: &void): &heap::Block {
