@@ -450,9 +450,9 @@ async function testCommand() {
             output,
             dropPadding(`
                 p0 = 1048576
-                p1 = 1048589
-                p2 = 1048589
-                p3 = 1048622
+                p1 = 1048592
+                p2 = 1048592
+                p3 = 1048628
             `)
         );
     });

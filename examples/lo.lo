@@ -44,7 +44,7 @@ fn goal1(ctx: &LoContext) {
 };
 
 fn goal2(ctx: &LoContext) {
-    // fd_write
+    // fd_write:
         let fd_write_fn_type = WasmFnType {
             inputs: Vec::new!<WasmValueType>(),
             outputs: Vec::new!<WasmValueType>(),
@@ -59,16 +59,14 @@ fn goal2(ctx: &LoContext) {
 
         ctx.wasm_module.types.push!<WasmFnType>(fd_write_fn_type);
 
-        let fd_write_import = WasmImport {
+        ctx.wasm_module.imports.push!<WasmImport>(WasmImport {
             module_name: String::from_str("wasi_snapshot_preview1"),
             item_name: String::from_str("fd_write"),
             item_type: WasmImportType::Fn,
             item_index: 0, // index of fd_write_fn_type
-        };
+        });
 
-        ctx.wasm_module.imports.push!<WasmImport>(fd_write_import);
-
-    // _start
+    // _start:
         let _start_fn_type = WasmFnType {
             inputs: Vec::new!<WasmValueType>(),
             outputs: Vec::new!<WasmValueType>(),
@@ -76,7 +74,7 @@ fn goal2(ctx: &LoContext) {
 
         ctx.wasm_module.types.push!<WasmFnType>(_start_fn_type);
 
-        // body
+        // body:
             let expr = Vec::new!<WasmInstr>();
             expr.push!<WasmInstr>(WasmInstr::Return::new());
 
@@ -111,8 +109,20 @@ fn goal2(ctx: &LoContext) {
             item_index: 0, // index of _start function
         });
 
-    // TODO:
-    // (memory (;0;) 1)
-    // (export "memory" (memory 0))
-    // (data (;0;) (i32.const 12) "Hello World!\0a")
+    // memory:
+        ctx.wasm_module.memories.push!<WasmMemory>(WasmMemory {
+            min: 0,
+            max: 0, // ignored
+            has_max: false,
+        });
+
+        ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
+            name: String::from_str("memory"),
+            item_type: WasmImportType::Memory,
+            item_index: 0,
+        });
+
+    // data:
+        // TODO:
+        // (data (;0;) (i32.const 12) "Hello World!\0a")
 };

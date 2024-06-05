@@ -23,7 +23,8 @@ const Section::CODES     = 10 as u8;
 
 // imports:
     type WasmImportType = u8;
-    const WasmImportType::Fn = 0x00 as u8;
+    const WasmImportType::Fn     = 0x00 as u8;
+    const WasmImportType::Memory = 0x02 as u8;
 
     type Vec::WasmImport = Vec;
     struct WasmImport {
@@ -211,11 +212,11 @@ const Section::CODES     = 10 as u8;
             let memory_ = self.memories.get!<WasmMemory>(i);
 
             if memory_.has_max {
-                out.push!<u8>(0x00 as u8);
+                out.push!<u8>(0x01 as u8);
                 WasmModule::write_uleb128(out, memory_.min);
                 WasmModule::write_uleb128(out, memory_.max);
             } else {
-                out.push!<u8>(0x01 as u8);
+                out.push!<u8>(0x00 as u8);
                 WasmModule::write_uleb128(out, memory_.min);
             };
         };
