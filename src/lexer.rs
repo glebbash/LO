@@ -274,6 +274,7 @@ impl Lexer {
                 'n' => value.push('\n'),
                 'r' => value.push('\r'),
                 't' => value.push('\t'),
+                '0' => value.push('\0'),
                 '\\' => value.push('\\'),
                 '\'' => value.push('\''),
                 c => {
@@ -324,6 +325,7 @@ impl Lexer {
                         'n' => value.push('\n'),
                         'r' => value.push('\r'),
                         't' => value.push('\t'),
+                        '0' => value.push('\0'),
                         '\\' => value.push('\\'),
                         '"' => value.push('"'),
                         c => {
