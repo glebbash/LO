@@ -4,6 +4,7 @@ type Vec::u32 = Vec;
 
 type Section = u8;
 const Section::TYPES     = 01 as u8;
+const Section::IMPORTS   = 02 as u8;
 const Section::FUNCTIONS = 03 as u8;
 const Section::EXPORTS   = 07 as u8;
 const Section::CODES     = 10 as u8;
@@ -16,6 +17,17 @@ type Vec::WasmFnType = Vec;
 struct WasmFnType {
     inputs: &Vec::WasmValueType,
     outputs: &Vec::WasmValueType,
+};
+
+type WasmImportType = u32; // TODO: u8 causes problems with alignment
+const WasmImportType::Fn = 0x00;
+
+type Vec::WasmImport = Vec;
+struct WasmImport {
+    module_name: &String,
+    item_name: &String,
+    item_type: WasmImportType,
+    item_index: u32,
 };
 
 type WasmExportType = u32; // TODO: u8 causes problems with alignment
@@ -63,6 +75,7 @@ struct WasmCode {
 
 struct WasmModule {
     types: &Vec::WasmFnType,
+    imports: &Vec::WasmImport,
     functions: &Vec::u32,
     exports: &Vec::WasmExport,
     codes: &Vec::WasmCode,
@@ -71,6 +84,7 @@ struct WasmModule {
 fn WasmModule::new(): &WasmModule {
     return heap::new!<WasmModule>(WasmModule {
         types: Vec::new!<WasmFnType>(),
+        imports: Vec::new!<WasmImport>(),
         functions: Vec::new!<u32>(),
         exports: Vec::new!<WasmExport>(),
         codes: Vec::new!<WasmCode>(),
@@ -85,6 +99,11 @@ fn WasmModule::write(&self, binary: &Vec::u8) {
 
     binary.push!<u8>(Section::TYPES);
     self.write_types_section(section_buffer);
+    WasmModule::write_uleb128(binary, section_buffer.size);
+    binary.append(section_buffer);
+
+    binary.push!<u8>(Section::IMPORTS);
+    self.write_imports_section(section_buffer);
     WasmModule::write_uleb128(binary, section_buffer.size);
     binary.append(section_buffer);
 
@@ -139,12 +158,41 @@ fn WasmModule::write_types_section(&self, out: &Vec::u8) {
     };
 };
 
+fn WasmModule::write_imports_section(&self, out: &Vec::u8) {
+    WasmModule::write_uleb128(out, self.imports.size);
+    for i in 0..self.imports.size {
+        let import_ = self.imports.get!<WasmImport>(i);
+
+        WasmModule::write_uleb128(out, import_.module_name.size);
+        out.push_all(import_.module_name.data as &void, import_.module_name.size);
+
+        WasmModule::write_uleb128(out, import_.item_name.size);
+        out.push_all(import_.item_name.data as &void, import_.item_name.size);
+
+        out.push!<u8>(import_.item_type as u8);
+
+        WasmModule::write_uleb128(out, import_.item_index);
+    };
+};
+
 fn WasmModule::write_functions_section(&self, out: &Vec::u8) {
     WasmModule::write_uleb128(out, self.functions.size);
     for i in 0..self.functions.size {
         let fn_index = self.functions.get!<u32>(i);
 
         WasmModule::write_uleb128(out, fn_index);
+    };
+};
+
+fn WasmModule::write_exports_section(&self, out: &Vec::u8) {
+    WasmModule::write_uleb128(out, self.exports.size);
+    for i in 0..self.exports.size {
+        let export_ = self.exports.get!<WasmExport>(i);
+
+        WasmModule::write_uleb128(out, export_.name.size);
+        out.push_all(export_.name.data as &void, export_.name.size);
+        out.push!<u8>(export_.item_type as u8);
+        WasmModule::write_uleb128(out, export_.item_index);
     };
 };
 
@@ -180,18 +228,6 @@ fn WasmModule::write_code_section(&self, out: &Vec::u8) {
 
         WasmModule::write_uleb128(out, code_buffer.size);
         out.append(code_buffer);
-    };
-};
-
-fn WasmModule::write_exports_section(&self, out: &Vec::u8) {
-    WasmModule::write_uleb128(out, self.exports.size);
-    for i in 0..self.exports.size {
-        let export_ = self.exports.get!<WasmExport>(i);
-
-        WasmModule::write_uleb128(out, export_.name.size);
-        out.push_all(export_.name.data as &void, export_.name.size);
-        out.push!<u8>(export_.item_type as u8);
-        WasmModule::write_uleb128(out, export_.item_index);
     };
 };
 

@@ -59,8 +59,14 @@ fn goal2(ctx: &LoContext) {
 
         ctx.wasm_module.types.push!<WasmFnType>(fd_write_fn_type);
 
-        // TODO:
-        // (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
+        let fd_write_import = WasmImport {
+            module_name: String::from_str("wasi_snapshot_preview1"),
+            item_name: String::from_str("fd_write"),
+            item_type: WasmImportType::Fn,
+            item_index: 0, // index of fd_write_fn_type
+        };
+
+        ctx.wasm_module.imports.push!<WasmImport>(fd_write_import);
 
     // _start
         let _start_fn_type = WasmFnType {
@@ -102,7 +108,7 @@ fn goal2(ctx: &LoContext) {
         ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
             name: String::from_str("_start"),
             item_type: WasmExportType::Fn,
-            item_index: 0,
+            item_index: 0, // index of _start function
         });
 
     // TODO:
