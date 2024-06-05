@@ -1,13 +1,51 @@
 include "../std.lo";
+include "../fs.lo";
 
 include "./wasm.lo";
 
+struct LoError {
+    message: &String,
+};
+
+type Vec::LoIncludedFile = Vec;
+struct LoIncludedFile {
+    path: &String,
+    contents: &String,
+};
+
 struct LoContext {
+    included_files: &Vec::LoIncludedFile,
     wasm_module: &WasmModule,
 };
 
 fn LoContext::new(): &LoContext {
     return heap::new!<LoContext>(LoContext {
+        included_files: Vec::new!<LoIncludedFile>(),
         wasm_module: WasmModule::new(),
     });
+};
+
+fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
+    let file_contents = fs::read_file(file_path) catch err {
+        let message = String::from_str("Cannot include file: ");
+        message.push_all(file_path.data as &void, file_path.size);
+        message.push!<u8>('\n' as u8);
+
+        throw heap::new!<LoError>(LoError {
+            message: message,
+        });
+    };
+
+    self.included_files.push!<LoIncludedFile>(LoIncludedFile {
+        path: String::from_str(file_path),
+        contents: file_contents,
+    });
+
+    // TODO: parse file
+
+    return self.included_files.size - 1;
+};
+
+fn LoContext::get_file(&self, file_index: u32): &LoIncludedFile {
+    return self.included_files.at!<LoIncludedFile>(file_index);
 };
