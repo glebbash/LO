@@ -22,5 +22,13 @@ fn LoParser::parse_file_tokens(
 ): void throws &LoError {
     eputs("Lexer created ");
     eprint_u32(tokens.tokens.size);
-    eputs(" tokens\n");
+    eputs(" tokens:\n");
+
+    for i in 0..tokens.tokens.size {
+        let t = tokens.tokens.get!<&LoToken>(i);
+        eprint_u32(t.type_ as u32);
+        eputs(" : ");
+        eputs(t.repr);
+        eputs("\n");
+    };
 };

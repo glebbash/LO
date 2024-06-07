@@ -1,4 +1,5 @@
 include "./utils.lo";
+include "../print.lo";
 
 type LoTokenType = u8;
 const LoTokenType::StringLiteral = 0 as u8;
@@ -11,7 +12,8 @@ const LoTokenType::Operator      = 5 as u8;
 type Vec::LoToken = Vec;
 struct LoToken {
     type_: LoTokenType,
-    value: &String, // TODO: use `repr: str` + `value: &void` ?
+    repr: str,
+    value: &void,
     loc: LoLocation,
 };
 
@@ -27,7 +29,8 @@ fn LoTokenStream::new(tokens: &Vec::LoToken, eof_location: LoLocation): &LoToken
         index: 0,
         terminal_token: LoToken {
             type_: LoTokenType::Symbol,
-            value: String::from_str("<EOF>"),
+            repr: "<EOF>",
+            value: 0 as &void,
             loc: eof_location,
         },
     });
@@ -35,17 +38,17 @@ fn LoTokenStream::new(tokens: &Vec::LoToken, eof_location: LoLocation): &LoToken
 
 struct LoLexer {
     file_index: u32,
-    file_contents: str,
+    chars: str,
     index: u32,
     line: u32,
     col: u32,
     was_newline: bool,
 };
 
-fn LoLexer::new(file_index: u32, file_contents: str): &LoLexer {
+fn LoLexer::new(file_index: u32, chars: str): &LoLexer {
     return heap::new!<LoLexer>(LoLexer {
         file_index: file_index,
-        file_contents: file_contents,
+        chars: chars,
         index: 0,
         line: 1,
         col: 1,
@@ -60,7 +63,7 @@ fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
 
     // TODO: support while?
     loop {
-        if self.index >= self.file_contents.size {
+        if self.index >= self.chars.size {
             break;
         };
 
@@ -78,11 +81,18 @@ fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
 
 type LexResult = &LoToken throws &LoError;
 
-// TODO: implement
 fn LoLexer::lex_token(&self): LexResult {
     let char = self.current_char() catch err {
         throw err;
     };
+
+    if LoLexer::is_symbol_char(char) {
+        return self.lex_symbol() catch err {
+            throw err;
+        };
+    };
+
+    // TODO: lex other tokens
 
     let message = String::from_str("Unexpected char: ");
     message.push!<u8>(char);
@@ -93,17 +103,109 @@ fn LoLexer::lex_token(&self): LexResult {
     });
 };
 
-// TODO: implement
-fn LoLexer::skip_space(&self) {
+fn LoLexer::lex_symbol(&self): LexResult {
+    let loc = self.loc();
 
+    loop {
+        let char = self.current_char() catch err {
+            throw err;
+        };
+
+        if !LoLexer::is_symbol_char(char) {
+            break;
+        };
+
+        self.next_char();
+    };
+
+    loc.end_pos = self.pos();
+
+    return heap::new!<LoToken>(LoToken {
+        type_: LoTokenType::Symbol,
+        repr: self.chars.slice(loc.pos.offset, self.index),
+        value: 0 as &void,
+        loc: loc,
+    });
+};
+
+fn LoLexer::skip_space(&self) {
+    let char = '\0' as u8;
+    loop {
+        char = self.current_char() catch _ {
+            return;
+        };
+
+        if !LoLexer::is_space_char(char) {
+            break;
+        };
+
+        self.next_char();
+    };
+
+    // skip comment
+    if char == '/' as u8 {
+        let next = self.peek_next_char() catch _ {
+            return;
+        };
+
+        if next != '/' as u8 {
+            return;
+        };
+
+        loop {
+            self.next_char();
+
+            char = self.current_char() catch _ {
+                return;
+            };
+
+            if char == '\n' as u8 {
+                self.skip_space();
+                break;
+            };
+        };
+    };
+};
+
+fn LoLexer::next_char(&self) {
+    self.index += 1;
+
+    let char = self.current_char() catch _ {
+        return;
+    };
+
+    self.col += 1;
+
+    if char == '\n' as u8 {
+        if self.was_newline {
+            self.line += 1;
+        };
+        self.was_newline = true;
+        return;
+    };
+
+    if self.was_newline {
+        self.line += 1;
+        self.col = 1;
+        self.was_newline = false;
+        return;
+    };
 };
 
 fn LoLexer::current_char(&self): u8 throws &LoError {
-    if self.index >= self.file_contents.size {
+    if self.index >= self.chars.size {
         throw self.err_unexpected_eof();
     };
 
-    return self.file_contents.char_at(self.index);
+    return self.chars.char_at(self.index);
+};
+
+fn LoLexer::peek_next_char(&self): u8 throws &LoError {
+    if self.index + 1 >= self.chars.size {
+        throw self.err_unexpected_eof();
+    };
+
+    return self.chars.char_at(self.index + 1);
 };
 
 fn LoLexer::err_unexpected_eof(&self): &LoError {
@@ -127,4 +229,18 @@ fn LoLexer::pos(&self): LoPosition {
         line: self.line,
         col: self.col,
     };
+};
+
+fn LoLexer::is_space_char(char: u8): bool {
+    return char == ' '  as u8
+        || char == '\n' as u8
+        || char == '\t' as u8
+        || char == '\r' as u8;
+};
+
+fn LoLexer::is_symbol_char(char: u8): bool {
+    return (char >= 'a' as u8 && char <= 'z' as u8)
+        || (char >= 'A' as u8 && char <= 'Z' as u8)
+        || (char >= '0' as u8 && char <= '9' as u8)
+        || char == '_' as u8;
 };

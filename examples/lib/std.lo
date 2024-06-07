@@ -471,13 +471,24 @@
     };
 
     fn str::skip_chars(self, char_count: u32): str {
-        if self.size < char_count {
+        if char_count >= self.size {
             return self;
         };
 
         return str {
             data: (self.data as u32 + char_count) as &*u8,
             size: self.size - char_count
+        };
+    };
+
+    fn str::slice(self, start: u32, end: u32): str {
+        if start >= self.size || end >= self.size || start > end {
+            return self;
+        };
+
+        return str {
+            data: (self.data as u32 + start) as &*u8,
+            size: end - start
         };
     };
 
