@@ -1231,21 +1231,24 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             tokens,
         )?;
 
-        let else_branch = if let Some(_) = tokens.eat(Symbol, "else")? {
-            Some(parse_block(
-                &mut BlockContext {
-                    module: ctx.module,
-                    fn_ctx: ctx.fn_ctx,
-                    block: Block {
-                        parent: Some(&ctx.block),
-                        ..Default::default()
+        let mut else_branch = None;
+        if let Some(_) = tokens.eat(Symbol, "else")? {
+            if tokens.next_is(Symbol, "if")? {
+                else_branch = Some(vec![parse_expr(ctx, tokens, 0)?]);
+            } else {
+                else_branch = Some(parse_block(
+                    &mut BlockContext {
+                        module: ctx.module,
+                        fn_ctx: ctx.fn_ctx,
+                        block: Block {
+                            parent: Some(&ctx.block),
+                            ..Default::default()
+                        },
                     },
-                },
-                tokens,
-            )?)
-        } else {
-            None
-        };
+                    tokens,
+                )?)
+            }
+        }
 
         return Ok(LoInstr::If {
             block_type: LoType::Void,

@@ -15,7 +15,7 @@ fn main() {
     let file_name = args.get(1);
     if file_name.equals("--goal1") {
         goal1(ctx);
-    } else {if file_name.equals("--goal2") {
+    } else if file_name.equals("--goal2") {
         goal2(ctx);
     } else {
         let _ = ctx.include_file(args.get(1)) catch err {
@@ -30,7 +30,7 @@ fn main() {
             eputs("\n");
             wasi::proc_exit(1);
         };
-    };};
+    };
 
     let binary = Vec::new!<u8>();
     defer binary.free();
