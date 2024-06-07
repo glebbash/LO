@@ -2332,9 +2332,12 @@ fn parse_postfix(
             )
             .unwrap(); // safe
 
-            let (bind_ok_instr, ok_value) = if *ok_type != LoType::Void {
+            let mut bind_ok_instr = LoInstr::NoInstr;
+            let mut ok_value = LoInstr::NoInstr;
+
+            if *ok_type != LoType::Void {
                 let tmp_ok_local_name = "<ok>";
-                let bind_ok_instr = define_local(
+                bind_ok_instr = define_local(
                     catch_ctx,
                     &LoToken {
                         value: tmp_ok_local_name.into(),
@@ -2343,7 +2346,7 @@ fn parse_postfix(
                     LoInstr::NoInstr, // pop ok value from the stack
                     *ok_type.clone(),
                 )?;
-                let ok_value = compile_local_get(
+                ok_value = compile_local_get(
                     ctx.module,
                     catch_ctx
                         .block
@@ -2353,10 +2356,6 @@ fn parse_postfix(
                     &ok_type,
                 )
                 .unwrap(); // safe
-
-                (bind_ok_instr, ok_value)
-            } else {
-                (LoInstr::NoInstr, LoInstr::NoInstr)
             };
 
             LoInstr::MultiValueEmit {
