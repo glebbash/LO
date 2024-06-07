@@ -1,0 +1,26 @@
+include "./core.lo";
+include "./lexer.lo";
+
+struct LoParser {};
+
+fn LoParser::parse_file(
+    ctx: &LoContext, file_index: u32, file_contents: str
+): void throws &LoError {
+    let lexer = LoLexer::new(file_index, file_contents);
+    let tokens = lexer.lex_all() catch err {
+        throw err;
+    };
+
+    LoParser::parse_file_tokens(ctx, tokens) catch err {
+        throw err;
+    };
+};
+
+// TODO: implement
+fn LoParser::parse_file_tokens(
+    ctx: &LoContext, tokens: &LoTokenStream
+): void throws &LoError {
+    eputs("Lexer created ");
+    eprint_u32(tokens.tokens.size);
+    eputs(" tokens\n");
+};

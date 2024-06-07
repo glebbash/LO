@@ -1,0 +1,130 @@
+include "./utils.lo";
+
+type LoTokenType = u8;
+const LoTokenType::StringLiteral = 0 as u8;
+const LoTokenType::CharLiteral   = 1 as u8;
+const LoTokenType::IntLiteral    = 2 as u8;
+const LoTokenType::Symbol        = 3 as u8;
+const LoTokenType::Delim         = 4 as u8;
+const LoTokenType::Operator      = 5 as u8;
+
+type Vec::LoToken = Vec;
+struct LoToken {
+    type_: LoTokenType,
+    value: &String, // TODO: use `repr: str` + `value: &void` ?
+    loc: LoLocation,
+};
+
+struct LoTokenStream {
+    tokens: &Vec::LoToken,
+    index: u32,
+    terminal_token: LoToken,
+};
+
+fn LoTokenStream::new(tokens: &Vec::LoToken, eof_location: LoLocation): &LoTokenStream {
+    return heap::new!<LoTokenStream>(LoTokenStream {
+        tokens: tokens,
+        index: 0,
+        terminal_token: LoToken {
+            type_: LoTokenType::Symbol,
+            value: String::from_str("<EOF>"),
+            loc: eof_location,
+        },
+    });
+};
+
+struct LoLexer {
+    file_index: u32,
+    file_contents: str,
+    index: u32,
+    line: u32,
+    col: u32,
+    was_newline: bool,
+};
+
+fn LoLexer::new(file_index: u32, file_contents: str): &LoLexer {
+    return heap::new!<LoLexer>(LoLexer {
+        file_index: file_index,
+        file_contents: file_contents,
+        index: 0,
+        line: 1,
+        col: 1,
+        was_newline: false,
+    });
+};
+
+fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
+    let tokens = Vec::new!<&LoToken>();
+
+    self.skip_space();
+
+    // TODO: support while?
+    loop {
+        if self.index >= self.file_contents.size {
+            break;
+        };
+
+        // TODO: tokens could be a Vec of structs instead of references
+        //   but there is a bug with `<struct> throws *` types
+        tokens.push!<&LoToken>(self.lex_token() catch err {
+            throw err;
+        });
+
+        self.skip_space();
+    };
+
+    return LoTokenStream::new(tokens, self.loc());
+};
+
+type LexResult = &LoToken throws &LoError;
+
+// TODO: implement
+fn LoLexer::lex_token(&self): LexResult {
+    let char = self.current_char() catch err {
+        throw err;
+    };
+
+    let message = String::from_str("Unexpected char: ");
+    message.push!<u8>(char);
+
+    throw heap::new!<LoError>(LoError {
+        message: message,
+        loc: self.loc(),
+    });
+};
+
+// TODO: implement
+fn LoLexer::skip_space(&self) {
+
+};
+
+fn LoLexer::current_char(&self): u8 throws &LoError {
+    if self.index >= self.file_contents.size {
+        throw self.err_unexpected_eof();
+    };
+
+    return self.file_contents.char_at(self.index);
+};
+
+fn LoLexer::err_unexpected_eof(&self): &LoError {
+    return heap::new!<LoError>(LoError {
+        message: String::from_str("ParseError: Unexpected EOF"),
+        loc: self.loc(),
+    });
+};
+
+fn LoLexer::loc(&self): LoLocation {
+    return LoLocation {
+        file_index: self.file_index,
+        pos: self.pos(),
+        end_pos: self.pos(),
+    };
+};
+
+fn LoLexer::pos(&self): LoPosition {
+    return LoPosition {
+        offset: self.index,
+        line: self.line,
+        col: self.col,
+    };
+};

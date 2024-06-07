@@ -52,7 +52,10 @@ fn fs::_unlock() {
     err = wasi::fd_prestat_dir_name(fs::CWD_PREOPEN_FD, dir_path, prestat.pr_name_len);
     if err != wasi::Err::SUCCESS { return; };
 
-    let fdstat = tmp_alloc!<wasi::fdstat>();
+    let fdstat = mem::align_to(
+        tmp_alloc_many!<wasi::fdstat>(2) as u32,
+        8 // alignment forced by wasmtime
+    ) as &wasi::fdstat;
     err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat);
     if err != wasi::Err::SUCCESS { return; };
 

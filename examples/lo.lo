@@ -19,7 +19,15 @@ fn main() {
         goal2(ctx);
     } else {
         let _ = ctx.include_file(args.get(1)) catch err {
+            let file = ctx.included_files.get!<LoIncludedFile>(err.loc.file_index);
+            eprint_str(file.path as &str);
+            eputs(":");
+            eprint_u32(err.loc.pos.line);
+            eputs(":");
+            eprint_u32(err.loc.pos.col);
+            eputs(" - ");
             eprint_str(err.message as &str);
+            eputs("\n");
             wasi::proc_exit(1);
         };
     };};

@@ -1,11 +1,8 @@
 include "../std.lo";
 include "../fs.lo";
 
+include "./utils.lo";
 include "./wasm.lo";
-
-struct LoError {
-    message: &String,
-};
 
 type Vec::LoIncludedFile = Vec;
 struct LoIncludedFile {
@@ -25,6 +22,11 @@ fn LoContext::new(): &LoContext {
     });
 };
 
+// this is kinda ugly but parser depends on LoContext
+// so it must be defined before parser
+// TODO: is there a clean way to resolve this?
+include "./parser.lo";
+
 fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
     let file_contents = fs::read_file(file_path) catch err {
         let message = String::from_str("Cannot include file: ");
@@ -33,6 +35,7 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
 
         throw heap::new!<LoError>(LoError {
             message: message,
+            loc: LoLocation::internal(),
         });
     };
 
@@ -41,9 +44,13 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
         contents: file_contents,
     });
 
-    // TODO: parse file
+    let file_index = self.included_files.size - 1;
 
-    return self.included_files.size - 1;
+    LoParser::parse_file(self, file_index, str::from_string(file_contents)) catch err {
+        throw err;
+    };
+
+    return file_index;
 };
 
 fn LoContext::get_file(&self, file_index: u32): &LoIncludedFile {
