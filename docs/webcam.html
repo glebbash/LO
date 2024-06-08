@@ -1,13 +1,11 @@
 /* <!--
-    webcam.html
-
-    Webcam viewer that is a small Node.js script and an HTML page.
+    webcam.html is a small Node.js script and an HTML page.
 
     It will stream your webcam feed to a video element.
-    You can then use picture-in-picture mode
-    to show your webcam over other windows.
 
-    You can also crop and flip the image using the controls on the page.
+    You can crop the image using the controls on the page.
+    You can then use picture-in-picture mode
+        to show your webcam above other windows.
 
     Run it with: `node webcam.html`
 */
@@ -27,28 +25,26 @@ require('http').createServer(async (_, res) => {
 /* -->
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cam</title>
+<title>Webcam</title>
 
 <button id="stopWebcam">Stop</button>
-<button id="flipX">Flip X</button>
 <span id="display"></span>
 <br>
 X:
-<input type="range" id="xStart" min="0" max="50" style="direction: rtl">
-<input type="range" id="xEnd" min="50" max="100">
+<input type="range" id="xEnd" min="50" max="100" style="direction: rtl">
+<input type="range" id="xStart" min="0" max="50">
 <br>
 Y:
 <input type="range" id="yStart" min="0" max="50" style="direction: rtl">
 <input type="range" id="yEnd" min="50" max="100">
 <br>
 
-<canvas id="videoTransform" width="640" height="480" style="display: none"></canvas>
 <video id="videoIn" width="640" height="480" style="display: none"></video>
 <video id="videoOut" width="640" height="480" controls autoplay></video>
+<canvas id="videoTransform" width="640" height="480" style="display: none"></canvas>
 
 <script type="module">
     const state = {
-        flipX: true,
         xStart: 0,
         xEnd: 100,
         yStart: 0,
@@ -57,7 +53,6 @@ Y:
 
     const ui = {
         stopWebcam: document.querySelector("#stopWebcam"),
-        flipX: document.querySelector("#flipX"),
         xStart: document.querySelector("#xStart"),
         xEnd: document.querySelector("#xEnd"),
         yStart: document.querySelector("#yStart"),
@@ -74,8 +69,7 @@ Y:
         localStorage.setItem('state', JSON.stringify(state));
 
         ui.display.textContent = `${state.xStart}..${state.xEnd}`
-            + ` x ${state.yStart}..${state.yEnd}`
-            + (state.flipX ? ' flipX' : '');
+            + ` x ${state.yStart}..${state.yEnd}`;
 
         ui.xStart.value = 50 - state.xStart;
         ui.xEnd.value = state.xEnd;
@@ -91,8 +85,6 @@ Y:
     ui.stopWebcam.addEventListener('click', () => {
         stream.getVideoTracks()[0].stop();
     });
-
-    ui.flipX.addEventListener('click', () => updateState({ flipX: !state.flipX }));
 
     ui.xStart.addEventListener('input', (e) => updateState({ xStart: 50 - e.target.value }));
     ui.yStart.addEventListener('input', (e) => updateState({ yStart: 50 - e.target.value }));
@@ -130,13 +122,10 @@ Y:
 
         ctx.clearRect(0, 0, ctx.width, ctx.height);
 
-        if (state.flipX) {
-            ctx.scale(-1, 1);
-        }
-
+        ctx.scale(-1, 1);
         ctx.drawImage(ui.videoIn,
             cropXStart, cropYStart, newWidth, newHeight,
-            0, 0, state.flipX ? -newWidth : newWidth, newHeight,
+            0, 0, -newWidth, newHeight,
         );
 
         requestAnimationFrame(renderWebcamFeed);
