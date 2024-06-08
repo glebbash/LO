@@ -15,9 +15,11 @@
 const fs = require('fs');
 
 require('http').createServer(async (_, res) => {
-    const html = fs.readFileSync(__filename);
+    let html = fs.readFileSync(__filename, 'utf8');
+    html = html.slice(html.indexOf('/*') + 2, html.lastIndexOf('*/'));
+
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(html.slice(html.indexOf('/*') + 2, html.lastIndexOf('*/')));
+    res.end(html);
 }).listen(6942, () => {
     console.log('View Cam on http://localhost:6942');
 });
