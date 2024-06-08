@@ -1,0 +1,117 @@
+/* <div style="display: none;"> */
+const fs = require('node:fs');
+
+require('node:http').createServer(async (_, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(__filename).slice(2, -2));
+}).listen(6942, () => {
+    console.log('View Cam on http://localhost:6942');
+});
+
+/*
+</div>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cam</title>
+
+<video id="video" width="640" height="480" style="display: none"></video>
+<canvas id="videoCanvas" width="640" height="480" style="display: none"></canvas>
+<video id="outputVideo" width="640" height="480" controls autoplay></video>
+
+<button id="flipButton">Flip X</button>
+<br>
+<input type="range" id="startX" min="0" max="50" value="50" style="direction: rtl">
+<input type="range" id="endX" min="50" max="100" value="100">
+<span>X: </span><span id="startXValue">0</span>..<span id="endXValue">100</span>
+<br>
+<input type="range" id="startY" min="0" max="50" value="50" style="direction: rtl">
+<input type="range" id="endY" min="50" max="100" value="100">
+<span>Y: </span><span id="startYValue">0</span>..<span id="endYValue">100</span>
+
+<script type="module">
+    let flip = true;
+    let startX = localStorage.getItem('startX') ? parseInt(localStorage.getItem('startX')) : 0;
+    let endX = localStorage.getItem('endX') ? parseInt(localStorage.getItem('endX')) : 100;
+    let startY = localStorage.getItem('startY') ? parseInt(localStorage.getItem('startY')) : 0;
+    let endY = localStorage.getItem('endY') ? parseInt(localStorage.getItem('endY')) : 100;
+
+    document.getElementById('startX').value = 50 - startX;
+    document.getElementById('endX').value = endX;
+    document.getElementById('startY').value = 50 - startY;
+    document.getElementById('endY').value = endY;
+
+    document.getElementById('startXValue').textContent = startX;
+    document.getElementById('endXValue').textContent = endX;
+    document.getElementById('startYValue').textContent = startY;
+    document.getElementById('endYValue').textContent = endY;
+
+    document.getElementById('flipButton').addEventListener('click', () => {
+        flip = !flip;
+    });
+
+    document.getElementById('startX').addEventListener('input', (event) => {
+        startX = 50 - event.target.value;
+        localStorage.setItem('startX', startX);
+        document.getElementById('startXValue').textContent = startX;
+    });
+
+    document.getElementById('endX').addEventListener('input', (event) => {
+        endX = event.target.value;
+        localStorage.setItem('endX', endX);
+        document.getElementById('endXValue').textContent = endX;
+    });
+
+    document.getElementById('startY').addEventListener('input', (event) => {
+        startY = 50 - event.target.value;
+        localStorage.setItem('startY', startY);
+        document.getElementById('startYValue').textContent = startY;
+    });
+
+    document.getElementById('endY').addEventListener('input', (event) => {
+        endY = event.target.value;
+        localStorage.setItem('endY', endY);
+        document.getElementById('endYValue').textContent = endY;
+    });
+
+    const videoElement = document.getElementById('video');
+    const videoCanvas = document.getElementById('videoCanvas');
+    const outputVideo = document.getElementById('outputVideo');
+    const videoContext = videoCanvas.getContext('2d');
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    videoElement.srcObject = stream;
+    videoElement.play();
+
+    videoElement.onloadedmetadata = () => {
+        videoCanvas.width = videoElement.videoWidth;
+        videoCanvas.height = videoElement.videoHeight;
+
+        outputVideo.srcObject = videoCanvas.captureStream();
+
+        renderVideo();
+    };
+
+    function renderVideo() {
+        videoContext.clearRect(0, 0, videoCanvas.width, videoCanvas.height);
+        videoContext.drawImage(videoElement, 0, 0, videoCanvas.width, videoCanvas.height);
+
+        if (flip) {
+            videoContext.save();
+            videoContext.scale(-1, 1);
+            videoContext.drawImage(videoElement, -videoCanvas.width, 0, videoCanvas.width, videoCanvas.height);
+            videoContext.restore();
+        }
+
+        const cropStartX = (startX / 100) * videoCanvas.width;
+        const cropEndX = (endX / 100) * videoCanvas.width;
+        const cropStartY = (startY / 100) * videoCanvas.height;
+        const cropEndY = (endY / 100) * videoCanvas.height;
+        const cropWidth = cropEndX - cropStartX;
+        const cropHeight = cropEndY - cropStartY;
+
+        videoContext.drawImage(videoCanvas, cropStartX, cropStartY, cropWidth, cropHeight, 0, 0, videoCanvas.width, videoCanvas.height);
+
+        requestAnimationFrame(renderVideo);
+    }
+</script>
+*/
