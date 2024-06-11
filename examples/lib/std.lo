@@ -443,6 +443,21 @@
         return str { data: value.data as &u8, size: value.size };
     };
 
+
+    fn str::from_cstr(value: &*u8): str {
+        let len = 0;
+
+        loop {
+            if *((value as u32 + len) as &u8) == 0 as u8 {
+                break;
+            };
+
+            len += 1;
+        };
+
+        return str { data: value, size: len };
+    };
+
     fn str::char_at(self, index: u32): u8 {
         return *((self.data as u32 + index) as &u8);
     };
@@ -548,18 +563,4 @@
         output.reverse_range(start_size, output.size - 1);
 
         return output;
-    };
-
-    fn cstr_to_str(value: &*u8): str {
-        let len = 0;
-
-        loop {
-            if *((value as u32 + len) as &u8) == 0 as u8 {
-                break;
-            };
-
-            len += 1;
-        };
-
-        return str { data: value, size: len };
     };

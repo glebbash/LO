@@ -32,7 +32,7 @@ fn Args::get(self, i: u32): str {
     };
 
     let arg = *((self.argv as u32 + i * sizeof &*u8) as &*&*u8);
-    return cstr_to_str(arg);
+    return str::from_cstr(arg);
 };
 
 fn Args::free(self) {
