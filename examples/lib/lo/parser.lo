@@ -26,6 +26,8 @@ fn LoParser::parse_file_tokens(
 
     for i in 0..tokens.tokens.size {
         let t = tokens.tokens.get!<&LoToken>(i);
+        ctx.print_loc(t.loc);
+        eputs(" - ");
         eprint_u32(t.type_ as u32);
         eputs(" : ");
         eputs(t.repr);

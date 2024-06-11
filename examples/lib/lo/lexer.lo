@@ -131,7 +131,8 @@ fn LoLexer::lex_symbol(&self): LexResult {
 fn LoLexer::skip_space(&self) {
     let char = '\0' as u8;
     loop {
-        char = self.current_char() catch _ {
+        char = self.current_char() catch err {
+            err.free();
             return;
         };
 
@@ -144,7 +145,8 @@ fn LoLexer::skip_space(&self) {
 
     // skip comment
     if char == '/' as u8 {
-        let next = self.peek_next_char() catch _ {
+        let next = self.peek_next_char() catch err {
+            err.free();
             return;
         };
 
@@ -155,7 +157,8 @@ fn LoLexer::skip_space(&self) {
         loop {
             self.next_char();
 
-            char = self.current_char() catch _ {
+            char = self.current_char() catch err {
+                err.free();
                 return;
             };
 
@@ -170,7 +173,8 @@ fn LoLexer::skip_space(&self) {
 fn LoLexer::next_char(&self) {
     self.index += 1;
 
-    let char = self.current_char() catch _ {
+    let char = self.current_char() catch err {
+        err.free();
         return;
     };
 

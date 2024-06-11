@@ -22,6 +22,16 @@ fn LoContext::new(): &LoContext {
     });
 };
 
+// TODO: this is prob temporary
+fn LoContext::print_loc(&self, loc: LoLocation) {
+    let file = self.included_files.get!<LoIncludedFile>(loc.file_index);
+    eprint_str(file.path as &str);
+    eputs(":");
+    eprint_u32(loc.pos.line);
+    eputs(":");
+    eprint_u32(loc.pos.col);
+};
+
 // this is kinda ugly but parser depends on LoContext
 // so it must be defined before parser
 // TODO: is there a clean way to resolve this?

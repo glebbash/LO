@@ -24,3 +24,7 @@ struct LoError {
     message: &String,
     loc: LoLocation,
 };
+
+fn LoError::free(&self) {
+    self.message.free();
+};
