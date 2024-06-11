@@ -181,7 +181,10 @@ fn LoLexer::next_char(&self) {
     self.col += 1;
 
     if char == '\n' as u8 {
-        if self.was_newline {
+        // NOTE(edge case): when first character is encountered
+        //  was_newline is not true but rather undefined,
+        //  thus we don't bump the line count
+        if self.index != 0 && self.was_newline {
             self.line += 1;
         };
         self.was_newline = true;
