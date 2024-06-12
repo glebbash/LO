@@ -14,6 +14,7 @@ fn main() {
     let tokens = lexer.lex_all() catch err {
         wasi::proc_exit(1);
     };
+    defer tokens.free();
 
     for i in 0..tokens.tokens.size {
         let t = tokens.tokens.get!<&LoToken>(i);
@@ -37,7 +38,5 @@ fn main() {
         };
 
         puts("\n");
-
-        t.free();
     };
 };

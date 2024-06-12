@@ -46,6 +46,15 @@ fn LoTokenStream::new(tokens: &Vec::LoToken, eof_location: LoLocation): &LoToken
     });
 };
 
+fn LoTokenStream::free(&self) {
+    for i in 0..self.tokens.size {
+        let t = self.tokens.get!<&LoToken>(i);
+        t.free();
+    };
+
+    heap::free(self as &void);
+};
+
 struct LoLexer {
     file_index: u32,
     chars: str,
