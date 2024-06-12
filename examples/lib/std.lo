@@ -437,6 +437,10 @@
         return string;
     };
 
+    fn String::append_str(&self, value: str) {
+        self.push_all(value.data as &void, value.size);
+    };
+
 // str utils
 
     fn str::from_string(value: &String): str {
@@ -483,6 +487,10 @@
         };
 
         return true;
+    };
+
+    fn str::starts_with(self, other: str): bool {
+        return self.slice(0, other.size).equals(other);
     };
 
     fn str::skip_chars(self, char_count: u32): str {
@@ -567,4 +575,10 @@
         output.reverse_range(start_size, output.size - 1);
 
         return output;
+    };
+
+// array utils
+
+    macro array_at!<T>(array: &*T, index: u32): &T {
+        (array as u32 + index * sizeof T) as &T;
     };
