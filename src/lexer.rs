@@ -187,6 +187,7 @@ impl Lexer {
         if char.is_numeric() {
             return self.lex_int_literal();
         }
+        // NOTE: must be after int because is_symbol_char matches digits
         if is_symbol_char(char) {
             return self.lex_symbol();
         }
@@ -370,17 +371,39 @@ impl Lexer {
         let mut loc = self.loc();
         let mut value = String::new();
 
-        'adding_chars: loop {
+        loop {
             value.push(self.current_char()?);
+
+            let mut is_start_of_operator = false;
             for operator in OPERATORS {
                 if operator.starts_with(&value) {
-                    self.next_char();
-                    continue 'adding_chars;
+                    is_start_of_operator = true;
+                    break;
                 }
             }
-            value.pop();
-            break;
+
+            if !is_start_of_operator {
+                value.pop();
+                break;
+            };
+
+            self.next_char();
         }
+
+        let mut matched_fully = false;
+        for operator in OPERATORS {
+            if operator == &value {
+                matched_fully = true;
+                break;
+            }
+        }
+
+        if !matched_fully {
+            return Err(LoError {
+                message: format!("Unexpected char: '{}'", self.current_char()?),
+                loc,
+            });
+        };
 
         loc.end_pos = self.pos();
 

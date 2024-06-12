@@ -274,7 +274,7 @@ fn parse_top_level_expr(
         let bytes = if let Some(data) = tokens.eat_any(StringLiteral)? {
             data.value.as_bytes().iter().map(|b| *b).collect()
         } else {
-            parse_const_byte_sequence(ctx, tokens)?
+            parse_const_sequence(ctx, tokens)?.1
         };
 
         let mut instrs = vec![];
@@ -991,11 +991,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(_) = tokens.eat(Delim, "[")? {
-        let bytes = parse_const_byte_sequence(ctx.module, tokens)?;
+        let (item_type, bytes) = parse_const_sequence(ctx.module, tokens)?;
         let bytes_ptr = ctx.module.append_data(bytes);
 
         return Ok(
-            LoInstr::U32Const { value: bytes_ptr }.casted(LoType::Pointer(Box::new(LoType::U8)))
+            LoInstr::U32Const { value: bytes_ptr }.casted(LoType::Pointer(Box::new(item_type)))
         );
     }
 
@@ -2765,11 +2765,11 @@ fn parse_const_primary(
     }
 
     if let Some(_) = tokens.eat(Delim, "[")? {
-        let bytes = parse_const_byte_sequence(ctx, tokens)?;
+        let (item_type, bytes) = parse_const_sequence(ctx, tokens)?;
         let bytes_ptr = ctx.append_data(bytes);
 
         return Ok(
-            LoInstr::U32Const { value: bytes_ptr }.casted(LoType::Pointer(Box::new(LoType::U8)))
+            LoInstr::U32Const { value: bytes_ptr }.casted(LoType::Pointer(Box::new(item_type)))
         );
     }
 
@@ -2975,32 +2975,54 @@ fn parse_const_str(
     }))
 }
 
-fn parse_const_byte_sequence(
+// TODO: this isn't great
+fn parse_const_sequence(
     ctx: &ModuleContext,
     tokens: &mut LoTokenStream,
-) -> Result<Vec<u8>, LoError> {
+) -> Result<(LoType, Vec<u8>), LoError> {
     let item_type = parse_const_lo_type(ctx, tokens)?;
-    if item_type != LoType::U8 {
+    if item_type != LoType::U8
+        && item_type
+            != (LoType::StructInstance {
+                name: format!("str"),
+            })
+    {
         return Err(LoError {
-            message: format!("Only byte sequences are supported for now"),
+            message: format!("Unsupported sequence element type: {}", item_type),
             loc: tokens.loc().clone(),
         });
     }
+
     tokens.expect(Delim, "]")?;
 
     let mut bytes = vec![];
 
     tokens.expect(Delim, "[")?;
     while let None = tokens.eat(Delim, "]")? {
-        let byte = tokens.expect_any(IntLiteral)?;
-        bytes.push(parse_u8_literal(byte)?);
+        if item_type == LoType::U8 {
+            let byte = tokens.expect_any(IntLiteral)?;
+            bytes.push(parse_u8_literal(byte)?);
+        } else if item_type
+            == (LoType::StructInstance {
+                name: format!("str"),
+            })
+        {
+            let value = tokens.expect_any(StringLiteral)?.clone();
+            let len = value.value.len();
+            let ptr = ctx.append_data(value.value.into_bytes());
+
+            bytes.extend_from_slice(&ptr.to_le_bytes());
+            bytes.extend_from_slice(&len.to_le_bytes());
+        } else {
+            unreachable!()
+        }
 
         if !tokens.next_is(Delim, "]")? {
             tokens.expect(Delim, ",")?;
         }
     }
 
-    Ok(bytes)
+    return Ok((item_type, bytes));
 }
 
 fn parse_nested_symbol(tokens: &mut LoTokenStream) -> Result<LoToken, LoError> {
