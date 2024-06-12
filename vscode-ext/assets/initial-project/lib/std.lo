@@ -8,11 +8,12 @@
 // abort
 
     type AbortCode = u32;
-    const AbortCode::OOM               = 0;
-    const AbortCode::STACK_OVERFLOW    = 1;
-    const AbortCode::STACK_UNDERFLOW   = 2;
-    const AbortCode::VEC_OUT_OF_BOUNDS = 3;
-    const AbortCode::STACK_VECTOR_GROW = 4;
+    const AbortCode::SHOULD_NOT_HAPPEN = 0;
+    const AbortCode::OOM               = 1;
+    const AbortCode::STACK_OVERFLOW    = 2;
+    const AbortCode::STACK_UNDERFLOW   = 3;
+    const AbortCode::VEC_OUT_OF_BOUNDS = 4;
+    const AbortCode::STACK_VECTOR_GROW = 5;
 
     fn abort(abort_code: u32) {
         *(0 as &u32) = 69420; // error indicator
@@ -100,8 +101,8 @@
 
     struct stack {};
 
-    let stack::NOW = __DATA_SIZE__;
-    let stack::MIN = __DATA_SIZE__;
+    global stack::NOW = __DATA_SIZE__;
+    global stack::MIN = __DATA_SIZE__;
     const stack::MAX = 1_048_576; // 1MB, ~20 pages (65_536b)
 
     macro stack::alloc!<T>(): &T {
@@ -158,14 +159,14 @@
 
     struct heap::Block {
         size: u32,
-        used: bool,
+        used: u32, // TODO: can't use bool because wasmtime requires pointer aligments to be 4
         next: & heap::Block,
         data: &void,
     };
 
-    let heap::TOTAL_ALLOCATED = stack::MAX;
-    let heap::FIRST_BLOCK = 0 as &heap::Block;
-    let heap::CURRENT_BLOCK = 0 as &heap::Block;
+    global heap::TOTAL_ALLOCATED = stack::MAX;
+    global heap::FIRST_BLOCK = 0 as &heap::Block;
+    global heap::CURRENT_BLOCK = 0 as &heap::Block;
 
     macro heap::new!<T>(value: T): &T {
         let ref = heap::alloc!<T>();
@@ -187,7 +188,7 @@
 
         let free_block = heap::find_free_block(size);
         if free_block as u32 != 0 {
-            free_block.used = true;
+            free_block.used = true as u32;
             return free_block.data;
         };
 
@@ -198,6 +199,7 @@
 
         // grow enough memory if we are out of space
         if heap::TOTAL_ALLOCATED >= __memory_size() as u32 * mem::PAGE_SIZE {
+            // TODO: this is probably wrong
             let pages_to_grow = mem::align_to(total_size_to_alloc, mem::PAGE_SIZE);
             let grow_res = __memory_grow(pages_to_grow);
             if grow_res == (0 - 1) as i32 {
@@ -206,7 +208,7 @@
         };
 
         block.size = size;
-        block.used = true;
+        block.used = true as u32;
         block.data = (block as u32 + sizeof heap::Block) as &void;
 
         // init heap
@@ -226,7 +228,7 @@
 
     fn heap::free(ptr: &void) {
         let block = heap::get_block(ptr);
-        block.used = false;
+        block.used = false as u32;
     };
 
     fn heap::get_block(ptr: &void): &heap::Block {
@@ -238,7 +240,11 @@
         let block = heap::FIRST_BLOCK;
 
         loop {
-            if block as u32 == 0 || (!block.used && block.size >= size) {
+            if block as u32 == 0  {
+                break;
+            };
+
+            if !block.used && block.size >= size {
                 break;
             };
 
@@ -335,17 +341,14 @@
     };
 
     fn Vec::push(&self): &void {
-        self.size += 1;
-        self._grow_if_needed();
+        self._grow_to_size(self.size + 1);
 
         return self.at_unchecked(self.size - 1);
     };
 
     fn Vec::push_all(&self, items: &void, items_len: u32) {
         let old_len = self.size;
-        self.size = old_len + items_len;
-
-        self._grow_if_needed();
+        self._grow_to_size(old_len + items_len);
 
         mem::copy!(
             items,
@@ -380,8 +383,10 @@
         };
     };
 
-    fn Vec::_grow_if_needed(&self) {
-        if self.size != self.capacity {
+    fn Vec::_grow_to_size(&self, new_size: u32) {
+        self.size = new_size;
+
+        if self.size < self.capacity {
             return;
         };
 
@@ -438,6 +443,21 @@
         return str { data: value.data as &u8, size: value.size };
     };
 
+
+    fn str::from_cstr(value: &*u8): str {
+        let len = 0;
+
+        loop {
+            if *((value as u32 + len) as &u8) == 0 as u8 {
+                break;
+            };
+
+            len += 1;
+        };
+
+        return str { data: value, size: len };
+    };
+
     fn str::char_at(self, index: u32): u8 {
         return *((self.data as u32 + index) as &u8);
     };
@@ -466,7 +486,7 @@
     };
 
     fn str::skip_chars(self, char_count: u32): str {
-        if self.size < char_count {
+        if char_count >= self.size {
             return self;
         };
 
@@ -474,6 +494,21 @@
             data: (self.data as u32 + char_count) as &*u8,
             size: self.size - char_count
         };
+    };
+
+    fn str::slice(self, start: u32, end: u32): str {
+        if start >= self.size || end >= self.size || start > end {
+            return self;
+        };
+
+        return str {
+            data: (self.data as u32 + start) as &*u8,
+            size: end - start
+        };
+    };
+
+    fn char_is_numeric(char: u8): bool {
+        return char >= '0' as u8 && char <= '9' as u8;
     };
 
 // conversions
@@ -532,18 +567,4 @@
         output.reverse_range(start_size, output.size - 1);
 
         return output;
-    };
-
-    fn cstr_to_str(value: &*u8): str {
-        let len = 0;
-
-        loop {
-            if *((value as u32 + len) as &u8) == 0 as u8 {
-                break;
-            };
-
-            len += 1;
-        };
-
-        return str { data: value, size: len };
     };

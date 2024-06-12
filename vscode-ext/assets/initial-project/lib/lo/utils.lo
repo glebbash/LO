@@ -1,0 +1,30 @@
+include "../std.lo";
+
+struct LoPosition {
+    offset: u32,
+    line: u32,
+    col: u32,
+};
+
+struct LoLocation {
+    file_index: u32,
+    pos: LoPosition,
+    end_pos: LoPosition,
+};
+
+fn LoLocation::internal(): LoLocation {
+    return LoLocation {
+        file_index: 0 - 1, // TODO: have proper u32::MAX?
+        pos: LoPosition { offset: 0, line: 1, col: 1 },
+        end_pos: LoPosition { offset: 0, line: 1, col: 1 },
+    };
+};
+
+struct LoError {
+    message: &String,
+    loc: LoLocation,
+};
+
+fn LoError::free(&self) {
+    self.message.free();
+};

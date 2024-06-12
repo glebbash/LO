@@ -28,7 +28,7 @@ fn fs::read_file(file_name: str): &String throws wasi::Err {
     };
 };
 
-let fs::unlocked = false;
+global fs::unlocked = false;
 
 // https://github.com/microsoft/vscode-wasm/issues/161
 fn fs::_unlock() {

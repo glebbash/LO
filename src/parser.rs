@@ -386,7 +386,7 @@ fn parse_top_level_expr(
         return Ok(());
     }
 
-    if let Some(_) = tokens.eat(Symbol, "let")?.cloned() {
+    if let Some(_) = tokens.eat(Symbol, "global")?.cloned() {
         let mutable = true;
         let global_name = parse_nested_symbol(tokens)?;
         tokens.expect(Operator, "=")?;

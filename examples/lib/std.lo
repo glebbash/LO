@@ -101,8 +101,8 @@
 
     struct stack {};
 
-    let stack::NOW = __DATA_SIZE__;
-    let stack::MIN = __DATA_SIZE__;
+    global stack::NOW = __DATA_SIZE__;
+    global stack::MIN = __DATA_SIZE__;
     const stack::MAX = 1_048_576; // 1MB, ~20 pages (65_536b)
 
     macro stack::alloc!<T>(): &T {
@@ -164,9 +164,9 @@
         data: &void,
     };
 
-    let heap::TOTAL_ALLOCATED = stack::MAX;
-    let heap::FIRST_BLOCK = 0 as &heap::Block;
-    let heap::CURRENT_BLOCK = 0 as &heap::Block;
+    global heap::TOTAL_ALLOCATED = stack::MAX;
+    global heap::FIRST_BLOCK = 0 as &heap::Block;
+    global heap::CURRENT_BLOCK = 0 as &heap::Block;
 
     macro heap::new!<T>(value: T): &T {
         let ref = heap::alloc!<T>();
@@ -505,6 +505,10 @@
             data: (self.data as u32 + start) as &*u8,
             size: end - start
         };
+    };
+
+    fn char_is_numeric(char: u8): bool {
+        return char >= '0' as u8 && char <= '9' as u8;
     };
 
 // conversions
