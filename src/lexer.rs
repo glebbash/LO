@@ -203,47 +203,6 @@ impl Lexer {
         })
     }
 
-    fn lex_int_literal(&mut self) -> LexResult {
-        let mut loc = self.loc();
-        let mut value = String::new();
-
-        let hex = match (self.current_char(), self.peek_next_char()) {
-            (Ok('0'), Ok('x')) => {
-                value.push('0');
-                self.next_char();
-                value.push('x');
-                self.next_char();
-                true
-            }
-            _ => false,
-        };
-
-        loop {
-            match self.current_char() {
-                Ok('_') => {
-                    self.next_char();
-                }
-                Ok(c @ '0'..='9') => {
-                    value.push(c);
-                    self.next_char();
-                }
-                Ok(c @ 'A'..='F') if hex => {
-                    value.push(c);
-                    self.next_char();
-                }
-                _ => break,
-            }
-        }
-
-        loc.end_pos = self.pos();
-
-        Ok(LoToken {
-            type_: LoTokenType::IntLiteral,
-            value,
-            loc,
-        })
-    }
-
     fn lex_symbol(&mut self) -> LexResult {
         let mut loc = self.loc();
 
@@ -303,6 +262,47 @@ impl Lexer {
 
         Ok(LoToken {
             type_: LoTokenType::CharLiteral,
+            value,
+            loc,
+        })
+    }
+
+    fn lex_int_literal(&mut self) -> LexResult {
+        let mut loc = self.loc();
+        let mut value = String::new();
+
+        let hex = match (self.current_char(), self.peek_next_char()) {
+            (Ok('0'), Ok('x')) => {
+                value.push('0');
+                self.next_char();
+                value.push('x');
+                self.next_char();
+                true
+            }
+            _ => false,
+        };
+
+        loop {
+            match self.current_char() {
+                Ok('_') => {
+                    self.next_char();
+                }
+                Ok(c @ '0'..='9') => {
+                    value.push(c);
+                    self.next_char();
+                }
+                Ok(c @ 'A'..='F') if hex => {
+                    value.push(c);
+                    self.next_char();
+                }
+                _ => break,
+            }
+        }
+
+        loc.end_pos = self.pos();
+
+        Ok(LoToken {
+            type_: LoTokenType::IntLiteral,
             value,
             loc,
         })

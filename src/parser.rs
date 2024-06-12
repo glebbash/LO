@@ -397,7 +397,9 @@ fn parse_top_level_expr(
         let lo_type = global_value.get_type(ctx);
         let Some(wasm_type) = lo_type.to_wasm_type() else {
             return Err(LoError {
-                message: format!("Unsupported type: {lo_type}"),
+                message: format!(
+                    "Unsupported top level type: {lo_type}, only primitives are supported"
+                ),
                 loc: global_value_loc,
             });
         };
