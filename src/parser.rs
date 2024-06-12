@@ -2637,7 +2637,7 @@ fn build_cast(
             .casted(wanted_type));
         }
 
-        if actual_type == LoType::U32 {
+        if actual_type == LoType::U8 || actual_type == LoType::U32 {
             return Ok(LoInstr::I64FromI32Unsigned {
                 expr: Box::new(value),
             }
