@@ -142,19 +142,16 @@ async function debugWasiCommand(args) {
 async function testCommand() {
     const compile = await loadCompilerWithWasiAPI(COMPILER_PATH);
 
-    test("ffi, file and stdin inputs all work the same", async () => {
-        const compileFuncAPI = await loadCompilerWithFuncAPI(COMPILER_PATH);
+    test("file and stdin inputs all work the same", async () => {
         const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
             COMPILER_PATH,
             true
         );
 
         const output1 = await compile("./examples/test/42.lo");
-        const output2 = await compileFuncAPI("./examples/test/42.lo");
-        const output3 = await compileMockedStdinAPI("./examples/test/42.lo");
+        const output2 = await compileMockedStdinAPI("./examples/test/42.lo");
 
         assert.deepStrictEqual(output1.buffer, output2.buffer);
-        assert.deepStrictEqual(output2.buffer, output3.buffer);
     });
 
     test("compiles 42", async () => {
@@ -622,52 +619,6 @@ async function testCommand() {
 }
 
 // utils
-
-/**
- * @param {string} compilerPath
- * @returns {Promise<(sourcePath: string) => Promise<Uint8Array>>}
- */
-async function loadCompilerWithFuncAPI(compilerPath) {
-    const compiler = await loadWasm(await fs.readFile(compilerPath), {
-        wasi_snapshot_preview1: new Proxy({}, { get: () => () => 0 }),
-    });
-
-    return async (sourcePath) => {
-        const fileNameBuf = Buffer.from("<stdin>.lo");
-        const fileName = storeData(
-            compiler.memory,
-            compiler.mem_alloc(fileNameBuf.byteLength),
-            fileNameBuf
-        );
-
-        const srcBuf = await fs.readFile(sourcePath);
-        const src = storeData(
-            compiler.memory,
-            compiler.mem_alloc(srcBuf.byteLength),
-            srcBuf
-        );
-
-        // TODO: figure out where `_a, _b, _c` come from
-        const [ok, _a, _b, _c, outPtr, outSize] = compiler.compile(
-            fileName.ptr,
-            fileName.size,
-            src.ptr,
-            src.size
-        );
-
-        const output = new Uint8Array(outSize);
-        output.set(new Uint8Array(compiler.memory.buffer, outPtr, outSize));
-
-        compiler.mem_free(src.ptr, src.size);
-        compiler.mem_free(outPtr, outSize);
-
-        if (!ok) {
-            throw new Error(new TextDecoder().decode(output));
-        }
-
-        return output;
-    };
-}
 
 /**
  * @param {string} compilerPath
