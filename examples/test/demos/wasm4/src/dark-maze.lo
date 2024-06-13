@@ -16,19 +16,19 @@ const Screen::GAME  = 1;
 const Screen::END1  = 2;
 const Screen::END2  = 3;
 
-let screen = Screen::TITLE;
+global screen = Screen::TITLE;
 
-let gamepad = 0 as u8;
-let prev_gamepad = 0 as u8;
+global gamepad = 0 as u8;
+global prev_gamepad = 0 as u8;
 
-let pos_x = 42 as i32;
-let pos_y = 46 as i32;
+global pos_x = 42 as i32;
+global pos_y = 46 as i32;
 
-let rand_seed = 0;
-let light_checked = 0 as &Vec::u32;
+global rand_seed = 0;
+global light_checked = 0 as &Vec::u32;
 
-let notes_index = 0;
-let notes_ticker = 0;
+global notes_index = 0;
+global notes_ticker = 0;
 
 // Maze generator: https://keesiemeijer.github.io/maze-generator/#generate
 // PNG to C source converter: https://www.digole.com/tools/PicturetoC_Hex_converter.php

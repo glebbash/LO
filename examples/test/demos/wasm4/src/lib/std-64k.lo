@@ -32,6 +32,12 @@
     const alloc::STACK = 0;
     const alloc::HEAP  = 1;
 
+    macro new!<T>(alloc_id: u32, value: T): &T {
+        let ptr = alloc(alloc_id, sizeof T) as &T;
+        *ptr = value;
+        ptr;
+    };
+
     macro alloc!<T>(alloc_id: u32): &T {
         alloc(alloc_id, sizeof T) as &T;
     };
@@ -107,8 +113,8 @@
 
     struct stack {};
 
-    let stack::NOW = __DATA_SIZE__;
-    let stack::MIN = __DATA_SIZE__;
+    global stack::NOW = __DATA_SIZE__;
+    global stack::MIN = __DATA_SIZE__;
     const stack::MAX = 32768; // up to half total memory
 
     macro stack::alloc!<T>(): &T {
@@ -170,14 +176,14 @@
         data: &void,
     };
 
-    let heap::TOTAL_ALLOCATED = stack::MAX;
-    let heap::FIRST_BLOCK = 0 as &heap::Block;
-    let heap::CURRENT_BLOCK = 0 as &heap::Block;
+    global heap::TOTAL_ALLOCATED = stack::MAX;
+    global heap::FIRST_BLOCK = 0 as &heap::Block;
+    global heap::CURRENT_BLOCK = 0 as &heap::Block;
 
     macro heap::new!<T>(value: T): &T {
-        let ref = heap::alloc!<T>();
-        *ref = value;
-        ref;
+        let ptr = heap::alloc!<T>();
+        *ptr = value;
+        ptr;
     };
 
     macro heap::alloc!<T>(): &T {
@@ -286,16 +292,13 @@
     };
 
     fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32): &Vec {
-        // TODO: consider `new` keyword
-        let self_ptr = alloc!<Vec>(alloc_id);
-        *self_ptr = Vec {
+        return new!<Vec>(alloc_id, Vec {
             data: alloc(alloc_id, capacity * item_size),
             size: 0,
             capacity: capacity,
             item_size: item_size,
             alloc_id: alloc_id,
-        };
-        return self_ptr;
+        });
     };
 
     fn Vec::free(&self) {

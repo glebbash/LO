@@ -13,14 +13,14 @@ type Mode = u32;
 const Mode::SLASH = 1;
 const Mode::DEFEND = 2;
 
-let time = 0;
-let mode = Mode::SLASH;
-let prev_click = false;
-let boss_health = 5;
-let trail = 0 as &Trail;
-let swap_trail = 0 as &Trail;
-let trails = 0 as &Vec::Trail;
-let showing_trails = 0 as &Vec::Trail;
+global time = 0;
+global mode = Mode::SLASH;
+global prev_click = false;
+global boss_health = 5;
+global trail = 0 as &Trail;
+global swap_trail = 0 as &Trail;
+global trails = 0 as &Vec::Trail;
+global showing_trails = 0 as &Vec::Trail;
 
 export fn start() {
     trail = Vec::new!<Pos>();
@@ -144,7 +144,7 @@ fn flip_trail_randomly(trail: &Trail) {
     };
 };
 
-let rand_seed = 0;
+global rand_seed = 0;
 
 fn rand_u32(max: u32): u32 {
     if rand_seed == 0 {

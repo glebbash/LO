@@ -1235,20 +1235,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let mut else_branch = None;
         if let Some(_) = tokens.eat(Symbol, "else")? {
+            let else_ctx = &mut BlockContext {
+                module: ctx.module,
+                fn_ctx: ctx.fn_ctx,
+                block: Block {
+                    parent: Some(&ctx.block),
+                    ..Default::default()
+                },
+            };
             if tokens.next_is(Symbol, "if")? {
-                else_branch = Some(vec![parse_expr(ctx, tokens, 0)?]);
+                else_branch = Some(vec![parse_expr(else_ctx, tokens, 0)?]);
             } else {
-                else_branch = Some(parse_block(
-                    &mut BlockContext {
-                        module: ctx.module,
-                        fn_ctx: ctx.fn_ctx,
-                        block: Block {
-                            parent: Some(&ctx.block),
-                            ..Default::default()
-                        },
-                    },
-                    tokens,
-                )?)
+                else_branch = Some(parse_block(else_ctx, tokens)?)
             }
         }
 
