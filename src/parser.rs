@@ -2368,7 +2368,6 @@ fn parse_postfix(
                     bind_ok_instr,
                     LoInstr::If {
                         block_type: *ok_type.clone(),
-                        // TODO: this only works for WasmType::I32
                         cond: Box::new(error_value), // error_value == 0 means no error
                         then_branch: catch_body.exprs,
                         else_branch: Some(vec![ok_value]),
@@ -2848,6 +2847,13 @@ fn parse_lo_type_(
 
     if let Some(_) = tokens.eat(Symbol, "throws")? {
         let error_type = parse_lo_type_(ctx, type_scope, tokens, is_referenced)?;
+
+        let Some(WasmType::I32) = error_type.to_wasm_type() else {
+            return Err(LoError {
+                message: format!("{error_type} cannot be represented as i32"),
+                loc: tokens.loc().clone(),
+            });
+        };
 
         return Ok(LoType::Result {
             ok_type: Box::new(primary),
