@@ -143,6 +143,9 @@ async function testCommand() {
     const compile = await loadCompilerWithWasiAPI(COMPILER_PATH);
 
     test("file and stdin inputs all work the same", async () => {
+        // TODO: removing this makes random segfaults happen
+        await compile("./examples/test/42.lo");
+
         const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
             COMPILER_PATH,
             true
