@@ -325,10 +325,7 @@ fn LoLexer::lex_int_literal(&self): LexResult {
 
         if char == '_' as u8 {
             self.next_char();
-            continue;
-        };
-
-        if char >= '0' as u8 && char <= '9' as u8 {
+        } else if char >= '0' as u8 && char <= '9' as u8 {
             if is_hex {
                 value *= 16u64;
             } else {
@@ -337,19 +334,14 @@ fn LoLexer::lex_int_literal(&self): LexResult {
             value += (char - '0' as u8) as u64;
 
             self.next_char();
-            continue;
-        };
-
-        if is_hex && char >= 'A' as u8 && char <= 'F' as u8 {
+        } else if is_hex && char >= 'A' as u8 && char <= 'F' as u8 {
             value *= 16u64;
             value += 10u64 + (char - 'A' as u8) as u64;
 
             self.next_char();
-            continue;
+        } else {
+            break;
         };
-
-        // TODO(bug): break seems to be not working inside of `else if .. else ..`
-        break;
     };
 
     loc.end_pos = self.pos();
@@ -375,7 +367,7 @@ fn LoLexer::lex_delim(&self): LexResult {
     });
 };
 
-const OPERATORS_COUNT = 37; // TODO(qol): this is hardcoded, thus bad
+const OPERATORS_COUNT = 37; // TODO(qol): find a way to get length of array
 const OPERATORS = [str][
     "=",   // Assignment
     "==",  // Equality comparison

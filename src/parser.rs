@@ -205,7 +205,6 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
     Ok(())
 }
 
-// TODO: consider adding module name if needed
 // TODO: add local names (requires sizable refactoring to achieve)
 fn write_debug_info(ctx: &mut ModuleContext) -> Result<(), LoError> {
     use crate::wasm::*;
@@ -226,7 +225,6 @@ fn write_debug_info(ctx: &mut ModuleContext) -> Result<(), LoError> {
         write_u32(&mut subsection_buf, own_fns_count);
 
         for fn_index in first_own_fn_index..first_own_fn_index + own_fns_count {
-            // TODO: this is really bad
             let (fn_name, _) = ctx
                 .fn_defs
                 .iter()
@@ -2979,7 +2977,7 @@ fn parse_const_str(
     }))
 }
 
-// TODO: this isn't great
+// TODO: support sequences of any type
 fn parse_const_sequence(
     ctx: &ModuleContext,
     tokens: &mut LoTokenStream,

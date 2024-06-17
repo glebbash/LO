@@ -16,7 +16,6 @@ pub struct ModuleContext<'a> {
     pub data_size: Rc<RefCell<u32>>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
     pub constants: RefCell<BTreeMap<String, ConstDef>>,
-    // TODO: invert the mapping, it should be Vec<String>
     pub included_modules: BTreeMap<String, u32>,
     pub macros: BTreeMap<String, MacroDef>,
     pub type_scope: LoTypeScope<'a>,
