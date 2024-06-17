@@ -449,10 +449,9 @@ async function testCommand() {
         assert.strictEqual(
             output,
             dropPadding(`
-                p0 = 1048576
-                p1 = 1048589
-                p2 = 1048589
-                p3 = 1048622
+                p1 = 1048597
+                p2 = 1048597
+                p3 = 1048606
             `)
         );
     });
