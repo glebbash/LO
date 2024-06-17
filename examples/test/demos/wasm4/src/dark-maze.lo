@@ -1,5 +1,5 @@
+include "../../../../lib/std.lo";
 include "./lib/wasm4.lo";
-include "./lib/std-64k.lo";
 
 type Vec::u32 = Vec;
 
@@ -51,6 +51,8 @@ const END2_IMAGE = [u8][
 ];
 
 export fn start() {
+    stack::SIZE = 6560;
+
     light_checked = Vec::new!<u32>();
 
     // Palette (https://lospec.com/palette-list/empty-space-4)
@@ -239,8 +241,4 @@ fn just_pressed(button: u8): bool {
         };
     };
     return false;
-};
-
-macro array_at!<T>(array: &*T, index: u32): &T {
-    (array as u32 + index * sizeof T) as &T;
 };

@@ -1,4 +1,4 @@
-include "./lib/std-64k.lo";
+include "../../../../lib/std.lo";
 include "./lib/wasm4.lo";
 
 struct Pos {
@@ -23,6 +23,8 @@ global trails = 0 as &Vec::Trail;
 global showing_trails = 0 as &Vec::Trail;
 
 export fn start() {
+    stack::SIZE = 6560;
+
     trail = Vec::new!<Pos>();
     swap_trail = Vec::new!<Pos>();
     trails = Vec::new!<&Trail>();
