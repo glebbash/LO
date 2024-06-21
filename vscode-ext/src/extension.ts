@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as wasi from "./run-wasi";
 import { FileAnalysis, FileAnalysisCollection } from "./analysis";
-import { Wasm, type RootFileSystem, type Stdio } from "@vscode/wasm-wasi";
+import { Wasm, type RootFileSystem, type Stdio } from "@vscode/wasm-wasi/v1";
 
 // WebShell 0.13.0-pre.1 interface
 export type WebShellCommandHandler = (

@@ -14,7 +14,7 @@ struct LoLocation {
 
 fn LoLocation::internal(): LoLocation {
     return LoLocation {
-        file_index: 0 - 1, // TODO: have proper u32::MAX?
+        file_index: u32::MAX, // internal "file" marker
         pos: LoPosition { offset: 0, line: 1, col: 1 },
         end_pos: LoPosition { offset: 0, line: 1, col: 1 },
     };

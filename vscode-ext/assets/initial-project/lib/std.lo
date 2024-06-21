@@ -5,6 +5,12 @@
         size: u32,
     };
 
+// constants
+
+   const u32::MAX = 4_294_967_295;
+
+   global STATIC_DATA_SIZE = __DATA_SIZE__;
+
 // abort
 
     type AbortCode = u32;
@@ -25,6 +31,12 @@
 
     const alloc::STACK = 0;
     const alloc::HEAP  = 1;
+
+    macro new!<T>(alloc_id: u32, value: T): &T {
+        let ptr = alloc(alloc_id, sizeof T) as &T;
+        *ptr = value;
+        ptr;
+    };
 
     macro alloc!<T>(alloc_id: u32): &T {
         alloc(alloc_id, sizeof T) as &T;
@@ -101,9 +113,9 @@
 
     struct stack {};
 
-    global stack::NOW = __DATA_SIZE__;
-    global stack::MIN = __DATA_SIZE__;
-    const stack::MAX = 1_048_576; // 1MB, ~20 pages (65_536b)
+    global stack::SIZE = 1_048_576; // 1MB, ~20 pages (65_536b)
+    global stack::MIN = u32::MAX; // not initialized yet marker
+    global stack::NOW = 0;
 
     macro stack::alloc!<T>(): &T {
         stack::alloc(sizeof T) as &T;
@@ -112,19 +124,22 @@
     fn stack::alloc(size: u32): &void {
         size = mem::align(size);
 
-        // fix stack::MIN alignment
-        if stack::NOW == stack::MIN {
-            stack::MIN = mem::align(stack::MIN);
-            stack::NOW = stack::MIN;
-        };
+        stack::check_init!();
 
         stack::NOW += size;
 
-        if stack::NOW > stack::MAX {
+        if stack::NOW > stack::MIN + stack::SIZE {
             abort(AbortCode::STACK_OVERFLOW);
         };
 
         return (stack::NOW - size) as &void;
+    };
+
+    macro stack::check_init!() {
+        if stack::MIN == u32::MAX {
+            stack::MIN = mem::align(STATIC_DATA_SIZE);
+            stack::NOW = stack::MIN;
+        };
     };
 
     macro stack::free!<T>() {
@@ -159,19 +174,24 @@
 
     struct heap::Block {
         size: u32,
-        used: u32, // TODO: can't use bool because wasmtime requires pointer aligments to be 4
-        next: & heap::Block,
-        data: &void,
+        used: bool,
     };
 
-    global heap::TOTAL_ALLOCATED = stack::MAX;
+    macro heap::Block::data!(&self): &void {
+        (self as u32 + sizeof heap::Block) as &void;
+    };
+
+    macro heap::Block::next!(&self): &heap::Block {
+        (self.data!() as u32 + self.size) as &heap::Block;
+    };
+
     global heap::FIRST_BLOCK = 0 as &heap::Block;
     global heap::CURRENT_BLOCK = 0 as &heap::Block;
 
     macro heap::new!<T>(value: T): &T {
-        let ref = heap::alloc!<T>();
-        *ref = value;
-        ref;
+        let ptr = heap::alloc!<T>();
+        *ptr = value;
+        ptr;
     };
 
     macro heap::alloc!<T>(): &T {
@@ -188,47 +208,37 @@
 
         let free_block = heap::find_free_block(size);
         if free_block as u32 != 0 {
-            free_block.used = true as u32;
-            return free_block.data;
+            free_block.used = true;
+            return free_block.data!();
         };
 
-        let total_size_to_alloc = size + sizeof heap::Block;
+        if heap::CURRENT_BLOCK as u32 == 0 {
+            stack::check_init!();
+            heap::CURRENT_BLOCK = (stack::MIN + stack::SIZE) as &heap::Block;
+            heap::FIRST_BLOCK = heap::CURRENT_BLOCK;
+        } else {
+            heap::CURRENT_BLOCK = heap::CURRENT_BLOCK.next!();
+        };
 
-        let block = heap::TOTAL_ALLOCATED as &heap::Block;
-        heap::TOTAL_ALLOCATED += total_size_to_alloc;
+        let new_memory_needed = (heap::CURRENT_BLOCK as u32 + sizeof heap::Block + size) as i32
+            - __memory_size() * mem::PAGE_SIZE as i32;
 
-        // grow enough memory if we are out of space
-        if heap::TOTAL_ALLOCATED >= __memory_size() as u32 * mem::PAGE_SIZE {
-            // TODO: this is probably wrong
-            let pages_to_grow = mem::align_to(total_size_to_alloc, mem::PAGE_SIZE);
-            let grow_res = __memory_grow(pages_to_grow);
-            if grow_res == (0 - 1) as i32 {
+        if new_memory_needed > 0 as i32 {
+            let pages_needed = (new_memory_needed as u32 + mem::PAGE_SIZE) / mem::PAGE_SIZE;
+            if __memory_grow(pages_needed) == (0 - 1) as i32 {
                 abort(AbortCode::OOM);
             };
         };
 
-        block.size = size;
-        block.used = true as u32;
-        block.data = (block as u32 + sizeof heap::Block) as &void;
+        heap::CURRENT_BLOCK.size = size;
+        heap::CURRENT_BLOCK.used = true;
 
-        // init heap
-        if heap::FIRST_BLOCK as u32 == 0 {
-            heap::FIRST_BLOCK = block;
-        };
-
-        // chain block
-        if heap::CURRENT_BLOCK as u32 != 0 {
-            heap::CURRENT_BLOCK.next = block;
-        };
-
-        heap::CURRENT_BLOCK = block;
-
-        return block.data;
+        return heap::CURRENT_BLOCK.data!();
     };
 
     fn heap::free(ptr: &void) {
         let block = heap::get_block(ptr);
-        block.used = false as u32;
+        block.used = false;
     };
 
     fn heap::get_block(ptr: &void): &heap::Block {
@@ -238,20 +248,23 @@
     // first fit
     fn heap::find_free_block(size: u32): &heap::Block {
         let block = heap::FIRST_BLOCK;
-
-        loop {
-            if block as u32 == 0  {
-                break;
-            };
-
-            if !block.used && block.size >= size {
-                break;
-            };
-
-            block = block.next;
+        if block as u32 == 0  {
+            return 0 as &heap::Block;
         };
 
-        return block;
+        loop {
+            if !block.used && block.size >= size {
+                return block;
+            };
+
+            if block as u32 == heap::CURRENT_BLOCK as u32 {
+                break;
+            };
+
+            block = block.next!();
+        };
+
+        return 0 as &heap::Block;
     };
 
 // vec
@@ -285,16 +298,13 @@
     };
 
     fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32): &Vec {
-        // TODO: consider `new` keyword
-        let self_ptr = alloc!<Vec>(alloc_id);
-        *self_ptr = Vec {
+        return new!<Vec>(alloc_id, Vec {
             data: alloc(alloc_id, capacity * item_size),
             size: 0,
             capacity: capacity,
             item_size: item_size,
             alloc_id: alloc_id,
-        };
-        return self_ptr;
+        });
     };
 
     fn Vec::free(&self) {
@@ -437,6 +447,10 @@
         return string;
     };
 
+    fn String::append_str(&self, value: str) {
+        self.push_all(value.data as &void, value.size);
+    };
+
 // str utils
 
     fn str::from_string(value: &String): str {
@@ -483,6 +497,10 @@
         };
 
         return true;
+    };
+
+    fn str::starts_with(self, other: str): bool {
+        return self.slice(0, other.size).equals(other);
     };
 
     fn str::skip_chars(self, char_count: u32): str {
@@ -567,4 +585,10 @@
         output.reverse_range(start_size, output.size - 1);
 
         return output;
+    };
+
+// array utils
+
+    macro array_at!<T>(array: &*T, index: u32): &T {
+        (array as u32 + index * sizeof T) as &T;
     };

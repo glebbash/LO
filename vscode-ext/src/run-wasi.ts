@@ -1,4 +1,4 @@
-import { Wasm, Readable } from "@vscode/wasm-wasi";
+import { Wasm, Readable } from "@vscode/wasm-wasi/v1";
 
 export type ProgramOptions = {
     processName: string;

@@ -12,9 +12,19 @@ const LoTokenType::Operator      = 5 as u8;
 type Vec::LoToken = Vec;
 struct LoToken {
     type_: LoTokenType,
+    // NOTE: this points inside of file contents
+    // and is only valid while file buffer is not freed
     repr: str,
     value: &void,
     loc: LoLocation,
+};
+
+fn LoToken::free(&self) {
+    if self.type_ == LoTokenType::IntLiteral {
+        heap::free(self.value);
+    } else if self.type_ == LoTokenType::StringLiteral {
+        (self.value as &String).free();
+    };
 };
 
 struct LoTokenStream {
@@ -34,6 +44,15 @@ fn LoTokenStream::new(tokens: &Vec::LoToken, eof_location: LoLocation): &LoToken
             loc: eof_location,
         },
     });
+};
+
+fn LoTokenStream::free(&self) {
+    for i in 0..self.tokens.size {
+        let t = self.tokens.get!<&LoToken>(i);
+        t.free();
+    };
+
+    heap::free(self as &void);
 };
 
 struct LoLexer {
@@ -61,13 +80,13 @@ fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
 
     self.skip_space();
 
-    // TODO: support while?
+    // TODO(qol): support while?
     loop {
         if self.index >= self.chars.size {
             break;
         };
 
-        // TODO: tokens could be a Vec of structs instead of references
+        // TODO(bug): tokens could be a Vec of structs instead of references
         //   but there is a bug with `<struct> throws *` types
         tokens.push!<&LoToken>(self.lex_token() catch err {
             throw err;
@@ -101,6 +120,7 @@ fn LoLexer::lex_token(&self): LexResult {
             throw err;
         };
     };
+    // NOTE: must be after int because is_symbol_char matches digits
     if LoLexer::is_symbol_char(char) {
         return self.lex_symbol() catch err {
             throw err;
@@ -145,30 +165,192 @@ fn LoLexer::lex_symbol(&self): LexResult {
 
     return heap::new!<LoToken>(LoToken {
         type_: LoTokenType::Symbol,
-        repr: self.chars.slice(loc.pos.offset, self.index),
+        repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         value: 0 as &void,
         loc: loc,
     });
 };
 
 fn LoLexer::lex_char(&self): LexResult {
-    throw heap::new!<LoError>(LoError {
-        message: String::from_str("TODO: not implemented"),
-        loc: self.loc(),
+    let loc = self.loc();
+
+    self.next_char(); // skip start quote
+
+    let char = self.current_char() catch err {
+        throw err;
+    };
+    let value = char;
+
+    if char == '\\' as u8 {
+        self.next_char();
+
+        char = self.current_char() catch err {
+            throw err;
+        };
+
+        if char == 'n' as u8 {
+            value = '\n' as u8;
+        } else if char == 'r' as u8 {
+            value = '\r' as u8;
+        } else if char == 't' as u8 {
+            value = '\t' as u8;
+        } else if char == '0' as u8 {
+            value = '\0' as u8;
+        } else if char == '\\' as u8 {
+            value = '\\' as u8;
+        } else if char == '\'' as u8 {
+            value = '\'' as u8;
+        } else {
+            let message = String::from_str("ParseError: Invalid escape sequence: \\");
+            message.push!<u8>(char as u8);
+
+            throw heap::new!<LoError>(LoError {
+                message: message,
+                loc: self.loc(),
+            });
+        };
+    };
+
+    self.next_char(); // skip actual character
+
+    if self.current_char() catch err { throw err; } != '\'' as u8 {
+        let message = String::from_str("ParseError: Unexpected character `");
+        message.push!<u8>(char as u8);
+        String::append_str(message, "`, expected `'`");
+
+        throw heap::new!<LoError>(LoError {
+            message: message,
+            loc: self.loc(),
+        });
+    };
+
+    self.next_char(); // skip end quote
+
+    loc.end_pos = self.pos();
+
+    return heap::new!<LoToken>(LoToken {
+        type_: LoTokenType::Symbol,
+        repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
+        value: value as &void,
+        loc: loc,
     });
 };
 
 fn LoLexer::lex_string(&self): LexResult {
-    throw heap::new!<LoError>(LoError {
-        message: String::from_str("TODO: not implemented"),
-        loc: self.loc(),
+    let loc = self.loc();
+
+    self.next_char(); // skip start quote
+
+    let value = String::new(10);
+
+    loop {
+        let char = self.current_char() catch err {
+            throw err;
+        };
+
+        if char == '"' as u8 {
+            break;
+        } else if char == '\\' as u8 {
+            self.next_char();
+
+            char = self.current_char() catch err {
+                throw err;
+            };
+
+            if char == 'n' as u8 {
+                value.push!<u8>('\n' as u8);
+            } else if char == 'r' as u8 {
+                value.push!<u8>('\r' as u8);
+            } else if char == 't' as u8 {
+                value.push!<u8>('\t' as u8);
+            } else if char == '0' as u8 {
+                value.push!<u8>('\0' as u8);
+            } else if char == '\\' as u8 {
+                value.push!<u8>('\\' as u8);
+            } else if char == '"' as u8 {
+                value.push!<u8>('"' as u8);
+            } else {
+                let message = String::from_str("ParseError: Invalid escape sequence: \\");
+                message.push!<u8>(char as u8);
+
+                throw heap::new!<LoError>(LoError {
+                    message: message,
+                    loc: self.loc(),
+                });
+            };
+        } else {
+            value.push!<u8>(char);
+        };
+
+        self.next_char();
+    };
+
+    self.next_char(); // skip end quote
+
+    loc.end_pos = self.pos();
+
+    return heap::new!<LoToken>(LoToken {
+        type_: LoTokenType::StringLiteral,
+        repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
+        value: value as &void,
+        loc: loc,
     });
 };
 
 fn LoLexer::lex_int_literal(&self): LexResult {
-    throw heap::new!<LoError>(LoError {
-        message: String::from_str("TODO: not implemented"),
-        loc: self.loc(),
+    let loc = self.loc();
+
+    let char = self.current_char() catch err {
+        throw err;
+    };
+    let is_hex = false;
+    if char == '0' as u8 {
+        let next_char = self.peek_next_char() catch err {
+            err.free();
+            '\0' as u8;
+        };
+
+        if next_char == 'x' as u8 {
+            is_hex = true;
+            self.next_char(); // skip '0'
+            self.next_char(); // skip 'x'
+        };
+    };
+
+    let value = 0u64;
+    loop {
+        char = self.current_char() catch err {
+            throw err;
+        };
+
+        if char == '_' as u8 {
+            self.next_char();
+        } else if char >= '0' as u8 && char <= '9' as u8 {
+            if is_hex {
+                value *= 16u64;
+            } else {
+                value *= 10u64;
+            };
+            value += (char - '0' as u8) as u64;
+
+            self.next_char();
+        } else if is_hex && char >= 'A' as u8 && char <= 'F' as u8 {
+            value *= 16u64;
+            value += 10u64 + (char - 'A' as u8) as u64;
+
+            self.next_char();
+        } else {
+            break;
+        };
+    };
+
+    loc.end_pos = self.pos();
+
+    return heap::new!<LoToken>(LoToken {
+        type_: LoTokenType::IntLiteral,
+        repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
+        value: heap::new!<u64>(value) as &void,
+        loc: loc,
     });
 };
 
@@ -185,10 +367,109 @@ fn LoLexer::lex_delim(&self): LexResult {
     });
 };
 
+const OPERATORS_COUNT = 37; // TODO(qol): find a way to get length of array
+const OPERATORS = [str][
+    "=",   // Assignment
+    "==",  // Equality comparison
+    "!=",  // Nonequality comparison
+    "!",   // Logical NOT
+    "&&",  // Short-circuiting logical AND
+    "||",  // Short-circuiting logical OR
+    "<",   // Less than comparison
+    "<=",  // Less than or equal to comparison
+    ">",   // Greater than comparison
+    ">=",  // Greater than or equal to comparison
+    "+",   // Arithmetic addition
+    "+=",  // Arithmetic addition and assignment
+    "-",   // Arithmetic subtraction
+    "-=",  // Arithmetic subtraction and assignment
+    "*",   // Arithmetic multiplication
+    "*=",  // Arithmetic multiplication and assignment
+    "/",   // Arithmetic division
+    "/=",  // Arithmetic division and assignment
+    "%",   // Arithmetic remainder
+    "%=",  // Arithmetic remainder and assignment
+    "&",   // Bitwise AND / Pointer to one
+    "&*",  // Pointer to any amount
+    "&=",  // Bitwise AND and assignment
+    "<<",  // Left-shift
+    "<<=", // Left-shift and assignment
+    "=>",  // Part of match arm syntax
+    ">>",  // Right-shift
+    ">>=", // Right-shift and assignment
+    "^",   // Bitwise exclusive OR
+    "^=",  // Bitwise exclusive OR and assignment
+    "|",   // Bitwise OR
+    "|=",  // Bitwise OR and assignment
+    ".",   // Member access
+    "..",  // Range operator
+    ":",   // Type separator
+    "::",  // Path separator
+    "@",   // Memory index separator, defer label prefix
+];
+
+fn LoLexer::is_operator_start_char(char: u8): bool {
+    for i in 0..OPERATORS_COUNT {
+        let op = *array_at!<str>(OPERATORS, i);
+        if op.char_at(0) == char {
+            return true;
+        };
+    };
+    return false;
+};
+
 fn LoLexer::lex_operator(&self): LexResult {
-    throw heap::new!<LoError>(LoError {
-        message: String::from_str("TODO: not implemented"),
-        loc: self.loc(),
+    let loc = self.loc();
+    let repr = "";
+
+    loop {
+        repr = self.chars.slice(loc.pos.offset, self.index + 1);
+
+        let is_start_of_operator = false;
+        for i in 0..OPERATORS_COUNT {
+            let op = *array_at!<str>(OPERATORS, i);
+            if op.starts_with(repr) {
+                is_start_of_operator = true;
+                break;
+            };
+        };
+
+        if !is_start_of_operator {
+            repr = repr.slice(0, repr.size - 1);
+            break;
+        };
+
+        self.next_char();
+    };
+
+    let matched_fully = false;
+    for i in 0..OPERATORS_COUNT {
+        let op = *array_at!<str>(OPERATORS, i);
+        if op.equals(repr) {
+            matched_fully = true;
+            break;
+        };
+    };
+
+    if !matched_fully {
+        let message = String::from_str("Unexpected char: ");
+        message.push!<u8>(self.current_char() catch err {
+            throw err;
+        });
+
+        throw heap::new!<LoError>(LoError {
+            message: message,
+            loc: self.loc(),
+        });
+    };
+
+    loc.end_pos = self.pos();
+
+    return heap::new!<LoToken>(LoToken {
+        type_: LoTokenType::Operator,
+        repr: repr,
+        value: 0 as &void,
+        loc: loc,
     });
 };
 
@@ -321,10 +602,4 @@ fn LoLexer::is_delim_char(char: u8): bool {
         || char == '{' as u8 || char == '}' as u8
         || char == '[' as u8 || char == ']' as u8
         || char == ',' as u8 || char == ';' as u8;
-};
-
-// TODO: implement
-fn LoLexer::is_operator_start_char(char: u8): bool {
-    let operators = "";
-    return false;
 };

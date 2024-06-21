@@ -5,7 +5,7 @@
     "author": "glebbash",
     "publisher": "glebbash",
     "license": "MIT",
-    "version": "0.0.8",
+    "version": "0.0.9",
     "engines": {
         "vscode": "^1.88.0"
     },
@@ -111,7 +111,7 @@
         "webpack-cli": "^5.1.4"
     },
     "dependencies": {
-        "@vscode/wasm-wasi": "^0.13.0-pre.1"
+        "@vscode/wasm-wasi": "^1.0.0-pre.2"
     },
     "extensionDependencies": [
         "ms-vscode.wasm-wasi-core",
