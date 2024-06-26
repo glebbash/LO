@@ -10,7 +10,7 @@ To compile `.lo` files to `.wasm` (using [WebShell](https://marketplace.visualst
   - Open Web Shell using Command Palette: `Terminal: Create New Web Shell`
   - Run: `run lo.wasm <input>.lo > <output>.wasm`
 
-To compile `.lo` files to `.wasm` (using [wasmtime]([https://marketplace.visualstudio.com/items?itemName=ms-vscode.webshell](https://wasmtime.dev/))):
+To compile `.lo` files to `.wasm` (using [wasmtime](https://wasmtime.dev/)):
   - Run: `wasmtime --dir=. lo.wasm <input>.lo > <output>.wasm`
 
 > Check [the source](https://github.com/glebbash/LO) for more info
