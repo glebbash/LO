@@ -488,8 +488,8 @@ async function testCommand() {
         assert.strictEqual(
             output,
             dropPadding(`
-                10 / 5 = 2
-                10 / 2 = 5
+                10 / 5 = 2, remainder = 0
+                10 / 3 = 3, remainder = 1
                 10 / 0 is undefined
             `)
         );

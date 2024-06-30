@@ -123,7 +123,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
             fn_ctx: &mut fn_ctx,
             block: Block {
                 parent: Some(&locals_block),
-                block_type: BlockType::Function,
+                block_type: BlockKind::Function,
                 ..Default::default()
             },
         };
@@ -1249,7 +1249,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         }
 
         return Ok(LoInstr::If {
-            block_type: LoType::Void,
+            block_type: LoBlockType::void(),
             cond: Box::new(cond),
             then_branch,
             else_branch,
@@ -1262,7 +1262,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             fn_ctx: ctx.fn_ctx,
             block: Block {
                 parent: Some(&ctx.block),
-                block_type: BlockType::Loop,
+                block_type: BlockKind::Loop,
                 ..Default::default()
             },
         };
@@ -1273,9 +1273,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         body.push(implicit_continue);
 
         return Ok(LoInstr::Block {
-            block_type: LoType::Void,
+            block_type: LoBlockType::void(),
             body: vec![LoInstr::Loop {
-                block_type: LoType::Void,
+                block_type: LoBlockType::void(),
                 body,
             }],
         });
@@ -1289,7 +1289,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             fn_ctx: ctx.fn_ctx,
             block: Block {
                 parent: Some(&ctx.block),
-                block_type: BlockType::Block,
+                block_type: BlockKind::Block,
                 ..Default::default()
             },
         };
@@ -1345,7 +1345,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let implicit_continue = LoInstr::Branch { label_index: 0 };
 
         let end_check_instr = LoInstr::If {
-            block_type: LoType::Void,
+            block_type: LoBlockType::void(),
             cond: Box::new(LoInstr::BinaryOp {
                 kind: check_op_kind,
                 lhs: Box::new(get_counter_instr.clone()),
@@ -1370,7 +1370,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             fn_ctx: counter_ctx.fn_ctx,
             block: Block {
                 parent: Some(&counter_ctx.block),
-                block_type: BlockType::ForLoop,
+                block_type: BlockKind::ForLoop,
                 ..Default::default()
             },
         };
@@ -1379,18 +1379,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let instrs = vec![
             init_instr,
             LoInstr::Block {
-                block_type: LoType::Void,
+                block_type: LoBlockType::void(),
                 body: vec![LoInstr::Loop {
                     body: vec![
                         end_check_instr,
                         LoInstr::Block {
-                            block_type: LoType::Void,
+                            block_type: LoBlockType::void(),
                             body: loop_body,
                         },
                         update_instr,
                         implicit_continue,
                     ],
-                    block_type: LoType::Void,
+                    block_type: LoBlockType::void(),
                 }],
             },
         ];
@@ -1403,11 +1403,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let mut current_block = &ctx.block;
         loop {
-            if current_block.block_type == BlockType::Loop {
+            if current_block.block_type == BlockKind::Loop {
                 break;
             }
 
-            if current_block.block_type == BlockType::ForLoop {
+            if current_block.block_type == BlockKind::ForLoop {
                 label_index += 1;
                 break;
             }
@@ -1424,11 +1424,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let mut current_block = &ctx.block;
         loop {
-            if current_block.block_type == BlockType::Loop {
+            if current_block.block_type == BlockKind::Loop {
                 break;
             }
 
-            if current_block.block_type == BlockType::ForLoop {
+            if current_block.block_type == BlockKind::ForLoop {
                 break;
             }
 
@@ -2365,7 +2365,7 @@ fn parse_postfix(
                     bind_err_instr,
                     bind_ok_instr,
                     LoInstr::If {
-                        block_type: *ok_type.clone(),
+                        block_type: LoBlockType::in_out(ctx.module, &[], &ok_type),
                         cond: Box::new(error_value), // error_value == 0 means no error
                         then_branch: catch_body.exprs,
                         else_branch: Some(vec![ok_value]),

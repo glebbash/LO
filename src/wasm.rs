@@ -150,6 +150,13 @@ pub enum WasmStoreKind {
     I32U16 = 0x3B,
 }
 
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub enum WasmBlockType {
+    NoOut,
+    SingleOut { wasm_type: WasmType },
+    InOut { type_index: u32 },
+}
+
 impl WasmStoreKind {
     pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
         match kind {
@@ -214,8 +221,8 @@ pub enum WasmInstr {
     },
     Return,
     BlockStart {
+        block_kind: WasmBlockKind,
         block_type: WasmBlockType,
-        return_type: Option<WasmType>,
     },
     Else,
     BlockEnd,
@@ -229,7 +236,7 @@ pub enum WasmInstr {
 
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
-pub enum WasmBlockType {
+pub enum WasmBlockKind {
     Block = 0x02,
     Loop = 0x03,
     If = 0x04,
@@ -547,14 +554,20 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u32(out, *fn_index);
         }
         WasmInstr::BlockStart {
+            block_kind,
             block_type,
-            return_type,
         } => {
-            write_u8(out, block_type.clone() as u8);
-            if let Some(return_type) = return_type {
-                write_u8(out, return_type.clone() as u8);
-            } else {
-                write_u8(out, 0x40); // no value
+            write_u8(out, block_kind.clone() as u8);
+            match block_type {
+                WasmBlockType::NoOut => {
+                    write_u8(out, 0x40); // no value
+                }
+                WasmBlockType::SingleOut { wasm_type } => {
+                    write_u8(out, wasm_type.clone() as u8);
+                }
+                WasmBlockType::InOut { type_index } => {
+                    write_i32(out, *type_index as i32);
+                }
             }
         }
         WasmInstr::Else => {

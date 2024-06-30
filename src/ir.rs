@@ -22,7 +22,7 @@ pub struct ModuleContext<'a> {
 }
 
 impl<'a> ModuleContext<'a> {
-    pub fn insert_fn_type(&mut self, fn_type: WasmFnType) -> u32 {
+    pub fn insert_fn_type(&self, fn_type: WasmFnType) -> u32 {
         let mut wasm_module = self.wasm_module.borrow_mut();
 
         let type_index = wasm_module.types.iter().position(|ft| *ft == fn_type);
@@ -72,14 +72,14 @@ pub struct FnContext<'a> {
 }
 
 #[derive(PartialEq)]
-pub enum BlockType {
+pub enum BlockKind {
     Function,
     Block,
     Loop,
     ForLoop,
 }
 
-impl Default for BlockType {
+impl Default for BlockKind {
     fn default() -> Self {
         Self::Block
     }
@@ -87,7 +87,7 @@ impl Default for BlockType {
 
 #[derive(Default)]
 pub struct Block<'a> {
-    pub block_type: BlockType,
+    pub block_type: BlockKind,
     pub locals: BTreeMap<String, LocalDef>,
     pub macro_args: Option<BTreeMap<String, LoInstr>>,
     pub type_scope: Option<LoTypeScope<'a>>,
@@ -112,7 +112,7 @@ impl Block<'_> {
             return Some(local_def);
         }
 
-        if self.block_type == BlockType::Function {
+        if self.block_type == BlockKind::Function {
             if let Some(parent) = self.parent {
                 return parent.get_local(local_name);
             }
@@ -533,6 +533,53 @@ pub struct MacroDef {
 }
 
 #[derive(Clone, Debug)]
+pub struct LoBlockType {
+    return_type: LoType,
+    wasm_type: WasmBlockType,
+}
+
+impl LoBlockType {
+    pub fn void() -> Self {
+        LoBlockType {
+            return_type: LoType::Void,
+            wasm_type: WasmBlockType::NoOut,
+        }
+    }
+
+    pub fn in_out(ctx: &ModuleContext, inputs: &[LoType], output: &LoType) -> Self {
+        if inputs.is_empty() {
+            if *output == LoType::Void || *output == LoType::Never {
+                return Self::void();
+            }
+
+            if let Some(wasm_type) = output.to_wasm_type() {
+                return Self {
+                    return_type: output.clone(),
+                    wasm_type: WasmBlockType::SingleOut { wasm_type },
+                };
+            }
+        }
+
+        let mut fn_type = WasmFnType {
+            inputs: vec![],
+            outputs: vec![],
+        };
+
+        for input in inputs {
+            input.emit_components(ctx, &mut fn_type.inputs);
+        }
+        output.emit_components(ctx, &mut fn_type.outputs);
+
+        Self {
+            return_type: output.clone(),
+            wasm_type: WasmBlockType::InOut {
+                type_index: ctx.insert_fn_type(fn_type),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum LoInstr {
     NoInstr,
     Unreachable,
@@ -616,15 +663,15 @@ pub enum LoInstr {
         value: Box<LoInstr>,
     },
     Block {
-        block_type: LoType,
+        block_type: LoBlockType,
         body: Vec<LoInstr>,
     },
     Loop {
-        block_type: LoType,
+        block_type: LoBlockType,
         body: Vec<LoInstr>,
     },
     If {
-        block_type: LoType,
+        block_type: LoBlockType,
         cond: Box<LoInstr>,
         then_branch: Vec<LoInstr>,
         else_branch: Option<Vec<LoInstr>>,
@@ -744,7 +791,7 @@ impl LoInstr {
             LoInstr::Call { return_type, .. } => return_type.clone(),
             LoInstr::If { block_type, .. }
             | LoInstr::Block { block_type, .. }
-            | LoInstr::Loop { block_type, .. } => block_type.clone(),
+            | LoInstr::Loop { block_type, .. } => block_type.return_type.clone(),
             LoInstr::Branch { .. } => LoType::Void,
         }
     }
@@ -881,16 +928,16 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
         }
         LoInstr::Block { block_type, body } => {
             out.push(WasmInstr::BlockStart {
-                block_type: WasmBlockType::Block,
-                return_type: block_type.to_wasm_type(),
+                block_kind: WasmBlockKind::Block,
+                block_type: block_type.wasm_type.clone(),
             });
             lower_exprs(out, body);
             out.push(WasmInstr::BlockEnd);
         }
         LoInstr::Loop { block_type, body } => {
             out.push(WasmInstr::BlockStart {
-                block_type: WasmBlockType::Loop,
-                return_type: block_type.to_wasm_type(),
+                block_kind: WasmBlockKind::Loop,
+                block_type: block_type.wasm_type.clone(),
             });
             lower_exprs(out, body);
             out.push(WasmInstr::BlockEnd);
@@ -902,13 +949,9 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             else_branch,
         } => {
             lower_expr(out, *cond);
-            let Some(return_type) = block_type.to_wasm_type() else {
-                // TODO: support multivalue return types
-                unreachable!()
-            };
             out.push(WasmInstr::BlockStart {
-                block_type: WasmBlockType::If,
-                return_type: Some(return_type),
+                block_kind: WasmBlockKind::If,
+                block_type: block_type.wasm_type.clone(),
             });
             lower_exprs(out, then_branch);
             if let Some(else_branch) = else_branch {
