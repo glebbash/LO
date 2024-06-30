@@ -1,0 +1,64 @@
+include "../std.lo";
+include "../fs.lo";
+include "../string_map.lo";
+
+include "./utils.lo";
+include "./wasm.lo";
+
+type LoType::_ = u32;
+struct LoType {
+    kind: LoType::_,
+    data: &void,
+};
+// TODO: define all types
+
+const LoType::Void = 0;
+macro LoType::Void!(): LoType {
+    LoType { kind: LoType::Void, data: 0 as &void };
+};
+
+const LoType::U32 = 1;
+macro LoType::U32!(): LoType {
+    LoType { kind: LoType::U32, data: 0 as &void };
+};
+
+type Vec::LoType = Vec;
+
+struct LoFnParam {
+    name: &String,
+    type_: LoType,
+    loc: LoLocation,
+};
+type Vec::LoFnParam = Vec;
+
+struct LoFnType {
+    inputs: Vec::LoType,
+    output: LoType,
+};
+
+struct LoLocalDef {
+    index: u32,
+    value_type: LoType,
+    loc: LoLocation,
+};
+type StringMap::LoLocalDef = StringMap;
+
+struct LoFnDecl {
+    fn_name: &String,
+    method_name: &String,
+    loc: LoLocation,
+    fn_params: Vec::LoFnParam,
+    lo_type: LoFnType,
+    wasm_type: WasmFnType,
+    locals: StringMap::LoLocalDef,
+};
+
+struct LoFnDef {
+    local: bool,
+    fn_index: u32,
+    fn_params: Vec::LoFnParam,
+    type_index: u32,
+    type_: LoFnType,
+    loc: LoLocation,
+};
+type StringMap::LoFnDef = StringMap;

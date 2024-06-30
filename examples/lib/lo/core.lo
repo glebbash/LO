@@ -1,8 +1,10 @@
 include "../std.lo";
 include "../fs.lo";
+include "../string_map.lo";
 
 include "./utils.lo";
 include "./wasm.lo";
+include "./ir.lo";
 
 type Vec::LoIncludedFile = Vec;
 struct LoIncludedFile {
@@ -13,19 +15,24 @@ struct LoIncludedFile {
 struct LoContext {
     included_files: &Vec::LoIncludedFile,
     wasm_module: &WasmModule,
+    fn_defs: StringMap::LoFnDef,
 };
 
 fn LoContext::new(): &LoContext {
     return heap::new!<LoContext>(LoContext {
         included_files: Vec::new!<LoIncludedFile>(),
         wasm_module: WasmModule::new(),
+        fn_defs: StringMap::new!<LoFnDef>(),
     });
 };
 
-// TODO: this is prob temporary
 fn LoContext::print_loc(&self, loc: LoLocation) {
-    let file = self.included_files.get!<LoIncludedFile>(loc.file_index);
-    eprint_str(file.path as &str);
+    if loc.file_index == u32::MAX {
+        eputs("<internal>");
+    } else {
+        let file = self.included_files.get!<LoIncludedFile>(loc.file_index);
+        eprint_str(file.path as &str);
+    };
     eputs(":");
     eprint_u32(loc.pos.line);
     eputs(":");

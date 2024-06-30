@@ -1,4 +1,5 @@
 include "./core.lo";
+include "./ir.lo";
 include "./lexer.lo";
 
 struct LoParser {};
@@ -16,21 +17,144 @@ fn LoParser::parse_file(
     };
 };
 
-// TODO: implement
 fn LoParser::parse_file_tokens(
     ctx: &LoContext, tokens: &LoTokenStream
 ): void throws &LoError {
-    eputs("Lexer created ");
-    eprint_u32(tokens.tokens.size);
-    eputs(" tokens:\n");
+    loop {
+        if is_null!<LoToken>(tokens.peek()) {
+            break;
+        };
 
-    for i in 0..tokens.tokens.size {
-        let t = tokens.tokens.get!<&LoToken>(i);
-        ctx.print_loc(t.loc);
-        eputs(" - ");
-        eprint_u32(t.type_ as u32);
-        eputs(" : ");
-        eputs(t.repr);
-        eputs("\n");
+        LoParser::parse_top_level_expr(ctx, tokens) catch err {
+            throw err;
+        };
+
+        let _ = tokens.expect(LoTokenType::Delim, ";") catch err {
+            throw err;
+        };
     };
+
+    let token = tokens.peek();
+    if !is_null!<LoToken>(token) {
+        let message = String::from_str("Unexpected token on top level: ");
+        String::append_str(message, token.repr);
+
+        throw heap::new!<LoError>(LoError {
+            message: message,
+            loc: token.loc,
+        });
+    };
+};
+
+fn LoParser::parse_top_level_expr(
+    ctx: &LoContext, tokens: &LoTokenStream,
+): void throws &LoError {
+    if is_null!<LoToken>(tokens.peek()) {
+        return;
+    };
+
+    if !is_null!<LoToken>(tokens.eat(LoTokenType::Symbol, "fn") catch err {
+        throw err;
+    }) {
+        return LoParser::parse_fn_def(ctx, tokens, false) catch err {
+            throw err;
+        };
+    };
+
+    if !is_null!<LoToken>(tokens.eat(LoTokenType::Symbol, "export") catch err {
+        throw err;
+    }) {
+        if !is_null!<LoToken>(tokens.eat(LoTokenType::Symbol, "fn") catch err {
+            throw err;
+        }) {
+            return LoParser::parse_fn_def(ctx, tokens, true) catch err {
+                throw err;
+            };
+        };
+
+        // TODO: parse other exportables
+    };
+
+    // TODO: parse other expressions
+
+    let unexpected = tokens.peek(); // null checked at the top
+    let message = String::from_str("Unexpected top level token: ");
+    String::append_str(message, unexpected.repr);
+
+    throw heap::new!<LoError>(LoError {
+        message: message,
+        loc: unexpected.loc,
+    });
+};
+
+fn LoParser::parse_fn_def(
+    ctx: &LoContext, tokens: &LoTokenStream, exported: bool,
+): void throws &LoError {
+    let fn_decl = LoParser::parse_fn_decl(ctx, tokens) catch err {
+        throw err;
+    };
+    let body = LoParser::collect_block_tokens(tokens) catch err {
+        throw err;
+    };
+
+    if ctx.fn_defs.contains_key(str::from_string(fn_decl.fn_name)) {
+        let message = String::from_str("Cannot redefine function: ");
+        String::append_str(message, str::from_string(fn_decl.fn_name));
+
+        throw heap::new!<LoError>(LoError {
+            message: message,
+            loc: fn_decl.loc,
+        });
+    };
+
+    // TODO: implement
+};
+
+// TODO: implement the complete version
+fn LoParser::parse_fn_decl(
+    ctx: &LoContext, tokens: &LoTokenStream,
+): &LoFnDecl throws &LoError {
+    let fn_name = tokens.expect_any(LoTokenType::Symbol) catch err {
+        throw err;
+    };
+
+    let _ = tokens.expect(LoTokenType::Delim, "(") catch err {
+        throw err;
+    };
+    let _ = tokens.expect(LoTokenType::Delim, ")") catch err {
+        throw err;
+    };
+
+    let lo_output = LoType::Void!();
+    if !is_null!<LoToken>(tokens.eat(LoTokenType::Operator, ":") catch err {
+        throw err;
+    }) {
+        // TODO(bug): catch doesn't work on multivalue returns
+        lo_output = LoParser::parse_const_lo_type(ctx, tokens) catch err {
+            throw err;
+        };
+    };
+
+    throw heap::new!<LoError>(LoError {
+        message: String::from_str(dbg "TODO: implement"),
+        loc: LoLocation::internal(),
+    });
+};
+
+fn LoParser::collect_block_tokens(
+    tokens: &LoTokenStream,
+): &LoTokenStream throws &LoError {
+    throw heap::new!<LoError>(LoError {
+        message: String::from_str(dbg "TODO: implement"),
+        loc: LoLocation::internal(),
+    });
+};
+
+fn LoParser::parse_const_lo_type(
+    ctx: &LoContext, tokens: &LoTokenStream,
+): LoType throws &LoError {
+    throw heap::new!<LoError>(LoError {
+        message: String::from_str(dbg "TODO: implement"),
+        loc: LoLocation::internal(),
+    });
 };

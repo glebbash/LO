@@ -902,9 +902,13 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             else_branch,
         } => {
             lower_expr(out, *cond);
+            let Some(return_type) = block_type.to_wasm_type() else {
+                // TODO: support multivalue return types
+                unreachable!()
+            };
             out.push(WasmInstr::BlockStart {
                 block_type: WasmBlockType::If,
-                return_type: block_type.to_wasm_type(),
+                return_type: Some(return_type),
             });
             lower_exprs(out, then_branch);
             if let Some(else_branch) = else_branch {

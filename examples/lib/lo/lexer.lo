@@ -9,15 +9,34 @@ const LoTokenType::Symbol        = 3 as u8;
 const LoTokenType::Delim         = 4 as u8;
 const LoTokenType::Operator      = 5 as u8;
 
+fn LoTokenType::to_str(self): str {
+    if self == LoTokenType::StringLiteral {
+        return "StringLiteral";
+    } else if self == LoTokenType::CharLiteral {
+        return "CharLiteral";
+    } else if self == LoTokenType::IntLiteral {
+        return "IntLiteral";
+    } else if self == LoTokenType::Symbol {
+        return "Symbol";
+    } else if self == LoTokenType::Delim {
+        return "Delim";
+    } else if self == LoTokenType::Operator {
+        return "Operator";
+    };
+
+    unreachable;
+};
+
 type Vec::LoToken = Vec;
 struct LoToken {
     type_: LoTokenType,
     // NOTE: this points inside of file contents
     // and is only valid while file buffer is not freed
     repr: str,
-    value: &void,
     loc: LoLocation,
+    value: &void,
 };
+type Option::LoToken = &LoToken;
 
 fn LoToken::free(&self) {
     if self.type_ == LoTokenType::IntLiteral {
@@ -25,6 +44,14 @@ fn LoToken::free(&self) {
     } else if self.type_ == LoTokenType::StringLiteral {
         (self.value as &String).free();
     };
+};
+
+fn LoToken::is_any(&self, type_: LoTokenType): bool {
+    return self.type_ == type_;
+};
+
+fn LoToken::is(&self, type_: LoTokenType, repr: str): bool {
+    return self.is_any(type_) && self.repr.equals(repr);
 };
 
 struct LoTokenStream {
@@ -40,8 +67,8 @@ fn LoTokenStream::new(tokens: &Vec::LoToken, eof_location: LoLocation): &LoToken
         terminal_token: LoToken {
             type_: LoTokenType::Symbol,
             repr: "<EOF>",
-            value: 0 as &void,
             loc: eof_location,
+            value: 0 as &void,
         },
     });
 };
@@ -53,6 +80,76 @@ fn LoTokenStream::free(&self) {
     };
 
     heap::free(self as &void);
+};
+
+fn LoTokenStream::peek(&self): Option::LoToken {
+    if self.index >= self.tokens.size {
+        return null!<LoToken>();
+    };
+
+    return self.tokens.get!<&LoToken>(self.index);
+};
+
+fn LoTokenStream::next(&self): Option::LoToken {
+    let token = self.peek();
+    self.index += 1;
+    return token;
+};
+
+fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): &LoToken throws &LoError {
+    let unexpected = self.terminal_token;
+    let token = self.peek();
+    if !is_null!<LoToken>(token) {
+        if token.is(type_, repr) {
+            return self.next();
+        };
+        unexpected = *token;
+    };
+
+    let message = String::from_str("Unexpected token '");
+    String::append_str(message, unexpected.repr);
+    String::append_str(message, "', wanted '");
+    String::append_str(message, repr);
+    String::append_str(message, "'");
+
+    throw heap::new!<LoError>(LoError {
+        message: message,
+        loc: unexpected.loc,
+    });
+};
+
+fn LoTokenStream::expect_any(&self, type_: LoTokenType): &LoToken throws &LoError {
+    let unexpected = self.terminal_token;
+    let token = self.peek();
+    if !is_null!<LoToken>(token) {
+        if token.is_any(type_) {
+            return self.next();
+        };
+        unexpected = *token;
+    };
+
+    let message = String::from_str("Unexpected token '");
+    String::append_str(message, unexpected.repr);
+    String::append_str(message, "', wanted '");
+    String::append_str(message, LoTokenType::to_str(type_));
+    String::append_str(message, "'");
+
+    throw heap::new!<LoError>(LoError {
+        message: message,
+        loc: unexpected.loc,
+    });
+};
+
+fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): Option::LoToken throws &LoError {
+    let token = self.expect(type_, repr) catch err {
+        if is_null!<LoToken>(self.peek()) {
+            throw err;
+        };
+
+        return null!<LoToken>();
+    };
+
+    return token;
 };
 
 struct LoLexer {
@@ -80,7 +177,6 @@ fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
 
     self.skip_space();
 
-    // TODO(qol): support while?
     loop {
         if self.index >= self.chars.size {
             break;
@@ -166,8 +262,8 @@ fn LoLexer::lex_symbol(&self): LexResult {
     return heap::new!<LoToken>(LoToken {
         type_: LoTokenType::Symbol,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
-        value: 0 as &void,
         loc: loc,
+        value: 0 as &void,
     });
 };
 
@@ -231,8 +327,8 @@ fn LoLexer::lex_char(&self): LexResult {
     return heap::new!<LoToken>(LoToken {
         type_: LoTokenType::Symbol,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
-        value: value as &void,
         loc: loc,
+        value: value as &void,
     });
 };
 
@@ -292,8 +388,8 @@ fn LoLexer::lex_string(&self): LexResult {
     return heap::new!<LoToken>(LoToken {
         type_: LoTokenType::StringLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
-        value: value as &void,
         loc: loc,
+        value: value as &void,
     });
 };
 
@@ -349,8 +445,8 @@ fn LoLexer::lex_int_literal(&self): LexResult {
     return heap::new!<LoToken>(LoToken {
         type_: LoTokenType::IntLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
-        value: heap::new!<u64>(value) as &void,
         loc: loc,
+        value: heap::new!<u64>(value) as &void,
     });
 };
 
@@ -362,8 +458,8 @@ fn LoLexer::lex_delim(&self): LexResult {
     return heap::new!<LoToken>(LoToken {
         type_: LoTokenType::Delim,
         repr: self.chars.slice(loc.pos.offset, self.index),
-        value: 0 as &void,
         loc: loc,
+        value: 0 as &void,
     });
 };
 
@@ -468,8 +564,8 @@ fn LoLexer::lex_operator(&self): LexResult {
     return heap::new!<LoToken>(LoToken {
         type_: LoTokenType::Operator,
         repr: repr,
-        value: 0 as &void,
         loc: loc,
+        value: 0 as &void,
     });
 };
 

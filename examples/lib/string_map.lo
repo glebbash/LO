@@ -1,0 +1,49 @@
+include "./std.lo";
+
+struct StringMap {
+    items: &Vec,
+};
+
+macro StringMap::new!<T>(): StringMap {
+    StringMap {
+        items: Vec::new(sizeof &String + sizeof T),
+    };
+};
+
+fn StringMap::free(self) {
+    for i in 0..self.items.size {
+        let key = self.items.get!<&String>(i);
+        key.free();
+    };
+    self.items.free();
+};
+
+macro StringMap::get!<T>(self, key: str): &T {
+    self.get(key) as &T;
+};
+
+fn StringMap::get(self, key: str): &void {
+    for i in 0..self.items.size {
+        let some_key = self.items.get!<&String>(i);
+        if str::from_string(some_key).equals(key) {
+            return (some_key as u32 + sizeof &String) as &void;
+        };
+    };
+
+    return null!<void>();
+};
+
+fn StringMap::contains_key(self, key: str): bool {
+    return is_null!<void>(self.get(key));
+};
+
+macro StringMap::insert!<T>(self, key: &String, item: T) {
+    let existing = self.get!<T>(str::from_string(key));
+    if existing {
+        *existing = item;
+    } else {
+        let entry = self.items.push();
+        *(entry as &&String) = key;
+        *((entry as u32 + sizeof &String) as &T) = item;
+    };
+};
