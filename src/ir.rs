@@ -72,14 +72,14 @@ pub struct FnContext<'a> {
 }
 
 #[derive(PartialEq)]
-pub enum BlockKind {
+pub enum LoBlockKind {
     Function,
     Block,
     Loop,
     ForLoop,
 }
 
-impl Default for BlockKind {
+impl Default for LoBlockKind {
     fn default() -> Self {
         Self::Block
     }
@@ -87,14 +87,27 @@ impl Default for BlockKind {
 
 #[derive(Default)]
 pub struct Block<'a> {
-    pub block_type: BlockKind,
+    pub block_kind: LoBlockKind,
     pub locals: BTreeMap<String, LocalDef>,
     pub macro_args: Option<BTreeMap<String, LoInstr>>,
     pub type_scope: Option<LoTypeScope<'a>>,
     pub parent: Option<&'a Block<'a>>,
 }
 
-impl Block<'_> {
+impl<'a> Block<'a> {
+    pub fn child_of(ctx: &'a ModuleContext, parent: &'a Block<'a>) -> Block<'a> {
+        Block {
+            parent: Some(parent),
+            type_scope: Some(LoTypeScope::default().with_parent(ctx, parent)),
+            ..Default::default()
+        }
+    }
+
+    pub fn of_kind(mut self, block_type: LoBlockKind) -> Self {
+        self.block_kind = block_type;
+        self
+    }
+
     pub fn get_local(&self, local_name: &str) -> Option<&LocalDef> {
         if let Some(local_def) = self.locals.get(local_name) {
             return Some(local_def);
@@ -112,7 +125,7 @@ impl Block<'_> {
             return Some(local_def);
         }
 
-        if self.block_type == BlockKind::Function {
+        if self.block_kind == LoBlockKind::Function {
             if let Some(parent) = self.parent {
                 return parent.get_local(local_name);
             }
@@ -149,6 +162,16 @@ pub struct LoTypeScope<'a> {
 }
 
 impl<'a> LoTypeScope<'a> {
+    pub fn with_parent(mut self, ctx: &'a ModuleContext, parent: &'a Block<'a>) -> Self {
+        if let Some(parent) = &parent.type_scope {
+            self.parent = Some(parent);
+        } else {
+            self.parent = Some(&ctx.type_scope);
+        }
+
+        self
+    }
+
     pub fn get(&self, name: &str) -> Option<&LoType> {
         if let Some(type_) = self.types.get(name) {
             return Some(type_);

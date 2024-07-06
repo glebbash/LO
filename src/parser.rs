@@ -121,11 +121,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         let mut block_ctx = BlockContext {
             module: &ctx,
             fn_ctx: &mut fn_ctx,
-            block: Block {
-                parent: Some(&locals_block),
-                block_type: BlockKind::Function,
-                ..Default::default()
-            },
+            block: Block::child_of(ctx, &locals_block).of_kind(LoBlockKind::Function),
         };
 
         let mut contents = parse_block_contents(&mut block_ctx, &mut fn_body.body, LoType::Void)?;
@@ -1223,10 +1219,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             &mut BlockContext {
                 module: ctx.module,
                 fn_ctx: ctx.fn_ctx,
-                block: Block {
-                    parent: Some(&ctx.block),
-                    ..Default::default()
-                },
+                block: Block::child_of(ctx.module, &ctx.block),
             },
             tokens,
         )?;
@@ -1236,10 +1229,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             let else_ctx = &mut BlockContext {
                 module: ctx.module,
                 fn_ctx: ctx.fn_ctx,
-                block: Block {
-                    parent: Some(&ctx.block),
-                    ..Default::default()
-                },
+                block: Block::child_of(ctx.module, &ctx.block),
             };
             if tokens.next_is(Symbol, "if")? {
                 else_branch = Some(vec![parse_expr(else_ctx, tokens, 0)?]);
@@ -1260,11 +1250,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let mut ctx = BlockContext {
             module: ctx.module,
             fn_ctx: ctx.fn_ctx,
-            block: Block {
-                parent: Some(&ctx.block),
-                block_type: BlockKind::Loop,
-                ..Default::default()
-            },
+            block: Block::child_of(ctx.module, &ctx.block).of_kind(LoBlockKind::Loop),
         };
 
         let mut body = parse_block(&mut ctx, tokens)?;
@@ -1287,11 +1273,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let counter_ctx = &mut BlockContext {
             module: ctx.module,
             fn_ctx: ctx.fn_ctx,
-            block: Block {
-                parent: Some(&ctx.block),
-                block_type: BlockKind::Block,
-                ..Default::default()
-            },
+            block: Block::child_of(ctx.module, &ctx.block),
         };
 
         let start_count = parse_expr(counter_ctx, tokens, 0)?;
@@ -1368,11 +1350,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         let loop_body_ctx = &mut BlockContext {
             module: counter_ctx.module,
             fn_ctx: counter_ctx.fn_ctx,
-            block: Block {
-                parent: Some(&counter_ctx.block),
-                block_type: BlockKind::ForLoop,
-                ..Default::default()
-            },
+            block: Block::child_of(ctx.module, &counter_ctx.block).of_kind(LoBlockKind::ForLoop),
         };
         let loop_body = parse_block(loop_body_ctx, tokens)?;
 
@@ -1403,11 +1381,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let mut current_block = &ctx.block;
         loop {
-            if current_block.block_type == BlockKind::Loop {
+            if current_block.block_kind == LoBlockKind::Loop {
                 break;
             }
 
-            if current_block.block_type == BlockKind::ForLoop {
+            if current_block.block_kind == LoBlockKind::ForLoop {
                 label_index += 1;
                 break;
             }
@@ -1424,11 +1402,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let mut current_block = &ctx.block;
         loop {
-            if current_block.block_type == BlockKind::Loop {
+            if current_block.block_kind == LoBlockKind::Loop {
                 break;
             }
 
-            if current_block.block_type == BlockKind::ForLoop {
+            if current_block.block_kind == LoBlockKind::ForLoop {
                 break;
             }
 
@@ -1787,7 +1765,7 @@ fn parse_macro_call(
         });
     };
 
-    let mut type_scope = {
+    let type_scope = {
         let mut type_args = Vec::new();
 
         if let Some(_) = tokens.eat(Operator, "<")? {
@@ -1841,18 +1819,12 @@ fn parse_macro_call(
         macro_args
     };
 
-    if let Some(parent) = &ctx.block.type_scope {
-        type_scope.parent = Some(parent);
-    } else {
-        type_scope.parent = Some(&ctx.module.type_scope);
-    }
-
     let macro_ctx = &mut BlockContext {
         module: ctx.module,
         fn_ctx: ctx.fn_ctx,
         block: Block {
             parent: Some(&ctx.block),
-            type_scope: Some(type_scope),
+            type_scope: Some(type_scope.with_parent(ctx.module, &ctx.block)),
             macro_args: Some(macro_args),
             ..Default::default()
         },
@@ -2307,10 +2279,7 @@ fn parse_postfix(
             let catch_ctx = &mut BlockContext {
                 module: ctx.module,
                 fn_ctx: ctx.fn_ctx,
-                block: Block {
-                    parent: Some(&ctx.block),
-                    ..Default::default()
-                },
+                block: Block::child_of(ctx.module, &ctx.block),
             };
 
             let bind_err_instr = define_local(
