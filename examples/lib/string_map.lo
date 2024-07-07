@@ -1,4 +1,5 @@
 include "./std.lo";
+include "./print.lo";
 
 struct StringMap {
     items: &Vec,
@@ -26,7 +27,8 @@ fn StringMap::get(self, key: str): &void {
     for i in 0..self.items.size {
         let some_key = self.items.get!<&String>(i);
         if str::from_string(some_key).equals(key) {
-            return (some_key as u32 + sizeof &String) as &void;
+            let entry = self.items.at!<&void>(i);
+            return (entry as u32 + sizeof &String) as &void;
         };
     };
 
@@ -34,7 +36,7 @@ fn StringMap::get(self, key: str): &void {
 };
 
 fn StringMap::contains_key(self, key: str): bool {
-    return is_null!<void>(self.get(key));
+    return !is_null!<void>(self.get(key));
 };
 
 macro StringMap::insert!<T>(self, key: &String, item: T) {
@@ -43,7 +45,7 @@ macro StringMap::insert!<T>(self, key: &String, item: T) {
         *existing = item;
     } else {
         let entry = self.items.push();
-        *(entry as &&String) = key;
+        *(entry as & &String) = key;
         *((entry as u32 + sizeof &String) as &T) = item;
     };
 };

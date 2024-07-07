@@ -12,10 +12,14 @@ struct LoIncludedFile {
     contents: &String,
 };
 
+// TODO: add free
 struct LoContext {
     included_files: &Vec::LoIncludedFile,
     wasm_module: &WasmModule,
     fn_defs: StringMap::LoFnDef,
+    fn_exports: &Vec::LoFnExport,
+    fn_bodies: &Vec::LoFnBody,
+    imported_fns_count: u32,
 };
 
 fn LoContext::new(): &LoContext {
@@ -23,6 +27,9 @@ fn LoContext::new(): &LoContext {
         included_files: Vec::new!<LoIncludedFile>(),
         wasm_module: WasmModule::new(),
         fn_defs: StringMap::new!<LoFnDef>(),
+        fn_exports: Vec::new!<LoFnExport>(),
+        fn_bodies: Vec::new!<LoFnBody>(),
+        imported_fns_count: 0,
     });
 };
 
@@ -43,6 +50,18 @@ fn LoContext::print_loc(&self, loc: LoLocation) {
 // so it must be defined before parser
 // TODO: is there a clean way to resolve this?
 include "./parser.lo";
+
+fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoError {
+    let file_index = LoContext::include_file(self, file_path) catch err {
+        throw err;
+    };
+
+    LoParser::finalize(self) catch err {
+        throw err;
+    };
+
+    return file_index;
+};
 
 fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
     let file_contents = fs::read_file(file_path) catch err {
@@ -72,4 +91,22 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
 
 fn LoContext::get_file(&self, file_index: u32): &LoIncludedFile {
     return self.included_files.at!<LoIncludedFile>(file_index);
+};
+
+
+fn LoContext::insert_fn_type(&self, fn_type: WasmFnType): u32 {
+    for type_index in 0..self.wasm_module.types.size {
+        if self.wasm_module.types.get!<WasmFnType>(type_index).equals(fn_type) {
+            return type_index;
+        };
+    };
+
+    self.wasm_module.types.push!<WasmFnType>(fn_type);
+    return self.wasm_module.types.size - 1;
+};
+
+// TODO: implement
+// TODO: where should this be defined?
+fn WasmFnType::equals(self, other: WasmFnType): bool {
+    return false;
 };

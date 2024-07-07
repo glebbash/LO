@@ -1897,14 +1897,16 @@ fn parse_block_contents(
                     message: format!("Expression resolved to `{expr_type}`, but block expected `{expected_type}`"),
                     loc: expr_loc,
                 });
-            } else if resolved_type != LoType::Void {
+            }
+
+            if resolved_type != LoType::Void {
                 return Err(LoError {
                     message: format!(
                         "Multiple non-void expressions in the block are not supported"
                     ),
                     loc: expr_loc,
                 });
-            };
+            }
 
             resolved_type = expr_type;
         }

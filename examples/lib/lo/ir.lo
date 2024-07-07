@@ -4,6 +4,7 @@ include "../string_map.lo";
 
 include "./utils.lo";
 include "./wasm.lo";
+include "./lexer.lo";
 
 type LoType::_ = u32;
 struct LoType {
@@ -32,7 +33,7 @@ struct LoFnParam {
 type Vec::LoFnParam = Vec;
 
 struct LoFnType {
-    inputs: Vec::LoType,
+    inputs: &Vec::LoType,
     output: LoType,
 };
 
@@ -47,7 +48,7 @@ struct LoFnDecl {
     fn_name: &String,
     method_name: &String,
     loc: LoLocation,
-    fn_params: Vec::LoFnParam,
+    fn_params: &Vec::LoFnParam,
     lo_type: LoFnType,
     wasm_type: WasmFnType,
     locals: StringMap::LoLocalDef,
@@ -56,9 +57,53 @@ struct LoFnDecl {
 struct LoFnDef {
     local: bool,
     fn_index: u32,
-    fn_params: Vec::LoFnParam,
+    fn_params: &Vec::LoFnParam,
     type_index: u32,
     type_: LoFnType,
     loc: LoLocation,
 };
 type StringMap::LoFnDef = StringMap;
+
+struct LoFnExport {
+    in_name: &String,
+    out_name: &String,
+};
+type Vec::LoFnExport = Vec;
+
+struct LoFnBody {
+    fn_index: u32,
+    type_index: u32,
+    locals: StringMap::LoLocalDef,
+    locals_last_index: u32,
+    body: &LoTokenStream,
+};
+type Vec::LoFnBody = Vec;
+
+type LoInstr::_ = u32;
+struct LoInstr {
+    kind: LoInstr::_,
+    data: &void,
+};
+type Vec::LoInstr = Vec;
+
+const LoInstr::U32Const = 0;
+macro LoInstr::U32Const!(value: u32): LoInstr {
+    LoInstr {
+        kind: LoInstr::U32Const,
+        data: value as &void,
+    };
+};
+
+const LoInstr::Return = 1;
+macro LoInstr::Return!(value: LoInstr): LoInstr {
+    LoInstr {
+        kind: LoInstr::Return,
+        data: heap::new!<LoInstr>(value) as &void,
+    };
+};
+
+fn LoInstr::free(self) {
+    if self.kind == LoInstr::Return {
+        heap::free(self.data);
+    };
+};

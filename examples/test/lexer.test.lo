@@ -17,7 +17,7 @@ fn main() {
     defer tokens.free();
 
     for i in 0..tokens.tokens.size {
-        let t = tokens.tokens.get!<&LoToken>(i);
+        let t = tokens.tokens.get!<LoToken>(i);
 
         puts(input_file);
         puts(":");

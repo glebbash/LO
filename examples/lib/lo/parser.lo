@@ -21,7 +21,8 @@ fn LoParser::parse_file_tokens(
     ctx: &LoContext, tokens: &LoTokenStream
 ): void throws &LoError {
     loop {
-        if is_null!<LoToken>(tokens.peek()) {
+        let some_token = tokens.peek();
+        if !some_token.exists {
             break;
         };
 
@@ -34,14 +35,46 @@ fn LoParser::parse_file_tokens(
         };
     };
 
-    let token = tokens.peek();
-    if !is_null!<LoToken>(token) {
+    let some_token = tokens.peek();
+    if some_token.exists {
         let message = String::from_str("Unexpected token on top level: ");
-        String::append_str(message, token.repr);
+        String::append_str(message, some_token.token.repr);
 
         throw heap::new!<LoError>(LoError {
             message: message,
-            loc: token.loc,
+            loc: some_token.token.loc,
+        });
+    };
+};
+
+// TODO: implement complete version
+fn LoParser::finalize(ctx: &LoContext): void throws &LoError {
+    // push function exports
+    for i in 0..ctx.fn_exports.size {
+        let fn_export = ctx.fn_exports.get!<LoFnExport>(i);
+        let fn_def = *ctx.fn_defs.get!<LoFnDef>(str::from_string(fn_export.in_name)); // safe
+
+        ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
+            name: String::clone(fn_export.out_name),
+            item_type: WasmExportType::Fn,
+            item_index: fn_def.get_absolute_index(ctx),
+        });
+    };
+
+    // push function codes
+    for i in 0..ctx.fn_bodies.size {
+        let fn_body = ctx.fn_bodies.get!<LoFnBody>(i);
+
+        let contents = LoParser::parse_block_contents(ctx, fn_body.body, LoType::Void!()) catch err {
+            throw err;
+        };
+
+        let instrs = Vec::new!<WasmInstr>();
+        LoParser::lower_exprs(instrs, contents.exprs);
+
+        ctx.wasm_module.codes.push!<WasmCode>(WasmCode {
+            locals: Vec::new!<WasmLocals>(),
+            expr: WasmExpr { instrs: instrs },
         });
     };
 };
@@ -49,24 +82,28 @@ fn LoParser::parse_file_tokens(
 fn LoParser::parse_top_level_expr(
     ctx: &LoContext, tokens: &LoTokenStream,
 ): void throws &LoError {
-    if is_null!<LoToken>(tokens.peek()) {
+    let some_token = tokens.peek();
+    if !some_token.exists {
         return;
     };
 
-    if !is_null!<LoToken>(tokens.eat(LoTokenType::Symbol, "fn") catch err {
+    some_token = tokens.eat(LoTokenType::Symbol, "fn") catch err {
         throw err;
-    }) {
+    };
+    if some_token.exists {
         return LoParser::parse_fn_def(ctx, tokens, false) catch err {
             throw err;
         };
     };
 
-    if !is_null!<LoToken>(tokens.eat(LoTokenType::Symbol, "export") catch err {
+    some_token = tokens.eat(LoTokenType::Symbol, "export") catch err {
         throw err;
-    }) {
-        if !is_null!<LoToken>(tokens.eat(LoTokenType::Symbol, "fn") catch err {
+    };
+    if some_token.exists {
+        some_token = tokens.eat(LoTokenType::Symbol, "fn") catch err {
             throw err;
-        }) {
+        };
+        if some_token.exists {
             return LoParser::parse_fn_def(ctx, tokens, true) catch err {
                 throw err;
             };
@@ -77,7 +114,8 @@ fn LoParser::parse_top_level_expr(
 
     // TODO: parse other expressions
 
-    let unexpected = tokens.peek(); // null checked at the top
+    some_token = tokens.peek();
+    let unexpected = some_token.token; // null checked at the top
     let message = String::from_str("Unexpected top level token: ");
     String::append_str(message, unexpected.repr);
 
@@ -107,13 +145,44 @@ fn LoParser::parse_fn_def(
         });
     };
 
-    // TODO: implement
+    if exported {
+        ctx.fn_exports.push!<LoFnExport>(LoFnExport {
+            in_name: String::clone(fn_decl.fn_name),
+            out_name: String::clone(fn_decl.fn_name),
+        });
+    };
+
+    let locals_last_index = fn_decl.wasm_type.inputs.size;
+    let type_index = ctx.insert_fn_type(fn_decl.wasm_type);
+    ctx.wasm_module.functions.push!<u32>(type_index);
+
+    let fn_index = ctx.wasm_module.functions.size - 1;
+
+    ctx.fn_defs.insert!<LoFnDef>(
+        fn_decl.fn_name,
+        LoFnDef {
+            local: true,
+            fn_index: fn_index,
+            fn_params: fn_decl.fn_params,
+            type_index: type_index,
+            type_: fn_decl.lo_type,
+            loc: fn_decl.loc,
+        },
+    );
+
+    ctx.fn_bodies.push!<LoFnBody>(LoFnBody {
+        fn_index: fn_index,
+        type_index: type_index,
+        locals: fn_decl.locals,
+        locals_last_index: locals_last_index,
+        body: body,
+    });
 };
 
 // TODO: implement the complete version
 fn LoParser::parse_fn_decl(
     ctx: &LoContext, tokens: &LoTokenStream,
-): &LoFnDecl throws &LoError {
+): LoFnDecl throws &LoError {
     let fn_name = tokens.expect_any(LoTokenType::Symbol) catch err {
         throw err;
     };
@@ -125,14 +194,190 @@ fn LoParser::parse_fn_decl(
         throw err;
     };
 
+    let fn_decl = LoFnDecl {
+        fn_name: String::from_str(fn_name.repr),
+        method_name: String::from_str(""),
+        loc: fn_name.loc,
+        fn_params: Vec::new!<LoFnParam>(),
+        lo_type: LoFnType {
+            inputs: Vec::new!<LoType>(),
+            output: LoType::Void!(),
+        },
+        wasm_type: WasmFnType {
+            inputs: Vec::new!<WasmValueType>(),
+            outputs: Vec::new!<WasmValueType>(),
+        },
+        locals: StringMap::new!<LoLocalDef>(),
+    };
+
     let lo_output = LoType::Void!();
-    if !is_null!<LoToken>(tokens.eat(LoTokenType::Operator, ":") catch err {
+    let some_token = tokens.eat(LoTokenType::Operator, ":") catch err {
         throw err;
-    }) {
-        // TODO(bug): catch doesn't work on multivalue returns
+    };
+    if some_token.exists {
         lo_output = LoParser::parse_const_lo_type(ctx, tokens) catch err {
             throw err;
         };
+    };
+
+    lo_output.emit_components(ctx, fn_decl.wasm_type.outputs);
+    fn_decl.lo_type.output = lo_output;
+
+    return fn_decl;
+};
+
+fn LoParser::collect_block_tokens(
+    tokens: &LoTokenStream,
+): &LoTokenStream throws &LoError {
+    let output = LoTokenStream::new(
+        Vec::new!<LoToken>(),
+        LoLocation::internal(),
+    );
+
+    let depth = 0;
+    let _ = tokens.expect(LoTokenType::Delim, "{") catch err {
+        throw err;
+    };
+
+    loop {
+        let some_token = tokens.eat(LoTokenType::Delim, "{") catch err {
+            throw err;
+        };
+        if some_token.exists {
+            output.tokens.push!<LoToken>(some_token.token.clone());
+            depth += 1;
+            continue;
+        };
+
+        some_token = tokens.eat(LoTokenType::Delim, "}") catch err {
+            throw err;
+        };
+        if some_token.exists {
+            if depth == 0 {
+                output.terminal_token = some_token.token.clone();
+                break;
+            };
+            output.tokens.push!<LoToken>(some_token.token.clone());
+            depth -= 1;
+            continue;
+        };
+
+        some_token = tokens.next();
+        output.tokens.push!<LoToken>(some_token.token.clone());
+    };
+
+    return output;
+};
+
+struct LoBlockContents {
+    exprs: &Vec::LoInstr,
+    has_never: bool,
+    has_return: bool,
+};
+
+// TODO: implement complete
+fn LoParser::parse_block_contents(
+    ctx: &LoContext, // TODO: should be LoBlockContext
+    tokens: &LoTokenStream,
+    expected_type: LoType,
+): LoBlockContents throws &LoError {
+    let contents = LoBlockContents {
+        exprs: Vec::new!<LoInstr>(),
+        has_never: false,
+        has_return: false,
+    };
+
+    loop {
+        let some_token = tokens.peek();
+        if !some_token.exists {
+            break;
+        };
+
+        let expr = LoParser::parse_expr(ctx, tokens, 0) catch err {
+            throw err;
+        };
+        let _ = tokens.expect(LoTokenType::Delim, ";") catch err {
+            throw err;
+        };
+
+        contents.exprs.push!<LoInstr>(expr);
+    };
+
+    return contents;
+};
+
+// TODO: implement complete
+fn LoParser::parse_expr(
+    ctx: &LoContext, // TODO: should be LoBlockContext
+    tokens: &LoTokenStream,
+    min_bp: u32,
+): LoInstr throws &LoError {
+    let some_token = tokens.eat(LoTokenType::Symbol, "return") catch err {
+        throw err;
+    };
+    if some_token.exists {
+        return LoInstr::Return!(
+            LoParser::parse_expr(ctx, tokens, min_bp) catch err {
+                throw err;
+            }
+        );
+    };
+
+    some_token = tokens.eat_any(LoTokenType::IntLiteral) catch err {
+        throw err;
+    };
+    if some_token.exists {
+        return LoInstr::U32Const!(*(some_token.token.value as &u32));
+    };
+
+    some_token = tokens.peek();
+
+    let message = String::from_str("Unexpected token: ");
+    String::append_str(message, LoTokenType::to_str(some_token.token.type_));
+    throw heap::new!<LoError>(LoError {
+        message: message,
+        loc: some_token.token.loc,
+    });
+};
+
+fn LoParser::lower_exprs(
+    out: &Vec::WasmInstr,
+    exprs: &Vec::LoInstr,
+) {
+    for i in 0..exprs.size {
+        let expr = exprs.get!<LoInstr>(i);
+        LoParser::lower_expr(out, expr);
+    };
+};
+
+// TODO: implement complete
+fn LoParser::lower_expr(
+    out: &Vec::WasmInstr,
+    expr: LoInstr,
+) {
+    if expr.kind == LoInstr::U32Const {
+        out.push!<WasmInstr>(WasmInstr::I32Const::new(expr.data as i32));
+        return;
+    };
+
+    if expr.kind == LoInstr::Return {
+        LoParser::lower_expr(out, *(expr.data as &LoInstr));
+        out.push!<WasmInstr>(WasmInstr::Return::new());
+        return;
+    };
+
+    unreachable;
+};
+
+// TODO: parse other types
+fn LoParser::parse_const_lo_type(
+    ctx: &LoContext, tokens: &LoTokenStream,
+): LoType throws &LoError {
+    let some_token = tokens.eat(LoTokenType::Symbol, "u32") catch err {
+        throw err;
+    };
+    if some_token.exists {
+        return LoType::U32!();
     };
 
     throw heap::new!<LoError>(LoError {
@@ -141,20 +386,28 @@ fn LoParser::parse_fn_decl(
     });
 };
 
-fn LoParser::collect_block_tokens(
-    tokens: &LoTokenStream,
-): &LoTokenStream throws &LoError {
-    throw heap::new!<LoError>(LoError {
-        message: String::from_str(dbg "TODO: implement"),
-        loc: LoLocation::internal(),
-    });
+// TODO: this should be in the ir.lo, but it depends on LoContext
+fn LoType::emit_components(
+    self, ctx: &LoContext, out: &Vec::WasmValueType
+) {
+    if self.kind == LoType::Void {
+        return;
+    };
+
+    if self.kind == LoType::U32 {
+        out.push!<WasmValueType>(WasmValueType::I32);
+        return;
+    };
+
+    // TODO: support other types
+    unreachable;
 };
 
-fn LoParser::parse_const_lo_type(
-    ctx: &LoContext, tokens: &LoTokenStream,
-): LoType throws &LoError {
-    throw heap::new!<LoError>(LoError {
-        message: String::from_str(dbg "TODO: implement"),
-        loc: LoLocation::internal(),
-    });
+// TODO: this should be in the ir.lo, but it depends on LoContext
+fn LoFnDef::get_absolute_index(self, ctx: &LoContext): u32 {
+    if self.local {
+        return self.fn_index + ctx.imported_fns_count;
+    };
+
+    return self.fn_index;
 };

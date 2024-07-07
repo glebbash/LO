@@ -13,12 +13,10 @@ fn main() {
     let ctx = LoContext::new();
 
     let file_name = args.get(1);
-    if file_name.equals("--goal1") {
-        goal1(ctx);
-    } else if file_name.equals("--goal2") {
+    if file_name.equals("--goal2") {
         goal2(ctx);
     } else {
-        let _ = ctx.include_file(args.get(1)) catch err {
+        let _ = ctx.include_file_and_finalize(args.get(1)) catch err {
             ctx.print_loc(err.loc);
             eputs(" - ");
             eprint_str(err.message as &str);
@@ -33,33 +31,6 @@ fn main() {
     ctx.wasm_module.write(binary);
 
     print_str(binary as &str);
-};
-
-fn goal1(ctx: &LoContext) {
-    let get_answer_fn_type = WasmFnType {
-        inputs: Vec::new!<WasmValueType>(),
-        outputs: Vec::new!<WasmValueType>(),
-    };
-
-    get_answer_fn_type.outputs.push!<WasmValueType>(WasmValueType::I32);
-
-    ctx.wasm_module.types.push!<WasmFnType>(get_answer_fn_type);
-
-    ctx.wasm_module.functions.push!<u32>(0);
-
-    ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
-        name: String::from_str("get_answer"),
-        item_type: WasmExportType::Fn,
-        item_index: 0,
-    });
-
-    let instrs = Vec::new!<WasmInstr>();
-    instrs.push!<WasmInstr>(WasmInstr::I32Const::new(42 as i32));
-    instrs.push!<WasmInstr>(WasmInstr::Return::new());
-
-    ctx.wasm_module.codes.push!<WasmCode>(WasmCode {
-        expr: WasmExpr { instrs: instrs },
-    });
 };
 
 fn goal2(ctx: &LoContext) {
@@ -112,6 +83,7 @@ fn goal2(ctx: &LoContext) {
             instrs.push!<WasmInstr>(WasmInstr::Drop::new()); // drop n_bytes_written, returned from fd_write
 
             ctx.wasm_module.codes.push!<WasmCode>(WasmCode {
+                locals: Vec::new!<WasmLocals>(),
                 expr: WasmExpr { instrs: instrs },
             });
 
