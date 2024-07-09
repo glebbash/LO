@@ -12,17 +12,12 @@ fn main() {
 
     let ctx = LoContext::new();
 
-    let file_name = args.get(1);
-    if file_name.equals("--goal2") {
-        goal2(ctx);
-    } else {
-        let _ = ctx.include_file_and_finalize(args.get(1)) catch err {
-            ctx.print_loc(err.loc);
-            eputs(" - ");
-            eprint_str(err.message as &str);
-            eputs("\n");
-            wasi::proc_exit(1);
-        };
+    let _ = ctx.include_file_and_finalize(args.get(1)) catch err {
+        ctx.print_loc(err.loc);
+        eputs(" - ");
+        eprint_str(err.message as &str);
+        eputs("\n");
+        wasi::proc_exit(1);
     };
 
     let binary = Vec::new!<u8>();
@@ -31,89 +26,4 @@ fn main() {
     ctx.wasm_module.write(binary);
 
     print_str(binary as &str);
-};
-
-fn goal2(ctx: &LoContext) {
-    // fd_write:
-        let fd_write_fn_type = WasmFnType {
-            inputs: Vec::new!<WasmValueType>(),
-            outputs: Vec::new!<WasmValueType>(),
-        };
-
-        fd_write_fn_type.inputs.push!<WasmValueType>(WasmValueType::I32);
-        fd_write_fn_type.inputs.push!<WasmValueType>(WasmValueType::I32);
-        fd_write_fn_type.inputs.push!<WasmValueType>(WasmValueType::I32);
-        fd_write_fn_type.inputs.push!<WasmValueType>(WasmValueType::I32);
-
-        fd_write_fn_type.outputs.push!<WasmValueType>(WasmValueType::I32);
-
-        ctx.wasm_module.types.push!<WasmFnType>(fd_write_fn_type);
-
-        ctx.wasm_module.imports.push!<WasmImport>(WasmImport {
-            module_name: String::from_str("wasi_snapshot_preview1"),
-            item_name: String::from_str("fd_write"),
-            item_type: WasmImportType::Fn,
-            item_index: 0, // index of fd_write_fn_type
-        });
-
-    // _start:
-        let _start_fn_type = WasmFnType {
-            inputs: Vec::new!<WasmValueType>(),
-            outputs: Vec::new!<WasmValueType>(),
-        };
-
-        ctx.wasm_module.types.push!<WasmFnType>(_start_fn_type);
-
-        // body:
-            let instrs = Vec::new!<WasmInstr>();
-
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(4 as i32)); // IOVec.base
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(12 as i32)); // message.ptr
-            instrs.push!<WasmInstr>(WasmInstr::I32Store::new(0, 0));
-
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(8 as i32)); // IOVec.size
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(13 as i32)); // message.length
-            instrs.push!<WasmInstr>(WasmInstr::I32Store::new(0, 0));
-
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(1 as i32)); // file_descriptor, STDOUT = 1
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(4 as i32)); // The pointer to the iov array
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(1 as i32)); // Amount of wasi::IOVec
-            instrs.push!<WasmInstr>(WasmInstr::I32Const::new(0 as i32)); // Pointer to store the number of bytes written
-            instrs.push!<WasmInstr>(WasmInstr::Call::new(0)); // index of fd_write
-            instrs.push!<WasmInstr>(WasmInstr::Drop::new()); // drop n_bytes_written, returned from fd_write
-
-            ctx.wasm_module.codes.push!<WasmCode>(WasmCode {
-                locals: Vec::new!<WasmLocals>(),
-                expr: WasmExpr { instrs: instrs },
-            });
-
-        ctx.wasm_module.functions.push!<u32>(1);
-
-        ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
-            name: String::from_str("_start"),
-            item_type: WasmExportType::Fn,
-            item_index: 1, // index of _start function
-        });
-
-    // memory:
-        ctx.wasm_module.memories.push!<WasmMemory>(WasmMemory {
-            min: 1,
-            max: 0, // ignored
-            has_max: false,
-        });
-
-        ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
-            name: String::from_str("memory"),
-            item_type: WasmImportType::Memory,
-            item_index: 0,
-        });
-
-    // data:
-        let offset_instrs = Vec::new!<WasmInstr>();
-        offset_instrs.push!<WasmInstr>(WasmInstr::I32Const::new(12 as i32));
-
-        ctx.wasm_module.datas.push!<WasmData>(WasmData {
-            expr: WasmExpr { instrs: offset_instrs },
-            bytes: String::from_str("Hello World!\n"),
-        });
 };
