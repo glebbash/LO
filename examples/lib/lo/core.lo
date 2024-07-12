@@ -56,7 +56,7 @@ fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoEr
         throw err;
     };
 
-    LoParser::finalize(self) catch err {
+    self.finalize() catch err {
         throw err;
     };
 
@@ -82,7 +82,13 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
 
     let file_index = self.included_files.size - 1;
 
-    LoParser::parse_file(self, file_index, str::from_string(file_contents)) catch err {
+    let lexer = LoLexer::new(file_index, str::from_string(file_contents));
+    let tokens = lexer.lex_all() catch err {
+        throw err;
+    };
+
+    let parser = LoParser { ctx: self, tokens: tokens, };
+    parser.parse_all() catch err {
         throw err;
     };
 
@@ -93,7 +99,6 @@ fn LoContext::get_file(&self, file_index: u32): &LoIncludedFile {
     return self.included_files.at!<LoIncludedFile>(file_index);
 };
 
-
 fn LoContext::insert_fn_type(&self, fn_type: WasmFnType): u32 {
     for type_index in 0..self.wasm_module.types.size {
         if self.wasm_module.types.get!<WasmFnType>(type_index).equals(fn_type) {
@@ -103,6 +108,38 @@ fn LoContext::insert_fn_type(&self, fn_type: WasmFnType): u32 {
 
     self.wasm_module.types.push!<WasmFnType>(fn_type);
     return self.wasm_module.types.size - 1;
+};
+
+// TODO: implement complete version
+fn LoContext::finalize(&self): void throws &LoError {
+    // push function exports
+    for i in 0..self.fn_exports.size {
+        let fn_export = self.fn_exports.get!<LoFnExport>(i);
+        let fn_def = *self.fn_defs.get!<LoFnDef>(str::from_string(fn_export.in_name)); // safe
+
+        self.wasm_module.exports.push!<WasmExport>(WasmExport {
+            name: String::clone(fn_export.out_name),
+            item_type: WasmExportType::Fn,
+            item_index: fn_def.get_absolute_index(self),
+        });
+    };
+
+    // push function codes
+    for i in 0..self.fn_bodies.size {
+        let fn_body = self.fn_bodies.get!<LoFnBody>(i);
+
+        let contents = LoParser::parse_block_contents(self, fn_body.body, LoType::Void!()) catch err {
+            throw err;
+        };
+
+        let instrs = Vec::new!<WasmInstr>();
+        LoInstr::lower_all(contents.exprs, instrs);
+
+        self.wasm_module.codes.push!<WasmCode>(WasmCode {
+            locals: Vec::new!<WasmLocals>(),
+            expr: WasmExpr { instrs: instrs },
+        });
+    };
 };
 
 // TODO: implement

@@ -107,3 +107,31 @@ fn LoInstr::free(self) {
         heap::free(self.data);
     };
 };
+
+fn LoInstr::lower_all(
+    exprs: &Vec::LoInstr,
+    out: &Vec::WasmInstr,
+) {
+    for i in 0..exprs.size {
+        exprs.get!<LoInstr>(i).lower(out);
+    };
+};
+
+// TODO: implement complete
+fn LoInstr::lower(
+    self,
+    out: &Vec::WasmInstr,
+) {
+    if self.kind == LoInstr::U32Const {
+        out.push!<WasmInstr>(WasmInstr::I32Const::new(self.data as i32));
+        return;
+    };
+
+    if self.kind == LoInstr::Return {
+        (*(self.data as &LoInstr)).lower(out);
+        out.push!<WasmInstr>(WasmInstr::Return::new());
+        return;
+    };
+
+    unreachable;
+};
