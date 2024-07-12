@@ -100,9 +100,7 @@ fn render() {
     if mode == Mode::SLASH {
         wasm4::text("Slash!!!"0, 10 as i32, 10 as i32);
 
-        let health_txt = String::new(10);
-        let msg = "HP: ";
-        health_txt.push_all(msg.data as &void, msg.size);
+        let health_txt = String::from_str("HP: ");
         let _ = u32::write(boss_health, health_txt);
         health_txt.push!<u8>(0 as u8);
 
