@@ -778,12 +778,20 @@ impl LoInstr {
                 | WasmBinaryOpKind::I32_GT_U
                 | WasmBinaryOpKind::I32_LE_U
                 | WasmBinaryOpKind::I32_GE_U
+                | WasmBinaryOpKind::I32_LT_S
+                | WasmBinaryOpKind::I32_GT_S
+                | WasmBinaryOpKind::I32_LE_S
+                | WasmBinaryOpKind::I32_GE_S
                 | WasmBinaryOpKind::I64_EQ
                 | WasmBinaryOpKind::I64_NE
                 | WasmBinaryOpKind::I64_LT_U
                 | WasmBinaryOpKind::I64_GT_U
                 | WasmBinaryOpKind::I64_LE_U
                 | WasmBinaryOpKind::I64_GE_U
+                | WasmBinaryOpKind::I64_LT_S
+                | WasmBinaryOpKind::I64_GT_S
+                | WasmBinaryOpKind::I64_LE_S
+                | WasmBinaryOpKind::I64_GE_S
                 | WasmBinaryOpKind::I64_AND
                 | WasmBinaryOpKind::I64_OR
                 | WasmBinaryOpKind::F32_EQ
