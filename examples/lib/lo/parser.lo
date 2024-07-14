@@ -14,13 +14,9 @@ fn LoParser::parse_all(self): void throws &LoError {
             break;
         };
 
-        self.parse_top_level_expr() catch err {
-            throw err;
-        };
+        self.parse_top_level_expr()?;
 
-        let _ = self.tokens.expect(LoTokenType::Delim, ";") catch err {
-            throw err;
-        };
+        let _ = self.tokens.expect(LoTokenType::Delim, ";")?;
     };
 
     let some_token = self.tokens.peek();
@@ -41,26 +37,16 @@ fn LoParser::parse_top_level_expr(self): void throws &LoError {
         return;
     };
 
-    some_token = self.tokens.eat(LoTokenType::Symbol, "fn") catch err {
-        throw err;
-    };
+    some_token = self.tokens.eat(LoTokenType::Symbol, "fn")?;
     if some_token.exists {
-        return self.parse_fn_def(false) catch err {
-            throw err;
-        };
+        return self.parse_fn_def(false)?;
     };
 
-    some_token = self.tokens.eat(LoTokenType::Symbol, "export") catch err {
-        throw err;
-    };
+    some_token = self.tokens.eat(LoTokenType::Symbol, "export")?;
     if some_token.exists {
-        some_token = self.tokens.eat(LoTokenType::Symbol, "fn") catch err {
-            throw err;
-        };
+        some_token = self.tokens.eat(LoTokenType::Symbol, "fn")?;
         if some_token.exists {
-            return self.parse_fn_def(true) catch err {
-                throw err;
-            };
+            return self.parse_fn_def(true)?;
         };
 
         // TODO: parse other exportables
@@ -80,12 +66,8 @@ fn LoParser::parse_top_level_expr(self): void throws &LoError {
 };
 
 fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
-    let fn_decl = self.parse_fn_decl() catch err {
-        throw err;
-    };
-    let body = self.collect_block_tokens() catch err {
-        throw err;
-    };
+    let fn_decl = self.parse_fn_decl()?;
+    let body = self.collect_block_tokens()?;
 
     if self.ctx.fn_defs.contains_key(str::from_string(fn_decl.fn_name)) {
         let message = String::from_str("Cannot redefine function: ");
@@ -133,16 +115,10 @@ fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
 
 // TODO: implement the complete version
 fn LoParser::parse_fn_decl(self): LoFnDecl throws &LoError {
-    let fn_name = self.tokens.expect_any(LoTokenType::Symbol) catch err {
-        throw err;
-    };
+    let fn_name = self.tokens.expect_any(LoTokenType::Symbol)?;
 
-    let _ = self.tokens.expect(LoTokenType::Delim, "(") catch err {
-        throw err;
-    };
-    let _ = self.tokens.expect(LoTokenType::Delim, ")") catch err {
-        throw err;
-    };
+    let _ = self.tokens.expect(LoTokenType::Delim, "(")?;
+    let _ = self.tokens.expect(LoTokenType::Delim, ")")?;
 
     let fn_decl = LoFnDecl {
         fn_name: String::from_str(fn_name.repr),
@@ -161,13 +137,9 @@ fn LoParser::parse_fn_decl(self): LoFnDecl throws &LoError {
     };
 
     let lo_output = LoType::Void!();
-    let some_token = self.tokens.eat(LoTokenType::Operator, ":") catch err {
-        throw err;
-    };
+    let some_token = self.tokens.eat(LoTokenType::Operator, ":")?;
     if some_token.exists {
-        lo_output = self.parse_const_lo_type() catch err {
-            throw err;
-        };
+        lo_output = self.parse_const_lo_type()?;
     };
 
     lo_output.emit_components(self.ctx, fn_decl.wasm_type.outputs);
@@ -183,23 +155,17 @@ fn LoParser::collect_block_tokens(self): &LoTokenStream throws &LoError {
     );
 
     let depth = 0;
-    let _ = self.tokens.expect(LoTokenType::Delim, "{") catch err {
-        throw err;
-    };
+    let _ = self.tokens.expect(LoTokenType::Delim, "{")?;
 
     loop {
-        let some_token = self.tokens.eat(LoTokenType::Delim, "{") catch err {
-            throw err;
-        };
+        let some_token = self.tokens.eat(LoTokenType::Delim, "{")?;
         if some_token.exists {
             output.tokens.push!<LoToken>(some_token.token.clone());
             depth += 1;
             continue;
         };
 
-        some_token = self.tokens.eat(LoTokenType::Delim, "}") catch err {
-            throw err;
-        };
+        some_token = self.tokens.eat(LoTokenType::Delim, "}")?;
         if some_token.exists {
             if depth == 0 {
                 output.terminal_token = some_token.token.clone();
@@ -241,12 +207,8 @@ fn LoParser::parse_block_contents(
             break;
         };
 
-        let expr = LoParser::parse_expr(ctx, tokens, 0) catch err {
-            throw err;
-        };
-        let _ = tokens.expect(LoTokenType::Delim, ";") catch err {
-            throw err;
-        };
+        let expr = LoParser::parse_expr(ctx, tokens, 0)?;
+        let _ = tokens.expect(LoTokenType::Delim, ";")?;
 
         contents.exprs.push!<LoInstr>(expr);
     };
@@ -260,20 +222,14 @@ fn LoParser::parse_expr(
     tokens: &LoTokenStream,
     min_bp: u32,
 ): LoInstr throws &LoError {
-    let some_token = tokens.eat(LoTokenType::Symbol, "return") catch err {
-        throw err;
-    };
+    let some_token = tokens.eat(LoTokenType::Symbol, "return")?;
     if some_token.exists {
         return LoInstr::Return!(
-            LoParser::parse_expr(ctx, tokens, min_bp) catch err {
-                throw err;
-            }
+            LoParser::parse_expr(ctx, tokens, min_bp)?
         );
     };
 
-    some_token = tokens.eat_any(LoTokenType::IntLiteral) catch err {
-        throw err;
-    };
+    some_token = tokens.eat_any(LoTokenType::IntLiteral)?;
     if some_token.exists {
         return LoInstr::U32Const!(*(some_token.token.value as &u32));
     };
@@ -290,9 +246,7 @@ fn LoParser::parse_expr(
 
 // TODO: parse other types
 fn LoParser::parse_const_lo_type(self): LoType throws &LoError {
-    let some_token = self.tokens.eat(LoTokenType::Symbol, "u32") catch err {
-        throw err;
-    };
+    let some_token = self.tokens.eat(LoTokenType::Symbol, "u32")?;
     if some_token.exists {
         return LoType::U32!();
     };

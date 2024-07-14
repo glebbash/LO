@@ -560,6 +560,7 @@ static OPERATORS: &[&str] = &[
     ":",   // Type separator
     "::",  // Path separator
     "@",   // Memory index separator, defer label prefix
+    "?",   // Error propagation
 ];
 
 fn is_operator_start_char(c: char) -> bool {
@@ -605,6 +606,8 @@ pub enum InfixOpTag {
     Cast,
     FieldAccess,
     Catch,
+
+    ErrorPropagation,
 }
 
 pub struct InfixOp {
@@ -618,9 +621,17 @@ impl InfixOp {
         use InfixOpTag::*;
         use OpAssoc::*;
         let (tag, info) = match token.value.as_str() {
-            "catch" => (Catch, OpInfo { bp: 12, assoc: L }),
+            "catch" => (Catch, OpInfo { bp: 13, assoc: L }),
 
-            "." => (FieldAccess, OpInfo { bp: 11, assoc: L }),
+            "." => (FieldAccess, OpInfo { bp: 12, assoc: L }),
+
+            "?" => (
+                ErrorPropagation,
+                OpInfo {
+                    bp: 11,
+                    assoc: None,
+                },
+            ),
 
             "as" => (Cast, OpInfo { bp: 10, assoc: L }),
 

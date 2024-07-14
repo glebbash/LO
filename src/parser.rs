@@ -2260,92 +2260,122 @@ fn parse_postfix(
                 loc: field_name.loc,
             });
         }
-        InfixOpTag::Catch => {
-            let mut error_bind = tokens.expect_any(Symbol)?.clone();
-            if error_bind.value == "_" {
-                error_bind.value = "<ignored error>".into(); // make sure it's not accesible
-            }
+        InfixOpTag::Catch => parse_catch(ctx, tokens, primary, op, false)?,
+        InfixOpTag::ErrorPropagation => parse_catch(ctx, tokens, primary, op, true)?,
+    })
+}
 
-            let mut catch_block = collect_block_tokens(tokens)?;
+fn parse_catch(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+    primary: LoInstr,
+    op: InfixOp,
+    rethrow: bool,
+) -> Result<LoInstr, LoError> {
+    let primary_type = primary.get_type(ctx.module);
+    let LoType::Result { ok_type, err_type } = primary_type else {
+        return Err(LoError {
+            message: format!(
+                "Trying to catch an error from the expression of type: {primary_type}",
+            ),
+            loc: op.token.loc,
+        });
+    };
 
-            let primary_type = primary.get_type(ctx.module);
-            let LoType::Result { ok_type, err_type } = primary_type else {
-                return Err(LoError {
-                    message: format!(
-                        "Trying to catch the error from expression of type: {primary_type}",
-                    ),
-                    loc: op.token.loc,
-                });
-            };
+    let catch_ctx = &mut BlockContext {
+        module: ctx.module,
+        fn_ctx: ctx.fn_ctx,
+        block: Block::child_of(ctx.module, &ctx.block),
+    };
 
-            let catch_ctx = &mut BlockContext {
-                module: ctx.module,
-                fn_ctx: ctx.fn_ctx,
-                block: Block::child_of(ctx.module, &ctx.block),
-            };
+    let error_bind = if !rethrow {
+        let mut error_bind = tokens.expect_any(Symbol)?.clone();
+        if error_bind.value == "_" {
+            error_bind.value = "<ignored error>".into(); // make sure it's not accesible
+        }
+        error_bind
+    } else {
+        op.token
+    };
 
-            let bind_err_instr = define_local(
-                catch_ctx,
-                &error_bind,
-                LoInstr::NoInstr, // pop error value from the stack
-                *err_type.clone(),
-            )?;
+    let bind_err_instr = define_local(
+        catch_ctx,
+        &error_bind,
+        LoInstr::NoInstr, // pop error value from the stack
+        *err_type.clone(),
+    )?;
 
-            let catch_body = parse_block_contents(catch_ctx, &mut catch_block, *ok_type.clone())?;
-
-            let error_value = compile_local_get(
-                ctx.module,
-                catch_ctx
+    let catch_body = if !rethrow {
+        let mut catch_block = collect_block_tokens(tokens)?;
+        parse_block_contents(catch_ctx, &mut catch_block, *ok_type.clone())?.exprs
+    } else {
+        vec![
+            LoInstr::LocalGet {
+                local_index: catch_ctx
                     .block
                     .get_own_local(&error_bind.value)
-                    .unwrap() // safe
+                    .unwrap()
                     .index,
-                &err_type,
-            )
-            .unwrap(); // safe
+                value_type: *err_type.clone(),
+            },
+            ok_type.get_default_value(ctx.module),
+            LoInstr::Return {
+                value: Box::new(LoInstr::NoInstr), // pop previous two
+            },
+        ]
+    };
 
-            let mut bind_ok_instr = LoInstr::NoInstr;
-            let mut ok_value = LoInstr::NoInstr;
+    let error_value = compile_local_get(
+        ctx.module,
+        catch_ctx
+            .block
+            .get_own_local(&error_bind.value)
+            .unwrap() // safe
+            .index,
+        &err_type,
+    )
+    .unwrap(); // safe
 
-            if *ok_type != LoType::Void {
-                let tmp_ok_local_name = "<ok>";
-                bind_ok_instr = define_local(
-                    catch_ctx,
-                    &LoToken {
-                        value: tmp_ok_local_name.into(),
-                        ..error_bind
-                    },
-                    LoInstr::NoInstr, // pop ok value from the stack
-                    *ok_type.clone(),
-                )?;
-                ok_value = compile_local_get(
-                    ctx.module,
-                    catch_ctx
-                        .block
-                        .get_own_local(tmp_ok_local_name)
-                        .unwrap() // safe
-                        .index,
-                    &ok_type,
-                )
-                .unwrap(); // safe
-            };
+    let mut bind_ok_instr = LoInstr::NoInstr;
+    let mut ok_value = LoInstr::NoInstr;
 
-            LoInstr::MultiValueEmit {
-                values: vec![
-                    primary,
-                    bind_err_instr,
-                    bind_ok_instr,
-                    LoInstr::If {
-                        block_type: LoBlockType::in_out(ctx.module, &[], &ok_type),
-                        cond: Box::new(error_value), // error_value == 0 means no error
-                        then_branch: catch_body.exprs,
-                        else_branch: Some(vec![ok_value]),
-                    },
-                ],
-            }
-            .casted(*ok_type.clone())
-        }
-    })
+    if *ok_type != LoType::Void {
+        let tmp_ok_local_name = "<ok>";
+        bind_ok_instr = define_local(
+            catch_ctx,
+            &LoToken {
+                value: tmp_ok_local_name.into(),
+                ..error_bind
+            },
+            LoInstr::NoInstr, // pop ok value from the stack
+            *ok_type.clone(),
+        )?;
+        ok_value = compile_local_get(
+            ctx.module,
+            catch_ctx
+                .block
+                .get_own_local(tmp_ok_local_name)
+                .unwrap() // safe
+                .index,
+            &ok_type,
+        )
+        .unwrap(); // safe
+    };
+
+    Ok(LoInstr::MultiValueEmit {
+        values: vec![
+            primary,
+            bind_err_instr,
+            bind_ok_instr,
+            LoInstr::If {
+                block_type: LoBlockType::in_out(ctx.module, &[], &ok_type),
+                cond: Box::new(error_value), // error_value == 0 means no error
+                then_branch: catch_body,
+                else_branch: Some(vec![ok_value]),
+            },
+        ],
+    }
+    .casted(*ok_type.clone()))
 }
 
 fn get_op_additional_to_assign(op: &InfixOpTag) -> Result<InfixOpTag, LoError> {

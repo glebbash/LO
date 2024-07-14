@@ -221,9 +221,7 @@ fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
             break;
         };
 
-        tokens.push!<LoToken>(self.lex_token() catch err {
-            throw err;
-        });
+        tokens.push!<LoToken>(self.lex_token()?);
 
         self.skip_space();
     };
@@ -234,40 +232,26 @@ fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
 type LexResult = LoToken throws &LoError;
 
 fn LoLexer::lex_token(&self): LexResult {
-    let char = self.current_char() catch err {
-        throw err;
-    };
+    let char = self.current_char()?;
 
     if char == '\'' as u8 {
-        return self.lex_char() catch err {
-            throw err;
-        };
+        return self.lex_char()?;
     };
     if char == '"' as u8 {
-        return self.lex_string() catch err {
-            throw err;
-        };
+        return self.lex_string()?;
     };
     if char_is_numeric(char) {
-        return self.lex_int_literal() catch err {
-            throw err;
-        };
+        return self.lex_int_literal()?;
     };
     // NOTE: must be after int because is_symbol_char matches digits
     if LoLexer::is_symbol_char(char) {
-        return self.lex_symbol() catch err {
-            throw err;
-        };
+        return self.lex_symbol()?;
     };
     if LoLexer::is_delim_char(char) {
-        return self.lex_delim() catch err {
-            throw err;
-        };
+        return self.lex_delim()?;
     };
     if LoLexer::is_operator_start_char(char) {
-        return self.lex_operator() catch err {
-            throw err;
-        };
+        return self.lex_operator()?;
     };
 
     let message = String::from_str("Unexpected char: ");
@@ -283,9 +267,7 @@ fn LoLexer::lex_symbol(&self): LexResult {
     let loc = self.loc();
 
     loop {
-        let char = self.current_char() catch err {
-            throw err;
-        };
+        let char = self.current_char()?;
 
         if !LoLexer::is_symbol_char(char) {
             break;
@@ -309,17 +291,13 @@ fn LoLexer::lex_char(&self): LexResult {
 
     self.next_char(); // skip start quote
 
-    let char = self.current_char() catch err {
-        throw err;
-    };
+    let char = self.current_char()?;
     let value = char;
 
     if char == '\\' as u8 {
         self.next_char();
 
-        char = self.current_char() catch err {
-            throw err;
-        };
+        char = self.current_char()?;
 
         if char == 'n' as u8 {
             value = '\n' as u8;
@@ -346,7 +324,7 @@ fn LoLexer::lex_char(&self): LexResult {
 
     self.next_char(); // skip actual character
 
-    if self.current_char() catch err { throw err; } != '\'' as u8 {
+    if self.current_char()? != '\'' as u8 {
         let message = String::from_str("ParseError: Unexpected character `");
         message.push!<u8>(char as u8);
         String::append_str(message, "`, expected `'`");
@@ -377,18 +355,14 @@ fn LoLexer::lex_string(&self): LexResult {
     let value = String::new(10);
 
     loop {
-        let char = self.current_char() catch err {
-            throw err;
-        };
+        let char = self.current_char()?;
 
         if char == '"' as u8 {
             break;
         } else if char == '\\' as u8 {
             self.next_char();
 
-            char = self.current_char() catch err {
-                throw err;
-            };
+            char = self.current_char()?;
 
             if char == 'n' as u8 {
                 value.push!<u8>('\n' as u8);
@@ -433,9 +407,7 @@ fn LoLexer::lex_string(&self): LexResult {
 fn LoLexer::lex_int_literal(&self): LexResult {
     let loc = self.loc();
 
-    let char = self.current_char() catch err {
-        throw err;
-    };
+    let char = self.current_char()?;
     let is_hex = false;
     if char == '0' as u8 {
         let next_char = self.peek_next_char() catch err {
@@ -452,9 +424,7 @@ fn LoLexer::lex_int_literal(&self): LexResult {
 
     let value = 0u64;
     loop {
-        char = self.current_char() catch err {
-            throw err;
-        };
+        char = self.current_char()?;
 
         if char == '_' as u8 {
             self.next_char();
@@ -586,9 +556,7 @@ fn LoLexer::lex_operator(&self): LexResult {
 
     if !matched_fully {
         let message = String::from_str("Unexpected char: ");
-        message.push!<u8>(self.current_char() catch err {
-            throw err;
-        });
+        message.push!<u8>(self.current_char()?);
 
         throw heap::new!<LoError>(LoError {
             message: message,

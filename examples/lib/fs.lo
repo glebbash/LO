@@ -18,14 +18,10 @@ macro fs::read_file!(file_name: str): &String {
 fn fs::read_file(file_name: str): &String throws wasi::Err {
     fs::_unlock();
 
-    let fd = fs::open(file_name) catch err {
-        throw err;
-    };
+    let fd = fs::open(file_name)?;
     defer let _ = wasi::fd_close(fd);
 
-    return fs::read_fd(fd) catch err {
-        throw err;
-    };
+    return fs::read_fd(fd)?;
 };
 
 global fs::unlocked = false;

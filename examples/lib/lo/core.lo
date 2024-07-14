@@ -52,13 +52,9 @@ fn LoContext::print_loc(&self, loc: LoLocation) {
 include "./parser.lo";
 
 fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoError {
-    let file_index = LoContext::include_file(self, file_path) catch err {
-        throw err;
-    };
+    let file_index = LoContext::include_file(self, file_path)?;
 
-    self.finalize() catch err {
-        throw err;
-    };
+    self.finalize()?;
 
     return file_index;
 };
@@ -83,14 +79,10 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
     let file_index = self.included_files.size - 1;
 
     let lexer = LoLexer::new(file_index, str::from_string(file_contents));
-    let tokens = lexer.lex_all() catch err {
-        throw err;
-    };
+    let tokens = lexer.lex_all()?;
 
     let parser = LoParser { ctx: self, tokens: tokens, };
-    parser.parse_all() catch err {
-        throw err;
-    };
+    parser.parse_all()?;
 
     return file_index;
 };
@@ -128,9 +120,7 @@ fn LoContext::finalize(&self): void throws &LoError {
     for i in 0..self.fn_bodies.size {
         let fn_body = self.fn_bodies.get!<LoFnBody>(i);
 
-        let contents = LoParser::parse_block_contents(self, fn_body.body, LoType::Void!()) catch err {
-            throw err;
-        };
+        let contents = LoParser::parse_block_contents(self, fn_body.body, LoType::Void!())?;
 
         let instrs = Vec::new!<WasmInstr>();
         LoInstr::lower_all(contents.exprs, instrs);
