@@ -1,4 +1,4 @@
-use crate::{lexer::*, utils::LoLocation, wasm::*};
+use crate::{lexer::*, utils::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 
@@ -226,22 +226,26 @@ impl LoType {
         }
     }
 
-    pub fn resolve_macro_type_args(&self, type_scope: &LoTypeScope) -> LoType {
-        match self {
+    pub fn resolve_macro_type_args(&self, type_scope: &LoTypeScope) -> Result<LoType, LoError> {
+        Ok(match self {
             Self::Pointer(pointee) => {
-                Self::Pointer(Box::new(pointee.resolve_macro_type_args(type_scope)))
+                Self::Pointer(Box::new(pointee.resolve_macro_type_args(type_scope)?))
             }
             Self::Tuple(items) => {
                 let mut resolved_items = Vec::new();
                 for item in items {
-                    resolved_items.push(item.resolve_macro_type_args(type_scope));
+                    resolved_items.push(item.resolve_macro_type_args(type_scope)?);
                 }
                 Self::Tuple(resolved_items)
             }
-            // TODO: is it safe to unwrap here?
-            Self::MacroTypeArg { name } => type_scope.get(name).unwrap().clone(),
+            Self::MacroTypeArg { name } => {
+                if let Some(t) = type_scope.get(name) {
+                    return Ok(t.clone());
+                }
+                return Err(LoError::unreachable(file!(), line!()));
+            }
             _ => self.clone(),
-        }
+        })
     }
 }
 

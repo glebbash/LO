@@ -1796,7 +1796,7 @@ fn parse_macro_call(
 
         type_scope
     };
-    let return_type = macro_def.return_type.resolve_macro_type_args(&type_scope);
+    let return_type = macro_def.return_type.resolve_macro_type_args(&type_scope)?;
 
     let macro_args = {
         let mut args = vec![];
@@ -1807,7 +1807,7 @@ fn parse_macro_call(
 
         let mut params = Vec::new();
         for param in &macro_def.params {
-            params.push(param.type_.resolve_macro_type_args(&type_scope));
+            params.push(param.type_.resolve_macro_type_args(&type_scope)?);
         }
         typecheck_fn_call_args(ctx.module, &params, &args, &macro_name, &macro_token.loc)?;
 
