@@ -423,8 +423,7 @@
 
 // string
 
-    type Vec::u8 = Vec;
-    type String = Vec::u8;
+    type String = Vec of u8;
 
     fn String::new(capacity: u32): &String {
         return Vec::with_capacity!<u8>(capacity);

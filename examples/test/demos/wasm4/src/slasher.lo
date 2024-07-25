@@ -5,9 +5,7 @@ struct Pos {
     x: i32,
     y: i32,
 };
-type Vec::Pos = Vec;
-type Trail = Vec::Pos;
-type Vec::Trail = Vec;
+type Trail = Vec of Pos;
 
 type Mode = u32;
 const Mode::SLASH = 1;
@@ -19,8 +17,8 @@ global prev_click = false;
 global boss_health = 5;
 global trail = 0 as &Trail;
 global swap_trail = 0 as &Trail;
-global trails = 0 as &Vec::Trail;
-global showing_trails = 0 as &Vec::Trail;
+global trails = 0 as &Vec of &Trail;
+global showing_trails = 0 as &Vec of &Trail;
 
 export fn start() {
     stack::SIZE = 6560;

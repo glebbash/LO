@@ -1,7 +1,5 @@
 include "../std.lo";
 
-type Vec::u32 = Vec;
-
 type Section = u8;
 const Section::TYPES     = 01 as u8;
 const Section::IMPORTS   = 02 as u8;
@@ -12,14 +10,12 @@ const Section::CODES     = 10 as u8;
 const Section::DATAS     = 11 as u8;
 
 // types:
-    type Vec::WasmValueType = Vec;
     type WasmValueType = u8;
     const WasmValueType::I32 = 0x7F as u8;
 
-    type Vec::WasmFnType = Vec;
     struct WasmFnType {
-        inputs: &Vec::WasmValueType,
-        outputs: &Vec::WasmValueType,
+        inputs: &Vec of WasmValueType,
+        outputs: &Vec of WasmValueType,
     };
 
 // imports:
@@ -27,7 +23,6 @@ const Section::DATAS     = 11 as u8;
     const WasmImportType::Fn     = 0x00 as u8;
     const WasmImportType::Memory = 0x02 as u8;
 
-    type Vec::WasmImport = Vec;
     struct WasmImport {
         module_name: &String,
         item_name: &String,
@@ -36,7 +31,6 @@ const Section::DATAS     = 11 as u8;
     };
 
 // codes:
-    type Vec::WasmInstr = Vec;
     struct WasmInstr {
         op_code: u8,
         data: &void,
@@ -103,23 +97,20 @@ const Section::DATAS     = 11 as u8;
         };
 
     struct WasmExpr {
-        instrs: &Vec::WasmInstr,
+        instrs: &Vec of WasmInstr,
     };
 
     struct WasmLocals {
         count: u32,
         value_type: WasmValueType,
     };
-    type Vec::WasmLocals = Vec;
 
     struct WasmCode {
-        locals: &Vec::WasmLocals,
+        locals: &Vec of WasmLocals,
         expr: WasmExpr,
     };
-    type Vec::WasmCode = Vec;
 
 // memories:
-    type Vec::WasmMemory = Vec;
     struct WasmMemory {
         min: u32,
         max: u32,
@@ -130,7 +121,6 @@ const Section::DATAS     = 11 as u8;
     type WasmExportType = u8;
     const WasmExportType::Fn = 0x00 as u8;
 
-    type Vec::WasmExport = Vec;
     struct WasmExport {
         name: &String,
         item_type: WasmExportType,
@@ -138,22 +128,21 @@ const Section::DATAS     = 11 as u8;
     };
 
 // datas:
-    type Vec::WasmData = Vec;
     // only active memory is supported
     struct WasmData {
         expr: WasmExpr,
-        bytes: &Vec::u8,
+        bytes: &Vec of u8,
     };
 
 // module:
     struct WasmModule {
-        types: &Vec::WasmFnType,
-        imports: &Vec::WasmImport,
-        functions: &Vec::u32,
-        memories: &Vec::WasmMemory,
-        exports: &Vec::WasmExport,
-        codes: &Vec::WasmCode,
-        datas: &Vec::WasmData,
+        types: &Vec of WasmFnType,
+        imports: &Vec of WasmImport,
+        functions: &Vec of u32,
+        memories: &Vec of WasmMemory,
+        exports: &Vec of WasmExport,
+        codes: &Vec of WasmCode,
+        datas: &Vec of WasmData,
     };
 
     fn WasmModule::new(): &WasmModule {
@@ -168,7 +157,7 @@ const Section::DATAS     = 11 as u8;
         });
     };
 
-    fn WasmModule::write(&self, binary: &Vec::u8) {
+    fn WasmModule::write(&self, binary: &Vec of u8) {
         self.write_preamble(binary);
 
         let section_buffer = Vec::new!<u8>();
@@ -210,7 +199,7 @@ const Section::DATAS     = 11 as u8;
         binary.append(section_buffer);
     };
 
-    fn WasmModule::write_preamble(&self, binary: &Vec::u8) {
+    fn WasmModule::write_preamble(&self, binary: &Vec of u8) {
         // magic
         binary.push!<u8>(0x00 as u8);
         binary.push!<u8>(0x61 as u8);
@@ -224,7 +213,7 @@ const Section::DATAS     = 11 as u8;
         binary.push!<u8>(0x00 as u8);
     };
 
-    fn WasmModule::write_types_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_types_section(&self, out: &Vec of u8) {
         WasmModule::write_uleb128(out, self.types.size);
         for i in 0..self.types.size {
             let fn_type = self.types.get!<WasmFnType>(i);
@@ -245,7 +234,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_imports_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_imports_section(&self, out: &Vec of u8) {
         WasmModule::write_uleb128(out, self.imports.size);
         for i in 0..self.imports.size {
             let import_ = self.imports.get!<WasmImport>(i);
@@ -262,7 +251,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_functions_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_functions_section(&self, out: &Vec of u8) {
         WasmModule::write_uleb128(out, self.functions.size);
         for i in 0..self.functions.size {
             let fn_index = self.functions.get!<u32>(i);
@@ -271,7 +260,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_memories_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_memories_section(&self, out: &Vec of u8) {
         WasmModule::write_uleb128(out, self.memories.size);
         for i in 0..self.memories.size {
             let memory_ = self.memories.get!<WasmMemory>(i);
@@ -287,7 +276,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_exports_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_exports_section(&self, out: &Vec of u8) {
         WasmModule::write_uleb128(out, self.exports.size);
         for i in 0..self.exports.size {
             let export_ = self.exports.get!<WasmExport>(i);
@@ -299,7 +288,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_codes_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_codes_section(&self, out: &Vec of u8) {
         WasmModule::write_uleb128(out, self.codes.size);
 
         let code_buffer = Vec::new!<u8>();
@@ -315,7 +304,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_datas_section(&self, out: &Vec::u8) {
+    fn WasmModule::write_datas_section(&self, out: &Vec of u8) {
         WasmModule::write_uleb128(out, self.datas.size);
 
         for i in 0..self.datas.size {
@@ -330,7 +319,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_expr(output: &Vec::u8, expr: WasmExpr) {
+    fn WasmModule::write_expr(output: &Vec of u8, expr: WasmExpr) {
         for i in 0..expr.instrs.size {
             let instr = expr.instrs.get!<WasmInstr>(i);
 
@@ -371,7 +360,7 @@ const Section::DATAS     = 11 as u8;
         output.push!<u8>(0x0B as u8); // end
     };
 
-    fn WasmModule::write_uleb128(output: &Vec::u8, value: u32) {
+    fn WasmModule::write_uleb128(output: &Vec of u8, value: u32) {
         loop {
             let byte = (value & 0x7F) as u8;
             value >>= 7;
@@ -386,7 +375,7 @@ const Section::DATAS     = 11 as u8;
         };
     };
 
-    fn WasmModule::write_sleb128(output: &Vec::u8, value: i32) {
+    fn WasmModule::write_sleb128(output: &Vec of u8, value: i32) {
         loop {
             let byte = (value & (0x7F as i32)) as u8;
             value >>= 7 as i32;

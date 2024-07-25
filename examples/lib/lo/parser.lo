@@ -184,7 +184,7 @@ fn LoParser::collect_block_tokens(self): &LoTokenStream throws &LoError {
 };
 
 struct LoBlockContents {
-    exprs: &Vec::LoInstr,
+    exprs: &Vec of LoInstr,
     has_never: bool,
     has_return: bool,
 };
@@ -259,7 +259,7 @@ fn LoParser::parse_const_lo_type(self): LoType throws &LoError {
 
 // TODO: this should be in the ir.lo, but it depends on LoContext
 fn LoType::emit_components(
-    self, ctx: &LoContext, out: &Vec::WasmValueType
+    self, ctx: &LoContext, out: &Vec of WasmValueType
 ) {
     if self.kind == LoType::Void {
         return;

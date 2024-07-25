@@ -6,7 +6,6 @@ include "./utils.lo";
 include "./wasm.lo";
 include "./ir.lo";
 
-type Vec::LoIncludedFile = Vec;
 struct LoIncludedFile {
     path: &String,
     contents: &String,
@@ -14,11 +13,11 @@ struct LoIncludedFile {
 
 // TODO: add free
 struct LoContext {
-    included_files: &Vec::LoIncludedFile,
+    included_files: &Vec of LoIncludedFile,
     wasm_module: &WasmModule,
     fn_defs: StringMap::LoFnDef,
-    fn_exports: &Vec::LoFnExport,
-    fn_bodies: &Vec::LoFnBody,
+    fn_exports: &Vec of LoFnExport,
+    fn_bodies: &Vec of LoFnBody,
     imported_fns_count: u32,
 };
 

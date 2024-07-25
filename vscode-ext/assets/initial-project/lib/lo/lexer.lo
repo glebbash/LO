@@ -26,7 +26,6 @@ fn LoTokenType::to_str(self): str {
     unreachable;
 };
 
-type Vec::LoToken = Vec;
 struct LoToken {
     type_: LoTokenType,
     // NOTE: this points inside of file contents
@@ -63,12 +62,12 @@ fn LoToken::is(self, type_: LoTokenType, repr: str): bool {
 };
 
 struct LoTokenStream {
-    tokens: &Vec::LoToken,
+    tokens: &Vec of LoToken,
     index: u32,
     terminal_token: LoToken,
 };
 
-fn LoTokenStream::new(tokens: &Vec::LoToken, eof_location: LoLocation): &LoTokenStream {
+fn LoTokenStream::new(tokens: &Vec of LoToken, eof_location: LoLocation): &LoTokenStream {
     return heap::new!<LoTokenStream>(LoTokenStream {
         tokens: tokens,
         index: 0,

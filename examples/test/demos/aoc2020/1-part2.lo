@@ -1,8 +1,6 @@
 include "../../../lib/cli.lo";
 include "../../../lib/fs.lo";
 
-type Vec::u32 = Vec;
-
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/1.txt");
     defer input.free();
@@ -28,7 +26,7 @@ fn main() {
     };
 };
 
-fn parse_numbers(input: &String): &Vec::u32 {
+fn parse_numbers(input: &String): &Vec of u32 {
     let numbers = Vec::new!<u32>();
     let current_number = 0;
 

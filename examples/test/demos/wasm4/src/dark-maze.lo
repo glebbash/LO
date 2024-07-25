@@ -1,8 +1,6 @@
 include "../../../../lib/std.lo";
 include "./lib/wasm4.lo";
 
-type Vec::u32 = Vec;
-
 type Color = u32;
 const Color::TRANSPARENT = 0;
 const Color::BLACK       = 1;
@@ -25,7 +23,7 @@ global pos_x = 42 as i32;
 global pos_y = 46 as i32;
 
 global rand_seed = 0;
-global light_checked = 0 as &Vec::u32;
+global light_checked = 0 as &Vec of u32;
 
 global notes_index = 0;
 global notes_ticker = 0;
@@ -150,7 +148,7 @@ fn end2_screen_update() {
     play_notes(END2_NOTES, END2_NOTES_LEN, END2_NOTE_DURATION);
 };
 
-fn spread_light(x: i32, y: i32, dimness: u32, checked: &Vec::u32) {
+fn spread_light(x: i32, y: i32, dimness: u32, checked: &Vec of u32) {
     if is_wall(x, y) || !mark_checked(x, y, checked) {
         return;
     };
@@ -167,7 +165,7 @@ fn spread_light(x: i32, y: i32, dimness: u32, checked: &Vec::u32) {
     spread_light(x, y - 1 as i32, dimness * 2, checked);
 };
 
-fn mark_checked(x: i32, y: i32, checked: &Vec::u32): bool {
+fn mark_checked(x: i32, y: i32, checked: &Vec of u32): bool {
     let pos = x as u32 * 88 + y as u32;
 
     for i in 0..checked.size {

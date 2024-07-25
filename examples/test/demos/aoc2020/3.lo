@@ -36,15 +36,12 @@ fn main() {
     puts("\n");
 };
 
-type Vec::Tile = Vec;
-type Vec::Vec::Tile = Vec;
-
 struct Map {
-    rows: &Vec::Vec::Tile,
+    rows: &Vec of &Vec of Tile,
 };
 
 fn Map::parse(input: &String): Map {
-    let rows = Vec::new!<&Vec::Tile>();
+    let rows = Vec::new!<&Vec of Tile>();
     let current_row = Vec::new!<Tile>();
 
     for i in 0..input.size {
@@ -56,7 +53,7 @@ fn Map::parse(input: &String): Map {
             current_row.push!<Tile>(Tile::EMPTY);
         };
         if char == '\n' {
-            rows.push!<&Vec::Tile>(current_row);
+            rows.push!<&Vec of Tile>(current_row);
             current_row = Vec::new!<Tile>();
         };
     };
@@ -65,13 +62,13 @@ fn Map::parse(input: &String): Map {
 };
 
 fn Map::get(self, i: u32, j: u32): Tile {
-    let row = self.rows.get!<&Vec::Tile>(i);
+    let row = self.rows.get!<&Vec of Tile>(i);
     return *(row.at(j % row.size) as &Tile);
 };
 
 fn Map::free(self) {
     for i in 0..self.rows.size {
-        let row = self.rows.get!<&Vec::Tile>(i);
+        let row = self.rows.get!<&Vec of Tile>(i);
         row.free();
     };
     self.rows.free();
