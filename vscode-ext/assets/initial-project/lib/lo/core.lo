@@ -1,8 +1,10 @@
 include "../std.lo";
 include "../fs.lo";
+include "../string_map.lo";
 
 include "./utils.lo";
 include "./wasm.lo";
+include "./ir.lo";
 
 type Vec::LoIncludedFile = Vec;
 struct LoIncludedFile {
@@ -10,22 +12,34 @@ struct LoIncludedFile {
     contents: &String,
 };
 
+// TODO: add free
 struct LoContext {
     included_files: &Vec::LoIncludedFile,
     wasm_module: &WasmModule,
+    fn_defs: StringMap::LoFnDef,
+    fn_exports: &Vec::LoFnExport,
+    fn_bodies: &Vec::LoFnBody,
+    imported_fns_count: u32,
 };
 
 fn LoContext::new(): &LoContext {
     return heap::new!<LoContext>(LoContext {
         included_files: Vec::new!<LoIncludedFile>(),
         wasm_module: WasmModule::new(),
+        fn_defs: StringMap::new!<LoFnDef>(),
+        fn_exports: Vec::new!<LoFnExport>(),
+        fn_bodies: Vec::new!<LoFnBody>(),
+        imported_fns_count: 0,
     });
 };
 
-// TODO: this is prob temporary
 fn LoContext::print_loc(&self, loc: LoLocation) {
-    let file = self.included_files.get!<LoIncludedFile>(loc.file_index);
-    eprint_str(file.path as &str);
+    if loc.file_index == u32::MAX {
+        eputs("<internal>");
+    } else {
+        let file = self.included_files.get!<LoIncludedFile>(loc.file_index);
+        eprint_str(file.path as &str);
+    };
     eputs(":");
     eprint_u32(loc.pos.line);
     eputs(":");
@@ -37,10 +51,18 @@ fn LoContext::print_loc(&self, loc: LoLocation) {
 // TODO: is there a clean way to resolve this?
 include "./parser.lo";
 
+fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoError {
+    let file_index = LoContext::include_file(self, file_path)?;
+
+    self.finalize()?;
+
+    return file_index;
+};
+
 fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
     let file_contents = fs::read_file(file_path) catch err {
         let message = String::from_str("Cannot include file: ");
-        message.push_all(file_path.data as &void, file_path.size);
+        String::append_str(message, file_path);
         message.push!<u8>('\n' as u8);
 
         throw heap::new!<LoError>(LoError {
@@ -56,13 +78,62 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
 
     let file_index = self.included_files.size - 1;
 
-    LoParser::parse_file(self, file_index, str::from_string(file_contents)) catch err {
-        throw err;
-    };
+    let lexer = LoLexer::new(file_index, str::from_string(file_contents));
+    let tokens = lexer.lex_all()?;
+
+    let parser = LoParser { ctx: self, tokens: tokens, };
+    parser.parse_all()?;
 
     return file_index;
 };
 
 fn LoContext::get_file(&self, file_index: u32): &LoIncludedFile {
     return self.included_files.at!<LoIncludedFile>(file_index);
+};
+
+fn LoContext::insert_fn_type(&self, fn_type: WasmFnType): u32 {
+    for type_index in 0..self.wasm_module.types.size {
+        if self.wasm_module.types.get!<WasmFnType>(type_index).equals(fn_type) {
+            return type_index;
+        };
+    };
+
+    self.wasm_module.types.push!<WasmFnType>(fn_type);
+    return self.wasm_module.types.size - 1;
+};
+
+// TODO: implement complete version
+fn LoContext::finalize(&self): void throws &LoError {
+    // push function exports
+    for i in 0..self.fn_exports.size {
+        let fn_export = self.fn_exports.get!<LoFnExport>(i);
+        let fn_def = *self.fn_defs.get!<LoFnDef>(str::from_string(fn_export.in_name)); // safe
+
+        self.wasm_module.exports.push!<WasmExport>(WasmExport {
+            name: String::clone(fn_export.out_name),
+            item_type: WasmExportType::Fn,
+            item_index: fn_def.get_absolute_index(self),
+        });
+    };
+
+    // push function codes
+    for i in 0..self.fn_bodies.size {
+        let fn_body = self.fn_bodies.get!<LoFnBody>(i);
+
+        let contents = LoParser::parse_block_contents(self, fn_body.body, LoType::Void!())?;
+
+        let instrs = Vec::new!<WasmInstr>();
+        LoInstr::lower_all(contents.exprs, instrs);
+
+        self.wasm_module.codes.push!<WasmCode>(WasmCode {
+            locals: Vec::new!<WasmLocals>(),
+            expr: WasmExpr { instrs: instrs },
+        });
+    };
+};
+
+// TODO: implement
+// TODO: where should this be defined?
+fn WasmFnType::equals(self, other: WasmFnType): bool {
+    return false;
 };

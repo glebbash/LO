@@ -2860,6 +2860,13 @@ fn parse_lo_type_(
         });
     }
 
+    if let Some(_) = tokens.eat(Symbol, "of")? {
+        // TODO: attach as metadata and use in type equality check
+        parse_lo_type_(ctx, type_scope, tokens, is_referenced)?;
+
+        return Ok(primary);
+    }
+
     return Ok(primary);
 }
 

@@ -30,9 +30,7 @@ fn fprint_u32(fd: u32, num: u32): u32 throws wasi::Err {
     let out = u32::write(num, String::new(32));
     defer out.free();
 
-    return fprint_str(fd, out as &str) catch err {
-        throw err;
-    };
+    return fprint_str(fd, out as &str)?;
 };
 
 fn print_u64(num: u64) {
@@ -45,9 +43,7 @@ fn fprint_u64(fd: u32, num: u64): u32 throws wasi::Err {
     let out = u64::write(num, String::new(32));
     defer out.free();
 
-    return fprint_str(fd, out as &str) catch err {
-        throw err;
-    };
+    return fprint_str(fd, out as &str)?;
 };
 
 fn print_str(value: &str) {

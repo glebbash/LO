@@ -106,10 +106,17 @@ const Section::DATAS     = 11 as u8;
         instrs: &Vec::WasmInstr,
     };
 
-    type Vec::WasmCode = Vec;
+    struct WasmLocals {
+        count: u32,
+        value_type: WasmValueType,
+    };
+    type Vec::WasmLocals = Vec;
+
     struct WasmCode {
+        locals: &Vec::WasmLocals,
         expr: WasmExpr,
     };
+    type Vec::WasmCode = Vec;
 
 // memories:
     type Vec::WasmMemory = Vec;
