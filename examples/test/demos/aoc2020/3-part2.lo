@@ -24,7 +24,7 @@ fn main() {
 };
 
 struct Map {
-    rows: &Vec of Vec of Tile,
+    rows: &Vec of &Vec of Tile,
 };
 
 fn Map::parse(input: &String): Map {

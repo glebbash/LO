@@ -39,7 +39,6 @@ struct LoLocalDef {
     value_type: LoType,
     loc: LoLocation,
 };
-type StringMap::LoLocalDef = StringMap;
 
 struct LoFnDecl {
     fn_name: &String,
@@ -48,7 +47,7 @@ struct LoFnDecl {
     fn_params: &Vec of LoFnParam,
     lo_type: LoFnType,
     wasm_type: WasmFnType,
-    locals: StringMap::LoLocalDef,
+    locals: StringMap of LoLocalDef,
 };
 
 struct LoFnDef {
@@ -59,7 +58,6 @@ struct LoFnDef {
     type_: LoFnType,
     loc: LoLocation,
 };
-type StringMap::LoFnDef = StringMap;
 
 struct LoFnExport {
     in_name: &String,
@@ -69,7 +67,7 @@ struct LoFnExport {
 struct LoFnBody {
     fn_index: u32,
     type_index: u32,
-    locals: StringMap::LoLocalDef,
+    locals: StringMap of LoLocalDef,
     locals_last_index: u32,
     body: &LoTokenStream,
 };

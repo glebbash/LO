@@ -1,8 +1,6 @@
 include "../../../lib/cli.lo";
 include "../../../lib/fs.lo";
 
-type Vec_u32 = Vec;
-
 fn main() {
     let input_buf = fs::read_file!("./examples/test/demos/aoc2020/5.txt");
     defer input_buf.free();
@@ -31,7 +29,7 @@ fn main() {
 };
 
 // https://en.wikipedia.org/wiki/Bubble_sort
-fn bubble_sort(items: &Vec_u32) {
+fn bubble_sort(items: &Vec of u32) {
     let n = items.size;
     loop {
         let swapped = false;

@@ -15,7 +15,7 @@ struct LoIncludedFile {
 struct LoContext {
     included_files: &Vec of LoIncludedFile,
     wasm_module: &WasmModule,
-    fn_defs: StringMap::LoFnDef,
+    fn_defs: StringMap of LoFnDef,
     fn_exports: &Vec of LoFnExport,
     fn_bodies: &Vec of LoFnBody,
     imported_fns_count: u32,
