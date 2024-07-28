@@ -39,7 +39,7 @@ fn LoToken::free(self) {
     if self.type_ == LoTokenType::IntLiteral {
         heap::free(self.value);
     } else if self.type_ == LoTokenType::StringLiteral {
-        (self.value as &String).free();
+        (self.value as String).free();
     };
 };
 
@@ -47,7 +47,7 @@ fn LoToken::clone(self): LoToken {
     if self.type_ == LoTokenType::IntLiteral {
         self.value = heap::new!<u64>(*(self.value as &u64)) as &void;
     } else if self.type_ == LoTokenType::StringLiteral {
-        self.value = String::clone(self.value as &String) as &void;
+        self.value = String::clone(self.value as String) as &void;
     };
 
     return self;
@@ -131,10 +131,10 @@ fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): LoToken throws &
     let unexpected = maybe_token.token; // defaults to terminal token
 
     let message = String::from_str("Unexpected token '");
-    String::append_str(message, unexpected.repr);
-    String::append_str(message, "', wanted '");
-    String::append_str(message, repr);
-    String::append_str(message, "'");
+    message.push_str(unexpected.repr);
+    message.push_str("', wanted '");
+    message.push_str(repr);
+    message.push_str("'");
 
     throw heap::new!<LoError>(LoError {
         message: message,
@@ -153,10 +153,10 @@ fn LoTokenStream::expect_any(&self, type_: LoTokenType): LoToken throws &LoError
     let unexpected = maybe_token.token; // defaults to terminal token
 
     let message = String::from_str("Unexpected token '");
-    String::append_str(message, unexpected.repr);
-    String::append_str(message, "', wanted '");
-    String::append_str(message, LoTokenType::to_str(type_));
-    String::append_str(message, "'");
+    message.push_str(unexpected.repr);
+    message.push_str("', wanted '");
+    message.push_str(LoTokenType::to_str(type_));
+    message.push_str("'");
 
     throw heap::new!<LoError>(LoError {
         message: message,
@@ -254,7 +254,7 @@ fn LoLexer::lex_token(&self): LexResult {
     };
 
     let message = String::from_str("Unexpected char: ");
-    message.push!<u8>(char);
+    message.push(char);
 
     throw heap::new!<LoError>(LoError {
         message: message,
@@ -312,7 +312,7 @@ fn LoLexer::lex_char(&self): LexResult {
             value = '\'' as u8;
         } else {
             let message = String::from_str("ParseError: Invalid escape sequence: \\");
-            message.push!<u8>(char as u8);
+            message.push(char as u8);
 
             throw heap::new!<LoError>(LoError {
                 message: message,
@@ -325,8 +325,8 @@ fn LoLexer::lex_char(&self): LexResult {
 
     if self.current_char()? != '\'' as u8 {
         let message = String::from_str("ParseError: Unexpected character `");
-        message.push!<u8>(char as u8);
-        String::append_str(message, "`, expected `'`");
+        message.push(char as u8);
+        message.push_str("`, expected `'`");
 
         throw heap::new!<LoError>(LoError {
             message: message,
@@ -364,20 +364,20 @@ fn LoLexer::lex_string(&self): LexResult {
             char = self.current_char()?;
 
             if char == 'n' as u8 {
-                value.push!<u8>('\n' as u8);
+                value.push('\n' as u8);
             } else if char == 'r' as u8 {
-                value.push!<u8>('\r' as u8);
+                value.push('\r' as u8);
             } else if char == 't' as u8 {
-                value.push!<u8>('\t' as u8);
+                value.push('\t' as u8);
             } else if char == '0' as u8 {
-                value.push!<u8>('\0' as u8);
+                value.push('\0' as u8);
             } else if char == '\\' as u8 {
-                value.push!<u8>('\\' as u8);
+                value.push('\\' as u8);
             } else if char == '"' as u8 {
-                value.push!<u8>('"' as u8);
+                value.push('"' as u8);
             } else {
                 let message = String::from_str("ParseError: Invalid escape sequence: \\");
-                message.push!<u8>(char as u8);
+                message.push(char as u8);
 
                 throw heap::new!<LoError>(LoError {
                     message: message,
@@ -385,7 +385,7 @@ fn LoLexer::lex_string(&self): LexResult {
                 });
             };
         } else {
-            value.push!<u8>(char);
+            value.push(char);
         };
 
         self.next_char();
@@ -555,7 +555,7 @@ fn LoLexer::lex_operator(&self): LexResult {
 
     if !matched_fully {
         let message = String::from_str("Unexpected char: ");
-        message.push!<u8>(self.current_char()?);
+        message.push(self.current_char()?);
 
         throw heap::new!<LoError>(LoError {
             message: message,

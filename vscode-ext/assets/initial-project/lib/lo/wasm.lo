@@ -24,8 +24,8 @@ const Section::DATAS     = 11 as u8;
     const WasmImportType::Memory = 0x02 as u8;
 
     struct WasmImport {
-        module_name: &String,
-        item_name: &String,
+        module_name: String,
+        item_name: String,
         item_type: WasmImportType,
         item_index: u32,
     };
@@ -122,7 +122,7 @@ const Section::DATAS     = 11 as u8;
     const WasmExportType::Fn = 0x00 as u8;
 
     struct WasmExport {
-        name: &String,
+        name: String,
         item_type: WasmExportType,
         item_index: u32,
     };
@@ -239,11 +239,11 @@ const Section::DATAS     = 11 as u8;
         for i in 0..self.imports.size {
             let import_ = self.imports.get!<WasmImport>(i);
 
-            WasmModule::write_uleb128(out, import_.module_name.size);
-            out.push_all(import_.module_name.data as &void, import_.module_name.size);
+            WasmModule::write_uleb128(out, import_.module_name.len());
+            out.push_all(import_.module_name.chars.data as &void, import_.module_name.len());
 
-            WasmModule::write_uleb128(out, import_.item_name.size);
-            out.push_all(import_.item_name.data as &void, import_.item_name.size);
+            WasmModule::write_uleb128(out, import_.item_name.len());
+            out.push_all(import_.item_name.chars.data as &void, import_.item_name.len());
 
             out.push!<u8>(import_.item_type);
 
@@ -281,8 +281,8 @@ const Section::DATAS     = 11 as u8;
         for i in 0..self.exports.size {
             let export_ = self.exports.get!<WasmExport>(i);
 
-            WasmModule::write_uleb128(out, export_.name.size);
-            out.push_all(export_.name.data as &void, export_.name.size);
+            WasmModule::write_uleb128(out, export_.name.len());
+            out.push_all(export_.name.chars.data as &void, export_.name.len());
             out.push!<u8>(export_.item_type);
             WasmModule::write_uleb128(out, export_.item_index);
         };

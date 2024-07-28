@@ -24,7 +24,7 @@ macro LoType::U32!(): LoType {
 };
 
 struct LoFnParam {
-    name: &String,
+    name: String,
     type_: LoType,
     loc: LoLocation,
 };
@@ -39,16 +39,15 @@ struct LoLocalDef {
     value_type: LoType,
     loc: LoLocation,
 };
-type StringMap::LoLocalDef = StringMap;
 
 struct LoFnDecl {
-    fn_name: &String,
-    method_name: &String,
+    fn_name: String,
+    method_name: String,
     loc: LoLocation,
     fn_params: &Vec of LoFnParam,
     lo_type: LoFnType,
     wasm_type: WasmFnType,
-    locals: StringMap::LoLocalDef,
+    locals: StringMap of LoLocalDef,
 };
 
 struct LoFnDef {
@@ -59,17 +58,16 @@ struct LoFnDef {
     type_: LoFnType,
     loc: LoLocation,
 };
-type StringMap::LoFnDef = StringMap;
 
 struct LoFnExport {
-    in_name: &String,
-    out_name: &String,
+    in_name: String,
+    out_name: String,
 };
 
 struct LoFnBody {
     fn_index: u32,
     type_index: u32,
-    locals: StringMap::LoLocalDef,
+    locals: StringMap of LoLocalDef,
     locals_last_index: u32,
     body: &LoTokenStream,
 };

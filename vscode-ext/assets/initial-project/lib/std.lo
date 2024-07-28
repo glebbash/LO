@@ -423,39 +423,67 @@
 
 // string
 
-    type String = Vec of u8;
-
-    fn String::new(capacity: u32): &String {
-        return Vec::with_capacity!<u8>(capacity);
+    struct String {
+        chars: &Vec of u8,
     };
 
-    fn String::new_using(capacity: u32, alloc_id: u32): &String {
-        return Vec::with_capacity_using(capacity, sizeof u8, alloc_id);
+    fn String::new(capacity: u32): String {
+        return String {
+            chars: Vec::with_capacity!<u8>(capacity),
+        };
     };
 
-    fn String::clone(&self): &String {
-        return String::from_str(str {
-            data: self.data as &*u8,
-            size: self.size,
-        });
+    fn String::new_using(capacity: u32, alloc_id: u32): String {
+        return String {
+            chars: Vec::with_capacity_using(capacity, sizeof u8, alloc_id),
+        };
     };
 
-    fn String::from_str(value: str): &String {
+    fn String::from_chars(chars: &Vec of u8): String {
+        return String { chars: chars };
+    };
+
+    fn String::from_str(value: str): String {
         let string = String::new(value.size);
-        string.push_all(value.data as &void, value.size);
+        string.chars.push_all(value.data as &void, value.size);
         return string;
     };
 
-    fn String::append_str(&self, value: str) {
-        self.push_all(value.data as &void, value.size);
+    fn String::free(self) {
+        self.chars.free();
+    };
+
+    fn String::clone(self): String {
+        return String::from_str(str {
+            data: self.chars.data as &*u8,
+            size: self.chars.size,
+        });
+    };
+
+    fn String::len(self): u32 {
+        return self.chars.size;
+    };
+
+    fn String::push_str(self, value: str) {
+        self.chars.push_all(value.data as &void, value.size);
+    };
+
+    fn String::push(self, char: u8) {
+        self.chars.push!<u8>(char);
+    };
+
+    fn String::char_at(self, index: u32): u8 {
+        return *self.chars.at!<u8>(index);
+    };
+
+    fn String::as_str(self): str {
+        return str {
+            data: self.chars.data as &u8,
+            size: self.chars.size,
+        };
     };
 
 // str utils
-
-    fn str::from_string(value: &String): str {
-        return str { data: value.data as &u8, size: value.size };
-    };
-
 
     fn str::from_cstr(value: &*u8): str {
         let len = 0;
@@ -530,22 +558,22 @@
 
 // conversions
 
-    fn u32::to_string(value: u32): &String {
+    fn u32::to_string(value: u32): String {
         return u32::write(value, String::new(32));
     };
 
-    fn u32::write(value: u32, output: &String): &String {
-        let start_size = output.size;
+    fn u32::write(value: u32, output: String): String {
+        let start_size = output.len();
 
         if value == 0 {
-            output.push!<u8>('0' as u8);
+            output.push('0' as u8);
             return output;
         };
 
         loop {
             let rem = value % 10;
 
-            output.push!<u8>(('0' + rem) as u8);
+            output.push(('0' + rem) as u8);
             value = value / 10;
 
             if value == 0 {
@@ -553,27 +581,27 @@
             };
         };
 
-        output.reverse_range(start_size, output.size - 1);
+        output.chars.reverse_range(start_size, output.len() - 1);
 
         return output;
     };
 
-    fn u64::to_string(value: u64): &String {
+    fn u64::to_string(value: u64): String {
         return u64::write(value, String::new(32));
     };
 
-    fn u64::write(value: u64, output: &String): &String {
-        let start_size = output.size;
+    fn u64::write(value: u64, output: String): String {
+        let start_size = output.len();
 
         if value == 0u64 {
-            output.push!<u8>('0' as u8);
+            output.push('0' as u8);
             return output;
         };
 
         loop {
             let rem = value % 10u64;
 
-            output.push!<u8>(('0' + rem as u32) as u8);
+            output.push(('0' + rem as u32) as u8);
             value = value / 10u64;
 
             if value == 0u64 {
@@ -581,7 +609,7 @@
             };
         };
 
-        output.reverse_range(start_size, output.size - 1);
+        output.chars.reverse_range(start_size, output.len() - 1);
 
         return output;
     };

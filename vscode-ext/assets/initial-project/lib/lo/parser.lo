@@ -22,7 +22,7 @@ fn LoParser::parse_all(self): void throws &LoError {
     let some_token = self.tokens.peek();
     if some_token.exists {
         let message = String::from_str("Unexpected token on top level: ");
-        String::append_str(message, some_token.token.repr);
+        message.push_str(some_token.token.repr);
 
         throw heap::new!<LoError>(LoError {
             message: message,
@@ -57,7 +57,7 @@ fn LoParser::parse_top_level_expr(self): void throws &LoError {
     some_token = self.tokens.peek();
     let unexpected = some_token.token; // null checked at the top
     let message = String::from_str("Unexpected top level token: ");
-    String::append_str(message, unexpected.repr);
+    message.push_str(unexpected.repr);
 
     throw heap::new!<LoError>(LoError {
         message: message,
@@ -71,7 +71,7 @@ fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
 
     if self.ctx.fn_defs.contains_key(str::from_string(fn_decl.fn_name)) {
         let message = String::from_str("Cannot redefine function: ");
-        String::append_str(message, str::from_string(fn_decl.fn_name));
+        message.push_str(str::from_string(fn_decl.fn_name));
 
         throw heap::new!<LoError>(LoError {
             message: message,
@@ -237,7 +237,7 @@ fn LoParser::parse_expr(
     some_token = tokens.peek();
 
     let message = String::from_str("Unexpected token: ");
-    String::append_str(message, LoTokenType::to_str(some_token.token.type_));
+    message.push_str(LoTokenType::to_str(some_token.token.type_));
     throw heap::new!<LoError>(LoError {
         message: message,
         loc: some_token.token.loc,
