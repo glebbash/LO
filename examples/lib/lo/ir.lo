@@ -24,7 +24,7 @@ macro LoType::U32!(): LoType {
 };
 
 struct LoFnParam {
-    name: &String,
+    name: String,
     type_: LoType,
     loc: LoLocation,
 };
@@ -41,8 +41,8 @@ struct LoLocalDef {
 };
 
 struct LoFnDecl {
-    fn_name: &String,
-    method_name: &String,
+    fn_name: String,
+    method_name: String,
     loc: LoLocation,
     fn_params: &Vec of LoFnParam,
     lo_type: LoFnType,
@@ -60,8 +60,8 @@ struct LoFnDef {
 };
 
 struct LoFnExport {
-    in_name: &String,
-    out_name: &String,
+    in_name: String,
+    out_name: String,
 };
 
 struct LoFnBody {

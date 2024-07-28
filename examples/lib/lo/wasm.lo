@@ -24,8 +24,8 @@ const Section::DATAS     = 11 as u8;
     const WasmImportType::Memory = 0x02 as u8;
 
     struct WasmImport {
-        module_name: &String,
-        item_name: &String,
+        module_name: String,
+        item_name: String,
         item_type: WasmImportType,
         item_index: u32,
     };
@@ -122,7 +122,7 @@ const Section::DATAS     = 11 as u8;
     const WasmExportType::Fn = 0x00 as u8;
 
     struct WasmExport {
-        name: &String,
+        name: String,
         item_type: WasmExportType,
         item_index: u32,
     };

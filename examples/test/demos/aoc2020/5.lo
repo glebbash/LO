@@ -4,7 +4,7 @@ include "../../../lib/fs.lo";
 fn main() {
     let input_buf = fs::read_file!("./examples/test/demos/aoc2020/5.txt");
     defer input_buf.free();
-    let input = str::from_string(input_buf);
+    let input = input_buf.as_str();
 
     let tickets_count = input.size / 11; // 10 chars seat + newline
     let max_seat_id = 0;

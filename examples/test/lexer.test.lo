@@ -10,7 +10,7 @@ fn main() {
     };
     defer file_contents.free();
 
-    let lexer = LoLexer::new(0, str::from_string(file_contents));
+    let lexer = LoLexer::new(0, file_contents.as_str());
     let tokens = lexer.lex_all() catch err {
         wasi::proc_exit(1);
     };

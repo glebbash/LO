@@ -7,8 +7,8 @@ include "./wasm.lo";
 include "./ir.lo";
 
 struct LoIncludedFile {
-    path: &String,
-    contents: &String,
+    path: String,
+    contents: String,
 };
 
 // TODO: add free
@@ -61,7 +61,7 @@ fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoEr
 fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
     let file_contents = fs::read_file(file_path) catch err {
         let message = String::from_str("Cannot include file: ");
-        String::append_str(message, file_path);
+        message.push_str(file_path);
         message.push!<u8>('\n' as u8);
 
         throw heap::new!<LoError>(LoError {

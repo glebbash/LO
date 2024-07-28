@@ -21,7 +21,7 @@ fn LoLocation::internal(): LoLocation {
 };
 
 struct LoError {
-    message: &String,
+    message: String,
     loc: LoLocation,
 };
 

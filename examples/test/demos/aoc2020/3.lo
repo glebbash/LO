@@ -40,12 +40,12 @@ struct Map {
     rows: &Vec of &Vec of Tile,
 };
 
-fn Map::parse(input: &String): Map {
+fn Map::parse(input: String): Map {
     let rows = Vec::new!<&Vec of Tile>();
     let current_row = Vec::new!<Tile>();
 
-    for i in 0..input.size {
-        let char = input.get!<u8>(i) as u32;
+    for i in 0..input.len() {
+        let char = input.char_at(i) as u32;
         if char == '#' {
             current_row.push!<Tile>(Tile::TREE);
         };

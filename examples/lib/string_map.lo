@@ -7,13 +7,13 @@ struct StringMap {
 
 macro StringMap::new!<T>(): StringMap {
     StringMap {
-        items: Vec::new(sizeof &String + sizeof T),
+        items: Vec::new(sizeof String + sizeof T),
     };
 };
 
 fn StringMap::free(self) {
     for i in 0..self.items.size {
-        let key = self.items.get!<&String>(i);
+        let key = self.items.get!<String>(i);
         key.free();
     };
     self.items.free();
@@ -25,10 +25,10 @@ macro StringMap::get!<T>(self, key: str): &T {
 
 fn StringMap::get(self, key: str): &void {
     for i in 0..self.items.size {
-        let some_key = self.items.get!<&String>(i);
-        if str::from_string(some_key).equals(key) {
+        let some_key = self.items.get!<String>(i);
+        if some_key.as_str().equals(key) {
             let entry = self.items.at!<&void>(i);
-            return (entry as u32 + sizeof &String) as &void;
+            return (entry as u32 + sizeof String) as &void;
         };
     };
 
@@ -39,13 +39,13 @@ fn StringMap::contains_key(self, key: str): bool {
     return !is_null!<void>(self.get(key));
 };
 
-macro StringMap::insert!<T>(self, key: &String, item: T) {
+macro StringMap::insert!<T>(self, key: String, item: T) {
     let existing = self.get!<T>(str::from_string(key));
     if existing {
         *existing = item;
     } else {
         let entry = self.items.push();
-        *(entry as & &String) = key;
-        *((entry as u32 + sizeof &String) as &T) = item;
+        *(entry as & String) = key;
+        *((entry as u32 + sizeof String) as &T) = item;
     };
 };
