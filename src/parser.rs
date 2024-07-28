@@ -168,7 +168,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         }
 
         let mut instrs = vec![];
-        lower_exprs(&mut instrs, contents.exprs);
+        lower_exprs(&mut instrs, &contents.exprs);
 
         ctx.wasm_module.borrow_mut().codes.push(WasmFn {
             locals,
@@ -183,7 +183,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
                 &mut ctx.wasm_module.borrow_mut().globals[*index as usize]
                     .initial_value
                     .instrs,
-                value.clone(),
+                value,
             );
         }
     }
@@ -272,7 +272,7 @@ fn parse_top_level_expr(
         };
 
         let mut instrs = vec![];
-        lower_expr(&mut instrs, offset);
+        lower_expr(&mut instrs, &offset);
 
         ctx.wasm_module.borrow_mut().datas.push(WasmData::Active {
             offset: WasmExpr { instrs },
@@ -1068,23 +1068,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         };
 
         let error_type = error.get_type(ctx.module);
-        let LoType::Result { ok_type, err_type } = &ctx.fn_ctx.lo_fn_type.output else {
-            return Err(LoError {
-                message: format!(
-                    "TypeError: Cannot throw {error_type}, function can only return {output}",
-                    output = ctx.fn_ctx.lo_fn_type.output,
-                ),
-                loc: throw_token.loc,
-            });
+        assert_fn_can_throw(ctx.fn_ctx, &error_type, &throw_token.loc)?;
+
+        let LoType::Result { ok_type, .. } = &ctx.fn_ctx.lo_fn_type.output else {
+            return Err(LoError::unreachable(file!(), line!()));
         };
-        if error_type != **err_type {
-            return Err(LoError {
-                message: format!(
-                    "TypeError: Invalid throw type, expected {err_type}, got {error_type}",
-                ),
-                loc: throw_token.loc,
-            });
-        }
 
         let mut return_value = LoInstr::MultiValueEmit {
             values: vec![ok_type.get_default_value(ctx.module), error],
@@ -2273,7 +2261,12 @@ fn parse_catch(
     rethrow: bool,
 ) -> Result<LoInstr, LoError> {
     let primary_type = primary.get_type(ctx.module);
-    let LoType::Result { ok_type, err_type } = primary_type else {
+    let LoType::Result {
+        ok_type: caught_ok_type,
+        err_type,
+        ..
+    } = primary_type
+    else {
         return Err(LoError {
             message: format!(
                 "Trying to catch an error from the expression of type: {primary_type}",
@@ -2295,7 +2288,7 @@ fn parse_catch(
         }
         error_bind
     } else {
-        op.token
+        op.token // `?` becomes the error bind, will also be hoverable
     };
 
     let bind_err_instr = define_local(
@@ -2307,22 +2300,41 @@ fn parse_catch(
 
     let catch_body = if !rethrow {
         let mut catch_block = collect_block_tokens(tokens)?;
-        parse_block_contents(catch_ctx, &mut catch_block, *ok_type.clone())?.exprs
+        parse_block_contents(catch_ctx, &mut catch_block, *caught_ok_type.clone())?.exprs
     } else {
-        vec![
-            LoInstr::LocalGet {
-                local_index: catch_ctx
-                    .block
-                    .get_own_local(&error_bind.value)
-                    .unwrap()
-                    .index,
-                value_type: *err_type.clone(),
-            },
-            ok_type.get_default_value(ctx.module),
-            LoInstr::Return {
-                value: Box::new(LoInstr::NoInstr), // pop previous two
-            },
-        ]
+        assert_fn_can_throw(catch_ctx.fn_ctx, &err_type, &error_bind.loc)?;
+
+        let LoType::Result {
+            ok_type: fn_ok_type,
+            ..
+        } = &catch_ctx.fn_ctx.lo_fn_type.output
+        else {
+            return Err(LoError::unreachable(file!(), line!()));
+        };
+
+        let mut return_value = LoInstr::MultiValueEmit {
+            values: vec![
+                fn_ok_type.get_default_value(ctx.module),
+                LoInstr::LocalGet {
+                    local_index: catch_ctx
+                        .block
+                        .get_own_local(&error_bind.value)
+                        .unwrap()
+                        .index,
+                    value_type: *err_type.clone(),
+                },
+            ],
+        };
+
+        // TODO: this is duplicated like 3 times, should wrap in a function
+        if let Some(mut values) = get_deferred(catch_ctx) {
+            values.insert(0, return_value);
+            return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
+        }
+
+        vec![LoInstr::Return {
+            value: Box::new(return_value),
+        }]
     };
 
     let error_value = compile_local_get(
@@ -2339,7 +2351,7 @@ fn parse_catch(
     let mut bind_ok_instr = LoInstr::NoInstr;
     let mut ok_value = LoInstr::NoInstr;
 
-    if *ok_type != LoType::Void {
+    if *caught_ok_type != LoType::Void {
         let tmp_ok_local_name = "<ok>";
         bind_ok_instr = define_local(
             catch_ctx,
@@ -2348,7 +2360,7 @@ fn parse_catch(
                 ..error_bind
             },
             LoInstr::NoInstr, // pop ok value from the stack
-            *ok_type.clone(),
+            *caught_ok_type.clone(),
         )?;
         ok_value = compile_local_get(
             ctx.module,
@@ -2357,7 +2369,7 @@ fn parse_catch(
                 .get_own_local(tmp_ok_local_name)
                 .unwrap() // safe
                 .index,
-            &ok_type,
+            &caught_ok_type,
         )
         .unwrap(); // safe
     };
@@ -2368,14 +2380,40 @@ fn parse_catch(
             bind_err_instr,
             bind_ok_instr,
             LoInstr::If {
-                block_type: LoBlockType::in_out(ctx.module, &[], &ok_type),
+                block_type: LoBlockType::in_out(ctx.module, &[], &caught_ok_type),
                 cond: Box::new(error_value), // error_value == 0 means no error
                 then_branch: catch_body,
                 else_branch: Some(vec![ok_value]),
             },
         ],
     }
-    .casted(*ok_type.clone()))
+    .casted(*caught_ok_type.clone()))
+}
+
+fn assert_fn_can_throw(
+    ctx: &FnContext,
+    error_type: &LoType,
+    throw_loc: &LoLocation,
+) -> Result<(), LoError> {
+    let LoType::Result { err_type, .. } = &ctx.lo_fn_type.output else {
+        return Err(LoError {
+            message: format!(
+                "TypeError: Cannot throw {error_type}, function can only return {output}",
+                output = ctx.lo_fn_type.output,
+            ),
+            loc: throw_loc.clone(),
+        });
+    };
+    if *error_type != **err_type {
+        return Err(LoError {
+            message: format!(
+                "TypeError: Invalid throw type, expected {err_type}, got {error_type}",
+            ),
+            loc: throw_loc.clone(),
+        });
+    }
+
+    Ok(())
 }
 
 fn get_op_additional_to_assign(op: &InfixOpTag) -> Result<InfixOpTag, LoError> {

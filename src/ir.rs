@@ -839,30 +839,30 @@ impl LoInstr {
     }
 }
 
-pub fn lower_exprs(out: &mut Vec<WasmInstr>, exprs: Vec<LoInstr>) {
+pub fn lower_exprs(out: &mut Vec<WasmInstr>, exprs: &Vec<LoInstr>) {
     for expr in exprs.into_iter() {
         lower_expr(out, expr);
     }
 }
 
-pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
+pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: &LoInstr) {
     match expr {
         LoInstr::NoInstr => {}
         LoInstr::Unreachable => out.push(WasmInstr::Unreachable),
         LoInstr::Drop { value, drop_count } => {
-            lower_expr(out, *value);
-            for _ in 0..drop_count {
+            lower_expr(out, value);
+            for _ in 0..*drop_count {
                 out.push(WasmInstr::Drop);
             }
         }
         LoInstr::BinaryOp { kind, lhs, rhs } => {
-            lower_expr(out, *lhs);
-            lower_expr(out, *rhs);
-            out.push(WasmInstr::BinaryOp { kind })
+            lower_expr(out, lhs);
+            lower_expr(out, rhs);
+            out.push(WasmInstr::BinaryOp { kind: kind.clone() })
         }
         LoInstr::MemorySize => out.push(WasmInstr::MemorySize),
         LoInstr::MemoryGrow { num_bytes } => {
-            lower_expr(out, *num_bytes);
+            lower_expr(out, num_bytes);
             out.push(WasmInstr::MemoryGrow);
         }
         LoInstr::MemoryCopy {
@@ -870,9 +870,9 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             source,
             num_bytes,
         } => {
-            lower_expr(out, *destination);
-            lower_expr(out, *source);
-            lower_expr(out, *num_bytes);
+            lower_expr(out, destination);
+            lower_expr(out, source);
+            lower_expr(out, num_bytes);
             out.push(WasmInstr::MemoryCopy);
         }
         LoInstr::Load {
@@ -881,11 +881,11 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             offset,
             address_instr,
         } => {
-            lower_expr(out, *address_instr);
+            lower_expr(out, address_instr);
             out.push(WasmInstr::Load {
                 kind: kind.to_load_kind().unwrap(),
-                align,
-                offset,
+                align: *align,
+                offset: *offset,
             });
         }
         LoInstr::StructLoad {
@@ -894,16 +894,19 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             primitive_loads,
             ..
         } => {
-            lower_expr(out, *address_instr);
+            lower_expr(out, address_instr);
             out.push(WasmInstr::LocalSet {
-                local_index: address_local_index,
+                local_index: *address_local_index,
             });
             lower_exprs(out, primitive_loads);
         }
-        LoInstr::UntypedLocalGet { local_index } | LoInstr::LocalGet { local_index, .. } => {
-            out.push(WasmInstr::LocalGet { local_index })
-        }
-        LoInstr::GlobalGet { global_index } => out.push(WasmInstr::GlobalGet { global_index }),
+        LoInstr::UntypedLocalGet { local_index } | LoInstr::LocalGet { local_index, .. } => out
+            .push(WasmInstr::LocalGet {
+                local_index: *local_index,
+            }),
+        LoInstr::GlobalGet { global_index } => out.push(WasmInstr::GlobalGet {
+            global_index: *global_index,
+        }),
         LoInstr::StructGet { primitive_gets, .. } => {
             lower_exprs(out, primitive_gets);
         }
@@ -911,30 +914,32 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             value: *value.borrow() as i32,
         }),
         LoInstr::U32Const { value } => out.push(WasmInstr::I32Const {
-            value: value as i32,
+            value: *value as i32,
         }),
-        LoInstr::I64Const { value } => out.push(WasmInstr::I64Const { value }),
+        LoInstr::I64Const { value } => out.push(WasmInstr::I64Const { value: *value }),
         LoInstr::U64Const { value } => out.push(WasmInstr::I64Const {
-            value: value as i64,
+            value: *value as i64,
         }),
-        LoInstr::F32Const { value } => out.push(WasmInstr::F32Const { value }),
-        LoInstr::F64Const { value } => out.push(WasmInstr::F64Const { value }),
+        LoInstr::F32Const { value } => out.push(WasmInstr::F32Const { value: *value }),
+        LoInstr::F64Const { value } => out.push(WasmInstr::F64Const { value: *value }),
         LoInstr::I64FromI32Signed { expr } => {
-            lower_expr(out, *expr);
+            lower_expr(out, expr);
             out.push(WasmInstr::I64ExtendI32s);
         }
         LoInstr::I64FromI32Unsigned { expr } => {
-            lower_expr(out, *expr);
+            lower_expr(out, expr);
             out.push(WasmInstr::I64ExtendI32u);
         }
         LoInstr::I32FromI64 { expr } => {
-            lower_expr(out, *expr);
+            lower_expr(out, expr);
             out.push(WasmInstr::I32WrapI64);
         }
         LoInstr::Set { bind } => match bind {
-            LoSetBind::Local { index } => out.push(WasmInstr::LocalSet { local_index: index }),
+            LoSetBind::Local { index } => out.push(WasmInstr::LocalSet {
+                local_index: *index,
+            }),
             LoSetBind::Global { index } => out.push(WasmInstr::GlobalSet {
-                global_index: index,
+                global_index: *index,
             }),
             LoSetBind::Memory {
                 align,
@@ -944,21 +949,21 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
                 value_local_index,
             } => {
                 out.push(WasmInstr::LocalSet {
-                    local_index: value_local_index,
+                    local_index: *value_local_index,
                 });
-                lower_expr(out, *address_instr);
+                lower_expr(out, address_instr);
                 out.push(WasmInstr::LocalGet {
-                    local_index: value_local_index,
+                    local_index: *value_local_index,
                 });
                 out.push(WasmInstr::Store {
-                    align,
-                    offset,
-                    kind,
+                    align: *align,
+                    offset: *offset,
+                    kind: kind.clone(),
                 });
             }
         },
         LoInstr::Return { value } => {
-            lower_expr(out, *value);
+            lower_expr(out, value);
             out.push(WasmInstr::Return);
         }
         LoInstr::Block { block_type, body } => {
@@ -983,7 +988,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             then_branch,
             else_branch,
         } => {
-            lower_expr(out, *cond);
+            lower_expr(out, cond);
             out.push(WasmInstr::BlockStart {
                 block_kind: WasmBlockKind::If,
                 block_type: block_type.wasm_type.clone(),
@@ -995,18 +1000,22 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: LoInstr) {
             }
             out.push(WasmInstr::BlockEnd);
         }
-        LoInstr::Branch { label_index } => out.push(WasmInstr::Branch { label_index }),
+        LoInstr::Branch { label_index } => out.push(WasmInstr::Branch {
+            label_index: *label_index,
+        }),
         LoInstr::Call { fn_index, args, .. } => {
             for arg in args {
                 lower_expr(out, arg);
             }
-            out.push(WasmInstr::Call { fn_index });
+            out.push(WasmInstr::Call {
+                fn_index: *fn_index,
+            });
         }
         LoInstr::MultiValueEmit { values } => {
             lower_exprs(out, values);
         }
         LoInstr::Casted { expr, .. } => {
-            lower_expr(out, *expr);
+            lower_expr(out, expr);
         }
     }
 }
