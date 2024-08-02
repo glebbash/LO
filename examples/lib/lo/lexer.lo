@@ -47,7 +47,7 @@ fn LoToken::clone(self): LoToken {
     if self.type_ == LoTokenType::IntLiteral {
         self.value = heap::new!<u64>(*(self.value as &u64)) as &void;
     } else if self.type_ == LoTokenType::StringLiteral {
-        self.value = String::clone(self.value as String) as &void;
+        self.value = (self.value as String).clone() as &void;
     };
 
     return self;

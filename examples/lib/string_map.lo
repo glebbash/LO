@@ -40,7 +40,7 @@ fn StringMap::contains_key(self, key: str): bool {
 };
 
 macro StringMap::insert!<T>(self, key: String, item: T) {
-    let existing = self.get!<T>(str::from_string(key));
+    let existing = self.get!<T>(key.as_str());
     if existing {
         *existing = item;
     } else {
