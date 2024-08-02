@@ -501,6 +501,7 @@ pub struct FnExport {
 pub struct StructDef {
     pub fields: Vec<StructField>,
     pub fully_defined: bool, // used for self-reference checks
+    pub loc: LoLocation,
 }
 
 #[derive(Clone)]
@@ -510,6 +511,12 @@ pub struct StructField {
     pub field_index: u32,
     pub byte_offset: u32,
     pub loc: LoLocation,
+}
+
+impl core::fmt::Display for StructField {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}: {}", self.name, self.value_type)
+    }
 }
 
 #[derive(Debug, Clone)]

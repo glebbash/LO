@@ -456,6 +456,7 @@ fn parse_top_level_expr(
             StructDef {
                 fields: vec![],
                 fully_defined: false,
+                loc: struct_name.loc,
             },
         );
 
@@ -2964,6 +2965,8 @@ fn get_type_by_name(
                 });
             };
 
+            let mut is_type_alias = true;
+
             if let LoType::StructInstance { name } = type_ {
                 let struct_def = ctx.struct_defs.get(name).unwrap(); // safe because of if let
                 if !struct_def.fully_defined && !is_referenced {
@@ -2972,6 +2975,47 @@ fn get_type_by_name(
                         loc: token.loc.clone(),
                     });
                 }
+
+                if *name == token.value {
+                    is_type_alias = false;
+
+                    if ctx.inspect_mode {
+                        let source_index = ctx.get_loc_module_index(&token.loc);
+                        let range = RangeDisplay(&token.loc);
+                        let fields = ListDisplay(&struct_def.fields);
+                        let target_index = ctx.get_loc_module_index(&struct_def.loc);
+                        let target_range = RangeDisplay(&struct_def.loc);
+
+                        stdout_writeln(format!(
+                            "{{ \"type\": \"hover\", \
+                                \"source\": {source_index}, \
+                                \"range\": \"{range}\", \
+                                \"content\": \"struct {name} {{ {fields} }}\" }}, ",
+                        ));
+
+                        stdout_writeln(format!(
+                            "{{ \"type\": \"link\", \
+                                \"source\": {source_index}, \
+                                \"sourceRange\": \"{range}\", \
+                                \"target\": {target_index}, \
+                                \"targetRange\": \"{target_range}\" }}, ",
+                        ));
+                    }
+                }
+            }
+
+            if ctx.inspect_mode && is_type_alias {
+                let source_index = ctx.get_loc_module_index(&token.loc);
+                let range = RangeDisplay(&token.loc);
+                let type_name = &token.value;
+
+                // TODO: add links
+                stdout_writeln(format!(
+                    "{{ \"type\": \"hover\", \
+                        \"source\": {source_index}, \
+                        \"range\": \"{range}\", \
+                        \"content\": \"type {type_name} = {type_}\" }}, "
+                ));
             }
 
             return Ok(type_.clone());
