@@ -678,6 +678,8 @@ impl InfixOp {
 pub enum PrefixOpTag {
     Not,
     Dereference,
+    Positive,
+    Negative,
 }
 
 pub struct PrefixOp {
@@ -693,6 +695,8 @@ impl PrefixOp {
         let (tag, info) = match token.value.as_str() {
             "!" => (Not, OpInfo { bp: 8, assoc: L }),
             "*" => (Dereference, OpInfo { bp: 8, assoc: L }),
+            "+" => (Positive, OpInfo { bp: 8, assoc: L }),
+            "-" => (Negative, OpInfo { bp: 8, assoc: L }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })

@@ -1459,6 +1459,14 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                         rhs: Box::new(LoInstr::U32Const { value: 0 }),
                     });
                 }
+                PrefixOpTag::Positive => {
+                    let value = parse_expr(ctx, tokens, min_bp + 1)?;
+                    return cast_to_signed(value, &op.token.loc);
+                }
+                PrefixOpTag::Negative => {
+                    let value = parse_expr(ctx, tokens, min_bp + 1)?;
+                    return negate(value, &op.token.loc);
+                }
                 PrefixOpTag::Dereference => {
                     let pointer = Box::new(parse_expr(ctx, tokens, min_bp)?);
                     let pointer_type = pointer.get_type(ctx.module);
@@ -1700,6 +1708,48 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         message: format!("Reading unknown variable: {}", value.value),
         loc: value.loc,
     });
+}
+
+fn cast_to_signed(value: LoInstr, loc: &LoLocation) -> Result<LoInstr, LoError> {
+    match value {
+        LoInstr::U32Const { value } => {
+            return Ok(LoInstr::I32Const {
+                value: value as i32,
+            })
+        }
+        LoInstr::U64Const { value } => {
+            return Ok(LoInstr::I64Const {
+                value: value as i64,
+            })
+        }
+        _ => {
+            return Err(LoError {
+                message: format!("Cannot cast this expression to signed integer"),
+                loc: loc.clone(),
+            });
+        }
+    }
+}
+
+fn negate(value: LoInstr, loc: &LoLocation) -> Result<LoInstr, LoError> {
+    match value {
+        LoInstr::U32Const { value } => {
+            return Ok(LoInstr::I32Const {
+                value: -(value as i32),
+            })
+        }
+        LoInstr::U64Const { value } => {
+            return Ok(LoInstr::I64Const {
+                value: -(value as i64),
+            })
+        }
+        _ => {
+            return Err(LoError {
+                message: format!("Cannot negate this expression"),
+                loc: loc.clone(),
+            });
+        }
+    }
 }
 
 fn define_local(
@@ -2836,6 +2886,25 @@ fn parse_const_primary(
         return Ok(LoInstr::U32ConstLazy {
             value: ctx.data_size.clone(),
         });
+    }
+
+    if let Some(token) = tokens.peek().cloned() {
+        if let Some(op) = PrefixOp::parse(token) {
+            let min_bp = op.info.get_min_bp_for_next();
+            tokens.next(); // skip operator
+
+            match op.tag {
+                PrefixOpTag::Positive => {
+                    let value = parse_const_expr(ctx, tokens, min_bp + 1)?;
+                    return cast_to_signed(value, &op.token.loc);
+                }
+                PrefixOpTag::Negative => {
+                    let value = parse_const_expr(ctx, tokens, min_bp + 1)?;
+                    return negate(value, &op.token.loc);
+                }
+                _ => {}
+            }
+        }
     }
 
     let value = parse_nested_symbol(tokens)?;

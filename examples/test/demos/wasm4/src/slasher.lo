@@ -52,8 +52,8 @@ fn process_input() {
         let x = (*wasm4::MOUSE_X) as i32;
         let y = (*wasm4::MOUSE_Y) as i32;
 
-        if x >= 0 as i32 && x <= 159 as i32
-        && y >= 0 as i32 && y <= 159 as i32 {
+        if x >= +0 && x <= +159
+        && y >= +0 && y <= +159 {
             trail.push!<Pos>(Pos { x: x, y: y });
             if trail.size == 6 {
                 swap_trail.size = 0;
@@ -96,18 +96,18 @@ macro swap!<T>(a: T, b: T) {
 
 fn render() {
     if mode == Mode::SLASH {
-        wasm4::text("Slash!!!"0, 10 as i32, 10 as i32);
+        wasm4::text("Slash!!!"0, +10, +10);
 
         let health_txt = String::from_str("HP: ");
         let _ = u32::write(boss_health, health_txt);
-        health_txt.push!<u8>(0 as u8);
+        health_txt.push(0 as u8);
 
-        wasm4::text(health_txt.data as &u8, 110 as i32, 10 as i32);
+        wasm4::text(health_txt.chars.data as &u8, +110, +10);
         health_txt.free();
     };
 
     if mode == Mode::DEFEND {
-        wasm4::text("Defend!!!"0, 10 as i32, 10 as i32);
+        wasm4::text("Defend!!!"0, +10, +10);
     };
 
     render_trail(trail);
@@ -134,10 +134,10 @@ fn flip_trail_randomly(trail: &Trail) {
     for i in 0..trail.size {
         let pos = trail.at!<Pos>(i);
         if flip_x {
-            pos.x = 159 as i32 - pos.x;
+            pos.x = +159 - pos.x;
         };
         if flip_y {
-            pos.y = 159 as i32 - pos.y;
+            pos.y = +159 - pos.y;
         };
     };
 };

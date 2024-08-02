@@ -666,6 +666,9 @@ pub enum LoInstr {
     U32ConstLazy {
         value: Rc<RefCell<u32>>,
     },
+    I32Const {
+        value: i32,
+    },
     U32Const {
         value: u32,
     },
@@ -750,6 +753,7 @@ impl LoInstr {
             LoInstr::Unreachable => LoType::Never,
             LoInstr::NoInstr => LoType::Void,
             LoInstr::U32ConstLazy { .. } => LoType::U32,
+            LoInstr::I32Const { .. } => LoType::I32,
             LoInstr::U32Const { .. } => LoType::U32,
             LoInstr::I32FromI64 { .. } => LoType::I32,
             LoInstr::U64Const { .. } => LoType::U64,
@@ -920,6 +924,7 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: &LoInstr) {
         LoInstr::U32ConstLazy { value } => out.push(WasmInstr::I32Const {
             value: *value.borrow() as i32,
         }),
+        LoInstr::I32Const { value } => out.push(WasmInstr::I32Const { value: *value }),
         LoInstr::U32Const { value } => out.push(WasmInstr::I32Const {
             value: *value as i32,
         }),

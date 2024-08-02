@@ -19,8 +19,8 @@ global screen = Screen::TITLE;
 global gamepad = 0 as u8;
 global prev_gamepad = 0 as u8;
 
-global pos_x = 42 as i32;
-global pos_y = 46 as i32;
+global pos_x = +42;
+global pos_y = +46;
 
 global rand_seed = 0;
 global light_checked = 0 as &Vec of u32;
@@ -83,22 +83,22 @@ export fn update() {
 
 fn title_screen_update() {
     set_draw_color(Color::WHITE);
-    wasm4::text("Dark     "0, 46 as i32, 60 as i32);
+    wasm4::text("Dark     "0, +46, +60);
 
-    light_block(1 as i32, 0 as i32 - 1 as i32, 1024);
-    light_block(2 as i32, 0 as i32 - 1 as i32, 1024);
+    light_block(+1, -1, 1024);
+    light_block(+2, -1, 1024);
 
     set_draw_color(Color::RED);
-    wasm4::text("     Maze"0, 46 as i32, 60 as i32);
+    wasm4::text("     Maze"0, +46, +60);
 
     set_draw_color(Color::WHITE);
-    wasm4::text("Press X to start"0, 16 as i32, 116 as i32);
+    wasm4::text("Press X to start"0, +16, +116);
 
     set_draw_color(Color::RED);
-    wasm4::text("      X"0, 16 as i32, 116 as i32);
+    wasm4::text("      X"0, +16, +116);
 
     set_draw_color(Color::GRAY);
-    wasm4::text("@glebbash 2024"0, 24 as i32, 146 as i32);
+    wasm4::text("@glebbash 2024"0, +24, +146);
 
     if just_pressed(wasm4::BUTTON_1) {
         screen = Screen::GAME;
@@ -116,34 +116,34 @@ fn game_screen_update() {
 
     let prev_pos_x = pos_x;
     let prev_pos_y = pos_y;
-    if just_pressed(wasm4::BUTTON_LEFT ) { pos_x -= 1 as i32; };
-    if just_pressed(wasm4::BUTTON_RIGHT) { pos_x += 1 as i32; };
-    if just_pressed(wasm4::BUTTON_UP   ) { pos_y -= 1 as i32; };
-    if just_pressed(wasm4::BUTTON_DOWN ) { pos_y += 1 as i32; };
+    if just_pressed(wasm4::BUTTON_LEFT ) { pos_x -= +1; };
+    if just_pressed(wasm4::BUTTON_RIGHT) { pos_x += +1; };
+    if just_pressed(wasm4::BUTTON_UP   ) { pos_y -= +1; };
+    if just_pressed(wasm4::BUTTON_DOWN ) { pos_y += +1; };
     if is_wall(pos_x, pos_y) {
         pos_x = prev_pos_x;
         pos_y = prev_pos_y;
     };
 
-    if pos_x == 02 as i32 && pos_y == 04 as i32 {
+    if pos_x == +02 && pos_y == +04 {
         screen = Screen::END1;
     };
 
-    if pos_x == 84 as i32 && pos_y == 82 as i32 {
+    if pos_x == +84 && pos_y == +82 {
         screen = Screen::END2;
     };
 };
 
 fn end1_screen_update() {
     set_draw_colors(Color::BLACK, Color::GRAY, Color::RED, Color::WHITE);
-    wasm4::blit(END1_IMAGE, 0 as i32, 0 as i32, 160, 160, wasm4::BLIT_2BPP);
+    wasm4::blit(END1_IMAGE, +0, +0, 160, 160, wasm4::BLIT_2BPP);
 
     play_notes(END1_NOTES, END1_NOTES_LEN, END1_NOTE_DURATION);
 };
 
 fn end2_screen_update() {
     set_draw_colors(Color::BLACK, Color::RED, Color::GRAY, Color::WHITE);
-    wasm4::blit(END2_IMAGE, 0 as i32, 0 as i32, 160, 160, wasm4::BLIT_2BPP);
+    wasm4::blit(END2_IMAGE, +0, +0, 160, 160, wasm4::BLIT_2BPP);
 
     play_notes(END2_NOTES, END2_NOTES_LEN, END2_NOTE_DURATION);
 };
@@ -159,10 +159,10 @@ fn spread_light(x: i32, y: i32, dimness: u32, checked: &Vec of u32) {
         return;
     };
 
-    spread_light(x + 1 as i32, y, dimness * 2, checked);
-    spread_light(x - 1 as i32, y, dimness * 2, checked);
-    spread_light(x, y + 1 as i32, dimness * 2, checked);
-    spread_light(x, y - 1 as i32, dimness * 2, checked);
+    spread_light(x + +1, y, dimness * 2, checked);
+    spread_light(x - +1, y, dimness * 2, checked);
+    spread_light(x, y + +1, dimness * 2, checked);
+    spread_light(x, y - +1, dimness * 2, checked);
 };
 
 fn mark_checked(x: i32, y: i32, checked: &Vec of u32): bool {
@@ -179,8 +179,8 @@ fn mark_checked(x: i32, y: i32, checked: &Vec of u32): bool {
 };
 
 fn is_wall(x: i32, y: i32): bool {
-    if (x <= 0 as i32 || x >= 88 as i32)
-    || (y <= 0 as i32 || y >= 88 as i32) {
+    if (x <= +0 || x >= +88)
+    || (y <= +0 || y >= +88) {
         return false;
     };
 
