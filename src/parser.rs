@@ -1366,11 +1366,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(LoInstr::MultiValueEmit { values: instrs }.casted(LoType::Void));
     }
 
-    if let Some(_) = tokens.eat(Symbol, "break")? {
+    if let Some(break_token) = tokens.eat(Symbol, "break")? {
         let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
 
         let mut current_block = &ctx.block;
         loop {
+            if current_block.block_kind == LoBlockKind::Function {
+                return Err(LoError {
+                    message: format!("Cannot break outside of a loop"),
+                    loc: break_token.loc.clone(),
+                });
+            }
+
             if current_block.block_kind == LoBlockKind::Loop {
                 break;
             }
@@ -1387,11 +1394,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         return Ok(LoInstr::Branch { label_index });
     }
 
-    if let Some(_) = tokens.eat(Symbol, "continue")? {
+    if let Some(continue_token) = tokens.eat(Symbol, "continue")? {
         let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
 
         let mut current_block = &ctx.block;
         loop {
+            if current_block.block_kind == LoBlockKind::Function {
+                return Err(LoError {
+                    message: format!("Cannot continue outside of a loop"),
+                    loc: continue_token.loc.clone(),
+                });
+            }
+
             if current_block.block_kind == LoBlockKind::Loop {
                 break;
             }
