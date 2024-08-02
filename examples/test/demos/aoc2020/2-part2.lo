@@ -13,7 +13,7 @@ struct PasswordCheckState {
     end_index: u32,
     current_index: u32,
     match_found: bool,
-    char_to_check: u32,
+    char_to_check: u8,
 };
 
 fn initial_check_state(): PasswordCheckState {
@@ -23,7 +23,7 @@ fn initial_check_state(): PasswordCheckState {
         end_index: 0,
         current_index: 0,
         match_found: false,
-        char_to_check: 0,
+        char_to_check: '\0',
     };
 };
 
@@ -36,7 +36,7 @@ fn main() {
     let state = initial_check_state();
 
     for i in 0..input.len() {
-        let char = input.char_at(i) as u32;
+        let char = input.char_at(i);
         if state.step == Step::READ_START_INDEX {
             if char == '-' {
                 state.step = Step::READ_END_INDEX;
@@ -44,7 +44,7 @@ fn main() {
             };
 
             state.start_index *= 10;
-            state.start_index += char - '0';
+            state.start_index += (char - '0') as u32;
         };
         if state.step == Step::READ_END_INDEX {
             if char == ' ' {
@@ -53,7 +53,7 @@ fn main() {
             };
 
             state.end_index *= 10;
-            state.end_index += char - '0';
+            state.end_index += (char - '0') as u32;
         };
         if state.step == Step::READ_CHAR_TO_FIND {
             state.char_to_check = char;

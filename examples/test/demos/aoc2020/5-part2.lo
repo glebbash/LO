@@ -55,7 +55,7 @@ fn parse_seat_id(input: str): u32 {
     let row_hi = row_max - 1;
     let row_lo = 0;
     for row_i in 0..7 {
-        let char = input.char_at(row_i) as u32;
+        let char = input.char_at(row_i);
         if char == 'F' {
             row_max /= 2;
             row_hi -= row_max;
@@ -70,7 +70,7 @@ fn parse_seat_id(input: str): u32 {
     let col_hi = col_max - 1;
     let col_lo = 0;
     for col_i in 0..3 {
-        let char = input.char_at(col_i + 7) as u32;
+        let char = input.char_at(col_i + 7);
         if char == 'L' {
             col_max /= 2;
             col_hi -= col_max;

@@ -27,10 +27,10 @@ fn parse_numbers(input: String): &Vec of u32 {
     let current_number = 0;
 
     for i in 0..input.len() {
-        let char = input.char_at(i) as u32;
+        let char = input.char_at(i);
         if char >= '0' && char <= '9' {
             current_number *= 10;
-            current_number += char - '0';
+            current_number += (char - '0') as u32;
         };
 
         if char == '\n' {

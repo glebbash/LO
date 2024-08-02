@@ -32,7 +32,7 @@ fn Map::parse(input: String): Map {
     let current_row = Vec::new!<Tile>();
 
     for i in 0..input.len() {
-        let char = input.char_at(i) as u32;
+        let char = input.char_at(i);
         if char == '#' {
             current_row.push!<Tile>(Tile::TREE);
         };

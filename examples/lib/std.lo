@@ -553,7 +553,7 @@
     };
 
     fn char_is_numeric(char: u8): bool {
-        return char >= '0' as u8 && char <= '9' as u8;
+        return char >= '0' && char <= '9';
     };
 
 // conversions
@@ -566,14 +566,14 @@
         let start_size = output.len();
 
         if value == 0 {
-            output.push('0' as u8);
+            output.push('0');
             return output;
         };
 
         loop {
             let rem = value % 10;
 
-            output.push(('0' + rem) as u8);
+            output.push('0' + rem as u8);
             value = value / 10;
 
             if value == 0 {
@@ -594,14 +594,14 @@
         let start_size = output.len();
 
         if value == 0u64 {
-            output.push('0' as u8);
+            output.push('0');
             return output;
         };
 
         loop {
             let rem = value % 10u64;
 
-            output.push(('0' + rem as u32) as u8);
+            output.push('0' + rem as u32 as u8);
             value = value / 10u64;
 
             if value == 0u64 {

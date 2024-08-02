@@ -977,7 +977,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(value) = tokens.eat_any(CharLiteral)? {
         return Ok(LoInstr::U32Const {
             value: value.value.chars().next().unwrap() as u32,
-        });
+        }
+        .casted(LoType::U8));
     }
 
     if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {
@@ -2791,7 +2792,8 @@ fn parse_const_primary(
     if let Some(value) = tokens.eat_any(CharLiteral)? {
         return Ok(LoInstr::U32Const {
             value: value.value.chars().next().unwrap() as u32,
-        });
+        }
+        .casted(LoType::U8));
     }
 
     if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {

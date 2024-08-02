@@ -233,10 +233,10 @@ type LexResult = LoToken throws &LoError;
 fn LoLexer::lex_token(&self): LexResult {
     let char = self.current_char()?;
 
-    if char == '\'' as u8 {
+    if char == '\'' {
         return self.lex_char()?;
     };
-    if char == '"' as u8 {
+    if char == '"' {
         return self.lex_string()?;
     };
     if char_is_numeric(char) {
@@ -293,23 +293,23 @@ fn LoLexer::lex_char(&self): LexResult {
     let char = self.current_char()?;
     let value = char;
 
-    if char == '\\' as u8 {
+    if char == '\\' {
         self.next_char();
 
         char = self.current_char()?;
 
-        if char == 'n' as u8 {
-            value = '\n' as u8;
-        } else if char == 'r' as u8 {
-            value = '\r' as u8;
-        } else if char == 't' as u8 {
-            value = '\t' as u8;
-        } else if char == '0' as u8 {
-            value = '\0' as u8;
-        } else if char == '\\' as u8 {
-            value = '\\' as u8;
-        } else if char == '\'' as u8 {
-            value = '\'' as u8;
+        if char == 'n' {
+            value = '\n';
+        } else if char == 'r' {
+            value = '\r';
+        } else if char == 't' {
+            value = '\t';
+        } else if char == '0' {
+            value = '\0';
+        } else if char == '\\' {
+            value = '\\';
+        } else if char == '\'' {
+            value = '\'';
         } else {
             let message = String::from_str("ParseError: Invalid escape sequence: \\");
             message.push(char as u8);
@@ -323,7 +323,7 @@ fn LoLexer::lex_char(&self): LexResult {
 
     self.next_char(); // skip actual character
 
-    if self.current_char()? != '\'' as u8 {
+    if self.current_char()? != '\'' {
         let message = String::from_str("ParseError: Unexpected character `");
         message.push(char as u8);
         message.push_str("`, expected `'`");
@@ -356,25 +356,25 @@ fn LoLexer::lex_string(&self): LexResult {
     loop {
         let char = self.current_char()?;
 
-        if char == '"' as u8 {
+        if char == '"' {
             break;
-        } else if char == '\\' as u8 {
+        } else if char == '\\' {
             self.next_char();
 
             char = self.current_char()?;
 
-            if char == 'n' as u8 {
-                value.push('\n' as u8);
-            } else if char == 'r' as u8 {
-                value.push('\r' as u8);
-            } else if char == 't' as u8 {
-                value.push('\t' as u8);
-            } else if char == '0' as u8 {
-                value.push('\0' as u8);
-            } else if char == '\\' as u8 {
-                value.push('\\' as u8);
-            } else if char == '"' as u8 {
-                value.push('"' as u8);
+            if char == 'n' {
+                value.push('\n');
+            } else if char == 'r' {
+                value.push('\r');
+            } else if char == 't' {
+                value.push('\t');
+            } else if char == '0' {
+                value.push('\0');
+            } else if char == '\\' {
+                value.push('\\');
+            } else if char == '"' {
+                value.push('"');
             } else {
                 let message = String::from_str("ParseError: Invalid escape sequence: \\");
                 message.push(char as u8);
@@ -408,13 +408,13 @@ fn LoLexer::lex_int_literal(&self): LexResult {
 
     let char = self.current_char()?;
     let is_hex = false;
-    if char == '0' as u8 {
+    if char == '0' {
         let next_char = self.peek_next_char() catch err {
             err.free();
-            '\0' as u8;
+            '\0';
         };
 
-        if next_char == 'x' as u8 {
+        if next_char == 'x' {
             is_hex = true;
             self.next_char(); // skip '0'
             self.next_char(); // skip 'x'
@@ -425,20 +425,20 @@ fn LoLexer::lex_int_literal(&self): LexResult {
     loop {
         char = self.current_char()?;
 
-        if char == '_' as u8 {
+        if char == '_' {
             self.next_char();
-        } else if char >= '0' as u8 && char <= '9' as u8 {
+        } else if char >= '0' && char <= '9' {
             if is_hex {
                 value *= 16u64;
             } else {
                 value *= 10u64;
             };
-            value += (char - '0' as u8) as u64;
+            value += (char - '0') as u64;
 
             self.next_char();
-        } else if is_hex && char >= 'A' as u8 && char <= 'F' as u8 {
+        } else if is_hex && char >= 'A' && char <= 'F' {
             value *= 16u64;
-            value += 10u64 + (char - 'A' as u8) as u64;
+            value += 10u64 + (char - 'A') as u64;
 
             self.next_char();
         } else {
@@ -574,7 +574,7 @@ fn LoLexer::lex_operator(&self): LexResult {
 };
 
 fn LoLexer::skip_space(&self) {
-    let char = '\0' as u8;
+    let char = '\0';
     loop {
         char = self.current_char() catch err {
             err.free();
@@ -589,13 +589,13 @@ fn LoLexer::skip_space(&self) {
     };
 
     // skip comment
-    if char == '/' as u8 {
+    if char == '/' {
         let next = self.peek_next_char() catch err {
             err.free();
             return;
         };
 
-        if next != '/' as u8 {
+        if next != '/' {
             return;
         };
 
@@ -607,7 +607,7 @@ fn LoLexer::skip_space(&self) {
                 return;
             };
 
-            if char == '\n' as u8 {
+            if char == '\n' {
                 self.skip_space();
                 break;
             };
@@ -625,7 +625,7 @@ fn LoLexer::next_char(&self) {
 
     self.col += 1;
 
-    if char == '\n' as u8 {
+    if char == '\n' {
         // NOTE(edge case): when first character is encountered
         //  was_newline is not true but rather undefined,
         //  thus we don't bump the line count
@@ -685,21 +685,21 @@ fn LoLexer::pos(&self): LoPosition {
 
 fn LoLexer::is_space_char(char: u8): bool {
     return char == ' '  as u8
-        || char == '\n' as u8
-        || char == '\t' as u8
-        || char == '\r' as u8;
+        || char == '\n'
+        || char == '\t'
+        || char == '\r';
 };
 
 fn LoLexer::is_symbol_char(char: u8): bool {
-    return (char >= 'a' as u8 && char <= 'z' as u8)
-        || (char >= 'A' as u8 && char <= 'Z' as u8)
-        || (char >= '0' as u8 && char <= '9' as u8)
-        || char == '_' as u8;
+    return (char >= 'a' && char <= 'z')
+        || (char >= 'A' && char <= 'Z')
+        || (char >= '0' && char <= '9')
+        || char == '_';
 };
 
 fn LoLexer::is_delim_char(char: u8): bool {
-    return char == '(' as u8 || char == ')' as u8
-        || char == '{' as u8 || char == '}' as u8
-        || char == '[' as u8 || char == ']' as u8
-        || char == ',' as u8 || char == ';' as u8;
+    return char == '(' || char == ')'
+        || char == '{' || char == '}'
+        || char == '[' || char == ']'
+        || char == ',' || char == ';';
 };

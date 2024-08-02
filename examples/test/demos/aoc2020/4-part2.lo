@@ -76,7 +76,7 @@ fn main() {
                 if field_name.equals("hcl") {
                     let parse_res = parse_u32_hex(field_value.skip_chars(1));
                     hcl_is_valid = true
-                        && field_value.char_at(0) as u32 == '#'
+                        && field_value.char_at(0) == '#'
                         && field_value.size == 7
                         && parse_res.chars_consumed == 6;
                 };
