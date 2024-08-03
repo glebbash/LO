@@ -145,9 +145,6 @@ async function testCommand() {
     const compile = await loadCompilerWithWasiAPI(COMPILER_PATH);
 
     test("file and stdin inputs all work the same", async () => {
-        // TODO: removing this makes random segfaults happen
-        await compile("./examples/test/42.lo");
-
         const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
             COMPILER_PATH,
             true
@@ -624,6 +621,11 @@ async function testCommand() {
             );
         });
 
+        /**
+         * NOTE: this test is pretty slow.
+         * When multiple of these kind of tests will be run it would make sense to use WABT.js:
+         * `const wabt = await import("https://unpkg.com/wabt@1.0.36/index.js");`
+         */
         test("compiles 42.lo using lo.lo", async () => {
             const { exec } = await import("node:child_process");
             const { promisify } = await import("node:util");
