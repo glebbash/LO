@@ -7,9 +7,9 @@
 
 // constants
 
-   const u32::MAX = 4_294_967_295;
+    const u32::MAX = 4_294_967_295;
 
-   global STATIC_DATA_SIZE = __DATA_SIZE__;
+    global STATIC_DATA_SIZE = __DATA_SIZE__;
 
 // abort
 

@@ -1,5 +1,4 @@
 include "./std.lo";
-include "./print.lo";
 
 struct StringMap {
     items: &Vec,
