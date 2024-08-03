@@ -600,14 +600,13 @@ fn parse_top_level_expr(
 
         if ctx.inspect_mode {
             let source_index = ctx.get_loc_module_index(&file_path.loc);
-            let range = RangeDisplay(&file_path.loc);
+            let source_range = RangeDisplay(&file_path.loc);
+            let target_range = "1:1-1:1";
 
             stdout_writeln(format!(
-                "{{ \"type\": \"link\", \
-                    \"source\": {source_index}, \
-                    \"sourceRange\": \"{range}\", \
-                    \"target\": {target_index}, \
-                    \"targetRange\": \"1:1-1:1\" }}, ",
+                "{{ \"type\": \"info\", \
+                    \"link\": \"{target_index}/{target_range}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
             ));
         }
 
@@ -1513,26 +1512,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(local) = ctx.block.get_local(&value.value) {
         if ctx.module.inspect_mode {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
-            let range = RangeDisplay(&value.loc);
+            let source_range = RangeDisplay(&value.loc);
+            let target_index = ctx.module.get_loc_module_index(&local.loc);
+            let target_range = RangeDisplay(&local.loc);
+
             let local_name = &value.value;
             let value_type = &local.value_type;
 
             stdout_writeln(format!(
-                "{{ \"type\": \"hover\", \
-                   \"source\": {source_index}, \
-                   \"range\": \"{range}\", \
-                   \"content\": \"let {local_name}: {value_type}\" }}, "
-            ));
-
-            let target_index = ctx.module.get_loc_module_index(&local.loc);
-            let target_range = RangeDisplay(&local.loc);
-
-            stdout_writeln(format!(
-                "{{ \"type\": \"link\", \
-                    \"source\": {source_index}, \
-                    \"sourceRange\": \"{range}\", \
-                    \"target\": {target_index}, \
-                    \"targetRange\": \"{target_range}\" }}, ",
+                "{{ \"type\": \"info\", \
+                    \"link\": \"{target_index}/{target_range}\", \
+                    \"hover\": \"let {local_name}: {value_type}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
             ));
         }
 
@@ -1547,26 +1538,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(const_def) = ctx.module.constants.borrow().get(&value.value) {
         if ctx.module.inspect_mode {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
-            let range = RangeDisplay(&value.loc);
+            let source_range = RangeDisplay(&value.loc);
+            let target_index = ctx.module.get_loc_module_index(&const_def.loc);
+            let target_range = RangeDisplay(&const_def.loc);
+
             let const_name = &value.value;
             let const_type = const_def.value.get_type(ctx.module);
 
             stdout_writeln(format!(
-                "{{ \"type\": \"hover\", \
-                   \"source\": {source_index}, \
-                   \"range\": \"{range}\", \
-                   \"content\": \"const {const_name}: {const_type}\" }}, "
-            ));
-
-            let target_index = ctx.module.get_loc_module_index(&const_def.loc);
-            let target_range = RangeDisplay(&const_def.loc);
-
-            stdout_writeln(format!(
-                "{{ \"type\": \"link\", \
-                    \"source\": {source_index}, \
-                    \"sourceRange\": \"{range}\", \
-                    \"target\": {target_index}, \
-                    \"targetRange\": \"{target_range}\" }}, ",
+                "{{ \"type\": \"info\", \
+                    \"link\": \"{target_index}/{target_range}\", \
+                    \"hover\": \"const {const_name}: {const_type}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
             ));
         }
 
@@ -1576,26 +1559,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(global) = ctx.module.globals.get(&value.value) {
         if ctx.module.inspect_mode {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
-            let range = RangeDisplay(&value.loc);
+            let source_range = RangeDisplay(&value.loc);
+            let target_index = ctx.module.get_loc_module_index(&global.loc);
+            let target_range = RangeDisplay(&global.loc);
+
             let global_name = &value.value;
             let global_type = &global.value_type;
 
             stdout_writeln(format!(
-                "{{ \"type\": \"hover\", \
-                   \"source\": {source_index}, \
-                   \"range\": \"{range}\", \
-                   \"content\": \"let {global_name}: {global_type}\" }}, "
-            ));
-
-            let target_index = ctx.module.get_loc_module_index(&global.loc);
-            let target_range = RangeDisplay(&global.loc);
-
-            stdout_writeln(format!(
-                "{{ \"type\": \"link\", \
-                    \"source\": {source_index}, \
-                    \"sourceRange\": \"{range}\", \
-                    \"target\": {target_index}, \
-                    \"targetRange\": \"{target_range}\" }}, ",
+                "{{ \"type\": \"info\", \
+                    \"link\": \"{target_index}/{target_range}\", \
+                    \"hover\": \"let {global_name}: {global_type}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
             ));
         }
 
@@ -1617,27 +1592,19 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         if ctx.module.inspect_mode {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
-            let range = RangeDisplay(&value.loc);
+            let source_range = RangeDisplay(&value.loc);
+            let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
+            let target_range = RangeDisplay(&fn_def.loc);
+
             let fn_name = &value.value;
             let params = ListDisplay(&fn_def.fn_params);
             let return_type = &fn_def.type_.output;
 
             stdout_writeln(format!(
-                "{{ \"type\": \"hover\", \
-                   \"source\": {source_index}, \
-                   \"range\": \"{range}\", \
-                   \"content\": \"fn {fn_name}({params}): {return_type}\" }}, "
-            ));
-
-            let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
-            let target_range = RangeDisplay(&fn_def.loc);
-
-            stdout_writeln(format!(
-                "{{ \"type\": \"link\", \
-                    \"source\": {source_index}, \
-                    \"sourceRange\": \"{range}\", \
-                    \"target\": {target_index}, \
-                    \"targetRange\": \"{target_range}\" }}, ",
+                "{{ \"type\": \"info\", \
+                    \"link\": \"{target_index}/{target_range}\", \
+                    \"hover\": \"fn {fn_name}({params}): {return_type}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
             ));
         }
 
@@ -1901,27 +1868,19 @@ fn parse_macro_call(
 
     if ctx.module.inspect_mode {
         let source_index = ctx.module.get_loc_module_index(&macro_token.loc);
-        let range = RangeDisplay(&macro_token.loc);
+        let source_range = RangeDisplay(&macro_token.loc);
+        let target_index = ctx.module.get_loc_module_index(&macro_def.loc);
+        let target_range = RangeDisplay(&macro_def.loc);
+
         let params = ListDisplay(&macro_def.params);
         let type_params = ListDisplay(&macro_def.type_params);
         let return_type = &macro_def.return_type;
 
         stdout_writeln(format!(
-            "{{ \"type\": \"hover\", \
-               \"source\": {source_index}, \
-               \"range\": \"{range}\", \
-               \"content\": \"fn {macro_name}!<{type_params}>({params}): {return_type}\" }}, "
-        ));
-
-        let target_index = ctx.module.get_loc_module_index(&macro_def.loc);
-        let target_range = RangeDisplay(&macro_def.loc);
-
-        stdout_writeln(format!(
-            "{{ \"type\": \"link\", \
-                \"source\": {source_index}, \
-                \"sourceRange\": \"{range}\", \
-                \"target\": {target_index}, \
-                \"targetRange\": \"{target_range}\" }}, ",
+            "{{ \"type\": \"info\", \
+                \"link\": \"{target_index}/{target_range}\", \
+                \"hover\": \"fn {macro_name}!<{type_params}>({params}): {return_type}\", \
+                \"loc\": \"{source_index}/{source_range}\" }}, ",
         ));
     }
 
@@ -2117,26 +2076,18 @@ fn parse_postfix(
 
                 if ctx.module.inspect_mode {
                     let source_index = ctx.module.get_loc_module_index(&method_name.loc);
-                    let range = RangeDisplay(&method_name.loc);
+                    let source_range = RangeDisplay(&method_name.loc);
+                    let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
+                    let target_range = RangeDisplay(&fn_def.loc);
+
                     let params = ListDisplay(&fn_def.fn_params);
                     let return_type = &fn_def.type_.output;
 
                     stdout_writeln(format!(
-                        "{{ \"type\": \"hover\", \
-                           \"source\": {source_index}, \
-                           \"range\": \"{range}\", \
-                           \"content\": \"fn {fn_name}({params}): {return_type}\" }}, "
-                    ));
-
-                    let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
-                    let target_range = RangeDisplay(&fn_def.loc);
-
-                    stdout_writeln(format!(
-                        "{{ \"type\": \"link\", \
-                            \"source\": {source_index}, \
-                            \"sourceRange\": \"{range}\", \
-                            \"target\": {target_index}, \
-                            \"targetRange\": \"{target_range}\" }}, ",
+                        "{{ \"type\": \"info\", \
+                            \"link\": \"{target_index}/{target_range}\", \
+                            \"hover\": \"fn {fn_name}({params}): {return_type}\", \
+                            \"loc\": \"{source_index}/{source_range}\" }}, ",
                     ));
                 }
 
@@ -2172,26 +2123,18 @@ fn parse_postfix(
 
                 if ctx.module.inspect_mode {
                     let source_index = ctx.module.get_loc_module_index(&field_name.loc);
-                    let range = RangeDisplay(&field_name.loc);
+                    let source_range = RangeDisplay(&field_name.loc);
+                    let target_index = ctx.module.get_loc_module_index(&field.loc);
+                    let target_range = RangeDisplay(&field.loc);
+
                     let field_name = &field_name.value;
                     let field_type = &field.value_type;
 
                     stdout_writeln(format!(
-                        "{{ \"type\": \"hover\", \
-                           \"source\": {source_index}, \
-                           \"range\": \"{range}\", \
-                           \"content\": \"{struct_name}\\n{field_name}: {field_type}\" }}, "
-                    ));
-
-                    let target_index = ctx.module.get_loc_module_index(&field.loc);
-                    let target_range = RangeDisplay(&field.loc);
-
-                    stdout_writeln(format!(
-                        "{{ \"type\": \"link\", \
-                            \"source\": {source_index}, \
-                            \"sourceRange\": \"{range}\", \
-                            \"target\": {target_index}, \
-                            \"targetRange\": \"{target_range}\" }}, ",
+                        "{{ \"type\": \"info\", \
+                            \"link\": \"{target_index}/{target_range}\", \
+                            \"hover\": \"{struct_name}\\n{field_name}: {field_type}\", \
+                            \"loc\": \"{source_index}/{source_range}\" }}, ",
                     ));
                 }
 
@@ -2232,26 +2175,18 @@ fn parse_postfix(
 
                 if ctx.module.inspect_mode {
                     let source_index = ctx.module.get_loc_module_index(&field_name.loc);
-                    let range = RangeDisplay(&field_name.loc);
+                    let source_range = RangeDisplay(&field_name.loc);
+                    let target_index = ctx.module.get_loc_module_index(&field.loc);
+                    let target_range = RangeDisplay(&field.loc);
+
                     let field_name = &field_name.value;
                     let field_type = &field.value_type;
 
                     stdout_writeln(format!(
-                        "{{ \"type\": \"hover\", \
-                           \"source\": {source_index}, \
-                           \"range\": \"{range}\", \
-                           \"content\": \"{struct_name}\\n{field_name}: {field_type}\" }}, "
-                    ));
-
-                    let target_index = ctx.module.get_loc_module_index(&field.loc);
-                    let target_range = RangeDisplay(&field.loc);
-
-                    stdout_writeln(format!(
-                        "{{ \"type\": \"link\", \
-                            \"source\": {source_index}, \
-                            \"sourceRange\": \"{range}\", \
-                            \"target\": {target_index}, \
-                            \"targetRange\": \"{target_range}\" }}, ",
+                        "{{ \"type\": \"info\", \
+                            \"link\": \"{target_index}/{target_range}\", \
+                            \"hover\": \"{struct_name}\\n{field_name}: {field_type}\", \
+                            \"loc\": \"{source_index}/{source_range}\" }}, ",
                     ));
                 }
 
@@ -2287,26 +2222,18 @@ fn parse_postfix(
 
                     if ctx.module.inspect_mode {
                         let source_index = ctx.module.get_loc_module_index(&field_name.loc);
-                        let range = RangeDisplay(&field_name.loc);
+                        let source_range = RangeDisplay(&field_name.loc);
+                        let target_index = ctx.module.get_loc_module_index(&field.loc);
+                        let target_range = RangeDisplay(&field.loc);
+
                         let field_name = &field_name.value;
                         let field_type = &field.value_type;
 
                         stdout_writeln(format!(
-                            "{{ \"type\": \"hover\", \
-                               \"source\": {source_index}, \
-                               \"range\": \"{range}\", \
-                               \"content\": \"{primary_type}\\n{field_name}: {field_type}\" }}, "
-                        ));
-
-                        let target_index = ctx.module.get_loc_module_index(&field.loc);
-                        let target_range = RangeDisplay(&field.loc);
-
-                        stdout_writeln(format!(
-                            "{{ \"type\": \"link\", \
-                                \"source\": {source_index}, \
-                                \"sourceRange\": \"{range}\", \
-                                \"target\": {target_index}, \
-                                \"targetRange\": \"{target_range}\" }}, ",
+                            "{{ \"type\": \"info\", \
+                                \"link\": \"{target_index}/{target_range}\", \
+                                \"hover\": \"{struct_name}\\n{field_name}: {field_type}\", \
+                                \"loc\": \"{source_index}/{source_range}\" }}, ",
                         ));
                     }
 
@@ -3070,24 +2997,17 @@ fn get_type_by_name(
 
                     if ctx.inspect_mode {
                         let source_index = ctx.get_loc_module_index(&token.loc);
-                        let range = RangeDisplay(&token.loc);
-                        let fields = ListDisplay(&struct_def.fields);
+                        let source_range = RangeDisplay(&token.loc);
                         let target_index = ctx.get_loc_module_index(&struct_def.loc);
                         let target_range = RangeDisplay(&struct_def.loc);
 
-                        stdout_writeln(format!(
-                            "{{ \"type\": \"hover\", \
-                                \"source\": {source_index}, \
-                                \"range\": \"{range}\", \
-                                \"content\": \"struct {name} {{ {fields} }}\" }}, ",
-                        ));
+                        let fields = ListDisplay(&struct_def.fields);
 
                         stdout_writeln(format!(
-                            "{{ \"type\": \"link\", \
-                                \"source\": {source_index}, \
-                                \"sourceRange\": \"{range}\", \
-                                \"target\": {target_index}, \
-                                \"targetRange\": \"{target_range}\" }}, ",
+                            "{{ \"type\": \"info\", \
+                                \"link\": \"{target_index}/{target_range}\", \
+                                \"hover\": \"struct {name} {{ {fields} }}\", \
+                                \"loc\": \"{source_index}/{source_range}\" }}, ",
                         ));
                     }
                 }
