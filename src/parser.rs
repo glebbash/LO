@@ -177,13 +177,20 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
     }
 
     if !ctx.inspect_mode {
-        // lower global values (a hack to resolve __DATA_SIZE__ after all strings were seen)
-        for GlobalDef { index, value, .. } in ctx.globals.values() {
+        // put __DATA_SIZE__ value into all globals that contain it
+        for global_index in &ctx.indicies_of_data_size_globals {
+            let instrs = &mut ctx.wasm_module.borrow_mut().globals[*global_index]
+                .initial_value
+                .instrs;
+
+            // drop stub value
+            instrs.clear();
+
             lower_expr(
-                &mut ctx.wasm_module.borrow_mut().globals[*index as usize]
-                    .initial_value
-                    .instrs,
-                value,
+                instrs,
+                &LoInstr::U32Const {
+                    value: *ctx.data_size.borrow(),
+                },
             );
         }
     }
@@ -385,8 +392,17 @@ fn parse_top_level_expr(
         let global_name = parse_nested_symbol(tokens)?;
         tokens.expect(Operator, "=")?;
 
-        let global_value_loc = tokens.loc().clone();
-        let global_value = parse_const_expr(ctx, tokens, 0)?;
+        let global_index = ctx.globals.len();
+
+        let global_value: LoInstr;
+        if let Some(_) = tokens.eat(LoTokenType::Operator, "@")? {
+            tokens.expect(LoTokenType::Symbol, "data_size")?;
+
+            ctx.indicies_of_data_size_globals.push(global_index);
+            global_value = LoInstr::U32Const { value: 0 }; // stub, will changed in `finalize`
+        } else {
+            global_value = parse_const_expr(ctx, tokens, 0)?;
+        }
 
         let lo_type = global_value.get_type(ctx);
         let Some(wasm_type) = lo_type.to_wasm_type() else {
@@ -394,7 +410,7 @@ fn parse_top_level_expr(
                 message: format!(
                     "Unsupported top level type: {lo_type}, only primitives are supported"
                 ),
-                loc: global_value_loc,
+                loc: global_name.loc.clone(),
             });
         };
 
@@ -421,20 +437,22 @@ fn parse_top_level_expr(
         ctx.globals.insert(
             global_name.value.clone(),
             GlobalDef {
-                index: ctx.globals.len() as u32,
+                index: global_index as u32,
                 mutable,
                 value_type: lo_type,
-                value: global_value,
                 loc: global_name.loc,
             },
         );
+
+        let mut instrs = vec![];
+        lower_expr(&mut instrs, &global_value);
 
         ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
             kind: WasmGlobalKind {
                 value_type: wasm_type,
                 mutable,
             },
-            initial_value: WasmExpr { instrs: vec![] }, // will be filled in `finalize`
+            initial_value: WasmExpr { instrs },
         });
 
         return Ok(());
@@ -625,21 +643,21 @@ fn parse_memory(
         match prop.value.as_str() {
             "min_pages" => {
                 let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
-                memory_limits.min = value
+                memory_limits.min = value;
             }
             "max_pages" => {
                 let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
-                memory_limits.max = Some(value)
+                memory_limits.max = Some(value);
             }
             "data_start" => {
                 let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
-                *ctx.data_size.borrow_mut() = value
+                *ctx.data_size.borrow_mut() = value;
             }
             _ => {
                 return Err(LoError {
                     message: format!("Invalid memory property"),
                     loc: prop.loc,
-                })
+                });
             }
         }
 
@@ -1001,12 +1019,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(_) = tokens.eat(Symbol, "false")?.cloned() {
         return Ok(LoInstr::U32Const { value: 0 }.casted(LoType::Bool));
-    }
-
-    if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
-        return Ok(LoInstr::U32ConstLazy {
-            value: ctx.module.data_size.clone(),
-        });
     }
 
     if let Some(_) = tokens.eat(Symbol, "unreachable")? {
@@ -2880,12 +2892,6 @@ fn parse_const_primary(
 
     if let Some(_) = tokens.eat(Symbol, "false")? {
         return Ok(LoInstr::U32Const { value: 0 }.casted(LoType::Bool));
-    }
-
-    if let Some(_) = tokens.eat(Symbol, "__DATA_SIZE__")? {
-        return Ok(LoInstr::U32ConstLazy {
-            value: ctx.data_size.clone(),
-        });
     }
 
     if let Some(token) = tokens.peek().cloned() {

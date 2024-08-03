@@ -1,5 +1,5 @@
 use crate::{lexer::*, utils::*, wasm::*};
-use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 
 #[derive(Default)]
@@ -12,8 +12,9 @@ pub struct ModuleContext<'a> {
     pub memories: BTreeMap<String, u32>,
     pub struct_defs: BTreeMap<String, StructDef>,
     pub globals: BTreeMap<String, GlobalDef>,
+    pub indicies_of_data_size_globals: Vec<usize>,
     pub imported_fns_count: u32,
-    pub data_size: Rc<RefCell<u32>>,
+    pub data_size: RefCell<u32>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
     pub constants: RefCell<BTreeMap<String, ConstDef>>,
     pub included_modules: BTreeMap<String, u32>,
@@ -475,7 +476,6 @@ pub struct GlobalDef {
     pub index: u32,
     pub mutable: bool,
     pub value_type: LoType,
-    pub value: LoInstr,
     pub loc: LoLocation,
 }
 
@@ -663,9 +663,6 @@ pub enum LoInstr {
         base_index: u32,
         primitive_gets: Vec<LoInstr>,
     },
-    U32ConstLazy {
-        value: Rc<RefCell<u32>>,
-    },
     I32Const {
         value: i32,
     },
@@ -752,7 +749,6 @@ impl LoInstr {
         match self {
             LoInstr::Unreachable => LoType::Never,
             LoInstr::NoInstr => LoType::Void,
-            LoInstr::U32ConstLazy { .. } => LoType::U32,
             LoInstr::I32Const { .. } => LoType::I32,
             LoInstr::U32Const { .. } => LoType::U32,
             LoInstr::I32FromI64 { .. } => LoType::I32,
@@ -921,9 +917,6 @@ pub fn lower_expr(out: &mut Vec<WasmInstr>, expr: &LoInstr) {
         LoInstr::StructGet { primitive_gets, .. } => {
             lower_exprs(out, primitive_gets);
         }
-        LoInstr::U32ConstLazy { value } => out.push(WasmInstr::I32Const {
-            value: *value.borrow() as i32,
-        }),
         LoInstr::I32Const { value } => out.push(WasmInstr::I32Const { value: *value }),
         LoInstr::U32Const { value } => out.push(WasmInstr::I32Const {
             value: *value as i32,
