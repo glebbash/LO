@@ -7,9 +7,9 @@
 
 // constants
 
-   const u32::MAX = 4_294_967_295;
+    const u32::MAX = 4_294_967_295;
 
-   global STATIC_DATA_SIZE = __DATA_SIZE__;
+    global STATIC_DATA_SIZE = @data_size;
 
 // abort
 
@@ -223,9 +223,9 @@
         let new_memory_needed = (heap::CURRENT_BLOCK as u32 + sizeof heap::Block + size) as i32
             - __memory_size() * mem::PAGE_SIZE as i32;
 
-        if new_memory_needed > 0 as i32 {
+        if new_memory_needed > +0 {
             let pages_needed = (new_memory_needed as u32 + mem::PAGE_SIZE) / mem::PAGE_SIZE;
-            if __memory_grow(pages_needed) == (0 - 1) as i32 {
+            if __memory_grow(pages_needed) == -1 {
                 abort(AbortCode::OOM);
             };
         };
@@ -553,7 +553,7 @@
     };
 
     fn char_is_numeric(char: u8): bool {
-        return char >= '0' as u8 && char <= '9' as u8;
+        return char >= '0' && char <= '9';
     };
 
 // conversions
@@ -566,14 +566,14 @@
         let start_size = output.len();
 
         if value == 0 {
-            output.push('0' as u8);
+            output.push('0');
             return output;
         };
 
         loop {
             let rem = value % 10;
 
-            output.push(('0' + rem) as u8);
+            output.push('0' + rem as u8);
             value = value / 10;
 
             if value == 0 {
@@ -594,14 +594,14 @@
         let start_size = output.len();
 
         if value == 0u64 {
-            output.push('0' as u8);
+            output.push('0');
             return output;
         };
 
         loop {
             let rem = value % 10u64;
 
-            output.push(('0' + rem as u32) as u8);
+            output.push('0' + rem as u32 as u8);
             value = value / 10u64;
 
             if value == 0u64 {

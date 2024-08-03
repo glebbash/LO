@@ -16,10 +16,10 @@ fn parse_u32(input: str): ParseIntResult {
             break;
         };
 
-        let char = input.char_at(result.chars_consumed) as u32;
+        let char = input.char_at(result.chars_consumed);
         if char >= '0' && char <= '9' {
             result.value *= 10;
-            result.value += char as u32 - '0';
+            result.value += (char - '0') as u32;
         } else {
             break;
         };
@@ -41,13 +41,13 @@ fn parse_u32_hex(input: str): ParseIntResult {
             break;
         };
 
-        let char = input.char_at(result.chars_consumed) as u32;
+        let char = input.char_at(result.chars_consumed);
         if char >= '0' && char <= '9' {
             result.value *= 16;
-            result.value += char as u32 - '0';
+            result.value += (char - '0') as u32;
         } else if char >= 'a' && char <= 'f' {
             result.value *= 16;
-            result.value += 11 + char as u32 - 'a';
+            result.value += 11 + (char - 'a') as u32;
         } else {
             break;
         };

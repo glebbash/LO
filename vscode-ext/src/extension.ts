@@ -12,9 +12,14 @@ export type WebShellCommandHandler = (
     rootFileSystem: RootFileSystem
 ) => Promise<number>;
 
+// TODO: drop deprecated `file` and `link` at some point
+
 type DiagnisticItem =
     | { type: "file"; index: number; path: string }
+    | { type: "info"; loc: string; link?: string; hover?: string }
+    /** deprecated in favor of "info" */
     | { type: "hover"; source: number; range: string; content: string }
+    /** deprecated in favor of "info" */
     | {
           type: "link";
           source: number;
@@ -71,6 +76,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 analysis.push(diag);
                 analysisPerIndex.set(d.index, diag);
             }
+
             if (d.type === "hover") {
                 const fileDiagnostic = analysisPerIndex.get(d.source)!;
                 fileDiagnostic.hovers.push(
@@ -83,6 +89,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     )
                 );
             }
+
             if (d.type === "link") {
                 const fileDiagnostic = analysisPerIndex.get(d.source)!;
                 fileDiagnostic.links.push({
@@ -90,6 +97,35 @@ export async function activate(context: vscode.ExtensionContext) {
                     targetUri: analysisPerIndex.get(d.target)!.uri,
                     targetRange: parseRange(d.targetRange),
                 });
+            }
+
+            if (d.type === "info") {
+                const sourceIndex = Number(d.loc.split("/")[0]);
+                const sourceRange = parseRange(d.loc.split("/")[1]);
+                const fileDiagnostic = analysisPerIndex.get(sourceIndex)!;
+
+                if (d.link) {
+                    const targetIndex = Number(d.link.split("/")[0]);
+                    const targetRange = parseRange(d.link.split("/")[1]);
+
+                    fileDiagnostic.links.push({
+                        originSelectionRange: sourceRange,
+                        targetUri: analysisPerIndex.get(targetIndex)!.uri,
+                        targetRange: targetRange,
+                    });
+                }
+
+                if (d.hover) {
+                    fileDiagnostic.hovers.push(
+                        new vscode.Hover(
+                            new vscode.MarkdownString().appendCodeblock(
+                                d.hover,
+                                "lo"
+                            ),
+                            sourceRange
+                        )
+                    );
+                }
             }
         }
     };

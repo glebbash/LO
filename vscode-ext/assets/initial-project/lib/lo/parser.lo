@@ -69,9 +69,9 @@ fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
     let fn_decl = self.parse_fn_decl()?;
     let body = self.collect_block_tokens()?;
 
-    if self.ctx.fn_defs.contains_key(str::from_string(fn_decl.fn_name)) {
+    if self.ctx.fn_defs.contains_key(fn_decl.fn_name.as_str()) {
         let message = String::from_str("Cannot redefine function: ");
-        message.push_str(str::from_string(fn_decl.fn_name));
+        message.push_str(fn_decl.fn_name.as_str());
 
         throw heap::new!<LoError>(LoError {
             message: message,
@@ -81,8 +81,8 @@ fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
 
     if exported {
         self.ctx.fn_exports.push!<LoFnExport>(LoFnExport {
-            in_name: String::clone(fn_decl.fn_name),
-            out_name: String::clone(fn_decl.fn_name),
+            in_name: fn_decl.fn_name.clone(),
+            out_name: fn_decl.fn_name.clone(),
         });
     };
 
