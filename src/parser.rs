@@ -423,14 +423,14 @@ fn parse_top_level_expr(
 
         if ctx.inspect_mode {
             let source_index = ctx.get_loc_module_index(&global_name.loc);
-            let range = RangeDisplay(&global_name.loc);
+            let source_range = RangeDisplay(&global_name.loc);
+
             let global_name = &global_name.value;
 
             stdout_writeln(format!(
-                "{{ \"type\": \"hover\", \
-                   \"source\": {source_index}, \
-                   \"range\": \"{range}\", \
-                   \"content\": \"let {global_name}: {lo_type}\" }}, "
+                "{{ \"type\": \"info\", \
+                    \"hover\": \"let {global_name}: {lo_type}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
             ));
         }
 
@@ -571,15 +571,15 @@ fn parse_top_level_expr(
 
         if ctx.inspect_mode {
             let source_index = ctx.get_loc_module_index(&const_name.loc);
-            let range = RangeDisplay(&const_name.loc);
+            let source_range = RangeDisplay(&const_name.loc);
+
             let const_name = &const_name.value;
             let const_type = const_value.get_type(ctx);
 
             stdout_writeln(format!(
-                "{{ \"type\": \"hover\", \
-                   \"source\": {source_index}, \
-                   \"range\": \"{range}\", \
-                   \"content\": \"const {const_name}: {const_type}\" }}, "
+                "{{ \"type\": \"info\", \
+                    \"hover\": \"const {const_name}: {const_type}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
             ));
         }
 
@@ -1746,14 +1746,14 @@ fn define_local(
 
     if ctx.module.inspect_mode {
         let source_index = ctx.module.get_loc_module_index(&local_name.loc);
-        let range = RangeDisplay(&local_name.loc);
-        let local_name_str = &local_name.value;
+        let source_range = RangeDisplay(&local_name.loc);
+
+        let local_name = &local_name.value;
 
         stdout_writeln(format!(
-            "{{ \"type\": \"hover\", \
-                \"source\": {source_index}, \
-                \"range\": \"{range}\", \
-                \"content\": \"let {local_name_str}: {value_type}\" }}, "
+            "{{ \"type\": \"info\", \
+                \"hover\": \"let {local_name}: {value_type}\", \
+                \"loc\": \"{source_index}/{source_range}\" }}, ",
         ));
     }
 
@@ -3015,15 +3015,15 @@ fn get_type_by_name(
 
             if ctx.inspect_mode && is_type_alias {
                 let source_index = ctx.get_loc_module_index(&token.loc);
-                let range = RangeDisplay(&token.loc);
+                let source_range = RangeDisplay(&token.loc);
+
                 let type_name = &token.value;
 
                 // TODO: add links
                 stdout_writeln(format!(
-                    "{{ \"type\": \"hover\", \
-                        \"source\": {source_index}, \
-                        \"range\": \"{range}\", \
-                        \"content\": \"type {type_name} = {type_}\" }}, "
+                    "{{ \"type\": \"info\", \
+                        \"hover\": \"type {type_name} = {type_}\", \
+                        \"loc\": \"{source_index}/{source_range}\" }}, ",
                 ));
             }
 
