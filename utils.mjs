@@ -7,6 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+// @ts-ignore
+import { m } from "https://unpkg.com/multiline-str@1.0.4/esm/mod.js?module";
 
 const COMPILER_PATH = "lo.wasm";
 const TMP_DIR = "tmp";
@@ -448,11 +450,12 @@ async function testCommand() {
 
         assert.strictEqual(
             output,
-            dropPadding(`
-                p1 = 1048597
-                p2 = 1048597
-                p3 = 1048606
-            `)
+            m`
+            p1 = 1048597
+            p2 = 1048597
+            p3 = 1048606
+
+            `
         );
     });
 
@@ -466,14 +469,15 @@ async function testCommand() {
 
         assert.strictEqual(
             output,
-            dropPadding(`
-                defer(inner_fn): 3
-                defer(inner_fn): 2
-                defer(inner_fn): 1
-                defer(return): 3
-                defer(return): 2
-                defer(return): 1
-            `)
+            m`
+            defer(inner_fn): 3
+            defer(inner_fn): 2
+            defer(inner_fn): 1
+            defer(return): 3
+            defer(return): 2
+            defer(return): 1
+
+            `
         );
     });
 
@@ -487,11 +491,12 @@ async function testCommand() {
 
         assert.strictEqual(
             output,
-            dropPadding(`
-                10 / 5 = 2, remainder = 0
-                10 / 3 = 3, remainder = 1
-                10 / 0 is undefined
-            `)
+            m`
+            10 / 5 = 2, remainder = 0
+            10 / 3 = 3, remainder = 1
+            10 / 0 is undefined
+
+            `
         );
     });
 
@@ -582,39 +587,65 @@ async function testCommand() {
 
             assert.strictEqual(
                 output,
-                dropPadding(`
-                    examples/test/lexer.test.input.txt:1:1 - 3 : a
-                    examples/test/lexer.test.input.txt:2:2 - 3 : b
-                    examples/test/lexer.test.input.txt:3:3 - 3 : c
-                    examples/test/lexer.test.input.txt:4:4 - 3 : d
-                    examples/test/lexer.test.input.txt:7:5 - 3 : a
-                    examples/test/lexer.test.input.txt:7:7 - 5 : +
-                    examples/test/lexer.test.input.txt:7:9 - 3 : b
-                    examples/test/lexer.test.input.txt:8:5 - 3 : b
-                    examples/test/lexer.test.input.txt:8:7 - 5 : +=
-                    examples/test/lexer.test.input.txt:8:10 - 2 : 0xAF, value = 175
-                    examples/test/lexer.test.input.txt:9:5 - 3 : f
-                    examples/test/lexer.test.input.txt:9:7 - 5 : /=
-                    examples/test/lexer.test.input.txt:9:10 - 2 : 25, value = 25
-                    examples/test/lexer.test.input.txt:9:12 - 5 : .
-                    examples/test/lexer.test.input.txt:9:13 - 2 : 6, value = 6
-                    examples/test/lexer.test.input.txt:10:5 - 3 : x
-                    examples/test/lexer.test.input.txt:10:7 - 5 : <<=
-                    examples/test/lexer.test.input.txt:10:11 - 3 : 'a'
-                    examples/test/lexer.test.input.txt:11:5 - 2 : 0_123_456, value = 123456
-                    examples/test/lexer.test.input.txt:12:3 - 3 : a
-                    examples/test/lexer.test.input.txt:12:5 - 4 : (
-                    examples/test/lexer.test.input.txt:12:6 - 3 : a
-                    examples/test/lexer.test.input.txt:12:7 - 4 : )
-                    examples/test/lexer.test.input.txt:12:8 - 3 : dwawd
-                    examples/test/lexer.test.input.txt:12:13 - 4 : ;
-                    examples/test/lexer.test.input.txt:13:3 - 3 : b
-                    examples/test/lexer.test.input.txt:13:16 - 3 : awdawd
-                    examples/test/lexer.test.input.txt:14:3 - 3 : c
-                    examples/test/lexer.test.input.txt:15:2 - 3 : dawd
-                    examples/test/lexer.test.input.txt:16:2 - 0 : "John doe went fucking crazy trimming the \\t bushes", value = John doe went fucking crazy trimming the \t bushes
-                    examples/test/lexer.test.input.txt:18:1 - 3 : awdawd
-                `)
+                m`
+                examples/test/lexer.test.input.txt:1:1 - 3 : a
+                examples/test/lexer.test.input.txt:2:2 - 3 : b
+                examples/test/lexer.test.input.txt:3:3 - 3 : c
+                examples/test/lexer.test.input.txt:4:4 - 3 : d
+                examples/test/lexer.test.input.txt:7:5 - 3 : a
+                examples/test/lexer.test.input.txt:7:7 - 5 : +
+                examples/test/lexer.test.input.txt:7:9 - 3 : b
+                examples/test/lexer.test.input.txt:8:5 - 3 : b
+                examples/test/lexer.test.input.txt:8:7 - 5 : +=
+                examples/test/lexer.test.input.txt:8:10 - 2 : 0xAF, value = 175
+                examples/test/lexer.test.input.txt:9:5 - 3 : f
+                examples/test/lexer.test.input.txt:9:7 - 5 : /=
+                examples/test/lexer.test.input.txt:9:10 - 2 : 25, value = 25
+                examples/test/lexer.test.input.txt:9:12 - 5 : .
+                examples/test/lexer.test.input.txt:9:13 - 2 : 6, value = 6
+                examples/test/lexer.test.input.txt:10:5 - 3 : x
+                examples/test/lexer.test.input.txt:10:7 - 5 : <<=
+                examples/test/lexer.test.input.txt:10:11 - 3 : 'a'
+                examples/test/lexer.test.input.txt:11:5 - 2 : 0_123_456, value = 123456
+                examples/test/lexer.test.input.txt:12:3 - 3 : a
+                examples/test/lexer.test.input.txt:12:5 - 4 : (
+                examples/test/lexer.test.input.txt:12:6 - 3 : a
+                examples/test/lexer.test.input.txt:12:7 - 4 : )
+                examples/test/lexer.test.input.txt:12:8 - 3 : dwawd
+                examples/test/lexer.test.input.txt:12:13 - 4 : ;
+                examples/test/lexer.test.input.txt:13:3 - 3 : b
+                examples/test/lexer.test.input.txt:13:16 - 3 : awdawd
+                examples/test/lexer.test.input.txt:14:3 - 3 : c
+                examples/test/lexer.test.input.txt:15:2 - 3 : dawd
+                examples/test/lexer.test.input.txt:16:2 - 0 : "John doe went fucking crazy trimming the \\t bushes", value = John doe went fucking crazy trimming the \t bushes
+                examples/test/lexer.test.input.txt:18:1 - 3 : awdawd
+
+                `
+            );
+        });
+
+        test("compiles 42.lo using lo.lo", async () => {
+            const { exec } = await import("node:child_process");
+            const { promisify } = await import("node:util");
+
+            const { stdout, stderr } = await promisify(exec)(
+                "./utils.mjs run examples/lo.lo -- examples/test/42.lo | wasm2wat -"
+            );
+            if (stderr) {
+                throw new Error(stderr);
+            }
+
+            assert.equal(
+                stdout,
+                m`
+                (module
+                  (type (;0;) (func (result i32)))
+                  (func (;0;) (type 0) (result i32)
+                    i32.const 42
+                    return)
+                  (export "main" (func 0)))
+
+                `
             );
         });
     }
@@ -750,12 +781,4 @@ async function runWithTmpFile(run) {
         await fileHandle.close();
         await fs.unlink(fileName);
     }
-}
-
-function dropPadding(/** @type {string} */ str) {
-    return str
-        .slice(1)
-        .split("\n")
-        .map((s) => s.trimStart())
-        .join("\n");
 }
