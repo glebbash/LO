@@ -6,7 +6,7 @@ struct StrCutter {
 };
 
 fn StrCutter::new(source: str): StrCutter {
-    return StrCutter { piece: "" as str, rest: source };
+    return StrCutter { piece: "", rest: source };
 };
 
 fn StrCutter::cut_at(self, delim: str): StrCutter {

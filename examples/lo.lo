@@ -15,7 +15,7 @@ fn main() {
     let _ = ctx.include_file_and_finalize(args.get(1)) catch err {
         ctx.print_loc(err.loc);
         eputs(" - ");
-        eprint_str(err.message as &str);
+        eputs(err.message.as_str());
         eputs("\n");
         wasi::proc_exit(1);
     };

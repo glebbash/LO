@@ -53,6 +53,7 @@ const Section::DATAS     = 11 as u8;
         fn WasmInstr::Call::new(fn_index: u32): WasmInstr {
             return WasmInstr {
                 op_code: WasmInstr::Call::OP_CODE,
+                // TODO: won't need a cast if coersion is introduced
                 data: heap::new!<WasmInstr::Call>(WasmInstr::Call {
                     fn_index: fn_index
                 }) as &void
@@ -76,6 +77,7 @@ const Section::DATAS     = 11 as u8;
         fn WasmInstr::I32Store::new(align: u32, offset: u32): WasmInstr {
             return WasmInstr {
                 op_code: WasmInstr::I32Store::OP_CODE,
+                // TODO: won't need a cast if coersion is introduced
                 data: heap::new!<WasmInstr::I32Store>(WasmInstr::I32Store {
                     align: align,
                     offset: offset,
@@ -90,6 +92,7 @@ const Section::DATAS     = 11 as u8;
         fn WasmInstr::I32Const::new(value: i32): WasmInstr {
             return WasmInstr {
                 op_code: WasmInstr::I32Const::OP_CODE,
+                // TODO: won't need a cast if coersion is introduced
                 data: heap::new!<WasmInstr::I32Const>(WasmInstr::I32Const {
                     value: value
                 }) as &void
@@ -240,9 +243,11 @@ const Section::DATAS     = 11 as u8;
             let import_ = self.imports.get!<WasmImport>(i);
 
             WasmModule::write_uleb128(out, import_.module_name.len());
+            // TODO: won't need a cast if coersion is introduced
             out.push_all(import_.module_name.chars.data as &void, import_.module_name.len());
 
             WasmModule::write_uleb128(out, import_.item_name.len());
+            // TODO: won't need a cast if coersion is introduced
             out.push_all(import_.item_name.chars.data as &void, import_.item_name.len());
 
             out.push!<u8>(import_.item_type);
@@ -282,6 +287,7 @@ const Section::DATAS     = 11 as u8;
             let export_ = self.exports.get!<WasmExport>(i);
 
             WasmModule::write_uleb128(out, export_.name.len());
+            // TODO: won't need a cast if coersion is introduced
             out.push_all(export_.name.chars.data as &void, export_.name.len());
             out.push!<u8>(export_.item_type);
             WasmModule::write_uleb128(out, export_.item_index);

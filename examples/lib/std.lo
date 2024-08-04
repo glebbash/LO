@@ -55,10 +55,12 @@
     };
 
     macro free!<T>(alloc_id: u32, ptr: &T) {
+        // TODO: won't need a cast if coersion is introduced
         free(alloc_id, ptr as &void, sizeof T);
     };
 
     macro free_many!<T>(alloc_id: u32, ptr: &*T, count: u32) {
+        // TODO: won't need a cast if coersion is introduced
         free(alloc_id, ptr as &void, count * sizeof T);
     };
 
@@ -445,6 +447,7 @@
 
     fn String::from_str(value: str): String {
         let string = String::new(value.size);
+        // TODO: won't need a cast if coersion is introduced
         string.chars.push_all(value.data as &void, value.size);
         return string;
     };
@@ -465,6 +468,7 @@
     };
 
     fn String::push_str(self, value: str) {
+        // TODO: won't need a cast if coersion is introduced
         self.chars.push_all(value.data as &void, value.size);
     };
 
@@ -505,6 +509,7 @@
 
     fn str::clone(self): str {
         let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size);
+        // TODO: won't need a cast if coersion is introduced
         mem::copy!(self.data as &void, cloned_data as &void, self.size);
         return str {
             data: cloned_data,

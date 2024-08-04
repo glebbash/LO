@@ -82,6 +82,7 @@ const LoInstr::U32Const = 0;
 macro LoInstr::U32Const!(value: u32): LoInstr {
     LoInstr {
         kind: LoInstr::U32Const,
+        // TODO: won't need a cast if coersion is introduced
         data: value as &void,
     };
 };
@@ -90,6 +91,7 @@ const LoInstr::Return = 1;
 macro LoInstr::Return!(value: LoInstr): LoInstr {
     LoInstr {
         kind: LoInstr::Return,
+        // TODO: won't need a cast if coersion is introduced
         data: heap::new!<LoInstr>(value) as &void,
     };
 };

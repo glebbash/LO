@@ -37,7 +37,7 @@ fn LoContext::print_loc(&self, loc: LoLocation) {
         eputs("<internal>");
     } else {
         let file = self.included_files.get!<LoIncludedFile>(loc.file_index);
-        eprint_str(file.path as &str);
+        eputs(file.path.as_str());
     };
     eputs(":");
     eprint_u32(loc.pos.line);

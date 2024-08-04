@@ -45,8 +45,10 @@ fn LoToken::free(self) {
 
 fn LoToken::clone(self): LoToken {
     if self.type_ == LoTokenType::IntLiteral {
+        // TODO: won't need a cast if coersion is introduced
         self.value = heap::new!<u64>(*(self.value as &u64)) as &void;
     } else if self.type_ == LoTokenType::StringLiteral {
+        // TODO: won't need a cast if coersion is introduced
         self.value = (self.value as String).clone() as &void;
     };
 
@@ -86,6 +88,7 @@ fn LoTokenStream::free(&self) {
         t.free();
     };
 
+    // TODO: won't need a cast if coersion is introduced
     heap::free(self as &void);
 };
 
@@ -342,6 +345,7 @@ fn LoLexer::lex_char(&self): LexResult {
         type_: LoTokenType::Symbol,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
+        // TODO: won't need a cast if coersion is introduced
         value: value as &void,
     };
 };
@@ -399,6 +403,7 @@ fn LoLexer::lex_string(&self): LexResult {
         type_: LoTokenType::StringLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
+        // TODO: won't need a cast if coersion is introduced
         value: value as &void,
     };
 };
@@ -452,6 +457,7 @@ fn LoLexer::lex_int_literal(&self): LexResult {
         type_: LoTokenType::IntLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
+        // TODO: won't need a cast if coersion is introduced
         value: heap::new!<u64>(value) as &void,
     };
 };
@@ -684,7 +690,7 @@ fn LoLexer::pos(&self): LoPosition {
 };
 
 fn LoLexer::is_space_char(char: u8): bool {
-    return char == ' '  as u8
+    return char == ' '
         || char == '\n'
         || char == '\t'
         || char == '\r';
