@@ -628,7 +628,7 @@ fn parse_memory(
     if ctx.memories.contains_key(&memory_name) {
         return Err(LoError {
             message: format!("Duplicate memory definition: {memory_name}"),
-            loc: tokens.peek().unwrap().loc.clone(),
+            loc: tokens.loc().clone(),
         });
     }
 
