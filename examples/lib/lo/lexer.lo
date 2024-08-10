@@ -69,6 +69,20 @@ struct LoTokenStream {
     terminal_token: LoToken,
 };
 
+// TODO: replace with C-style optional handling
+    struct LoTokenMaybe {
+        token: LoToken,
+        exists: bool,
+    };
+
+    macro LoTokenMaybe::some!(t: LoToken): LoTokenMaybe {
+        LoTokenMaybe { token: t, exists: true };
+    };
+
+    macro LoTokenMaybe::none!(tokens: &LoTokenStream): LoTokenMaybe {
+        LoTokenMaybe { token: tokens.terminal_token, exists: false };
+    };
+
 fn LoTokenStream::new(tokens: &Vec of LoToken, eof_location: LoLocation): &LoTokenStream {
     return heap::new!<LoTokenStream>(LoTokenStream {
         tokens: tokens,
@@ -90,37 +104,6 @@ fn LoTokenStream::free(&self) {
 
     // TODO: won't need a cast if coersion is introduced
     heap::free(self as &void);
-};
-
-struct LoTokenMaybe {
-    token: LoToken,
-    exists: bool,
-};
-
-macro LoTokenMaybe::some!(t: LoToken): LoTokenMaybe {
-    LoTokenMaybe { token: t, exists: true };
-};
-
-macro LoTokenMaybe::none!(tokens: &LoTokenStream): LoTokenMaybe {
-    LoTokenMaybe { token: tokens.terminal_token, exists: false };
-};
-
-fn LoTokenStream::peek(&self): LoTokenMaybe {
-    if self.index >= self.tokens.size {
-        return LoTokenMaybe::none!(self);
-    };
-
-    return LoTokenMaybe::some!(
-        self.tokens.get!<LoToken>(self.index)
-    );
-};
-
-fn LoTokenStream::next(&self): LoTokenMaybe {
-    let token = self.peek();
-    if token.exists {
-        self.index += 1;
-    };
-    return token;
 };
 
 fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): LoToken throws &LoError {
@@ -167,6 +150,19 @@ fn LoTokenStream::expect_any(&self, type_: LoTokenType): LoToken throws &LoError
     });
 };
 
+fn LoTokenStream::eat_any(&self, type_: LoTokenType): LoTokenMaybe throws &LoError {
+    let token = self.expect_any(type_) catch err {
+        let some_token = self.peek();
+        if !some_token.exists {
+            throw err;
+        };
+
+        return LoTokenMaybe::none!(self);
+    };
+
+    return LoTokenMaybe::some!(token);
+};
+
 fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): LoTokenMaybe throws &LoError {
     let token = self.expect(type_, repr) catch err {
         let some_token = self.peek();
@@ -180,17 +176,43 @@ fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): LoTokenMaybe throws
     return LoTokenMaybe::some!(token);
 };
 
-fn LoTokenStream::eat_any(&self, type_: LoTokenType): LoTokenMaybe throws &LoError {
-    let token = self.expect_any(type_) catch err {
-        let some_token = self.peek();
-        if !some_token.exists {
-            throw err;
-        };
+fn LoTokenStream::next_is(&self, type_: LoTokenType, repr: str): bool throws &LoError {
+    let some_token = self.peek();
+    if !some_token.exists {
+        throw heap::new!<LoError>(LoError {
+            message: String::from_str("Unexpected EOF"),
+            loc: self.terminal_token.loc,
+        });
+    };
 
+    return some_token.token.is(type_, repr);
+};
+
+fn LoTokenStream::peek(&self): LoTokenMaybe {
+    if self.index >= self.tokens.size {
         return LoTokenMaybe::none!(self);
     };
 
-    return LoTokenMaybe::some!(token);
+    return LoTokenMaybe::some!(
+        self.tokens.get!<LoToken>(self.index)
+    );
+};
+
+fn LoTokenStream::next(&self): LoTokenMaybe {
+    let token = self.peek();
+    if token.exists {
+        self.index += 1;
+    };
+    return token;
+};
+
+fn LoTokenStream::loc(&self): LoLocation {
+    let some_token = self.peek();
+    if some_token.exists {
+        return some_token.token.loc;
+    };
+
+    return self.terminal_token.loc;
 };
 
 struct LoLexer {

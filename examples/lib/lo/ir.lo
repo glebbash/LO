@@ -23,6 +23,14 @@ macro LoType::U32!(): LoType {
     LoType { kind: LoType::U32, data: 0 as &void };
 };
 
+// TODO: implement
+fn LoType::clone(self): LoType {
+    return self;
+};
+
+// TODO: add all fields
+struct LoTypeScope {};
+
 struct LoFnParam {
     name: String,
     type_: LoType,
@@ -72,35 +80,73 @@ struct LoFnBody {
     body: &LoTokenStream,
 };
 
-type LoInstr::_ = u32;
+type LoInstr::Kind = u32;
 struct LoInstr {
-    kind: LoInstr::_,
+    kind: LoInstr::Kind,
     data: &void,
 };
 
-const LoInstr::U32Const = 0;
-macro LoInstr::U32Const!(value: u32): LoInstr {
+const LoInstr::U32Const::KIND = 0;
+type LoInstr::U32Const = u32;
+macro LoInstr::U32Const::new!(value: u32): LoInstr {
     LoInstr {
-        kind: LoInstr::U32Const,
+        kind: LoInstr::U32Const::KIND,
         // TODO: won't need a cast if coersion is introduced
         data: value as &void,
     };
 };
 
-const LoInstr::Return = 1;
+const LoInstr::Return::KIND = 1;
+struct LoInstr::Return {
+    value: LoInstr,
+};
 macro LoInstr::Return!(value: LoInstr): LoInstr {
     LoInstr {
-        kind: LoInstr::Return,
+        kind: LoInstr::Return::KIND,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<LoInstr>(value) as &void,
+        data: heap::new!<LoInstr::Return>(LoInstr::Return {
+            value: value
+        }) as &void,
     };
 };
 
-fn LoInstr::free(self) {
-    if self.kind == LoInstr::Return {
-        heap::free(self.data);
+const LoInstr::CallAndDrop::KIND = 2;
+struct LoInstr::CallAndDrop {
+    fn_index: u32,
+    return_type: LoType,
+    args: &Vec of LoInstr,
+};
+macro LoInstr::CallAndDrop::new!(fn_index: u32, return_type: LoType, args: &Vec of LoInstr): LoInstr {
+    LoInstr {
+        kind: LoInstr::CallAndDrop::KIND,
+        // TODO: won't need a cast if coersion is introduced
+        data: heap::new!<LoInstr::CallAndDrop>(LoInstr::CallAndDrop {
+            fn_index: fn_index,
+            return_type: return_type,
+            args: args,
+        }) as &void,
     };
 };
+
+// TODO: this instruction is temporary
+const LoInstr::U32Store::KIND = 3;
+struct LoInstr::U32Store {
+    address: LoInstr,
+    value: LoInstr,
+};
+macro LoInstr::U32Store::new!(address: LoInstr, value: LoInstr): LoInstr {
+    LoInstr {
+        kind: LoInstr::U32Store::KIND,
+        // TODO: won't need a cast if coersion is introduced
+        data: heap::new!<LoInstr::U32Store>(LoInstr::U32Store {
+            address: address,
+            value: value,
+        }) as &void,
+    };
+};
+
+// TODO: implement
+fn LoInstr::free(self) {};
 
 fn LoInstr::lower_all(
     exprs: &Vec of LoInstr,
@@ -116,14 +162,30 @@ fn LoInstr::lower(
     self,
     out: &Vec of WasmInstr,
 ) {
-    if self.kind == LoInstr::U32Const {
+    if self.kind == LoInstr::U32Const::KIND {
         out.push!<WasmInstr>(WasmInstr::I32Const::new(self.data as i32));
         return;
     };
 
-    if self.kind == LoInstr::Return {
+    if self.kind == LoInstr::Return::KIND {
         (*(self.data as &LoInstr)).lower(out);
         out.push!<WasmInstr>(WasmInstr::Return::new());
+        return;
+    };
+
+    if self.kind == LoInstr::U32Store::KIND {
+        let store = *(self.data as &LoInstr::U32Store);
+        store.address.lower(out);
+        store.value.lower(out);
+        out.push!<WasmInstr>(WasmInstr::I32Store::new(0, 0));
+        return;
+    };
+
+    if self.kind == LoInstr::CallAndDrop::KIND {
+        let call = *(self.data as &LoInstr::CallAndDrop);
+        LoInstr::lower_all(call.args, out);
+        out.push!<WasmInstr>(WasmInstr::Call::new(call.fn_index));
+        out.push!<WasmInstr>(WasmInstr::Drop::new());
         return;
     };
 

@@ -122,7 +122,8 @@ const Section::DATAS     = 11 as u8;
 
 // exports:
     type WasmExportType = u8;
-    const WasmExportType::Fn = 0x00 as u8;
+    const WasmExportType::Fn  = 0x00 as u8;
+    const WasmExportType::Mem = 0x02 as u8;
 
     struct WasmExport {
         name: String,

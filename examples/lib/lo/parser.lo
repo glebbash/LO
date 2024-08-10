@@ -49,7 +49,122 @@ fn LoParser::parse_top_level_expr(self): void throws &LoError {
             return self.parse_fn_def(true)?;
         };
 
+        some_token = self.tokens.eat(LoTokenType::Symbol, "memory")?;
+        if some_token.exists {
+            let memory_def = self.parse_memory()?;
+
+            self.ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
+                name: String::from_str("memory"),
+                item_type: WasmExportType::Mem,
+                item_index: memory_def.index,
+            });
+
+            return;
+        };
+
         // TODO: parse other exportables
+        some_token = self.tokens.peek();
+        let unexpected = some_token.token; // null checked at the top
+        let message = String::from_str("Unexpected exportable: ");
+        message.push_str(unexpected.repr);
+
+        throw heap::new!<LoError>(LoError {
+            message: message,
+            loc: unexpected.loc,
+        });
+    };
+
+    some_token = self.tokens.eat(LoTokenType::Symbol, "import")?;
+    if some_token.exists {
+        let _ = self.tokens.expect(LoTokenType::Symbol, "from")?;
+
+        let module_name = self.tokens.expect_any(LoTokenType::StringLiteral)?;
+
+        let _ = self.tokens.expect(LoTokenType::Delim, "{")?;
+        loop {
+            some_token = self.tokens.eat(LoTokenType::Delim, "}")?;
+            if some_token.exists {
+                break;
+            };
+
+            // TODO: support importing memories
+
+            let _ = self.tokens.expect(LoTokenType::Symbol, "fn")?;
+            let fn_decl = self.parse_fn_decl()?;
+            let _ = self.tokens.expect(LoTokenType::Delim, ";")?;
+
+            if self.ctx.fn_defs.contains_key(fn_decl.fn_name.as_str()) {
+                let message = String::from_str("Cannot redefine function: ");
+                message.push_str(fn_decl.fn_name.as_str());
+
+                throw heap::new!<LoError>(LoError {
+                    message: message,
+                    loc: fn_decl.loc,
+                });
+            };
+
+            let type_index = self.ctx.insert_fn_type(fn_decl.wasm_type);
+
+            let fn_index = self.ctx.imported_fns_count;
+            self.ctx.imported_fns_count += 1;
+
+            let fn_def = LoFnDef {
+                local: false,
+                fn_index: fn_index,
+                fn_params: fn_decl.fn_params,
+                type_index: type_index,
+                type_: fn_decl.lo_type,
+                loc: fn_decl.loc,
+            };
+
+            self.ctx.fn_defs.insert!<LoFnDef>(fn_decl.fn_name.clone(), fn_def);
+            self.ctx.wasm_module.imports.push!<WasmImport>(WasmImport {
+                module_name: (module_name.value as String).clone(),
+                item_name: fn_decl.method_name,
+                item_type: WasmImportType::Fn,
+                item_index: type_index,
+            });
+        };
+
+        return;
+    };
+
+    some_token = self.tokens.eat(LoTokenType::Operator, "*")?;
+    if some_token.exists {
+        let offset_token = self.tokens.expect_any(LoTokenType::IntLiteral)?;
+        let offset = LoInstr::U32Const::new!((*(offset_token.value as &u64)) as u32);
+
+        // TODO: implement
+        // let offset = self.parse_const_expr(2)?;
+        // let Some(WasmType::I32) = offset.get_type(ctx).to_wasm_type() else {
+        //     return Err(LoError {
+        //         message: format!("Invalid memory offset"),
+        //         loc: tokens.loc().clone(),
+        //     });
+        // };
+
+        let _ = self.tokens.expect(LoTokenType::Operator, "=")?;
+
+        let input = self.tokens.expect_any(LoTokenType::StringLiteral)?;
+        let string = input.value as String;
+        let bytes = string.chars;
+
+        // TODO: implement
+        // let bytes = if let Some(data) = tokens.eat_any(StringLiteral)? {
+        //     data.value.as_bytes().iter().map(|b| *b).collect()
+        // } else {
+        //     parse_const_sequence(ctx, tokens)?.1
+        // };
+
+        let instrs = Vec::new!<WasmInstr>();
+        offset.lower(instrs);
+
+        self.ctx.wasm_module.datas.push!<WasmData>(WasmData {
+            expr: WasmExpr { instrs: instrs },
+            bytes: bytes,
+        });
+
+        return;
     };
 
     // TODO: parse other expressions
@@ -113,18 +228,22 @@ fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
     });
 };
 
-// TODO: implement the complete version
 fn LoParser::parse_fn_decl(self): LoFnDecl throws &LoError {
-    let fn_name = self.tokens.expect_any(LoTokenType::Symbol)?;
+    // TODO: implement
+    // let fn_name = parse_nested_symbol(tokens)?;
+    // let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &fn_name)?;
 
-    let _ = self.tokens.expect(LoTokenType::Delim, "(")?;
-    let _ = self.tokens.expect(LoTokenType::Delim, ")")?;
+    let fn_name = self.tokens.expect_any(LoTokenType::Symbol)?;
+    let method_name = String::from_str(fn_name.repr);
+    let receiver_type = 0 as &LoType;
+
+    let params = self.parse_fn_params(self.ctx.type_scope, receiver_type)?;
 
     let fn_decl = LoFnDecl {
         fn_name: String::from_str(fn_name.repr),
-        method_name: String::from_str(""),
+        method_name: method_name,
         loc: fn_name.loc,
-        fn_params: Vec::new!<LoFnParam>(),
+        fn_params: params,
         lo_type: LoFnType {
             inputs: Vec::new!<LoType>(),
             output: LoType::Void!(),
@@ -134,6 +253,22 @@ fn LoParser::parse_fn_decl(self): LoFnDecl throws &LoError {
             outputs: Vec::new!<WasmValueType>(),
         },
         locals: StringMap::new!<LoLocalDef>(),
+    };
+
+    for i in 0..params.size {
+        let param = params.get!<LoFnParam>(i);
+        let local_def = LoLocalDef {
+            index: fn_decl.wasm_type.inputs.size,
+            value_type: param.type_.clone(),
+            loc: param.loc,
+        };
+        fn_decl.locals.insert!<LoLocalDef>(param.name, local_def);
+
+        param
+            .type_
+            .emit_components(self.ctx, fn_decl.wasm_type.inputs);
+
+        fn_decl.lo_type.inputs.push!<LoType>(param.type_);
     };
 
     let lo_output = LoType::Void!();
@@ -146,6 +281,77 @@ fn LoParser::parse_fn_decl(self): LoFnDecl throws &LoError {
     fn_decl.lo_type.output = lo_output;
 
     return fn_decl;
+};
+
+fn LoParser::parse_fn_params(
+    self,
+    type_scope: &LoTypeScope,
+    receiver_type: &LoType, // TODO: mark as optional
+): (&Vec of LoFnParam) throws &LoError {
+    let params = Vec::new!<LoFnParam>();
+
+    let _ = self.tokens.expect(LoTokenType::Delim, "(")?;
+
+    // TODO: implement
+    // if let Some(receiver_type) = &receiver_type {
+    //     if let Some(self_token) = tokens.eat(Symbol, RECEIVER_PARAM_NAME)?.cloned() {
+    //         if !tokens.next_is(Delim, ")")? {
+    //             tokens.expect(Delim, ",")?;
+    //         }
+
+    //         params.push(FnParam {
+    //             name: String::from(RECEIVER_PARAM_NAME),
+    //             type_: receiver_type.clone(),
+    //             loc: self_token.loc,
+    //         });
+    //     } else if let Some(_) = tokens.eat(Operator, "&")? {
+    //         let self_token = tokens.expect(Symbol, RECEIVER_PARAM_NAME)?.clone();
+    //         if !tokens.next_is(Delim, ")")? {
+    //             tokens.expect(Delim, ",")?;
+    //         }
+
+    //         params.push(FnParam {
+    //             name: String::from(RECEIVER_PARAM_NAME),
+    //             type_: LoType::Pointer(Box::new(receiver_type.clone())),
+    //             loc: self_token.loc,
+    //         });
+    //     };
+    // }
+
+    loop {
+        let some_token = self.tokens.eat(LoTokenType::Delim, ")")?;
+        if some_token.exists {
+            break;
+        };
+
+        let p_name = self.tokens.expect_any(LoTokenType::Symbol)?.clone();
+        let _ = self.tokens.expect(LoTokenType::Operator, ":")?;
+        let p_type = self.parse_lo_type_(self.ctx.type_scope, false)?;
+        if !self.tokens.next_is(LoTokenType::Delim, ")")? {
+            let _ = self.tokens.expect(LoTokenType::Delim, ",")?;
+        };
+
+        for i in 0..params.size {
+            let param = params.get!<LoFnParam>(i);
+            if param.name.as_str().equals(p_name.repr) {
+                let message = String::from_str("Found function param with conflicting name: ");
+                message.push_str(p_name.repr);
+
+                throw heap::new!<LoError>(LoError {
+                    message: message,
+                    loc: p_name.loc,
+                });
+            };
+        };
+
+        params.push!<LoFnParam>(LoFnParam {
+            name: String::from_str(p_name.repr),
+            type_: p_type,
+            loc: p_name.loc,
+        });
+    };
+
+    return params;
 };
 
 fn LoParser::collect_block_tokens(self): &LoTokenStream throws &LoError {
@@ -231,7 +437,50 @@ fn LoParser::parse_expr(
 
     some_token = tokens.eat_any(LoTokenType::IntLiteral)?;
     if some_token.exists {
-        return LoInstr::U32Const!(*(some_token.token.value as &u32));
+        return LoInstr::U32Const::new!((*(some_token.token.value as &u64)) as u32);
+    };
+
+    // TODO: implement complete version
+    some_token = tokens.eat(LoTokenType::Operator, "*")?;
+    if some_token.exists {
+        // *(<address> as &u32) = <value>
+        let _ = tokens.expect(LoTokenType::Delim, "(")?;
+        let address = LoParser::parse_expr(ctx, tokens, min_bp)?;
+        let _ = tokens.expect(LoTokenType::Symbol, "as")?;
+        let _ = tokens.expect(LoTokenType::Operator, "&")?;
+        let _ = tokens.expect(LoTokenType::Symbol, "u32")?;
+        let _ = tokens.expect(LoTokenType::Delim, ")")?;
+        let _ = tokens.expect(LoTokenType::Operator, "=")?;
+        let value = LoParser::parse_expr(ctx, tokens, min_bp)?;
+
+        return LoInstr::U32Store::new!(address, value);
+    };
+
+    // TODO: implement complete version
+    some_token = tokens.eat(LoTokenType::Symbol, "let")?;
+    if some_token.exists {
+        // let _ = <fn_name>(<args...>);
+        let _ = tokens.expect(LoTokenType::Symbol, "_")?;
+        let _ = tokens.expect(LoTokenType::Operator, "=")?;
+
+        let _ = tokens.expect(LoTokenType::Symbol, "fd_write")?;
+        let fn_index = 0;
+        let return_type = LoType::U32!();
+
+        let _ = tokens.expect(LoTokenType::Delim, "(")?;
+
+        let args = Vec::new!<LoInstr>();
+        args.push!<LoInstr>(LoParser::parse_expr(ctx, tokens, min_bp)?);
+        let _ = tokens.expect(LoTokenType::Delim, ",")?;
+        args.push!<LoInstr>(LoParser::parse_expr(ctx, tokens, min_bp)?);
+        let _ = tokens.expect(LoTokenType::Delim, ",")?;
+        args.push!<LoInstr>(LoParser::parse_expr(ctx, tokens, min_bp)?);
+        let _ = tokens.expect(LoTokenType::Delim, ",")?;
+        args.push!<LoInstr>(LoParser::parse_expr(ctx, tokens, min_bp)?);
+        let _ = tokens.expect(LoTokenType::Delim, ",")?;
+        let _ = tokens.expect(LoTokenType::Delim, ")")?;
+
+        return LoInstr::CallAndDrop::new!(fn_index, return_type, args);
     };
 
     some_token = tokens.peek();
@@ -244,8 +493,84 @@ fn LoParser::parse_expr(
     });
 };
 
-// TODO: parse other types
+struct LoMemoryDef {
+    index: u32,
+    limits: WasmMemory,
+};
+fn LoParser::parse_memory(self): LoMemoryDef throws &LoError {
+    let memory_name = String::from_str("memory");
+    if self.ctx.memories.contains_key(memory_name.as_str()) {
+        let message = String::from_str("Duplicate memory definition: ");
+        message.push_str(memory_name.as_str());
+        throw heap::new!<LoError>(LoError {
+            message: message,
+            loc: self.tokens.loc(),
+        });
+    };
+
+    let memory_limits = WasmMemory { min: 0, max: 0, has_max: false };
+
+    let _ = self.tokens.expect(LoTokenType::Delim, "{")?;
+    let _ = self.tokens.expect(LoTokenType::Symbol, "min_pages")?;
+    let _ = self.tokens.expect(LoTokenType::Operator, ":")?;
+    let min_pages = self.tokens.expect_any(LoTokenType::IntLiteral)?;
+    let _ = self.tokens.expect(LoTokenType::Delim, "}")?;
+
+    memory_limits.min = (*(min_pages.value as &u64)) as u32;
+
+    // TODO: implement
+    // while let None = tokens.eat(Delim, "}")? {
+    //     let prop = tokens.expect_any(Symbol)?.clone();
+    //     tokens.expect(Operator, ":")?;
+
+    //     match prop.value.as_str() {
+    //         "min_pages" => {
+    //             let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+    //             memory_limits.min = value;
+    //         }
+    //         "max_pages" => {
+    //             let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+    //             memory_limits.max = Some(value);
+    //         }
+    //         "data_start" => {
+    //             let value = parse_u32_literal(tokens.expect_any(IntLiteral)?)?;
+    //             *ctx.data_size.borrow_mut() = value;
+    //         }
+    //         _ => {
+    //             return Err(LoError {
+    //                 message: format!("Invalid memory property"),
+    //                 loc: prop.loc,
+    //             });
+    //         }
+    //     }
+
+    //     if !tokens.next_is(Delim, "}")? {
+    //         tokens.expect(Delim, ",")?;
+    //     }
+    // }
+
+    let memory_index = self.ctx.wasm_module.memories.size;
+    self.ctx.wasm_module
+        .memories
+        .push!<WasmMemory>(memory_limits);
+    self.ctx.memories.insert!<u32>(memory_name.clone(), memory_index);
+
+    return LoMemoryDef {
+        index: memory_index,
+        limits: memory_limits,
+    };
+};
+
 fn LoParser::parse_const_lo_type(self): LoType throws &LoError {
+    return self.parse_lo_type_(self.ctx.type_scope, false)?;
+};
+
+// TODO: parse other types
+fn LoParser::parse_lo_type_(
+    self,
+    type_scope: &LoTypeScope,
+    is_referenced: bool,
+): LoType throws &LoError {
     let some_token = self.tokens.eat(LoTokenType::Symbol, "u32")?;
     if some_token.exists {
         return LoType::U32!();
