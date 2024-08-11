@@ -100,7 +100,7 @@ const LoInstr::Return::KIND = 1;
 struct LoInstr::Return {
     value: LoInstr,
 };
-macro LoInstr::Return!(value: LoInstr): LoInstr {
+macro LoInstr::Return::new!(value: LoInstr): LoInstr {
     LoInstr {
         kind: LoInstr::Return::KIND,
         // TODO: won't need a cast if coersion is introduced

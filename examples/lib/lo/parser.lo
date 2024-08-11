@@ -434,7 +434,7 @@ fn LoParser::parse_expr(
 ): Result<LoInstr, &LoError> {
     let some_token = tokens.eat(LoTokenType::Symbol, "return")?;
     if some_token.exists {
-        return Ok(LoInstr::Return!(
+        return Ok(LoInstr::Return::new!(
             LoParser::parse_expr(ctx, tokens, min_bp)?
         ));
     };
