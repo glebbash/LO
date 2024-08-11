@@ -14,10 +14,10 @@ fn fputs(fd: u32, value: str): u32 throws wasi::Err {
 
     let err = wasi::fd_write(fd, value_ref as &wasi::IOVec, 1, nwritten);
     if err != wasi::Err::SUCCESS {
-        throw err;
+        return Err(err);
     };
 
-    return *nwritten;
+    return Ok(*nwritten);
 };
 
 fn print_u32(num: u32) {
@@ -30,7 +30,7 @@ fn fprint_u32(fd: u32, num: u32): u32 throws wasi::Err {
     let out = u32::write(num, String::new(32));
     defer out.free();
 
-    return fputs(fd, out.as_str())?;
+    return fputs(fd, out.as_str());
 };
 
 fn print_u64(num: u64) {
@@ -43,7 +43,7 @@ fn fprint_u64(fd: u32, num: u64): u32 throws wasi::Err {
     let out = u64::write(num, String::new(32));
     defer out.free();
 
-    return fputs(fd, out.as_str())?;
+    return fputs(fd, out.as_str());
 };
 
 fn print_str(value: &str) {
@@ -57,8 +57,8 @@ fn fprint_str(fd: u32, value: &str): u32 throws wasi::Err {
 
     let err = wasi::fd_write(fd, value as &wasi::IOVec, 1, nwritten);
     if err != wasi::Err::SUCCESS {
-        throw err;
+        return Err(err);
     };
 
-    return *nwritten;
+    return Ok(*nwritten);
 };

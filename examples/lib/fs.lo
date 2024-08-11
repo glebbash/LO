@@ -21,7 +21,7 @@ fn fs::read_file(file_name: str): String throws wasi::Err {
     let fd = fs::open(file_name)?;
     defer let _ = wasi::fd_close(fd);
 
-    return String::from_chars(fs::read_fd(fd)?);
+    return Ok(String::from_chars(fs::read_fd(fd)?));
 };
 
 global fs::unlocked = false;
@@ -71,10 +71,10 @@ fn fs::open(file_path: str): u32 throws wasi::Err {
     );
 
     if err != wasi::Err::SUCCESS {
-        throw err;
+        return Err(err);
     };
 
-    return *fd_ref;
+    return Ok(*fd_ref);
 };
 
 fn fs::read_fd(fd: u32): (&Vec of u8) throws wasi::Err {
@@ -90,7 +90,7 @@ fn fs::read_fd(fd: u32): (&Vec of u8) throws wasi::Err {
     loop {
         let err = wasi::fd_read(fd, in_vec, 1, nread_ref);
         if err != wasi::Err::SUCCESS {
-            throw err;
+            return Err(err);
         };
 
         let nread = *nread_ref;
@@ -102,7 +102,7 @@ fn fs::read_fd(fd: u32): (&Vec of u8) throws wasi::Err {
         output.push_all(chunk as &void, nread);
     };
 
-    return output;
+    return Ok(output);
 };
 
 
@@ -118,7 +118,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): void throws wasi::Err {
         iov.size = chunk_size;
         let err = wasi::fd_read(fd_in, iov, 1, nread_ref);
         if err != wasi::Err::SUCCESS {
-            throw err;
+            return Err(err);
         };
 
         let nread = *nread_ref;
@@ -129,14 +129,18 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): void throws wasi::Err {
         iov.size = nread;
         err = wasi::fd_write(fd_out, iov, 1, nread_ref);
         if err != wasi::Err::SUCCESS {
-            throw err;
+            return Err(err);
         };
     };
+
+    return Ok();
 };
 
 fn fs::close(fd: u32): void throws wasi::Err {
     let err = wasi::fd_close(fd);
     if err != wasi::Err::SUCCESS {
-        throw err;
+        return Err(err);
     };
+
+    return Ok();
 };

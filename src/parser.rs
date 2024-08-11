@@ -135,9 +135,6 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
 
             match return_type {
                 LoType::Void => {}
-                LoType::Result { ok_type, err_type } if *ok_type.as_ref() == LoType::Void => {
-                    contents.exprs.push(err_type.get_default_value(ctx));
-                }
                 LoType::Never => {
                     return Err(LoError {
                         message: format!("This function terminates but is marked as `never`"),
@@ -1031,73 +1028,32 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(return_token) = tokens.eat(Symbol, "return")?.cloned() {
-        let value = if tokens.peek().is_none() || tokens.next_is(Delim, ";")? {
+        let mut value = if tokens.next_is(Delim, ";")? {
             LoInstr::NoInstr
         } else {
             parse_expr(ctx, tokens, 0)?
         };
 
         let return_type = value.get_type(ctx.module);
-        let (expected_return_type, error_type) =
-            if let LoType::Result { ok_type, err_type } = &ctx.fn_ctx.lo_fn_type.output {
-                (ok_type.as_ref(), Some(err_type))
-            } else {
-                (&ctx.fn_ctx.lo_fn_type.output, None)
-            };
+        let expected_return_type = &ctx.fn_ctx.lo_fn_type.output;
 
         if return_type != *expected_return_type {
             return Err(LoError {
                 message: format!(
-                    "TypeError: Invalid return type, \
+                    "Invalid return type, \
                         expected {expected_return_type}, got {return_type}",
                 ),
                 loc: return_token.loc,
             });
         }
 
-        let mut return_value = if let Some(error_type) = error_type {
-            LoInstr::MultiValueEmit {
-                values: vec![value, error_type.get_default_value(ctx.module)],
-            }
-        } else {
-            value
-        };
-
         if let Some(mut values) = get_deferred(ctx) {
-            values.insert(0, return_value);
-            return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
+            values.insert(0, value);
+            value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
         }
 
         return Ok(LoInstr::Return {
-            value: Box::new(return_value),
-        });
-    }
-
-    if let Some(throw_token) = tokens.eat(Symbol, "throw")?.cloned() {
-        let error = if tokens.peek().is_none() || tokens.next_is(Delim, ";")? {
-            LoInstr::NoInstr
-        } else {
-            parse_expr(ctx, tokens, 0)?
-        };
-
-        let error_type = error.get_type(ctx.module);
-        assert_fn_can_throw(ctx.fn_ctx, &error_type, &throw_token.loc)?;
-
-        let LoType::Result { ok_type, .. } = &ctx.fn_ctx.lo_fn_type.output else {
-            return Err(LoError::unreachable(file!(), line!()));
-        };
-
-        let mut return_value = LoInstr::MultiValueEmit {
-            values: vec![ok_type.get_default_value(ctx.module), error],
-        };
-
-        if let Some(mut values) = get_deferred(ctx) {
-            values.insert(0, return_value);
-            return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
-        }
-
-        return Ok(LoInstr::Return {
-            value: Box::new(return_value),
+            value: Box::new(value),
         });
     }
 
@@ -1455,6 +1411,99 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         };
 
         return define_local(ctx, &local_name, value, value_type);
+    }
+
+    if let Some(ok_token) = tokens.eat(Symbol, "Ok")?.cloned() {
+        let expected_ok_type: LoType;
+        let expected_err_type: LoType;
+        if let Some(_) = tokens.eat(Operator, "::")? {
+            tokens.expect(Delim, "<")?;
+            expected_ok_type = parse_lo_type(ctx, tokens)?;
+            tokens.expect(Delim, ",")?;
+            expected_err_type = parse_lo_type(ctx, tokens)?;
+            tokens.expect(Delim, ">")?;
+        } else {
+            let LoType::Result { ok_type, err_type } = &ctx.fn_ctx.lo_fn_type.output else {
+                return Err(LoError {
+                    message: format!("Cannot infer Result type from function's return type",),
+                    loc: ok_token.loc.clone(),
+                });
+            };
+
+            expected_ok_type = *ok_type.clone();
+            expected_err_type = *err_type.clone();
+        }
+
+        tokens.expect(Delim, "(")?;
+        let mut ok_value = LoInstr::NoInstr;
+        if expected_ok_type != LoType::Void {
+            ok_value = parse_expr(ctx, tokens, 0)?;
+        };
+        tokens.expect(Delim, ")")?;
+
+        let ok_value_type = ok_value.get_type(ctx.module);
+        if ok_value_type != expected_ok_type {
+            return Err(LoError {
+                message: format!(
+                    "Invalid Ok type: {}, expected: {}",
+                    ok_value_type, expected_ok_type
+                ),
+                loc: ok_token.loc.clone(),
+            });
+        };
+
+        return Ok(LoInstr::MultiValueEmit {
+            values: vec![ok_value, LoInstr::I32Const { value: 0 }],
+        }
+        .casted(LoType::Result {
+            ok_type: Box::new(expected_ok_type),
+            err_type: Box::new(expected_err_type),
+        }));
+    }
+
+    if let Some(err_token) = tokens.eat(Symbol, "Err")?.cloned() {
+        let expected_ok_type: LoType;
+        let expected_err_type: LoType;
+        if let Some(_) = tokens.eat(Operator, "::")? {
+            tokens.expect(Delim, "<")?;
+            expected_ok_type = parse_lo_type(ctx, tokens)?;
+            tokens.expect(Delim, ",")?;
+            expected_err_type = parse_lo_type(ctx, tokens)?;
+            tokens.expect(Delim, ">")?;
+        } else {
+            let LoType::Result { ok_type, err_type } = &ctx.fn_ctx.lo_fn_type.output else {
+                return Err(LoError {
+                    message: format!("Cannot infer Result type from function's return type",),
+                    loc: err_token.loc.clone(),
+                });
+            };
+
+            expected_ok_type = *ok_type.clone();
+            expected_err_type = *err_type.clone();
+        }
+
+        tokens.expect(Delim, "(")?;
+        let err_value = parse_expr(ctx, tokens, 0)?;
+        tokens.expect(Delim, ")")?;
+
+        let err_value_type = err_value.get_type(ctx.module);
+        if err_value_type != expected_err_type {
+            return Err(LoError {
+                message: format!(
+                    "Invalid Err type: {}, expected: {}",
+                    err_value_type, expected_err_type
+                ),
+                loc: err_token.loc.clone(),
+            });
+        };
+
+        return Ok(LoInstr::MultiValueEmit {
+            values: vec![expected_ok_type.get_default_value(ctx.module), err_value],
+        }
+        .casted(LoType::Result {
+            ok_type: Box::new(expected_ok_type),
+            err_type: Box::new(expected_err_type),
+        }));
     }
 
     if let Some(token) = tokens.peek().cloned() {
@@ -2033,7 +2082,7 @@ fn parse_postfix(
             if value_type != bind_type {
                 return Err(LoError {
                     message: format!(
-                        "TypeError: Invalid types for '{}', needed {bind_type}, got {value_type}",
+                        "Invalid types for '{}', needed {bind_type}, got {value_type}",
                         op.token.value
                     ),
                     loc: op.token.loc.clone(),
@@ -2403,7 +2452,7 @@ fn assert_fn_can_throw(
     let LoType::Result { err_type, .. } = &ctx.lo_fn_type.output else {
         return Err(LoError {
             message: format!(
-                "TypeError: Cannot throw {error_type}, function can only return {output}",
+                "Cannot throw {error_type}, function can only return {output}",
                 output = ctx.lo_fn_type.output,
             ),
             loc: throw_loc.clone(),
@@ -2411,9 +2460,7 @@ fn assert_fn_can_throw(
     };
     if *error_type != **err_type {
         return Err(LoError {
-            message: format!(
-                "TypeError: Invalid throw type, expected {err_type}, got {error_type}",
-            ),
+            message: format!("Invalid throw type, expected {err_type}, got {error_type}",),
             loc: throw_loc.clone(),
         });
     }

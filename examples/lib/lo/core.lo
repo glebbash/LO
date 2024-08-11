@@ -59,7 +59,7 @@ fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoEr
 
     self.finalize()?;
 
-    return file_index;
+    return Ok(file_index);
 };
 
 fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
@@ -68,10 +68,10 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
         message.push_str(file_path);
         message.push('\n');
 
-        throw heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(LoError {
             message: message,
             loc: LoLocation::internal(),
-        });
+        }));
     };
 
     self.included_files.push!<LoIncludedFile>(LoIncludedFile {
@@ -87,7 +87,7 @@ fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
     let parser = LoParser { ctx: self, tokens: tokens, };
     parser.parse_all()?;
 
-    return file_index;
+    return Ok(file_index);
 };
 
 fn LoContext::get_file(&self, file_index: u32): &LoIncludedFile {
@@ -133,6 +133,8 @@ fn LoContext::finalize(&self): void throws &LoError {
             expr: WasmExpr { instrs: instrs },
         });
     };
+
+    return Ok();
 };
 
 // TODO: implement

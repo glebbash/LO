@@ -1,10 +1,12 @@
 include "../lib/cli.lo";
 
 // Explanation:
-// - `u32 throws DivideError` is the actual type
-//   - it is stored as the tuple: (u32, DivideError)
-// - `return` additionally emits default value of the error type
-// - `throw` puts default value return type and the error value
+// - `DivisionResult throws DivideError` is the actual type
+//   - it is stored as the tuple: (DivisionResult, DivideError)
+// - `Ok(ok_value)` adds default value of error type.
+//   > NOTE: it's always i32.const 0, so error values must fit into i32
+//   >   and reserve 0 as a flag for no error
+// - `Err(err_value)` adds default value of ok type
 // - default values of `error_type` indicate the absence of an error
 //   - error codes fit nicely (0 - no error)
 //   - other errors should be passed by a nullabe pointer (null - no error)
@@ -40,11 +42,11 @@ struct DivisionResult {
 
 fn divide(a: u32, b: u32): DivisionResult throws DivideError {
     if b == 0 {
-        throw DivideError::DIVIDE_BY_ZERO;
+        return Err(DivideError::DIVIDE_BY_ZERO);
     };
 
-    return DivisionResult {
+    return Ok(DivisionResult {
         full: a / b,
         remainder: a % b,
-    };
+    });
 };
