@@ -7,7 +7,7 @@ struct LoParser {
     tokens: &LoTokenStream,
 };
 
-fn LoParser::parse_all(self): void throws &LoError {
+fn LoParser::parse_all(self): Result<void, &LoError> {
     loop {
         let some_token = self.tokens.peek();
         if !some_token.exists {
@@ -33,7 +33,7 @@ fn LoParser::parse_all(self): void throws &LoError {
     return Ok();
 };
 
-fn LoParser::parse_top_level_expr(self): void throws &LoError {
+fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
     let some_token = self.tokens.peek();
     if !some_token.exists {
         return Ok();
@@ -182,7 +182,7 @@ fn LoParser::parse_top_level_expr(self): void throws &LoError {
     }));
 };
 
-fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
+fn LoParser::parse_fn_def(self, exported: bool): Result<void, &LoError> {
     let fn_decl = self.parse_fn_decl()?;
     let body = self.collect_block_tokens()?;
 
@@ -232,7 +232,7 @@ fn LoParser::parse_fn_def(self, exported: bool): void throws &LoError {
     return Ok();
 };
 
-fn LoParser::parse_fn_decl(self): LoFnDecl throws &LoError {
+fn LoParser::parse_fn_decl(self): Result<LoFnDecl, &LoError> {
     // TODO: implement
     // let fn_name = parse_nested_symbol(tokens)?;
     // let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &fn_name)?;
@@ -291,7 +291,7 @@ fn LoParser::parse_fn_params(
     self,
     type_scope: &LoTypeScope,
     receiver_type: &LoType, // TODO: mark as optional
-): (&Vec of LoFnParam) throws &LoError {
+): Result<&Vec of LoFnParam, &LoError> {
     let params = Vec::new!<LoFnParam>();
 
     let _ = self.tokens.expect(LoTokenType::Delim, "(")?;
@@ -358,7 +358,7 @@ fn LoParser::parse_fn_params(
     return Ok(params);
 };
 
-fn LoParser::collect_block_tokens(self): &LoTokenStream throws &LoError {
+fn LoParser::collect_block_tokens(self): Result<&LoTokenStream, &LoError> {
     let output = LoTokenStream::new(
         Vec::new!<LoToken>(),
         LoLocation::internal(),
@@ -404,7 +404,7 @@ fn LoParser::parse_block_contents(
     ctx: &LoContext, // TODO: should be LoBlockContext
     tokens: &LoTokenStream,
     expected_type: LoType,
-): LoBlockContents throws &LoError {
+): Result<LoBlockContents, &LoError> {
     let contents = LoBlockContents {
         exprs: Vec::new!<LoInstr>(),
         has_never: false,
@@ -431,7 +431,7 @@ fn LoParser::parse_expr(
     ctx: &LoContext, // TODO: should be LoBlockContext
     tokens: &LoTokenStream,
     min_bp: u32,
-): LoInstr throws &LoError {
+): Result<LoInstr, &LoError> {
     let some_token = tokens.eat(LoTokenType::Symbol, "return")?;
     if some_token.exists {
         return Ok(LoInstr::Return!(
@@ -503,7 +503,7 @@ struct LoMemoryDef {
     index: u32,
     limits: WasmMemory,
 };
-fn LoParser::parse_memory(self): LoMemoryDef throws &LoError {
+fn LoParser::parse_memory(self): Result<LoMemoryDef, &LoError> {
     let memory_name = String::from_str("memory");
     if self.ctx.memories.contains_key(memory_name.as_str()) {
         let message = String::from_str("Duplicate memory definition: ");
@@ -567,7 +567,7 @@ fn LoParser::parse_memory(self): LoMemoryDef throws &LoError {
     });
 };
 
-fn LoParser::parse_const_lo_type(self): LoType throws &LoError {
+fn LoParser::parse_const_lo_type(self): Result<LoType, &LoError> {
     return self.parse_lo_type_(self.ctx.type_scope, false);
 };
 
@@ -576,7 +576,7 @@ fn LoParser::parse_lo_type_(
     self,
     type_scope: &LoTypeScope,
     is_referenced: bool,
-): LoType throws &LoError {
+): Result<LoType, &LoError> {
     let some_token = self.tokens.eat(LoTokenType::Symbol, "u32")?;
     if some_token.exists {
         return Ok(LoType::U32!());

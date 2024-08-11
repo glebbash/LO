@@ -7,7 +7,7 @@ fn puts(value: str) {
 fn eputs(value: str) {
     let _ = fputs(wasi::FD_STDERR, value);
 };
-fn fputs(fd: u32, value: str): u32 throws wasi::Err {
+fn fputs(fd: u32, value: str): Result<u32, wasi::Err> {
     let nwritten = tmp_alloc!<u32>();
     let value_ref = tmp_alloc!<str>();
     *value_ref = value;
@@ -26,7 +26,7 @@ fn print_u32(num: u32) {
 fn eprint_u32(num: u32) {
     let _ = fprint_u32(wasi::FD_STDERR, num);
 };
-fn fprint_u32(fd: u32, num: u32): u32 throws wasi::Err {
+fn fprint_u32(fd: u32, num: u32): Result<u32, wasi::Err> {
     let out = u32::write(num, String::new(32));
     defer out.free();
 
@@ -39,7 +39,7 @@ fn print_u64(num: u64) {
 fn eprint_u64(num: u64) {
     let _ = fprint_u64(wasi::FD_STDERR, num);
 };
-fn fprint_u64(fd: u32, num: u64): u32 throws wasi::Err {
+fn fprint_u64(fd: u32, num: u64): Result<u32, wasi::Err> {
     let out = u64::write(num, String::new(32));
     defer out.free();
 
@@ -52,7 +52,7 @@ fn print_str(value: &str) {
 fn eprint_str(value: &str) {
     let _ = fprint_str(wasi::FD_STDERR, value);
 };
-fn fprint_str(fd: u32, value: &str): u32 throws wasi::Err {
+fn fprint_str(fd: u32, value: &str): Result<u32, wasi::Err> {
     let nwritten = tmp_alloc!<u32>();
 
     let err = wasi::fd_write(fd, value as &wasi::IOVec, 1, nwritten);

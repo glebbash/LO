@@ -281,7 +281,7 @@ impl core::fmt::Display for LoType {
             }
             LoType::StructInstance { name } => f.write_str(name),
             LoType::Result { ok_type, err_type } => {
-                f.write_fmt(format_args!("{ok_type} throws {err_type}"))
+                f.write_fmt(format_args!("Result<{ok_type}, {err_type}>"))
             }
             LoType::MacroTypeArg { name } => f.write_str(name),
         }

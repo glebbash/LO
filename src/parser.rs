@@ -2948,22 +2948,6 @@ fn parse_lo_type_(
 ) -> Result<LoType, LoError> {
     let primary = parse_lo_type_primary(ctx, type_scope, tokens, is_referenced)?;
 
-    if let Some(_) = tokens.eat(Symbol, "throws")? {
-        let error_type = parse_lo_type_(ctx, type_scope, tokens, is_referenced)?;
-
-        let Some(WasmType::I32) = error_type.to_wasm_type() else {
-            return Err(LoError {
-                message: format!("{error_type} cannot be represented as i32"),
-                loc: tokens.loc().clone(),
-            });
-        };
-
-        return Ok(LoType::Result {
-            ok_type: Box::new(primary),
-            err_type: Box::new(error_type),
-        });
-    }
-
     if let Some(_) = tokens.eat(Symbol, "of")? {
         // TODO: attach as metadata and use in type equality check
         parse_lo_type_(ctx, type_scope, tokens, is_referenced)?;
@@ -2994,6 +2978,19 @@ fn parse_lo_type_primary(
     if let Some(_) = tokens.eat(Operator, "&*")? {
         let pointee = parse_lo_type_primary(ctx, type_scope, tokens, true)?;
         return Ok(LoType::Pointer(Box::new(pointee)));
+    }
+
+    if let Some(_) = tokens.eat(Symbol, "Result")? {
+        tokens.expect(Operator, "<")?;
+        let ok_type = parse_lo_type_(ctx, type_scope, tokens, false)?;
+        tokens.expect(Delim, ",")?;
+        let err_type = parse_lo_type_(ctx, type_scope, tokens, false)?;
+        tokens.expect(Operator, ">")?;
+
+        return Ok(LoType::Result {
+            ok_type: Box::new(ok_type),
+            err_type: Box::new(err_type),
+        });
     }
 
     let token = parse_nested_symbol(tokens)?;

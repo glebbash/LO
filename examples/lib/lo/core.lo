@@ -54,7 +54,7 @@ fn LoContext::print_loc(&self, loc: LoLocation) {
 // TODO: is there a clean way to resolve this?
 include "./parser.lo";
 
-fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoError {
+fn LoContext::include_file_and_finalize(&self, file_path: str): Result<u32, &LoError> {
     let file_index = LoContext::include_file(self, file_path)?;
 
     self.finalize()?;
@@ -62,7 +62,7 @@ fn LoContext::include_file_and_finalize(&self, file_path: str): u32 throws &LoEr
     return Ok(file_index);
 };
 
-fn LoContext::include_file(&self, file_path: str): u32 throws &LoError {
+fn LoContext::include_file(&self, file_path: str): Result<u32, &LoError> {
     let file_contents = fs::read_file(file_path) catch err {
         let message = String::from_str("Cannot include file: ");
         message.push_str(file_path);
@@ -106,7 +106,7 @@ fn LoContext::insert_fn_type(&self, fn_type: WasmFnType): u32 {
 };
 
 // TODO: implement complete version
-fn LoContext::finalize(&self): void throws &LoError {
+fn LoContext::finalize(&self): Result<void, &LoError> {
     // push function exports
     for i in 0..self.fn_exports.size {
         let fn_export = self.fn_exports.get!<LoFnExport>(i);

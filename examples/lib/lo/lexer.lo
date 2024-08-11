@@ -106,7 +106,7 @@ fn LoTokenStream::free(&self) {
     heap::free(self as &void);
 };
 
-fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): LoToken throws &LoError {
+fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): Result<LoToken, &LoError> {
     let maybe_token = self.peek();
 
     if maybe_token.exists && maybe_token.token.is(type_, repr) {
@@ -128,7 +128,7 @@ fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): LoToken throws &
     }));
 };
 
-fn LoTokenStream::expect_any(&self, type_: LoTokenType): LoToken throws &LoError {
+fn LoTokenStream::expect_any(&self, type_: LoTokenType): Result<LoToken, &LoError> {
     let maybe_token = self.peek();
 
     if maybe_token.exists && maybe_token.token.is_any(type_) {
@@ -150,7 +150,7 @@ fn LoTokenStream::expect_any(&self, type_: LoTokenType): LoToken throws &LoError
     }));
 };
 
-fn LoTokenStream::eat_any(&self, type_: LoTokenType): LoTokenMaybe throws &LoError {
+fn LoTokenStream::eat_any(&self, type_: LoTokenType): Result<LoTokenMaybe, &LoError> {
     let token = self.expect_any(type_) catch err {
         let some_token = self.peek();
         if !some_token.exists {
@@ -163,7 +163,7 @@ fn LoTokenStream::eat_any(&self, type_: LoTokenType): LoTokenMaybe throws &LoErr
     return Ok(LoTokenMaybe::some!(token));
 };
 
-fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): LoTokenMaybe throws &LoError {
+fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): Result<LoTokenMaybe, &LoError> {
     let token = self.expect(type_, repr) catch err {
         let some_token = self.peek();
         if !some_token.exists {
@@ -176,7 +176,7 @@ fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): LoTokenMaybe throws
     return Ok(LoTokenMaybe::some!(token));
 };
 
-fn LoTokenStream::next_is(&self, type_: LoTokenType, repr: str): bool throws &LoError {
+fn LoTokenStream::next_is(&self, type_: LoTokenType, repr: str): Result<bool, &LoError> {
     let some_token = self.peek();
     if !some_token.exists {
         return Err(heap::new!<LoError>(LoError {
@@ -235,7 +235,7 @@ fn LoLexer::new(file_index: u32, chars: str): &LoLexer {
     });
 };
 
-fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
+fn LoLexer::lex_all(&self): Result<&LoTokenStream, &LoError> {
     let tokens = Vec::new!<LoToken>();
 
     self.skip_space();
@@ -253,7 +253,7 @@ fn LoLexer::lex_all(&self): &LoTokenStream throws &LoError {
     return Ok(LoTokenStream::new(tokens, self.loc()));
 };
 
-type LexResult = LoToken throws &LoError;
+type LexResult = Result<LoToken, &LoError>;
 
 fn LoLexer::lex_token(&self): LexResult {
     let char = self.current_char()?;
@@ -672,7 +672,7 @@ fn LoLexer::next_char(&self) {
     };
 };
 
-fn LoLexer::current_char(&self): u8 throws &LoError {
+fn LoLexer::current_char(&self): Result<u8, &LoError> {
     if self.index >= self.chars.size {
         return Err(self.err_unexpected_eof());
     };
@@ -680,7 +680,7 @@ fn LoLexer::current_char(&self): u8 throws &LoError {
     return Ok(self.chars.char_at(self.index));
 };
 
-fn LoLexer::peek_next_char(&self): u8 throws &LoError {
+fn LoLexer::peek_next_char(&self): Result<u8, &LoError> {
     if self.index + 1 >= self.chars.size {
         return Err(self.err_unexpected_eof());
     };

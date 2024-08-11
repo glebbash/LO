@@ -1,8 +1,8 @@
 include "../lib/cli.lo";
 
 // Explanation:
-// - `DivisionResult throws DivideError` is the actual type
-//   - it is stored as the tuple: (DivisionResult, DivideError)
+// - type `Result<DivisionResult, DivideError>`
+//   - is stored as the tuple: (DivisionResult, DivideError)
 // - `Ok(ok_value)` adds default value of error type.
 //   > NOTE: it's always i32.const 0, so error values must fit into i32
 //   >   and reserve 0 as a flag for no error
@@ -40,7 +40,7 @@ struct DivisionResult {
     remainder: u32,
 };
 
-fn divide(a: u32, b: u32): DivisionResult throws DivideError {
+fn divide(a: u32, b: u32): Result<DivisionResult, DivideError> {
     if b == 0 {
         return Err(DivideError::DIVIDE_BY_ZERO);
     };

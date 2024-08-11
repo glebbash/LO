@@ -15,7 +15,7 @@ macro fs::read_file!(file_name: str): String {
     };
 };
 
-fn fs::read_file(file_name: str): String throws wasi::Err {
+fn fs::read_file(file_name: str): Result<String, wasi::Err> {
     fs::_unlock();
 
     let fd = fs::open(file_name)?;
@@ -61,7 +61,7 @@ fn fs::_unlock() {
     fs::unlocked = true;
 };
 
-fn fs::open(file_path: str): u32 throws wasi::Err {
+fn fs::open(file_path: str): Result<u32, wasi::Err> {
     let fd_ref = tmp_alloc!<u32>();
 
     let err = wasi::path_open(
@@ -77,7 +77,7 @@ fn fs::open(file_path: str): u32 throws wasi::Err {
     return Ok(*fd_ref);
 };
 
-fn fs::read_fd(fd: u32): (&Vec of u8) throws wasi::Err {
+fn fs::read_fd(fd: u32): Result<&Vec of u8, wasi::Err> {
     let output = Vec::with_capacity!<u8>(256);
 
     let chunk = tmp_alloc_many!<u8>(256);
@@ -106,7 +106,7 @@ fn fs::read_fd(fd: u32): (&Vec of u8) throws wasi::Err {
 };
 
 
-fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): void throws wasi::Err {
+fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
     let chunk = tmp_alloc_many!<u8>(chunk_size);
 
     let iov = tmp_alloc!<wasi::IOVec>();
@@ -136,7 +136,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): void throws wasi::Err {
     return Ok();
 };
 
-fn fs::close(fd: u32): void throws wasi::Err {
+fn fs::close(fd: u32): Result<void, wasi::Err> {
     let err = wasi::fd_close(fd);
     if err != wasi::Err::SUCCESS {
         return Err(err);
