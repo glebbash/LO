@@ -548,6 +548,16 @@ async function testCommand() {
             assert.strictEqual(part2, "636\n");
         });
 
+        test("aoc 2023 day 1", async () => {
+            const part1 = await runAoc("./examples/test/demos/aoc2023/1.lo");
+            assert.strictEqual(part1, "54450\n");
+
+            const part2 = await runAoc(
+                "./examples/test/demos/aoc2023/1-part2.lo"
+            );
+            assert.strictEqual(part2, "54265\n");
+        });
+
         async function runAoc(path) {
             const program = await compile(path);
 

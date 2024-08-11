@@ -1,0 +1,61 @@
+include "../../../lib/cli.lo";
+include "../../../lib/fs.lo";
+
+fn main() {
+    let input = fs::read_file!("./examples/test/demos/aoc2023/1.txt");
+    defer input.free();
+
+    let calibration_sum = 0;
+    let first_digit = 0;
+    let last_digit = 0;
+
+    for i in 0..input.len() {
+        let c = input.char_at(i);
+
+        let digit = 0;
+        if c >= '0' && c <= '9' {
+            digit = (c - '0') as u32;
+        } else {
+            let rest = input.as_str().skip_chars(i);
+            if rest.starts_with("one") {
+                digit = 1;
+            } else if rest.starts_with("two") {
+                digit = 2;
+            } else if rest.starts_with("three") {
+                digit = 3;
+            } else if rest.starts_with("four") {
+                digit = 4;
+            } else if rest.starts_with("five") {
+                digit = 5;
+            } else if rest.starts_with("six") {
+                digit = 6;
+            } else if rest.starts_with("seven") {
+                digit = 7;
+            } else if rest.starts_with("eight") {
+                digit = 8;
+            } else if rest.starts_with("nine") {
+                digit = 9;
+            };
+        };
+
+        if digit != 0 {
+            last_digit = digit;
+
+            if first_digit == 0 {
+                first_digit = digit;
+            };
+        };
+
+        if c == '\n' {
+            let calibration_value = first_digit * 10 + last_digit;
+            calibration_sum += calibration_value;
+
+            first_digit = 0;
+            last_digit = 0;
+            continue;
+        };
+    };
+
+    print_u32(calibration_sum);
+    puts("\n");
+};
