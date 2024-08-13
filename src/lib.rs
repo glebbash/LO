@@ -29,7 +29,7 @@ mod wasm_target {
 }
 
 mod wasi_api {
-    use super::{parser, utils::*};
+    use super::{ir::*, parser, utils::*};
     use alloc::{format, string::String, vec::Vec};
 
     #[no_mangle]
@@ -47,7 +47,12 @@ mod wasi_api {
             return Err(format!("Usage: lo <file> [options]"));
         }
 
-        let ctx = &mut parser::init(args.get(2) == Some("--inspect"));
+        let mut compiler_mode = CompilerMode::Compile;
+        if args.get(2) == Some("--inspect") {
+            compiler_mode = CompilerMode::Inspect;
+        }
+
+        let ctx = &mut parser::init(compiler_mode);
 
         let file_name = args.get(1).unwrap();
         if file_name == "-i" {
@@ -61,7 +66,7 @@ mod wasi_api {
 
         parser::finalize(ctx)?;
 
-        if ctx.inspect_mode {
+        if ctx.mode == CompilerMode::Inspect {
             return Ok(());
         }
 

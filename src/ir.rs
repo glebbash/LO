@@ -2,9 +2,16 @@ use crate::{lexer::*, utils::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 
+#[derive(Default, PartialEq)]
+pub enum CompilerMode {
+    #[default]
+    Compile,
+    Inspect,
+}
+
 #[derive(Default)]
 pub struct ModuleContext<'a> {
-    pub inspect_mode: bool,
+    pub mode: CompilerMode,
     pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: RefCell<Vec<FnBody>>,

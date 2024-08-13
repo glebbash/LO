@@ -4,11 +4,11 @@ use LoTokenType::*;
 
 const RECEIVER_PARAM_NAME: &str = "self";
 
-pub fn init<'a>(inspect_mode: bool) -> ModuleContext<'a> {
+pub fn init<'a>(mode: CompilerMode) -> ModuleContext<'a> {
     let mut ctx = ModuleContext::default();
-    ctx.inspect_mode = inspect_mode;
+    ctx.mode = mode;
 
-    if ctx.inspect_mode {
+    if ctx.mode == CompilerMode::Inspect {
         stdout_writeln("[");
     }
 
@@ -53,7 +53,7 @@ pub fn parse_file_contents(
     let mut tokens = lex_all(&file_path, file_contents)?;
 
     let file_index = ctx.included_modules.len() as u32;
-    if ctx.inspect_mode {
+    if ctx.mode == CompilerMode::Inspect {
         stdout_writeln(format!(
             "{{ \"type\": \"file\", \
                 \"index\": {file_index}, \
@@ -84,7 +84,7 @@ fn parse_file_tokens(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Res
 }
 
 pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
-    if !ctx.inspect_mode {
+    if ctx.mode == CompilerMode::Compile {
         // push function exports
         for fn_export in &ctx.fn_exports {
             let fn_def = ctx.fn_defs.get(&fn_export.in_name).unwrap(); // safe
@@ -173,7 +173,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         });
     }
 
-    if !ctx.inspect_mode {
+    if ctx.mode != CompilerMode::Inspect {
         // put __DATA_SIZE__ value into all globals that contain it
         for global_index in &ctx.indicies_of_data_size_globals {
             let instrs = &mut ctx.wasm_module.borrow_mut().globals[*global_index]
@@ -192,11 +192,11 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         }
     }
 
-    if !ctx.inspect_mode {
+    if ctx.mode == CompilerMode::Compile {
         write_debug_info(ctx)?;
     }
 
-    if ctx.inspect_mode {
+    if ctx.mode == CompilerMode::Inspect {
         stdout_writeln("{ \"type\": \"end\" }");
 
         stdout_writeln("]");
@@ -418,7 +418,7 @@ fn parse_top_level_expr(
             });
         }
 
-        if ctx.inspect_mode {
+        if ctx.mode == CompilerMode::Inspect {
             let source_index = ctx.get_loc_module_index(&global_name.loc);
             let source_range = RangeDisplay(&global_name.loc);
 
@@ -566,7 +566,7 @@ fn parse_top_level_expr(
             });
         }
 
-        if ctx.inspect_mode {
+        if ctx.mode == CompilerMode::Inspect {
             let source_index = ctx.get_loc_module_index(&const_name.loc);
             let source_range = RangeDisplay(&const_name.loc);
 
@@ -595,7 +595,7 @@ fn parse_top_level_expr(
         let file_path = tokens.expect_any(StringLiteral)?;
         let target_index = parse_file(ctx, &file_path.value, &file_path.loc)?;
 
-        if ctx.inspect_mode {
+        if ctx.mode == CompilerMode::Inspect {
             let source_index = ctx.get_loc_module_index(&file_path.loc);
             let source_range = RangeDisplay(&file_path.loc);
             let target_range = "1:1-1:1";
@@ -1559,7 +1559,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(local) = ctx.block.get_local(&value.value) {
-        if ctx.module.inspect_mode {
+        if ctx.module.mode == CompilerMode::Inspect {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
             let source_range = RangeDisplay(&value.loc);
             let target_index = ctx.module.get_loc_module_index(&local.loc);
@@ -1585,7 +1585,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     };
 
     if let Some(const_def) = ctx.module.constants.borrow().get(&value.value) {
-        if ctx.module.inspect_mode {
+        if ctx.module.mode == CompilerMode::Inspect {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
             let source_range = RangeDisplay(&value.loc);
             let target_index = ctx.module.get_loc_module_index(&const_def.loc);
@@ -1606,7 +1606,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(global) = ctx.module.globals.get(&value.value) {
-        if ctx.module.inspect_mode {
+        if ctx.module.mode == CompilerMode::Inspect {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
             let source_range = RangeDisplay(&value.loc);
             let target_index = ctx.module.get_loc_module_index(&global.loc);
@@ -1639,7 +1639,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             &value.loc,
         )?;
 
-        if ctx.module.inspect_mode {
+        if ctx.module.mode == CompilerMode::Inspect {
             let source_index = ctx.module.get_loc_module_index(&value.loc);
             let source_range = RangeDisplay(&value.loc);
             let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
@@ -1793,7 +1793,7 @@ fn define_local(
         });
     }
 
-    if ctx.module.inspect_mode {
+    if ctx.module.mode == CompilerMode::Inspect {
         let source_index = ctx.module.get_loc_module_index(&local_name.loc);
         let source_range = RangeDisplay(&local_name.loc);
 
@@ -1915,7 +1915,7 @@ fn parse_macro_call(
     let exprs =
         parse_block_contents(macro_ctx, &mut macro_def.body.clone(), return_type.clone())?.exprs;
 
-    if ctx.module.inspect_mode {
+    if ctx.module.mode == CompilerMode::Inspect {
         let source_index = ctx.module.get_loc_module_index(&macro_token.loc);
         let source_range = RangeDisplay(&macro_token.loc);
         let target_index = ctx.module.get_loc_module_index(&macro_def.loc);
@@ -2123,7 +2123,7 @@ fn parse_postfix(
                     &method_name.loc,
                 )?;
 
-                if ctx.module.inspect_mode {
+                if ctx.module.mode == CompilerMode::Inspect {
                     let source_index = ctx.module.get_loc_module_index(&method_name.loc);
                     let source_range = RangeDisplay(&method_name.loc);
                     let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
@@ -2170,7 +2170,7 @@ fn parse_postfix(
                     });
                 };
 
-                if ctx.module.inspect_mode {
+                if ctx.module.mode == CompilerMode::Inspect {
                     let source_index = ctx.module.get_loc_module_index(&field_name.loc);
                     let source_range = RangeDisplay(&field_name.loc);
                     let target_index = ctx.module.get_loc_module_index(&field.loc);
@@ -2222,7 +2222,7 @@ fn parse_postfix(
                     });
                 };
 
-                if ctx.module.inspect_mode {
+                if ctx.module.mode == CompilerMode::Inspect {
                     let source_index = ctx.module.get_loc_module_index(&field_name.loc);
                     let source_range = RangeDisplay(&field_name.loc);
                     let target_index = ctx.module.get_loc_module_index(&field.loc);
@@ -2269,7 +2269,7 @@ fn parse_postfix(
                         });
                     };
 
-                    if ctx.module.inspect_mode {
+                    if ctx.module.mode == CompilerMode::Inspect {
                         let source_index = ctx.module.get_loc_module_index(&field_name.loc);
                         let source_range = RangeDisplay(&field_name.loc);
                         let target_index = ctx.module.get_loc_module_index(&field.loc);
@@ -3039,7 +3039,7 @@ fn get_type_by_name(
                 if *name == token.value {
                     is_type_alias = false;
 
-                    if ctx.inspect_mode {
+                    if ctx.mode == CompilerMode::Inspect {
                         let source_index = ctx.get_loc_module_index(&token.loc);
                         let source_range = RangeDisplay(&token.loc);
                         let target_index = ctx.get_loc_module_index(&struct_def.loc);
@@ -3057,7 +3057,7 @@ fn get_type_by_name(
                 }
             }
 
-            if ctx.inspect_mode && is_type_alias {
+            if ctx.mode == CompilerMode::Inspect && is_type_alias {
                 let source_index = ctx.get_loc_module_index(&token.loc);
                 let source_range = RangeDisplay(&token.loc);
 
@@ -3081,7 +3081,7 @@ fn parse_const_str(
     tokens: &mut LoTokenStream,
     mut value: String,
 ) -> Result<LoInstr, LoError> {
-    if ctx.memories.len() == 0 && !ctx.inspect_mode {
+    if ctx.memories.len() == 0 && ctx.mode != CompilerMode::Inspect {
         return Err(LoError {
             message: format!("Cannot use strings with no memories defined"),
             loc: tokens.loc().clone(),
