@@ -472,8 +472,8 @@
         self.chars.push_all(value.data as &void, value.size);
     };
 
-    fn String::push(self, char: u8) {
-        self.chars.push!<u8>(char);
+    fn String::push(self, c: u8) {
+        self.chars.push!<u8>(c);
     };
 
     fn String::char_at(self, index: u32): u8 {
@@ -557,8 +557,8 @@
         };
     };
 
-    fn char_is_numeric(char: u8): bool {
-        return char >= '0' && char <= '9';
+    fn char_is_numeric(c: u8): bool {
+        return c >= '0' && c <= '9';
     };
 
 // conversions

@@ -36,46 +36,46 @@ fn main() {
     let state = initial_check_state();
 
     for i in 0..input.len() {
-        let char = input.char_at(i);
+        let c = input.char_at(i);
         if state.step == Step::READ_START_INDEX {
-            if char == '-' {
+            if c == '-' {
                 state.step = Step::READ_END_INDEX;
                 continue;
             };
 
             state.start_index *= 10;
-            state.start_index += (char - '0') as u32;
+            state.start_index += (c - '0') as u32;
         };
         if state.step == Step::READ_END_INDEX {
-            if char == ' ' {
+            if c == ' ' {
                 state.step = Step::READ_CHAR_TO_FIND;
                 continue;
             };
 
             state.end_index *= 10;
-            state.end_index += (char - '0') as u32;
+            state.end_index += (c - '0') as u32;
         };
         if state.step == Step::READ_CHAR_TO_FIND {
-            state.char_to_check = char;
-            i += 2; // skip `${char}: `, (+1 will be skipped by loop)
+            state.char_to_check = c;
+            i += 2; // skip `${c}: `, (+1 will be skipped by loop)
             state.step = Step::CHECK_PASSWORD;
             continue;
         };
         if state.step == Step::CHECK_PASSWORD {
-            if char == '\n' {
+            if c == '\n' {
                 state = initial_check_state();
                 continue;
             };
 
             state.current_index += 1;
             if state.current_index == state.start_index {
-                state.match_found = char == state.char_to_check;
+                state.match_found = c == state.char_to_check;
             };
             if state.current_index == state.end_index {
-                if char == state.char_to_check && !state.match_found {
+                if c == state.char_to_check && !state.match_found {
                     valid_passwords_count += 1;
                 };
-                if char != state.char_to_check && state.match_found {
+                if c != state.char_to_check && state.match_found {
                     valid_passwords_count += 1;
                 };
             };

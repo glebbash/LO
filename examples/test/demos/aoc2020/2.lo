@@ -34,33 +34,33 @@ fn main() {
     let state = initial_check_state();
 
     for i in 0..input.len() {
-        let char = input.char_at(i);
+        let c = input.char_at(i);
         if state.step == Step::READ_MIN_OCCURANCES {
-            if char == '-' {
+            if c == '-' {
                 state.step = Step::READ_MAX_OCCURANCES;
                 continue;
             };
 
             state.min_occurances *= 10;
-            state.min_occurances += (char - '0') as u32;
+            state.min_occurances += (c - '0') as u32;
         };
         if state.step == Step::READ_MAX_OCCURANCES {
-            if char == ' ' {
+            if c == ' ' {
                 state.step = Step::READ_CHAR_TO_COUNT;
                 continue;
             };
 
             state.max_occurances *= 10;
-            state.max_occurances += (char - '0') as u32;
+            state.max_occurances += (c - '0') as u32;
         };
         if state.step == Step::READ_CHAR_TO_COUNT {
-            state.char_to_count = char;
-            i += 2; // skip `${char}: `, (+1 will be skipped by loop)
+            state.char_to_count = c;
+            i += 2; // skip `${c}: `, (+1 will be skipped by loop)
             state.step = Step::COUNT_OCCURANCES;
             continue;
         };
         if state.step == Step::COUNT_OCCURANCES {
-            if char == '\n' {
+            if c == '\n' {
                 if state.current_occurances >= state.min_occurances
                 && state.current_occurances <= state.max_occurances {
                     valid_passwords_count += 1;
@@ -70,7 +70,7 @@ fn main() {
                 continue;
             };
 
-            if char == state.char_to_count {
+            if c == state.char_to_count {
                 state.current_occurances += 1;
             };
         };

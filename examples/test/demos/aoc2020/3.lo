@@ -45,14 +45,14 @@ fn Map::parse(input: String): Map {
     let current_row = Vec::new!<Tile>();
 
     for i in 0..input.len() {
-        let char = input.char_at(i);
-        if char == '#' {
+        let c = input.char_at(i);
+        if c == '#' {
             current_row.push!<Tile>(Tile::TREE);
         };
-        if char == '.' {
+        if c == '.' {
             current_row.push!<Tile>(Tile::EMPTY);
         };
-        if char == '\n' {
+        if c == '\n' {
             rows.push!<&Vec of Tile>(current_row);
             current_row = Vec::new!<Tile>();
         };
