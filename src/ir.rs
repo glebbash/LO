@@ -7,6 +7,7 @@ pub enum CompilerMode {
     #[default]
     Compile,
     Inspect,
+    EmitC,
 }
 
 #[derive(Default)]
@@ -17,7 +18,7 @@ pub struct ModuleContext<'a> {
     pub fn_bodies: RefCell<Vec<FnBody>>,
     pub fn_exports: Vec<FnExport>,
     pub memories: BTreeMap<String, u32>,
-    pub struct_defs: BTreeMap<String, StructDef>,
+    pub struct_defs: Vec<StructDef>,
     pub globals: BTreeMap<String, GlobalDef>,
     pub indicies_of_data_size_globals: Vec<usize>,
     pub imported_fns_count: u32,
@@ -30,6 +31,14 @@ pub struct ModuleContext<'a> {
 }
 
 impl<'a> ModuleContext<'a> {
+    pub fn get_struct_def(&self, struct_name: &str) -> Option<&StructDef> {
+        self.struct_defs.iter().find(|s| s.name == struct_name)
+    }
+
+    pub fn get_struct_def_mut(&mut self, struct_name: &str) -> Option<&mut StructDef> {
+        self.struct_defs.iter_mut().find(|s| s.name == struct_name)
+    }
+
     pub fn insert_fn_type(&self, fn_type: WasmFnType) -> u32 {
         let mut wasm_module = self.wasm_module.borrow_mut();
 
@@ -339,7 +348,7 @@ impl LoType {
             }
             LoType::StructInstance { name } => {
                 // safe, validation is done when creating StructInstance
-                let struct_def = ctx.struct_defs.get(name).unwrap();
+                let struct_def = ctx.get_struct_def(name).unwrap();
 
                 for field in &struct_def.fields {
                     field
@@ -387,7 +396,7 @@ impl LoType {
             }
             LoType::StructInstance { name } => {
                 // safe, validation is done when creating StructInstance
-                let struct_def = ctx.struct_defs.get(name).unwrap();
+                let struct_def = ctx.get_struct_def(name).unwrap();
 
                 let mut count = 0;
                 for field in &struct_def.fields {
@@ -457,7 +466,7 @@ impl LoType {
             }
             LoType::StructInstance { name } => {
                 let mut values = Vec::new();
-                for field in &ctx.struct_defs.get(name).unwrap().fields {
+                for field in &ctx.get_struct_def(name).unwrap().fields {
                     values.push(field.value_type.get_default_value(ctx));
                 }
                 LoInstr::MultiValueEmit { values }
@@ -506,6 +515,7 @@ pub struct FnExport {
 
 #[derive(Clone)]
 pub struct StructDef {
+    pub name: String,
     pub fields: Vec<StructField>,
     pub fully_defined: bool, // used for self-reference checks
     pub loc: LoLocation,

@@ -1,4 +1,4 @@
-use crate::{ir::*, lexer::*, utils::*, wasm::*};
+use crate::{emit_c, ir::*, lexer::*, utils::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
 use LoTokenType::*;
 
@@ -200,6 +200,10 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         stdout_writeln("{ \"type\": \"end\" }");
 
         stdout_writeln("]");
+    }
+
+    if ctx.mode == CompilerMode::EmitC {
+        emit_c::emit_c(ctx);
     }
 
     Ok(())
@@ -466,14 +470,12 @@ fn parse_top_level_expr(
         }
 
         // declare not fully defined struct to use in self-references
-        ctx.struct_defs.insert(
-            struct_name.value.clone(),
-            StructDef {
-                fields: vec![],
-                fully_defined: false,
-                loc: struct_name.loc,
-            },
-        );
+        ctx.struct_defs.push(StructDef {
+            name: struct_name.value.clone(),
+            fields: vec![],
+            fully_defined: false,
+            loc: struct_name.loc,
+        });
 
         ctx.type_scope.insert(
             struct_name.value.clone(),
@@ -530,7 +532,7 @@ fn parse_top_level_expr(
             byte_offset += stats.byte_length;
         }
 
-        let struct_def = ctx.struct_defs.get_mut(&struct_name.value).unwrap();
+        let struct_def = ctx.get_struct_def_mut(&struct_name.value).unwrap();
         struct_def.fields.append(&mut struct_fields);
         struct_def.fully_defined = true;
 
@@ -1664,7 +1666,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
-    if let Some(struct_def) = ctx.module.struct_defs.get(&value.value) {
+    if let Some(struct_def) = ctx.module.get_struct_def(&value.value) {
         let struct_name = value;
 
         let mut values = vec![];
@@ -2155,7 +2157,7 @@ fn parse_postfix(
                 ..
             } = &primary
             {
-                let struct_def = ctx.module.struct_defs.get(struct_name).unwrap(); // safe
+                let struct_def = ctx.module.get_struct_def(struct_name).unwrap(); // safe
                 let Some(field) = struct_def
                     .fields
                     .iter()
@@ -2206,7 +2208,7 @@ fn parse_postfix(
             } = &primary
             {
                 // safe to unwrap as it was already checked in `StructLoad`
-                let struct_def = ctx.module.struct_defs.get(struct_name).unwrap();
+                let struct_def = ctx.module.get_struct_def(struct_name).unwrap();
 
                 let Some(field) = struct_def
                     .fields
@@ -2254,7 +2256,7 @@ fn parse_postfix(
             let primary_type = primary.get_type(ctx.module);
             if let LoType::Pointer(pointee_type) = &primary_type {
                 if let LoType::StructInstance { name: struct_name } = pointee_type.as_ref() {
-                    let struct_def = ctx.module.struct_defs.get(struct_name).unwrap();
+                    let struct_def = ctx.module.get_struct_def(struct_name).unwrap();
                     let Some(field) = struct_def
                         .fields
                         .iter()
@@ -3028,7 +3030,7 @@ fn get_type_by_name(
             let mut is_type_alias = true;
 
             if let LoType::StructInstance { name } = type_ {
-                let struct_def = ctx.struct_defs.get(name).unwrap(); // safe because of if let
+                let struct_def = ctx.get_struct_def(name).unwrap(); // safe because of if let
                 if !struct_def.fully_defined && !is_referenced {
                     return Err(LoError {
                         message: format!("Cannot use partially defined struct: {name}"),

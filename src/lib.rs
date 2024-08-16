@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+mod emit_c;
 mod ir;
 mod lexer;
 mod parser;
@@ -50,6 +51,8 @@ mod wasi_api {
         let mut compiler_mode = CompilerMode::Compile;
         if args.get(2) == Some("--inspect") {
             compiler_mode = CompilerMode::Inspect;
+        } else if args.get(2) == Some("--emit-c") {
+            compiler_mode = CompilerMode::EmitC;
         }
 
         let ctx = &mut parser::init(compiler_mode);
@@ -66,7 +69,7 @@ mod wasi_api {
 
         parser::finalize(ctx)?;
 
-        if ctx.mode == CompilerMode::Inspect {
+        if ctx.mode != CompilerMode::Compile {
             return Ok(());
         }
 
