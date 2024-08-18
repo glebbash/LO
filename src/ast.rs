@@ -1,5 +1,9 @@
-use crate::lexer::*;
+use crate::{core::LoLocation, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
+
+pub trait Locatable {
+    fn loc(&self) -> &LoLocation;
+}
 
 #[derive(Debug)]
 pub struct AST {
@@ -12,12 +16,21 @@ pub enum TopLevelExpr {
     FnDef(FnDefExpr),
 }
 
+impl Locatable for TopLevelExpr {
+    fn loc(&self) -> &LoLocation {
+        match self {
+            TopLevelExpr::FnDef(fn_def) => &fn_def.loc,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FnDefExpr {
     pub exported: bool,
     pub fn_name: String,
     pub return_type: TypeExpr,
     pub body: CodeBlockExpr,
+    pub loc: LoLocation,
 }
 
 #[derive(Debug)]

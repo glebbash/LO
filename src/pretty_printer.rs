@@ -21,16 +21,19 @@ impl PrettyPrinter {
 
     fn print_file(&mut self, exprs: &Vec<TopLevelExpr>) {
         for expr in exprs {
+            self.print_comments_before_pos(&expr.loc().pos);
             self.print_top_level_expr(expr);
             stdout_writeln(";");
             stdout_writeln("");
         }
 
-        for comment in self.comments.iter() {
-            stdout_writeln(&comment.content);
+        // print rest of the comments
+        if self.comments_printed != self.comments.len() {
+            for comment in self.comments.iter().skip(self.comments_printed) {
+                stdout_writeln(&comment.content);
+            }
+            stdout_writeln("");
         }
-        self.comments_printed += self.comments.len();
-        stdout_writeln("");
     }
 
     fn print_top_level_expr(&mut self, expr: &TopLevelExpr) {
@@ -87,6 +90,16 @@ impl PrettyPrinter {
             }
             CodeExpr::IntLiteral(IntLiteralExpr { value }) => {
                 stdout_write(value);
+            }
+        }
+    }
+
+    fn print_comments_before_pos(&mut self, pos: &LoPosition) {
+        while self.comments_printed < self.comments.len() {
+            let comment = &self.comments[self.comments_printed];
+            if comment.loc.end_pos.offset <= pos.offset {
+                stdout_writeln(&comment.content);
+                self.comments_printed += 1;
             }
         }
     }

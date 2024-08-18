@@ -50,9 +50,9 @@ impl ParserV2 {
     }
 
     fn parse_top_level_expr(&mut self) -> Result<TopLevelExpr, LoError> {
-        if let Some(_) = self.eat(Symbol, "export")? {
+        if let Some(export_token) = self.eat(Symbol, "export")?.cloned() {
             if let Some(_) = self.eat(Symbol, "fn")? {
-                let fn_def = self.parse_fn_def(true)?;
+                let fn_def = self.parse_fn_def(true, export_token.loc)?;
                 return Ok(TopLevelExpr::FnDef(fn_def));
             }
 
@@ -63,8 +63,8 @@ impl ParserV2 {
             });
         }
 
-        if let Some(_) = self.eat(Symbol, "fn")? {
-            let fn_def = self.parse_fn_def(false)?;
+        if let Some(fn_token) = self.eat(Symbol, "fn")?.cloned() {
+            let fn_def = self.parse_fn_def(false, fn_token.loc)?;
             return Ok(TopLevelExpr::FnDef(fn_def));
         }
 
@@ -75,7 +75,7 @@ impl ParserV2 {
         });
     }
 
-    fn parse_fn_def(&mut self, exported: bool) -> Result<FnDefExpr, LoError> {
+    fn parse_fn_def(&mut self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
         let fn_name = self.expect_any(Symbol)?.clone().value;
         let _ = self.expect(Delim, "(")?;
         let _ = self.expect(Delim, ")")?;
@@ -83,11 +83,15 @@ impl ParserV2 {
         let return_type = self.parse_type_expr()?;
         let body = self.parse_code_block_expr()?;
 
+        // TODO: is it pos or end_pos?
+        loc.end_pos = self.current().loc.pos.clone();
+
         return Ok(FnDefExpr {
             exported,
             fn_name,
             return_type,
             body,
+            loc,
         });
     }
 
