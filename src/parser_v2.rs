@@ -11,26 +11,27 @@ pub struct ParserV2 {
 
 impl ParserV2 {
     pub fn parse(tokens: Tokens) -> Result<AST, LoError> {
-        let mut parser = ParserV2::new(tokens.tokens, tokens.end_loc);
-        let ast = parser.parse_file()?;
-        Ok(ast)
-    }
-
-    fn new(tokens: Vec<LoToken>, end_location: LoLocation) -> Self {
-        Self {
-            tokens,
+        let mut parser = ParserV2 {
+            tokens: tokens.tokens,
             index: 0,
             terminal_token: LoToken {
                 type_: LoTokenType::Symbol,
                 value: "<EOF>".into(),
-                loc: end_location,
+                loc: tokens.end_loc,
             },
-        }
+        };
+
+        let mut ast = AST {
+            exprs: vec![],
+            comments: tokens.comments,
+        };
+
+        parser.parse_file(&mut ast)?;
+
+        Ok(ast)
     }
 
-    fn parse_file(&mut self) -> Result<AST, LoError> {
-        let mut ast = AST { exprs: vec![] };
-
+    fn parse_file(&mut self, ast: &mut AST) -> Result<(), LoError> {
         while self.peek().is_some() {
             let expr = self.parse_top_level_expr()?;
             ast.exprs.push(expr);
@@ -45,7 +46,7 @@ impl ParserV2 {
             });
         }
 
-        Ok(ast)
+        Ok(())
     }
 
     fn parse_top_level_expr(&mut self) -> Result<TopLevelExpr, LoError> {

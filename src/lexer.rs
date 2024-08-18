@@ -18,9 +18,12 @@ pub struct LoToken {
     pub loc: LoLocation,
 }
 
-type LexResult = Result<LoToken, LoError>;
+#[derive(Debug)]
+pub struct Comment {
+    pub content: String,
+    pub loc: LoLocation,
+}
 
-#[derive(Clone)]
 pub struct Lexer {
     file_name: Rc<str>,
     chars: Vec<char>,
@@ -28,32 +31,37 @@ pub struct Lexer {
     line: usize,
     col: usize,
     was_newline: bool,
+    comments: Vec<Comment>,
 }
 
 pub struct Tokens {
     pub tokens: Vec<LoToken>,
     pub end_loc: LoLocation,
+    pub comments: Vec<Comment>,
 }
 
 impl Lexer {
     pub fn lex(file_name: &str, chars: &str) -> Result<Tokens, LoError> {
-        let mut lexer = Lexer::new(file_name, chars);
-        let tokens = lexer.lex_file()?;
-        Ok(tokens)
-    }
-
-    fn new(file_name: &str, chars: &str) -> Self {
-        Self {
+        let mut lexer = Lexer {
             file_name: file_name.into(),
             chars: chars.chars().collect::<Vec<_>>(),
             index: 0,
             line: 1,
             col: 1,
             was_newline: false,
-        }
+            comments: Vec::new(),
+        };
+
+        let tokens = lexer.lex_file()?;
+
+        Ok(Tokens {
+            tokens,
+            end_loc: lexer.loc(),
+            comments: lexer.comments,
+        })
     }
 
-    fn lex_file(&mut self) -> Result<Tokens, LoError> {
+    fn lex_file(&mut self) -> Result<Vec<LoToken>, LoError> {
         let mut tokens = Vec::new();
 
         self.skip_space();
@@ -63,13 +71,10 @@ impl Lexer {
             self.skip_space();
         }
 
-        Ok(Tokens {
-            tokens,
-            end_loc: self.loc(),
-        })
+        Ok(tokens)
     }
 
-    fn lex_token(&mut self) -> LexResult {
+    fn lex_token(&mut self) -> Result<LoToken, LoError> {
         let char = self.current_char()?;
 
         if char == '\'' {
@@ -98,7 +103,7 @@ impl Lexer {
         })
     }
 
-    fn lex_symbol(&mut self) -> LexResult {
+    fn lex_symbol(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
 
         while is_symbol_char(self.current_char()?) {
@@ -114,7 +119,7 @@ impl Lexer {
         })
     }
 
-    fn lex_char(&mut self) -> LexResult {
+    fn lex_char(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
 
         self.next_char(); // skip start quote
@@ -162,7 +167,7 @@ impl Lexer {
         })
     }
 
-    fn lex_int_literal(&mut self) -> LexResult {
+    fn lex_int_literal(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
         let mut value = String::new();
 
@@ -203,7 +208,7 @@ impl Lexer {
         })
     }
 
-    fn lex_string(&mut self) -> LexResult {
+    fn lex_string(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
 
         self.next_char(); // skip start quote
@@ -249,7 +254,7 @@ impl Lexer {
         })
     }
 
-    fn lex_delim(&mut self) -> LexResult {
+    fn lex_delim(&mut self) -> Result<LoToken, LoError> {
         let loc = self.loc();
 
         self.next_char(); // skip delimiter char
@@ -261,7 +266,7 @@ impl Lexer {
         })
     }
 
-    fn lex_operator(&mut self) -> LexResult {
+    fn lex_operator(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
         let mut value = String::new();
 
@@ -313,24 +318,36 @@ impl Lexer {
             self.next_char();
         }
 
-        // skip comment
-        if let Ok('/') = self.current_char() {
-            let Ok('/') = self.peek_next_char() else {
-                return;
+        if self.current_char() == Ok('/') && self.peek_next_char() == Ok('/') {
+            let comment = self.lex_comment();
+            self.comments.push(comment);
+            self.skip_space();
+        }
+    }
+
+    fn lex_comment(&mut self) -> Comment {
+        let mut loc = self.loc();
+
+        self.next_char(); /* `/` */
+        self.next_char(); /* `/` */
+
+        loop {
+            self.next_char();
+
+            let Ok(char) = self.current_char() else {
+                break;
             };
 
-            loop {
-                self.next_char();
-
-                let Ok(char) = self.current_char() else {
-                    return;
-                };
-
-                if char == '\n' {
-                    self.skip_space();
-                    break;
-                }
+            if char == '\n' {
+                break;
             }
+        }
+
+        loc.end_pos = self.pos();
+
+        Comment {
+            content: self.chars[loc.pos.offset..self.index].iter().collect(),
+            loc,
         }
     }
 

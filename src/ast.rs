@@ -1,8 +1,10 @@
+use crate::lexer::*;
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 #[derive(Debug)]
 pub struct AST {
     pub exprs: Vec<TopLevelExpr>,
+    pub comments: Vec<Comment>,
 }
 
 #[derive(Debug)]

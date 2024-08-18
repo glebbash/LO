@@ -4,13 +4,13 @@
 extern crate alloc;
 
 mod ast;
+mod c_printer;
 mod core;
-mod emit_c;
 mod ir;
 mod lexer;
 mod parser;
 mod parser_v2;
-mod pretty_print;
+mod pretty_printer;
 mod wasm;
 
 #[cfg(target_arch = "wasm32")]
@@ -33,8 +33,8 @@ mod wasm_target {
 }
 
 mod wasi_api {
-    use crate::{core::*, emit_c, lexer::*, parser, parser_v2::*, pretty_print};
-    use alloc::{format, string::String, vec::Vec};
+    use crate::{c_printer::*, core::*, lexer::*, parser, parser_v2::*, pretty_printer::*};
+    use alloc::{boxed::Box, format, string::String, vec::Vec};
 
     #[no_mangle]
     pub extern "C" fn _start() {
@@ -70,7 +70,7 @@ mod wasi_api {
             let chars = file_read_utf8(file_name)?;
             let tokens = Lexer::lex(file_name, &chars)?;
             let ast = ParserV2::parse(tokens)?;
-            pretty_print::pretty_print(&ast);
+            PrettyPrinter::print(Box::new(ast));
             return Ok(());
         };
 
@@ -78,7 +78,7 @@ mod wasi_api {
             let chars = file_read_utf8(file_name)?;
             let tokens = Lexer::lex(file_name, &chars)?;
             let ast = ParserV2::parse(tokens)?;
-            emit_c::emit_c(&ast);
+            CPrinter::print(Box::new(ast));
             return Ok(());
         };
 
