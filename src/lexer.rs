@@ -18,130 +18,10 @@ pub struct LoToken {
     pub loc: LoLocation,
 }
 
-impl LoToken {
-    pub fn is_any(&self, type_: LoTokenType) -> bool {
-        self.type_ == type_
-    }
-
-    pub fn is(&self, type_: LoTokenType, value: &str) -> bool {
-        self.is_any(type_) && self.value == value
-    }
-}
-
-#[derive(Clone)]
-pub struct LoTokenStream {
-    pub tokens: Vec<LoToken>,
-    pub index: usize,
-    pub terminal_token: LoToken,
-}
-
-impl LoTokenStream {
-    pub fn new(tokens: Vec<LoToken>, eof_location: LoLocation) -> Self {
-        Self {
-            tokens,
-            index: 0,
-            terminal_token: LoToken {
-                type_: LoTokenType::Symbol,
-                value: "<EOF>".into(),
-                loc: eof_location,
-            },
-        }
-    }
-
-    pub fn expect_any(&mut self, type_: LoTokenType) -> Result<&LoToken, LoError> {
-        match self.peek() {
-            Some(token) if token.is_any(type_) => Ok(self.next().unwrap()),
-            other => {
-                let unexpected = other.unwrap_or(&self.terminal_token);
-                Err(LoError {
-                    message: format!("Unexpected token '{}', wanted {type_:?}", unexpected.value),
-                    loc: unexpected.loc.clone(),
-                })
-            }
-        }
-    }
-
-    pub fn expect(&mut self, type_: LoTokenType, value: &str) -> Result<&LoToken, LoError> {
-        match self.peek() {
-            Some(token) if token.is(type_, value) => Ok(self.next().unwrap()),
-            other => {
-                let unexpected = other.unwrap_or(&self.terminal_token);
-                Err(LoError {
-                    message: format!("Unexpected token '{}', wanted '{value}'", unexpected.value),
-                    loc: unexpected.loc.clone(),
-                })
-            }
-        }
-    }
-
-    pub fn eat_any(&mut self, type_: LoTokenType) -> Result<Option<&LoToken>, LoError> {
-        let was_some = self.peek().is_some();
-        match self.expect_any(type_) {
-            Ok(t) => Ok(Some(t)),
-            Err(_) if was_some => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-
-    pub fn eat(&mut self, type_: LoTokenType, value: &str) -> Result<Option<&LoToken>, LoError> {
-        let was_some = self.peek().is_some();
-        match self.expect(type_, value) {
-            Ok(t) => Ok(Some(t)),
-            Err(_) if was_some => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-
-    pub fn next_is(&mut self, type_: LoTokenType, value: &str) -> Result<bool, LoError> {
-        match self.peek() {
-            Some(token) if token.is(type_, value) => Ok(true),
-            Some(_) => Ok(false),
-            _ => self.err_eof(format!("Unexpected EOF")),
-        }
-    }
-
-    pub fn next_is_any(&mut self, type_: LoTokenType) -> Result<bool, LoError> {
-        match self.peek() {
-            Some(token) if token.is_any(type_) => Ok(true),
-            Some(_) => Ok(false),
-            _ => self.err_eof(format!("Unexpected EOF")),
-        }
-    }
-
-    pub fn peek(&self) -> Option<&LoToken> {
-        self.tokens.get(self.index)
-    }
-
-    pub fn next(&mut self) -> Option<&LoToken> {
-        let token = self.tokens.get(self.index);
-        self.index += 1;
-        token
-    }
-
-    pub fn current(&self) -> &LoToken {
-        if let Some(token) = self.tokens.get(self.index) {
-            &token
-        } else {
-            &self.terminal_token
-        }
-    }
-
-    pub fn loc(&self) -> &LoLocation {
-        &self.current().loc
-    }
-
-    fn err_eof<T>(&self, message: String) -> Result<T, LoError> {
-        Err(LoError {
-            message,
-            loc: self.terminal_token.loc.clone(),
-        })
-    }
-}
-
 type LexResult = Result<LoToken, LoError>;
 
 #[derive(Clone)]
-struct Lexer {
+pub struct Lexer {
     file_name: Rc<str>,
     chars: Vec<char>,
     index: usize,
@@ -150,11 +30,18 @@ struct Lexer {
     was_newline: bool,
 }
 
-pub fn lex_all(file_name: &str, chars: &str) -> Result<LoTokenStream, LoError> {
-    Lexer::new(file_name, chars).lex_all()
+pub struct Tokens {
+    pub tokens: Vec<LoToken>,
+    pub end_loc: LoLocation,
 }
 
 impl Lexer {
+    pub fn lex(file_name: &str, chars: &str) -> Result<Tokens, LoError> {
+        let mut lexer = Lexer::new(file_name, chars);
+        let tokens = lexer.lex_file()?;
+        Ok(tokens)
+    }
+
     fn new(file_name: &str, chars: &str) -> Self {
         Self {
             file_name: file_name.into(),
@@ -166,7 +53,7 @@ impl Lexer {
         }
     }
 
-    fn lex_all(&mut self) -> Result<LoTokenStream, LoError> {
+    fn lex_file(&mut self) -> Result<Tokens, LoError> {
         let mut tokens = Vec::new();
 
         self.skip_space();
@@ -176,7 +63,10 @@ impl Lexer {
             self.skip_space();
         }
 
-        Ok(LoTokenStream::new(tokens, self.loc()))
+        Ok(Tokens {
+            tokens,
+            end_loc: self.loc(),
+        })
     }
 
     fn lex_token(&mut self) -> LexResult {

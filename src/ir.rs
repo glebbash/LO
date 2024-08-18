@@ -1,4 +1,4 @@
-use crate::{core::*, lexer::*, wasm::*};
+use crate::{core::*, parser::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 

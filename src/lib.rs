@@ -33,7 +33,7 @@ mod wasm_target {
 }
 
 mod wasi_api {
-    use crate::{core::*, emit_c, lexer, parser, parser_v2, pretty_print};
+    use crate::{core::*, emit_c, lexer::*, parser, parser_v2::*, pretty_print};
     use alloc::{format, string::String, vec::Vec};
 
     #[no_mangle]
@@ -68,16 +68,16 @@ mod wasi_api {
 
         if compiler_mode == CompilerMode::PrettyPrint {
             let chars = file_read_utf8(file_name)?;
-            let tokens = lexer::lex_all(file_name, &chars)?;
-            let ast = parser_v2::parse(tokens)?;
+            let tokens = Lexer::lex(file_name, &chars)?;
+            let ast = ParserV2::parse(tokens)?;
             pretty_print::pretty_print(&ast);
             return Ok(());
         };
 
         if compiler_mode == CompilerMode::EmitC {
             let chars = file_read_utf8(file_name)?;
-            let tokens = lexer::lex_all(file_name, &chars)?;
-            let ast = parser_v2::parse(tokens)?;
+            let tokens = Lexer::lex(file_name, &chars)?;
+            let ast = ParserV2::parse(tokens)?;
             emit_c::emit_c(&ast);
             return Ok(());
         };
