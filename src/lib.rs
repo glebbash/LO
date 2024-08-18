@@ -33,7 +33,7 @@ mod wasm_target {
 
 mod wasi_api {
     use crate::{core::*, lexer::*, parser, parser_v2::*, printer::*};
-    use alloc::{boxed::Box, format, string::String, vec::Vec};
+    use alloc::{format, string::String, vec::Vec};
 
     #[no_mangle]
     pub extern "C" fn _start() {
@@ -75,7 +75,7 @@ mod wasi_api {
             } else {
                 PrintFormat::TranspileToC
             };
-            Printer::print(Box::new(ast), print_format);
+            Printer::print(ast, print_format);
 
             return Ok(());
         };

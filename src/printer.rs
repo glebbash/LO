@@ -1,5 +1,5 @@
 use crate::{ast::*, core::*, lexer::Comment};
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 use PrintFormat::*;
 
@@ -12,16 +12,16 @@ pub enum PrintFormat {
 pub struct Printer {
     format: PrintFormat,
     indent: usize,
-    comments: Box<Vec<Comment>>,
+    comments: Vec<Comment>,
     comments_printed: usize,
 }
 
 impl Printer {
-    pub fn print(ast: Box<AST>, format: PrintFormat) {
+    pub fn print(ast: AST, format: PrintFormat) {
         let mut printer = Printer {
             format,
             indent: 0,
-            comments: Box::new(ast.comments),
+            comments: ast.comments,
             comments_printed: 0,
         };
 
