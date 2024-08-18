@@ -94,7 +94,7 @@ fn main(): u32 {
 };
 ```
 
-Comments are allowed between any tokens, but they might get moved during formatting. See [formatter](#53-formatter) for more info.
+Comments are allowed between any tokens, but they might get moved during formatting. See [Pretty Printings](#pretty-printing) for more info.
 
 ## 🔨 Compiler usage
 
@@ -134,7 +134,7 @@ lo input.lo
 > Compiles `input.lo` file into a wasm module
 >
 > `<stdout>` - WASM module in binary format <br>
-> `<stderr>` - Any compilation errors. See [error format](#55-error-format)
+> `<stderr>` - Any compilation errors. See [error format](#error-format)
 
 > NOTE: any imported files will be automatically resolved. You don't need to provide them separately.
 
@@ -147,9 +147,9 @@ lo input.lo --inspect
 > Prints inspection info of `input.lo` file in JSON format. Useful for IDE integrations.
 >
 > `<stdout>` - JSON object with inspection results <br>
-> `<stderr>` - Any compilation errors. See [error format](#55-error-format)
+> `<stderr>` - Any compilation errors. See [error format](#error-format)
 
-Inspection object schema is defined as `DiagnisticItem` in [VSCode extension sources](vscode-ext/src/extension.ts)
+Inspection object schema is defined as `DiagnisticItem` in [VSCode extension sources](../vscode-ext/src/extension.ts)
 
 ### Pretty Printing
 
@@ -165,7 +165,7 @@ lo input.lo --pretty-print
 > Formats `input.lo` using non-configurable formatting style
 >
 > `<stdout>` - Formatted source <br>
-> `<stderr>` - Any compilation errors. See [error format](#55-error-format)
+> `<stderr>` - Any compilation errors. See [error format](#error-format)
 
 #### Comment rearrangement
 
@@ -211,7 +211,7 @@ lo <input.lo> --print-c
 > Transpiles the input file into "equivalent" C source code.
 >
 > `<stdout>` - C source code <br>
-> `<stderr>` - Any compilation errors. See [error format](#55-error-format)
+> `<stderr>` - Any compilation errors. See [error format](#error-format)
 
 ### Error format
 
