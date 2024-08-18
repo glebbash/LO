@@ -4,13 +4,12 @@
 extern crate alloc;
 
 mod ast;
-mod c_printer;
 mod core;
 mod ir;
 mod lexer;
 mod parser;
 mod parser_v2;
-mod pretty_printer;
+mod printer;
 mod wasm;
 
 #[cfg(target_arch = "wasm32")]
@@ -33,7 +32,7 @@ mod wasm_target {
 }
 
 mod wasi_api {
-    use crate::{c_printer::*, core::*, lexer::*, parser, parser_v2::*, pretty_printer::*};
+    use crate::{core::*, lexer::*, parser, parser_v2::*, printer::*};
     use alloc::{boxed::Box, format, string::String, vec::Vec};
 
     #[no_mangle]
@@ -60,25 +59,24 @@ mod wasi_api {
             None => CompilerMode::Compile,
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
-            Some("--emit-c") => CompilerMode::EmitC,
+            Some("--print-c") => CompilerMode::PrintC,
             Some(unknown_mode) => {
                 return Err(format!("Unknown compiler mode: {unknown_mode}"));
             }
         };
 
-        if compiler_mode == CompilerMode::PrettyPrint {
+        if compiler_mode == CompilerMode::PrettyPrint || compiler_mode == CompilerMode::PrintC {
             let chars = file_read_utf8(file_name)?;
             let tokens = Lexer::lex(file_name, &chars)?;
             let ast = ParserV2::parse(tokens)?;
-            PrettyPrinter::print(Box::new(ast));
-            return Ok(());
-        };
 
-        if compiler_mode == CompilerMode::EmitC {
-            let chars = file_read_utf8(file_name)?;
-            let tokens = Lexer::lex(file_name, &chars)?;
-            let ast = ParserV2::parse(tokens)?;
-            CPrinter::print(Box::new(ast));
+            let print_format = if compiler_mode == CompilerMode::PrettyPrint {
+                PrintFormat::PrettyPrint
+            } else {
+                PrintFormat::TranspileToC
+            };
+            Printer::print(Box::new(ast), print_format);
+
             return Ok(());
         };
 

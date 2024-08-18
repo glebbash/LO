@@ -1,15 +1,25 @@
-use crate::{ast::*, core::*, lexer::*};
+use crate::{ast::*, core::*, lexer::Comment};
 use alloc::{boxed::Box, vec::Vec};
 
-pub struct CPrinter {
+use PrintFormat::*;
+
+#[derive(PartialEq)]
+pub enum PrintFormat {
+    PrettyPrint,
+    TranspileToC,
+}
+
+pub struct Printer {
+    format: PrintFormat,
     indent: usize,
     comments: Box<Vec<Comment>>,
     comments_printed: usize,
 }
 
-impl CPrinter {
-    pub fn print(ast: Box<AST>) {
-        let mut printer = CPrinter {
+impl Printer {
+    pub fn print(ast: Box<AST>, format: PrintFormat) {
+        let mut printer = Printer {
+            format,
             indent: 0,
             comments: Box::new(ast.comments),
             comments_printed: 0,
@@ -22,7 +32,12 @@ impl CPrinter {
         for expr in exprs {
             self.print_comments_before_pos(&expr.loc().pos);
             self.print_top_level_expr(expr);
-            stdout_writeln("");
+
+            if self.should_print_semi_top_level(expr) {
+                stdout_writeln(";");
+            } else {
+                stdout_writeln("");
+            }
             stdout_writeln("");
         }
 
@@ -42,22 +57,37 @@ impl CPrinter {
     }
 
     fn print_fn_def(&mut self, fn_def: &FnDefExpr) {
-        self.print_type(&fn_def.return_type);
+        if self.format == TranspileToC {
+            self.print_type(&fn_def.return_type);
+            stdout_write(" ");
+            stdout_write(&fn_def.fn_name);
+            stdout_write("()");
+            stdout_writeln("");
+            self.print_code_block_expr(&fn_def.body);
+            return;
+        }
 
-        stdout_write(" ");
-
+        if fn_def.exported {
+            stdout_write("export ");
+        }
+        stdout_write("fn ");
         stdout_write(&fn_def.fn_name);
-
-        stdout_write("()");
-
-        stdout_writeln("");
-
+        stdout_write("(): ");
+        self.print_type(&fn_def.return_type);
+        stdout_write(" ");
         self.print_code_block_expr(&fn_def.body);
     }
 
     fn print_type(&mut self, type_expr: &TypeExpr) {
+        if self.format == TranspileToC {
+            match type_expr {
+                TypeExpr::U32 => stdout_write("unsigned int"),
+            }
+            return;
+        }
+
         match type_expr {
-            TypeExpr::U32 => stdout_write("unsigned int"),
+            TypeExpr::U32 => stdout_write("u32"),
         }
     }
 
@@ -69,7 +99,12 @@ impl CPrinter {
         for expr in &code_block.exprs {
             self.print_indent();
             self.print_code_expr(expr);
-            stdout_writeln(";");
+
+            if self.print_semi(expr) {
+                stdout_writeln(";");
+            } else {
+                stdout_writeln("");
+            }
         }
 
         self.indent -= 1;
@@ -96,6 +131,26 @@ impl CPrinter {
                 stdout_writeln(&comment.content);
                 self.comments_printed += 1;
             }
+        }
+    }
+
+    fn should_print_semi_top_level(&mut self, expr: &TopLevelExpr) -> bool {
+        if self.format == TranspileToC {
+            match expr {
+                TopLevelExpr::FnDef(_) => false,
+            }
+        } else {
+            true
+        }
+    }
+
+    fn print_semi(&mut self, expr: &CodeExpr) -> bool {
+        if self.format == TranspileToC {
+            match expr {
+                CodeExpr::Return(_) | CodeExpr::IntLiteral(_) => true,
+            }
+        } else {
+            true
         }
     }
 
