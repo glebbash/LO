@@ -4,12 +4,12 @@ struct PrintContext {
     indent: usize,
 }
 
-pub fn emit_c(ast: &AST) {
+pub fn pretty_print(ast: &AST) {
     let ctx = PrintContext { indent: 0 };
 
     for expr in &ast.exprs {
         print_top_level_expr(&ctx, expr);
-        stdout_writeln("");
+        stdout_writeln(";");
         stdout_writeln("");
     }
 }
@@ -21,22 +21,26 @@ fn print_top_level_expr(ctx: &PrintContext, expr: &TopLevelExpr) {
 }
 
 fn print_fn_def(ctx: &PrintContext, fn_def: &FnDefExpr) {
-    print_type(&fn_def.return_type);
+    if fn_def.exported {
+        stdout_write("export ");
+    }
 
-    stdout_write(" ");
+    stdout_write("fn ");
 
     stdout_write(&fn_def.fn_name);
 
-    stdout_write("()");
+    stdout_write("(): ");
 
-    stdout_writeln("");
+    print_type(&fn_def.return_type);
+
+    stdout_write(" ");
 
     print_code_block_expr(ctx, &fn_def.body);
 }
 
 fn print_type(type_expr: &TypeExpr) {
     match type_expr {
-        TypeExpr::U32 => stdout_write("unsigned int"),
+        TypeExpr::U32 => stdout_write("u32"),
     }
 }
 

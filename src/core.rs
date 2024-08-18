@@ -1,5 +1,14 @@
 use alloc::{format, rc::Rc, string::String, vec, vec::Vec};
-use core::ffi::CStr;
+use core::{ffi::CStr, str};
+
+#[derive(Default, PartialEq)]
+pub enum CompilerMode {
+    #[default]
+    Compile,
+    Inspect,
+    PrettyPrint,
+    EmitC,
+}
 
 #[derive(PartialEq)]
 pub struct LoError {
@@ -123,15 +132,45 @@ pub fn unlock_fs() -> Result<(), wasi::Errno> {
     Ok(())
 }
 
-pub fn fd_open(file_path: &str) -> Result<u32, wasi::Errno> {
+static mut FS_UNLOCKED: bool = false;
+
+pub fn file_read_utf8(file_path: &str) -> Result<String, String> {
+    let bytes = file_read(file_path)?;
+
+    let Ok(chars) = String::from_utf8(bytes) else {
+        return Err(format!("Contents of `{file_path}` are not valid UTF-8"));
+    };
+
+    return Ok(chars);
+}
+
+pub fn file_read(file_path: &str) -> Result<Vec<u8>, String> {
+    if unsafe { !FS_UNLOCKED } {
+        unlock_fs().map_err(|err| format!("Error unlocking fs: error code = {err}"))?;
+    }
+
+    if file_path == "<stdin>" {
+        return fd_read_all(wasi::FD_STDIN)
+            .map_err(|err| format!("Cannot read <stdin>: error code = {err}"));
+    };
+
+    let fd = fd_open(&file_path)
+        .map_err(|err| format!("Cannot open file {file_path}: error code = {err}"))?;
+
+    let bytes = fd_read_all(fd).map_err(|err| format!("Cannot read file {file_path}: {err}"))?;
+
+    if let Err(err) = unsafe { wasi::fd_close(fd) } {
+        return Err(format!("Cannot close file {file_path}: error code = {err}"));
+    }
+
+    return Ok(bytes);
+}
+
+fn fd_open(file_path: &str) -> Result<u32, wasi::Errno> {
     unsafe { wasi::path_open(CWD_PREOPEN_FD, 1, &file_path, 0, 264240830, 268435455, 0) }
 }
 
-pub fn stdin_read() -> Vec<u8> {
-    fd_read_all_and_close(wasi::FD_STDIN)
-}
-
-pub fn fd_read_all_and_close(fd: u32) -> Vec<u8> {
+fn fd_read_all(fd: u32) -> Result<Vec<u8>, String> {
     let mut output = Vec::<u8>::new();
     let mut chunk = [0; 256];
 
@@ -149,8 +188,7 @@ pub fn fd_read_all_and_close(fd: u32) -> Vec<u8> {
                     break;
                 }
 
-                stderr_write(alloc::format!("Error reading file: fd={fd}, err={err}\n").as_bytes());
-                unreachable!()
+                return Err(alloc::format!("Error reading file: fd={fd}, err={err}\n"));
             }
         };
 
@@ -161,24 +199,20 @@ pub fn fd_read_all_and_close(fd: u32) -> Vec<u8> {
         output.extend(&chunk[0..nread]);
     }
 
-    if fd != 0 {
-        let _ = unsafe { wasi::fd_close(fd) };
-    }
-
-    output
-}
-
-pub fn stdout_write(message: &[u8]) {
-    fputs(wasi::FD_STDOUT, message);
+    Ok(output)
 }
 
 pub fn stdout_writeln(message: impl AsRef<str>) {
-    stdout_write(message.as_ref().as_bytes());
-    stdout_write("\n".as_bytes());
+    stdout_write(message);
+    stdout_write("\n");
 }
 
-pub fn stderr_write(message: &[u8]) {
-    fputs(wasi::FD_STDERR, message);
+pub fn stdout_write(message: impl AsRef<str>) {
+    fputs(wasi::FD_STDOUT, message.as_ref().as_bytes());
+}
+
+pub fn stderr_write(message: impl AsRef<str>) {
+    fputs(wasi::FD_STDERR, message.as_ref().as_bytes());
 }
 
 pub fn fputs(fd: u32, message: &[u8]) {

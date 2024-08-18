@@ -1,4 +1,4 @@
-use crate::{emit_c, ir::*, lexer::*, utils::*, wasm::*};
+use crate::{core::*, ir::*, lexer::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, str, string::String, vec, vec::Vec};
 use LoTokenType::*;
 
@@ -21,36 +21,27 @@ pub fn parse_file(
     loc: &LoLocation,
 ) -> Result<u32, LoError> {
     let file_path = resolve_path(file_path, &loc.file_name);
+
     if let Some(file_index) = ctx.included_modules.get(&file_path) {
         return Ok(*file_index);
     }
 
-    let file = fd_open(&file_path).map_err(|err| LoError {
-        message: format!("Cannot load file {file_path}: error code {err}"),
+    let chars = file_read_utf8(&file_path).map_err(|message| LoError {
+        message,
         loc: loc.clone(),
     })?;
 
-    let file_contents = &fd_read_all_and_close(file);
-    let file_index = parse_file_contents(ctx, file_path, file_contents)?;
+    let file_index = parse_file_contents(ctx, file_path, &chars)?;
+
     return Ok(file_index);
 }
 
 pub fn parse_file_contents(
     ctx: &mut ModuleContext,
     file_path: String,
-    file_contents: &[u8],
+    chars: &str,
 ) -> Result<u32, LoError> {
-    let Ok(file_contents) = str::from_utf8(file_contents) else {
-        return Err(LoError {
-            message: format!("ParseError: contents of `{file_path}` are not valid UTF-8"),
-            loc: LoLocation {
-                file_name: file_path.into(),
-                ..LoLocation::internal()
-            },
-        });
-    };
-
-    let mut tokens = lex_all(&file_path, file_contents)?;
+    let mut tokens = lex_all(&file_path, &chars)?;
 
     let file_index = ctx.included_modules.len() as u32;
     if ctx.mode == CompilerMode::Inspect {
@@ -200,10 +191,6 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         stdout_writeln("{ \"type\": \"end\" }");
 
         stdout_writeln("]");
-    }
-
-    if ctx.mode == CompilerMode::EmitC {
-        emit_c::emit_c(ctx);
     }
 
     Ok(())
@@ -1155,7 +1142,7 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let expr = parse_expr(ctx, tokens, 0)?;
         let expr_type = expr.get_type(ctx.module);
-        crate::utils::debug(format!(
+        debug(format!(
             "{}",
             LoError {
                 message: format!("{expr_type:?}"),

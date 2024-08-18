@@ -1,4 +1,4 @@
-use crate::utils::*;
+use crate::core::*;
 use alloc::{format, rc::Rc, string::String, vec::Vec};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -118,12 +118,16 @@ impl LoTokenStream {
         token
     }
 
-    pub fn loc(&self) -> &LoLocation {
+    pub fn current(&self) -> &LoToken {
         if let Some(token) = self.tokens.get(self.index) {
-            &token.loc
+            &token
         } else {
-            &self.terminal_token.loc
+            &self.terminal_token
         }
+    }
+
+    pub fn loc(&self) -> &LoLocation {
+        &self.current().loc
     }
 
     fn err_eof<T>(&self, message: String) -> Result<T, LoError> {
@@ -146,15 +150,15 @@ struct Lexer {
     was_newline: bool,
 }
 
-pub fn lex_all(file_name: &str, script: &str) -> Result<LoTokenStream, LoError> {
-    Lexer::new(file_name, script).lex_all()
+pub fn lex_all(file_name: &str, chars: &str) -> Result<LoTokenStream, LoError> {
+    Lexer::new(file_name, chars).lex_all()
 }
 
 impl Lexer {
-    fn new(file_name: &str, script: &str) -> Self {
+    fn new(file_name: &str, chars: &str) -> Self {
         Self {
             file_name: file_name.into(),
-            chars: script.chars().collect::<Vec<_>>(),
+            chars: chars.chars().collect::<Vec<_>>(),
             index: 0,
             line: 1,
             col: 1,

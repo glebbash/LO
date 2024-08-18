@@ -1,14 +1,6 @@
-use crate::{lexer::*, utils::*, wasm::*};
+use crate::{core::*, lexer::*, wasm::*};
 use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec, vec::Vec};
 use core::cell::RefCell;
-
-#[derive(Default, PartialEq)]
-pub enum CompilerMode {
-    #[default]
-    Compile,
-    Inspect,
-    EmitC,
-}
 
 #[derive(Default)]
 pub struct ModuleContext<'a> {
