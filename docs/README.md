@@ -94,7 +94,7 @@ fn main(): u32 {
 };
 ```
 
-Comments are allowed between any tokens, but they might get moved during formatting. See [Pretty Printings](#pretty-printing) for more info.
+Comments are allowed between any tokens, but they might get moved during formatting. See [Pretty Printing](#pretty-printing) for more info.
 
 ## 🔨 Compiler usage
 
