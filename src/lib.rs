@@ -31,8 +31,17 @@ mod wasm_target {
     }
 }
 
+static USAGE: &str = "\
+Usage: lo <file> [mode]
+  where [mode] is either:
+    --inspect
+    --pretty-print
+    --print-c
+  No [mode] means compilation to wasm\
+";
+
 mod wasi_api {
-    use crate::{core::*, lexer::*, parser, parser_v2::*, printer::*};
+    use crate::{core::*, lexer::*, parser, parser_v2::*, printer::*, USAGE};
     use alloc::{format, string::String, vec::Vec};
 
     #[no_mangle]
@@ -47,7 +56,7 @@ mod wasi_api {
     fn start() -> Result<(), String> {
         let args = WasiArgs::load().unwrap();
         if args.len() < 2 {
-            return Err(format!("Usage: lo <file> [mode]"));
+            return Err(format!("{}", USAGE));
         }
 
         let mut file_name = args.get(1).unwrap();
@@ -61,7 +70,7 @@ mod wasi_api {
             Some("--pretty-print") => CompilerMode::PrettyPrint,
             Some("--print-c") => CompilerMode::PrintC,
             Some(unknown_mode) => {
-                return Err(format!("Unknown compiler mode: {unknown_mode}"));
+                return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
             }
         };
 
