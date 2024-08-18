@@ -108,9 +108,12 @@ impl ParserV2 {
     }
 
     fn parse_code_block_expr(&mut self) -> Result<CodeBlockExpr, LoError> {
-        let mut code_block = CodeBlockExpr { exprs: vec![] };
+        let open_brace = self.expect(Delim, "{")?;
 
-        self.expect(Delim, "{")?;
+        let mut code_block = CodeBlockExpr {
+            exprs: vec![],
+            loc: open_brace.loc.clone(),
+        };
 
         while let None = self.eat(Delim, "}")? {
             let expr = self.parse_code_expr()?;
@@ -119,20 +122,28 @@ impl ParserV2 {
             self.expect(Delim, ";")?;
         }
 
+        // close curly pos
+        code_block.loc.end_pos = self.current().loc.end_pos.clone();
+
         return Ok(code_block);
     }
 
     fn parse_code_expr(&mut self) -> Result<CodeExpr, LoError> {
-        if let Some(_) = self.eat(Symbol, "return")? {
+        if let Some(return_token) = self.eat(Symbol, "return")?.cloned() {
+            let mut loc = return_token.loc;
             let expr = self.parse_code_expr()?;
+            loc.end_pos = expr.loc().end_pos.clone();
+
             return Ok(CodeExpr::Return(ReturnExpr {
                 expr: Box::new(expr),
+                loc,
             }));
         };
 
-        if let Some(t) = self.eat_any(IntLiteral)? {
+        if let Some(int) = self.eat_any(IntLiteral)? {
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
-                value: t.value.clone(),
+                value: int.value.clone(),
+                loc: int.loc.clone(),
             }));
         };
 

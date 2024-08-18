@@ -41,6 +41,7 @@ pub enum TypeExpr {
 #[derive(Debug)]
 pub struct CodeBlockExpr {
     pub exprs: Vec<CodeExpr>,
+    pub loc: LoLocation,
 }
 
 #[derive(Debug)]
@@ -52,9 +53,20 @@ pub enum CodeExpr {
 #[derive(Debug)]
 pub struct ReturnExpr {
     pub expr: Box<CodeExpr>,
+    pub loc: LoLocation,
 }
 
 #[derive(Debug)]
 pub struct IntLiteralExpr {
     pub value: String,
+    pub loc: LoLocation,
+}
+
+impl Locatable for CodeExpr {
+    fn loc(&self) -> &LoLocation {
+        match self {
+            CodeExpr::Return(e) => &e.loc,
+            CodeExpr::IntLiteral(e) => &e.loc,
+        }
+    }
 }

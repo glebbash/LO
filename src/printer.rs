@@ -41,7 +41,7 @@ impl Printer {
             stdout_writeln("");
         }
 
-        // print rest of the comments
+        // print the rest of the comments
         if self.comments_printed != self.comments.len() {
             for comment in self.comments.iter().skip(self.comments_printed) {
                 stdout_writeln(&comment.content);
@@ -97,6 +97,7 @@ impl Printer {
         self.indent += 1;
 
         for expr in &code_block.exprs {
+            self.print_comments_before_pos(&expr.loc().pos);
             self.print_indent();
             self.print_code_expr(expr);
 
@@ -107,6 +108,9 @@ impl Printer {
             }
         }
 
+        // print the rest of the comments
+        self.print_comments_before_pos(&code_block.loc.end_pos);
+
         self.indent -= 1;
 
         stdout_write("}");
@@ -114,11 +118,11 @@ impl Printer {
 
     fn print_code_expr(&mut self, expr: &CodeExpr) {
         match expr {
-            CodeExpr::Return(ReturnExpr { expr }) => {
+            CodeExpr::Return(ReturnExpr { expr, .. }) => {
                 stdout_write("return ");
                 self.print_code_expr(&expr);
             }
-            CodeExpr::IntLiteral(IntLiteralExpr { value }) => {
+            CodeExpr::IntLiteral(IntLiteralExpr { value, .. }) => {
                 stdout_write(value);
             }
         }
@@ -127,10 +131,13 @@ impl Printer {
     fn print_comments_before_pos(&mut self, pos: &LoPosition) {
         while self.comments_printed < self.comments.len() {
             let comment = &self.comments[self.comments_printed];
-            if comment.loc.end_pos.offset <= pos.offset {
-                stdout_writeln(&comment.content);
-                self.comments_printed += 1;
+            if comment.loc.end_pos.offset > pos.offset {
+                break;
             }
+
+            self.print_indent();
+            stdout_writeln(&comment.content);
+            self.comments_printed += 1;
         }
     }
 
@@ -154,7 +161,7 @@ impl Printer {
         }
     }
 
-    fn print_indent(&mut self) {
+    fn print_indent(&self) {
         stdout_write(" ".repeat(self.indent * 4));
     }
 }
