@@ -3,7 +3,7 @@
 
 import { WASI } from "node:wasi";
 import process from "node:process";
-import { test } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
@@ -142,11 +142,13 @@ async function debugWasiCommand(args) {
 }
 
 async function testCommand() {
-    const compile = await loadCompilerWithWasiAPI(COMPILER_PATH);
+    const compile = await loadCompilerWithWasiAPI(
+        await fs.readFile(COMPILER_PATH)
+    );
 
     test("file and stdin inputs all work the same", async () => {
         const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
-            COMPILER_PATH,
+            await fs.readFile(COMPILER_PATH),
             true
         );
 
@@ -497,8 +499,8 @@ async function testCommand() {
         );
     });
 
-    {
-        test("aoc 2020 day 1", async () => {
+    describe("aoc", async () => {
+        test("2020 day 1", async () => {
             const part1 = await runAoc("./examples/test/demos/aoc2020/1.lo");
             assert.strictEqual(part1, "157059\n");
 
@@ -508,7 +510,7 @@ async function testCommand() {
             assert.strictEqual(part2, "165080960\n");
         });
 
-        test("aoc 2020 day 2", async () => {
+        test("2020 day 2", async () => {
             const part1 = await runAoc("./examples/test/demos/aoc2020/2.lo");
             assert.strictEqual(part1, "560\n");
 
@@ -518,7 +520,7 @@ async function testCommand() {
             assert.strictEqual(part2, "303\n");
         });
 
-        test("aoc 2020 day 3", async () => {
+        test("2020 day 3", async () => {
             const part1 = await runAoc("./examples/test/demos/aoc2020/3.lo");
             assert.strictEqual(part1, "151\n");
 
@@ -528,7 +530,7 @@ async function testCommand() {
             assert.strictEqual(part2, "7540141059\n");
         });
 
-        test("aoc 2020 day 4", async () => {
+        test("2020 day 4", async () => {
             const part1 = await runAoc("./examples/test/demos/aoc2020/4.lo");
             assert.strictEqual(part1, "264\n");
 
@@ -538,7 +540,7 @@ async function testCommand() {
             assert.strictEqual(part2, "224\n");
         });
 
-        test("aoc 2020 day 5", async () => {
+        test("2020 day 5", async () => {
             const part1 = await runAoc("./examples/test/demos/aoc2020/5.lo");
             assert.strictEqual(part1, "947\n");
 
@@ -548,7 +550,7 @@ async function testCommand() {
             assert.strictEqual(part2, "636\n");
         });
 
-        test("aoc 2023 day 1", async () => {
+        test("2023 day 1", async () => {
             const part1 = await runAoc("./examples/test/demos/aoc2023/1.lo");
             assert.strictEqual(part1, "54450\n");
 
@@ -576,11 +578,15 @@ async function testCommand() {
                 return fs.readFile(stdoutFile, { encoding: "utf-8" });
             });
         }
-    }
+    });
 
-    // lo.lo
-    {
-        test("compiles lexer.test.lo", async () => {
+    describe("self hosted", async () => {
+        const selfHostedCompiler = await compile("examples/lo.lo");
+        const selfHostedCompile = await loadCompilerWithWasiAPI(
+            selfHostedCompiler
+        );
+
+        test("lexer.test.lo", async () => {
             const program = await compile("./examples/test/lexer.test.lo");
 
             const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -624,93 +630,39 @@ async function testCommand() {
                 examples/test/lexer.test.input.txt:13:16 - 3 : awdawd
                 examples/test/lexer.test.input.txt:14:3 - 3 : c
                 examples/test/lexer.test.input.txt:15:2 - 3 : dawd
-                examples/test/lexer.test.input.txt:16:2 - 0 : "John doe went fucking crazy trimming the \\t bushes", value = John doe went fucking crazy trimming the \t bushes
+                examples/test/lexer.test.input.txt:16:2 - 0 : "Lorem ipsum \\t dolor", value = Lorem ipsum \t dolor
                 examples/test/lexer.test.input.txt:18:1 - 3 : awdawd
 
                 `
             );
         });
 
-        /**
-         * NOTE: this test is pretty slow.
-         * When multiple of these kind of tests will be run it would make sense to use WABT.js:
-         * `const wabt = await import("https://unpkg.com/wabt@1.0.36/index.js");`
-         */
-        test("compiles 42.lo using lo.lo", async () => {
-            const { exec } = await import("node:child_process");
-            const { promisify } = await import("node:util");
-
-            const { stdout, stderr } = await promisify(exec)(
-                "./utils.mjs run examples/lo.lo -- examples/test/42.lo | wasm2wat -"
-            );
-            if (stderr) {
-                throw new Error(stderr);
-            }
-
-            assert.equal(
-                stdout,
-                m`
-                (module
-                  (type (;0;) (func (result i32)))
-                  (func (;0;) (type 0) (result i32)
-                    i32.const 42
-                    return)
-                  (export "main" (func 0)))
-
-                `
+        test("compiles 42.lo", async () => {
+            await assertSnapshotEqual(
+                await selfHostedCompile("examples/test/42.lo"),
+                "examples/test/snapshots/42.wasm"
             );
         });
 
-        test("compiles hello-world-raw.lo using lo.lo", async () => {
-            const { exec } = await import("node:child_process");
-            const { promisify } = await import("node:util");
-
-            const { stdout, stderr } = await promisify(exec)(
-                "./utils.mjs run examples/lo.lo -- examples/test/demos/hello-world-raw.lo | wasm2wat -"
-            );
-            if (stderr) {
-                throw new Error(stderr);
-            }
-
-            assert.equal(
-                stdout,
-                m`
-                (module
-                  (type (;0;) (func (param i32 i32 i32 i32) (result i32)))
-                  (type (;1;) (func))
-                  (import "wasi_snapshot_preview1" "fd_write" (func (;0;) (type 0)))
-                  (func (;1;) (type 1)
-                    i32.const 4
-                    i32.const 12
-                    i32.store align=1
-                    i32.const 8
-                    i32.const 13
-                    i32.store align=1
-                    i32.const 1
-                    i32.const 4
-                    i32.const 1
-                    i32.const 0
-                    call 0
-                    drop)
-                  (memory (;0;) 1)
-                  (export "memory" (memory 0))
-                  (export "_start" (func 1))
-                  (data (;0;) (i32.const 12) "Hello World!\\0a"))
-
-                `
+        test("compiles hello-world-raw.lo", async () => {
+            await assertSnapshotEqual(
+                await selfHostedCompile(
+                    "examples/test/demos/hello-world-raw.lo"
+                ),
+                "examples/test/snapshots/hello-world-raw.wasm"
             );
         });
-    }
+    });
 }
 
 // utils
 
 /**
- * @param {string} compilerPath
+ * @param {Buffer} compilerWasmBinary
  * @returns {Promise<(sourcePath: string) => Promise<Promise<Buffer>>>}
  */
-async function loadCompilerWithWasiAPI(compilerPath, mockStdin = false) {
-    const mod = await WebAssembly.compile(await fs.readFile(compilerPath));
+async function loadCompilerWithWasiAPI(compilerWasmBinary, mockStdin = false) {
+    const mod = await WebAssembly.compile(compilerWasmBinary);
 
     /**
      * @param {string} [fileName]
@@ -832,5 +784,19 @@ async function runWithTmpFile(run) {
     } finally {
         await fileHandle.close();
         await fs.unlink(fileName);
+    }
+}
+
+/**
+ * @param {Buffer} binary
+ * @param {string} snapshotPath
+ */
+async function assertSnapshotEqual(binary, snapshotPath) {
+    try {
+        const expectedBinary = await fs.readFile(snapshotPath);
+        assert.deepStrictEqual(binary, expectedBinary);
+    } catch (err) {
+        await fs.writeFile(snapshotPath + ".actual", binary);
+        throw err;
     }
 }

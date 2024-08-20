@@ -13,6 +13,6 @@ a
   b            awdawd
   c
  dawd
- "John doe went fucking crazy trimming the \t bushes"
+ "Lorem ipsum \t dolor"
 
 awdawd
