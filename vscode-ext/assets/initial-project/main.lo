@@ -1,5 +1,0 @@
-include "./lib/cli.lo";
-
-fn main() {
-    puts("Hello World!\n");
-};

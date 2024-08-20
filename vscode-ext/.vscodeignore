@@ -14,3 +14,4 @@ webpack.config.js
 **/.vscode-test.*
 serve.mjs
 lo.vsix
+build.sh

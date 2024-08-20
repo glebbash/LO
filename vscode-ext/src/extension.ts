@@ -213,6 +213,53 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand("lo.formatFile", async () => {
+            const ctx = await loadCompilerCtx();
+            if (!ctx) {
+                return;
+            }
+
+            const currentFile = vscode.window.activeTextEditor?.document;
+            if (currentFile === undefined) {
+                return vscode.window.showErrorMessage("No files opened");
+            }
+
+            const compilerResult = await wasi.runWasiProgram({
+                processName: "lo",
+                cwdUri: workspaceUri,
+                args: [
+                    vscode.workspace.asRelativePath(currentFile.uri),
+                    "--pretty-print",
+                ],
+                module: ctx.compilerModule,
+            });
+
+            analysis.clear();
+            if (compilerResult.exitCode !== 0) {
+                return showCompilerError(
+                    workspaceUri,
+                    analysis,
+                    new TextDecoder().decode(compilerResult.stderr),
+                    compilerResult.exitCode
+                );
+            }
+
+            const formattedFile = new TextDecoder().decode(
+                compilerResult.stdout
+            );
+
+            const edit = new vscode.WorkspaceEdit();
+            const fullRange = new vscode.Range(
+                new vscode.Position(0, 0),
+                currentFile.lineAt(currentFile.lineCount - 1).range.end
+            );
+            edit.replace(currentFile.uri, fullRange, formattedFile);
+
+            return vscode.workspace.applyEdit(edit);
+        })
+    );
+
+    context.subscriptions.push(
         vscode.commands.registerCommand("lo.webshell.clear", (async (
             _command,
             _args,
