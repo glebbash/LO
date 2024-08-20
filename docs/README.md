@@ -10,6 +10,8 @@ Documentation of LO language features.
 
 - [🪂 Top level expressions](#-top-level-expressions)
   - [Function definition](#function-definition)
+    - [Exporting functions](#exporting-functions)
+  - [Include](#include)
 - [🧑‍💻 Code Expressions](#-code-expressions)
   - [Integer literals](#integer-literals)
   - [Return](#return)
@@ -39,17 +41,36 @@ fn answer(): u32 {
 };
 ```
 
-> Expression type: `never`
+#### Exporting functions
 
-Can be exported from WASM module like this:
+Function can be exported from WASM module like this:
 
-```
+```lo
 export fn main(): u32 {
     return 0;
 }
 ```
 
-> Function is exported with the original name
+> Functions are exported with their original names
+
+### Include
+
+```lo
+include "./file.lo";
+```
+
+Include pathes are relative to the file they are included to.
+
+Will **not** include the same file twice.
+
+File paths are fully resolved before including.
+
+Example:
+
+```lo
+include "./abc.lo"; // will include
+include "./some-folder/../abc.lo"; // will skip
+```
 
 ## 🧑‍💻 Code Expressions
 
@@ -57,7 +78,7 @@ Code expressions are allowed inside function bodies.
 
 ### Integer literals
 
-```
+```lo
 123 // i32 literal
 ```
 
@@ -67,8 +88,8 @@ Int literals are always fully typed, there is no generic "number" type that will
 
 ### Return
 
-```
-return <value>;
+```lo
+return 123;
 ```
 
 > Expression type: `never`
@@ -108,7 +129,7 @@ Example of running the compiler using [wasmtime](https://wasmtime.dev/):
 wasmtime --dir=. lo.wasm
 ```
 
-This should print the following:
+This should print something like the following:
 
 ```
 Usage: lo <file> [mode]
@@ -127,7 +148,7 @@ Usage: lo <file> [mode]
 
 ### Compiling to WASM (main target)
 
-```
+```bash
 lo input.lo
 ```
 
