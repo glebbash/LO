@@ -3,7 +3,7 @@
 
 import { WASI } from "node:wasi";
 import process from "node:process";
-import { test, describe } from "node:test";
+import { test, describe, it } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
@@ -149,7 +149,7 @@ async function testCommand() {
     test("file and stdin inputs all work the same", async () => {
         const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
-            true
+            { mockStdin: true }
         );
 
         const output1 = await compile("./examples/test/42.lo");
@@ -274,6 +274,15 @@ async function testCommand() {
         const wasm = await WebAssembly.compile(output);
         // @ts-ignore
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
+    });
+
+    test("compiles include", async () => {
+        const output = await compile("./examples/test/include.lo");
+
+        const program = await loadWasm(output);
+
+        assert.strictEqual(program.main(), 42);
+        assert.strictEqual(program.f(), 123);
     });
 
     test("compiles std", async () => {
@@ -580,6 +589,37 @@ async function testCommand() {
         }
     });
 
+    describe("Compiler V2", async () => {
+        const compileV2 = await loadCompilerWithWasiAPI(
+            await fs.readFile(COMPILER_PATH),
+            {
+                buildArgs: (fileName) => [
+                    "lo",
+                    fileName ?? "-i",
+                    "--compile-v2",
+                ],
+            }
+        );
+
+        it("compiles 42.lo", async () => {
+            const output = await compileV2("./examples/test/42.lo");
+
+            const program = await loadWasm(output);
+            const result = program.main();
+
+            assert.strictEqual(result, 42);
+        });
+
+        it("compiles include.lo", async () => {
+            const output = await compileV2("./examples/test/include.lo");
+
+            const program = await loadWasm(output);
+
+            assert.strictEqual(program.main(), 42);
+            assert.strictEqual(program.f(), 123);
+        });
+    });
+
     describe("self hosted", async () => {
         const selfHostedCompiler = await compile("examples/lo.lo");
         const selfHostedCompile = await loadCompilerWithWasiAPI(
@@ -661,7 +701,16 @@ async function testCommand() {
  * @param {Buffer} compilerWasmBinary
  * @returns {Promise<(sourcePath: string) => Promise<Promise<Buffer>>>}
  */
-async function loadCompilerWithWasiAPI(compilerWasmBinary, mockStdin = false) {
+async function loadCompilerWithWasiAPI(
+    compilerWasmBinary,
+    {
+        mockStdin = false,
+        buildArgs = (/** @type {string | undefined} */ fileName) => [
+            "lo",
+            fileName ?? "-i",
+        ],
+    } = {}
+) {
     const mod = await WebAssembly.compile(compilerWasmBinary);
 
     /**
@@ -676,7 +725,7 @@ async function loadCompilerWithWasiAPI(compilerWasmBinary, mockStdin = false) {
                     stdin: stdinFd,
                     stdout: stdout.fd,
                     stderr: stderr.fd,
-                    args: ["lo", fileName ?? "-i"],
+                    args: buildArgs(fileName),
                     preopens: { ".": "." },
                 });
 
