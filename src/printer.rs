@@ -31,9 +31,14 @@ impl Printer {
     fn print_file(&mut self, exprs: &Vec<TopLevelExpr>) {
         if self.format == TranspileToC {
             stdout_writeln("#pragma once");
+            stdout_writeln("");
         }
 
-        for expr in exprs {
+        for (expr, index) in exprs.iter().zip(0..) {
+            if index != 0 {
+                stdout_writeln("");
+            };
+
             self.print_comments_before_pos(&expr.loc().pos);
             self.print_top_level_expr(expr);
 
@@ -42,7 +47,6 @@ impl Printer {
             } else {
                 stdout_writeln("");
             }
-            stdout_writeln("");
         }
 
         // print the rest of the comments
