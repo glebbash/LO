@@ -29,6 +29,10 @@ impl Printer {
     }
 
     fn print_file(&mut self, exprs: &Vec<TopLevelExpr>) {
+        if self.format == TranspileToC {
+            stdout_writeln("#pragma once");
+        }
+
         for expr in exprs {
             self.print_comments_before_pos(&expr.loc().pos);
             self.print_top_level_expr(expr);
@@ -53,6 +57,7 @@ impl Printer {
     fn print_top_level_expr(&mut self, expr: &TopLevelExpr) {
         match expr {
             TopLevelExpr::FnDef(fn_def) => self.print_fn_def(fn_def),
+            TopLevelExpr::Include(include) => self.print_include(include),
         }
     }
 
@@ -78,6 +83,16 @@ impl Printer {
         self.print_code_block_expr(&fn_def.body);
     }
 
+    fn print_include(&mut self, include: &IncludeExpr) {
+        if self.format == TranspileToC {
+            stdout_write("#");
+        }
+        stdout_write("include ");
+        stdout_write("\"");
+        stdout_write(&include.file_path);
+        stdout_write("\"");
+    }
+
     fn print_type(&mut self, type_expr: &TypeExpr) {
         if self.format == TranspileToC {
             match type_expr {
@@ -101,7 +116,7 @@ impl Printer {
             self.print_indent();
             self.print_code_expr(expr);
 
-            if self.print_semi(expr) {
+            if self.should_print_semi(expr) {
                 stdout_writeln(";");
             } else {
                 stdout_writeln("");
@@ -145,13 +160,14 @@ impl Printer {
         if self.format == TranspileToC {
             match expr {
                 TopLevelExpr::FnDef(_) => false,
+                TopLevelExpr::Include(_) => false,
             }
         } else {
             true
         }
     }
 
-    fn print_semi(&mut self, expr: &CodeExpr) -> bool {
+    fn should_print_semi(&mut self, expr: &CodeExpr) -> bool {
         if self.format == TranspileToC {
             match expr {
                 CodeExpr::Return(_) | CodeExpr::IntLiteral(_) => true,

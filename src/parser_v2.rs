@@ -1,11 +1,57 @@
 use crate::{ast::*, core::*, lexer::*};
-use alloc::{boxed::Box, format, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 use LoTokenType::*;
 
+#[derive(Debug)]
+pub struct FileInfo {
+    pub path: String,
+    pub ast: AST,
+}
+
+pub fn parse_file_and_deps(
+    files: &mut Vec<FileInfo>,
+    file_name: &str,
+    loc: &LoLocation,
+) -> Result<(), LoError> {
+    let file_path = resolve_path(file_name, &loc.file_name);
+
+    for file in files.iter() {
+        // file already parsed, skip
+        if file.path == file_path {
+            return Ok(());
+        }
+    }
+
+    let chars = file_read_utf8(&file_path).map_err(|message| LoError {
+        message,
+        loc: loc.clone(),
+    })?;
+    let tokens = Lexer::lex(&file_path, &chars)?;
+    let ast = ParserV2::parse(tokens)?;
+
+    let mut includes = Vec::new();
+    for expr in &ast.exprs {
+        if let TopLevelExpr::Include(include) = expr {
+            includes.push(include.clone());
+        };
+    }
+
+    files.push(FileInfo {
+        path: file_path.into(),
+        ast,
+    });
+
+    for include in includes {
+        parse_file_and_deps(files, &include.file_path, &include.loc)?;
+    }
+
+    Ok(())
+}
+
 pub struct ParserV2 {
     pub tokens: Vec<LoToken>,
-    pub index: usize,
+    pub tokens_processed: usize,
     pub terminal_token: LoToken,
 }
 
@@ -13,7 +59,7 @@ impl ParserV2 {
     pub fn parse(tokens: Tokens) -> Result<AST, LoError> {
         let mut parser = ParserV2 {
             tokens: tokens.tokens,
-            index: 0,
+            tokens_processed: 0,
             terminal_token: LoToken {
                 type_: LoTokenType::Symbol,
                 value: "<EOF>".into(),
@@ -22,7 +68,7 @@ impl ParserV2 {
         };
 
         let mut ast = AST {
-            exprs: vec![],
+            exprs: Vec::new(),
             comments: tokens.comments,
         };
 
@@ -68,6 +114,17 @@ impl ParserV2 {
             return Ok(TopLevelExpr::FnDef(fn_def));
         }
 
+        if let Some(include_token) = self.eat(Symbol, "include")?.cloned() {
+            let mut loc = include_token.loc;
+            let file_path = self.expect_any(StringLiteral)?;
+            loc.end_pos = file_path.loc.end_pos.clone();
+
+            return Ok(TopLevelExpr::Include(IncludeExpr {
+                file_path: file_path.value.clone(),
+                loc,
+            }));
+        }
+
         let unexpected = self.current();
         return Err(LoError {
             message: format!("Unexpected top level token: {:?}", unexpected.value),
@@ -83,8 +140,7 @@ impl ParserV2 {
         let return_type = self.parse_type_expr()?;
         let body = self.parse_code_block_expr()?;
 
-        // TODO: is it pos or end_pos?
-        loc.end_pos = self.current().loc.pos.clone();
+        loc.end_pos = body.loc.end_pos.clone();
 
         return Ok(FnDefExpr {
             exported,
@@ -111,7 +167,7 @@ impl ParserV2 {
         let open_brace = self.expect(Delim, "{")?;
 
         let mut code_block = CodeBlockExpr {
-            exprs: vec![],
+            exprs: Vec::new(),
             loc: open_brace.loc.clone(),
         };
 
@@ -201,17 +257,17 @@ impl ParserV2 {
     }
 
     fn peek(&self) -> Option<&LoToken> {
-        self.tokens.get(self.index)
+        self.tokens.get(self.tokens_processed)
     }
 
     fn next(&mut self) -> Option<&LoToken> {
-        let token = self.tokens.get(self.index);
-        self.index += 1;
+        let token = self.tokens.get(self.tokens_processed);
+        self.tokens_processed += 1;
         token
     }
 
     fn current(&self) -> &LoToken {
-        if let Some(token) = self.tokens.get(self.index) {
+        if let Some(token) = self.tokens.get(self.tokens_processed) {
             &token
         } else {
             &self.terminal_token

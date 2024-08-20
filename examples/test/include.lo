@@ -1,0 +1,5 @@
+include "./42.lo";
+
+fn f(): u32 {
+    return 123;
+};

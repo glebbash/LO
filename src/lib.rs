@@ -6,6 +6,7 @@ extern crate alloc;
 mod ast;
 mod core;
 mod ir;
+mod ir_generator;
 mod lexer;
 mod parser;
 mod parser_v2;
@@ -34,6 +35,7 @@ mod wasm_target {
 static USAGE: &str = "\
 Usage: lo <file> [mode]
   where [mode] is either:
+    --compile-v2 (temporary)
     --inspect
     --pretty-print
     --print-c
@@ -41,7 +43,7 @@ Usage: lo <file> [mode]
 ";
 
 mod wasi_api {
-    use crate::{core::*, lexer::*, parser, parser_v2::*, printer::*, USAGE};
+    use crate::{core::*, ir_generator::*, lexer::*, parser, parser_v2::*, printer::*, USAGE};
     use alloc::{format, string::String, vec::Vec};
 
     #[no_mangle]
@@ -66,6 +68,7 @@ mod wasi_api {
 
         let compiler_mode = match args.get(2) {
             None => CompilerMode::Compile,
+            Some("--compile-v2") => CompilerMode::CompileV2,
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
             Some("--print-c") => CompilerMode::PrintC,
@@ -73,6 +76,23 @@ mod wasi_api {
                 return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
             }
         };
+
+        if compiler_mode == CompilerMode::CompileV2 {
+            let mut files = Vec::new();
+            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
+
+            let mut ir_generator = IRGenerator::default();
+            for file in &files {
+                ir_generator.process_file(file)?;
+            }
+            let wasm_module = ir_generator.generate()?;
+
+            let mut binary = Vec::new();
+            wasm_module.dump(&mut binary);
+            fputs(wasi::FD_STDOUT, binary.as_slice());
+
+            return Ok(());
+        }
 
         if compiler_mode == CompilerMode::PrettyPrint || compiler_mode == CompilerMode::PrintC {
             let chars = file_read_utf8(file_name)?;

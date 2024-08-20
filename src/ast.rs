@@ -14,14 +14,7 @@ pub struct AST {
 #[derive(Debug)]
 pub enum TopLevelExpr {
     FnDef(FnDefExpr),
-}
-
-impl Locatable for TopLevelExpr {
-    fn loc(&self) -> &LoLocation {
-        match self {
-            TopLevelExpr::FnDef(fn_def) => &fn_def.loc,
-        }
-    }
+    Include(IncludeExpr),
 }
 
 #[derive(Debug)]
@@ -31,6 +24,21 @@ pub struct FnDefExpr {
     pub return_type: TypeExpr,
     pub body: CodeBlockExpr,
     pub loc: LoLocation,
+}
+
+#[derive(Debug, Clone)]
+pub struct IncludeExpr {
+    pub file_path: String,
+    pub loc: LoLocation,
+}
+
+impl Locatable for TopLevelExpr {
+    fn loc(&self) -> &LoLocation {
+        match self {
+            TopLevelExpr::FnDef(e) => &e.loc,
+            TopLevelExpr::Include(e) => &e.loc,
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -5,6 +5,7 @@ use core::{ffi::CStr, str};
 pub enum CompilerMode {
     #[default]
     Compile,
+    CompileV2,
     Inspect,
     PrettyPrint,
     PrintC,
@@ -145,14 +146,15 @@ pub fn file_read_utf8(file_path: &str) -> Result<String, String> {
 }
 
 pub fn file_read(file_path: &str) -> Result<Vec<u8>, String> {
-    if unsafe { !FS_UNLOCKED } {
-        unlock_fs().map_err(|err| format!("Error unlocking fs: error code = {err}"))?;
-    }
-
     if file_path == "<stdin>" {
         return fd_read_all(wasi::FD_STDIN)
             .map_err(|err| format!("Cannot read <stdin>: error code = {err}"));
     };
+
+    if unsafe { !FS_UNLOCKED } {
+        unlock_fs().map_err(|err| format!("Error unlocking fs: error code = {err}"))?;
+        unsafe { FS_UNLOCKED = true };
+    }
 
     let fd = fd_open(&file_path)
         .map_err(|err| format!("Cannot open file {file_path}: error code = {err}"))?;
