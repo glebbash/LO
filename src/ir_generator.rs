@@ -104,6 +104,10 @@ impl IRGenerator {
                 // TODO: support compiling VarLoad
                 return Err(LoError::todo(file!(), line!()));
             }
+            CodeExpr::Add(_) => {
+                // TODO: support compiling Add
+                return Err(LoError::todo(file!(), line!()));
+            }
         }
 
         Ok(())

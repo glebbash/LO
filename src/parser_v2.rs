@@ -195,7 +195,7 @@ impl ParserV2 {
         };
 
         while let None = self.eat(Delim, "}")? {
-            let expr = self.parse_code_expr()?;
+            let expr = self.parse_code_expr(0)?;
             code_block.exprs.push(expr);
 
             self.expect(Delim, ";")?;
@@ -207,10 +207,30 @@ impl ParserV2 {
         return Ok(code_block);
     }
 
-    fn parse_code_expr(&mut self) -> Result<CodeExpr, LoError> {
+    fn parse_code_expr(&mut self, min_bp: u32) -> Result<CodeExpr, LoError> {
+        let mut primary = self.parse_code_expr_primary()?;
+
+        while self.peek().is_some() {
+            let op_symbol = self.peek().unwrap().clone();
+            let Some(op) = InfixOp::parse(op_symbol) else {
+                break;
+            };
+
+            if op.info.bp < min_bp {
+                break;
+            }
+
+            self.next(); // skip operator
+            primary = self.parse_code_expr_postfix(primary, op)?;
+        }
+
+        Ok(primary)
+    }
+
+    fn parse_code_expr_primary(&mut self) -> Result<CodeExpr, LoError> {
         if let Some(return_token) = self.eat(Symbol, "return")?.cloned() {
             let mut loc = return_token.loc;
-            let expr = self.parse_code_expr()?;
+            let expr = self.parse_code_expr(0)?;
             loc.end_pos = expr.loc().end_pos.clone();
 
             return Ok(CodeExpr::Return(ReturnExpr {
@@ -238,6 +258,31 @@ impl ParserV2 {
             message: format!("Unexpected code expr token: {:?}", unexpected.value),
             loc: unexpected.loc.clone(),
         });
+    }
+
+    fn parse_code_expr_postfix(
+        &mut self,
+        primary: CodeExpr,
+        op: InfixOp,
+    ) -> Result<CodeExpr, LoError> {
+        let min_bp = op.info.get_min_bp_for_next();
+
+        match op.tag {
+            InfixOpTag::Add => {
+                let lhs = primary;
+                let rhs = self.parse_code_expr(min_bp)?;
+
+                let mut loc = lhs.loc().clone();
+                loc.end_pos = rhs.loc().end_pos.clone();
+
+                Ok(CodeExpr::Add(AddExpr {
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    loc,
+                }))
+            }
+            _ => Err(LoError::todo(file!(), line!())),
+        }
     }
 
     // utils

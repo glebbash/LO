@@ -64,6 +64,7 @@ pub enum CodeExpr {
     Return(ReturnExpr),
     IntLiteral(IntLiteralExpr),
     VarLoad(VarLoadExpr),
+    Add(AddExpr),
 }
 
 #[derive(Debug)]
@@ -84,12 +85,20 @@ pub struct VarLoadExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct AddExpr {
+    pub lhs: Box<CodeExpr>,
+    pub rhs: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
             CodeExpr::Return(e) => &e.loc,
             CodeExpr::IntLiteral(e) => &e.loc,
             CodeExpr::VarLoad(e) => &e.loc,
+            CodeExpr::Add(e) => &e.loc,
         }
     }
 }

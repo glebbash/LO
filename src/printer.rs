@@ -168,6 +168,11 @@ impl Printer {
             CodeExpr::VarLoad(VarLoadExpr { name, .. }) => {
                 stdout_write(name);
             }
+            CodeExpr::Add(AddExpr { lhs, rhs, .. }) => {
+                self.print_code_expr(lhs);
+                stdout_write(" + ");
+                self.print_code_expr(rhs);
+            }
         }
     }
 
@@ -198,7 +203,10 @@ impl Printer {
     fn should_print_semi(&mut self, expr: &CodeExpr) -> bool {
         if self.format == TranspileToC {
             match expr {
-                CodeExpr::Return(_) | CodeExpr::IntLiteral(_) | CodeExpr::VarLoad(_) => true,
+                CodeExpr::Return(_)
+                | CodeExpr::IntLiteral(_)
+                | CodeExpr::VarLoad(_)
+                | CodeExpr::Add(_) => true,
             }
         } else {
             true
