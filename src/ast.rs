@@ -63,6 +63,7 @@ pub struct CodeBlockExpr {
 pub enum CodeExpr {
     Return(ReturnExpr),
     IntLiteral(IntLiteralExpr),
+    VarLoad(VarLoadExpr),
 }
 
 #[derive(Debug)]
@@ -77,11 +78,18 @@ pub struct IntLiteralExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct VarLoadExpr {
+    pub name: String,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
             CodeExpr::Return(e) => &e.loc,
             CodeExpr::IntLiteral(e) => &e.loc,
+            CodeExpr::VarLoad(e) => &e.loc,
         }
     }
 }

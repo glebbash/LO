@@ -226,6 +226,13 @@ impl ParserV2 {
             }));
         };
 
+        if let Some(symbol) = self.eat_any(Symbol)? {
+            return Ok(CodeExpr::VarLoad(VarLoadExpr {
+                name: symbol.value.clone(),
+                loc: symbol.loc.clone(),
+            }));
+        };
+
         let unexpected = self.current();
         return Err(LoError {
             message: format!("Unexpected code expr token: {:?}", unexpected.value),

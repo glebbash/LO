@@ -20,7 +20,14 @@ pub struct LoError {
 impl LoError {
     pub fn unreachable(file: &str, line: u32) -> LoError {
         LoError {
-            message: format!("Unreachable in {}:{}", file, line),
+            message: format!("{}:{} - unreachable", file, line),
+            loc: LoLocation::internal(),
+        }
+    }
+
+    pub fn todo(file: &str, line: u32) -> LoError {
+        LoError {
+            message: format!("{}:{} - not implemented", file, line),
             loc: LoLocation::internal(),
         }
     }

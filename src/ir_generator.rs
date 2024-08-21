@@ -100,6 +100,10 @@ impl IRGenerator {
                     value: value as i32,
                 })
             }
+            CodeExpr::VarLoad(_) => {
+                // TODO: support compiling VarLoad
+                return Err(LoError::todo(file!(), line!()));
+            }
         }
 
         Ok(())
