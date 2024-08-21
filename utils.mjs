@@ -167,6 +167,14 @@ async function testCommand() {
         assert.strictEqual(result, 42);
     });
 
+    it("compiles add.lo", async () => {
+        const output = await compile("./examples/test/add.lo");
+
+        const program = await loadWasm(output);
+
+        assert.strictEqual(program.add(2, 3), 5);
+    });
+
     test("compiles factorial", async () => {
         const output = await compile("./examples/test/factorial.lo");
 
@@ -608,6 +616,14 @@ async function testCommand() {
             const result = program.main();
 
             assert.strictEqual(result, 42);
+        });
+
+        it("compiles add.lo", async () => {
+            const output = await compileV2("./examples/test/add.lo");
+
+            const program = await loadWasm(output);
+
+            assert.strictEqual(program.add(2, 3), 5);
         });
 
         it("compiles include.lo", async () => {
