@@ -21,9 +21,16 @@ pub enum TopLevelExpr {
 pub struct FnDefExpr {
     pub exported: bool,
     pub fn_name: String,
+    pub fn_params: Vec<FnParam>,
     pub return_type: TypeExpr,
     pub body: CodeBlockExpr,
     pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct FnParam {
+    pub name: String,
+    pub type_: TypeExpr,
 }
 
 #[derive(Debug, Clone)]

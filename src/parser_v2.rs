@@ -134,8 +134,7 @@ impl ParserV2 {
 
     fn parse_fn_def(&mut self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
         let fn_name = self.expect_any(Symbol)?.clone().value;
-        let _ = self.expect(Delim, "(")?;
-        let _ = self.expect(Delim, ")")?;
+        let fn_params = self.parse_fn_params()?;
         let _ = self.expect(Operator, ":")?;
         let return_type = self.parse_type_expr()?;
         let body = self.parse_code_block_expr()?;
@@ -145,10 +144,34 @@ impl ParserV2 {
         return Ok(FnDefExpr {
             exported,
             fn_name,
+            fn_params,
             return_type,
             body,
             loc,
         });
+    }
+
+    fn parse_fn_params(&mut self) -> Result<Vec<FnParam>, LoError> {
+        let mut params = Vec::<FnParam>::new();
+
+        let _ = self.expect(Delim, "(")?;
+
+        while let None = self.eat(Delim, ")")? {
+            let p_name = self.expect_any(Symbol)?.clone();
+            self.expect(Operator, ":")?;
+            let p_type = self.parse_type_expr()?;
+
+            if !self.next_is(Delim, ")")? {
+                self.expect(Delim, ",")?;
+            }
+
+            params.push(FnParam {
+                name: p_name.value,
+                type_: p_type,
+            });
+        }
+
+        Ok(params)
     }
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, LoError> {
@@ -256,6 +279,14 @@ impl ParserV2 {
         }
     }
 
+    fn next_is(&mut self, type_: LoTokenType, value: &str) -> Result<bool, LoError> {
+        match self.peek() {
+            Some(token) if token.is(type_, value) => Ok(true),
+            Some(_) => Ok(false),
+            _ => self.err_eof(format!("Unexpected EOF")),
+        }
+    }
+
     fn peek(&self) -> Option<&LoToken> {
         self.tokens.get(self.tokens_processed)
     }
@@ -272,5 +303,12 @@ impl ParserV2 {
         } else {
             &self.terminal_token
         }
+    }
+
+    fn err_eof<T>(&self, message: String) -> Result<T, LoError> {
+        Err(LoError {
+            message,
+            loc: self.terminal_token.loc.clone(),
+        })
     }
 }

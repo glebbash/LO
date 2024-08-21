@@ -65,12 +65,23 @@ impl Printer {
         }
     }
 
+    // TODO: figure out multiline param printing
     fn print_fn_def(&mut self, fn_def: &FnDefExpr) {
         if self.format == TranspileToC {
             self.print_type(&fn_def.return_type);
             stdout_write(" ");
             stdout_write(&fn_def.fn_name);
-            stdout_write("()");
+            stdout_write("(");
+            for (fn_param, index) in fn_def.fn_params.iter().zip(0..) {
+                if index != 0 {
+                    stdout_write(", ");
+                }
+
+                self.print_type(&fn_param.type_);
+                stdout_write(" ");
+                stdout_write(&fn_param.name);
+            }
+            stdout_write(")");
             stdout_writeln("");
             self.print_code_block_expr(&fn_def.body);
             return;
@@ -81,7 +92,17 @@ impl Printer {
         }
         stdout_write("fn ");
         stdout_write(&fn_def.fn_name);
-        stdout_write("(): ");
+        stdout_write("(");
+        for (fn_param, index) in fn_def.fn_params.iter().zip(0..) {
+            if index != 0 {
+                stdout_write(", ");
+            }
+
+            stdout_write(&fn_param.name);
+            stdout_write(": ");
+            self.print_type(&fn_param.type_);
+        }
+        stdout_write("): ");
         self.print_type(&fn_def.return_type);
         stdout_write(" ");
         self.print_code_block_expr(&fn_def.body);
