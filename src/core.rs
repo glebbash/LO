@@ -315,3 +315,26 @@ impl<'a> core::fmt::Display for RangeDisplay<'a> {
         Ok(())
     }
 }
+
+#[derive(Default)]
+pub struct LoErrorManager {
+    errors: Vec<LoError>,
+}
+
+impl LoErrorManager {
+    pub fn report(&mut self, error: LoError) {
+        self.errors.push(error);
+    }
+
+    pub fn print_all(&self) -> Result<(), String> {
+        if self.errors.len() == 0 {
+            return Ok(());
+        }
+
+        for error in &self.errors {
+            stderr_write(format!("{error}\n"));
+        }
+
+        Err(format!(""))
+    }
+}

@@ -85,6 +85,9 @@ mod wasi_api {
             for file in &files {
                 ir_generator.process_file(file)?;
             }
+
+            ir_generator.errors.print_all()?;
+
             let wasm_module = ir_generator.generate()?;
 
             let mut binary = Vec::new();

@@ -4,6 +4,7 @@ use alloc::{format, string::String, vec::Vec};
 #[derive(Default)]
 pub struct IRGenerator {
     wasm_module: WasmModule,
+    pub errors: LoErrorManager,
 }
 
 struct Variable {
@@ -28,7 +29,6 @@ impl IRGenerator {
         Ok(())
     }
 
-    // TODO: check for duplicate function param names
     fn process_fn_def(&mut self, fn_def: &FnDefExpr) -> Result<(), LoError> {
         let mut scope = CodeScope { locals: Vec::new() };
 
@@ -41,13 +41,23 @@ impl IRGenerator {
         fn_type.outputs.push(return_type);
 
         for (fn_param, index) in fn_def.fn_params.iter().zip(0..) {
+            for local in &scope.locals {
+                if local.name == fn_param.name {
+                    self.errors.report(LoError {
+                        message: format!("Duplicate function parameter name: {}", fn_param.name),
+                        loc: fn_param.loc.clone(),
+                    });
+                    continue;
+                }
+            }
+
             let param_type = self.build_type(&fn_param.type_)?;
             fn_type.inputs.push(param_type.clone());
 
             scope.locals.push(Variable {
                 name: fn_param.name.clone(),
                 index: index as u32,
-            })
+            });
         }
 
         let mut fn_code = WasmFn {

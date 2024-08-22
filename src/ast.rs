@@ -31,6 +31,7 @@ pub struct FnDefExpr {
 pub struct FnParam {
     pub name: String,
     pub type_: TypeExpr,
+    pub loc: LoLocation,
 }
 
 #[derive(Debug, Clone)]

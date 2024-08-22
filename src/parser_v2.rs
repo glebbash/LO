@@ -168,6 +168,7 @@ impl ParserV2 {
             params.push(FnParam {
                 name: p_name.value,
                 type_: p_type,
+                loc: p_name.loc,
             });
         }
 

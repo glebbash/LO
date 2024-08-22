@@ -634,6 +634,23 @@ async function testCommand() {
             assert.strictEqual(program.main(), 42);
             assert.strictEqual(program.f(), 123);
         });
+
+        it("reports multiple errors in err.lo", async () => {
+            try {
+                await compileV2("./examples/test/multiple-compiler-errors.lo");
+            } catch (err) {
+                assert.strictEqual(
+                    err.message,
+                    m`
+                    examples/test/multiple-compiler-errors.lo:3:14 - Duplicate function parameter name: a
+                    examples/test/multiple-compiler-errors.lo:4:14 - Duplicate function parameter name: b
+                    examples/test/multiple-compiler-errors.lo:5:14 - Duplicate function parameter name: c
+
+
+                    `
+                );
+            }
+        });
     });
 
     describe("self hosted", async () => {
