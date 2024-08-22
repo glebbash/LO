@@ -108,6 +108,7 @@ impl Printer {
         self.print_code_block_expr(&fn_def.body);
     }
 
+    // TODO: figure out include path mapping in TranspileToC
     fn print_include(&mut self, include: &IncludeExpr) {
         if self.format == TranspileToC {
             stdout_write("#");
