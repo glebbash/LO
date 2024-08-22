@@ -1,6 +1,19 @@
 use crate::{ast::*, core::*, parser_v2::*, wasm::*};
 use alloc::{format, string::String, vec::Vec};
 
+#[derive(Clone)]
+enum LoType {
+    U32,
+}
+
+impl LoType {
+    fn emit_components(&self, out: &mut Vec<WasmType>) {
+        match self {
+            LoType::U32 => out.push(WasmType::I32),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct IRGenerator {
     wasm_module: WasmModule,
@@ -38,7 +51,7 @@ impl IRGenerator {
         };
 
         let return_type = self.build_type(&fn_def.return_type)?;
-        fn_type.outputs.push(return_type);
+        return_type.emit_components(&mut fn_type.outputs);
 
         for (fn_param, index) in fn_def.fn_params.iter().zip(0..) {
             for local in &scope.locals {
@@ -52,7 +65,7 @@ impl IRGenerator {
             }
 
             let param_type = self.build_type(&fn_param.type_)?;
-            fn_type.inputs.push(param_type.clone());
+            param_type.emit_components(&mut fn_type.inputs);
 
             scope.locals.push(Variable {
                 name: fn_param.name.clone(),
@@ -108,9 +121,9 @@ impl IRGenerator {
         Ok(&self.wasm_module)
     }
 
-    fn build_type(&mut self, type_expr: &TypeExpr) -> Result<WasmType, LoError> {
+    fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::U32 => Ok(WasmType::I32),
+            TypeExpr::U32 => Ok(LoType::U32),
         }
     }
 
