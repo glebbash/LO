@@ -15,6 +15,7 @@ Documentation of LO language features.
 - [🧑‍💻 Code Expressions](#-code-expressions)
   - [Integer literals](#integer-literals)
   - [Return](#return)
+  - [Binary operators](#binary-operators)
 - [🧱 Types](#-types)
   - [Numerical types](#numerical-types)
 - [💬 Comments](#-comments)
@@ -36,8 +37,8 @@ Top level expressions are only allowed at the top level of the file (not inside 
 ### Function definition
 
 ```lo
-fn answer(): u32 {
-    return 42;
+fn add(x: u32, y: u32): u32 {
+    return a + b;
 };
 ```
 
@@ -93,6 +94,18 @@ return 123;
 ```
 
 > Expression type: `never`
+
+### Binary operators
+
+```lo
+1 + 2
+```
+
+Numeric operators: `+`
+
+Numeric operators require both operands to be of the same type.
+
+> Expression type: Same as operand type
 
 ## 🧱 Types
 
