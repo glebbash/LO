@@ -44,7 +44,7 @@ Usage: lo <file> [mode]
 
 mod wasi_api {
     use crate::{core::*, ir_generator::*, lexer::*, parser, parser_v2::*, printer::*, USAGE};
-    use alloc::{format, string::String, vec::Vec};
+    use alloc::{format, rc::Rc, string::String, vec::Vec};
 
     #[no_mangle]
     pub extern "C" fn _start() {
@@ -97,17 +97,27 @@ mod wasi_api {
             return Ok(());
         }
 
-        if compiler_mode == CompilerMode::PrettyPrint || compiler_mode == CompilerMode::PrintC {
+        if compiler_mode == CompilerMode::PrettyPrint {
             let chars = file_read_utf8(file_name)?;
             let tokens = Lexer::lex(file_name, &chars)?;
             let ast = ParserV2::parse(tokens)?;
 
-            let print_format = if compiler_mode == CompilerMode::PrettyPrint {
-                PrintFormat::PrettyPrint
-            } else {
-                PrintFormat::TranspileToC
-            };
-            Printer::print(ast, print_format);
+            Printer::print(Rc::new(ast), PrintFormat::PrettyPrint, false);
+
+            return Ok(());
+        };
+
+        if compiler_mode == CompilerMode::PrintC {
+            let mut files = Vec::new();
+            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
+
+            for (file, index) in files.into_iter().zip(0..) {
+                if index != 0 {
+                    stdout_writeln("");
+                }
+
+                Printer::print(Rc::new(file.ast), PrintFormat::TranspileToC, true);
+            }
 
             return Ok(());
         };

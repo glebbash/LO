@@ -1,5 +1,7 @@
-use crate::{ast::*, core::*, lexer::*};
-use alloc::vec::Vec;
+use core::usize;
+
+use crate::{ast::*, core::*};
+use alloc::rc::Rc;
 
 use PrintFormat::*;
 
@@ -11,52 +13,62 @@ pub enum PrintFormat {
 
 pub struct Printer {
     format: PrintFormat,
+    bundle: bool,
+    ast: Rc<AST>,
     indent: usize,
-    comments: Vec<Comment>,
     comments_printed: usize,
 }
 
 impl Printer {
-    pub fn print(ast: AST, format: PrintFormat) {
+    pub fn print(ast: Rc<AST>, format: PrintFormat, bundle: bool) {
         let mut printer = Printer {
             format,
+            bundle,
+            ast,
             indent: 0,
-            comments: ast.comments,
             comments_printed: 0,
         };
 
-        printer.print_file(&ast.exprs);
+        printer.print_file();
     }
 
-    fn print_file(&mut self, exprs: &Vec<TopLevelExpr>) {
-        if self.format == TranspileToC {
+    // TODO: print all function declarations first in C mode
+    fn print_file(&mut self) {
+        if self.format == TranspileToC && !self.bundle {
             stdout_writeln("#pragma once");
             stdout_writeln("");
         }
 
-        for (expr, index) in exprs.iter().zip(0..) {
-            if index != 0 {
+        let mut should_add_newline = false;
+        for expr in &self.ast.clone().exprs {
+            if should_add_newline {
                 stdout_writeln("");
             };
 
-            self.print_comments_before_pos(&expr.loc().pos);
-            self.print_top_level_expr(expr);
+            self.print_comments_before_pos(expr.loc().pos.offset);
+            let printed = self.print_top_level_expr(expr);
+            should_add_newline = !printed;
         }
 
         // print the rest of the comments
-        if self.comments_printed != self.comments.len() {
-            for comment in self.comments.iter().skip(self.comments_printed) {
-                stdout_writeln(&comment.content);
-            }
-            stdout_writeln("");
-        }
+        self.print_comments_before_pos(usize::MAX);
     }
 
-    fn print_top_level_expr(&mut self, expr: &TopLevelExpr) {
-        match expr {
-            TopLevelExpr::FnDef(fn_def) => self.print_fn_def(fn_def),
-            TopLevelExpr::Include(include) => self.print_include(include),
+    fn print_top_level_expr(&mut self, expr: &TopLevelExpr) -> bool {
+        match &expr {
+            TopLevelExpr::FnDef(fn_def) => {
+                self.print_fn_def(fn_def);
+            }
+            TopLevelExpr::Include(include) => {
+                if self.bundle {
+                    return false;
+                }
+
+                self.print_include(include);
+            }
         }
+
+        true
     }
 
     // TODO: figure out multiline param printing
@@ -134,14 +146,14 @@ impl Printer {
         self.indent += 1;
 
         for expr in &code_block.exprs {
-            self.print_comments_before_pos(&expr.loc().pos);
+            self.print_comments_before_pos(expr.loc().pos.offset);
             self.print_indent();
             self.print_code_expr(expr);
             stdout_writeln(";");
         }
 
         // print the rest of the comments
-        self.print_comments_before_pos(&code_block.loc.end_pos);
+        self.print_comments_before_pos(code_block.loc.end_pos.offset);
 
         self.indent -= 1;
 
@@ -210,10 +222,10 @@ impl Printer {
         }
     }
 
-    fn print_comments_before_pos(&mut self, pos: &LoPosition) {
-        while self.comments_printed < self.comments.len() {
-            let comment = &self.comments[self.comments_printed];
-            if comment.loc.end_pos.offset > pos.offset {
+    fn print_comments_before_pos(&mut self, offset: usize) {
+        while self.comments_printed < self.ast.comments.len() {
+            let comment = &self.ast.comments[self.comments_printed];
+            if comment.loc.end_pos.offset > offset {
                 break;
             }
 
