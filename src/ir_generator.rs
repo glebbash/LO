@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, parser_v2::*, wasm::*};
+use crate::{ast::*, core::*, lexer::InfixOpTag, parser_v2::*, wasm::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 #[derive(Clone, PartialEq)]
@@ -238,7 +238,16 @@ impl IRGenerator {
                     loc: var_load.loc.clone(),
                 })
             }
-            CodeExpr::Add(AddExpr { lhs, rhs, loc }) => {
+            CodeExpr::BinaryOp(BinaryOpExpr {
+                op_tag,
+                lhs,
+                rhs,
+                loc,
+            }) => {
+                if *op_tag != InfixOpTag::Add {
+                    return Err(LoError::todo(file!(), line!()));
+                }
+
                 let lo_lhs = self.build_code_expr(scope, lhs)?;
                 let lo_rhs = self.build_code_expr(scope, rhs)?;
 
@@ -258,6 +267,7 @@ impl IRGenerator {
                     rhs: Box::new(lo_rhs),
                 })
             }
+            _ => Err(LoError::todo(file!(), line!())),
         }
     }
 }

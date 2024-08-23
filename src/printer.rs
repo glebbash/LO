@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, lexer::Comment};
+use crate::{ast::*, core::*, lexer::*};
 use alloc::vec::Vec;
 
 use PrintFormat::*;
@@ -41,12 +41,6 @@ impl Printer {
 
             self.print_comments_before_pos(&expr.loc().pos);
             self.print_top_level_expr(expr);
-
-            if self.should_print_semi_top_level(expr) {
-                stdout_writeln(";");
-            } else {
-                stdout_writeln("");
-            }
         }
 
         // print the rest of the comments
@@ -70,27 +64,13 @@ impl Printer {
         if self.format == TranspileToC {
             self.print_type(&fn_def.return_type);
             stdout_write(" ");
-            stdout_write(&fn_def.fn_name);
-            stdout_write("(");
-            for (fn_param, index) in fn_def.fn_params.iter().zip(0..) {
-                if index != 0 {
-                    stdout_write(", ");
-                }
-
-                self.print_type(&fn_param.type_);
-                stdout_write(" ");
-                stdout_write(&fn_param.name);
+        } else {
+            if fn_def.exported {
+                stdout_write("export ");
             }
-            stdout_write(")");
-            stdout_writeln("");
-            self.print_code_block_expr(&fn_def.body);
-            return;
+            stdout_write("fn ");
         }
 
-        if fn_def.exported {
-            stdout_write("export ");
-        }
-        stdout_write("fn ");
         stdout_write(&fn_def.fn_name);
         stdout_write("(");
         for (fn_param, index) in fn_def.fn_params.iter().zip(0..) {
@@ -98,25 +78,41 @@ impl Printer {
                 stdout_write(", ");
             }
 
+            if self.format == TranspileToC {
+                self.print_type(&fn_param.type_);
+                stdout_write(" ");
+                stdout_write(&fn_param.name);
+                continue;
+            }
+
             stdout_write(&fn_param.name);
             stdout_write(": ");
             self.print_type(&fn_param.type_);
         }
-        stdout_write("): ");
-        self.print_type(&fn_def.return_type);
+        stdout_write(")");
+
+        if self.format != TranspileToC {
+            stdout_write(": ");
+            self.print_type(&fn_def.return_type);
+        }
+
         stdout_write(" ");
         self.print_code_block_expr(&fn_def.body);
+        stdout_writeln(";");
     }
 
-    // TODO: figure out include path mapping in TranspileToC
     fn print_include(&mut self, include: &IncludeExpr) {
         if self.format == TranspileToC {
             stdout_write("#");
         }
         stdout_write("include ");
         stdout_write("\"");
-        stdout_write(&include.file_path);
+        stdout_write(drop_file_extension(include.file_path.as_str()));
+        stdout_write(".c");
         stdout_write("\"");
+        if self.format != TranspileToC {
+            stdout_writeln(";");
+        }
     }
 
     fn print_type(&mut self, type_expr: &TypeExpr) {
@@ -141,12 +137,7 @@ impl Printer {
             self.print_comments_before_pos(&expr.loc().pos);
             self.print_indent();
             self.print_code_expr(expr);
-
-            if self.should_print_semi(expr) {
-                stdout_writeln(";");
-            } else {
-                stdout_writeln("");
-            }
+            stdout_writeln(";");
         }
 
         // print the rest of the comments
@@ -154,6 +145,7 @@ impl Printer {
 
         self.indent -= 1;
 
+        self.print_indent();
         stdout_write("}");
     }
 
@@ -169,10 +161,51 @@ impl Printer {
             CodeExpr::VarLoad(VarLoadExpr { name, .. }) => {
                 stdout_write(name);
             }
-            CodeExpr::Add(AddExpr { lhs, rhs, .. }) => {
+            CodeExpr::BinaryOp(BinaryOpExpr {
+                op_tag, lhs, rhs, ..
+            }) => {
                 self.print_code_expr(lhs);
-                stdout_write(" + ");
+                stdout_write(" ");
+                stdout_write(op_tag.to_str());
+                stdout_write(" ");
                 self.print_code_expr(rhs);
+            }
+            CodeExpr::If(IfExpr {
+                cond,
+                then_block,
+                else_block,
+                ..
+            }) => {
+                stdout_write("if");
+                stdout_write(" ");
+                if self.format == TranspileToC {
+                    stdout_write("(");
+                }
+                self.print_code_expr(cond);
+                if self.format == TranspileToC {
+                    stdout_write(")");
+                }
+                stdout_write(" ");
+                self.print_code_block_expr(then_block);
+                if let Some(else_block) = else_block {
+                    stdout_write(" ");
+                    stdout_write("else");
+                    stdout_write(" ");
+                    self.print_code_block_expr(else_block);
+                }
+            }
+            // TODO: figure out multiline arg printing
+            CodeExpr::Call(CallExpr { fn_name, args, .. }) => {
+                stdout_write(fn_name);
+                stdout_write("(");
+                for (arg, index) in args.iter().zip(0..) {
+                    if index != 0 {
+                        stdout_write(",");
+                    }
+
+                    self.print_code_expr(arg);
+                }
+                stdout_write(")");
             }
         }
     }
@@ -190,31 +223,21 @@ impl Printer {
         }
     }
 
-    fn should_print_semi_top_level(&mut self, expr: &TopLevelExpr) -> bool {
-        if self.format == TranspileToC {
-            match expr {
-                TopLevelExpr::FnDef(_) => false,
-                TopLevelExpr::Include(_) => false,
-            }
-        } else {
-            true
-        }
-    }
-
-    fn should_print_semi(&mut self, expr: &CodeExpr) -> bool {
-        if self.format == TranspileToC {
-            match expr {
-                CodeExpr::Return(_)
-                | CodeExpr::IntLiteral(_)
-                | CodeExpr::VarLoad(_)
-                | CodeExpr::Add(_) => true,
-            }
-        } else {
-            true
-        }
-    }
-
     fn print_indent(&self) {
         stdout_write(" ".repeat(self.indent * 4));
     }
+}
+
+fn drop_file_extension(file_name: &str) -> &str {
+    if let Some(last_dot_pos) = file_name.rfind('.') {
+        if let Some(last_slash_pos) = file_name.rfind('/') {
+            if last_slash_pos > last_dot_pos {
+                return file_name; // no extension
+            }
+        }
+
+        return &file_name[0..last_dot_pos];
+    }
+
+    file_name
 }

@@ -9,6 +9,7 @@ pub enum LoTokenType {
     Symbol,
     Delim,
     Operator,
+    Terminal,
 }
 
 #[derive(Debug, Clone)]
@@ -483,6 +484,7 @@ fn is_operator_start_char(c: char) -> bool {
     return false;
 }
 
+#[derive(Debug, PartialEq)]
 pub enum InfixOpTag {
     Equal,
     NotEqual,
@@ -519,6 +521,44 @@ pub enum InfixOpTag {
     Catch,
 
     ErrorPropagation,
+}
+
+impl InfixOpTag {
+    pub fn to_str(&self) -> &str {
+        match self {
+            InfixOpTag::Equal => "=",
+            InfixOpTag::NotEqual => "!=",
+            InfixOpTag::Less => "<",
+            InfixOpTag::Greater => ">",
+            InfixOpTag::LessEqual => "<=",
+            InfixOpTag::GreaterEqual => ">=",
+            InfixOpTag::Add => "+",
+            InfixOpTag::Sub => "-",
+            InfixOpTag::Mul => "*",
+            InfixOpTag::Div => "/",
+            InfixOpTag::Mod => "%",
+            InfixOpTag::And => "&&",
+            InfixOpTag::BitAnd => "&",
+            InfixOpTag::Or => "||",
+            InfixOpTag::BitOr => "|",
+            InfixOpTag::ShiftLeft => "<<",
+            InfixOpTag::ShiftRight => ">>",
+            InfixOpTag::Assign => "=",
+            InfixOpTag::AddAssign => "+=",
+            InfixOpTag::SubAssign => "-=",
+            InfixOpTag::MulAssign => "*=",
+            InfixOpTag::DivAssign => "/=",
+            InfixOpTag::ModAssign => "%=",
+            InfixOpTag::BitAndAssign => "&=",
+            InfixOpTag::BitOrAssign => "|=",
+            InfixOpTag::ShiftLeftAssign => "<<=",
+            InfixOpTag::ShiftRightAssign => ">>=",
+            InfixOpTag::Cast => "as",
+            InfixOpTag::FieldAccess => ".",
+            InfixOpTag::Catch => "catch",
+            InfixOpTag::ErrorPropagation => "?",
+        }
+    }
 }
 
 pub struct InfixOp {

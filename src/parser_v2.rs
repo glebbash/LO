@@ -61,7 +61,7 @@ impl ParserV2 {
             tokens: tokens.tokens,
             tokens_processed: 0,
             terminal_token: LoToken {
-                type_: LoTokenType::Symbol,
+                type_: LoTokenType::Terminal,
                 value: "<EOF>".into(),
                 loc: tokens.end_loc,
             },
@@ -161,7 +161,7 @@ impl ParserV2 {
             self.expect(Operator, ":")?;
             let p_type = self.parse_type_expr()?;
 
-            if !self.next_is(Delim, ")")? {
+            if !self.current().is(Delim, ")") {
                 self.expect(Delim, ",")?;
             }
 
@@ -212,7 +212,7 @@ impl ParserV2 {
         let mut primary = self.parse_code_expr_primary()?;
 
         while self.peek().is_some() {
-            let op_symbol = self.peek().unwrap().clone();
+            let op_symbol = self.current().clone();
             let Some(op) = InfixOp::parse(op_symbol) else {
                 break;
             };
@@ -240,10 +240,52 @@ impl ParserV2 {
             }));
         };
 
+        if let Some(if_token) = self.eat(Symbol, "if")?.cloned() {
+            let mut loc = if_token.loc;
+
+            let expr = Box::new(self.parse_code_expr(0)?);
+            let then_block = Box::new(self.parse_code_block_expr()?);
+            let mut else_block = None;
+            if let Some(_) = self.eat(Symbol, "else")? {
+                else_block = Some(Box::new(self.parse_code_block_expr()?));
+                loc.end_pos = else_block.as_ref().unwrap().loc.end_pos.clone();
+            } else {
+                loc.end_pos = then_block.loc.end_pos.clone();
+            }
+
+            return Ok(CodeExpr::If(IfExpr {
+                cond: expr,
+                then_block,
+                else_block,
+                loc,
+            }));
+        };
+
         if let Some(int) = self.eat_any(IntLiteral)? {
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
                 value: int.value.clone(),
                 loc: int.loc.clone(),
+            }));
+        };
+
+        if self.current().is_any(Symbol) && self.look_ahead(1).is(Delim, "(") {
+            let fn_name = self.expect_any(Symbol)?.clone();
+            let mut args = Vec::new();
+            let loc = fn_name.loc;
+
+            self.expect(Delim, "(")?;
+            while let None = self.eat(Delim, ")")? {
+                args.push(self.parse_code_expr(0)?);
+
+                if !self.current().is(Delim, ")") {
+                    self.expect(Delim, ",")?;
+                }
+            }
+
+            return Ok(CodeExpr::Call(CallExpr {
+                fn_name: fn_name.value,
+                args,
+                loc,
             }));
         };
 
@@ -269,14 +311,15 @@ impl ParserV2 {
         let min_bp = op.info.get_min_bp_for_next();
 
         match op.tag {
-            InfixOpTag::Add => {
+            InfixOpTag::Add | InfixOpTag::Sub | InfixOpTag::Mul | InfixOpTag::Less => {
                 let lhs = primary;
                 let rhs = self.parse_code_expr(min_bp)?;
 
                 let mut loc = lhs.loc().clone();
                 loc.end_pos = rhs.loc().end_pos.clone();
 
-                Ok(CodeExpr::Add(AddExpr {
+                Ok(CodeExpr::BinaryOp(BinaryOpExpr {
+                    op_tag: op.tag,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
                     loc,
@@ -332,14 +375,6 @@ impl ParserV2 {
         }
     }
 
-    fn next_is(&mut self, type_: LoTokenType, value: &str) -> Result<bool, LoError> {
-        match self.peek() {
-            Some(token) if token.is(type_, value) => Ok(true),
-            Some(_) => Ok(false),
-            _ => self.err_eof(format!("Unexpected EOF")),
-        }
-    }
-
     fn peek(&self) -> Option<&LoToken> {
         self.tokens.get(self.tokens_processed)
     }
@@ -350,18 +385,15 @@ impl ParserV2 {
         token
     }
 
-    fn current(&self) -> &LoToken {
-        if let Some(token) = self.tokens.get(self.tokens_processed) {
+    fn current(&mut self) -> &LoToken {
+        self.look_ahead(0)
+    }
+
+    fn look_ahead(&mut self, token_count: usize) -> &LoToken {
+        if let Some(token) = self.tokens.get(self.tokens_processed + token_count) {
             &token
         } else {
             &self.terminal_token
         }
-    }
-
-    fn err_eof<T>(&self, message: String) -> Result<T, LoError> {
-        Err(LoError {
-            message,
-            loc: self.terminal_token.loc.clone(),
-        })
     }
 }
