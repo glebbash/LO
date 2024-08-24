@@ -6,6 +6,7 @@ extern crate alloc;
 mod ast;
 mod code_generator;
 mod core;
+mod eval;
 mod ir;
 mod ir_generator;
 mod lexer;
@@ -40,14 +41,15 @@ Usage: lo <file> [mode]
     --compile-v2 (temporary)
     --inspect
     --pretty-print
-    --print-c
+    --print-c (experimental)
+    --eval (experimental)
   No [mode] means compilation to wasm\
 ";
 
 mod wasi_api {
     use crate::{
-        code_generator::CodeGenerator, core::*, ir_generator::*, lexer::*, parser, parser_v2::*,
-        printer::*, USAGE,
+        code_generator::CodeGenerator, core::*, eval::Eval, ir_generator::*, lexer::*, parser,
+        parser_v2::*, printer::*, USAGE,
     };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
@@ -77,6 +79,7 @@ mod wasi_api {
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
             Some("--print-c") => CompilerMode::PrintC,
+            Some("--eval") => CompilerMode::Eval,
             Some(unknown_mode) => {
                 return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
             }
@@ -98,6 +101,23 @@ mod wasi_api {
             let mut binary = Vec::new();
             wasm_module.dump(&mut binary);
             fputs(wasi::FD_STDOUT, binary.as_slice());
+
+            return Ok(());
+        }
+
+        if compiler_mode == CompilerMode::Eval {
+            let mut files = Vec::new();
+            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
+
+            let mut ir_generator = IRGenerator::default();
+            for file in files.iter().rev() {
+                ir_generator.process_file(file)?;
+            }
+            ir_generator.errors.print_all()?;
+            let lo_ir = ir_generator.generate_ir()?;
+
+            let result = Eval::eval(lo_ir)?;
+            stdout_writeln(format!("{result}"));
 
             return Ok(());
         }

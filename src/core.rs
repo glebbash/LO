@@ -9,6 +9,7 @@ pub enum CompilerMode {
     Inspect,
     PrettyPrint,
     PrintC,
+    Eval,
 }
 
 #[derive(PartialEq)]
