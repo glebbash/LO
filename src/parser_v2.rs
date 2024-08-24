@@ -245,10 +245,17 @@ impl ParserV2 {
 
             let expr = Box::new(self.parse_code_expr(0)?);
             let then_block = Box::new(self.parse_code_block_expr()?);
-            let mut else_block = None;
+            let mut else_block = ElseBlock::None;
             if let Some(_) = self.eat(Symbol, "else")? {
-                else_block = Some(Box::new(self.parse_code_block_expr()?));
-                loc.end_pos = else_block.as_ref().unwrap().loc.end_pos.clone();
+                if self.current().is(Symbol, "if") {
+                    let if_expr = self.parse_code_expr(0)?;
+                    loc.end_pos = if_expr.loc().end_pos.clone();
+                    else_block = ElseBlock::ElseIf(Box::new(if_expr));
+                } else {
+                    let block = self.parse_code_block_expr()?;
+                    loc.end_pos = block.loc.end_pos.clone();
+                    else_block = ElseBlock::Else(Box::new(block));
+                }
             } else {
                 loc.end_pos = then_block.loc.end_pos.clone();
             }

@@ -199,11 +199,20 @@ impl Printer {
                 }
                 stdout_write(" ");
                 self.print_code_block_expr(then_block);
-                if let Some(else_block) = else_block {
-                    stdout_write(" ");
-                    stdout_write("else");
-                    stdout_write(" ");
-                    self.print_code_block_expr(else_block);
+                match else_block {
+                    ElseBlock::None => {}
+                    ElseBlock::Else(else_block) => {
+                        stdout_write(" ");
+                        stdout_write("else");
+                        stdout_write(" ");
+                        self.print_code_block_expr(&else_block);
+                    }
+                    ElseBlock::ElseIf(if_expr) => {
+                        stdout_write(" ");
+                        stdout_write("else");
+                        stdout_write(" ");
+                        self.print_code_expr(&if_expr);
+                    }
                 }
             }
             // TODO: figure out multiline arg printing

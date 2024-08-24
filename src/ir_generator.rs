@@ -3,6 +3,7 @@ use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 #[derive(Clone, PartialEq)]
 enum LoType {
+    Never,
     Void,
     Bool,
     U32,
@@ -11,6 +12,7 @@ enum LoType {
 impl LoType {
     fn emit_components(&self, out: &mut Vec<WasmType>) {
         match self {
+            LoType::Never => {}
             LoType::Void => {}
             LoType::Bool => out.push(WasmType::I32),
             LoType::U32 => out.push(WasmType::I32),
@@ -21,6 +23,7 @@ impl LoType {
 impl core::fmt::Display for LoType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            LoType::Never => f.write_str("never"),
             LoType::Void => f.write_str("void"),
             LoType::Bool => f.write_str("bool"),
             LoType::U32 => f.write_str("u32"),
@@ -67,7 +70,7 @@ impl LoExpr {
             LoExpr::Casted { casted_to, .. } => casted_to.clone(),
 
             LoExpr::U32Const { .. } => LoType::U32,
-            LoExpr::Return { expr } => expr.get_type(),
+            LoExpr::Return { .. } => LoType::Never,
             LoExpr::BinaryOp { lhs, .. } => lhs.get_type(),
             LoExpr::VarLoad { var_type, .. } => var_type.clone(),
             LoExpr::If { .. } => LoType::Void,
@@ -475,10 +478,14 @@ impl IRGenerator {
             }) => {
                 let lo_cond = self.build_code_expr(ss, cond)?;
                 let lo_then_block = self.build_code_block(ss, &then_block)?;
-                let lo_else_block = if let Some(else_block) = else_block {
-                    Some(self.build_code_block(ss, &else_block)?)
-                } else {
-                    None
+                let lo_else_block = match &else_block {
+                    ElseBlock::Else(else_block) => Some(self.build_code_block(ss, &else_block)?),
+                    ElseBlock::ElseIf(expr) => {
+                        let mut exprs = Vec::new();
+                        exprs.push(self.build_code_expr(ss, expr)?);
+                        Some(exprs)
+                    }
+                    ElseBlock::None => None,
                 };
 
                 Ok(LoExpr::If {

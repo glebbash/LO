@@ -1,0 +1,11 @@
+export fn else_if_test(x: u32): u32 {
+    if x < 5 {
+        return 0;
+    } else if x < 10 {
+        return 1;
+    } else {
+        return 2;
+    };
+
+    return 3; // unreachable
+};

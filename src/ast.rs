@@ -100,8 +100,15 @@ pub struct BinaryOpExpr {
 pub struct IfExpr {
     pub cond: Box<CodeExpr>,
     pub then_block: Box<CodeBlockExpr>,
-    pub else_block: Option<Box<CodeBlockExpr>>,
+    pub else_block: ElseBlock,
     pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub enum ElseBlock {
+    None,
+    Else(Box<CodeBlockExpr>),
+    ElseIf(Box<CodeExpr>),
 }
 
 #[derive(Debug)]

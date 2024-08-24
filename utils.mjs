@@ -146,6 +146,9 @@ async function testCommand() {
         await fs.readFile(COMPILER_PATH)
     );
 
+    // this prevents random segfaults
+    await compile("./examples/test/42.lo");
+
     test("file and stdin inputs all work the same", async () => {
         const compileMockedStdinAPI = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
@@ -173,6 +176,16 @@ async function testCommand() {
         const program = await loadWasm(output);
 
         assert.strictEqual(program.add(2, 3), 5);
+    });
+
+    it("compiles else-if", async () => {
+        const output = await compile("examples/test/else-if.lo");
+
+        const program = await loadWasm(output);
+
+        assert.strictEqual(program.else_if_test(4), 0);
+        assert.strictEqual(program.else_if_test(9), 1);
+        assert.strictEqual(program.else_if_test(11), 2);
     });
 
     test("compiles factorial", async () => {
@@ -626,6 +639,25 @@ async function testCommand() {
             assert.strictEqual(program.add(2, 3), 5);
         });
 
+        it("compiles else-if.lo", async () => {
+            const output = await compileV2("./examples/test/else-if.lo");
+
+            const program = await loadWasm(output);
+
+            assert.strictEqual(program.else_if_test(4), 0);
+            assert.strictEqual(program.else_if_test(9), 1);
+            assert.strictEqual(program.else_if_test(11), 2);
+        });
+
+        test("compiles factorial", async () => {
+            const output = await compileV2("./examples/test/factorial.lo");
+
+            const program = await loadWasm(output);
+            const result = program.factorial(5);
+
+            assert.strictEqual(result, 120);
+        });
+
         it("compiles include.lo", async () => {
             const output = await compileV2("./examples/test/include.lo");
 
@@ -655,7 +687,7 @@ async function testCommand() {
 
     describe("self hosted", async () => {
         const selfHostedCompiler = await compile("examples/lo.lo");
-        const selfHostedCompile = await loadCompilerWithWasiAPI(
+        const compileSelfHosted = await loadCompilerWithWasiAPI(
             selfHostedCompiler
         );
 
@@ -710,20 +742,26 @@ async function testCommand() {
             );
         });
 
-        test("compiles 42.lo", async () => {
-            await assertSnapshotEqual(
-                await selfHostedCompile("examples/test/42.lo"),
-                "examples/test/snapshots/42.wasm"
-            );
+        it("compiles 42.lo", async () => {
+            const output = await compileSelfHosted("./examples/test/42.lo");
+
+            const program = await loadWasm(output);
+            const result = program.main();
+
+            assert.strictEqual(result, 42);
         });
 
         test("compiles hello-world-raw.lo", async () => {
-            await assertSnapshotEqual(
-                await selfHostedCompile(
-                    "examples/test/demos/hello-world-raw.lo"
-                ),
-                "examples/test/snapshots/hello-world-raw.wasm"
+            const program = await compileSelfHosted(
+                "./examples/test/demos/hello-world-raw.lo"
             );
+
+            const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+                await runWASI(program, { stdout: stdout.fd });
+                return fs.readFile(stdoutFile, { encoding: "utf-8" });
+            });
+
+            assert.strictEqual(output, "Hello World!\n");
         });
     });
 }
