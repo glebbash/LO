@@ -806,13 +806,31 @@ async function loadCompilerWithWasiAPI(
                     ...{ console },
                 });
 
-                const exitCode = /** @type {unknown} */ (wasi.start(instance));
+                try {
+                    const exitCode = /** @type {unknown} */ (
+                        wasi.start(instance)
+                    );
 
-                if (exitCode ?? 0 !== 0) {
-                    throw new Error(await fs.readFile(stderrFile, "utf-8"));
+                    if (exitCode ?? 0 !== 0) {
+                        throw new Error(await fs.readFile(stderrFile, "utf-8"));
+                    }
+
+                    return fs.readFile(stdoutFile);
+                } catch (err) {
+                    const errorMessage = await fs.readFile(stderrFile, "utf-8");
+                    if (errorMessage !== "") {
+                        if (
+                            err instanceof WebAssembly.RuntimeError &&
+                            err.message.includes("unreachable")
+                        ) {
+                            err.message = errorMessage;
+                        } else {
+                            throw new Error(errorMessage);
+                        }
+                    }
+
+                    throw err;
                 }
-
-                return fs.readFile(stdoutFile);
             })
         );
 
