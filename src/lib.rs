@@ -27,8 +27,9 @@ mod wasm_target {
     }
 
     #[panic_handler]
-    fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
-        core::arch::wasm32::unreachable()
+    fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
+        crate::core::stderr_write(alloc::format!("{info}"));
+        core::arch::wasm32::unreachable();
     }
 }
 
@@ -82,10 +83,9 @@ mod wasi_api {
             parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
 
             let mut ir_generator = IRGenerator::default();
-            for file in &files {
+            for file in files.iter().rev() {
                 ir_generator.process_file(file)?;
             }
-
             ir_generator.errors.print_all()?;
 
             let wasm_module = ir_generator.generate()?;
@@ -111,7 +111,7 @@ mod wasi_api {
             let mut files = Vec::new();
             parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
 
-            for (file, index) in files.into_iter().zip(0..) {
+            for (file, index) in files.into_iter().rev().zip(0..) {
                 if index != 0 {
                     stdout_writeln("");
                 }

@@ -2,7 +2,7 @@ use crate::{ast::*, core::*, lexer::InfixOpTag, parser_v2::*, wasm::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 #[derive(Clone, PartialEq)]
-enum LoType {
+pub enum LoType {
     Never,
     Void,
     Bool,
@@ -31,7 +31,13 @@ impl core::fmt::Display for LoType {
     }
 }
 
-enum LoExpr {
+#[derive(Default)]
+pub struct CodeBlock {
+    pub exprs: Vec<LoExpr>,
+    pub scope: LoScope,
+}
+
+pub enum LoExpr {
     Casted {
         expr: Box<LoExpr>,
         casted_to: LoType,
@@ -54,8 +60,8 @@ enum LoExpr {
     },
     If {
         cond: Box<LoExpr>,
-        then_block: Vec<LoExpr>,
-        else_block: Option<Vec<LoExpr>>,
+        then_block: CodeBlock,
+        else_block: Option<CodeBlock>,
     },
     Call {
         fn_name: String,
@@ -65,7 +71,7 @@ enum LoExpr {
 }
 
 impl LoExpr {
-    fn get_type(&self) -> LoType {
+    pub fn get_type(&self) -> LoType {
         match self {
             LoExpr::Casted { casted_to, .. } => casted_to.clone(),
 
@@ -117,10 +123,10 @@ impl LoExpr {
                     block_kind: WasmBlockKind::If,
                     block_type: WasmBlockType::NoOut,
                 });
-                LoExpr::lower_all(then_block, ss, instrs);
+                LoExpr::lower_all(&then_block.exprs, ss, instrs);
                 if let Some(else_block) = else_block {
                     instrs.push(WasmInstr::Else);
-                    LoExpr::lower_all(else_block, ss, instrs);
+                    LoExpr::lower_all(&else_block.exprs, ss, instrs);
                 }
                 instrs.push(WasmInstr::BlockEnd);
             }
@@ -134,18 +140,7 @@ impl LoExpr {
 }
 
 #[derive(Default)]
-pub struct IRGenerator {
-    wasm_module: WasmModule,
-    pub errors: LoErrorManager,
-}
-
-#[derive(Default)]
-struct LoScopeStack {
-    scopes: Vec<LoScope>,
-}
-
-#[derive(Default)]
-struct LoScope {
+pub struct LoScope {
     vars: Vec<LoVar>,
     fn_defs: Vec<LoFnDef>,
 }
@@ -161,16 +156,26 @@ struct LoFnDef {
     inputs: Vec<LoType>,
     output: LoType,
     index: u32,
+    body: CodeBlock,
+}
+
+#[derive(Default)]
+struct LoScopeStack {
+    scopes: Vec<LoScope>,
 }
 
 impl LoScopeStack {
-    fn add_new(&mut self) -> &mut LoScope {
-        self.scopes.push(LoScope::default());
-        self.scopes.last_mut().unwrap()
+    fn push(&mut self, scope: LoScope) {
+        self.scopes.push(scope);
     }
 
-    fn drop_last(&mut self) {
-        self.scopes.pop();
+    fn pop(&mut self) -> LoScope {
+        self.scopes.pop().unwrap()
+    }
+
+    fn top(&mut self) -> &mut LoScope {
+        let parent_index = self.scopes.len() - 1;
+        &mut self.scopes[parent_index]
     }
 
     fn get_var(&self, name: &str) -> Option<&LoVar> {
@@ -195,30 +200,49 @@ impl LoScopeStack {
 
         None
     }
+
+    fn get_fn_def_mut(&mut self, name: &str) -> Option<&mut LoFnDef> {
+        for scope in self.scopes.iter_mut().rev() {
+            for var in &mut scope.fn_defs {
+                if var.name == *name {
+                    return Some(var);
+                }
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Default)]
+pub struct IRGenerator {
+    wasm_module: WasmModule,
+    pub errors: LoErrorManager,
+    ss: LoScopeStack,
 }
 
 impl IRGenerator {
-    pub fn process_file(&mut self, file: &FileInfo) -> Result<(), LoError> {
-        let mut ss = LoScopeStack::default();
+    pub fn generate(&mut self) -> Result<&WasmModule, LoError> {
+        Ok(&self.wasm_module)
+    }
 
-        ss.add_new();
+    pub fn process_file(&mut self, file: &FileInfo) -> Result<(), LoError> {
+        if self.ss.scopes.len() == 0 {
+            self.ss.push(LoScope::default());
+        }
 
         for expr in &file.ast.exprs {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed earlier
 
-                TopLevelExpr::FnDef(fn_def) => self.process_fn_def(&mut ss, fn_def)?,
+                TopLevelExpr::FnDef(fn_def) => self.process_fn_def(fn_def)?,
             }
         }
-
-        ss.drop_last();
 
         Ok(())
     }
 
-    fn process_fn_def(&mut self, ss: &mut LoScopeStack, fn_def: &FnDefExpr) -> Result<(), LoError> {
-        let scope = ss.add_new();
-
+    fn process_fn_def(&mut self, fn_def: &FnDefExpr) -> Result<(), LoError> {
         let mut fn_type = WasmFnType {
             inputs: Vec::new(),
             outputs: Vec::new(),
@@ -226,6 +250,8 @@ impl IRGenerator {
 
         let return_type = self.build_type(&fn_def.return_type)?;
         return_type.emit_components(&mut fn_type.outputs);
+
+        let mut scope = LoScope::default();
 
         let mut lo_inputs = Vec::new();
         for fn_param in &fn_def.fn_params {
@@ -277,17 +303,22 @@ impl IRGenerator {
         let fn_index = self.wasm_module.functions.len() as u32;
         self.wasm_module.functions.push(type_index);
 
-        let parent_scope_index = ss.scopes.len() - 2;
-        ss.scopes[parent_scope_index].fn_defs.push(LoFnDef {
+        self.ss.top().fn_defs.push(LoFnDef {
             name: fn_def.fn_name.clone(),
             inputs: lo_inputs,
             output: return_type,
             index: fn_index,
+            body: CodeBlock::default(),
         });
 
-        let exprs = self.build_code_block(ss, &fn_def.body)?;
-        LoExpr::lower_all(&exprs, ss, &mut fn_code.expr.instrs);
+        self.ss.push(scope);
+
+        let exprs = self.build_code_block(&fn_def.body)?;
+        LoExpr::lower_all(&exprs, &self.ss, &mut fn_code.expr.instrs);
         self.wasm_module.codes.push(fn_code);
+
+        let scope = self.ss.pop();
+        self.ss.get_fn_def_mut(&fn_def.fn_name).unwrap().body = CodeBlock { exprs, scope };
 
         if fn_def.exported {
             self.wasm_module.exports.push(WasmExport {
@@ -302,13 +333,7 @@ impl IRGenerator {
             fn_name: fn_def.fn_name.clone(),
         });
 
-        ss.drop_last();
-
         Ok(())
-    }
-
-    pub fn generate(&mut self) -> Result<&WasmModule, LoError> {
-        Ok(&self.wasm_module)
     }
 
     fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
@@ -317,26 +342,19 @@ impl IRGenerator {
         }
     }
 
-    fn build_code_block(
-        &mut self,
-        ss: &mut LoScopeStack,
-        code_block: &CodeBlockExpr,
-    ) -> Result<Vec<LoExpr>, LoError> {
-        let mut lo_exprs = Vec::new();
+    fn build_code_block(&mut self, code_block: &CodeBlockExpr) -> Result<Vec<LoExpr>, LoError> {
+        let mut exprs = Vec::new();
         for expr in &code_block.exprs {
-            lo_exprs.push(self.build_code_expr(ss, expr)?);
+            exprs.push(self.build_code_expr(expr)?);
         }
-        Ok(lo_exprs)
+
+        Ok(exprs)
     }
 
-    fn build_code_expr(
-        &mut self,
-        ss: &mut LoScopeStack,
-        code_expr: &CodeExpr,
-    ) -> Result<LoExpr, LoError> {
+    fn build_code_expr(&mut self, code_expr: &CodeExpr) -> Result<LoExpr, LoError> {
         match code_expr {
             CodeExpr::Return(return_expr) => {
-                let lo_expr = self.build_code_expr(ss, &return_expr.expr)?;
+                let lo_expr = self.build_code_expr(&return_expr.expr)?;
 
                 Ok(LoExpr::Return {
                     expr: Box::new(lo_expr),
@@ -351,7 +369,7 @@ impl IRGenerator {
                 Ok(LoExpr::U32Const { value })
             }
             CodeExpr::VarLoad(var_load) => {
-                let Some(var) = ss.get_var(&var_load.name) else {
+                let Some(var) = self.ss.get_var(&var_load.name) else {
                     return Err(LoError {
                         message: format!("Cannot read unknown variable: {}", var_load.name),
                         loc: var_load.loc.clone(),
@@ -369,8 +387,8 @@ impl IRGenerator {
                 rhs,
                 loc,
             }) => {
-                let lo_lhs = self.build_code_expr(ss, lhs)?;
-                let lo_rhs = self.build_code_expr(ss, rhs)?;
+                let lo_lhs = self.build_code_expr(lhs)?;
+                let lo_rhs = self.build_code_expr(rhs)?;
 
                 let lhs_type = lo_lhs.get_type();
                 let rhs_type = lo_rhs.get_type();
@@ -476,14 +494,31 @@ impl IRGenerator {
                 else_block,
                 ..
             }) => {
-                let lo_cond = self.build_code_expr(ss, cond)?;
-                let lo_then_block = self.build_code_block(ss, &then_block)?;
+                let lo_cond = self.build_code_expr(cond)?;
+
+                self.ss.push(LoScope::default());
+                let then_exprs = self.build_code_block(&then_block)?;
+                let scope = self.ss.pop();
+                let lo_then_block = CodeBlock {
+                    exprs: then_exprs,
+                    scope,
+                };
+
                 let lo_else_block = match &else_block {
-                    ElseBlock::Else(else_block) => Some(self.build_code_block(ss, &else_block)?),
+                    ElseBlock::Else(else_block) => {
+                        self.ss.push(LoScope::default());
+                        let exprs = self.build_code_block(&else_block)?;
+                        let scope = self.ss.pop();
+                        let code_block = CodeBlock { exprs, scope };
+                        Some(code_block)
+                    }
                     ElseBlock::ElseIf(expr) => {
                         let mut exprs = Vec::new();
-                        exprs.push(self.build_code_expr(ss, expr)?);
-                        Some(exprs)
+                        self.ss.push(LoScope::default());
+                        exprs.push(self.build_code_expr(expr)?);
+                        let scope = self.ss.pop();
+                        let else_block = CodeBlock { exprs, scope };
+                        Some(else_block)
                     }
                     ElseBlock::None => None,
                 };
@@ -498,12 +533,12 @@ impl IRGenerator {
                 let mut arg_types = Vec::new();
                 let mut lo_args = Vec::new();
                 for arg in args {
-                    let lo_arg = self.build_code_expr(ss, arg)?;
+                    let lo_arg = self.build_code_expr(arg)?;
                     arg_types.push(lo_arg.get_type());
                     lo_args.push(lo_arg);
                 }
 
-                let Some(fn_def) = ss.get_fn_def(&fn_name) else {
+                let Some(fn_def) = self.ss.get_fn_def(&fn_name) else {
                     return Err(LoError {
                         message: format!("Trying to call unknown function {fn_name}"),
                         loc: loc.clone(),

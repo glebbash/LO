@@ -302,8 +302,7 @@ async function testCommand() {
 
         const program = await loadWasm(output);
 
-        assert.strictEqual(program.main(), 42);
-        assert.strictEqual(program.f(), 123);
+        assert.strictEqual(program.main(), 120);
     });
 
     test("compiles std", async () => {
@@ -663,8 +662,7 @@ async function testCommand() {
 
             const program = await loadWasm(output);
 
-            assert.strictEqual(program.main(), 42);
-            assert.strictEqual(program.f(), 123);
+            assert.strictEqual(program.main(), 120);
         });
 
         it("reports multiple errors in err.lo", async () => {
