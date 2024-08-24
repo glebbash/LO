@@ -4,6 +4,7 @@
 extern crate alloc;
 
 mod ast;
+mod code_generator;
 mod core;
 mod ir;
 mod ir_generator;
@@ -44,7 +45,10 @@ Usage: lo <file> [mode]
 ";
 
 mod wasi_api {
-    use crate::{core::*, ir_generator::*, lexer::*, parser, parser_v2::*, printer::*, USAGE};
+    use crate::{
+        code_generator::CodeGenerator, core::*, ir_generator::*, lexer::*, parser, parser_v2::*,
+        printer::*, USAGE,
+    };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
     #[no_mangle]
@@ -87,8 +91,9 @@ mod wasi_api {
                 ir_generator.process_file(file)?;
             }
             ir_generator.errors.print_all()?;
+            let lo_ir = ir_generator.generate_ir()?;
 
-            let wasm_module = ir_generator.generate()?;
+            let wasm_module = CodeGenerator::generate(lo_ir);
 
             let mut binary = Vec::new();
             wasm_module.dump(&mut binary);

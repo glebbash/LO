@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, lexer::InfixOpTag, parser_v2::*, wasm::*};
+use crate::{ast::*, core::*, lexer::*, parser_v2::*, wasm::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 #[derive(Clone, PartialEq)]
@@ -7,17 +7,6 @@ pub enum LoType {
     Void,
     Bool,
     U32,
-}
-
-impl LoType {
-    fn emit_components(&self, out: &mut Vec<WasmType>) {
-        match self {
-            LoType::Never => {}
-            LoType::Void => {}
-            LoType::Bool => out.push(WasmType::I32),
-            LoType::U32 => out.push(WasmType::I32),
-        }
-    }
 }
 
 impl core::fmt::Display for LoType {
@@ -83,80 +72,25 @@ impl LoExpr {
             LoExpr::Call { return_type, .. } => return_type.clone(),
         }
     }
-
-    fn lower_all(exprs: &Vec<Self>, ss: &LoScopeStack, instrs: &mut Vec<WasmInstr>) {
-        for expr in exprs {
-            expr.lower(ss, instrs);
-        }
-    }
-
-    fn lower(&self, ss: &LoScopeStack, instrs: &mut Vec<WasmInstr>) {
-        match self {
-            LoExpr::Casted { expr, .. } => {
-                expr.lower(ss, instrs);
-            }
-            LoExpr::U32Const { value } => {
-                instrs.push(WasmInstr::I32Const {
-                    value: *value as i32,
-                });
-            }
-            LoExpr::Return { expr } => {
-                expr.lower(ss, instrs);
-                instrs.push(WasmInstr::Return);
-            }
-            LoExpr::BinaryOp { kind, lhs, rhs } => {
-                lhs.lower(ss, instrs);
-                rhs.lower(ss, instrs);
-                instrs.push(WasmInstr::BinaryOp { kind: kind.clone() });
-            }
-            LoExpr::VarLoad { name, .. } => {
-                let local_index = ss.get_var(&name).unwrap().index;
-                instrs.push(WasmInstr::LocalGet { local_index });
-            }
-            LoExpr::If {
-                cond,
-                then_block,
-                else_block,
-            } => {
-                cond.lower(ss, instrs);
-                instrs.push(WasmInstr::BlockStart {
-                    block_kind: WasmBlockKind::If,
-                    block_type: WasmBlockType::NoOut,
-                });
-                LoExpr::lower_all(&then_block.exprs, ss, instrs);
-                if let Some(else_block) = else_block {
-                    instrs.push(WasmInstr::Else);
-                    LoExpr::lower_all(&else_block.exprs, ss, instrs);
-                }
-                instrs.push(WasmInstr::BlockEnd);
-            }
-            LoExpr::Call { fn_name, args, .. } => {
-                LoExpr::lower_all(args, ss, instrs);
-                let fn_index = ss.get_fn_def(&fn_name).unwrap().index;
-                instrs.push(WasmInstr::Call { fn_index });
-            }
-        }
-    }
 }
 
 #[derive(Default)]
 pub struct LoScope {
-    vars: Vec<LoVar>,
-    fn_defs: Vec<LoFnDef>,
+    pub vars: Vec<LoVar>,
+    pub fn_defs: Vec<LoFnDef>,
 }
 
-struct LoVar {
-    name: String,
-    type_: LoType,
-    index: u32,
+pub struct LoVar {
+    pub name: String,
+    pub type_: LoType,
 }
 
-struct LoFnDef {
-    name: String,
-    inputs: Vec<LoType>,
-    output: LoType,
-    index: u32,
-    body: CodeBlock,
+pub struct LoFnDef {
+    pub name: String,
+    pub inputs: Vec<LoType>,
+    pub output: LoType,
+    pub exported: bool,
+    pub body: CodeBlock,
 }
 
 #[derive(Default)]
@@ -216,14 +150,13 @@ impl LoScopeStack {
 
 #[derive(Default)]
 pub struct IRGenerator {
-    wasm_module: WasmModule,
     pub errors: LoErrorManager,
     ss: LoScopeStack,
 }
 
 impl IRGenerator {
-    pub fn generate(&mut self) -> Result<&WasmModule, LoError> {
-        Ok(&self.wasm_module)
+    pub fn generate_ir(&mut self) -> Result<LoScope, LoError> {
+        Ok(self.ss.pop())
     }
 
     pub fn process_file(&mut self, file: &FileInfo) -> Result<(), LoError> {
@@ -243,13 +176,7 @@ impl IRGenerator {
     }
 
     fn process_fn_def(&mut self, fn_def: &FnDefExpr) -> Result<(), LoError> {
-        let mut fn_type = WasmFnType {
-            inputs: Vec::new(),
-            outputs: Vec::new(),
-        };
-
         let return_type = self.build_type(&fn_def.return_type)?;
-        return_type.emit_components(&mut fn_type.outputs);
 
         let mut scope = LoScope::default();
 
@@ -265,73 +192,29 @@ impl IRGenerator {
                 }
             }
 
-            let local_index = fn_type.inputs.len() as u32;
-
             let param_type = self.build_type(&fn_param.type_)?;
-            param_type.emit_components(&mut fn_type.inputs);
             lo_inputs.push(param_type.clone());
 
             scope.vars.push(LoVar {
                 name: fn_param.name.clone(),
                 type_: param_type,
-                index: local_index,
             });
         }
-
-        let mut fn_code = WasmFn {
-            locals: Vec::new(),
-            expr: WasmExpr { instrs: Vec::new() },
-        };
-
-        for input_type in &fn_type.inputs {
-            if let Some(locals) = fn_code.locals.last_mut() {
-                if locals.value_type == *input_type {
-                    locals.count += 1;
-                    continue;
-                }
-            }
-
-            fn_code.locals.push(WasmLocals {
-                value_type: input_type.clone(),
-                count: 1,
-            });
-        }
-
-        let type_index = self.wasm_module.types.len() as u32;
-        self.wasm_module.types.push(fn_type);
-
-        let fn_index = self.wasm_module.functions.len() as u32;
-        self.wasm_module.functions.push(type_index);
 
         self.ss.top().fn_defs.push(LoFnDef {
             name: fn_def.fn_name.clone(),
             inputs: lo_inputs,
             output: return_type,
-            index: fn_index,
+            exported: fn_def.exported,
             body: CodeBlock::default(),
         });
 
         self.ss.push(scope);
 
         let exprs = self.build_code_block(&fn_def.body)?;
-        LoExpr::lower_all(&exprs, &self.ss, &mut fn_code.expr.instrs);
-        self.wasm_module.codes.push(fn_code);
 
         let scope = self.ss.pop();
         self.ss.get_fn_def_mut(&fn_def.fn_name).unwrap().body = CodeBlock { exprs, scope };
-
-        if fn_def.exported {
-            self.wasm_module.exports.push(WasmExport {
-                export_type: WasmExportType::Func,
-                export_name: fn_def.fn_name.clone(),
-                exported_item_index: fn_index,
-            })
-        }
-
-        self.wasm_module.debug_fn_info.push(WasmDebugFnInfo {
-            fn_index,
-            fn_name: fn_def.fn_name.clone(),
-        });
 
         Ok(())
     }
