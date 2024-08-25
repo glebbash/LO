@@ -922,17 +922,3 @@ async function runWithTmpFile(run) {
         await fs.unlink(fileName);
     }
 }
-
-/**
- * @param {Buffer} binary
- * @param {string} snapshotPath
- */
-async function assertSnapshotEqual(binary, snapshotPath) {
-    try {
-        const expectedBinary = await fs.readFile(snapshotPath);
-        assert.deepStrictEqual(binary, expectedBinary);
-    } catch (err) {
-        await fs.writeFile(snapshotPath + ".actual", binary);
-        throw err;
-    }
-}
