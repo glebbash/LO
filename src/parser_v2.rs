@@ -318,7 +318,32 @@ impl ParserV2 {
         let min_bp = op.info.get_min_bp_for_next();
 
         match op.tag {
-            InfixOpTag::Add | InfixOpTag::Sub | InfixOpTag::Mul | InfixOpTag::Less => {
+            InfixOpTag::Equal
+            | InfixOpTag::NotEqual
+            | InfixOpTag::Less
+            | InfixOpTag::Greater
+            | InfixOpTag::LessEqual
+            | InfixOpTag::GreaterEqual
+            | InfixOpTag::Add
+            | InfixOpTag::Sub
+            | InfixOpTag::Mul
+            | InfixOpTag::Div
+            | InfixOpTag::Mod
+            | InfixOpTag::And
+            | InfixOpTag::BitAnd
+            | InfixOpTag::Or
+            | InfixOpTag::BitOr
+            | InfixOpTag::ShiftLeft
+            | InfixOpTag::ShiftRight
+            | InfixOpTag::AddAssign
+            | InfixOpTag::SubAssign
+            | InfixOpTag::MulAssign
+            | InfixOpTag::DivAssign
+            | InfixOpTag::ModAssign
+            | InfixOpTag::BitAndAssign
+            | InfixOpTag::BitOrAssign
+            | InfixOpTag::ShiftLeftAssign
+            | InfixOpTag::ShiftRightAssign => {
                 let lhs = primary;
                 let rhs = self.parse_code_expr(min_bp)?;
 
@@ -332,7 +357,11 @@ impl ParserV2 {
                     loc,
                 }))
             }
-            _ => Err(LoError::todo(file!(), line!())),
+            InfixOpTag::Assign
+            | InfixOpTag::Cast
+            | InfixOpTag::FieldAccess
+            | InfixOpTag::Catch
+            | InfixOpTag::ErrorPropagation => Err(LoError::todo(file!(), line!())),
         }
     }
 
