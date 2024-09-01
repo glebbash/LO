@@ -671,9 +671,9 @@ async function testCommand() {
                 assert.strictEqual(
                     err.message,
                     m`
-                    examples/test/multiple-compiler-errors.lo:3:14 - Duplicate function parameter name: a
-                    examples/test/multiple-compiler-errors.lo:4:14 - Duplicate function parameter name: b
-                    examples/test/multiple-compiler-errors.lo:5:14 - Duplicate function parameter name: c
+                    examples/test/multiple-compiler-errors.lo:2:14 - Duplicate function parameter name: a
+                    examples/test/multiple-compiler-errors.lo:6:14 - Duplicate function parameter name: b
+                    examples/test/multiple-compiler-errors.lo:10:14 - Duplicate function parameter name: c
 
 
                     `
@@ -750,8 +750,10 @@ async function testCommand() {
             "examples/test/add.lo",
             "examples/test/else-if.lo",
             "examples/test/factorial.lo",
+            "examples/test/hex-and-shifts.lo",
             "examples/test/import.lo",
             "examples/test/include.lo",
+            "examples/test/multiple-compiler-errors.lo",
         ];
 
         for (const fileName of formattedFiles) {
