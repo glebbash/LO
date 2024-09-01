@@ -67,15 +67,12 @@ impl Printer {
                 self.print_include(include);
             }
             TopLevelExpr::Import(import) => {
-                if self.format == TranspileToC {
-                    todo!()
+                if self.format != TranspileToC {
+                    stdout_write("import from \"");
+                    stdout_write(&import.module_name);
+                    stdout_write("\" {\n");
+                    self.indent += 1;
                 }
-
-                stdout_write("import from \"");
-                stdout_write(&import.module_name);
-                stdout_write("\" {\n");
-
-                self.indent += 1;
 
                 for item in &import.items {
                     self.print_comments_before_pos(item.loc().pos.offset);
@@ -89,11 +86,11 @@ impl Printer {
                 // print the rest of the comments
                 self.print_comments_before_pos(import.loc.end_pos.offset);
 
-                self.indent -= 1;
-
-                self.print_indent();
-                stdout_write("}");
-                stdout_writeln(";");
+                if self.format != TranspileToC {
+                    self.indent -= 1;
+                    self.print_indent();
+                    stdout_write("};\n");
+                }
             }
         }
 
