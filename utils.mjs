@@ -187,19 +187,6 @@ async function testCommand() {
         assert.strictEqual(result, 120);
     });
 
-    testCompilers("hello-world-raw.lo", { v1, vS }, async (compile) => {
-        const program = await compile(
-            "./examples/test/demos/hello-world-raw.lo"
-        );
-
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
-
-        assert.strictEqual(output, "Hello World!\n");
-    });
-
     testCompilers("include.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/include.lo");
 
@@ -217,14 +204,7 @@ async function testCommand() {
         assert.strictEqual(result, 31);
     });
 
-    testCompilers("compiles locals", { v1 }, async (compile) => {
-        const output = await compile("./examples/test/locals.lo");
-
-        const program = await loadWasm(output);
-        assert.deepEqual(program.sub(5, 3), 2);
-    });
-
-    testCompilers("compiles import", { v1 }, async (compile) => {
+    testCompilers("import.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/import.lo");
 
         const logs = [];
@@ -234,6 +214,26 @@ async function testCommand() {
 
         program.main();
         assert.deepEqual(logs, [1, 2, 3]);
+    });
+
+    testCompilers("hello-world-raw.lo", { v1, vS }, async (compile) => {
+        const program = await compile(
+            "./examples/test/demos/hello-world-raw.lo"
+        );
+
+        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, { stdout: stdout.fd });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
+        });
+
+        assert.strictEqual(output, "Hello World!\n");
+    });
+
+    testCompilers("compiles locals", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/locals.lo");
+
+        const program = await loadWasm(output);
+        assert.deepEqual(program.sub(5, 3), 2);
     });
 
     testCompilers("compiles globals", { v1 }, async (compile) => {
@@ -731,6 +731,37 @@ async function testCommand() {
 
             `
         );
+    });
+
+    describe("formatter", async () => {
+        const format = await loadCompilerWithWasiAPI(
+            await fs.readFile(COMPILER_PATH),
+            {
+                buildArgs: (fileName) => [
+                    "lo",
+                    fileName ?? "-i",
+                    "--pretty-print",
+                ],
+            }
+        );
+
+        const formattedFiles = [
+            "examples/test/42.lo",
+            "examples/test/add.lo",
+            "examples/test/else-if.lo",
+            "examples/test/factorial.lo",
+            "examples/test/import.lo",
+            "examples/test/include.lo",
+        ];
+
+        for (const fileName of formattedFiles) {
+            test(`formats ${fileName}`, async () => {
+                const formatted = (await format(fileName)).toString();
+                const expected = await fs.readFile(fileName, "utf8");
+
+                assert.strictEqual(formatted, expected);
+            });
+        }
     });
 
     /**

@@ -47,7 +47,7 @@ impl Printer {
 
             self.print_comments_before_pos(expr.loc().pos.offset);
             let printed = self.print_top_level_expr(expr);
-            should_add_newline = !printed;
+            should_add_newline = printed;
         }
 
         // print the rest of the comments
@@ -66,26 +66,66 @@ impl Printer {
 
                 self.print_include(include);
             }
+            TopLevelExpr::Import(import) => {
+                if self.format == TranspileToC {
+                    todo!()
+                }
+
+                stdout_write("import from \"");
+                stdout_write(&import.module_name);
+                stdout_write("\" {\n");
+
+                self.indent += 1;
+
+                for item in &import.items {
+                    self.print_comments_before_pos(item.loc().pos.offset);
+                    self.print_indent();
+                    match item {
+                        ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
+                    }
+                    stdout_writeln(";");
+                }
+
+                // print the rest of the comments
+                self.print_comments_before_pos(import.loc.end_pos.offset);
+
+                self.indent -= 1;
+
+                self.print_indent();
+                stdout_write("}");
+                stdout_writeln(";");
+            }
         }
 
         true
     }
 
-    // TODO: figure out multiline param printing
     fn print_fn_def(&mut self, fn_def: &FnDefExpr) {
+        if self.format == PrettyPrint && fn_def.exported {
+            stdout_write("export ");
+        }
+        self.print_fn_decl(&fn_def.decl);
+        stdout_write(" ");
+        self.print_code_block_expr(&fn_def.body);
+        stdout_writeln(";");
+    }
+
+    // TODO: figure out multiline param printing
+    fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
         if self.format == TranspileToC {
-            self.print_type(&fn_def.return_type);
+            match &fn_decl.return_type {
+                Some(return_type) => self.print_type(return_type),
+                _ => stdout_write("void"),
+            }
+
             stdout_write(" ");
         } else {
-            if fn_def.exported {
-                stdout_write("export ");
-            }
             stdout_write("fn ");
         }
 
-        stdout_write(&fn_def.fn_name);
+        stdout_write(&fn_decl.fn_name);
         stdout_write("(");
-        for (fn_param, index) in fn_def.fn_params.iter().zip(0..) {
+        for (fn_param, index) in fn_decl.fn_params.iter().zip(0..) {
             if index != 0 {
                 stdout_write(", ");
             }
@@ -104,27 +144,26 @@ impl Printer {
         stdout_write(")");
 
         if self.format != TranspileToC {
-            stdout_write(": ");
-            self.print_type(&fn_def.return_type);
-        }
+            let Some(return_type) = &fn_decl.return_type else {
+                return;
+            };
 
-        stdout_write(" ");
-        self.print_code_block_expr(&fn_def.body);
-        stdout_writeln(";");
+            stdout_write(": ");
+            self.print_type(&return_type);
+        }
     }
 
     fn print_include(&mut self, include: &IncludeExpr) {
         if self.format == TranspileToC {
-            stdout_write("#");
+            stdout_write("#include \"");
+            stdout_write(drop_file_extension(include.file_path.as_str()));
+            stdout_write(".c\"");
+            return;
         }
-        stdout_write("include ");
-        stdout_write("\"");
-        stdout_write(drop_file_extension(include.file_path.as_str()));
-        stdout_write(".c");
-        stdout_write("\"");
-        if self.format != TranspileToC {
-            stdout_writeln(";");
-        }
+
+        stdout_write("include \"");
+        stdout_write(&include.file_path);
+        stdout_write("\";\n");
     }
 
     fn print_type(&mut self, type_expr: &TypeExpr) {

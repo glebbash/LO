@@ -87,7 +87,10 @@ impl ParserV2 {
 
         if let Some(unexpected) = self.peek() {
             return Err(LoError {
-                message: format!("Unexpected top level token: {}", unexpected.value),
+                message: format!(
+                    "Unexpected top level token: {}, EOF expected",
+                    unexpected.value
+                ),
                 loc: unexpected.loc.clone(),
             });
         }
@@ -125,6 +128,46 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(import_token) = self.eat(Symbol, "import")?.cloned() {
+            let mut loc = import_token.loc;
+
+            self.expect(Symbol, "from")?;
+            let module_name = self.expect_any(StringLiteral).cloned()?;
+
+            self.expect(Delim, "{")?;
+
+            let mut items = Vec::new();
+            loop {
+                if let Some(closing_brace) = self.eat(Delim, "}")? {
+                    loc.end_pos = closing_brace.loc.end_pos.clone();
+                    break;
+                }
+
+                if let Some(_) = self.eat(Symbol, "fn")? {
+                    let decl = self.parse_fn_decl()?;
+                    items.push(ImportItem::FnDecl(decl))
+                } else {
+                    let unexpected = self.current();
+
+                    return Err(LoError {
+                        message: format!(
+                            "Unexpected token in importable item: {:?}",
+                            unexpected.value
+                        ),
+                        loc: unexpected.loc.clone(),
+                    });
+                }
+
+                self.expect(Delim, ";")?;
+            }
+
+            return Ok(TopLevelExpr::Import(ImportExpr {
+                module_name: module_name.value,
+                items,
+                loc,
+            }));
+        }
+
         let unexpected = self.current();
         return Err(LoError {
             message: format!("Unexpected top level token: {:?}", unexpected.value),
@@ -133,22 +176,39 @@ impl ParserV2 {
     }
 
     fn parse_fn_def(&mut self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
-        let fn_name = self.expect_any(Symbol)?.clone().value;
-        let fn_params = self.parse_fn_params()?;
-        let _ = self.expect(Operator, ":")?;
-        let return_type = self.parse_type_expr()?;
+        let decl = self.parse_fn_decl()?;
         let body = self.parse_code_block_expr()?;
 
         loc.end_pos = body.loc.end_pos.clone();
 
-        return Ok(FnDefExpr {
+        Ok(FnDefExpr {
             exported,
+            decl,
+            body,
+            loc,
+        })
+    }
+
+    fn parse_fn_decl(&mut self) -> Result<FnDeclExpr, LoError> {
+        let mut loc = self.prev().loc.clone();
+
+        let fn_name = self.expect_any(Symbol)?.clone().value;
+        let fn_params = self.parse_fn_params()?;
+
+        let return_type = if let Some(_) = self.eat(Operator, ":")? {
+            Some(self.parse_type_expr()?)
+        } else {
+            None
+        };
+
+        loc.end_pos = self.prev().loc.end_pos.clone();
+
+        Ok(FnDeclExpr {
             fn_name,
             fn_params,
             return_type,
-            body,
             loc,
-        });
+        })
     }
 
     fn parse_fn_params(&mut self) -> Result<Vec<FnParam>, LoError> {
@@ -431,12 +491,19 @@ impl ParserV2 {
         token
     }
 
+    fn prev(&mut self) -> &LoToken {
+        self.look_ahead(-1)
+    }
+
     fn current(&mut self) -> &LoToken {
         self.look_ahead(0)
     }
 
-    fn look_ahead(&mut self, token_count: usize) -> &LoToken {
-        if let Some(token) = self.tokens.get(self.tokens_processed + token_count) {
+    fn look_ahead(&mut self, token_count: isize) -> &LoToken {
+        if let Some(token) = self
+            .tokens
+            .get((self.tokens_processed as isize + token_count) as usize)
+        {
             &token
         } else {
             &self.terminal_token

@@ -6,6 +6,6 @@ export fn else_if_test(x: u32): u32 {
     } else {
         return 2;
     };
-
-    return 3; // unreachable
+    // unreachable
+    return 3;
 };

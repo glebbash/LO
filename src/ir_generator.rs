@@ -167,8 +167,8 @@ impl IRGenerator {
         for expr in &file.ast.exprs {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed earlier
-
                 TopLevelExpr::FnDef(fn_def) => self.process_fn_def(fn_def)?,
+                TopLevelExpr::Import(import) => self.process_import(import)?,
             }
         }
 
@@ -176,12 +176,15 @@ impl IRGenerator {
     }
 
     fn process_fn_def(&mut self, fn_def: &FnDefExpr) -> Result<(), LoError> {
-        let return_type = self.build_type(&fn_def.return_type)?;
+        let return_type = match &fn_def.decl.return_type {
+            Some(return_type) => self.build_type(return_type)?,
+            _ => LoType::Void,
+        };
 
         let mut scope = LoScope::default();
 
         let mut lo_inputs = Vec::new();
-        for fn_param in &fn_def.fn_params {
+        for fn_param in &fn_def.decl.fn_params {
             for var in &scope.vars {
                 if var.name == fn_param.name {
                     self.errors.report(LoError {
@@ -202,7 +205,7 @@ impl IRGenerator {
         }
 
         self.ss.top().fn_defs.push(LoFnDef {
-            name: fn_def.fn_name.clone(),
+            name: fn_def.decl.fn_name.clone(),
             inputs: lo_inputs,
             output: return_type,
             exported: fn_def.exported,
@@ -214,9 +217,13 @@ impl IRGenerator {
         let exprs = self.build_code_block(&fn_def.body)?;
 
         let scope = self.ss.pop();
-        self.ss.get_fn_def_mut(&fn_def.fn_name).unwrap().body = CodeBlock { exprs, scope };
+        self.ss.get_fn_def_mut(&fn_def.decl.fn_name).unwrap().body = CodeBlock { exprs, scope };
 
         Ok(())
+    }
+
+    fn process_import(&mut self, _import: &ImportExpr) -> Result<(), LoError> {
+        Err(LoError::todo(file!(), line!()))
     }
 
     fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {

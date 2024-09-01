@@ -15,15 +15,22 @@ pub struct AST {
 pub enum TopLevelExpr {
     FnDef(FnDefExpr),
     Include(IncludeExpr),
+    Import(ImportExpr),
 }
 
 #[derive(Debug)]
 pub struct FnDefExpr {
     pub exported: bool,
+    pub decl: FnDeclExpr,
+    pub body: CodeBlockExpr,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct FnDeclExpr {
     pub fn_name: String,
     pub fn_params: Vec<FnParam>,
-    pub return_type: TypeExpr,
-    pub body: CodeBlockExpr,
+    pub return_type: Option<TypeExpr>,
     pub loc: LoLocation,
 }
 
@@ -40,11 +47,32 @@ pub struct IncludeExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct ImportExpr {
+    pub module_name: String,
+    pub items: Vec<ImportItem>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub enum ImportItem {
+    FnDecl(FnDeclExpr),
+}
+
+impl Locatable for ImportItem {
+    fn loc(&self) -> &LoLocation {
+        match self {
+            ImportItem::FnDecl(e) => &e.loc,
+        }
+    }
+}
+
 impl Locatable for TopLevelExpr {
     fn loc(&self) -> &LoLocation {
         match self {
             TopLevelExpr::FnDef(e) => &e.loc,
             TopLevelExpr::Include(e) => &e.loc,
+            TopLevelExpr::Import(e) => &e.loc,
         }
     }
 }
