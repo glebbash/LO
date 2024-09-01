@@ -84,6 +84,7 @@ Code expressions are allowed inside function bodies.
 
 ```lo
 123 // u32 literal
+0x3F // u32 hex literal, uppercase letters only
 ```
 
 Int literals are always fully typed, there is no generic "number" type that will get narrowed later.
@@ -108,7 +109,7 @@ Binary operators require both operands to be of the same type.
 
 #### Numeric operators
 
-`+`, `-`, `*`
+`+`, `-`, `*`, `>>`
 
 > Expression type: Same as operand type
 
