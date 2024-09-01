@@ -167,8 +167,8 @@ impl Printer {
                 stdout_write("return ");
                 self.print_code_expr(&expr);
             }
-            CodeExpr::IntLiteral(IntLiteralExpr { value, .. }) => {
-                stdout_write(value);
+            CodeExpr::IntLiteral(IntLiteralExpr { repr, .. }) => {
+                stdout_write(repr);
             }
             CodeExpr::VarLoad(VarLoadExpr { name, .. }) => {
                 stdout_write(name);

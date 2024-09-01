@@ -269,8 +269,18 @@ impl ParserV2 {
         };
 
         if let Some(int) = self.eat_any(IntLiteral)? {
+            let result = if int.value.starts_with("0x") {
+                u32::from_str_radix(&int.value[2..], 16)
+            } else {
+                int.value.parse()
+            };
+
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
-                value: int.value.clone(),
+                repr: int.value.clone(),
+                value: result.map_err(|_| LoError {
+                    message: format!("Parsing u32 failed: {}", int.value),
+                    loc: int.loc.clone(),
+                })?,
                 loc: int.loc.clone(),
             }));
         };

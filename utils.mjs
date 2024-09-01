@@ -149,7 +149,7 @@ async function testCommand() {
     const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
 
     // NOTE: commenting/uncommenting this prevents random segfaults
-    // await v1("./examples/test/42.lo");
+    await v1("./examples/test/42.lo");
 
     testCompilers("42.lo", { v1, v2, vS }, async (compile) => {
         const output = await compile("./examples/test/42.lo");
@@ -208,7 +208,7 @@ async function testCommand() {
         assert.strictEqual(program.main(), 120);
     });
 
-    testCompilers("hex-and-shifts.lo", { v1 }, async (compile) => {
+    testCompilers("hex-and-shifts.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/hex-and-shifts.lo");
 
         const program = await loadWasm(output);

@@ -78,7 +78,8 @@ pub struct ReturnExpr {
 
 #[derive(Debug)]
 pub struct IntLiteralExpr {
-    pub value: String,
+    pub repr: String,
+    pub value: u32,
     pub loc: LoLocation,
 }
 

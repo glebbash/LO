@@ -243,14 +243,9 @@ impl IRGenerator {
                     expr: Box::new(lo_expr),
                 })
             }
-            CodeExpr::IntLiteral(int_expr) => {
-                let value = u32::from_str_radix(&int_expr.value, 10).map_err(|_| LoError {
-                    message: format!("Invalid int literal"),
-                    loc: int_expr.loc.clone(),
-                })?;
-
-                Ok(LoExpr::U32Const { value })
-            }
+            CodeExpr::IntLiteral(int_expr) => Ok(LoExpr::U32Const {
+                value: int_expr.value,
+            }),
             CodeExpr::VarLoad(var_load) => {
                 let Some(var) = self.ss.get_var(&var_load.name) else {
                     return Err(LoError {
@@ -331,12 +326,16 @@ impl IRGenerator {
                         _ => return Err(unsupported_op(&lhs_type, op_tag, loc)),
                     },
 
+                    InfixOpTag::ShiftRight => match lhs_type {
+                        LoType::U32 => WasmBinaryOpKind::I32_SHR_U,
+                        _ => return Err(unsupported_op(&lhs_type, op_tag, loc)),
+                    },
+
                     InfixOpTag::Div
                     | InfixOpTag::Mod
                     | InfixOpTag::BitAnd
                     | InfixOpTag::BitOr
-                    | InfixOpTag::ShiftLeft
-                    | InfixOpTag::ShiftRight => return Err(LoError::todo(file!(), line!())),
+                    | InfixOpTag::ShiftLeft => return Err(LoError::todo(file!(), line!())),
 
                     InfixOpTag::Assign
                     | InfixOpTag::AddAssign
