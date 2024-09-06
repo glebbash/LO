@@ -1,6 +1,6 @@
 # LO language support
 
-> NOTE: This extension depends on [wasm-wasi-core](https://marketplace.visualstudio.com/items?itemName=ms-vscode.wasm-wasi-core) which currently has no release version so you'll need to click `Install Pre-Release Version` to install it.
+> NOTE: This extension depends on [wasm-wasi-core](https://marketplace.visualstudio.com/items?itemName=ms-vscode.wasm-wasi-core)
 
 This extension adds the following commands:
 - `LO: Initialize project in the current workspace`
