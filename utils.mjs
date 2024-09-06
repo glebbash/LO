@@ -245,6 +245,15 @@ async function testCommand() {
         assert.strictEqual(result, 69);
     });
 
+    testCompilers("compiles for-loop", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/for-loop.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 138);
+    });
+
     testCompilers("compiles methods", { v1 }, async (compile) => {
         const output = await compile("./examples/test/methods.lo");
 
@@ -448,27 +457,6 @@ async function testCommand() {
         });
 
         assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
-    });
-
-    testCompilers("compiles for-loop", { v1 }, async (compile) => {
-        const program = await compile("./examples/test/for-loop.lo");
-
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
-
-        assert.strictEqual(
-            output,
-            [
-                "0 1 2 3 4 5 6 7 8 9 ",
-                "0 1 2 3 4 5 6 7 ",
-                "0 1 2 3 5 6 7 8 9 ",
-                "0 1 2 3 5 6 7 ",
-            ]
-                .map((x) => x + "\n")
-                .join("") // using this instead of multiline because trailing spaces are removed when formatting
-        );
     });
 
     testCompilers("compiles heap-alloc", { v1 }, async (compile) => {

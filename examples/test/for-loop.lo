@@ -1,27 +1,25 @@
-include "../lib/cli.lo";
+export fn main(): u32 {
+    let result = 0;
 
-fn main() {
     for i in 0..10 {
-        print_u32(i); puts(" ");
+        result += i;
     };
-    puts("\n");
 
     for i in 0..10 {
-        print_u32(i); puts(" ");
+        result += i;
         if i == 7 { break; };
     };
-    puts("\n");
 
     for i in 0..10 {
         if i == 4 { continue; };
-        print_u32(i); puts(" ");
+        result += i;
     };
-    puts("\n");
 
     for i in 0..10 {
         if i == 4 { continue; };
-        print_u32(i); puts(" ");
+        result += i;
         if i == 7 { break; };
     };
-    puts("\n");
+
+    return result;
 };
