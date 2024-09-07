@@ -451,6 +451,7 @@ impl IRGenerator {
                     return_type: fn_def.output.clone(),
                 })
             }
+            CodeExpr::Local(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

@@ -345,6 +345,22 @@ impl ParserV2 {
             }));
         };
 
+        if let Some(let_token) = self.eat(Symbol, "let")? {
+            let mut loc = let_token.loc.clone();
+
+            let local_name = self.expect_any(Symbol)?.clone();
+            self.expect(Operator, "=")?;
+            let value = self.parse_code_expr(0)?;
+
+            loc.end_pos = value.loc().end_pos.clone();
+
+            return Ok(CodeExpr::Local(LocalExpr {
+                local_name: local_name.value,
+                value: Box::new(value),
+                loc,
+            }));
+        }
+
         if self.current().is_any(Symbol) && self.look_ahead(1).is(Delim, "(") {
             let fn_name = self.expect_any(Symbol)?.clone();
             let mut args = Vec::new();

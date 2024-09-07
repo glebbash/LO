@@ -90,6 +90,7 @@ pub enum CodeExpr {
     BinaryOp(BinaryOpExpr),
     If(IfExpr),
     Call(CallExpr),
+    Local(LocalExpr),
 }
 
 #[derive(Debug)]
@@ -147,6 +148,13 @@ pub struct CallExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct LocalExpr {
+    pub local_name: String,
+    pub value: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -156,6 +164,7 @@ impl Locatable for CodeExpr {
             CodeExpr::BinaryOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,
             CodeExpr::Call(e) => &e.loc,
+            CodeExpr::Local(e) => &e.loc,
         }
     }
 }

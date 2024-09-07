@@ -741,6 +741,7 @@ async function testCommand() {
             "examples/test/hex-and-shifts.lo",
             "examples/test/import.lo",
             "examples/test/include.lo",
+            "examples/test/locals.lo",
             "examples/test/multiple-compiler-errors.lo",
         ];
 

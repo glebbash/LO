@@ -264,6 +264,21 @@ impl Printer {
                 }
                 stdout_write(")");
             }
+            CodeExpr::Local(LocalExpr {
+                local_name, value, ..
+            }) => {
+                if self.format == TranspileToC {
+                    // TODO: is it possible to do typechecking before formatting?
+                    // Requires C23 or C++
+                    stdout_write("auto");
+                } else {
+                    stdout_write("let");
+                }
+                stdout_write(" ");
+                stdout_write(local_name);
+                stdout_write(" = ");
+                self.print_code_expr(&value);
+            }
         }
     }
 
