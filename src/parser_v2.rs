@@ -382,6 +382,19 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "loop")? {
+            let mut loc = self.prev().loc.clone();
+
+            let body = self.parse_code_block_expr()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::Loop(LoopExpr {
+                body: Box::new(body),
+                loc,
+            }));
+        }
+
         if let Some(_) = self.eat(Symbol, "for")? {
             let mut loc = self.prev().loc.clone();
 

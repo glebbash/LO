@@ -100,6 +100,7 @@ pub enum CodeExpr {
     If(IfExpr),
     Call(CallExpr),
     Local(LocalExpr),
+    Loop(LoopExpr),
     ForLoop(ForLoopExpr),
 }
 
@@ -166,6 +167,12 @@ pub struct LocalExpr {
 }
 
 #[derive(Debug)]
+pub struct LoopExpr {
+    pub body: Box<CodeBlockExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub struct ForLoopExpr {
     pub counter: String,
     pub start: Box<CodeExpr>,
@@ -184,6 +191,7 @@ impl Locatable for CodeExpr {
             CodeExpr::If(e) => &e.loc,
             CodeExpr::Call(e) => &e.loc,
             CodeExpr::Local(e) => &e.loc,
+            CodeExpr::Loop(e) => &e.loc,
             CodeExpr::ForLoop(e) => &e.loc,
         }
     }

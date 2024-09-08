@@ -291,6 +291,15 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(&value);
             }
+            CodeExpr::Loop(LoopExpr { body, .. }) => {
+                if self.format == TranspileToC {
+                    stdout_write("while (true)");
+                } else {
+                    stdout_write("loop");
+                }
+                stdout_write(" ");
+                self.print_code_block_expr(&body);
+            }
             CodeExpr::ForLoop(ForLoopExpr {
                 counter,
                 start,
@@ -309,7 +318,7 @@ impl Printer {
                     self.print_code_expr(&end);
                     stdout_write("; ");
                     stdout_write(counter);
-                    stdout_write("++) ");
+                    stdout_write("++)");
                 } else {
                     stdout_write("for ");
                     stdout_write(counter);
