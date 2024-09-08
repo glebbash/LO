@@ -214,8 +214,6 @@ impl Lexer {
 
         self.next_char(); // skip start quote
 
-        let mut value = String::new();
-
         loop {
             let c = self.current_char()?;
             match c {
@@ -223,12 +221,7 @@ impl Lexer {
                 '\\' => {
                     self.next_char();
                     match self.current_char()? {
-                        'n' => value.push('\n'),
-                        'r' => value.push('\r'),
-                        't' => value.push('\t'),
-                        '0' => value.push('\0'),
-                        '\\' => value.push('\\'),
-                        '"' => value.push('"'),
+                        'n' | 'r' | 't' | '0' | '\\' | '"' => {}
                         c => {
                             return Err(LoError {
                                 message: format!("ParseError: Invalid escape sequence: \\{c}"),
@@ -237,9 +230,7 @@ impl Lexer {
                         }
                     }
                 }
-                _ => {
-                    value.push(c);
-                }
+                _ => {}
             };
             self.next_char();
         }
@@ -250,9 +241,41 @@ impl Lexer {
 
         Ok(LoToken {
             type_: LoTokenType::StringLiteral,
-            value,
+            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
+    }
+
+    pub fn unescape_string(escaped: &String) -> String {
+        let mut unescaped = String::new();
+
+        let mut chars = escaped.chars();
+
+        chars.next().unwrap(); // skip start quote
+
+        loop {
+            let char = chars.next().unwrap();
+            match char {
+                '"' => break,
+                '\\' => {
+                    let next_char = chars.next().unwrap();
+                    match next_char {
+                        'n' => unescaped.push('\n'),
+                        'r' => unescaped.push('\r'),
+                        't' => unescaped.push('\t'),
+                        '0' => unescaped.push('\0'),
+                        '\\' => unescaped.push('\\'),
+                        '"' => unescaped.push('"'),
+                        _ => unreachable!(),
+                    }
+                }
+                _ => {
+                    unescaped.push(char);
+                }
+            }
+        }
+
+        unescaped
     }
 
     fn lex_delim(&mut self) -> Result<LoToken, LoError> {

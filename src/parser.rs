@@ -253,7 +253,8 @@ fn parse_top_level_expr(
         tokens.expect(Operator, "=")?;
 
         let bytes = if let Some(data) = tokens.eat_any(StringLiteral)? {
-            data.value.as_bytes().iter().map(|b| *b).collect()
+            let value = Lexer::unescape_string(&data.value);
+            value.as_bytes().iter().map(|b| *b).collect()
         } else {
             parse_const_sequence(ctx, tokens)?.1
         };
@@ -302,11 +303,12 @@ fn parse_top_level_expr(
             }
 
             tokens.expect(Symbol, "as")?;
-            let out_name = tokens.expect_any(StringLiteral)?.clone();
+            let out_name = tokens.expect_any(StringLiteral)?;
+            let out_name = Lexer::unescape_string(&out_name.value);
 
             ctx.fn_exports.push(FnExport {
                 in_name: in_name.value,
-                out_name: out_name.value,
+                out_name,
             });
 
             return Ok(());
@@ -315,7 +317,8 @@ fn parse_top_level_expr(
 
     if let Some(_) = tokens.eat(Symbol, "import")? {
         tokens.expect(Symbol, "from")?;
-        let module_name = tokens.expect_any(StringLiteral)?.clone();
+        let module_name = tokens.expect_any(StringLiteral)?;
+        let module_name = Lexer::unescape_string(&module_name.value);
 
         tokens.expect(Delim, "{")?;
         while let None = tokens.eat(Delim, "}")? {
@@ -324,7 +327,7 @@ fn parse_top_level_expr(
                 tokens.expect(LoTokenType::Delim, ";")?;
 
                 ctx.wasm_module.borrow_mut().imports.push(WasmImport {
-                    module_name: module_name.value.clone(),
+                    module_name: module_name.clone(),
                     item_name: "memory".into(),
                     item_desc: WasmImportDesc::Memory(limits),
                 });
@@ -358,7 +361,7 @@ fn parse_top_level_expr(
             };
             ctx.fn_defs.insert(fn_decl.fn_name.clone(), fn_def);
             ctx.wasm_module.borrow_mut().imports.push(WasmImport {
-                module_name: module_name.value.clone(),
+                module_name: module_name.clone(),
                 item_name: fn_decl.method_name,
                 item_desc: WasmImportDesc::Func { type_index },
             });
@@ -574,11 +577,14 @@ fn parse_top_level_expr(
 
     if let Some(_) = tokens.eat(Symbol, "include")?.cloned() {
         let file_path = tokens.expect_any(StringLiteral)?;
-        let target_index = parse_file(ctx, &file_path.value, &file_path.loc)?;
+        let loc = &file_path.loc;
+        let file_path = Lexer::unescape_string(&file_path.value);
+
+        let target_index = parse_file(ctx, &file_path, loc)?;
 
         if ctx.mode == CompilerMode::Inspect {
-            let source_index = ctx.get_loc_module_index(&file_path.loc);
-            let source_range = RangeDisplay(&file_path.loc);
+            let source_index = ctx.get_loc_module_index(loc);
+            let source_range = RangeDisplay(loc);
             let target_range = "1:1-1:1";
 
             stdout_writeln(format!(
@@ -977,8 +983,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         .casted(LoType::U8));
     }
 
-    if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {
-        return parse_const_str(ctx.module, tokens, value.value);
+    if let Some(value) = tokens.eat_any(StringLiteral)? {
+        let value = Lexer::unescape_string(&value.value);
+        return parse_const_str(ctx.module, tokens, value);
     }
 
     if let Some(_) = tokens.eat(Delim, "[")? {
@@ -1146,7 +1153,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
         let message = tokens.expect_any(StringLiteral)?;
-        let debug_mesage = format!("{} - {}", dbg_token.loc, message.value);
+        let message = Lexer::unescape_string(&message.value);
+        let debug_mesage = format!("{} - {}", dbg_token.loc, message);
         return parse_const_str(ctx.module, tokens, debug_mesage);
     }
 
@@ -2828,8 +2836,9 @@ fn parse_const_primary(
         .casted(LoType::U8));
     }
 
-    if let Some(value) = tokens.eat_any(StringLiteral)?.cloned() {
-        return parse_const_str(ctx, tokens, value.value);
+    if let Some(value) = tokens.eat_any(StringLiteral)? {
+        let value = Lexer::unescape_string(&value.value);
+        return parse_const_str(ctx, tokens, value);
     }
 
     if let Some(_) = tokens.eat(Delim, "[")? {
@@ -3135,9 +3144,10 @@ fn parse_const_sequence(
                 name: format!("str"),
             })
         {
-            let value = tokens.expect_any(StringLiteral)?.clone();
-            let len = value.value.len();
-            let ptr = ctx.append_data(value.value.into_bytes());
+            let value = tokens.expect_any(StringLiteral)?;
+            let value = Lexer::unescape_string(&value.value);
+            let len = value.len();
+            let ptr = ctx.append_data(value.into_bytes());
 
             bytes.extend_from_slice(&ptr.to_le_bytes());
             bytes.extend_from_slice(&len.to_le_bytes());

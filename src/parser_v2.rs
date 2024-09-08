@@ -43,7 +43,11 @@ pub fn parse_file_and_deps(
     });
 
     for include in includes {
-        parse_file_and_deps(files, &include.file_path, &include.loc)?;
+        parse_file_and_deps(
+            files,
+            &Lexer::unescape_string(&include.file_path),
+            &include.loc,
+        )?;
     }
 
     Ok(())
@@ -368,9 +372,8 @@ impl ParserV2 {
 
         if let Some(string) = self.eat_any(StringLiteral)? {
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                // TODO: unescape string properly
-                repr: string.value.clone().replace("\n", "\\n"),
-                value: string.value.clone(),
+                repr: string.value.clone(),
+                value: Lexer::unescape_string(&string.value),
                 loc: string.loc.clone(),
             }));
         };

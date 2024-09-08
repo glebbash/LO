@@ -68,9 +68,9 @@ impl Printer {
             }
             TopLevelExpr::Import(import) => {
                 if self.format != TranspileToC {
-                    stdout_write("import from \"");
+                    stdout_write("import from ");
                     stdout_write(&import.module_name);
-                    stdout_write("\" {\n");
+                    stdout_write(" {\n");
                     self.indent += 1;
                 }
 
@@ -166,14 +166,16 @@ impl Printer {
     fn print_include(&mut self, include: &IncludeExpr) {
         if self.format == TranspileToC {
             stdout_write("#include \"");
-            stdout_write(drop_file_extension(include.file_path.as_str()));
+            stdout_write(drop_file_extension(
+                &include.file_path[1..&include.file_path.len() - 1],
+            ));
             stdout_write(".c\"");
             return;
         }
 
-        stdout_write("include \"");
+        stdout_write("include ");
         stdout_write(&include.file_path);
-        stdout_write("\";\n");
+        stdout_writeln(";");
     }
 
     fn print_type(&mut self, type_expr: &TypeExpr) {
@@ -220,9 +222,7 @@ impl Printer {
                 stdout_write(repr);
             }
             CodeExpr::StringLiteral(StringLiteralExpr { repr, .. }) => {
-                stdout_write("\"");
                 stdout_write(repr);
-                stdout_write("\"");
             }
             CodeExpr::VarLoad(VarLoadExpr { name, .. }) => {
                 stdout_write(name);
