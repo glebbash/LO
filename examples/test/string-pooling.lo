@@ -14,7 +14,6 @@ fn main() {
     let _ = "Hello World!\n";
     let _ = "Hello World!\n";
     let _ = "Hello World!\n";
-
     print_u32(STATIC_DATA_SIZE);
     puts("\n");
 };

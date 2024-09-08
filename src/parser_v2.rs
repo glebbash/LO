@@ -366,6 +366,15 @@ impl ParserV2 {
             }));
         };
 
+        if let Some(string) = self.eat_any(StringLiteral)? {
+            return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
+                // TODO: unescape string properly
+                repr: string.value.clone().replace("\n", "\\n"),
+                value: string.value.clone(),
+                loc: string.loc.clone(),
+            }));
+        };
+
         if let Some(_) = self.eat(Symbol, "let")? {
             let mut loc = self.prev().loc.clone();
 

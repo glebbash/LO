@@ -95,6 +95,7 @@ pub enum TypeExpr {
 pub enum CodeExpr {
     Return(ReturnExpr),
     IntLiteral(IntLiteralExpr),
+    StringLiteral(StringLiteralExpr),
     VarLoad(VarLoadExpr),
     BinaryOp(BinaryOpExpr),
     If(IfExpr),
@@ -120,6 +121,13 @@ pub struct ReturnExpr {
 pub struct IntLiteralExpr {
     pub repr: String,
     pub value: u32,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct StringLiteralExpr {
+    pub repr: String,
+    pub value: String,
     pub loc: LoLocation,
 }
 
@@ -186,6 +194,7 @@ impl Locatable for CodeExpr {
         match self {
             CodeExpr::Return(e) => &e.loc,
             CodeExpr::IntLiteral(e) => &e.loc,
+            CodeExpr::StringLiteral(e) => &e.loc,
             CodeExpr::VarLoad(e) => &e.loc,
             CodeExpr::BinaryOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,

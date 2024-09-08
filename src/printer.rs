@@ -219,6 +219,11 @@ impl Printer {
             CodeExpr::IntLiteral(IntLiteralExpr { repr, .. }) => {
                 stdout_write(repr);
             }
+            CodeExpr::StringLiteral(StringLiteralExpr { repr, .. }) => {
+                stdout_write("\"");
+                stdout_write(repr);
+                stdout_write("\"");
+            }
             CodeExpr::VarLoad(VarLoadExpr { name, .. }) => {
                 stdout_write(name);
             }
