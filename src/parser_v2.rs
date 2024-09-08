@@ -99,9 +99,11 @@ impl ParserV2 {
     }
 
     fn parse_top_level_expr(&mut self) -> Result<TopLevelExpr, LoError> {
-        if let Some(export_token) = self.eat(Symbol, "export")?.cloned() {
+        if let Some(_) = self.eat(Symbol, "export")? {
+            let loc = self.prev().loc.clone();
+
             if let Some(_) = self.eat(Symbol, "fn")? {
-                let fn_def = self.parse_fn_def(true, export_token.loc)?;
+                let fn_def = self.parse_fn_def(true, loc)?;
                 return Ok(TopLevelExpr::FnDef(fn_def));
             }
 
@@ -112,13 +114,16 @@ impl ParserV2 {
             });
         }
 
-        if let Some(fn_token) = self.eat(Symbol, "fn")?.cloned() {
-            let fn_def = self.parse_fn_def(false, fn_token.loc)?;
+        if let Some(_) = self.eat(Symbol, "fn")? {
+            let loc = self.prev().loc.clone();
+
+            let fn_def = self.parse_fn_def(false, loc)?;
             return Ok(TopLevelExpr::FnDef(fn_def));
         }
 
-        if let Some(include_token) = self.eat(Symbol, "include")?.cloned() {
-            let mut loc = include_token.loc;
+        if let Some(_) = self.eat(Symbol, "include")? {
+            let mut loc = self.prev().loc.clone();
+
             let file_path = self.expect_any(StringLiteral)?;
             loc.end_pos = file_path.loc.end_pos.clone();
 
@@ -128,18 +133,18 @@ impl ParserV2 {
             }));
         }
 
-        if let Some(import_token) = self.eat(Symbol, "import")?.cloned() {
-            let mut loc = import_token.loc;
+        if let Some(_) = self.eat(Symbol, "import")? {
+            let mut loc = self.prev().loc.clone();
 
             self.expect(Symbol, "from")?;
-            let module_name = self.expect_any(StringLiteral).cloned()?;
+            let module_name = self.expect_any(StringLiteral)?.clone();
 
             self.expect(Delim, "{")?;
 
             let mut items = Vec::new();
             loop {
-                if let Some(closing_brace) = self.eat(Delim, "}")? {
-                    loc.end_pos = closing_brace.loc.end_pos.clone();
+                if let Some(_) = self.eat(Delim, "}")? {
+                    loc.end_pos = self.prev().loc.end_pos.clone();
                     break;
                 }
 
@@ -164,6 +169,22 @@ impl ParserV2 {
             return Ok(TopLevelExpr::Import(ImportExpr {
                 module_name: module_name.value,
                 items,
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "global")? {
+            let mut loc = self.prev().loc.clone();
+
+            let global_name = self.expect_any(Symbol)?.clone();
+            self.expect(Operator, "=")?;
+            let expr = self.parse_code_expr(0)?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(TopLevelExpr::GlobalDef(GlobalDefExpr {
+                global_name: global_name.value.clone(),
+                expr,
                 loc,
             }));
         }
@@ -248,11 +269,11 @@ impl ParserV2 {
     }
 
     fn parse_code_block_expr(&mut self) -> Result<CodeBlockExpr, LoError> {
-        let open_brace = self.expect(Delim, "{")?;
+        self.expect(Delim, "{")?;
 
         let mut code_block = CodeBlockExpr {
             exprs: Vec::new(),
-            loc: open_brace.loc.clone(),
+            loc: self.prev().loc.clone(),
         };
 
         while let None = self.eat(Delim, "}")? {
@@ -263,7 +284,7 @@ impl ParserV2 {
         }
 
         // close curly pos
-        code_block.loc.end_pos = self.current().loc.end_pos.clone();
+        code_block.loc.end_pos = self.prev().loc.end_pos.clone();
 
         return Ok(code_block);
     }
@@ -289,10 +310,12 @@ impl ParserV2 {
     }
 
     fn parse_code_expr_primary(&mut self) -> Result<CodeExpr, LoError> {
-        if let Some(return_token) = self.eat(Symbol, "return")?.cloned() {
-            let mut loc = return_token.loc;
+        if let Some(_) = self.eat(Symbol, "return")? {
+            let mut loc = self.prev().loc.clone();
+
             let expr = self.parse_code_expr(0)?;
-            loc.end_pos = expr.loc().end_pos.clone();
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Return(ReturnExpr {
                 expr: Box::new(expr),
@@ -300,8 +323,8 @@ impl ParserV2 {
             }));
         };
 
-        if let Some(if_token) = self.eat(Symbol, "if")?.cloned() {
-            let mut loc = if_token.loc;
+        if let Some(_) = self.eat(Symbol, "if")? {
+            let mut loc = self.prev().loc.clone();
 
             let expr = Box::new(self.parse_code_expr(0)?);
             let then_block = Box::new(self.parse_code_block_expr()?);
@@ -309,16 +332,14 @@ impl ParserV2 {
             if let Some(_) = self.eat(Symbol, "else")? {
                 if self.current().is(Symbol, "if") {
                     let if_expr = self.parse_code_expr(0)?;
-                    loc.end_pos = if_expr.loc().end_pos.clone();
                     else_block = ElseBlock::ElseIf(Box::new(if_expr));
                 } else {
                     let block = self.parse_code_block_expr()?;
-                    loc.end_pos = block.loc.end_pos.clone();
                     else_block = ElseBlock::Else(Box::new(block));
                 }
-            } else {
-                loc.end_pos = then_block.loc.end_pos.clone();
             }
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::If(IfExpr {
                 cond: expr,
@@ -345,14 +366,14 @@ impl ParserV2 {
             }));
         };
 
-        if let Some(let_token) = self.eat(Symbol, "let")? {
-            let mut loc = let_token.loc.clone();
+        if let Some(_) = self.eat(Symbol, "let")? {
+            let mut loc = self.prev().loc.clone();
 
             let local_name = self.expect_any(Symbol)?.clone();
             self.expect(Operator, "=")?;
             let value = self.parse_code_expr(0)?;
 
-            loc.end_pos = value.loc().end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Local(LocalExpr {
                 local_name: local_name.value,
@@ -364,7 +385,7 @@ impl ParserV2 {
         if self.current().is_any(Symbol) && self.look_ahead(1).is(Delim, "(") {
             let fn_name = self.expect_any(Symbol)?.clone();
             let mut args = Vec::new();
-            let loc = fn_name.loc;
+            let mut loc = self.prev().loc.clone();
 
             self.expect(Delim, "(")?;
             while let None = self.eat(Delim, ")")? {
@@ -374,6 +395,8 @@ impl ParserV2 {
                     self.expect(Delim, ",")?;
                 }
             }
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Call(CallExpr {
                 fn_name: fn_name.value,

@@ -89,8 +89,21 @@ impl Printer {
                 if self.format != TranspileToC {
                     self.indent -= 1;
                     self.print_indent();
-                    stdout_write("};\n");
+                    stdout_writeln("};");
                 }
+            }
+            TopLevelExpr::GlobalDef(global) => {
+                if self.format == TranspileToC {
+                    // Requires C23 or C++
+                    stdout_write("auto");
+                } else {
+                    stdout_write("global");
+                }
+                stdout_write(" ");
+                stdout_write(&global.global_name);
+                stdout_write(" = ");
+                self.print_code_expr(&global.expr);
+                stdout_writeln(";");
             }
         }
 
@@ -268,7 +281,6 @@ impl Printer {
                 local_name, value, ..
             }) => {
                 if self.format == TranspileToC {
-                    // TODO: is it possible to do typechecking before formatting?
                     // Requires C23 or C++
                     stdout_write("auto");
                 } else {

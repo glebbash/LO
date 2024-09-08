@@ -168,7 +168,8 @@ impl IRGenerator {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed earlier
                 TopLevelExpr::FnDef(fn_def) => self.process_fn_def(fn_def)?,
-                TopLevelExpr::Import(import) => self.process_import(import)?,
+                TopLevelExpr::Import(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::GlobalDef(_) => return Err(LoError::todo(file!(), line!())),
             }
         }
 
@@ -220,10 +221,6 @@ impl IRGenerator {
         self.ss.get_fn_def_mut(&fn_def.decl.fn_name).unwrap().body = CodeBlock { exprs, scope };
 
         Ok(())
-    }
-
-    fn process_import(&mut self, _import: &ImportExpr) -> Result<(), LoError> {
-        Err(LoError::todo(file!(), line!()))
     }
 
     fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {

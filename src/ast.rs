@@ -16,6 +16,7 @@ pub enum TopLevelExpr {
     FnDef(FnDefExpr),
     Include(IncludeExpr),
     Import(ImportExpr),
+    GlobalDef(GlobalDefExpr),
 }
 
 #[derive(Debug)]
@@ -59,6 +60,13 @@ pub enum ImportItem {
     FnDecl(FnDeclExpr),
 }
 
+#[derive(Debug)]
+pub struct GlobalDefExpr {
+    pub global_name: String,
+    pub expr: CodeExpr,
+    pub loc: LoLocation,
+}
+
 impl Locatable for ImportItem {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -73,6 +81,7 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::FnDef(e) => &e.loc,
             TopLevelExpr::Include(e) => &e.loc,
             TopLevelExpr::Import(e) => &e.loc,
+            TopLevelExpr::GlobalDef(e) => &e.loc,
         }
     }
 }
