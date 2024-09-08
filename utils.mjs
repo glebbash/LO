@@ -263,8 +263,8 @@ async function testCommand() {
         assert.strictEqual(result, 1);
     });
 
-    testCompilers("compiles nesting", { v1 }, async (compile) => {
-        const output = await compile("./examples/test/nesting.lo");
+    testCompilers("compiles decl-nesting.lo", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/decl-nesting.lo");
 
         const program = await loadWasm(output);
         const result = program.main();
