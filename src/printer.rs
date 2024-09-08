@@ -291,6 +291,36 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(&value);
             }
+            CodeExpr::ForLoop(ForLoopExpr {
+                counter,
+                start,
+                end,
+                body,
+                ..
+            }) => {
+                if self.format == TranspileToC {
+                    stdout_write("for (auto ");
+                    stdout_write(counter);
+                    stdout_write(" = ");
+                    self.print_code_expr(&start);
+                    stdout_write("; ");
+                    stdout_write(counter);
+                    stdout_write(" < ");
+                    self.print_code_expr(&end);
+                    stdout_write("; ");
+                    stdout_write(counter);
+                    stdout_write("++) ");
+                } else {
+                    stdout_write("for ");
+                    stdout_write(counter);
+                    stdout_write(" in ");
+                    self.print_code_expr(&start);
+                    stdout_write("..");
+                    self.print_code_expr(&end);
+                }
+                stdout_write(" ");
+                self.print_code_block_expr(&body);
+            }
         }
     }
 

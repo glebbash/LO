@@ -526,7 +526,7 @@ pub enum InfixOpTag {
 impl InfixOpTag {
     pub fn to_str(&self) -> &str {
         match self {
-            InfixOpTag::Equal => "=",
+            InfixOpTag::Equal => "==",
             InfixOpTag::NotEqual => "!=",
             InfixOpTag::Less => "<",
             InfixOpTag::Greater => ">",

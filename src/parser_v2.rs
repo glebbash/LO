@@ -382,6 +382,27 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "for")? {
+            let mut loc = self.prev().loc.clone();
+
+            let counter = self.expect_any(Symbol)?.clone();
+            self.expect(Symbol, "in")?;
+            let start = self.parse_code_expr(0)?;
+            self.expect(Operator, "..")?;
+            let end = self.parse_code_expr(0)?;
+            let body = self.parse_code_block_expr()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::ForLoop(ForLoopExpr {
+                counter: counter.value,
+                start: Box::new(start),
+                end: Box::new(end),
+                body: Box::new(body),
+                loc,
+            }));
+        }
+
         if self.current().is_any(Symbol) && self.look_ahead(1).is(Delim, "(") {
             let fn_name = self.expect_any(Symbol)?.clone();
             let mut args = Vec::new();
