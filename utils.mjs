@@ -741,6 +741,7 @@ async function testCommand() {
             "examples/test/factorial.lo",
             "examples/test/for-loop.lo",
             "examples/test/globals.lo",
+            "examples/test/heap-alloc.lo",
             "examples/test/hex-and-shifts.lo",
             "examples/test/import.lo",
             "examples/test/include.lo",

@@ -466,12 +466,13 @@ impl ParserV2 {
             }));
         }
 
-        if self.current().is_any(Symbol) && self.look_ahead(1).is(Delim, "(") {
-            let fn_name = self.expect_any(Symbol)?.clone();
-            let mut args = Vec::new();
-            let mut loc = self.prev().loc.clone();
+        let ident = self.parse_ident()?;
 
-            self.expect(Delim, "(")?;
+        if let Some(_) = self.eat(Delim, "(")? {
+            let mut loc = ident.loc.clone();
+
+            let mut args = Vec::new();
+
             while let None = self.eat(Delim, ")")? {
                 args.push(self.parse_code_expr(0)?);
 
@@ -482,25 +483,35 @@ impl ParserV2 {
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
-            return Ok(CodeExpr::Call(CallExpr {
-                fn_name: fn_name.value,
-                args,
-                loc,
-            }));
+            return Ok(CodeExpr::Call(CallExpr { ident, args, loc }));
+        }
+
+        Ok(CodeExpr::Ident(ident))
+    }
+
+    fn parse_ident(&mut self) -> Result<IdentExpr, LoError> {
+        let mut ident = IdentExpr {
+            repr: String::new(),
+            parts: Vec::new(),
+            loc: self.current().loc.clone(),
         };
 
-        if let Some(symbol) = self.eat_any(Symbol)? {
-            return Ok(CodeExpr::VarLoad(VarLoadExpr {
-                name: symbol.value.clone(),
-                loc: symbol.loc.clone(),
-            }));
-        };
+        loop {
+            let ident_part = self.expect_any(Symbol)?;
+            ident.parts.push(ident_part.value.clone());
+            ident.repr += ident_part.value.as_str();
 
-        let unexpected = self.current();
-        return Err(LoError {
-            message: format!("Unexpected code expr token: {:?}", unexpected.value),
-            loc: unexpected.loc.clone(),
-        });
+            if let Some(_) = self.eat(Operator, "::")? {
+                ident.repr += "::";
+                continue;
+            }
+
+            break;
+        }
+
+        ident.loc.end_pos = self.prev().loc.end_pos.clone();
+
+        Ok(ident)
     }
 
     fn parse_code_expr_postfix(
@@ -550,8 +561,20 @@ impl ParserV2 {
                     loc,
                 }))
             }
+            InfixOpTag::Cast => {
+                let mut loc = primary.loc().clone();
+
+                let casted_to = self.parse_type_expr()?;
+
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                Ok(CodeExpr::Cast(CastExpr {
+                    expr: Box::new(primary),
+                    casted_to,
+                    loc,
+                }))
+            }
             InfixOpTag::Assign
-            | InfixOpTag::Cast
             | InfixOpTag::FieldAccess
             | InfixOpTag::Catch
             | InfixOpTag::ErrorPropagation => Err(LoError::todo(file!(), line!())),

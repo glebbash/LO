@@ -96,7 +96,7 @@ pub enum CodeExpr {
     Return(ReturnExpr),
     IntLiteral(IntLiteralExpr),
     StringLiteral(StringLiteralExpr),
-    VarLoad(VarLoadExpr),
+    Ident(IdentExpr),
     BinaryOp(BinaryOpExpr),
     If(IfExpr),
     Call(CallExpr),
@@ -107,6 +107,7 @@ pub enum CodeExpr {
     Continue(ContinueExpr),
     Dbg(DbgExpr),
     Defer(DeferExpr),
+    Cast(CastExpr),
 }
 
 #[derive(Debug)]
@@ -136,8 +137,9 @@ pub struct StringLiteralExpr {
 }
 
 #[derive(Debug)]
-pub struct VarLoadExpr {
-    pub name: String,
+pub struct IdentExpr {
+    pub repr: String,
+    pub parts: Vec<String>,
     pub loc: LoLocation,
 }
 
@@ -166,7 +168,7 @@ pub enum ElseBlock {
 
 #[derive(Debug)]
 pub struct CallExpr {
-    pub fn_name: String,
+    pub ident: IdentExpr,
     pub args: Vec<CodeExpr>,
     pub loc: LoLocation,
 }
@@ -215,13 +217,20 @@ pub struct DeferExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct CastExpr {
+    pub expr: Box<CodeExpr>,
+    pub casted_to: TypeExpr,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
             CodeExpr::Return(e) => &e.loc,
             CodeExpr::IntLiteral(e) => &e.loc,
             CodeExpr::StringLiteral(e) => &e.loc,
-            CodeExpr::VarLoad(e) => &e.loc,
+            CodeExpr::Ident(e) => &e.loc,
             CodeExpr::BinaryOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,
             CodeExpr::Call(e) => &e.loc,
@@ -232,6 +241,7 @@ impl Locatable for CodeExpr {
             CodeExpr::Continue(e) => &e.loc,
             CodeExpr::Dbg(e) => &e.loc,
             CodeExpr::Defer(e) => &e.loc,
+            CodeExpr::Cast(e) => &e.loc,
         }
     }
 }

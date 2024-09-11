@@ -224,7 +224,7 @@ impl Printer {
             CodeExpr::StringLiteral(StringLiteralExpr { repr, .. }) => {
                 stdout_write(repr);
             }
-            CodeExpr::VarLoad(VarLoadExpr { name, .. }) => {
+            CodeExpr::Ident(IdentExpr { repr: name, .. }) => {
                 stdout_write(name);
             }
             CodeExpr::BinaryOp(BinaryOpExpr {
@@ -270,8 +270,8 @@ impl Printer {
                 }
             }
             // TODO: figure out multiline arg printing
-            CodeExpr::Call(CallExpr { fn_name, args, .. }) => {
-                stdout_write(fn_name);
+            CodeExpr::Call(CallExpr { ident, args, .. }) => {
+                stdout_write(&ident.repr);
                 stdout_write("(");
                 for (arg, index) in args.iter().zip(0..) {
                     if index != 0 {
@@ -354,6 +354,22 @@ impl Printer {
                 }
                 stdout_write("defer ");
                 self.print_code_expr(expr);
+            }
+            CodeExpr::Cast(CastExpr {
+                expr, casted_to, ..
+            }) => {
+                if self.format == TranspileToC {
+                    stdout_write("(");
+                    self.print_type(casted_to);
+                    stdout_write(")(");
+                    self.print_code_expr(expr);
+                    stdout_write(")");
+                    return;
+                }
+
+                self.print_code_expr(expr);
+                stdout_write(" as ");
+                self.print_type(casted_to);
             }
         }
     }

@@ -2,12 +2,16 @@ include "../lib/cli.lo";
 
 fn main() {
     let p1 = heap::alloc(1);
-    puts("p1 = "); print_u32(p1 as u32); puts("\n");
+    puts("p1 = ");
+    print_u32(p1 as u32);
+    puts("\n");
     heap::free(p1);
-
     let p2 = heap::alloc(1);
-    puts("p2 = "); print_u32(p2 as u32); puts("\n");
-
+    puts("p2 = ");
+    print_u32(p2 as u32);
+    puts("\n");
     let p3 = heap::alloc(1);
-    puts("p3 = "); print_u32(p3 as u32); puts("\n");
+    puts("p3 = ");
+    print_u32(p3 as u32);
+    puts("\n");
 };

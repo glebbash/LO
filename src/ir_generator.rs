@@ -250,10 +250,10 @@ impl IRGenerator {
             CodeExpr::IntLiteral(int_expr) => Ok(LoExpr::U32Const {
                 value: int_expr.value,
             }),
-            CodeExpr::VarLoad(var_load) => {
-                let Some(var) = self.ss.get_var(&var_load.name) else {
+            CodeExpr::Ident(var_load) => {
+                let Some(var) = self.ss.get_var(&var_load.repr) else {
                     return Err(LoError {
-                        message: format!("Cannot read unknown variable: {}", var_load.name),
+                        message: format!("Cannot read unknown variable: {}", var_load.repr),
                         loc: var_load.loc.clone(),
                     });
                 };
@@ -415,7 +415,7 @@ impl IRGenerator {
                     else_block: lo_else_block,
                 })
             }
-            CodeExpr::Call(CallExpr { fn_name, args, loc }) => {
+            CodeExpr::Call(CallExpr { ident, args, loc }) => {
                 let mut arg_types = Vec::new();
                 let mut lo_args = Vec::new();
                 for arg in args {
@@ -424,9 +424,9 @@ impl IRGenerator {
                     lo_args.push(lo_arg);
                 }
 
-                let Some(fn_def) = self.ss.get_fn_def(&fn_name) else {
+                let Some(fn_def) = self.ss.get_fn_def(&ident.repr) else {
                     return Err(LoError {
-                        message: format!("Trying to call unknown function {fn_name}"),
+                        message: format!("Trying to call unknown function {}", ident.repr),
                         loc: loc.clone(),
                     });
                 };
@@ -443,7 +443,7 @@ impl IRGenerator {
                 }
 
                 Ok(LoExpr::Call {
-                    fn_name: fn_name.clone(),
+                    fn_name: ident.repr.clone(),
                     args: lo_args,
                     return_type: fn_def.output.clone(),
                 })
@@ -456,6 +456,7 @@ impl IRGenerator {
             CodeExpr::StringLiteral(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Dbg(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Defer(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Cast(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }
