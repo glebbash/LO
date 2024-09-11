@@ -335,6 +335,16 @@ impl Printer {
                 stdout_write(" ");
                 self.print_code_block_expr(&body);
             }
+            CodeExpr::Break(BreakExpr { .. }) => {
+                stdout_write("break");
+            }
+            CodeExpr::Continue(ContinueExpr { .. }) => {
+                stdout_write("continue");
+            }
+            CodeExpr::Dbg(DbgExpr { message, .. }) => {
+                stdout_write("dbg ");
+                stdout_write(message);
+            }
         }
     }
 

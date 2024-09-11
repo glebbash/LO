@@ -747,6 +747,7 @@ async function testCommand() {
             "examples/test/multiple-compiler-errors.lo",
             "examples/test/nested-if-break.lo",
             "examples/test/string-pooling.lo",
+            "examples/test/tracing.lo",
         ];
 
         for (const fileName of formattedFiles) {

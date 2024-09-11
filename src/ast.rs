@@ -102,7 +102,10 @@ pub enum CodeExpr {
     Call(CallExpr),
     Local(LocalExpr),
     Loop(LoopExpr),
+    Break(BreakExpr),
     ForLoop(ForLoopExpr),
+    Continue(ContinueExpr),
+    Dbg(DbgExpr),
 }
 
 #[derive(Debug)]
@@ -181,11 +184,27 @@ pub struct LoopExpr {
 }
 
 #[derive(Debug)]
+pub struct BreakExpr {
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub struct ForLoopExpr {
     pub counter: String,
     pub start: Box<CodeExpr>,
     pub end: Box<CodeExpr>,
     pub body: Box<CodeBlockExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct ContinueExpr {
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct DbgExpr {
+    pub message: String,
     pub loc: LoLocation,
 }
 
@@ -201,7 +220,10 @@ impl Locatable for CodeExpr {
             CodeExpr::Call(e) => &e.loc,
             CodeExpr::Local(e) => &e.loc,
             CodeExpr::Loop(e) => &e.loc,
+            CodeExpr::Break(e) => &e.loc,
             CodeExpr::ForLoop(e) => &e.loc,
+            CodeExpr::Continue(e) => &e.loc,
+            CodeExpr::Dbg(e) => &e.loc,
         }
     }
 }

@@ -450,8 +450,11 @@ impl IRGenerator {
             }
             CodeExpr::Local(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Loop(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Break(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::ForLoop(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Continue(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::StringLiteral(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Dbg(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

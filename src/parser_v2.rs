@@ -407,6 +407,12 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "break")? {
+            let loc = self.prev().loc.clone();
+
+            return Ok(CodeExpr::Break(BreakExpr { loc }));
+        }
+
         if let Some(_) = self.eat(Symbol, "for")? {
             let mut loc = self.prev().loc.clone();
 
@@ -424,6 +430,23 @@ impl ParserV2 {
                 start: Box::new(start),
                 end: Box::new(end),
                 body: Box::new(body),
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "continue")? {
+            let loc = self.prev().loc.clone();
+
+            return Ok(CodeExpr::Continue(ContinueExpr { loc }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "dbg")? {
+            let loc = self.prev().loc.clone();
+
+            let message = self.expect_any(StringLiteral)?;
+
+            return Ok(CodeExpr::Dbg(DbgExpr {
+                message: message.value.clone(),
                 loc,
             }));
         }
