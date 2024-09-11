@@ -342,8 +342,18 @@ impl Printer {
                 stdout_write("continue");
             }
             CodeExpr::Dbg(DbgExpr { message, .. }) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
                 stdout_write("dbg ");
                 stdout_write(message);
+            }
+            CodeExpr::Defer(DeferExpr { expr, .. }) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
+                stdout_write("defer ");
+                self.print_code_expr(expr);
             }
         }
     }

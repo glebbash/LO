@@ -736,6 +736,7 @@ async function testCommand() {
         const formattedFiles = [
             "examples/test/42.lo",
             "examples/test/add.lo",
+            "examples/test/defer.lo",
             "examples/test/else-if.lo",
             "examples/test/factorial.lo",
             "examples/test/for-loop.lo",

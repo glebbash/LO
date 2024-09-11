@@ -106,6 +106,7 @@ pub enum CodeExpr {
     ForLoop(ForLoopExpr),
     Continue(ContinueExpr),
     Dbg(DbgExpr),
+    Defer(DeferExpr),
 }
 
 #[derive(Debug)]
@@ -208,6 +209,12 @@ pub struct DbgExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct DeferExpr {
+    pub expr: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -224,6 +231,7 @@ impl Locatable for CodeExpr {
             CodeExpr::ForLoop(e) => &e.loc,
             CodeExpr::Continue(e) => &e.loc,
             CodeExpr::Dbg(e) => &e.loc,
+            CodeExpr::Defer(e) => &e.loc,
         }
     }
 }

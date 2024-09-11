@@ -441,12 +441,27 @@ impl ParserV2 {
         }
 
         if let Some(_) = self.eat(Symbol, "dbg")? {
-            let loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc.clone();
 
-            let message = self.expect_any(StringLiteral)?;
+            let message = self.expect_any(StringLiteral)?.clone();
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Dbg(DbgExpr {
                 message: message.value.clone(),
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "defer")? {
+            let mut loc = self.prev().loc.clone();
+
+            let expr = self.parse_code_expr(0)?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::Defer(DeferExpr {
+                expr: Box::new(expr),
                 loc,
             }));
         }

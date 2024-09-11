@@ -4,7 +4,6 @@ fn main() {
     defer puts("defer(return): 1\n");
     defer puts("defer(return): 2\n");
     defer puts("defer(return): 3\n");
-
     inner_fn();
 };
 

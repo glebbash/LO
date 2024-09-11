@@ -455,6 +455,7 @@ impl IRGenerator {
             CodeExpr::Continue(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::StringLiteral(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Dbg(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Defer(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }
