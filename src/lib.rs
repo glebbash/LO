@@ -125,7 +125,7 @@ mod wasi_api {
             let tokens = Lexer::lex(file_name, &chars)?;
             let ast = ParserV2::parse(tokens)?;
 
-            Printer::print(Rc::new(ast), PrintFormat::PrettyPrint, false);
+            Printer::print(Rc::new(ast));
 
             return Ok(());
         };

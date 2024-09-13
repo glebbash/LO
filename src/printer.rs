@@ -3,26 +3,15 @@ use core::usize;
 use crate::{ast::*, core::*};
 use alloc::{rc::Rc, vec::Vec};
 
-use PrintFormat::*;
-
-#[derive(PartialEq)]
-pub enum PrintFormat {
-    PrettyPrint,
-}
-
 pub struct Printer {
-    format: PrintFormat,
-    bundle: bool,
     ast: Rc<AST>,
     indent: usize,
     comments_printed: usize,
 }
 
 impl Printer {
-    pub fn print(ast: Rc<AST>, format: PrintFormat, bundle: bool) {
+    pub fn print(ast: Rc<AST>) {
         let mut printer = Printer {
-            format,
-            bundle,
             ast,
             indent: 0,
             comments_printed: 0,
@@ -48,10 +37,6 @@ impl Printer {
                 self.print_fn_def(fn_def);
             }
             TopLevelExpr::Include(include) => {
-                if self.bundle {
-                    return;
-                }
-
                 self.print_include(include);
 
                 if let Some(TopLevelExpr::Include(_)) = self.ast.exprs.get(expr_index + 1) {
@@ -122,7 +107,7 @@ impl Printer {
     }
 
     fn print_fn_def(&mut self, fn_def: &FnDefExpr) {
-        if self.format == PrettyPrint && fn_def.exported {
+        if fn_def.exported {
             stdout_write("export ");
         }
         self.print_fn_decl(&fn_def.decl);
