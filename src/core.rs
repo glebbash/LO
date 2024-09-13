@@ -8,7 +8,6 @@ pub enum CompilerMode {
     CompileV2,
     Inspect,
     PrettyPrint,
-    PrintC,
     Eval,
 }
 

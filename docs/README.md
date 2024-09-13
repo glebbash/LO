@@ -27,7 +27,6 @@ Documentation of LO language features.
   - [Inspecting code (IDE intergration)](#inspecting-code-ide-intergration)
   - [Pretty Printing](#pretty-printing)
     - [Comment rearrangement](#comment-rearrangement)
-  - [Transpiling to C](#transpiling-to-c)
   - [Error format](#error-format)
 - [🧪 Compiler development](#-compiler-development)
   - [Building the initial compiler](#building-the-initial-compiler)
@@ -157,12 +156,12 @@ add(2, 2);
 
 Types lol.
 
-| LO Type | WASM  | C              |
-| ------- | ----- | -------------- |
-| `void`  | -     | `void`         |
-| `never` | -     | `void`         |
-| `bool`  | `i32` | `_Bool`        |
-| `u32`   | `i32` | `unsigned int` |
+| LO Type | WASM  |
+| ------- | ----- |
+| `void`  | -     |
+| `never` | -     |
+| `bool`  | `i32` |
+| `u32`   | `i32` |
 
 > `never` type means that code execution will not reach this point.
 
@@ -199,7 +198,6 @@ Usage: lo <file> [mode]
   where [mode] is either:
     --inspect
     --pretty-print
-    --print-c
   No [mode] means compilation to wasm
 ```
 
@@ -281,21 +279,6 @@ fn main(): u32 {
     // this will also be moved
 };
 ```
-
-### Transpiling to C
-
-> NOTE: this feature is WIP and does not support the full syntax yet <br>
-> NOTE: this currently does not resolve imports, processes only the single file <br>
-> NOTE: This feature will probably not get tested much as the main target is WASM
-
-```bash
-lo <input.lo> --print-c
-```
-
-> Transpiles the input file into "equivalent" C source code.
->
-> `<stdout>` - C source code <br>
-> `<stderr>` - Any compilation errors. See [error format](#error-format)
 
 ### Error format
 

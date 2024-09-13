@@ -8,7 +8,6 @@ use PrintFormat::*;
 #[derive(PartialEq)]
 pub enum PrintFormat {
     PrettyPrint,
-    TranspileToC,
 }
 
 pub struct Printer {
@@ -34,11 +33,6 @@ impl Printer {
 
     // TODO: print all function declarations first in C mode
     fn print_file(&mut self) {
-        if self.format == TranspileToC && !self.bundle {
-            stdout_writeln("#pragma once");
-            stdout_writeln("");
-        }
-
         for (expr, i) in self.ast.clone().exprs.iter().zip(0..) {
             self.print_comments_before_pos(expr.loc().pos.offset);
             self.print_top_level_expr(expr, i);
@@ -65,12 +59,10 @@ impl Printer {
                 }
             }
             TopLevelExpr::Import(import) => {
-                if self.format != TranspileToC {
-                    stdout_write("import from ");
-                    stdout_write(&import.module_name);
-                    stdout_write(" {\n");
-                    self.indent += 1;
-                }
+                stdout_write("import from ");
+                stdout_write(&import.module_name);
+                stdout_write(" {\n");
+                self.indent += 1;
 
                 for item in &import.items {
                     self.print_comments_before_pos(item.loc().pos.offset);
@@ -84,30 +76,18 @@ impl Printer {
                 // print the rest of the comments
                 self.print_comments_before_pos(import.loc.end_pos.offset);
 
-                if self.format != TranspileToC {
-                    self.indent -= 1;
-                    self.print_indent();
-                    stdout_writeln("};");
-                }
+                self.indent -= 1;
+                self.print_indent();
+                stdout_writeln("};");
             }
             TopLevelExpr::GlobalDef(global) => {
-                if self.format == TranspileToC {
-                    // Requires C23 or C++
-                    stdout_write("auto");
-                } else {
-                    stdout_write("global");
-                }
-                stdout_write(" ");
+                stdout_write("global ");
                 stdout_write(&global.global_name);
                 stdout_write(" = ");
                 self.print_code_expr(&global.expr);
                 stdout_writeln(";");
             }
             TopLevelExpr::StructDef(struct_def) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
-
                 stdout_write("struct ");
                 stdout_write(&struct_def.struct_name.repr);
 
@@ -153,32 +133,12 @@ impl Printer {
 
     // TODO: figure out multiline param printing
     fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
-        if self.format == TranspileToC {
-            match &fn_decl.return_type {
-                Some(return_type) => self.print_type_expr(return_type),
-                _ => stdout_write("void"),
-            }
-
-            stdout_write(" ");
-        } else {
-            stdout_write("fn ");
-        }
-
+        stdout_write("fn ");
         stdout_write(&fn_decl.fn_name.repr);
         stdout_write("(");
         for (fn_param, index) in fn_decl.fn_params.iter().zip(0..) {
             if index != 0 {
                 stdout_write(", ");
-            }
-
-            if self.format == TranspileToC {
-                let Some(param_type_expr) = &fn_param.type_ else {
-                    unreachable!();
-                };
-                self.print_type_expr(param_type_expr);
-                stdout_write(" ");
-                stdout_write(&fn_param.name);
-                continue;
             }
 
             stdout_write(&fn_param.name);
@@ -189,40 +149,21 @@ impl Printer {
         }
         stdout_write(")");
 
-        if self.format != TranspileToC {
-            let Some(return_type) = &fn_decl.return_type else {
-                return;
-            };
+        let Some(return_type) = &fn_decl.return_type else {
+            return;
+        };
 
-            stdout_write(": ");
-            self.print_type_expr(&return_type);
-        }
+        stdout_write(": ");
+        self.print_type_expr(&return_type);
     }
 
     fn print_include(&mut self, include: &IncludeExpr) {
-        if self.format == TranspileToC {
-            stdout_write("#include \"");
-            stdout_write(drop_file_extension(
-                &include.file_path[1..&include.file_path.len() - 1],
-            ));
-            stdout_write(".c\"");
-            return;
-        }
-
         stdout_write("include ");
         stdout_write(&include.file_path);
         stdout_writeln(";");
     }
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
-        if self.format == TranspileToC {
-            match type_expr {
-                TypeExpr::U32 => stdout_write("unsigned int"),
-                TypeExpr::AliasOrStruct { name } => stdout_write(&name.repr),
-            }
-            return;
-        }
-
         match type_expr {
             TypeExpr::U32 => stdout_write("u32"),
             TypeExpr::AliasOrStruct { name } => stdout_write(&name.repr),
@@ -282,13 +223,7 @@ impl Printer {
             }) => {
                 stdout_write("if");
                 stdout_write(" ");
-                if self.format == TranspileToC {
-                    stdout_write("(");
-                }
                 self.print_code_expr(cond);
-                if self.format == TranspileToC {
-                    stdout_write(")");
-                }
                 stdout_write(" ");
                 self.print_code_block_expr(then_block);
                 match else_block {
@@ -326,24 +261,13 @@ impl Printer {
             CodeExpr::Local(LocalExpr {
                 local_name, value, ..
             }) => {
-                if self.format == TranspileToC {
-                    // Requires C23 or C++
-                    stdout_write("auto");
-                } else {
-                    stdout_write("let");
-                }
-                stdout_write(" ");
+                stdout_write("let ");
                 stdout_write(local_name);
                 stdout_write(" = ");
                 self.print_code_expr(&value);
             }
             CodeExpr::Loop(LoopExpr { body, .. }) => {
-                if self.format == TranspileToC {
-                    stdout_write("while (true)");
-                } else {
-                    stdout_write("loop");
-                }
-                stdout_write(" ");
+                stdout_write("loop ");
                 self.print_code_block_expr(&body);
             }
             CodeExpr::ForLoop(ForLoopExpr {
@@ -353,26 +277,12 @@ impl Printer {
                 body,
                 ..
             }) => {
-                if self.format == TranspileToC {
-                    stdout_write("for (auto ");
-                    stdout_write(counter);
-                    stdout_write(" = ");
-                    self.print_code_expr(&start);
-                    stdout_write("; ");
-                    stdout_write(counter);
-                    stdout_write(" < ");
-                    self.print_code_expr(&end);
-                    stdout_write("; ");
-                    stdout_write(counter);
-                    stdout_write("++)");
-                } else {
-                    stdout_write("for ");
-                    stdout_write(counter);
-                    stdout_write(" in ");
-                    self.print_code_expr(&start);
-                    stdout_write("..");
-                    self.print_code_expr(&end);
-                }
+                stdout_write("for ");
+                stdout_write(counter);
+                stdout_write(" in ");
+                self.print_code_expr(&start);
+                stdout_write("..");
+                self.print_code_expr(&end);
                 stdout_write(" ");
                 self.print_code_block_expr(&body);
             }
@@ -383,31 +293,16 @@ impl Printer {
                 stdout_write("continue");
             }
             CodeExpr::Dbg(DbgExpr { message, .. }) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
                 stdout_write("dbg ");
                 stdout_write(message);
             }
             CodeExpr::Defer(DeferExpr { expr, .. }) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
                 stdout_write("defer ");
                 self.print_code_expr(expr);
             }
             CodeExpr::Cast(CastExpr {
                 expr, casted_to, ..
             }) => {
-                if self.format == TranspileToC {
-                    stdout_write("(");
-                    self.print_type_expr(casted_to);
-                    stdout_write(")(");
-                    self.print_code_expr(expr);
-                    stdout_write(")");
-                    return;
-                }
-
                 self.print_code_expr(expr);
                 stdout_write(" as ");
                 self.print_type_expr(casted_to);
@@ -417,10 +312,6 @@ impl Printer {
                 fields,
                 loc,
             }) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
-
                 stdout_write(&struct_name.repr);
                 stdout_writeln(" {");
                 self.indent += 1;
@@ -441,10 +332,6 @@ impl Printer {
                 stdout_write("}");
             }
             CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
-
                 self.print_code_expr(lhs);
                 stdout_write(" = ");
                 self.print_code_expr(rhs);
@@ -452,10 +339,6 @@ impl Printer {
             CodeExpr::FieldAccess(FieldAccessExpr {
                 lhs, field_name, ..
             }) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
-
                 self.print_code_expr(lhs);
                 stdout_write(".");
                 stdout_write(&field_name.repr);
@@ -466,10 +349,6 @@ impl Printer {
                 args,
                 ..
             }) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
-
                 self.print_code_expr(lhs);
                 stdout_write(".");
                 stdout_write(&field_name.repr);
@@ -506,18 +385,4 @@ impl Printer {
     fn print_indent(&self) {
         stdout_write(" ".repeat(self.indent * 4));
     }
-}
-
-fn drop_file_extension(file_name: &str) -> &str {
-    if let Some(last_dot_pos) = file_name.rfind('.') {
-        if let Some(last_slash_pos) = file_name.rfind('/') {
-            if last_slash_pos > last_dot_pos {
-                return file_name; // no extension
-            }
-        }
-
-        return &file_name[0..last_dot_pos];
-    }
-
-    file_name
 }

@@ -41,7 +41,6 @@ Usage: lo <file> [mode]
     --compile-v2 (temporary)
     --inspect
     --pretty-print
-    --print-c (experimental)
     --eval (experimental)
   No [mode] means compilation to wasm\
 ";
@@ -78,7 +77,6 @@ mod wasi_api {
             Some("--compile-v2") => CompilerMode::CompileV2,
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
-            Some("--print-c") => CompilerMode::PrintC,
             Some("--eval") => CompilerMode::Eval,
             Some(unknown_mode) => {
                 return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
@@ -128,21 +126,6 @@ mod wasi_api {
             let ast = ParserV2::parse(tokens)?;
 
             Printer::print(Rc::new(ast), PrintFormat::PrettyPrint, false);
-
-            return Ok(());
-        };
-
-        if compiler_mode == CompilerMode::PrintC {
-            let mut files = Vec::new();
-            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
-
-            for (file, index) in files.into_iter().rev().zip(0..) {
-                if index != 0 {
-                    stdout_writeln("");
-                }
-
-                Printer::print(Rc::new(file.ast), PrintFormat::TranspileToC, true);
-            }
 
             return Ok(());
         };
