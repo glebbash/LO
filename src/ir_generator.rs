@@ -170,6 +170,7 @@ impl IRGenerator {
                 TopLevelExpr::FnDef(fn_def) => self.process_fn_def(fn_def)?,
                 TopLevelExpr::Import(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::GlobalDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::StructDef(_) => return Err(LoError::todo(file!(), line!())),
             }
         }
 
@@ -206,7 +207,7 @@ impl IRGenerator {
         }
 
         self.ss.top().fn_defs.push(LoFnDef {
-            name: fn_def.decl.fn_name.clone(),
+            name: fn_def.decl.fn_name.repr.clone(),
             inputs: lo_inputs,
             output: return_type,
             exported: fn_def.exported,
@@ -218,7 +219,10 @@ impl IRGenerator {
         let exprs = self.build_code_block(&fn_def.body)?;
 
         let scope = self.ss.pop();
-        self.ss.get_fn_def_mut(&fn_def.decl.fn_name).unwrap().body = CodeBlock { exprs, scope };
+        self.ss
+            .get_fn_def_mut(&fn_def.decl.fn_name.repr)
+            .unwrap()
+            .body = CodeBlock { exprs, scope };
 
         Ok(())
     }

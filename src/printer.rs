@@ -103,6 +103,14 @@ impl Printer {
                 self.print_code_expr(&global.expr);
                 stdout_writeln(";");
             }
+            TopLevelExpr::StructDef(struct_def) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
+                stdout_write("struct ");
+                stdout_write(&struct_def.struct_name.repr);
+                stdout_writeln(" {};");
+            }
         }
 
         if expr_index != self.ast.exprs.len() - 1 {
@@ -133,7 +141,7 @@ impl Printer {
             stdout_write("fn ");
         }
 
-        stdout_write(&fn_decl.fn_name);
+        stdout_write(&fn_decl.fn_name.repr);
         stdout_write("(");
         for (fn_param, index) in fn_decl.fn_params.iter().zip(0..) {
             if index != 0 {

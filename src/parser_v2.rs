@@ -193,6 +193,18 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "struct")? {
+            let mut loc = self.prev().loc.clone();
+
+            let struct_name = self.parse_ident()?;
+            self.expect(Delim, "{")?;
+            self.expect(Delim, "}")?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(TopLevelExpr::StructDef(StructDefExpr { struct_name, loc }));
+        }
+
         let unexpected = self.current();
         return Err(LoError {
             message: format!("Unexpected top level token: {:?}", unexpected.value),
@@ -217,7 +229,7 @@ impl ParserV2 {
     fn parse_fn_decl(&mut self) -> Result<FnDeclExpr, LoError> {
         let mut loc = self.prev().loc.clone();
 
-        let fn_name = self.expect_any(Symbol)?.clone().value;
+        let fn_name = self.parse_ident()?;
         let fn_params = self.parse_fn_params()?;
 
         let return_type = if let Some(_) = self.eat(Operator, ":")? {
