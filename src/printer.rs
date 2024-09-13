@@ -39,32 +39,30 @@ impl Printer {
             stdout_writeln("");
         }
 
-        let mut should_add_newline = false;
-        for expr in &self.ast.clone().exprs {
-            if should_add_newline {
-                stdout_writeln("");
-            };
-
+        for (expr, i) in self.ast.clone().exprs.iter().zip(0..) {
             self.print_comments_before_pos(expr.loc().pos.offset);
-            let printed = self.print_top_level_expr(expr);
-            should_add_newline = printed;
+            self.print_top_level_expr(expr, i);
         }
 
         // print the rest of the comments
         self.print_comments_before_pos(usize::MAX);
     }
 
-    fn print_top_level_expr(&mut self, expr: &TopLevelExpr) -> bool {
+    fn print_top_level_expr(&mut self, expr: &TopLevelExpr, expr_index: usize) {
         match &expr {
             TopLevelExpr::FnDef(fn_def) => {
                 self.print_fn_def(fn_def);
             }
             TopLevelExpr::Include(include) => {
                 if self.bundle {
-                    return false;
+                    return;
                 }
 
                 self.print_include(include);
+
+                if let Some(TopLevelExpr::Include(_)) = self.ast.exprs.get(expr_index + 1) {
+                    return;
+                }
             }
             TopLevelExpr::Import(import) => {
                 if self.format != TranspileToC {
@@ -107,7 +105,9 @@ impl Printer {
             }
         }
 
-        true
+        if expr_index != self.ast.exprs.len() - 1 {
+            stdout_writeln("");
+        }
     }
 
     fn print_fn_def(&mut self, fn_def: &FnDefExpr) {
@@ -275,7 +275,7 @@ impl Printer {
                 stdout_write("(");
                 for (arg, index) in args.iter().zip(0..) {
                     if index != 0 {
-                        stdout_write(",");
+                        stdout_write(", ");
                     }
 
                     self.print_code_expr(arg);
