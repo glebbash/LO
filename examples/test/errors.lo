@@ -10,7 +10,6 @@ include "../lib/cli.lo";
 // - default values of `error_type` indicate the absence of an error
 //   - error codes fit nicely (0 - no error)
 //   - other errors should be passed by a nullabe pointer (null - no error)
-
 fn main() {
     divide_and_print(10, 5);
     divide_and_print(10, 3);
@@ -18,13 +17,13 @@ fn main() {
 };
 
 fn divide_and_print(a: u32, b: u32) {
-    print_u32(a); puts(" / "); print_u32(b);
-
-    let result = divide(a, b) catch _ {
+    print_u32(a);
+    puts(" / ");
+    print_u32(b);
+    let result = divide(a, b) catch _{
         puts(" is undefined\n");
         return;
     };
-
     puts(" = ");
     print_u32(result.full);
     puts(", remainder = ");
@@ -33,6 +32,7 @@ fn divide_and_print(a: u32, b: u32) {
 };
 
 type DivideError = u8;
+
 const DivideError::DIVIDE_BY_ZERO = 1 as DivideError;
 
 struct DivisionResult {
@@ -44,7 +44,6 @@ fn divide(a: u32, b: u32): Result<DivisionResult, DivideError> {
     if b == 0 {
         return Err(DivideError::DIVIDE_BY_ZERO);
     };
-
     return Ok(DivisionResult {
         full: a / b,
         remainder: a % b,

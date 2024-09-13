@@ -99,6 +99,20 @@ impl Printer {
                     stdout_writeln("};");
                 }
             }
+            TopLevelExpr::TypeDef(type_def) => {
+                stdout_write("type ");
+                stdout_write(&type_def.type_name.repr);
+                stdout_write(" = ");
+                self.print_type_expr(&type_def.type_value);
+                stdout_writeln(";");
+            }
+            TopLevelExpr::ConstDef(const_def) => {
+                stdout_write("const ");
+                stdout_write(&const_def.const_name.repr);
+                stdout_write(" = ");
+                self.print_code_expr(&const_def.const_value);
+                stdout_writeln(";");
+            }
         }
 
         if expr_index != self.ast.exprs.len() - 1 {
@@ -152,6 +166,13 @@ impl Printer {
         match type_expr {
             TypeExpr::U32 => stdout_write("u32"),
             TypeExpr::AliasOrStruct { name } => stdout_write(&name.repr),
+            TypeExpr::Result { ok_type, err_type } => {
+                stdout_write("Result<");
+                self.print_type_expr(&ok_type);
+                stdout_write(", ");
+                self.print_type_expr(&err_type);
+                stdout_write(">");
+            }
         }
     }
 
@@ -179,8 +200,11 @@ impl Printer {
     fn print_code_expr(&mut self, expr: &CodeExpr) {
         match expr {
             CodeExpr::Return(ReturnExpr { expr, .. }) => {
-                stdout_write("return ");
-                self.print_code_expr(&expr);
+                stdout_write("return");
+                if let Some(expr) = expr {
+                    stdout_write(" ");
+                    self.print_code_expr(expr);
+                }
             }
             CodeExpr::IntLiteral(IntLiteralExpr { repr, .. }) => {
                 stdout_write(repr);
@@ -338,6 +362,17 @@ impl Printer {
                 stdout_write(".");
                 stdout_write(&field_name.repr);
                 self.print_args(args);
+            }
+            CodeExpr::Catch(CatchExpr {
+                lhs,
+                error_bind,
+                catch_body,
+                ..
+            }) => {
+                self.print_code_expr(lhs);
+                stdout_write(" catch ");
+                stdout_write(error_bind);
+                self.print_code_block_expr(catch_body);
             }
         }
     }

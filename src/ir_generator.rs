@@ -32,6 +32,7 @@ pub enum LoExpr {
         casted_to: LoType,
     },
 
+    Void,
     U32Const {
         value: u32,
     },
@@ -64,6 +65,7 @@ impl LoExpr {
         match self {
             LoExpr::Casted { casted_to, .. } => casted_to.clone(),
 
+            LoExpr::Void { .. } => LoType::Void,
             LoExpr::U32Const { .. } => LoType::U32,
             LoExpr::Return { .. } => LoType::Never,
             LoExpr::BinaryOp { lhs, .. } => lhs.get_type(),
@@ -171,6 +173,8 @@ impl IRGenerator {
                 TopLevelExpr::Import(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::GlobalDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::StructDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::TypeDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::ConstDef(_) => return Err(LoError::todo(file!(), line!())),
             }
         }
 
@@ -234,6 +238,7 @@ impl IRGenerator {
         match type_expr {
             TypeExpr::U32 => Ok(LoType::U32),
             TypeExpr::AliasOrStruct { .. } => Err(LoError::todo(file!(), line!())),
+            TypeExpr::Result { .. } => Err(LoError::todo(file!(), line!())),
         }
     }
 
@@ -249,7 +254,10 @@ impl IRGenerator {
     fn build_code_expr(&mut self, code_expr: &CodeExpr) -> Result<LoExpr, LoError> {
         match code_expr {
             CodeExpr::Return(return_expr) => {
-                let lo_expr = self.build_code_expr(&return_expr.expr)?;
+                let mut lo_expr = LoExpr::Void;
+                if let Some(return_expr) = &return_expr.expr {
+                    lo_expr = self.build_code_expr(&return_expr)?;
+                }
 
                 Ok(LoExpr::Return {
                     expr: Box::new(lo_expr),
@@ -470,6 +478,7 @@ impl IRGenerator {
             CodeExpr::Assign(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::FieldAccess(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::MethodCall(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Catch(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

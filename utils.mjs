@@ -793,7 +793,7 @@ async function testCommand() {
             "examples/test/args.test.lo",
             "examples/test/multiple-compiler-errors.lo",
             "examples/test/methods.lo",
-            // "examples/test/errors.lo",
+            "examples/test/errors.lo",
             "examples/test/string-pooling.lo",
             "examples/test/for-loop.lo",
             "examples/test/else-if.lo",

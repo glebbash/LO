@@ -18,6 +18,8 @@ pub enum TopLevelExpr {
     Import(ImportExpr),
     GlobalDef(GlobalDefExpr),
     StructDef(StructDefExpr),
+    TypeDef(TypeDefExpr),
+    ConstDef(ConstDefExpr),
 }
 
 #[derive(Debug)]
@@ -82,6 +84,20 @@ pub struct StructDefField {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct TypeDefExpr {
+    pub type_name: IdentExpr,
+    pub type_value: TypeExpr,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct ConstDefExpr {
+    pub const_name: IdentExpr,
+    pub const_value: CodeExpr,
+    pub loc: LoLocation,
+}
+
 impl Locatable for ImportItem {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -98,6 +114,8 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::Import(e) => &e.loc,
             TopLevelExpr::GlobalDef(e) => &e.loc,
             TopLevelExpr::StructDef(e) => &e.loc,
+            TopLevelExpr::TypeDef(e) => &e.loc,
+            TopLevelExpr::ConstDef(e) => &e.loc,
         }
     }
 }
@@ -105,7 +123,13 @@ impl Locatable for TopLevelExpr {
 #[derive(Debug)]
 pub enum TypeExpr {
     U32,
-    AliasOrStruct { name: IdentExpr },
+    AliasOrStruct {
+        name: IdentExpr,
+    },
+    Result {
+        ok_type: Box<TypeExpr>,
+        err_type: Box<TypeExpr>,
+    },
 }
 
 #[derive(Debug)]
@@ -130,6 +154,7 @@ pub enum CodeExpr {
     Assign(AssignExpr),
     FieldAccess(FieldAccessExpr),
     MethodCall(MethodCallExpr),
+    Catch(CatchExpr),
 }
 
 #[derive(Debug)]
@@ -140,7 +165,7 @@ pub struct CodeBlockExpr {
 
 #[derive(Debug)]
 pub struct ReturnExpr {
-    pub expr: Box<CodeExpr>,
+    pub expr: Option<Box<CodeExpr>>,
     pub loc: LoLocation,
 }
 
@@ -260,6 +285,20 @@ pub struct StructInitExpr {
 }
 
 #[derive(Debug)]
+pub struct StructInitField {
+    pub field_name: String,
+    pub value: CodeExpr,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct AssignExpr {
+    pub lhs: Box<CodeExpr>,
+    pub rhs: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub struct FieldAccessExpr {
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
@@ -275,16 +314,10 @@ pub struct MethodCallExpr {
 }
 
 #[derive(Debug)]
-pub struct AssignExpr {
+pub struct CatchExpr {
     pub lhs: Box<CodeExpr>,
-    pub rhs: Box<CodeExpr>,
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
-pub struct StructInitField {
-    pub field_name: String,
-    pub value: CodeExpr,
+    pub error_bind: String,
+    pub catch_body: CodeBlockExpr,
     pub loc: LoLocation,
 }
 
@@ -311,6 +344,7 @@ impl Locatable for CodeExpr {
             CodeExpr::Assign(e) => &e.loc,
             CodeExpr::FieldAccess(e) => &e.loc,
             CodeExpr::MethodCall(e) => &e.loc,
+            CodeExpr::Catch(e) => &e.loc,
         }
     }
 }

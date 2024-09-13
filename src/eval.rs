@@ -45,6 +45,7 @@ impl Eval {
     fn eval_expr(&mut self, expr: &LoExpr) -> LoValue {
         match expr {
             LoExpr::Casted { expr, .. } => self.eval_expr(expr),
+            LoExpr::Void => LoValue::Void,
             LoExpr::U32Const { value } => LoValue::U32 { value: *value },
             LoExpr::Return { expr } => {
                 let value = self.eval_expr(expr);

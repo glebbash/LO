@@ -128,11 +128,12 @@ impl ParserV2 {
         if let Some(_) = self.eat(Symbol, "include")? {
             let mut loc = self.prev().loc.clone();
 
-            let file_path = self.expect_any(StringLiteral)?;
-            loc.end_pos = file_path.loc.end_pos.clone();
+            let file_path = self.expect_any(StringLiteral)?.clone();
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::Include(IncludeExpr {
-                file_path: file_path.value.clone(),
+                file_path: file_path.value,
                 loc,
             }));
         }
@@ -146,12 +147,7 @@ impl ParserV2 {
             self.expect(Delim, "{")?;
 
             let mut items = Vec::new();
-            loop {
-                if let Some(_) = self.eat(Delim, "}")? {
-                    loc.end_pos = self.prev().loc.end_pos.clone();
-                    break;
-                }
-
+            while let None = self.eat(Delim, "}")? {
                 if let Some(_) = self.eat(Symbol, "fn")? {
                     let decl = self.parse_fn_decl()?;
                     items.push(ImportItem::FnDecl(decl))
@@ -169,6 +165,8 @@ impl ParserV2 {
 
                 self.expect(Delim, ";")?;
             }
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::Import(ImportExpr {
                 module_name: module_name.value,
@@ -211,7 +209,7 @@ impl ParserV2 {
                 field_loc.end_pos = self.prev().loc.end_pos.clone();
 
                 fields.push(StructDefField {
-                    field_name: field_name.value.clone(),
+                    field_name: field_name.value,
                     field_type,
                     loc: field_loc,
                 });
@@ -226,6 +224,38 @@ impl ParserV2 {
             return Ok(TopLevelExpr::StructDef(StructDefExpr {
                 struct_name,
                 fields,
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "type")? {
+            let mut loc = self.prev().loc.clone();
+
+            let type_name = self.parse_ident()?;
+            self.expect(Operator, "=")?;
+            let type_value = self.parse_type_expr()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
+                type_name,
+                type_value,
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "const")? {
+            let mut loc = self.prev().loc.clone();
+
+            let const_name = self.parse_ident()?;
+            self.expect(Operator, "=")?;
+            let const_value = self.parse_code_expr(0)?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(TopLevelExpr::ConstDef(ConstDefExpr {
+                const_name,
+                const_value,
                 loc,
             }));
         }
@@ -310,6 +340,16 @@ impl ParserV2 {
             return Ok(TypeExpr::U32);
         }
 
+        if let Some(_) = self.eat(Symbol, "Result")? {
+            self.expect(Operator, "<")?;
+            let ok_type = Box::new(self.parse_type_expr()?);
+            self.expect(Delim, ",")?;
+            let err_type = Box::new(self.parse_type_expr()?);
+            self.expect(Operator, ">")?;
+
+            return Ok(TypeExpr::Result { ok_type, err_type });
+        }
+
         let ident = self.parse_ident()?;
         return Ok(TypeExpr::AliasOrStruct { name: ident });
     }
@@ -359,14 +399,14 @@ impl ParserV2 {
         if let Some(_) = self.eat(Symbol, "return")? {
             let mut loc = self.prev().loc.clone();
 
-            let expr = self.parse_code_expr(0)?;
+            let mut expr = None;
+            if !self.current().is(Delim, ";") {
+                expr = Some(Box::new(self.parse_code_expr(0)?));
+            }
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
-            return Ok(CodeExpr::Return(ReturnExpr {
-                expr: Box::new(expr),
-                loc,
-            }));
+            return Ok(CodeExpr::Return(ReturnExpr { expr, loc }));
         };
 
         if let Some(_) = self.eat(Symbol, "if")? {
@@ -502,7 +542,7 @@ impl ParserV2 {
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Dbg(DbgExpr {
-                message: message.value.clone(),
+                message: message.value,
                 loc,
             }));
         }
@@ -559,7 +599,7 @@ impl ParserV2 {
                 field_loc.end_pos = self.prev().loc.end_pos.clone();
 
                 fields.push(StructInitField {
-                    field_name: field_name.value.clone(),
+                    field_name: field_name.value,
                     value,
                     loc: field_loc,
                 });
@@ -682,6 +722,8 @@ impl ParserV2 {
                         }
                     }
 
+                    loc.end_pos = self.prev().loc.end_pos.clone();
+
                     return Ok(CodeExpr::MethodCall(MethodCallExpr {
                         lhs: Box::new(primary),
                         field_name,
@@ -712,9 +754,22 @@ impl ParserV2 {
                     loc,
                 }))
             }
-            InfixOpTag::Catch | InfixOpTag::ErrorPropagation => {
-                Err(LoError::todo(file!(), line!()))
+            InfixOpTag::Catch => {
+                let mut loc = primary.loc().clone();
+
+                let error_bind = self.expect_any(Symbol)?.clone();
+                let catch_body = self.parse_code_block_expr()?;
+
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                Ok(CodeExpr::Catch(CatchExpr {
+                    lhs: Box::new(primary),
+                    error_bind: error_bind.value,
+                    catch_body,
+                    loc,
+                }))
             }
+            InfixOpTag::ErrorPropagation => Err(LoError::todo(file!(), line!())),
         }
     }
 

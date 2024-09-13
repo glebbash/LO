@@ -102,6 +102,7 @@ impl CodeGenerator {
             LoExpr::Casted { expr, .. } => {
                 self.lower(expr, instrs);
             }
+            LoExpr::Void => {}
             LoExpr::U32Const { value } => {
                 instrs.push(WasmInstr::I32Const {
                     value: *value as i32,
