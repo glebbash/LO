@@ -197,12 +197,37 @@ impl ParserV2 {
             let mut loc = self.prev().loc.clone();
 
             let struct_name = self.parse_ident()?;
+
+            let mut fields = Vec::new();
+
             self.expect(Delim, "{")?;
-            self.expect(Delim, "}")?;
+            while let None = self.eat(Delim, "}")? {
+                let mut field_loc = self.prev().loc.clone();
+
+                let field_name = self.expect_any(Symbol)?.clone();
+                self.expect(Operator, ":")?;
+                let field_type = self.parse_type_expr()?;
+
+                field_loc.end_pos = self.prev().loc.end_pos.clone();
+
+                fields.push(StructDefField {
+                    field_name: field_name.value.clone(),
+                    field_type,
+                    loc: field_loc,
+                });
+
+                if !self.current().is(Delim, "}") {
+                    self.expect(Delim, ",")?;
+                }
+            }
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
-            return Ok(TopLevelExpr::StructDef(StructDefExpr { struct_name, loc }));
+            return Ok(TopLevelExpr::StructDef(StructDefExpr {
+                struct_name,
+                fields,
+                loc,
+            }));
         }
 
         let unexpected = self.current();
@@ -255,8 +280,16 @@ impl ParserV2 {
 
         while let None = self.eat(Delim, ")")? {
             let p_name = self.expect_any(Symbol)?.clone();
-            self.expect(Operator, ":")?;
-            let p_type = self.parse_type_expr()?;
+
+            let mut loc = self.prev().loc.clone();
+
+            let mut p_type = None;
+            if p_name.value != "self" {
+                self.expect(Operator, ":")?;
+                p_type = Some(self.parse_type_expr()?);
+            }
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             if !self.current().is(Delim, ")") {
                 self.expect(Delim, ",")?;
@@ -265,7 +298,7 @@ impl ParserV2 {
             params.push(FnParam {
                 name: p_name.value,
                 type_: p_type,
-                loc: p_name.loc,
+                loc,
             });
         }
 
@@ -277,11 +310,8 @@ impl ParserV2 {
             return Ok(TypeExpr::U32);
         }
 
-        let unexpected = self.current();
-        return Err(LoError {
-            message: format!("Unexpected type expr token: {:?}", unexpected.value),
-            loc: unexpected.loc.clone(),
-        });
+        let ident = self.parse_ident()?;
+        return Ok(TypeExpr::AliasOrStruct { name: ident });
     }
 
     fn parse_code_block_expr(&mut self) -> Result<CodeBlockExpr, LoError> {
@@ -364,6 +394,18 @@ impl ParserV2 {
                 loc,
             }));
         };
+
+        if let Some(_) = self.eat(Symbol, "true")? {
+            let loc = self.prev().loc.clone();
+
+            return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: true, loc }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "false")? {
+            let loc = self.prev().loc.clone();
+
+            return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: false, loc }));
+        }
 
         if let Some(int) = self.eat_any(IntLiteral)? {
             let result = if int.value.starts_with("0x") {
@@ -495,7 +537,45 @@ impl ParserV2 {
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
-            return Ok(CodeExpr::Call(CallExpr { ident, args, loc }));
+            return Ok(CodeExpr::Call(CallExpr {
+                fn_name: ident,
+                args,
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Delim, "{")? {
+            let mut loc = ident.loc.clone();
+
+            let mut fields = Vec::new();
+
+            while let None = self.eat(Delim, "}")? {
+                let mut field_loc = self.prev().loc.clone();
+
+                let field_name = self.expect_any(Symbol)?.clone();
+                self.expect(Operator, ":")?;
+                let value = self.parse_code_expr(0)?;
+
+                field_loc.end_pos = self.prev().loc.end_pos.clone();
+
+                fields.push(StructInitField {
+                    field_name: field_name.value.clone(),
+                    value,
+                    loc: field_loc,
+                });
+
+                if !self.current().is(Delim, "}") {
+                    self.expect(Delim, ",")?;
+                }
+            }
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::StructInit(StructInitExpr {
+                struct_name: ident,
+                fields,
+                loc,
+            }));
         }
 
         Ok(CodeExpr::Ident(ident))
@@ -586,10 +666,37 @@ impl ParserV2 {
                     loc,
                 }))
             }
-            InfixOpTag::Assign
-            | InfixOpTag::FieldAccess
-            | InfixOpTag::Catch
-            | InfixOpTag::ErrorPropagation => Err(LoError::todo(file!(), line!())),
+            InfixOpTag::FieldAccess => {
+                let mut loc = primary.loc().clone();
+
+                // TODO: validate that this is a proper lhs for field access
+                let value = self.parse_code_expr(min_bp)?;
+
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                Ok(CodeExpr::FieldAccess(FieldAccessExpr {
+                    lhs: Box::new(primary),
+                    rhs: Box::new(value),
+                    loc,
+                }))
+            }
+            InfixOpTag::Assign => {
+                let mut loc = primary.loc().clone();
+
+                // TODO: validate that this is a proper lhs for assignment
+                let value = self.parse_code_expr(min_bp)?;
+
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                Ok(CodeExpr::Assign(AssignExpr {
+                    lhs: Box::new(primary),
+                    rhs: Box::new(value),
+                    loc,
+                }))
+            }
+            InfixOpTag::Catch | InfixOpTag::ErrorPropagation => {
+                Err(LoError::todo(file!(), line!()))
+            }
         }
     }
 

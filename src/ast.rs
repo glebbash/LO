@@ -39,7 +39,7 @@ pub struct FnDeclExpr {
 #[derive(Debug)]
 pub struct FnParam {
     pub name: String,
-    pub type_: TypeExpr,
+    pub type_: Option<TypeExpr>,
     pub loc: LoLocation,
 }
 
@@ -71,6 +71,14 @@ pub struct GlobalDefExpr {
 #[derive(Debug)]
 pub struct StructDefExpr {
     pub struct_name: IdentExpr,
+    pub fields: Vec<StructDefField>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct StructDefField {
+    pub field_name: String,
+    pub field_type: TypeExpr,
     pub loc: LoLocation,
 }
 
@@ -97,6 +105,7 @@ impl Locatable for TopLevelExpr {
 #[derive(Debug)]
 pub enum TypeExpr {
     U32,
+    AliasOrStruct { name: IdentExpr },
 }
 
 #[derive(Debug)]
@@ -107,6 +116,7 @@ pub enum CodeExpr {
     Ident(IdentExpr),
     BinaryOp(BinaryOpExpr),
     If(IfExpr),
+    BoolLiteral(BoolLiteralExpr),
     Call(CallExpr),
     Local(LocalExpr),
     Loop(LoopExpr),
@@ -116,6 +126,9 @@ pub enum CodeExpr {
     Dbg(DbgExpr),
     Defer(DeferExpr),
     Cast(CastExpr),
+    StructInit(StructInitExpr),
+    FieldAccess(FieldAccessExpr),
+    Assign(AssignExpr),
 }
 
 #[derive(Debug)]
@@ -168,6 +181,12 @@ pub struct IfExpr {
 }
 
 #[derive(Debug)]
+pub struct BoolLiteralExpr {
+    pub value: bool,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub enum ElseBlock {
     None,
     Else(Box<CodeBlockExpr>),
@@ -176,7 +195,7 @@ pub enum ElseBlock {
 
 #[derive(Debug)]
 pub struct CallExpr {
-    pub ident: IdentExpr,
+    pub fn_name: IdentExpr,
     pub args: Vec<CodeExpr>,
     pub loc: LoLocation,
 }
@@ -232,6 +251,34 @@ pub struct CastExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct StructInitExpr {
+    pub struct_name: IdentExpr,
+    pub fields: Vec<StructInitField>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct FieldAccessExpr {
+    pub lhs: Box<CodeExpr>,
+    pub rhs: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct AssignExpr {
+    pub lhs: Box<CodeExpr>,
+    pub rhs: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct StructInitField {
+    pub field_name: String,
+    pub value: CodeExpr,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -241,6 +288,7 @@ impl Locatable for CodeExpr {
             CodeExpr::Ident(e) => &e.loc,
             CodeExpr::BinaryOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,
+            CodeExpr::BoolLiteral(e) => &e.loc,
             CodeExpr::Call(e) => &e.loc,
             CodeExpr::Local(e) => &e.loc,
             CodeExpr::Loop(e) => &e.loc,
@@ -250,6 +298,9 @@ impl Locatable for CodeExpr {
             CodeExpr::Dbg(e) => &e.loc,
             CodeExpr::Defer(e) => &e.loc,
             CodeExpr::Cast(e) => &e.loc,
+            CodeExpr::StructInit(e) => &e.loc,
+            CodeExpr::FieldAccess(e) => &e.loc,
+            CodeExpr::Assign(e) => &e.loc,
         }
     }
 }

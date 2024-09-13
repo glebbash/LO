@@ -797,7 +797,7 @@ async function testCommand() {
             "examples/test/string-pooling.lo",
             "examples/test/for-loop.lo",
             "examples/test/else-if.lo",
-            // "examples/test/struct.lo",
+            "examples/test/struct.lo",
             "examples/test/nested-if-break.lo",
         ];
 

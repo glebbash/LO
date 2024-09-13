@@ -107,9 +107,32 @@ impl Printer {
                 if self.format == TranspileToC {
                     unreachable!();
                 }
+
                 stdout_write("struct ");
                 stdout_write(&struct_def.struct_name.repr);
-                stdout_writeln(" {};");
+
+                if struct_def.fields.len() == 0 {
+                    stdout_writeln(" {};");
+                } else {
+                    stdout_writeln(" {");
+                    self.indent += 1;
+                    for field in &struct_def.fields {
+                        self.print_comments_before_pos(field.loc.pos.offset);
+                        self.print_indent();
+                        stdout_write(&field.field_name);
+                        stdout_write(": ");
+                        self.print_type_expr(&field.field_type);
+                        stdout_writeln(",");
+                    }
+
+                    // print the rest of the comments
+                    self.print_comments_before_pos(struct_def.loc.end_pos.offset);
+
+                    self.indent -= 1;
+                    self.print_indent();
+
+                    stdout_writeln("};");
+                }
             }
         }
 
@@ -132,7 +155,7 @@ impl Printer {
     fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
         if self.format == TranspileToC {
             match &fn_decl.return_type {
-                Some(return_type) => self.print_type(return_type),
+                Some(return_type) => self.print_type_expr(return_type),
                 _ => stdout_write("void"),
             }
 
@@ -149,15 +172,20 @@ impl Printer {
             }
 
             if self.format == TranspileToC {
-                self.print_type(&fn_param.type_);
+                let Some(param_type_expr) = &fn_param.type_ else {
+                    unreachable!();
+                };
+                self.print_type_expr(param_type_expr);
                 stdout_write(" ");
                 stdout_write(&fn_param.name);
                 continue;
             }
 
             stdout_write(&fn_param.name);
-            stdout_write(": ");
-            self.print_type(&fn_param.type_);
+            if let Some(param_type_expr) = &fn_param.type_ {
+                stdout_write(": ");
+                self.print_type_expr(param_type_expr);
+            }
         }
         stdout_write(")");
 
@@ -167,7 +195,7 @@ impl Printer {
             };
 
             stdout_write(": ");
-            self.print_type(&return_type);
+            self.print_type_expr(&return_type);
         }
     }
 
@@ -186,16 +214,18 @@ impl Printer {
         stdout_writeln(";");
     }
 
-    fn print_type(&mut self, type_expr: &TypeExpr) {
+    fn print_type_expr(&mut self, type_expr: &TypeExpr) {
         if self.format == TranspileToC {
             match type_expr {
                 TypeExpr::U32 => stdout_write("unsigned int"),
+                TypeExpr::AliasOrStruct { name } => stdout_write(&name.repr),
             }
             return;
         }
 
         match type_expr {
             TypeExpr::U32 => stdout_write("u32"),
+            TypeExpr::AliasOrStruct { name } => stdout_write(&name.repr),
         }
     }
 
@@ -277,8 +307,19 @@ impl Printer {
                     }
                 }
             }
+            CodeExpr::BoolLiteral(BoolLiteralExpr { value, .. }) => {
+                if *value {
+                    stdout_write("true");
+                } else {
+                    stdout_write("false");
+                }
+            }
             // TODO: figure out multiline arg printing
-            CodeExpr::Call(CallExpr { ident, args, .. }) => {
+            CodeExpr::Call(CallExpr {
+                fn_name: ident,
+                args,
+                ..
+            }) => {
                 stdout_write(&ident.repr);
                 stdout_write("(");
                 for (arg, index) in args.iter().zip(0..) {
@@ -368,7 +409,7 @@ impl Printer {
             }) => {
                 if self.format == TranspileToC {
                     stdout_write("(");
-                    self.print_type(casted_to);
+                    self.print_type_expr(casted_to);
                     stdout_write(")(");
                     self.print_code_expr(expr);
                     stdout_write(")");
@@ -377,7 +418,53 @@ impl Printer {
 
                 self.print_code_expr(expr);
                 stdout_write(" as ");
-                self.print_type(casted_to);
+                self.print_type_expr(casted_to);
+            }
+            CodeExpr::StructInit(StructInitExpr {
+                struct_name,
+                fields,
+                loc,
+            }) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
+
+                stdout_write(&struct_name.repr);
+                stdout_writeln(" {");
+                self.indent += 1;
+                for field in fields {
+                    self.print_indent();
+                    stdout_write(&field.field_name);
+                    stdout_write(": ");
+                    self.print_code_expr(&field.value);
+                    stdout_writeln(",");
+                }
+
+                // print the rest of the comments
+                self.print_comments_before_pos(loc.end_pos.offset);
+
+                self.indent -= 1;
+                self.print_indent();
+
+                stdout_write("}");
+            }
+            CodeExpr::FieldAccess(FieldAccessExpr { lhs, rhs, .. }) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
+
+                self.print_code_expr(lhs);
+                stdout_write(".");
+                self.print_code_expr(rhs);
+            }
+            CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
+
+                self.print_code_expr(lhs);
+                stdout_write(" = ");
+                self.print_code_expr(rhs);
             }
         }
     }

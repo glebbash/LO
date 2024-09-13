@@ -197,7 +197,10 @@ impl IRGenerator {
                 }
             }
 
-            let param_type = self.build_type(&fn_param.type_)?;
+            let Some(param_type_expr) = &fn_param.type_ else {
+                return Err(LoError::todo(file!(), line!()));
+            };
+            let param_type = self.build_type(param_type_expr)?;
             lo_inputs.push(param_type.clone());
 
             scope.vars.push(LoVar {
@@ -230,6 +233,7 @@ impl IRGenerator {
     fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
             TypeExpr::U32 => Ok(LoType::U32),
+            TypeExpr::AliasOrStruct { .. } => Err(LoError::todo(file!(), line!())),
         }
     }
 
@@ -419,7 +423,7 @@ impl IRGenerator {
                     else_block: lo_else_block,
                 })
             }
-            CodeExpr::Call(CallExpr { ident, args, loc }) => {
+            CodeExpr::Call(CallExpr { fn_name, args, loc }) => {
                 let mut arg_types = Vec::new();
                 let mut lo_args = Vec::new();
                 for arg in args {
@@ -428,9 +432,9 @@ impl IRGenerator {
                     lo_args.push(lo_arg);
                 }
 
-                let Some(fn_def) = self.ss.get_fn_def(&ident.repr) else {
+                let Some(fn_def) = self.ss.get_fn_def(&fn_name.repr) else {
                     return Err(LoError {
-                        message: format!("Trying to call unknown function {}", ident.repr),
+                        message: format!("Trying to call unknown function {}", fn_name.repr),
                         loc: loc.clone(),
                     });
                 };
@@ -447,11 +451,12 @@ impl IRGenerator {
                 }
 
                 Ok(LoExpr::Call {
-                    fn_name: ident.repr.clone(),
+                    fn_name: fn_name.repr.clone(),
                     args: lo_args,
                     return_type: fn_def.output.clone(),
                 })
             }
+            CodeExpr::BoolLiteral(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Local(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Loop(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Break(_) => Err(LoError::todo(file!(), line!())),
@@ -461,6 +466,9 @@ impl IRGenerator {
             CodeExpr::Dbg(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Defer(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Cast(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::StructInit(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::FieldAccess(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Assign(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }
