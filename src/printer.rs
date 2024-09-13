@@ -372,6 +372,7 @@ impl Printer {
                 self.print_code_expr(lhs);
                 stdout_write(" catch ");
                 stdout_write(error_bind);
+                stdout_write(" ");
                 self.print_code_block_expr(catch_body);
             }
         }

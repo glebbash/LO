@@ -20,7 +20,7 @@ fn divide_and_print(a: u32, b: u32) {
     print_u32(a);
     puts(" / ");
     print_u32(b);
-    let result = divide(a, b) catch _{
+    let result = divide(a, b) catch _ {
         puts(" is undefined\n");
         return;
     };
