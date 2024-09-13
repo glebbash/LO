@@ -423,7 +423,7 @@ impl IRGenerator {
                     else_block: lo_else_block,
                 })
             }
-            CodeExpr::Call(CallExpr { fn_name, args, loc }) => {
+            CodeExpr::FnCall(FnCallExpr { fn_name, args, loc }) => {
                 let mut arg_types = Vec::new();
                 let mut lo_args = Vec::new();
                 for arg in args {
@@ -467,8 +467,9 @@ impl IRGenerator {
             CodeExpr::Defer(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Cast(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::StructInit(_) => Err(LoError::todo(file!(), line!())),
-            CodeExpr::FieldAccess(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Assign(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::FieldAccess(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::MethodCall(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

@@ -1,7 +1,7 @@
 use core::usize;
 
 use crate::{ast::*, core::*};
-use alloc::rc::Rc;
+use alloc::{rc::Rc, vec::Vec};
 
 use PrintFormat::*;
 
@@ -315,21 +315,13 @@ impl Printer {
                 }
             }
             // TODO: figure out multiline arg printing
-            CodeExpr::Call(CallExpr {
+            CodeExpr::FnCall(FnCallExpr {
                 fn_name: ident,
                 args,
                 ..
             }) => {
                 stdout_write(&ident.repr);
-                stdout_write("(");
-                for (arg, index) in args.iter().zip(0..) {
-                    if index != 0 {
-                        stdout_write(", ");
-                    }
-
-                    self.print_code_expr(arg);
-                }
-                stdout_write(")");
+                self.print_args(args);
             }
             CodeExpr::Local(LocalExpr {
                 local_name, value, ..
@@ -448,15 +440,6 @@ impl Printer {
 
                 stdout_write("}");
             }
-            CodeExpr::FieldAccess(FieldAccessExpr { lhs, rhs, .. }) => {
-                if self.format == TranspileToC {
-                    unreachable!();
-                }
-
-                self.print_code_expr(lhs);
-                stdout_write(".");
-                self.print_code_expr(rhs);
-            }
             CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) => {
                 if self.format == TranspileToC {
                     unreachable!();
@@ -466,7 +449,45 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(rhs);
             }
+            CodeExpr::FieldAccess(FieldAccessExpr {
+                lhs, field_name, ..
+            }) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
+
+                self.print_code_expr(lhs);
+                stdout_write(".");
+                stdout_write(&field_name.repr);
+            }
+            CodeExpr::MethodCall(MethodCallExpr {
+                lhs,
+                field_name,
+                args,
+                ..
+            }) => {
+                if self.format == TranspileToC {
+                    unreachable!();
+                }
+
+                self.print_code_expr(lhs);
+                stdout_write(".");
+                stdout_write(&field_name.repr);
+                self.print_args(args);
+            }
         }
+    }
+
+    fn print_args(&mut self, args: &Vec<CodeExpr>) {
+        stdout_write("(");
+        for (arg, index) in args.iter().zip(0..) {
+            if index != 0 {
+                stdout_write(", ");
+            }
+
+            self.print_code_expr(arg);
+        }
+        stdout_write(")");
     }
 
     fn print_comments_before_pos(&mut self, offset: usize) {

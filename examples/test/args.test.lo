@@ -3,7 +3,6 @@ include "../lib/args.lo";
 
 fn main() {
     let args = Args::load();
-
     for i in 0..args.argc {
         let arg = args.get(i);
         puts(arg);

@@ -537,7 +537,7 @@ impl ParserV2 {
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
-            return Ok(CodeExpr::Call(CallExpr {
+            return Ok(CodeExpr::FnCall(FnCallExpr {
                 fn_name: ident,
                 args,
                 loc,
@@ -669,14 +669,32 @@ impl ParserV2 {
             InfixOpTag::FieldAccess => {
                 let mut loc = primary.loc().clone();
 
-                // TODO: validate that this is a proper lhs for field access
-                let value = self.parse_code_expr(min_bp)?;
+                let field_name = self.parse_ident()?;
+
+                if let Some(_) = self.eat(Delim, "(")? {
+                    let mut args = Vec::new();
+
+                    while let None = self.eat(Delim, ")")? {
+                        args.push(self.parse_code_expr(0)?);
+
+                        if !self.current().is(Delim, ")") {
+                            self.expect(Delim, ",")?;
+                        }
+                    }
+
+                    return Ok(CodeExpr::MethodCall(MethodCallExpr {
+                        lhs: Box::new(primary),
+                        field_name,
+                        args,
+                        loc,
+                    }));
+                }
 
                 loc.end_pos = self.prev().loc.end_pos.clone();
 
                 Ok(CodeExpr::FieldAccess(FieldAccessExpr {
                     lhs: Box::new(primary),
-                    rhs: Box::new(value),
+                    field_name,
                     loc,
                 }))
             }

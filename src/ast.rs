@@ -117,7 +117,7 @@ pub enum CodeExpr {
     BinaryOp(BinaryOpExpr),
     If(IfExpr),
     BoolLiteral(BoolLiteralExpr),
-    Call(CallExpr),
+    FnCall(FnCallExpr),
     Local(LocalExpr),
     Loop(LoopExpr),
     Break(BreakExpr),
@@ -127,8 +127,9 @@ pub enum CodeExpr {
     Defer(DeferExpr),
     Cast(CastExpr),
     StructInit(StructInitExpr),
-    FieldAccess(FieldAccessExpr),
     Assign(AssignExpr),
+    FieldAccess(FieldAccessExpr),
+    MethodCall(MethodCallExpr),
 }
 
 #[derive(Debug)]
@@ -194,7 +195,7 @@ pub enum ElseBlock {
 }
 
 #[derive(Debug)]
-pub struct CallExpr {
+pub struct FnCallExpr {
     pub fn_name: IdentExpr,
     pub args: Vec<CodeExpr>,
     pub loc: LoLocation,
@@ -261,7 +262,15 @@ pub struct StructInitExpr {
 #[derive(Debug)]
 pub struct FieldAccessExpr {
     pub lhs: Box<CodeExpr>,
-    pub rhs: Box<CodeExpr>,
+    pub field_name: IdentExpr,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct MethodCallExpr {
+    pub lhs: Box<CodeExpr>,
+    pub field_name: IdentExpr,
+    pub args: Vec<CodeExpr>,
     pub loc: LoLocation,
 }
 
@@ -289,7 +298,7 @@ impl Locatable for CodeExpr {
             CodeExpr::BinaryOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,
             CodeExpr::BoolLiteral(e) => &e.loc,
-            CodeExpr::Call(e) => &e.loc,
+            CodeExpr::FnCall(e) => &e.loc,
             CodeExpr::Local(e) => &e.loc,
             CodeExpr::Loop(e) => &e.loc,
             CodeExpr::Break(e) => &e.loc,
@@ -299,8 +308,9 @@ impl Locatable for CodeExpr {
             CodeExpr::Defer(e) => &e.loc,
             CodeExpr::Cast(e) => &e.loc,
             CodeExpr::StructInit(e) => &e.loc,
-            CodeExpr::FieldAccess(e) => &e.loc,
             CodeExpr::Assign(e) => &e.loc,
+            CodeExpr::FieldAccess(e) => &e.loc,
+            CodeExpr::MethodCall(e) => &e.loc,
         }
     }
 }
