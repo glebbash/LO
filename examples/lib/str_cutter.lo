@@ -6,7 +6,10 @@ struct StrCutter {
 };
 
 fn StrCutter::new(source: str): StrCutter {
-    return StrCutter { piece: "", rest: source };
+    return StrCutter {
+        piece: "",
+        rest: source,
+    };
 };
 
 fn StrCutter::cut_at(self, delim: str): StrCutter {
@@ -17,27 +20,23 @@ fn StrCutter::cut_at(self, delim: str): StrCutter {
             cut_start -= 1;
             break;
         };
-
         if self.rest.char_at(cut_start) == delim.char_at(cut_width) {
             cut_width += 1;
         } else {
             cut_width = 0;
         };
-
         if cut_width == delim.size {
             break;
         };
-
         cut_start += 1;
     };
-
     return StrCutter {
         piece: str {
             data: self.rest.data,
             size: cut_start - cut_width - 1,
         },
         rest: str {
-            data: (self.rest.data as u32 + cut_start + 1) as &* u8,
+            data: (self.rest.data as u32 + cut_start + 1) as &*u8,
             size: self.rest.size - cut_start + 1,
         },
     };

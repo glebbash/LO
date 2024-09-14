@@ -6,5 +6,6 @@ struct debug_u32_2 {};
 
 import from "console" {
     fn debug_u32::log(x: u32);
+
     fn debug_u32_2::log(x: u32, y: u32);
 };

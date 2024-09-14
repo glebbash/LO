@@ -49,13 +49,16 @@ impl Printer {
                 stdout_write(" {\n");
                 self.indent += 1;
 
-                for item in &import.items {
+                for (item, i) in import.items.iter().zip(0..) {
                     self.print_comments_before_pos(item.loc().pos.offset);
                     self.print_indent();
                     match item {
                         ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
                     }
                     stdout_writeln(";");
+                    if i != import.items.len() - 1 {
+                        stdout_writeln("");
+                    }
                 }
 
                 // print the rest of the comments
@@ -105,6 +108,10 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_type_expr(&type_def.type_value);
                 stdout_writeln(";");
+
+                if let Some(TopLevelExpr::TypeDef(_)) = self.ast.exprs.get(expr_index + 1) {
+                    return;
+                }
             }
             TopLevelExpr::ConstDef(const_def) => {
                 stdout_write("const ");
@@ -112,6 +119,10 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(&const_def.const_value);
                 stdout_writeln(";");
+
+                if let Some(TopLevelExpr::ConstDef(_)) = self.ast.exprs.get(expr_index + 1) {
+                    return;
+                }
             }
             TopLevelExpr::MemoryDef(memory_def) => {
                 if memory_def.exported {

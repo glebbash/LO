@@ -1,6 +1,5 @@
 include "./lib/cli.lo";
 include "./lib/args.lo";
-
 include "./lib/lo/core.lo";
 
 fn main() {
@@ -9,9 +8,7 @@ fn main() {
         eputs("Usage: lo <file> [options]\n");
         wasi::proc_exit(1);
     };
-
     let ctx = LoContext::new();
-
     let _ = ctx.include_file_and_finalize(args.get(1)) catch err {
         ctx.print_loc(err.loc);
         eputs(" - ");
@@ -19,11 +16,8 @@ fn main() {
         eputs("\n");
         wasi::proc_exit(1);
     };
-
     let binary = Vec::new!<u8>();
     defer binary.free();
-
     ctx.wasm_module.write(binary);
-
     print_str(binary as &str);
 };

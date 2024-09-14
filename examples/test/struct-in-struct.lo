@@ -12,35 +12,33 @@ struct Rect {
 
 fn main() {
     let r = Rect {
-        tl: Point2D { x: 1, y: 2 },
-        br: Point2D { x: 3, y: 4 },
+        tl: Point2D {
+            x: 1,
+            y: 2,
+        },
+        br: Point2D {
+            x: 3,
+            y: 4,
+        },
     };
-
     let br = r.br;
     print_u32(br.x);
     puts("\n");
-
     print_u32(r.br.x);
     puts("\n");
-
     let r_ref = tmp_alloc!<Rect>();
     *r_ref = r;
-
     let r2 = *r_ref;
     print_u32(r2.br.x);
     puts("\n");
-
     let br2 = r_ref.br;
     print_u32(br2.x);
     puts("\n");
-
     let br_ref = (r_ref as u32 + sizeof Point2D) as &Point2D;
     print_u32(br_ref.x);
     puts("\n");
-
     print_u32((*br_ref).x);
     puts("\n");
-
     print_u32(r_ref.br.x);
     puts("\n");
 };

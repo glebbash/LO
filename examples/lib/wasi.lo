@@ -1,10 +1,10 @@
 struct wasi {};
 
 type wasi::Err = u32;
-const wasi::Err::SUCCESS = 0;
-const wasi::Err::BADF    = 8;
 
-const wasi::FD_STDIN  = 0;
+const wasi::Err::SUCCESS = 0;
+const wasi::Err::BADF = 8;
+const wasi::FD_STDIN = 0;
 const wasi::FD_STDOUT = 1;
 const wasi::FD_STDERR = 2;
 
@@ -26,63 +26,53 @@ struct wasi::fdstat {
 };
 
 import from "wasi_snapshot_preview1" {
-    fn wasi::path_open(
-        dirfd:                u32, // The file descriptor representing the directory that the file is located in.
-        dirflags:             u32, // Flags specifying how the path will be resolved.
-        path:                &*u8, // A wasm pointer to a null-terminated string containing the path of the file or directory to open.
-        path_len:             u32, // The length of the path string.
-        oflags:               u32, // Flags specifying how the file will be opened.
-        fs_rights_base:       u64, // The rights of the created file descriptor.
-        fs_rights_inheriting: u64, // The rights of file descriptors derived from the created file descriptor.
-        fdflags:              u32, // The flags of the file descriptor.
-        fd:                  &u32, // A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
-    ): wasi::Err;
+    // @param dirfd ---------------- The file descriptor representing the directory that the file is located in.
+    // @param dirflags ------------- Flags specifying how the path will be resolved.
+    // @param path ----------------- A wasm pointer to a null-terminated string containing the path of the file or directory to open.
+    // @param path_len ------------- The length of the path string.
+    // @param oflags --------------- Flags specifying how the file will be opened.
+    // @param fs_rights_base ------- The rights of the created file descriptor.
+    // @param fs_rights_inheriting - The rights of file descriptors derived from the created file descriptor.
+    // @param fdflags -------------- The flags of the file descriptor.
+    // @param fd ------------------- A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
+    fn wasi::path_open(dirfd: u32, dirflags: u32, path: &*u8, path_len: u32, oflags: u32, fs_rights_base: u64, fs_rights_inheriting: u64, fdflags: u32, fd: &u32): wasi::Err;
 
-    fn wasi::fd_read(
-        fd:                   u32, // file_descriptor
-        iovs:       &*wasi::IOVec, // The pointer to the iov array
-        iovs_len:             u32, // Amount of wasi::IOVec
-        nread:               &u32, // Pointer to store the number of bytes read
-    ): wasi::Err;
+    // @param fd ------- file_descriptor
+    // @param iovs ----- The pointer to the iov array
+    // @param iovs_len - Amount of wasi::IOVec
+    // @param nread ---- Pointer to store the number of bytes read
+    fn wasi::fd_read(fd: u32, iovs: &*wasi::IOVec, iovs_len: u32, nread: &u32): wasi::Err;
 
-    fn wasi::fd_write(
-        fd:                   u32, // file_descriptor
-        iovs:       &*wasi::IOVec, // The pointer to the iov array
-        iovs_len:             u32, // Amount of wasi::IOVec
-        nwritten:            &u32, // Pointer to store the number of bytes written
-    ): wasi::Err;
+    // @param fd ------- file_descriptor
+    // @param iovs ----- The pointer to the iov array
+    // @param iovs_len - Amount of wasi::IOVec
+    // @param nwritten - Pointer to store the number of bytes written
+    fn wasi::fd_write(fd: u32, iovs: &*wasi::IOVec, iovs_len: u32, nwritten: &u32): wasi::Err;
 
-    fn wasi::fd_close(
-        fd:                   u32, // file_descriptor
-    ): wasi::Err;
+    // @param fd - file_descriptor
+    fn wasi::fd_close(fd: u32): wasi::Err;
 
-    fn wasi::args_sizes_get(
-        argc:                &u32, // Pointer to where the number of arguments will be written.
-        argv_buf_size:       &u32, // Pointer to where the size of the argument string data will be written.
-    ): wasi::Err;
+    // @param argc ---------- Pointer to where the number of arguments will be written.
+    // @param argv_buf_size - Pointer to where the size of the argument string data will be written.
+    fn wasi::args_sizes_get(argc: &u32, argv_buf_size: &u32): wasi::Err;
 
-    fn wasi::args_get(
-        argv:              & &*u8, // Pointer to a buffer where the argument pointers will be written.
-        argv_buf:            &*u8, // Pointer to a buffer where the argument string data will be written.
-    ): wasi::Err;
+    // @param argv ----- Pointer to a buffer where the argument pointers will be written.
+    // @param argv_buf - Pointer to a buffer where the argument string data will be written.
+    fn wasi::args_get(argv: &*&*u8, argv_buf: &*u8): wasi::Err;
 
-    fn wasi::proc_exit(
-        code:                 u32, // The exit code to return to the operating system.
-    ): never;
+    // @param code - The exit code to return to the operating system.
+    fn wasi::proc_exit(code: u32): never;
 
-    fn wasi::fd_prestat_get(
-        fd:                   u32, // The preopened file descriptor to query.
-        buf:       &wasi::prestat, // A pointer to a Prestat structure where the metadata will be written.
-    ): wasi::Err;
+    // @param fd -- The preopened file descriptor to query.
+    // @param buf - A pointer to a Prestat structure where the metadata will be written.
+    fn wasi::fd_prestat_get(fd: u32, buf: &wasi::prestat): wasi::Err;
 
-    fn wasi::fd_prestat_dir_name(
-        fd:                   u32, // The preopened file descriptor to query.
-        path:                &*u8, // A pointer to a buffer where the directory name will be written.
-        path_len:             u32, // The maximum length of the buffer.
-    ): wasi::Err;
+    // @param fd ------- The preopened file descriptor to query.
+    // @param path ----- A pointer to a buffer where the directory name will be written.
+    // @param path_len - The maximum length of the buffer.
+    fn wasi::fd_prestat_dir_name(fd: u32, path: &*u8, path_len: u32): wasi::Err;
 
-    fn wasi::fd_fdstat_get(
-        fd:                   u32, // The file descriptor whose metadata will be accessed.
-        buf:        &wasi::fdstat, // A WebAssembly pointer to a memory location where the metadata will be written.
-    ): wasi::Err;
+    // @param fd -- The file descriptor whose metadata will be accessed.
+    // @param buf - A WebAssembly pointer to a memory location where the metadata will be written.
+    fn wasi::fd_fdstat_get(fd: u32, buf: &wasi::fdstat): wasi::Err;
 };
