@@ -199,6 +199,10 @@ impl Printer {
                 stdout_write("&");
                 self.print_type_expr(&pointee);
             }
+            TypeExpr::SequencePointer { pointee } => {
+                stdout_write("&*");
+                self.print_type_expr(&pointee);
+            }
             TypeExpr::AliasOrStruct { name } => {
                 stdout_write(&name.repr);
             }
@@ -294,15 +298,6 @@ impl Printer {
                     stdout_write("false");
                 }
             }
-            // TODO: figure out multiline arg printing
-            CodeExpr::FnCall(FnCallExpr {
-                fn_name: ident,
-                args,
-                ..
-            }) => {
-                stdout_write(&ident.repr);
-                self.print_args(args);
-            }
             CodeExpr::Local(LocalExpr {
                 local_name, value, ..
             }) => {
@@ -388,17 +383,6 @@ impl Printer {
                 stdout_write(".");
                 stdout_write(&field_name.repr);
             }
-            CodeExpr::MethodCall(MethodCallExpr {
-                lhs,
-                field_name,
-                args,
-                ..
-            }) => {
-                self.print_code_expr(lhs);
-                stdout_write(".");
-                stdout_write(&field_name.repr);
-                self.print_args(args);
-            }
             CodeExpr::Catch(CatchExpr {
                 lhs,
                 error_bind,
@@ -420,6 +404,55 @@ impl Printer {
                 self.print_code_expr(&expr);
                 stdout_write(")");
             }
+            // TODO: figure out multiline arg printing
+            CodeExpr::FnCall(FnCallExpr {
+                fn_name: ident,
+                args,
+                ..
+            }) => {
+                stdout_write(&ident.repr);
+                self.print_args(args);
+            }
+            CodeExpr::MethodCall(MethodCallExpr {
+                lhs,
+                field_name,
+                args,
+                ..
+            }) => {
+                self.print_code_expr(lhs);
+                stdout_write(".");
+                stdout_write(&field_name.repr);
+                self.print_args(args);
+            }
+            CodeExpr::MacroFnCall(MacroFnCallExpr {
+                fn_name: ident,
+                args,
+                type_args,
+                ..
+            }) => {
+                stdout_write(&ident.repr);
+                stdout_write("!");
+                self.print_type_args(type_args);
+                self.print_args(args);
+            }
+            CodeExpr::MacroMethodCall(MacroMethodCallExpr {
+                lhs,
+                field_name,
+                args,
+                type_args,
+                ..
+            }) => {
+                self.print_code_expr(lhs);
+                stdout_write(".");
+                stdout_write(&field_name.repr);
+                stdout_write("!");
+                self.print_type_args(type_args);
+                self.print_args(args);
+            }
+            CodeExpr::Sizeof(SizeofExpr { type_expr: r#type, .. }) => {
+                stdout_write("sizeof ");
+                self.print_type_expr(r#type);
+            }
         }
     }
 
@@ -433,6 +466,18 @@ impl Printer {
             self.print_code_expr(arg);
         }
         stdout_write(")");
+    }
+
+    fn print_type_args(&mut self, args: &Vec<TypeExpr>) {
+        stdout_write("<");
+        for (arg, index) in args.iter().zip(0..) {
+            if index != 0 {
+                stdout_write(", ");
+            }
+
+            self.print_type_expr(arg);
+        }
+        stdout_write(">");
     }
 
     fn print_comments_before_pos(&mut self, offset: usize) {

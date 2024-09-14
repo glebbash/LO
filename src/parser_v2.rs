@@ -401,6 +401,12 @@ impl ParserV2 {
             });
         }
 
+        if let Some(_) = self.eat(Operator, "&*")? {
+            return Ok(TypeExpr::SequencePointer {
+                pointee: Box::new(self.parse_type_expr()?),
+            });
+        }
+
         if let Some(_) = self.eat(Symbol, "u32")? {
             return Ok(TypeExpr::U32);
         }
@@ -659,26 +665,44 @@ impl ParserV2 {
             }
         }
 
+        if let Some(_) = self.eat(Symbol, "sizeof")? {
+            let mut loc = self.prev().loc.clone();
+
+            let type_expr = self.parse_type_expr()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::Sizeof(SizeofExpr { type_expr, loc }));
+        };
+
         let ident = self.parse_ident()?;
 
-        if let Some(_) = self.eat(Delim, "(")? {
+        if self.current().is(Delim, "(") {
             let mut loc = ident.loc.clone();
 
-            let mut args = Vec::new();
-
-            while let None = self.eat(Delim, ")")? {
-                args.push(self.parse_code_expr(0)?);
-
-                if !self.current().is(Delim, ")") {
-                    self.expect(Delim, ",")?;
-                }
-            }
+            let args = self.parse_fn_args()?;
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::FnCall(FnCallExpr {
                 fn_name: ident,
                 args,
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Operator, "!")? {
+            let mut loc = ident.loc.clone();
+
+            let type_args = self.parse_macro_type_args()?;
+            let args = self.parse_fn_args()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::MacroFnCall(MacroFnCallExpr {
+                fn_name: ident,
+                args,
+                type_args,
                 loc,
             }));
         }
@@ -743,6 +767,34 @@ impl ParserV2 {
         ident.loc.end_pos = self.prev().loc.end_pos.clone();
 
         Ok(ident)
+    }
+
+    fn parse_fn_args(&mut self) -> Result<Vec<CodeExpr>, LoError> {
+        let mut args = Vec::new();
+        self.expect(Delim, "(")?;
+        while let None = self.eat(Delim, ")")? {
+            args.push(self.parse_code_expr(0)?);
+
+            if !self.current().is(Delim, ")") {
+                self.expect(Delim, ",")?;
+            }
+        }
+
+        return Ok(args);
+    }
+
+    fn parse_macro_type_args(&mut self) -> Result<Vec<TypeExpr>, LoError> {
+        let mut type_args = Vec::new();
+        self.expect(Operator, "<")?;
+        while let None = self.eat(Operator, ">")? {
+            type_args.push(self.parse_type_expr()?);
+
+            if !self.current().is(Operator, ">") {
+                self.expect(Delim, ",")?;
+            }
+        }
+
+        return Ok(type_args);
     }
 
     fn parse_code_expr_postfix(
@@ -810,16 +862,8 @@ impl ParserV2 {
 
                 let field_name = self.parse_ident()?;
 
-                if let Some(_) = self.eat(Delim, "(")? {
-                    let mut args = Vec::new();
-
-                    while let None = self.eat(Delim, ")")? {
-                        args.push(self.parse_code_expr(0)?);
-
-                        if !self.current().is(Delim, ")") {
-                            self.expect(Delim, ",")?;
-                        }
-                    }
+                if self.current().is(Delim, "(") {
+                    let args = self.parse_fn_args()?;
 
                     loc.end_pos = self.prev().loc.end_pos.clone();
 
@@ -827,6 +871,21 @@ impl ParserV2 {
                         lhs: Box::new(primary),
                         field_name,
                         args,
+                        loc,
+                    }));
+                }
+
+                if let Some(_) = self.eat(Operator, "!")? {
+                    let type_args = self.parse_macro_type_args()?;
+                    let args = self.parse_fn_args()?;
+
+                    loc.end_pos = self.prev().loc.end_pos.clone();
+
+                    return Ok(CodeExpr::MacroMethodCall(MacroMethodCallExpr {
+                        lhs: Box::new(primary),
+                        field_name,
+                        args,
+                        type_args,
                         loc,
                     }));
                 }

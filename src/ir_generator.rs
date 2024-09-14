@@ -240,6 +240,7 @@ impl IRGenerator {
         match type_expr {
             TypeExpr::U32 => Ok(LoType::U32),
             TypeExpr::Pointer { .. } => Err(LoError::todo(file!(), line!())),
+            TypeExpr::SequencePointer { .. } => Err(LoError::todo(file!(), line!())),
             TypeExpr::AliasOrStruct { .. } => Err(LoError::todo(file!(), line!())),
             TypeExpr::Result { .. } => Err(LoError::todo(file!(), line!())),
         }
@@ -480,10 +481,13 @@ impl IRGenerator {
             CodeExpr::StructInit(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Assign(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::FieldAccess(_) => Err(LoError::todo(file!(), line!())),
-            CodeExpr::MethodCall(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Catch(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Dereference(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Paren(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::MethodCall(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::MacroFnCall(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::MacroMethodCall(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Sizeof(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

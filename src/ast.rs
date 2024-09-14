@@ -149,6 +149,9 @@ pub enum TypeExpr {
     Pointer {
         pointee: Box<TypeExpr>,
     },
+    SequencePointer {
+        pointee: Box<TypeExpr>,
+    },
     AliasOrStruct {
         name: IdentExpr,
     },
@@ -167,7 +170,6 @@ pub enum CodeExpr {
     BinaryOp(BinaryOpExpr),
     If(IfExpr),
     BoolLiteral(BoolLiteralExpr),
-    FnCall(FnCallExpr),
     Local(LocalExpr),
     Loop(LoopExpr),
     Break(BreakExpr),
@@ -179,10 +181,14 @@ pub enum CodeExpr {
     StructInit(StructInitExpr),
     Assign(AssignExpr),
     FieldAccess(FieldAccessExpr),
-    MethodCall(MethodCallExpr),
     Catch(CatchExpr),
     Dereference(DereferenceExpr),
     Paren(ParenExpr),
+    FnCall(FnCallExpr),
+    MethodCall(MethodCallExpr),
+    MacroFnCall(MacroFnCallExpr),
+    MacroMethodCall(MacroMethodCallExpr),
+    Sizeof(SizeofExpr),
 }
 
 #[derive(Debug)]
@@ -245,13 +251,6 @@ pub enum ElseBlock {
     None,
     Else(Box<CodeBlockExpr>),
     ElseIf(Box<CodeExpr>),
-}
-
-#[derive(Debug)]
-pub struct FnCallExpr {
-    pub fn_name: IdentExpr,
-    pub args: Vec<CodeExpr>,
-    pub loc: LoLocation,
 }
 
 #[derive(Debug)]
@@ -334,14 +333,6 @@ pub struct FieldAccessExpr {
 }
 
 #[derive(Debug)]
-pub struct MethodCallExpr {
-    pub lhs: Box<CodeExpr>,
-    pub field_name: IdentExpr,
-    pub args: Vec<CodeExpr>,
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
 pub struct CatchExpr {
     pub lhs: Box<CodeExpr>,
     pub error_bind: String,
@@ -361,6 +352,44 @@ pub struct ParenExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct FnCallExpr {
+    pub fn_name: IdentExpr,
+    pub args: Vec<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct MethodCallExpr {
+    pub lhs: Box<CodeExpr>,
+    pub field_name: IdentExpr,
+    pub args: Vec<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct MacroFnCallExpr {
+    pub fn_name: IdentExpr,
+    pub type_args: Vec<TypeExpr>,
+    pub args: Vec<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct MacroMethodCallExpr {
+    pub lhs: Box<CodeExpr>,
+    pub field_name: IdentExpr,
+    pub type_args: Vec<TypeExpr>,
+    pub args: Vec<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct SizeofExpr {
+    pub type_expr: TypeExpr,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -371,7 +400,6 @@ impl Locatable for CodeExpr {
             CodeExpr::BinaryOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,
             CodeExpr::BoolLiteral(e) => &e.loc,
-            CodeExpr::FnCall(e) => &e.loc,
             CodeExpr::Local(e) => &e.loc,
             CodeExpr::Loop(e) => &e.loc,
             CodeExpr::Break(e) => &e.loc,
@@ -383,10 +411,14 @@ impl Locatable for CodeExpr {
             CodeExpr::StructInit(e) => &e.loc,
             CodeExpr::Assign(e) => &e.loc,
             CodeExpr::FieldAccess(e) => &e.loc,
-            CodeExpr::MethodCall(e) => &e.loc,
             CodeExpr::Catch(e) => &e.loc,
             CodeExpr::Dereference(e) => &e.loc,
             CodeExpr::Paren(e) => &e.loc,
+            CodeExpr::FnCall(e) => &e.loc,
+            CodeExpr::MethodCall(e) => &e.loc,
+            CodeExpr::MacroFnCall(e) => &e.loc,
+            CodeExpr::MacroMethodCall(e) => &e.loc,
+            CodeExpr::Sizeof(e) => &e.loc,
         }
     }
 }

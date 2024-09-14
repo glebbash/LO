@@ -734,7 +734,7 @@ async function testCommand() {
         );
 
         const formattedFiles = [
-            // "examples/lib/args.lo",
+            "examples/lib/args.lo",
             "examples/lib/cli.lo",
             "examples/lib/debug.lo",
             // "examples/lib/fs.lo",
