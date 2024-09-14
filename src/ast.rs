@@ -21,6 +21,7 @@ pub enum TopLevelExpr {
     TypeDef(TypeDefExpr),
     ConstDef(ConstDefExpr),
     MemoryDef(MemoryDefExpr),
+    StaticDataStore(StaticDataStoreExpr),
 }
 
 #[derive(Debug)]
@@ -106,6 +107,18 @@ pub struct MemoryDefExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct StaticDataStoreExpr {
+    pub addr: CodeExpr,
+    pub data: StaticDataStorePayload,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub enum StaticDataStorePayload {
+    String { value: String },
+}
+
 impl Locatable for ImportItem {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -125,6 +138,7 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::TypeDef(e) => &e.loc,
             TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
+            TopLevelExpr::StaticDataStore(e) => &e.loc,
         }
     }
 }
@@ -132,6 +146,9 @@ impl Locatable for TopLevelExpr {
 #[derive(Debug)]
 pub enum TypeExpr {
     U32,
+    Pointer {
+        pointee: Box<TypeExpr>,
+    },
     AliasOrStruct {
         name: IdentExpr,
     },
@@ -164,6 +181,8 @@ pub enum CodeExpr {
     FieldAccess(FieldAccessExpr),
     MethodCall(MethodCallExpr),
     Catch(CatchExpr),
+    Dereference(DereferenceExpr),
+    Paren(ParenExpr),
 }
 
 #[derive(Debug)]
@@ -330,6 +349,18 @@ pub struct CatchExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct DereferenceExpr {
+    pub referenced: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct ParenExpr {
+    pub expr: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -354,6 +385,8 @@ impl Locatable for CodeExpr {
             CodeExpr::FieldAccess(e) => &e.loc,
             CodeExpr::MethodCall(e) => &e.loc,
             CodeExpr::Catch(e) => &e.loc,
+            CodeExpr::Dereference(e) => &e.loc,
+            CodeExpr::Paren(e) => &e.loc,
         }
     }
 }

@@ -483,7 +483,7 @@ fn LoParser::parse_expr(
         args.push!<LoInstr>(LoParser::parse_expr(ctx, tokens, min_bp)?);
         let _ = tokens.expect(LoTokenType::Delim, ",")?;
         args.push!<LoInstr>(LoParser::parse_expr(ctx, tokens, min_bp)?);
-        let _ = tokens.expect(LoTokenType::Delim, ",")?;
+        let _ = tokens.eat(LoTokenType::Delim, ",")?;
         let _ = tokens.expect(LoTokenType::Delim, ")")?;
 
         return Ok(LoInstr::CallAndDrop::new!(fn_index, return_type, args));
@@ -520,6 +520,7 @@ fn LoParser::parse_memory(self): Result<LoMemoryDef, &LoError> {
     let _ = self.tokens.expect(LoTokenType::Symbol, "min_pages")?;
     let _ = self.tokens.expect(LoTokenType::Operator, ":")?;
     let min_pages = self.tokens.expect_any(LoTokenType::IntLiteral)?;
+    let _ = self.tokens.eat(LoTokenType::Delim, ",")?;
     let _ = self.tokens.expect(LoTokenType::Delim, "}")?;
 
     memory_limits.min = (*(min_pages.value as &u64)) as u32;

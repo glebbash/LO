@@ -770,7 +770,7 @@ async function testCommand() {
             // "examples/test/demos/aoc2023/1.lo",
             "examples/test/demos/cat.lo",
             "examples/test/demos/echo.lo",
-            // "examples/test/demos/hello-world-raw.lo",
+            "examples/test/demos/hello-world-raw.lo",
             "examples/test/demos/hello-world.lo",
             // "examples/test/demos/vscode_wasm_issue_161.lo",
             // "examples/test/demos/wasm4/src/blink.lo",

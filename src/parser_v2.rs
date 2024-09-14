@@ -272,6 +272,23 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Operator, "*")? {
+            let mut loc = self.prev().loc.clone();
+
+            // can't use `parse_code_expr` as that will capture `=` token
+            let addr = self.parse_code_expr_primary()?;
+            self.expect(Operator, "=")?;
+            let chars = self.expect_any(StringLiteral)?.clone();
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(TopLevelExpr::StaticDataStore(StaticDataStoreExpr {
+                addr,
+                data: StaticDataStorePayload::String { value: chars.value },
+                loc,
+            }));
+        }
+
         let unexpected = self.current();
         return Err(LoError {
             message: format!("Unexpected top level token: {:?}", unexpected.value),
@@ -303,7 +320,9 @@ impl ParserV2 {
         self.expect(Delim, "{")?;
         if let Some(_) = self.eat(Symbol, "min_pages")? {
             self.expect(Operator, ":")?;
-            let int = self.expect_any(IntLiteral)?;
+            let int = self.expect_any(IntLiteral)?.clone();
+            self.eat(Delim, ",")?;
+
             let int_value = int.value.parse::<u32>().map_err(|_| LoError {
                 message: format!("Parsing u32 failed: {}", int.value),
                 loc: int.loc.clone(),
@@ -376,6 +395,12 @@ impl ParserV2 {
     }
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, LoError> {
+        if let Some(_) = self.eat(Operator, "&")? {
+            return Ok(TypeExpr::Pointer {
+                pointee: Box::new(self.parse_type_expr()?),
+            });
+        }
+
         if let Some(_) = self.eat(Symbol, "u32")? {
             return Ok(TypeExpr::U32);
         }
@@ -512,6 +537,17 @@ impl ParserV2 {
             }));
         };
 
+        if let Some(_) = self.eat(Delim, "(")? {
+            let mut loc = self.prev().loc.clone();
+
+            let expr = Box::new(self.parse_code_expr(0)?);
+            self.expect(Delim, ")")?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::Paren(ParenExpr { expr, loc }));
+        };
+
         if let Some(_) = self.eat(Symbol, "let")? {
             let mut loc = self.prev().loc.clone();
 
@@ -598,6 +634,29 @@ impl ParserV2 {
                 expr: Box::new(expr),
                 loc,
             }));
+        }
+
+        if let Some(token) = self.peek().cloned() {
+            if let Some(op) = PrefixOp::parse(token) {
+                self.next(); // skip operator
+
+                let mut loc = self.prev().loc.clone();
+
+                let min_bp = op.info.get_min_bp_for_next();
+
+                match op.tag {
+                    PrefixOpTag::Dereference => {
+                        let referenced = Box::new(self.parse_code_expr(min_bp)?);
+
+                        loc.end_pos = self.prev().loc.end_pos.clone();
+
+                        return Ok(CodeExpr::Dereference(DereferenceExpr { referenced, loc }));
+                    }
+                    PrefixOpTag::Not => return Err(LoError::todo(file!(), line!())),
+                    PrefixOpTag::Positive => return Err(LoError::todo(file!(), line!())),
+                    PrefixOpTag::Negative => return Err(LoError::todo(file!(), line!())),
+                }
+            }
         }
 
         let ident = self.parse_ident()?;

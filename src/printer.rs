@@ -124,11 +124,22 @@ impl Printer {
                     self.print_indent();
                     stdout_write("min_pages: ");
                     stdout_write(min_pages.to_string());
-                    stdout_writeln("");
+                    stdout_writeln(",");
                     self.indent -= 1;
                     self.print_indent();
                 }
                 stdout_writeln("};");
+            }
+            TopLevelExpr::StaticDataStore(data_store) => {
+                stdout_write("*");
+                self.print_code_expr(&data_store.addr);
+                stdout_write(" = ");
+                match &data_store.data {
+                    StaticDataStorePayload::String { value } => {
+                        stdout_write(value);
+                    }
+                }
+                stdout_writeln(";");
             }
         }
 
@@ -181,8 +192,16 @@ impl Printer {
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
         match type_expr {
-            TypeExpr::U32 => stdout_write("u32"),
-            TypeExpr::AliasOrStruct { name } => stdout_write(&name.repr),
+            TypeExpr::U32 => {
+                stdout_write("u32");
+            }
+            TypeExpr::Pointer { pointee } => {
+                stdout_write("&");
+                self.print_type_expr(&pointee);
+            }
+            TypeExpr::AliasOrStruct { name } => {
+                stdout_write(&name.repr);
+            }
             TypeExpr::Result { ok_type, err_type } => {
                 stdout_write("Result<");
                 self.print_type_expr(&ok_type);
@@ -391,6 +410,15 @@ impl Printer {
                 stdout_write(error_bind);
                 stdout_write(" ");
                 self.print_code_block_expr(catch_body);
+            }
+            CodeExpr::Dereference(DereferenceExpr { referenced, .. }) => {
+                stdout_write("*");
+                self.print_code_expr(&referenced);
+            }
+            CodeExpr::Paren(ParenExpr { expr, .. }) => {
+                stdout_write("(");
+                self.print_code_expr(&expr);
+                stdout_write(")");
             }
         }
     }

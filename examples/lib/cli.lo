@@ -4,7 +4,7 @@ include "./print.lo";
 
 // 1MB stack + 1MB heap
 export memory {
-    min_pages: 40
+    min_pages: 40,
 };
 
 export fn _start() {
