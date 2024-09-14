@@ -874,7 +874,11 @@ impl ParserV2 {
 
     fn parse_macro_type_args(&mut self) -> Result<Vec<TypeExpr>, LoError> {
         let mut type_args = Vec::new();
-        self.expect(Operator, "<")?;
+
+        let Some(_) = self.eat(Operator, "<")? else {
+            return Ok(type_args);
+        };
+
         while let None = self.eat(Operator, ">")? {
             type_args.push(self.parse_type_expr()?);
 
