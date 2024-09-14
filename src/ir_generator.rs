@@ -178,6 +178,7 @@ impl IRGenerator {
                 TopLevelExpr::MemoryDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::StaticDataStore(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::ExportExistingFn(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::MacroDef(_) => return Err(LoError::todo(file!(), line!())),
             }
         }
 

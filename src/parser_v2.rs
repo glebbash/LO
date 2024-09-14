@@ -306,6 +306,46 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "macro")? {
+            let mut loc = self.prev().loc.clone();
+
+            let macro_name = self.parse_ident()?;
+            self.expect(Operator, "!")?;
+
+            let mut macro_type_params = Vec::new();
+            if let Some(_) = self.eat(Operator, "<")? {
+                while let None = self.eat(Operator, ">")? {
+                    let type_param = self.expect_any(Symbol)?;
+                    macro_type_params.push(type_param.value.clone());
+
+                    if !self.current().is(Operator, ">") {
+                        self.expect(Delim, ",")?;
+                    }
+                }
+            }
+
+            let macro_params = self.parse_fn_params()?;
+
+            let return_type = if let Some(_) = self.eat(Operator, ":")? {
+                Some(self.parse_type_expr()?)
+            } else {
+                None
+            };
+
+            let body = self.parse_code_block_expr()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(TopLevelExpr::MacroDef(MacroDefExpr {
+                macro_name,
+                macro_params,
+                macro_type_params,
+                return_type,
+                body,
+                loc,
+            }));
+        }
+
         let unexpected = self.current();
         return Err(LoError {
             message: format!("Unexpected top level token: {:?}", unexpected.value),

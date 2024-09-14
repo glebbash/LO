@@ -23,6 +23,7 @@ pub enum TopLevelExpr {
     MemoryDef(MemoryDefExpr),
     StaticDataStore(StaticDataStoreExpr),
     ExportExistingFn(ExportExistingFnExpr),
+    MacroDef(MacroDefExpr),
 }
 
 #[derive(Debug)]
@@ -134,6 +135,16 @@ pub struct ExportExistingFnExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct MacroDefExpr {
+    pub macro_name: IdentExpr,
+    pub macro_params: Vec<FnParam>,
+    pub macro_type_params: Vec<String>,
+    pub return_type: Option<TypeExpr>,
+    pub body: CodeBlockExpr,
+    pub loc: LoLocation,
+}
+
 impl Locatable for ImportItem {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -155,6 +166,7 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::MemoryDef(e) => &e.loc,
             TopLevelExpr::StaticDataStore(e) => &e.loc,
             TopLevelExpr::ExportExistingFn(e) => &e.loc,
+            TopLevelExpr::MacroDef(e) => &e.loc,
         }
     }
 }

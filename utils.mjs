@@ -788,7 +788,7 @@ async function testCommand() {
             "examples/test/include.lo",
             "examples/test/lexer.test.lo",
             "examples/test/locals.lo",
-            // "examples/test/macro.lo",
+            "examples/test/macro.lo",
             "examples/test/methods.lo",
             "examples/test/multiple-compiler-errors.lo",
             "examples/test/nested-if-break.lo",

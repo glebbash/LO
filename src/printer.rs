@@ -33,58 +33,81 @@ impl Printer {
 
     fn print_top_level_expr(&mut self, expr: &TopLevelExpr, expr_index: usize) {
         match &expr {
-            TopLevelExpr::FnDef(fn_def) => {
-                self.print_fn_def(fn_def);
+            TopLevelExpr::FnDef(FnDefExpr {
+                exported,
+                decl,
+                body,
+                ..
+            }) => {
+                if *exported {
+                    stdout_write("export ");
+                }
+                self.print_fn_decl(decl);
+                stdout_write(" ");
+                self.print_code_block_expr(body);
+                stdout_writeln(";");
             }
-            TopLevelExpr::Include(include) => {
-                self.print_include(include);
+            TopLevelExpr::Include(IncludeExpr { file_path, .. }) => {
+                stdout_write("include ");
+                stdout_write(file_path);
+                stdout_writeln(";");
 
                 if let Some(TopLevelExpr::Include(_)) = self.ast.exprs.get(expr_index + 1) {
                     return;
                 }
             }
-            TopLevelExpr::Import(import) => {
+            TopLevelExpr::Import(ImportExpr {
+                module_name,
+                items,
+                loc,
+            }) => {
                 stdout_write("import from ");
-                stdout_write(&import.module_name);
+                stdout_write(module_name);
                 stdout_write(" {\n");
                 self.indent += 1;
 
-                for (item, i) in import.items.iter().zip(0..) {
+                for (item, i) in items.iter().zip(0..) {
                     self.print_comments_before_pos(item.loc().pos.offset);
                     self.print_indent();
                     match item {
                         ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
                     }
                     stdout_writeln(";");
-                    if i != import.items.len() - 1 {
+                    if i != items.len() - 1 {
                         stdout_writeln("");
                     }
                 }
 
                 // print the rest of the comments
-                self.print_comments_before_pos(import.loc.end_pos.offset);
+                self.print_comments_before_pos(loc.end_pos.offset);
 
                 self.indent -= 1;
                 self.print_indent();
                 stdout_writeln("};");
             }
-            TopLevelExpr::GlobalDef(global) => {
+            TopLevelExpr::GlobalDef(GlobalDefExpr {
+                global_name, expr, ..
+            }) => {
                 stdout_write("global ");
-                stdout_write(&global.global_name);
+                stdout_write(&global_name);
                 stdout_write(" = ");
-                self.print_code_expr(&global.expr);
+                self.print_code_expr(expr);
                 stdout_writeln(";");
             }
-            TopLevelExpr::StructDef(struct_def) => {
+            TopLevelExpr::StructDef(StructDefExpr {
+                struct_name,
+                fields,
+                loc,
+            }) => {
                 stdout_write("struct ");
-                stdout_write(&struct_def.struct_name.repr);
+                stdout_write(&struct_name.repr);
 
-                if struct_def.fields.len() == 0 {
+                if fields.len() == 0 {
                     stdout_writeln(" {};");
                 } else {
                     stdout_writeln(" {");
                     self.indent += 1;
-                    for field in &struct_def.fields {
+                    for field in fields {
                         self.print_comments_before_pos(field.loc.pos.offset);
                         self.print_indent();
                         stdout_write(&field.field_name);
@@ -94,7 +117,7 @@ impl Printer {
                     }
 
                     // print the rest of the comments
-                    self.print_comments_before_pos(struct_def.loc.end_pos.offset);
+                    self.print_comments_before_pos(loc.end_pos.offset);
 
                     self.indent -= 1;
                     self.print_indent();
@@ -102,34 +125,46 @@ impl Printer {
                     stdout_writeln("};");
                 }
             }
-            TopLevelExpr::TypeDef(type_def) => {
+            TopLevelExpr::TypeDef(TypeDefExpr {
+                type_name,
+                type_value,
+                ..
+            }) => {
                 stdout_write("type ");
-                stdout_write(&type_def.type_name.repr);
+                stdout_write(&type_name.repr);
                 stdout_write(" = ");
-                self.print_type_expr(&type_def.type_value);
+                self.print_type_expr(type_value);
                 stdout_writeln(";");
 
                 if let Some(TopLevelExpr::TypeDef(_)) = self.ast.exprs.get(expr_index + 1) {
                     return;
                 }
             }
-            TopLevelExpr::ConstDef(const_def) => {
+            TopLevelExpr::ConstDef(ConstDefExpr {
+                const_name,
+                const_value,
+                ..
+            }) => {
                 stdout_write("const ");
-                stdout_write(&const_def.const_name.repr);
+                stdout_write(&const_name.repr);
                 stdout_write(" = ");
-                self.print_code_expr(&const_def.const_value);
+                self.print_code_expr(const_value);
                 stdout_writeln(";");
 
                 if let Some(TopLevelExpr::ConstDef(_)) = self.ast.exprs.get(expr_index + 1) {
                     return;
                 }
             }
-            TopLevelExpr::MemoryDef(memory_def) => {
-                if memory_def.exported {
+            TopLevelExpr::MemoryDef(MemoryDefExpr {
+                exported,
+                min_pages,
+                ..
+            }) => {
+                if *exported {
                     stdout_write("export ");
                 }
                 stdout_write("memory {");
-                if let Some(min_pages) = memory_def.min_pages {
+                if let Some(min_pages) = min_pages {
                     stdout_writeln("");
                     self.indent += 1;
                     self.print_indent();
@@ -141,22 +176,56 @@ impl Printer {
                 }
                 stdout_writeln("};");
             }
-            TopLevelExpr::StaticDataStore(data_store) => {
+            TopLevelExpr::StaticDataStore(StaticDataStoreExpr { addr, data, .. }) => {
                 stdout_write("*");
-                self.print_code_expr(&data_store.addr);
+                self.print_code_expr(addr);
                 stdout_write(" = ");
-                match &data_store.data {
+                match data {
                     StaticDataStorePayload::String { value } => {
                         stdout_write(value);
                     }
                 }
                 stdout_writeln(";");
             }
-            TopLevelExpr::ExportExistingFn(existing_fn) => {
+            TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
+                in_fn_name,
+                out_fn_name,
+                ..
+            }) => {
                 stdout_write("export existing fn ");
-                stdout_write(&existing_fn.in_fn_name.repr);
+                stdout_write(&in_fn_name.repr);
                 stdout_write(" as ");
-                stdout_write(&existing_fn.out_fn_name);
+                stdout_write(out_fn_name);
+                stdout_writeln(";");
+            }
+            TopLevelExpr::MacroDef(MacroDefExpr {
+                macro_name,
+                macro_params,
+                macro_type_params,
+                return_type,
+                body,
+                ..
+            }) => {
+                stdout_write("macro ");
+                stdout_write(&macro_name.repr);
+                stdout_write("!");
+                if macro_type_params.len() != 0 {
+                    stdout_write("<");
+                    for (type_param, i) in macro_type_params.iter().zip(0..) {
+                        stdout_write(type_param);
+                        if i != macro_type_params.len() - 1 {
+                            stdout_write(",");
+                        }
+                    }
+                    stdout_write(">");
+                }
+                self.print_fn_params(macro_params);
+                if let Some(return_type) = return_type {
+                    stdout_write(": ");
+                    self.print_type_expr(return_type);
+                }
+                stdout_write(" ");
+                self.print_code_block_expr(body);
                 stdout_writeln(";");
             }
         }
@@ -166,22 +235,23 @@ impl Printer {
         }
     }
 
-    fn print_fn_def(&mut self, fn_def: &FnDefExpr) {
-        if fn_def.exported {
-            stdout_write("export ");
-        }
-        self.print_fn_decl(&fn_def.decl);
-        stdout_write(" ");
-        self.print_code_block_expr(&fn_def.body);
-        stdout_writeln(";");
-    }
-
     // TODO: figure out multiline param printing
     fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
         stdout_write("fn ");
         stdout_write(&fn_decl.fn_name.repr);
+        self.print_fn_params(&fn_decl.fn_params);
+
+        let Some(return_type) = &fn_decl.return_type else {
+            return;
+        };
+
+        stdout_write(": ");
+        self.print_type_expr(&return_type);
+    }
+
+    fn print_fn_params(&mut self, fn_params: &Vec<FnParam>) {
         stdout_write("(");
-        for (fn_param, index) in fn_decl.fn_params.iter().zip(0..) {
+        for (fn_param, index) in fn_params.iter().zip(0..) {
             if index != 0 {
                 stdout_write(", ");
             }
@@ -202,19 +272,6 @@ impl Printer {
             }
         }
         stdout_write(")");
-
-        let Some(return_type) = &fn_decl.return_type else {
-            return;
-        };
-
-        stdout_write(": ");
-        self.print_type_expr(&return_type);
-    }
-
-    fn print_include(&mut self, include: &IncludeExpr) {
-        stdout_write("include ");
-        stdout_write(&include.file_path);
-        stdout_writeln(";");
     }
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
