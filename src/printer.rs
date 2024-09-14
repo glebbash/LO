@@ -141,6 +141,13 @@ impl Printer {
                 }
                 stdout_writeln(";");
             }
+            TopLevelExpr::ExportExistingFn(existing_fn) => {
+                stdout_write("export existing fn ");
+                stdout_write(&existing_fn.in_fn_name.repr);
+                stdout_write(" as ");
+                stdout_write(&existing_fn.out_fn_name);
+                stdout_writeln(";");
+            }
         }
 
         if expr_index != self.ast.exprs.len() - 1 {
@@ -449,7 +456,9 @@ impl Printer {
                 self.print_type_args(type_args);
                 self.print_args(args);
             }
-            CodeExpr::Sizeof(SizeofExpr { type_expr: r#type, .. }) => {
+            CodeExpr::Sizeof(SizeofExpr {
+                type_expr: r#type, ..
+            }) => {
                 stdout_write("sizeof ");
                 self.print_type_expr(r#type);
             }

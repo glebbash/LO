@@ -116,6 +116,23 @@ impl ParserV2 {
                 return Ok(TopLevelExpr::MemoryDef(memory_def));
             }
 
+            if let Some(_) = self.eat(Symbol, "existing")? {
+                let mut loc = self.prev().loc.clone();
+
+                self.expect(Symbol, "fn")?;
+                let in_fn_name = self.parse_ident()?;
+                self.expect(Symbol, "as")?;
+                let out_fn_name = self.expect_any(StringLiteral)?.clone();
+
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                return Ok(TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
+                    in_fn_name,
+                    out_fn_name: out_fn_name.value,
+                    loc,
+                }));
+            }
+
             let unexpected = self.current();
             return Err(LoError {
                 message: format!("Unexpected exportable: {:?}", unexpected.value),

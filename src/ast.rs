@@ -22,6 +22,7 @@ pub enum TopLevelExpr {
     ConstDef(ConstDefExpr),
     MemoryDef(MemoryDefExpr),
     StaticDataStore(StaticDataStoreExpr),
+    ExportExistingFn(ExportExistingFnExpr),
 }
 
 #[derive(Debug)]
@@ -119,6 +120,13 @@ pub enum StaticDataStorePayload {
     String { value: String },
 }
 
+#[derive(Debug)]
+pub struct ExportExistingFnExpr {
+    pub in_fn_name: IdentExpr,
+    pub out_fn_name: String,
+    pub loc: LoLocation,
+}
+
 impl Locatable for ImportItem {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -139,6 +147,7 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
             TopLevelExpr::StaticDataStore(e) => &e.loc,
+            TopLevelExpr::ExportExistingFn(e) => &e.loc,
         }
     }
 }

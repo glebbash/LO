@@ -798,7 +798,7 @@ async function testCommand() {
             // "examples/test/struct-ref.lo",
             "examples/test/struct.lo",
             "examples/test/tracing.lo",
-            // "examples/test/vec.test.lo",
+            "examples/test/vec.test.lo",
         ];
 
         for (const fileName of formattedFiles) {

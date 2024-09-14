@@ -1,11 +1,14 @@
 // exports vec api for testing
-
-export memory { min_pages: 20 };
+export memory {
+    min_pages: 20,
+};
 
 include "../lib/std.lo";
 
 export existing fn Vec::with_capacity as "vec_new";
+
 export existing fn Vec::swap as "vec_swap";
+
 export existing fn Vec::push_all as "vec_push_all";
 
 export fn vec_len(vec: &Vec): u32 {
