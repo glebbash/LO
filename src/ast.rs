@@ -76,7 +76,7 @@ pub enum ImportItem {
 
 #[derive(Debug)]
 pub struct GlobalDefExpr {
-    pub global_name: String,
+    pub global_name: IdentExpr,
     pub expr: CodeExpr,
     pub loc: LoLocation,
 }
@@ -173,19 +173,22 @@ impl Locatable for TopLevelExpr {
 
 #[derive(Debug)]
 pub enum TypeExpr {
-    U32,
+    Named {
+        name: IdentExpr,
+    },
     Pointer {
         pointee: Box<TypeExpr>,
     },
     SequencePointer {
         pointee: Box<TypeExpr>,
     },
-    AliasOrStruct {
-        name: IdentExpr,
-    },
     Result {
         ok_type: Box<TypeExpr>,
         err_type: Box<TypeExpr>,
+    },
+    Of {
+        container_type: Box<TypeExpr>,
+        item_type: Box<TypeExpr>,
     },
 }
 
@@ -210,6 +213,7 @@ pub enum CodeExpr {
     Assign(AssignExpr),
     FieldAccess(FieldAccessExpr),
     Catch(CatchExpr),
+    PropagateError(PropagateErrorExpr),
     Dereference(DereferenceExpr),
     Paren(ParenExpr),
     FnCall(FnCallExpr),
@@ -235,6 +239,7 @@ pub struct ReturnExpr {
 pub struct IntLiteralExpr {
     pub repr: String,
     pub value: u32,
+    pub tag: Option<String>,
     pub loc: LoLocation,
 }
 
@@ -369,6 +374,12 @@ pub struct CatchExpr {
 }
 
 #[derive(Debug)]
+pub struct PropagateErrorExpr {
+    pub expr: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub struct DereferenceExpr {
     pub referenced: Box<CodeExpr>,
     pub loc: LoLocation,
@@ -447,6 +458,7 @@ impl Locatable for CodeExpr {
             CodeExpr::MacroFnCall(e) => &e.loc,
             CodeExpr::MacroMethodCall(e) => &e.loc,
             CodeExpr::Sizeof(e) => &e.loc,
+            CodeExpr::PropagateError(e) => &e.loc,
         }
     }
 }

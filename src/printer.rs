@@ -89,7 +89,7 @@ impl Printer {
                 global_name, expr, ..
             }) => {
                 stdout_write("global ");
-                stdout_write(&global_name);
+                stdout_write(&global_name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(expr);
                 stdout_writeln(";");
@@ -276,26 +276,31 @@ impl Printer {
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
         match type_expr {
-            TypeExpr::U32 => {
-                stdout_write("u32");
-            }
             TypeExpr::Pointer { pointee } => {
                 stdout_write("&");
-                self.print_type_expr(&pointee);
+                self.print_type_expr(pointee);
             }
             TypeExpr::SequencePointer { pointee } => {
                 stdout_write("*&");
-                self.print_type_expr(&pointee);
+                self.print_type_expr(pointee);
             }
-            TypeExpr::AliasOrStruct { name } => {
+            TypeExpr::Named { name } => {
                 stdout_write(&name.repr);
             }
             TypeExpr::Result { ok_type, err_type } => {
                 stdout_write("Result<");
-                self.print_type_expr(&ok_type);
+                self.print_type_expr(ok_type);
                 stdout_write(", ");
-                self.print_type_expr(&err_type);
+                self.print_type_expr(err_type);
                 stdout_write(">");
+            }
+            TypeExpr::Of {
+                container_type,
+                item_type,
+            } => {
+                self.print_type_expr(container_type);
+                stdout_write(" of ");
+                self.print_type_expr(item_type);
             }
         }
     }
@@ -330,8 +335,11 @@ impl Printer {
                     self.print_code_expr(expr);
                 }
             }
-            CodeExpr::IntLiteral(IntLiteralExpr { repr, .. }) => {
+            CodeExpr::IntLiteral(IntLiteralExpr { repr, tag, .. }) => {
                 stdout_write(repr);
+                if let Some(tag) = tag {
+                    stdout_write(tag);
+                }
             }
             CodeExpr::StringLiteral(StringLiteralExpr { repr, .. }) => {
                 stdout_write(repr);
@@ -534,11 +542,13 @@ impl Printer {
                 self.print_type_args(type_args);
                 self.print_args(args);
             }
-            CodeExpr::Sizeof(SizeofExpr {
-                type_expr: r#type, ..
-            }) => {
+            CodeExpr::Sizeof(SizeofExpr { type_expr, .. }) => {
                 stdout_write("sizeof ");
-                self.print_type_expr(r#type);
+                self.print_type_expr(type_expr);
+            }
+            CodeExpr::PropagateError(PropagateErrorExpr { expr, .. }) => {
+                self.print_code_expr(&expr);
+                stdout_write("?");
             }
         }
     }

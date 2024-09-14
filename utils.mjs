@@ -737,7 +737,7 @@ async function testCommand() {
             "examples/lib/args.lo",
             "examples/lib/cli.lo",
             "examples/lib/debug.lo",
-            // "examples/lib/fs.lo",
+            "examples/lib/fs.lo",
             // "examples/lib/int_parser.lo",
             // "examples/lib/lo/core.lo",
             // "examples/lib/lo/ir.lo",

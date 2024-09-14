@@ -246,11 +246,17 @@ impl IRGenerator {
 
     fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::U32 => Ok(LoType::U32),
+            TypeExpr::Named { name } => {
+                if name.repr == "u32" {
+                    return Ok(LoType::U32);
+                }
+
+                Err(LoError::todo(file!(), line!()))
+            }
             TypeExpr::Pointer { .. } => Err(LoError::todo(file!(), line!())),
             TypeExpr::SequencePointer { .. } => Err(LoError::todo(file!(), line!())),
-            TypeExpr::AliasOrStruct { .. } => Err(LoError::todo(file!(), line!())),
             TypeExpr::Result { .. } => Err(LoError::todo(file!(), line!())),
+            TypeExpr::Of { .. } => Err(LoError::todo(file!(), line!())),
         }
     }
 
@@ -496,6 +502,7 @@ impl IRGenerator {
             CodeExpr::MacroFnCall(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::MacroMethodCall(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Sizeof(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::PropagateError(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

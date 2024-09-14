@@ -207,14 +207,14 @@ impl ParserV2 {
         if let Some(_) = self.eat(Symbol, "global")? {
             let mut loc = self.prev().loc.clone();
 
-            let global_name = self.expect_any(Symbol)?.clone();
+            let global_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
             let expr = self.parse_code_expr(0)?;
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::GlobalDef(GlobalDefExpr {
-                global_name: global_name.value.clone(),
+                global_name,
                 expr,
                 loc,
             }));
@@ -467,6 +467,21 @@ impl ParserV2 {
     }
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, LoError> {
+        let primary = self.parse_type_expr_primary()?;
+
+        if let Some(_) = self.eat(Symbol, "of")? {
+            let item_type = self.parse_type_expr()?;
+
+            return Ok(TypeExpr::Of {
+                container_type: Box::new(primary),
+                item_type: Box::new(item_type),
+            });
+        }
+
+        return Ok(primary);
+    }
+
+    fn parse_type_expr_primary(&mut self) -> Result<TypeExpr, LoError> {
         if let Some(_) = self.eat(Operator, "&")? {
             return Ok(TypeExpr::Pointer {
                 pointee: Box::new(self.parse_type_expr()?),
@@ -477,10 +492,6 @@ impl ParserV2 {
             return Ok(TypeExpr::SequencePointer {
                 pointee: Box::new(self.parse_type_expr()?),
             });
-        }
-
-        if let Some(_) = self.eat(Symbol, "u32")? {
-            return Ok(TypeExpr::U32);
         }
 
         if let Some(_) = self.eat(Symbol, "Result")? {
@@ -494,7 +505,7 @@ impl ParserV2 {
         }
 
         let ident = self.parse_ident()?;
-        return Ok(TypeExpr::AliasOrStruct { name: ident });
+        return Ok(TypeExpr::Named { name: ident });
     }
 
     fn parse_code_block_expr(&mut self) -> Result<CodeBlockExpr, LoError> {
@@ -590,12 +601,17 @@ impl ParserV2 {
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: false, loc }));
         }
 
-        if let Some(int) = self.eat_any(IntLiteral)? {
+        if let Some(int) = self.eat_any(IntLiteral)?.cloned() {
             let result = if int.value.starts_with("0x") {
                 u32::from_str_radix(&int.value[2..], 16)
             } else {
                 int.value.parse()
             };
+
+            let mut tag = None;
+            if let Some(_) = self.eat(Symbol, "u64")? {
+                tag = Some(String::from("u64"));
+            }
 
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: int.value.clone(),
@@ -603,6 +619,7 @@ impl ParserV2 {
                     message: format!("Parsing u32 failed: {}", int.value),
                     loc: int.loc.clone(),
                 })?,
+                tag,
                 loc: int.loc.clone(),
             }));
         };
@@ -999,7 +1016,15 @@ impl ParserV2 {
                     loc,
                 }))
             }
-            InfixOpTag::ErrorPropagation => Err(LoError::todo(file!(), line!())),
+            InfixOpTag::ErrorPropagation => {
+                let mut loc = primary.loc().clone();
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                Ok(CodeExpr::PropagateError(PropagateErrorExpr {
+                    expr: Box::new(primary),
+                    loc,
+                }))
+            }
         }
     }
 
