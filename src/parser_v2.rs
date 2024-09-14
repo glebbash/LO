@@ -418,7 +418,7 @@ impl ParserV2 {
             });
         }
 
-        if let Some(_) = self.eat(Operator, "&*")? {
+        if let Some(_) = self.eat(Operator, "*&")? {
             return Ok(TypeExpr::SequencePointer {
                 pointee: Box::new(self.parse_type_expr()?),
             });

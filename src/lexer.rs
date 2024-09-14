@@ -479,7 +479,7 @@ static OPERATORS: &[&str] = &[
     "%",   // Arithmetic remainder
     "%=",  // Arithmetic remainder and assignment
     "&",   // Bitwise AND / Pointer to one
-    "&*",  // Pointer to any amount
+    "*&",  // Pointer to any amount
     "&=",  // Bitwise AND and assignment
     "<<",  // Left-shift
     "<<=", // Left-shift and assignment

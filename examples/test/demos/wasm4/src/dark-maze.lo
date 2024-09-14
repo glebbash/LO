@@ -203,7 +203,7 @@ fn light_block(block_x: i32, block_y: i32, brightness: u32) {
     };
 };
 
-fn play_notes(notes: &*u8, notes_len: u32, note_duration: u32) {
+fn play_notes(notes: *&u8, notes_len: u32, note_duration: u32) {
     let volume = 100;
     let flags = wasm4::TONE_PULSE1 | wasm4::TONE_NOTE_MODE;
     if (notes_ticker >= note_duration) {

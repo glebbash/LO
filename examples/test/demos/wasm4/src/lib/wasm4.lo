@@ -57,13 +57,13 @@ const wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2;
 import from "env" {
     // Copies pixels to the framebuffer.
     fn wasm4::blit (
-        data: &*u8, // const u8*
+        data: *&u8, // const u8*
         x: i32, y: i32, width: u32, height: u32, flags: u32,
     );
 
     // Copies a subregion within a larger sprite atlas to the framebuffer.
     fn wasm4::blitSub(
-        data: &*u8, // const u8*
+        data: *&u8, // const u8*
         x: i32, y: i32, width: u32, height: u32,
         srcX: u32, srcY: u32, stride: u32, flags: u32,
     );
@@ -93,7 +93,7 @@ import from "env" {
 
     // Draws text using the built-in system font.
     fn wasm4::text(
-        text: &*u8, // const char*
+        text: *&u8, // const char*
         x: i32, y: i32,
     );
 };
@@ -129,17 +129,17 @@ const wasm4::TONE_NOTE_MODE = 64;
 
 import from "env" {
     // Reads up to `size` bytes from persistent storage into the pointer `dest`.
-    fn wasm4::diskr(dest: &*void, size: u32): u32;
+    fn wasm4::diskr(dest: *&void, size: u32): u32;
 
     // Writes up to `size` bytes from the pointer `src` into persistent storage.
     fn wasm4::diskw(
-        src: &*void, // const
+        src: *&void, // const
         size: u32,
     ): u32;
 
     // Prints a message to the debug console.
     fn wasm4::trace(
-        str: &*u8, // const char*
+        str: *&u8, // const char*
     );
 
     // NOTE: not supported

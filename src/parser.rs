@@ -2965,7 +2965,7 @@ fn parse_lo_type_primary(
         return Ok(LoType::Pointer(Box::new(pointee)));
     }
 
-    if let Some(_) = tokens.eat(Operator, "&*")? {
+    if let Some(_) = tokens.eat(Operator, "*&")? {
         let pointee = parse_lo_type_primary(ctx, type_scope, tokens, true)?;
         return Ok(LoType::Pointer(Box::new(pointee)));
     }

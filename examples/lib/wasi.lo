@@ -9,7 +9,7 @@ const wasi::FD_STDOUT = 1;
 const wasi::FD_STDERR = 2;
 
 struct wasi::IOVec {
-    base: &*u8,
+    base: *&u8,
     size: u32,
 };
 
@@ -35,19 +35,19 @@ import from "wasi_snapshot_preview1" {
     // @param fs_rights_inheriting - The rights of file descriptors derived from the created file descriptor.
     // @param fdflags -------------- The flags of the file descriptor.
     // @param fd ------------------- A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
-    fn wasi::path_open(dirfd: u32, dirflags: u32, path: &*u8, path_len: u32, oflags: u32, fs_rights_base: u64, fs_rights_inheriting: u64, fdflags: u32, fd: &u32): wasi::Err;
+    fn wasi::path_open(dirfd: u32, dirflags: u32, path: *&u8, path_len: u32, oflags: u32, fs_rights_base: u64, fs_rights_inheriting: u64, fdflags: u32, fd: &u32): wasi::Err;
 
     // @param fd ------- file_descriptor
     // @param iovs ----- The pointer to the iov array
     // @param iovs_len - Amount of wasi::IOVec
     // @param nread ---- Pointer to store the number of bytes read
-    fn wasi::fd_read(fd: u32, iovs: &*wasi::IOVec, iovs_len: u32, nread: &u32): wasi::Err;
+    fn wasi::fd_read(fd: u32, iovs: *&wasi::IOVec, iovs_len: u32, nread: &u32): wasi::Err;
 
     // @param fd ------- file_descriptor
     // @param iovs ----- The pointer to the iov array
     // @param iovs_len - Amount of wasi::IOVec
     // @param nwritten - Pointer to store the number of bytes written
-    fn wasi::fd_write(fd: u32, iovs: &*wasi::IOVec, iovs_len: u32, nwritten: &u32): wasi::Err;
+    fn wasi::fd_write(fd: u32, iovs: *&wasi::IOVec, iovs_len: u32, nwritten: &u32): wasi::Err;
 
     // @param fd - file_descriptor
     fn wasi::fd_close(fd: u32): wasi::Err;
@@ -58,7 +58,7 @@ import from "wasi_snapshot_preview1" {
 
     // @param argv ----- Pointer to a buffer where the argument pointers will be written.
     // @param argv_buf - Pointer to a buffer where the argument string data will be written.
-    fn wasi::args_get(argv: &*&*u8, argv_buf: &*u8): wasi::Err;
+    fn wasi::args_get(argv: &*&u8, argv_buf: *&u8): wasi::Err;
 
     // @param code - The exit code to return to the operating system.
     fn wasi::proc_exit(code: u32): never;
@@ -70,7 +70,7 @@ import from "wasi_snapshot_preview1" {
     // @param fd ------- The preopened file descriptor to query.
     // @param path ----- A pointer to a buffer where the directory name will be written.
     // @param path_len - The maximum length of the buffer.
-    fn wasi::fd_prestat_dir_name(fd: u32, path: &*u8, path_len: u32): wasi::Err;
+    fn wasi::fd_prestat_dir_name(fd: u32, path: *&u8, path_len: u32): wasi::Err;
 
     // @param fd -- The file descriptor whose metadata will be accessed.
     // @param buf - A WebAssembly pointer to a memory location where the metadata will be written.

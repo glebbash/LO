@@ -218,7 +218,7 @@ impl Printer {
                 self.print_type_expr(&pointee);
             }
             TypeExpr::SequencePointer { pointee } => {
-                stdout_write("&*");
+                stdout_write("*&");
                 self.print_type_expr(&pointee);
             }
             TypeExpr::AliasOrStruct { name } => {

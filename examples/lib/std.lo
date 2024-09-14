@@ -1,7 +1,7 @@
 // str literal type
 
     struct str {
-        data: &*u8,
+        data: *&u8,
         size: u32,
     };
 
@@ -42,8 +42,8 @@
         alloc(alloc_id, sizeof T) as &T;
     };
 
-    macro alloc_many!<T>(alloc_id: u32, count: u32): &*T {
-        alloc(alloc_id, count * sizeof T) as &*T;
+    macro alloc_many!<T>(alloc_id: u32, count: u32): *&T {
+        alloc(alloc_id, count * sizeof T) as *&T;
     };
 
     fn alloc(alloc_id: u32, size: u32): &void {
@@ -59,7 +59,7 @@
         free(alloc_id, ptr as &void, sizeof T);
     };
 
-    macro free_many!<T>(alloc_id: u32, ptr: &*T, count: u32) {
+    macro free_many!<T>(alloc_id: u32, ptr: *&T, count: u32) {
         // TODO: won't need a cast if coersion is introduced
         free(alloc_id, ptr as &void, count * sizeof T);
     };
@@ -458,7 +458,7 @@
 
     fn String::clone(self): String {
         return String::from_str(str {
-            data: self.chars.data as &*u8,
+            data: self.chars.data as *&u8,
             size: self.chars.size,
         });
     };
@@ -489,7 +489,7 @@
 
 // str utils
 
-    fn str::from_cstr(value: &*u8): str {
+    fn str::from_cstr(value: *&u8): str {
         let len = 0;
 
         loop {
@@ -541,7 +541,7 @@
         };
 
         return str {
-            data: (self.data as u32 + char_count) as &*u8,
+            data: (self.data as u32 + char_count) as *&u8,
             size: self.size - char_count
         };
     };
@@ -552,7 +552,7 @@
         };
 
         return str {
-            data: (self.data as u32 + start) as &*u8,
+            data: (self.data as u32 + start) as *&u8,
             size: end - start
         };
     };
@@ -621,7 +621,7 @@
 
 // utils
 
-    macro array_at!<T>(array: &*T, index: u32): &T {
+    macro array_at!<T>(array: *&T, index: u32): &T {
         (array as u32 + index * sizeof T) as &T;
     };
 
