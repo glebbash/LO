@@ -175,6 +175,7 @@ impl IRGenerator {
                 TopLevelExpr::StructDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::TypeDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::ConstDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::MemoryDef(_) => return Err(LoError::todo(file!(), line!())),
             }
         }
 

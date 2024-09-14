@@ -20,6 +20,7 @@ pub enum TopLevelExpr {
     StructDef(StructDefExpr),
     TypeDef(TypeDefExpr),
     ConstDef(ConstDefExpr),
+    MemoryDef(MemoryDefExpr),
 }
 
 #[derive(Debug)]
@@ -98,6 +99,13 @@ pub struct ConstDefExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct MemoryDefExpr {
+    pub exported: bool,
+    pub min_pages: Option<u32>,
+    pub loc: LoLocation,
+}
+
 impl Locatable for ImportItem {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -116,6 +124,7 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::StructDef(e) => &e.loc,
             TopLevelExpr::TypeDef(e) => &e.loc,
             TopLevelExpr::ConstDef(e) => &e.loc,
+            TopLevelExpr::MemoryDef(e) => &e.loc,
         }
     }
 }

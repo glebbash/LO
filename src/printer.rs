@@ -1,7 +1,7 @@
 use core::usize;
 
 use crate::{ast::*, core::*};
-use alloc::{rc::Rc, vec::Vec};
+use alloc::{rc::Rc, string::ToString, vec::Vec};
 
 pub struct Printer {
     ast: Rc<AST>,
@@ -112,6 +112,23 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(&const_def.const_value);
                 stdout_writeln(";");
+            }
+            TopLevelExpr::MemoryDef(memory_def) => {
+                if memory_def.exported {
+                    stdout_write("export ");
+                }
+                stdout_write("memory {");
+                if let Some(min_pages) = memory_def.min_pages {
+                    stdout_writeln("");
+                    self.indent += 1;
+                    self.print_indent();
+                    stdout_write("min_pages: ");
+                    stdout_write(min_pages.to_string());
+                    stdout_writeln("");
+                    self.indent -= 1;
+                    self.print_indent();
+                }
+                stdout_writeln("};");
             }
         }
 

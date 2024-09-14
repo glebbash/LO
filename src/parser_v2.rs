@@ -111,6 +111,11 @@ impl ParserV2 {
                 return Ok(TopLevelExpr::FnDef(fn_def));
             }
 
+            if let Some(_) = self.eat(Symbol, "memory")? {
+                let memory_def = self.parse_memory_def(true, loc)?;
+                return Ok(TopLevelExpr::MemoryDef(memory_def));
+            }
+
             let unexpected = self.current();
             return Err(LoError {
                 message: format!("Unexpected exportable: {:?}", unexpected.value),
@@ -123,6 +128,13 @@ impl ParserV2 {
 
             let fn_def = self.parse_fn_def(false, loc)?;
             return Ok(TopLevelExpr::FnDef(fn_def));
+        }
+
+        if let Some(_) = self.eat(Symbol, "memory")? {
+            let loc = self.prev().loc.clone();
+
+            let memory_def = self.parse_memory_def(false, loc)?;
+            return Ok(TopLevelExpr::MemoryDef(memory_def));
         }
 
         if let Some(_) = self.eat(Symbol, "include")? {
@@ -271,12 +283,40 @@ impl ParserV2 {
         let decl = self.parse_fn_decl()?;
         let body = self.parse_code_block_expr()?;
 
-        loc.end_pos = body.loc.end_pos.clone();
+        loc.end_pos = self.prev().loc.end_pos.clone();
 
         Ok(FnDefExpr {
             exported,
             decl,
             body,
+            loc,
+        })
+    }
+
+    fn parse_memory_def(
+        &mut self,
+        exported: bool,
+        mut loc: LoLocation,
+    ) -> Result<MemoryDefExpr, LoError> {
+        let mut min_pages = None;
+
+        self.expect(Delim, "{")?;
+        if let Some(_) = self.eat(Symbol, "min_pages")? {
+            self.expect(Operator, ":")?;
+            let int = self.expect_any(IntLiteral)?;
+            let int_value = int.value.parse::<u32>().map_err(|_| LoError {
+                message: format!("Parsing u32 failed: {}", int.value),
+                loc: int.loc.clone(),
+            })?;
+            min_pages = Some(int_value);
+        }
+        self.expect(Delim, "}")?;
+
+        loc.end_pos = self.prev().loc.end_pos.clone();
+
+        Ok(MemoryDefExpr {
+            exported,
+            min_pages,
             loc,
         })
     }
