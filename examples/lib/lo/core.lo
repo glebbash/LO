@@ -37,7 +37,10 @@ fn LoContext::new(): &LoContext {
 };
 
 fn LoContext::print_loc(&self, loc: LoLocation) {
-    if loc.file_index == LoLocation::INTERNAL_FILE_INDEX {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (loc.file_index == LoLocation::INTERNAL_FILE_INDEX) {
         eputs("<internal>");
     } else {
         let file = self.included_files.get!<LoIncludedFile>(loc.file_index);

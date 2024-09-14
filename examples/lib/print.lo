@@ -4,61 +4,69 @@ include "./wasi.lo";
 fn puts(value: str) {
     let _ = fputs(wasi::FD_STDOUT, value);
 };
+
 fn eputs(value: str) {
     let _ = fputs(wasi::FD_STDERR, value);
 };
+
 fn fputs(fd: u32, value: str): Result<u32, wasi::Err> {
     let nwritten = tmp_alloc!<u32>();
     let value_ref = tmp_alloc!<str>();
     *value_ref = value;
-
     let err = wasi::fd_write(fd, value_ref as &wasi::IOVec, 1, nwritten);
-    if err != wasi::Err::SUCCESS {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (err != wasi::Err::SUCCESS) {
         return Err(err);
     };
-
     return Ok(*nwritten);
 };
 
 fn print_u32(num: u32) {
     let _ = fprint_u32(wasi::FD_STDOUT, num);
 };
+
 fn eprint_u32(num: u32) {
     let _ = fprint_u32(wasi::FD_STDERR, num);
 };
+
 fn fprint_u32(fd: u32, num: u32): Result<u32, wasi::Err> {
     let out = u32::write(num, String::new(32));
     defer out.free();
-
     return fputs(fd, out.as_str());
 };
 
 fn print_u64(num: u64) {
     let _ = fprint_u64(wasi::FD_STDOUT, num);
 };
+
 fn eprint_u64(num: u64) {
     let _ = fprint_u64(wasi::FD_STDERR, num);
 };
+
 fn fprint_u64(fd: u32, num: u64): Result<u32, wasi::Err> {
     let out = u64::write(num, String::new(32));
     defer out.free();
-
     return fputs(fd, out.as_str());
 };
 
 fn print_str(value: &str) {
     let _ = fprint_str(wasi::FD_STDOUT, value);
 };
+
 fn eprint_str(value: &str) {
     let _ = fprint_str(wasi::FD_STDERR, value);
 };
+
 fn fprint_str(fd: u32, value: &str): Result<u32, wasi::Err> {
     let nwritten = tmp_alloc!<u32>();
-
     let err = wasi::fd_write(fd, value as &wasi::IOVec, 1, nwritten);
-    if err != wasi::Err::SUCCESS {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (err != wasi::Err::SUCCESS) {
         return Err(err);
     };
-
     return Ok(*nwritten);
 };

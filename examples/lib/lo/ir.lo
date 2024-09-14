@@ -1,26 +1,34 @@
 include "../std.lo";
 include "../fs.lo";
 include "../string_map.lo";
-
 include "./utils.lo";
 include "./wasm.lo";
 include "./lexer.lo";
 
 type LoType::_ = u32;
+
 struct LoType {
     kind: LoType::_,
     data: &void,
 };
-// TODO: define all types
 
+// TODO: define all types
 const LoType::Void = 0;
+
 macro LoType::Void!(): LoType {
-    LoType { kind: LoType::Void, data: 0 as &void };
+    LoType {
+        kind: LoType::Void,
+        data: 0 as &void,
+    };
 };
 
 const LoType::U32 = 1;
+
 macro LoType::U32!(): LoType {
-    LoType { kind: LoType::U32, data: 0 as &void };
+    LoType {
+        kind: LoType::U32,
+        data: 0 as &void,
+    };
 };
 
 // TODO: implement
@@ -81,13 +89,16 @@ struct LoFnBody {
 };
 
 type LoInstr::Kind = u32;
+
 struct LoInstr {
     kind: LoInstr::Kind,
     data: &void,
 };
 
 const LoInstr::U32Const::KIND = 0;
+
 type LoInstr::U32Const = u32;
+
 macro LoInstr::U32Const::new!(value: u32): LoInstr {
     LoInstr {
         kind: LoInstr::U32Const::KIND,
@@ -97,25 +108,30 @@ macro LoInstr::U32Const::new!(value: u32): LoInstr {
 };
 
 const LoInstr::Return::KIND = 1;
+
 struct LoInstr::Return {
     value: LoInstr,
 };
+
 macro LoInstr::Return::new!(value: LoInstr): LoInstr {
     LoInstr {
         kind: LoInstr::Return::KIND,
         // TODO: won't need a cast if coersion is introduced
         data: heap::new!<LoInstr::Return>(LoInstr::Return {
-            value: value
+            value: value,
         }) as &void,
     };
 };
 
 const LoInstr::CallAndDrop::KIND = 2;
+
+// TODO: this instruction is temporary
 struct LoInstr::CallAndDrop {
     fn_index: u32,
     return_type: LoType,
     args: &Vec of LoInstr,
 };
+
 macro LoInstr::CallAndDrop::new!(fn_index: u32, return_type: LoType, args: &Vec of LoInstr): LoInstr {
     LoInstr {
         kind: LoInstr::CallAndDrop::KIND,
@@ -128,12 +144,14 @@ macro LoInstr::CallAndDrop::new!(fn_index: u32, return_type: LoType, args: &Vec 
     };
 };
 
-// TODO: this instruction is temporary
 const LoInstr::U32Store::KIND = 3;
+
+// TODO: this instruction is temporary
 struct LoInstr::U32Store {
     address: LoInstr,
     value: LoInstr,
 };
+
 macro LoInstr::U32Store::new!(address: LoInstr, value: LoInstr): LoInstr {
     LoInstr {
         kind: LoInstr::U32Store::KIND,
@@ -146,48 +164,51 @@ macro LoInstr::U32Store::new!(address: LoInstr, value: LoInstr): LoInstr {
 };
 
 // TODO: implement
-fn LoInstr::free(self) {};
+fn LoInstr::free(self) {
+};
 
-fn LoInstr::lower_all(
-    exprs: &Vec of LoInstr,
-    out: &Vec of WasmInstr,
-) {
+fn LoInstr::lower_all(exprs: &Vec of LoInstr, out: &Vec of WasmInstr) {
     for i in 0..exprs.size {
         exprs.get!<LoInstr>(i).lower(out);
     };
 };
 
 // TODO: implement complete
-fn LoInstr::lower(
-    self,
-    out: &Vec of WasmInstr,
-) {
-    if self.kind == LoInstr::U32Const::KIND {
+fn LoInstr::lower(self, out: &Vec of WasmInstr) {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (self.kind == LoInstr::U32Const::KIND) {
         out.push!<WasmInstr>(WasmInstr::I32Const::new(self.data as i32));
         return;
     };
-
-    if self.kind == LoInstr::Return::KIND {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (self.kind == LoInstr::Return::KIND) {
         (*(self.data as &LoInstr)).lower(out);
         out.push!<WasmInstr>(WasmInstr::Return::new());
         return;
     };
-
-    if self.kind == LoInstr::U32Store::KIND {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (self.kind == LoInstr::U32Store::KIND) {
         let store = *(self.data as &LoInstr::U32Store);
         store.address.lower(out);
         store.value.lower(out);
         out.push!<WasmInstr>(WasmInstr::I32Store::new(0, 0));
         return;
     };
-
-    if self.kind == LoInstr::CallAndDrop::KIND {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (self.kind == LoInstr::CallAndDrop::KIND) {
         let call = *(self.data as &LoInstr::CallAndDrop);
         LoInstr::lower_all(call.args, out);
         out.push!<WasmInstr>(WasmInstr::Call::new(call.fn_index));
         out.push!<WasmInstr>(WasmInstr::Drop::new());
         return;
     };
-
     unreachable;
 };
