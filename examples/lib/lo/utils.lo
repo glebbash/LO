@@ -12,11 +12,21 @@ struct LoLocation {
     end_pos: LoPosition,
 };
 
+const LoLocation::INTERNAL_FILE_INDEX = u32::MAX;
+
 fn LoLocation::internal(): LoLocation {
     return LoLocation {
-        file_index: u32::MAX, // internal "file" marker
-        pos: LoPosition { offset: 0, line: 1, col: 1 },
-        end_pos: LoPosition { offset: 0, line: 1, col: 1 },
+        file_index: LoLocation::INTERNAL_FILE_INDEX,
+        pos: LoPosition {
+            offset: 0,
+            line: 1,
+            col: 1,
+        },
+        end_pos: LoPosition {
+            offset: 0,
+            line: 1,
+            col: 1,
+        },
     };
 };
 

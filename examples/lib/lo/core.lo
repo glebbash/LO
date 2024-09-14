@@ -37,7 +37,7 @@ fn LoContext::new(): &LoContext {
 };
 
 fn LoContext::print_loc(&self, loc: LoLocation) {
-    if loc.file_index == u32::MAX {
+    if loc.file_index == LoLocation::INTERNAL_FILE_INDEX {
         eputs("<internal>");
     } else {
         let file = self.included_files.get!<LoIncludedFile>(loc.file_index);

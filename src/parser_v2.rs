@@ -385,14 +385,29 @@ impl ParserV2 {
         let _ = self.expect(Delim, "(")?;
 
         while let None = self.eat(Delim, ")")? {
+            let mut loc = self.current().loc.clone();
+
+            let mut p_type = FnParamType::Self_;
+            if let Some(_) = self.eat(Operator, "&")? {
+                p_type = FnParamType::SelfRef;
+            }
+
             let p_name = self.expect_any(Symbol)?.clone();
 
-            let mut loc = self.prev().loc.clone();
-
-            let mut p_type = None;
             if p_name.value != "self" {
+                if let FnParamType::SelfRef = p_type {
+                    return Err(LoError {
+                        message: format!(
+                            "Only `self` param can be preceded by the reference operator"
+                        ),
+                        loc: p_name.loc,
+                    });
+                }
+
                 self.expect(Operator, ":")?;
-                p_type = Some(self.parse_type_expr()?);
+                p_type = FnParamType::Type {
+                    expr: self.parse_type_expr()?,
+                };
             }
 
             loc.end_pos = self.prev().loc.end_pos.clone();
@@ -402,8 +417,8 @@ impl ParserV2 {
             }
 
             params.push(FnParam {
-                name: p_name.value,
-                type_: p_type,
+                param_name: p_name.value,
+                param_type: p_type,
                 loc,
             });
         }
@@ -730,7 +745,7 @@ impl ParserV2 {
             let mut fields = Vec::new();
 
             while let None = self.eat(Delim, "}")? {
-                let mut field_loc = self.prev().loc.clone();
+                let mut field_loc = self.current().loc.clone();
 
                 let field_name = self.expect_any(Symbol)?.clone();
                 self.expect(Operator, ":")?;

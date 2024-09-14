@@ -195,23 +195,29 @@ impl IRGenerator {
         let mut lo_inputs = Vec::new();
         for fn_param in &fn_def.decl.fn_params {
             for var in &scope.vars {
-                if var.name == fn_param.name {
+                if var.name == fn_param.param_name {
                     self.errors.report(LoError {
-                        message: format!("Duplicate function parameter name: {}", fn_param.name),
+                        message: format!(
+                            "Duplicate function parameter name: {}",
+                            fn_param.param_name
+                        ),
                         loc: fn_param.loc.clone(),
                     });
                     continue;
                 }
             }
 
-            let Some(param_type_expr) = &fn_param.type_ else {
+            let FnParamType::Type {
+                expr: param_type_expr,
+            } = &fn_param.param_type
+            else {
                 return Err(LoError::todo(file!(), line!()));
             };
             let param_type = self.build_type(param_type_expr)?;
             lo_inputs.push(param_type.clone());
 
             scope.vars.push(LoVar {
-                name: fn_param.name.clone(),
+                name: fn_param.param_name.clone(),
                 type_: param_type,
             });
         }

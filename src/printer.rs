@@ -186,10 +186,19 @@ impl Printer {
                 stdout_write(", ");
             }
 
-            stdout_write(&fn_param.name);
-            if let Some(param_type_expr) = &fn_param.type_ {
-                stdout_write(": ");
-                self.print_type_expr(param_type_expr);
+            match &fn_param.param_type {
+                FnParamType::Self_ => {
+                    stdout_write(&fn_param.param_name);
+                }
+                FnParamType::SelfRef => {
+                    stdout_write("&");
+                    stdout_write(&fn_param.param_name);
+                }
+                FnParamType::Type { expr } => {
+                    stdout_write(&fn_param.param_name);
+                    stdout_write(": ");
+                    self.print_type_expr(&expr);
+                }
             }
         }
         stdout_write(")");
@@ -374,6 +383,7 @@ impl Printer {
                 stdout_writeln(" {");
                 self.indent += 1;
                 for field in fields {
+                    self.print_comments_before_pos(field.loc.pos.offset);
                     self.print_indent();
                     stdout_write(&field.field_name);
                     stdout_write(": ");

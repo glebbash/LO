@@ -1,4 +1,6 @@
-memory { min_pages: 1 };
+memory {
+    min_pages: 1,
+};
 
 struct Point2D {
     x: u32,
@@ -7,9 +9,10 @@ struct Point2D {
 
 export fn main(): u32 {
     let p = 0 as &Point2D;
-
-    *p = Point2D { x: 1, y: 2 };
-
+    *p = Point2D {
+        x: 1,
+        y: 2,
+    };
     return p.x + p.get_y();
 };
 

@@ -9,17 +9,20 @@ const LoTokenType::Delim         = 4 as u8;
 const LoTokenType::Operator      = 5 as u8;
 
 fn LoTokenType::to_str(self): str {
-    if self == LoTokenType::StringLiteral {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (self == LoTokenType::StringLiteral) {
         return "StringLiteral";
-    } else if self == LoTokenType::CharLiteral {
+    } else if (self == LoTokenType::CharLiteral) {
         return "CharLiteral";
-    } else if self == LoTokenType::IntLiteral {
+    } else if (self == LoTokenType::IntLiteral) {
         return "IntLiteral";
-    } else if self == LoTokenType::Symbol {
+    } else if (self == LoTokenType::Symbol) {
         return "Symbol";
-    } else if self == LoTokenType::Delim {
+    } else if (self == LoTokenType::Delim) {
         return "Delim";
-    } else if self == LoTokenType::Operator {
+    } else if (self == LoTokenType::Operator) {
         return "Operator";
     };
 
@@ -36,18 +39,24 @@ struct LoToken {
 };
 
 fn LoToken::free(self) {
-    if self.type_ == LoTokenType::IntLiteral {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (self.type_ == LoTokenType::IntLiteral) {
         heap::free(self.value);
-    } else if self.type_ == LoTokenType::StringLiteral {
+    } else if (self.type_ == LoTokenType::StringLiteral) {
         (self.value as String).free();
     };
 };
 
 fn LoToken::clone(self): LoToken {
-    if self.type_ == LoTokenType::IntLiteral {
+    // TODO: make parens not needed here. they are required beacuse
+    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
+    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    if (self.type_ == LoTokenType::IntLiteral) {
         // TODO: won't need a cast if coersion is introduced
         self.value = heap::new!<u64>(*(self.value as &u64)) as &void;
-    } else if self.type_ == LoTokenType::StringLiteral {
+    } else if (self.type_ == LoTokenType::StringLiteral) {
         // TODO: won't need a cast if coersion is introduced
         self.value = (self.value as String).clone() as &void;
     };

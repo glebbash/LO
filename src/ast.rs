@@ -43,9 +43,16 @@ pub struct FnDeclExpr {
 
 #[derive(Debug)]
 pub struct FnParam {
-    pub name: String,
-    pub type_: Option<TypeExpr>,
+    pub param_name: String,
+    pub param_type: FnParamType,
     pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub enum FnParamType {
+    Self_,
+    SelfRef,
+    Type { expr: TypeExpr },
 }
 
 #[derive(Debug, Clone)]
