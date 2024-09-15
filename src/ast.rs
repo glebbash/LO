@@ -228,6 +228,7 @@ pub enum CodeExpr {
     MacroMethodCall(MacroMethodCallExpr),
     Dbg(DbgExpr),
     Sizeof(SizeofExpr),
+    GetDataSize(GetDataSizeExpr),
 
     // control flow
     Return(ReturnExpr),
@@ -457,6 +458,11 @@ pub struct SizeofExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct GetDataSizeExpr {
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -489,6 +495,7 @@ impl Locatable for CodeExpr {
             CodeExpr::Sizeof(e) => &e.loc,
             CodeExpr::PropagateError(e) => &e.loc,
             CodeExpr::PrefixOp(e) => &e.loc,
+            CodeExpr::GetDataSize(e) => &e.loc,
         }
     }
 }

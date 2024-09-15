@@ -746,7 +746,7 @@ async function testCommand() {
             "examples/lib/lo/utils.lo",
             "examples/lib/lo/wasm.lo",
             "examples/lib/print.lo",
-            // "examples/lib/std.lo",
+            "examples/lib/std.lo",
             "examples/lib/str_cutter.lo",
             "examples/lib/string_map.lo",
             "examples/lib/wasi.lo",

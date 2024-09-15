@@ -816,6 +816,16 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Operator, "@")? {
+            let mut loc = self.prev().loc.clone();
+
+            self.expect(Symbol, "data_size")?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::GetDataSize(GetDataSizeExpr { loc }));
+        }
+
         let ident = self.parse_ident()?;
 
         if self.current().is(Delim, "(") {
