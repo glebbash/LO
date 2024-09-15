@@ -504,6 +504,7 @@ impl IRGenerator {
             CodeExpr::PropagateError(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::CharLiteral(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::PrefixOp(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::ArrayLiteral(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

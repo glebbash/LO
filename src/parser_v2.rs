@@ -229,7 +229,7 @@ impl ParserV2 {
 
             self.expect(Delim, "{")?;
             while let None = self.eat(Delim, "}")? {
-                let mut field_loc = self.prev().loc.clone();
+                let mut field_loc = self.current().loc.clone();
 
                 let field_name = self.expect_any(Symbol)?.clone();
                 self.expect(Operator, ":")?;
@@ -620,11 +620,17 @@ impl ParserV2 {
             }));
         };
 
-        if let Some(string) = self.eat_any(StringLiteral)? {
+        if let Some(string) = self.eat_any(StringLiteral)?.cloned() {
+            let mut zero_terminated = false;
+            if let Some(_) = self.eat(IntLiteral, "0")? {
+                zero_terminated = true;
+            }
+
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                repr: string.value.clone(),
                 value: Lexer::unescape_string(&string.value),
-                loc: string.loc.clone(),
+                repr: string.value,
+                zero_terminated,
+                loc: string.loc,
             }));
         };
 
@@ -763,6 +769,32 @@ impl ParserV2 {
 
             return Ok(CodeExpr::Sizeof(SizeofExpr { type_expr, loc }));
         };
+
+        if let Some(_) = self.eat(Delim, "[")? {
+            let mut loc = self.prev().loc.clone();
+
+            let item_type = self.parse_type_expr()?;
+            self.expect(Delim, "]")?;
+
+            self.expect(Delim, "[")?;
+            let mut items = Vec::new();
+            while let None = self.eat(Delim, "]")? {
+                let item = self.parse_code_expr(0)?;
+                items.push(item);
+
+                if !self.current().is(Delim, "]") {
+                    self.expect(Delim, ",")?;
+                }
+            }
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::ArrayLiteral(ArrayLiteralExpr {
+                item_type,
+                items,
+                loc,
+            }));
+        }
 
         let ident = self.parse_ident()?;
 

@@ -344,8 +344,37 @@ impl Printer {
                     stdout_write(tag);
                 }
             }
-            CodeExpr::StringLiteral(StringLiteralExpr { repr, .. }) => {
+            CodeExpr::StringLiteral(StringLiteralExpr {
+                repr,
+                zero_terminated,
+                ..
+            }) => {
                 stdout_write(repr);
+                if *zero_terminated {
+                    stdout_write("0");
+                }
+            }
+            CodeExpr::ArrayLiteral(ArrayLiteralExpr {
+                item_type,
+                items,
+                loc,
+            }) => {
+                stdout_write("[");
+                self.print_type_expr(item_type);
+                stdout_write("]");
+                stdout_writeln("[");
+                self.indent += 1;
+                for item in items {
+                    self.print_comments_before_pos(item.loc().pos.offset);
+                    self.print_indent();
+                    self.print_code_expr(item);
+                    stdout_writeln(",");
+                }
+                // print the rest of the comments
+                self.print_comments_before_pos(loc.end_pos.offset);
+                self.indent -= 1;
+                self.print_indent();
+                stdout_write("]");
             }
 
             CodeExpr::Ident(IdentExpr { repr: name, .. }) => {

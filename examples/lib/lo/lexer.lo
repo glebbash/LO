@@ -1,12 +1,13 @@
 include "./utils.lo";
 
 type LoTokenType = u8;
+
 const LoTokenType::StringLiteral = 0 as u8;
-const LoTokenType::CharLiteral   = 1 as u8;
-const LoTokenType::IntLiteral    = 2 as u8;
-const LoTokenType::Symbol        = 3 as u8;
-const LoTokenType::Delim         = 4 as u8;
-const LoTokenType::Operator      = 5 as u8;
+const LoTokenType::CharLiteral = 1 as u8;
+const LoTokenType::IntLiteral = 2 as u8;
+const LoTokenType::Symbol = 3 as u8;
+const LoTokenType::Delim = 4 as u8;
+const LoTokenType::Operator = 5 as u8;
 
 fn LoTokenType::to_str(self): str {
     // TODO: make parens not needed here.
@@ -23,7 +24,6 @@ fn LoTokenType::to_str(self): str {
     } else if (self == LoTokenType::Operator) {
         return "Operator";
     };
-
     unreachable;
 };
 
@@ -54,7 +54,6 @@ fn LoToken::clone(self): LoToken {
         // TODO: won't need a cast if coersion is introduced
         self.value = (self.value as String).clone() as &void;
     };
-
     return self;
 };
 
@@ -73,18 +72,24 @@ struct LoTokenStream {
 };
 
 // TODO: replace with C-style optional handling
-    struct LoTokenMaybe {
-        token: LoToken,
-        exists: bool,
-    };
+struct LoTokenMaybe {
+    token: LoToken,
+    exists: bool,
+};
 
-    macro LoTokenMaybe::some!(t: LoToken): LoTokenMaybe {
-        LoTokenMaybe { token: t, exists: true };
+macro LoTokenMaybe::some!(t: LoToken): LoTokenMaybe {
+    LoTokenMaybe {
+        token: t,
+        exists: true,
     };
+};
 
-    macro LoTokenMaybe::none!(tokens: &LoTokenStream): LoTokenMaybe {
-        LoTokenMaybe { token: tokens.terminal_token, exists: false };
+macro LoTokenMaybe::none!(tokens: &LoTokenStream): LoTokenMaybe {
+    LoTokenMaybe {
+        token: tokens.terminal_token,
+        exists: false,
     };
+};
 
 fn LoTokenStream::new(tokens: &Vec of LoToken, eof_location: LoLocation): &LoTokenStream {
     return heap::new!<LoTokenStream>(LoTokenStream {
@@ -104,27 +109,23 @@ fn LoTokenStream::free(&self) {
         let t = self.tokens.get!<LoToken>(i);
         t.free();
     };
-
     // TODO: won't need a cast if coersion is introduced
     heap::free(self as &void);
 };
 
 fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): Result<LoToken, &LoError> {
     let maybe_token = self.peek();
-
     if maybe_token.exists && maybe_token.token.is(type_, repr) {
         let _ = self.next();
         return Ok(maybe_token.token);
     };
-
-    let unexpected = maybe_token.token; // defaults to terminal token
-
+    // defaults to terminal token
+    let unexpected = maybe_token.token;
     let message = String::from_str("Unexpected token '");
     message.push_str(unexpected.repr);
     message.push_str("', wanted '");
     message.push_str(repr);
     message.push_str("'");
-
     return Err(heap::new!<LoError>(LoError {
         message: message,
         loc: unexpected.loc,
@@ -133,20 +134,17 @@ fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): Result<LoToken, 
 
 fn LoTokenStream::expect_any(&self, type_: LoTokenType): Result<LoToken, &LoError> {
     let maybe_token = self.peek();
-
     if maybe_token.exists && maybe_token.token.is_any(type_) {
         let _ = self.next();
         return Ok(maybe_token.token);
     };
-
-    let unexpected = maybe_token.token; // defaults to terminal token
-
+    // defaults to terminal token
+    let unexpected = maybe_token.token;
     let message = String::from_str("Unexpected token '");
     message.push_str(unexpected.repr);
     message.push_str("', wanted '");
     message.push_str(LoTokenType::to_str(type_));
     message.push_str("'");
-
     return Err(heap::new!<LoError>(LoError {
         message: message,
         loc: unexpected.loc,
@@ -159,10 +157,8 @@ fn LoTokenStream::eat_any(&self, type_: LoTokenType): Result<LoTokenMaybe, &LoEr
         if !some_token.exists {
             return Err(err);
         };
-
         return Ok(LoTokenMaybe::none!(self));
     };
-
     return Ok(LoTokenMaybe::some!(token));
 };
 
@@ -172,10 +168,8 @@ fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): Result<LoTokenMaybe
         if !some_token.exists {
             return Err(err);
         };
-
         return Ok(LoTokenMaybe::none!(self));
     };
-
     return Ok(LoTokenMaybe::some!(token));
 };
 
@@ -187,7 +181,6 @@ fn LoTokenStream::next_is(&self, type_: LoTokenType, repr: str): Result<bool, &L
             loc: self.terminal_token.loc,
         }));
     };
-
     return Ok(some_token.token.is(type_, repr));
 };
 
@@ -195,10 +188,7 @@ fn LoTokenStream::peek(&self): LoTokenMaybe {
     if self.index >= self.tokens.size {
         return LoTokenMaybe::none!(self);
     };
-
-    return LoTokenMaybe::some!(
-        self.tokens.get!<LoToken>(self.index)
-    );
+    return LoTokenMaybe::some!(self.tokens.get!<LoToken>(self.index));
 };
 
 fn LoTokenStream::next(&self): LoTokenMaybe {
@@ -214,7 +204,6 @@ fn LoTokenStream::loc(&self): LoLocation {
     if some_token.exists {
         return some_token.token.loc;
     };
-
     return self.terminal_token.loc;
 };
 
@@ -240,19 +229,14 @@ fn LoLexer::new(file_index: u32, chars: str): &LoLexer {
 
 fn LoLexer::lex_all(&self): Result<&LoTokenStream, &LoError> {
     let tokens = Vec::new!<LoToken>();
-
     self.skip_space();
-
     loop {
         if self.index >= self.chars.size {
             break;
         };
-
         tokens.push!<LoToken>(self.lex_token()?);
-
         self.skip_space();
     };
-
     return Ok(LoTokenStream::new(tokens, self.loc()));
 };
 
@@ -260,7 +244,6 @@ type LexResult = Result<LoToken, &LoError>;
 
 fn LoLexer::lex_token(&self): LexResult {
     let c = self.current_char()?;
-
     if c == '\'' {
         return self.lex_char();
     };
@@ -280,10 +263,8 @@ fn LoLexer::lex_token(&self): LexResult {
     if LoLexer::is_operator_start_char(c) {
         return self.lex_operator();
     };
-
     let message = String::from_str("Unexpected char: ");
     message.push(c);
-
     return Err(heap::new!<LoError>(LoError {
         message: message,
         loc: self.loc(),
@@ -292,19 +273,14 @@ fn LoLexer::lex_token(&self): LexResult {
 
 fn LoLexer::lex_symbol(&self): LexResult {
     let loc = self.loc();
-
     loop {
         let c = self.current_char()?;
-
         if !LoLexer::is_symbol_char(c) {
             break;
         };
-
         self.next_char();
     };
-
     loc.end_pos = self.pos();
-
     return Ok(LoToken {
         type_: LoTokenType::Symbol,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
@@ -315,17 +291,13 @@ fn LoLexer::lex_symbol(&self): LexResult {
 
 fn LoLexer::lex_char(&self): LexResult {
     let loc = self.loc();
-
-    self.next_char(); // skip start quote
-
+    // skip start quote
+    self.next_char();
     let c = self.current_char()?;
     let value = c;
-
     if c == '\\' {
         self.next_char();
-
         c = self.current_char()?;
-
         if c == 'n' {
             value = '\n';
         } else if c == 'r' {
@@ -341,31 +313,26 @@ fn LoLexer::lex_char(&self): LexResult {
         } else {
             let message = String::from_str("ParseError: Invalid escape sequence: \\");
             message.push(c as u8);
-
             return Err(heap::new!<LoError>(LoError {
                 message: message,
                 loc: self.loc(),
             }));
         };
     };
-
-    self.next_char(); // skip actual character
-
+    // skip actual character
+    self.next_char();
     if self.current_char()? != '\'' {
         let message = String::from_str("ParseError: Unexpected character `");
         message.push(c as u8);
         message.push_str("`, expected `'`");
-
         return Err(heap::new!<LoError>(LoError {
             message: message,
             loc: self.loc(),
         }));
     };
-
-    self.next_char(); // skip end quote
-
+    // skip end quote
+    self.next_char();
     loc.end_pos = self.pos();
-
     return Ok(LoToken {
         type_: LoTokenType::Symbol,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
@@ -377,21 +344,16 @@ fn LoLexer::lex_char(&self): LexResult {
 
 fn LoLexer::lex_string(&self): LexResult {
     let loc = self.loc();
-
-    self.next_char(); // skip start quote
-
+    // skip start quote
+    self.next_char();
     let value = String::new(10);
-
     loop {
         let c = self.current_char()?;
-
         if c == '"' {
             break;
         } else if c == '\\' {
             self.next_char();
-
             c = self.current_char()?;
-
             if c == 'n' {
                 value.push('\n');
             } else if c == 'r' {
@@ -407,7 +369,6 @@ fn LoLexer::lex_string(&self): LexResult {
             } else {
                 let message = String::from_str("ParseError: Invalid escape sequence: \\");
                 message.push(c as u8);
-
                 return Err(heap::new!<LoError>(LoError {
                     message: message,
                     loc: self.loc(),
@@ -416,14 +377,11 @@ fn LoLexer::lex_string(&self): LexResult {
         } else {
             value.push(c);
         };
-
         self.next_char();
     };
-
-    self.next_char(); // skip end quote
-
+    // skip end quote
+    self.next_char();
     loc.end_pos = self.pos();
-
     return Ok(LoToken {
         type_: LoTokenType::StringLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
@@ -435,7 +393,6 @@ fn LoLexer::lex_string(&self): LexResult {
 
 fn LoLexer::lex_int_literal(&self): LexResult {
     let loc = self.loc();
-
     let c = self.current_char()?;
     let is_hex = false;
     if c == '0' {
@@ -443,18 +400,17 @@ fn LoLexer::lex_int_literal(&self): LexResult {
             err.free();
             '\0';
         };
-
         if next_char == 'x' {
             is_hex = true;
-            self.next_char(); // skip '0'
-            self.next_char(); // skip 'x'
+            // skip '0'
+            self.next_char();
+            // skip 'x'
+            self.next_char();
         };
     };
-
     let value = 0u64;
     loop {
         c = self.current_char()?;
-
         if c == '_' {
             self.next_char();
         } else if c >= '0' && c <= '9' {
@@ -464,20 +420,16 @@ fn LoLexer::lex_int_literal(&self): LexResult {
                 value *= 10u64;
             };
             value += (c - '0') as u64;
-
             self.next_char();
         } else if is_hex && c >= 'A' && c <= 'F' {
             value *= 16u64;
             value += 10u64 + (c - 'A') as u64;
-
             self.next_char();
         } else {
             break;
         };
     };
-
     loc.end_pos = self.pos();
-
     return Ok(LoToken {
         type_: LoTokenType::IntLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
@@ -489,9 +441,8 @@ fn LoLexer::lex_int_literal(&self): LexResult {
 
 fn LoLexer::lex_delim(&self): LexResult {
     let loc = self.loc();
-
-    self.next_char(); // skip delimiter char
-
+    // skip delimiter char
+    self.next_char();
     return Ok(LoToken {
         type_: LoTokenType::Delim,
         repr: self.chars.slice(loc.pos.offset, self.index),
@@ -500,49 +451,88 @@ fn LoLexer::lex_delim(&self): LexResult {
     });
 };
 
-const OPERATORS_COUNT = 37; // TODO(qol): find a way to get length of array
+// TODO(qol): find a way to get length of array
+const OPERATORS_COUNT = 37;
 const OPERATORS = [str][
-    "=",   // Assignment
-    "==",  // Equality comparison
-    "!=",  // Nonequality comparison
-    "!",   // Logical NOT
-    "&&",  // Short-circuiting logical AND
-    "||",  // Short-circuiting logical OR
-    "<",   // Less than comparison
-    "<=",  // Less than or equal to comparison
-    ">",   // Greater than comparison
-    ">=",  // Greater than or equal to comparison
-    "+",   // Arithmetic addition
-    "+=",  // Arithmetic addition and assignment
-    "-",   // Arithmetic subtraction
-    "-=",  // Arithmetic subtraction and assignment
-    "*",   // Arithmetic multiplication
-    "*=",  // Arithmetic multiplication and assignment
-    "/",   // Arithmetic division
-    "/=",  // Arithmetic division and assignment
-    "%",   // Arithmetic remainder
-    "%=",  // Arithmetic remainder and assignment
-    "&",   // Bitwise AND / Pointer to one
-    "*&",  // Pointer to any amount
-    "&=",  // Bitwise AND and assignment
-    "<<",  // Left-shift
-    "<<=", // Left-shift and assignment
-    "=>",  // Part of match arm syntax
-    ">>",  // Right-shift
-    ">>=", // Right-shift and assignment
-    "^",   // Bitwise exclusive OR
-    "^=",  // Bitwise exclusive OR and assignment
-    "|",   // Bitwise OR
-    "|=",  // Bitwise OR and assignment
-    ".",   // Member access
-    "..",  // Range operator
-    ":",   // Type separator
-    "::",  // Path separator
-    "@",   // Memory index separator, defer label prefix
+    // Assignment
+    "=",
+    // Equality comparison
+    "==",
+    // Nonequality comparison
+    "!=",
+    // Logical NOT
+    "!",
+    // Short-circuiting logical AND
+    "&&",
+    // Short-circuiting logical OR
+    "||",
+    // Less than comparison
+    "<",
+    // Less than or equal to comparison
+    "<=",
+    // Greater than comparison
+    ">",
+    // Greater than or equal to comparison
+    ">=",
+    // Arithmetic addition
+    "+",
+    // Arithmetic addition and assignment
+    "+=",
+    // Arithmetic subtraction
+    "-",
+    // Arithmetic subtraction and assignment
+    "-=",
+    // Arithmetic multiplication
+    "*",
+    // Arithmetic multiplication and assignment
+    "*=",
+    // Arithmetic division
+    "/",
+    // Arithmetic division and assignment
+    "/=",
+    // Arithmetic remainder
+    "%",
+    // Arithmetic remainder and assignment
+    "%=",
+    // Bitwise AND / Pointer to one
+    "&",
+    // Pointer to any amount
+    "*&",
+    // Bitwise AND and assignment
+    "&=",
+    // Left-shift
+    "<<",
+    // Left-shift and assignment
+    "<<=",
+    // Part of match arm syntax
+    "=>",
+    // Right-shift
+    ">>",
+    // Right-shift and assignment
+    ">>=",
+    // Bitwise exclusive OR
+    "^",
+    // Bitwise exclusive OR and assignment
+    "^=",
+    // Bitwise OR
+    "|",
+    // Bitwise OR and assignment
+    "|=",
+    // Member access
+    ".",
+    // Range operator
+    "..",
+    // Type separator
+    ":",
+    // Path separator
+    "::",
+    // Memory index separator, defer label prefix
+    "@",
 ];
 
 fn LoLexer::is_operator_start_char(c: u8): bool {
-    for i in 0..OPERATORS_COUNT {
+    // TODO: make parens not needed here.
+    for i in 0..(OPERATORS_COUNT) {
         let op = *array_at!<str>(OPERATORS, i);
         if op.char_at(0) == c {
             return true;
@@ -554,48 +544,41 @@ fn LoLexer::is_operator_start_char(c: u8): bool {
 fn LoLexer::lex_operator(&self): LexResult {
     let loc = self.loc();
     let repr = "";
-
     loop {
         repr = self.chars.slice(loc.pos.offset, self.index + 1);
-
         let is_start_of_operator = false;
-        for i in 0..OPERATORS_COUNT {
+        // TODO: make parens not needed here.
+        for i in 0..(OPERATORS_COUNT) {
             let op = *array_at!<str>(OPERATORS, i);
             if op.starts_with(repr) {
                 is_start_of_operator = true;
                 break;
             };
         };
-
         if !is_start_of_operator {
             repr = repr.slice(0, repr.size - 1);
             break;
         };
-
         self.next_char();
     };
-
     let matched_fully = false;
-    for i in 0..OPERATORS_COUNT {
+    // TODO: make parens not needed here.
+    for i in 0..(OPERATORS_COUNT) {
         let op = *array_at!<str>(OPERATORS, i);
         if op.equals(repr) {
             matched_fully = true;
             break;
         };
     };
-
     if !matched_fully {
         let message = String::from_str("Unexpected char: ");
         message.push(self.current_char()?);
-
         return Err(heap::new!<LoError>(LoError {
             message: message,
             loc: self.loc(),
         }));
     };
-
     loc.end_pos = self.pos();
-
     return Ok(LoToken {
         type_: LoTokenType::Operator,
         repr: repr,
@@ -611,33 +594,26 @@ fn LoLexer::skip_space(&self) {
             err.free();
             return;
         };
-
         if !LoLexer::is_space_char(c) {
             break;
         };
-
         self.next_char();
     };
-
     // skip comment
     if c == '/' {
         let next = self.peek_next_char() catch err {
             err.free();
             return;
         };
-
         if next != '/' {
             return;
         };
-
         loop {
             self.next_char();
-
             c = self.current_char() catch err {
                 err.free();
                 return;
             };
-
             if c == '\n' {
                 self.skip_space();
                 break;
@@ -648,14 +624,11 @@ fn LoLexer::skip_space(&self) {
 
 fn LoLexer::next_char(&self) {
     self.index += 1;
-
     let c = self.current_char() catch err {
         err.free();
         return;
     };
-
     self.col += 1;
-
     if c == '\n' {
         // NOTE(edge case): when first character is encountered
         //  was_newline is not true but rather undefined,
@@ -666,7 +639,6 @@ fn LoLexer::next_char(&self) {
         self.was_newline = true;
         return;
     };
-
     if self.was_newline {
         self.line += 1;
         self.col = 1;
@@ -679,7 +651,6 @@ fn LoLexer::current_char(&self): Result<u8, &LoError> {
     if self.index >= self.chars.size {
         return Err(self.err_unexpected_eof());
     };
-
     return Ok(self.chars.char_at(self.index));
 };
 
@@ -687,7 +658,6 @@ fn LoLexer::peek_next_char(&self): Result<u8, &LoError> {
     if self.index + 1 >= self.chars.size {
         return Err(self.err_unexpected_eof());
     };
-
     return Ok(self.chars.char_at(self.index + 1));
 };
 
@@ -715,22 +685,16 @@ fn LoLexer::pos(&self): LoPosition {
 };
 
 fn LoLexer::is_space_char(c: u8): bool {
-    return c == ' '
-        || c == '\n'
-        || c == '\t'
-        || c == '\r';
+    // TODO: find a way to format this nicer
+    return c == ' ' || c == '\n' || c == '\t' || c == '\r';
 };
 
 fn LoLexer::is_symbol_char(c: u8): bool {
-    return (c >= 'a' && c <= 'z')
-        || (c >= 'A' && c <= 'Z')
-        || (c >= '0' && c <= '9')
-        || c == '_';
+    // TODO: find a way to format this nicer
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 };
 
 fn LoLexer::is_delim_char(c: u8): bool {
-    return c == '(' || c == ')'
-        || c == '{' || c == '}'
-        || c == '[' || c == ']'
-        || c == ',' || c == ';';
+    // TODO: find a way to format this nicer
+    return c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ';';
 };
