@@ -80,8 +80,7 @@ fn fs::read_fd(fd: u32): Result<&Vec of u8, wasi::Err> {
     let nread_ref = tmp_alloc!<u32>();
     loop {
         let err = wasi::fd_read(fd, in_vec, 1, nread_ref);
-        // TODO: make parens not needed here.
-        if err != (wasi::Err::SUCCESS) {
+        if err != wasi::Err::SUCCESS {
             return Err(err);
         };
         let nread = *nread_ref;

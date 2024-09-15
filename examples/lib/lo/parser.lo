@@ -485,12 +485,10 @@ fn LoParser::parse_lo_type_(self, type_scope: &LoTypeScope, is_referenced: bool)
 
 // TODO: this should be in the ir.lo, but it depends on LoContext
 fn LoType::emit_components(self, ctx: &LoContext, out: &Vec of WasmValueType) {
-    // TODO: make parens not needed here.
-    if self.kind == (LoType::Void) {
+    if self.kind == LoType::Void {
         return;
     };
-    // TODO: make parens not needed here.
-    if self.kind == (LoType::U32) {
+    if self.kind == LoType::U32 {
         out.push!<WasmValueType>(WasmValueType::I32);
         return;
     };

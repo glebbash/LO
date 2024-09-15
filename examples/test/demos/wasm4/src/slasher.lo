@@ -97,8 +97,7 @@ macro swap!<T>(a: T, b: T) {
 };
 
 fn render() {
-    // TODO: make parens not needed here.
-    if mode == (Mode::SLASH) {
+    if mode == Mode::SLASH {
         wasm4::text("Slash!!!"0, +10, +10);
         let health_txt = String::from_str("HP: ");
         let _ = u32::write(boss_health, health_txt);
@@ -106,8 +105,7 @@ fn render() {
         wasm4::text(health_txt.chars.data as &u8, +110, +10);
         health_txt.free();
     };
-    // TODO: make parens not needed here.
-    if mode == (Mode::DEFEND) {
+    if mode == Mode::DEFEND {
         wasm4::text("Defend!!!"0, +10, +10);
     };
     render_trail(trail);

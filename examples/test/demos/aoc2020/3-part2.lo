@@ -56,8 +56,7 @@ fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
         if i >= self.rows.size {
             break;
         };
-        // TODO: make parens not needed here.
-        if self.get(i, j) == (Tile::TREE) {
+        if self.get(i, j) == Tile::TREE {
             tree_count += 1;
         };
     };

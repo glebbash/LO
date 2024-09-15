@@ -321,33 +321,28 @@ fn WasmModule::write_datas_section(&self, out: &Vec of u8) {
 fn WasmModule::write_expr(output: &Vec of u8, expr: WasmExpr) {
     for i in 0..expr.instrs.size {
         let instr = expr.instrs.get!<WasmInstr>(i);
-        // TODO: make parens not needed here.
-        if instr.op_code == (WasmInstr::Return::OP_CODE) {
+        if instr.op_code == WasmInstr::Return::OP_CODE {
             output.push!<u8>(instr.op_code as u8);
             continue;
         };
-        // TODO: make parens not needed here.
-        if instr.op_code == (WasmInstr::Call::OP_CODE) {
+        if instr.op_code == WasmInstr::Call::OP_CODE {
             output.push!<u8>(instr.op_code as u8);
             let data = instr.data as &WasmInstr::Call;
             WasmModule::write_uleb128(output, data.fn_index);
             continue;
         };
-        // TODO: make parens not needed here.
-        if instr.op_code == (WasmInstr::Drop::OP_CODE) {
+        if instr.op_code == WasmInstr::Drop::OP_CODE {
             output.push!<u8>(instr.op_code as u8);
             continue;
         };
-        // TODO: make parens not needed here.
-        if instr.op_code == (WasmInstr::I32Store::OP_CODE) {
+        if instr.op_code == WasmInstr::I32Store::OP_CODE {
             output.push!<u8>(instr.op_code as u8);
             let data = instr.data as &WasmInstr::I32Store;
             WasmModule::write_uleb128(output, data.align);
             WasmModule::write_uleb128(output, data.offset);
             continue;
         };
-        // TODO: make parens not needed here.
-        if instr.op_code == (WasmInstr::I32Const::OP_CODE) {
+        if instr.op_code == WasmInstr::I32Const::OP_CODE {
             output.push!<u8>(instr.op_code as u8);
             let data = instr.data as &WasmInstr::I32Const;
             WasmModule::write_sleb128(output, data.value);

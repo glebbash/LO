@@ -865,17 +865,6 @@ impl ParserV2 {
             }));
         }
 
-        if self.current().is(Delim, "{")
-            // TODO: remove after struct syntax is changed
-            && (ident.repr.chars().next().unwrap().is_ascii_uppercase()
-                || ident.repr == "str"
-                || ident.repr == "wasi::IOVec")
-        {
-            let loc = ident.loc.clone();
-            let struct_literal = self.parse_struct_literal(ident, loc)?;
-            return Ok(CodeExpr::StructLiteral(struct_literal));
-        }
-
         Ok(CodeExpr::Ident(ident))
     }
 

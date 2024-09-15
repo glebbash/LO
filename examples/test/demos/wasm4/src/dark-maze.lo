@@ -47,20 +47,16 @@ export fn start() {
 export fn update() {
     prev_gamepad = gamepad;
     gamepad = *wasm4::GAMEPAD1;
-    // TODO: make parens not needed here.
-    if screen == (Screen::TITLE) {
+    if screen == Screen::TITLE {
         title_screen_update();
     };
-    // TODO: make parens not needed here.
-    if screen == (Screen::GAME) {
+    if screen == Screen::GAME {
         game_screen_update();
     };
-    // TODO: make parens not needed here.
-    if screen == (Screen::END1) {
+    if screen == Screen::END1 {
         end1_screen_update();
     };
-    // TODO: make parens not needed here.
-    if screen == (Screen::END2) {
+    if screen == Screen::END2 {
         end2_screen_update();
     };
 };

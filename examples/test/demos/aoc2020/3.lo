@@ -22,8 +22,7 @@ fn main() {
         if i == map.rows.size {
             break;
         };
-        // TODO: make parens not needed here.
-        if map.get(i, j) == (Tile::TREE) {
+        if map.get(i, j) == Tile::TREE {
             tree_count += 1;
         };
     };

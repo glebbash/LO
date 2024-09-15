@@ -37,8 +37,7 @@ fn LoContext::new(): &LoContext {
 };
 
 fn LoContext::print_loc(&self, loc: LoLocation) {
-    // TODO: make parens not needed here.
-    if (loc.file_index == LoLocation::INTERNAL_FILE_INDEX) {
+    if loc.file_index == LoLocation::INTERNAL_FILE_INDEX {
         eputs("<internal>");
     } else {
         let file = self.included_files.get!<LoIncludedFile>(loc.file_index);

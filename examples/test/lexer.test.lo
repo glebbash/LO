@@ -25,11 +25,10 @@ fn main() {
         print_u32(t.type_ as u32);
         puts(" : ");
         puts(t.repr);
-        // TODO: make parens not needed here.
-        if (t.type_ == LoTokenType::IntLiteral) {
+        if t.type_ == LoTokenType::IntLiteral {
             puts(", value = ");
             print_u64(*(t.value as &u64));
-        } else if (t.type_ == LoTokenType::StringLiteral) {
+        } else if t.type_ == LoTokenType::StringLiteral {
             puts(", value = ");
             print_str(t.value as &str);
         };

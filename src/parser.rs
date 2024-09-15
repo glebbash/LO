@@ -1665,10 +1665,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         });
     }
 
-    if let Some(struct_def) = ctx.module.get_struct_def(&value.value) {
-        return parse_struct_literal(ctx, tokens, value, struct_def);
-    };
-
     return Err(LoError {
         message: format!("Reading unknown variable: {}", value.value),
         loc: value.loc,

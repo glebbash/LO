@@ -175,27 +175,23 @@ fn LoInstr::lower_all(exprs: &Vec of LoInstr, out: &Vec of WasmInstr) {
 
 // TODO: implement complete
 fn LoInstr::lower(self, out: &Vec of WasmInstr) {
-    // TODO: make parens not needed here.
-    if (self.kind == LoInstr::U32Const::KIND) {
+    if self.kind == LoInstr::U32Const::KIND {
         out.push!<WasmInstr>(WasmInstr::I32Const::new(self.data as i32));
         return;
     };
-    // TODO: make parens not needed here.
-    if (self.kind == LoInstr::Return::KIND) {
+    if self.kind == LoInstr::Return::KIND {
         (*(self.data as &LoInstr)).lower(out);
         out.push!<WasmInstr>(WasmInstr::Return::new());
         return;
     };
-    // TODO: make parens not needed here.
-    if (self.kind == LoInstr::U32Store::KIND) {
+    if self.kind == LoInstr::U32Store::KIND {
         let store = *(self.data as &LoInstr::U32Store);
         store.address.lower(out);
         store.value.lower(out);
         out.push!<WasmInstr>(WasmInstr::I32Store::new(0, 0));
         return;
     };
-    // TODO: make parens not needed here.
-    if (self.kind == LoInstr::CallAndDrop::KIND) {
+    if self.kind == LoInstr::CallAndDrop::KIND {
         let call = *(self.data as &LoInstr::CallAndDrop);
         LoInstr::lower_all(call.args, out);
         out.push!<WasmInstr>(WasmInstr::Call::new(call.fn_index));

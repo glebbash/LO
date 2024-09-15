@@ -33,8 +33,7 @@ fn main() {
     let state = initial_check_state();
     for i in 0..input.len() {
         let c = input.char_at(i);
-        // TODO: make parens not needed here.
-        if (state.step == Step::READ_MIN_OCCURANCES) {
+        if state.step == Step::READ_MIN_OCCURANCES {
             if c == '-' {
                 state.step = Step::READ_MAX_OCCURANCES;
                 continue;
@@ -42,8 +41,7 @@ fn main() {
             state.min_occurances *= 10;
             state.min_occurances += (c - '0') as u32;
         };
-        // TODO: make parens not needed here.
-        if (state.step == Step::READ_MAX_OCCURANCES) {
+        if state.step == Step::READ_MAX_OCCURANCES {
             if c == ' ' {
                 state.step = Step::READ_CHAR_TO_COUNT;
                 continue;
@@ -51,16 +49,14 @@ fn main() {
             state.max_occurances *= 10;
             state.max_occurances += (c - '0') as u32;
         };
-        // TODO: make parens not needed here.
-        if (state.step == Step::READ_CHAR_TO_COUNT) {
+        if state.step == Step::READ_CHAR_TO_COUNT {
             state.char_to_count = c;
             // skip `${c}: `, (+1 will be skipped by loop)
             i += 2;
             state.step = Step::COUNT_OCCURANCES;
             continue;
         };
-        // TODO: make parens not needed here.
-        if (state.step == Step::COUNT_OCCURANCES) {
+        if state.step == Step::COUNT_OCCURANCES {
             if c == '\n' {
                 if state.current_occurances >= state.min_occurances && state.current_occurances <= state.max_occurances {
                     valid_passwords_count += 1;

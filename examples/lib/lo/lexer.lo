@@ -10,18 +10,17 @@ const LoTokenType::Delim = 4 as u8;
 const LoTokenType::Operator = 5 as u8;
 
 fn LoTokenType::to_str(self): str {
-    // TODO: make parens not needed here.
-    if (self == LoTokenType::StringLiteral) {
+    if self == LoTokenType::StringLiteral {
         return "StringLiteral";
-    } else if (self == LoTokenType::CharLiteral) {
+    } else if self == LoTokenType::CharLiteral {
         return "CharLiteral";
-    } else if (self == LoTokenType::IntLiteral) {
+    } else if self == LoTokenType::IntLiteral {
         return "IntLiteral";
-    } else if (self == LoTokenType::Symbol) {
+    } else if self == LoTokenType::Symbol {
         return "Symbol";
-    } else if (self == LoTokenType::Delim) {
+    } else if self == LoTokenType::Delim {
         return "Delim";
-    } else if (self == LoTokenType::Operator) {
+    } else if self == LoTokenType::Operator {
         return "Operator";
     };
     unreachable;
@@ -37,20 +36,18 @@ struct LoToken {
 };
 
 fn LoToken::free(self) {
-    // TODO: make parens not needed here.
-    if (self.type_ == LoTokenType::IntLiteral) {
+    if self.type_ == LoTokenType::IntLiteral {
         heap::free(self.value);
-    } else if (self.type_ == LoTokenType::StringLiteral) {
+    } else if self.type_ == LoTokenType::StringLiteral {
         (self.value as String).free();
     };
 };
 
 fn LoToken::clone(self): LoToken {
-    // TODO: make parens not needed here.
-    if (self.type_ == LoTokenType::IntLiteral) {
+    if self.type_ == LoTokenType::IntLiteral {
         // TODO: won't need a cast if coersion is introduced
         self.value = heap::new!<u64>(*(self.value as &u64)) as &void;
-    } else if (self.type_ == LoTokenType::StringLiteral) {
+    } else if self.type_ == LoTokenType::StringLiteral {
         // TODO: won't need a cast if coersion is introduced
         self.value = (self.value as String).clone() as &void;
     };
@@ -531,7 +528,6 @@ const OPERATORS = [str][
 ];
 
 fn LoLexer::is_operator_start_char(c: u8): bool {
-    // TODO: make parens not needed here.
     for i in 0..(OPERATORS_COUNT) {
         let op = *array_at!<str>(OPERATORS, i);
         if op.char_at(0) == c {
@@ -547,7 +543,6 @@ fn LoLexer::lex_operator(&self): LexResult {
     loop {
         repr = self.chars.slice(loc.pos.offset, self.index + 1);
         let is_start_of_operator = false;
-        // TODO: make parens not needed here.
         for i in 0..(OPERATORS_COUNT) {
             let op = *array_at!<str>(OPERATORS, i);
             if op.starts_with(repr) {
@@ -562,7 +557,6 @@ fn LoLexer::lex_operator(&self): LexResult {
         self.next_char();
     };
     let matched_fully = false;
-    // TODO: make parens not needed here.
     for i in 0..(OPERATORS_COUNT) {
         let op = *array_at!<str>(OPERATORS, i);
         if op.equals(repr) {
