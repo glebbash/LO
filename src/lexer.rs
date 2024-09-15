@@ -125,18 +125,12 @@ impl Lexer {
 
         self.next_char(); // skip start quote
 
-        let mut value = String::new();
-
-        let c = self.current_char()?;
-        if c == '\\' {
-            self.next_char();
+        if self.current_char()? == '\\' {
+            self.next_char(); // skip `\`
             match self.current_char()? {
-                'n' => value.push('\n'),
-                'r' => value.push('\r'),
-                't' => value.push('\t'),
-                '0' => value.push('\0'),
-                '\\' => value.push('\\'),
-                '\'' => value.push('\''),
+                'n' | 'r' | 't' | '0' | '\\' | '\'' => {
+                    self.next_char(); // skip escaped character
+                }
                 c => {
                     return Err(LoError {
                         message: format!("ParseError: Invalid escape sequence: \\{c}"),
@@ -145,27 +139,36 @@ impl Lexer {
                 }
             }
         } else {
-            value.push(c);
+            self.next_char(); // skip actual character
         }
 
-        self.next_char(); // skip actual character
-
-        if self.current_char()? != '\'' {
+        let end_quote = self.current_char()?;
+        if end_quote != '\'' {
             return Err(LoError {
-                message: format!("ParseError: Unexpected character `{c}`, expected `'`"),
+                message: format!("ParseError: Unexpected character `{end_quote}`, expected `'`",),
                 loc: self.loc(),
             });
         }
-
         self.next_char(); // skip end quote
 
         loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::CharLiteral,
-            value,
+            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
+    }
+
+    pub fn parse_char_literal_value(char_literal: &str) -> u32 {
+        match char_literal {
+            "'\\n'" => '\n' as u32,
+            "'\\r'" => '\r' as u32,
+            "'\\t'" => '\t' as u32,
+            "'\\0'" => '\0' as u32,
+            "'\\''" => '\'' as u32,
+            c => c.chars().nth(1).unwrap() as u32,
+        }
     }
 
     fn lex_int_literal(&mut self) -> Result<LoToken, LoError> {
