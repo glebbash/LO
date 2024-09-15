@@ -177,21 +177,8 @@ impl ParserV2 {
 
             let mut items = Vec::new();
             while let None = self.eat(Delim, "}")? {
-                if let Some(_) = self.eat(Symbol, "fn")? {
-                    let decl = self.parse_fn_decl()?;
-                    items.push(ImportItem::FnDecl(decl))
-                } else {
-                    let unexpected = self.current();
-
-                    return Err(LoError {
-                        message: format!(
-                            "Unexpected token in importable item: {:?}",
-                            unexpected.value
-                        ),
-                        loc: unexpected.loc.clone(),
-                    });
-                }
-
+                let item = self.parse_importable()?;
+                items.push(item);
                 self.expect(Delim, ";")?;
             }
 
@@ -372,16 +359,26 @@ impl ParserV2 {
         exported: bool,
         mut loc: LoLocation,
     ) -> Result<MemoryDefExpr, LoError> {
-        let mut min_pages = None;
-
         self.expect(Delim, "{")?;
+
+        let mut min_pages = None;
         if let Some(_) = self.eat(Symbol, "min_pages")? {
+            self.expect(Operator, ":")?;
+            let int = self.expect_any(IntLiteral)?;
+            let int_value = Lexer::parse_int_literal_value(&int.value) as u32;
+            self.expect(Delim, ",")?;
+
+            min_pages = Some(int_value);
+        }
+
+        let mut data_start = None;
+        if let Some(_) = self.eat(Symbol, "data_start")? {
             self.expect(Operator, ":")?;
             let int = self.expect_any(IntLiteral)?;
             let int_value = Lexer::parse_int_literal_value(&int.value) as u32;
             self.eat(Delim, ",")?;
 
-            min_pages = Some(int_value);
+            data_start = Some(int_value);
         }
         self.expect(Delim, "}")?;
 
@@ -390,8 +387,31 @@ impl ParserV2 {
         Ok(MemoryDefExpr {
             exported,
             min_pages,
+            data_start,
             loc,
         })
+    }
+
+    fn parse_importable(&mut self) -> Result<ImportItem, LoError> {
+        if let Some(_) = self.eat(Symbol, "fn")? {
+            let decl = self.parse_fn_decl()?;
+            return Ok(ImportItem::FnDecl(decl));
+        }
+
+        if let Some(_) = self.eat(Symbol, "memory")? {
+            let loc = self.prev().loc.clone();
+            let memory_def = self.parse_memory_def(false, loc)?;
+            return Ok(ImportItem::Memory(memory_def));
+        }
+
+        let unexpected = self.current();
+        return Err(LoError {
+            message: format!(
+                "Unexpected token in importable item: {:?}",
+                unexpected.value
+            ),
+            loc: unexpected.loc.clone(),
+        });
     }
 
     fn parse_fn_decl(&mut self) -> Result<FnDeclExpr, LoError> {

@@ -72,12 +72,14 @@ pub struct ImportExpr {
 #[derive(Debug)]
 pub enum ImportItem {
     FnDecl(FnDeclExpr),
+    Memory(MemoryDefExpr),
 }
 
 impl Locatable for ImportItem {
     fn loc(&self) -> &LoLocation {
         match self {
             ImportItem::FnDecl(e) => &e.loc,
+            ImportItem::Memory(e) => &e.loc,
         }
     }
 }
@@ -121,6 +123,7 @@ pub struct ConstDefExpr {
 pub struct MemoryDefExpr {
     pub exported: bool,
     pub min_pages: Option<u32>,
+    pub data_start: Option<u32>,
     pub loc: LoLocation,
 }
 

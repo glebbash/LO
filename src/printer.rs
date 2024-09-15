@@ -37,7 +37,7 @@ impl Printer {
                 exported,
                 decl,
                 body,
-                ..
+                loc: _,
             }) => {
                 if *exported {
                     stdout_write("export ");
@@ -47,7 +47,7 @@ impl Printer {
                 self.print_code_block_expr(body);
                 stdout_writeln(";");
             }
-            TopLevelExpr::Include(IncludeExpr { file_path, .. }) => {
+            TopLevelExpr::Include(IncludeExpr { file_path, loc: _ }) => {
                 stdout_write("include ");
                 stdout_write(file_path);
                 stdout_writeln(";");
@@ -71,6 +71,7 @@ impl Printer {
                     self.print_indent();
                     match item {
                         ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
+                        ImportItem::Memory(memory_def) => self.print_memory_def(memory_def),
                     }
                     stdout_writeln(";");
                     if i != items.len() - 1 {
@@ -86,7 +87,9 @@ impl Printer {
                 stdout_writeln("};");
             }
             TopLevelExpr::GlobalDef(GlobalDefExpr {
-                global_name, expr, ..
+                global_name,
+                expr,
+                loc: _,
             }) => {
                 stdout_write("global ");
                 stdout_write(&global_name.repr);
@@ -128,7 +131,7 @@ impl Printer {
             TopLevelExpr::TypeDef(TypeDefExpr {
                 type_name,
                 type_value,
-                ..
+                loc: _,
             }) => {
                 stdout_write("type ");
                 stdout_write(&type_name.repr);
@@ -143,7 +146,7 @@ impl Printer {
             TopLevelExpr::ConstDef(ConstDefExpr {
                 const_name,
                 const_value,
-                ..
+                loc: _,
             }) => {
                 stdout_write("const ");
                 stdout_write(&const_name.repr);
@@ -155,28 +158,11 @@ impl Printer {
                     return;
                 }
             }
-            TopLevelExpr::MemoryDef(MemoryDefExpr {
-                exported,
-                min_pages,
-                ..
-            }) => {
-                if *exported {
-                    stdout_write("export ");
-                }
-                stdout_write("memory {");
-                if let Some(min_pages) = min_pages {
-                    stdout_writeln("");
-                    self.indent += 1;
-                    self.print_indent();
-                    stdout_write("min_pages: ");
-                    stdout_write(min_pages.to_string());
-                    stdout_writeln(",");
-                    self.indent -= 1;
-                    self.print_indent();
-                }
-                stdout_writeln("};");
+            TopLevelExpr::MemoryDef(memory_def) => {
+                self.print_memory_def(memory_def);
+                stdout_writeln(";");
             }
-            TopLevelExpr::StaticDataStore(StaticDataStoreExpr { addr, data, .. }) => {
+            TopLevelExpr::StaticDataStore(StaticDataStoreExpr { addr, data, loc: _ }) => {
                 stdout_write("*");
                 self.print_code_expr(addr);
                 stdout_write(" = ");
@@ -190,7 +176,7 @@ impl Printer {
             TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
                 in_fn_name,
                 out_fn_name,
-                ..
+                loc: _,
             }) => {
                 stdout_write("export existing fn ");
                 stdout_write(&in_fn_name.repr);
@@ -204,7 +190,7 @@ impl Printer {
                 macro_type_params,
                 return_type,
                 body,
-                ..
+                loc: _,
             }) => {
                 stdout_write("macro ");
                 stdout_write(&macro_name.repr);
@@ -274,6 +260,37 @@ impl Printer {
         stdout_write(")");
     }
 
+    fn print_memory_def(
+        &mut self,
+        MemoryDefExpr {
+            exported,
+            min_pages,
+            data_start,
+            loc: _,
+        }: &MemoryDefExpr,
+    ) {
+        if *exported {
+            stdout_write("export ");
+        }
+        stdout_writeln("memory {");
+        self.indent += 1;
+        if let Some(min_pages) = min_pages {
+            self.print_indent();
+            stdout_write("min_pages: ");
+            stdout_write(min_pages.to_string());
+            stdout_writeln(",");
+        }
+        if let Some(data_start) = data_start {
+            self.print_indent();
+            stdout_write("data_start: ");
+            stdout_write(data_start.to_string());
+            stdout_writeln(",");
+        }
+        self.indent -= 1;
+        self.print_indent();
+        stdout_write("}");
+    }
+
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
         match type_expr {
             TypeExpr::Pointer { pointee } => {
@@ -328,17 +345,26 @@ impl Printer {
 
     fn print_code_expr(&mut self, expr: &CodeExpr) {
         match expr {
-            CodeExpr::BoolLiteral(BoolLiteralExpr { value, .. }) => {
+            CodeExpr::BoolLiteral(BoolLiteralExpr { value, loc: _ }) => {
                 if *value {
                     stdout_write("true");
                 } else {
                     stdout_write("false");
                 }
             }
-            CodeExpr::CharLiteral(CharLiteralExpr { repr, .. }) => {
+            CodeExpr::CharLiteral(CharLiteralExpr {
+                repr,
+                value: _,
+                loc: _,
+            }) => {
                 stdout_write(repr);
             }
-            CodeExpr::IntLiteral(IntLiteralExpr { repr, tag, .. }) => {
+            CodeExpr::IntLiteral(IntLiteralExpr {
+                repr,
+                tag,
+                value: _,
+                loc: _,
+            }) => {
                 stdout_write(repr);
                 if let Some(tag) = tag {
                     stdout_write(tag);
@@ -347,7 +373,8 @@ impl Printer {
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr,
                 zero_terminated,
-                ..
+                value: _,
+                loc: _,
             }) => {
                 stdout_write(repr);
                 if *zero_terminated {
@@ -377,11 +404,17 @@ impl Printer {
                 stdout_write("]");
             }
 
-            CodeExpr::Ident(IdentExpr { repr: name, .. }) => {
-                stdout_write(name);
+            CodeExpr::Ident(IdentExpr {
+                repr,
+                parts: _,
+                loc: _,
+            }) => {
+                stdout_write(repr);
             }
             CodeExpr::Let(LetExpr {
-                local_name, value, ..
+                local_name,
+                value,
+                loc: _,
             }) => {
                 stdout_write("let ");
                 stdout_write(local_name);
@@ -389,7 +422,7 @@ impl Printer {
                 self.print_code_expr(&value);
             }
 
-            CodeExpr::Return(ReturnExpr { expr, .. }) => {
+            CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
                 stdout_write("return");
                 if let Some(expr) = expr {
                     stdout_write(" ");
@@ -397,7 +430,10 @@ impl Printer {
                 }
             }
             CodeExpr::InfixOp(InfixOpExpr {
-                op_tag, lhs, rhs, ..
+                op_tag,
+                lhs,
+                rhs,
+                loc: _,
             }) => {
                 self.print_code_expr(lhs);
                 stdout_write(" ");
@@ -405,7 +441,11 @@ impl Printer {
                 stdout_write(" ");
                 self.print_code_expr(rhs);
             }
-            CodeExpr::PrefixOp(PrefixOpExpr { expr, op_tag, .. }) => {
+            CodeExpr::PrefixOp(PrefixOpExpr {
+                expr,
+                op_tag,
+                loc: _,
+            }) => {
                 stdout_write(op_tag.to_str());
                 self.print_code_expr(expr);
             }
@@ -413,7 +453,7 @@ impl Printer {
                 cond,
                 then_block,
                 else_block,
-                ..
+                loc: _,
             }) => {
                 stdout_write("if");
                 stdout_write(" ");
@@ -436,7 +476,7 @@ impl Printer {
                     }
                 }
             }
-            CodeExpr::Loop(LoopExpr { body, .. }) => {
+            CodeExpr::Loop(LoopExpr { body, loc: _ }) => {
                 stdout_write("loop ");
                 self.print_code_block_expr(&body);
             }
@@ -445,7 +485,7 @@ impl Printer {
                 start,
                 end,
                 body,
-                ..
+                loc: _,
             }) => {
                 stdout_write("for ");
                 stdout_write(counter);
@@ -456,22 +496,24 @@ impl Printer {
                 stdout_write(" ");
                 self.print_code_block_expr(&body);
             }
-            CodeExpr::Break(BreakExpr { .. }) => {
+            CodeExpr::Break(BreakExpr { loc: _ }) => {
                 stdout_write("break");
             }
-            CodeExpr::Continue(ContinueExpr { .. }) => {
+            CodeExpr::Continue(ContinueExpr { loc: _ }) => {
                 stdout_write("continue");
             }
-            CodeExpr::Dbg(DbgExpr { message, .. }) => {
+            CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
                 stdout_write(message);
             }
-            CodeExpr::Defer(DeferExpr { expr, .. }) => {
+            CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 stdout_write("defer ");
                 self.print_code_expr(expr);
             }
             CodeExpr::Cast(CastExpr {
-                expr, casted_to, ..
+                expr,
+                casted_to,
+                loc: _,
             }) => {
                 self.print_code_expr(expr);
                 stdout_write(" as ");
@@ -502,13 +544,15 @@ impl Printer {
 
                 stdout_write("}");
             }
-            CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) => {
+            CodeExpr::Assign(AssignExpr { lhs, rhs, loc: _ }) => {
                 self.print_code_expr(lhs);
                 stdout_write(" = ");
                 self.print_code_expr(rhs);
             }
             CodeExpr::FieldAccess(FieldAccessExpr {
-                lhs, field_name, ..
+                lhs,
+                field_name,
+                loc: _,
             }) => {
                 self.print_code_expr(lhs);
                 stdout_write(".");
@@ -518,7 +562,7 @@ impl Printer {
                 lhs,
                 error_bind,
                 catch_body,
-                ..
+                loc: _,
             }) => {
                 self.print_code_expr(lhs);
                 stdout_write(" catch ");
@@ -526,13 +570,17 @@ impl Printer {
                 stdout_write(" ");
                 self.print_code_block_expr(catch_body);
             }
-            CodeExpr::Paren(ParenExpr { expr, .. }) => {
+            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
                 stdout_write("(");
                 self.print_code_expr(expr);
                 stdout_write(")");
             }
             // TODO: figure out multiline arg printing
-            CodeExpr::FnCall(FnCallExpr { fn_name, args, .. }) => {
+            CodeExpr::FnCall(FnCallExpr {
+                fn_name,
+                args,
+                loc: _,
+            }) => {
                 stdout_write(&fn_name.repr);
                 self.print_args(args);
             }
@@ -540,7 +588,7 @@ impl Printer {
                 lhs,
                 field_name,
                 args,
-                ..
+                loc: _,
             }) => {
                 self.print_code_expr(lhs);
                 stdout_write(".");
@@ -551,7 +599,7 @@ impl Printer {
                 fn_name,
                 args,
                 type_args,
-                ..
+                loc: _,
             }) => {
                 stdout_write(&fn_name.repr);
                 stdout_write("!");
@@ -563,7 +611,7 @@ impl Printer {
                 field_name,
                 args,
                 type_args,
-                ..
+                loc: _,
             }) => {
                 self.print_code_expr(lhs);
                 stdout_write(".");
@@ -572,11 +620,11 @@ impl Printer {
                 self.print_type_args(type_args);
                 self.print_args(args);
             }
-            CodeExpr::Sizeof(SizeofExpr { type_expr, .. }) => {
+            CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
                 stdout_write("sizeof ");
                 self.print_type_expr(type_expr);
             }
-            CodeExpr::PropagateError(PropagateErrorExpr { expr, .. }) => {
+            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc: _ }) => {
                 self.print_code_expr(&expr);
                 stdout_write("?");
             }
