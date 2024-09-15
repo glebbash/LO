@@ -30,7 +30,6 @@ fn StringMap::get(self, key: str): &void {
             return (entry as u32 + sizeof String) as &void;
         };
     };
-
     return null!<void>();
 };
 
@@ -44,7 +43,7 @@ macro StringMap::insert!<T>(self, key: String, item: T) {
         *existing = item;
     } else {
         let entry = self.items.push();
-        *(entry as & String) = key;
+        *(entry as &String) = key;
         *((entry as u32 + sizeof String) as &T) = item;
     };
 };

@@ -74,6 +74,14 @@ pub enum ImportItem {
     FnDecl(FnDeclExpr),
 }
 
+impl Locatable for ImportItem {
+    fn loc(&self) -> &LoLocation {
+        match self {
+            ImportItem::FnDecl(e) => &e.loc,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct GlobalDefExpr {
     pub global_name: IdentExpr,
@@ -145,12 +153,10 @@ pub struct MacroDefExpr {
     pub loc: LoLocation,
 }
 
-impl Locatable for ImportItem {
-    fn loc(&self) -> &LoLocation {
-        match self {
-            ImportItem::FnDecl(e) => &e.loc,
-        }
-    }
+#[derive(Debug)]
+pub struct CodeBlockExpr {
+    pub exprs: Vec<CodeExpr>,
+    pub loc: LoLocation,
 }
 
 impl Locatable for TopLevelExpr {
@@ -194,44 +200,53 @@ pub enum TypeExpr {
 
 #[derive(Debug)]
 pub enum CodeExpr {
-    Return(ReturnExpr),
+    // literals
+    BoolLiteral(BoolLiteralExpr),
+    CharLiteral(CharLiteralExpr),
     IntLiteral(IntLiteralExpr),
     StringLiteral(StringLiteralExpr),
+    StructLiteral(StructLiteralExpr),
+
+    // variables
     Ident(IdentExpr),
-    BinaryOp(BinaryOpExpr),
-    If(IfExpr),
-    BoolLiteral(BoolLiteralExpr),
-    Local(LocalExpr),
-    Loop(LoopExpr),
-    Break(BreakExpr),
-    ForLoop(ForLoopExpr),
-    Continue(ContinueExpr),
-    Dbg(DbgExpr),
-    Defer(DeferExpr),
+    Let(LetExpr),
+
+    // operations
+    InfixOp(InfixOpExpr),
+    PrefixOp(PrefixOpExpr),
     Cast(CastExpr),
-    StructInit(StructInitExpr),
     Assign(AssignExpr),
     FieldAccess(FieldAccessExpr),
-    Catch(CatchExpr),
     PropagateError(PropagateErrorExpr),
-    Dereference(DereferenceExpr),
-    Paren(ParenExpr),
     FnCall(FnCallExpr),
     MethodCall(MethodCallExpr),
     MacroFnCall(MacroFnCallExpr),
     MacroMethodCall(MacroMethodCallExpr),
+    Dbg(DbgExpr),
     Sizeof(SizeofExpr),
+
+    // control flow
+    Return(ReturnExpr),
+    If(IfExpr),
+    Loop(LoopExpr),
+    Break(BreakExpr),
+    ForLoop(ForLoopExpr),
+    Continue(ContinueExpr),
+    Defer(DeferExpr),
+    Catch(CatchExpr),
+    Paren(ParenExpr),
 }
 
 #[derive(Debug)]
-pub struct CodeBlockExpr {
-    pub exprs: Vec<CodeExpr>,
+pub struct BoolLiteralExpr {
+    pub value: bool,
     pub loc: LoLocation,
 }
 
 #[derive(Debug)]
-pub struct ReturnExpr {
-    pub expr: Option<Box<CodeExpr>>,
+pub struct CharLiteralExpr {
+    pub repr: String,
+    pub value: u32,
     pub loc: LoLocation,
 }
 
@@ -251,6 +266,12 @@ pub struct StringLiteralExpr {
 }
 
 #[derive(Debug)]
+pub struct ReturnExpr {
+    pub expr: Option<Box<CodeExpr>>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub struct IdentExpr {
     pub repr: String,
     pub parts: Vec<String>,
@@ -258,10 +279,17 @@ pub struct IdentExpr {
 }
 
 #[derive(Debug)]
-pub struct BinaryOpExpr {
+pub struct InfixOpExpr {
     pub op_tag: InfixOpTag,
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct PrefixOpExpr {
+    pub op_tag: PrefixOpTag,
+    pub expr: Box<CodeExpr>,
     pub loc: LoLocation,
 }
 
@@ -274,12 +302,6 @@ pub struct IfExpr {
 }
 
 #[derive(Debug)]
-pub struct BoolLiteralExpr {
-    pub value: bool,
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
 pub enum ElseBlock {
     None,
     Else(Box<CodeBlockExpr>),
@@ -287,7 +309,7 @@ pub enum ElseBlock {
 }
 
 #[derive(Debug)]
-pub struct LocalExpr {
+pub struct LetExpr {
     pub local_name: String,
     pub value: Box<CodeExpr>,
     pub loc: LoLocation,
@@ -338,7 +360,7 @@ pub struct CastExpr {
 }
 
 #[derive(Debug)]
-pub struct StructInitExpr {
+pub struct StructLiteralExpr {
     pub struct_name: IdentExpr,
     pub fields: Vec<StructInitField>,
     pub loc: LoLocation,
@@ -376,12 +398,6 @@ pub struct CatchExpr {
 #[derive(Debug)]
 pub struct PropagateErrorExpr {
     pub expr: Box<CodeExpr>,
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
-pub struct DereferenceExpr {
-    pub referenced: Box<CodeExpr>,
     pub loc: LoLocation,
 }
 
@@ -432,14 +448,15 @@ pub struct SizeofExpr {
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
-            CodeExpr::Return(e) => &e.loc,
+            CodeExpr::BoolLiteral(e) => &e.loc,
+            CodeExpr::CharLiteral(e) => &e.loc,
             CodeExpr::IntLiteral(e) => &e.loc,
             CodeExpr::StringLiteral(e) => &e.loc,
+            CodeExpr::Return(e) => &e.loc,
             CodeExpr::Ident(e) => &e.loc,
-            CodeExpr::BinaryOp(e) => &e.loc,
+            CodeExpr::InfixOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,
-            CodeExpr::BoolLiteral(e) => &e.loc,
-            CodeExpr::Local(e) => &e.loc,
+            CodeExpr::Let(e) => &e.loc,
             CodeExpr::Loop(e) => &e.loc,
             CodeExpr::Break(e) => &e.loc,
             CodeExpr::ForLoop(e) => &e.loc,
@@ -447,11 +464,10 @@ impl Locatable for CodeExpr {
             CodeExpr::Dbg(e) => &e.loc,
             CodeExpr::Defer(e) => &e.loc,
             CodeExpr::Cast(e) => &e.loc,
-            CodeExpr::StructInit(e) => &e.loc,
+            CodeExpr::StructLiteral(e) => &e.loc,
             CodeExpr::Assign(e) => &e.loc,
             CodeExpr::FieldAccess(e) => &e.loc,
             CodeExpr::Catch(e) => &e.loc,
-            CodeExpr::Dereference(e) => &e.loc,
             CodeExpr::Paren(e) => &e.loc,
             CodeExpr::FnCall(e) => &e.loc,
             CodeExpr::MethodCall(e) => &e.loc,
@@ -459,6 +475,7 @@ impl Locatable for CodeExpr {
             CodeExpr::MacroMethodCall(e) => &e.loc,
             CodeExpr::Sizeof(e) => &e.loc,
             CodeExpr::PropagateError(e) => &e.loc,
+            CodeExpr::PrefixOp(e) => &e.loc,
         }
     }
 }

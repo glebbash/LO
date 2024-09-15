@@ -95,7 +95,8 @@ macro swap!<T>(a: T, b: T) {
 };
 
 fn render() {
-    if mode == Mode::SLASH {
+    // TODO: make parens not needed here.
+    if mode == (Mode::SLASH) {
         wasm4::text("Slash!!!"0, +10, +10);
 
         let health_txt = String::from_str("HP: ");
@@ -106,7 +107,8 @@ fn render() {
         health_txt.free();
     };
 
-    if mode == Mode::DEFEND {
+    // TODO: make parens not needed here.
+    if mode == (Mode::DEFEND) {
         wasm4::text("Defend!!!"0, +10, +10);
     };
 

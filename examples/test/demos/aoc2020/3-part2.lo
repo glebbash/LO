@@ -2,23 +2,21 @@ include "../../../lib/cli.lo";
 include "../../../lib/fs.lo";
 
 type Tile = bool;
+
 const Tile::TREE = true;
 const Tile::EMPTY = false;
 
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/3.txt");
     defer input.free();
-
     let map = Map::parse(input);
     defer map.free();
-
-    let result = 1u64
-        * map.count_trees_on_slope(1, 1) as u64
-        * map.count_trees_on_slope(1, 3) as u64
-        * map.count_trees_on_slope(1, 5) as u64
-        * map.count_trees_on_slope(1, 7) as u64
-        * map.count_trees_on_slope(2, 1) as u64;
-
+    let result = 1u64;
+    result *= map.count_trees_on_slope(1, 1) as u64;
+    result *= map.count_trees_on_slope(1, 3) as u64;
+    result *= map.count_trees_on_slope(1, 5) as u64;
+    result *= map.count_trees_on_slope(1, 7) as u64;
+    result *= map.count_trees_on_slope(2, 1) as u64;
     print_u64(result);
     puts("\n");
 };
@@ -30,7 +28,6 @@ struct Map {
 fn Map::parse(input: String): Map {
     let rows = Vec::new!<&Vec of Tile>();
     let current_row = Vec::new!<Tile>();
-
     for i in 0..input.len() {
         let c = input.char_at(i);
         if c == '#' {
@@ -44,28 +41,26 @@ fn Map::parse(input: String): Map {
             current_row = Vec::new!<Tile>();
         };
     };
-
-    return Map { rows: rows };
+    return Map {
+        rows: rows,
+    };
 };
 
 fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
     let tree_count = 0;
     let i = 0;
     let j = 0;
-
     loop {
         i += slope_i;
         j += slope_j;
-
         if i >= self.rows.size {
             break;
         };
-
-        if self.get(i, j) == Tile::TREE {
+        // TODO: make parens not needed here.
+        if self.get(i, j) == (Tile::TREE) {
             tree_count += 1;
         };
     };
-
     return tree_count;
 };
 

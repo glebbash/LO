@@ -5,9 +5,7 @@ include "../../../lib/str_cutter.lo";
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/4.txt");
     defer input.free();
-
     let valid_passwords = 0;
-
     let passwords = StrCutter::new(input.as_str());
     loop {
         let has_byr = false;
@@ -17,48 +15,52 @@ fn main() {
         let has_hcl = false;
         let has_ecl = false;
         let has_pid = false;
-
         passwords = passwords.cut_at("\n\n");
-
         let lines = StrCutter::new(passwords.piece);
         loop {
             lines = lines.cut_at("\n");
-
             let fields = StrCutter::new(lines.piece);
             loop {
                 fields = fields.cut_at(" ");
-
                 let field_parts = StrCutter::new(fields.piece).cut_at(":");
                 let field_name = field_parts.piece;
                 let field_value = field_parts.rest;
-
-                if field_name.equals("byr") { has_byr = true; };
-                if field_name.equals("iyr") { has_iyr = true; };
-                if field_name.equals("eyr") { has_eyr = true; };
-                if field_name.equals("hgt") { has_hgt = true; };
-                if field_name.equals("hcl") { has_hcl = true; };
-                if field_name.equals("ecl") { has_ecl = true; };
-                if field_name.equals("pid") { has_pid = true; };
-
+                if field_name.equals("byr") {
+                    has_byr = true;
+                };
+                if field_name.equals("iyr") {
+                    has_iyr = true;
+                };
+                if field_name.equals("eyr") {
+                    has_eyr = true;
+                };
+                if field_name.equals("hgt") {
+                    has_hgt = true;
+                };
+                if field_name.equals("hcl") {
+                    has_hcl = true;
+                };
+                if field_name.equals("ecl") {
+                    has_ecl = true;
+                };
+                if field_name.equals("pid") {
+                    has_pid = true;
+                };
                 if fields.rest.size == 0 {
                     break;
                 };
             };
-
             if lines.rest.size == 0 {
                 break;
             };
         };
-
         if has_byr && has_iyr && has_eyr && has_hgt && has_hcl && has_ecl && has_pid {
             valid_passwords += 1;
         };
-
         if passwords.rest.size == 0 {
             break;
         };
     };
-
     print_u32(valid_passwords);
     puts("\n");
 };

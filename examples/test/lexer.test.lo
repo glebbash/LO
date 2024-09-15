@@ -25,9 +25,7 @@ fn main() {
         print_u32(t.type_ as u32);
         puts(" : ");
         puts(t.repr);
-        // TODO: make parens not needed here. they are required beacuse
-        //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-        // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+        // TODO: make parens not needed here.
         if (t.type_ == LoTokenType::IntLiteral) {
             puts(", value = ");
             print_u64(*(t.value as &u64));

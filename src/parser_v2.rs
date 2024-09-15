@@ -598,6 +598,14 @@ impl ParserV2 {
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: false, loc }));
         }
 
+        if let Some(char) = self.eat_any(CharLiteral)?.cloned() {
+            return Ok(CodeExpr::CharLiteral(CharLiteralExpr {
+                repr: char.value.clone(),
+                value: Lexer::parse_char_literal_value(&char.value) as u32,
+                loc: char.loc.clone(),
+            }));
+        };
+
         if let Some(int) = self.eat_any(IntLiteral)?.cloned() {
             let mut tag = None;
             if let Some(_) = self.eat(Symbol, "u64")? {
@@ -640,7 +648,7 @@ impl ParserV2 {
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
-            return Ok(CodeExpr::Local(LocalExpr {
+            return Ok(CodeExpr::Let(LetExpr {
                 local_name: local_name.value,
                 value: Box::new(value),
                 loc,
@@ -728,16 +736,20 @@ impl ParserV2 {
                 let min_bp = op.info.get_min_bp_for_next();
 
                 match op.tag {
-                    PrefixOpTag::Dereference => {
-                        let referenced = Box::new(self.parse_code_expr(min_bp)?);
+                    PrefixOpTag::Dereference
+                    | PrefixOpTag::Not
+                    | PrefixOpTag::Positive
+                    | PrefixOpTag::Negative => {
+                        let expr = Box::new(self.parse_code_expr(min_bp)?);
 
                         loc.end_pos = self.prev().loc.end_pos.clone();
 
-                        return Ok(CodeExpr::Dereference(DereferenceExpr { referenced, loc }));
+                        return Ok(CodeExpr::PrefixOp(PrefixOpExpr {
+                            expr,
+                            op_tag: op.tag,
+                            loc,
+                        }));
                     }
-                    PrefixOpTag::Not => return Err(LoError::todo(file!(), line!())),
-                    PrefixOpTag::Positive => return Err(LoError::todo(file!(), line!())),
-                    PrefixOpTag::Negative => return Err(LoError::todo(file!(), line!())),
                 }
             }
         }
@@ -784,38 +796,44 @@ impl ParserV2 {
             }));
         }
 
-        if let Some(_) = self.eat(Delim, "{")? {
-            let mut loc = ident.loc.clone();
+        // TODO: remove after struct syntax is changed
+        if ident.repr.chars().next().unwrap().is_ascii_uppercase()
+            || ident.repr == "str"
+            || ident.repr == "wasi::IOVec"
+        {
+            if let Some(_) = self.eat(Delim, "{")? {
+                let mut loc = ident.loc.clone();
 
-            let mut fields = Vec::new();
+                let mut fields = Vec::new();
 
-            while let None = self.eat(Delim, "}")? {
-                let mut field_loc = self.current().loc.clone();
+                while let None = self.eat(Delim, "}")? {
+                    let mut field_loc = self.current().loc.clone();
 
-                let field_name = self.expect_any(Symbol)?.clone();
-                self.expect(Operator, ":")?;
-                let value = self.parse_code_expr(0)?;
+                    let field_name = self.expect_any(Symbol)?.clone();
+                    self.expect(Operator, ":")?;
+                    let value = self.parse_code_expr(0)?;
 
-                field_loc.end_pos = self.prev().loc.end_pos.clone();
+                    field_loc.end_pos = self.prev().loc.end_pos.clone();
 
-                fields.push(StructInitField {
-                    field_name: field_name.value,
-                    value,
-                    loc: field_loc,
-                });
+                    fields.push(StructInitField {
+                        field_name: field_name.value,
+                        value,
+                        loc: field_loc,
+                    });
 
-                if !self.current().is(Delim, "}") {
-                    self.expect(Delim, ",")?;
+                    if !self.current().is(Delim, "}") {
+                        self.expect(Delim, ",")?;
+                    }
                 }
+
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                return Ok(CodeExpr::StructLiteral(StructLiteralExpr {
+                    struct_name: ident,
+                    fields,
+                    loc,
+                }));
             }
-
-            loc.end_pos = self.prev().loc.end_pos.clone();
-
-            return Ok(CodeExpr::StructInit(StructInitExpr {
-                struct_name: ident,
-                fields,
-                loc,
-            }));
         }
 
         Ok(CodeExpr::Ident(ident))
@@ -918,7 +936,7 @@ impl ParserV2 {
                 let mut loc = lhs.loc().clone();
                 loc.end_pos = rhs.loc().end_pos.clone();
 
-                Ok(CodeExpr::BinaryOp(BinaryOpExpr {
+                Ok(CodeExpr::InfixOp(InfixOpExpr {
                     op_tag: op.tag,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),

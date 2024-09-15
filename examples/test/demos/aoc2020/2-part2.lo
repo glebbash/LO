@@ -2,6 +2,7 @@ include "../../../lib/cli.lo";
 include "../../../lib/fs.lo";
 
 type Step = u32;
+
 const Step::READ_START_INDEX = 0;
 const Step::READ_END_INDEX = 1;
 const Step::READ_CHAR_TO_FIND = 2;
@@ -30,43 +31,42 @@ fn initial_check_state(): PasswordCheckState {
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/2.txt");
     defer input.free();
-
     let valid_passwords_count = 0;
-
     let state = initial_check_state();
-
     for i in 0..input.len() {
         let c = input.char_at(i);
-        if state.step == Step::READ_START_INDEX {
+        // TODO: make parens not needed here.
+        if (state.step == Step::READ_START_INDEX) {
             if c == '-' {
                 state.step = Step::READ_END_INDEX;
                 continue;
             };
-
             state.start_index *= 10;
             state.start_index += (c - '0') as u32;
         };
-        if state.step == Step::READ_END_INDEX {
+        // TODO: make parens not needed here.
+        if (state.step == Step::READ_END_INDEX) {
             if c == ' ' {
                 state.step = Step::READ_CHAR_TO_FIND;
                 continue;
             };
-
             state.end_index *= 10;
             state.end_index += (c - '0') as u32;
         };
-        if state.step == Step::READ_CHAR_TO_FIND {
+        // TODO: make parens not needed here.
+        if (state.step == Step::READ_CHAR_TO_FIND) {
             state.char_to_check = c;
-            i += 2; // skip `${c}: `, (+1 will be skipped by loop)
+            // skip `${c}: `, (+1 will be skipped by loop)
+            i += 2;
             state.step = Step::CHECK_PASSWORD;
             continue;
         };
-        if state.step == Step::CHECK_PASSWORD {
+        // TODO: make parens not needed here.
+        if (state.step == Step::CHECK_PASSWORD) {
             if c == '\n' {
                 state = initial_check_state();
                 continue;
             };
-
             state.current_index += 1;
             if state.current_index == state.start_index {
                 state.match_found = c == state.char_to_check;
@@ -81,7 +81,6 @@ fn main() {
             };
         };
     };
-
     print_u32(valid_passwords_count);
     puts("\n");
 };

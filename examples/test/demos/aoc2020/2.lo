@@ -2,6 +2,7 @@ include "../../../lib/cli.lo";
 include "../../../lib/fs.lo";
 
 type Step = u32;
+
 const Step::READ_MIN_OCCURANCES = 0;
 const Step::READ_MAX_OCCURANCES = 1;
 const Step::READ_CHAR_TO_COUNT = 2;
@@ -28,54 +29,50 @@ fn initial_check_state(): PasswordCheckState {
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/2.txt");
     defer input.free();
-
     let valid_passwords_count = 0;
-
     let state = initial_check_state();
-
     for i in 0..input.len() {
         let c = input.char_at(i);
-        if state.step == Step::READ_MIN_OCCURANCES {
+        // TODO: make parens not needed here.
+        if (state.step == Step::READ_MIN_OCCURANCES) {
             if c == '-' {
                 state.step = Step::READ_MAX_OCCURANCES;
                 continue;
             };
-
             state.min_occurances *= 10;
             state.min_occurances += (c - '0') as u32;
         };
-        if state.step == Step::READ_MAX_OCCURANCES {
+        // TODO: make parens not needed here.
+        if (state.step == Step::READ_MAX_OCCURANCES) {
             if c == ' ' {
                 state.step = Step::READ_CHAR_TO_COUNT;
                 continue;
             };
-
             state.max_occurances *= 10;
             state.max_occurances += (c - '0') as u32;
         };
-        if state.step == Step::READ_CHAR_TO_COUNT {
+        // TODO: make parens not needed here.
+        if (state.step == Step::READ_CHAR_TO_COUNT) {
             state.char_to_count = c;
-            i += 2; // skip `${c}: `, (+1 will be skipped by loop)
+            // skip `${c}: `, (+1 will be skipped by loop)
+            i += 2;
             state.step = Step::COUNT_OCCURANCES;
             continue;
         };
-        if state.step == Step::COUNT_OCCURANCES {
+        // TODO: make parens not needed here.
+        if (state.step == Step::COUNT_OCCURANCES) {
             if c == '\n' {
-                if state.current_occurances >= state.min_occurances
-                && state.current_occurances <= state.max_occurances {
+                if state.current_occurances >= state.min_occurances && state.current_occurances <= state.max_occurances {
                     valid_passwords_count += 1;
                 };
-
                 state = initial_check_state();
                 continue;
             };
-
             if c == state.char_to_count {
                 state.current_occurances += 1;
             };
         };
     };
-
     print_u32(valid_passwords_count);
     puts("\n");
 };

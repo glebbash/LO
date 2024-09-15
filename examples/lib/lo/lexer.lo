@@ -9,9 +9,7 @@ const LoTokenType::Delim         = 4 as u8;
 const LoTokenType::Operator      = 5 as u8;
 
 fn LoTokenType::to_str(self): str {
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    // TODO: make parens not needed here.
     if (self == LoTokenType::StringLiteral) {
         return "StringLiteral";
     } else if (self == LoTokenType::CharLiteral) {
@@ -39,9 +37,7 @@ struct LoToken {
 };
 
 fn LoToken::free(self) {
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    // TODO: make parens not needed here.
     if (self.type_ == LoTokenType::IntLiteral) {
         heap::free(self.value);
     } else if (self.type_ == LoTokenType::StringLiteral) {
@@ -50,9 +46,7 @@ fn LoToken::free(self) {
 };
 
 fn LoToken::clone(self): LoToken {
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
+    // TODO: make parens not needed here.
     if (self.type_ == LoTokenType::IntLiteral) {
         // TODO: won't need a cast if coersion is introduced
         self.value = heap::new!<u64>(*(self.value as &u64)) as &void;

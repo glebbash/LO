@@ -297,7 +297,7 @@ impl IRGenerator {
                     var_type: var.type_.clone(),
                 })
             }
-            CodeExpr::BinaryOp(BinaryOpExpr {
+            CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
                 lhs,
                 rhs,
@@ -483,7 +483,7 @@ impl IRGenerator {
                 })
             }
             CodeExpr::BoolLiteral(_) => Err(LoError::todo(file!(), line!())),
-            CodeExpr::Local(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::Let(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Loop(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Break(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::ForLoop(_) => Err(LoError::todo(file!(), line!())),
@@ -492,17 +492,18 @@ impl IRGenerator {
             CodeExpr::Dbg(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Defer(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Cast(_) => Err(LoError::todo(file!(), line!())),
-            CodeExpr::StructInit(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::StructLiteral(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Assign(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::FieldAccess(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Catch(_) => Err(LoError::todo(file!(), line!())),
-            CodeExpr::Dereference(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Paren(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::MethodCall(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::MacroFnCall(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::MacroMethodCall(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Sizeof(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::PropagateError(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::CharLiteral(_) => Err(LoError::todo(file!(), line!())),
+            CodeExpr::PrefixOp(_) => Err(LoError::todo(file!(), line!())),
         }
     }
 }

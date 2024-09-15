@@ -29,10 +29,7 @@ global fs::unlocked = false;
 
 // https://github.com/microsoft/vscode-wasm/issues/161
 fn fs::_unlock() {
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-    if (fs::unlocked) {
+    if fs::unlocked {
         return;
     };
     let err = 0;
@@ -44,27 +41,18 @@ fn fs::_unlock() {
     };
     let prestat = tmp_alloc!<wasi::prestat>();
     err = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD, prestat);
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-    if (err != wasi::Err::SUCCESS) {
+    if err != wasi::Err::SUCCESS {
         return;
     };
     let dir_path = tmp_alloc_many!<u8>(prestat.pr_name_len);
     err = wasi::fd_prestat_dir_name(fs::CWD_PREOPEN_FD, dir_path, prestat.pr_name_len);
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-    if (err != wasi::Err::SUCCESS) {
+    if err != wasi::Err::SUCCESS {
         return;
     };
     let fdstat = mem::align_to(tmp_alloc_many!<wasi::fdstat>(2) as u32, 8) as &wasi::fdstat;
     // alignment forced by wasmtime
     err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat);
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-    if (err != wasi::Err::SUCCESS) {
+    if err != wasi::Err::SUCCESS {
         return;
     };
     let prestat2 = tmp_alloc!<wasi::prestat>();
@@ -75,10 +63,7 @@ fn fs::_unlock() {
 fn fs::open(file_path: str): Result<u32, wasi::Err> {
     let fd_ref = tmp_alloc!<u32>();
     let err = wasi::path_open(fs::CWD_PREOPEN_FD, 1, file_path.data, file_path.size, 0, 264_240_830u64, 268_435_455u64, 0, fd_ref);
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-    if (err != wasi::Err::SUCCESS) {
+    if err != wasi::Err::SUCCESS {
         return Err(err);
     };
     return Ok(*fd_ref);
@@ -95,10 +80,8 @@ fn fs::read_fd(fd: u32): Result<&Vec of u8, wasi::Err> {
     let nread_ref = tmp_alloc!<u32>();
     loop {
         let err = wasi::fd_read(fd, in_vec, 1, nread_ref);
-        // TODO: make parens not needed here. they are required beacuse
-        //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-        // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-        if (err != wasi::Err::SUCCESS) {
+        // TODO: make parens not needed here.
+        if err != (wasi::Err::SUCCESS) {
             return Err(err);
         };
         let nread = *nread_ref;
@@ -122,10 +105,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
     loop {
         iov.size = chunk_size;
         let err = wasi::fd_read(fd_in, iov, 1, nread_ref);
-        // TODO: make parens not needed here. they are required beacuse
-        //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-        // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-        if (err != wasi::Err::SUCCESS) {
+        if err != wasi::Err::SUCCESS {
             return Err(err);
         };
         let nread = *nread_ref;
@@ -134,10 +114,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
         };
         iov.size = nread;
         err = wasi::fd_write(fd_out, iov, 1, nread_ref);
-        // TODO: make parens not needed here. they are required beacuse
-        //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-        // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-        if (err != wasi::Err::SUCCESS) {
+        if err != wasi::Err::SUCCESS {
             return Err(err);
         };
     };
@@ -146,10 +123,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
 
 fn fs::close(fd: u32): Result<void, wasi::Err> {
     let err = wasi::fd_close(fd);
-    // TODO: make parens not needed here. they are required beacuse
-    //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
-    // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`
-    if (err != wasi::Err::SUCCESS) {
+    if err != wasi::Err::SUCCESS {
         return Err(err);
     };
     return Ok();

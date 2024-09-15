@@ -5,23 +5,20 @@ fn main() {
     let input_buf = fs::read_file!("./examples/test/demos/aoc2020/5.txt");
     defer input_buf.free();
     let input = input_buf.as_str();
-
-    let tickets_count = input.size / 11; // 10 chars seat + newline
+    // 10 chars seat + newline
+    let tickets_count = input.size / 11;
     let seat_ids = Vec::with_capacity!<u32>(tickets_count);
-
     for i in 0..tickets_count {
         let seat_id = parse_seat_id(input.skip_chars(i * 11));
         seat_ids.push!<u32>(seat_id);
     };
-
     bubble_sort(seat_ids);
-
     let prev_seat_id = 0;
-
     for i in 0..tickets_count {
         let seat_id = seat_ids.get!<u32>(i);
         if prev_seat_id + 2 == seat_id {
-            print_u32(prev_seat_id + 1); puts("\n");
+            print_u32(prev_seat_id + 1);
+            puts("\n");
             break;
         };
         prev_seat_id = seat_id;
@@ -33,7 +30,6 @@ fn bubble_sort(items: &Vec of u32) {
     let n = items.size;
     loop {
         let swapped = false;
-
         for i in 1..n {
             let a = items.get!<u32>(i - 1);
             let b = items.get!<u32>(i);
@@ -43,7 +39,6 @@ fn bubble_sort(items: &Vec of u32) {
                 swapped = true;
             };
         };
-
         if !swapped {
             break;
         };
@@ -65,7 +60,6 @@ fn parse_seat_id(input: str): u32 {
             row_lo += row_max;
         };
     };
-
     let col_max = 8;
     let col_hi = col_max - 1;
     let col_lo = 0;
@@ -80,7 +74,6 @@ fn parse_seat_id(input: str): u32 {
             col_lo += col_max;
         };
     };
-
     let seat_id = row_lo * 8 + col_lo;
     return seat_id;
 };

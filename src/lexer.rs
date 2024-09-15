@@ -650,11 +650,23 @@ impl InfixOp {
     }
 }
 
+#[derive(Debug)]
 pub enum PrefixOpTag {
     Not,
     Dereference,
     Positive,
     Negative,
+}
+
+impl PrefixOpTag {
+    pub fn to_str(&self) -> &str {
+        match self {
+            PrefixOpTag::Not => "!",
+            PrefixOpTag::Dereference => "*",
+            PrefixOpTag::Positive => "+",
+            PrefixOpTag::Negative => "-",
+        }
+    }
 }
 
 pub struct PrefixOp {

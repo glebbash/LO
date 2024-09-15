@@ -2,36 +2,31 @@ include "../../../lib/cli.lo";
 include "../../../lib/fs.lo";
 
 type Tile = bool;
+
 const Tile::TREE = true;
 const Tile::EMPTY = false;
-
 const SLOPE_I = 1;
 const SLOPE_J = 3;
 
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/3.txt");
     defer input.free();
-
     let map = Map::parse(input);
     defer map.free();
-
     let tree_count = 0;
     let i = 0;
     let j = 0;
-
     loop {
         i += SLOPE_I;
         j += SLOPE_J;
-
         if i == map.rows.size {
             break;
         };
-
-        if map.get(i, j) == Tile::TREE {
+        // TODO: make parens not needed here.
+        if map.get(i, j) == (Tile::TREE) {
             tree_count += 1;
         };
     };
-
     print_u32(tree_count);
     puts("\n");
 };
@@ -43,7 +38,6 @@ struct Map {
 fn Map::parse(input: String): Map {
     let rows = Vec::new!<&Vec of Tile>();
     let current_row = Vec::new!<Tile>();
-
     for i in 0..input.len() {
         let c = input.char_at(i);
         if c == '#' {
@@ -57,8 +51,9 @@ fn Map::parse(input: String): Map {
             current_row = Vec::new!<Tile>();
         };
     };
-
-    return Map { rows: rows };
+    return Map {
+        rows: rows,
+    };
 };
 
 fn Map::get(self, i: u32, j: u32): Tile {
