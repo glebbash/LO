@@ -74,7 +74,7 @@ fn fs::_unlock() {
 
 fn fs::open(file_path: str): Result<u32, wasi::Err> {
     let fd_ref = tmp_alloc!<u32>();
-    let err = wasi::path_open(fs::CWD_PREOPEN_FD, 1, file_path.data, file_path.size, 0, 264240830u64, 268435455u64, 0, fd_ref);
+    let err = wasi::path_open(fs::CWD_PREOPEN_FD, 1, file_path.data, file_path.size, 0, 264_240_830u64, 268_435_455u64, 0, fd_ref);
     // TODO: make parens not needed here. they are required beacuse
     //   `LoTokenType::IntLiteral {` is started to be parsed as a struct creation
     // Possible option: change struct creation syntax to `LoTokenType::IntLiteral . {}`

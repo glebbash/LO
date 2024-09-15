@@ -377,13 +377,10 @@ impl ParserV2 {
         self.expect(Delim, "{")?;
         if let Some(_) = self.eat(Symbol, "min_pages")? {
             self.expect(Operator, ":")?;
-            let int = self.expect_any(IntLiteral)?.clone();
+            let int = self.expect_any(IntLiteral)?;
+            let int_value = Lexer::parse_int_literal_value(&int.value) as u32;
             self.eat(Delim, ",")?;
 
-            let int_value = int.value.parse::<u32>().map_err(|_| LoError {
-                message: format!("Parsing u32 failed: {}", int.value),
-                loc: int.loc.clone(),
-            })?;
             min_pages = Some(int_value);
         }
         self.expect(Delim, "}")?;
@@ -602,12 +599,6 @@ impl ParserV2 {
         }
 
         if let Some(int) = self.eat_any(IntLiteral)?.cloned() {
-            let result = if int.value.starts_with("0x") {
-                u32::from_str_radix(&int.value[2..], 16)
-            } else {
-                int.value.parse()
-            };
-
             let mut tag = None;
             if let Some(_) = self.eat(Symbol, "u64")? {
                 tag = Some(String::from("u64"));
@@ -615,10 +606,7 @@ impl ParserV2 {
 
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: int.value.clone(),
-                value: result.map_err(|_| LoError {
-                    message: format!("Parsing u32 failed: {}", int.value),
-                    loc: int.loc.clone(),
-                })?,
+                value: Lexer::parse_int_literal_value(&int.value) as u32,
                 tag,
                 loc: int.loc.clone(),
             }));

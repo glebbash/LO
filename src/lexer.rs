@@ -170,13 +170,10 @@ impl Lexer {
 
     fn lex_int_literal(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
-        let mut value = String::new();
 
         let hex = match (self.current_char(), self.peek_next_char()) {
             (Ok('0'), Ok('x')) => {
-                value.push('0');
                 self.next_char();
-                value.push('x');
                 self.next_char();
                 true
             }
@@ -185,28 +182,30 @@ impl Lexer {
 
         loop {
             match self.current_char() {
-                Ok('_') => {
-                    self.next_char();
-                }
-                Ok(c @ '0'..='9') => {
-                    value.push(c);
-                    self.next_char();
-                }
-                Ok(c @ 'A'..='F') if hex => {
-                    value.push(c);
-                    self.next_char();
-                }
+                Ok('_') | Ok('0'..='9') => {}
+                Ok('A'..='F') if hex => {}
                 _ => break,
             }
+            self.next_char();
         }
 
         loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::IntLiteral,
-            value,
+            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
+    }
+
+    pub fn parse_int_literal_value(int_literal: &str) -> u64 {
+        let int_literal = int_literal.replace("_", "");
+
+        if int_literal.starts_with("0x") {
+            return u64::from_str_radix(&int_literal[2..], 16).unwrap();
+        }
+
+        int_literal.parse().unwrap()
     }
 
     fn lex_string(&mut self) -> Result<LoToken, LoError> {
@@ -215,8 +214,7 @@ impl Lexer {
         self.next_char(); // skip start quote
 
         loop {
-            let c = self.current_char()?;
-            match c {
+            match self.current_char()? {
                 '"' => break,
                 '\\' => {
                     self.next_char();
@@ -246,7 +244,7 @@ impl Lexer {
         })
     }
 
-    pub fn unescape_string(escaped: &String) -> String {
+    pub fn unescape_string(escaped: &str) -> String {
         let mut unescaped = String::new();
 
         let mut chars = escaped.chars();

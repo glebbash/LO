@@ -3220,55 +3220,19 @@ fn parse_const_int(tokens: &mut LoTokenStream) -> Result<LoInstr, LoError> {
 }
 
 fn parse_u8_literal(int: &LoToken) -> Result<u8, LoError> {
-    let result = if int.value.starts_with("0x") {
-        u8::from_str_radix(&int.value[2..], 16)
-    } else {
-        int.value.parse()
-    };
-
-    result.map_err(|_| LoError {
-        message: format!("Parsing u8 failed: {}", int.value),
-        loc: int.loc.clone(),
-    })
+    Ok(Lexer::parse_int_literal_value(&int.value) as u8)
 }
 
 fn parse_u32_literal(int: &LoToken) -> Result<u32, LoError> {
-    let result = if int.value.starts_with("0x") {
-        u32::from_str_radix(&int.value[2..], 16)
-    } else {
-        int.value.parse()
-    };
-
-    result.map_err(|_| LoError {
-        message: format!("Parsing u32 failed: {}", int.value),
-        loc: int.loc.clone(),
-    })
+    Ok(Lexer::parse_int_literal_value(&int.value) as u32)
 }
 
 fn parse_i64_literal(int: &LoToken) -> Result<i64, LoError> {
-    let result = if int.value.starts_with("0x") {
-        i64::from_str_radix(&int.value[2..], 16)
-    } else {
-        int.value.parse()
-    };
-
-    result.map_err(|_| LoError {
-        message: format!("Parsing i64 failed"),
-        loc: int.loc.clone(),
-    })
+    Ok(Lexer::parse_int_literal_value(&int.value) as i64)
 }
 
 fn parse_u64_literal(int: &LoToken) -> Result<u64, LoError> {
-    let result = if int.value.starts_with("0x") {
-        u64::from_str_radix(&int.value[2..], 16)
-    } else {
-        int.value.parse()
-    };
-
-    result.map_err(|_| LoError {
-        message: format!("Parsing u64 failed"),
-        loc: int.loc.clone(),
-    })
+    Ok(Lexer::parse_int_literal_value(&int.value))
 }
 
 fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {
