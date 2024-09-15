@@ -51,7 +51,7 @@ fn Map::parse(input: String): Map {
             current_row = Vec::new!<Tile>();
         };
     };
-    return Map {
+    return .Map {
         rows: rows,
     };
 };

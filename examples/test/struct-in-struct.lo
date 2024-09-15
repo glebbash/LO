@@ -11,12 +11,12 @@ struct Rect {
 };
 
 fn main() {
-    let r = Rect {
-        tl: Point2D {
+    let r = .Rect {
+        tl: .Point2D {
             x: 1,
             y: 2,
         },
-        br: Point2D {
+        br: .Point2D {
             x: 3,
             y: 4,
         },

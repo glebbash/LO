@@ -368,7 +368,7 @@ pub struct CastExpr {
 #[derive(Debug)]
 pub struct StructLiteralExpr {
     pub struct_name: IdentExpr,
-    pub fields: Vec<StructInitField>,
+    pub fields: Vec<StructLiteralField>,
     pub loc: LoLocation,
 }
 
@@ -380,7 +380,7 @@ pub struct ArrayLiteralExpr {
 }
 
 #[derive(Debug)]
-pub struct StructInitField {
+pub struct StructLiteralField {
     pub field_name: String,
     pub value: CodeExpr,
     pub loc: LoLocation,

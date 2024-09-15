@@ -78,24 +78,24 @@ struct LoTokenMaybe {
 };
 
 macro LoTokenMaybe::some!(t: LoToken): LoTokenMaybe {
-    LoTokenMaybe {
+    .LoTokenMaybe {
         token: t,
         exists: true,
     };
 };
 
 macro LoTokenMaybe::none!(tokens: &LoTokenStream): LoTokenMaybe {
-    LoTokenMaybe {
+    .LoTokenMaybe {
         token: tokens.terminal_token,
         exists: false,
     };
 };
 
 fn LoTokenStream::new(tokens: &Vec of LoToken, eof_location: LoLocation): &LoTokenStream {
-    return heap::new!<LoTokenStream>(LoTokenStream {
+    return heap::new!<LoTokenStream>(.LoTokenStream {
         tokens: tokens,
         index: 0,
-        terminal_token: LoToken {
+        terminal_token: .LoToken {
             type_: LoTokenType::Symbol,
             repr: "<EOF>",
             loc: eof_location,
@@ -126,7 +126,7 @@ fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): Result<LoToken, 
     message.push_str("', wanted '");
     message.push_str(repr);
     message.push_str("'");
-    return Err(heap::new!<LoError>(LoError {
+    return Err(heap::new!<LoError>(.LoError {
         message: message,
         loc: unexpected.loc,
     }));
@@ -145,7 +145,7 @@ fn LoTokenStream::expect_any(&self, type_: LoTokenType): Result<LoToken, &LoErro
     message.push_str("', wanted '");
     message.push_str(LoTokenType::to_str(type_));
     message.push_str("'");
-    return Err(heap::new!<LoError>(LoError {
+    return Err(heap::new!<LoError>(.LoError {
         message: message,
         loc: unexpected.loc,
     }));
@@ -176,7 +176,7 @@ fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): Result<LoTokenMaybe
 fn LoTokenStream::next_is(&self, type_: LoTokenType, repr: str): Result<bool, &LoError> {
     let some_token = self.peek();
     if !some_token.exists {
-        return Err(heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(.LoError {
             message: String::from_str("Unexpected EOF"),
             loc: self.terminal_token.loc,
         }));
@@ -217,7 +217,7 @@ struct LoLexer {
 };
 
 fn LoLexer::new(file_index: u32, chars: str): &LoLexer {
-    return heap::new!<LoLexer>(LoLexer {
+    return heap::new!<LoLexer>(.LoLexer {
         file_index: file_index,
         chars: chars,
         index: 0,
@@ -265,7 +265,7 @@ fn LoLexer::lex_token(&self): LexResult {
     };
     let message = String::from_str("Unexpected char: ");
     message.push(c);
-    return Err(heap::new!<LoError>(LoError {
+    return Err(heap::new!<LoError>(.LoError {
         message: message,
         loc: self.loc(),
     }));
@@ -281,7 +281,7 @@ fn LoLexer::lex_symbol(&self): LexResult {
         self.next_char();
     };
     loc.end_pos = self.pos();
-    return Ok(LoToken {
+    return Ok(.LoToken {
         type_: LoTokenType::Symbol,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
@@ -313,7 +313,7 @@ fn LoLexer::lex_char(&self): LexResult {
         } else {
             let message = String::from_str("ParseError: Invalid escape sequence: \\");
             message.push(c as u8);
-            return Err(heap::new!<LoError>(LoError {
+            return Err(heap::new!<LoError>(.LoError {
                 message: message,
                 loc: self.loc(),
             }));
@@ -325,7 +325,7 @@ fn LoLexer::lex_char(&self): LexResult {
         let message = String::from_str("ParseError: Unexpected character `");
         message.push(c as u8);
         message.push_str("`, expected `'`");
-        return Err(heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(.LoError {
             message: message,
             loc: self.loc(),
         }));
@@ -333,7 +333,7 @@ fn LoLexer::lex_char(&self): LexResult {
     // skip end quote
     self.next_char();
     loc.end_pos = self.pos();
-    return Ok(LoToken {
+    return Ok(.LoToken {
         type_: LoTokenType::Symbol,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
@@ -369,7 +369,7 @@ fn LoLexer::lex_string(&self): LexResult {
             } else {
                 let message = String::from_str("ParseError: Invalid escape sequence: \\");
                 message.push(c as u8);
-                return Err(heap::new!<LoError>(LoError {
+                return Err(heap::new!<LoError>(.LoError {
                     message: message,
                     loc: self.loc(),
                 }));
@@ -382,7 +382,7 @@ fn LoLexer::lex_string(&self): LexResult {
     // skip end quote
     self.next_char();
     loc.end_pos = self.pos();
-    return Ok(LoToken {
+    return Ok(.LoToken {
         type_: LoTokenType::StringLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
@@ -430,7 +430,7 @@ fn LoLexer::lex_int_literal(&self): LexResult {
         };
     };
     loc.end_pos = self.pos();
-    return Ok(LoToken {
+    return Ok(.LoToken {
         type_: LoTokenType::IntLiteral,
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
@@ -443,7 +443,7 @@ fn LoLexer::lex_delim(&self): LexResult {
     let loc = self.loc();
     // skip delimiter char
     self.next_char();
-    return Ok(LoToken {
+    return Ok(.LoToken {
         type_: LoTokenType::Delim,
         repr: self.chars.slice(loc.pos.offset, self.index),
         loc: loc,
@@ -573,13 +573,13 @@ fn LoLexer::lex_operator(&self): LexResult {
     if !matched_fully {
         let message = String::from_str("Unexpected char: ");
         message.push(self.current_char()?);
-        return Err(heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(.LoError {
             message: message,
             loc: self.loc(),
         }));
     };
     loc.end_pos = self.pos();
-    return Ok(LoToken {
+    return Ok(.LoToken {
         type_: LoTokenType::Operator,
         repr: repr,
         loc: loc,
@@ -662,14 +662,14 @@ fn LoLexer::peek_next_char(&self): Result<u8, &LoError> {
 };
 
 fn LoLexer::err_unexpected_eof(&self): &LoError {
-    return heap::new!<LoError>(LoError {
+    return heap::new!<LoError>(.LoError {
         message: String::from_str("ParseError: Unexpected EOF"),
         loc: self.loc(),
     });
 };
 
 fn LoLexer::loc(&self): LoLocation {
-    return LoLocation {
+    return .LoLocation {
         file_index: self.file_index,
         pos: self.pos(),
         end_pos: self.pos(),
@@ -677,7 +677,7 @@ fn LoLexer::loc(&self): LoLocation {
 };
 
 fn LoLexer::pos(&self): LoPosition {
-    return LoPosition {
+    return .LoPosition {
         offset: self.index,
         line: self.line,
         col: self.col,

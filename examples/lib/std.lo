@@ -276,7 +276,7 @@ fn Vec::with_capacity(capacity: u32, item_size: u32): &Vec {
 };
 
 fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32): &Vec {
-    return new!<Vec>(alloc_id, Vec {
+    return new!<Vec>(alloc_id, .Vec {
         data: alloc(alloc_id, capacity * item_size),
         size: 0,
         capacity: capacity,
@@ -389,19 +389,19 @@ struct String {
 };
 
 fn String::new(capacity: u32): String {
-    return String {
+    return .String {
         chars: Vec::with_capacity!<u8>(capacity),
     };
 };
 
 fn String::new_using(capacity: u32, alloc_id: u32): String {
-    return String {
+    return .String {
         chars: Vec::with_capacity_using(capacity, sizeof u8, alloc_id),
     };
 };
 
 fn String::from_chars(chars: &Vec of u8): String {
-    return String {
+    return .String {
         chars: chars,
     };
 };
@@ -418,7 +418,7 @@ fn String::free(self) {
 };
 
 fn String::clone(self): String {
-    return String::from_str(str {
+    return String::from_str(.str {
         data: self.chars.data as *&u8,
         size: self.chars.size,
     });
@@ -442,7 +442,7 @@ fn String::char_at(self, index: u32): u8 {
 };
 
 fn String::as_str(self): str {
-    return str {
+    return .str {
         data: self.chars.data as &u8,
         size: self.chars.size,
     };
@@ -457,7 +457,7 @@ fn str::from_cstr(value: *&u8): str {
         };
         len += 1;
     };
-    return str {
+    return .str {
         data: value,
         size: len,
     };
@@ -471,7 +471,7 @@ fn str::clone(self): str {
     let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size);
     // TODO: won't need a cast if coersion is introduced
     mem::copy!(self.data as &void, cloned_data as &void, self.size);
-    return str {
+    return .str {
         data: cloned_data,
         size: self.size,
     };
@@ -497,7 +497,7 @@ fn str::skip_chars(self, char_count: u32): str {
     if char_count >= self.size {
         return self;
     };
-    return str {
+    return .str {
         data: (self.data as u32 + char_count) as *&u8,
         size: self.size - char_count,
     };
@@ -507,7 +507,7 @@ fn str::slice(self, start: u32, end: u32): str {
     if start >= self.size || end >= self.size || start > end {
         return self;
     };
-    return str {
+    return .str {
         data: (self.data as u32 + start) as *&u8,
         size: end - start,
     };

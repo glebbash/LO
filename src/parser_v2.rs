@@ -826,6 +826,13 @@ impl ParserV2 {
             return Ok(CodeExpr::GetDataSize(GetDataSizeExpr { loc }));
         }
 
+        if let Some(_) = self.eat(Operator, ".")? {
+            let loc = self.prev().loc.clone();
+            let struct_name = self.parse_ident()?;
+            let struct_literal = self.parse_struct_literal(struct_name, loc)?;
+            return Ok(CodeExpr::StructLiteral(struct_literal));
+        }
+
         let ident = self.parse_ident()?;
 
         if self.current().is(Delim, "(") {
@@ -858,44 +865,15 @@ impl ParserV2 {
             }));
         }
 
-        // TODO: remove after struct syntax is changed
-        if ident.repr.chars().next().unwrap().is_ascii_uppercase()
-            || ident.repr == "str"
-            || ident.repr == "wasi::IOVec"
+        if self.current().is(Delim, "{")
+            // TODO: remove after struct syntax is changed
+            && (ident.repr.chars().next().unwrap().is_ascii_uppercase()
+                || ident.repr == "str"
+                || ident.repr == "wasi::IOVec")
         {
-            if let Some(_) = self.eat(Delim, "{")? {
-                let mut loc = ident.loc.clone();
-
-                let mut fields = Vec::new();
-
-                while let None = self.eat(Delim, "}")? {
-                    let mut field_loc = self.current().loc.clone();
-
-                    let field_name = self.expect_any(Symbol)?.clone();
-                    self.expect(Operator, ":")?;
-                    let value = self.parse_code_expr(0)?;
-
-                    field_loc.end_pos = self.prev().loc.end_pos.clone();
-
-                    fields.push(StructInitField {
-                        field_name: field_name.value,
-                        value,
-                        loc: field_loc,
-                    });
-
-                    if !self.current().is(Delim, "}") {
-                        self.expect(Delim, ",")?;
-                    }
-                }
-
-                loc.end_pos = self.prev().loc.end_pos.clone();
-
-                return Ok(CodeExpr::StructLiteral(StructLiteralExpr {
-                    struct_name: ident,
-                    fields,
-                    loc,
-                }));
-            }
+            let loc = ident.loc.clone();
+            let struct_literal = self.parse_struct_literal(ident, loc)?;
+            return Ok(CodeExpr::StructLiteral(struct_literal));
         }
 
         Ok(CodeExpr::Ident(ident))
@@ -924,6 +902,43 @@ impl ParserV2 {
         ident.loc.end_pos = self.prev().loc.end_pos.clone();
 
         Ok(ident)
+    }
+
+    fn parse_struct_literal(
+        &mut self,
+        ident: IdentExpr,
+        mut loc: LoLocation,
+    ) -> Result<StructLiteralExpr, LoError> {
+        let mut fields = Vec::new();
+
+        self.expect(Delim, "{")?;
+        while let None = self.eat(Delim, "}")? {
+            let mut field_loc = self.current().loc.clone();
+
+            let field_name = self.expect_any(Symbol)?.clone();
+            self.expect(Operator, ":")?;
+            let value = self.parse_code_expr(0)?;
+
+            field_loc.end_pos = self.prev().loc.end_pos.clone();
+
+            fields.push(StructLiteralField {
+                field_name: field_name.value,
+                value,
+                loc: field_loc,
+            });
+
+            if !self.current().is(Delim, "}") {
+                self.expect(Delim, ",")?;
+            }
+        }
+
+        loc.end_pos = self.prev().loc.end_pos.clone();
+
+        return Ok(StructLiteralExpr {
+            struct_name: ident,
+            fields,
+            loc,
+        });
     }
 
     fn parse_fn_args(&mut self) -> Result<Vec<CodeExpr>, LoError> {

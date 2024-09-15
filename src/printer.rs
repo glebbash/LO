@@ -524,6 +524,7 @@ impl Printer {
                 fields,
                 loc,
             }) => {
+                stdout_write(".");
                 stdout_write(&struct_name.repr);
                 stdout_writeln(" {");
                 self.indent += 1;

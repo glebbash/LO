@@ -20,7 +20,7 @@ fn LoParser::parse_all(self): Result<void, &LoError> {
     if some_token.exists {
         let message = String::from_str("Unexpected token on top level: ");
         message.push_str(some_token.token.repr);
-        return Err(heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(.LoError {
             message: message,
             loc: some_token.token.loc,
         }));
@@ -46,7 +46,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
         some_token = self.tokens.eat(LoTokenType::Symbol, "memory")?;
         if some_token.exists {
             let memory_def = self.parse_memory()?;
-            self.ctx.wasm_module.exports.push!<WasmExport>(WasmExport {
+            self.ctx.wasm_module.exports.push!<WasmExport>(.WasmExport {
                 name: String::from_str("memory"),
                 item_type: WasmExportType::Mem,
                 item_index: memory_def.index,
@@ -59,7 +59,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
         let unexpected = some_token.token;
         let message = String::from_str("Unexpected exportable: ");
         message.push_str(unexpected.repr);
-        return Err(heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(.LoError {
             message: message,
             loc: unexpected.loc,
         }));
@@ -81,7 +81,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
             if self.ctx.fn_defs.contains_key(fn_decl.fn_name.as_str()) {
                 let message = String::from_str("Cannot redefine function: ");
                 message.push_str(fn_decl.fn_name.as_str());
-                return Err(heap::new!<LoError>(LoError {
+                return Err(heap::new!<LoError>(.LoError {
                     message: message,
                     loc: fn_decl.loc,
                 }));
@@ -89,7 +89,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
             let type_index = self.ctx.insert_fn_type(fn_decl.wasm_type);
             let fn_index = self.ctx.imported_fns_count;
             self.ctx.imported_fns_count += 1;
-            let fn_def = LoFnDef {
+            let fn_def = .LoFnDef {
                 local: false,
                 fn_index: fn_index,
                 fn_params: fn_decl.fn_params,
@@ -98,7 +98,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
                 loc: fn_decl.loc,
             };
             self.ctx.fn_defs.insert!<LoFnDef>(fn_decl.fn_name.clone(), fn_def);
-            self.ctx.wasm_module.imports.push!<WasmImport>(WasmImport {
+            self.ctx.wasm_module.imports.push!<WasmImport>(.WasmImport {
                 module_name: (module_name.value as String).clone(),
                 item_name: fn_decl.method_name,
                 item_type: WasmImportType::Fn,
@@ -131,8 +131,8 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
         // };
         let instrs = Vec::new!<WasmInstr>();
         offset.lower(instrs);
-        self.ctx.wasm_module.datas.push!<WasmData>(WasmData {
-            expr: WasmExpr {
+        self.ctx.wasm_module.datas.push!<WasmData>(.WasmData {
+            expr: .WasmExpr {
                 instrs: instrs,
             },
             bytes: bytes,
@@ -145,7 +145,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
     let unexpected = some_token.token;
     let message = String::from_str("Unexpected top level token: ");
     message.push_str(unexpected.repr);
-    return Err(heap::new!<LoError>(LoError {
+    return Err(heap::new!<LoError>(.LoError {
         message: message,
         loc: unexpected.loc,
     }));
@@ -157,13 +157,13 @@ fn LoParser::parse_fn_def(self, exported: bool): Result<void, &LoError> {
     if self.ctx.fn_defs.contains_key(fn_decl.fn_name.as_str()) {
         let message = String::from_str("Cannot redefine function: ");
         message.push_str(fn_decl.fn_name.as_str());
-        return Err(heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(.LoError {
             message: message,
             loc: fn_decl.loc,
         }));
     };
     if exported {
-        self.ctx.fn_exports.push!<LoFnExport>(LoFnExport {
+        self.ctx.fn_exports.push!<LoFnExport>(.LoFnExport {
             in_name: fn_decl.fn_name.clone(),
             out_name: fn_decl.fn_name.clone(),
         });
@@ -172,7 +172,7 @@ fn LoParser::parse_fn_def(self, exported: bool): Result<void, &LoError> {
     let type_index = self.ctx.insert_fn_type(fn_decl.wasm_type);
     self.ctx.wasm_module.functions.push!<u32>(type_index);
     let fn_index = self.ctx.wasm_module.functions.size - 1;
-    self.ctx.fn_defs.insert!<LoFnDef>(fn_decl.fn_name, LoFnDef {
+    self.ctx.fn_defs.insert!<LoFnDef>(fn_decl.fn_name, .LoFnDef {
         local: true,
         fn_index: fn_index,
         fn_params: fn_decl.fn_params,
@@ -180,7 +180,7 @@ fn LoParser::parse_fn_def(self, exported: bool): Result<void, &LoError> {
         type_: fn_decl.lo_type,
         loc: fn_decl.loc,
     });
-    self.ctx.fn_bodies.push!<LoFnBody>(LoFnBody {
+    self.ctx.fn_bodies.push!<LoFnBody>(.LoFnBody {
         fn_index: fn_index,
         type_index: type_index,
         locals: fn_decl.locals,
@@ -198,16 +198,16 @@ fn LoParser::parse_fn_decl(self): Result<LoFnDecl, &LoError> {
     let method_name = String::from_str(fn_name.repr);
     let receiver_type = 0 as &LoType;
     let params = self.parse_fn_params(self.ctx.type_scope, receiver_type)?;
-    let fn_decl = LoFnDecl {
+    let fn_decl = .LoFnDecl {
         fn_name: String::from_str(fn_name.repr),
         method_name: method_name,
         loc: fn_name.loc,
         fn_params: params,
-        lo_type: LoFnType {
+        lo_type: .LoFnType {
             inputs: Vec::new!<LoType>(),
             output: LoType::Void!(),
         },
-        wasm_type: WasmFnType {
+        wasm_type: .WasmFnType {
             inputs: Vec::new!<WasmValueType>(),
             outputs: Vec::new!<WasmValueType>(),
         },
@@ -215,7 +215,7 @@ fn LoParser::parse_fn_decl(self): Result<LoFnDecl, &LoError> {
     };
     for i in 0..params.size {
         let param = params.get!<LoFnParam>(i);
-        let local_def = LoLocalDef {
+        let local_def = .LoLocalDef {
             index: fn_decl.wasm_type.inputs.size,
             value_type: param.type_.clone(),
             loc: param.loc,
@@ -277,13 +277,13 @@ fn LoParser::parse_fn_params(self, type_scope: &LoTypeScope, receiver_type: &LoT
             if param.name.as_str().equals(p_name.repr) {
                 let message = String::from_str("Found function param with conflicting name: ");
                 message.push_str(p_name.repr);
-                return Err(heap::new!<LoError>(LoError {
+                return Err(heap::new!<LoError>(.LoError {
                     message: message,
                     loc: p_name.loc,
                 }));
             };
         };
-        params.push!<LoFnParam>(LoFnParam {
+        params.push!<LoFnParam>(.LoFnParam {
             name: String::from_str(p_name.repr),
             type_: p_type,
             loc: p_name.loc,
@@ -328,7 +328,7 @@ struct LoBlockContents {
 // TODO: implement complete
 // TODO: `ctx` should be LoBlockContext
 fn LoParser::parse_block_contents(ctx: &LoContext, tokens: &LoTokenStream, expected_type: LoType): Result<LoBlockContents, &LoError> {
-    let contents = LoBlockContents {
+    let contents = .LoBlockContents {
         exprs: Vec::new!<LoInstr>(),
         has_never: false,
         has_return: false,
@@ -395,7 +395,7 @@ fn LoParser::parse_expr(ctx: &LoContext, tokens: &LoTokenStream, min_bp: u32): R
     some_token = tokens.peek();
     let message = String::from_str("Unexpected token: ");
     message.push_str(LoTokenType::to_str(some_token.token.type_));
-    return Err(heap::new!<LoError>(LoError {
+    return Err(heap::new!<LoError>(.LoError {
         message: message,
         loc: some_token.token.loc,
     }));
@@ -411,12 +411,12 @@ fn LoParser::parse_memory(self): Result<LoMemoryDef, &LoError> {
     if self.ctx.memories.contains_key(memory_name.as_str()) {
         let message = String::from_str("Duplicate memory definition: ");
         message.push_str(memory_name.as_str());
-        return Err(heap::new!<LoError>(LoError {
+        return Err(heap::new!<LoError>(.LoError {
             message: message,
             loc: self.tokens.loc(),
         }));
     };
-    let memory_limits = WasmMemory {
+    let memory_limits = .WasmMemory {
         min: 0,
         max: 0,
         has_max: false,
@@ -461,7 +461,7 @@ fn LoParser::parse_memory(self): Result<LoMemoryDef, &LoError> {
     let memory_index = self.ctx.wasm_module.memories.size;
     self.ctx.wasm_module.memories.push!<WasmMemory>(memory_limits);
     self.ctx.memories.insert!<u32>(memory_name.clone(), memory_index);
-    return Ok(LoMemoryDef {
+    return Ok(.LoMemoryDef {
         index: memory_index,
         limits: memory_limits,
     });
@@ -477,7 +477,7 @@ fn LoParser::parse_lo_type_(self, type_scope: &LoTypeScope, is_referenced: bool)
     if some_token.exists {
         return Ok(LoType::U32!());
     };
-    return Err(heap::new!<LoError>(LoError {
+    return Err(heap::new!<LoError>(.LoError {
         message: String::from_str(dbg "TODO: implement"),
         loc: LoLocation::internal(),
     }));

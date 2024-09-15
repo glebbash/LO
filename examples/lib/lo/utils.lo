@@ -15,14 +15,14 @@ struct LoLocation {
 const LoLocation::INTERNAL_FILE_INDEX = u32::MAX;
 
 fn LoLocation::internal(): LoLocation {
-    return LoLocation {
+    return .LoLocation {
         file_index: LoLocation::INTERNAL_FILE_INDEX,
-        pos: LoPosition {
+        pos: .LoPosition {
             offset: 0,
             line: 1,
             col: 1,
         },
-        end_pos: LoPosition {
+        end_pos: .LoPosition {
             offset: 0,
             line: 1,
             col: 1,

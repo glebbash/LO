@@ -1,11 +1,11 @@
 export fn main(): u32 {
-    let p1 = Point2D {
+    let p1 = .Point2D {
         x: 0,
         y: 0,
     };
     p1.x = 1;
     p1.y = 2;
-    let sum = p1.add(Point2D {
+    let sum = p1.add(.Point2D {
         x: 1,
         y: 1,
     });
@@ -18,7 +18,7 @@ struct Point2D {
 };
 
 fn Point2D::add(self, other: Point2D): Point2D {
-    return Point2D {
+    return .Point2D {
         x: self.x + other.x,
         y: self.y + other.y,
     };

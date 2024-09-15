@@ -16,7 +16,7 @@ struct LoType {
 const LoType::Void = 0;
 
 macro LoType::Void!(): LoType {
-    LoType {
+    .LoType {
         kind: LoType::Void,
         data: 0 as &void,
     };
@@ -25,7 +25,7 @@ macro LoType::Void!(): LoType {
 const LoType::U32 = 1;
 
 macro LoType::U32!(): LoType {
-    LoType {
+    .LoType {
         kind: LoType::U32,
         data: 0 as &void,
     };
@@ -100,7 +100,7 @@ const LoInstr::U32Const::KIND = 0;
 type LoInstr::U32Const = u32;
 
 macro LoInstr::U32Const::new!(value: u32): LoInstr {
-    LoInstr {
+    .LoInstr {
         kind: LoInstr::U32Const::KIND,
         // TODO: won't need a cast if coersion is introduced
         data: value as &void,
@@ -114,10 +114,10 @@ struct LoInstr::Return {
 };
 
 macro LoInstr::Return::new!(value: LoInstr): LoInstr {
-    LoInstr {
+    .LoInstr {
         kind: LoInstr::Return::KIND,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<LoInstr::Return>(LoInstr::Return {
+        data: heap::new!<LoInstr::Return>(.LoInstr::Return {
             value: value,
         }) as &void,
     };
@@ -133,10 +133,10 @@ struct LoInstr::CallAndDrop {
 };
 
 macro LoInstr::CallAndDrop::new!(fn_index: u32, return_type: LoType, args: &Vec of LoInstr): LoInstr {
-    LoInstr {
+    .LoInstr {
         kind: LoInstr::CallAndDrop::KIND,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<LoInstr::CallAndDrop>(LoInstr::CallAndDrop {
+        data: heap::new!<LoInstr::CallAndDrop>(.LoInstr::CallAndDrop {
             fn_index: fn_index,
             return_type: return_type,
             args: args,
@@ -153,10 +153,10 @@ struct LoInstr::U32Store {
 };
 
 macro LoInstr::U32Store::new!(address: LoInstr, value: LoInstr): LoInstr {
-    LoInstr {
+    .LoInstr {
         kind: LoInstr::U32Store::KIND,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<LoInstr::U32Store>(LoInstr::U32Store {
+        data: heap::new!<LoInstr::U32Store>(.LoInstr::U32Store {
             address: address,
             value: value,
         }) as &void,

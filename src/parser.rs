@@ -1536,6 +1536,18 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         }
     }
 
+    if let Some(_) = tokens.eat(Operator, ".")? {
+        let struct_name = parse_nested_symbol(tokens)?;
+        let Some(struct_def) = ctx.module.get_struct_def(&struct_name.value) else {
+            return Err(LoError {
+                message: format!("Can not create unknown struct: {}", struct_name.value),
+                loc: struct_name.loc,
+            });
+        };
+
+        return parse_struct_literal(ctx, tokens, struct_name, struct_def);
+    }
+
     let value = parse_nested_symbol(tokens)?;
 
     // must go first, macro values shadow locals
@@ -1654,77 +1666,81 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     }
 
     if let Some(struct_def) = ctx.module.get_struct_def(&value.value) {
-        let struct_name = value;
-
-        let mut values = vec![];
-        tokens.expect(Delim, "{")?;
-        while let None = tokens.eat(Delim, "}")? {
-            let field_name = tokens.expect_any(Symbol)?.clone();
-            tokens.expect(Operator, ":")?;
-            let field_value_loc = tokens.loc().clone();
-            let field_value = parse_expr(ctx, tokens, 0)?;
-
-            if !tokens.next_is(Delim, "}")? {
-                tokens.expect(Delim, ",")?;
-            }
-
-            let field_index = values.len();
-            let Some(struct_field) = struct_def.fields.get(field_index) else {
-                return Err(LoError {
-                    message: format!("Excess field values"),
-                    loc: field_name.loc,
-                });
-            };
-
-            if &field_name.value != &struct_field.name {
-                return Err(LoError {
-                    message: format!("Unexpected field name, expecting: `{}`", struct_field.name),
-                    loc: field_name.loc,
-                });
-            }
-
-            let field_value_type = field_value.get_type(ctx.module);
-            if field_value_type != struct_field.value_type {
-                return Err(LoError {
-                    message: format!(
-                        "Invalid type for field {}.{}, expected: {}, got: {}",
-                        struct_name.value,
-                        field_name.value,
-                        struct_field.value_type,
-                        field_value_type
-                    ),
-                    loc: field_value_loc,
-                });
-            }
-            values.push(field_value);
-        }
-
-        if values.len() < struct_def.fields.len() {
-            let missing_fields = struct_def
-                .fields
-                .iter()
-                .skip(values.len())
-                .map(|f| &f.name)
-                .collect::<Vec<_>>();
-            let missing_fields = ListDisplay(&missing_fields);
-
-            return Err(LoError {
-                message: format!("Missing struct fields: {missing_fields}"),
-                loc: struct_name.loc,
-            });
-        }
-
-        return Ok(
-            LoInstr::MultiValueEmit { values }.casted(LoType::StructInstance {
-                name: struct_name.value,
-            }),
-        );
+        return parse_struct_literal(ctx, tokens, value, struct_def);
     };
 
     return Err(LoError {
         message: format!("Reading unknown variable: {}", value.value),
         loc: value.loc,
     });
+}
+
+fn parse_struct_literal(
+    ctx: &mut BlockContext,
+    tokens: &mut LoTokenStream,
+    struct_name: LoToken,
+    struct_def: &StructDef,
+) -> Result<LoInstr, LoError> {
+    let mut values = vec![];
+    tokens.expect(Delim, "{")?;
+    while let None = tokens.eat(Delim, "}")? {
+        let field_name = tokens.expect_any(Symbol)?.clone();
+        tokens.expect(Operator, ":")?;
+        let field_value_loc = tokens.loc().clone();
+        let field_value = parse_expr(ctx, tokens, 0)?;
+
+        if !tokens.next_is(Delim, "}")? {
+            tokens.expect(Delim, ",")?;
+        }
+
+        let field_index = values.len();
+        let Some(struct_field) = struct_def.fields.get(field_index) else {
+            return Err(LoError {
+                message: format!("Excess field values"),
+                loc: field_name.loc,
+            });
+        };
+
+        if &field_name.value != &struct_field.name {
+            return Err(LoError {
+                message: format!("Unexpected field name, expecting: `{}`", struct_field.name),
+                loc: field_name.loc,
+            });
+        }
+
+        let field_value_type = field_value.get_type(ctx.module);
+        if field_value_type != struct_field.value_type {
+            return Err(LoError {
+                message: format!(
+                    "Invalid type for field {}.{}, expected: {}, got: {}",
+                    struct_name.value, field_name.value, struct_field.value_type, field_value_type
+                ),
+                loc: field_value_loc,
+            });
+        }
+        values.push(field_value);
+    }
+
+    if values.len() < struct_def.fields.len() {
+        let missing_fields = struct_def
+            .fields
+            .iter()
+            .skip(values.len())
+            .map(|f| &f.name)
+            .collect::<Vec<_>>();
+        let missing_fields = ListDisplay(&missing_fields);
+
+        return Err(LoError {
+            message: format!("Missing struct fields: {missing_fields}"),
+            loc: struct_name.loc,
+        });
+    }
+
+    return Ok(
+        LoInstr::MultiValueEmit { values }.casted(LoType::StructInstance {
+            name: struct_name.value,
+        }),
+    );
 }
 
 fn cast_to_signed(value: LoInstr, loc: &LoLocation) -> Result<LoInstr, LoError> {

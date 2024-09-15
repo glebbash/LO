@@ -5,7 +5,7 @@ struct StringMap {
 };
 
 macro StringMap::new!<T>(): StringMap {
-    StringMap {
+    .StringMap {
         items: Vec::new(sizeof String + sizeof T),
     };
 };
