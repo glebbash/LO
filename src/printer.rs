@@ -17,7 +17,9 @@ impl Printer {
             comments_printed: 0,
         };
 
+        stdout_enable_bufferring();
         printer.print_file();
+        stdout_disable_bufferring();
     }
 
     // TODO: print all function declarations first in C mode

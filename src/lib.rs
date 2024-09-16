@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(alloc_error_handler)]
+#![feature(alloc_error_handler, thread_local)]
 
 extern crate alloc;
 
@@ -55,10 +55,14 @@ mod wasi_api {
     #[no_mangle]
     pub extern "C" fn _start() {
         start().unwrap_or_else(|err_message| {
+            stdout_disable_bufferring();
+
             stderr_write(err_message);
             stderr_write("\n");
             proc_exit(1);
         });
+
+        stdout_disable_bufferring();
     }
 
     fn start() -> Result<(), String> {
@@ -125,10 +129,15 @@ mod wasi_api {
             let tokens = Lexer::lex(file_name, &chars)?;
             let ast = ParserV2::parse(tokens)?;
 
+            stdout_enable_bufferring();
             Printer::print(Rc::new(ast));
 
             return Ok(());
         };
+
+        if compiler_mode == CompilerMode::Inspect {
+            stdout_enable_bufferring();
+        }
 
         let ctx = &mut parser::init(compiler_mode);
 

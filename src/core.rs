@@ -1,5 +1,5 @@
 use alloc::{format, rc::Rc, string::String, vec, vec::Vec};
-use core::{ffi::CStr, str};
+use core::{cell::RefCell, ffi::CStr, str};
 
 #[derive(Default, PartialEq)]
 pub enum CompilerMode {
@@ -216,8 +216,44 @@ pub fn stdout_writeln(message: impl AsRef<str>) {
     stdout_write("\n");
 }
 
+#[thread_local]
+static STDOUT_BUFFER: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+const STDOUT_BUFFER_SIZE: usize = 4096;
+
+pub fn stdout_enable_bufferring() {
+    *STDOUT_BUFFER.borrow_mut() = Some(Vec::with_capacity(STDOUT_BUFFER_SIZE));
+}
+
+pub fn stdout_disable_bufferring() {
+    if let Some(buffer) = &mut *STDOUT_BUFFER.borrow_mut() {
+        if !buffer.is_empty() {
+            fputs(wasi::FD_STDOUT, &buffer);
+            buffer.clear();
+        }
+    }
+    *STDOUT_BUFFER.borrow_mut() = None;
+}
+
 pub fn stdout_write(message: impl AsRef<str>) {
-    fputs(wasi::FD_STDOUT, message.as_ref().as_bytes());
+    let message_bytes = message.as_ref().as_bytes();
+
+    let Some(buffer) = &mut *STDOUT_BUFFER.borrow_mut() else {
+        fputs(wasi::FD_STDOUT, message_bytes);
+        return;
+    };
+
+    if buffer.len() + message_bytes.len() > STDOUT_BUFFER_SIZE {
+        if !buffer.is_empty() {
+            fputs(wasi::FD_STDOUT, &buffer);
+            buffer.clear();
+        }
+    }
+
+    if message_bytes.len() >= STDOUT_BUFFER_SIZE {
+        fputs(wasi::FD_STDOUT, message_bytes);
+    } else {
+        buffer.extend_from_slice(message_bytes);
+    }
 }
 
 pub fn stderr_write(message: impl AsRef<str>) {
