@@ -5,7 +5,7 @@
     "author": "glebbash",
     "publisher": "glebbash",
     "license": "MIT",
-    "version": "0.0.22",
+    "version": "0.0.56",
     "engines": {
         "vscode": "^1.88.0"
     },
@@ -77,6 +77,11 @@
                     "type": "string",
                     "default": "lo.wasm",
                     "description": "Path to the compiler, relative to workspace folder"
+                },
+                "lo.enableFormatting": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Registers formatting provider for LO files (this field change requires extension restart)"
                 }
             }
         },

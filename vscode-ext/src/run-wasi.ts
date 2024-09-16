@@ -1,10 +1,11 @@
-import { Wasm, Readable } from "@vscode/wasm-wasi/v1";
+import { Wasm, Readable, MountPointDescriptor } from "@vscode/wasm-wasi/v1";
 
 export type ProgramOptions = {
     processName: string;
     args: string[];
     cwdUri: import("vscode").Uri;
     module: WebAssembly.Module;
+    memoryFs?: Record<string, Uint8Array>;
 };
 
 export type ProgramResult = {
@@ -30,27 +31,44 @@ export async function runWasiProgram(
     const stdout = accumulateBytes(wasm.createReadable());
     const stderr = accumulateBytes(wasm.createReadable());
 
+    // TODO: figure out why this doesn't work
+    // { kind: "workspaceFolder" },
+    let mountPoint: MountPointDescriptor = {
+        kind: "vscodeFileSystem",
+        uri: options.cwdUri,
+        mountPoint: "/",
+    };
+
+    if (options.memoryFs) {
+        const fileSystem = await wasm.createMemoryFileSystem();
+        for (const [fileName, fileContent] of Object.entries(
+            options.memoryFs
+        )) {
+            fileSystem.createFile(fileName, fileContent);
+        }
+
+        mountPoint = {
+            kind: "memoryFileSystem",
+            fileSystem,
+            mountPoint: "/",
+        };
+    }
+
     const process = await wasm.createProcess(
         options.processName,
         options.module,
         {
+            args: options.args,
+            mountPoints: [mountPoint],
             stdio: {
                 in: { kind: "pipeIn", pipe: stdin },
                 out: { kind: "pipeOut", pipe: stdout },
                 err: { kind: "pipeOut", pipe: stderr },
             },
-            args: options.args,
-            mountPoints: [
-                // TODO: figure out why this doesn't work
-                // { kind: "workspaceFolder" },
-                {
-                    kind: "vscodeFileSystem",
-                    uri: options.cwdUri,
-                    mountPoint: "/",
-                },
-            ],
+            trace: true,
         }
     );
+
     const exitCode = await process.run();
 
     return {
@@ -82,12 +100,25 @@ function checkValidWasiModule(module: WebAssembly.Module) {
 export function accumulateBytes(
     readable: Readable
 ): Readable & { get: () => Uint8Array } {
-    let data = new Uint8Array();
-    readable.onData((chunk) => {
-        const newData = new Uint8Array(data.length + chunk.length);
-        newData.set(data);
-        newData.set(chunk, data.length);
-        data = newData;
+    let totalLength = 0;
+    const chunks: Uint8Array[] = [];
+
+    readable.onData((chunk: Uint8Array) => {
+        chunks.push(chunk);
+        totalLength += chunk.length;
     });
-    return Object.assign(readable, { get: () => data });
+
+    return Object.assign(readable, {
+        get: () => {
+            const result = new Uint8Array(totalLength);
+            let offset = 0;
+
+            for (const chunk of chunks) {
+                result.set(chunk, offset);
+                offset += chunk.length;
+            }
+
+            return result;
+        },
+    });
 }

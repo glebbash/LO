@@ -12,24 +12,13 @@ export type WebShellCommandHandler = (
     rootFileSystem: RootFileSystem
 ) => Promise<number>;
 
-// TODO: drop deprecated `file` and `link` at some point
-
 type DiagnisticItem =
     | { type: "file"; index: number; path: string }
     | { type: "info"; loc: string; link?: string; hover?: string }
-    /** deprecated in favor of "info" */
-    | { type: "hover"; source: number; range: string; content: string }
-    /** deprecated in favor of "info" */
-    | {
-          type: "link";
-          source: number;
-          sourceRange: string;
-          target: number;
-          targetRange: string;
-      }
     | { type: "end" };
 
 export async function activate(context: vscode.ExtensionContext) {
+    const logChannel = vscode.window.createOutputChannel("LO extension");
     const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri!;
     const analysis = new FileAnalysisCollection("lo");
     analysis.registerProviders(context);
@@ -45,17 +34,21 @@ export async function activate(context: vscode.ExtensionContext) {
         );
     };
 
-    const processDocument = async (document: vscode.TextDocument) => {
+    const inspectDocument = async (document: vscode.TextDocument) => {
         const ctx = await loadCompilerCtx();
         if (!ctx) {
             return;
         }
+
+        const inspectLatency = new Latency("Inspect " + document.fileName);
         const compilerResult = await wasi.runWasiProgram({
             processName: "lo",
             cwdUri: workspaceUri,
             args: [vscode.workspace.asRelativePath(document.uri), "--inspect"],
             module: ctx.compilerModule,
         });
+        inspectLatency.measureAndLog(logChannel);
+
         analysis.clear();
         if (compilerResult.exitCode !== 0) {
             return showCompilerError(
@@ -65,6 +58,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 compilerResult.exitCode
             );
         }
+
         const diagnostics: DiagnisticItem[] = JSON.parse(
             new TextDecoder().decode(compilerResult.stdout)
         );
@@ -75,28 +69,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 const diag = { uri, hovers: [], links: [] };
                 analysis.push(diag);
                 analysisPerIndex.set(d.index, diag);
-            }
-
-            if (d.type === "hover") {
-                const fileDiagnostic = analysisPerIndex.get(d.source)!;
-                fileDiagnostic.hovers.push(
-                    new vscode.Hover(
-                        new vscode.MarkdownString().appendCodeblock(
-                            d.content,
-                            "lo"
-                        ),
-                        parseRange(d.range)
-                    )
-                );
-            }
-
-            if (d.type === "link") {
-                const fileDiagnostic = analysisPerIndex.get(d.source)!;
-                fileDiagnostic.links.push({
-                    originSelectionRange: parseRange(d.sourceRange),
-                    targetUri: analysisPerIndex.get(d.target)!.uri,
-                    targetRange: parseRange(d.targetRange),
-                });
             }
 
             if (d.type === "info") {
@@ -162,12 +134,17 @@ export async function activate(context: vscode.ExtensionContext) {
                 return vscode.window.showErrorMessage("No files opened");
             }
 
+            const compileLatency = new Latency(
+                "Compile " + currentFile.fileName
+            );
             const compilerResult = await wasi.runWasiProgram({
                 processName: "lo",
                 cwdUri: workspaceUri,
                 args: [vscode.workspace.asRelativePath(currentFile.uri)],
                 module: ctx.compilerModule,
             });
+            compileLatency.measureAndLog(logChannel);
+
             analysis.clear();
             if (compilerResult.exitCode !== 0) {
                 return showCompilerError(
@@ -209,53 +186,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 modal: true,
                 detail: new TextDecoder().decode(programResult.stdout),
             });
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand("lo.formatFile", async () => {
-            const ctx = await loadCompilerCtx();
-            if (!ctx) {
-                return;
-            }
-
-            const currentFile = vscode.window.activeTextEditor?.document;
-            if (currentFile === undefined) {
-                return vscode.window.showErrorMessage("No files opened");
-            }
-
-            const compilerResult = await wasi.runWasiProgram({
-                processName: "lo",
-                cwdUri: workspaceUri,
-                args: [
-                    vscode.workspace.asRelativePath(currentFile.uri),
-                    "--pretty-print",
-                ],
-                module: ctx.compilerModule,
-            });
-
-            analysis.clear();
-            if (compilerResult.exitCode !== 0) {
-                return showCompilerError(
-                    workspaceUri,
-                    analysis,
-                    new TextDecoder().decode(compilerResult.stderr),
-                    compilerResult.exitCode
-                );
-            }
-
-            const formattedFile = new TextDecoder().decode(
-                compilerResult.stdout
-            );
-
-            const edit = new vscode.WorkspaceEdit();
-            const fullRange = new vscode.Range(
-                new vscode.Position(0, 0),
-                currentFile.lineAt(currentFile.lineCount - 1).range.end
-            );
-            edit.replace(currentFile.uri, fullRange, formattedFile);
-
-            return vscode.workspace.applyEdit(edit);
         })
     );
 
@@ -385,12 +315,99 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand("lo.formatFile", async () => {
+            const currentFile = vscode.window.activeTextEditor?.document;
+            if (currentFile === undefined) {
+                return vscode.window.showErrorMessage("No files opened");
+            }
+
+            const formatLatency = new Latency("Format " + currentFile.fileName);
+            const edits = await formatFile(workspaceUri, currentFile, analysis);
+            formatLatency.measureAndLog(logChannel);
+
+            const workspaceEdit = new vscode.WorkspaceEdit();
+            workspaceEdit.set(currentFile.uri, edits);
+            await vscode.workspace.applyEdit(workspaceEdit);
+        })
+    );
+
+    const config = vscode.workspace.getConfiguration("lo");
+    if (config.get<boolean>("enableFormatting") ?? true) {
+        context.subscriptions.push(
+            vscode.languages.registerDocumentFormattingEditProvider("lo", {
+                async provideDocumentFormattingEdits(currentFile) {
+                    const formatLatency = new Latency(
+                        "Format " + currentFile.fileName
+                    );
+                    const edits = await formatFile(
+                        workspaceUri,
+                        currentFile,
+                        analysis
+                    );
+                    formatLatency.measureAndLog(logChannel);
+                    return edits;
+                },
+            })
+        );
+    }
+
+    context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (doc) => {
             if (doc.languageId === "lo") {
-                await processDocument(doc);
+                await inspectDocument(doc);
             }
         })
     );
+}
+
+async function formatFile(
+    workspaceUri: vscode.Uri,
+    currentFile: vscode.TextDocument,
+    analysis: FileAnalysisCollection
+) {
+    const ctx = await loadCompilerCtx();
+    if (!ctx) {
+        return [];
+    }
+
+    const tmpFileName = crypto.randomUUID() + ".lo";
+
+    const compilerResult = await wasi.runWasiProgram({
+        processName: "lo",
+        cwdUri: workspaceUri,
+        args: [tmpFileName, "--pretty-print"],
+        module: ctx.compilerModule,
+        memoryFs: {
+            [tmpFileName]: new TextEncoder().encode(currentFile.getText()),
+        },
+    });
+
+    analysis.clear();
+    if (compilerResult.exitCode !== 0) {
+        const realFileName = vscode.workspace.asRelativePath(currentFile.uri);
+        const errorMessage = new TextDecoder()
+            .decode(compilerResult.stderr)
+            .replaceAll(tmpFileName, realFileName);
+
+        await showCompilerError(
+            workspaceUri,
+            analysis,
+            errorMessage,
+            compilerResult.exitCode
+        );
+        return [];
+    }
+
+    const formattedFile = new TextDecoder().decode(compilerResult.stdout);
+    return [
+        new vscode.TextEdit(
+            new vscode.Range(
+                new vscode.Position(0, 0),
+                currentFile.lineAt(currentFile.lineCount - 1).range.end
+            ),
+            formattedFile
+        ),
+    ];
 }
 
 async function loadCompilerCtx() {
@@ -453,4 +470,15 @@ async function showCompilerError(
         ...(analysis.diagnosticCollection.get(fileUri) ?? []),
         diagnostic,
     ]);
+}
+
+class Latency {
+    private startTime = performance.now();
+
+    constructor(private label: string) {}
+
+    measureAndLog(logChannel: vscode.OutputChannel) {
+        const duration = performance.now() - this.startTime;
+        logChannel.appendLine(`${this.label} OK in ${duration.toFixed(2)}ms`);
+    }
 }
