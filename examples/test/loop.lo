@@ -1,0 +1,16 @@
+export fn main(): u32 {
+    return factorial(5);
+};
+
+fn factorial(n: u32): u32 {
+    let result = 1;
+    let i = n;
+    loop {
+        if i == 0 {
+            break;
+        };
+        result *= i;
+        i -= 1;
+    };
+    return result;
+};

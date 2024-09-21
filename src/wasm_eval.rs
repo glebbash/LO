@@ -78,38 +78,64 @@ impl WasmEval {
     fn eval_expr(&self, expr: &WasmExpr) -> Result<(), EvalError> {
         let mut blocks = Vec::<BlockState>::new();
 
-        for instr in &expr.instrs {
+        let mut loc = 0;
+        while loc < expr.instrs.len() {
+            let instr = &expr.instrs[loc];
+
             match instr {
                 WasmInstr::BlockStart {
                     block_kind,
-                    block_type,
+                    block_type: _,
                 } => {
-                    let WasmBlockKind::If = block_kind else {
-                        todo!()
-                    };
-                    let WasmBlockType::NoOut = block_type else {
-                        todo!()
-                    };
+                    let mut should_skip = false;
+                    if let WasmBlockKind::If = block_kind {
+                        let WasmValue::I32 { value: cond } =
+                            self.state.borrow_mut().stack.pop().unwrap()
+                        else {
+                            unreachable!()
+                        };
 
-                    let WasmValue::I32 { value: cond } =
-                        self.state.borrow_mut().stack.pop().unwrap()
-                    else {
-                        unreachable!()
-                    };
+                        should_skip = cond == 0;
+                    }
 
                     blocks.push(BlockState {
-                        cond: cond == 1,
-                        in_then: true,
+                        loc,
+                        kind: block_kind.clone(),
+                        should_skip,
                     });
                 }
                 WasmInstr::Else => {
-                    blocks.last_mut().unwrap().in_then = false;
+                    let block = blocks.last_mut().unwrap();
+                    if block.kind == WasmBlockKind::If {
+                        block.should_skip = !block.should_skip;
+                    }
                 }
                 WasmInstr::BlockEnd => {
                     blocks.pop().unwrap();
                 }
-                _ if blocks.last().is_some() && blocks.last().unwrap().should_skip() => {
+                _ if blocks.last().is_some() && blocks.last().unwrap().should_skip => {
+                    loc += 1;
                     continue;
+                }
+                WasmInstr::Branch { label_index } => {
+                    let block_len = blocks.len();
+                    let block_to_branch = &mut blocks[block_len - 1 - *label_index as usize];
+
+                    if block_to_branch.kind == WasmBlockKind::Loop {
+                        block_to_branch.should_skip = false;
+                        loc = block_to_branch.loc + 1;
+                        for _ in 0..*label_index {
+                            blocks.pop();
+                        }
+                        continue;
+                    }
+
+                    // will make `else` instr not toggle skip flag
+                    block_to_branch.kind = WasmBlockKind::Block;
+                    block_to_branch.should_skip = true;
+                    for i in 0..*label_index {
+                        blocks[block_len - 1 - i as usize].should_skip = true;
+                    }
                 }
                 WasmInstr::Return => {
                     break;
@@ -117,7 +143,6 @@ impl WasmEval {
                 WasmInstr::Call { fn_index } => {
                     self.call_fn(*fn_index)?;
                 }
-                WasmInstr::Branch { .. } => todo!("{instr:?}"),
 
                 WasmInstr::I32Const { value } => {
                     let value = WasmValue::I32 { value: *value };
@@ -278,6 +303,8 @@ impl WasmEval {
                     }
                 }
             }
+
+            loc += 1;
         }
 
         Ok(())
@@ -316,14 +343,9 @@ struct CallFrame {
 }
 
 struct BlockState {
-    cond: bool,
-    in_then: bool,
-}
-
-impl BlockState {
-    fn should_skip(&self) -> bool {
-        self.cond != self.in_then
-    }
+    loc: usize,
+    kind: WasmBlockKind,
+    should_skip: bool,
 }
 
 // values

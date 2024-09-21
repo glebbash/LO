@@ -243,6 +243,15 @@ async function testCommand() {
         assert.strictEqual(result, 69);
     });
 
+    testCompilers("compiles loop", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/loop.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 120);
+    });
+
     testCompilers("compiles for-loop", { v1 }, async (compile) => {
         const output = await compile("./examples/test/for-loop.lo");
 
@@ -786,6 +795,7 @@ async function testCommand() {
             "examples/test/include.lo",
             "examples/test/lexer.test.lo",
             "examples/test/locals.lo",
+            "examples/test/loop.lo",
             "examples/test/macro.lo",
             "examples/test/methods.lo",
             "examples/test/multiple-compiler-errors.lo",
@@ -838,42 +848,47 @@ async function testCommand() {
             assert.strictEqual(res.toString("utf-8"), "result: 69\n");
         });
 
-        test("hex-and-shifts.lo", async () => {
+        test("interprets hex-and-shifts.lo", async () => {
             const res = await interpret("examples/test/hex-and-shifts.lo");
             assert.strictEqual(res.toString("utf-8"), "result: 31\n");
         });
 
-        // test("compiles for-loop", async () => {
+        test("interprets loop", async () => {
+            const res = await interpret("./examples/test/loop.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 120\n");
+        });
+
+        // test("interprets for-loop", async () => {
         //     const res = await interpret("./examples/test/for-loop.lo");
         //     assert.strictEqual(res.toString("utf-8"), "result: 138\n");
         // });
 
-        test("compiles methods", async () => {
+        test("interprets methods", async () => {
             const res = await interpret("./examples/test/methods.lo");
             assert.strictEqual(res.toString("utf-8"), "result: 1\n");
         });
 
-        test("compiles decl-nesting.lo", async () => {
+        test("interprets decl-nesting.lo", async () => {
             const res = await interpret("./examples/test/decl-nesting.lo");
             assert.strictEqual(res.toString("utf-8"), "result: 16\n");
         });
 
-        test("compiles struct", async () => {
+        test("interprets struct", async () => {
             const res = await interpret("./examples/test/struct.lo");
             assert.strictEqual(res.toString("utf-8"), "result: 13\n");
         });
 
-        // test("compiles nested-if-break", async () => {
-        //     const res = await interpret("./examples/test/nested-if-break.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 1\n");
-        // });
+        test("interprets nested-if-break", async () => {
+            const res = await interpret("./examples/test/nested-if-break.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 1\n");
+        });
 
-        // test("compiles struct-ref", async () => {
+        // test("interprets struct-ref", async () => {
         //     const res = await interpret("./examples/test/struct-ref.lo");
         //     assert.strictEqual(res.toString("utf-8"), "result: 3\n");
         // });
 
-        test("compiles macro", async () => {
+        test("interprets macro", async () => {
             const res = await interpret("./examples/test/macro.lo");
             assert.strictEqual(res.toString("utf-8"), "result: 16\n");
         });
