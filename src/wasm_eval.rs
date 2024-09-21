@@ -55,11 +55,11 @@ impl WasmEval {
         let (fn_type, code) = self.get_fn_info(fn_index)?;
 
         let mut call_frame = CallFrame::default();
-
-        for _ in (0..fn_type.inputs.len()).rev() {
+        for _ in 0..fn_type.inputs.len() {
             let value = self.state.borrow_mut().stack.pop().unwrap();
             call_frame.locals.push(value);
         }
+        call_frame.locals.reverse();
         for local in &code.locals {
             for _ in 0..local.count {
                 let value = WasmValue::default_for_type(&local.value_type);
@@ -183,10 +183,6 @@ impl WasmEval {
                     };
 
                     match kind {
-                        WasmBinaryOpKind::I32_LT_U => {
-                            let value = if lhs < rhs { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
                         WasmBinaryOpKind::I32_ADD => {
                             let value = lhs + rhs;
                             stack.push(WasmValue::I32 { value });
@@ -199,12 +195,28 @@ impl WasmEval {
                             let value = lhs * rhs;
                             stack.push(WasmValue::I32 { value });
                         }
+                        WasmBinaryOpKind::I32_AND => {
+                            let value = lhs & rhs;
+                            stack.push(WasmValue::I32 { value })
+                        }
                         WasmBinaryOpKind::I32_SHR_U => {
                             let value = ((lhs as u32) >> (rhs as u32)) as i32;
                             stack.push(WasmValue::I32 { value });
                         }
-                        WasmBinaryOpKind::I32_EQ
-                        | WasmBinaryOpKind::I32_NE
+                        WasmBinaryOpKind::I32_REM_U => {
+                            let value = ((lhs as u32) % (rhs as u32)) as i32;
+                            crate::core::debug(format!("{lhs} % {rhs} = {value}"));
+                            stack.push(WasmValue::I32 { value });
+                        }
+                        WasmBinaryOpKind::I32_EQ => {
+                            let value = if lhs == rhs { 1 } else { 0 };
+                            stack.push(WasmValue::I32 { value })
+                        }
+                        WasmBinaryOpKind::I32_LT_U => {
+                            let value = if (lhs as u32) < (rhs as u32) { 1 } else { 0 };
+                            stack.push(WasmValue::I32 { value })
+                        }
+                        WasmBinaryOpKind::I32_NE
                         | WasmBinaryOpKind::I32_LT_S
                         | WasmBinaryOpKind::I32_GT_S
                         | WasmBinaryOpKind::I32_GT_U
@@ -215,8 +227,6 @@ impl WasmEval {
                         | WasmBinaryOpKind::I32_DIV_S
                         | WasmBinaryOpKind::I32_DIV_U
                         | WasmBinaryOpKind::I32_REM_S
-                        | WasmBinaryOpKind::I32_REM_U
-                        | WasmBinaryOpKind::I32_AND
                         | WasmBinaryOpKind::I32_OR
                         | WasmBinaryOpKind::I32_SHL
                         | WasmBinaryOpKind::I32_SHR_S => todo!("{kind:?}"),

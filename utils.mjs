@@ -815,9 +815,7 @@ async function testCommand() {
     describe("interpreter", async () => {
         const interpret = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
-            {
-                buildArgs: (fileName) => ["lo", fileName ?? "-i", "--eval"],
-            }
+            { buildArgs: (fileName) => ["lo", fileName ?? "-i", "--eval"] }
         );
 
         test("interprets 42.lo", async () => {
@@ -850,20 +848,20 @@ async function testCommand() {
         //     assert.strictEqual(res.toString("utf-8"), "result: 138\n");
         // });
 
-        // test("compiles methods", async () => {
-        //     const res = await interpret("./examples/test/methods.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 1\n");
-        // });
+        test("compiles methods", async () => {
+            const res = await interpret("./examples/test/methods.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 1\n");
+        });
 
-        // test("compiles decl-nesting.lo", async () => {
-        //     const res = await interpret("./examples/test/decl-nesting.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 16\n");
-        // });
+        test("compiles decl-nesting.lo", async () => {
+            const res = await interpret("./examples/test/decl-nesting.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 16\n");
+        });
 
-        // test("compiles struct", async () => {
-        //     const res = await interpret("./examples/test/struct.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 13\n");
-        // });
+        test("compiles struct", async () => {
+            const res = await interpret("./examples/test/struct.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 13\n");
+        });
 
         // test("compiles nested-if-break", async () => {
         //     const res = await interpret("./examples/test/nested-if-break.lo");
@@ -875,10 +873,10 @@ async function testCommand() {
         //     assert.strictEqual(res.toString("utf-8"), "result: 3\n");
         // });
 
-        // test("compiles macro", async () => {
-        //     const res = await interpret("./examples/test/macro.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 16\n");
-        // });
+        test("compiles macro", async () => {
+            const res = await interpret("./examples/test/macro.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 16\n");
+        });
     });
 
     /**
