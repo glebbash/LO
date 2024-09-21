@@ -1,4 +1,11 @@
-export fn else_if_test(x: u32): u32 {
+export fn main(): u32 {
+    let x1 = 2 * else_if_test(4);
+    let x2 = 3 * else_if_test(9);
+    let x3 = 5 * else_if_test(11);
+    return x1 + x2 + x3;
+};
+
+fn else_if_test(x: u32): u32 {
     if x < 5 {
         return 0;
     } else if x < 10 {

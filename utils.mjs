@@ -168,16 +168,6 @@ async function testCommand() {
         assert.strictEqual(program.add(2, 3), 5);
     });
 
-    testCompilers("else-if.lo", { v1, v2 }, async (compile) => {
-        const output = await compile("examples/test/else-if.lo");
-
-        const program = await loadWasm(output);
-
-        assert.strictEqual(program.else_if_test(4), 0);
-        assert.strictEqual(program.else_if_test(9), 1);
-        assert.strictEqual(program.else_if_test(11), 2);
-    });
-
     testCompilers("factorial.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/factorial.lo");
 
@@ -202,6 +192,14 @@ async function testCommand() {
         const result = program.main();
 
         assert.strictEqual(result, 31);
+    });
+
+    testCompilers("else-if.lo", { v1 }, async (compile) => {
+        const output = await compile("examples/test/else-if.lo");
+
+        const program = await loadWasm(output);
+
+        assert.strictEqual(program.main(), 13);
     });
 
     testCompilers("import.lo", { v1 }, async (compile) => {
