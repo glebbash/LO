@@ -740,6 +740,12 @@ impl ParserV2 {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "unreachable")? {
+            let loc = self.prev().loc.clone();
+
+            return Ok(CodeExpr::Unreachable(UnreachableExpr { loc }));
+        }
+
         if let Some(_) = self.eat(Symbol, "defer")? {
             let mut loc = self.prev().loc.clone();
 

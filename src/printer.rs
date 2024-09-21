@@ -504,6 +504,9 @@ impl Printer {
             CodeExpr::Continue(ContinueExpr { loc: _ }) => {
                 stdout_write("continue");
             }
+            CodeExpr::Unreachable(UnreachableExpr { loc: _ }) => {
+                stdout_write("unreachable");
+            }
             CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
                 stdout_write(message);

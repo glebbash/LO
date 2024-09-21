@@ -103,6 +103,9 @@ impl CodeGenerator {
                 self.lower(expr, instrs);
             }
             LoExpr::Void => {}
+            LoExpr::Unreachable => {
+                instrs.push(WasmInstr::Unreachable);
+            }
             LoExpr::U32Const { value } => {
                 instrs.push(WasmInstr::I32Const {
                     value: *value as i32,

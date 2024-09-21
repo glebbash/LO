@@ -235,6 +235,7 @@ pub enum CodeExpr {
     If(IfExpr),
     Loop(LoopExpr),
     Break(BreakExpr),
+    Unreachable(UnreachableExpr),
     ForLoop(ForLoopExpr),
     Continue(ContinueExpr),
     Defer(DeferExpr),
@@ -329,6 +330,11 @@ pub struct LoopExpr {
 
 #[derive(Debug)]
 pub struct BreakExpr {
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct UnreachableExpr {
     pub loc: LoLocation,
 }
 
@@ -496,6 +502,7 @@ impl Locatable for CodeExpr {
             CodeExpr::PropagateError(e) => &e.loc,
             CodeExpr::PrefixOp(e) => &e.loc,
             CodeExpr::GetDataSize(e) => &e.loc,
+            CodeExpr::Unreachable(e) => &e.loc,
         }
     }
 }

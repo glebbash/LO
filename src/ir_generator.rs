@@ -33,6 +33,7 @@ pub enum LoExpr {
     },
 
     Void,
+    Unreachable,
     U32Const {
         value: u32,
     },
@@ -66,6 +67,7 @@ impl LoExpr {
             LoExpr::Casted { casted_to, .. } => casted_to.clone(),
 
             LoExpr::Void { .. } => LoType::Void,
+            LoExpr::Unreachable { .. } => LoType::Never,
             LoExpr::U32Const { .. } => LoType::U32,
             LoExpr::Return { .. } => LoType::Never,
             LoExpr::BinaryOp { lhs, .. } => lhs.get_type(),
@@ -482,6 +484,8 @@ impl IRGenerator {
                     return_type: fn_def.output.clone(),
                 })
             }
+            CodeExpr::Unreachable(UnreachableExpr { .. }) => Ok(LoExpr::Unreachable),
+
             CodeExpr::BoolLiteral(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Let(_) => Err(LoError::todo(file!(), line!())),
             CodeExpr::Loop(_) => Err(LoError::todo(file!(), line!())),

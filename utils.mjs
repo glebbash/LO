@@ -3,7 +3,7 @@
 
 import { WASI } from "node:wasi";
 import process from "node:process";
-import { test, describe, it } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";

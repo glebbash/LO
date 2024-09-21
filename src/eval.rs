@@ -193,6 +193,7 @@ impl Eval {
                     LoValue::Void
                 }
             }
+            LoExpr::Unreachable => LoValue::Never,
         }
     }
 
