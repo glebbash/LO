@@ -204,7 +204,7 @@ impl WasmEval {
                     offset,
                 } => {
                     let WasmLoadKind::I32 = kind else {
-                        todo!("store {kind:?}")
+                        todo!("load {kind:?}")
                     };
 
                     let WasmValue::I32 { value: addr } =
