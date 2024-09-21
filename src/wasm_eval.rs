@@ -1,6 +1,8 @@
 use crate::wasm::*;
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 use core::cell::RefCell;
+
+const PAGE_SIZE: usize = 65_536;
 
 #[derive(Debug)]
 pub struct EvalError {
@@ -29,6 +31,12 @@ impl WasmEval {
         for global in &self.wasm_module.globals {
             let value = WasmValue::default_for_type(&global.kind.value_type);
             self.state.borrow_mut().globals.push(value);
+        }
+
+        if let Some(memory) = self.wasm_module.memories.last() {
+            self.state.borrow_mut().memory = LinearMemory {
+                bytes: vec![0; memory.min as usize * PAGE_SIZE],
+            };
         }
     }
 
@@ -190,8 +198,53 @@ impl WasmEval {
                     let value = state.stack.pop().unwrap();
                     state.globals[*global_index as usize] = value;
                 }
-                WasmInstr::Load { .. } => todo!("{instr:?}"),
-                WasmInstr::Store { .. } => todo!("{instr:?}"),
+                WasmInstr::Load {
+                    kind,
+                    align: _,
+                    offset,
+                } => {
+                    let WasmLoadKind::I32 = kind else {
+                        todo!("store {kind:?}")
+                    };
+
+                    let WasmValue::I32 { value: addr } =
+                        self.state.borrow_mut().stack.pop().unwrap()
+                    else {
+                        unreachable!()
+                    };
+
+                    let full_addr = addr as usize + *offset as usize;
+                    let value = i32::from_le_bytes(
+                        self.state.borrow_mut().memory.bytes[full_addr..full_addr + 4]
+                            .try_into()
+                            .unwrap(),
+                    );
+                    self.state.borrow_mut().stack.push(WasmValue::I32 { value });
+                }
+                WasmInstr::Store {
+                    kind,
+                    align: _,
+                    offset,
+                } => {
+                    let WasmStoreKind::I32 = kind else {
+                        todo!("store {kind:?}")
+                    };
+
+                    let WasmValue::I32 { value } = self.state.borrow_mut().stack.pop().unwrap()
+                    else {
+                        unreachable!()
+                    };
+
+                    let WasmValue::I32 { value: addr } =
+                        self.state.borrow_mut().stack.pop().unwrap()
+                    else {
+                        unreachable!()
+                    };
+
+                    let full_addr = addr as usize + *offset as usize;
+                    self.state.borrow_mut().memory.bytes[full_addr..full_addr + 4]
+                        .copy_from_slice(&value.to_le_bytes());
+                }
 
                 WasmInstr::Drop => {
                     let mut state = self.state.borrow_mut();
@@ -342,6 +395,12 @@ struct EvalState {
     globals: Vec<WasmValue>,
     stack: Vec<WasmValue>,
     call_stack: Vec<CallFrame>,
+    memory: LinearMemory,
+}
+
+#[derive(Default, Debug)]
+struct LinearMemory {
+    bytes: Vec<u8>,
 }
 
 #[derive(Default, Debug)]

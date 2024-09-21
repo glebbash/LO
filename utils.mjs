@@ -883,10 +883,10 @@ async function testCommand() {
             assert.strictEqual(res.toString("utf-8"), "result: 1\n");
         });
 
-        // test("interprets struct-ref", async () => {
-        //     const res = await interpret("./examples/test/struct-ref.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 3\n");
-        // });
+        test("interprets struct-ref", async () => {
+            const res = await interpret("./examples/test/struct-ref.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 3\n");
+        });
 
         test("interprets macro", async () => {
             const res = await interpret("./examples/test/macro.lo");
