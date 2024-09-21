@@ -812,6 +812,30 @@ async function testCommand() {
         }
     });
 
+    describe("interpreter", async () => {
+        const interpret = await loadCompilerWithWasiAPI(
+            await fs.readFile(COMPILER_PATH),
+            {
+                buildArgs: (fileName) => ["lo", fileName ?? "-i", "--eval"],
+            }
+        );
+
+        test("interprets 42.lo", async () => {
+            const res = await interpret("examples/test/42.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 42\n");
+        });
+
+        test("interprets include.lo", async () => {
+            const res = await interpret("examples/test/include.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 120\n");
+        });
+
+        test("interprets else-if.lo", async () => {
+            const res = await interpret("examples/test/else-if.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 13\n");
+        });
+    });
+
     /**
      * @param {string} testName
      * @param {Record<string, Compile>} compilers

@@ -76,17 +76,15 @@ fn parse_file_tokens(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Res
 }
 
 pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
-    if ctx.mode == CompilerMode::Compile {
-        // push function exports
-        for fn_export in &ctx.fn_exports {
-            let fn_def = ctx.fn_defs.get(&fn_export.in_name).unwrap(); // safe
+    // push function exports
+    for fn_export in &ctx.fn_exports {
+        let fn_def = ctx.fn_defs.get(&fn_export.in_name).unwrap(); // safe
 
-            ctx.wasm_module.borrow_mut().exports.push(WasmExport {
-                export_type: WasmExportType::Func,
-                export_name: fn_export.out_name.clone(),
-                exported_item_index: fn_def.get_absolute_index(ctx),
-            });
-        }
+        ctx.wasm_module.borrow_mut().exports.push(WasmExport {
+            export_type: WasmExportType::Func,
+            export_name: fn_export.out_name.clone(),
+            exported_item_index: fn_def.get_absolute_index(ctx),
+        });
     }
 
     // push function codes

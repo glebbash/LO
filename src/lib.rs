@@ -6,7 +6,6 @@ extern crate alloc;
 mod ast;
 mod code_generator;
 mod core;
-mod eval;
 mod ir;
 mod ir_generator;
 mod lexer;
@@ -14,6 +13,7 @@ mod parser;
 mod parser_v2;
 mod printer;
 mod wasm;
+mod wasm_eval;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_target {
@@ -47,8 +47,8 @@ Usage: lo <file> [mode]
 
 mod wasi_api {
     use crate::{
-        code_generator::CodeGenerator, core::*, eval::Eval, ir_generator::*, lexer::*, parser,
-        parser_v2::*, printer::*, USAGE,
+        code_generator::*, core::*, ir_generator::*, lexer::*, parser, parser_v2::*, printer::*,
+        wasm_eval::*, USAGE,
     };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
@@ -107,23 +107,6 @@ mod wasi_api {
             return Ok(());
         }
 
-        if compiler_mode == CompilerMode::Eval {
-            let mut files = Vec::new();
-            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
-
-            let mut ir_generator = IRGenerator::default();
-            for file in files.iter().rev() {
-                ir_generator.process_file(file)?;
-            }
-            ir_generator.errors.print_all()?;
-            let lo_ir = ir_generator.generate_ir()?;
-
-            let result = Eval::eval(lo_ir)?;
-            stdout_writeln(format!("{result}"));
-
-            return Ok(());
-        }
-
         if compiler_mode == CompilerMode::PrettyPrint {
             let chars = file_read_utf8(file_name)?;
             let tokens = Lexer::lex(file_name, &chars)?;
@@ -149,6 +132,15 @@ mod wasi_api {
             let mut binary = Vec::new();
             ctx.wasm_module.take().dump(&mut binary);
             fputs(wasi::FD_STDOUT, binary.as_slice());
+        }
+
+        if ctx.mode == CompilerMode::Eval {
+            let wasm_module = ctx.wasm_module.take();
+
+            match WasmEval::eval(wasm_module) {
+                Ok(values) => stdout_write(format!("result: {}\n", ListDisplay(&values))),
+                Err(error) => stderr_write(format!("error: {}\n", error.message)),
+            }
         }
 
         return Ok(());

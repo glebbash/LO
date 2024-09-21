@@ -9,7 +9,6 @@ pub enum CompilerMode {
     Inspect,
     PrettyPrint,
     Eval,
-    EvalWasm,
 }
 
 #[derive(PartialEq)]
