@@ -1,4 +1,4 @@
-use crate::wasm::*;
+use crate::{core::*, wasm::*};
 use alloc::{format, string::String, vec, vec::Vec};
 use core::cell::RefCell;
 
@@ -12,38 +12,92 @@ pub struct EvalError {
 #[derive(Default)]
 pub struct WasmEval {
     wasm_module: WasmModule,
+    fn_imports_len: usize,
     state: RefCell<EvalState>,
 }
 
 impl WasmEval {
-    pub fn eval(wasm_module: WasmModule) -> Result<Vec<WasmValue>, EvalError> {
-        let eval = WasmEval {
+    pub fn eval(wasm_module: WasmModule) -> Result<(), EvalError> {
+        let mut eval = WasmEval {
             wasm_module,
             ..Default::default()
         };
 
-        eval.init_module();
-        eval.eval_main()
+        eval.init_module()?;
+        eval.eval_main()?;
+
+        Ok(())
     }
 
     // TODO: add module verify step
-    fn init_module(&self) {
+    fn init_module(&mut self) -> Result<(), EvalError> {
         for global in &self.wasm_module.globals {
             let value = WasmValue::default_for_type(&global.kind.value_type);
             self.state.borrow_mut().globals.push(value);
         }
 
-        if let Some(memory) = self.wasm_module.memories.last() {
+        if let Some(memory) = self.wasm_module.memories.first() {
             self.state.borrow_mut().memory = LinearMemory {
                 bytes: vec![0; memory.min as usize * PAGE_SIZE],
             };
+
+            for data in &self.wasm_module.datas {
+                match data {
+                    WasmData::Active { offset, bytes } => {
+                        self.eval_expr(offset)?;
+                        let offset = self.state.borrow_mut().pop_i32() as usize;
+
+                        self.state.borrow_mut().memory.bytes[offset..offset + bytes.len()]
+                            .copy_from_slice(&bytes);
+                    }
+                }
+            }
         }
+
+        for (import, i) in self.wasm_module.imports.iter().zip(0..) {
+            if let WasmImportDesc::Func { type_index } = import.item_desc {
+                let fn_type = &self.wasm_module.types[type_index as usize];
+
+                // fn fd_write(fd: u32, iovs: u32, iovs_len: u32, nwritten: u32): u32;
+                if import.module_name == "wasi_snapshot_preview1"
+                    && import.item_name == "fd_write"
+                    && &fn_type.inputs[..]
+                        == &[WasmType::I32, WasmType::I32, WasmType::I32, WasmType::I32]
+                    && &fn_type.outputs[..] == &[WasmType::I32]
+                {
+                    self.state
+                        .borrow_mut()
+                        .host_fns
+                        .push(String::from("fd_write"));
+                    self.fn_imports_len += 1;
+                    continue;
+                }
+
+                return Err(EvalError {
+                    message: format!(
+                        "Cannot satisfy fn import {}, type: {:?}",
+                        import.item_name, fn_type
+                    ),
+                });
+            }
+
+            return Err(EvalError {
+                message: format!("Cannot satisfy import {} (#{i})", import.item_name),
+            });
+        }
+
+        Ok(())
     }
 
-    fn eval_main(&self) -> Result<Vec<WasmValue>, EvalError> {
+    fn eval_main(&self) -> Result<(), EvalError> {
+        if let Some(fn_index) = self.get_exported_fn_index("_start") {
+            self.call_fn(fn_index)?;
+            return Ok(());
+        };
+
         let Some(fn_index) = self.get_exported_fn_index("main") else {
             return Err(EvalError {
-                message: format!("`main` function is not exported"),
+                message: format!("Neither `_start` nor `main` function is exported"),
             });
         };
 
@@ -56,10 +110,15 @@ impl WasmEval {
         }
         values.reverse();
 
-        Ok(values)
+        stdout_write(format!("result of `main` is: {}\n", ListDisplay(&values)));
+        Ok(())
     }
 
     fn call_fn(&self, fn_index: u32) -> Result<(), EvalError> {
+        if fn_index < self.fn_imports_len as u32 {
+            return self.call_host_fn(fn_index);
+        }
+
         let (fn_type, code) = self.get_fn_info(fn_index)?;
 
         let mut call_frame = CallFrame::default();
@@ -79,6 +138,50 @@ impl WasmEval {
         self.eval_expr(&code.expr)?;
 
         self.state.borrow_mut().call_stack.pop();
+
+        Ok(())
+    }
+
+    fn call_host_fn(&self, fn_index: u32) -> Result<(), EvalError> {
+        let mut state = self.state.borrow_mut();
+        let fn_name = &state.host_fns[fn_index as usize];
+        match &fn_name[..] {
+            // fn fd_write(fd: u32, iovs: u32, iovs_len: u32, nwritten: u32): u32;
+            "fd_write" => {
+                let nwritten = state.pop_i32();
+                let iovs_len = state.pop_i32();
+                let iovs_ptr = state.pop_i32();
+                let fd = state.pop_i32();
+
+                let mut iovs = Vec::new();
+                for i in 0..iovs_len {
+                    let iov_base = iovs_ptr as usize + (i as usize * 8);
+                    let str_ptr = state.memory.load_i32(iov_base);
+                    let str_len = state.memory.load_i32(iov_base + 4);
+
+                    let buf = (&mut state.memory.bytes[str_ptr as usize]) as *const u8;
+                    iovs.push(wasi::Ciovec {
+                        buf,
+                        buf_len: str_len as usize,
+                    });
+                }
+
+                match unsafe { wasi::fd_write(fd as u32, &iovs) } {
+                    Ok(nwritten_val) => {
+                        state.stack.push(WasmValue::I32 { value: 0 });
+                        state
+                            .memory
+                            .store_i32(nwritten as usize, nwritten_val as i32);
+                    }
+                    Err(err) => {
+                        state.stack.push(WasmValue::I32 {
+                            value: err.raw() as i32,
+                        });
+                    }
+                };
+            }
+            _ => unreachable!(),
+        }
 
         Ok(())
     }
@@ -107,11 +210,7 @@ impl WasmEval {
 
                     let mut should_skip = false;
                     if let WasmBlockKind::If = block_kind {
-                        let WasmValue::I32 { value: cond } =
-                            self.state.borrow_mut().stack.pop().unwrap()
-                        else {
-                            unreachable!()
-                        };
+                        let cond = self.state.borrow_mut().pop_i32();
 
                         should_skip = cond == 0;
                     }
@@ -207,18 +306,10 @@ impl WasmEval {
                         todo!("load {kind:?}")
                     };
 
-                    let WasmValue::I32 { value: addr } =
-                        self.state.borrow_mut().stack.pop().unwrap()
-                    else {
-                        unreachable!()
-                    };
+                    let addr = self.state.borrow_mut().pop_i32();
 
                     let full_addr = addr as usize + *offset as usize;
-                    let value = i32::from_le_bytes(
-                        self.state.borrow_mut().memory.bytes[full_addr..full_addr + 4]
-                            .try_into()
-                            .unwrap(),
-                    );
+                    let value = self.state.borrow_mut().memory.load_i32(full_addr);
                     self.state.borrow_mut().stack.push(WasmValue::I32 { value });
                 }
                 WasmInstr::Store {
@@ -230,20 +321,11 @@ impl WasmEval {
                         todo!("store {kind:?}")
                     };
 
-                    let WasmValue::I32 { value } = self.state.borrow_mut().stack.pop().unwrap()
-                    else {
-                        unreachable!()
-                    };
-
-                    let WasmValue::I32 { value: addr } =
-                        self.state.borrow_mut().stack.pop().unwrap()
-                    else {
-                        unreachable!()
-                    };
+                    let value = self.state.borrow_mut().pop_i32();
+                    let addr = self.state.borrow_mut().pop_i32();
 
                     let full_addr = addr as usize + *offset as usize;
-                    self.state.borrow_mut().memory.bytes[full_addr..full_addr + 4]
-                        .copy_from_slice(&value.to_le_bytes());
+                    self.state.borrow_mut().memory.store_i32(full_addr, value);
                 }
 
                 WasmInstr::Drop => {
@@ -259,13 +341,9 @@ impl WasmEval {
                 WasmInstr::I64ExtendI32s => todo!("{instr:?}"),
                 WasmInstr::I32WrapI64 => todo!("{instr:?}"),
                 WasmInstr::BinaryOp { kind } => {
+                    let rhs = self.state.borrow_mut().pop_i32();
+                    let lhs = self.state.borrow_mut().pop_i32();
                     let stack = &mut self.state.borrow_mut().stack;
-                    let WasmValue::I32 { value: rhs } = stack.pop().unwrap() else {
-                        unreachable!();
-                    };
-                    let WasmValue::I32 { value: lhs } = stack.pop().unwrap() else {
-                        unreachable!();
-                    };
 
                     match kind {
                         WasmBinaryOpKind::I32_ADD => {
@@ -290,7 +368,6 @@ impl WasmEval {
                         }
                         WasmBinaryOpKind::I32_REM_U => {
                             let value = ((lhs as u32) % (rhs as u32)) as i32;
-                            crate::core::debug(format!("{lhs} % {rhs} = {value}"));
                             stack.push(WasmValue::I32 { value });
                         }
                         WasmBinaryOpKind::I32_EQ => {
@@ -371,9 +448,10 @@ impl WasmEval {
     }
 
     fn get_fn_info(&self, fn_index: u32) -> Result<(&WasmFnType, &WasmFn), EvalError> {
-        let type_index = self.wasm_module.functions.get(fn_index as usize).unwrap();
+        let resolved_fn_index = fn_index as usize - self.fn_imports_len;
+        let type_index = self.wasm_module.functions.get(resolved_fn_index).unwrap();
         let fn_type = self.wasm_module.types.get(*type_index as usize).unwrap();
-        let code = self.wasm_module.codes.get(fn_index as usize).unwrap();
+        let code = self.wasm_module.codes.get(resolved_fn_index).unwrap();
         Ok((fn_type, code))
     }
 
@@ -396,11 +474,33 @@ struct EvalState {
     stack: Vec<WasmValue>,
     call_stack: Vec<CallFrame>,
     memory: LinearMemory,
+    host_fns: Vec<String>,
+}
+
+impl EvalState {
+    fn pop_i32(&mut self) -> i32 {
+        let wasm_value = self.stack.pop().unwrap();
+        let WasmValue::I32 { value } = wasm_value else {
+            unreachable!();
+        };
+
+        value
+    }
 }
 
 #[derive(Default, Debug)]
 struct LinearMemory {
     bytes: Vec<u8>,
+}
+
+impl LinearMemory {
+    fn load_i32(&self, addr: usize) -> i32 {
+        i32::from_le_bytes(self.bytes[addr..addr + 4].try_into().unwrap())
+    }
+
+    fn store_i32(&mut self, addr: usize, value: i32) {
+        self.bytes[addr..addr + 4].copy_from_slice(&value.to_le_bytes())
+    }
 }
 
 #[derive(Default, Debug)]

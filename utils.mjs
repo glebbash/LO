@@ -830,67 +830,113 @@ async function testCommand() {
 
         test("interprets 42.lo", async () => {
             const res = await interpret("examples/test/42.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 42\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 42\n"
+            );
         });
 
         test("interprets include.lo", async () => {
             const res = await interpret("examples/test/include.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 120\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 120\n"
+            );
         });
 
         test("interprets else-if.lo", async () => {
             const res = await interpret("examples/test/else-if.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 13\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 13\n"
+            );
         });
 
         test("interprets globals.lo", async () => {
             const res = await interpret("examples/test/globals.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 69\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 69\n"
+            );
         });
 
         test("interprets hex-and-shifts.lo", async () => {
             const res = await interpret("examples/test/hex-and-shifts.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 31\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 31\n"
+            );
         });
 
-        test("interprets loop", async () => {
+        test("interprets loop.lo", async () => {
             const res = await interpret("./examples/test/loop.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 120\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 120\n"
+            );
         });
 
-        test("interprets for-loop", async () => {
+        test("interprets for-loop.lo", async () => {
             const res = await interpret("./examples/test/for-loop.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 138\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 138\n"
+            );
         });
 
-        test("interprets methods", async () => {
+        test("interprets methods.lo", async () => {
             const res = await interpret("./examples/test/methods.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 1\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 1\n"
+            );
         });
 
         test("interprets decl-nesting.lo", async () => {
             const res = await interpret("./examples/test/decl-nesting.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 16\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 16\n"
+            );
         });
 
-        test("interprets struct", async () => {
+        test("interprets struct.lo", async () => {
             const res = await interpret("./examples/test/struct.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 13\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 13\n"
+            );
         });
 
-        test("interprets nested-if-break", async () => {
+        test("interprets nested-if-break.lo", async () => {
             const res = await interpret("./examples/test/nested-if-break.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 1\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 1\n"
+            );
         });
 
-        test("interprets struct-ref", async () => {
+        test("interprets struct-ref.lo", async () => {
             const res = await interpret("./examples/test/struct-ref.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 3\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 3\n"
+            );
         });
 
-        test("interprets macro", async () => {
+        test("interprets macro.lo", async () => {
             const res = await interpret("./examples/test/macro.lo");
-            assert.strictEqual(res.toString("utf-8"), "result: 16\n");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 16\n"
+            );
+        });
+
+        test("interprets hello-world-raw.lo", async () => {
+            const res = await interpret(
+                "./examples/test/demos/hello-world-raw.lo"
+            );
+            assert.strictEqual(res.toString("utf-8"), "Hello World!\n");
         });
     });
 

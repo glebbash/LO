@@ -137,10 +137,7 @@ mod wasi_api {
         if ctx.mode == CompilerMode::Eval {
             let wasm_module = ctx.wasm_module.take();
 
-            match WasmEval::eval(wasm_module) {
-                Ok(values) => stdout_write(format!("result: {}\n", ListDisplay(&values))),
-                Err(error) => stderr_write(format!("error: {}\n", error.message)),
-            }
+            WasmEval::eval(wasm_module).map_err(|err| err.message)?;
         }
 
         return Ok(());
