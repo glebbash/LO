@@ -858,10 +858,10 @@ async function testCommand() {
             assert.strictEqual(res.toString("utf-8"), "result: 120\n");
         });
 
-        // test("interprets for-loop", async () => {
-        //     const res = await interpret("./examples/test/for-loop.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 138\n");
-        // });
+        test("interprets for-loop", async () => {
+            const res = await interpret("./examples/test/for-loop.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 138\n");
+        });
 
         test("interprets methods", async () => {
             const res = await interpret("./examples/test/methods.lo");

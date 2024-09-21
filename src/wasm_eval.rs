@@ -87,6 +87,16 @@ impl WasmEval {
                     block_kind,
                     block_type: _,
                 } => {
+                    if blocks.last().is_some() && blocks.last().unwrap().should_skip {
+                        blocks.push(BlockState {
+                            loc,
+                            kind: WasmBlockKind::Block,
+                            should_skip: true,
+                        });
+                        loc += 1;
+                        continue;
+                    }
+
                     let mut should_skip = false;
                     if let WasmBlockKind::If = block_kind {
                         let WasmValue::I32 { value: cond } =
@@ -130,10 +140,7 @@ impl WasmEval {
                         continue;
                     }
 
-                    // will make `else` instr not toggle skip flag
-                    block_to_branch.kind = WasmBlockKind::Block;
-                    block_to_branch.should_skip = true;
-                    for i in 0..*label_index {
+                    for i in 0..(*label_index + 1) {
                         blocks[block_len - 1 - i as usize].should_skip = true;
                     }
                 }
