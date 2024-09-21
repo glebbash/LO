@@ -14,14 +14,22 @@ pub struct WasmEval {
 }
 
 impl WasmEval {
-    // TODO: add module verify step
     pub fn eval(wasm_module: WasmModule) -> Result<Vec<WasmValue>, EvalError> {
-        let self_ = WasmEval {
+        let eval = WasmEval {
             wasm_module,
             ..Default::default()
         };
 
-        self_.eval_main()
+        eval.init_module();
+        eval.eval_main()
+    }
+
+    // TODO: add module verify step
+    fn init_module(&self) {
+        for global in &self.wasm_module.globals {
+            let value = WasmValue::default_for_type(&global.kind.value_type);
+            self.state.borrow_mut().globals.push(value);
+        }
     }
 
     fn eval_main(&self) -> Result<Vec<WasmValue>, EvalError> {
@@ -140,13 +148,24 @@ impl WasmEval {
                     let frame = state.call_stack.last_mut().unwrap();
                     frame.locals[*local_index as usize] = value;
                 }
-                WasmInstr::GlobalGet { .. } => todo!(),
-                WasmInstr::GlobalSet { .. } => todo!(),
+                WasmInstr::GlobalGet { global_index } => {
+                    let mut state = self.state.borrow_mut();
+                    let value = state.globals[*global_index as usize].clone();
+                    state.stack.push(value);
+                }
+                WasmInstr::GlobalSet { global_index } => {
+                    let mut state = self.state.borrow_mut();
+                    let value = state.stack.pop().unwrap();
+                    state.globals[*global_index as usize] = value;
+                }
                 WasmInstr::Load { .. } => todo!(),
                 WasmInstr::Store { .. } => todo!(),
 
+                WasmInstr::Drop => {
+                    let mut state = self.state.borrow_mut();
+                    let _ = state.stack.pop().unwrap();
+                }
                 WasmInstr::Unreachable => todo!(),
-                WasmInstr::Drop => todo!(),
                 WasmInstr::MemorySize => todo!(),
                 WasmInstr::MemoryGrow => todo!(),
                 WasmInstr::MemoryCopy => todo!(),
@@ -273,6 +292,7 @@ impl WasmEval {
 
 #[derive(Default, Debug)]
 struct EvalState {
+    globals: Vec<WasmValue>,
     stack: Vec<WasmValue>,
     call_stack: Vec<CallFrame>,
 }

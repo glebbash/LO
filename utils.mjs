@@ -834,6 +834,51 @@ async function testCommand() {
             const res = await interpret("examples/test/else-if.lo");
             assert.strictEqual(res.toString("utf-8"), "result: 13\n");
         });
+
+        test("interprets globals.lo", async () => {
+            const res = await interpret("examples/test/globals.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 69\n");
+        });
+
+        // test("hex-and-shifts.lo", async () => {
+        //     const res = await interpret("examples/test/hex-and-shifts.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 31\n");
+        // });
+
+        // test("compiles for-loop", async () => {
+        //     const res = await interpret("./examples/test/for-loop.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 138\n");
+        // });
+
+        // test("compiles methods", async () => {
+        //     const res = await interpret("./examples/test/methods.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 1\n");
+        // });
+
+        // test("compiles decl-nesting.lo", async () => {
+        //     const res = await interpret("./examples/test/decl-nesting.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 16\n");
+        // });
+
+        // test("compiles struct", async () => {
+        //     const res = await interpret("./examples/test/struct.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 13\n");
+        // });
+
+        // test("compiles nested-if-break", async () => {
+        //     const res = await interpret("./examples/test/nested-if-break.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 1\n");
+        // });
+
+        // test("compiles struct-ref", async () => {
+        //     const res = await interpret("./examples/test/struct-ref.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 3\n");
+        // });
+
+        // test("compiles macro", async () => {
+        //     const res = await interpret("./examples/test/macro.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "result: 16\n");
+        // });
     });
 
     /**
