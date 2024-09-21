@@ -72,7 +72,7 @@ fn free(alloc_id: u32, ptr: &void, size: u32) {
 struct mem {};
 
 const mem::POINTER_SIZE = 4;
-const mem::PAGE_SIZE = 65536;
+const mem::PAGE_SIZE = 65_536;
 
 fn mem::align(size: u32): u32 {
     return mem::align_to(size, mem::POINTER_SIZE);
