@@ -840,10 +840,10 @@ async function testCommand() {
             assert.strictEqual(res.toString("utf-8"), "result: 69\n");
         });
 
-        // test("hex-and-shifts.lo", async () => {
-        //     const res = await interpret("examples/test/hex-and-shifts.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "result: 31\n");
-        // });
+        test("hex-and-shifts.lo", async () => {
+            const res = await interpret("examples/test/hex-and-shifts.lo");
+            assert.strictEqual(res.toString("utf-8"), "result: 31\n");
+        });
 
         // test("compiles for-loop", async () => {
         //     const res = await interpret("./examples/test/for-loop.lo");

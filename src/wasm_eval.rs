@@ -117,7 +117,7 @@ impl WasmEval {
                 WasmInstr::Call { fn_index } => {
                     self.call_fn(*fn_index)?;
                 }
-                WasmInstr::Branch { .. } => todo!(),
+                WasmInstr::Branch { .. } => todo!("{instr:?}"),
 
                 WasmInstr::I32Const { value } => {
                     let value = WasmValue::I32 { value: *value };
@@ -158,21 +158,21 @@ impl WasmEval {
                     let value = state.stack.pop().unwrap();
                     state.globals[*global_index as usize] = value;
                 }
-                WasmInstr::Load { .. } => todo!(),
-                WasmInstr::Store { .. } => todo!(),
+                WasmInstr::Load { .. } => todo!("{instr:?}"),
+                WasmInstr::Store { .. } => todo!("{instr:?}"),
 
                 WasmInstr::Drop => {
                     let mut state = self.state.borrow_mut();
                     let _ = state.stack.pop().unwrap();
                 }
-                WasmInstr::Unreachable => todo!(),
-                WasmInstr::MemorySize => todo!(),
-                WasmInstr::MemoryGrow => todo!(),
-                WasmInstr::MemoryCopy => todo!(),
+                WasmInstr::Unreachable => todo!("{instr:?}"),
+                WasmInstr::MemorySize => todo!("{instr:?}"),
+                WasmInstr::MemoryGrow => todo!("{instr:?}"),
+                WasmInstr::MemoryCopy => todo!("{instr:?}"),
 
-                WasmInstr::I64ExtendI32u => todo!(),
-                WasmInstr::I64ExtendI32s => todo!(),
-                WasmInstr::I32WrapI64 => todo!(),
+                WasmInstr::I64ExtendI32u => todo!("{instr:?}"),
+                WasmInstr::I64ExtendI32s => todo!("{instr:?}"),
+                WasmInstr::I32WrapI64 => todo!("{instr:?}"),
                 WasmInstr::BinaryOp { kind } => {
                     let stack = &mut self.state.borrow_mut().stack;
                     let WasmValue::I32 { value: rhs } = stack.pop().unwrap() else {
@@ -199,6 +199,10 @@ impl WasmEval {
                             let value = lhs * rhs;
                             stack.push(WasmValue::I32 { value });
                         }
+                        WasmBinaryOpKind::I32_SHR_U => {
+                            let value = ((lhs as u32) >> (rhs as u32)) as i32;
+                            stack.push(WasmValue::I32 { value });
+                        }
                         WasmBinaryOpKind::I32_EQ
                         | WasmBinaryOpKind::I32_NE
                         | WasmBinaryOpKind::I32_LT_S
@@ -215,8 +219,7 @@ impl WasmEval {
                         | WasmBinaryOpKind::I32_AND
                         | WasmBinaryOpKind::I32_OR
                         | WasmBinaryOpKind::I32_SHL
-                        | WasmBinaryOpKind::I32_SHR_S
-                        | WasmBinaryOpKind::I32_SHR_U => todo!(),
+                        | WasmBinaryOpKind::I32_SHR_S => todo!("{kind:?}"),
 
                         WasmBinaryOpKind::I64_EQ
                         | WasmBinaryOpKind::I64_NE
@@ -239,7 +242,7 @@ impl WasmEval {
                         | WasmBinaryOpKind::I64_OR
                         | WasmBinaryOpKind::I64_SHL
                         | WasmBinaryOpKind::I64_SHR_S
-                        | WasmBinaryOpKind::I64_SHR_U => todo!(),
+                        | WasmBinaryOpKind::I64_SHR_U => todo!("{kind:?}"),
 
                         WasmBinaryOpKind::F32_EQ
                         | WasmBinaryOpKind::F32_NE
@@ -250,7 +253,7 @@ impl WasmEval {
                         | WasmBinaryOpKind::F32_ADD
                         | WasmBinaryOpKind::F32_SUB
                         | WasmBinaryOpKind::F32_MUL
-                        | WasmBinaryOpKind::F32_DIV => todo!(),
+                        | WasmBinaryOpKind::F32_DIV => todo!("{kind:?}"),
 
                         WasmBinaryOpKind::F64_EQ
                         | WasmBinaryOpKind::F64_NE
@@ -261,7 +264,7 @@ impl WasmEval {
                         | WasmBinaryOpKind::F64_ADD
                         | WasmBinaryOpKind::F64_SUB
                         | WasmBinaryOpKind::F64_MUL
-                        | WasmBinaryOpKind::F64_DIV => todo!(),
+                        | WasmBinaryOpKind::F64_DIV => todo!("{kind:?}"),
                     }
                 }
             }
