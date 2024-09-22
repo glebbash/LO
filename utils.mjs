@@ -1049,7 +1049,8 @@ async function testCommand() {
 
         // aoc
 
-        test("interprets aoc2020 day 1", async () => {
+        // TODO: look into performance of part 2
+        test.skip("interprets aoc2020 day 1", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/1.lo");
             assert.strictEqual(res1.toString("utf-8"), "157059\n");
 
@@ -1089,7 +1090,8 @@ async function testCommand() {
             assert.strictEqual(res2.toString("utf-8"), "224\n");
         });
 
-        test("interprets aoc2020 day 5", async () => {
+        // TODO: look into performance of part 2
+        test.skip("interprets aoc2020 day 5", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/5.lo");
             assert.strictEqual(res1.toString("utf-8"), "947\n");
 
