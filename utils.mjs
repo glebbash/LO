@@ -948,13 +948,36 @@ async function testCommand() {
             assert.strictEqual(res.toString("utf-8"), "Hello World!\n");
         });
 
-        // test("interprets aoc2020/1.lo", async () => {
-        //     const res = await interpret("./examples/test/demos/aoc2020/1.lo");
-        //     assert.strictEqual(res.toString("utf-8"), "Hello World!\n");
-        // });
-        // "examples/test/demos/aoc2020/1-part2.lo",
-        // "examples/test/demos/aoc2020/2-part2.lo",
-        // "examples/test/demos/aoc2020/2.lo",
+        test("interprets aoc2020 day 1", async () => {
+            const res1 = await interpret("./examples/test/demos/aoc2020/1.lo");
+            assert.strictEqual(res1.toString("utf-8"), "157059\n");
+
+            const res2 = await interpret(
+                "./examples/test/demos/aoc2020/1-part2.lo"
+            );
+            assert.strictEqual(res2.toString("utf-8"), "165080960\n");
+        });
+
+        test("interprets aoc2020 day 2", async () => {
+            const res1 = await interpret("./examples/test/demos/aoc2020/2.lo");
+            assert.strictEqual(res1.toString("utf-8"), "560\n");
+
+            const res2 = await interpret(
+                "./examples/test/demos/aoc2020/2-part2.lo"
+            );
+            assert.strictEqual(res2.toString("utf-8"), "303\n");
+        });
+
+        test("interprets aoc2020 day 3", async () => {
+            const res1 = await interpret("./examples/test/demos/aoc2020/3.lo");
+            assert.strictEqual(res1.toString("utf-8"), "151\n");
+
+            // const res2 = await interpret(
+            //     "./examples/test/demos/aoc2020/3-part2.lo"
+            // );
+            // assert.strictEqual(res2.toString("utf-8"), "303\n");
+        });
+
         // "examples/test/demos/aoc2020/3-part2.lo",
         // "examples/test/demos/aoc2020/3.lo",
         // "examples/test/demos/aoc2020/4-part2.lo",

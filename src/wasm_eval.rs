@@ -1,6 +1,11 @@
 use crate::{core::*, wasm::*};
-use alloc::{format, string::String, vec, vec::Vec};
-use core::cell::RefCell;
+use alloc::{
+    alloc::{alloc, dealloc, Layout},
+    format, str,
+    string::String,
+    vec,
+    vec::Vec,
+};
 
 const PAGE_SIZE: usize = 65_536;
 
@@ -13,7 +18,7 @@ pub struct EvalError {
 pub struct WasmEval {
     wasm_module: WasmModule,
     fn_imports_len: usize,
-    state: RefCell<EvalState>,
+    state: EvalState,
 }
 
 impl WasmEval {
@@ -31,24 +36,25 @@ impl WasmEval {
 
     // TODO: add module verify step
     fn init_module(&mut self) -> Result<(), EvalError> {
-        for global in &self.wasm_module.globals {
+        for global in unsafe_borrow(&self.wasm_module.globals) {
             self.eval_expr(&global.initial_value)?;
-            let initial_value = self.state.borrow_mut().stack.pop().unwrap();
-            self.state.borrow_mut().globals.push(initial_value);
+            let initial_value = self.state.stack.pop().unwrap();
+            self.state.globals.push(initial_value);
         }
 
         if let Some(memory) = self.wasm_module.memories.first() {
-            self.state.borrow_mut().memory = LinearMemory {
+            self.state.memory = LinearMemory {
+                size_in_pages: memory.min as usize,
                 bytes: vec![0; memory.min as usize * PAGE_SIZE],
             };
 
-            for data in &self.wasm_module.datas {
+            for data in unsafe_borrow(&self.wasm_module.datas) {
                 match data {
                     WasmData::Active { offset, bytes } => {
                         self.eval_expr(offset)?;
-                        let offset = self.state.borrow_mut().pop_i32() as usize;
+                        let offset = self.state.pop_i32() as usize;
 
-                        self.state.borrow_mut().memory.bytes[offset..offset + bytes.len()]
+                        self.state.memory.bytes[offset..offset + bytes.len()]
                             .copy_from_slice(&bytes);
                     }
                 }
@@ -66,7 +72,7 @@ impl WasmEval {
                         && &fn_type.outputs[..] == host_fn.fn_outputs
                     {
                         let full_name = format!("{}::{}", import.module_name, import.item_name);
-                        self.state.borrow_mut().host_fns.push(full_name);
+                        self.state.host_fns.push(full_name);
                         self.fn_imports_len += 1;
                         continue 'import_loop;
                     }
@@ -88,7 +94,7 @@ impl WasmEval {
         Ok(())
     }
 
-    fn eval_main(&self) -> Result<(), EvalError> {
+    fn eval_main(&mut self) -> Result<(), EvalError> {
         if let Some(fn_index) = self.get_exported_fn_index("_start") {
             self.call_fn(fn_index)?;
             return Ok(());
@@ -105,7 +111,7 @@ impl WasmEval {
         let (fn_type, _) = self.get_fn_info(fn_index)?;
         let mut values = Vec::new();
         for _ in 0..fn_type.outputs.len() {
-            values.push(self.state.borrow_mut().stack.pop().unwrap());
+            values.push(self.state.stack.pop().unwrap());
         }
         values.reverse();
 
@@ -113,19 +119,19 @@ impl WasmEval {
         Ok(())
     }
 
-    fn call_fn(&self, fn_index: u32) -> Result<(), EvalError> {
+    fn call_fn(&mut self, fn_index: u32) -> Result<(), EvalError> {
         if fn_index < self.fn_imports_len as u32 {
             return call_host_fn(self, fn_index);
         }
 
-        let (fn_type, code) = self.get_fn_info(fn_index)?;
+        let (fn_type, code) = unsafe_borrow(self).get_fn_info(fn_index)?;
 
         let mut call_frame = CallFrame {
             fn_index,
             ..Default::default()
         };
         for _ in 0..fn_type.inputs.len() {
-            let value = self.state.borrow_mut().stack.pop().unwrap();
+            let value = self.state.stack.pop().unwrap();
             call_frame.locals.push(value);
         }
         call_frame.locals.reverse();
@@ -135,16 +141,16 @@ impl WasmEval {
                 call_frame.locals.push(value);
             }
         }
-        self.state.borrow_mut().call_stack.push(call_frame);
+        self.state.call_stack.push(call_frame);
 
         self.eval_expr(&code.expr)?;
 
-        self.state.borrow_mut().call_stack.pop();
+        self.state.call_stack.pop();
 
         Ok(())
     }
 
-    fn eval_expr(&self, expr: &WasmExpr) -> Result<(), EvalError> {
+    fn eval_expr(&mut self, expr: &WasmExpr) -> Result<(), EvalError> {
         let mut blocks = Vec::<BlockState>::new();
 
         let mut loc = 0;
@@ -168,7 +174,7 @@ impl WasmEval {
 
                     let mut should_skip = false;
                     if let WasmBlockKind::If = block_kind {
-                        let cond = self.state.borrow_mut().pop_i32();
+                        let cond = self.state.pop_i32();
 
                         should_skip = cond == 0;
                     }
@@ -218,103 +224,128 @@ impl WasmEval {
 
                 WasmInstr::I32Const { value } => {
                     let value = WasmValue::I32 { value: *value };
-                    self.state.borrow_mut().stack.push(value);
+                    self.state.stack.push(value);
                 }
                 WasmInstr::I64Const { value } => {
                     let value = WasmValue::I64 { value: *value };
-                    self.state.borrow_mut().stack.push(value);
+                    self.state.stack.push(value);
                 }
                 WasmInstr::F32Const { value } => {
                     let value = WasmValue::F32 { value: *value };
-                    self.state.borrow_mut().stack.push(value);
+                    self.state.stack.push(value);
                 }
                 WasmInstr::F64Const { value } => {
                     let value = WasmValue::F64 { value: *value };
-                    self.state.borrow_mut().stack.push(value);
+                    self.state.stack.push(value);
                 }
 
                 WasmInstr::LocalGet { local_index } => {
-                    let mut state = self.state.borrow_mut();
-                    let frame = state.call_stack.last_mut().unwrap();
+                    let frame = self.state.call_stack.last_mut().unwrap();
                     let value = frame.locals[*local_index as usize].clone();
-                    state.stack.push(value);
+                    self.state.stack.push(value);
                 }
                 WasmInstr::LocalSet { local_index } => {
-                    let mut state = self.state.borrow_mut();
-                    let value = state.stack.pop().unwrap();
-                    let frame = state.call_stack.last_mut().unwrap();
+                    let value = self.state.stack.pop().unwrap();
+                    let frame = self.state.call_stack.last_mut().unwrap();
                     frame.locals[*local_index as usize] = value;
                 }
                 WasmInstr::GlobalGet { global_index } => {
-                    let mut state = self.state.borrow_mut();
-                    let value = state.globals[*global_index as usize].clone();
-                    state.stack.push(value);
+                    let value = self.state.globals[*global_index as usize].clone();
+                    self.state.stack.push(value);
                 }
                 WasmInstr::GlobalSet { global_index } => {
-                    let mut state = self.state.borrow_mut();
-                    let value = state.stack.pop().unwrap();
-                    state.globals[*global_index as usize] = value;
+                    let value = self.state.stack.pop().unwrap();
+                    self.state.globals[*global_index as usize] = value;
                 }
                 WasmInstr::Load {
                     kind,
                     align: _,
                     offset,
-                } => {
-                    let WasmLoadKind::I32 = kind else {
-                        todo!("load {kind:?}")
-                    };
+                } => match kind {
+                    WasmLoadKind::I32 => {
+                        let addr = self.state.pop_i32();
+                        let full_addr = addr as usize + *offset as usize;
+                        let value = self.state.memory.load_i32(full_addr);
+                        self.state.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmLoadKind::I32U8 => {
+                        let addr = self.state.pop_i32();
+                        let full_addr = addr as usize + *offset as usize;
+                        let Some(value) = self.state.memory.bytes.get(full_addr).cloned() else {
+                            return Err(self.err_with_stack(format!(
+                                "Memory read out of bounds: {full_addr}"
+                            )));
+                        };
 
-                    let addr = self.state.borrow_mut().pop_i32();
-
-                    let full_addr = addr as usize + *offset as usize;
-                    let value = self.state.borrow_mut().memory.load_i32(full_addr);
-                    self.state.borrow_mut().stack.push(WasmValue::I32 { value });
-                }
+                        self.state.stack.push(WasmValue::I32 {
+                            value: value as i32,
+                        });
+                    }
+                    _ => todo!("load {kind:?}"),
+                },
                 WasmInstr::Store {
                     kind,
                     align: _,
                     offset,
-                } => {
-                    let WasmStoreKind::I32 = kind else {
-                        todo!("store {kind:?}")
-                    };
-
-                    let value = self.state.borrow_mut().pop_i32();
-                    let addr = self.state.borrow_mut().pop_i32();
-
-                    let full_addr = addr as usize + *offset as usize;
-                    self.state.borrow_mut().memory.store_i32(full_addr, value);
-                }
+                } => match kind {
+                    WasmStoreKind::I32 => {
+                        let value = self.state.pop_i32();
+                        let addr = self.state.pop_i32();
+                        let full_addr = addr as usize + *offset as usize;
+                        self.state.memory.store_i32(full_addr, value);
+                    }
+                    WasmStoreKind::I32U8 => {
+                        let value = self.state.pop_i32();
+                        let addr = self.state.pop_i32();
+                        let full_addr = addr as usize + *offset as usize;
+                        self.state.memory.bytes[full_addr] = value as u8;
+                    }
+                    _ => todo!("store {kind:?}"),
+                },
 
                 WasmInstr::Drop => {
-                    let mut state = self.state.borrow_mut();
-                    let _ = state.stack.pop().unwrap();
+                    let _ = self.state.stack.pop().unwrap();
                 }
                 WasmInstr::Unreachable => {
-                    // TODO: pull in function names from debug section
-                    let mut call_stack = Vec::new();
-                    while let Some(frame) = self.state.borrow_mut().call_stack.pop() {
-                        call_stack.push(frame.fn_index);
-                    }
-
-                    return Err(EvalError {
-                        message: format!(
-                            "Hit unreachable trap, call stack: {}",
-                            ListDisplay(&call_stack)
-                        ),
-                    });
+                    return Err(self.err_with_stack("Hit unreachable trap"));
                 }
-                WasmInstr::MemorySize => todo!("{instr:?}"),
-                WasmInstr::MemoryGrow => todo!("{instr:?}"),
-                WasmInstr::MemoryCopy => todo!("{instr:?}"),
+                WasmInstr::MemorySize => {
+                    let mem_size = self.state.memory.size_in_pages as i32;
+                    self.state.stack.push(WasmValue::I32 { value: mem_size });
+                }
+                WasmInstr::MemoryCopy => {
+                    let num_bytes = self.state.pop_i32();
+                    let source = self.state.pop_i32();
+                    let destination = self.state.pop_i32();
 
-                WasmInstr::I64ExtendI32u => todo!("{instr:?}"),
-                WasmInstr::I64ExtendI32s => todo!("{instr:?}"),
+                    self.state.memory.bytes.copy_within(
+                        source as usize..source as usize + num_bytes as usize,
+                        destination as usize,
+                    );
+                }
+                WasmInstr::MemoryGrow => todo!("{instr:?}"),
+
+                WasmInstr::I64ExtendI32u => {
+                    crate::core::debug(format!("here 2?"));
+                    let value = self.state.pop_i32();
+                    crate::core::debug(format!("no 2"));
+                    self.state.stack.push(WasmValue::I64 {
+                        value: value as u32 as u64 as i64,
+                    })
+                }
+                WasmInstr::I64ExtendI32s => {
+                    crate::core::debug(format!("here?"));
+                    let value = self.state.pop_i32();
+                    crate::core::debug(format!("no"));
+                    self.state.stack.push(WasmValue::I64 {
+                        value: value as i64,
+                    })
+                }
                 WasmInstr::I32WrapI64 => todo!("{instr:?}"),
                 WasmInstr::BinaryOp { kind } => {
-                    let rhs = self.state.borrow_mut().pop_i32();
-                    let lhs = self.state.borrow_mut().pop_i32();
-                    let stack = &mut self.state.borrow_mut().stack;
+                    let rhs = self.state.pop_i32();
+                    let lhs = self.state.pop_i32();
+                    let stack = &mut self.state.stack;
 
                     match kind {
                         WasmBinaryOpKind::I32_ADD => {
@@ -333,6 +364,14 @@ impl WasmEval {
                             let value = lhs & rhs;
                             stack.push(WasmValue::I32 { value })
                         }
+                        WasmBinaryOpKind::I32_OR => {
+                            let value = lhs | rhs;
+                            stack.push(WasmValue::I32 { value })
+                        }
+                        WasmBinaryOpKind::I32_DIV_U => {
+                            let value = ((lhs as u32) / (rhs as u32)) as i32;
+                            stack.push(WasmValue::I32 { value });
+                        }
                         WasmBinaryOpKind::I32_SHR_U => {
                             let value = ((lhs as u32) >> (rhs as u32)) as i32;
                             stack.push(WasmValue::I32 { value });
@@ -345,6 +384,14 @@ impl WasmEval {
                             let value = if lhs == rhs { 1 } else { 0 };
                             stack.push(WasmValue::I32 { value })
                         }
+                        WasmBinaryOpKind::I32_NE => {
+                            let value = if lhs != rhs { 1 } else { 0 };
+                            stack.push(WasmValue::I32 { value })
+                        }
+                        WasmBinaryOpKind::I32_GT_S => {
+                            let value = if lhs > rhs { 1 } else { 0 };
+                            stack.push(WasmValue::I32 { value })
+                        }
                         WasmBinaryOpKind::I32_LT_U => {
                             let value = if (lhs as u32) < (rhs as u32) { 1 } else { 0 };
                             stack.push(WasmValue::I32 { value })
@@ -353,17 +400,19 @@ impl WasmEval {
                             let value = if (lhs as u32) > (rhs as u32) { 1 } else { 0 };
                             stack.push(WasmValue::I32 { value })
                         }
-                        WasmBinaryOpKind::I32_NE
-                        | WasmBinaryOpKind::I32_LT_S
-                        | WasmBinaryOpKind::I32_GT_S
+                        WasmBinaryOpKind::I32_GE_U => {
+                            let value = if (lhs as u32) >= (rhs as u32) { 1 } else { 0 };
+                            stack.push(WasmValue::I32 { value })
+                        }
+                        WasmBinaryOpKind::I32_LE_U => {
+                            let value = if (lhs as u32) <= (rhs as u32) { 1 } else { 0 };
+                            stack.push(WasmValue::I32 { value })
+                        }
+                        WasmBinaryOpKind::I32_LT_S
                         | WasmBinaryOpKind::I32_LE_S
-                        | WasmBinaryOpKind::I32_LE_U
                         | WasmBinaryOpKind::I32_GE_S
-                        | WasmBinaryOpKind::I32_GE_U
                         | WasmBinaryOpKind::I32_DIV_S
-                        | WasmBinaryOpKind::I32_DIV_U
                         | WasmBinaryOpKind::I32_REM_S
-                        | WasmBinaryOpKind::I32_OR
                         | WasmBinaryOpKind::I32_SHL
                         | WasmBinaryOpKind::I32_SHR_S => todo!("{kind:?}"),
 
@@ -438,55 +487,33 @@ impl WasmEval {
 
         None
     }
-}
 
-// state
+    fn err_with_stack(&mut self, message: impl AsRef<str>) -> EvalError {
+        use core::fmt::Write;
 
-#[derive(Default, Debug)]
-struct EvalState {
-    globals: Vec<WasmValue>,
-    stack: Vec<WasmValue>,
-    call_stack: Vec<CallFrame>,
-    memory: LinearMemory,
-    host_fns: Vec<String>,
-}
+        let mut message = String::from(message.as_ref());
 
-impl EvalState {
-    fn pop_i32(&mut self) -> i32 {
-        let wasm_value = self.stack.pop().unwrap();
-        let WasmValue::I32 { value } = wasm_value else {
-            unreachable!();
-        };
+        while let Some(frame) = self.state.call_stack.pop() {
+            write!(&mut message, "\n  at ").unwrap();
+            if let Some(fn_name) = self.get_fn_name(frame.fn_index) {
+                write!(&mut message, "{fn_name}").unwrap();
+            } else {
+                write!(&mut message, "<unnamed-fn> #{}", frame.fn_index).unwrap();
+            }
+        }
 
-        value
-    }
-}
-
-#[derive(Default, Debug)]
-struct LinearMemory {
-    bytes: Vec<u8>,
-}
-
-impl LinearMemory {
-    fn load_i32(&self, addr: usize) -> i32 {
-        i32::from_le_bytes(self.bytes[addr..addr + 4].try_into().unwrap())
+        EvalError { message }
     }
 
-    fn store_i32(&mut self, addr: usize, value: i32) {
-        self.bytes[addr..addr + 4].copy_from_slice(&value.to_le_bytes())
+    fn get_fn_name(&self, fn_index: u32) -> Option<&str> {
+        for fn_info in &self.wasm_module.debug_fn_info {
+            if fn_info.fn_index == fn_index {
+                return Some(&fn_info.fn_name);
+            }
+        }
+
+        None
     }
-}
-
-#[derive(Default, Debug)]
-struct CallFrame {
-    fn_index: u32,
-    locals: Vec<WasmValue>,
-}
-
-struct BlockState {
-    loc: usize,
-    kind: WasmBlockKind,
-    should_skip: bool,
 }
 
 // values
@@ -521,6 +548,73 @@ impl core::fmt::Display for WasmValue {
     }
 }
 
+// state
+
+#[derive(Default, Debug)]
+struct EvalState {
+    globals: Vec<WasmValue>,
+    stack: Vec<WasmValue>,
+    call_stack: Vec<CallFrame>,
+    memory: LinearMemory,
+    host_fns: Vec<String>,
+}
+
+impl EvalState {
+    fn pop_i32(&mut self) -> i32 {
+        let wasm_value = self.stack.pop().unwrap();
+        let WasmValue::I32 { value } = wasm_value else {
+            unreachable!();
+        };
+
+        value
+    }
+
+    fn pop_i64(&mut self) -> i64 {
+        let wasm_value = self.stack.pop().unwrap();
+        let WasmValue::I64 { value } = wasm_value else {
+            unreachable!();
+        };
+
+        value
+    }
+}
+
+#[derive(Default, Debug)]
+struct LinearMemory {
+    size_in_pages: usize,
+    bytes: Vec<u8>,
+}
+
+impl LinearMemory {
+    fn load_i32(&self, addr: usize) -> i32 {
+        i32::from_le_bytes(self.bytes[addr..addr + 4].try_into().unwrap())
+    }
+
+    fn store_i16(&mut self, addr: usize, value: i16) {
+        self.bytes[addr..addr + 2].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn store_i32(&mut self, addr: usize, value: i32) {
+        self.bytes[addr..addr + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn store_i64(&mut self, addr: usize, value: i64) {
+        self.bytes[addr..addr + 8].copy_from_slice(&value.to_le_bytes());
+    }
+}
+
+#[derive(Default, Debug)]
+struct CallFrame {
+    fn_index: u32,
+    locals: Vec<WasmValue>,
+}
+
+struct BlockState {
+    loc: usize,
+    kind: WasmBlockKind,
+    should_skip: bool,
+}
+
 // host fns
 
 struct SupportedHostFn {
@@ -530,11 +624,17 @@ struct SupportedHostFn {
     fn_outputs: &'static [WasmType],
 }
 
-static SUPPORTED_HOST_FNS: [SupportedHostFn; 11] = [
+static SUPPORTED_HOST_FNS: [SupportedHostFn; 12] = [
     SupportedHostFn {
         module_name: "utils",
         fn_name: "debug",
         fn_inputs: &[WasmType::I32],
+        fn_outputs: &[],
+    },
+    SupportedHostFn {
+        module_name: "utils",
+        fn_name: "debug_str",
+        fn_inputs: &[WasmType::I32, WasmType::I32],
         fn_outputs: &[],
     },
     SupportedHostFn {
@@ -609,16 +709,129 @@ static SUPPORTED_HOST_FNS: [SupportedHostFn; 11] = [
     },
 ];
 
-fn call_host_fn(eval: &WasmEval, fn_index: u32) -> Result<(), EvalError> {
-    let mut state = eval.state.borrow_mut();
+fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
+    let state = &mut eval.state;
     let fn_name = &state.host_fns[fn_index as usize];
     match &fn_name[..] {
         "utils::debug" => {
-            let value = state.pop_i32();
+            let value = state.pop_i32() as u32;
             debug(format!("{value}"));
         }
+        "utils::debug_str" => {
+            let message_len = state.pop_i32() as u32;
+            let message_ptr = state.pop_i32() as u32;
+            let message_bytes = &state.memory.bytes
+                [message_ptr as usize..message_ptr as usize + message_len as usize];
+
+            let message = str::from_utf8(message_bytes).unwrap();
+            stderr_write(message);
+        }
+        "wasi_snapshot_preview1::fd_prestat_get" => {
+            let buf = state.pop_i32();
+            let fd = state.pop_i32();
+
+            match unsafe { wasi::fd_prestat_get(fd as u32) } {
+                Ok(prestat) => {
+                    let pr_name_len = unsafe { prestat.u.dir.pr_name_len as i32 };
+                    state.memory.store_i32(buf as usize, prestat.tag as i32);
+                    state.memory.store_i32(buf as usize + 4, pr_name_len);
+
+                    state.stack.push(WasmValue::I32 { value: 0 });
+                }
+                Err(err) => state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            }
+        }
+        "wasi_snapshot_preview1::fd_prestat_dir_name" => {
+            let path_len = state.pop_i32();
+            let path = state.pop_i32();
+            let fd = state.pop_i32();
+
+            let layout = Layout::array::<u8>(path_len as usize).unwrap();
+            let path_buf = unsafe { alloc(layout) };
+
+            match unsafe { wasi::fd_prestat_dir_name(fd as u32, path_buf, path_len as usize) } {
+                Ok(()) => {
+                    let path_slice = unsafe {
+                        ::core::ptr::slice_from_raw_parts(path_buf, path_len as usize)
+                            .as_ref()
+                            .unwrap()
+                    };
+                    state.memory.bytes[path as usize..path as usize + path_len as usize]
+                        .copy_from_slice(path_slice);
+
+                    state.stack.push(WasmValue::I32 { value: 0 })
+                }
+                Err(err) => state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            }
+
+            unsafe {
+                dealloc(path_buf, layout);
+            }
+        }
+        "wasi_snapshot_preview1::fd_fdstat_get" => {
+            let fdstat_ptr = state.pop_i32();
+            let fd = state.pop_i32();
+
+            match unsafe { wasi::fd_fdstat_get(fd as u32) } {
+                Ok(fdstat) => {
+                    state.memory.bytes[fdstat_ptr as usize] = fdstat.fs_filetype.raw();
+                    state
+                        .memory
+                        .store_i16(fdstat_ptr as usize + 2, fdstat.fs_flags as i16);
+                    state
+                        .memory
+                        .store_i64(fdstat_ptr as usize + 8, fdstat.fs_rights_base as i64);
+                    state
+                        .memory
+                        .store_i64(fdstat_ptr as usize + 16, fdstat.fs_rights_inheriting as i64);
+
+                    state.stack.push(WasmValue::I32 { value: 0 });
+                }
+                Err(err) => state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            }
+        }
+        "wasi_snapshot_preview1::path_open" => {
+            let fd_ptr = state.pop_i32();
+            let fdflags = state.pop_i32();
+            let fs_rights_inheriting = state.pop_i64();
+            let fs_rights_base = state.pop_i64();
+            let oflags = state.pop_i32();
+            let path_len = state.pop_i32();
+            let path_ptr = state.pop_i32();
+            let dirflags = state.pop_i32();
+            let dirfd = state.pop_i32();
+
+            let path_bytes =
+                &state.memory.bytes[path_ptr as usize..path_ptr as usize + path_len as usize];
+
+            match unsafe {
+                wasi::path_open(
+                    dirfd as u32,
+                    dirflags as u32,
+                    str::from_utf8(path_bytes).unwrap(),
+                    oflags as u16,
+                    fs_rights_base as u64,
+                    fs_rights_inheriting as u64,
+                    fdflags as u16,
+                )
+            } {
+                Ok(fd) => {
+                    state.stack.push(WasmValue::I32 { value: 0 });
+                    state.memory.store_i32(fd_ptr as usize, fd as i32);
+                }
+                Err(err) => state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            }
+        }
         "wasi_snapshot_preview1::fd_write" => {
-            let nwritten = state.pop_i32();
+            let nwritten_ptr = state.pop_i32();
             let iovs_len = state.pop_i32();
             let iovs_ptr = state.pop_i32();
             let fd = state.pop_i32();
@@ -637,18 +850,55 @@ fn call_host_fn(eval: &WasmEval, fn_index: u32) -> Result<(), EvalError> {
             }
 
             match unsafe { wasi::fd_write(fd as u32, &iovs) } {
-                Ok(nwritten_val) => {
+                Ok(nwritten) => {
                     state.stack.push(WasmValue::I32 { value: 0 });
                     state
                         .memory
-                        .store_i32(nwritten as usize, nwritten_val as i32);
+                        .store_i32(nwritten_ptr as usize, nwritten as i32);
                 }
-                Err(err) => {
-                    state.stack.push(WasmValue::I32 {
-                        value: err.raw() as i32,
-                    });
-                }
+                Err(err) => state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
             };
+        }
+        "wasi_snapshot_preview1::fd_read" => {
+            let nread_ptr = state.pop_i32();
+            let iovs_len = state.pop_i32();
+            let iovs_ptr = state.pop_i32();
+            let fd = state.pop_i32();
+
+            let mut iovs = Vec::new();
+            for i in 0..iovs_len {
+                let iov_base = iovs_ptr as usize + (i as usize * 8);
+                let str_ptr = state.memory.load_i32(iov_base);
+                let str_len = state.memory.load_i32(iov_base + 4);
+
+                let buf = (&mut state.memory.bytes[str_ptr as usize]) as *mut u8;
+                iovs.push(wasi::Iovec {
+                    buf,
+                    buf_len: str_len as usize,
+                })
+            }
+
+            match unsafe { wasi::fd_read(fd as u32, &iovs) } {
+                Ok(nread) => {
+                    state.stack.push(WasmValue::I32 { value: 0 });
+                    state.memory.store_i32(nread_ptr as usize, nread as i32);
+                }
+                Err(err) => state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            };
+        }
+        "wasi_snapshot_preview1::fd_close" => {
+            let fd = state.pop_i32();
+
+            match unsafe { wasi::fd_close(fd as u32) } {
+                Ok(()) => state.stack.push(WasmValue::I32 { value: 0 }),
+                Err(err) => state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            }
         }
         _ => {
             return Err(EvalError {
@@ -658,4 +908,8 @@ fn call_host_fn(eval: &WasmEval, fn_index: u32) -> Result<(), EvalError> {
     }
 
     Ok(())
+}
+
+fn unsafe_borrow<T>(x: &T) -> &'static T {
+    unsafe { &*(x as *const T) }
 }

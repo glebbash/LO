@@ -49,8 +49,8 @@ fn fs::_unlock() {
     if err != wasi::Err::SUCCESS {
         return;
     };
-    let fdstat = mem::align_to(tmp_alloc_many!<wasi::fdstat>(2) as u32, 8) as &wasi::fdstat;
     // alignment forced by wasmtime
+    let fdstat = mem::align_to(tmp_alloc_many!<wasi::fdstat>(2) as u32, 8) as &wasi::fdstat;
     err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat);
     if err != wasi::Err::SUCCESS {
         return;

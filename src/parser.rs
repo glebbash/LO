@@ -182,7 +182,7 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
         }
     }
 
-    if ctx.mode == CompilerMode::Compile {
+    if ctx.mode == CompilerMode::Compile || ctx.mode == CompilerMode::Eval {
         write_debug_info(ctx)?;
     }
 
