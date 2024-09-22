@@ -965,6 +965,57 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                 }),
             }
         }
+        "wasi_snapshot_preview1::args_sizes_get" => {
+            let argv_buf_size_ptr = eval.pop_i32();
+            let argc_ptr = eval.pop_i32();
+
+            match unsafe { wasi::args_sizes_get() } {
+                Ok((argc, argv_buf_size)) => {
+                    eval.state.memory.store_i32(argc_ptr as usize, argc as i32);
+                    eval.state
+                        .memory
+                        .store_i32(argv_buf_size_ptr as usize, argv_buf_size as i32);
+
+                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                }
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            }
+        }
+        "wasi_snapshot_preview1::args_get" => {
+            let argv_buf_ptr = eval.pop_i32();
+            let argv_ptr = eval.pop_i32();
+
+            let argv = &mut eval.state.memory.bytes[argv_ptr as usize] as *mut u8 as *mut *mut u8;
+            let argv_buf = &mut eval.state.memory.bytes[argv_buf_ptr as usize] as *mut u8;
+
+            match unsafe { wasi::args_get(argv, argv_buf) } {
+                Ok(()) => {
+                    // fix argv pointers to point to guest memory instead of host memory
+                    {
+                        let mem_base = (&eval.state.memory.bytes).as_ptr() as usize;
+
+                        let (argc, _) = unsafe { wasi::args_sizes_get() }.unwrap();
+                        for i in 0..argc {
+                            unsafe {
+                                let argv_i = argv.add(i);
+                                *argv_i = (((*argv_i) as usize) - mem_base) as *mut u8;
+                            }
+                        }
+                    };
+
+                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                }
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                    value: err.raw() as i32,
+                }),
+            }
+        }
+        "wasi_snapshot_preview1::proc_exit" => {
+            let exit_code = eval.pop_i32();
+            proc_exit(exit_code as u32);
+        }
         _ => {
             return Err(EvalError {
                 message: format!("Host fn '{fn_name}' is not implemented"),

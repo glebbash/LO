@@ -6,6 +6,7 @@ fn main() {
     let args = Args::load();
     defer args.free();
     if args.argc != 2 {
+        eputs("Usage cat.lo <file>");
         wasi::proc_exit(1);
     };
     let file_path = args.get(1);
