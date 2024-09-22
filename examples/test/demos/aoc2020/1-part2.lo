@@ -8,9 +8,9 @@ fn main() {
     defer numbers.free();
     for i in 0..numbers.size {
         let a = numbers.get!<u32>(i);
-        for j in 0..numbers.size {
+        for j in i + 1..numbers.size {
             let b = numbers.get!<u32>(j);
-            for k in 0..numbers.size {
+            for k in j + 1..numbers.size {
                 let c = numbers.get!<u32>(k);
                 if a + b + c == 2020 {
                     print_u32(a * b * c);

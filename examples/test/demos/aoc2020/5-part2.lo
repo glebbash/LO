@@ -12,7 +12,7 @@ fn main() {
         let seat_id = parse_seat_id(input.skip_chars(i * 11));
         seat_ids.push!<u32>(seat_id);
     };
-    bubble_sort(seat_ids);
+    selection_sort(seat_ids);
     let prev_seat_id = 0;
     for i in 0..tickets_count {
         let seat_id = seat_ids.get!<u32>(i);
@@ -25,22 +25,17 @@ fn main() {
     };
 };
 
-// https://en.wikipedia.org/wiki/Bubble_sort
-fn bubble_sort(items: &Vec of u32) {
+fn selection_sort(items: &Vec of u32) {
     let n = items.size;
-    loop {
-        let swapped = false;
-        for i in 1..n {
-            let a = items.get!<u32>(i - 1);
-            let b = items.get!<u32>(i);
-            if a > b {
-                items.set!<u32>(i - 1, b);
-                items.set!<u32>(i, a);
-                swapped = true;
+    for i in 0..n {
+        let min_index = i;
+        for j in (i + 1)..n {
+            if items.get!<u32>(j) < items.get!<u32>(min_index) {
+                min_index = j;
             };
         };
-        if !swapped {
-            break;
+        if min_index != i {
+            items.swap(i, min_index);
         };
     };
 };

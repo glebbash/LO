@@ -100,9 +100,8 @@ impl WasmEval {
 
         for (fn_code, i) in self.wasm_module.codes.iter().zip(0..) {
             let fn_index = (self.fn_imports_len + i) as u32;
-
-            self.jump_tables
-                .push((fn_index, JumpTable::for_expr(&fn_code.expr)));
+            let jump_table = JumpTable::for_expr(&fn_code.expr);
+            self.jump_tables.push((fn_index, jump_table));
         }
 
         Ok(())
@@ -165,71 +164,31 @@ impl WasmEval {
         Ok(())
     }
 
-    fn eval_expr(&mut self, expr: &WasmExpr, _jump_table: &JumpTable) -> Result<(), EvalError> {
-        let mut blocks = Vec::<BlockState>::new();
-
+    fn eval_expr(&mut self, expr: &WasmExpr, jump_table: &JumpTable) -> Result<(), EvalError> {
         let mut loc = 0;
         while loc < expr.instrs.len() {
             let instr = &expr.instrs[loc];
 
             match instr {
-                WasmInstr::BlockStart {
-                    block_kind,
-                    block_type: _,
-                } => {
-                    if blocks.last().is_some() && blocks.last().unwrap().should_skip {
-                        blocks.push(BlockState {
-                            loc,
-                            kind: WasmBlockKind::Block,
-                            should_skip: true,
-                        });
-                        loc += 1;
-                        continue;
-                    }
-
-                    let mut should_skip = false;
+                WasmInstr::BlockStart { block_kind, .. } => {
                     if let WasmBlockKind::If = block_kind {
                         let cond = self.pop_i32();
-
-                        should_skip = cond == 0;
+                        if cond == 0 {
+                            loc = jump_table.get_jump_loc(loc);
+                            continue;
+                        }
                     }
-
-                    blocks.push(BlockState {
-                        loc,
-                        kind: block_kind.clone(),
-                        should_skip,
-                    });
                 }
                 WasmInstr::Else => {
-                    let block = blocks.last_mut().unwrap();
-                    if block.kind == WasmBlockKind::If {
-                        block.should_skip = !block.should_skip;
-                    }
-                }
-                WasmInstr::BlockEnd => {
-                    blocks.pop().unwrap();
-                }
-                _ if blocks.last().is_some() && blocks.last().unwrap().should_skip => {
-                    loc += 1;
+                    loc = jump_table.get_jump_loc(loc);
                     continue;
                 }
-                WasmInstr::Branch { label_index } => {
-                    let block_len = blocks.len();
-                    let block_to_branch = &mut blocks[block_len - 1 - *label_index as usize];
-
-                    if block_to_branch.kind == WasmBlockKind::Loop {
-                        block_to_branch.should_skip = false;
-                        loc = block_to_branch.loc + 1;
-                        for _ in 0..*label_index {
-                            blocks.pop();
-                        }
-                        continue;
-                    }
-
-                    for i in 0..(*label_index + 1) {
-                        blocks[block_len - 1 - i as usize].should_skip = true;
-                    }
+                WasmInstr::Branch { .. } => {
+                    loc = jump_table.get_jump_loc(loc);
+                    continue;
                 }
+                WasmInstr::BlockEnd => {}
+
                 WasmInstr::Return => {
                     break;
                 }
@@ -686,12 +645,6 @@ struct CallFrame {
     locals: Vec<WasmValue>,
 }
 
-struct BlockState {
-    loc: usize,
-    kind: WasmBlockKind,
-    should_skip: bool,
-}
-
 #[derive(Default, Debug)]
 struct JumpTable {
     jumps: Vec<(usize, usize)>, // (from, to)
@@ -701,8 +654,9 @@ impl JumpTable {
     fn for_expr(expr: &WasmExpr) -> Self {
         struct BlockInfo {
             loc: usize,
-            block_kind: WasmBlockKind,
+            kind: WasmBlockKind,
             unresolved_branches: Vec<usize>,
+            had_else: bool,
         }
 
         let mut jump_table = JumpTable::default();
@@ -713,23 +667,17 @@ impl JumpTable {
                 WasmInstr::BlockStart { block_kind, .. } => {
                     blocks.push(BlockInfo {
                         loc,
-                        block_kind: block_kind.clone(),
+                        kind: block_kind.clone(),
                         unresolved_branches: Vec::new(),
+                        had_else: false,
                     });
                 }
                 WasmInstr::Else => {
                     let block = blocks.last_mut().unwrap();
-
-                    assert_eq!(block.block_kind, WasmBlockKind::If);
-
+                    assert_eq!(block.kind, WasmBlockKind::If);
                     jump_table.jumps.push((block.loc, loc + 1));
-                }
-                WasmInstr::BlockEnd => {
-                    let block = blocks.pop().unwrap();
-
-                    for branch_loc in block.unresolved_branches {
-                        jump_table.jumps.push((branch_loc, loc));
-                    }
+                    block.had_else = true;
+                    block.unresolved_branches.push(loc);
                 }
                 WasmInstr::Branch { label_index } => {
                     let blocks_len = blocks.len();
@@ -737,7 +685,7 @@ impl JumpTable {
                         .get_mut(blocks_len - 1 - *label_index as usize)
                         .unwrap();
 
-                    match target_block.block_kind {
+                    match target_block.kind {
                         WasmBlockKind::Loop => {
                             jump_table.jumps.push((loc, target_block.loc + 1));
                         }
@@ -746,15 +694,34 @@ impl JumpTable {
                         }
                     }
                 }
+                WasmInstr::BlockEnd => {
+                    let block = blocks.pop().unwrap();
 
+                    for branch_loc in block.unresolved_branches {
+                        jump_table.jumps.push((branch_loc, loc));
+                    }
+
+                    if let WasmBlockKind::If = block.kind {
+                        if !block.had_else {
+                            jump_table.jumps.push((block.loc, loc));
+                        }
+                    }
+                }
                 _ => {}
             }
         }
 
-        // jumps created from block branches are created out of order so need to sort
+        // jumps from branches are created out of order so need to sort
         jump_table.jumps.sort_by_key(|&(from, _)| from);
 
         jump_table
+    }
+
+    fn get_jump_loc(&self, from_loc: usize) -> usize {
+        let jump_index = self
+            .jumps
+            .binary_search_by_key(&from_loc, |(from, _)| *from);
+        self.jumps[jump_index.unwrap()].1
     }
 }
 
