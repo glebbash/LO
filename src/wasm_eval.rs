@@ -52,7 +52,7 @@ impl WasmEval {
                 match data {
                     WasmData::Active { offset, bytes } => {
                         self.eval_expr(offset)?;
-                        let offset = self.state.pop_i32() as usize;
+                        let offset = self.pop_i32() as usize;
 
                         self.state.memory.bytes[offset..offset + bytes.len()]
                             .copy_from_slice(&bytes);
@@ -174,7 +174,7 @@ impl WasmEval {
 
                     let mut should_skip = false;
                     if let WasmBlockKind::If = block_kind {
-                        let cond = self.state.pop_i32();
+                        let cond = self.pop_i32();
 
                         should_skip = cond == 0;
                     }
@@ -263,13 +263,13 @@ impl WasmEval {
                     offset,
                 } => match kind {
                     WasmLoadKind::I32 => {
-                        let addr = self.state.pop_i32();
+                        let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
                         let value = self.state.memory.load_i32(full_addr);
                         self.state.stack.push(WasmValue::I32 { value });
                     }
                     WasmLoadKind::I32U8 => {
-                        let addr = self.state.pop_i32();
+                        let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
                         let Some(value) = self.state.memory.bytes.get(full_addr).cloned() else {
                             return Err(self.err_with_stack(format!(
@@ -289,14 +289,14 @@ impl WasmEval {
                     offset,
                 } => match kind {
                     WasmStoreKind::I32 => {
-                        let value = self.state.pop_i32();
-                        let addr = self.state.pop_i32();
+                        let value = self.pop_i32();
+                        let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
                         self.state.memory.store_i32(full_addr, value);
                     }
                     WasmStoreKind::I32U8 => {
-                        let value = self.state.pop_i32();
-                        let addr = self.state.pop_i32();
+                        let value = self.pop_i32();
+                        let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
                         self.state.memory.bytes[full_addr] = value as u8;
                     }
@@ -314,9 +314,9 @@ impl WasmEval {
                     self.state.stack.push(WasmValue::I32 { value: mem_size });
                 }
                 WasmInstr::MemoryCopy => {
-                    let num_bytes = self.state.pop_i32();
-                    let source = self.state.pop_i32();
-                    let destination = self.state.pop_i32();
+                    let num_bytes = self.pop_i32();
+                    let source = self.pop_i32();
+                    let destination = self.pop_i32();
 
                     self.state.memory.bytes.copy_within(
                         source as usize..source as usize + num_bytes as usize,
@@ -326,142 +326,187 @@ impl WasmEval {
                 WasmInstr::MemoryGrow => todo!("{instr:?}"),
 
                 WasmInstr::I64ExtendI32u => {
-                    crate::core::debug(format!("here 2?"));
-                    let value = self.state.pop_i32();
-                    crate::core::debug(format!("no 2"));
+                    let value = self.pop_i32();
                     self.state.stack.push(WasmValue::I64 {
                         value: value as u32 as u64 as i64,
                     })
                 }
                 WasmInstr::I64ExtendI32s => {
-                    crate::core::debug(format!("here?"));
-                    let value = self.state.pop_i32();
-                    crate::core::debug(format!("no"));
+                    let value = self.pop_i32();
                     self.state.stack.push(WasmValue::I64 {
                         value: value as i64,
                     })
                 }
-                WasmInstr::I32WrapI64 => todo!("{instr:?}"),
-                WasmInstr::BinaryOp { kind } => {
-                    let rhs = self.state.pop_i32();
-                    let lhs = self.state.pop_i32();
-                    let stack = &mut self.state.stack;
-
-                    match kind {
-                        WasmBinaryOpKind::I32_ADD => {
-                            let value = lhs + rhs;
-                            stack.push(WasmValue::I32 { value });
-                        }
-                        WasmBinaryOpKind::I32_SUB => {
-                            let value = lhs - rhs;
-                            stack.push(WasmValue::I32 { value });
-                        }
-                        WasmBinaryOpKind::I32_MUL => {
-                            let value = lhs * rhs;
-                            stack.push(WasmValue::I32 { value });
-                        }
-                        WasmBinaryOpKind::I32_AND => {
-                            let value = lhs & rhs;
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_OR => {
-                            let value = lhs | rhs;
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_DIV_U => {
-                            let value = ((lhs as u32) / (rhs as u32)) as i32;
-                            stack.push(WasmValue::I32 { value });
-                        }
-                        WasmBinaryOpKind::I32_SHR_U => {
-                            let value = ((lhs as u32) >> (rhs as u32)) as i32;
-                            stack.push(WasmValue::I32 { value });
-                        }
-                        WasmBinaryOpKind::I32_REM_U => {
-                            let value = ((lhs as u32) % (rhs as u32)) as i32;
-                            stack.push(WasmValue::I32 { value });
-                        }
-                        WasmBinaryOpKind::I32_EQ => {
-                            let value = if lhs == rhs { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_NE => {
-                            let value = if lhs != rhs { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_GT_S => {
-                            let value = if lhs > rhs { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_LT_U => {
-                            let value = if (lhs as u32) < (rhs as u32) { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_GT_U => {
-                            let value = if (lhs as u32) > (rhs as u32) { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_GE_U => {
-                            let value = if (lhs as u32) >= (rhs as u32) { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_LE_U => {
-                            let value = if (lhs as u32) <= (rhs as u32) { 1 } else { 0 };
-                            stack.push(WasmValue::I32 { value })
-                        }
-                        WasmBinaryOpKind::I32_LT_S
-                        | WasmBinaryOpKind::I32_LE_S
-                        | WasmBinaryOpKind::I32_GE_S
-                        | WasmBinaryOpKind::I32_DIV_S
-                        | WasmBinaryOpKind::I32_REM_S
-                        | WasmBinaryOpKind::I32_SHL
-                        | WasmBinaryOpKind::I32_SHR_S => todo!("{kind:?}"),
-
-                        WasmBinaryOpKind::I64_EQ
-                        | WasmBinaryOpKind::I64_NE
-                        | WasmBinaryOpKind::I64_LT_S
-                        | WasmBinaryOpKind::I64_LT_U
-                        | WasmBinaryOpKind::I64_GT_S
-                        | WasmBinaryOpKind::I64_GT_U
-                        | WasmBinaryOpKind::I64_LE_S
-                        | WasmBinaryOpKind::I64_LE_U
-                        | WasmBinaryOpKind::I64_GE_S
-                        | WasmBinaryOpKind::I64_GE_U
-                        | WasmBinaryOpKind::I64_ADD
-                        | WasmBinaryOpKind::I64_SUB
-                        | WasmBinaryOpKind::I64_MUL
-                        | WasmBinaryOpKind::I64_DIV_S
-                        | WasmBinaryOpKind::I64_DIV_U
-                        | WasmBinaryOpKind::I64_REM_S
-                        | WasmBinaryOpKind::I64_REM_U
-                        | WasmBinaryOpKind::I64_AND
-                        | WasmBinaryOpKind::I64_OR
-                        | WasmBinaryOpKind::I64_SHL
-                        | WasmBinaryOpKind::I64_SHR_S
-                        | WasmBinaryOpKind::I64_SHR_U => todo!("{kind:?}"),
-
-                        WasmBinaryOpKind::F32_EQ
-                        | WasmBinaryOpKind::F32_NE
-                        | WasmBinaryOpKind::F32_LT
-                        | WasmBinaryOpKind::F32_GT
-                        | WasmBinaryOpKind::F32_LE
-                        | WasmBinaryOpKind::F32_GE
-                        | WasmBinaryOpKind::F32_ADD
-                        | WasmBinaryOpKind::F32_SUB
-                        | WasmBinaryOpKind::F32_MUL
-                        | WasmBinaryOpKind::F32_DIV => todo!("{kind:?}"),
-
-                        WasmBinaryOpKind::F64_EQ
-                        | WasmBinaryOpKind::F64_NE
-                        | WasmBinaryOpKind::F64_LT
-                        | WasmBinaryOpKind::F64_GT
-                        | WasmBinaryOpKind::F64_LE
-                        | WasmBinaryOpKind::F64_GE
-                        | WasmBinaryOpKind::F64_ADD
-                        | WasmBinaryOpKind::F64_SUB
-                        | WasmBinaryOpKind::F64_MUL
-                        | WasmBinaryOpKind::F64_DIV => todo!("{kind:?}"),
-                    }
+                WasmInstr::I32WrapI64 => {
+                    let value = self.pop_i64();
+                    self.state.stack.push(WasmValue::I32 {
+                        value: value as i32,
+                    })
                 }
+                WasmInstr::BinaryOp { kind } => match kind {
+                    WasmBinaryOpKind::I32_ADD => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs + rhs;
+                        self.state.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_SUB => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs - rhs;
+                        self.state.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_MUL => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs * rhs;
+                        self.state.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_AND => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs & rhs;
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_OR => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs | rhs;
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_DIV_U => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = ((lhs as u32) / (rhs as u32)) as i32;
+                        self.state.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_SHR_U => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = ((lhs as u32) >> (rhs as u32)) as i32;
+                        self.state.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_REM_U => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = ((lhs as u32) % (rhs as u32)) as i32;
+                        self.state.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_EQ => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if lhs == rhs { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_NE => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if lhs != rhs { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_GT_S => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if lhs > rhs { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_LT_U => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if (lhs as u32) < (rhs as u32) { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_GT_U => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if (lhs as u32) > (rhs as u32) { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_GE_U => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if (lhs as u32) >= (rhs as u32) { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_LE_U => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if (lhs as u32) <= (rhs as u32) { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_LT_S
+                    | WasmBinaryOpKind::I32_LE_S
+                    | WasmBinaryOpKind::I32_GE_S
+                    | WasmBinaryOpKind::I32_DIV_S
+                    | WasmBinaryOpKind::I32_REM_S
+                    | WasmBinaryOpKind::I32_SHL
+                    | WasmBinaryOpKind::I32_SHR_S => todo!("{kind:?}"),
+
+                    WasmBinaryOpKind::I64_MUL => {
+                        let rhs = self.pop_i64();
+                        let lhs = self.pop_i64();
+                        let value = lhs * rhs;
+                        self.state.stack.push(WasmValue::I64 { value })
+                    }
+                    WasmBinaryOpKind::I64_EQ => {
+                        let rhs = self.pop_i64();
+                        let lhs = self.pop_i64();
+                        let value = if lhs == rhs { 1 } else { 0 };
+                        self.state.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I64_DIV_U => {
+                        let rhs = self.pop_i64();
+                        let lhs = self.pop_i64();
+                        let value = (lhs as u64 / rhs as u64) as i64;
+                        self.state.stack.push(WasmValue::I64 { value })
+                    }
+                    WasmBinaryOpKind::I64_REM_U => {
+                        let rhs = self.pop_i64();
+                        let lhs = self.pop_i64();
+                        let value = (lhs as u64 % rhs as u64) as i64;
+                        self.state.stack.push(WasmValue::I64 { value })
+                    }
+                    WasmBinaryOpKind::I64_NE
+                    | WasmBinaryOpKind::I64_LT_S
+                    | WasmBinaryOpKind::I64_LT_U
+                    | WasmBinaryOpKind::I64_GT_S
+                    | WasmBinaryOpKind::I64_GT_U
+                    | WasmBinaryOpKind::I64_LE_S
+                    | WasmBinaryOpKind::I64_LE_U
+                    | WasmBinaryOpKind::I64_GE_S
+                    | WasmBinaryOpKind::I64_GE_U
+                    | WasmBinaryOpKind::I64_ADD
+                    | WasmBinaryOpKind::I64_SUB
+                    | WasmBinaryOpKind::I64_DIV_S
+                    | WasmBinaryOpKind::I64_REM_S
+                    | WasmBinaryOpKind::I64_AND
+                    | WasmBinaryOpKind::I64_OR
+                    | WasmBinaryOpKind::I64_SHL
+                    | WasmBinaryOpKind::I64_SHR_S
+                    | WasmBinaryOpKind::I64_SHR_U => todo!("{kind:?}"),
+
+                    WasmBinaryOpKind::F32_EQ
+                    | WasmBinaryOpKind::F32_NE
+                    | WasmBinaryOpKind::F32_LT
+                    | WasmBinaryOpKind::F32_GT
+                    | WasmBinaryOpKind::F32_LE
+                    | WasmBinaryOpKind::F32_GE
+                    | WasmBinaryOpKind::F32_ADD
+                    | WasmBinaryOpKind::F32_SUB
+                    | WasmBinaryOpKind::F32_MUL
+                    | WasmBinaryOpKind::F32_DIV => todo!("{kind:?}"),
+
+                    WasmBinaryOpKind::F64_EQ
+                    | WasmBinaryOpKind::F64_NE
+                    | WasmBinaryOpKind::F64_LT
+                    | WasmBinaryOpKind::F64_GT
+                    | WasmBinaryOpKind::F64_LE
+                    | WasmBinaryOpKind::F64_GE
+                    | WasmBinaryOpKind::F64_ADD
+                    | WasmBinaryOpKind::F64_SUB
+                    | WasmBinaryOpKind::F64_MUL
+                    | WasmBinaryOpKind::F64_DIV => todo!("{kind:?}"),
+                },
             }
 
             loc += 1;
@@ -514,6 +559,34 @@ impl WasmEval {
 
         None
     }
+
+    fn pop_i32(&mut self) -> i32 {
+        let wasm_value = self.state.stack.pop().unwrap();
+        let WasmValue::I32 { value } = wasm_value else {
+            let err = self.err_with_stack(format!(
+                "Trying to pop I32 but got {:?}",
+                wasm_value.get_type()
+            ));
+            stderr_write(format!("Error: {}\n", err.message));
+            proc_exit(1);
+        };
+
+        value
+    }
+
+    fn pop_i64(&mut self) -> i64 {
+        let wasm_value = self.state.stack.pop().unwrap();
+        let WasmValue::I64 { value } = wasm_value else {
+            let err = self.err_with_stack(format!(
+                "Trying to pop I64 but got {:?}",
+                wasm_value.get_type()
+            ));
+            stderr_write(format!("Error: {}\n", err.message));
+            proc_exit(1);
+        };
+
+        value
+    }
 }
 
 // values
@@ -533,6 +606,15 @@ impl WasmValue {
             WasmType::I64 => WasmValue::I64 { value: 0 },
             WasmType::F32 => WasmValue::F32 { value: 0.0 },
             WasmType::F64 => WasmValue::F64 { value: 0.0 },
+        }
+    }
+
+    fn get_type(&self) -> WasmType {
+        match self {
+            WasmValue::I32 { .. } => WasmType::I32,
+            WasmValue::I64 { .. } => WasmType::I64,
+            WasmValue::F32 { .. } => WasmType::F32,
+            WasmValue::F64 { .. } => WasmType::F64,
         }
     }
 }
@@ -557,26 +639,6 @@ struct EvalState {
     call_stack: Vec<CallFrame>,
     memory: LinearMemory,
     host_fns: Vec<String>,
-}
-
-impl EvalState {
-    fn pop_i32(&mut self) -> i32 {
-        let wasm_value = self.stack.pop().unwrap();
-        let WasmValue::I32 { value } = wasm_value else {
-            unreachable!();
-        };
-
-        value
-    }
-
-    fn pop_i64(&mut self) -> i64 {
-        let wasm_value = self.stack.pop().unwrap();
-        let WasmValue::I64 { value } = wasm_value else {
-            unreachable!();
-        };
-
-        value
-    }
 }
 
 #[derive(Default, Debug)]
@@ -710,43 +772,44 @@ static SUPPORTED_HOST_FNS: [SupportedHostFn; 12] = [
 ];
 
 fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
-    let state = &mut eval.state;
-    let fn_name = &state.host_fns[fn_index as usize];
+    let fn_name = &eval.state.host_fns[fn_index as usize];
     match &fn_name[..] {
         "utils::debug" => {
-            let value = state.pop_i32() as u32;
+            let value = eval.pop_i32() as u32;
             debug(format!("{value}"));
         }
         "utils::debug_str" => {
-            let message_len = state.pop_i32() as u32;
-            let message_ptr = state.pop_i32() as u32;
-            let message_bytes = &state.memory.bytes
+            let message_len = eval.pop_i32() as u32;
+            let message_ptr = eval.pop_i32() as u32;
+            let message_bytes = &eval.state.memory.bytes
                 [message_ptr as usize..message_ptr as usize + message_len as usize];
 
             let message = str::from_utf8(message_bytes).unwrap();
             stderr_write(message);
         }
         "wasi_snapshot_preview1::fd_prestat_get" => {
-            let buf = state.pop_i32();
-            let fd = state.pop_i32();
+            let buf = eval.pop_i32();
+            let fd = eval.pop_i32();
 
             match unsafe { wasi::fd_prestat_get(fd as u32) } {
                 Ok(prestat) => {
                     let pr_name_len = unsafe { prestat.u.dir.pr_name_len as i32 };
-                    state.memory.store_i32(buf as usize, prestat.tag as i32);
-                    state.memory.store_i32(buf as usize + 4, pr_name_len);
+                    eval.state
+                        .memory
+                        .store_i32(buf as usize, prestat.tag as i32);
+                    eval.state.memory.store_i32(buf as usize + 4, pr_name_len);
 
-                    state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.state.stack.push(WasmValue::I32 { value: 0 });
                 }
-                Err(err) => state.stack.push(WasmValue::I32 {
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
         }
         "wasi_snapshot_preview1::fd_prestat_dir_name" => {
-            let path_len = state.pop_i32();
-            let path = state.pop_i32();
-            let fd = state.pop_i32();
+            let path_len = eval.pop_i32();
+            let path = eval.pop_i32();
+            let fd = eval.pop_i32();
 
             let layout = Layout::array::<u8>(path_len as usize).unwrap();
             let path_buf = unsafe { alloc(layout) };
@@ -758,12 +821,12 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                             .as_ref()
                             .unwrap()
                     };
-                    state.memory.bytes[path as usize..path as usize + path_len as usize]
+                    eval.state.memory.bytes[path as usize..path as usize + path_len as usize]
                         .copy_from_slice(path_slice);
 
-                    state.stack.push(WasmValue::I32 { value: 0 })
+                    eval.state.stack.push(WasmValue::I32 { value: 0 })
                 }
-                Err(err) => state.stack.push(WasmValue::I32 {
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
@@ -773,42 +836,42 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             }
         }
         "wasi_snapshot_preview1::fd_fdstat_get" => {
-            let fdstat_ptr = state.pop_i32();
-            let fd = state.pop_i32();
+            let fdstat_ptr = eval.pop_i32();
+            let fd = eval.pop_i32();
 
             match unsafe { wasi::fd_fdstat_get(fd as u32) } {
                 Ok(fdstat) => {
-                    state.memory.bytes[fdstat_ptr as usize] = fdstat.fs_filetype.raw();
-                    state
+                    eval.state.memory.bytes[fdstat_ptr as usize] = fdstat.fs_filetype.raw();
+                    eval.state
                         .memory
                         .store_i16(fdstat_ptr as usize + 2, fdstat.fs_flags as i16);
-                    state
+                    eval.state
                         .memory
                         .store_i64(fdstat_ptr as usize + 8, fdstat.fs_rights_base as i64);
-                    state
+                    eval.state
                         .memory
                         .store_i64(fdstat_ptr as usize + 16, fdstat.fs_rights_inheriting as i64);
 
-                    state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.state.stack.push(WasmValue::I32 { value: 0 });
                 }
-                Err(err) => state.stack.push(WasmValue::I32 {
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
         }
         "wasi_snapshot_preview1::path_open" => {
-            let fd_ptr = state.pop_i32();
-            let fdflags = state.pop_i32();
-            let fs_rights_inheriting = state.pop_i64();
-            let fs_rights_base = state.pop_i64();
-            let oflags = state.pop_i32();
-            let path_len = state.pop_i32();
-            let path_ptr = state.pop_i32();
-            let dirflags = state.pop_i32();
-            let dirfd = state.pop_i32();
+            let fd_ptr = eval.pop_i32();
+            let fdflags = eval.pop_i32();
+            let fs_rights_inheriting = eval.pop_i64();
+            let fs_rights_base = eval.pop_i64();
+            let oflags = eval.pop_i32();
+            let path_len = eval.pop_i32();
+            let path_ptr = eval.pop_i32();
+            let dirflags = eval.pop_i32();
+            let dirfd = eval.pop_i32();
 
             let path_bytes =
-                &state.memory.bytes[path_ptr as usize..path_ptr as usize + path_len as usize];
+                &eval.state.memory.bytes[path_ptr as usize..path_ptr as usize + path_len as usize];
 
             match unsafe {
                 wasi::path_open(
@@ -822,27 +885,27 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                 )
             } {
                 Ok(fd) => {
-                    state.stack.push(WasmValue::I32 { value: 0 });
-                    state.memory.store_i32(fd_ptr as usize, fd as i32);
+                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.state.memory.store_i32(fd_ptr as usize, fd as i32);
                 }
-                Err(err) => state.stack.push(WasmValue::I32 {
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
         }
         "wasi_snapshot_preview1::fd_write" => {
-            let nwritten_ptr = state.pop_i32();
-            let iovs_len = state.pop_i32();
-            let iovs_ptr = state.pop_i32();
-            let fd = state.pop_i32();
+            let nwritten_ptr = eval.pop_i32();
+            let iovs_len = eval.pop_i32();
+            let iovs_ptr = eval.pop_i32();
+            let fd = eval.pop_i32();
 
             let mut iovs = Vec::new();
             for i in 0..iovs_len {
                 let iov_base = iovs_ptr as usize + (i as usize * 8);
-                let str_ptr = state.memory.load_i32(iov_base);
-                let str_len = state.memory.load_i32(iov_base + 4);
+                let str_ptr = eval.state.memory.load_i32(iov_base);
+                let str_len = eval.state.memory.load_i32(iov_base + 4);
 
-                let buf = (&mut state.memory.bytes[str_ptr as usize]) as *const u8;
+                let buf = (&mut eval.state.memory.bytes[str_ptr as usize]) as *const u8;
                 iovs.push(wasi::Ciovec {
                     buf,
                     buf_len: str_len as usize,
@@ -851,29 +914,29 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
 
             match unsafe { wasi::fd_write(fd as u32, &iovs) } {
                 Ok(nwritten) => {
-                    state.stack.push(WasmValue::I32 { value: 0 });
-                    state
+                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.state
                         .memory
                         .store_i32(nwritten_ptr as usize, nwritten as i32);
                 }
-                Err(err) => state.stack.push(WasmValue::I32 {
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             };
         }
         "wasi_snapshot_preview1::fd_read" => {
-            let nread_ptr = state.pop_i32();
-            let iovs_len = state.pop_i32();
-            let iovs_ptr = state.pop_i32();
-            let fd = state.pop_i32();
+            let nread_ptr = eval.pop_i32();
+            let iovs_len = eval.pop_i32();
+            let iovs_ptr = eval.pop_i32();
+            let fd = eval.pop_i32();
 
             let mut iovs = Vec::new();
             for i in 0..iovs_len {
                 let iov_base = iovs_ptr as usize + (i as usize * 8);
-                let str_ptr = state.memory.load_i32(iov_base);
-                let str_len = state.memory.load_i32(iov_base + 4);
+                let str_ptr = eval.state.memory.load_i32(iov_base);
+                let str_len = eval.state.memory.load_i32(iov_base + 4);
 
-                let buf = (&mut state.memory.bytes[str_ptr as usize]) as *mut u8;
+                let buf = (&mut eval.state.memory.bytes[str_ptr as usize]) as *mut u8;
                 iovs.push(wasi::Iovec {
                     buf,
                     buf_len: str_len as usize,
@@ -882,20 +945,22 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
 
             match unsafe { wasi::fd_read(fd as u32, &iovs) } {
                 Ok(nread) => {
-                    state.stack.push(WasmValue::I32 { value: 0 });
-                    state.memory.store_i32(nread_ptr as usize, nread as i32);
+                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.state
+                        .memory
+                        .store_i32(nread_ptr as usize, nread as i32);
                 }
-                Err(err) => state.stack.push(WasmValue::I32 {
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             };
         }
         "wasi_snapshot_preview1::fd_close" => {
-            let fd = state.pop_i32();
+            let fd = eval.pop_i32();
 
             match unsafe { wasi::fd_close(fd as u32) } {
-                Ok(()) => state.stack.push(WasmValue::I32 { value: 0 }),
-                Err(err) => state.stack.push(WasmValue::I32 {
+                Ok(()) => eval.state.stack.push(WasmValue::I32 { value: 0 }),
+                Err(err) => eval.state.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }

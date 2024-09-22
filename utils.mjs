@@ -972,20 +972,41 @@ async function testCommand() {
             const res1 = await interpret("./examples/test/demos/aoc2020/3.lo");
             assert.strictEqual(res1.toString("utf-8"), "151\n");
 
-            // const res2 = await interpret(
-            //     "./examples/test/demos/aoc2020/3-part2.lo"
-            // );
-            // assert.strictEqual(res2.toString("utf-8"), "303\n");
+            const res2 = await interpret(
+                "./examples/test/demos/aoc2020/3-part2.lo"
+            );
+            assert.strictEqual(res2.toString("utf-8"), "7540141059\n");
         });
 
-        // "examples/test/demos/aoc2020/3-part2.lo",
-        // "examples/test/demos/aoc2020/3.lo",
-        // "examples/test/demos/aoc2020/4-part2.lo",
-        // "examples/test/demos/aoc2020/4.lo",
-        // "examples/test/demos/aoc2020/5-part2.lo",
-        // "examples/test/demos/aoc2020/5.lo",
-        // "examples/test/demos/aoc2023/1-part2.lo",
-        // "examples/test/demos/aoc2023/1.lo",
+        test("interprets aoc2020 day 4", async () => {
+            const res1 = await interpret("./examples/test/demos/aoc2020/4.lo");
+            assert.strictEqual(res1.toString("utf-8"), "264\n");
+
+            const res2 = await interpret(
+                "./examples/test/demos/aoc2020/4-part2.lo"
+            );
+            assert.strictEqual(res2.toString("utf-8"), "224\n");
+        });
+
+        test("interprets aoc2020 day 5", async () => {
+            const res1 = await interpret("./examples/test/demos/aoc2020/5.lo");
+            assert.strictEqual(res1.toString("utf-8"), "947\n");
+
+            const res2 = await interpret(
+                "./examples/test/demos/aoc2020/5-part2.lo"
+            );
+            assert.strictEqual(res2.toString("utf-8"), "636\n");
+        });
+
+        test("interprets aoc2023 day 1", async () => {
+            const res1 = await interpret("./examples/test/demos/aoc2023/1.lo");
+            assert.strictEqual(res1.toString("utf-8"), "54450\n");
+
+            const res2 = await interpret(
+                "./examples/test/demos/aoc2023/1-part2.lo"
+            );
+            assert.strictEqual(res2.toString("utf-8"), "54265\n");
+        });
     });
 
     /**
