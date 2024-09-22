@@ -932,12 +932,37 @@ async function testCommand() {
             );
         });
 
+        test("interprets import.lo", async () => {
+            const res = await interpret("./examples/test/import.lo");
+            // can't really see debug output because it's on stderr and that is ignored on exit = 0
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: \n"
+            );
+        });
+
         test("interprets hello-world-raw.lo", async () => {
             const res = await interpret(
                 "./examples/test/demos/hello-world-raw.lo"
             );
             assert.strictEqual(res.toString("utf-8"), "Hello World!\n");
         });
+
+        // test("interprets aoc2020/1.lo", async () => {
+        //     const res = await interpret("./examples/test/demos/aoc2020/1.lo");
+        //     assert.strictEqual(res.toString("utf-8"), "Hello World!\n");
+        // });
+        // "examples/test/demos/aoc2020/1-part2.lo",
+        // "examples/test/demos/aoc2020/2-part2.lo",
+        // "examples/test/demos/aoc2020/2.lo",
+        // "examples/test/demos/aoc2020/3-part2.lo",
+        // "examples/test/demos/aoc2020/3.lo",
+        // "examples/test/demos/aoc2020/4-part2.lo",
+        // "examples/test/demos/aoc2020/4.lo",
+        // "examples/test/demos/aoc2020/5-part2.lo",
+        // "examples/test/demos/aoc2020/5.lo",
+        // "examples/test/demos/aoc2023/1-part2.lo",
+        // "examples/test/demos/aoc2023/1.lo",
     });
 
     /**

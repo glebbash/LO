@@ -32,8 +32,9 @@ impl WasmEval {
     // TODO: add module verify step
     fn init_module(&mut self) -> Result<(), EvalError> {
         for global in &self.wasm_module.globals {
-            let value = WasmValue::default_for_type(&global.kind.value_type);
-            self.state.borrow_mut().globals.push(value);
+            self.eval_expr(&global.initial_value)?;
+            let initial_value = self.state.borrow_mut().stack.pop().unwrap();
+            self.state.borrow_mut().globals.push(initial_value);
         }
 
         if let Some(memory) = self.wasm_module.memories.first() {
@@ -54,23 +55,21 @@ impl WasmEval {
             }
         }
 
-        for (import, i) in self.wasm_module.imports.iter().zip(0..) {
+        'import_loop: for (import, i) in self.wasm_module.imports.iter().zip(0..) {
             if let WasmImportDesc::Func { type_index } = import.item_desc {
                 let fn_type = &self.wasm_module.types[type_index as usize];
 
-                // fn fd_write(fd: u32, iovs: u32, iovs_len: u32, nwritten: u32): u32;
-                if import.module_name == "wasi_snapshot_preview1"
-                    && import.item_name == "fd_write"
-                    && &fn_type.inputs[..]
-                        == &[WasmType::I32, WasmType::I32, WasmType::I32, WasmType::I32]
-                    && &fn_type.outputs[..] == &[WasmType::I32]
-                {
-                    self.state
-                        .borrow_mut()
-                        .host_fns
-                        .push(String::from("fd_write"));
-                    self.fn_imports_len += 1;
-                    continue;
+                for host_fn in &SUPPORTED_HOST_FNS {
+                    if import.module_name == host_fn.module_name
+                        && import.item_name == host_fn.fn_name
+                        && &fn_type.inputs[..] == host_fn.fn_inputs
+                        && &fn_type.outputs[..] == host_fn.fn_outputs
+                    {
+                        let full_name = format!("{}::{}", import.module_name, import.item_name);
+                        self.state.borrow_mut().host_fns.push(full_name);
+                        self.fn_imports_len += 1;
+                        continue 'import_loop;
+                    }
                 }
 
                 return Err(EvalError {
@@ -116,12 +115,15 @@ impl WasmEval {
 
     fn call_fn(&self, fn_index: u32) -> Result<(), EvalError> {
         if fn_index < self.fn_imports_len as u32 {
-            return self.call_host_fn(fn_index);
+            return call_host_fn(self, fn_index);
         }
 
         let (fn_type, code) = self.get_fn_info(fn_index)?;
 
-        let mut call_frame = CallFrame::default();
+        let mut call_frame = CallFrame {
+            fn_index,
+            ..Default::default()
+        };
         for _ in 0..fn_type.inputs.len() {
             let value = self.state.borrow_mut().stack.pop().unwrap();
             call_frame.locals.push(value);
@@ -138,50 +140,6 @@ impl WasmEval {
         self.eval_expr(&code.expr)?;
 
         self.state.borrow_mut().call_stack.pop();
-
-        Ok(())
-    }
-
-    fn call_host_fn(&self, fn_index: u32) -> Result<(), EvalError> {
-        let mut state = self.state.borrow_mut();
-        let fn_name = &state.host_fns[fn_index as usize];
-        match &fn_name[..] {
-            // fn fd_write(fd: u32, iovs: u32, iovs_len: u32, nwritten: u32): u32;
-            "fd_write" => {
-                let nwritten = state.pop_i32();
-                let iovs_len = state.pop_i32();
-                let iovs_ptr = state.pop_i32();
-                let fd = state.pop_i32();
-
-                let mut iovs = Vec::new();
-                for i in 0..iovs_len {
-                    let iov_base = iovs_ptr as usize + (i as usize * 8);
-                    let str_ptr = state.memory.load_i32(iov_base);
-                    let str_len = state.memory.load_i32(iov_base + 4);
-
-                    let buf = (&mut state.memory.bytes[str_ptr as usize]) as *const u8;
-                    iovs.push(wasi::Ciovec {
-                        buf,
-                        buf_len: str_len as usize,
-                    });
-                }
-
-                match unsafe { wasi::fd_write(fd as u32, &iovs) } {
-                    Ok(nwritten_val) => {
-                        state.stack.push(WasmValue::I32 { value: 0 });
-                        state
-                            .memory
-                            .store_i32(nwritten as usize, nwritten_val as i32);
-                    }
-                    Err(err) => {
-                        state.stack.push(WasmValue::I32 {
-                            value: err.raw() as i32,
-                        });
-                    }
-                };
-            }
-            _ => unreachable!(),
-        }
 
         Ok(())
     }
@@ -332,7 +290,20 @@ impl WasmEval {
                     let mut state = self.state.borrow_mut();
                     let _ = state.stack.pop().unwrap();
                 }
-                WasmInstr::Unreachable => todo!("{instr:?}"),
+                WasmInstr::Unreachable => {
+                    // TODO: pull in function names from debug section
+                    let mut call_stack = Vec::new();
+                    while let Some(frame) = self.state.borrow_mut().call_stack.pop() {
+                        call_stack.push(frame.fn_index);
+                    }
+
+                    return Err(EvalError {
+                        message: format!(
+                            "Hit unreachable trap, call stack: {}",
+                            ListDisplay(&call_stack)
+                        ),
+                    });
+                }
                 WasmInstr::MemorySize => todo!("{instr:?}"),
                 WasmInstr::MemoryGrow => todo!("{instr:?}"),
                 WasmInstr::MemoryCopy => todo!("{instr:?}"),
@@ -378,10 +349,13 @@ impl WasmEval {
                             let value = if (lhs as u32) < (rhs as u32) { 1 } else { 0 };
                             stack.push(WasmValue::I32 { value })
                         }
+                        WasmBinaryOpKind::I32_GT_U => {
+                            let value = if (lhs as u32) > (rhs as u32) { 1 } else { 0 };
+                            stack.push(WasmValue::I32 { value })
+                        }
                         WasmBinaryOpKind::I32_NE
                         | WasmBinaryOpKind::I32_LT_S
                         | WasmBinaryOpKind::I32_GT_S
-                        | WasmBinaryOpKind::I32_GT_U
                         | WasmBinaryOpKind::I32_LE_S
                         | WasmBinaryOpKind::I32_LE_U
                         | WasmBinaryOpKind::I32_GE_S
@@ -505,6 +479,7 @@ impl LinearMemory {
 
 #[derive(Default, Debug)]
 struct CallFrame {
+    fn_index: u32,
     locals: Vec<WasmValue>,
 }
 
@@ -544,4 +519,143 @@ impl core::fmt::Display for WasmValue {
             WasmValue::F64 { value } => write!(f, "{value}"),
         }
     }
+}
+
+// host fns
+
+struct SupportedHostFn {
+    module_name: &'static str,
+    fn_name: &'static str,
+    fn_inputs: &'static [WasmType],
+    fn_outputs: &'static [WasmType],
+}
+
+static SUPPORTED_HOST_FNS: [SupportedHostFn; 11] = [
+    SupportedHostFn {
+        module_name: "utils",
+        fn_name: "debug",
+        fn_inputs: &[WasmType::I32],
+        fn_outputs: &[],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "path_open",
+        fn_inputs: &[
+            WasmType::I32,
+            WasmType::I32,
+            WasmType::I32,
+            WasmType::I32,
+            WasmType::I32,
+            WasmType::I64,
+            WasmType::I64,
+            WasmType::I32,
+            WasmType::I32,
+        ],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "fd_read",
+        fn_inputs: &[WasmType::I32, WasmType::I32, WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "fd_write",
+        fn_inputs: &[WasmType::I32, WasmType::I32, WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "fd_close",
+        fn_inputs: &[WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "args_sizes_get",
+        fn_inputs: &[WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "args_get",
+        fn_inputs: &[WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "proc_exit",
+        fn_inputs: &[WasmType::I32],
+        fn_outputs: &[],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "fd_prestat_get",
+        fn_inputs: &[WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "fd_prestat_dir_name",
+        fn_inputs: &[WasmType::I32, WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "fd_fdstat_get",
+        fn_inputs: &[WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+];
+
+fn call_host_fn(eval: &WasmEval, fn_index: u32) -> Result<(), EvalError> {
+    let mut state = eval.state.borrow_mut();
+    let fn_name = &state.host_fns[fn_index as usize];
+    match &fn_name[..] {
+        "utils::debug" => {
+            let value = state.pop_i32();
+            debug(format!("{value}"));
+        }
+        "wasi_snapshot_preview1::fd_write" => {
+            let nwritten = state.pop_i32();
+            let iovs_len = state.pop_i32();
+            let iovs_ptr = state.pop_i32();
+            let fd = state.pop_i32();
+
+            let mut iovs = Vec::new();
+            for i in 0..iovs_len {
+                let iov_base = iovs_ptr as usize + (i as usize * 8);
+                let str_ptr = state.memory.load_i32(iov_base);
+                let str_len = state.memory.load_i32(iov_base + 4);
+
+                let buf = (&mut state.memory.bytes[str_ptr as usize]) as *const u8;
+                iovs.push(wasi::Ciovec {
+                    buf,
+                    buf_len: str_len as usize,
+                });
+            }
+
+            match unsafe { wasi::fd_write(fd as u32, &iovs) } {
+                Ok(nwritten_val) => {
+                    state.stack.push(WasmValue::I32 { value: 0 });
+                    state
+                        .memory
+                        .store_i32(nwritten as usize, nwritten_val as i32);
+                }
+                Err(err) => {
+                    state.stack.push(WasmValue::I32 {
+                        value: err.raw() as i32,
+                    });
+                }
+            };
+        }
+        _ => {
+            return Err(EvalError {
+                message: format!("Host fn '{fn_name}' is not implemented"),
+            })
+        }
+    }
+
+    Ok(())
 }

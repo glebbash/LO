@@ -30,7 +30,7 @@ mod wasm_target {
 
     #[panic_handler]
     fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-        crate::core::stderr_write(alloc::format!("{info}"));
+        crate::core::stderr_write(alloc::format!("{info}\n"));
         core::arch::wasm32::unreachable();
     }
 }
