@@ -18,7 +18,12 @@ pub struct EvalError {
 pub struct WasmEval {
     wasm_module: WasmModule,
     fn_imports_len: usize,
-    state: EvalState,
+    globals: Vec<WasmValue>,
+    stack: Vec<WasmValue>,
+    call_stack: Vec<CallFrame>,
+    memory: LinearMemory,
+    host_fns: Vec<String>,
+    jump_tables: Vec<(u32, JumpTable)>,
 }
 
 impl WasmEval {
@@ -37,13 +42,16 @@ impl WasmEval {
     // TODO: add module verify step
     fn init_module(&mut self) -> Result<(), EvalError> {
         for global in unsafe_borrow(&self.wasm_module.globals) {
-            self.eval_expr(&global.initial_value)?;
-            let initial_value = self.state.stack.pop().unwrap();
-            self.state.globals.push(initial_value);
+            self.eval_expr(
+                &global.initial_value,
+                &JumpTable::for_expr(&global.initial_value),
+            )?;
+            let initial_value = self.stack.pop().unwrap();
+            self.globals.push(initial_value);
         }
 
         if let Some(memory) = self.wasm_module.memories.first() {
-            self.state.memory = LinearMemory {
+            self.memory = LinearMemory {
                 size_in_pages: memory.min as usize,
                 bytes: vec![0; memory.min as usize * PAGE_SIZE],
             };
@@ -51,11 +59,10 @@ impl WasmEval {
             for data in unsafe_borrow(&self.wasm_module.datas) {
                 match data {
                     WasmData::Active { offset, bytes } => {
-                        self.eval_expr(offset)?;
+                        self.eval_expr(offset, &JumpTable::for_expr(offset))?;
                         let offset = self.pop_i32() as usize;
 
-                        self.state.memory.bytes[offset..offset + bytes.len()]
-                            .copy_from_slice(&bytes);
+                        self.memory.bytes[offset..offset + bytes.len()].copy_from_slice(&bytes);
                     }
                 }
             }
@@ -72,7 +79,7 @@ impl WasmEval {
                         && &fn_type.outputs[..] == host_fn.fn_outputs
                     {
                         let full_name = format!("{}::{}", import.module_name, import.item_name);
-                        self.state.host_fns.push(full_name);
+                        self.host_fns.push(full_name);
                         self.fn_imports_len += 1;
                         continue 'import_loop;
                     }
@@ -89,6 +96,13 @@ impl WasmEval {
             return Err(EvalError {
                 message: format!("Cannot satisfy import {} (#{i})", import.item_name),
             });
+        }
+
+        for (fn_code, i) in self.wasm_module.codes.iter().zip(0..) {
+            let fn_index = (self.fn_imports_len + i) as u32;
+
+            self.jump_tables
+                .push((fn_index, JumpTable::for_expr(&fn_code.expr)));
         }
 
         Ok(())
@@ -111,7 +125,7 @@ impl WasmEval {
         let (fn_type, _) = self.get_fn_info(fn_index)?;
         let mut values = Vec::new();
         for _ in 0..fn_type.outputs.len() {
-            values.push(self.state.stack.pop().unwrap());
+            values.push(self.stack.pop().unwrap());
         }
         values.reverse();
 
@@ -131,7 +145,7 @@ impl WasmEval {
             ..Default::default()
         };
         for _ in 0..fn_type.inputs.len() {
-            let value = self.state.stack.pop().unwrap();
+            let value = self.stack.pop().unwrap();
             call_frame.locals.push(value);
         }
         call_frame.locals.reverse();
@@ -141,16 +155,17 @@ impl WasmEval {
                 call_frame.locals.push(value);
             }
         }
-        self.state.call_stack.push(call_frame);
+        self.call_stack.push(call_frame);
 
-        self.eval_expr(&code.expr)?;
+        let jump_table = self.get_jump_table_for_fn(fn_index);
+        self.eval_expr(&code.expr, &jump_table)?;
 
-        self.state.call_stack.pop();
+        self.call_stack.pop();
 
         Ok(())
     }
 
-    fn eval_expr(&mut self, expr: &WasmExpr) -> Result<(), EvalError> {
+    fn eval_expr(&mut self, expr: &WasmExpr, _jump_table: &JumpTable) -> Result<(), EvalError> {
         let mut blocks = Vec::<BlockState>::new();
 
         let mut loc = 0;
@@ -224,38 +239,38 @@ impl WasmEval {
 
                 WasmInstr::I32Const { value } => {
                     let value = WasmValue::I32 { value: *value };
-                    self.state.stack.push(value);
+                    self.stack.push(value);
                 }
                 WasmInstr::I64Const { value } => {
                     let value = WasmValue::I64 { value: *value };
-                    self.state.stack.push(value);
+                    self.stack.push(value);
                 }
                 WasmInstr::F32Const { value } => {
                     let value = WasmValue::F32 { value: *value };
-                    self.state.stack.push(value);
+                    self.stack.push(value);
                 }
                 WasmInstr::F64Const { value } => {
                     let value = WasmValue::F64 { value: *value };
-                    self.state.stack.push(value);
+                    self.stack.push(value);
                 }
 
                 WasmInstr::LocalGet { local_index } => {
-                    let frame = self.state.call_stack.last_mut().unwrap();
+                    let frame = self.call_stack.last_mut().unwrap();
                     let value = frame.locals[*local_index as usize].clone();
-                    self.state.stack.push(value);
+                    self.stack.push(value);
                 }
                 WasmInstr::LocalSet { local_index } => {
-                    let value = self.state.stack.pop().unwrap();
-                    let frame = self.state.call_stack.last_mut().unwrap();
+                    let value = self.stack.pop().unwrap();
+                    let frame = self.call_stack.last_mut().unwrap();
                     frame.locals[*local_index as usize] = value;
                 }
                 WasmInstr::GlobalGet { global_index } => {
-                    let value = self.state.globals[*global_index as usize].clone();
-                    self.state.stack.push(value);
+                    let value = self.globals[*global_index as usize].clone();
+                    self.stack.push(value);
                 }
                 WasmInstr::GlobalSet { global_index } => {
-                    let value = self.state.stack.pop().unwrap();
-                    self.state.globals[*global_index as usize] = value;
+                    let value = self.stack.pop().unwrap();
+                    self.globals[*global_index as usize] = value;
                 }
                 WasmInstr::Load {
                     kind,
@@ -265,19 +280,19 @@ impl WasmEval {
                     WasmLoadKind::I32 => {
                         let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
-                        let value = self.state.memory.load_i32(full_addr);
-                        self.state.stack.push(WasmValue::I32 { value });
+                        let value = self.memory.load_i32(full_addr);
+                        self.stack.push(WasmValue::I32 { value });
                     }
                     WasmLoadKind::I32U8 => {
                         let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
-                        let Some(value) = self.state.memory.bytes.get(full_addr).cloned() else {
+                        let Some(value) = self.memory.bytes.get(full_addr).cloned() else {
                             return Err(self.err_with_stack(format!(
                                 "Memory read out of bounds: {full_addr}"
                             )));
                         };
 
-                        self.state.stack.push(WasmValue::I32 {
+                        self.stack.push(WasmValue::I32 {
                             value: value as i32,
                         });
                     }
@@ -292,33 +307,33 @@ impl WasmEval {
                         let value = self.pop_i32();
                         let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
-                        self.state.memory.store_i32(full_addr, value);
+                        self.memory.store_i32(full_addr, value);
                     }
                     WasmStoreKind::I32U8 => {
                         let value = self.pop_i32();
                         let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
-                        self.state.memory.bytes[full_addr] = value as u8;
+                        self.memory.bytes[full_addr] = value as u8;
                     }
                     _ => todo!("store {kind:?}"),
                 },
 
                 WasmInstr::Drop => {
-                    let _ = self.state.stack.pop().unwrap();
+                    let _ = self.stack.pop().unwrap();
                 }
                 WasmInstr::Unreachable => {
                     return Err(self.err_with_stack("Hit unreachable trap"));
                 }
                 WasmInstr::MemorySize => {
-                    let mem_size = self.state.memory.size_in_pages as i32;
-                    self.state.stack.push(WasmValue::I32 { value: mem_size });
+                    let mem_size = self.memory.size_in_pages as i32;
+                    self.stack.push(WasmValue::I32 { value: mem_size });
                 }
                 WasmInstr::MemoryCopy => {
                     let num_bytes = self.pop_i32();
                     let source = self.pop_i32();
                     let destination = self.pop_i32();
 
-                    self.state.memory.bytes.copy_within(
+                    self.memory.bytes.copy_within(
                         source as usize..source as usize + num_bytes as usize,
                         destination as usize,
                     );
@@ -327,19 +342,19 @@ impl WasmEval {
 
                 WasmInstr::I64ExtendI32u => {
                     let value = self.pop_i32();
-                    self.state.stack.push(WasmValue::I64 {
+                    self.stack.push(WasmValue::I64 {
                         value: value as u32 as u64 as i64,
                     })
                 }
                 WasmInstr::I64ExtendI32s => {
                     let value = self.pop_i32();
-                    self.state.stack.push(WasmValue::I64 {
+                    self.stack.push(WasmValue::I64 {
                         value: value as i64,
                     })
                 }
                 WasmInstr::I32WrapI64 => {
                     let value = self.pop_i64();
-                    self.state.stack.push(WasmValue::I32 {
+                    self.stack.push(WasmValue::I32 {
                         value: value as i32,
                     })
                 }
@@ -348,91 +363,91 @@ impl WasmEval {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = lhs + rhs;
-                        self.state.stack.push(WasmValue::I32 { value });
+                        self.stack.push(WasmValue::I32 { value });
                     }
                     WasmBinaryOpKind::I32_SUB => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = lhs - rhs;
-                        self.state.stack.push(WasmValue::I32 { value });
+                        self.stack.push(WasmValue::I32 { value });
                     }
                     WasmBinaryOpKind::I32_MUL => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = lhs * rhs;
-                        self.state.stack.push(WasmValue::I32 { value });
+                        self.stack.push(WasmValue::I32 { value });
                     }
                     WasmBinaryOpKind::I32_AND => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = lhs & rhs;
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_OR => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = lhs | rhs;
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_DIV_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = ((lhs as u32) / (rhs as u32)) as i32;
-                        self.state.stack.push(WasmValue::I32 { value });
+                        self.stack.push(WasmValue::I32 { value });
                     }
                     WasmBinaryOpKind::I32_SHR_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = ((lhs as u32) >> (rhs as u32)) as i32;
-                        self.state.stack.push(WasmValue::I32 { value });
+                        self.stack.push(WasmValue::I32 { value });
                     }
                     WasmBinaryOpKind::I32_REM_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = ((lhs as u32) % (rhs as u32)) as i32;
-                        self.state.stack.push(WasmValue::I32 { value });
+                        self.stack.push(WasmValue::I32 { value });
                     }
                     WasmBinaryOpKind::I32_EQ => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if lhs == rhs { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_NE => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if lhs != rhs { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_GT_S => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if lhs > rhs { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_LT_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if (lhs as u32) < (rhs as u32) { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_GT_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if (lhs as u32) > (rhs as u32) { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_GE_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if (lhs as u32) >= (rhs as u32) { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_LE_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if (lhs as u32) <= (rhs as u32) { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_LT_S
                     | WasmBinaryOpKind::I32_LE_S
@@ -446,25 +461,25 @@ impl WasmEval {
                         let rhs = self.pop_i64();
                         let lhs = self.pop_i64();
                         let value = lhs * rhs;
-                        self.state.stack.push(WasmValue::I64 { value })
+                        self.stack.push(WasmValue::I64 { value })
                     }
                     WasmBinaryOpKind::I64_EQ => {
                         let rhs = self.pop_i64();
                         let lhs = self.pop_i64();
                         let value = if lhs == rhs { 1 } else { 0 };
-                        self.state.stack.push(WasmValue::I32 { value })
+                        self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I64_DIV_U => {
                         let rhs = self.pop_i64();
                         let lhs = self.pop_i64();
                         let value = (lhs as u64 / rhs as u64) as i64;
-                        self.state.stack.push(WasmValue::I64 { value })
+                        self.stack.push(WasmValue::I64 { value })
                     }
                     WasmBinaryOpKind::I64_REM_U => {
                         let rhs = self.pop_i64();
                         let lhs = self.pop_i64();
                         let value = (lhs as u64 % rhs as u64) as i64;
-                        self.state.stack.push(WasmValue::I64 { value })
+                        self.stack.push(WasmValue::I64 { value })
                     }
                     WasmBinaryOpKind::I64_NE
                     | WasmBinaryOpKind::I64_LT_S
@@ -515,6 +530,15 @@ impl WasmEval {
         Ok(())
     }
 
+    fn get_jump_table_for_fn(&mut self, fn_index: u32) -> &'static JumpTable {
+        let jt_index = self
+            .jump_tables
+            .binary_search_by_key(&fn_index, |jt| jt.0)
+            .unwrap();
+
+        unsafe_borrow(&self.jump_tables[jt_index].1)
+    }
+
     fn get_fn_info(&self, fn_index: u32) -> Result<(&WasmFnType, &WasmFn), EvalError> {
         let resolved_fn_index = fn_index as usize - self.fn_imports_len;
         let type_index = self.wasm_module.functions.get(resolved_fn_index).unwrap();
@@ -538,7 +562,7 @@ impl WasmEval {
 
         let mut message = String::from(message.as_ref());
 
-        while let Some(frame) = self.state.call_stack.pop() {
+        while let Some(frame) = self.call_stack.pop() {
             write!(&mut message, "\n  at ").unwrap();
             if let Some(fn_name) = self.get_fn_name(frame.fn_index) {
                 write!(&mut message, "{fn_name}").unwrap();
@@ -561,7 +585,7 @@ impl WasmEval {
     }
 
     fn pop_i32(&mut self) -> i32 {
-        let wasm_value = self.state.stack.pop().unwrap();
+        let wasm_value = self.stack.pop().unwrap();
         let WasmValue::I32 { value } = wasm_value else {
             let err = self.err_with_stack(format!(
                 "Trying to pop I32 but got {:?}",
@@ -575,7 +599,7 @@ impl WasmEval {
     }
 
     fn pop_i64(&mut self) -> i64 {
-        let wasm_value = self.state.stack.pop().unwrap();
+        let wasm_value = self.stack.pop().unwrap();
         let WasmValue::I64 { value } = wasm_value else {
             let err = self.err_with_stack(format!(
                 "Trying to pop I64 but got {:?}",
@@ -633,15 +657,6 @@ impl core::fmt::Display for WasmValue {
 // state
 
 #[derive(Default, Debug)]
-struct EvalState {
-    globals: Vec<WasmValue>,
-    stack: Vec<WasmValue>,
-    call_stack: Vec<CallFrame>,
-    memory: LinearMemory,
-    host_fns: Vec<String>,
-}
-
-#[derive(Default, Debug)]
 struct LinearMemory {
     size_in_pages: usize,
     bytes: Vec<u8>,
@@ -675,6 +690,72 @@ struct BlockState {
     loc: usize,
     kind: WasmBlockKind,
     should_skip: bool,
+}
+
+#[derive(Default, Debug)]
+struct JumpTable {
+    jumps: Vec<(usize, usize)>, // (from, to)
+}
+
+impl JumpTable {
+    fn for_expr(expr: &WasmExpr) -> Self {
+        struct BlockInfo {
+            loc: usize,
+            block_kind: WasmBlockKind,
+            unresolved_branches: Vec<usize>,
+        }
+
+        let mut jump_table = JumpTable::default();
+
+        let mut blocks = Vec::<BlockInfo>::new();
+        for (instr, loc) in expr.instrs.iter().zip(0..) {
+            match instr {
+                WasmInstr::BlockStart { block_kind, .. } => {
+                    blocks.push(BlockInfo {
+                        loc,
+                        block_kind: block_kind.clone(),
+                        unresolved_branches: Vec::new(),
+                    });
+                }
+                WasmInstr::Else => {
+                    let block = blocks.last_mut().unwrap();
+
+                    assert_eq!(block.block_kind, WasmBlockKind::If);
+
+                    jump_table.jumps.push((block.loc, loc + 1));
+                }
+                WasmInstr::BlockEnd => {
+                    let block = blocks.pop().unwrap();
+
+                    for branch_loc in block.unresolved_branches {
+                        jump_table.jumps.push((branch_loc, loc));
+                    }
+                }
+                WasmInstr::Branch { label_index } => {
+                    let blocks_len = blocks.len();
+                    let target_block = blocks
+                        .get_mut(blocks_len - 1 - *label_index as usize)
+                        .unwrap();
+
+                    match target_block.block_kind {
+                        WasmBlockKind::Loop => {
+                            jump_table.jumps.push((loc, target_block.loc + 1));
+                        }
+                        _ => {
+                            target_block.unresolved_branches.push(loc);
+                        }
+                    }
+                }
+
+                _ => {}
+            }
+        }
+
+        // jumps created from block branches are created out of order so need to sort
+        jump_table.jumps.sort_by_key(|&(from, _)| from);
+
+        jump_table
+    }
 }
 
 // host fns
@@ -772,7 +853,7 @@ static SUPPORTED_HOST_FNS: [SupportedHostFn; 12] = [
 ];
 
 fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
-    let fn_name = &eval.state.host_fns[fn_index as usize];
+    let fn_name = &eval.host_fns[fn_index as usize];
     match &fn_name[..] {
         "utils::debug" => {
             let value = eval.pop_i32() as u32;
@@ -781,7 +862,7 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
         "utils::debug_str" => {
             let message_len = eval.pop_i32() as u32;
             let message_ptr = eval.pop_i32() as u32;
-            let message_bytes = &eval.state.memory.bytes
+            let message_bytes = &eval.memory.bytes
                 [message_ptr as usize..message_ptr as usize + message_len as usize];
 
             let message = str::from_utf8(message_bytes).unwrap();
@@ -794,14 +875,12 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             match unsafe { wasi::fd_prestat_get(fd as u32) } {
                 Ok(prestat) => {
                     let pr_name_len = unsafe { prestat.u.dir.pr_name_len as i32 };
-                    eval.state
-                        .memory
-                        .store_i32(buf as usize, prestat.tag as i32);
-                    eval.state.memory.store_i32(buf as usize + 4, pr_name_len);
+                    eval.memory.store_i32(buf as usize, prestat.tag as i32);
+                    eval.memory.store_i32(buf as usize + 4, pr_name_len);
 
-                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.stack.push(WasmValue::I32 { value: 0 });
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
@@ -821,12 +900,12 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                             .as_ref()
                             .unwrap()
                     };
-                    eval.state.memory.bytes[path as usize..path as usize + path_len as usize]
+                    eval.memory.bytes[path as usize..path as usize + path_len as usize]
                         .copy_from_slice(path_slice);
 
-                    eval.state.stack.push(WasmValue::I32 { value: 0 })
+                    eval.stack.push(WasmValue::I32 { value: 0 })
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
@@ -841,20 +920,17 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
 
             match unsafe { wasi::fd_fdstat_get(fd as u32) } {
                 Ok(fdstat) => {
-                    eval.state.memory.bytes[fdstat_ptr as usize] = fdstat.fs_filetype.raw();
-                    eval.state
-                        .memory
+                    eval.memory.bytes[fdstat_ptr as usize] = fdstat.fs_filetype.raw();
+                    eval.memory
                         .store_i16(fdstat_ptr as usize + 2, fdstat.fs_flags as i16);
-                    eval.state
-                        .memory
+                    eval.memory
                         .store_i64(fdstat_ptr as usize + 8, fdstat.fs_rights_base as i64);
-                    eval.state
-                        .memory
+                    eval.memory
                         .store_i64(fdstat_ptr as usize + 16, fdstat.fs_rights_inheriting as i64);
 
-                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.stack.push(WasmValue::I32 { value: 0 });
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
@@ -871,7 +947,7 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let dirfd = eval.pop_i32();
 
             let path_bytes =
-                &eval.state.memory.bytes[path_ptr as usize..path_ptr as usize + path_len as usize];
+                &eval.memory.bytes[path_ptr as usize..path_ptr as usize + path_len as usize];
 
             match unsafe {
                 wasi::path_open(
@@ -885,10 +961,10 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                 )
             } {
                 Ok(fd) => {
-                    eval.state.stack.push(WasmValue::I32 { value: 0 });
-                    eval.state.memory.store_i32(fd_ptr as usize, fd as i32);
+                    eval.stack.push(WasmValue::I32 { value: 0 });
+                    eval.memory.store_i32(fd_ptr as usize, fd as i32);
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
@@ -902,10 +978,10 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let mut iovs = Vec::new();
             for i in 0..iovs_len {
                 let iov_base = iovs_ptr as usize + (i as usize * 8);
-                let str_ptr = eval.state.memory.load_i32(iov_base);
-                let str_len = eval.state.memory.load_i32(iov_base + 4);
+                let str_ptr = eval.memory.load_i32(iov_base);
+                let str_len = eval.memory.load_i32(iov_base + 4);
 
-                let buf = (&mut eval.state.memory.bytes[str_ptr as usize]) as *const u8;
+                let buf = (&mut eval.memory.bytes[str_ptr as usize]) as *const u8;
                 iovs.push(wasi::Ciovec {
                     buf,
                     buf_len: str_len as usize,
@@ -914,12 +990,11 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
 
             match unsafe { wasi::fd_write(fd as u32, &iovs) } {
                 Ok(nwritten) => {
-                    eval.state.stack.push(WasmValue::I32 { value: 0 });
-                    eval.state
-                        .memory
+                    eval.stack.push(WasmValue::I32 { value: 0 });
+                    eval.memory
                         .store_i32(nwritten_ptr as usize, nwritten as i32);
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             };
@@ -933,10 +1008,10 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let mut iovs = Vec::new();
             for i in 0..iovs_len {
                 let iov_base = iovs_ptr as usize + (i as usize * 8);
-                let str_ptr = eval.state.memory.load_i32(iov_base);
-                let str_len = eval.state.memory.load_i32(iov_base + 4);
+                let str_ptr = eval.memory.load_i32(iov_base);
+                let str_len = eval.memory.load_i32(iov_base + 4);
 
-                let buf = (&mut eval.state.memory.bytes[str_ptr as usize]) as *mut u8;
+                let buf = (&mut eval.memory.bytes[str_ptr as usize]) as *mut u8;
                 iovs.push(wasi::Iovec {
                     buf,
                     buf_len: str_len as usize,
@@ -945,12 +1020,10 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
 
             match unsafe { wasi::fd_read(fd as u32, &iovs) } {
                 Ok(nread) => {
-                    eval.state.stack.push(WasmValue::I32 { value: 0 });
-                    eval.state
-                        .memory
-                        .store_i32(nread_ptr as usize, nread as i32);
+                    eval.stack.push(WasmValue::I32 { value: 0 });
+                    eval.memory.store_i32(nread_ptr as usize, nread as i32);
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             };
@@ -959,8 +1032,8 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let fd = eval.pop_i32();
 
             match unsafe { wasi::fd_close(fd as u32) } {
-                Ok(()) => eval.state.stack.push(WasmValue::I32 { value: 0 }),
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Ok(()) => eval.stack.push(WasmValue::I32 { value: 0 }),
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
@@ -971,14 +1044,13 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
 
             match unsafe { wasi::args_sizes_get() } {
                 Ok((argc, argv_buf_size)) => {
-                    eval.state.memory.store_i32(argc_ptr as usize, argc as i32);
-                    eval.state
-                        .memory
+                    eval.memory.store_i32(argc_ptr as usize, argc as i32);
+                    eval.memory
                         .store_i32(argv_buf_size_ptr as usize, argv_buf_size as i32);
 
-                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.stack.push(WasmValue::I32 { value: 0 });
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
@@ -987,14 +1059,14 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let argv_buf_ptr = eval.pop_i32();
             let argv_ptr = eval.pop_i32();
 
-            let argv = &mut eval.state.memory.bytes[argv_ptr as usize] as *mut u8 as *mut *mut u8;
-            let argv_buf = &mut eval.state.memory.bytes[argv_buf_ptr as usize] as *mut u8;
+            let argv = &mut eval.memory.bytes[argv_ptr as usize] as *mut u8 as *mut *mut u8;
+            let argv_buf = &mut eval.memory.bytes[argv_buf_ptr as usize] as *mut u8;
 
             match unsafe { wasi::args_get(argv, argv_buf) } {
                 Ok(()) => {
                     // fix argv pointers to point to guest memory instead of host memory
                     {
-                        let mem_base = (&eval.state.memory.bytes).as_ptr() as usize;
+                        let mem_base = (&eval.memory.bytes).as_ptr() as usize;
 
                         let (argc, _) = unsafe { wasi::args_sizes_get() }.unwrap();
                         for i in 0..argc {
@@ -1005,9 +1077,9 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                         }
                     };
 
-                    eval.state.stack.push(WasmValue::I32 { value: 0 });
+                    eval.stack.push(WasmValue::I32 { value: 0 });
                 }
-                Err(err) => eval.state.stack.push(WasmValue::I32 {
+                Err(err) => eval.stack.push(WasmValue::I32 {
                     value: err.raw() as i32,
                 }),
             }
