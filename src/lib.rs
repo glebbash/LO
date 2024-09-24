@@ -14,6 +14,7 @@ mod parser_v2;
 mod printer;
 mod wasm;
 mod wasm_eval;
+mod wasm_parser;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_target {
@@ -42,13 +43,14 @@ Usage: lo <file> [mode]
     --inspect
     --pretty-print
     --eval (experimental)
+    --eval-wasm (experimental)
   No [mode] means compilation to wasm\
 ";
 
 mod wasi_api {
     use crate::{
         code_generator::*, core::*, ir_generator::*, lexer::*, parser, parser_v2::*, printer::*,
-        wasm_eval::*, USAGE,
+        wasm_eval::*, wasm_parser::WasmParser, USAGE,
     };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
@@ -82,6 +84,7 @@ mod wasi_api {
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
             Some("--eval") => CompilerMode::Eval,
+            Some("--eval-wasm") => CompilerMode::EvalWasm,
             Some(unknown_mode) => {
                 return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
             }
@@ -117,6 +120,16 @@ mod wasi_api {
 
             return Ok(());
         };
+
+        if compiler_mode == CompilerMode::EvalWasm {
+            let module_bytes = file_read(file_name)?;
+
+            let wasm_module = WasmParser::parse(String::from(file_name), module_bytes)?;
+
+            WasmEval::eval(wasm_module).map_err(|err| err.message)?;
+
+            return Ok(());
+        }
 
         if compiler_mode == CompilerMode::Inspect {
             stdout_enable_bufferring();
