@@ -200,11 +200,11 @@ pub enum WasmInstr {
     LocalGet {
         local_index: u32,
     },
-    GlobalGet {
-        global_index: u32,
-    },
     LocalSet {
         local_index: u32,
+    },
+    GlobalGet {
+        global_index: u32,
     },
     GlobalSet {
         global_index: u32,

@@ -35,14 +35,20 @@ impl WasmParser {
                 0x01 => self.parse_type_section()?,
                 0x02 => self.parse_import_section()?,
                 0x03 => self.parse_function_section()?,
+                0x04 => self.parse_table_section()?,
                 0x05 => self.parse_memory_section()?,
                 0x06 => self.parse_global_section()?,
                 0x07 => self.parse_export_section()?,
+                0x09 => self.parse_element_section()?,
                 0x0A => self.parse_code_section()?,
                 0x0B => self.parse_data_section()?,
+                0x0C => self.parse_data_count_section()?,
                 0x00 => self.parse_custom_section()?,
                 byte => {
-                    return Err(format!("{} Unknown section id: '0x{byte:02X}'", self.loc()));
+                    return Err(format!(
+                        "{} Unknown section id: '0x{byte:02X}'",
+                        self.loc_at(self.offset - 1)
+                    ));
                 }
             };
         }
@@ -140,6 +146,15 @@ impl WasmParser {
         Ok(())
     }
 
+    // TODO: support parsing table section
+    fn parse_table_section(&mut self) -> Result<(), String> {
+        let _section_size = self.parse_u32()?;
+
+        self.expect_many(_section_size as usize)?;
+
+        Ok(())
+    }
+
     fn parse_memory_section(&mut self) -> Result<(), String> {
         let _section_size = self.parse_u32()?;
 
@@ -216,6 +231,15 @@ impl WasmParser {
         Ok(())
     }
 
+    // TODO: support parsing element section
+    fn parse_element_section(&mut self) -> Result<(), String> {
+        let _section_size = self.parse_u32()?;
+
+        self.expect_many(_section_size as usize)?;
+
+        Ok(())
+    }
+
     fn parse_code_section(&mut self) -> Result<(), String> {
         let _section_size = self.parse_u32()?;
 
@@ -269,11 +293,20 @@ impl WasmParser {
         Ok(())
     }
 
+    // TODO: support parsing data count section
+    fn parse_data_count_section(&mut self) -> Result<(), String> {
+        let _section_size = self.parse_u32()?;
+
+        self.expect_many(_section_size as usize)?;
+
+        Ok(())
+    }
+
     // TODO: support parsing custom section
     fn parse_custom_section(&mut self) -> Result<(), String> {
-        let section_size = self.parse_u32()?;
+        let _section_size = self.parse_u32()?;
 
-        self.expect_many(section_size as usize)?;
+        self.expect_many(_section_size as usize)?;
 
         Ok(())
     }
