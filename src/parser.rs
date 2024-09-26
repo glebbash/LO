@@ -429,10 +429,8 @@ fn parse_top_level_expr(
         lower_expr(&mut instrs, &global_value);
 
         ctx.wasm_module.borrow_mut().globals.push(WasmGlobal {
-            kind: WasmGlobalKind {
-                value_type: wasm_type,
-                mutable,
-            },
+            mutable,
+            value_type: wasm_type,
             initial_value: WasmExpr { instrs },
         });
 

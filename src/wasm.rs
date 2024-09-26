@@ -259,14 +259,9 @@ pub struct WasmLimits {
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct WasmGlobal {
-    pub kind: WasmGlobalKind,
-    pub initial_value: WasmExpr,
-}
-
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
-pub struct WasmGlobalKind {
-    pub value_type: WasmType,
     pub mutable: bool,
+    pub value_type: WasmType,
+    pub initial_value: WasmExpr,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -388,9 +383,9 @@ impl WasmModule {
     fn write_global_section(&self, out: &mut Vec<u8>) {
         write_u32(out, self.globals.len() as u32);
         for global in &self.globals {
-            write_u8(out, global.kind.value_type.clone() as u8);
+            write_u8(out, global.value_type.clone() as u8);
 
-            if global.kind.mutable {
+            if global.mutable {
                 write_u8(out, 0x01);
             } else {
                 write_u8(out, 0x00);
@@ -489,92 +484,6 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::Unreachable => {
             write_u8(out, 0x00);
         }
-        WasmInstr::BinaryOp { kind } => {
-            write_u8(out, kind.clone() as u8);
-        }
-        WasmInstr::MemorySize => {
-            write_u8(out, 0x3F);
-            write_u8(out, 0x00);
-        }
-        WasmInstr::MemoryGrow => {
-            write_u8(out, 0x40);
-            write_u8(out, 0x00);
-        }
-        WasmInstr::MemoryCopy => {
-            write_u8(out, 0xFC);
-            write_u32(out, 10);
-            write_u8(out, 0x00);
-            write_u8(out, 0x00);
-        }
-        WasmInstr::Load {
-            kind,
-            align,
-            offset,
-        } => {
-            write_u8(out, kind.clone() as u8);
-            write_u32(out, *align);
-            write_u32(out, *offset);
-        }
-        WasmInstr::I32Const { value } => {
-            write_u8(out, 0x41);
-            write_i32(out, *value);
-        }
-        WasmInstr::I64Const { value } => {
-            write_u8(out, 0x42);
-            write_i64(out, *value);
-        }
-        WasmInstr::F32Const { value } => {
-            write_u8(out, 0x43);
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        WasmInstr::F64Const { value } => {
-            write_u8(out, 0x44);
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        WasmInstr::I64ExtendI32s => {
-            write_u8(out, 0xac);
-        }
-        WasmInstr::I64ExtendI32u => {
-            write_u8(out, 0xad);
-        }
-        WasmInstr::I32WrapI64 => {
-            write_u8(out, 0xa7);
-        }
-        WasmInstr::LocalGet { local_index } => {
-            write_u8(out, 0x20);
-            write_u32(out, *local_index);
-        }
-        WasmInstr::GlobalGet { global_index } => {
-            write_u8(out, 0x23);
-            write_u32(out, *global_index);
-        }
-        WasmInstr::LocalSet { local_index } => {
-            write_u8(out, 0x21);
-            write_u32(out, *local_index);
-        }
-        WasmInstr::GlobalSet { global_index } => {
-            write_u8(out, 0x24);
-            write_u32(out, *global_index);
-        }
-        WasmInstr::Store {
-            align,
-            offset,
-            kind,
-        } => {
-            write_u8(out, kind.clone() as u8);
-            write_u32(out, *align);
-            write_u32(out, *offset);
-        }
-        WasmInstr::Drop => {
-            write_u8(out, 0x1A);
-        }
-        WasmInstr::Return => {
-            write_u8(out, 0x0F);
-        }
-        WasmInstr::Call { fn_index } => {
-            write_u8(out, 0x10);
-            write_u32(out, *fn_index);
-        }
         WasmInstr::BlockStart {
             block_kind,
             block_type,
@@ -601,6 +510,92 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::Branch { label_index } => {
             write_u8(out, 0x0C);
             write_u32(out, *label_index);
+        }
+        WasmInstr::Return => {
+            write_u8(out, 0x0F);
+        }
+        WasmInstr::Call { fn_index } => {
+            write_u8(out, 0x10);
+            write_u32(out, *fn_index);
+        }
+        WasmInstr::Drop => {
+            write_u8(out, 0x1A);
+        }
+        WasmInstr::LocalGet { local_index } => {
+            write_u8(out, 0x20);
+            write_u32(out, *local_index);
+        }
+        WasmInstr::LocalSet { local_index } => {
+            write_u8(out, 0x21);
+            write_u32(out, *local_index);
+        }
+        WasmInstr::GlobalGet { global_index } => {
+            write_u8(out, 0x23);
+            write_u32(out, *global_index);
+        }
+        WasmInstr::GlobalSet { global_index } => {
+            write_u8(out, 0x24);
+            write_u32(out, *global_index);
+        }
+        WasmInstr::Load {
+            kind,
+            align,
+            offset,
+        } => {
+            write_u8(out, kind.clone() as u8);
+            write_u32(out, *align);
+            write_u32(out, *offset);
+        }
+        WasmInstr::Store {
+            align,
+            offset,
+            kind,
+        } => {
+            write_u8(out, kind.clone() as u8);
+            write_u32(out, *align);
+            write_u32(out, *offset);
+        }
+        WasmInstr::MemorySize => {
+            write_u8(out, 0x3F);
+            write_u8(out, 0x00);
+        }
+        WasmInstr::MemoryGrow => {
+            write_u8(out, 0x40);
+            write_u8(out, 0x00);
+        }
+        WasmInstr::I32Const { value } => {
+            write_u8(out, 0x41);
+            write_i32(out, *value);
+        }
+        WasmInstr::I64Const { value } => {
+            write_u8(out, 0x42);
+            write_i64(out, *value);
+        }
+        WasmInstr::F32Const { value } => {
+            write_u8(out, 0x43);
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        WasmInstr::F64Const { value } => {
+            write_u8(out, 0x44);
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        WasmInstr::BinaryOp { kind } => {
+            write_u8(out, kind.clone() as u8);
+        }
+        WasmInstr::I32WrapI64 => {
+            write_u8(out, 0xA7);
+        }
+        WasmInstr::I64ExtendI32s => {
+            write_u8(out, 0xAC);
+        }
+        WasmInstr::I64ExtendI32u => {
+            write_u8(out, 0xAD);
+        }
+        WasmInstr::MemoryCopy => {
+            write_u8(out, 0xFC);
+            write_u32(out, 10);
+            write_u8(out, 0x00);
+            write_u8(out, 0x00);
         }
     }
 }
