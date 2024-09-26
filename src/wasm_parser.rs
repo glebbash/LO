@@ -146,11 +146,22 @@ impl WasmParser {
         Ok(())
     }
 
-    // TODO: support parsing table section
     fn parse_table_section(&mut self) -> Result<(), String> {
         let _section_size = self.parse_u32()?;
 
-        self.expect_many(_section_size as usize)?;
+        let tables_len = self.parse_u32()?;
+        for _ in 0..tables_len {
+            if !self.eat(0x70) {
+                return Err(format!(
+                    "{} Only funcref tables are supported",
+                    self.loc_at(self.offset - 1)
+                ));
+            }
+
+            let limits = self.parse_limits()?;
+
+            self.module.tables.push(WasmTable { limits });
+        }
 
         Ok(())
     }
@@ -215,7 +226,7 @@ impl WasmParser {
                     return Err(format!(
                         "{} Unknown export type '0x{byte:02X}'",
                         self.loc_at(self.offset - 1)
-                    ))
+                    ));
                 }
             };
             let exported_item_index = self.parse_u32()?;
@@ -231,11 +242,33 @@ impl WasmParser {
         Ok(())
     }
 
-    // TODO: support parsing element section
     fn parse_element_section(&mut self) -> Result<(), String> {
         let _section_size = self.parse_u32()?;
 
-        self.expect_many(_section_size as usize)?;
+        let elems_len = self.parse_u32()?;
+        for _ in 0..elems_len {
+            let element_kind = self.parse_u32()?;
+            if element_kind != 0 {
+                return Err(format!(
+                    "{} Only element kind 0 is supported, got: {element_kind}'",
+                    self.loc() // sadly this points to u32 end, not start
+                ));
+            }
+
+            let expr = self.parse_expr()?;
+
+            let mut fn_idx = Vec::new();
+
+            let fn_ids_len = self.parse_u32()?;
+            for _ in 0..fn_ids_len {
+                let fn_index = self.parse_u32()?;
+                fn_idx.push(fn_index);
+            }
+
+            self.module
+                .elements
+                .push(WasmElement::Passive { expr, fn_idx });
+        }
 
         Ok(())
     }
@@ -385,12 +418,36 @@ impl WasmParser {
                     let label_index = self.parse_u32()?;
                     expr.instrs.push(WasmInstr::BranchIf { label_index });
                 }
+                0x0E => {
+                    let mut label_idx = Vec::new();
+
+                    let label_idx_len = self.parse_u32()?;
+                    for _ in 0..label_idx_len {
+                        let label_index = self.parse_u32()?;
+                        label_idx.push(label_index);
+                    }
+
+                    let default_label_index = self.parse_u32()?;
+
+                    expr.instrs.push(WasmInstr::BranchIndirect {
+                        label_idx,
+                        default_label_index,
+                    });
+                }
                 0x0F => {
                     expr.instrs.push(WasmInstr::Return);
                 }
                 0x10 => {
                     let fn_index = self.parse_u32()?;
                     expr.instrs.push(WasmInstr::Call { fn_index });
+                }
+                0x11 => {
+                    let type_index = self.parse_u32()?;
+                    let table_index = self.parse_u32()?;
+                    expr.instrs.push(WasmInstr::CallIndirect {
+                        type_index,
+                        table_index,
+                    });
                 }
                 0x1A => {
                     expr.instrs.push(WasmInstr::Drop);
@@ -439,14 +496,16 @@ impl WasmParser {
                         offset,
                     });
                 }
-                op_code @ (0x36 | 0x37 | 0x38 | 0x39 | 0x3A | 0x3B) => {
+                op_code @ (0x36 | 0x37 | 0x38 | 0x39 | 0x3A | 0x3B | 0x3C | 0x3E) => {
                     let store_kind = match op_code {
                         0x36 => WasmStoreKind::I32,
                         0x37 => WasmStoreKind::I64,
                         0x38 => WasmStoreKind::F32,
                         0x39 => WasmStoreKind::F64,
-                        0x3A => WasmStoreKind::I32U8,
-                        0x3B => WasmStoreKind::I32U16,
+                        0x3A => WasmStoreKind::I32_8,
+                        0x3B => WasmStoreKind::I32_16,
+                        0x3C => WasmStoreKind::I64_8,
+                        0x3E => WasmStoreKind::I64_32,
                         _ => unreachable!(),
                     };
                     let align = self.parse_u32()?;
@@ -490,9 +549,16 @@ impl WasmParser {
                     let value = f64::from_le_bytes(bytes.try_into().unwrap());
                     expr.instrs.push(WasmInstr::F64Const { value });
                 }
-                0x45 => {
+                op_code @ (0x45 | 0x50 | 0x9A) => {
+                    let unary_op_kind = match op_code {
+                        0x45 => WasmUnaryOpKind::I32_EQZ,
+                        0x50 => WasmUnaryOpKind::I64_EQZ,
+                        0x9A => WasmUnaryOpKind::F64_NEG,
+                        _ => unreachable!(),
+                    };
+
                     expr.instrs.push(WasmInstr::UnaryOp {
-                        kind: WasmUnaryOpKind::I32_EQZ,
+                        kind: unary_op_kind,
                     });
                 }
                 op_code @ (0x46 | 0x47 | 0x48 | 0x49 | 0x4A | 0x4B | 0x4C | 0x4D | 0x4E | 0x4F
@@ -584,26 +650,59 @@ impl WasmParser {
                 0xAD => {
                     expr.instrs.push(WasmInstr::I64ExtendI32u);
                 }
+                0xBD => {
+                    expr.instrs.push(WasmInstr::I64ReinterpretF64);
+                }
+                0xBF => {
+                    expr.instrs.push(WasmInstr::F64ReinterpretI64);
+                }
                 0xFC => {
-                    if self.parse_u32()? != 10 {
-                        return Err(format!("Only memory.copy is supported from 0xFC family"));
-                    }
+                    let memory_op_kind = self.parse_u32()?;
 
-                    if !self.eat(0x00) {
-                        return Err(format!("{} Only single memory is supported", self.loc()));
-                    }
+                    match memory_op_kind {
+                        // memory.copy
+                        10 => {
+                            if !self.eat(0x00) {
+                                return Err(format!(
+                                    "{} Only single memory is supported",
+                                    self.loc()
+                                ));
+                            }
 
-                    if !self.eat(0x00) {
-                        return Err(format!("{} Only single memory is supported", self.loc()));
-                    }
+                            if !self.eat(0x00) {
+                                return Err(format!(
+                                    "{} Only single memory is supported",
+                                    self.loc()
+                                ));
+                            }
 
-                    expr.instrs.push(WasmInstr::MemoryCopy);
+                            expr.instrs.push(WasmInstr::MemoryCopy);
+                        }
+                        // memory.fill
+                        11 => {
+                            if !self.eat(0x00) {
+                                return Err(format!(
+                                    "{} Only single memory is supported",
+                                    self.loc()
+                                ));
+                            }
+
+                            expr.instrs.push(WasmInstr::MemoryFill);
+                        }
+                        memory_op_kind => {
+                            return Err(format!(
+                                "Unsupported operation #{memory_op_kind} from 0xFC family"
+                            ));
+                        }
+                    }
                 }
                 byte => {
-                    return Err(format!(
-                        "{} Unknown instruction '0x{byte:02X}'",
-                        self.loc_at(self.offset - 1)
-                    ))
+                    crate::core::debug(format!("Skipping unknown instruction: '0x{byte:02X}'\n"));
+
+                    // return Err(format!(
+                    //     "{} Unknown instruction '0x{byte:02X}'",
+                    //     self.loc_at(self.offset - 1)
+                    // ));
                 }
             }
         }

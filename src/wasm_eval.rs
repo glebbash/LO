@@ -18,6 +18,7 @@ pub struct EvalError {
 pub struct WasmEval {
     wasm_module: WasmModule,
     fn_imports_len: usize,
+    tables: Vec<WasmFnTable>,
     globals: Vec<WasmValue>,
     stack: Vec<WasmValue>,
     call_stack: Vec<CallFrame>,
@@ -48,6 +49,30 @@ impl WasmEval {
             )?;
             let initial_value = self.stack.pop().unwrap();
             self.globals.push(initial_value);
+        }
+
+        for table in &self.wasm_module.tables {
+            self.tables.push(WasmFnTable {
+                fns: vec![None; table.limits.min as usize],
+            });
+        }
+
+        for element in unsafe_borrow(&self.wasm_module.elements) {
+            match element {
+                WasmElement::Passive { expr, fn_idx } => {
+                    for fn_index_in_table in fn_idx {
+                        self.eval_expr(expr, &JumpTable::for_expr(expr))?;
+
+                        let WasmValue::FuncRef { fn_index } = self.stack.pop().unwrap() else {
+                            return Err(EvalError {
+                                message: format!(""),
+                            });
+                        };
+
+                        self.tables[0].fns[*fn_index_in_table as usize] = fn_index;
+                    }
+                }
+            }
         }
 
         if let Some(memory) = self.wasm_module.memories.first() {
@@ -190,12 +215,47 @@ impl WasmEval {
                         continue;
                     }
                 }
+                WasmInstr::BranchIndirect { .. } => {
+                    todo!();
+                }
                 WasmInstr::BlockEnd => {}
 
                 WasmInstr::Return => {
                     break;
                 }
                 WasmInstr::Call { fn_index } => {
+                    self.call_fn(*fn_index)?;
+                }
+                WasmInstr::CallIndirect {
+                    type_index,
+                    table_index,
+                } => {
+                    let fn_index_in_table = self.pop_i32();
+
+                    let Some(table) = self.tables.get(*table_index as usize) else {
+                        return Err(EvalError {
+                            message: format!("Invalid table index: {table_index}"),
+                        });
+                    };
+
+                    let Some(func_ref) = table.fns.get(fn_index_in_table as usize) else {
+                        return Err(EvalError {
+                            message: format!(
+                                "Function index out of table bounds: {fn_index_in_table}, table id: {table_index}, table size: {}",
+                                table.fns.len()
+                            ),
+                        });
+                    };
+
+                    let Some(fn_index) = func_ref else {
+                        return Err(EvalError {
+                            message: format!("Trying to call indirect on ref.null",),
+                        });
+                    };
+
+                    // TODO: type check indirect function calls
+                    let _ = type_index;
+
                     self.call_fn(*fn_index)?;
                 }
 
@@ -276,11 +336,23 @@ impl WasmEval {
                         let full_addr = addr as usize + *offset as usize;
                         self.memory.store_i32(full_addr, value);
                     }
-                    WasmStoreKind::I32U8 => {
+                    WasmStoreKind::I32_8 => {
                         let value = self.pop_i32();
                         let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
                         self.memory.bytes[full_addr] = value as u8;
+                    }
+                    WasmStoreKind::I64_8 => {
+                        let value = self.pop_i64();
+                        let addr = self.pop_i32();
+                        let full_addr = addr as usize + *offset as usize;
+                        self.memory.bytes[full_addr] = value as u8;
+                    }
+                    WasmStoreKind::I64_32 => {
+                        let value = self.pop_i64();
+                        let addr = self.pop_i32();
+                        let full_addr = addr as usize + *offset as usize;
+                        self.memory.store_i32(full_addr, value as i32);
                     }
                     _ => todo!("store {kind:?}"),
                 },
@@ -316,6 +388,17 @@ impl WasmEval {
                         destination as usize,
                     );
                 }
+                WasmInstr::MemoryFill => {
+                    let num_bytes = self.pop_i32();
+                    let value = self.pop_i32();
+                    let destination = self.pop_i32();
+
+                    self.memory
+                        .bytes
+                        .get_mut(destination as usize..destination as usize + num_bytes as usize)
+                        .unwrap()
+                        .fill_with(|| value as u8);
+                }
                 WasmInstr::MemoryGrow => todo!("{instr:?}"),
 
                 WasmInstr::I64ExtendI32u => {
@@ -336,11 +419,33 @@ impl WasmEval {
                         value: value as i32,
                     })
                 }
+                WasmInstr::I64ReinterpretF64 => {
+                    let value = self.pop_f64();
+                    self.stack.push(WasmValue::I64 {
+                        value: value as i64,
+                    })
+                }
+                WasmInstr::F64ReinterpretI64 => {
+                    let value = self.pop_i64();
+                    self.stack.push(WasmValue::F64 {
+                        value: value as f64,
+                    })
+                }
                 WasmInstr::UnaryOp { kind } => match kind {
                     WasmUnaryOpKind::I32_EQZ => {
                         let op = self.pop_i32();
                         let value = if op == 0 { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmUnaryOpKind::I64_EQZ => {
+                        let op = self.pop_i64();
+                        let value = if op == 0 { 1 } else { 0 };
+                        self.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmUnaryOpKind::F64_NEG => {
+                        let op = self.pop_f64();
+                        let value = -op;
+                        self.stack.push(WasmValue::F64 { value });
                     }
                 },
                 WasmInstr::BinaryOp { kind } => match kind {
@@ -602,6 +707,20 @@ impl WasmEval {
 
         value
     }
+
+    fn pop_f64(&mut self) -> f64 {
+        let wasm_value = self.stack.pop().unwrap();
+        let WasmValue::F64 { value } = wasm_value else {
+            let err = self.err_with_stack(format!(
+                "Trying to pop F64 but got {:?}",
+                wasm_value.get_type()
+            ));
+            stderr_write(format!("Error: {}\n", err.message));
+            proc_exit(1);
+        };
+
+        value
+    }
 }
 
 // values
@@ -612,6 +731,7 @@ pub enum WasmValue {
     I64 { value: i64 },
     F32 { value: f32 },
     F64 { value: f64 },
+    FuncRef { fn_index: Option<u32> },
 }
 
 impl WasmValue {
@@ -621,6 +741,7 @@ impl WasmValue {
             WasmType::I64 => WasmValue::I64 { value: 0 },
             WasmType::F32 => WasmValue::F32 { value: 0.0 },
             WasmType::F64 => WasmValue::F64 { value: 0.0 },
+            WasmType::FuncRef => WasmValue::FuncRef { fn_index: None },
         }
     }
 
@@ -630,6 +751,7 @@ impl WasmValue {
             WasmValue::I64 { .. } => WasmType::I64,
             WasmValue::F32 { .. } => WasmType::F32,
             WasmValue::F64 { .. } => WasmType::F64,
+            WasmValue::FuncRef { .. } => WasmType::FuncRef,
         }
     }
 }
@@ -641,6 +763,10 @@ impl core::fmt::Display for WasmValue {
             WasmValue::I64 { value } => write!(f, "{value}"),
             WasmValue::F32 { value } => write!(f, "{value}"),
             WasmValue::F64 { value } => write!(f, "{value}"),
+            WasmValue::FuncRef { fn_index } => match fn_index {
+                Some(fn_index) => write!(f, "<ref.func {fn_index}>"),
+                None => write!(f, "<ref.null>"),
+            },
         }
     }
 }
@@ -726,6 +852,9 @@ impl JumpTable {
                         }
                     }
                 }
+                WasmInstr::BranchIndirect { .. } => {
+                    todo!()
+                }
                 WasmInstr::BlockEnd => {
                     let block = blocks.pop().unwrap();
 
@@ -755,6 +884,10 @@ impl JumpTable {
             .binary_search_by_key(&from_loc, |(from, _)| *from);
         self.jumps[jump_index.unwrap()].1
     }
+}
+
+struct WasmFnTable {
+    fns: Vec<Option<u32>>,
 }
 
 // host fns

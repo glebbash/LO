@@ -5,6 +5,8 @@ pub struct WasmModule {
     pub types: Vec<WasmFnType>,
     pub imports: Vec<WasmImport>,
     pub functions: Vec<u32>,
+    pub tables: Vec<WasmTable>,
+    pub elements: Vec<WasmElement>,
     pub memories: Vec<WasmLimits>,
     pub globals: Vec<WasmGlobal>,
     pub exports: Vec<WasmExport>,
@@ -33,6 +35,16 @@ pub enum WasmImportDesc {
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct WasmTable {
+    pub limits: WasmLimits,
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub enum WasmElement {
+    Passive { expr: WasmExpr, fn_idx: Vec<u32> },
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct WasmFn {
     pub locals: Vec<WasmLocals>,
     pub expr: WasmExpr,
@@ -54,6 +66,8 @@ pub struct WasmExpr {
 #[allow(non_camel_case_types)]
 pub enum WasmUnaryOpKind {
     I32_EQZ = 0x45,
+    I64_EQZ = 0x50,
+    F64_NEG = 0x9A,
 }
 
 #[repr(u8)]
@@ -154,8 +168,10 @@ pub enum WasmStoreKind {
     I64 = 0x37,
     F32 = 0x38,
     F64 = 0x39,
-    I32U8 = 0x3A,
-    I32U16 = 0x3B,
+    I32_8 = 0x3A,
+    I32_16 = 0x3B,
+    I64_8 = 0x3C,
+    I64_32 = 0x3E,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -172,10 +188,10 @@ impl WasmStoreKind {
             WasmLoadKind::I64 => Self::I64,
             WasmLoadKind::F32 => Self::F32,
             WasmLoadKind::F64 => Self::F64,
-            WasmLoadKind::I32I8 => Self::I32U8,
-            WasmLoadKind::I32U8 => Self::I32U8,
-            WasmLoadKind::I32I16 => Self::I32U16,
-            WasmLoadKind::I32U16 => Self::I32U16,
+            WasmLoadKind::I32I8 => Self::I32_8,
+            WasmLoadKind::I32U8 => Self::I32_8,
+            WasmLoadKind::I32I16 => Self::I32_16,
+            WasmLoadKind::I32U16 => Self::I32_16,
         }
     }
 }
@@ -194,6 +210,7 @@ pub enum WasmInstr {
     MemorySize,
     MemoryGrow,
     MemoryCopy,
+    MemoryFill,
     I32Const {
         value: i32,
     },
@@ -206,9 +223,11 @@ pub enum WasmInstr {
     F64Const {
         value: f64,
     },
-    I64ExtendI32u,
-    I64ExtendI32s,
     I32WrapI64,
+    I64ExtendI32s,
+    I64ExtendI32u,
+    I64ReinterpretF64,
+    F64ReinterpretI64,
     LocalGet {
         local_index: u32,
     },
@@ -244,11 +263,19 @@ pub enum WasmInstr {
     Branch {
         label_index: u32,
     },
+    BranchIndirect {
+        label_idx: Vec<u32>,
+        default_label_index: u32,
+    },
     BranchIf {
         label_index: u32,
     },
     Call {
         fn_index: u32,
+    },
+    CallIndirect {
+        type_index: u32,
+        table_index: u32,
     },
 }
 
@@ -263,6 +290,7 @@ pub enum WasmBlockKind {
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum WasmType {
+    FuncRef = 0x70,
     I32 = 0x7F,
     I64 = 0x7E,
     F32 = 0x7D,
@@ -533,12 +561,31 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x0D);
             write_u32(out, *label_index);
         }
+        WasmInstr::BranchIndirect {
+            label_idx,
+            default_label_index,
+        } => {
+            write_u8(out, 0x0E);
+            write_u32(out, label_idx.len() as u32);
+            for label_index in label_idx {
+                write_u32(out, *label_index);
+            }
+            write_u32(out, *default_label_index);
+        }
         WasmInstr::Return => {
             write_u8(out, 0x0F);
         }
         WasmInstr::Call { fn_index } => {
             write_u8(out, 0x10);
             write_u32(out, *fn_index);
+        }
+        WasmInstr::CallIndirect {
+            type_index,
+            table_index,
+        } => {
+            write_u8(out, 0x11);
+            write_u32(out, *type_index);
+            write_u32(out, *table_index);
         }
         WasmInstr::Drop => {
             write_u8(out, 0x1A);
@@ -623,10 +670,21 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::I64ExtendI32u => {
             write_u8(out, 0xAD);
         }
+        WasmInstr::I64ReinterpretF64 => {
+            write_u8(out, 0xBD);
+        }
+        WasmInstr::F64ReinterpretI64 => {
+            write_u8(out, 0xBF);
+        }
         WasmInstr::MemoryCopy => {
             write_u8(out, 0xFC);
             write_u32(out, 10);
             write_u8(out, 0x00);
+            write_u8(out, 0x00);
+        }
+        WasmInstr::MemoryFill => {
+            write_u8(out, 0xFC);
+            write_u32(out, 11);
             write_u8(out, 0x00);
         }
     }
