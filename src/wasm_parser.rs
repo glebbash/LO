@@ -381,6 +381,10 @@ impl WasmParser {
                     let label_index = self.parse_u32()?;
                     expr.instrs.push(WasmInstr::Branch { label_index });
                 }
+                0x0D => {
+                    let label_index = self.parse_u32()?;
+                    expr.instrs.push(WasmInstr::BranchIf { label_index });
+                }
                 0x0F => {
                     expr.instrs.push(WasmInstr::Return);
                 }
@@ -391,6 +395,9 @@ impl WasmParser {
                 0x1A => {
                     expr.instrs.push(WasmInstr::Drop);
                 }
+                0x1B => {
+                    expr.instrs.push(WasmInstr::Select);
+                }
                 0x20 => {
                     let local_index = self.parse_u32()?;
                     expr.instrs.push(WasmInstr::LocalGet { local_index });
@@ -398,6 +405,10 @@ impl WasmParser {
                 0x21 => {
                     let local_index = self.parse_u32()?;
                     expr.instrs.push(WasmInstr::LocalSet { local_index });
+                }
+                0x22 => {
+                    let local_index = self.parse_u32()?;
+                    expr.instrs.push(WasmInstr::LocalTee { local_index });
                 }
                 0x23 => {
                     let global_index = self.parse_u32()?;
@@ -479,13 +490,19 @@ impl WasmParser {
                     let value = f64::from_le_bytes(bytes.try_into().unwrap());
                     expr.instrs.push(WasmInstr::F64Const { value });
                 }
+                0x45 => {
+                    expr.instrs.push(WasmInstr::UnaryOp {
+                        kind: WasmUnaryOpKind::I32_EQZ,
+                    });
+                }
                 op_code @ (0x46 | 0x47 | 0x48 | 0x49 | 0x4A | 0x4B | 0x4C | 0x4D | 0x4E | 0x4F
                 | 0x51 | 0x52 | 0x53 | 0x54 | 0x55 | 0x56 | 0x57 | 0x58 | 0x59
                 | 0x5A | 0x5B | 0x5C | 0x5D | 0x5E | 0x5F | 0x60 | 0x61 | 0x62
                 | 0x63 | 0x64 | 0x65 | 0x66 | 0x6A | 0x6B | 0x6C | 0x6D | 0x6E
-                | 0x6F | 0x70 | 0x71 | 0x72 | 0x74 | 0x75 | 0x76 | 0x7C | 0x7D
-                | 0x7E | 0x7F | 0x80 | 0x81 | 0x82 | 0x83 | 0x84 | 0x86 | 0x87
-                | 0x88 | 0x92 | 0x93 | 0x94 | 0x95 | 0xA0 | 0xA1 | 0xA2 | 0xA3) => {
+                | 0x6F | 0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x76 | 0x7C
+                | 0x7D | 0x7E | 0x7F | 0x80 | 0x81 | 0x82 | 0x83 | 0x84 | 0x86
+                | 0x87 | 0x88 | 0x92 | 0x93 | 0x94 | 0x95 | 0xA0 | 0xA1 | 0xA2
+                | 0xA3) => {
                     let binary_op_kind = match op_code {
                         0x46 => WasmBinaryOpKind::I32_EQ,
                         0x47 => WasmBinaryOpKind::I32_NE,
@@ -528,6 +545,7 @@ impl WasmParser {
                         0x70 => WasmBinaryOpKind::I32_REM_U,
                         0x71 => WasmBinaryOpKind::I32_AND,
                         0x72 => WasmBinaryOpKind::I32_OR,
+                        0x73 => WasmBinaryOpKind::I32_XOR,
                         0x74 => WasmBinaryOpKind::I32_SHL,
                         0x75 => WasmBinaryOpKind::I32_SHR_S,
                         0x76 => WasmBinaryOpKind::I32_SHR_U,

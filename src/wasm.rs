@@ -52,6 +52,13 @@ pub struct WasmExpr {
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 #[allow(non_camel_case_types)]
+pub enum WasmUnaryOpKind {
+    I32_EQZ = 0x45,
+}
+
+#[repr(u8)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[allow(non_camel_case_types)]
 pub enum WasmBinaryOpKind {
     I32_EQ = 0x46,
     I32_NE = 0x47,
@@ -98,6 +105,7 @@ pub enum WasmBinaryOpKind {
     I32_REM_U = 0x70,
     I32_AND = 0x71,
     I32_OR = 0x72,
+    I32_XOR = 0x73,
     I32_SHL = 0x74,
     I32_SHR_S = 0x75,
     I32_SHR_U = 0x76,
@@ -176,6 +184,10 @@ impl WasmStoreKind {
 pub enum WasmInstr {
     Unreachable,
     Drop,
+    Select,
+    UnaryOp {
+        kind: WasmUnaryOpKind,
+    },
     BinaryOp {
         kind: WasmBinaryOpKind,
     },
@@ -203,6 +215,9 @@ pub enum WasmInstr {
     LocalSet {
         local_index: u32,
     },
+    LocalTee {
+        local_index: u32,
+    },
     GlobalGet {
         global_index: u32,
     },
@@ -227,6 +242,9 @@ pub enum WasmInstr {
     Else,
     BlockEnd,
     Branch {
+        label_index: u32,
+    },
+    BranchIf {
         label_index: u32,
     },
     Call {
@@ -511,6 +529,10 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x0C);
             write_u32(out, *label_index);
         }
+        WasmInstr::BranchIf { label_index } => {
+            write_u8(out, 0x0D);
+            write_u32(out, *label_index);
+        }
         WasmInstr::Return => {
             write_u8(out, 0x0F);
         }
@@ -521,12 +543,19 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::Drop => {
             write_u8(out, 0x1A);
         }
+        WasmInstr::Select => {
+            write_u8(out, 0x1B);
+        }
         WasmInstr::LocalGet { local_index } => {
             write_u8(out, 0x20);
             write_u32(out, *local_index);
         }
         WasmInstr::LocalSet { local_index } => {
             write_u8(out, 0x21);
+            write_u32(out, *local_index);
+        }
+        WasmInstr::LocalTee { local_index } => {
+            write_u8(out, 0x22);
             write_u32(out, *local_index);
         }
         WasmInstr::GlobalGet { global_index } => {
@@ -578,6 +607,9 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::F64Const { value } => {
             write_u8(out, 0x44);
             out.extend_from_slice(&value.to_le_bytes());
+        }
+        WasmInstr::UnaryOp { kind } => {
+            write_u8(out, kind.clone() as u8);
         }
         WasmInstr::BinaryOp { kind } => {
             write_u8(out, kind.clone() as u8);

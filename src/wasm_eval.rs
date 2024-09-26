@@ -179,13 +179,16 @@ impl WasmEval {
                         }
                     }
                 }
-                WasmInstr::Else => {
+                WasmInstr::Else { .. } | WasmInstr::Branch { .. } => {
                     loc = jump_table.get_jump_loc(loc);
                     continue;
                 }
-                WasmInstr::Branch { .. } => {
-                    loc = jump_table.get_jump_loc(loc);
-                    continue;
+                WasmInstr::BranchIf { .. } => {
+                    let cond = self.pop_i32();
+                    if cond == 0 {
+                        loc = jump_table.get_jump_loc(loc);
+                        continue;
+                    }
                 }
                 WasmInstr::BlockEnd => {}
 
@@ -222,6 +225,11 @@ impl WasmEval {
                     let value = self.stack.pop().unwrap();
                     let frame = self.call_stack.last_mut().unwrap();
                     frame.locals[*local_index as usize] = value;
+                }
+                WasmInstr::LocalTee { local_index } => {
+                    let value = self.stack.last().unwrap();
+                    let frame = self.call_stack.last_mut().unwrap();
+                    frame.locals[*local_index as usize] = value.clone();
                 }
                 WasmInstr::GlobalGet { global_index } => {
                     let value = self.globals[*global_index as usize].clone();
@@ -276,6 +284,17 @@ impl WasmEval {
                     }
                     _ => todo!("store {kind:?}"),
                 },
+                WasmInstr::Select => {
+                    let cond = self.pop_i32();
+                    let rhs = self.stack.pop().unwrap();
+                    let lhs = self.stack.pop().unwrap();
+
+                    if cond == 0 {
+                        self.stack.push(lhs);
+                    } else {
+                        self.stack.push(rhs);
+                    }
+                }
 
                 WasmInstr::Drop => {
                     let _ = self.stack.pop().unwrap();
@@ -317,6 +336,13 @@ impl WasmEval {
                         value: value as i32,
                     })
                 }
+                WasmInstr::UnaryOp { kind } => match kind {
+                    WasmUnaryOpKind::I32_EQZ => {
+                        let op = self.pop_i32();
+                        let value = if op == 0 { 1 } else { 0 };
+                        self.stack.push(WasmValue::I32 { value });
+                    }
+                },
                 WasmInstr::BinaryOp { kind } => match kind {
                     WasmBinaryOpKind::I32_ADD => {
                         let rhs = self.pop_i32();
@@ -346,6 +372,12 @@ impl WasmEval {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = lhs | rhs;
+                        self.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_XOR => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs ^ rhs;
                         self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_DIV_U => {
