@@ -113,7 +113,7 @@ impl WasmParser {
                     item_desc = WasmImportDesc::Func { type_index };
                 }
                 0x02 => {
-                    let limits = self.parse_memory_limits()?;
+                    let limits = self.parse_limits()?;
                     item_desc = WasmImportDesc::Memory(limits);
                 }
                 byte => {
@@ -160,7 +160,7 @@ impl WasmParser {
 
         let memories_len = self.parse_u32()?;
         for _ in 0..memories_len {
-            let limits = self.parse_memory_limits()?;
+            let limits = self.parse_limits()?;
             self.module.memories.push(limits);
         }
 
@@ -311,7 +311,7 @@ impl WasmParser {
         Ok(())
     }
 
-    fn parse_memory_limits(&mut self) -> Result<WasmLimits, String> {
+    fn parse_limits(&mut self) -> Result<WasmLimits, String> {
         match self.expect_any()? {
             0x00 => {
                 let min = self.parse_u32()?;
@@ -326,7 +326,7 @@ impl WasmParser {
                 })
             }
             byte => Err(format!(
-                "{} Unknown memory limit kind '0x{byte:02X}'",
+                "{} Unknown limits kind '0x{byte:02X}'",
                 self.loc_at(self.offset - 1)
             )),
         }

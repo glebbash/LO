@@ -378,7 +378,7 @@ impl WasmModule {
                 }
                 WasmImportDesc::Memory(ref memory) => {
                     write_u8(out, 0x02); // memory
-                    write_memory_limits(out, memory);
+                    write_limits(out, memory);
                 }
             }
         }
@@ -394,7 +394,7 @@ impl WasmModule {
     fn write_memory_section(&self, out: &mut Vec<u8>) {
         write_u32(out, self.memories.len() as u32);
         for memory in &self.memories {
-            write_memory_limits(out, memory);
+            write_limits(out, memory);
         }
     }
 
@@ -632,14 +632,14 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
     }
 }
 
-fn write_memory_limits(out: &mut Vec<u8>, memory: &WasmLimits) {
-    if let Some(memory_max) = memory.max {
+fn write_limits(out: &mut Vec<u8>, limits: &WasmLimits) {
+    if let Some(limits_max) = limits.max {
         write_u8(out, 0x01);
-        write_u32(out, memory.min as u32);
-        write_u32(out, memory_max as u32);
+        write_u32(out, limits.min as u32);
+        write_u32(out, limits_max as u32);
     } else {
         write_u8(out, 0x00);
-        write_u32(out, memory.min as u32);
+        write_u32(out, limits.min as u32);
     }
 }
 
