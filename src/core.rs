@@ -272,22 +272,7 @@ pub fn fputs(fd: u32, message: &[u8]) {
 
 #[allow(dead_code)]
 pub fn debug(msg: String) {
-    unsafe {
-        wasi::fd_write(
-            wasi::FD_STDERR,
-            &[
-                wasi::Ciovec {
-                    buf: msg.as_ptr(),
-                    buf_len: msg.as_bytes().len(),
-                },
-                wasi::Ciovec {
-                    buf: "\n".as_ptr(),
-                    buf_len: 1,
-                },
-            ],
-        )
-        .unwrap();
-    }
+    stderr_write(format!("{msg}\n"));
 }
 
 pub fn resolve_path(file_path: &str, relative_to: &str) -> String {

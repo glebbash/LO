@@ -697,12 +697,10 @@ impl WasmParser {
                     }
                 }
                 byte => {
-                    crate::core::debug(format!("Skipping unknown instruction: '0x{byte:02X}'\n"));
-
-                    // return Err(format!(
-                    //     "{} Unknown instruction '0x{byte:02X}'",
-                    //     self.loc_at(self.offset - 1)
-                    // ));
+                    return Err(format!(
+                        "{} Unknown instruction '0x{byte:02X}'",
+                        self.loc_at(self.offset - 1)
+                    ));
                 }
             }
         }

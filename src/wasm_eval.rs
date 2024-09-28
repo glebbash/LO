@@ -60,16 +60,11 @@ impl WasmEval {
         for element in unsafe_borrow(&self.wasm_module.elements) {
             match element {
                 WasmElement::Passive { expr, fn_idx } => {
-                    for fn_index_in_table in fn_idx {
-                        self.eval_expr(expr, &JumpTable::for_expr(expr))?;
+                    self.eval_expr(expr, &JumpTable::for_expr(expr))?;
+                    let start_index = self.pop_i32() as usize;
 
-                        let WasmValue::FuncRef { fn_index } = self.stack.pop().unwrap() else {
-                            return Err(EvalError {
-                                message: format!(""),
-                            });
-                        };
-
-                        self.tables[0].fns[*fn_index_in_table as usize] = fn_index;
+                    for (fn_index, i) in fn_idx.iter().zip(0..) {
+                        self.tables[0].fns[start_index + i] = Some(*fn_index);
                     }
                 }
             }
@@ -899,7 +894,7 @@ struct SupportedHostFn {
     fn_outputs: &'static [WasmType],
 }
 
-static SUPPORTED_HOST_FNS: [SupportedHostFn; 12] = [
+static SUPPORTED_HOST_FNS: [SupportedHostFn; 13] = [
     SupportedHostFn {
         module_name: "utils",
         fn_name: "debug",
@@ -938,6 +933,12 @@ static SUPPORTED_HOST_FNS: [SupportedHostFn; 12] = [
         module_name: "wasi_snapshot_preview1",
         fn_name: "fd_write",
         fn_inputs: &[WasmType::I32, WasmType::I32, WasmType::I32, WasmType::I32],
+        fn_outputs: &[WasmType::I32],
+    },
+    SupportedHostFn {
+        module_name: "wasi_snapshot_preview1",
+        fn_name: "fd_seek",
+        fn_inputs: &[WasmType::I32, WasmType::I64, WasmType::I32, WasmType::I32],
         fn_outputs: &[WasmType::I32],
     },
     SupportedHostFn {
