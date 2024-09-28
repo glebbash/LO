@@ -23,6 +23,7 @@ impl WasmParser {
         Ok(parser.module)
     }
 
+    // TODO: implement module verification
     fn parse_module(&mut self) -> Result<(), String> {
         self.parse_magic_and_version()?;
 
@@ -326,7 +327,6 @@ impl WasmParser {
         Ok(())
     }
 
-    // TODO: support parsing data count section
     fn parse_data_count_section(&mut self) -> Result<(), String> {
         let _section_size = self.parse_u32()?;
 

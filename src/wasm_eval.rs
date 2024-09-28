@@ -40,7 +40,6 @@ impl WasmEval {
         Ok(())
     }
 
-    // TODO: add module verify step
     fn init_module(&mut self) -> Result<(), EvalError> {
         for global in unsafe_borrow(&self.wasm_module.globals) {
             self.eval_expr(
@@ -232,24 +231,20 @@ impl WasmEval {
                     let fn_index_in_table = self.pop_i32();
 
                     let Some(table) = self.tables.get(*table_index as usize) else {
-                        return Err(EvalError {
-                            message: format!("Invalid table index: {table_index}"),
-                        });
+                        return Err(
+                            self.err_with_stack(format!("Invalid table index: {table_index}"))
+                        );
                     };
 
                     let Some(func_ref) = table.fns.get(fn_index_in_table as usize) else {
-                        return Err(EvalError {
-                            message: format!(
-                                "Function index out of table bounds: {fn_index_in_table}, table id: {table_index}, table size: {}",
-                                table.fns.len()
-                            ),
-                        });
+                        return Err(self.err_with_stack(format!(
+                            "Function index out of table bounds: {fn_index_in_table}, table id: {table_index}, table size: {}",
+                            table.fns.len()
+                        )));
                     };
 
                     let Some(fn_index) = func_ref else {
-                        return Err(EvalError {
-                            message: format!("Trying to call indirect on ref.null",),
-                        });
+                        return Err(self.err_with_stack("Trying to call indirect on <ref.null>"));
                     };
 
                     // TODO: type check indirect function calls
@@ -340,6 +335,12 @@ impl WasmEval {
                         let addr = self.pop_i32();
                         let full_addr = addr as usize + *offset as usize;
                         self.memory.bytes[full_addr] = value as u8;
+                    }
+                    WasmStoreKind::I64 => {
+                        let value = self.pop_i64();
+                        let addr = self.pop_i32();
+                        let full_addr = addr as usize + *offset as usize;
+                        self.memory.store_i64(full_addr, value);
                     }
                     WasmStoreKind::I64_8 => {
                         let value = self.pop_i64();
@@ -520,6 +521,12 @@ impl WasmEval {
                         let value = if lhs > rhs { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value })
                     }
+                    WasmBinaryOpKind::I32_LT_S => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if lhs < rhs { 1 } else { 0 };
+                        self.stack.push(WasmValue::I32 { value })
+                    }
                     WasmBinaryOpKind::I32_LT_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
@@ -544,8 +551,7 @@ impl WasmEval {
                         let value = if (lhs as u32) <= (rhs as u32) { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value })
                     }
-                    WasmBinaryOpKind::I32_LT_S
-                    | WasmBinaryOpKind::I32_LE_S
+                    WasmBinaryOpKind::I32_LE_S
                     | WasmBinaryOpKind::I32_GE_S
                     | WasmBinaryOpKind::I32_DIV_S
                     | WasmBinaryOpKind::I32_REM_S
@@ -652,10 +658,11 @@ impl WasmEval {
         None
     }
 
-    fn err_with_stack(&mut self, message: impl AsRef<str>) -> EvalError {
+    fn err_with_stack(&mut self, msg: impl AsRef<str>) -> EvalError {
         use core::fmt::Write;
 
-        let mut message = String::from(message.as_ref());
+        let mut message = String::from("Error: ");
+        message.push_str(msg.as_ref());
 
         while let Some(frame) = self.call_stack.pop() {
             write!(&mut message, "\n  at ").unwrap();
@@ -847,7 +854,7 @@ impl JumpTable {
                         });
                     }
                 }
-                WasmInstr::Branch { label_index } => {
+                WasmInstr::Branch { label_index } | WasmInstr::BranchIf { label_index } => {
                     let block_index = block_stack[block_stack.len() - 1 - *label_index as usize];
                     jump_table.jumps.push(Jump {
                         from: loc,
