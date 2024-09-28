@@ -271,8 +271,8 @@ pub fn fputs(fd: u32, message: &[u8]) {
 }
 
 #[allow(dead_code)]
-pub fn debug(msg: String) {
-    stderr_write(format!("{msg}\n"));
+pub fn debug(msg: impl AsRef<str>) {
+    stderr_write(format!("{}\n", msg.as_ref()));
 }
 
 pub fn resolve_path(file_path: &str, relative_to: &str) -> String {

@@ -199,7 +199,11 @@ impl WasmEval {
                         }
                     }
                 }
-                WasmInstr::Else { .. } | WasmInstr::Branch { .. } => {
+                WasmInstr::Else { .. } => {
+                    loc = jump_table.get_jump_loc(loc);
+                    continue;
+                }
+                WasmInstr::Branch { .. } => {
                     loc = jump_table.get_jump_loc(loc);
                     continue;
                 }
@@ -805,70 +809,83 @@ struct JumpTable {
 
 impl JumpTable {
     fn for_expr(expr: &WasmExpr) -> Self {
+        #[derive(Debug)]
         struct BlockInfo {
-            loc: usize,
             kind: WasmBlockKind,
-            unresolved_branches: Vec<usize>,
-            had_else: bool,
+            start_loc: usize,
+            else_loc: Option<usize>,
+            end_loc: usize,
         }
+
+        let mut blocks = Vec::<BlockInfo>::new();
+        let mut block_stack = Vec::<usize>::new();
+        let mut jumps_to_fix = Vec::<usize>::new();
 
         let mut jump_table = JumpTable::default();
 
-        let mut blocks = Vec::<BlockInfo>::new();
         for (instr, loc) in expr.instrs.iter().zip(0..) {
             match instr {
                 WasmInstr::BlockStart { block_kind, .. } => {
                     blocks.push(BlockInfo {
-                        loc,
                         kind: block_kind.clone(),
-                        unresolved_branches: Vec::new(),
-                        had_else: false,
+                        start_loc: loc,
+                        else_loc: None,
+                        end_loc: loc,
                     });
-                }
-                WasmInstr::Else => {
-                    let block = blocks.last_mut().unwrap();
-                    assert_eq!(block.kind, WasmBlockKind::If);
-                    jump_table.jumps.push((block.loc, loc + 1));
-                    block.had_else = true;
-                    block.unresolved_branches.push(loc);
+                    block_stack.push(blocks.len() - 1);
+
+                    if let WasmBlockKind::If = block_kind {
+                        jump_table.jumps.push((loc, blocks.len() - 1));
+                        jumps_to_fix.push(jump_table.jumps.len() - 1);
+                    }
                 }
                 WasmInstr::Branch { label_index } => {
-                    let blocks_len = blocks.len();
-                    let target_block = blocks
-                        .get_mut(blocks_len - 1 - *label_index as usize)
-                        .unwrap();
+                    let target_block_index =
+                        block_stack[block_stack.len() - 1 - *label_index as usize];
+                    let target_block = blocks.get_mut(target_block_index).unwrap();
 
                     match target_block.kind {
                         WasmBlockKind::Loop => {
-                            jump_table.jumps.push((loc, target_block.loc + 1));
+                            jump_table.jumps.push((loc, target_block.start_loc + 1));
                         }
                         _ => {
-                            target_block.unresolved_branches.push(loc);
+                            jump_table.jumps.push((loc, target_block_index));
+                            jumps_to_fix.push(jump_table.jumps.len() - 1);
                         }
                     }
                 }
-                WasmInstr::BranchIndirect { .. } => {
-                    todo!()
+                WasmInstr::BranchIndirect { .. } => todo!(),
+                WasmInstr::Else => {
+                    let block_index = *block_stack.last().unwrap();
+                    let block = &mut blocks[block_index];
+                    block.else_loc = Some(loc);
+
+                    jump_table.jumps.push((loc, block_index));
+                    jumps_to_fix.push(jump_table.jumps.len() - 1);
                 }
                 WasmInstr::BlockEnd => {
-                    let block = blocks.pop().unwrap();
+                    let block = &mut blocks[*block_stack.last().unwrap()];
+                    block.end_loc = loc;
 
-                    for branch_loc in block.unresolved_branches {
-                        jump_table.jumps.push((branch_loc, loc));
-                    }
-
-                    if let WasmBlockKind::If = block.kind {
-                        if !block.had_else {
-                            jump_table.jumps.push((block.loc, loc));
-                        }
-                    }
+                    block_stack.pop();
                 }
                 _ => {}
             }
         }
 
-        // jumps from branches are created out of order so need to sort
-        jump_table.jumps.sort_by_key(|&(from, _)| from);
+        for jump_index in jumps_to_fix {
+            let block_index = jump_table.jumps[jump_index].1;
+            let block = &blocks[block_index];
+
+            if let Some(else_loc) = block.else_loc {
+                if jump_table.jumps[jump_index].0 == block.start_loc {
+                    jump_table.jumps[jump_index].1 = else_loc + 1;
+                    continue;
+                }
+            }
+
+            jump_table.jumps[jump_index].1 = block.end_loc;
+        }
 
         jump_table
     }
