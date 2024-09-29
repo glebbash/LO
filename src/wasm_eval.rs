@@ -214,7 +214,14 @@ impl WasmEval {
                     }
                 }
                 WasmInstr::BranchIndirect { .. } => {
-                    todo!();
+                    let jump = jump_table.get_indirect_jumps(loc);
+
+                    let jump_index = self.pop_i32();
+                    if let Some(jump_loc) = jump.tos.get(jump_index as usize) {
+                        loc = *jump_loc;
+                    } else {
+                        loc = jump.to_default;
+                    }
                 }
                 WasmInstr::BlockEnd => {}
 
@@ -952,6 +959,15 @@ impl JumpTable {
             .unwrap();
 
         self.jumps[jump_index].to
+    }
+
+    fn get_indirect_jumps(&self, from_loc: usize) -> &IndirectJump {
+        let jump_index = self
+            .indirect_jumps
+            .binary_search_by_key(&from_loc, |jump| jump.from)
+            .unwrap();
+
+        &self.indirect_jumps[jump_index]
     }
 }
 
