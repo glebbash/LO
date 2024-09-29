@@ -208,7 +208,7 @@ impl WasmEval {
                 }
                 WasmInstr::BranchIf { .. } => {
                     let cond = self.pop_i32();
-                    if cond == 0 {
+                    if cond != 0 {
                         loc = jump_table.get_jump_loc(loc);
                         continue;
                     }
@@ -491,6 +491,30 @@ impl WasmEval {
                         let value = ((lhs as u32) / (rhs as u32)) as i32;
                         self.stack.push(WasmValue::I32 { value });
                     }
+                    WasmBinaryOpKind::I32_SHL => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs << rhs;
+                        self.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_SHR_S => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs >> rhs;
+                        self.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_DIV_S => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs / rhs;
+                        self.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmBinaryOpKind::I32_REM_S => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = lhs % rhs;
+                        self.stack.push(WasmValue::I32 { value });
+                    }
                     WasmBinaryOpKind::I32_SHR_U => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
@@ -521,10 +545,22 @@ impl WasmEval {
                         let value = if lhs > rhs { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value })
                     }
+                    WasmBinaryOpKind::I32_GE_S => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if lhs >= rhs { 1 } else { 0 };
+                        self.stack.push(WasmValue::I32 { value })
+                    }
                     WasmBinaryOpKind::I32_LT_S => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = if lhs < rhs { 1 } else { 0 };
+                        self.stack.push(WasmValue::I32 { value })
+                    }
+                    WasmBinaryOpKind::I32_LE_S => {
+                        let rhs = self.pop_i32();
+                        let lhs = self.pop_i32();
+                        let value = if lhs <= rhs { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_LT_U => {
@@ -551,12 +587,6 @@ impl WasmEval {
                         let value = if (lhs as u32) <= (rhs as u32) { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value })
                     }
-                    WasmBinaryOpKind::I32_LE_S
-                    | WasmBinaryOpKind::I32_GE_S
-                    | WasmBinaryOpKind::I32_DIV_S
-                    | WasmBinaryOpKind::I32_REM_S
-                    | WasmBinaryOpKind::I32_SHL
-                    | WasmBinaryOpKind::I32_SHR_S => todo!("{kind:?}"),
 
                     WasmBinaryOpKind::I64_MUL => {
                         let rhs = self.pop_i64();
