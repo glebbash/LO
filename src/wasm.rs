@@ -343,120 +343,149 @@ impl WasmModule {
     pub fn dump_using_buffer(&self, output: &mut Vec<u8>, section_buffer: &mut Vec<u8>) {
         write_magic_and_version(output);
 
-        self.write_type_section(section_buffer);
-        write_section(output, section_buffer, 0x01);
+        self.write_type_section(output, section_buffer);
 
-        self.write_import_section(section_buffer);
-        write_section(output, section_buffer, 0x02);
+        self.write_import_section(output, section_buffer);
 
-        self.write_function_section(section_buffer);
-        write_section(output, section_buffer, 0x03);
+        self.write_function_section(output, section_buffer);
 
-        self.write_memory_section(section_buffer);
-        write_section(output, section_buffer, 0x05);
+        self.write_memory_section(output, section_buffer);
 
-        self.write_global_section(section_buffer);
-        write_section(output, section_buffer, 0x06);
+        self.write_global_section(output, section_buffer);
 
-        self.write_export_section(section_buffer);
-        write_section(output, section_buffer, 0x07);
+        self.write_export_section(output, section_buffer);
 
-        self.write_code_section(section_buffer);
-        write_section(output, section_buffer, 0x0A);
+        self.write_code_section(output, section_buffer);
 
-        self.write_data_section(section_buffer);
-        write_section(output, section_buffer, 0x0B);
+        self.write_data_section(output, section_buffer);
 
-        if self.debug_fn_info.len() > 0 {
-            self.write_custom_section(section_buffer);
-            write_section(output, section_buffer, 0x00);
-        }
+        self.write_custom_section(output, section_buffer);
     }
 
-    fn write_type_section(&self, out: &mut Vec<u8>) {
-        write_u32(out, self.types.len() as u32);
+    fn write_type_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.types.len() == 0 {
+            return;
+        }
+
+        write_u32(section, self.types.len() as u32);
         for fn_type in &self.types {
-            write_u8(out, 0x60); // func type
+            write_u8(section, 0x60); // func type
 
-            write_u32(out, fn_type.inputs.len() as u32);
+            write_u32(section, fn_type.inputs.len() as u32);
             for fn_input in &fn_type.inputs {
-                write_u8(out, fn_input.clone() as u8);
+                write_u8(section, fn_input.clone() as u8);
             }
 
-            write_u32(out, fn_type.outputs.len() as u32);
+            write_u32(section, fn_type.outputs.len() as u32);
             for fn_output in &fn_type.outputs {
-                write_u8(out, fn_output.clone() as u8);
+                write_u8(section, fn_output.clone() as u8);
             }
         }
+
+        write_section(output, section, 0x01);
     }
 
-    fn write_import_section(&self, out: &mut Vec<u8>) {
-        write_u32(out, self.imports.len() as u32);
-        for import in &self.imports {
-            write_u32(out, import.module_name.len() as u32);
-            write_all(out, import.module_name.as_bytes());
+    fn write_import_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.imports.len() == 0 {
+            return;
+        }
 
-            write_u32(out, import.item_name.len() as u32);
-            write_all(out, import.item_name.as_bytes());
+        write_u32(section, self.imports.len() as u32);
+        for import in &self.imports {
+            write_u32(section, import.module_name.len() as u32);
+            write_all(section, import.module_name.as_bytes());
+
+            write_u32(section, import.item_name.len() as u32);
+            write_all(section, import.item_name.as_bytes());
 
             match import.item_desc {
                 WasmImportDesc::Func { type_index } => {
-                    write_u8(out, 0x00); // fn
-                    write_u32(out, type_index);
+                    write_u8(section, 0x00); // fn
+                    write_u32(section, type_index);
                 }
                 WasmImportDesc::Memory(ref memory) => {
-                    write_u8(out, 0x02); // memory
-                    write_limits(out, memory);
+                    write_u8(section, 0x02); // memory
+                    write_limits(section, memory);
                 }
             }
         }
+
+        write_section(output, section, 0x02);
     }
 
-    fn write_function_section(&self, out: &mut Vec<u8>) {
-        write_u32(out, self.functions.len() as u32);
+    fn write_function_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.functions.len() == 0 {
+            return;
+        }
+
+        write_u32(section, self.functions.len() as u32);
         for type_index in &self.functions {
-            write_u32(out, *type_index);
+            write_u32(section, *type_index);
         }
+
+        write_section(output, section, 0x03);
     }
 
-    fn write_memory_section(&self, out: &mut Vec<u8>) {
-        write_u32(out, self.memories.len() as u32);
+    fn write_memory_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.memories.len() == 0 {
+            return;
+        }
+
+        write_u32(section, self.memories.len() as u32);
         for memory in &self.memories {
-            write_limits(out, memory);
+            write_limits(section, memory);
         }
+
+        write_section(output, section, 0x05);
     }
 
-    fn write_global_section(&self, out: &mut Vec<u8>) {
-        write_u32(out, self.globals.len() as u32);
+    fn write_global_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.globals.len() == 0 {
+            return;
+        }
+
+        write_u32(section, self.globals.len() as u32);
         for global in &self.globals {
-            write_u8(out, global.value_type.clone() as u8);
+            write_u8(section, global.value_type.clone() as u8);
 
             if global.mutable {
-                write_u8(out, 0x01);
+                write_u8(section, 0x01);
             } else {
-                write_u8(out, 0x00);
+                write_u8(section, 0x00);
             }
 
-            write_expr(out, &global.initial_value);
+            write_expr(section, &global.initial_value);
         }
+
+        write_section(output, section, 0x06);
     }
 
-    fn write_export_section(&self, out: &mut Vec<u8>) {
-        write_u32(out, self.exports.len() as u32);
+    fn write_export_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.exports.len() == 0 {
+            return;
+        }
+
+        write_u32(section, self.exports.len() as u32);
         for export in &self.exports {
-            write_u32(out, export.export_name.len() as u32);
-            write_all(out, export.export_name.as_bytes());
+            write_u32(section, export.export_name.len() as u32);
+            write_all(section, export.export_name.as_bytes());
 
-            write_u8(out, export.export_type.clone() as u8);
+            write_u8(section, export.export_type.clone() as u8);
 
-            write_u32(out, export.exported_item_index);
+            write_u32(section, export.exported_item_index);
         }
+
+        write_section(output, section, 0x07);
     }
 
-    fn write_code_section(&self, out: &mut Vec<u8>) {
+    fn write_code_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.codes.len() == 0 {
+            return;
+        }
+
         let mut fn_section = Vec::new();
 
-        write_u32(out, self.codes.len() as u32);
+        write_u32(section, self.codes.len() as u32);
         for fn_code in &self.codes {
             write_u32(&mut fn_section, fn_code.locals.len() as u32);
             for locals_of_some_type in &fn_code.locals {
@@ -468,26 +497,38 @@ impl WasmModule {
             }
             write_expr(&mut fn_section, &fn_code.expr);
 
-            write_u32(out, fn_section.len() as u32);
-            out.append(&mut fn_section);
+            write_u32(section, fn_section.len() as u32);
+            section.append(&mut fn_section);
         }
+
+        write_section(output, section, 0x0A);
     }
 
-    fn write_data_section(&self, out: &mut Vec<u8>) {
-        write_u32(out, self.datas.len() as u32);
+    fn write_data_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.datas.len() == 0 {
+            return;
+        }
+
+        write_u32(section, self.datas.len() as u32);
         for data in self.datas.iter() {
             let WasmData::Active { offset, bytes } = data;
-            write_u32(out, 0);
-            write_expr(out, offset);
-            write_u32(out, bytes.len() as u32);
-            write_all(out, bytes);
+            write_u32(section, 0);
+            write_expr(section, offset);
+            write_u32(section, bytes.len() as u32);
+            write_all(section, bytes);
         }
+
+        write_section(output, section, 0x0B);
     }
 
-    fn write_custom_section(&self, out: &mut Vec<u8>) {
+    fn write_custom_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.debug_fn_info.len() == 0 {
+            return;
+        }
+
         let section_name = "name";
-        write_u32(out, section_name.len() as u32);
-        write_all(out, section_name.as_bytes());
+        write_u32(section, section_name.len() as u32);
+        write_all(section, section_name.as_bytes());
 
         /* function names */
         {
@@ -498,12 +539,14 @@ impl WasmModule {
                 write_u32(&mut subsection_buf, fn_name.fn_name.len() as u32);
                 write_all(&mut subsection_buf, fn_name.fn_name.as_bytes());
             }
-            write_section(out, &mut subsection_buf, 1);
+            write_section(section, &mut subsection_buf, 1);
         }
+
+        write_section(output, section, 0x00);
     }
 }
 
-pub fn write_section(out: &mut Vec<u8>, section: &mut Vec<u8>, section_code: u8) {
+fn write_section(out: &mut Vec<u8>, section: &mut Vec<u8>, section_code: u8) {
     write_u8(out, section_code);
     write_u32(out, section.len() as u32);
     out.append(section);
