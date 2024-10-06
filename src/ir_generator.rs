@@ -248,7 +248,7 @@ impl IRGenerator {
 
     fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::Named { name } => {
+            TypeExpr::Named { name, loc: _ } => {
                 if name.repr == "u32" {
                     return Ok(LoType::U32);
                 }

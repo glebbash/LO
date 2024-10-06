@@ -5,6 +5,7 @@ extern crate alloc;
 
 mod ast;
 mod code_generator;
+mod codegen;
 mod core;
 mod ir;
 mod ir_generator;
@@ -40,6 +41,7 @@ static USAGE: &str = "\
 Usage: lo <file> [mode]
   where [mode] is either:
     --compile-v2 (temporary)
+    --compile-v3 (temporary)
     --inspect
     --pretty-print
     --eval (experimental)
@@ -49,8 +51,8 @@ Usage: lo <file> [mode]
 
 mod wasi_api {
     use crate::{
-        code_generator::*, core::*, ir_generator::*, lexer::*, parser, parser_v2::*, printer::*,
-        wasm_eval::*, wasm_parser::WasmParser, USAGE,
+        code_generator::*, codegen::*, core::*, ir_generator::*, lexer::*, parser, parser_v2::*,
+        printer::*, wasm_eval::*, wasm_parser::*, USAGE,
     };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
@@ -81,6 +83,7 @@ mod wasi_api {
         let compiler_mode = match args.get(2) {
             None => CompilerMode::Compile,
             Some("--compile-v2") => CompilerMode::CompileV2,
+            Some("--compile-v3") => CompilerMode::CompileV3,
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
             Some("--eval") => CompilerMode::Eval,
@@ -102,6 +105,24 @@ mod wasi_api {
             let lo_ir = ir_generator.generate_ir()?;
 
             let wasm_module = CodeGenerator::generate(lo_ir);
+
+            let mut binary = Vec::new();
+            wasm_module.dump(&mut binary);
+            fputs(wasi::FD_STDOUT, binary.as_slice());
+
+            return Ok(());
+        }
+
+        if compiler_mode == CompilerMode::CompileV3 {
+            let mut files = Vec::new();
+            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
+
+            let mut codegen = CodeGen::default();
+            for file in files.into_iter().rev() {
+                codegen.add_file(file)?;
+            }
+            codegen.errors.print_all()?;
+            let wasm_module = codegen.generate()?;
 
             let mut binary = Vec::new();
             wasm_module.dump(&mut binary);

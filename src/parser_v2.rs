@@ -484,14 +484,17 @@ impl ParserV2 {
     }
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, LoError> {
+        let mut loc = self.current().loc.clone();
         let primary = self.parse_type_expr_primary()?;
 
         if let Some(_) = self.eat(Symbol, "of")? {
-            let item_type = self.parse_type_expr()?;
-
+            let container_type = Box::new(primary);
+            let item_type = Box::new(self.parse_type_expr()?);
+            loc.end_pos = self.prev().loc.end_pos.clone();
             return Ok(TypeExpr::Of {
-                container_type: Box::new(primary),
-                item_type: Box::new(item_type),
+                container_type,
+                item_type,
+                loc,
             });
         }
 
@@ -499,16 +502,18 @@ impl ParserV2 {
     }
 
     fn parse_type_expr_primary(&mut self) -> Result<TypeExpr, LoError> {
+        let mut loc = self.current().loc.clone();
+
         if let Some(_) = self.eat(Operator, "&")? {
-            return Ok(TypeExpr::Pointer {
-                pointee: Box::new(self.parse_type_expr()?),
-            });
+            let pointee = Box::new(self.parse_type_expr()?);
+            loc.end_pos = self.prev().loc.end_pos.clone();
+            return Ok(TypeExpr::Pointer { pointee, loc });
         }
 
         if let Some(_) = self.eat(Operator, "*&")? {
-            return Ok(TypeExpr::SequencePointer {
-                pointee: Box::new(self.parse_type_expr()?),
-            });
+            let pointee = Box::new(self.parse_type_expr()?);
+            loc.end_pos = self.prev().loc.end_pos.clone();
+            return Ok(TypeExpr::SequencePointer { pointee, loc });
         }
 
         if let Some(_) = self.eat(Symbol, "Result")? {
@@ -517,12 +522,18 @@ impl ParserV2 {
             self.expect(Delim, ",")?;
             let err_type = Box::new(self.parse_type_expr()?);
             self.expect(Operator, ">")?;
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
-            return Ok(TypeExpr::Result { ok_type, err_type });
+            return Ok(TypeExpr::Result {
+                ok_type,
+                err_type,
+                loc,
+            });
         }
 
         let ident = self.parse_ident()?;
-        return Ok(TypeExpr::Named { name: ident });
+        loc.end_pos = self.prev().loc.end_pos.clone();
+        return Ok(TypeExpr::Named { name: ident, loc });
     }
 
     fn parse_code_block_expr(&mut self) -> Result<CodeBlockExpr, LoError> {

@@ -184,21 +184,38 @@ impl Locatable for TopLevelExpr {
 pub enum TypeExpr {
     Named {
         name: IdentExpr,
+        loc: LoLocation,
     },
     Pointer {
         pointee: Box<TypeExpr>,
+        loc: LoLocation,
     },
     SequencePointer {
         pointee: Box<TypeExpr>,
+        loc: LoLocation,
     },
     Result {
         ok_type: Box<TypeExpr>,
         err_type: Box<TypeExpr>,
+        loc: LoLocation,
     },
     Of {
         container_type: Box<TypeExpr>,
         item_type: Box<TypeExpr>,
+        loc: LoLocation,
     },
+}
+
+impl Locatable for TypeExpr {
+    fn loc(&self) -> &LoLocation {
+        match self {
+            TypeExpr::Named { loc, .. } => loc,
+            TypeExpr::Pointer { loc, .. } => loc,
+            TypeExpr::SequencePointer { loc, .. } => loc,
+            TypeExpr::Result { loc, .. } => loc,
+            TypeExpr::Of { loc, .. } => loc,
+        }
+    }
 }
 
 #[derive(Debug)]

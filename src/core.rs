@@ -6,6 +6,7 @@ pub enum CompilerMode {
     #[default]
     Compile,
     CompileV2,
+    CompileV3,
     Inspect,
     PrettyPrint,
     Eval,

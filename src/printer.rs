@@ -295,18 +295,22 @@ impl Printer {
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
         match type_expr {
-            TypeExpr::Pointer { pointee } => {
+            TypeExpr::Pointer { pointee, loc: _ } => {
                 stdout_write("&");
                 self.print_type_expr(pointee);
             }
-            TypeExpr::SequencePointer { pointee } => {
+            TypeExpr::SequencePointer { pointee, loc: _ } => {
                 stdout_write("*&");
                 self.print_type_expr(pointee);
             }
-            TypeExpr::Named { name } => {
+            TypeExpr::Named { name, loc: _ } => {
                 stdout_write(&name.repr);
             }
-            TypeExpr::Result { ok_type, err_type } => {
+            TypeExpr::Result {
+                ok_type,
+                err_type,
+                loc: _,
+            } => {
                 stdout_write("Result<");
                 self.print_type_expr(ok_type);
                 stdout_write(", ");
@@ -316,6 +320,7 @@ impl Printer {
             TypeExpr::Of {
                 container_type,
                 item_type,
+                loc: _,
             } => {
                 self.print_type_expr(container_type);
                 stdout_write(" of ");
