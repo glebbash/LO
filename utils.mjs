@@ -144,7 +144,7 @@ async function debugWasiCommand(args) {
 async function testCommand() {
     const v1 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH));
     const v2 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH), {
-        buildArgs: (fileName) => ["lo", fileName ?? "-i", "--compile-v3"],
+        buildArgs: (fileName) => ["lo", fileName ?? "-i", "--compile-v2"],
     });
     const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
 
