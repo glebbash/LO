@@ -65,7 +65,6 @@ struct LoLocals {
 
 #[derive(Clone)]
 struct LoLocal {
-    local_name: String,
     local_type: LoType,
     definition_loc: LoLocation,
 }
@@ -129,7 +128,6 @@ impl LoLocals {
 
         let local_index = self.locals.len();
         self.locals.push(LoLocal {
-            local_name: local_name.clone(),
             local_type: local_type.clone(),
             definition_loc: loc,
         });
@@ -162,7 +160,6 @@ struct WasmFnInfo {
 struct LoTypeDef {
     name: String,
     value: LoType,
-    definition_loc: LoLocation,
 }
 
 #[derive(Default)]
@@ -171,6 +168,9 @@ pub struct CodeGen {
     lo_functions: Vec<LoFnInfo>,
     wasm_functions: Vec<WasmFnInfo>,
     type_defs: Vec<LoTypeDef>,
+    memory: Option<MemoryDefExpr>,
+    memory_imported_from: Option<String>,
+    static_data_stores: Vec<StaticDataStoreExpr>,
 }
 
 impl CodeGen {
@@ -247,9 +247,26 @@ impl CodeGen {
                     items,
                     loc,
                 }) => {
+                    let module_name = Lexer::unescape_string(&module_name);
+
                     for item in items {
-                        let ImportItem::FnDecl(fn_decl) = item else {
-                            todo!("Support memory imports")
+                        let fn_decl = match item {
+                            ImportItem::FnDecl(fn_decl) => fn_decl,
+                            ImportItem::Memory(memory) => {
+                                if let Some(existing_memory) = &self.memory {
+                                    return Err(LoError {
+                                        message: format!(
+                                            "Cannot redefine memory, first defined at {}",
+                                            existing_memory.loc
+                                        ),
+                                        loc: memory.loc,
+                                    });
+                                }
+
+                                self.memory = Some(memory);
+                                self.memory_imported_from = Some(module_name.clone());
+                                continue;
+                            }
                         };
 
                         let mut fn_type = LoFnType {
@@ -292,8 +309,22 @@ impl CodeGen {
                 TopLevelExpr::StructDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::TypeDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::ConstDef(_) => return Err(LoError::todo(file!(), line!())),
-                TopLevelExpr::MemoryDef(_) => return Err(LoError::todo(file!(), line!())),
-                TopLevelExpr::StaticDataStore(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::MemoryDef(memory) => {
+                    if let Some(existing_memory) = &self.memory {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine memory, first defined at {}",
+                                existing_memory.loc
+                            ),
+                            loc: memory.loc,
+                        });
+                    }
+
+                    self.memory = Some(memory);
+                }
+                TopLevelExpr::StaticDataStore(static_data_store) => {
+                    self.static_data_stores.push(static_data_store);
+                }
                 TopLevelExpr::ExportExistingFn(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::MacroDef(_) => return Err(LoError::todo(file!(), line!())),
             }
@@ -374,7 +405,6 @@ impl CodeGen {
                     module_name,
                     external_fn_name,
                 } => {
-                    let module_name = Lexer::unescape_string(module_name);
                     self.wasm_functions.push(WasmFnInfo {
                         fn_name: fn_info.fn_name.clone(),
                         lo_fn_index,
@@ -409,7 +439,7 @@ impl CodeGen {
             let mut locals = locals.clone();
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
             for expr in &body.exprs {
-                self.generate_instrs(expr, &mut wasm_expr.instrs, &mut locals)?;
+                self.codegen(expr, &mut wasm_expr.instrs, &mut locals)?;
             }
 
             let mut wasm_locals_flat = Vec::new();
@@ -435,6 +465,52 @@ impl CodeGen {
             wasm_module.codes.push(WasmFn {
                 locals: wasm_locals,
                 expr: wasm_expr,
+            });
+        }
+
+        if let Some(memory) = &self.memory {
+            let limits = WasmLimits {
+                min: memory.min_pages.unwrap_or(0),
+                max: None,
+            };
+
+            if let Some(module_name) = &self.memory_imported_from {
+                wasm_module.imports.push(WasmImport {
+                    module_name: module_name.clone(),
+                    item_name: String::from("memory"),
+                    item_desc: WasmImportDesc::Memory(limits),
+                });
+            } else {
+                wasm_module.memories.push(limits);
+            }
+
+            if memory.exported {
+                wasm_module.exports.push(WasmExport {
+                    export_type: WasmExportType::Mem,
+                    export_name: String::from("memory"),
+                    exported_item_index: 0,
+                });
+            }
+        }
+
+        let mut const_locals = LoLocals::default();
+        for static_data_store in &self.static_data_stores {
+            let mut offset_expr = WasmExpr { instrs: Vec::new() };
+            // TODO: add validation for const expr
+            self.codegen(
+                &static_data_store.addr,
+                &mut offset_expr.instrs,
+                &mut const_locals,
+            )?;
+            let bytes = match &static_data_store.data {
+                StaticDataStorePayload::String { value } => {
+                    Lexer::unescape_string(value).as_bytes().to_vec()
+                }
+            };
+
+            wasm_module.datas.push(WasmData::Active {
+                offset: offset_expr,
+                bytes,
             });
         }
 
@@ -477,7 +553,7 @@ impl CodeGen {
         }
     }
 
-    fn build_type(&mut self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
+    fn build_type(&self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
             TypeExpr::Named { name, loc } => match &name.repr[..] {
                 "never" => Ok(LoType::Never),
@@ -529,7 +605,7 @@ impl CodeGen {
         }
     }
 
-    fn generate_instrs(
+    fn codegen(
         &self,
         expr: &CodeExpr,
         instrs: &mut Vec<WasmInstr>,
@@ -581,7 +657,7 @@ impl CodeGen {
                 value,
                 loc,
             }) => {
-                self.generate_instrs(value, instrs, locals)?;
+                self.codegen(value, instrs, locals)?;
 
                 let local_type = self.get_type(&value, locals)?;
                 let local_index = locals.define(loc.clone(), local_name.clone(), &local_type)?;
@@ -611,15 +687,66 @@ impl CodeGen {
                     });
                 }
 
-                self.generate_instrs(lhs, instrs, locals)?;
-                self.generate_instrs(rhs, instrs, locals)?;
+                self.codegen(lhs, instrs, locals)?;
+                self.codegen(rhs, instrs, locals)?;
 
                 let kind = self.get_binary_op_kind(op_tag, &lhs_type, loc)?;
                 instrs.push(WasmInstr::BinaryOp { kind });
             }
             CodeExpr::PrefixOp(_) => todo!(),
-            CodeExpr::Cast(_) => todo!(),
-            CodeExpr::Assign(_) => todo!(),
+            CodeExpr::Cast(CastExpr {
+                expr,
+                casted_to,
+                loc,
+            }) => {
+                let castee_type = self.get_type(expr, locals)?;
+                let casted_to = self.build_type(casted_to)?;
+
+                self.codegen(expr, instrs, locals)?;
+
+                match (&castee_type, &casted_to) {
+                    (LoType::U32, LoType::Pointer { .. }) => {}
+                    _ => {
+                        return Err(LoError {
+                            message: format!("Cannot cast from {castee_type} to {casted_to}"),
+                            loc: loc.clone(),
+                        })
+                    }
+                };
+            }
+            CodeExpr::Assign(AssignExpr { lhs, rhs, loc: _ }) => {
+                let CodeExpr::PrefixOp(PrefixOpExpr {
+                    op_tag: PrefixOpTag::Dereference,
+                    expr: addr_expr,
+                    loc: _,
+                }) = lhs.as_ref()
+                else {
+                    todo!("other assignments")
+                };
+
+                let pointer_type = self.get_type(addr_expr, locals)?;
+                let LoType::Pointer { pointee } = pointer_type else {
+                    return Err(LoError {
+                        message: format!(
+                            "Cannot use {pointer_type} as an address, pointer expected"
+                        ),
+                        loc: addr_expr.loc().clone(),
+                    });
+                };
+
+                let LoType::U32 = pointee.as_ref() else {
+                    todo!()
+                };
+
+                self.codegen(addr_expr, instrs, locals)?;
+                self.codegen(rhs, instrs, locals)?;
+
+                instrs.push(WasmInstr::Store {
+                    kind: WasmStoreKind::I32,
+                    align: 0,
+                    offset: 0,
+                });
+            }
             CodeExpr::FieldAccess(_) => todo!(),
             CodeExpr::PropagateError(_) => todo!(),
 
@@ -634,7 +761,7 @@ impl CodeGen {
                 let mut arg_types = Vec::new();
                 for arg in args {
                     arg_types.push(self.get_type(arg, locals)?);
-                    self.generate_instrs(arg, instrs, locals)?;
+                    self.codegen(arg, instrs, locals)?;
                 }
 
                 if arg_types != lo_fn_info.fn_type.inputs {
@@ -663,7 +790,7 @@ impl CodeGen {
 
             CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
                 if let Some(return_expr) = expr {
-                    self.generate_instrs(return_expr, instrs, locals)?;
+                    self.codegen(return_expr, instrs, locals)?;
                 }
 
                 instrs.push(WasmInstr::Return);
@@ -674,7 +801,7 @@ impl CodeGen {
                 else_block,
                 loc: _,
             }) => {
-                self.generate_instrs(cond, instrs, locals)?;
+                self.codegen(cond, instrs, locals)?;
 
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::If,
@@ -682,7 +809,7 @@ impl CodeGen {
                 });
 
                 for expr in &then_block.exprs {
-                    self.generate_instrs(&expr, instrs, locals)?;
+                    self.codegen(&expr, instrs, locals)?;
                 }
 
                 match else_block {
@@ -690,12 +817,12 @@ impl CodeGen {
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
                         for expr in &code_block_expr.exprs {
-                            self.generate_instrs(&expr, instrs, locals)?;
+                            self.codegen(&expr, instrs, locals)?;
                         }
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
-                        self.generate_instrs(&code_expr, instrs, locals)?;
+                        self.codegen(&code_expr, instrs, locals)?;
                     }
                 }
 
@@ -710,7 +837,9 @@ impl CodeGen {
             CodeExpr::Continue(_) => todo!(),
             CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
-            CodeExpr::Paren(_) => todo!(),
+            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
+                self.codegen(expr, instrs, locals)?;
+            }
         };
 
         Ok(())
@@ -792,7 +921,11 @@ impl CodeGen {
                 | InfixOpTag::ErrorPropagation => unreachable!(),
             },
             CodeExpr::PrefixOp(_) => todo!(),
-            CodeExpr::Cast(_) => todo!(),
+            CodeExpr::Cast(CastExpr {
+                expr: _,
+                casted_to,
+                loc: _,
+            }) => self.build_type(casted_to),
             CodeExpr::Assign(_) => todo!(),
             CodeExpr::FieldAccess(_) => todo!(),
             CodeExpr::PropagateError(_) => todo!(),
@@ -825,7 +958,7 @@ impl CodeGen {
             CodeExpr::Continue(_) => todo!(),
             CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
-            CodeExpr::Paren(_) => todo!(),
+            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_type(expr, locals),
         }
     }
 

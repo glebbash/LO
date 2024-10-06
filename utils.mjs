@@ -149,7 +149,7 @@ async function testCommand() {
     const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
 
     // NOTE: commenting/uncommenting this prevents random segfaults
-    // await v1("./examples/test/42.lo");
+    await v1("./examples/test/42.lo");
 
     testCompilers("compiles 42.lo", { v1, v2, vS }, async (compile) => {
         const output = await compile("./examples/test/42.lo");
@@ -216,7 +216,7 @@ async function testCommand() {
 
     testCompilers(
         "compiles hello-world-raw.lo",
-        { v1, vS },
+        { v1, v2, vS },
         async (compile) => {
             const program = await compile(
                 "./examples/test/demos/hello-world-raw.lo"
@@ -231,7 +231,7 @@ async function testCommand() {
         }
     );
 
-    testCompilers("compiles locals.lo", { v1 }, async (compile) => {
+    testCompilers("compiles locals.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/locals.lo");
 
         const program = await loadWasm(output);
