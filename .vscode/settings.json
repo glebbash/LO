@@ -1,4 +1,5 @@
 {
+    "deno.enable": true,
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer"
     },

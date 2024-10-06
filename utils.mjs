@@ -7,7 +7,6 @@ import { test, describe } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
-// @ts-ignore
 import { m } from "https://unpkg.com/multiline-str@1.0.4/esm/mod.js?module";
 
 const COMPILER_PATH = "lo.wasm";
@@ -24,7 +23,7 @@ const COMMANDS = {
 main();
 
 function main() {
-    process.chdir(import.meta.dirname);
+    process.chdir(/** @type {never} */ (import.meta.dirname));
 
     const command = process.argv[2];
     const args = process.argv.slice(3);
@@ -34,11 +33,12 @@ function main() {
         process.exit(1);
     }
 
+    // @ts-ignore: ...
     COMMANDS[command](args);
 }
 
 async function compileCommand() {
-    let compilerArgs = process.argv.slice(3);
+    const compilerArgs = process.argv.slice(3);
 
     return runWASI(await fs.readFile(COMPILER_PATH), {
         preopens: { ".": "." },
@@ -49,9 +49,10 @@ async function compileCommand() {
 
 async function runCommand() {
     let compilerArgs = process.argv.slice(3);
+    /** @type {string[]} */
     let programArgs = [];
 
-    let programArgsStart = compilerArgs.indexOf("--");
+    const programArgsStart = compilerArgs.indexOf("--");
     if (programArgsStart !== -1) {
         programArgs = compilerArgs.slice(programArgsStart + 1);
         compilerArgs = compilerArgs.slice(0, programArgsStart);
@@ -101,7 +102,7 @@ async function runWasiCommand(args) {
 async function debugWasiCommand(args) {
     const filePath = new URL(args[0], import.meta.url);
 
-    const http = await import("http");
+    const http = await import("node:http");
     http.createServer(async (req, res) => {
         if (req.method === "GET" && req.url === "/") {
             res.setHeader("Content-Type", "text/html");
@@ -205,9 +206,10 @@ async function testCommand() {
     testCompilers("compiles import.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/import.lo");
 
+        /** @type {unknown[]} */
         const logs = [];
         const program = await loadWasm(output, {
-            utils: { debug: (x) => logs.push(x) },
+            utils: { debug: (/** @type {unknown} */ x) => logs.push(x) },
         });
 
         program.main();
@@ -322,9 +324,10 @@ async function testCommand() {
     testCompilers("compiles wasi.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/lib/wasi.lo");
 
+        // @ts-ignore: wrong types
         const wasi = new WASI({ version: "preview1" });
         const wasm = await WebAssembly.compile(output);
-        // @ts-ignore
+        // @ts-ignore: wrong types
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
 
@@ -551,7 +554,7 @@ async function testCommand() {
         });
     });
 
-    describe("aoc", async () => {
+    describe("aoc", () => {
         testCompilers("compiles 2020 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
@@ -1127,17 +1130,20 @@ async function testCommand() {
         }
     }
 
-    /** @typedef {(sourcePath: string) => Promise<Buffer>} Compile */
+    /** @typedef {(sourcePath: string) => Promise<InstanceType<typeof global.Buffer>>} Compile */
 
     /**
-     * @param {Buffer} compilerWasmBinary
+     * @param {InstanceType<typeof global.Buffer>} compilerWasmBinary
      * @returns {Promise<Compile>}
      */
     async function loadCompilerWithWasiAPI(
         compilerWasmBinary,
         {
             mockStdin = false,
-            buildArgs = (fileName) => ["lo", fileName ?? "-i"],
+            buildArgs = (/** @type {string | undefined} */ fileName) => [
+                "lo",
+                fileName ?? "-i",
+            ],
         } = {}
     ) {
         const mod = await WebAssembly.compile(compilerWasmBinary);
@@ -1147,9 +1153,10 @@ async function testCommand() {
          * @param {number} [stdinFd]
          */
         const compile = (fileName, stdinFd) =>
-            runWithTmpFile(async (stderr, stderrFile) =>
+            runWithTmpFile((stderr, stderrFile) =>
                 runWithTmpFile(async (stdout, stdoutFile) => {
                     const wasi = new WASI({
+                        // @ts-ignore: wrong types
                         version: "preview1",
                         stdin: stdinFd,
                         stdout: stdout.fd,
@@ -1158,8 +1165,8 @@ async function testCommand() {
                         preopens: { ".": "." },
                     });
 
-                    // @ts-ignore
                     const instance = await WebAssembly.instantiate(mod, {
+                        // @ts-ignore: wrong types
                         ...wasi.getImportObject(),
                         ...{ console },
                     });
@@ -1205,7 +1212,7 @@ async function testCommand() {
                 return compile(sourcePath);
             }
 
-            return runWithTmpFile(async (stdin, stdinFile) => {
+            return await runWithTmpFile(async (stdin, stdinFile) => {
                 await fs.writeFile(stdinFile, await fs.readFile(sourcePath));
 
                 return compile(undefined, stdin.fd);
@@ -1229,20 +1236,22 @@ async function loadWasm(data, imports) {
 /**
  * @param {BufferSource} data
  * @param {Omit<import("node:wasi").WASIOptions, 'version'>} [wasiOptions]
+ * @returns {Promise<number>}
  */
 async function runWASI(data, wasiOptions, additionalImports = {}) {
+    // @ts-ignore: wrong types
     const wasi = new WASI({ version: "preview1", ...wasiOptions });
 
     const wasm = await WebAssembly.compile(data);
-    // @ts-ignore
     const instance = await WebAssembly.instantiate(wasm, {
+        // @ts-ignore: wrong types
         ...wasi.getImportObject(),
         ...{ console },
         ...additionalImports,
     });
 
     try {
-        return wasi.start(instance);
+        return /** @type {never} */ (wasi.start(instance));
     } catch (err) {
         if (err instanceof WebAssembly.RuntimeError) {
             if (err.message.includes("unreachable")) {
