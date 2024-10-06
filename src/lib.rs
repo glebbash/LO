@@ -4,11 +4,9 @@
 extern crate alloc;
 
 mod ast;
-mod code_generator;
 mod codegen;
 mod core;
 mod ir;
-mod ir_generator;
 mod lexer;
 mod parser;
 mod parser_v2;
@@ -51,8 +49,8 @@ Usage: lo <file> [mode]
 
 mod wasi_api {
     use crate::{
-        code_generator::*, codegen::*, core::*, ir_generator::*, lexer::*, parser, parser_v2::*,
-        printer::*, wasm_eval::*, wasm_parser::*, USAGE,
+        codegen::*, core::*, lexer::*, parser, parser_v2::*, printer::*, wasm_eval::*,
+        wasm_parser::*, USAGE,
     };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
@@ -83,7 +81,6 @@ mod wasi_api {
         let compiler_mode = match args.get(2) {
             None => CompilerMode::Compile,
             Some("--compile-v2") => CompilerMode::CompileV2,
-            Some("--compile-v3") => CompilerMode::CompileV3,
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
             Some("--eval") => CompilerMode::Eval,
@@ -94,26 +91,6 @@ mod wasi_api {
         };
 
         if compiler_mode == CompilerMode::CompileV2 {
-            let mut files = Vec::new();
-            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
-
-            let mut ir_generator = IRGenerator::default();
-            for file in files.iter().rev() {
-                ir_generator.process_file(file)?;
-            }
-            ir_generator.errors.print_all()?;
-            let lo_ir = ir_generator.generate_ir()?;
-
-            let wasm_module = CodeGenerator::generate(lo_ir);
-
-            let mut binary = Vec::new();
-            wasm_module.dump(&mut binary);
-            fputs(wasi::FD_STDOUT, binary.as_slice());
-
-            return Ok(());
-        }
-
-        if compiler_mode == CompilerMode::CompileV3 {
             let mut files = Vec::new();
             parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
 
