@@ -149,7 +149,7 @@ async function testCommand() {
     const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
 
     // NOTE: commenting/uncommenting this prevents random segfaults
-    await v1("./examples/test/42.lo");
+    // await v1("./examples/test/42.lo");
 
     testCompilers("compiles 42.lo", { v1, v2, vS }, async (compile) => {
         const output = await compile("./examples/test/42.lo");
@@ -194,7 +194,7 @@ async function testCommand() {
         assert.strictEqual(result, 31);
     });
 
-    testCompilers("compiles else-if.lo", { v1 }, async (compile) => {
+    testCompilers("compiles else-if.lo", { v1, v2 }, async (compile) => {
         const output = await compile("examples/test/else-if.lo");
 
         const program = await loadWasm(output);
@@ -202,7 +202,7 @@ async function testCommand() {
         assert.strictEqual(program.main(), 13);
     });
 
-    testCompilers("compiles import.lo", { v1 }, async (compile) => {
+    testCompilers("compiles import.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/import.lo");
 
         const logs = [];

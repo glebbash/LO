@@ -37,6 +37,7 @@ struct LoFnInfo {
     fn_name: String,
     fn_type: LoFnType,
     fn_source: LoFnSource,
+    definition_loc: LoLocation,
 }
 
 enum LoFnSource {
@@ -110,8 +111,8 @@ impl LoLocals {
         &mut self,
         loc: LoLocation,
         local_name: String,
-        local_type: LoType,
-    ) -> Result<(), LoError> {
+        local_type: &LoType,
+    ) -> Result<usize, LoError> {
         for local in self.current_scope().locals.iter() {
             if local.local_name == local_name && local.defined_in_this_scope {
                 let LoLocal { definition_loc, .. } = &self.locals[local.local_index];
@@ -138,7 +139,7 @@ impl LoLocals {
             defined_in_this_scope: true,
         });
 
-        Ok(())
+        Ok(local_index)
     }
 
     fn get_local_index(&self, local_name: &str) -> Option<usize> {
@@ -207,13 +208,26 @@ impl CodeGen {
                         locals.define(
                             fn_param.loc.clone(),
                             fn_param.param_name.clone(),
-                            param_type,
+                            &param_type,
                         )?;
                     }
 
                     let mut exported_as = None;
                     if fn_def.exported {
                         exported_as = Some(fn_def.decl.fn_name.repr.clone())
+                    }
+
+                    for fn_info in &self.lo_functions {
+                        if fn_info.fn_name == fn_def.decl.fn_name.repr {
+                            self.errors.report(LoError {
+                                message: format!(
+                                    "Duplicate function definition: {}, previously defined at {}",
+                                    fn_def.decl.fn_name.repr, fn_info.definition_loc
+                                ),
+                                loc: fn_def.decl.loc.clone(),
+                            });
+                            break;
+                        }
                     }
 
                     self.lo_functions.push(LoFnInfo {
@@ -224,9 +238,56 @@ impl CodeGen {
                             locals,
                             body: fn_def.body,
                         },
+                        definition_loc: fn_def.loc.clone(),
                     });
                 }
-                TopLevelExpr::Import(_) => return Err(LoError::todo(file!(), line!())),
+                // TODO: handle method imports names properly
+                TopLevelExpr::Import(ImportExpr {
+                    module_name,
+                    items,
+                    loc,
+                }) => {
+                    for item in items {
+                        let ImportItem::FnDecl(fn_decl) = item else {
+                            todo!("Support memory imports")
+                        };
+
+                        let mut fn_type = LoFnType {
+                            inputs: Vec::new(),
+                            output: LoType::Void,
+                        };
+                        for fn_param in &fn_decl.fn_params {
+                            let param_type = self.get_fn_param_type(&fn_decl, fn_param)?;
+                            fn_type.inputs.push(param_type.clone());
+                        }
+                        if let Some(return_type) = fn_decl.return_type {
+                            fn_type.output = self.build_type(&return_type)?;
+                        }
+
+                        for fn_info in &self.lo_functions {
+                            if fn_info.fn_name == fn_decl.fn_name.repr {
+                                self.errors.report(LoError {
+                                    message: format!(
+                                        "Duplicate function definition: {}, previously defined at {}",
+                                        fn_decl.fn_name.repr, fn_info.definition_loc
+                                    ),
+                                    loc: fn_decl.loc.clone(),
+                                });
+                                break;
+                            }
+                        }
+
+                        self.lo_functions.push(LoFnInfo {
+                            fn_name: fn_decl.fn_name.repr.clone(),
+                            fn_type,
+                            fn_source: LoFnSource::Host {
+                                module_name: module_name.clone(),
+                                external_fn_name: fn_decl.fn_name.repr.clone(),
+                            },
+                            definition_loc: loc.clone(),
+                        });
+                    }
+                }
                 TopLevelExpr::GlobalDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::StructDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::TypeDef(_) => return Err(LoError::todo(file!(), line!())),
@@ -259,6 +320,7 @@ impl CodeGen {
         }
 
         // resolve wasm fn indicies and populate type, import and export sections
+        let mut wasm_import_fn_index = 0;
         let mut wasm_fn_index = reachable_fn_imports_count;
         for (reachable, lo_fn_index) in reachable_fn_idx.iter().zip(0..) {
             if !reachable {
@@ -286,20 +348,18 @@ impl CodeGen {
                 wasm_module.types.push(wasm_fn_type);
             }
 
-            wasm_module.functions.push(fn_type_index);
-
             match &fn_info.fn_source {
                 LoFnSource::Guest {
                     exported_as,
                     locals: _,
                     body: _,
                 } => {
+                    wasm_module.functions.push(fn_type_index);
                     self.wasm_functions.push(WasmFnInfo {
                         fn_name: fn_info.fn_name.clone(),
                         lo_fn_index,
                         wasm_fn_index,
                     });
-
                     if let Some(export_name) = &exported_as {
                         wasm_module.exports.push(WasmExport {
                             export_type: WasmExportType::Func,
@@ -314,6 +374,12 @@ impl CodeGen {
                     module_name,
                     external_fn_name,
                 } => {
+                    let module_name = Lexer::unescape_string(module_name);
+                    self.wasm_functions.push(WasmFnInfo {
+                        fn_name: fn_info.fn_name.clone(),
+                        lo_fn_index,
+                        wasm_fn_index: wasm_import_fn_index,
+                    });
                     wasm_module.imports.push(WasmImport {
                         module_name: module_name.clone(),
                         item_name: external_fn_name.clone(),
@@ -321,7 +387,7 @@ impl CodeGen {
                             type_index: fn_type_index,
                         },
                     });
-                    continue;
+                    wasm_import_fn_index += 1;
                 }
             }
         }
@@ -337,8 +403,14 @@ impl CodeGen {
                 body,
             } = &lo_fn_info.fn_source
             else {
-                unreachable!()
+                continue;
             };
+
+            let mut locals = locals.clone();
+            let mut wasm_expr = WasmExpr { instrs: Vec::new() };
+            for expr in &body.exprs {
+                self.generate_instrs(expr, &mut wasm_expr.instrs, &mut locals)?;
+            }
 
             let mut wasm_locals_flat = Vec::new();
             for local in &locals.locals {
@@ -358,12 +430,6 @@ impl CodeGen {
                     count: 1,
                     value_type: wasm_local_type,
                 });
-            }
-
-            let mut locals = locals.clone();
-            let mut wasm_expr = WasmExpr { instrs: Vec::new() };
-            for expr in &body.exprs {
-                self.generate_instrs(expr, &mut wasm_expr.instrs, &mut locals)?;
             }
 
             wasm_module.codes.push(WasmFn {
@@ -495,9 +561,8 @@ impl CodeGen {
             }) => {
                 if let Some(local_index) = locals.get_local_index(repr) {
                     let local = &locals.locals[local_index];
-                    let components_count = self.count_wasm_type_components(&local.local_type);
 
-                    for i in 0..components_count {
+                    for i in 0..self.count_wasm_type_components(&local.local_type) {
                         instrs.push(WasmInstr::LocalGet {
                             local_index: (local_index + i) as u32,
                         });
@@ -511,7 +576,22 @@ impl CodeGen {
                     loc: loc.clone(),
                 });
             }
-            CodeExpr::Let(_) => todo!(),
+            CodeExpr::Let(LetExpr {
+                local_name,
+                value,
+                loc,
+            }) => {
+                self.generate_instrs(value, instrs, locals)?;
+
+                let local_type = self.get_type(&value, locals)?;
+                let local_index = locals.define(loc.clone(), local_name.clone(), &local_type)?;
+
+                for i in 0..self.count_wasm_type_components(&local_type) {
+                    instrs.push(WasmInstr::LocalSet {
+                        local_index: (local_index + i) as u32,
+                    });
+                }
+            }
             CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
                 lhs,
@@ -623,7 +703,9 @@ impl CodeGen {
             }
             CodeExpr::Loop(_) => todo!(),
             CodeExpr::Break(_) => todo!(),
-            CodeExpr::Unreachable(_) => todo!(),
+            CodeExpr::Unreachable(_) => {
+                instrs.push(WasmInstr::Unreachable);
+            }
             CodeExpr::ForLoop(_) => todo!(),
             CodeExpr::Continue(_) => todo!(),
             CodeExpr::Defer(_) => todo!(),
