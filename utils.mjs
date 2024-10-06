@@ -826,6 +826,10 @@ async function testCommand() {
         }
     });
 
+    if (process.argv.includes("--fast")) {
+        return;
+    }
+
     describe("interpreter", async () => {
         const interpret = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
