@@ -2,7 +2,6 @@
 
 /**
  * @typedef {{
- *   sysCalls: WASISysCalls,
  *   version: "preview1",
  *   stdin?: number,
  *   stdout?: number,
@@ -12,6 +11,7 @@
  *   preopens?: Record<string, string>,
  *   returnOnExit?: boolean,
  *   trace?: boolean,
+ *   sysCalls: WASISysCalls,
  * }} WASIOptions
  */
 
@@ -76,6 +76,58 @@ export class WASI {
             fdRead: (fd, buffer) => fs.readSync(fd, buffer),
             fdWrite: (fd, buffer) => fs.writeSync(fd, buffer),
             fdClose: (fd) => fs.closeSync(fd),
+        };
+
+        return new WASI({ ...options, sysCalls });
+    }
+
+    /** @param {Omit<WASIOptions, 'sysCalls'>} options */
+    static DenoFS(options) {
+        /** @type {Map<number, Deno.FsFile>} */
+        const files = new Map();
+
+        const getFile = (/** @type {number} */ fd) => {
+            if (fd === 0) {
+                return /** @type {never} */ (Deno.stdin);
+            } else if (fd === 1) {
+                return /** @type {never} */ (Deno.stdout);
+            } else if (fd === 2) {
+                return /** @type {never} */ (Deno.stderr);
+            }
+
+            const file = files.get(fd);
+            if (file === undefined) {
+                throw new Error(`Unknown fd: ${fd}`);
+            }
+
+            return file;
+        };
+
+        /** @type {WASISysCalls} */
+        const sysCalls = {
+            processExit: (exitCode) => Deno.exit(exitCode),
+            pathOpen: (path, mode) => {
+                const file = Deno.openSync(
+                    path,
+                    mode === "r" ? { read: true } : { write: true }
+                );
+
+                const fd = files.size + 3;
+                files.set(fd, file);
+                return fd;
+            },
+            fdRead: (fd, buffer) => {
+                const file = getFile(fd);
+                return file.readSync(buffer) ?? 0;
+            },
+            fdWrite: (fd, buffer) => {
+                const file = getFile(fd);
+                return file.writeSync(buffer) ?? 0;
+            },
+            fdClose: (fd) => {
+                const file = getFile(fd);
+                return file.close();
+            },
         };
 
         return new WASI({ ...options, sysCalls });
