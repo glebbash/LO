@@ -318,7 +318,7 @@ async function testCommand() {
     testCompilers("compiles wasi.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/lib/wasi.lo");
 
-        const wasi = new WASI({ version: "preview1" });
+        const wasi = await WASI.NODE_FS({ version: "preview1" });
         const wasm = await WebAssembly.compile(output);
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
@@ -1147,7 +1147,7 @@ async function testCommand() {
         const compile = (fileName, stdinFd) =>
             runWithTmpFile((stderr, stderrFile) =>
                 runWithTmpFile(async (stdout, stdoutFile) => {
-                    const wasi = new WASI({
+                    const wasi = await WASI.NODE_FS({
                         version: "preview1",
                         stdin: stdinFd,
                         stdout: stdout.fd,
@@ -1223,11 +1223,11 @@ async function loadWasm(data, imports) {
 
 /**
  * @param {BufferSource} data
- * @param {Omit<import("./wasi-shim.mjs").WASIOptions, 'version'>} [wasiOptions]
+ * @param {Omit<import("./wasi-shim.mjs").WASIOptions, 'version' | 'sysCalls'>} [wasiOptions]
  * @returns {Promise<number>}
  */
 async function runWASI(data, wasiOptions, additionalImports = {}) {
-    const wasi = new WASI({ version: "preview1", ...wasiOptions });
+    const wasi = await WASI.NODE_FS({ version: "preview1", ...wasiOptions });
 
     const wasm = await WebAssembly.compile(data);
     const instance = await WebAssembly.instantiate(wasm, {
