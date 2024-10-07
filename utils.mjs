@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --no-warnings --experimental-network-imports
 // @ts-check
 
-import { WASI } from "node:wasi";
+import { WASI } from "./wasi-shim.mjs";
 import process from "node:process";
 import { test, describe } from "node:test";
 import assert from "node:assert";
@@ -33,8 +33,7 @@ function main() {
         process.exit(1);
     }
 
-    // @ts-ignore: ...
-    COMMANDS[command](args);
+    COMMANDS[/** @type {keyof typeof COMMANDS} */ (command)](args);
 }
 
 async function compileCommand() {
@@ -59,13 +58,11 @@ async function runCommand() {
     }
 
     const program = await runWithTmpFile(async (stdout, stdoutFile) => {
-        const exitCode = /** @type {unknown} */ (
-            await runWASI(await fs.readFile(COMPILER_PATH), {
-                stdout: stdout.fd,
-                preopens: { ".": "." },
-                args: ["lo", ...compilerArgs],
-            })
-        );
+        const exitCode = await runWASI(await fs.readFile(COMPILER_PATH), {
+            stdout: stdout.fd,
+            preopens: { ".": "." },
+            args: ["lo", ...compilerArgs],
+        });
 
         if (exitCode !== 0) {
             throw new Error("Compilation failed, see compiler error above");
@@ -324,10 +321,8 @@ async function testCommand() {
     testCompilers("compiles wasi.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/lib/wasi.lo");
 
-        // @ts-ignore: wrong types
         const wasi = new WASI({ version: "preview1" });
         const wasm = await WebAssembly.compile(output);
-        // @ts-ignore: wrong types
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
 
@@ -1156,7 +1151,6 @@ async function testCommand() {
             runWithTmpFile((stderr, stderrFile) =>
                 runWithTmpFile(async (stdout, stdoutFile) => {
                     const wasi = new WASI({
-                        // @ts-ignore: wrong types
                         version: "preview1",
                         stdin: stdinFd,
                         stdout: stdout.fd,
@@ -1166,15 +1160,12 @@ async function testCommand() {
                     });
 
                     const instance = await WebAssembly.instantiate(mod, {
-                        // @ts-ignore: wrong types
                         ...wasi.getImportObject(),
-                        ...{ console },
+                        ...{ console: { ...console } },
                     });
 
                     try {
-                        const exitCode = /** @type {unknown} */ (
-                            wasi.start(instance)
-                        );
+                        const exitCode = wasi.start(instance);
 
                         if (exitCode ?? 0 !== 0) {
                             throw new Error(
@@ -1235,23 +1226,21 @@ async function loadWasm(data, imports) {
 
 /**
  * @param {BufferSource} data
- * @param {Omit<import("node:wasi").WASIOptions, 'version'>} [wasiOptions]
+ * @param {Omit<import("./wasi-shim.mjs").WASIOptions, 'version'>} [wasiOptions]
  * @returns {Promise<number>}
  */
 async function runWASI(data, wasiOptions, additionalImports = {}) {
-    // @ts-ignore: wrong types
     const wasi = new WASI({ version: "preview1", ...wasiOptions });
 
     const wasm = await WebAssembly.compile(data);
     const instance = await WebAssembly.instantiate(wasm, {
-        // @ts-ignore: wrong types
         ...wasi.getImportObject(),
-        ...{ console },
+        ...{ console: { ...console } },
         ...additionalImports,
     });
 
     try {
-        return /** @type {never} */ (wasi.start(instance));
+        return wasi.start(instance);
     } catch (err) {
         if (err instanceof WebAssembly.RuntimeError) {
             if (err.message.includes("unreachable")) {
