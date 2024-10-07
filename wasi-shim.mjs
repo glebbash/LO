@@ -65,7 +65,7 @@ export class WASI {
     }
 
     /** @param {Omit<WASIOptions, 'sysCalls'>} options */
-    static async NODE_FS(options) {
+    static async NodeFS(options) {
         const fs = await import("node:fs");
         const process = await import("node:process");
 
