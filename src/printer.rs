@@ -22,7 +22,6 @@ impl Printer {
         stdout_disable_bufferring();
     }
 
-    // TODO: print all function declarations first in C mode
     fn print_file(&mut self) {
         for (expr, i) in self.ast.clone().exprs.iter().zip(0..) {
             self.print_comments_before_pos(expr.loc().pos.offset);
