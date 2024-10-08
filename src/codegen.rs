@@ -1,5 +1,5 @@
 use crate::{ast::*, core::*, lexer::*, parser_v2::*, wasm::*};
-use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 #[derive(Clone, PartialEq)]
 pub enum LoType {
@@ -336,28 +336,17 @@ impl CodeGen {
     pub fn generate(&mut self) -> Result<WasmModule, LoError> {
         let mut wasm_module = WasmModule::default();
 
-        let mut reachable_fn_idx = vec![false; self.lo_functions.len()];
-        let mut reachable_fn_imports_count = 0;
-        for fn_index in 0..self.lo_functions.len() {
-            // TODO: support detecting function reachability:
-            //   if this function is exported or present in fn_table mark it as reachable
-            //     and traverse it's call graph and mark all functions encountered as reachable
-            reachable_fn_idx[fn_index] = true;
-
-            let fn_info = &self.lo_functions[fn_index];
+        let mut fn_imports_count = 0;
+        for fn_info in &self.lo_functions {
             if let LoFnSource::Host { .. } = fn_info.fn_source {
-                reachable_fn_imports_count += 1;
+                fn_imports_count += 1;
             }
         }
 
         // resolve wasm fn indicies and populate type, import and export sections
         let mut wasm_import_fn_index = 0;
-        let mut wasm_fn_index = reachable_fn_imports_count;
-        for (reachable, lo_fn_index) in reachable_fn_idx.iter().zip(0..) {
-            if !reachable {
-                continue;
-            }
-
+        let mut wasm_fn_index = fn_imports_count;
+        for lo_fn_index in 0..self.lo_functions.len() {
             let fn_info = &self.lo_functions[lo_fn_index];
 
             let mut wasm_fn_type = WasmFnType {
