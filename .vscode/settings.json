@@ -1,5 +1,8 @@
 {
     "deno.enable": true,
+    "deno.disablePaths": [
+        "vscode-ext"
+    ],
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer"
     },

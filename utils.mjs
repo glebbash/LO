@@ -663,6 +663,7 @@ async function testCommand() {
                 await compile("./examples/test/multiple-compiler-errors.lo");
             } catch (err) {
                 assert.strictEqual(
+                    // @ts-ignore:
                     err.message,
                     m`
                     examples/test/multiple-compiler-errors.lo:2:14 - Duplicate function parameter name: a
@@ -982,6 +983,7 @@ async function testCommand() {
             try {
                 await interpret("./examples/test/demos/cat.lo");
             } catch (err) {
+                // @ts-ignore:
                 assert.strictEqual(err.message, "Usage cat.lo <file>");
             }
         });
