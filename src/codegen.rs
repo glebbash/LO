@@ -67,10 +67,20 @@ struct LoExprContext {
 struct LoLocal {
     local_type: LoType,
     definition_loc: LoLocation,
+    is_fn_param: bool,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
+enum LoScopeType {
+    Function,
+    Block,
+    Loop,
+    ForLoop,
+}
+
+#[derive(Clone)]
 struct LoScope {
+    scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
 }
 
@@ -82,8 +92,11 @@ struct LoScopedLocal {
 }
 
 impl LoExprContext {
-    fn enter_scope(&mut self) {
-        let mut new_scope = LoScope::default();
+    fn enter_scope(&mut self, scope_type: LoScopeType) {
+        let mut new_scope = LoScope {
+            scope_type,
+            locals: Vec::new(),
+        };
 
         if let Some(parent_scope) = self.scopes.last() {
             for local in &parent_scope.locals {
@@ -96,6 +109,10 @@ impl LoExprContext {
         };
 
         self.scopes.push(new_scope);
+    }
+
+    fn exit_scope(&mut self) {
+        self.scopes.pop().unwrap();
     }
 
     fn current_scope(&self) -> &LoScope {
@@ -111,6 +128,7 @@ impl LoExprContext {
         loc: LoLocation,
         local_name: String,
         local_type: &LoType,
+        is_fn_param: bool,
     ) -> Result<usize, LoError> {
         for local in self.current_scope().locals.iter() {
             if local.local_name == local_name && local.defined_in_this_scope {
@@ -130,6 +148,7 @@ impl LoExprContext {
         self.locals.push(LoLocal {
             local_type: local_type.clone(),
             definition_loc: loc,
+            is_fn_param,
         });
         self.current_scope_mut().locals.push(LoScopedLocal {
             local_name,
@@ -192,7 +211,7 @@ impl CodeGen {
                     };
 
                     let mut ctx = LoExprContext::default();
-                    ctx.enter_scope();
+                    ctx.enter_scope(LoScopeType::Function);
 
                     let mut inputs = Vec::new();
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
@@ -216,6 +235,7 @@ impl CodeGen {
                             fn_param.loc.clone(),
                             fn_param.param_name.clone(),
                             &param_type,
+                            true,
                         )?;
                     }
 
@@ -470,6 +490,10 @@ impl CodeGen {
 
             let mut wasm_locals_flat = Vec::new();
             for local in &ctx.locals {
+                if local.is_fn_param {
+                    continue;
+                }
+
                 self.lower_type(&local.local_type, &mut wasm_locals_flat);
             }
 
@@ -724,7 +748,8 @@ impl CodeGen {
                     return Ok(());
                 }
 
-                let local_index = ctx.define_local(loc.clone(), local_name.clone(), &local_type)?;
+                let local_index =
+                    ctx.define_local(loc.clone(), local_name.clone(), &local_type, false)?;
 
                 for i in 0..self.count_wasm_type_components(&local_type) {
                     instrs.push(WasmInstr::LocalSet {
@@ -860,17 +885,21 @@ impl CodeGen {
                     block_type: WasmBlockType::NoOut,
                 });
 
+                ctx.enter_scope(LoScopeType::Block);
                 for expr in &then_block.exprs {
                     self.codegen(ctx, &expr, instrs)?;
                 }
+                ctx.exit_scope();
 
                 match else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
+                        ctx.enter_scope(LoScopeType::Block);
                         for expr in &code_block_expr.exprs {
                             self.codegen(ctx, &expr, instrs)?;
                         }
+                        ctx.exit_scope();
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
@@ -880,17 +909,81 @@ impl CodeGen {
 
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::Loop(_) => todo!(),
-            CodeExpr::Break(_) => todo!(),
-            CodeExpr::Unreachable(_) => {
-                instrs.push(WasmInstr::Unreachable);
+            CodeExpr::Loop(LoopExpr { body, loc: _ }) => {
+                instrs.push(WasmInstr::BlockStart {
+                    block_kind: WasmBlockKind::Block,
+                    block_type: WasmBlockType::NoOut,
+                });
+                instrs.push(WasmInstr::BlockStart {
+                    block_kind: WasmBlockKind::Loop,
+                    block_type: WasmBlockType::NoOut,
+                });
+
+                ctx.enter_scope(LoScopeType::Loop);
+                for expr in &body.exprs {
+                    self.codegen(ctx, expr, instrs)?;
+                }
+                ctx.exit_scope();
+
+                // implicit continue
+                instrs.push(WasmInstr::Branch { label_index: 0 });
+
+                instrs.push(WasmInstr::BlockEnd);
+                instrs.push(WasmInstr::BlockEnd);
             }
             CodeExpr::ForLoop(_) => todo!(),
-            CodeExpr::Continue(_) => todo!(),
+            CodeExpr::Break(BreakExpr { loc }) => {
+                let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
+
+                for scope in ctx.scopes.iter().rev() {
+                    match scope.scope_type {
+                        LoScopeType::Block => {
+                            label_index += 1;
+                        }
+                        LoScopeType::Function => {
+                            return Err(LoError {
+                                message: format!("Cannot break outside of a loop"),
+                                loc: loc.clone(),
+                            });
+                        }
+                        LoScopeType::Loop => break,
+                        LoScopeType::ForLoop => {
+                            label_index += 1;
+                            break;
+                        }
+                    }
+                }
+
+                instrs.push(WasmInstr::Branch { label_index });
+            }
+            CodeExpr::Continue(ContinueExpr { loc }) => {
+                let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
+
+                for scope in ctx.scopes.iter().rev() {
+                    match scope.scope_type {
+                        LoScopeType::Block => {
+                            label_index += 1;
+                        }
+                        LoScopeType::Function => {
+                            return Err(LoError {
+                                message: format!("Cannot continue outside of a loop"),
+                                loc: loc.clone(),
+                            });
+                        }
+                        LoScopeType::Loop => break,
+                        LoScopeType::ForLoop => break,
+                    }
+                }
+
+                instrs.push(WasmInstr::Branch { label_index });
+            }
             CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
                 self.codegen(ctx, expr, instrs)?;
+            }
+            CodeExpr::Unreachable(_) => {
+                instrs.push(WasmInstr::Unreachable);
             }
         };
 
@@ -981,8 +1074,6 @@ impl CodeGen {
                     });
                 }
 
-                debug(format!("doing local set for {}", repr));
-
                 return Ok(());
             }
 
@@ -1002,8 +1093,6 @@ impl CodeGen {
                         global_index: global.global_index + i as u32,
                     });
                 }
-
-                debug(format!("doing global set for {}", repr));
 
                 return Ok(());
             }
@@ -1187,7 +1276,10 @@ impl CodeGen {
         loc: &LoLocation,
     ) -> Result<WasmBinaryOpKind, LoError> {
         match op_tag {
-            InfixOpTag::Equal => todo!(),
+            InfixOpTag::Equal => match operand_type {
+                LoType::U32 => return Ok(WasmBinaryOpKind::I32_EQ),
+                _ => {}
+            },
             InfixOpTag::NotEqual => todo!(),
             InfixOpTag::Less => match operand_type {
                 LoType::U32 => return Ok(WasmBinaryOpKind::I32_LT_U),

@@ -39,7 +39,6 @@ static USAGE: &str = "\
 Usage: lo <file> [mode]
   where [mode] is either:
     --compile-v2 (temporary)
-    --compile-v3 (temporary)
     --inspect
     --pretty-print
     --eval (experimental)
