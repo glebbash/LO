@@ -43,7 +43,7 @@ struct LoFnInfo {
 enum LoFnSource {
     Guest {
         exported_as: Option<String>,
-        locals: LoLocals,
+        ctx: LoExprContext,
         body: CodeBlockExpr,
     },
     Host {
@@ -58,9 +58,9 @@ struct LoFnType {
 }
 
 #[derive(Default, Clone)]
-struct LoLocals {
+struct LoExprContext {
     locals: Vec<LoLocal>,
-    scopes: Vec<LoScopedLocals>,
+    scopes: Vec<LoScope>,
 }
 
 #[derive(Clone)]
@@ -70,7 +70,7 @@ struct LoLocal {
 }
 
 #[derive(Default, Clone)]
-struct LoScopedLocals {
+struct LoScope {
     locals: Vec<LoScopedLocal>,
 }
 
@@ -81,9 +81,9 @@ struct LoScopedLocal {
     defined_in_this_scope: bool,
 }
 
-impl LoLocals {
+impl LoExprContext {
     fn enter_scope(&mut self) {
-        let mut new_scope = LoScopedLocals::default();
+        let mut new_scope = LoScope::default();
 
         if let Some(parent_scope) = self.scopes.last() {
             for local in &parent_scope.locals {
@@ -98,15 +98,15 @@ impl LoLocals {
         self.scopes.push(new_scope);
     }
 
-    fn current_scope(&self) -> &LoScopedLocals {
+    fn current_scope(&self) -> &LoScope {
         self.scopes.last().unwrap()
     }
 
-    fn current_scope_mut(&mut self) -> &mut LoScopedLocals {
+    fn current_scope_mut(&mut self) -> &mut LoScope {
         self.scopes.last_mut().unwrap()
     }
 
-    fn define(
+    fn define_local(
         &mut self,
         loc: LoLocation,
         local_name: String,
@@ -191,12 +191,12 @@ impl CodeGen {
                         _ => LoType::Void,
                     };
 
-                    let mut locals = LoLocals::default();
-                    locals.enter_scope();
+                    let mut ctx = LoExprContext::default();
+                    ctx.enter_scope();
 
                     let mut inputs = Vec::new();
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
-                        for var in &locals.current_scope().locals {
+                        for var in &ctx.current_scope().locals {
                             if var.local_name == fn_param.param_name {
                                 self.errors.report(LoError {
                                     message: format!(
@@ -212,7 +212,7 @@ impl CodeGen {
                         let param_type = self.get_fn_param_type(&fn_def.decl, fn_param)?;
                         inputs.push(param_type.clone());
 
-                        locals.define(
+                        ctx.define_local(
                             fn_param.loc.clone(),
                             fn_param.param_name.clone(),
                             &param_type,
@@ -242,7 +242,7 @@ impl CodeGen {
                         fn_type: LoFnType { inputs, output },
                         fn_source: LoFnSource::Guest {
                             exported_as,
-                            locals,
+                            ctx,
                             body: fn_def.body,
                         },
                         definition_loc: fn_def.loc.clone(),
@@ -324,9 +324,9 @@ impl CodeGen {
                         });
                     }
 
-                    let mut const_locals = LoLocals::default();
                     self.ensure_const_expr(&global.expr)?;
-                    let value_type = self.get_expr_type(&global.expr, &mut const_locals)?;
+                    let const_expr_ctx = &mut LoExprContext::default();
+                    let value_type = self.get_expr_type(const_expr_ctx, &global.expr)?;
                     let value_comp_count = self.count_wasm_type_components(&value_type) as u32;
                     if value_comp_count != 1 {
                         return Err(LoError {
@@ -408,7 +408,7 @@ impl CodeGen {
             match &fn_info.fn_source {
                 LoFnSource::Guest {
                     exported_as,
-                    locals: _,
+                    ctx: _,
                     body: _,
                 } => {
                     wasm_module.functions.push(fn_type_index);
@@ -455,21 +455,21 @@ impl CodeGen {
 
             let LoFnSource::Guest {
                 exported_as: _,
-                locals,
+                ctx,
                 body,
             } = &lo_fn_info.fn_source
             else {
                 continue;
             };
 
-            let mut locals = locals.clone();
+            let mut ctx = ctx.clone();
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
             for expr in &body.exprs {
-                self.codegen(expr, &mut wasm_expr.instrs, &mut locals)?;
+                self.codegen(&mut ctx, expr, &mut wasm_expr.instrs)?;
             }
 
             let mut wasm_locals_flat = Vec::new();
-            for local in &locals.locals {
+            for local in &ctx.locals {
                 self.lower_type(&local.local_type, &mut wasm_locals_flat);
             }
 
@@ -519,14 +519,15 @@ impl CodeGen {
             }
         }
 
-        let mut const_locals = LoLocals::default();
+        let const_expr_ctx = &mut LoExprContext::default();
+
         for static_data_store in &self.static_data_stores {
             let mut offset_expr = WasmExpr { instrs: Vec::new() };
             self.ensure_const_expr(&static_data_store.addr)?;
             self.codegen(
+                const_expr_ctx,
                 &static_data_store.addr,
                 &mut offset_expr.instrs,
-                &mut const_locals,
             )?;
             let bytes = match &static_data_store.data {
                 StaticDataStorePayload::String { value } => {
@@ -547,9 +548,9 @@ impl CodeGen {
 
             let mut initial_value = WasmExpr { instrs: Vec::new() };
             self.codegen(
+                const_expr_ctx,
                 &global.def_expr.expr,
                 &mut initial_value.instrs,
-                &mut const_locals,
             )?;
 
             wasm_module.globals.push(WasmGlobal {
@@ -652,9 +653,9 @@ impl CodeGen {
 
     fn codegen(
         &self,
+        ctx: &mut LoExprContext,
         expr: &CodeExpr,
         instrs: &mut Vec<WasmInstr>,
-        locals: &mut LoLocals,
     ) -> Result<(), LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => todo!(),
@@ -680,8 +681,8 @@ impl CodeGen {
                 parts: _,
                 loc,
             }) => {
-                if let Some(local_index) = locals.get_local_index(repr) {
-                    let local = &locals.locals[local_index];
+                if let Some(local_index) = ctx.get_local_index(repr) {
+                    let local = &ctx.locals[local_index];
 
                     for i in 0..self.count_wasm_type_components(&local.local_type) {
                         instrs.push(WasmInstr::LocalGet {
@@ -712,9 +713,9 @@ impl CodeGen {
                 value,
                 loc,
             }) => {
-                self.codegen(value, instrs, locals)?;
+                self.codegen(ctx, value, instrs)?;
 
-                let local_type = self.get_expr_type(&value, locals)?;
+                let local_type = self.get_expr_type(ctx, &value)?;
 
                 if local_name == "_" {
                     for _ in 0..self.count_wasm_type_components(&local_type) {
@@ -723,7 +724,7 @@ impl CodeGen {
                     return Ok(());
                 }
 
-                let local_index = locals.define(loc.clone(), local_name.clone(), &local_type)?;
+                let local_index = ctx.define_local(loc.clone(), local_name.clone(), &local_type)?;
 
                 for i in 0..self.count_wasm_type_components(&local_type) {
                     instrs.push(WasmInstr::LocalSet {
@@ -736,10 +737,10 @@ impl CodeGen {
                 casted_to,
                 loc,
             }) => {
-                let castee_type = self.get_expr_type(expr, locals)?;
+                let castee_type = self.get_expr_type(ctx, expr)?;
                 let casted_to = self.build_type(casted_to)?;
 
-                self.codegen(expr, instrs, locals)?;
+                self.codegen(ctx, expr, instrs)?;
 
                 match (&castee_type, &casted_to) {
                     (LoType::U32, LoType::Pointer { .. }) => {}
@@ -761,17 +762,17 @@ impl CodeGen {
             }) => {
                 if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
                     return self.codegen_compound_assignment(
+                        ctx,
                         Some(base_op),
                         op_loc,
                         lhs,
                         rhs,
                         instrs,
-                        locals,
                     );
                 }
 
-                let lhs_type = self.get_expr_type(lhs, locals)?;
-                let rhs_type = self.get_expr_type(rhs, locals)?;
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
+                let rhs_type = self.get_expr_type(ctx, rhs)?;
 
                 if lhs_type != rhs_type {
                     return Err(LoError {
@@ -783,8 +784,8 @@ impl CodeGen {
                     });
                 }
 
-                self.codegen(lhs, instrs, locals)?;
-                self.codegen(rhs, instrs, locals)?;
+                self.codegen(ctx, lhs, instrs)?;
+                self.codegen(ctx, rhs, instrs)?;
 
                 let kind = self.get_binary_op_kind(op_tag, &lhs_type, op_loc)?;
                 instrs.push(WasmInstr::BinaryOp { kind });
@@ -796,7 +797,7 @@ impl CodeGen {
                 rhs,
                 loc: _,
             }) => {
-                return self.codegen_compound_assignment(None, op_loc, lhs, rhs, instrs, locals);
+                return self.codegen_compound_assignment(ctx, None, op_loc, lhs, rhs, instrs);
             }
             CodeExpr::FieldAccess(_) => todo!(),
             CodeExpr::PropagateError(_) => todo!(),
@@ -811,8 +812,8 @@ impl CodeGen {
 
                 let mut arg_types = Vec::new();
                 for arg in args {
-                    arg_types.push(self.get_expr_type(arg, locals)?);
-                    self.codegen(arg, instrs, locals)?;
+                    arg_types.push(self.get_expr_type(ctx, arg)?);
+                    self.codegen(ctx, arg, instrs)?;
                 }
 
                 if arg_types != lo_fn_info.fn_type.inputs {
@@ -841,7 +842,7 @@ impl CodeGen {
 
             CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
                 if let Some(return_expr) = expr {
-                    self.codegen(return_expr, instrs, locals)?;
+                    self.codegen(ctx, return_expr, instrs)?;
                 }
 
                 instrs.push(WasmInstr::Return);
@@ -852,7 +853,7 @@ impl CodeGen {
                 else_block,
                 loc: _,
             }) => {
-                self.codegen(cond, instrs, locals)?;
+                self.codegen(ctx, cond, instrs)?;
 
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::If,
@@ -860,7 +861,7 @@ impl CodeGen {
                 });
 
                 for expr in &then_block.exprs {
-                    self.codegen(&expr, instrs, locals)?;
+                    self.codegen(ctx, &expr, instrs)?;
                 }
 
                 match else_block {
@@ -868,12 +869,12 @@ impl CodeGen {
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
                         for expr in &code_block_expr.exprs {
-                            self.codegen(&expr, instrs, locals)?;
+                            self.codegen(ctx, &expr, instrs)?;
                         }
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
-                        self.codegen(&code_expr, instrs, locals)?;
+                        self.codegen(ctx, &code_expr, instrs)?;
                     }
                 }
 
@@ -889,7 +890,7 @@ impl CodeGen {
             CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
-                self.codegen(expr, instrs, locals)?;
+                self.codegen(ctx, expr, instrs)?;
             }
         };
 
@@ -898,15 +899,15 @@ impl CodeGen {
 
     fn codegen_compound_assignment(
         &self,
+        ctx: &mut LoExprContext,
         base_op: Option<InfixOpTag>,
         op_loc: &LoLocation,
         lhs: &CodeExpr,
         rhs: &CodeExpr,
         instrs: &mut Vec<WasmInstr>,
-        locals: &mut LoLocals,
     ) -> Result<(), LoError> {
-        let lhs_type = self.get_expr_type(lhs, locals)?;
-        let rhs_type = self.get_expr_type(rhs, locals)?;
+        let lhs_type = self.get_expr_type(ctx, lhs)?;
+        let rhs_type = self.get_expr_type(ctx, rhs)?;
 
         if lhs_type != rhs_type {
             return Err(LoError {
@@ -924,7 +925,7 @@ impl CodeGen {
             loc: _,
         }) = lhs
         {
-            let pointer_type = self.get_expr_type(addr_expr, locals)?;
+            let pointer_type = self.get_expr_type(ctx, addr_expr)?;
             let LoType::Pointer { pointee } = pointer_type else {
                 return Err(LoError {
                     message: format!("Cannot use {pointer_type} as an address, pointer expected"),
@@ -936,16 +937,16 @@ impl CodeGen {
                 todo!()
             };
 
-            self.codegen(addr_expr, instrs, locals)?;
+            self.codegen(ctx, addr_expr, instrs)?;
 
             if let Some(base_op) = base_op {
-                self.codegen(lhs, instrs, locals)?;
-                self.codegen(rhs, instrs, locals)?;
+                self.codegen(ctx, lhs, instrs)?;
+                self.codegen(ctx, rhs, instrs)?;
 
                 let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
                 instrs.push(WasmInstr::BinaryOp { kind });
             } else {
-                self.codegen(rhs, instrs, locals)?;
+                self.codegen(ctx, rhs, instrs)?;
             }
 
             instrs.push(WasmInstr::Store {
@@ -963,15 +964,15 @@ impl CodeGen {
             loc,
         }) = lhs
         {
-            if let Some(local_index) = locals.get_local_index(&repr) {
+            if let Some(local_index) = ctx.get_local_index(&repr) {
                 if let Some(base_op) = base_op {
-                    self.codegen(lhs, instrs, locals)?;
-                    self.codegen(rhs, instrs, locals)?;
+                    self.codegen(ctx, lhs, instrs)?;
+                    self.codegen(ctx, rhs, instrs)?;
 
                     let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
                     instrs.push(WasmInstr::BinaryOp { kind });
                 } else {
-                    self.codegen(rhs, instrs, locals)?;
+                    self.codegen(ctx, rhs, instrs)?;
                 }
 
                 for i in 0..self.count_wasm_type_components(&rhs_type) {
@@ -987,13 +988,13 @@ impl CodeGen {
 
             if let Some(global) = self.get_global(&repr) {
                 if let Some(base_op) = base_op {
-                    self.codegen(lhs, instrs, locals)?;
-                    self.codegen(rhs, instrs, locals)?;
+                    self.codegen(ctx, lhs, instrs)?;
+                    self.codegen(ctx, rhs, instrs)?;
 
                     let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
                     instrs.push(WasmInstr::BinaryOp { kind });
                 } else {
-                    self.codegen(rhs, instrs, locals)?;
+                    self.codegen(ctx, rhs, instrs)?;
                 }
 
                 for i in 0..self.count_wasm_type_components(&rhs_type) {
@@ -1016,7 +1017,8 @@ impl CodeGen {
         todo!();
     }
 
-    fn get_expr_type(&self, expr: &CodeExpr, locals: &LoLocals) -> Result<LoType, LoError> {
+    // TODO: place ctx before expr
+    fn get_expr_type(&self, ctx: &LoExprContext, expr: &CodeExpr) -> Result<LoType, LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(LoType::Bool),
             CodeExpr::CharLiteral(_) => todo!(),
@@ -1038,8 +1040,8 @@ impl CodeGen {
                 parts: _,
                 loc,
             }) => {
-                if let Some(local_index) = locals.get_local_index(repr) {
-                    let local = &locals.locals[local_index];
+                if let Some(local_index) = ctx.get_local_index(repr) {
+                    let local = &ctx.locals[local_index];
                     return Ok(local.local_type.clone());
                 };
 
@@ -1077,7 +1079,7 @@ impl CodeGen {
                 | InfixOpTag::BitAnd
                 | InfixOpTag::BitOr
                 | InfixOpTag::ShiftLeft
-                | InfixOpTag::ShiftRight => Ok(self.get_expr_type(lhs, locals)?),
+                | InfixOpTag::ShiftRight => Ok(self.get_expr_type(ctx, lhs)?),
 
                 InfixOpTag::AddAssign
                 | InfixOpTag::SubAssign
@@ -1099,7 +1101,7 @@ impl CodeGen {
             CodeExpr::PrefixOp(PrefixOpExpr { op_tag, expr, loc }) => match op_tag {
                 PrefixOpTag::Not => Ok(LoType::Bool),
                 PrefixOpTag::Dereference => {
-                    let expr_type = self.get_expr_type(expr, locals)?;
+                    let expr_type = self.get_expr_type(ctx, expr)?;
                     let LoType::Pointer { pointee } = expr_type else {
                         return Err(LoError {
                             message: format!("Cannot dereference expr of type {}", expr_type),
@@ -1108,8 +1110,8 @@ impl CodeGen {
                     };
                     Ok(*pointee)
                 }
-                PrefixOpTag::Positive => self.get_expr_type(expr, locals),
-                PrefixOpTag::Negative => self.get_expr_type(expr, locals),
+                PrefixOpTag::Positive => self.get_expr_type(ctx, expr),
+                PrefixOpTag::Negative => self.get_expr_type(ctx, expr),
             },
             CodeExpr::Cast(CastExpr {
                 expr: _,
@@ -1148,7 +1150,7 @@ impl CodeGen {
             CodeExpr::Continue(_) => todo!(),
             CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
-            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(expr, locals),
+            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(ctx, expr),
         }
     }
 
