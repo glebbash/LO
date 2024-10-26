@@ -1021,6 +1021,7 @@ impl ParserV2 {
 
                 Ok(CodeExpr::InfixOp(InfixOpExpr {
                     op_tag: op.tag,
+                    op_loc: op.token.loc,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
                     loc,
@@ -1089,6 +1090,7 @@ impl ParserV2 {
                 loc.end_pos = self.prev().loc.end_pos.clone();
 
                 Ok(CodeExpr::Assign(AssignExpr {
+                    op_loc: op.token.loc,
                     lhs: Box::new(primary),
                     rhs: Box::new(value),
                     loc,

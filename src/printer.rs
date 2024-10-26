@@ -437,6 +437,7 @@ impl Printer {
             }
             CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
+                op_loc: _,
                 lhs,
                 rhs,
                 loc: _,
@@ -554,7 +555,12 @@ impl Printer {
 
                 stdout_write("}");
             }
-            CodeExpr::Assign(AssignExpr { lhs, rhs, loc: _ }) => {
+            CodeExpr::Assign(AssignExpr {
+                op_loc: _,
+                lhs,
+                rhs,
+                loc: _,
+            }) => {
                 self.print_code_expr(lhs);
                 stdout_write(" = ");
                 self.print_code_expr(rhs);

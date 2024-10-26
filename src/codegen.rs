@@ -162,6 +162,12 @@ struct LoTypeDef {
     value: LoType,
 }
 
+struct LoGlobalDef {
+    def_expr: GlobalDefExpr,
+    global_type: LoType,
+    global_index: u32,
+}
+
 #[derive(Default)]
 pub struct CodeGen {
     pub errors: LoErrorManager,
@@ -171,6 +177,7 @@ pub struct CodeGen {
     memory: Option<MemoryDefExpr>,
     memory_imported_from: Option<String>,
     static_data_stores: Vec<StaticDataStoreExpr>,
+    globals: Vec<LoGlobalDef>,
 }
 
 impl CodeGen {
@@ -305,7 +312,37 @@ impl CodeGen {
                         });
                     }
                 }
-                TopLevelExpr::GlobalDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::GlobalDef(global) => {
+                    let existing_global = self.get_global(&global.global_name.repr);
+                    if let Some(existing_global) = existing_global {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine global {}, previously defined at {}",
+                                global.global_name.repr, existing_global.def_expr.global_name.loc,
+                            ),
+                            loc: global.loc,
+                        });
+                    }
+
+                    let mut const_locals = LoLocals::default();
+                    self.ensure_const_expr(&global.expr)?;
+                    let value_type = self.get_expr_type(&global.expr, &mut const_locals)?;
+                    let value_comp_count = self.count_wasm_type_components(&value_type) as u32;
+                    if value_comp_count != 1 {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot define global with non-primitive type {value_type}",
+                            ),
+                            loc: global.loc,
+                        });
+                    }
+
+                    self.globals.push(LoGlobalDef {
+                        def_expr: global,
+                        global_type: value_type,
+                        global_index: self.globals.len() as u32,
+                    });
+                }
                 TopLevelExpr::StructDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::TypeDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::ConstDef(_) => return Err(LoError::todo(file!(), line!())),
@@ -485,7 +522,7 @@ impl CodeGen {
         let mut const_locals = LoLocals::default();
         for static_data_store in &self.static_data_stores {
             let mut offset_expr = WasmExpr { instrs: Vec::new() };
-            // TODO: add validation for const expr
+            self.ensure_const_expr(&static_data_store.addr)?;
             self.codegen(
                 &static_data_store.addr,
                 &mut offset_expr.instrs,
@@ -500,6 +537,25 @@ impl CodeGen {
             wasm_module.datas.push(WasmData::Active {
                 offset: offset_expr,
                 bytes,
+            });
+        }
+
+        let mut wasm_types_buf = Vec::with_capacity(1);
+        for global in &self.globals {
+            self.lower_type(&global.global_type, &mut wasm_types_buf);
+            let wasm_value_type = wasm_types_buf.pop().unwrap();
+
+            let mut initial_value = WasmExpr { instrs: Vec::new() };
+            self.codegen(
+                &global.def_expr.expr,
+                &mut initial_value.instrs,
+                &mut const_locals,
+            )?;
+
+            wasm_module.globals.push(WasmGlobal {
+                mutable: true,
+                value_type: wasm_value_type,
+                initial_value,
             });
         }
 
@@ -636,6 +692,16 @@ impl CodeGen {
                     return Ok(());
                 };
 
+                if let Some(global) = self.get_global(repr) {
+                    for i in 0..self.count_wasm_type_components(&global.global_type) {
+                        instrs.push(WasmInstr::GlobalGet {
+                            global_index: global.global_index + i as u32,
+                        });
+                    }
+
+                    return Ok(());
+                }
+
                 return Err(LoError {
                     message: format!("Unknown variable: {repr}"),
                     loc: loc.clone(),
@@ -648,7 +714,15 @@ impl CodeGen {
             }) => {
                 self.codegen(value, instrs, locals)?;
 
-                let local_type = self.get_type(&value, locals)?;
+                let local_type = self.get_expr_type(&value, locals)?;
+
+                if local_name == "_" {
+                    for _ in 0..self.count_wasm_type_components(&local_type) {
+                        instrs.push(WasmInstr::Drop);
+                    }
+                    return Ok(());
+                }
+
                 let local_index = locals.define(loc.clone(), local_name.clone(), &local_type)?;
 
                 for i in 0..self.count_wasm_type_components(&local_type) {
@@ -657,38 +731,12 @@ impl CodeGen {
                     });
                 }
             }
-            CodeExpr::InfixOp(InfixOpExpr {
-                op_tag,
-                lhs,
-                rhs,
-                loc,
-            }) => {
-                let lhs_type = self.get_type(lhs, locals)?;
-                let rhs_type = self.get_type(rhs, locals)?;
-
-                if lhs_type != rhs_type {
-                    return Err(LoError {
-                        message: format!(
-                            "Operands are not of the same type: lhs = {}, rhs = {}",
-                            lhs_type, rhs_type
-                        ),
-                        loc: loc.clone(),
-                    });
-                }
-
-                self.codegen(lhs, instrs, locals)?;
-                self.codegen(rhs, instrs, locals)?;
-
-                let kind = self.get_binary_op_kind(op_tag, &lhs_type, loc)?;
-                instrs.push(WasmInstr::BinaryOp { kind });
-            }
-            CodeExpr::PrefixOp(_) => todo!(),
             CodeExpr::Cast(CastExpr {
                 expr,
                 casted_to,
                 loc,
             }) => {
-                let castee_type = self.get_type(expr, locals)?;
+                let castee_type = self.get_expr_type(expr, locals)?;
                 let casted_to = self.build_type(casted_to)?;
 
                 self.codegen(expr, instrs, locals)?;
@@ -703,38 +751,52 @@ impl CodeGen {
                     }
                 };
             }
-            CodeExpr::Assign(AssignExpr { lhs, rhs, loc: _ }) => {
-                let CodeExpr::PrefixOp(PrefixOpExpr {
-                    op_tag: PrefixOpTag::Dereference,
-                    expr: addr_expr,
-                    loc: _,
-                }) = lhs.as_ref()
-                else {
-                    todo!("other assignments")
-                };
+            CodeExpr::PrefixOp(_) => todo!(),
+            CodeExpr::InfixOp(InfixOpExpr {
+                op_tag,
+                op_loc,
+                lhs,
+                rhs,
+                loc: _,
+            }) => {
+                if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
+                    return self.codegen_compound_assignment(
+                        Some(base_op),
+                        op_loc,
+                        lhs,
+                        rhs,
+                        instrs,
+                        locals,
+                    );
+                }
 
-                let pointer_type = self.get_type(addr_expr, locals)?;
-                let LoType::Pointer { pointee } = pointer_type else {
+                let lhs_type = self.get_expr_type(lhs, locals)?;
+                let rhs_type = self.get_expr_type(rhs, locals)?;
+
+                if lhs_type != rhs_type {
                     return Err(LoError {
                         message: format!(
-                            "Cannot use {pointer_type} as an address, pointer expected"
+                            "Operands are not of the same type: lhs = {}, rhs = {}",
+                            lhs_type, rhs_type
                         ),
-                        loc: addr_expr.loc().clone(),
+                        loc: op_loc.clone(),
                     });
-                };
+                }
 
-                let LoType::U32 = pointee.as_ref() else {
-                    todo!()
-                };
-
-                self.codegen(addr_expr, instrs, locals)?;
+                self.codegen(lhs, instrs, locals)?;
                 self.codegen(rhs, instrs, locals)?;
 
-                instrs.push(WasmInstr::Store {
-                    kind: WasmStoreKind::I32,
-                    align: 0,
-                    offset: 0,
-                });
+                let kind = self.get_binary_op_kind(op_tag, &lhs_type, op_loc)?;
+                instrs.push(WasmInstr::BinaryOp { kind });
+            }
+
+            CodeExpr::Assign(AssignExpr {
+                op_loc,
+                lhs,
+                rhs,
+                loc: _,
+            }) => {
+                return self.codegen_compound_assignment(None, op_loc, lhs, rhs, instrs, locals);
             }
             CodeExpr::FieldAccess(_) => todo!(),
             CodeExpr::PropagateError(_) => todo!(),
@@ -749,7 +811,7 @@ impl CodeGen {
 
                 let mut arg_types = Vec::new();
                 for arg in args {
-                    arg_types.push(self.get_type(arg, locals)?);
+                    arg_types.push(self.get_expr_type(arg, locals)?);
                     self.codegen(arg, instrs, locals)?;
                 }
 
@@ -834,7 +896,127 @@ impl CodeGen {
         Ok(())
     }
 
-    fn get_type(&self, expr: &CodeExpr, locals: &mut LoLocals) -> Result<LoType, LoError> {
+    fn codegen_compound_assignment(
+        &self,
+        base_op: Option<InfixOpTag>,
+        op_loc: &LoLocation,
+        lhs: &CodeExpr,
+        rhs: &CodeExpr,
+        instrs: &mut Vec<WasmInstr>,
+        locals: &mut LoLocals,
+    ) -> Result<(), LoError> {
+        let lhs_type = self.get_expr_type(lhs, locals)?;
+        let rhs_type = self.get_expr_type(rhs, locals)?;
+
+        if lhs_type != rhs_type {
+            return Err(LoError {
+                message: format!(
+                    "Unexpected value for assignment: {}, expected {}",
+                    rhs_type, lhs_type
+                ),
+                loc: op_loc.clone(),
+            });
+        }
+
+        if let CodeExpr::PrefixOp(PrefixOpExpr {
+            op_tag: PrefixOpTag::Dereference,
+            expr: addr_expr,
+            loc: _,
+        }) = lhs
+        {
+            let pointer_type = self.get_expr_type(addr_expr, locals)?;
+            let LoType::Pointer { pointee } = pointer_type else {
+                return Err(LoError {
+                    message: format!("Cannot use {pointer_type} as an address, pointer expected"),
+                    loc: addr_expr.loc().clone(),
+                });
+            };
+
+            let LoType::U32 = pointee.as_ref() else {
+                todo!()
+            };
+
+            self.codegen(addr_expr, instrs, locals)?;
+
+            if let Some(base_op) = base_op {
+                self.codegen(lhs, instrs, locals)?;
+                self.codegen(rhs, instrs, locals)?;
+
+                let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
+                instrs.push(WasmInstr::BinaryOp { kind });
+            } else {
+                self.codegen(rhs, instrs, locals)?;
+            }
+
+            instrs.push(WasmInstr::Store {
+                kind: WasmStoreKind::I32,
+                align: 0,
+                offset: 0,
+            });
+
+            return Ok(());
+        }
+
+        if let CodeExpr::Ident(IdentExpr {
+            repr,
+            parts: _,
+            loc,
+        }) = lhs
+        {
+            if let Some(local_index) = locals.get_local_index(&repr) {
+                if let Some(base_op) = base_op {
+                    self.codegen(lhs, instrs, locals)?;
+                    self.codegen(rhs, instrs, locals)?;
+
+                    let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
+                    instrs.push(WasmInstr::BinaryOp { kind });
+                } else {
+                    self.codegen(rhs, instrs, locals)?;
+                }
+
+                for i in 0..self.count_wasm_type_components(&rhs_type) {
+                    instrs.push(WasmInstr::LocalSet {
+                        local_index: (local_index + i) as u32,
+                    });
+                }
+
+                debug(format!("doing local set for {}", repr));
+
+                return Ok(());
+            }
+
+            if let Some(global) = self.get_global(&repr) {
+                if let Some(base_op) = base_op {
+                    self.codegen(lhs, instrs, locals)?;
+                    self.codegen(rhs, instrs, locals)?;
+
+                    let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
+                    instrs.push(WasmInstr::BinaryOp { kind });
+                } else {
+                    self.codegen(rhs, instrs, locals)?;
+                }
+
+                for i in 0..self.count_wasm_type_components(&rhs_type) {
+                    instrs.push(WasmInstr::GlobalSet {
+                        global_index: global.global_index + i as u32,
+                    });
+                }
+
+                debug(format!("doing global set for {}", repr));
+
+                return Ok(());
+            }
+
+            return Err(LoError {
+                message: format!("Unknown variable: {repr}"),
+                loc: loc.clone(),
+            });
+        }
+
+        todo!();
+    }
+
+    fn get_expr_type(&self, expr: &CodeExpr, locals: &LoLocals) -> Result<LoType, LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(LoType::Bool),
             CodeExpr::CharLiteral(_) => todo!(),
@@ -861,6 +1043,10 @@ impl CodeGen {
                     return Ok(local.local_type.clone());
                 };
 
+                if let Some(global) = self.get_global(repr) {
+                    return Ok(global.global_type.clone());
+                }
+
                 Err(LoError {
                     message: format!("Unknown variable: {repr}"),
                     loc: loc.clone(),
@@ -869,6 +1055,7 @@ impl CodeGen {
             CodeExpr::Let(_) => todo!(),
             CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
+                op_loc: _,
                 lhs,
                 rhs: _,
                 loc: _,
@@ -890,7 +1077,7 @@ impl CodeGen {
                 | InfixOpTag::BitAnd
                 | InfixOpTag::BitOr
                 | InfixOpTag::ShiftLeft
-                | InfixOpTag::ShiftRight => Ok(self.get_type(lhs, locals)?),
+                | InfixOpTag::ShiftRight => Ok(self.get_expr_type(lhs, locals)?),
 
                 InfixOpTag::AddAssign
                 | InfixOpTag::SubAssign
@@ -909,7 +1096,21 @@ impl CodeGen {
                 | InfixOpTag::Catch
                 | InfixOpTag::ErrorPropagation => unreachable!(),
             },
-            CodeExpr::PrefixOp(_) => todo!(),
+            CodeExpr::PrefixOp(PrefixOpExpr { op_tag, expr, loc }) => match op_tag {
+                PrefixOpTag::Not => Ok(LoType::Bool),
+                PrefixOpTag::Dereference => {
+                    let expr_type = self.get_expr_type(expr, locals)?;
+                    let LoType::Pointer { pointee } = expr_type else {
+                        return Err(LoError {
+                            message: format!("Cannot dereference expr of type {}", expr_type),
+                            loc: loc.clone(),
+                        });
+                    };
+                    Ok(*pointee)
+                }
+                PrefixOpTag::Positive => self.get_expr_type(expr, locals),
+                PrefixOpTag::Negative => self.get_expr_type(expr, locals),
+            },
             CodeExpr::Cast(CastExpr {
                 expr: _,
                 casted_to,
@@ -947,8 +1148,13 @@ impl CodeGen {
             CodeExpr::Continue(_) => todo!(),
             CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
-            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_type(expr, locals),
+            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(expr, locals),
         }
+    }
+
+    // TODO: add validation for const expr
+    fn ensure_const_expr(&self, _expr: &CodeExpr) -> Result<(), LoError> {
+        Ok(())
     }
 
     fn lower_type(&self, lo_type: &LoType, wasm_types: &mut Vec<WasmType>) {
@@ -1038,11 +1244,58 @@ impl CodeGen {
         });
     }
 
+    fn get_compound_assignment_base_op(&self, op_tag: &InfixOpTag) -> Option<InfixOpTag> {
+        match op_tag {
+            InfixOpTag::AddAssign => Some(InfixOpTag::Add),
+            InfixOpTag::SubAssign => Some(InfixOpTag::Sub),
+            InfixOpTag::MulAssign => Some(InfixOpTag::Mul),
+            InfixOpTag::DivAssign => Some(InfixOpTag::Div),
+            InfixOpTag::ModAssign => Some(InfixOpTag::Mod),
+            InfixOpTag::BitAndAssign => Some(InfixOpTag::BitAnd),
+            InfixOpTag::BitOrAssign => Some(InfixOpTag::BitOr),
+            InfixOpTag::ShiftLeftAssign => Some(InfixOpTag::ShiftLeft),
+            InfixOpTag::ShiftRightAssign => Some(InfixOpTag::ShiftRight),
+
+            InfixOpTag::Equal
+            | InfixOpTag::NotEqual
+            | InfixOpTag::Less
+            | InfixOpTag::Greater
+            | InfixOpTag::LessEqual
+            | InfixOpTag::GreaterEqual
+            | InfixOpTag::Add
+            | InfixOpTag::Sub
+            | InfixOpTag::Mul
+            | InfixOpTag::Div
+            | InfixOpTag::Mod
+            | InfixOpTag::And
+            | InfixOpTag::BitAnd
+            | InfixOpTag::Or
+            | InfixOpTag::BitOr
+            | InfixOpTag::ShiftLeft
+            | InfixOpTag::ShiftRight
+            | InfixOpTag::Cast
+            | InfixOpTag::Assign
+            | InfixOpTag::FieldAccess
+            | InfixOpTag::Catch
+            | InfixOpTag::ErrorPropagation => None,
+        }
+    }
+
     fn get_fn_info(&self, fn_name: &str) -> Option<(&LoFnInfo, &WasmFnInfo)> {
         for wasm_fn_info in &self.wasm_functions {
             if wasm_fn_info.fn_name == fn_name {
                 let lo_fn_info = &self.lo_functions[wasm_fn_info.lo_fn_index];
                 return Some((lo_fn_info, wasm_fn_info));
+            }
+        }
+
+        None
+    }
+
+    fn get_global(&self, global_name: &str) -> Option<&LoGlobalDef> {
+        for global_def in &self.globals {
+            if global_def.def_expr.global_name.repr == global_name {
+                return Some(global_def);
             }
         }
 

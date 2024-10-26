@@ -234,7 +234,7 @@ async function testCommand() {
         assert.deepEqual(program.sub(5, 3), 2);
     });
 
-    testCompilers("compiles globals.lo", { v1 }, async (compile) => {
+    testCompilers("compiles globals.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/globals.lo");
 
         const program = await loadWasm(output);

@@ -305,6 +305,7 @@ pub struct IdentExpr {
 #[derive(Debug)]
 pub struct InfixOpExpr {
     pub op_tag: InfixOpTag,
+    pub op_loc: LoLocation,
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
     pub loc: LoLocation,
@@ -411,6 +412,7 @@ pub struct StructLiteralField {
 
 #[derive(Debug)]
 pub struct AssignExpr {
+    pub op_loc: LoLocation,
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
     pub loc: LoLocation,
