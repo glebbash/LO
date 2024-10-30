@@ -532,8 +532,7 @@ impl ParserV2 {
         }
 
         let ident = self.parse_ident()?;
-        loc.end_pos = self.prev().loc.end_pos.clone();
-        return Ok(TypeExpr::Named { name: ident, loc });
+        return Ok(TypeExpr::Named { name: ident });
     }
 
     fn parse_code_block_expr(&mut self) -> Result<CodeBlockExpr, LoError> {

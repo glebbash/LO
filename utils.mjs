@@ -261,7 +261,7 @@ async function testCommand() {
         assert.strictEqual(result, 138);
     });
 
-    testCompilers("compiles methods.lo", { v1 }, async (compile) => {
+    testCompilers("compiles methods.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/methods.lo");
 
         const program = await loadWasm(output);

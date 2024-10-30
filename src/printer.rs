@@ -302,7 +302,7 @@ impl Printer {
                 stdout_write("*&");
                 self.print_type_expr(pointee);
             }
-            TypeExpr::Named { name, loc: _ } => {
+            TypeExpr::Named { name } => {
                 stdout_write(&name.repr);
             }
             TypeExpr::Result {

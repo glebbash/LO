@@ -503,7 +503,7 @@ impl CodeGen {
             let mut ctx = ctx.clone();
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
             for expr in &body.exprs {
-                self.codegen(&mut ctx, expr, &mut wasm_expr.instrs)?;
+                self.codegen(&mut ctx, &mut wasm_expr.instrs, expr)?;
             }
 
             let mut wasm_locals_flat = Vec::new();
@@ -568,8 +568,8 @@ impl CodeGen {
             self.ensure_const_expr(&static_data_store.addr)?;
             self.codegen(
                 const_expr_ctx,
-                &static_data_store.addr,
                 &mut offset_expr.instrs,
+                &static_data_store.addr,
             )?;
             let bytes = match &static_data_store.data {
                 StaticDataStorePayload::String { value } => {
@@ -591,8 +591,8 @@ impl CodeGen {
             let mut initial_value = WasmExpr { instrs: Vec::new() };
             self.codegen(
                 const_expr_ctx,
-                &global.def_expr.expr,
                 &mut initial_value.instrs,
+                &global.def_expr.expr,
             )?;
 
             wasm_module.globals.push(WasmGlobal {
@@ -620,21 +620,14 @@ impl CodeGen {
                 }
 
                 let self_type_name = &fn_decl.fn_name.parts[0];
-                for type_def in &self.type_defs {
-                    if type_def.name == *self_type_name {
-                        if let FnParamType::Self_ = fn_param.param_type {
-                            return Ok(type_def.value.clone());
-                        } else {
-                            return Ok(LoType::Pointer {
-                                pointee: Box::new(type_def.value.clone()),
-                            });
-                        }
-                    }
+                let self_type = self.get_type_by_name(self_type_name, &fn_decl.loc)?;
+
+                if let FnParamType::Self_ = fn_param.param_type {
+                    return Ok(self_type);
                 }
 
-                return Err(LoError {
-                    message: format!("Unknown type: {self_type_name}"),
-                    loc: fn_param.loc.clone(),
+                return Ok(LoType::Pointer {
+                    pointee: Box::new(self_type),
                 });
             }
             FnParamType::Type { expr } => self.build_type(&expr),
@@ -643,24 +636,7 @@ impl CodeGen {
 
     fn build_type(&self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::Named { name, loc } => match &name.repr[..] {
-                "never" => Ok(LoType::Never),
-                "void" => Ok(LoType::Void),
-                "bool" => Ok(LoType::Bool),
-                "u32" => Ok(LoType::U32),
-                _ => {
-                    for type_def in &self.type_defs {
-                        if type_def.name == name.repr {
-                            return Ok(type_def.value.clone());
-                        }
-                    }
-
-                    Err(LoError {
-                        message: format!("Unknown type: {}", name.repr),
-                        loc: loc.clone(),
-                    })
-                }
-            },
+            TypeExpr::Named { name } => self.get_type_by_name(&name.repr, &name.loc),
             TypeExpr::Pointer { pointee, loc: _ } => {
                 let pointee = Box::new(self.build_type(&pointee)?);
 
@@ -693,11 +669,41 @@ impl CodeGen {
         }
     }
 
+    fn get_type_by_name(&self, type_name: &str, err_loc: &LoLocation) -> Result<LoType, LoError> {
+        match &type_name[..] {
+            "never" => Ok(LoType::Never),
+            "void" => Ok(LoType::Void),
+            "bool" => Ok(LoType::Bool),
+            "u8" => Ok(LoType::U8),
+            "i8" => Ok(LoType::I8),
+            "u16" => Ok(LoType::U16),
+            "i16" => Ok(LoType::I16),
+            "u32" => Ok(LoType::U32),
+            "i32" => Ok(LoType::I32),
+            "f32" => Ok(LoType::F32),
+            "u64" => Ok(LoType::U64),
+            "i64" => Ok(LoType::I64),
+            "f64" => Ok(LoType::F64),
+            _ => {
+                for type_def in &self.type_defs {
+                    if type_def.name == type_name {
+                        return Ok(type_def.value.clone());
+                    }
+                }
+
+                Err(LoError {
+                    message: format!("Unknown type: {}", type_name),
+                    loc: err_loc.clone(),
+                })
+            }
+        }
+    }
+
     fn codegen(
         &self,
         ctx: &mut LoExprContext,
-        expr: &CodeExpr,
         instrs: &mut Vec<WasmInstr>,
+        expr: &CodeExpr,
     ) -> Result<(), LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => todo!(),
@@ -756,7 +762,7 @@ impl CodeGen {
                 loc,
             }) => {
                 if local_name == "_" {
-                    self.codegen(ctx, value, instrs)?;
+                    self.codegen(ctx, instrs, value)?;
 
                     let local_type = self.get_expr_type(ctx, &value)?;
                     for _ in 0..self.count_wasm_type_components(&local_type) {
@@ -768,7 +774,7 @@ impl CodeGen {
                 let local_type = self.get_expr_type(ctx, &value)?;
                 let local_index =
                     ctx.define_local(loc.clone(), local_name.clone(), &local_type, false)?;
-                self.codegen_local_set(ctx, value, instrs, local_type, local_index)?;
+                self.codegen_local_set(ctx, instrs, value, local_type, local_index)?;
             }
             CodeExpr::Cast(CastExpr {
                 expr,
@@ -778,7 +784,7 @@ impl CodeGen {
                 let castee_type = self.get_expr_type(ctx, expr)?;
                 let casted_to = self.build_type(casted_to)?;
 
-                self.codegen(ctx, expr, instrs)?;
+                self.codegen(ctx, instrs, expr)?;
 
                 match (&castee_type, &casted_to) {
                     (LoType::U32, LoType::Pointer { .. }) => {}
@@ -801,11 +807,11 @@ impl CodeGen {
                 if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
                     return self.codegen_compound_assignment(
                         ctx,
+                        instrs,
                         Some(base_op),
                         op_loc,
                         lhs,
                         rhs,
-                        instrs,
                     );
                 }
 
@@ -822,8 +828,8 @@ impl CodeGen {
                     });
                 }
 
-                self.codegen(ctx, lhs, instrs)?;
-                self.codegen(ctx, rhs, instrs)?;
+                self.codegen(ctx, instrs, lhs)?;
+                self.codegen(ctx, instrs, rhs)?;
 
                 let kind = self.get_binary_op_kind(op_tag, &lhs_type, op_loc)?;
                 instrs.push(WasmInstr::BinaryOp { kind });
@@ -835,42 +841,26 @@ impl CodeGen {
                 rhs,
                 loc: _,
             }) => {
-                return self.codegen_compound_assignment(ctx, None, op_loc, lhs, rhs, instrs);
+                return self.codegen_compound_assignment(ctx, instrs, None, op_loc, lhs, rhs);
             }
             CodeExpr::FieldAccess(_) => todo!(),
             CodeExpr::PropagateError(_) => todo!(),
 
             CodeExpr::FnCall(FnCallExpr { fn_name, args, loc }) => {
-                let Some((lo_fn_info, wasm_fn_info)) = self.get_fn_info(&fn_name.repr) else {
-                    return Err(LoError {
-                        message: format!("Unknown function: {}", fn_name.repr),
-                        loc: loc.clone(),
-                    });
-                };
-
-                let mut arg_types = Vec::new();
-                for arg in args {
-                    arg_types.push(self.get_expr_type(ctx, arg)?);
-                    self.codegen(ctx, arg, instrs)?;
-                }
-
-                if arg_types != lo_fn_info.fn_type.inputs {
-                    return Err(LoError {
-                        message: format!(
-                            "Invalid function arguments for function {}: {}, expected {}",
-                            lo_fn_info.fn_name,
-                            ListDisplay(&arg_types),
-                            ListDisplay(&lo_fn_info.fn_type.inputs),
-                        ),
-                        loc: loc.clone(),
-                    });
-                }
-
-                instrs.push(WasmInstr::Call {
-                    fn_index: wasm_fn_info.wasm_fn_index,
-                });
+                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, args, loc)?;
             }
-            CodeExpr::MethodCall(_) => todo!(),
+            CodeExpr::MethodCall(MethodCallExpr {
+                lhs,
+                field_name,
+                args,
+                loc,
+            }) => {
+                self.codegen(ctx, instrs, lhs)?;
+
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
+                let fn_name = format!("{lhs_type}::{}", field_name.repr);
+                self.codegen_fn_call(ctx, instrs, &fn_name, Some(lhs), args, loc)?;
+            }
             CodeExpr::MacroFnCall(_) => todo!(),
             CodeExpr::MacroMethodCall(_) => todo!(),
 
@@ -880,7 +870,7 @@ impl CodeGen {
 
             CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
                 if let Some(return_expr) = expr {
-                    self.codegen(ctx, return_expr, instrs)?;
+                    self.codegen(ctx, instrs, return_expr)?;
                 }
 
                 instrs.push(WasmInstr::Return);
@@ -891,7 +881,7 @@ impl CodeGen {
                 else_block,
                 loc: _,
             }) => {
-                self.codegen(ctx, cond, instrs)?;
+                self.codegen(ctx, instrs, cond)?;
 
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::If,
@@ -900,7 +890,7 @@ impl CodeGen {
 
                 ctx.enter_scope(LoScopeType::Block);
                 for expr in &then_block.exprs {
-                    self.codegen(ctx, &expr, instrs)?;
+                    self.codegen(ctx, instrs, &expr)?;
                 }
                 ctx.exit_scope();
 
@@ -910,13 +900,13 @@ impl CodeGen {
                         instrs.push(WasmInstr::Else);
                         ctx.enter_scope(LoScopeType::Block);
                         for expr in &code_block_expr.exprs {
-                            self.codegen(ctx, &expr, instrs)?;
+                            self.codegen(ctx, instrs, &expr)?;
                         }
                         ctx.exit_scope();
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
-                        self.codegen(ctx, &code_expr, instrs)?;
+                        self.codegen(ctx, instrs, &code_expr)?;
                     }
                 }
 
@@ -934,7 +924,7 @@ impl CodeGen {
 
                 ctx.enter_scope(LoScopeType::Loop);
                 for expr in &body.exprs {
-                    self.codegen(ctx, expr, instrs)?;
+                    self.codegen(ctx, instrs, expr)?;
                 }
                 ctx.exit_scope();
 
@@ -997,7 +987,7 @@ impl CodeGen {
                 // define counter and set value to start
                 let counter_local_index =
                     ctx.define_local(loc.clone(), counter.clone(), &counter_type, false)?;
-                self.codegen_local_set(ctx, &start, instrs, counter_type, counter_local_index)?;
+                self.codegen_local_set(ctx, instrs, &start, counter_type, counter_local_index)?;
 
                 {
                     instrs.push(WasmInstr::BlockStart {
@@ -1012,7 +1002,7 @@ impl CodeGen {
                         });
 
                         // break if counter is equal to end
-                        self.codegen(ctx, end, instrs)?;
+                        self.codegen(ctx, instrs, end)?;
                         instrs.push(WasmInstr::LocalGet {
                             local_index: counter_local_index,
                         });
@@ -1026,7 +1016,7 @@ impl CodeGen {
                             });
 
                             for expr in &body.exprs {
-                                self.codegen(ctx, &expr, instrs)?;
+                                self.codegen(ctx, instrs, &expr)?;
                             }
 
                             instrs.push(WasmInstr::BlockEnd);
@@ -1101,7 +1091,7 @@ impl CodeGen {
             CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
-                self.codegen(ctx, expr, instrs)?;
+                self.codegen(ctx, instrs, expr)?;
             }
             CodeExpr::Unreachable(_) => {
                 instrs.push(WasmInstr::Unreachable);
@@ -1111,15 +1101,60 @@ impl CodeGen {
         Ok(())
     }
 
+    fn codegen_fn_call(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        fn_name: &str,
+        receiver_arg: Option<&CodeExpr>,
+        args: &Vec<CodeExpr>,
+        loc: &LoLocation,
+    ) -> Result<(), LoError> {
+        let Some((lo_fn_info, wasm_fn_info)) = self.get_fn_info(fn_name) else {
+            return Err(LoError {
+                message: format!("Unknown function: {}", fn_name),
+                loc: loc.clone(),
+            });
+        };
+
+        let mut arg_types = Vec::new();
+        if let Some(receiver_arg) = receiver_arg {
+            arg_types.push(self.get_expr_type(ctx, receiver_arg)?);
+            self.codegen(ctx, instrs, receiver_arg)?;
+        }
+        for arg in args {
+            arg_types.push(self.get_expr_type(ctx, arg)?);
+            self.codegen(ctx, instrs, arg)?;
+        }
+
+        if arg_types != lo_fn_info.fn_type.inputs {
+            return Err(LoError {
+                message: format!(
+                    "Invalid function arguments for function {}: [{}], expected [{}]",
+                    lo_fn_info.fn_name,
+                    ListDisplay(&arg_types),
+                    ListDisplay(&lo_fn_info.fn_type.inputs),
+                ),
+                loc: loc.clone(),
+            });
+        }
+
+        instrs.push(WasmInstr::Call {
+            fn_index: wasm_fn_info.wasm_fn_index,
+        });
+
+        Ok(())
+    }
+
     fn codegen_local_set(
         &self,
         ctx: &mut LoExprContext,
-        value: &CodeExpr,
         instrs: &mut Vec<WasmInstr>,
+        value: &CodeExpr,
         local_type: LoType,
         local_index: u32,
     ) -> Result<(), LoError> {
-        self.codegen(ctx, value, instrs)?;
+        self.codegen(ctx, instrs, value)?;
 
         for i in 0..self.count_wasm_type_components(&local_type) as u32 {
             instrs.push(WasmInstr::LocalSet {
@@ -1133,11 +1168,11 @@ impl CodeGen {
     fn codegen_compound_assignment(
         &self,
         ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
         base_op: Option<InfixOpTag>,
         op_loc: &LoLocation,
         lhs: &CodeExpr,
         rhs: &CodeExpr,
-        instrs: &mut Vec<WasmInstr>,
     ) -> Result<(), LoError> {
         let lhs_type = self.get_expr_type(ctx, lhs)?;
         let rhs_type = self.get_expr_type(ctx, rhs)?;
@@ -1170,16 +1205,16 @@ impl CodeGen {
                 todo!()
             };
 
-            self.codegen(ctx, addr_expr, instrs)?;
+            self.codegen(ctx, instrs, addr_expr)?;
 
             if let Some(base_op) = base_op {
-                self.codegen(ctx, lhs, instrs)?;
-                self.codegen(ctx, rhs, instrs)?;
+                self.codegen(ctx, instrs, lhs)?;
+                self.codegen(ctx, instrs, rhs)?;
 
                 let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
                 instrs.push(WasmInstr::BinaryOp { kind });
             } else {
-                self.codegen(ctx, rhs, instrs)?;
+                self.codegen(ctx, instrs, rhs)?;
             }
 
             instrs.push(WasmInstr::Store {
@@ -1199,13 +1234,13 @@ impl CodeGen {
         {
             if let Some(local_index) = ctx.get_local_index(&repr) {
                 if let Some(base_op) = base_op {
-                    self.codegen(ctx, lhs, instrs)?;
-                    self.codegen(ctx, rhs, instrs)?;
+                    self.codegen(ctx, instrs, lhs)?;
+                    self.codegen(ctx, instrs, rhs)?;
 
                     let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
                     instrs.push(WasmInstr::BinaryOp { kind });
                 } else {
-                    self.codegen(ctx, rhs, instrs)?;
+                    self.codegen(ctx, instrs, rhs)?;
                 }
 
                 for i in 0..self.count_wasm_type_components(&rhs_type) {
@@ -1219,13 +1254,13 @@ impl CodeGen {
 
             if let Some(global) = self.get_global(&repr) {
                 if let Some(base_op) = base_op {
-                    self.codegen(ctx, lhs, instrs)?;
-                    self.codegen(ctx, rhs, instrs)?;
+                    self.codegen(ctx, instrs, lhs)?;
+                    self.codegen(ctx, instrs, rhs)?;
 
                     let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
                     instrs.push(WasmInstr::BinaryOp { kind });
                 } else {
-                    self.codegen(ctx, rhs, instrs)?;
+                    self.codegen(ctx, instrs, rhs)?;
                 }
 
                 for i in 0..self.count_wasm_type_components(&rhs_type) {
@@ -1373,7 +1408,24 @@ impl CodeGen {
 
                 Ok(fn_info.fn_type.output.clone())
             }
-            CodeExpr::MethodCall(_) => todo!(),
+            CodeExpr::MethodCall(MethodCallExpr {
+                lhs,
+                field_name,
+                args: _,
+                loc,
+            }) => {
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
+                let fn_name = format!("{lhs_type}::{}", field_name.repr);
+
+                let Some((fn_info, _)) = self.get_fn_info(&fn_name) else {
+                    return Err(LoError {
+                        message: format!("Unknown function: {}", fn_name),
+                        loc: loc.clone(),
+                    });
+                };
+
+                Ok(fn_info.fn_type.output.clone())
+            }
             CodeExpr::MacroFnCall(_) => todo!(),
             CodeExpr::MacroMethodCall(_) => todo!(),
             CodeExpr::Dbg(_) => todo!(),
@@ -1435,49 +1487,207 @@ impl CodeGen {
     ) -> Result<WasmBinaryOpKind, LoError> {
         match op_tag {
             InfixOpTag::Equal => match operand_type {
-                LoType::U32 => return Ok(WasmBinaryOpKind::I32_EQ),
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_EQ),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_EQ),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_EQ),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_EQ),
                 _ => {}
             },
-            InfixOpTag::NotEqual => todo!(),
+            InfixOpTag::NotEqual => match operand_type {
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_NE),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_NE),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_NE),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_NE),
+                _ => {}
+            },
             InfixOpTag::Less => match operand_type {
-                LoType::U32 => return Ok(WasmBinaryOpKind::I32_LT_U),
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_LT_S),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_LT_U)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_LT_S),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_LT_U),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_LT),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_LT),
                 _ => {}
             },
-            InfixOpTag::Greater => todo!(),
-            InfixOpTag::LessEqual => todo!(),
-            InfixOpTag::GreaterEqual => todo!(),
+            InfixOpTag::Greater => match operand_type {
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_GT_S),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_GT_U)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_GT_S),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_GT_U),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_GT),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_GT),
+                _ => {}
+            },
+            InfixOpTag::LessEqual => match operand_type {
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_LE_S),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_LE_U)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_LE_S),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_LE_U),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_LE),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_LE),
+                _ => {}
+            },
+            InfixOpTag::GreaterEqual => match operand_type {
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_GE_S),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_GE_U)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_GE_S),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_GE_U),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_GE),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_GE),
+                _ => {}
+            },
             InfixOpTag::Add => match operand_type {
-                LoType::U32 => return Ok(WasmBinaryOpKind::I32_ADD),
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_ADD),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_ADD),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_ADD),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_ADD),
                 _ => {}
             },
             InfixOpTag::Sub => match operand_type {
-                LoType::U32 => return Ok(WasmBinaryOpKind::I32_SUB),
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_SUB),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_SUB),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_SUB),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_SUB),
                 _ => {}
             },
             InfixOpTag::Mul => match operand_type {
-                LoType::U32 => return Ok(WasmBinaryOpKind::I32_MUL),
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_MUL),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_MUL),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_MUL),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_MUL),
                 _ => {}
             },
-            InfixOpTag::Div => todo!(),
-            InfixOpTag::Mod => todo!(),
-            InfixOpTag::And => todo!(),
-            InfixOpTag::BitAnd => todo!(),
-            InfixOpTag::Or => todo!(),
-            InfixOpTag::BitOr => todo!(),
-            InfixOpTag::ShiftLeft => todo!(),
+            InfixOpTag::Div => match operand_type {
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_DIV_S),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_DIV_U)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_DIV_S),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_DIV_U),
+                LoType::F32 => return Ok(WasmBinaryOpKind::F32_DIV),
+                LoType::F64 => return Ok(WasmBinaryOpKind::F64_DIV),
+                _ => {}
+            },
+            InfixOpTag::Mod => match operand_type {
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_REM_S),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_REM_U)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_REM_S),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_REM_U),
+                _ => {}
+            },
+            InfixOpTag::ShiftLeft => match operand_type {
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_SHL),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_SHL)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_SHL),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_SHL),
+                _ => {}
+            },
             InfixOpTag::ShiftRight => match operand_type {
-                LoType::U32 => return Ok(WasmBinaryOpKind::I32_SHR_U),
+                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_SHR_S),
+                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                    return Ok(WasmBinaryOpKind::I32_SHR_U)
+                }
+                LoType::I64 => return Ok(WasmBinaryOpKind::I64_SHR_S),
+                LoType::U64 => return Ok(WasmBinaryOpKind::I64_SHR_U),
                 _ => {}
             },
-            InfixOpTag::AddAssign => todo!(),
-            InfixOpTag::SubAssign => todo!(),
-            InfixOpTag::MulAssign => todo!(),
-            InfixOpTag::DivAssign => todo!(),
-            InfixOpTag::ModAssign => todo!(),
-            InfixOpTag::BitAndAssign => todo!(),
-            InfixOpTag::BitOrAssign => todo!(),
-            InfixOpTag::ShiftLeftAssign => todo!(),
-            InfixOpTag::ShiftRightAssign => todo!(),
+            InfixOpTag::And => match operand_type {
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_AND),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_AND),
+                _ => {}
+            },
+            InfixOpTag::Or => match operand_type {
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_OR),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_OR),
+                _ => {}
+            },
+            InfixOpTag::BitAnd => match operand_type {
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_AND),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_AND),
+                _ => {}
+            },
+            InfixOpTag::BitOr => match operand_type {
+                LoType::Bool
+                | LoType::I8
+                | LoType::U8
+                | LoType::I16
+                | LoType::U16
+                | LoType::I32
+                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_OR),
+                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_OR),
+                _ => {}
+            },
+
+            // handled in get_compound_assignment_base_op
+            InfixOpTag::AddAssign
+            | InfixOpTag::SubAssign
+            | InfixOpTag::MulAssign
+            | InfixOpTag::DivAssign
+            | InfixOpTag::ModAssign
+            | InfixOpTag::BitAndAssign
+            | InfixOpTag::BitOrAssign
+            | InfixOpTag::ShiftLeftAssign
+            | InfixOpTag::ShiftRightAssign => unreachable!(),
 
             // have their own CodeExpr variants
             InfixOpTag::Cast
@@ -1489,7 +1699,7 @@ impl CodeGen {
 
         return Err(LoError {
             message: format!(
-                "Operator {} is not applicable to operands of type {operand_type}",
+                "Operator `{}` is incompatible with operands of type {operand_type}",
                 op_tag.to_str(),
             ),
             loc: loc.clone(),
