@@ -6,7 +6,16 @@ pub enum LoType {
     Never,
     Void,
     Bool,
+    U8,
+    I8,
+    U16,
+    I16,
     U32,
+    I32,
+    F32,
+    U64,
+    I64,
+    F64,
     Pointer {
         pointee: Box<LoType>,
     },
@@ -25,7 +34,16 @@ impl core::fmt::Display for LoType {
             LoType::Never => f.write_str("never"),
             LoType::Void => f.write_str("void"),
             LoType::Bool => f.write_str("bool"),
+            LoType::U8 => f.write_str("u8"),
+            LoType::I8 => f.write_str("i8"),
+            LoType::U16 => f.write_str("u16"),
+            LoType::I16 => f.write_str("i16"),
             LoType::U32 => f.write_str("u32"),
+            LoType::I32 => f.write_str("i32"),
+            LoType::F32 => f.write_str("f32"),
+            LoType::U64 => f.write_str("u64"),
+            LoType::I64 => f.write_str("i64"),
+            LoType::F64 => f.write_str("f64"),
             LoType::Pointer { pointee } => write!(f, "&{pointee}"),
             LoType::SequencePointer { pointee } => write!(f, "*&{pointee}"),
             LoType::Result { ok_type, err_type } => write!(f, "Result<{ok_type}, {err_type}>"),
@@ -129,7 +147,7 @@ impl LoExprContext {
         local_name: String,
         local_type: &LoType,
         is_fn_param: bool,
-    ) -> Result<usize, LoError> {
+    ) -> Result<u32, LoError> {
         for local in self.current_scope().locals.iter() {
             if local.local_name == local_name && local.defined_in_this_scope {
                 let LoLocal { definition_loc, .. } = &self.locals[local.local_index];
@@ -156,7 +174,7 @@ impl LoExprContext {
             defined_in_this_scope: true,
         });
 
-        Ok(local_index)
+        Ok(local_index as u32)
     }
 
     fn get_local_index(&self, local_name: &str) -> Option<usize> {
@@ -737,25 +755,20 @@ impl CodeGen {
                 value,
                 loc,
             }) => {
-                self.codegen(ctx, value, instrs)?;
-
-                let local_type = self.get_expr_type(ctx, &value)?;
-
                 if local_name == "_" {
+                    self.codegen(ctx, value, instrs)?;
+
+                    let local_type = self.get_expr_type(ctx, &value)?;
                     for _ in 0..self.count_wasm_type_components(&local_type) {
                         instrs.push(WasmInstr::Drop);
                     }
                     return Ok(());
                 }
 
+                let local_type = self.get_expr_type(ctx, &value)?;
                 let local_index =
                     ctx.define_local(loc.clone(), local_name.clone(), &local_type, false)?;
-
-                for i in 0..self.count_wasm_type_components(&local_type) {
-                    instrs.push(WasmInstr::LocalSet {
-                        local_index: (local_index + i) as u32,
-                    });
-                }
+                self.codegen_local_set(ctx, value, instrs, local_type, local_index)?;
             }
             CodeExpr::Cast(CastExpr {
                 expr,
@@ -931,7 +944,115 @@ impl CodeGen {
                 instrs.push(WasmInstr::BlockEnd);
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::ForLoop(_) => todo!(),
+            CodeExpr::ForLoop(ForLoopExpr {
+                counter,
+                start,
+                end,
+                body,
+                loc,
+            }) => {
+                let counter_type = self.get_expr_type(ctx, start)?;
+                if self.get_expr_type(ctx, end)? != counter_type {
+                    return Err(LoError {
+                        message: format!(
+                            "Invalid range end type: {}, expected: {counter_type}",
+                            self.get_expr_type(ctx, end)?
+                        ),
+                        loc: loc.clone(),
+                    });
+                }
+
+                let cmp_instr;
+                let add_instr;
+                let inc_amount_instr;
+                match counter_type {
+                    LoType::Bool | LoType::I8 | LoType::U8 | LoType::I32 | LoType::U32 => {
+                        cmp_instr = WasmInstr::BinaryOp {
+                            kind: WasmBinaryOpKind::I32_EQ,
+                        };
+                        add_instr = WasmInstr::BinaryOp {
+                            kind: WasmBinaryOpKind::I32_ADD,
+                        };
+                        inc_amount_instr = WasmInstr::I32Const { value: 1 };
+                    }
+                    LoType::I64 | LoType::U64 => {
+                        cmp_instr = WasmInstr::BinaryOp {
+                            kind: WasmBinaryOpKind::I64_EQ,
+                        };
+                        add_instr = WasmInstr::BinaryOp {
+                            kind: WasmBinaryOpKind::I64_ADD,
+                        };
+                        inc_amount_instr = WasmInstr::I64Const { value: 1 };
+                    }
+                    _ => {
+                        return Err(LoError {
+                            message: format!("Invalid counter type: {counter_type}",),
+                            loc: loc.clone(),
+                        })
+                    }
+                };
+
+                ctx.enter_scope(LoScopeType::ForLoop);
+
+                // define counter and set value to start
+                let counter_local_index =
+                    ctx.define_local(loc.clone(), counter.clone(), &counter_type, false)?;
+                self.codegen_local_set(ctx, &start, instrs, counter_type, counter_local_index)?;
+
+                {
+                    instrs.push(WasmInstr::BlockStart {
+                        block_kind: WasmBlockKind::Block,
+                        block_type: WasmBlockType::NoOut,
+                    });
+
+                    {
+                        instrs.push(WasmInstr::BlockStart {
+                            block_kind: WasmBlockKind::Loop,
+                            block_type: WasmBlockType::NoOut,
+                        });
+
+                        // break if counter is equal to end
+                        self.codegen(ctx, end, instrs)?;
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: counter_local_index,
+                        });
+                        instrs.push(cmp_instr);
+                        instrs.push(WasmInstr::BranchIf { label_index: 1 });
+
+                        {
+                            instrs.push(WasmInstr::BlockStart {
+                                block_kind: WasmBlockKind::Block,
+                                block_type: WasmBlockType::NoOut,
+                            });
+
+                            for expr in &body.exprs {
+                                self.codegen(ctx, &expr, instrs)?;
+                            }
+
+                            instrs.push(WasmInstr::BlockEnd);
+                        }
+
+                        // increment counter
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: counter_local_index,
+                        });
+                        instrs.push(inc_amount_instr);
+                        instrs.push(add_instr);
+                        instrs.push(WasmInstr::LocalSet {
+                            local_index: counter_local_index,
+                        });
+
+                        // implicit continue
+                        instrs.push(WasmInstr::Branch { label_index: 0 });
+
+                        instrs.push(WasmInstr::BlockEnd);
+                    }
+
+                    instrs.push(WasmInstr::BlockEnd);
+                }
+
+                ctx.exit_scope();
+            }
             CodeExpr::Break(BreakExpr { loc }) => {
                 let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
 
@@ -986,6 +1107,25 @@ impl CodeGen {
                 instrs.push(WasmInstr::Unreachable);
             }
         };
+
+        Ok(())
+    }
+
+    fn codegen_local_set(
+        &self,
+        ctx: &mut LoExprContext,
+        value: &CodeExpr,
+        instrs: &mut Vec<WasmInstr>,
+        local_type: LoType,
+        local_index: u32,
+    ) -> Result<(), LoError> {
+        self.codegen(ctx, value, instrs)?;
+
+        for i in 0..self.count_wasm_type_components(&local_type) as u32 {
+            instrs.push(WasmInstr::LocalSet {
+                local_index: local_index + i,
+            });
+        }
 
         Ok(())
     }
@@ -1116,11 +1256,20 @@ impl CodeGen {
                 value: _,
                 tag,
                 loc: _,
-            }) => {
-                let None = tag else { todo!() };
-
-                Ok(LoType::U32)
-            }
+            }) => match tag.as_deref() {
+                Some("u8") => Ok(LoType::U8),
+                Some("i8") => Ok(LoType::I8),
+                Some("u16") => Ok(LoType::U16),
+                Some("i16") => Ok(LoType::I16),
+                Some("u32") => Ok(LoType::U32),
+                Some("i32") => Ok(LoType::I32),
+                Some("f32") => Ok(LoType::F32),
+                Some("u64") => Ok(LoType::U64),
+                Some("i64") => Ok(LoType::I64),
+                Some("f64") => Ok(LoType::F64),
+                Some(_) => todo!(),
+                None => Ok(LoType::U32),
+            },
             CodeExpr::StringLiteral(_) => todo!(),
             CodeExpr::StructLiteral(_) => todo!(),
             CodeExpr::ArrayLiteral(_) => todo!(),
@@ -1253,7 +1402,16 @@ impl CodeGen {
             LoType::Never => {}
             LoType::Void => {}
             LoType::Bool => wasm_types.push(WasmType::I32),
+            LoType::U8 => wasm_types.push(WasmType::I32),
+            LoType::I8 => wasm_types.push(WasmType::I32),
+            LoType::U16 => wasm_types.push(WasmType::I32),
+            LoType::I16 => wasm_types.push(WasmType::I32),
             LoType::U32 => wasm_types.push(WasmType::I32),
+            LoType::I32 => wasm_types.push(WasmType::I32),
+            LoType::F32 => wasm_types.push(WasmType::F32),
+            LoType::U64 => wasm_types.push(WasmType::I64),
+            LoType::I64 => wasm_types.push(WasmType::I64),
+            LoType::F64 => wasm_types.push(WasmType::F64),
             LoType::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
             LoType::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
             LoType::Result { ok_type, err_type } => {

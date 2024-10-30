@@ -252,7 +252,7 @@ async function testCommand() {
         assert.strictEqual(result, 120);
     });
 
-    testCompilers("compiles for-loop.lo", { v1 }, async (compile) => {
+    testCompilers("compiles for-loop.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/for-loop.lo");
 
         const program = await loadWasm(output);
