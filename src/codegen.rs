@@ -706,7 +706,13 @@ impl CodeGen {
         expr: &CodeExpr,
     ) -> Result<(), LoError> {
         match expr {
-            CodeExpr::BoolLiteral(_) => todo!(),
+            CodeExpr::BoolLiteral(BoolLiteralExpr { value, loc: _ }) => {
+                if *value {
+                    instrs.push(WasmInstr::I32Const { value: 1 });
+                } else {
+                    instrs.push(WasmInstr::I32Const { value: 0 });
+                }
+            }
             CodeExpr::CharLiteral(_) => todo!(),
             CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: _,

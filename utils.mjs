@@ -270,14 +270,18 @@ async function testCommand() {
         assert.strictEqual(result, 1);
     });
 
-    testCompilers("compiles decl-nesting.lo", { v1 }, async (compile) => {
-        const output = await compile("./examples/test/decl-nesting.lo");
+    testCompilers(
+        "compiles nested-if-break.lo",
+        { v1, v2 },
+        async (compile) => {
+            const output = await compile("./examples/test/nested-if-break.lo");
 
-        const program = await loadWasm(output);
-        const result = program.main();
+            const program = await loadWasm(output);
+            const result = program.main();
 
-        assert.strictEqual(result, 16);
-    });
+            assert.strictEqual(result, 1);
+        }
+    );
 
     testCompilers("compiles struct.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/struct.lo");
@@ -288,13 +292,13 @@ async function testCommand() {
         assert.strictEqual(result, 13);
     });
 
-    testCompilers("compiles nested-if-break.lo", { v1 }, async (compile) => {
-        const output = await compile("./examples/test/nested-if-break.lo");
+    testCompilers("compiles decl-nesting.lo", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/decl-nesting.lo");
 
         const program = await loadWasm(output);
         const result = program.main();
 
-        assert.strictEqual(result, 1);
+        assert.strictEqual(result, 16);
     });
 
     testCompilers("compiles struct-ref.lo", { v1 }, async (compile) => {
