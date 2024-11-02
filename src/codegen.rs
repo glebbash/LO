@@ -22,6 +22,9 @@ pub enum LoType {
     SequencePointer {
         pointee: Box<LoType>,
     },
+    StructInstance {
+        struct_name: String,
+    },
     Result {
         ok_type: Box<LoType>,
         err_type: Box<LoType>,
@@ -46,6 +49,7 @@ impl core::fmt::Display for LoType {
             LoType::F64 => f.write_str("f64"),
             LoType::Pointer { pointee } => write!(f, "&{pointee}"),
             LoType::SequencePointer { pointee } => write!(f, "*&{pointee}"),
+            LoType::StructInstance { struct_name } => f.write_str(&struct_name),
             LoType::Result { ok_type, err_type } => write!(f, "Result<{ok_type}, {err_type}>"),
         }
     }
@@ -78,11 +82,13 @@ struct LoFnType {
 #[derive(Default, Clone)]
 struct LoExprContext {
     locals: Vec<LoLocal>,
+    last_local_index: u32,
     scopes: Vec<LoScope>,
 }
 
 #[derive(Clone)]
 struct LoLocal {
+    local_index: u32,
     local_type: LoType,
     definition_loc: LoLocation,
     is_fn_param: bool,
@@ -105,7 +111,7 @@ struct LoScope {
 #[derive(Clone)]
 struct LoScopedLocal {
     local_name: String,
-    local_index: usize,
+    lo_local_index: usize,
     defined_in_this_scope: bool,
 }
 
@@ -120,7 +126,7 @@ impl LoExprContext {
             for local in &parent_scope.locals {
                 new_scope.locals.push(LoScopedLocal {
                     local_name: local.local_name.clone(),
-                    local_index: local.local_index,
+                    lo_local_index: local.lo_local_index,
                     defined_in_this_scope: false,
                 });
             }
@@ -141,46 +147,10 @@ impl LoExprContext {
         self.scopes.last_mut().unwrap()
     }
 
-    fn define_local(
-        &mut self,
-        loc: LoLocation,
-        local_name: String,
-        local_type: &LoType,
-        is_fn_param: bool,
-    ) -> Result<u32, LoError> {
-        for local in self.current_scope().locals.iter() {
-            if local.local_name == local_name && local.defined_in_this_scope {
-                let LoLocal { definition_loc, .. } = &self.locals[local.local_index];
-
-                return Err(LoError {
-                    message: format!(
-                        "Cannot redefine local {}, previously defined at {}",
-                        local_name, definition_loc
-                    ),
-                    loc,
-                });
-            }
-        }
-
-        let local_index = self.locals.len();
-        self.locals.push(LoLocal {
-            local_type: local_type.clone(),
-            definition_loc: loc,
-            is_fn_param,
-        });
-        self.current_scope_mut().locals.push(LoScopedLocal {
-            local_name,
-            local_index,
-            defined_in_this_scope: true,
-        });
-
-        Ok(local_index as u32)
-    }
-
-    fn get_local_index(&self, local_name: &str) -> Option<usize> {
+    fn get_local(&self, local_name: &str) -> Option<&LoLocal> {
         for local in &self.current_scope().locals {
             if local.local_name == local_name {
-                return Some(local.local_index);
+                return Some(&self.locals[local.lo_local_index]);
             }
         }
 
@@ -199,10 +169,32 @@ struct LoTypeDef {
     value: LoType,
 }
 
+struct LoStructDef {
+    struct_name: String,
+    fields: Vec<LoStructField>,
+    fully_defined: bool, // used for self-reference checks
+    loc: LoLocation,
+}
+
+#[derive(Clone)]
+pub struct LoStructField {
+    field_name: String,
+    field_type: LoType,
+    field_index: u32,
+    byte_offset: u32,
+    loc: LoLocation,
+}
+
 struct LoGlobalDef {
     def_expr: GlobalDefExpr,
     global_type: LoType,
     global_index: u32,
+}
+
+#[derive(Default)]
+struct LoTypeLayout {
+    primities_count: u32,
+    byte_length: u32,
 }
 
 #[derive(Default)]
@@ -211,6 +203,7 @@ pub struct CodeGen {
     lo_functions: Vec<LoFnInfo>,
     wasm_functions: Vec<WasmFnInfo>,
     type_defs: Vec<LoTypeDef>,
+    struct_defs: Vec<LoStructDef>,
     memory: Option<MemoryDefExpr>,
     memory_imported_from: Option<String>,
     static_data_stores: Vec<StaticDataStoreExpr>,
@@ -249,7 +242,8 @@ impl CodeGen {
                         let param_type = self.get_fn_param_type(&fn_def.decl, fn_param)?;
                         inputs.push(param_type.clone());
 
-                        ctx.define_local(
+                        self.define_local(
+                            &mut ctx,
                             fn_param.loc.clone(),
                             fn_param.param_name.clone(),
                             &param_type,
@@ -365,7 +359,7 @@ impl CodeGen {
                     self.ensure_const_expr(&global.expr)?;
                     let const_expr_ctx = &mut LoExprContext::default();
                     let value_type = self.get_expr_type(const_expr_ctx, &global.expr)?;
-                    let value_comp_count = self.count_wasm_type_components(&value_type) as u32;
+                    let value_comp_count = self.count_wasm_type_components(&value_type);
                     if value_comp_count != 1 {
                         return Err(LoError {
                             message: format!(
@@ -381,7 +375,67 @@ impl CodeGen {
                         global_index: self.globals.len() as u32,
                     });
                 }
-                TopLevelExpr::StructDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::StructDef(StructDefExpr {
+                    struct_name,
+                    fields,
+                    loc,
+                }) => {
+                    if let Some(_) = self.get_type_by_name(&struct_name.repr) {
+                        return Err(LoError {
+                            message: format!("Cannot redefine type {}", struct_name.repr),
+                            loc: struct_name.loc,
+                        });
+                    }
+
+                    self.struct_defs.push(LoStructDef {
+                        struct_name: struct_name.repr.clone(),
+                        fields: Vec::new(),
+                        fully_defined: false,
+                        loc: loc.clone(),
+                    });
+
+                    self.type_defs.push(LoTypeDef {
+                        name: struct_name.repr.clone(),
+                        value: LoType::StructInstance {
+                            struct_name: struct_name.repr.clone(),
+                        },
+                    });
+
+                    let mut struct_layout = LoTypeLayout::default();
+                    let mut struct_fields = Vec::<LoStructField>::new();
+
+                    for field in fields {
+                        for existing_field in &struct_fields {
+                            if existing_field.field_name == field.field_name {
+                                return Err(LoError {
+                                    message: format!(
+                                        "Cannot define struct field with duplicate name: '{}' in struct {}",
+                                        field.field_name, struct_name.repr,
+                                    ),
+                                    loc: field.loc,
+                                });
+                            }
+                        }
+
+                        // TODO: add self reference check
+                        let field_type = self.build_type(&field.field_type)?;
+
+                        struct_fields.push(LoStructField {
+                            field_name: field.field_name,
+                            field_type: field_type.clone(),
+                            field_index: struct_layout.primities_count,
+                            byte_offset: struct_layout.byte_length,
+                            loc: field.loc,
+                        });
+
+                        // append field's layout to total struct layout
+                        self.get_type_layout(&field_type, &mut struct_layout);
+                    }
+
+                    let struct_def = self.get_struct_def_mut(&struct_name.repr).unwrap();
+                    struct_def.fields.append(&mut struct_fields);
+                    struct_def.fully_defined = true;
+                }
                 TopLevelExpr::TypeDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::ConstDef(_) => return Err(LoError::todo(file!(), line!())),
                 TopLevelExpr::MemoryDef(memory) => {
@@ -620,7 +674,7 @@ impl CodeGen {
                 }
 
                 let self_type_name = &fn_decl.fn_name.parts[0];
-                let self_type = self.get_type_by_name(self_type_name, &fn_decl.loc)?;
+                let self_type = self.get_type_by_name_or_err(self_type_name, &fn_decl.loc)?;
 
                 if let FnParamType::Self_ = fn_param.param_type {
                     return Ok(self_type);
@@ -636,7 +690,7 @@ impl CodeGen {
 
     fn build_type(&self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::Named { name } => self.get_type_by_name(&name.repr, &name.loc),
+            TypeExpr::Named { name } => self.get_type_by_name_or_err(&name.repr, &name.loc),
             TypeExpr::Pointer { pointee, loc: _ } => {
                 let pointee = Box::new(self.build_type(&pointee)?);
 
@@ -669,36 +723,6 @@ impl CodeGen {
         }
     }
 
-    fn get_type_by_name(&self, type_name: &str, err_loc: &LoLocation) -> Result<LoType, LoError> {
-        match &type_name[..] {
-            "never" => Ok(LoType::Never),
-            "void" => Ok(LoType::Void),
-            "bool" => Ok(LoType::Bool),
-            "u8" => Ok(LoType::U8),
-            "i8" => Ok(LoType::I8),
-            "u16" => Ok(LoType::U16),
-            "i16" => Ok(LoType::I16),
-            "u32" => Ok(LoType::U32),
-            "i32" => Ok(LoType::I32),
-            "f32" => Ok(LoType::F32),
-            "u64" => Ok(LoType::U64),
-            "i64" => Ok(LoType::I64),
-            "f64" => Ok(LoType::F64),
-            _ => {
-                for type_def in &self.type_defs {
-                    if type_def.name == type_name {
-                        return Ok(type_def.value.clone());
-                    }
-                }
-
-                Err(LoError {
-                    message: format!("Unknown type: {}", type_name),
-                    loc: err_loc.clone(),
-                })
-            }
-        }
-    }
-
     fn codegen(
         &self,
         ctx: &mut LoExprContext,
@@ -727,7 +751,66 @@ impl CodeGen {
                 });
             }
             CodeExpr::StringLiteral(_) => todo!(),
-            CodeExpr::StructLiteral(_) => todo!(),
+            CodeExpr::StructLiteral(StructLiteralExpr {
+                struct_name,
+                fields,
+                loc,
+            }) => {
+                let Some(struct_def) = self.get_struct_def(&struct_name.repr) else {
+                    return Err(LoError {
+                        message: format!("Unknown struct: {}", struct_name.repr),
+                        loc: loc.clone(),
+                    });
+                };
+
+                for field_index in 0..fields.len() {
+                    let field_literal = &fields[field_index];
+                    let Some(struct_field) = struct_def.fields.get(field_index) else {
+                        return Err(LoError {
+                            message: format!("Excess field values"),
+                            loc: field_literal.loc.clone(),
+                        });
+                    };
+
+                    if &field_literal.field_name != &struct_field.field_name {
+                        return Err(LoError {
+                            message: format!(
+                                "Unexpected struct field name, expecting: `{}`",
+                                struct_field.field_name
+                            ),
+                            loc: field_literal.loc.clone(),
+                        });
+                    }
+
+                    let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
+                    if field_value_type != struct_field.field_type {
+                        return Err(LoError {
+                            message: format!(
+                                "Invalid type for struct field {}.{}, expected: {}, got: {}",
+                                struct_name.repr,
+                                struct_field.field_name,
+                                struct_field.field_type,
+                                field_value_type
+                            ),
+                            loc: field_literal.value.loc().clone(),
+                        });
+                    }
+
+                    self.codegen(ctx, instrs, &field_literal.value)?;
+                }
+
+                if fields.len() < struct_def.fields.len() {
+                    let mut missing_fields = Vec::new();
+                    for i in (fields.len() - 1)..struct_def.fields.len() {
+                        missing_fields.push(&struct_def.fields[i].field_name)
+                    }
+
+                    return Err(LoError {
+                        message: format!("Missing struct fields: {}", ListDisplay(&missing_fields)),
+                        loc: loc.clone(),
+                    });
+                }
+            }
             CodeExpr::ArrayLiteral(_) => todo!(),
 
             CodeExpr::Ident(IdentExpr {
@@ -735,12 +818,10 @@ impl CodeGen {
                 parts: _,
                 loc,
             }) => {
-                if let Some(local_index) = ctx.get_local_index(repr) {
-                    let local = &ctx.locals[local_index];
-
+                if let Some(local) = ctx.get_local(repr) {
                     for i in 0..self.count_wasm_type_components(&local.local_type) {
                         instrs.push(WasmInstr::LocalGet {
-                            local_index: (local_index + i) as u32,
+                            local_index: local.local_index + i,
                         });
                     }
 
@@ -750,7 +831,7 @@ impl CodeGen {
                 if let Some(global) = self.get_global(repr) {
                     for i in 0..self.count_wasm_type_components(&global.global_type) {
                         instrs.push(WasmInstr::GlobalGet {
-                            global_index: global.global_index + i as u32,
+                            global_index: global.global_index + i,
                         });
                     }
 
@@ -779,8 +860,9 @@ impl CodeGen {
 
                 let local_type = self.get_expr_type(ctx, &value)?;
                 let local_index =
-                    ctx.define_local(loc.clone(), local_name.clone(), &local_type, false)?;
-                self.codegen_local_set(ctx, instrs, value, local_type, local_index)?;
+                    self.define_local(ctx, loc.clone(), local_name.clone(), &local_type, false)?;
+                self.codegen(ctx, instrs, value)?;
+                self.codegen_local_set(instrs, &local_type, local_index)?;
             }
             CodeExpr::Cast(CastExpr {
                 expr,
@@ -849,7 +931,21 @@ impl CodeGen {
             }) => {
                 return self.codegen_compound_assignment(ctx, instrs, None, op_loc, lhs, rhs);
             }
-            CodeExpr::FieldAccess(_) => todo!(),
+            CodeExpr::FieldAccess(FieldAccessExpr {
+                lhs,
+                field_name,
+                loc: _,
+            }) => {
+                let (struct_local_index, field) =
+                    self.prepare_struct_field_get(lhs, ctx, field_name)?;
+
+                let field_local_index = struct_local_index + field.field_index;
+                for i in 0..self.count_wasm_type_components(&field.field_type) {
+                    instrs.push(WasmInstr::LocalGet {
+                        local_index: field_local_index + i,
+                    });
+                }
+            }
             CodeExpr::PropagateError(_) => todo!(),
 
             CodeExpr::FnCall(FnCallExpr { fn_name, args, loc }) => {
@@ -992,8 +1088,9 @@ impl CodeGen {
 
                 // define counter and set value to start
                 let counter_local_index =
-                    ctx.define_local(loc.clone(), counter.clone(), &counter_type, false)?;
-                self.codegen_local_set(ctx, instrs, &start, counter_type, counter_local_index)?;
+                    self.define_local(ctx, loc.clone(), counter.clone(), &counter_type, false)?;
+                self.codegen(ctx, instrs, start)?;
+                self.codegen_local_set(instrs, &counter_type, counter_local_index)?;
 
                 {
                     instrs.push(WasmInstr::BlockStart {
@@ -1034,9 +1131,7 @@ impl CodeGen {
                         });
                         instrs.push(inc_amount_instr);
                         instrs.push(add_instr);
-                        instrs.push(WasmInstr::LocalSet {
-                            local_index: counter_local_index,
-                        });
+                        self.codegen_local_set(instrs, &counter_type, counter_local_index)?;
 
                         // implicit continue
                         instrs.push(WasmInstr::Branch { label_index: 0 });
@@ -1107,6 +1202,52 @@ impl CodeGen {
         Ok(())
     }
 
+    fn prepare_struct_field_get(
+        &self,
+        lhs: &Box<CodeExpr>,
+        ctx: &LoExprContext,
+        field_name: &IdentExpr,
+    ) -> Result<(u32, &LoStructField), LoError> {
+        let CodeExpr::Ident(ident) = lhs.as_ref() else {
+            return Err(LoError {
+                message: format!(
+                    "Cannot access struct field '{}' lhs is not a struct local",
+                    field_name.repr
+                ),
+                loc: lhs.loc().clone(),
+            });
+        };
+        let Some(struct_local) = ctx.get_local(&ident.repr) else {
+            return Err(LoError {
+                message: format!("Unknown local {}", ident.repr),
+                loc: lhs.loc().clone(),
+            });
+        };
+        let lhs_type = self.get_expr_type(ctx, lhs)?;
+        let LoType::StructInstance { struct_name } = &lhs_type else {
+            return Err(LoError {
+                message: format!(
+                    "Cannot get field '{}' on non struct: {lhs_type}",
+                    field_name.repr
+                ),
+                loc: field_name.loc.clone(),
+            });
+        };
+        let struct_def = self.get_struct_def(&struct_name).unwrap();
+        let Some(field) = struct_def
+            .fields
+            .iter()
+            .find(|f| &f.field_name == &field_name.repr)
+        else {
+            return Err(LoError {
+                message: format!("Unknown field {} in struct {struct_name}", field_name.repr),
+                loc: field_name.loc.clone(),
+            });
+        };
+
+        Ok((struct_local.local_index, field))
+    }
+
     fn codegen_fn_call(
         &self,
         ctx: &mut LoExprContext,
@@ -1152,17 +1293,53 @@ impl CodeGen {
         Ok(())
     }
 
-    fn codegen_local_set(
+    fn define_local(
         &self,
         ctx: &mut LoExprContext,
+        loc: LoLocation,
+        local_name: String,
+        local_type: &LoType,
+        is_fn_param: bool,
+    ) -> Result<u32, LoError> {
+        for local in ctx.current_scope().locals.iter() {
+            if local.local_name == local_name && local.defined_in_this_scope {
+                let LoLocal { definition_loc, .. } = &ctx.locals[local.lo_local_index];
+
+                return Err(LoError {
+                    message: format!(
+                        "Cannot redefine local {}, previously defined at {}",
+                        local_name, definition_loc
+                    ),
+                    loc,
+                });
+            }
+        }
+
+        let local_index = ctx.last_local_index;
+        ctx.locals.push(LoLocal {
+            local_index,
+            local_type: local_type.clone(),
+            definition_loc: loc,
+            is_fn_param,
+        });
+        let lo_local_index = ctx.locals.len() - 1;
+        ctx.current_scope_mut().locals.push(LoScopedLocal {
+            local_name,
+            lo_local_index,
+            defined_in_this_scope: true,
+        });
+        ctx.last_local_index += self.count_wasm_type_components(local_type);
+
+        Ok(local_index)
+    }
+
+    fn codegen_local_set(
+        &self,
         instrs: &mut Vec<WasmInstr>,
-        value: &CodeExpr,
-        local_type: LoType,
+        local_type: &LoType,
         local_index: u32,
     ) -> Result<(), LoError> {
-        self.codegen(ctx, instrs, value)?;
-
-        for i in 0..self.count_wasm_type_components(&local_type) as u32 {
+        for i in (0..self.count_wasm_type_components(local_type)).rev() {
             instrs.push(WasmInstr::LocalSet {
                 local_index: local_index + i,
             });
@@ -1238,7 +1415,7 @@ impl CodeGen {
             loc,
         }) = lhs
         {
-            if let Some(local_index) = ctx.get_local_index(&repr) {
+            if let Some(local_index) = ctx.get_local(&repr).map(|l| l.local_index) {
                 if let Some(base_op) = base_op {
                     self.codegen(ctx, instrs, lhs)?;
                     self.codegen(ctx, instrs, rhs)?;
@@ -1249,11 +1426,7 @@ impl CodeGen {
                     self.codegen(ctx, instrs, rhs)?;
                 }
 
-                for i in 0..self.count_wasm_type_components(&rhs_type) {
-                    instrs.push(WasmInstr::LocalSet {
-                        local_index: (local_index + i) as u32,
-                    });
-                }
+                self.codegen_local_set(instrs, &rhs_type, local_index)?;
 
                 return Ok(());
             }
@@ -1271,7 +1444,7 @@ impl CodeGen {
 
                 for i in 0..self.count_wasm_type_components(&rhs_type) {
                     instrs.push(WasmInstr::GlobalSet {
-                        global_index: global.global_index + i as u32,
+                        global_index: global.global_index + i,
                     });
                 }
 
@@ -1284,6 +1457,22 @@ impl CodeGen {
             });
         }
 
+        if let CodeExpr::FieldAccess(FieldAccessExpr {
+            lhs,
+            field_name,
+            loc: _,
+        }) = lhs
+        {
+            let (struct_local_index, field) =
+                self.prepare_struct_field_get(lhs, ctx, field_name)?;
+
+            let field_local_index = struct_local_index + field.field_index;
+            self.codegen(ctx, instrs, rhs)?;
+            self.codegen_local_set(instrs, &field.field_type, field_local_index)?;
+
+            return Ok(());
+        }
+
         todo!();
     }
 
@@ -1291,7 +1480,7 @@ impl CodeGen {
     fn get_expr_type(&self, ctx: &LoExprContext, expr: &CodeExpr) -> Result<LoType, LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(LoType::Bool),
-            CodeExpr::CharLiteral(_) => todo!(),
+            CodeExpr::CharLiteral(_) => Ok(LoType::U8),
             CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: _,
                 value: _,
@@ -1312,15 +1501,29 @@ impl CodeGen {
                 None => Ok(LoType::U32),
             },
             CodeExpr::StringLiteral(_) => todo!(),
-            CodeExpr::StructLiteral(_) => todo!(),
+            CodeExpr::StructLiteral(StructLiteralExpr {
+                struct_name,
+                fields: _,
+                loc,
+            }) => {
+                let Some(_) = self.get_struct_def(&struct_name.repr) else {
+                    return Err(LoError {
+                        message: format!("Unknown struct: {}", struct_name.repr),
+                        loc: loc.clone(),
+                    });
+                };
+
+                return Ok(LoType::StructInstance {
+                    struct_name: struct_name.repr.clone(),
+                });
+            }
             CodeExpr::ArrayLiteral(_) => todo!(),
             CodeExpr::Ident(IdentExpr {
                 repr,
                 parts: _,
                 loc,
             }) => {
-                if let Some(local_index) = ctx.get_local_index(repr) {
-                    let local = &ctx.locals[local_index];
+                if let Some(local) = ctx.get_local(repr) {
                     return Ok(local.local_type.clone());
                 };
 
@@ -1333,7 +1536,6 @@ impl CodeGen {
                     loc: loc.clone(),
                 })
             }
-            CodeExpr::Let(_) => todo!(),
             CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
                 op_loc: _,
@@ -1397,9 +1599,15 @@ impl CodeGen {
                 casted_to,
                 loc: _,
             }) => self.build_type(casted_to),
-            CodeExpr::Assign(_) => todo!(),
-            CodeExpr::FieldAccess(_) => todo!(),
-            CodeExpr::PropagateError(_) => todo!(),
+            CodeExpr::FieldAccess(FieldAccessExpr {
+                lhs,
+                field_name,
+                loc: _,
+            }) => {
+                let (_, field) = self.prepare_struct_field_get(lhs, ctx, field_name)?;
+
+                Ok(field.field_type.clone())
+            }
             CodeExpr::FnCall(FnCallExpr {
                 fn_name,
                 args: _,
@@ -1434,18 +1642,21 @@ impl CodeGen {
             }
             CodeExpr::MacroFnCall(_) => todo!(),
             CodeExpr::MacroMethodCall(_) => todo!(),
-            CodeExpr::Dbg(_) => todo!(),
-            CodeExpr::Sizeof(_) => todo!(),
-            CodeExpr::GetDataSize(_) => todo!(),
-            CodeExpr::Return(_) => todo!(),
-            CodeExpr::If(_) => todo!(),
-            CodeExpr::Loop(_) => todo!(),
-            CodeExpr::Break(_) => todo!(),
-            CodeExpr::Unreachable(_) => todo!(),
-            CodeExpr::ForLoop(_) => todo!(),
-            CodeExpr::Continue(_) => todo!(),
-            CodeExpr::Defer(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
+            CodeExpr::Dbg(_) => todo!(),
+            CodeExpr::Sizeof(_) => Ok(LoType::U32),
+            CodeExpr::GetDataSize(_) => Ok(LoType::U32),
+            CodeExpr::Let(_) => Ok(LoType::Void),
+            CodeExpr::Assign(_) => Ok(LoType::Void),
+            CodeExpr::Defer(_) => Ok(LoType::Void),
+            CodeExpr::If(_) => Ok(LoType::Void),
+            CodeExpr::Loop(_) => Ok(LoType::Void),
+            CodeExpr::ForLoop(_) => Ok(LoType::Void),
+            CodeExpr::Break(_) => Ok(LoType::Never),
+            CodeExpr::Continue(_) => Ok(LoType::Never),
+            CodeExpr::Return(_) => Ok(LoType::Never),
+            CodeExpr::PropagateError(_) => Ok(LoType::Never),
+            CodeExpr::Unreachable(_) => Ok(LoType::Never),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(ctx, expr),
         }
     }
@@ -1453,6 +1664,68 @@ impl CodeGen {
     // TODO: add validation for const expr
     fn ensure_const_expr(&self, _expr: &CodeExpr) -> Result<(), LoError> {
         Ok(())
+    }
+
+    fn get_type_by_name_or_err(
+        &self,
+        type_name: &str,
+        err_loc: &LoLocation,
+    ) -> Result<LoType, LoError> {
+        if let Some(t) = self.get_type_by_name(type_name) {
+            return Ok(t);
+        }
+
+        Err(LoError {
+            message: format!("Unknown type: {}", type_name),
+            loc: err_loc.clone(),
+        })
+    }
+
+    fn get_type_by_name(&self, type_name: &str) -> Option<LoType> {
+        match &type_name[..] {
+            "never" => Some(LoType::Never),
+            "void" => Some(LoType::Void),
+            "bool" => Some(LoType::Bool),
+            "u8" => Some(LoType::U8),
+            "i8" => Some(LoType::I8),
+            "u16" => Some(LoType::U16),
+            "i16" => Some(LoType::I16),
+            "u32" => Some(LoType::U32),
+            "i32" => Some(LoType::I32),
+            "f32" => Some(LoType::F32),
+            "u64" => Some(LoType::U64),
+            "i64" => Some(LoType::I64),
+            "f64" => Some(LoType::F64),
+            _ => {
+                for type_def in &self.type_defs {
+                    if type_def.name == type_name {
+                        return Some(type_def.value.clone());
+                    }
+                }
+
+                None
+            }
+        }
+    }
+
+    fn get_struct_def(&self, struct_name: &str) -> Option<&LoStructDef> {
+        for struct_def in &self.struct_defs {
+            if struct_def.struct_name == struct_name {
+                return Some(struct_def);
+            }
+        }
+
+        None
+    }
+
+    fn get_struct_def_mut(&mut self, struct_name: &str) -> Option<&mut LoStructDef> {
+        for struct_def in &mut self.struct_defs {
+            if struct_def.struct_name == struct_name {
+                return Some(struct_def);
+            }
+        }
+
+        None
     }
 
     fn lower_type(&self, lo_type: &LoType, wasm_types: &mut Vec<WasmType>) {
@@ -1472,17 +1745,61 @@ impl CodeGen {
             LoType::F64 => wasm_types.push(WasmType::F64),
             LoType::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
             LoType::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
+            LoType::StructInstance { struct_name } => {
+                let struct_def = self.get_struct_def(struct_name).unwrap();
+
+                for field in &struct_def.fields {
+                    self.lower_type(&field.field_type, wasm_types);
+                }
+            }
             LoType::Result { ok_type, err_type } => {
-                self.lower_type(&ok_type, wasm_types);
-                self.lower_type(&err_type, wasm_types);
+                self.lower_type(ok_type, wasm_types);
+                self.lower_type(err_type, wasm_types);
             }
         }
     }
 
-    fn count_wasm_type_components(&self, lo_type: &LoType) -> usize {
-        let mut wasm_types = Vec::new();
-        self.lower_type(lo_type, &mut wasm_types);
-        wasm_types.len()
+    fn count_wasm_type_components(&self, lo_type: &LoType) -> u32 {
+        let layout = &mut LoTypeLayout::default();
+        self.get_type_layout(lo_type, layout);
+        layout.primities_count
+    }
+
+    fn get_type_layout<'a>(&self, lo_type: &LoType, layout: &'a mut LoTypeLayout) {
+        match lo_type {
+            LoType::Never | LoType::Void => {}
+            LoType::Bool | LoType::U8 | LoType::I8 => {
+                layout.primities_count += 1;
+                layout.byte_length += 1;
+            }
+            LoType::U16 | LoType::I16 => {
+                layout.primities_count += 1;
+                layout.byte_length += 2;
+            }
+            LoType::U32
+            | LoType::I32
+            | LoType::F32
+            | LoType::Pointer { pointee: _ }
+            | LoType::SequencePointer { pointee: _ } => {
+                layout.primities_count += 1;
+                layout.byte_length += 4;
+            }
+            LoType::U64 | LoType::I64 | LoType::F64 => {
+                layout.primities_count += 1;
+                layout.byte_length += 8;
+            }
+            LoType::StructInstance { struct_name } => {
+                let struct_def = self.get_struct_def(struct_name).unwrap();
+
+                for field in &struct_def.fields {
+                    self.get_type_layout(&field.field_type, layout);
+                }
+            }
+            LoType::Result { ok_type, err_type } => {
+                self.get_type_layout(ok_type, layout);
+                self.get_type_layout(err_type, layout);
+            }
+        }
     }
 
     fn get_binary_op_kind(

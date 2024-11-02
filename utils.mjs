@@ -283,7 +283,7 @@ async function testCommand() {
         }
     );
 
-    testCompilers("compiles struct.lo", { v1 }, async (compile) => {
+    testCompilers("compiles struct.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/struct.lo");
 
         const program = await loadWasm(output);
@@ -292,7 +292,7 @@ async function testCommand() {
         assert.strictEqual(result, 13);
     });
 
-    testCompilers("compiles decl-nesting.lo", { v1 }, async (compile) => {
+    testCompilers("compiles decl-nesting.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/decl-nesting.lo");
 
         const program = await loadWasm(output);
