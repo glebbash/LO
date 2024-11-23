@@ -2360,7 +2360,7 @@ fn parse_catch(
             ..
         } = &catch_ctx.fn_ctx.lo_fn_type.output
         else {
-            return Err(LoError::unreachable(file!(), line!()));
+            unreachable!()
         };
 
         let mut return_value = LoInstr::MultiValueEmit {
@@ -2476,7 +2476,7 @@ fn get_op_additional_to_assign(op: &InfixOpTag) -> Result<InfixOpTag, LoError> {
         InfixOpTag::BitOrAssign => Ok(InfixOpTag::BitOr),
         InfixOpTag::ShiftLeftAssign => Ok(InfixOpTag::ShiftLeft),
         InfixOpTag::ShiftRightAssign => Ok(InfixOpTag::ShiftRight),
-        _ => return Err(LoError::unreachable(file!(), line!())),
+        _ => unreachable!(),
     }
 }
 
@@ -2675,7 +2675,7 @@ fn get_binary_op(
             LoType::I64 | LoType::U64 => WasmBinaryOpKind::I64_OR,
             operand_type => return err_incompatible_op(op, operand_type),
         },
-        _ => return Err(LoError::unreachable(file!(), line!())),
+        _ => unreachable!(),
     })
 }
 

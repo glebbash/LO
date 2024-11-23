@@ -251,7 +251,7 @@ impl LoType {
                 if let Some(t) = type_scope.get(name) {
                     return Ok(t.clone());
                 }
-                return Err(LoError::unreachable(file!(), line!()));
+                unreachable!();
             }
             _ => self.clone(),
         })

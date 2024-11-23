@@ -1384,10 +1384,6 @@ impl CodeGen {
                 });
             };
 
-            let LoType::U32 = pointee.as_ref() else {
-                todo!()
-            };
-
             self.codegen(ctx, instrs, addr_expr)?;
 
             if let Some(base_op) = base_op {
@@ -1400,11 +1396,7 @@ impl CodeGen {
                 self.codegen(ctx, instrs, rhs)?;
             }
 
-            instrs.push(WasmInstr::Store {
-                kind: WasmStoreKind::I32,
-                align: 0,
-                offset: 0,
-            });
+            self.codegen_store(ctx, instrs, &pointee, 0)?;
 
             return Ok(());
         }
@@ -1476,7 +1468,69 @@ impl CodeGen {
         todo!();
     }
 
-    // TODO: place ctx before expr
+    fn codegen_store(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        pointee_type: &LoType,
+        offset: u32,
+    ) -> Result<(), LoError> {
+        match pointee_type {
+            LoType::Never | LoType::Void => unreachable!(),
+            LoType::Bool | LoType::U8 | LoType::I8 => instrs.push(WasmInstr::Store {
+                kind: WasmStoreKind::I32_8,
+                align: 0,
+                offset,
+            }),
+            LoType::U16 | LoType::I16 => instrs.push(WasmInstr::Store {
+                kind: WasmStoreKind::I32_16,
+                align: 0,
+                offset,
+            }),
+            LoType::U32
+            | LoType::I32
+            | LoType::Pointer { pointee: _ }
+            | LoType::SequencePointer { pointee: _ } => instrs.push(WasmInstr::Store {
+                kind: WasmStoreKind::I32,
+                align: 0,
+                offset,
+            }),
+            LoType::U64 | LoType::I64 => instrs.push(WasmInstr::Store {
+                kind: WasmStoreKind::I64,
+                align: 0,
+                offset,
+            }),
+            LoType::F32 => instrs.push(WasmInstr::Store {
+                kind: WasmStoreKind::F32,
+                align: 0,
+                offset,
+            }),
+            LoType::F64 => instrs.push(WasmInstr::Store {
+                kind: WasmStoreKind::F64,
+                align: 0,
+                offset,
+            }),
+            LoType::StructInstance { struct_name } => {
+                let struct_def = self.get_struct_def(struct_name).unwrap();
+
+                for struct_field in struct_def.fields.iter().rev() {
+                    self.codegen_store(
+                        ctx,
+                        instrs,
+                        &struct_field.field_type,
+                        offset + struct_field.byte_offset,
+                    )?;
+                }
+            }
+            LoType::Result {
+                ok_type: _,
+                err_type: _,
+            } => todo!(),
+        }
+
+        Ok(())
+    }
+
     fn get_expr_type(&self, ctx: &LoExprContext, expr: &CodeExpr) -> Result<LoType, LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(LoType::Bool),
