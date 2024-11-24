@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --no-warnings --experimental-network-imports
+#!/usr/bin/env -S node
 // @ts-check
 
 import { WASI } from "./wasi-shim.mjs";
@@ -7,7 +7,6 @@ import { test, describe } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
-import { m } from "https://unpkg.com/multiline-str@1.0.4/esm/mod.js?module";
 
 const COMPILER_PATH = "lo.wasm";
 const TMP_DIR = "tmp";
@@ -1277,4 +1276,39 @@ async function runWithTmpFile(run) {
         await fileHandle.close();
         await fs.unlink(fileName);
     }
+}
+
+/**
+ * @param {TemplateStringsArray} strings
+ * @param {unknown[]} args
+ */
+function m(strings, ...args) {
+    const INDENT_PLACEHOLDER = "```";
+
+    // interpolate
+    const stringLines = strings
+        .map(
+            (str, index) =>
+                str.replace(/\\\n[ \t]*/g, "").replace(/\\`/g, "`") +
+                String(args[index] ?? "").replace(
+                    /\n/g,
+                    `\n${INDENT_PLACEHOLDER}`
+                )
+        )
+        .join("")
+        .split("\n")
+        .slice(1);
+
+    // @ts-ignore: don't care
+    const lastLineIndentation = stringLines.pop().length;
+
+    // dedent
+    return stringLines
+        .map((str) =>
+            str
+                .split(INDENT_PLACEHOLDER)
+                .join(" ".repeat(lastLineIndentation))
+                .slice(lastLineIndentation)
+        )
+        .join("\n");
 }
