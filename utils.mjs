@@ -301,7 +301,7 @@ async function testCommand() {
         assert.strictEqual(result, 16);
     });
 
-    testCompilers("compiles struct-ref.lo", { v1 }, async (compile) => {
+    testCompilers("compiles struct-ref.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/struct-ref.lo");
 
         const program = await loadWasm(output);
