@@ -1221,7 +1221,6 @@ impl CodeGen {
                             instrs.push(WasmInstr::BlockEnd);
                         }
 
-                        // TODO: optimize
                         // increment counter
                         self.codegen_compound_assignment(
                             ctx,
@@ -1395,6 +1394,7 @@ impl CodeGen {
         Ok(local_index)
     }
 
+    // TODO: merge this with codegen_var_set
     fn codegen_compound_assignment(
         &self,
         ctx: &mut LoExprContext,
