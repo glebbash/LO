@@ -182,6 +182,7 @@ struct WasmFnInfo {
 struct LoTypeDef {
     name: String,
     value: LoType,
+    loc: LoLocation,
 }
 
 struct LoStructDef {
@@ -259,9 +260,80 @@ pub struct CodeGen {
     memory_imported_from: Option<String>,
     static_data_stores: Vec<StaticDataStoreExpr>,
     globals: Vec<LoGlobalDef>,
+    const_defs: Vec<ConstDefExpr>,
 }
 
 impl CodeGen {
+    pub fn with_default_types() -> Self {
+        let mut codegen = Self::default();
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("never"),
+            value: LoType::Never,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("void"),
+            value: LoType::Void,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("bool"),
+            value: LoType::Bool,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("u8"),
+            value: LoType::U8,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("i8"),
+            value: LoType::I8,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("u16"),
+            value: LoType::U16,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("i16"),
+            value: LoType::I16,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("u32"),
+            value: LoType::U32,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("i32"),
+            value: LoType::I32,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("f32"),
+            value: LoType::F32,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("u64"),
+            value: LoType::U64,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("i64"),
+            value: LoType::I64,
+            loc: LoLocation::internal(),
+        });
+        codegen.type_defs.push(LoTypeDef {
+            name: String::from("f64"),
+            value: LoType::F64,
+            loc: LoLocation::internal(),
+        });
+        return codegen;
+    }
+
     pub fn add_file(&mut self, file: FileInfo) -> Result<(), LoError> {
         for expr in file.ast.exprs {
             match expr {
@@ -331,7 +403,6 @@ impl CodeGen {
                         definition_loc: fn_def.loc.clone(),
                     });
                 }
-                // TODO: handle method imports names properly
                 TopLevelExpr::Import(ImportExpr {
                     module_name,
                     items,
@@ -389,7 +460,7 @@ impl CodeGen {
                             fn_type,
                             fn_source: LoFnSource::Host {
                                 module_name: module_name.clone(),
-                                external_fn_name: fn_decl.fn_name.repr.clone(),
+                                external_fn_name: fn_decl.fn_name.parts.last().unwrap().clone(),
                             },
                             definition_loc: loc.clone(),
                         });
@@ -431,9 +502,12 @@ impl CodeGen {
                     fields,
                     loc,
                 }) => {
-                    if let Some(_) = self.get_type_by_name(&struct_name.repr) {
+                    if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
                         return Err(LoError {
-                            message: format!("Cannot redefine type {}", struct_name.repr),
+                            message: format!(
+                                "Cannot redefine type {}, already defined at {}",
+                                struct_name.repr, existing_typedef.loc
+                            ),
                             loc: struct_name.loc,
                         });
                     }
@@ -450,6 +524,7 @@ impl CodeGen {
                         value: LoType::StructInstance {
                             struct_name: struct_name.repr.clone(),
                         },
+                        loc,
                     });
 
                     let mut struct_layout = LoTypeLayout::default();
@@ -487,8 +562,38 @@ impl CodeGen {
                     struct_def.fields.append(&mut struct_fields);
                     struct_def.fully_defined = true;
                 }
-                TopLevelExpr::TypeDef(_) => return Err(LoError::todo(file!(), line!())),
-                TopLevelExpr::ConstDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::TypeDef(typedef) => {
+                    if let Some(existing_typedef) = self.get_typedef(&typedef.type_name.repr) {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine type {}, already defined at {}",
+                                typedef.type_name.repr, existing_typedef.loc
+                            ),
+                            loc: typedef.loc,
+                        });
+                    }
+
+                    let type_value = self.build_type(&typedef.type_value)?;
+
+                    self.type_defs.push(LoTypeDef {
+                        name: typedef.type_name.repr,
+                        value: type_value,
+                        loc: typedef.loc,
+                    });
+                }
+                TopLevelExpr::ConstDef(const_def) => {
+                    if let Some(existing_const) = self.get_const_def(&const_def.const_name.repr) {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine constant {}, already defined at {}",
+                                const_def.const_name.repr, existing_const.loc
+                            ),
+                            loc: const_def.loc,
+                        });
+                    }
+
+                    self.const_defs.push(const_def);
+                }
                 TopLevelExpr::MemoryDef(memory) => {
                     if let Some(existing_memory) = &self.memory {
                         return Err(LoError {
@@ -725,7 +830,7 @@ impl CodeGen {
                 }
 
                 let self_type_name = &fn_decl.fn_name.parts[0];
-                let self_type = self.get_type_by_name_or_err(self_type_name, &fn_decl.loc)?;
+                let self_type = self.get_type_or_err(self_type_name, &fn_decl.loc)?;
 
                 if let FnParamType::Self_ = fn_param.param_type {
                     return Ok(self_type);
@@ -741,7 +846,7 @@ impl CodeGen {
 
     fn build_type(&self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::Named { name } => self.get_type_by_name_or_err(&name.repr, &name.loc),
+            TypeExpr::Named { name } => self.get_type_or_err(&name.repr, &name.loc),
             TypeExpr::Pointer { pointee, loc: _ } => {
                 let pointee = Box::new(self.build_type(&pointee)?);
 
@@ -1956,13 +2061,9 @@ impl CodeGen {
         Ok(())
     }
 
-    fn get_type_by_name_or_err(
-        &self,
-        type_name: &str,
-        err_loc: &LoLocation,
-    ) -> Result<LoType, LoError> {
-        if let Some(t) = self.get_type_by_name(type_name) {
-            return Ok(t);
+    fn get_type_or_err(&self, type_name: &str, err_loc: &LoLocation) -> Result<LoType, LoError> {
+        if let Some(t) = self.get_typedef(type_name) {
+            return Ok(t.value.clone());
         }
 
         Err(LoError {
@@ -1971,31 +2072,24 @@ impl CodeGen {
         })
     }
 
-    fn get_type_by_name(&self, type_name: &str) -> Option<LoType> {
-        match &type_name[..] {
-            "never" => Some(LoType::Never),
-            "void" => Some(LoType::Void),
-            "bool" => Some(LoType::Bool),
-            "u8" => Some(LoType::U8),
-            "i8" => Some(LoType::I8),
-            "u16" => Some(LoType::U16),
-            "i16" => Some(LoType::I16),
-            "u32" => Some(LoType::U32),
-            "i32" => Some(LoType::I32),
-            "f32" => Some(LoType::F32),
-            "u64" => Some(LoType::U64),
-            "i64" => Some(LoType::I64),
-            "f64" => Some(LoType::F64),
-            _ => {
-                for type_def in &self.type_defs {
-                    if type_def.name == type_name {
-                        return Some(type_def.value.clone());
-                    }
-                }
-
-                None
+    fn get_typedef(&self, type_name: &str) -> Option<&LoTypeDef> {
+        for type_def in &self.type_defs {
+            if type_def.name == type_name {
+                return Some(type_def);
             }
         }
+
+        None
+    }
+
+    fn get_const_def(&self, const_name: &str) -> Option<&ConstDefExpr> {
+        for const_def in &self.const_defs {
+            if const_def.const_name.repr == const_name {
+                return Some(const_def);
+            }
+        }
+
+        None
     }
 
     fn get_struct_def(&self, struct_name: &str) -> Option<&LoStructDef> {

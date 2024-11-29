@@ -318,7 +318,7 @@ async function testCommand() {
         assert.strictEqual(result, 16);
     });
 
-    testCompilers("compiles wasi.lo", { v1 }, async (compile) => {
+    testCompilers("compiles wasi.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/lib/wasi.lo");
 
         const wasi = await WASI.NodeFS({ version: "preview1" });

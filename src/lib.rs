@@ -93,7 +93,7 @@ mod wasi_api {
             let mut files = Vec::new();
             parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
 
-            let mut codegen = CodeGen::default();
+            let mut codegen = CodeGen::with_default_types();
             for file in files.into_iter().rev() {
                 codegen.add_file(file)?;
             }
