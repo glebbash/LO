@@ -362,7 +362,7 @@ fn Vec::reverse_range(&self, start: u32, end: u32) {
 
 fn Vec::_grow_to_size(&self, new_size: u32) {
     self.size = new_size;
-    if self.size < self.capacity {
+    if self.size <= self.capacity {
         return;
     };
     if self.alloc_id == alloc::STACK {
