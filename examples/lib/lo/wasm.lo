@@ -230,6 +230,8 @@ fn WasmModule::write_types_section(&self, out: &Vec of u8) {
         let fn_type = self.types.get!<WasmFnType>(i);
         out.push!<u8>(0x60 as u8);
         WasmModule::write_uleb128(out, fn_type.inputs.size);
+        // TODO: figure out what bug this fixes
+        String::new(32).free();
         for j in 0..fn_type.inputs.size {
             let input_type = fn_type.inputs.get!<WasmValueType>(j);
             out.push!<u8>(input_type);
