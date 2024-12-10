@@ -18,13 +18,14 @@ pub struct LoError {
     pub loc: LoLocation,
 }
 
-impl LoError {
-    pub fn todo(file: &str, line: u32) -> LoError {
+#[macro_export]
+macro_rules! lo_todo {
+    ($loc:expr) => {
         LoError {
-            message: format!("{}:{} - not implemented", file, line),
-            loc: LoLocation::internal(),
+            message: format!("Not implemented feature at {}:{}", file!(), line!()),
+            loc: $loc,
         }
-    }
+    };
 }
 
 impl core::fmt::Display for LoError {

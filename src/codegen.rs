@@ -252,8 +252,8 @@ enum VariableInfo {
         global_type: LoType,
     },
     Stored {
-        address_local_index: u32,
-        field_offset: u32,
+        address: &'static CodeExpr,
+        offset: u32,
         value_type: LoType,
     },
 }
@@ -270,8 +270,8 @@ impl VariableInfo {
                 global_type,
             } => global_type,
             VariableInfo::Stored {
-                address_local_index: _,
-                field_offset: _,
+                address: _,
+                offset: _,
                 value_type,
             } => value_type,
         }
@@ -639,7 +639,9 @@ impl CodeGen {
                 TopLevelExpr::StaticDataStore(static_data_store) => {
                     self.static_data_stores.push(static_data_store);
                 }
-                TopLevelExpr::ExportExistingFn(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::ExportExistingFn(existing_fn) => {
+                    return Err(crate::lo_todo!(existing_fn.loc.clone()))
+                }
                 TopLevelExpr::MacroDef(macro_def) => {
                     if let Some(existing_macro) = self.get_macro_def(&macro_def.macro_name.repr) {
                         return Err(LoError {
@@ -1039,7 +1041,7 @@ impl CodeGen {
                 }
 
                 let var = self.var_from_ident(ctx, repr, loc)?;
-                self.codegen_var_get(instrs, &var);
+                self.codegen_var_get(ctx, instrs, &var)?;
             }
             CodeExpr::Let(LetExpr {
                 local_name,
@@ -1084,7 +1086,17 @@ impl CodeGen {
 
                 self.codegen(ctx, instrs, expr)?;
             }
-            CodeExpr::PrefixOp(_) => todo!(),
+            CodeExpr::PrefixOp(PrefixOpExpr {
+                op_tag,
+                expr,
+                loc: _,
+            }) => match op_tag {
+                PrefixOpTag::Dereference => {
+                    let var = self.var_from_deref(ctx, expr)?;
+                    self.codegen_var_get(ctx, instrs, &var)?;
+                }
+                _ => todo!(),
+            },
             CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
                 op_loc,
@@ -1137,7 +1149,7 @@ impl CodeGen {
                 loc: _,
             }) => {
                 let var = self.var_from_field_access(ctx, lhs, &field_name)?;
-                self.codegen_var_get(instrs, &var);
+                self.codegen_var_get(ctx, instrs, &var)?;
             }
             CodeExpr::PropagateError(_) => todo!(),
 
@@ -1219,7 +1231,9 @@ impl CodeGen {
 
                 ctx.exit_scope(); // exit macro scope
             }
-            CodeExpr::MacroMethodCall(_) => todo!(),
+            CodeExpr::MacroMethodCall(method_call) => {
+                return Err(crate::lo_todo!(method_call.loc.clone()))
+            }
 
             CodeExpr::Dbg(_) => todo!(),
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
@@ -1338,7 +1352,7 @@ impl CodeGen {
 
                         // break if counter is equal to end
                         self.codegen(ctx, instrs, end)?;
-                        self.codegen_var_get(instrs, &counter_var);
+                        self.codegen_var_get(ctx, instrs, &counter_var)?;
                         let cmp_kind =
                             self.get_binary_op_kind(&InfixOpTag::Equal, &counter_type, loc)?;
                         instrs.push(WasmInstr::BinaryOp { kind: cmp_kind });
@@ -2080,24 +2094,25 @@ impl CodeGen {
         lhs: &CodeExpr,
         field_name: &IdentExpr,
     ) -> Result<VariableInfo, LoError> {
-        let CodeExpr::Ident(ident) = lhs else {
-            return Err(LoError {
-                message: format!(
-                    "Cannot access struct field '{}' lhs is not a struct local",
-                    field_name.repr
-                ),
-                loc: lhs.loc().clone(),
-            });
-        };
-        let Some(struct_local) = ctx.get_local(&ident.repr) else {
-            return Err(LoError {
-                message: format!("Unknown local {}", ident.repr),
-                loc: lhs.loc().clone(),
-            });
-        };
         let lhs_type = self.get_expr_type(ctx, lhs)?;
 
         if let LoType::StructInstance { struct_name } = &lhs_type {
+            let CodeExpr::Ident(ident) = lhs else {
+                return Err(LoError {
+                    message: format!(
+                        "Cannot access struct field '{}' lhs is not a struct local",
+                        field_name.repr
+                    ),
+                    loc: lhs.loc().clone(),
+                });
+            };
+            let Some(struct_local) = ctx.get_local(&ident.repr) else {
+                return Err(LoError {
+                    message: format!("Unknown local {}", ident.repr),
+                    loc: lhs.loc().clone(),
+                });
+            };
+
             let struct_def = self.get_struct_def(&struct_name).unwrap();
             let Some(field) = struct_def
                 .fields
@@ -2134,8 +2149,8 @@ impl CodeGen {
                 };
 
                 return Ok(VariableInfo::Stored {
-                    address_local_index: struct_local.local_index,
-                    field_offset: field.byte_offset,
+                    address: unsafe_borrow(lhs),
+                    offset: field.byte_offset,
                     value_type: field.field_type.clone(),
                 });
             }
@@ -2150,7 +2165,33 @@ impl CodeGen {
         });
     }
 
-    fn codegen_var_get(&self, instrs: &mut Vec<WasmInstr>, var: &VariableInfo) {
+    fn var_from_deref(
+        &self,
+        ctx: &LoExprContext,
+        expr: &CodeExpr,
+    ) -> Result<VariableInfo, LoError> {
+        let expr_type = self.get_expr_type(ctx, expr)?;
+
+        if let LoType::Pointer { pointee } = &expr_type {
+            return Ok(VariableInfo::Stored {
+                address: unsafe_borrow(expr),
+                offset: 0,
+                value_type: pointee.as_ref().clone(),
+            });
+        };
+
+        return Err(LoError {
+            message: format!("Cannot dereference expression of type '{}'", expr_type),
+            loc: expr.loc().clone(),
+        });
+    }
+
+    fn codegen_var_get(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        var: &VariableInfo,
+    ) -> Result<(), LoError> {
         match var {
             VariableInfo::Local {
                 local_index,
@@ -2173,17 +2214,16 @@ impl CodeGen {
                 }
             }
             VariableInfo::Stored {
-                address_local_index,
-                field_offset,
+                address,
+                offset,
                 value_type,
             } => {
-                instrs.push(WasmInstr::LocalGet {
-                    local_index: *address_local_index,
-                });
-
-                self.codegen_load_or_store(instrs, &value_type, *field_offset, false);
+                self.codegen(ctx, instrs, address)?;
+                self.codegen_load_or_store(instrs, &value_type, *offset, false);
             }
         }
+
+        Ok(())
     }
 
     fn codegen_var_set(
@@ -2213,15 +2253,13 @@ impl CodeGen {
                 }
             }
             VariableInfo::Stored {
-                address_local_index,
-                field_offset,
+                address,
+                offset,
                 value_type,
             } => {
-                instrs.push(WasmInstr::LocalGet {
-                    local_index: *address_local_index,
-                });
+                self.codegen(ctx, instrs, address)?;
                 self.codegen(ctx, instrs, value)?;
-                self.codegen_load_or_store(instrs, &value_type, *field_offset, true);
+                self.codegen_load_or_store(instrs, &value_type, *offset, true);
             }
         };
 
