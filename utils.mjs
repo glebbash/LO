@@ -309,7 +309,7 @@ async function testCommand() {
         assert.strictEqual(result, 3);
     });
 
-    testCompilers("compiles macro.lo", { v1 }, async (compile) => {
+    testCompilers("compiles macro.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/macro.lo");
 
         const program = await loadWasm(output);

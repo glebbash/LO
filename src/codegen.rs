@@ -94,7 +94,7 @@ struct LoFnType {
     output: LoType,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 struct LoExprContext {
     locals: Vec<LoLocal>,
     last_local_index: u32,
@@ -115,12 +115,15 @@ enum LoScopeType {
     Block,
     Loop,
     ForLoop,
+    Macro,
 }
 
 #[derive(Clone)]
 struct LoScope {
     scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
+    macro_args: Vec<(String, &'static CodeExpr)>,
+    macro_types: Vec<(String, LoType)>,
 }
 
 #[derive(Clone)]
@@ -135,6 +138,8 @@ impl LoExprContext {
         let mut new_scope = LoScope {
             scope_type,
             locals: Vec::new(),
+            macro_args: Vec::new(),
+            macro_types: Vec::new(),
         };
 
         if let Some(parent_scope) = self.scopes.last() {
@@ -171,6 +176,30 @@ impl LoExprContext {
 
         None
     }
+
+    fn get_macro_type(&self, type_name: &str) -> Option<&LoType> {
+        for scope in self.scopes.iter().rev() {
+            for macro_type in &scope.macro_types {
+                if macro_type.0 == type_name {
+                    return Some(&macro_type.1);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn get_macro_arg(&self, arg_name: &str) -> Option<&'static CodeExpr> {
+        for scope in self.scopes.iter().rev() {
+            for macro_arg in &scope.macro_args {
+                if macro_arg.0 == arg_name {
+                    return Some(macro_arg.1);
+                }
+            }
+        }
+
+        None
+    }
 }
 
 struct WasmFnInfo {
@@ -179,6 +208,7 @@ struct WasmFnInfo {
     wasm_fn_index: u32,
 }
 
+#[derive(Clone)]
 struct LoTypeDef {
     name: String,
     value: LoType,
@@ -189,7 +219,6 @@ struct LoStructDef {
     struct_name: String,
     fields: Vec<LoStructField>,
     fully_defined: bool, // used for self-reference checks
-    loc: LoLocation,
 }
 
 #[derive(Clone)]
@@ -261,6 +290,7 @@ pub struct CodeGen {
     static_data_stores: Vec<StaticDataStoreExpr>,
     globals: Vec<LoGlobalDef>,
     const_defs: Vec<ConstDefExpr>,
+    macro_defs: Vec<MacroDefExpr>,
 }
 
 impl CodeGen {
@@ -340,7 +370,7 @@ impl CodeGen {
                 TopLevelExpr::Include(_) => {} // skip, processed earlier
                 TopLevelExpr::FnDef(fn_def) => {
                     let output = match &fn_def.decl.return_type {
-                        Some(return_type) => self.build_type(return_type)?,
+                        Some(return_type) => self.build_type(None, return_type)?,
                         _ => LoType::Void,
                     };
 
@@ -439,7 +469,7 @@ impl CodeGen {
                             fn_type.inputs.push(param_type.clone());
                         }
                         if let Some(return_type) = fn_decl.return_type {
-                            fn_type.output = self.build_type(&return_type)?;
+                            fn_type.output = self.build_type(None, &return_type)?;
                         }
 
                         for fn_info in &self.lo_functions {
@@ -516,7 +546,6 @@ impl CodeGen {
                         struct_name: struct_name.repr.clone(),
                         fields: Vec::new(),
                         fully_defined: false,
-                        loc: loc.clone(),
                     });
 
                     self.type_defs.push(LoTypeDef {
@@ -535,8 +564,8 @@ impl CodeGen {
                             if existing_field.field_name == field.field_name {
                                 return Err(LoError {
                                     message: format!(
-                                        "Cannot define struct field with duplicate name: '{}' in struct {}",
-                                        field.field_name, struct_name.repr,
+                                        "Cannot redefine struct field '{}', already defined at {}",
+                                        field.field_name, existing_field.loc,
                                     ),
                                     loc: field.loc,
                                 });
@@ -544,7 +573,7 @@ impl CodeGen {
                         }
 
                         // TODO: add self reference check
-                        let field_type = self.build_type(&field.field_type)?;
+                        let field_type = self.build_type(None, &field.field_type)?;
 
                         struct_fields.push(LoStructField {
                             field_name: field.field_name,
@@ -573,7 +602,7 @@ impl CodeGen {
                         });
                     }
 
-                    let type_value = self.build_type(&typedef.type_value)?;
+                    let type_value = self.build_type(None, &typedef.type_value)?;
 
                     self.type_defs.push(LoTypeDef {
                         name: typedef.type_name.repr,
@@ -611,7 +640,19 @@ impl CodeGen {
                     self.static_data_stores.push(static_data_store);
                 }
                 TopLevelExpr::ExportExistingFn(_) => return Err(LoError::todo(file!(), line!())),
-                TopLevelExpr::MacroDef(_) => return Err(LoError::todo(file!(), line!())),
+                TopLevelExpr::MacroDef(macro_def) => {
+                    if let Some(existing_macro) = self.get_macro_def(&macro_def.macro_name.repr) {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine macro {}, already defined at {}",
+                                macro_def.macro_name.repr, existing_macro.loc
+                            ),
+                            loc: macro_def.loc,
+                        });
+                    }
+
+                    self.macro_defs.push(macro_def);
+                }
             }
         }
 
@@ -710,7 +751,12 @@ impl CodeGen {
                 continue;
             };
 
-            let mut ctx = ctx.clone();
+            let mut ctx = LoExprContext {
+                last_local_index: ctx.last_local_index,
+                locals: ctx.locals.clone(),
+                scopes: ctx.scopes.clone(),
+                ..Default::default()
+            };
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
             for expr in &body.exprs {
                 self.codegen(&mut ctx, &mut wasm_expr.instrs, expr)?;
@@ -840,20 +886,32 @@ impl CodeGen {
                     pointee: Box::new(self_type),
                 });
             }
-            FnParamType::Type { expr } => self.build_type(&expr),
+            FnParamType::Type { expr } => self.build_type(None, &expr),
         }
     }
 
-    fn build_type(&self, type_expr: &TypeExpr) -> Result<LoType, LoError> {
+    fn build_type(
+        &self,
+        ctx: Option<&LoExprContext>,
+        type_expr: &TypeExpr,
+    ) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::Named { name } => self.get_type_or_err(&name.repr, &name.loc),
+            TypeExpr::Named { name } => {
+                if let Some(ctx) = ctx {
+                    if let Some(macro_type) = ctx.get_macro_type(&name.repr) {
+                        return Ok(macro_type.clone());
+                    }
+                }
+
+                self.get_type_or_err(&name.repr, &name.loc)
+            }
             TypeExpr::Pointer { pointee, loc: _ } => {
-                let pointee = Box::new(self.build_type(&pointee)?);
+                let pointee = Box::new(self.build_type(ctx, &pointee)?);
 
                 Ok(LoType::Pointer { pointee })
             }
             TypeExpr::SequencePointer { pointee, loc: _ } => {
-                let pointee = Box::new(self.build_type(&pointee)?);
+                let pointee = Box::new(self.build_type(ctx, &pointee)?);
 
                 Ok(LoType::SequencePointer { pointee })
             }
@@ -862,8 +920,8 @@ impl CodeGen {
                 err_type,
                 loc: _,
             } => {
-                let ok_type = Box::new(self.build_type(&ok_type)?);
-                let err_type = Box::new(self.build_type(&err_type)?);
+                let ok_type = Box::new(self.build_type(ctx, &ok_type)?);
+                let err_type = Box::new(self.build_type(ctx, &err_type)?);
 
                 Ok(LoType::Result { ok_type, err_type })
             }
@@ -872,7 +930,7 @@ impl CodeGen {
                 item_type: _,
                 loc: _,
             } => {
-                let actual_type = self.build_type(container_type)?;
+                let actual_type = self.build_type(ctx, container_type)?;
 
                 Ok(actual_type)
             }
@@ -976,6 +1034,10 @@ impl CodeGen {
                 parts: _,
                 loc,
             }) => {
+                if let Some(const_expr) = self.get_const(ctx, repr) {
+                    return self.codegen(ctx, instrs, &const_expr);
+                }
+
                 let var = self.var_from_ident(ctx, repr, loc)?;
                 self.codegen_var_get(instrs, &var);
             }
@@ -1006,19 +1068,21 @@ impl CodeGen {
                 loc,
             }) => {
                 let castee_type = self.get_expr_type(ctx, expr)?;
-                let casted_to = self.build_type(casted_to)?;
+                let mut castee_type_components = Vec::new();
+                self.lower_type(&castee_type, &mut castee_type_components);
+
+                let casted_to_type = self.build_type(Some(ctx), casted_to)?;
+                let mut casted_to_type_components = Vec::new();
+                self.lower_type(&casted_to_type, &mut casted_to_type_components);
+
+                if castee_type_components != casted_to_type_components {
+                    return Err(LoError {
+                        message: format!("Cannot cast from {castee_type} to {casted_to_type}"),
+                        loc: loc.clone(),
+                    });
+                }
 
                 self.codegen(ctx, instrs, expr)?;
-
-                match (&castee_type, &casted_to) {
-                    (LoType::U32, LoType::Pointer { .. }) => {}
-                    _ => {
-                        return Err(LoError {
-                            message: format!("Cannot cast from {castee_type} to {casted_to}"),
-                            loc: loc.clone(),
-                        })
-                    }
-                };
             }
             CodeExpr::PrefixOp(_) => todo!(),
             CodeExpr::InfixOp(InfixOpExpr {
@@ -1090,11 +1154,83 @@ impl CodeGen {
                 let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
                 self.codegen_fn_call(ctx, instrs, &fn_name, Some(lhs), args, loc)?;
             }
-            CodeExpr::MacroFnCall(_) => todo!(),
+            CodeExpr::MacroFnCall(MacroFnCallExpr {
+                fn_name,
+                type_args,
+                args,
+                loc,
+            }) => {
+                let Some(macro_def) = self.get_macro_def(&fn_name.repr) else {
+                    return Err(LoError {
+                        message: format!("Unknown macro: {}", fn_name.repr),
+                        loc: loc.clone(),
+                    });
+                };
+
+                if type_args.len() != macro_def.macro_type_params.len() {
+                    return Err(LoError {
+                        message: format!(
+                            "Invalid number of type args, expected {}, got {}",
+                            macro_def.macro_type_params.len(),
+                            type_args.len()
+                        ),
+                        loc: macro_def.loc.clone(),
+                    });
+                }
+
+                ctx.enter_scope(LoScopeType::Macro);
+
+                // TODO: check for type shadowing
+                for i in 0..macro_def.macro_type_params.len() {
+                    let type_param = &macro_def.macro_type_params[i];
+                    let type_arg = &type_args[i];
+
+                    let lo_type = self.build_type(Some(ctx), &type_arg)?;
+                    ctx.current_scope_mut()
+                        .macro_types
+                        .push((type_param.clone(), lo_type));
+                }
+
+                // TODO: type check margo args against param types
+                if args.len() != macro_def.macro_params.len() {
+                    return Err(LoError {
+                        message: format!(
+                            "Invalid number of macro args, expected {}, got {}",
+                            macro_def.macro_params.len(),
+                            args.len()
+                        ),
+                        loc: macro_def.loc.clone(),
+                    });
+                }
+
+                // TODO: check for const shadowing
+                for i in 0..macro_def.macro_params.len() {
+                    let macro_param = &macro_def.macro_params[i];
+                    let macro_arg = &args[i];
+
+                    ctx.current_scope_mut()
+                        .macro_args
+                        .push((macro_param.param_name.clone(), unsafe_borrow(macro_arg)));
+                }
+
+                for expr in &macro_def.body.exprs {
+                    self.codegen(ctx, instrs, expr)?;
+                }
+
+                ctx.exit_scope(); // exit macro scope
+            }
             CodeExpr::MacroMethodCall(_) => todo!(),
 
             CodeExpr::Dbg(_) => todo!(),
-            CodeExpr::Sizeof(_) => todo!(),
+            CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
+                let lo_type = self.build_type(Some(ctx), type_expr)?;
+                let mut type_layout = LoTypeLayout::default();
+                self.get_type_layout(&lo_type, &mut type_layout);
+
+                instrs.push(WasmInstr::I32Const {
+                    value: type_layout.byte_length as i32,
+                });
+            }
             CodeExpr::GetDataSize(_) => todo!(),
 
             CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
@@ -1270,6 +1406,7 @@ impl CodeGen {
                             label_index += 1;
                             break;
                         }
+                        LoScopeType::Macro => continue,
                     }
                 }
 
@@ -1291,6 +1428,7 @@ impl CodeGen {
                         }
                         LoScopeType::Loop => break,
                         LoScopeType::ForLoop => break,
+                        LoScopeType::Macro => continue,
                     }
                 }
 
@@ -1736,6 +1874,10 @@ impl CodeGen {
                 parts: _,
                 loc,
             }) => {
+                if let Some(const_expr) = self.get_const(ctx, &repr) {
+                    return self.get_expr_type(ctx, const_expr);
+                }
+
                 let var = self.var_from_ident(ctx, &repr, loc)?;
                 Ok(var.get_type())
             }
@@ -1801,7 +1943,7 @@ impl CodeGen {
                 expr: _,
                 casted_to,
                 loc: _,
-            }) => self.build_type(casted_to),
+            }) => self.build_type(Some(ctx), casted_to),
             CodeExpr::FieldAccess(FieldAccessExpr {
                 lhs,
                 field_name,
@@ -1842,7 +1984,50 @@ impl CodeGen {
 
                 Ok(fn_info.fn_type.output.clone())
             }
-            CodeExpr::MacroFnCall(_) => todo!(),
+            CodeExpr::MacroFnCall(MacroFnCallExpr {
+                fn_name,
+                type_args,
+                args: _,
+                loc,
+            }) => {
+                let Some(macro_def) = self.get_macro_def(&fn_name.repr) else {
+                    return Err(LoError {
+                        message: format!("Unknown macro: {}", fn_name.repr),
+                        loc: loc.clone(),
+                    });
+                };
+
+                if type_args.len() != macro_def.macro_type_params.len() {
+                    return Err(LoError {
+                        message: format!(
+                            "Invalid number of type args, expected {}, got {}",
+                            macro_def.macro_type_params.len(),
+                            type_args.len()
+                        ),
+                        loc: macro_def.loc.clone(),
+                    });
+                }
+
+                let mut return_type = LoType::Void;
+                if let Some(macro_return_type) = &macro_def.return_type {
+                    let mut ctx = LoExprContext::default();
+                    ctx.enter_scope(LoScopeType::Macro);
+
+                    for i in 0..macro_def.macro_type_params.len() {
+                        let type_param = &macro_def.macro_type_params[i];
+                        let type_arg = &type_args[i];
+
+                        let lo_type = self.build_type(Some(&ctx), &type_arg)?;
+                        ctx.current_scope_mut()
+                            .macro_types
+                            .push((type_param.clone(), lo_type));
+                    }
+
+                    return_type = self.build_type(Some(&ctx), macro_return_type)?;
+                }
+
+                Ok(return_type)
+            }
             CodeExpr::MacroMethodCall(_) => todo!(),
             CodeExpr::Catch(_) => todo!(),
             CodeExpr::Dbg(_) => todo!(),
@@ -2082,10 +2267,32 @@ impl CodeGen {
         None
     }
 
+    fn get_const(&self, ctx: &LoExprContext, const_name: &str) -> Option<&CodeExpr> {
+        if let Some(const_def) = self.get_const_def(const_name) {
+            return Some(&const_def.const_value);
+        }
+
+        for macro_arg in &ctx.get_macro_arg(const_name) {
+            return Some(macro_arg);
+        }
+
+        None
+    }
+
     fn get_const_def(&self, const_name: &str) -> Option<&ConstDefExpr> {
         for const_def in &self.const_defs {
             if const_def.const_name.repr == const_name {
                 return Some(const_def);
+            }
+        }
+
+        None
+    }
+
+    fn get_macro_def(&self, macro_name: &str) -> Option<&MacroDefExpr> {
+        for macro_def in &self.macro_defs {
+            if macro_def.macro_name.repr == macro_name {
+                return Some(macro_def);
             }
         }
 
@@ -2475,4 +2682,8 @@ impl CodeGen {
 fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {
     let resolved_receiver_type = receiver_type.deref_rec();
     format!("{resolved_receiver_type}::{method_name}")
+}
+
+fn unsafe_borrow<T>(x: &T) -> &'static T {
+    unsafe { &*(x as *const T) }
 }
