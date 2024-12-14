@@ -858,6 +858,28 @@ impl ParserV2 {
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
+            if ident.repr == "__memory_size" {
+                if args.len() != 0 {
+                    return Err(LoError {
+                        message: format!(
+                            "__memory accepts no arguments, but {} was provided",
+                            args.len()
+                        ),
+                        loc,
+                    });
+                }
+
+                return Ok(CodeExpr::MemorySize(MemorySizeExpr { loc }));
+            }
+
+            if ident.repr == "__memory_grow" {
+                return Ok(CodeExpr::MemoryGrow(MemoryGrowExpr { args, loc }));
+            }
+
+            if ident.repr == "__memory_copy" {
+                return Ok(CodeExpr::MemoryCopy(MemoryCopyExpr { args, loc }));
+            }
+
             return Ok(CodeExpr::FnCall(FnCallExpr {
                 fn_name: ident,
                 args,

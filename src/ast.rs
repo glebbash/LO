@@ -245,6 +245,9 @@ pub enum CodeExpr {
     Dbg(DbgExpr),
     Sizeof(SizeofExpr),
     GetDataSize(GetDataSizeExpr),
+    MemorySize(MemorySizeExpr),
+    MemoryGrow(MemoryGrowExpr),
+    MemoryCopy(MemoryCopyExpr),
 
     // control flow
     Return(ReturnExpr),
@@ -487,6 +490,23 @@ pub struct GetDataSizeExpr {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct MemorySizeExpr {
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct MemoryGrowExpr {
+    pub args: Vec<CodeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct MemoryCopyExpr {
+    pub args: Vec<CodeExpr>,
+    pub loc: LoLocation,
+}
+
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -520,6 +540,9 @@ impl Locatable for CodeExpr {
             CodeExpr::PropagateError(e) => &e.loc,
             CodeExpr::PrefixOp(e) => &e.loc,
             CodeExpr::GetDataSize(e) => &e.loc,
+            CodeExpr::MemorySize(e) => &e.loc,
+            CodeExpr::MemoryGrow(e) => &e.loc,
+            CodeExpr::MemoryCopy(e) => &e.loc,
             CodeExpr::Unreachable(e) => &e.loc,
         }
     }

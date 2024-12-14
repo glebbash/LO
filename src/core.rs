@@ -303,7 +303,7 @@ pub fn resolve_path(file_path: &str, relative_to: &str) -> String {
     path_items.join("/")
 }
 
-pub struct ListDisplay<'a, T: core::fmt::Display>(pub &'a Vec<T>);
+pub struct ListDisplay<'a, T: core::fmt::Display>(pub &'a [T]);
 
 impl<'a, T: core::fmt::Display> core::fmt::Display for ListDisplay<'a, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

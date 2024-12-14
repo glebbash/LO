@@ -641,11 +641,22 @@ impl Printer {
                 self.print_type_expr(type_expr);
             }
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc: _ }) => {
-                self.print_code_expr(&expr);
+                self.print_code_expr(expr);
                 stdout_write("?");
             }
             CodeExpr::GetDataSize(GetDataSizeExpr { loc: _ }) => {
                 stdout_write("@data_size");
+            }
+            CodeExpr::MemorySize(MemorySizeExpr { loc: _ }) => {
+                stdout_write("__memory_size()");
+            }
+            CodeExpr::MemoryGrow(MemoryGrowExpr { args, loc: _ }) => {
+                stdout_write("__memory_grow");
+                self.print_args(args);
+            }
+            CodeExpr::MemoryCopy(MemoryCopyExpr { args, loc: _ }) => {
+                stdout_write("__memory_copy");
+                self.print_args(args);
             }
         }
     }
