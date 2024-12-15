@@ -443,7 +443,7 @@ fn String::char_at(self, index: u32): u8 {
 
 fn String::as_str(self): str {
     return .str {
-        data: self.chars.data as &u8,
+        data: self.chars.data as *&u8,
         size: self.chars.size,
     };
 };
