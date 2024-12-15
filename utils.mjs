@@ -332,7 +332,7 @@ async function testCommand() {
         await loadWasm(output);
     });
 
-    testCompilers("compiles vec.lo", { v1 }, async (compile) => {
+    testCompilers("compiles vec.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/vec.test.lo");
         const lib = await loadWasm(output);
 

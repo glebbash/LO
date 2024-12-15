@@ -64,7 +64,7 @@ pub struct IncludeExpr {
 
 #[derive(Debug)]
 pub struct ImportExpr {
-    pub module_name: String,
+    pub module_name: EscapedString,
     pub items: Vec<ImportItem>,
     pub loc: LoLocation,
 }
@@ -142,13 +142,13 @@ pub struct StaticDataStoreExpr {
 
 #[derive(Debug)]
 pub enum StaticDataStorePayload {
-    String { value: String },
+    String { value: EscapedString },
 }
 
 #[derive(Debug)]
 pub struct ExportExistingFnExpr {
     pub in_fn_name: IdentExpr,
-    pub out_fn_name: String,
+    pub out_fn_name: EscapedString,
     pub loc: LoLocation,
 }
 
@@ -551,5 +551,14 @@ impl Locatable for CodeExpr {
             CodeExpr::MemoryCopy(e) => &e.loc,
             CodeExpr::Unreachable(e) => &e.loc,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct EscapedString(pub String);
+
+impl EscapedString {
+    pub fn unescape(&self) -> String {
+        Lexer::unescape_string(&self.0)
     }
 }

@@ -74,12 +74,12 @@ struct LoFnInfo {
     fn_name: String,
     fn_type: LoFnType,
     fn_source: LoFnSource,
+    exported_as: Vec<String>,
     definition_loc: LoLocation,
 }
 
 enum LoFnSource {
     Guest {
-        exported_as: Option<String>,
         ctx: LoExprContext,
         body: CodeBlockExpr,
     },
@@ -94,7 +94,7 @@ struct LoFnType {
     output: LoType,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct LoExprContext {
     locals: Vec<LoLocal>,
     last_local_index: u32,
@@ -130,7 +130,7 @@ struct LoScope {
     scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
     macro_args: Vec<(String, LoCodeUnit)>,
-    macro_types: Vec<(String, LoType)>,
+    macro_type_args: Vec<(String, LoType)>,
 }
 
 #[derive(Clone)]
@@ -146,7 +146,7 @@ impl LoExprContext {
             scope_type,
             locals: Vec::new(),
             macro_args: Vec::new(),
-            macro_types: Vec::new(),
+            macro_type_args: Vec::new(),
         };
 
         if let Some(parent_scope) = self.scopes.last() {
@@ -184,11 +184,12 @@ impl LoExprContext {
         None
     }
 
-    fn get_macro_type(&self, type_name: &str) -> Option<&LoType> {
+    fn get_macro_type_arg(&self, type_name: &str) -> Option<&LoType> {
         for scope in self.scopes.iter().rev() {
-            for macro_type in &scope.macro_types {
-                if macro_type.0 == type_name {
-                    return Some(&macro_type.1);
+            for macro_type_arg in &scope.macro_type_args {
+                debug(format!("type {} = {}", macro_type_arg.0, macro_type_arg.1));
+                if macro_type_arg.0 == type_name {
+                    return Some(&macro_type_arg.1);
                 }
             }
         }
@@ -419,42 +420,56 @@ impl CodeGen {
                         )?;
                     }
 
-                    let mut exported_as = None;
+                    let mut exported_as = Vec::new();
                     if fn_def.exported {
-                        exported_as = Some(fn_def.decl.fn_name.repr.clone())
+                        exported_as.push(fn_def.decl.fn_name.repr.clone());
                     }
 
                     // TODO: make sure function name does not collide with intrinsics
-                    for fn_info in &self.lo_functions {
-                        if fn_info.fn_name == fn_def.decl.fn_name.repr {
-                            self.errors.report(LoError {
-                                message: format!(
-                                    "Duplicate function definition: {}, previously defined at {}",
-                                    fn_def.decl.fn_name.repr, fn_info.definition_loc
-                                ),
-                                loc: fn_def.decl.loc.clone(),
-                            });
-                            break;
-                        }
+                    if let Some(fn_info) = self.get_fn_def(&fn_def.decl.fn_name.repr) {
+                        self.errors.report(LoError {
+                            message: format!(
+                                "Duplicate function definition: {}, previously defined at {}",
+                                fn_def.decl.fn_name.repr, fn_info.definition_loc
+                            ),
+                            loc: fn_def.decl.loc.clone(),
+                        });
                     }
 
                     self.lo_functions.push(LoFnInfo {
                         fn_name: fn_def.decl.fn_name.repr,
                         fn_type: LoFnType { inputs, output },
                         fn_source: LoFnSource::Guest {
-                            exported_as,
                             ctx,
                             body: fn_def.body,
                         },
+                        exported_as,
                         definition_loc: fn_def.loc.clone(),
                     });
+                }
+                TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
+                    in_fn_name,
+                    out_fn_name,
+                    loc,
+                }) => {
+                    let Some(fn_info) = self.get_fn_def_mut(&in_fn_name.repr) else {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot re-export not existing function: {}",
+                                in_fn_name.repr
+                            ),
+                            loc: loc.clone(),
+                        });
+                    };
+
+                    fn_info.exported_as.push(out_fn_name.unescape());
                 }
                 TopLevelExpr::Import(ImportExpr {
                     module_name,
                     items,
                     loc,
                 }) => {
-                    let module_name = Lexer::unescape_string(&module_name);
+                    let module_name = module_name.unescape();
 
                     for item in items {
                         let fn_decl = match item {
@@ -489,17 +504,14 @@ impl CodeGen {
                         }
 
                         // TODO: make sure function name does not collide with intrinsics
-                        for fn_info in &self.lo_functions {
-                            if fn_info.fn_name == fn_decl.fn_name.repr {
-                                self.errors.report(LoError {
-                                    message: format!(
-                                        "Duplicate function definition: {}, previously defined at {}",
-                                        fn_decl.fn_name.repr, fn_info.definition_loc
-                                    ),
-                                    loc: fn_decl.loc.clone(),
-                                });
-                                break;
-                            }
+                        if let Some(fn_info) = self.get_fn_def(&fn_decl.fn_name.repr) {
+                            self.errors.report(LoError {
+                                message: format!(
+                                    "Duplicate function definition: {}, previously defined at {}",
+                                    fn_decl.fn_name.repr, fn_info.definition_loc
+                                ),
+                                loc: fn_decl.loc.clone(),
+                            });
                         }
 
                         self.lo_functions.push(LoFnInfo {
@@ -509,6 +521,7 @@ impl CodeGen {
                                 module_name: module_name.clone(),
                                 external_fn_name: fn_decl.fn_name.parts.last().unwrap().clone(),
                             },
+                            exported_as: Vec::new(),
                             definition_loc: loc.clone(),
                         });
                     }
@@ -667,9 +680,6 @@ impl CodeGen {
                 TopLevelExpr::StaticDataStore(static_data_store) => {
                     self.static_data_stores.push(static_data_store);
                 }
-                TopLevelExpr::ExportExistingFn(existing_fn) => {
-                    return Err(crate::lo_todo!(existing_fn.loc.clone()))
-                }
                 TopLevelExpr::MacroDef(macro_def) => {
                     if let Some(existing_macro) = self.get_macro_def(&macro_def.macro_name.repr) {
                         return Err(LoError {
@@ -725,24 +735,13 @@ impl CodeGen {
             }
 
             match &fn_info.fn_source {
-                LoFnSource::Guest {
-                    exported_as,
-                    ctx: _,
-                    body: _,
-                } => {
+                LoFnSource::Guest { ctx: _, body: _ } => {
                     wasm_module.functions.push(fn_type_index);
                     self.wasm_functions.push(WasmFnInfo {
                         fn_name: fn_info.fn_name.clone(),
                         lo_fn_index,
                         wasm_fn_index,
                     });
-                    if let Some(export_name) = &exported_as {
-                        wasm_module.exports.push(WasmExport {
-                            export_type: WasmExportType::Func,
-                            export_name: export_name.clone(),
-                            exported_item_index: wasm_fn_index,
-                        });
-                    }
 
                     wasm_fn_index += 1;
                 }
@@ -765,6 +764,15 @@ impl CodeGen {
                     wasm_import_fn_index += 1;
                 }
             }
+
+            let exported_item_index = self.wasm_functions.last().unwrap().wasm_fn_index;
+            for export_name in &fn_info.exported_as {
+                wasm_module.exports.push(WasmExport {
+                    export_type: WasmExportType::Func,
+                    export_name: export_name.clone(),
+                    exported_item_index,
+                });
+            }
         }
 
         // build function codes
@@ -772,12 +780,7 @@ impl CodeGen {
             let wasm_fn_info = &self.wasm_functions[i];
             let lo_fn_info = &self.lo_functions[wasm_fn_info.lo_fn_index];
 
-            let LoFnSource::Guest {
-                exported_as: _,
-                ctx,
-                body,
-            } = &lo_fn_info.fn_source
-            else {
+            let LoFnSource::Guest { ctx, body } = &lo_fn_info.fn_source else {
                 continue;
             };
 
@@ -865,9 +868,7 @@ impl CodeGen {
                 &static_data_store.addr,
             )?;
             let bytes = match &static_data_store.data {
-                StaticDataStorePayload::String { value } => {
-                    Lexer::unescape_string(value).as_bytes().to_vec()
-                }
+                StaticDataStorePayload::String { value } => value.unescape().as_bytes().to_vec(),
             };
 
             wasm_module.datas.push(WasmData::Active {
@@ -934,8 +935,8 @@ impl CodeGen {
     fn build_type(&self, ctx: &LoExprContext, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
             TypeExpr::Named { name } => {
-                if let Some(macro_type) = ctx.get_macro_type(&name.repr) {
-                    return Ok(macro_type.clone());
+                if let Some(macro_type_arg) = ctx.get_macro_type_arg(&name.repr) {
+                    return Ok(macro_type_arg.clone());
                 }
 
                 self.get_type_or_err(&name.repr, &name.loc)
@@ -1641,6 +1642,7 @@ impl CodeGen {
 
     fn get_macro_return_type(
         &self,
+        ctx: &LoExprContext,
         macro_name: &str,
         type_args: &Vec<TypeExpr>,
         loc: &LoLocation,
@@ -1665,7 +1667,7 @@ impl CodeGen {
 
         let mut return_type = LoType::Void;
         if let Some(macro_return_type) = &macro_def.return_type {
-            let mut ctx = LoExprContext::default();
+            let mut ctx = ctx.clone();
             ctx.enter_scope(LoScopeType::Macro);
 
             for i in 0..macro_def.macro_type_params.len() {
@@ -1674,7 +1676,7 @@ impl CodeGen {
 
                 let lo_type = self.build_type(&ctx, &type_arg)?;
                 ctx.current_scope_mut()
-                    .macro_types
+                    .macro_type_args
                     .push((type_param.clone(), lo_type));
             }
 
@@ -1721,7 +1723,7 @@ impl CodeGen {
 
             let lo_type = self.build_type(ctx, &type_arg)?;
             ctx.current_scope_mut()
-                .macro_types
+                .macro_type_args
                 .push((type_param.clone(), lo_type));
         }
 
@@ -2286,7 +2288,7 @@ impl CodeGen {
                 type_args,
                 args: _,
                 loc,
-            }) => self.get_macro_return_type(&fn_name.repr, type_args, loc),
+            }) => self.get_macro_return_type(ctx, &fn_name.repr, type_args, loc),
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
                 lhs,
                 field_name,
@@ -2296,7 +2298,7 @@ impl CodeGen {
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.get_macro_return_type(&macro_name, type_args, loc)
+                self.get_macro_return_type(ctx, &macro_name, type_args, loc)
             }
             CodeExpr::Catch(_) => todo!(),
             CodeExpr::Dbg(_) => todo!(),
@@ -2589,13 +2591,13 @@ impl CodeGen {
         None
     }
 
-    fn get_const(&self, ctx: &LoExprContext, const_name: &str) -> Option<&LoCodeUnit> {
+    fn get_const<'a>(&'a self, ctx: &'a LoExprContext, const_name: &str) -> Option<&LoCodeUnit> {
         if let Some(const_def) = self.get_const_def(const_name) {
             return Some(&const_def.code_unit);
         }
 
         if let Some(macro_arg) = ctx.get_macro_arg(const_name) {
-            return Some(unsafe_borrow(macro_arg));
+            return Some(macro_arg);
         }
 
         None
@@ -3009,6 +3011,26 @@ impl CodeGen {
             | InfixOpTag::Catch
             | InfixOpTag::ErrorPropagation => None,
         }
+    }
+
+    fn get_fn_def(&self, fn_name: &str) -> Option<&LoFnInfo> {
+        for fn_info in &self.lo_functions {
+            if fn_info.fn_name == fn_name {
+                return Some(fn_info);
+            }
+        }
+
+        None
+    }
+
+    fn get_fn_def_mut(&mut self, fn_name: &str) -> Option<&mut LoFnInfo> {
+        for fn_info in &mut self.lo_functions {
+            if fn_info.fn_name == fn_name {
+                return Some(fn_info);
+            }
+        }
+
+        None
     }
 
     fn get_fn_info(&self, fn_name: &str) -> Option<(&LoFnInfo, &WasmFnInfo)> {

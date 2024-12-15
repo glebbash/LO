@@ -128,7 +128,7 @@ impl ParserV2 {
 
                 return Ok(TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
                     in_fn_name,
-                    out_fn_name: out_fn_name.value,
+                    out_fn_name: EscapedString(out_fn_name.value),
                     loc,
                 }));
             }
@@ -185,7 +185,7 @@ impl ParserV2 {
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::Import(ImportExpr {
-                module_name: module_name.value,
+                module_name: EscapedString(module_name.value),
                 items,
                 loc,
             }));
@@ -296,7 +296,9 @@ impl ParserV2 {
 
             return Ok(TopLevelExpr::StaticDataStore(StaticDataStoreExpr {
                 addr,
-                data: StaticDataStorePayload::String { value: chars.value },
+                data: StaticDataStorePayload::String {
+                    value: EscapedString(chars.value),
+                },
                 loc,
             }));
         }

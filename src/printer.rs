@@ -63,7 +63,7 @@ impl Printer {
                 loc,
             }) => {
                 stdout_write("import from ");
-                stdout_write(module_name);
+                stdout_write(&module_name.0);
                 stdout_write(" {\n");
                 self.indent += 1;
 
@@ -172,7 +172,7 @@ impl Printer {
                 stdout_write(" = ");
                 match data {
                     StaticDataStorePayload::String { value } => {
-                        stdout_write(value);
+                        stdout_write(&value.0);
                     }
                 }
                 stdout_writeln(";");
@@ -185,7 +185,7 @@ impl Printer {
                 stdout_write("export existing fn ");
                 stdout_write(&in_fn_name.repr);
                 stdout_write(" as ");
-                stdout_write(out_fn_name);
+                stdout_write(&out_fn_name.0);
                 stdout_writeln(";");
             }
             TopLevelExpr::MacroDef(MacroDefExpr {
