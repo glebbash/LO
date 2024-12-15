@@ -232,6 +232,7 @@ pub enum CodeExpr {
     StringLiteral(StringLiteralExpr),
     StructLiteral(StructLiteralExpr),
     ArrayLiteral(ArrayLiteralExpr),
+    ResultLiteral(ResultLiteralExpr),
 
     // variables
     Ident(IdentExpr),
@@ -412,6 +413,14 @@ pub struct ArrayLiteralExpr {
 }
 
 #[derive(Debug)]
+pub struct ResultLiteralExpr {
+    pub is_ok: bool,
+    pub result_type: Option<(TypeExpr, TypeExpr)>,
+    pub value: Option<Box<CodeExpr>>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub struct StructLiteralField {
     pub field_name: String,
     pub value: CodeExpr,
@@ -521,6 +530,7 @@ impl Locatable for CodeExpr {
             CodeExpr::IntLiteral(e) => &e.loc,
             CodeExpr::StringLiteral(e) => &e.loc,
             CodeExpr::ArrayLiteral(e) => &e.loc,
+            CodeExpr::ResultLiteral(e) => &e.loc,
             CodeExpr::Return(e) => &e.loc,
             CodeExpr::Ident(e) => &e.loc,
             CodeExpr::InfixOp(e) => &e.loc,

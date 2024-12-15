@@ -375,7 +375,7 @@ async function testCommand() {
         }
     });
 
-    testCompilers("compiles hello-world.lo", { v1 }, async (compile) => {
+    testCompilers("compiles hello-world.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/demos/hello-world.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {

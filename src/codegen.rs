@@ -5,6 +5,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use core::cell::RefCell;
 
 #[derive(Clone, PartialEq)]
 pub enum LoType {
@@ -32,6 +33,7 @@ pub enum LoType {
     },
     Result {
         ok_type: Box<LoType>,
+        // TODO: add validations so it's not possible to put non i32 value here
         err_type: Box<LoType>,
     },
 }
@@ -96,6 +98,7 @@ struct LoFnType {
 
 #[derive(Default, Clone)]
 struct LoExprContext {
+    lo_fn_index: Option<usize>,
     locals: Vec<LoLocal>,
     last_local_index: u32,
     deferred: Vec<LoCodeUnit>,
@@ -294,18 +297,23 @@ struct LoConstDef {
 #[derive(Default)]
 pub struct CodeGen {
     pub errors: LoErrorManager,
-    lo_functions: Vec<LoFnInfo>,
-    wasm_functions: Vec<WasmFnInfo>,
+
     type_defs: Vec<LoTypeDef>,
     struct_defs: Vec<LoStructDef>,
-    memory: Option<MemoryDefExpr>,
-    memory_imported_from: Option<String>,
-    static_data_stores: Vec<StaticDataStoreExpr>,
     globals: Vec<LoGlobalDef>,
     const_defs: Vec<LoConstDef>,
     macro_defs: Vec<MacroDefExpr>,
+
+    lo_functions: Vec<LoFnInfo>,
+    wasm_functions: Vec<WasmFnInfo>,
+
+    memory: Option<MemoryDefExpr>,
+    memory_imported_from: Option<String>,
+    datas: RefCell<Vec<WasmData>>,
+    string_pool: RefCell<Vec<(String, u32)>>,
+    data_size: RefCell<u32>,
+
     const_ctx: LoExprContext,
-    data_size: u32,
 }
 
 impl CodeGen {
@@ -390,6 +398,7 @@ impl CodeGen {
                     };
 
                     let mut ctx = LoExprContext::default();
+                    ctx.lo_fn_index = Some(self.lo_functions.len());
                     ctx.enter_scope(LoScopeType::Function);
 
                     let mut inputs = Vec::new();
@@ -677,7 +686,26 @@ impl CodeGen {
                     self.memory = Some(memory);
                 }
                 TopLevelExpr::StaticDataStore(static_data_store) => {
-                    self.static_data_stores.push(static_data_store);
+                    let mut const_ctx = LoExprContext::default();
+
+                    let mut offset_expr = WasmExpr { instrs: Vec::new() };
+                    self.ensure_const_expr(&static_data_store.addr)?;
+                    self.codegen(
+                        &mut const_ctx,
+                        &mut offset_expr.instrs,
+                        &static_data_store.addr,
+                    )?;
+                    let bytes = match &static_data_store.data {
+                        StaticDataStorePayload::String { value } => {
+                            value.unescape().as_bytes().to_vec()
+                        }
+                    };
+
+                    let data = WasmData::Active {
+                        offset: offset_expr,
+                        bytes,
+                    };
+                    self.datas.borrow_mut().push(data);
                 }
                 TopLevelExpr::MacroDef(macro_def) => {
                     if let Some(existing_macro) = self.get_macro_def(&macro_def.macro_name.repr) {
@@ -783,12 +811,7 @@ impl CodeGen {
                 continue;
             };
 
-            let mut ctx = LoExprContext {
-                last_local_index: ctx.last_local_index,
-                locals: ctx.locals.clone(),
-                scopes: ctx.scopes.clone(),
-                ..Default::default()
-            };
+            let mut ctx = ctx.clone();
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
             let mut had_return = false;
             for expr in &body.exprs {
@@ -856,25 +879,11 @@ impl CodeGen {
             }
         }
 
-        let mut const_ctx = LoExprContext::default();
-
-        for static_data_store in &self.static_data_stores {
-            let mut offset_expr = WasmExpr { instrs: Vec::new() };
-            self.ensure_const_expr(&static_data_store.addr)?;
-            self.codegen(
-                &mut const_ctx,
-                &mut offset_expr.instrs,
-                &static_data_store.addr,
-            )?;
-            let bytes = match &static_data_store.data {
-                StaticDataStorePayload::String { value } => value.unescape().as_bytes().to_vec(),
-            };
-
-            wasm_module.datas.push(WasmData::Active {
-                offset: offset_expr,
-                bytes,
-            });
+        for static_data_store in self.datas.borrow().iter() {
+            wasm_module.datas.push(static_data_store.clone());
         }
+
+        let mut const_ctx = LoExprContext::default();
 
         let mut wasm_types_buf = Vec::with_capacity(1);
         for global in &self.globals {
@@ -888,7 +897,7 @@ impl CodeGen {
                     self.codegen(&mut const_ctx, &mut initial_value.instrs, expr)?;
                 }
                 GlobalDefValue::DataSize => initial_value.instrs.push(WasmInstr::I32Const {
-                    value: self.data_size as i32,
+                    value: *self.data_size.borrow() as i32,
                 }),
             };
 
@@ -1009,7 +1018,35 @@ impl CodeGen {
                 }),
                 _ => todo!(),
             },
-            CodeExpr::StringLiteral(_) => todo!(),
+            CodeExpr::StringLiteral(StringLiteralExpr {
+                repr: _,
+                value,
+                zero_terminated,
+                loc,
+            }) => {
+                let mut value = value.clone();
+                if *zero_terminated {
+                    value.push('\0');
+                }
+
+                let (string_ptr, string_len) = self.process_const_string(value, &loc)?;
+
+                if *zero_terminated {
+                    instrs.push(WasmInstr::I32Const {
+                        value: string_ptr as i32,
+                    });
+
+                    return Ok(());
+                }
+
+                // emit str struct values
+                instrs.push(WasmInstr::I32Const {
+                    value: string_ptr as i32,
+                });
+                instrs.push(WasmInstr::I32Const {
+                    value: string_len as i32,
+                });
+            }
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
                 fields,
@@ -1071,6 +1108,53 @@ impl CodeGen {
                 }
             }
             CodeExpr::ArrayLiteral(_) => todo!(),
+            CodeExpr::ResultLiteral(ResultLiteralExpr {
+                is_ok,
+                result_type,
+                value,
+                loc,
+            }) => {
+                let (ok_type, err_type) = self.get_result_literal_type(ctx, result_type, loc)?;
+
+                let mut value_type = LoType::Void;
+                if let Some(value) = value {
+                    value_type = self.get_expr_type(ctx, value)?;
+                }
+
+                if *is_ok {
+                    if value_type != ok_type {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot create result, Ok type mismatch. Got {}, expected: {}",
+                                value_type, ok_type
+                            ),
+                            loc: loc.clone(),
+                        });
+                    }
+
+                    if let Some(ok_value) = value {
+                        self.codegen(ctx, instrs, ok_value)?;
+                    }
+
+                    // error value
+                    instrs.push(WasmInstr::I32Const { value: 0 });
+
+                    return Ok(());
+                }
+
+                if value_type != err_type {
+                    return Err(LoError {
+                        message: format!(
+                            "Cannot create result, Err type mismatch. Got {}, expected: {}",
+                            value_type, err_type
+                        ),
+                        loc: loc.clone(),
+                    });
+                }
+
+                self.codegen_default_value(ctx, instrs, &ok_type);
+                self.codegen(ctx, instrs, value.as_ref().unwrap())?;
+            }
 
             CodeExpr::Ident(IdentExpr {
                 repr,
@@ -2103,6 +2187,38 @@ impl CodeGen {
         }
     }
 
+    fn get_result_literal_type(
+        &self,
+        ctx: &LoExprContext,
+        explicit_type: &Option<(TypeExpr, TypeExpr)>,
+        loc: &LoLocation,
+    ) -> Result<(LoType, LoType), LoError> {
+        if let Some((ok_type_expr, err_type_expr)) = explicit_type {
+            let ok_type = self.build_type(ctx, &ok_type_expr)?;
+            let err_type = self.build_type(ctx, &err_type_expr)?;
+            return Ok((ok_type, err_type));
+        }
+
+        let Some(lo_fn_index) = ctx.lo_fn_index else {
+            return Err(LoError {
+                message: format!("Cannot create implicitly typed result in const context"),
+                loc: loc.clone(),
+            });
+        };
+
+        let fn_info = &self.lo_functions[lo_fn_index];
+        let LoType::Result { ok_type, err_type } = &fn_info.fn_type.output else {
+            return Err(LoError {
+                message: format!(
+                    "Cannot create implicitly typed result: function does not return result"
+                ),
+                loc: loc.clone(),
+            });
+        };
+
+        Ok((ok_type.as_ref().clone(), err_type.as_ref().clone()))
+    }
+
     fn get_expr_type(&self, ctx: &LoExprContext, expr: &CodeExpr) -> Result<LoType, LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(LoType::Bool),
@@ -2126,7 +2242,22 @@ impl CodeGen {
                 Some(_) => todo!(),
                 None => Ok(LoType::U32),
             },
-            CodeExpr::StringLiteral(_) => todo!(),
+            CodeExpr::StringLiteral(StringLiteralExpr {
+                repr: _,
+                value: _,
+                zero_terminated,
+                loc: _,
+            }) => {
+                if *zero_terminated {
+                    Ok(LoType::SequencePointer {
+                        pointee: Box::new(LoType::U8),
+                    })
+                } else {
+                    Ok(LoType::StructInstance {
+                        struct_name: String::from("str"),
+                    })
+                }
+            }
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
                 fields: _,
@@ -2144,6 +2275,20 @@ impl CodeGen {
                 });
             }
             CodeExpr::ArrayLiteral(_) => todo!(),
+            CodeExpr::ResultLiteral(ResultLiteralExpr {
+                is_ok: _,
+                result_type,
+                value: _,
+                loc,
+            }) => {
+                let (ok_type, err_type) = self.get_result_literal_type(ctx, result_type, loc)?;
+
+                return Ok(LoType::Result {
+                    ok_type: Box::new(ok_type.clone()),
+                    err_type: Box::new(err_type.clone()),
+                });
+            }
+
             CodeExpr::Ident(IdentExpr {
                 repr,
                 parts: _,
@@ -2567,6 +2712,39 @@ impl CodeGen {
         Ok(code_unit)
     }
 
+    fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<(u32, u32), LoError> {
+        if let None = self.memory {
+            return Err(LoError {
+                message: format!("Cannot use strings with no memory defined"),
+                loc: loc.clone(),
+            });
+        }
+
+        let string_len = value.as_bytes().len() as u32;
+
+        for (string_value, string_ptr) in self.string_pool.borrow().iter() {
+            if *string_value == value {
+                return Ok((*string_ptr, string_len));
+            }
+        }
+
+        let string_ptr = *self.data_size.borrow();
+        let mut instrs = Vec::new();
+        instrs.push(WasmInstr::I32Const {
+            value: string_ptr as i32,
+        });
+        self.datas.borrow_mut().push(WasmData::Active {
+            offset: WasmExpr { instrs },
+            bytes: value.clone().into_bytes(),
+        });
+
+        *self.data_size.borrow_mut() += string_len;
+
+        self.string_pool.borrow_mut().push((value, string_ptr));
+
+        return Ok((string_ptr, string_len));
+    }
+
     // TODO: add validation for const expr
     fn ensure_const_expr(&self, _expr: &CodeExpr) -> Result<(), LoError> {
         Ok(())
@@ -2643,6 +2821,42 @@ impl CodeGen {
         }
 
         None
+    }
+
+    fn codegen_default_value(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        value_type: &LoType,
+    ) {
+        match value_type {
+            LoType::Never => {}
+            LoType::Void => {}
+            LoType::Bool
+            | LoType::U8
+            | LoType::I8
+            | LoType::U16
+            | LoType::I16
+            | LoType::U32
+            | LoType::I32
+            | LoType::Pointer { pointee: _ }
+            | LoType::SequencePointer { pointee: _ } => {
+                instrs.push(WasmInstr::I32Const { value: 0 })
+            }
+            LoType::U64 | LoType::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
+            LoType::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
+            LoType::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
+            LoType::StructInstance { struct_name } => {
+                let struct_ref = self.get_struct_def(struct_name).unwrap();
+                for field in &struct_ref.fields {
+                    self.codegen_default_value(ctx, instrs, &field.field_type);
+                }
+            }
+            LoType::Result { ok_type, err_type } => {
+                self.codegen_default_value(ctx, instrs, &ok_type);
+                self.codegen_default_value(ctx, instrs, &err_type);
+            }
+        }
     }
 
     fn lower_type(&self, lo_type: &LoType, wasm_types: &mut Vec<WasmType>) {

@@ -412,6 +412,26 @@ impl Printer {
                 self.print_indent();
                 stdout_write("]");
             }
+            CodeExpr::ResultLiteral(ResultLiteralExpr {
+                is_ok,
+                result_type,
+                value,
+                loc: _,
+            }) => {
+                stdout_write(if *is_ok { "Ok" } else { "Err" });
+                if let Some((ok_type, err_type)) = result_type {
+                    stdout_write("::<");
+                    self.print_type_expr(ok_type);
+                    stdout_write(", ");
+                    self.print_type_expr(err_type);
+                    stdout_write(">");
+                }
+                stdout_write("(");
+                if let Some(value) = value {
+                    self.print_code_expr(value);
+                }
+                stdout_write(")");
+            }
 
             CodeExpr::Ident(IdentExpr {
                 repr,

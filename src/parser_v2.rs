@@ -861,6 +861,37 @@ impl ParserV2 {
 
         let ident = self.parse_ident()?;
 
+        if ident.repr == "Ok" || ident.repr == "Err" {
+            let mut loc = ident.loc.clone();
+
+            let mut result_type = None;
+            if let Some(_) = self.eat(Operator, "::")? {
+                self.expect(Operator, "<")?;
+                let ok_type = self.parse_type_expr()?;
+                self.expect(Delim, ",")?;
+                let err_type = self.parse_type_expr()?;
+                self.expect(Operator, ">")?;
+
+                result_type = Some((ok_type, err_type));
+            }
+
+            self.expect(Delim, "(")?;
+            let mut value = None;
+            if let None = self.eat(Delim, ")")? {
+                value = Some(Box::new(self.parse_code_expr(0)?));
+                self.expect(Delim, ")")?;
+            }
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::ResultLiteral(ResultLiteralExpr {
+                is_ok: ident.repr == "Ok",
+                result_type,
+                value,
+                loc,
+            }));
+        }
+
         if self.current().is(Delim, "(") {
             let mut loc = ident.loc.clone();
 
