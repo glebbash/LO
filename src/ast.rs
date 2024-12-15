@@ -87,8 +87,14 @@ impl Locatable for ImportItem {
 #[derive(Debug)]
 pub struct GlobalDefExpr {
     pub global_name: IdentExpr,
-    pub expr: CodeExpr,
+    pub global_value: GlobalDefValue,
     pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub enum GlobalDefValue {
+    Expr(CodeExpr),
+    DataSize,
 }
 
 #[derive(Debug)]

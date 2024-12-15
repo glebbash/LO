@@ -326,7 +326,7 @@ async function testCommand() {
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
 
-    testCompilers("compiles std.lo", { v1 }, async (compile) => {
+    testCompilers("compiles std.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/std.test.lo");
 
         await loadWasm(output);

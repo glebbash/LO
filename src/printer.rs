@@ -89,13 +89,16 @@ impl Printer {
             }
             TopLevelExpr::GlobalDef(GlobalDefExpr {
                 global_name,
-                expr,
+                global_value,
                 loc: _,
             }) => {
                 stdout_write("global ");
                 stdout_write(&global_name.repr);
                 stdout_write(" = ");
-                self.print_code_expr(expr);
+                match global_value {
+                    GlobalDefValue::Expr(expr) => self.print_code_expr(expr),
+                    GlobalDefValue::DataSize => stdout_write("@data_size"),
+                }
                 stdout_writeln(";");
             }
             TopLevelExpr::StructDef(StructDefExpr {

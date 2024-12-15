@@ -196,13 +196,21 @@ impl ParserV2 {
 
             let global_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
-            let expr = self.parse_code_expr(0)?;
+
+            let global_value = if let Some(_) = self.eat(Operator, "@")? {
+                self.expect(Symbol, "data_size")?;
+
+                GlobalDefValue::DataSize
+            } else {
+                let expr = self.parse_code_expr(0)?;
+                GlobalDefValue::Expr(expr)
+            };
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::GlobalDef(GlobalDefExpr {
                 global_name,
-                expr,
+                global_value,
                 loc,
             }));
         }

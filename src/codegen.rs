@@ -98,6 +98,7 @@ struct LoFnType {
 struct LoExprContext {
     locals: Vec<LoLocal>,
     last_local_index: u32,
+    deferred: Vec<&'static CodeExpr>,
     scopes: Vec<LoScope>,
 }
 
@@ -119,10 +120,16 @@ enum LoScopeType {
 }
 
 #[derive(Clone)]
+struct LoCodeUnit {
+    lo_type: LoType,
+    instrs: Vec<WasmInstr>,
+}
+
+#[derive(Clone)]
 struct LoScope {
     scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
-    macro_args: Vec<(String, &'static CodeExpr)>,
+    macro_args: Vec<(String, LoCodeUnit)>,
     macro_types: Vec<(String, LoType)>,
 }
 
@@ -189,33 +196,11 @@ impl LoExprContext {
         None
     }
 
-    fn get_macro_arg(&self, arg_name: &str) -> Option<&'static CodeExpr> {
+    fn get_macro_arg(&self, arg_name: &str) -> Option<&LoCodeUnit> {
         for scope in self.scopes.iter().rev() {
             for macro_arg in &scope.macro_args {
                 if macro_arg.0 == arg_name {
-                    let value = macro_arg.1;
-                    /*
-                    Handle the case where macro arg is an identifier with the same name as macro parameter.
-
-                    This happens when macro argument points to an argument from parent macro.
-
-                    Example:
-                    ```lo
-                    macro i32::mul_by_2!(self): i32 {
-                      i32::mul(self, self);
-                    };
-                    macro i32::mul(self, other: i32): i32 {
-                      // here self points to self from `i32::mul_by_2`, not from `i32::mul``
-                      self * other;
-                    };
-                    ```
-                    */
-                    if let CodeExpr::Ident(ident) = value {
-                        if ident.repr == arg_name {
-                            continue;
-                        }
-                    }
-                    return Some(value);
+                    return Some(&macro_arg.1);
                 }
             }
         }
@@ -300,6 +285,12 @@ impl VariableInfo {
     }
 }
 
+struct LoConstDef {
+    const_name: String,
+    code_unit: LoCodeUnit,
+    loc: LoLocation,
+}
+
 #[derive(Default)]
 pub struct CodeGen {
     pub errors: LoErrorManager,
@@ -311,8 +302,10 @@ pub struct CodeGen {
     memory_imported_from: Option<String>,
     static_data_stores: Vec<StaticDataStoreExpr>,
     globals: Vec<LoGlobalDef>,
-    const_defs: Vec<ConstDefExpr>,
+    const_defs: Vec<LoConstDef>,
     macro_defs: Vec<MacroDefExpr>,
+    const_ctx: LoExprContext,
+    data_size: u32,
 }
 
 impl CodeGen {
@@ -392,7 +385,7 @@ impl CodeGen {
                 TopLevelExpr::Include(_) => {} // skip, processed earlier
                 TopLevelExpr::FnDef(fn_def) => {
                     let output = match &fn_def.decl.return_type {
-                        Some(return_type) => self.build_type(None, return_type)?,
+                        Some(return_type) => self.build_type(&self.const_ctx, return_type)?,
                         _ => LoType::Void,
                     };
 
@@ -492,7 +485,7 @@ impl CodeGen {
                             fn_type.inputs.push(param_type.clone());
                         }
                         if let Some(return_type) = fn_decl.return_type {
-                            fn_type.output = self.build_type(None, &return_type)?;
+                            fn_type.output = self.build_type(&self.const_ctx, &return_type)?;
                         }
 
                         // TODO: make sure function name does not collide with intrinsics
@@ -532,18 +525,23 @@ impl CodeGen {
                         });
                     }
 
-                    self.ensure_const_expr(&global.expr)?;
-                    let const_expr_ctx = &mut LoExprContext::default();
-                    let value_type = self.get_expr_type(const_expr_ctx, &global.expr)?;
-                    let value_comp_count = self.count_wasm_type_components(&value_type);
-                    if value_comp_count != 1 {
-                        return Err(LoError {
-                            message: format!(
-                                "Cannot define global with non-primitive type {value_type}",
-                            ),
-                            loc: global.loc,
-                        });
-                    }
+                    let value_type = match &global.global_value {
+                        GlobalDefValue::Expr(expr) => {
+                            self.ensure_const_expr(expr)?;
+                            let value_type = self.get_expr_type(&self.const_ctx, expr)?;
+                            let value_comp_count = self.count_wasm_type_components(&value_type);
+                            if value_comp_count != 1 {
+                                return Err(LoError {
+                                    message: format!(
+                                        "Cannot define global with non-primitive type {value_type}",
+                                    ),
+                                    loc: global.loc,
+                                });
+                            }
+                            value_type
+                        }
+                        GlobalDefValue::DataSize => LoType::U32,
+                    };
 
                     self.globals.push(LoGlobalDef {
                         def_expr: global,
@@ -597,7 +595,7 @@ impl CodeGen {
                         }
 
                         // TODO: add self reference check
-                        let field_type = self.build_type(None, &field.field_type)?;
+                        let field_type = self.build_type(&self.const_ctx, &field.field_type)?;
 
                         struct_fields.push(LoStructField {
                             field_name: field.field_name,
@@ -626,7 +624,7 @@ impl CodeGen {
                         });
                     }
 
-                    let type_value = self.build_type(None, &typedef.type_value)?;
+                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value)?;
 
                     self.type_defs.push(LoTypeDef {
                         name: typedef.type_name.repr,
@@ -645,7 +643,13 @@ impl CodeGen {
                         });
                     }
 
-                    self.const_defs.push(const_def);
+                    let mut const_ctx = LoExprContext::default();
+                    let code_unit = self.build_code_unit(&mut const_ctx, &const_def.const_value)?;
+                    self.const_defs.push(LoConstDef {
+                        const_name: const_def.const_name.repr.clone(),
+                        code_unit,
+                        loc: const_def.loc.clone(),
+                    });
                 }
                 TopLevelExpr::MemoryDef(memory) => {
                     if let Some(existing_memory) = &self.memory {
@@ -784,8 +788,15 @@ impl CodeGen {
                 ..Default::default()
             };
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
+            let mut had_return = false;
             for expr in &body.exprs {
+                if let CodeExpr::Return(_) = expr {
+                    had_return = true;
+                }
                 self.codegen(&mut ctx, &mut wasm_expr.instrs, expr)?;
+            }
+            if !had_return {
+                self.emit_deferred(&mut ctx, &mut wasm_expr.instrs)?;
             }
 
             let mut wasm_locals_flat = Vec::new();
@@ -843,13 +854,13 @@ impl CodeGen {
             }
         }
 
-        let const_expr_ctx = &mut LoExprContext::default();
+        let mut const_ctx = LoExprContext::default();
 
         for static_data_store in &self.static_data_stores {
             let mut offset_expr = WasmExpr { instrs: Vec::new() };
             self.ensure_const_expr(&static_data_store.addr)?;
             self.codegen(
-                const_expr_ctx,
+                &mut const_ctx,
                 &mut offset_expr.instrs,
                 &static_data_store.addr,
             )?;
@@ -871,11 +882,15 @@ impl CodeGen {
             let wasm_value_type = wasm_types_buf.pop().unwrap();
 
             let mut initial_value = WasmExpr { instrs: Vec::new() };
-            self.codegen(
-                const_expr_ctx,
-                &mut initial_value.instrs,
-                &global.def_expr.expr,
-            )?;
+
+            match &global.def_expr.global_value {
+                GlobalDefValue::Expr(expr) => {
+                    self.codegen(&mut const_ctx, &mut initial_value.instrs, expr)?;
+                }
+                GlobalDefValue::DataSize => initial_value.instrs.push(WasmInstr::I32Const {
+                    value: self.data_size as i32,
+                }),
+            };
 
             wasm_module.globals.push(WasmGlobal {
                 mutable: true,
@@ -912,21 +927,15 @@ impl CodeGen {
                     pointee: Box::new(self_type),
                 });
             }
-            FnParamType::Type { expr } => self.build_type(None, &expr),
+            FnParamType::Type { expr } => self.build_type(&self.const_ctx, &expr),
         }
     }
 
-    fn build_type(
-        &self,
-        ctx: Option<&LoExprContext>,
-        type_expr: &TypeExpr,
-    ) -> Result<LoType, LoError> {
+    fn build_type(&self, ctx: &LoExprContext, type_expr: &TypeExpr) -> Result<LoType, LoError> {
         match type_expr {
             TypeExpr::Named { name } => {
-                if let Some(ctx) = ctx {
-                    if let Some(macro_type) = ctx.get_macro_type(&name.repr) {
-                        return Ok(macro_type.clone());
-                    }
+                if let Some(macro_type) = ctx.get_macro_type(&name.repr) {
+                    return Ok(macro_type.clone());
                 }
 
                 self.get_type_or_err(&name.repr, &name.loc)
@@ -977,7 +986,15 @@ impl CodeGen {
                     instrs.push(WasmInstr::I32Const { value: 0 });
                 }
             }
-            CodeExpr::CharLiteral(_) => todo!(),
+            CodeExpr::CharLiteral(CharLiteralExpr {
+                repr: _,
+                value,
+                loc: _,
+            }) => {
+                instrs.push(WasmInstr::I32Const {
+                    value: *value as i32,
+                });
+            }
             CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: _,
                 value,
@@ -1061,7 +1078,10 @@ impl CodeGen {
                 loc,
             }) => {
                 if let Some(const_expr) = self.get_const(ctx, repr) {
-                    return self.codegen(ctx, instrs, &const_expr);
+                    for instr in &const_expr.instrs {
+                        instrs.push(instr.clone());
+                    }
+                    return Ok(());
                 }
 
                 let var = self.var_from_ident(ctx, repr, loc)?;
@@ -1093,11 +1113,19 @@ impl CodeGen {
                 casted_to,
                 loc,
             }) => {
+                self.codegen(ctx, instrs, expr)?;
+
                 let castee_type = self.get_expr_type(ctx, expr)?;
+                let casted_to_type = self.build_type(ctx, casted_to)?;
+
+                if let Some(cast_op) = self.get_cast_instr(&castee_type, &casted_to_type) {
+                    instrs.push(cast_op);
+                    return Ok(());
+                }
+
                 let mut castee_type_components = Vec::new();
                 self.lower_type(&castee_type, &mut castee_type_components);
 
-                let casted_to_type = self.build_type(Some(ctx), casted_to)?;
                 let mut casted_to_type_components = Vec::new();
                 self.lower_type(&casted_to_type, &mut casted_to_type_components);
 
@@ -1107,8 +1135,6 @@ impl CodeGen {
                         loc: loc.clone(),
                     });
                 }
-
-                self.codegen(ctx, instrs, expr)?;
             }
             CodeExpr::PrefixOp(PrefixOpExpr { op_tag, expr, loc }) => match op_tag {
                 PrefixOpTag::Dereference => {
@@ -1288,7 +1314,7 @@ impl CodeGen {
 
             CodeExpr::Dbg(_) => todo!(),
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
-                let lo_type = self.build_type(Some(ctx), type_expr)?;
+                let lo_type = self.build_type(ctx, type_expr)?;
                 let mut type_layout = LoTypeLayout::default();
                 self.get_type_layout(&lo_type, &mut type_layout);
 
@@ -1351,6 +1377,8 @@ impl CodeGen {
             }
 
             CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
+                self.emit_deferred(ctx, instrs)?;
+
                 if let Some(return_expr) = expr {
                     self.codegen(ctx, instrs, return_expr)?;
                 }
@@ -1551,7 +1579,9 @@ impl CodeGen {
 
                 instrs.push(WasmInstr::Branch { label_index });
             }
-            CodeExpr::Defer(defer) => return Err(lo_todo!(defer.loc.clone())),
+            CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
+                ctx.deferred.push(unsafe_borrow(expr));
+            }
             CodeExpr::Catch(catch) => return Err(lo_todo!(catch.loc.clone())),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
                 self.codegen(ctx, instrs, expr)?;
@@ -1642,13 +1672,13 @@ impl CodeGen {
                 let type_param = &macro_def.macro_type_params[i];
                 let type_arg = &type_args[i];
 
-                let lo_type = self.build_type(Some(&ctx), &type_arg)?;
+                let lo_type = self.build_type(&ctx, &type_arg)?;
                 ctx.current_scope_mut()
                     .macro_types
                     .push((type_param.clone(), lo_type));
             }
 
-            return_type = self.build_type(Some(&ctx), macro_return_type)?;
+            return_type = self.build_type(&ctx, macro_return_type)?;
         }
 
         Ok(return_type)
@@ -1689,7 +1719,7 @@ impl CodeGen {
             let type_param = &macro_def.macro_type_params[i];
             let type_arg = &type_args[i];
 
-            let lo_type = self.build_type(Some(ctx), &type_arg)?;
+            let lo_type = self.build_type(ctx, &type_arg)?;
             ctx.current_scope_mut()
                 .macro_types
                 .push((type_param.clone(), lo_type));
@@ -1720,9 +1750,10 @@ impl CodeGen {
             let macro_param = &macro_def.macro_params[i];
             let macro_arg = &all_args[i];
 
+            let code_unit = self.build_code_unit(ctx, macro_arg)?;
             ctx.current_scope_mut()
                 .macro_args
-                .push((macro_param.param_name.clone(), unsafe_borrow(macro_arg)));
+                .push((macro_param.param_name.clone(), code_unit));
         }
 
         for expr in &macro_def.body.exprs {
@@ -2117,7 +2148,7 @@ impl CodeGen {
                 loc,
             }) => {
                 if let Some(const_expr) = self.get_const(ctx, &repr) {
-                    return self.get_expr_type(ctx, const_expr);
+                    return Ok(const_expr.lo_type.clone());
                 }
 
                 let var = self.var_from_ident(ctx, &repr, loc)?;
@@ -2209,7 +2240,7 @@ impl CodeGen {
                 expr: _,
                 casted_to,
                 loc: _,
-            }) => self.build_type(Some(ctx), casted_to),
+            }) => self.build_type(ctx, casted_to),
             CodeExpr::FieldAccess(FieldAccessExpr {
                 lhs,
                 field_name,
@@ -2506,6 +2537,32 @@ impl CodeGen {
         }
     }
 
+    fn emit_deferred(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+    ) -> Result<(), LoError> {
+        for expr in unsafe_borrow(&ctx.deferred) {
+            self.codegen(ctx, instrs, expr)?;
+        }
+
+        Ok(())
+    }
+
+    fn build_code_unit(
+        &self,
+        ctx: &mut LoExprContext,
+        expr: &CodeExpr,
+    ) -> Result<LoCodeUnit, LoError> {
+        let mut code_unit = LoCodeUnit {
+            lo_type: self.get_expr_type(ctx, expr)?,
+            instrs: Vec::new(),
+        };
+        self.codegen(ctx, &mut code_unit.instrs, expr)?;
+
+        Ok(code_unit)
+    }
+
     // TODO: add validation for const expr
     fn ensure_const_expr(&self, _expr: &CodeExpr) -> Result<(), LoError> {
         Ok(())
@@ -2532,21 +2589,21 @@ impl CodeGen {
         None
     }
 
-    fn get_const(&self, ctx: &LoExprContext, const_name: &str) -> Option<&CodeExpr> {
+    fn get_const(&self, ctx: &LoExprContext, const_name: &str) -> Option<&LoCodeUnit> {
         if let Some(const_def) = self.get_const_def(const_name) {
-            return Some(&const_def.const_value);
+            return Some(&const_def.code_unit);
         }
 
         if let Some(macro_arg) = ctx.get_macro_arg(const_name) {
-            return Some(macro_arg);
+            return Some(unsafe_borrow(macro_arg));
         }
 
         None
     }
 
-    fn get_const_def(&self, const_name: &str) -> Option<&ConstDefExpr> {
+    fn get_const_def(&self, const_name: &str) -> Option<&LoConstDef> {
         for const_def in &self.const_defs {
-            if const_def.const_name.repr == const_name {
+            if const_def.const_name == const_name {
                 return Some(const_def);
             }
         }
@@ -2656,6 +2713,38 @@ impl CodeGen {
                 self.get_type_layout(err_type, layout);
             }
         }
+    }
+
+    fn get_cast_instr(&self, casted_from: &LoType, casted_to: &LoType) -> Option<WasmInstr> {
+        if *casted_to == LoType::I64 || *casted_to == LoType::U64 {
+            if *casted_from == LoType::I8
+                || *casted_from == LoType::I16
+                || *casted_from == LoType::I32
+            {
+                return Some(WasmInstr::I64ExtendI32s);
+            }
+
+            if *casted_from == LoType::U8
+                || *casted_from == LoType::U16
+                || *casted_from == LoType::U32
+            {
+                return Some(WasmInstr::I64ExtendI32u);
+            }
+        }
+
+        if *casted_to == LoType::I8
+            || *casted_to == LoType::U8
+            || *casted_to == LoType::I16
+            || *casted_to == LoType::U16
+            || *casted_to == LoType::I32
+            || *casted_to == LoType::U32
+        {
+            if *casted_from == LoType::I64 || *casted_from == LoType::U64 {
+                return Some(WasmInstr::I32WrapI64);
+            }
+        }
+
+        None
     }
 
     fn get_binary_op_kind(
