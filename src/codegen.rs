@@ -2348,7 +2348,9 @@ impl CodeGen {
                 PrefixOpTag::Not => Ok(LoType::Bool),
                 PrefixOpTag::Dereference => {
                     let expr_type = self.get_expr_type(ctx, expr)?;
-                    let LoType::Pointer { pointee } = expr_type else {
+                    let (LoType::Pointer { pointee } | LoType::SequencePointer { pointee }) =
+                        expr_type
+                    else {
                         return Err(LoError {
                             message: format!("Cannot dereference expr of type {}", expr_type),
                             loc: loc.clone(),
@@ -2577,7 +2579,7 @@ impl CodeGen {
     ) -> Result<VariableInfo, LoError> {
         let expr_type = self.get_expr_type(ctx, expr)?;
 
-        if let LoType::Pointer { pointee } = &expr_type {
+        if let LoType::Pointer { pointee } | LoType::SequencePointer { pointee } = &expr_type {
             return Ok(VariableInfo::Stored {
                 address: unsafe_borrow(expr),
                 offset: 0,
@@ -2689,7 +2691,7 @@ impl CodeGen {
         ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
     ) -> Result<(), LoError> {
-        for expr in &ctx.deferred {
+        for expr in ctx.deferred.iter().rev() {
             for instr in &expr.instrs {
                 instrs.push(instr.clone());
             }

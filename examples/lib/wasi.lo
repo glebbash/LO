@@ -58,7 +58,7 @@ import from "wasi_snapshot_preview1" {
 
     // @param argv ----- Pointer to a buffer where the argument pointers will be written.
     // @param argv_buf - Pointer to a buffer where the argument string data will be written.
-    fn wasi::args_get(argv: &*&u8, argv_buf: *&u8): wasi::Err;
+    fn wasi::args_get(argv: *&*&u8, argv_buf: *&u8): wasi::Err;
 
     // @param code - The exit code to return to the operating system.
     fn wasi::proc_exit(code: u32): never;

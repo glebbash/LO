@@ -400,7 +400,7 @@ async function testCommand() {
         assert.strictEqual(output, "abc");
     });
 
-    testCompilers("compiles args.test.lo", { v1 }, async (compile) => {
+    testCompilers("compiles args.test.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/args.test.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -432,7 +432,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles string-pooling.lo", { v1 }, async (compile) => {
+    testCompilers("compiles string-pooling.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/string-pooling.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -468,7 +468,7 @@ async function testCommand() {
         assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
     });
 
-    testCompilers("compiles heap-alloc.lo", { v1 }, async (compile) => {
+    testCompilers("compiles heap-alloc.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/heap-alloc.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -487,7 +487,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles defer.lo", { v1 }, async (compile) => {
+    testCompilers("compiles defer.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/defer.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
