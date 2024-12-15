@@ -37,11 +37,6 @@ pub fn parse_file_and_deps(
         };
     }
 
-    files.push(FileInfo {
-        path: file_path.into(),
-        ast,
-    });
-
     for include in includes {
         parse_file_and_deps(
             files,
@@ -49,6 +44,11 @@ pub fn parse_file_and_deps(
             &include.loc,
         )?;
     }
+
+    files.push(FileInfo {
+        path: file_path.into(),
+        ast,
+    });
 
     Ok(())
 }

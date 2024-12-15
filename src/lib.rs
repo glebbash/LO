@@ -94,7 +94,7 @@ mod wasi_api {
             parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
 
             let mut codegen = CodeGen::with_default_types();
-            for file in files.into_iter().rev() {
+            for file in files {
                 codegen.add_file(file)?;
             }
             codegen.errors.print_all()?;

@@ -98,7 +98,7 @@ struct LoFnType {
 struct LoExprContext {
     locals: Vec<LoLocal>,
     last_local_index: u32,
-    deferred: Vec<&'static CodeExpr>,
+    deferred: Vec<LoCodeUnit>,
     scopes: Vec<LoScope>,
 }
 
@@ -187,7 +187,6 @@ impl LoExprContext {
     fn get_macro_type_arg(&self, type_name: &str) -> Option<&LoType> {
         for scope in self.scopes.iter().rev() {
             for macro_type_arg in &scope.macro_type_args {
-                debug(format!("type {} = {}", macro_type_arg.0, macro_type_arg.1));
                 if macro_type_arg.0 == type_name {
                     return Some(&macro_type_arg.1);
                 }
@@ -1581,7 +1580,8 @@ impl CodeGen {
                 instrs.push(WasmInstr::Branch { label_index });
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
-                ctx.deferred.push(unsafe_borrow(expr));
+                let code_unit = self.build_code_unit(ctx, expr)?;
+                ctx.deferred.push(code_unit);
             }
             CodeExpr::Catch(catch) => return Err(lo_todo!(catch.loc.clone())),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
@@ -2544,8 +2544,10 @@ impl CodeGen {
         ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
     ) -> Result<(), LoError> {
-        for expr in unsafe_borrow(&ctx.deferred) {
-            self.codegen(ctx, instrs, expr)?;
+        for expr in &ctx.deferred {
+            for instr in &expr.instrs {
+                instrs.push(instr.clone());
+            }
         }
 
         Ok(())
