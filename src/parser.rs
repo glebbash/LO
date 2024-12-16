@@ -96,7 +96,6 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
             .unwrap();
 
         let mut fn_ctx = FnContext {
-            module: &ctx,
             lo_fn_type: &fn_def.type_,
             locals_last_index: fn_body.locals_last_index,
             non_arg_wasm_locals: vec![],
@@ -353,7 +352,6 @@ fn parse_top_level_expr(
                 local: false,
                 fn_index,
                 fn_params: fn_decl.fn_params,
-                type_index,
                 type_: fn_decl.lo_type,
                 loc: fn_decl.loc,
             };
@@ -419,7 +417,6 @@ fn parse_top_level_expr(
             global_name.value.clone(),
             GlobalDef {
                 index: global_index as u32,
-                mutable,
                 value_type: lo_type,
                 loc: global_name.loc,
             },
@@ -689,7 +686,6 @@ fn parse_fn_def(
             local: true,
             fn_index,
             fn_params: fn_decl.fn_params,
-            type_index,
             type_: fn_decl.lo_type,
             loc: fn_decl.loc,
         },
@@ -697,7 +693,6 @@ fn parse_fn_def(
 
     ctx.fn_bodies.borrow_mut().push(FnBody {
         fn_index,
-        type_index,
         locals: fn_decl.locals,
         locals_last_index,
         body,
@@ -717,7 +712,7 @@ fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Resul
         });
     }
 
-    let (receiver_type, method_name) = extract_method_receiver_and_name(ctx, &macro_name)?;
+    let (receiver_type, _) = extract_method_receiver_and_name(ctx, &macro_name)?;
     let mut type_params = Vec::<String>::new();
 
     if let Some(_) = tokens.eat(Operator, "<")? {
@@ -771,8 +766,6 @@ fn parse_macro_def(ctx: &mut ModuleContext, tokens: &mut LoTokenStream) -> Resul
     ctx.macros.insert(
         macro_name.value.clone(),
         MacroDef {
-            receiver_type,
-            method_name,
             type_params,
             params,
             return_type,

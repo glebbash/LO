@@ -2874,7 +2874,7 @@ impl CodeGen {
         None
     }
 
-    fn get_const<'a>(&'a self, ctx: &'a LoExprContext, const_name: &str) -> Option<&LoCodeUnit> {
+    fn get_const<'a>(&'a self, ctx: &'a LoExprContext, const_name: &str) -> Option<&'a LoCodeUnit> {
         if let Some(const_def) = self.get_const_def(const_name) {
             return Some(&const_def.code_unit);
         }

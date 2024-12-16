@@ -73,7 +73,6 @@ pub struct LoFnType {
 }
 
 pub struct FnContext<'a> {
-    pub module: &'a ModuleContext<'a>,
     pub lo_fn_type: &'a LoFnType,
     pub locals_last_index: u32,
     pub non_arg_wasm_locals: Vec<WasmType>,
@@ -482,7 +481,6 @@ pub struct LocalDef {
 
 pub struct GlobalDef {
     pub index: u32,
-    pub mutable: bool,
     pub value_type: LoType,
     pub loc: LoLocation,
 }
@@ -494,7 +492,6 @@ pub struct ConstDef {
 
 pub struct FnBody {
     pub fn_index: u32,
-    pub type_index: u32,
     pub locals: BTreeMap<String, LocalDef>,
     pub locals_last_index: u32,
     pub body: LoTokenStream,
@@ -533,7 +530,6 @@ pub struct FnDef {
     pub local: bool,
     pub fn_index: u32,
     pub fn_params: Vec<FnParam>,
-    pub type_index: u32,
     pub type_: LoFnType,
     pub loc: LoLocation,
 }
@@ -566,8 +562,6 @@ impl core::fmt::Display for FnParam {
 
 #[derive(Clone)]
 pub struct MacroDef {
-    pub receiver_type: Option<LoType>,
-    pub method_name: String,
     pub type_params: Vec<String>,
     pub params: Vec<FnParam>,
     pub return_type: LoType,
