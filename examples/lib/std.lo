@@ -153,8 +153,8 @@ macro tmp_alloc!<T>(): &T {
     defer stack::free(sizeof T);
 };
 
-macro tmp_alloc_many!<T>(count: u32): &T {
-    stack::alloc(count * sizeof T) as &T;
+macro tmp_alloc_many!<T>(count: u32): *&T {
+    stack::alloc(count * sizeof T) as *&T;
     defer stack::free(count * sizeof T);
 };
 

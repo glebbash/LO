@@ -313,6 +313,8 @@ pub struct CodeGen {
     string_pool: RefCell<Vec<(String, u32)>>,
     data_size: RefCell<u32>,
 
+    wasm_types: RefCell<Vec<WasmFnType>>,
+
     const_ctx: LoExprContext,
 }
 
@@ -751,14 +753,15 @@ impl CodeGen {
             }
             self.lower_type(&fn_info.fn_type.output, &mut wasm_fn_type.outputs);
 
-            let mut fn_type_index = wasm_module.types.len() as u32;
-            for (existing_fn_type, existing_type_index) in wasm_module.types.iter().zip(0..) {
+            let mut fn_type_index = self.wasm_types.borrow().len() as u32;
+            for (existing_fn_type, existing_type_index) in self.wasm_types.borrow().iter().zip(0..)
+            {
                 if wasm_fn_type == *existing_fn_type {
                     fn_type_index = existing_type_index;
                 }
             }
-            if fn_type_index == wasm_module.types.len() as u32 {
-                wasm_module.types.push(wasm_fn_type);
+            if fn_type_index == self.wasm_types.borrow().len() as u32 {
+                self.wasm_types.borrow_mut().push(wasm_fn_type.clone());
             }
 
             match &fn_info.fn_source {
@@ -907,6 +910,8 @@ impl CodeGen {
                 initial_value,
             });
         }
+
+        wasm_module.types.append(&mut self.wasm_types.borrow_mut());
 
         Ok(wasm_module)
     }
@@ -1361,7 +1366,68 @@ impl CodeGen {
                 let var = self.var_from_field_access(ctx, lhs, &field_name)?;
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
-            CodeExpr::PropagateError(_) => todo!(),
+            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
+                let expr_type = self.get_expr_type(ctx, expr)?;
+                let LoType::Result { ok_type, err_type } = &expr_type else {
+                    return Err(LoError {
+                        message: format!("Cannot propagate error from expr of type {}", expr_type),
+                        loc: loc.clone(),
+                    });
+                };
+
+                let mut err_type_components = Vec::new();
+                self.lower_type(&err_type, &mut err_type_components);
+                if err_type_components != [WasmType::I32] {
+                    return Err(LoError {
+                        message: format!(
+                            "Invalid Result error type {}, must lower to i32",
+                            err_type
+                        ),
+                        loc: loc.clone(),
+                    });
+                }
+
+                ctx.enter_scope(LoScopeType::Block); // enter catch scope
+
+                let local_index =
+                    self.define_local(ctx, loc.clone(), String::from("?"), &expr_type, false)?;
+
+                let result_var = VariableInfo::Local {
+                    local_index,
+                    local_type: expr_type.clone(),
+                };
+                self.codegen_var_set(ctx, instrs, &result_var, expr)?;
+
+                let ok_var = VariableInfo::Local {
+                    local_index: local_index + 1,
+                    local_type: ok_type.as_ref().clone(),
+                };
+
+                // cond: error != 0
+                instrs.push(WasmInstr::LocalGet { local_index });
+
+                let in_out_type_index = self.get_block_inout_type(&[], ok_type.as_ref());
+                instrs.push(WasmInstr::BlockStart {
+                    block_kind: WasmBlockKind::If,
+                    block_type: WasmBlockType::InOut {
+                        type_index: in_out_type_index,
+                    },
+                });
+
+                // return result
+                self.emit_deferred(ctx, instrs)?;
+                self.codegen_var_get(ctx, instrs, &result_var)?;
+                instrs.push(WasmInstr::Return);
+
+                instrs.push(WasmInstr::Else);
+
+                // push ok value to the stack
+                self.codegen_var_get(ctx, instrs, &ok_var)?;
+
+                instrs.push(WasmInstr::BlockEnd);
+
+                ctx.exit_scope(); // exit catch scope
+            }
 
             CodeExpr::FnCall(FnCallExpr { fn_name, args, loc }) => {
                 self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, args, loc)?;
@@ -1770,6 +1836,7 @@ impl CodeGen {
         Ok(return_type)
     }
 
+    // TODO: typecheck actual macro return with it's specified return type
     fn codegen_macro_call(
         &self,
         ctx: &mut LoExprContext,
@@ -2219,6 +2286,26 @@ impl CodeGen {
         Ok((ok_type.as_ref().clone(), err_type.as_ref().clone()))
     }
 
+    fn get_block_inout_type(&self, inputs: &[LoType], output: &LoType) -> u32 {
+        let mut inout_fn_type = WasmFnType {
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        };
+        for input in inputs {
+            self.lower_type(input, &mut inout_fn_type.inputs);
+        }
+        self.lower_type(output, &mut inout_fn_type.outputs);
+
+        for (fn_type, type_index) in self.wasm_types.borrow().iter().zip(0..) {
+            if *fn_type == inout_fn_type {
+                return type_index;
+            }
+        }
+
+        self.wasm_types.borrow_mut().push(inout_fn_type);
+        self.wasm_types.borrow().len() as u32 - 1
+    }
+
     fn get_expr_type(&self, ctx: &LoExprContext, expr: &CodeExpr) -> Result<LoType, LoError> {
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(LoType::Bool),
@@ -2463,7 +2550,21 @@ impl CodeGen {
             CodeExpr::Break(_) => Ok(LoType::Never),
             CodeExpr::Continue(_) => Ok(LoType::Never),
             CodeExpr::Return(_) => Ok(LoType::Never),
-            CodeExpr::PropagateError(_) => Ok(LoType::Never),
+            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
+                let expr_type = self.get_expr_type(ctx, expr)?;
+                let LoType::Result {
+                    ok_type,
+                    err_type: _,
+                } = expr_type
+                else {
+                    return Err(LoError {
+                        message: format!("Cannot propagate error from expr of type {}", expr_type),
+                        loc: loc.clone(),
+                    });
+                };
+
+                Ok(*ok_type)
+            }
             CodeExpr::Unreachable(_) => Ok(LoType::Never),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(ctx, expr),
         }

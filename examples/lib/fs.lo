@@ -79,7 +79,7 @@ fn fs::read_fd(fd: u32): Result<&Vec of u8, wasi::Err> {
     };
     let nread_ref = tmp_alloc!<u32>();
     loop {
-        let err = wasi::fd_read(fd, in_vec, 1, nread_ref);
+        let err = wasi::fd_read(fd, in_vec as *&wasi::IOVec, 1, nread_ref);
         if err != wasi::Err::SUCCESS {
             return Err(err);
         };
@@ -100,10 +100,11 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
         base: chunk,
         size: 0,
     };
+    let iovs = iov as *&wasi::IOVec;
     let nread_ref = tmp_alloc!<u32>();
     loop {
         iov.size = chunk_size;
-        let err = wasi::fd_read(fd_in, iov, 1, nread_ref);
+        let err = wasi::fd_read(fd_in, iovs, 1, nread_ref);
         if err != wasi::Err::SUCCESS {
             return Err(err);
         };
@@ -112,7 +113,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
             break;
         };
         iov.size = nread;
-        err = wasi::fd_write(fd_out, iov, 1, nread_ref);
+        err = wasi::fd_write(fd_out, iovs, 1, nread_ref);
         if err != wasi::Err::SUCCESS {
             return Err(err);
         };

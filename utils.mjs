@@ -386,7 +386,7 @@ async function testCommand() {
         assert.strictEqual(output, "Hello World!\n");
     });
 
-    testCompilers("compiles echo.lo", { v1 }, async (compile) => {
+    testCompilers("compiles echo.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/demos/echo.lo");
 
         const output = await runWithTmpFile(async (stdin, stdinFile) => {
