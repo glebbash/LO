@@ -414,7 +414,7 @@ async function testCommand() {
         assert.strictEqual(output, "123\n456\n789\n");
     });
 
-    testCompilers("compiles cat.lo", { v1 }, async (compile) => {
+    testCompilers("compiles cat.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/demos/cat.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -509,7 +509,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles errors.lo", { v1 }, async (compile) => {
+    testCompilers("compiles errors.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/errors.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {

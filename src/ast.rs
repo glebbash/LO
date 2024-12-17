@@ -445,7 +445,7 @@ pub struct FieldAccessExpr {
 #[derive(Debug)]
 pub struct CatchExpr {
     pub lhs: Box<CodeExpr>,
-    pub error_bind: String,
+    pub error_bind: IdentExpr,
     pub catch_body: CodeBlockExpr,
     pub loc: LoLocation,
 }

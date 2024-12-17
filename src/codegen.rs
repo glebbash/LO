@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, lexer::*, lo_todo, parser_v2::*, wasm::*};
+use crate::{ast::*, core::*, lexer::*, parser_v2::*, wasm::*};
 use alloc::{
     boxed::Box,
     format,
@@ -1366,68 +1366,6 @@ impl CodeGen {
                 let var = self.var_from_field_access(ctx, lhs, &field_name)?;
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
-            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
-                let expr_type = self.get_expr_type(ctx, expr)?;
-                let LoType::Result { ok_type, err_type } = &expr_type else {
-                    return Err(LoError {
-                        message: format!("Cannot propagate error from expr of type {}", expr_type),
-                        loc: loc.clone(),
-                    });
-                };
-
-                let mut err_type_components = Vec::new();
-                self.lower_type(&err_type, &mut err_type_components);
-                if err_type_components != [WasmType::I32] {
-                    return Err(LoError {
-                        message: format!(
-                            "Invalid Result error type {}, must lower to i32",
-                            err_type
-                        ),
-                        loc: loc.clone(),
-                    });
-                }
-
-                ctx.enter_scope(LoScopeType::Block); // enter catch scope
-
-                let local_index =
-                    self.define_local(ctx, loc.clone(), String::from("?"), &expr_type, false)?;
-
-                let result_var = VariableInfo::Local {
-                    local_index,
-                    local_type: expr_type.clone(),
-                };
-                self.codegen_var_set(ctx, instrs, &result_var, expr)?;
-
-                let ok_var = VariableInfo::Local {
-                    local_index: local_index + 1,
-                    local_type: ok_type.as_ref().clone(),
-                };
-
-                // cond: error != 0
-                instrs.push(WasmInstr::LocalGet { local_index });
-
-                let in_out_type_index = self.get_block_inout_type(&[], ok_type.as_ref());
-                instrs.push(WasmInstr::BlockStart {
-                    block_kind: WasmBlockKind::If,
-                    block_type: WasmBlockType::InOut {
-                        type_index: in_out_type_index,
-                    },
-                });
-
-                // return result
-                self.emit_deferred(ctx, instrs)?;
-                self.codegen_var_get(ctx, instrs, &result_var)?;
-                instrs.push(WasmInstr::Return);
-
-                instrs.push(WasmInstr::Else);
-
-                // push ok value to the stack
-                self.codegen_var_get(ctx, instrs, &ok_var)?;
-
-                instrs.push(WasmInstr::BlockEnd);
-
-                ctx.exit_scope(); // exit catch scope
-            }
 
             CodeExpr::FnCall(FnCallExpr { fn_name, args, loc }) => {
                 self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, args, loc)?;
@@ -1733,7 +1671,17 @@ impl CodeGen {
                 let code_unit = self.build_code_unit(ctx, expr)?;
                 ctx.deferred.push(code_unit);
             }
-            CodeExpr::Catch(catch) => return Err(lo_todo!(catch.loc.clone())),
+            CodeExpr::Catch(CatchExpr {
+                lhs,
+                error_bind,
+                catch_body,
+                loc,
+            }) => {
+                self.codegen_catch(ctx, instrs, lhs, Some((&error_bind, catch_body)), loc)?;
+            }
+            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
+                self.codegen_catch(ctx, instrs, expr, None, loc)?;
+            }
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
                 self.codegen(ctx, instrs, expr)?;
             }
@@ -1914,6 +1862,85 @@ impl CodeGen {
         }
 
         ctx.exit_scope(); // exit macro scope
+
+        Ok(())
+    }
+
+    fn codegen_catch(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        expr: &CodeExpr,
+        catch_details: Option<(&IdentExpr, &CodeBlockExpr)>,
+        loc: &LoLocation,
+    ) -> Result<(), LoError> {
+        let expr_type = self.get_expr_type(ctx, expr)?;
+        let (ok_type, err_type) = self.assert_catchable_type(&expr_type, loc)?;
+
+        ctx.enter_scope(LoScopeType::Block); // enter catch scope
+
+        // put result on the stack
+        self.codegen(ctx, instrs, expr)?;
+
+        // pop error
+        let error_bind = if let Some((error_bind, _)) = catch_details {
+            error_bind.repr.clone()
+        } else {
+            String::from("<err>")
+        };
+        let err_local_index = self.define_local(ctx, loc.clone(), error_bind, &err_type, false)?;
+        self.codegen_local_set(instrs, err_type, err_local_index);
+
+        // pop ok
+        let ok_bind = String::from("<ok>");
+        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &ok_type, false)?;
+        self.codegen_local_set(instrs, ok_type, ok_local_index);
+
+        // cond: error != 0
+        instrs.push(WasmInstr::LocalGet {
+            local_index: err_local_index,
+        });
+
+        let in_out_type_index = self.get_block_inout_type(&[], ok_type);
+        instrs.push(WasmInstr::BlockStart {
+            block_kind: WasmBlockKind::If,
+            block_type: WasmBlockType::InOut {
+                type_index: in_out_type_index,
+            },
+        });
+
+        // catch error
+        if let Some((_, catch_body)) = catch_details {
+            for expr in &catch_body.exprs {
+                self.codegen(ctx, instrs, &expr)?;
+            }
+
+            // TODO: push this conditionally
+            instrs.push(WasmInstr::Unreachable);
+        } else {
+            // return result
+            self.emit_deferred(ctx, instrs)?;
+            instrs.push(WasmInstr::I32Const { value: 0 });
+            let ok_var = VariableInfo::Local {
+                local_index: ok_local_index,
+                local_type: ok_type.clone(),
+            };
+            self.codegen_var_get(ctx, instrs, &ok_var)?;
+            instrs.push(WasmInstr::Return);
+        }
+
+        instrs.push(WasmInstr::Else);
+
+        // no error, push ok value
+        let ok_var = VariableInfo::Local {
+            local_index: ok_local_index,
+            local_type: ok_type.clone(),
+        };
+        self.codegen_var_get(ctx, instrs, &ok_var)?;
+
+        instrs.push(WasmInstr::BlockEnd);
+
+        ctx.exit_scope(); // exit catch scope
 
         Ok(())
     }
@@ -2534,7 +2561,21 @@ impl CodeGen {
                 let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
                 self.get_macro_return_type(ctx, &macro_name, type_args, loc)
             }
-            CodeExpr::Catch(_) => todo!(),
+            CodeExpr::Catch(CatchExpr {
+                lhs,
+                error_bind: _,
+                catch_body: _,
+                loc,
+            }) => {
+                let expr_type = self.get_expr_type(ctx, lhs)?;
+                let (ok_type, _) = self.assert_catchable_type(&expr_type, loc)?;
+                Ok(ok_type.clone())
+            }
+            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
+                let expr_type = self.get_expr_type(ctx, expr)?;
+                let (ok_type, _) = self.assert_catchable_type(&expr_type, loc)?;
+                Ok(ok_type.clone())
+            }
             CodeExpr::Dbg(_) => todo!(),
             CodeExpr::Sizeof(_) => Ok(LoType::U32),
             CodeExpr::GetDataSize(_) => Ok(LoType::U32),
@@ -2550,21 +2591,6 @@ impl CodeGen {
             CodeExpr::Break(_) => Ok(LoType::Never),
             CodeExpr::Continue(_) => Ok(LoType::Never),
             CodeExpr::Return(_) => Ok(LoType::Never),
-            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
-                let expr_type = self.get_expr_type(ctx, expr)?;
-                let LoType::Result {
-                    ok_type,
-                    err_type: _,
-                } = expr_type
-                else {
-                    return Err(LoError {
-                        message: format!("Cannot propagate error from expr of type {}", expr_type),
-                        loc: loc.clone(),
-                    });
-                };
-
-                Ok(*ok_type)
-            }
             CodeExpr::Unreachable(_) => Ok(LoType::Never),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(ctx, expr),
         }
@@ -2785,6 +2811,30 @@ impl CodeGen {
                 local_index: local_index + i,
             });
         }
+    }
+
+    fn assert_catchable_type<'a>(
+        &self,
+        expr_type: &'a LoType,
+        loc: &LoLocation,
+    ) -> Result<(&'a LoType, &'a LoType), LoError> {
+        let LoType::Result { ok_type, err_type } = expr_type else {
+            return Err(LoError {
+                message: format!("Cannot catch error from expr of type {}", expr_type),
+                loc: loc.clone(),
+            });
+        };
+
+        let mut err_type_components = Vec::new();
+        self.lower_type(&err_type, &mut err_type_components);
+        if err_type_components != [WasmType::I32] {
+            return Err(LoError {
+                message: format!("Invalid Result error type: {}, must lower to i32", err_type),
+                loc: loc.clone(),
+            });
+        }
+
+        Ok((ok_type, err_type))
     }
 
     fn emit_deferred(

@@ -1161,14 +1161,14 @@ impl ParserV2 {
             InfixOpTag::Catch => {
                 let mut loc = primary.loc().clone();
 
-                let error_bind = self.expect_any(Symbol)?.clone();
+                let error_bind = self.parse_ident()?;
                 let catch_body = self.parse_code_block_expr()?;
 
                 loc.end_pos = self.prev().loc.end_pos.clone();
 
                 Ok(CodeExpr::Catch(CatchExpr {
                     lhs: Box::new(primary),
-                    error_bind: error_bind.value,
+                    error_bind,
                     catch_body,
                     loc,
                 }))
