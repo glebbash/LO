@@ -1400,7 +1400,18 @@ impl CodeGen {
                 self.codegen_macro_call(ctx, instrs, &macro_name, type_args, Some(lhs), args, loc)?;
             }
 
-            CodeExpr::Dbg(_) => todo!(),
+            CodeExpr::Dbg(DbgExpr { message, loc }) => {
+                let debug_message = format!("{} - {}", loc, message.unescape());
+                let (str_ptr, str_len) = self.process_const_string(debug_message, loc)?;
+
+                // emit str struct values
+                instrs.push(WasmInstr::I32Const {
+                    value: str_ptr as i32,
+                });
+                instrs.push(WasmInstr::I32Const {
+                    value: str_len as i32,
+                });
+            }
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
                 let lo_type = self.build_type(ctx, type_expr)?;
                 let mut type_layout = LoTypeLayout::default();
@@ -2576,7 +2587,9 @@ impl CodeGen {
                 let (ok_type, _) = self.assert_catchable_type(&expr_type, loc)?;
                 Ok(ok_type.clone())
             }
-            CodeExpr::Dbg(_) => todo!(),
+            CodeExpr::Dbg(_) => Ok(LoType::StructInstance {
+                struct_name: String::from("str"),
+            }),
             CodeExpr::Sizeof(_) => Ok(LoType::U32),
             CodeExpr::GetDataSize(_) => Ok(LoType::U32),
             CodeExpr::MemorySize(_) => Ok(LoType::I32),

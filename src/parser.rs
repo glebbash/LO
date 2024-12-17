@@ -1143,8 +1143,8 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
     if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
         let message = tokens.expect_any(StringLiteral)?;
         let message = Lexer::unescape_string(&message.value);
-        let debug_mesage = format!("{} - {}", dbg_token.loc, message);
-        return parse_const_str(ctx.module, tokens, debug_mesage);
+        let debug_message = format!("{} - {}", dbg_token.loc, message);
+        return parse_const_str(ctx.module, tokens, debug_message);
     }
 
     if let Some(_) = tokens.eat(Symbol, "if")? {

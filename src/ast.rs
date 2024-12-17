@@ -381,7 +381,7 @@ pub struct ContinueExpr {
 
 #[derive(Debug)]
 pub struct DbgExpr {
-    pub message: String,
+    pub message: EscapedString,
     pub loc: LoLocation,
 }
 

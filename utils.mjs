@@ -443,7 +443,7 @@ async function testCommand() {
         assert.strictEqual(output, "14\n");
     });
 
-    testCompilers("compiles tracing.lo", { v1 }, async (compile) => {
+    testCompilers("compiles tracing.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/tracing.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {

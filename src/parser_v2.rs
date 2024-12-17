@@ -755,7 +755,7 @@ impl ParserV2 {
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Dbg(DbgExpr {
-                message: message.value,
+                message: EscapedString(message.value),
                 loc,
             }));
         }

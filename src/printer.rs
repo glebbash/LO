@@ -537,7 +537,7 @@ impl Printer {
             }
             CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
-                stdout_write(message);
+                stdout_write(&message.0);
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 stdout_write("defer ");
