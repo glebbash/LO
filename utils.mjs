@@ -17,6 +17,8 @@ const COMMANDS = {
     runWasi: runWasiCommand, // run arbitrary .wasm file with WASI
     debugWasi: debugWasiCommand,
     test: testCommand,
+    // TODO: remove when v1 is no more
+    v1v2wat: v1v2watCommand,
 };
 
 main();
@@ -326,6 +328,15 @@ async function testCommand() {
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
 
+    testCompilers("compiles string-pooling.lo", { v1, v2 }, async (compile) => {
+        const output = await compile("./examples/test/string-pooling.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 13);
+    });
+
     testCompilers("compiles std.lo", { v1, v2 }, async (compile) => {
         const output = await compile("./examples/test/std.test.lo");
 
@@ -432,17 +443,6 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles string-pooling.lo", { v1, v2 }, async (compile) => {
-        const program = await compile("./examples/test/string-pooling.lo");
-
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
-
-        assert.strictEqual(output, "14\n");
-    });
-
     testCompilers("compiles tracing.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/tracing.lo");
 
@@ -457,16 +457,22 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles struct-in-struct.lo", { v1 }, async (compile) => {
-        const program = await compile("./examples/test/struct-in-struct.lo");
+    testCompilers(
+        "compiles struct-in-struct.lo",
+        { v1, v2 },
+        async (compile) => {
+            const program = await compile(
+                "./examples/test/struct-in-struct.lo"
+            );
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+            const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+                await runWASI(program, { stdout: stdout.fd });
+                return fs.readFile(stdoutFile, { encoding: "utf-8" });
+            });
 
-        assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
-    });
+            assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
+        }
+    );
 
     testCompilers("compiles heap-alloc.lo", { v1, v2 }, async (compile) => {
         const program = await compile("./examples/test/heap-alloc.lo");
@@ -948,6 +954,14 @@ async function testCommand() {
             );
         });
 
+        test("interprets string-pooling.lo", async () => {
+            const res = await interpret("./examples/test/string-pooling.lo");
+            assert.strictEqual(
+                res.toString("utf-8"),
+                "result of `main` is: 13\n"
+            );
+        });
+
         // wasi
 
         test("interprets hello-world-raw.lo", async () => {
@@ -989,11 +1003,6 @@ async function testCommand() {
                 // @ts-ignore:
                 assert.strictEqual(err.message, "Usage cat.lo <file>");
             }
-        });
-
-        test("interprets string-pooling.lo", async () => {
-            const res = await interpret("./examples/test/string-pooling.lo");
-            assert.strictEqual(res.toString("utf-8"), "14\n");
         });
 
         test("interprets tracing.lo", async () => {
@@ -1211,6 +1220,20 @@ async function testCommand() {
                 return compile(undefined, stdin.fd);
             });
         };
+    }
+}
+
+async function v1v2watCommand() {
+    const cp = await import("node:child_process");
+
+    const fileName = process.argv[3];
+    try {
+        cp.execSync(`./utils.mjs compile ${fileName} | wasm2wat - > out1.wat`);
+        cp.execSync(
+            `./utils.mjs compile ${fileName} --compile-v2 | wasm2wat - --no-check > out2.wat`
+        );
+    } catch {
+        process.exit(1);
     }
 }
 

@@ -8,5 +8,5 @@ export memory {
 };
 
 export fn _start() {
-    main();
+    let _ = main();
 };

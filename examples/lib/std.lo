@@ -26,6 +26,41 @@ fn abort(abort_code: u32): never {
     unreachable;
 };
 
+// memory instructions
+struct mem {};
+
+const mem::POINTER_SIZE = 4;
+const mem::PAGE_SIZE = 65_536;
+
+fn mem::align(size: u32): u32 {
+    return mem::align_to(size, mem::POINTER_SIZE);
+};
+
+fn mem::align_to(size: u32, size_multiple: u32): u32 {
+    let remaining_to_align = size % size_multiple;
+    if remaining_to_align == 0 {
+        return size;
+    };
+    let padding = size_multiple - remaining_to_align;
+    return size + padding;
+};
+
+macro mem::copy!(src: &void, dest: &void, size: u32) {
+    __memory_copy(dest as u32, src as u32, size);
+};
+
+fn mem::swap(ref1: &void, ref2: &void, size: u32) {
+    loop {
+        if size == 0 {
+            break;
+        };
+        size -= 1;
+        let tmp = *((ref1 as u32 + size) as &u8);
+        *((ref1 as u32 + size) as &u8) = *((ref2 as u32 + size) as &u8);
+        *((ref2 as u32 + size) as &u8) = tmp;
+    };
+};
+
 // alloc
 const alloc::STACK = 0;
 const alloc::HEAP = 1;
@@ -66,41 +101,6 @@ fn free(alloc_id: u32, ptr: &void, size: u32) {
         return stack::free(size);
     };
     return heap::free(ptr);
-};
-
-// memory instructions
-struct mem {};
-
-const mem::POINTER_SIZE = 4;
-const mem::PAGE_SIZE = 65_536;
-
-fn mem::align(size: u32): u32 {
-    return mem::align_to(size, mem::POINTER_SIZE);
-};
-
-fn mem::align_to(size: u32, size_multiple: u32): u32 {
-    let remaining_to_align = size % size_multiple;
-    if remaining_to_align == 0 {
-        return size;
-    };
-    let padding = size_multiple - remaining_to_align;
-    return size + padding;
-};
-
-macro mem::copy!(src: &void, dest: &void, size: u32) {
-    __memory_copy(dest as u32, src as u32, size);
-};
-
-fn mem::swap(ref1: &void, ref2: &void, size: u32) {
-    loop {
-        if size == 0 {
-            break;
-        };
-        size -= 1;
-        let tmp = *((ref1 as u32 + size) as &u8);
-        *((ref1 as u32 + size) as &u8) = *((ref2 as u32 + size) as &u8);
-        *((ref2 as u32 + size) as &u8) = tmp;
-    };
 };
 
 // stack
