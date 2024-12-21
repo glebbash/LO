@@ -1806,7 +1806,7 @@ impl CodeGen {
         Ok(return_type)
     }
 
-    // TODO: typecheck actual macro return with it's specified return type
+    // TODO: typecheck actual macro return with its specified return type
     fn codegen_macro_call(
         &self,
         ctx: &mut LoExprContext,
