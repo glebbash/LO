@@ -1504,11 +1504,11 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
                     });
                 }
                 PrefixOpTag::Positive => {
-                    let value = parse_expr(ctx, tokens, min_bp + 1)?;
+                    let value = parse_expr(ctx, tokens, min_bp)?;
                     return cast_to_signed(value, &op.token.loc);
                 }
                 PrefixOpTag::Negative => {
-                    let value = parse_expr(ctx, tokens, min_bp + 1)?;
+                    let value = parse_expr(ctx, tokens, min_bp)?;
                     return negate(value, &op.token.loc);
                 }
                 PrefixOpTag::Dereference => {

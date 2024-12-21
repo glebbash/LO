@@ -127,12 +127,10 @@ fn flip_trail_randomly(trail: &Trail) {
     for i in 0..trail.size {
         let pos = trail.at!<Pos>(i);
         if flip_x {
-            // TODO(v2): fix operator precedence for prefix `+`
-            pos.x = (+159) - pos.x;
+            pos.x = +159 - pos.x;
         };
         if flip_y {
-            // TODO(v2): fix operator precedence for prefix `+`
-            pos.y = (+159) - pos.y;
+            pos.y = +159 - pos.y;
         };
     };
 };
