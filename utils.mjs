@@ -664,6 +664,37 @@ async function testCommand() {
         }
     });
 
+    describe("wasm4", () => {
+        const wasm4Imports = {
+            env: new Proxy(
+                { memory: new WebAssembly.Memory({ initial: 1 }) },
+                // @ts-ignore: don't care
+                { get: (target, prop) => target[prop] ?? (() => void 0) }
+            ),
+        };
+
+        testCompilers("compiles blink.lo", { v1 }, async (compile) => {
+            const output = await compile(
+                "./examples/test/demos/wasm4/src/blink.lo"
+            );
+            await loadWasm(output, wasm4Imports);
+        });
+
+        testCompilers("compiles dark-maze.lo", { v1 }, async (compile) => {
+            const output = await compile(
+                "./examples/test/demos/wasm4/src/dark-maze.lo"
+            );
+            await loadWasm(output, wasm4Imports);
+        });
+
+        testCompilers("compiles slasher.lo", { v1 }, async (compile) => {
+            const output = await compile(
+                "./examples/test/demos/wasm4/src/slasher.lo"
+            );
+            await loadWasm(output, wasm4Imports);
+        });
+    });
+
     testCompilers(
         "compiler reports multiple errors in multiple-compiler-errors.lo",
         { v2 },

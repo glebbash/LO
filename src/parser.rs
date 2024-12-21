@@ -268,7 +268,7 @@ fn parse_top_level_expr(
     }
 
     if let Some(_) = tokens.eat(Symbol, "memory")? {
-        parse_memory(ctx, tokens)?;
+        parse_memory(ctx, tokens, true)?;
         return Ok(());
     }
 
@@ -278,7 +278,7 @@ fn parse_top_level_expr(
         }
 
         if let Some(_) = tokens.eat(Symbol, "memory")? {
-            let (memory_index, _) = parse_memory(ctx, tokens)?;
+            let (memory_index, _) = parse_memory(ctx, tokens, true)?;
 
             ctx.wasm_module.borrow_mut().exports.push(WasmExport {
                 export_type: WasmExportType::Mem,
@@ -320,9 +320,10 @@ fn parse_top_level_expr(
         tokens.expect(Delim, "{")?;
         while let None = tokens.eat(Delim, "}")? {
             if let Some(_) = tokens.eat(Symbol, "memory")? {
-                let (_, limits) = parse_memory(ctx, tokens)?;
+                let (_, limits) = parse_memory(ctx, tokens, false)?;
                 tokens.expect(LoTokenType::Delim, ";")?;
 
+                ctx.memory_defined = true;
                 ctx.wasm_module.borrow_mut().imports.push(WasmImport {
                     module_name: module_name.clone(),
                     item_name: "memory".into(),
@@ -600,6 +601,7 @@ fn parse_top_level_expr(
 fn parse_memory(
     ctx: &mut ModuleContext,
     tokens: &mut LoTokenStream,
+    add_memory: bool,
 ) -> Result<(u32, WasmLimits), LoError> {
     let memory_name = String::from("memory");
     if ctx.memories.contains_key(&memory_name) {
@@ -643,11 +645,15 @@ fn parse_memory(
     }
 
     let memory_index = ctx.wasm_module.borrow().memories.len() as u32;
-    ctx.wasm_module
-        .borrow_mut()
-        .memories
-        .push(memory_limits.clone());
-    ctx.memories.insert(memory_name.clone(), memory_index);
+
+    if add_memory {
+        ctx.wasm_module
+            .borrow_mut()
+            .memories
+            .push(memory_limits.clone());
+        ctx.memories.insert(memory_name.clone(), memory_index);
+        ctx.memory_defined = true;
+    }
 
     Ok((memory_index, memory_limits))
 }
@@ -3072,7 +3078,7 @@ fn parse_const_str(
     tokens: &mut LoTokenStream,
     mut value: String,
 ) -> Result<LoInstr, LoError> {
-    if ctx.memories.len() == 0 && ctx.mode != CompilerMode::Inspect {
+    if !ctx.memory_defined && ctx.mode != CompilerMode::Inspect {
         return Err(LoError {
             message: format!("Cannot use strings with no memories defined"),
             loc: tokens.loc().clone(),
