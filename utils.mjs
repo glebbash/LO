@@ -673,21 +673,21 @@ async function testCommand() {
             ),
         };
 
-        testCompilers("compiles blink.lo", { v1 }, async (compile) => {
+        testCompilers("compiles blink.lo", { v1, v2 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/blink.lo"
             );
             await loadWasm(output, wasm4Imports);
         });
 
-        testCompilers("compiles dark-maze.lo", { v1 }, async (compile) => {
+        testCompilers("compiles dark-maze.lo", { v1, v2 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/dark-maze.lo"
             );
             await loadWasm(output, wasm4Imports);
         });
 
-        testCompilers("compiles slasher.lo", { v1 }, async (compile) => {
+        testCompilers("compiles slasher.lo", { v1, v2 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/slasher.lo"
             );

@@ -299,7 +299,7 @@ macro Vec::get!<T>(&self, index: u32): T {
 };
 
 macro Vec::set!<T>(&self, index: u32, item: T) {
-    self.get!<T>(index) = item;
+    *self.at!<T>(index) = item;
 };
 
 fn Vec::at(&self, index: u32): &void {

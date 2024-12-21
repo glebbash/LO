@@ -65,7 +65,9 @@ fn process_input() {
                 swap_trail.size = 0;
                 swap_trail.push_all((trail.data as u32 + sizeof Pos) as &void, trail.size - 1);
                 swap_trail.size = trail.size - 1;
-                swap!<&Trail>(trail, swap_trail);
+                let tmp = trail;
+                trail = swap_trail;
+                swap_trail = tmp;
             };
         };
     };
@@ -90,19 +92,13 @@ fn process_input() {
     };
 };
 
-macro swap!<T>(a: T, b: T) {
-    let tmp = a;
-    a = b;
-    b = tmp;
-};
-
 fn render() {
     if mode == Mode::SLASH {
         wasm4::text("Slash!!!"0, +10, +10);
         let health_txt = String::from_str("HP: ");
         let _ = u32::write(boss_health, health_txt);
         health_txt.push(0 as u8);
-        wasm4::text(health_txt.chars.data as &u8, +110, +10);
+        wasm4::text(health_txt.chars.data as *&u8, +110, +10);
         health_txt.free();
     };
     if mode == Mode::DEFEND {
@@ -131,10 +127,12 @@ fn flip_trail_randomly(trail: &Trail) {
     for i in 0..trail.size {
         let pos = trail.at!<Pos>(i);
         if flip_x {
-            pos.x = +159 - pos.x;
+            // TODO(v2): fix operator precedence for prefix `+`
+            pos.x = (+159) - pos.x;
         };
         if flip_y {
-            pos.y = +159 - pos.y;
+            // TODO(v2): fix operator precedence for prefix `+`
+            pos.y = (+159) - pos.y;
         };
     };
 };

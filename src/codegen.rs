@@ -485,18 +485,7 @@ impl CodeGen {
                         let fn_decl = match item {
                             ImportItem::FnDecl(fn_decl) => fn_decl,
                             ImportItem::Memory(memory) => {
-                                if let Some(existing_memory) = &self.memory {
-                                    return Err(LoError {
-                                        message: format!(
-                                            "Cannot redefine memory, first defined at {}",
-                                            existing_memory.loc
-                                        ),
-                                        loc: memory.loc,
-                                    });
-                                }
-
-                                self.memory = Some(memory);
-                                self.memory_imported_from = Some(module_name.clone());
+                                self.define_memory(memory, Some(module_name.clone()))?;
                                 continue;
                             }
                         };
@@ -675,17 +664,7 @@ impl CodeGen {
                     });
                 }
                 TopLevelExpr::MemoryDef(memory) => {
-                    if let Some(existing_memory) = &self.memory {
-                        return Err(LoError {
-                            message: format!(
-                                "Cannot redefine memory, first defined at {}",
-                                existing_memory.loc
-                            ),
-                            loc: memory.loc,
-                        });
-                    }
-
-                    self.memory = Some(memory);
+                    self.define_memory(memory, None)?;
                 }
                 TopLevelExpr::StaticDataStore(static_data_store) => {
                     let mut const_ctx = LoExprContext::default();
@@ -916,6 +895,30 @@ impl CodeGen {
         Ok(wasm_module)
     }
 
+    fn define_memory(
+        &mut self,
+        memory: MemoryDefExpr,
+        imported_from: Option<String>,
+    ) -> Result<(), LoError> {
+        if let Some(existing_memory) = &self.memory {
+            return Err(LoError {
+                message: format!(
+                    "Cannot redefine memory, first defined at {}",
+                    existing_memory.loc
+                ),
+                loc: memory.loc,
+            });
+        }
+
+        if let Some(data_start) = memory.data_start {
+            *self.data_size.borrow_mut() = data_start;
+        }
+        self.memory = Some(memory);
+        self.memory_imported_from = imported_from;
+
+        Ok(())
+    }
+
     fn get_fn_param_type(
         &mut self,
         fn_decl: &FnDeclExpr,
@@ -1104,7 +1107,58 @@ impl CodeGen {
                     });
                 }
             }
-            CodeExpr::ArrayLiteral(_) => todo!(),
+            CodeExpr::ArrayLiteral(ArrayLiteralExpr {
+                item_type,
+                items,
+                loc,
+            }) => {
+                let item_type = self.build_type(ctx, item_type)?;
+
+                if let LoType::U8 = &item_type {
+                    let mut bytes = Vec::new();
+                    let mut tmp_instrs = Vec::new();
+
+                    for item in items {
+                        let current_item_type = self.get_expr_type(ctx, item)?;
+                        // TODO: remove U32 check, it is for compat with V1 only
+                        if current_item_type != LoType::U8 && current_item_type != LoType::U32 {
+                            return Err(LoError {
+                                message: format!(
+                                    "Unexpected array element type: {}, expected: {}",
+                                    current_item_type, item_type,
+                                ),
+                                loc: item.loc().clone(),
+                            });
+                        }
+
+                        self.codegen(ctx, &mut tmp_instrs, item)?;
+                        let WasmInstr::I32Const { value } = tmp_instrs.pop().unwrap() else {
+                            return Err(LoError {
+                                message: format!("Unexpected array element value"),
+                                loc: item.loc().clone(),
+                            });
+                        };
+
+                        bytes.push(value as u8);
+                    }
+
+                    let ptr = self.append_data(bytes);
+                    instrs.push(WasmInstr::I32Const { value: ptr as i32 });
+
+                    return Ok(());
+                }
+
+                if let LoType::StructInstance { struct_name } = &item_type {
+                    if struct_name == "str" {
+                        todo!();
+                    }
+                }
+
+                return Err(LoError {
+                    message: format!("Unsupported array literal element type: {}", item_type),
+                    loc: loc.clone(),
+                });
+            }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
                 is_ok,
                 result_type,
@@ -2226,7 +2280,16 @@ impl CodeGen {
                     struct_name: struct_name.repr.clone(),
                 });
             }
-            CodeExpr::ArrayLiteral(_) => todo!(),
+            CodeExpr::ArrayLiteral(ArrayLiteralExpr {
+                item_type,
+                items: _,
+                loc: _,
+            }) => {
+                let item_type = self.build_type(ctx, item_type)?;
+                return Ok(LoType::SequencePointer {
+                    pointee: Box::new(item_type),
+                });
+            }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
                 is_ok: _,
                 result_type,
@@ -2876,21 +2939,27 @@ impl CodeGen {
             }
         }
 
-        let string_ptr = *self.data_size.borrow();
-        let mut instrs = Vec::new();
-        instrs.push(WasmInstr::I32Const {
-            value: string_ptr as i32,
-        });
-        self.datas.borrow_mut().push(WasmData::Active {
-            offset: WasmExpr { instrs },
-            bytes: value.clone().into_bytes(),
-        });
-
-        *self.data_size.borrow_mut() += string_len;
+        let string_ptr = self.append_data(value.clone().into_bytes());
 
         self.string_pool.borrow_mut().push((value, string_ptr));
 
         return Ok((string_ptr, string_len));
+    }
+
+    fn append_data(&self, bytes: Vec<u8>) -> u32 {
+        let offset = *self.data_size.borrow();
+        let mut instrs = Vec::new();
+        instrs.push(WasmInstr::I32Const {
+            value: offset as i32,
+        });
+
+        *self.data_size.borrow_mut() += bytes.len() as u32;
+        self.datas.borrow_mut().push(WasmData::Active {
+            offset: WasmExpr { instrs },
+            bytes,
+        });
+
+        offset
     }
 
     // TODO: add validation for const expr
