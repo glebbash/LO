@@ -33,7 +33,6 @@ pub enum LoType {
     },
     Result {
         ok_type: Box<LoType>,
-        // TODO: add validations so it's not possible to put non i32 value here
         err_type: Box<LoType>,
     },
 }
@@ -1435,10 +1434,6 @@ impl CodeGen {
                     value: type_layout.byte_length as i32,
                 });
             }
-            CodeExpr::GetDataSize(GetDataSizeExpr { loc: _ }) => {
-                // TODO: implement
-                instrs.push(WasmInstr::I32Const { value: 0 });
-            }
             CodeExpr::MemorySize(MemorySizeExpr { loc: _ }) => {
                 instrs.push(WasmInstr::MemorySize);
             }
@@ -2417,7 +2412,6 @@ impl CodeGen {
                 struct_name: String::from("str"),
             }),
             CodeExpr::Sizeof(_) => Ok(LoType::U32),
-            CodeExpr::GetDataSize(_) => Ok(LoType::U32),
             CodeExpr::MemorySize(_) => Ok(LoType::I32),
             CodeExpr::MemoryGrow(_) => Ok(LoType::I32),
             CodeExpr::MemoryCopy(_) => Ok(LoType::Void),

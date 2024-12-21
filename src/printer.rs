@@ -667,9 +667,6 @@ impl Printer {
                 self.print_code_expr(expr);
                 stdout_write("?");
             }
-            CodeExpr::GetDataSize(GetDataSizeExpr { loc: _ }) => {
-                stdout_write("@data_size");
-            }
             CodeExpr::MemorySize(MemorySizeExpr { loc: _ }) => {
                 stdout_write("__memory_size()");
             }

@@ -251,7 +251,6 @@ pub enum CodeExpr {
     MacroMethodCall(MacroMethodCallExpr),
     Dbg(DbgExpr),
     Sizeof(SizeofExpr),
-    GetDataSize(GetDataSizeExpr),
     MemorySize(MemorySizeExpr),
     MemoryGrow(MemoryGrowExpr),
     MemoryCopy(MemoryCopyExpr),
@@ -501,11 +500,6 @@ pub struct SizeofExpr {
 }
 
 #[derive(Debug)]
-pub struct GetDataSizeExpr {
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
 pub struct MemorySizeExpr {
     pub loc: LoLocation,
 }
@@ -555,7 +549,6 @@ impl Locatable for CodeExpr {
             CodeExpr::Sizeof(e) => &e.loc,
             CodeExpr::PropagateError(e) => &e.loc,
             CodeExpr::PrefixOp(e) => &e.loc,
-            CodeExpr::GetDataSize(e) => &e.loc,
             CodeExpr::MemorySize(e) => &e.loc,
             CodeExpr::MemoryGrow(e) => &e.loc,
             CodeExpr::MemoryCopy(e) => &e.loc,
