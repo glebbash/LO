@@ -556,7 +556,7 @@ async function testCommand() {
     });
 
     describe("aoc", () => {
-        testCompilers("compiles 2020 day 1", { v1 }, async (compile) => {
+        testCompilers("compiles 2020 day 1", { v1, v2 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/1.lo"
@@ -570,7 +570,7 @@ async function testCommand() {
             assert.strictEqual(part2, "165080960\n");
         });
 
-        testCompilers("compiles 2020 day 2", { v1 }, async (compile) => {
+        testCompilers("compiles 2020 day 2", { v1, v2 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/2.lo"
@@ -584,7 +584,7 @@ async function testCommand() {
             assert.strictEqual(part2, "303\n");
         });
 
-        testCompilers("compiles 2020 day 3", { v1 }, async (compile) => {
+        testCompilers("compiles 2020 day 3", { v1, v2 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/3.lo"
@@ -598,6 +598,7 @@ async function testCommand() {
             assert.strictEqual(part2, "7540141059\n");
         });
 
+        // TODO: figure out why v2 hangs
         testCompilers("compiles 2020 day 4", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
@@ -612,7 +613,7 @@ async function testCommand() {
             assert.strictEqual(part2, "224\n");
         });
 
-        testCompilers("compiles 2020 day 5", { v1 }, async (compile) => {
+        testCompilers("compiles 2020 day 5", { v1, v2 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/5.lo"
@@ -626,7 +627,7 @@ async function testCommand() {
             assert.strictEqual(part2, "636\n");
         });
 
-        testCompilers("compiles 2023 day 1", { v1 }, async (compile) => {
+        testCompilers("compiles 2023 day 1", { v1, v2 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2023/1.lo"
