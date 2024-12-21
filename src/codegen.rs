@@ -1529,7 +1529,9 @@ impl CodeGen {
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
+                        ctx.enter_scope(LoScopeType::Block);
                         self.codegen(ctx, instrs, &code_expr)?;
+                        ctx.exit_scope();
                     }
                 }
 

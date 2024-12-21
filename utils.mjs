@@ -598,8 +598,7 @@ async function testCommand() {
             assert.strictEqual(part2, "7540141059\n");
         });
 
-        // TODO: figure out why v2 hangs
-        testCompilers("compiles 2020 day 4", { v1 }, async (compile) => {
+        testCompilers("compiles 2020 day 4", { v1, v2 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/4.lo"
