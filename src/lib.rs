@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(alloc_error_handler, thread_local)]
+#![feature(alloc_error_handler, thread_local, let_chains)]
 
 extern crate alloc;
 
@@ -34,6 +34,10 @@ mod wasm_target {
         core::arch::wasm32::unreachable();
     }
 }
+
+// TODO: add tests for --inspect mode
+// TODO: add --inspect functionality for compiler-v2
+// TODO: add debug section emitting for compiler-v2
 
 static USAGE: &str = "\
 Usage: lo <file> [mode]

@@ -1114,14 +1114,14 @@ impl CodeGen {
             }) => {
                 let item_type = self.build_type(ctx, item_type)?;
 
-                if let LoType::U8 = &item_type {
-                    let mut bytes = Vec::new();
-                    let mut tmp_instrs = Vec::new();
+                let mut bytes = Vec::new();
+                let mut tmp_instrs = Vec::new();
 
+                if let LoType::U8 = &item_type {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
                         // TODO: remove U32 check, it is for compat with V1 only
-                        if current_item_type != LoType::U8 && current_item_type != LoType::U32 {
+                        if current_item_type != item_type && current_item_type != LoType::U32 {
                             return Err(LoError {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
@@ -1141,23 +1141,49 @@ impl CodeGen {
 
                         bytes.push(value as u8);
                     }
+                } else if let LoType::StructInstance { struct_name } = &item_type
+                    && struct_name == "str"
+                {
+                    for item in items {
+                        let current_item_type = self.get_expr_type(ctx, item)?;
+                        if current_item_type != item_type {
+                            return Err(LoError {
+                                message: format!(
+                                    "Unexpected array element type: {}, expected: {}",
+                                    current_item_type, item_type,
+                                ),
+                                loc: item.loc().clone(),
+                            });
+                        }
 
-                    let ptr = self.append_data(bytes);
-                    instrs.push(WasmInstr::I32Const { value: ptr as i32 });
+                        self.codegen(ctx, &mut tmp_instrs, item)?;
+                        let WasmInstr::I32Const { value: len } = tmp_instrs.pop().unwrap() else {
+                            return Err(LoError {
+                                message: format!("Unexpected array element value"),
+                                loc: item.loc().clone(),
+                            });
+                        };
+                        let WasmInstr::I32Const { value: ptr } = tmp_instrs.pop().unwrap() else {
+                            return Err(LoError {
+                                message: format!("Unexpected array element value"),
+                                loc: item.loc().clone(),
+                            });
+                        };
 
-                    return Ok(());
-                }
-
-                if let LoType::StructInstance { struct_name } = &item_type {
-                    if struct_name == "str" {
-                        todo!();
+                        bytes.extend_from_slice(&ptr.to_le_bytes());
+                        bytes.extend_from_slice(&len.to_le_bytes());
                     }
+                } else {
+                    return Err(LoError {
+                        message: format!("Unsupported array literal element type: {}", item_type),
+                        loc: loc.clone(),
+                    });
                 }
 
-                return Err(LoError {
-                    message: format!("Unsupported array literal element type: {}", item_type),
-                    loc: loc.clone(),
-                });
+                let ptr = self.append_data(bytes);
+                instrs.push(WasmInstr::I32Const { value: ptr as i32 });
+
+                return Ok(());
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
                 is_ok,
@@ -1878,6 +1904,19 @@ impl CodeGen {
             });
         };
 
+        let mut all_args = Vec::new();
+        if let Some(receiver_arg) = receiver_arg {
+            all_args.push(self.build_code_unit(ctx, receiver_arg)?);
+        }
+        for arg in args {
+            all_args.push(self.build_code_unit(ctx, arg)?);
+        }
+
+        let mut all_type_args = Vec::new();
+        for type_arg in type_args {
+            all_type_args.push(self.build_type(ctx, &type_arg)?);
+        }
+
         ctx.enter_scope(LoScopeType::Macro);
 
         if type_args.len() != macro_def.macro_type_params.len() {
@@ -1892,22 +1931,14 @@ impl CodeGen {
         }
 
         // TODO: check for type shadowing
-        for i in 0..macro_def.macro_type_params.len() {
-            let type_param = &macro_def.macro_type_params[i];
-            let type_arg = &type_args[i];
-
-            let lo_type = self.build_type(ctx, &type_arg)?;
+        for (type_param, type_arg) in macro_def
+            .macro_type_params
+            .iter()
+            .zip(all_type_args.into_iter())
+        {
             ctx.current_scope_mut()
                 .macro_type_args
-                .push((type_param.clone(), lo_type));
-        }
-
-        let mut all_args = Vec::<&CodeExpr>::new();
-        if let Some(receiver_arg) = receiver_arg {
-            all_args.push(&receiver_arg);
-        }
-        for arg in args {
-            all_args.push(&arg);
+                .push((type_param.clone(), type_arg));
         }
 
         // TODO: type check margo args against param types
@@ -1923,14 +1954,10 @@ impl CodeGen {
         }
 
         // TODO: check for const shadowing
-        for i in 0..macro_def.macro_params.len() {
-            let macro_param = &macro_def.macro_params[i];
-            let macro_arg = &all_args[i];
-
-            let code_unit = self.build_code_unit(ctx, macro_arg)?;
+        for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
             ctx.current_scope_mut()
                 .macro_args
-                .push((macro_param.param_name.clone(), code_unit));
+                .push((macro_param.param_name.clone(), macro_arg));
         }
 
         for expr in &macro_def.body.exprs {

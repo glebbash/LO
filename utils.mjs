@@ -534,6 +534,27 @@ async function testCommand() {
         );
     });
 
+    testCompilers("compiles lo.lo", { v1 }, async (compile) => {
+        const program = await compile("./examples/lo.lo");
+
+        const [stdout, stderr] = await runWithTmpFile(
+            async (stdout, stdoutFile) =>
+                await runWithTmpFile(async (stderr, stderrFile) => {
+                    await runWASI(program, {
+                        stdout: stdout.fd,
+                        stderr: stderr.fd,
+                    });
+                    return [
+                        await fs.readFile(stdoutFile, { encoding: "utf-8" }),
+                        await fs.readFile(stderrFile, { encoding: "utf-8" }),
+                    ];
+                })
+        );
+
+        assert.strictEqual(stdout, "");
+        assert.strictEqual(stderr, "Usage: lo <file> [options]\n");
+    });
+
     describe("<stdin> input", async () => {
         const v1 = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
