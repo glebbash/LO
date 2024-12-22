@@ -2021,13 +2021,12 @@ impl CodeGen {
             // TODO: push this conditionally
             instrs.push(WasmInstr::Unreachable);
         } else {
-            // return result
-            instrs.push(WasmInstr::I32Const { value: 0 });
-            let ok_var = VariableInfo::Local {
-                local_index: ok_local_index,
-                local_type: ok_type.clone(),
-            };
-            self.codegen_var_get(ctx, instrs, &ok_var)?;
+            // return ok_type of function's result + caught error
+            let (fn_ok_type, _) = self.get_result_literal_type(ctx, &None, loc)?;
+            self.codegen_default_value(ctx, instrs, &fn_ok_type);
+            instrs.push(WasmInstr::LocalGet {
+                local_index: err_local_index,
+            });
 
             self.emit_deferred(ctx, instrs)?;
             instrs.push(WasmInstr::Return);
