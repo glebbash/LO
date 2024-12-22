@@ -12,13 +12,14 @@ pub struct FileInfo {
 pub fn parse_file_and_deps(
     files: &mut Vec<FileInfo>,
     file_name: &str,
+    parsed_files: &mut Vec<String>,
     loc: &LoLocation,
 ) -> Result<(), LoError> {
     let file_path = resolve_path(file_name, &loc.file_name);
 
-    for file in files.iter() {
+    for parsed_file in parsed_files.iter() {
         // file already parsed, skip
-        if file.path == file_path {
+        if *parsed_file == file_path {
             return Ok(());
         }
     }
@@ -37,10 +38,13 @@ pub fn parse_file_and_deps(
         };
     }
 
+    parsed_files.push(file_path.clone());
+
     for include in includes {
         parse_file_and_deps(
             files,
             &Lexer::unescape_string(&include.file_path),
+            parsed_files,
             &include.loc,
         )?;
     }

@@ -95,7 +95,12 @@ mod wasi_api {
 
         if compiler_mode == CompilerMode::CompileV2 {
             let mut files = Vec::new();
-            parse_file_and_deps(&mut files, file_name, &LoLocation::internal())?;
+            parse_file_and_deps(
+                &mut files,
+                file_name,
+                &mut Vec::new(),
+                &LoLocation::internal(),
+            )?;
 
             let mut codegen = CodeGen::with_default_types();
             for file in files {

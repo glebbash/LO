@@ -1,26 +1,5 @@
-include "../std.lo";
-include "../fs.lo";
-include "../string_map.lo";
-include "./utils.lo";
-include "./wasm.lo";
-include "./ir.lo";
-
-struct LoIncludedFile {
-    path: String,
-    contents: String,
-};
-
-// TODO: add free
-struct LoContext {
-    included_files: &Vec of LoIncludedFile,
-    wasm_module: &WasmModule,
-    fn_defs: StringMap of LoFnDef,
-    fn_exports: &Vec of LoFnExport,
-    memories: StringMap of u32,
-    fn_bodies: &Vec of LoFnBody,
-    imported_fns_count: u32,
-    type_scope: &LoTypeScope,
-};
+include "./core-types.lo";
+include "./parser.lo";
 
 fn LoContext::new(): &LoContext {
     return heap::new!<LoContext>(.LoContext {
@@ -48,11 +27,6 @@ fn LoContext::print_loc(&self, loc: LoLocation) {
     eputs(":");
     eprint_u32(loc.pos.col);
 };
-
-// this is kinda ugly but parser depends on LoContext
-// so it must be defined before parser
-// TODO: is there a clean way to resolve this?
-include "./parser.lo";
 
 fn LoContext::include_file_and_finalize(&self, file_path: str): Result<u32, &LoError> {
     let file_index = LoContext::include_file(self, file_path)?;
