@@ -36,18 +36,17 @@ mod wasm_target {
 }
 
 // TODO: add tests for --inspect mode
-// TODO: add --inspect functionality for compiler-v2
-// TODO: add debug section emitting for compiler-v2
+// TODO: add --inspect functionality for v2
+// TODO: add debug section emitting for v2
 
 static USAGE: &str = "\
-Usage: lo <file> [mode]
-  where [mode] is either:
-    --compile-v2 (temporary)
+Usage: lo <file> [<mode>] [--v2]
+  Where <mode> is either:
+    --compile (default if not provided)
     --inspect
     --pretty-print
     --eval (experimental)
-    --eval-wasm (experimental)
-  No [mode] means compilation to wasm\
+    --eval-wasm (experimental)\
 ";
 
 mod wasi_api {
@@ -83,7 +82,7 @@ mod wasi_api {
 
         let compiler_mode = match args.get(2) {
             None => CompilerMode::Compile,
-            Some("--compile-v2") => CompilerMode::CompileV2,
+            Some("--compile") => CompilerMode::Compile,
             Some("--inspect") => CompilerMode::Inspect,
             Some("--pretty-print") => CompilerMode::PrettyPrint,
             Some("--eval") => CompilerMode::Eval,
@@ -93,27 +92,13 @@ mod wasi_api {
             }
         };
 
-        if compiler_mode == CompilerMode::CompileV2 {
-            let mut files = Vec::new();
-            parse_file_and_deps(
-                &mut files,
-                file_name,
-                &mut Vec::new(),
-                &LoLocation::internal(),
-            )?;
-
-            let mut codegen = CodeGen::with_default_types();
-            for file in files {
-                codegen.add_file(file)?;
+        let mut is_v2 = false;
+        if let Some(version_arg) = args.get(3) {
+            if version_arg == "--v2" {
+                is_v2 = true;
+            } else {
+                return Err(format!("Unknown version: {version_arg}\n{}", USAGE));
             }
-            codegen.errors.print_all()?;
-            let wasm_module = codegen.generate()?;
-
-            let mut binary = Vec::new();
-            wasm_module.dump(&mut binary);
-            fputs(wasi::FD_STDOUT, binary.as_slice());
-
-            return Ok(());
         }
 
         if compiler_mode == CompilerMode::PrettyPrint {
@@ -141,21 +126,37 @@ mod wasi_api {
             stdout_enable_bufferring();
         }
 
-        let ctx = &mut parser::init(compiler_mode);
+        let wasm_module = if is_v2 {
+            let mut files = Vec::new();
+            parse_file_and_deps(
+                &mut files,
+                file_name,
+                &mut Vec::new(),
+                &LoLocation::internal(),
+            )?;
 
-        parser::parse_file(ctx, file_name, &LoLocation::internal())?;
+            let mut codegen = CodeGen::with_default_types();
+            for file in files {
+                codegen.add_file(file)?;
+            }
+            codegen.errors.print_all()?;
 
-        parser::finalize(ctx)?;
+            codegen.generate()?
+        } else {
+            let ctx = &mut parser::init(compiler_mode.clone());
+            parser::parse_file(ctx, file_name, &LoLocation::internal())?;
+            parser::finalize(ctx)?;
 
-        if ctx.mode == CompilerMode::Compile {
+            ctx.wasm_module.take()
+        };
+
+        if compiler_mode == CompilerMode::Compile {
             let mut binary = Vec::new();
-            ctx.wasm_module.take().dump(&mut binary);
+            wasm_module.dump(&mut binary);
             fputs(wasi::FD_STDOUT, binary.as_slice());
         }
 
-        if ctx.mode == CompilerMode::Eval {
-            let wasm_module = ctx.wasm_module.take();
-
+        if compiler_mode == CompilerMode::Eval {
             WasmEval::eval(wasm_module).map_err(|err| err.message)?;
         }
 

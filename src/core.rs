@@ -1,11 +1,10 @@
 use alloc::{format, rc::Rc, string::String, vec, vec::Vec};
 use core::{cell::RefCell, ffi::CStr, str};
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone)]
 pub enum CompilerMode {
     #[default]
     Compile,
-    CompileV2,
     Inspect,
     PrettyPrint,
     Eval,

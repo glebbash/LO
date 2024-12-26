@@ -143,7 +143,7 @@ async function debugWasiCommand(args) {
 async function testCommand() {
     const v1 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH));
     const v2 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH), {
-        buildArgs: (fileName) => ["lo", fileName ?? "-i", "--compile-v2"],
+        buildArgs: (fileName) => ["lo", fileName ?? "-i", "--compile", "--v2"],
     });
     const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
 
@@ -563,7 +563,10 @@ async function testCommand() {
 
         const v2 = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
-            { mockStdin: true, buildArgs: () => ["lo", "-i", "--compile-v2"] }
+            {
+                mockStdin: true,
+                buildArgs: () => ["lo", "-i", "--compile", "--v2"],
+            }
         );
 
         testCompilers("compiles 42.lo", { v1, v2 }, async (compile) => {
@@ -1282,7 +1285,7 @@ async function v1v2watCommand() {
     try {
         cp.execSync(`./utils.mjs compile ${fileName} | wasm2wat - > out1.wat`);
         cp.execSync(
-            `./utils.mjs compile ${fileName} --compile-v2 | wasm2wat - --no-check > out2.wat`
+            `./utils.mjs compile ${fileName} --compile --v2 | wasm2wat - --no-check > out2.wat`
         );
     } catch {
         process.exit(1);
