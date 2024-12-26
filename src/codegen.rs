@@ -746,6 +746,11 @@ impl CodeGen {
             match &fn_info.fn_source {
                 LoFnSource::Guest { ctx: _, body: _ } => {
                     wasm_module.functions.push(fn_type_index);
+                    wasm_module.debug_fn_info.push(WasmDebugFnInfo {
+                        fn_index: wasm_fn_index,
+                        fn_name: fn_info.fn_name.clone(),
+                    });
+
                     self.wasm_functions.push(WasmFnInfo {
                         fn_name: fn_info.fn_name.clone(),
                         lo_fn_index,
