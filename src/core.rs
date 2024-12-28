@@ -1,7 +1,7 @@
 use alloc::{format, rc::Rc, string::String, vec, vec::Vec};
 use core::{cell::RefCell, ffi::CStr, str};
 
-#[derive(Default, PartialEq, Clone)]
+#[derive(Default, PartialEq, Clone, Copy)]
 pub enum CompilerMode {
     #[default]
     Compile,
@@ -351,5 +351,53 @@ impl LoErrorManager {
         }
 
         Err(format!(""))
+    }
+}
+
+#[derive(Debug)]
+struct FileInfo {
+    file_index: u32,
+    path: String,
+}
+
+#[derive(Default)]
+pub struct FileManager {
+    files: Vec<FileInfo>,
+}
+
+impl FileManager {
+    pub fn include_file(
+        &mut self,
+        file_name: &str,
+        loc: &LoLocation,
+    ) -> Result<(u32, Option<String>), LoError> {
+        let absolute_file_path = resolve_path(file_name, &loc.file_name);
+
+        for parsed_file in &self.files {
+            if parsed_file.path == absolute_file_path {
+                return Ok((parsed_file.file_index, None));
+            }
+        }
+
+        let file_contents = file_read_utf8(&absolute_file_path).map_err(|message| LoError {
+            message,
+            loc: loc.clone(),
+        })?;
+
+        let file_index = self.files.len() as u32;
+        self.files.push(FileInfo {
+            file_index,
+            path: absolute_file_path.into(),
+        });
+
+        Ok((file_index, Some(file_contents)))
+    }
+
+    pub fn get_file_path(&self, file_index: u32) -> Option<&str> {
+        if let Some(file) = self.files.get(file_index as usize) {
+            return Some(&file.path);
+        }
+
+        None
     }
 }

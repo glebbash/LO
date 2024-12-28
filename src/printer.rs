@@ -50,7 +50,7 @@ impl Printer {
             }
             TopLevelExpr::Include(IncludeExpr { file_path, loc: _ }) => {
                 stdout_write("include ");
-                stdout_write(file_path);
+                stdout_write(&file_path.0);
                 stdout_writeln(";");
 
                 if let Some(TopLevelExpr::Include(_)) = self.ast.exprs.get(expr_index + 1) {

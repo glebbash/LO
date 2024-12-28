@@ -187,7 +187,6 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
 
     if ctx.mode == CompilerMode::Inspect {
         stdout_writeln("{ \"type\": \"end\" }");
-
         stdout_writeln("]");
     }
 

@@ -58,7 +58,7 @@ pub enum FnParamType {
 
 #[derive(Debug, Clone)]
 pub struct IncludeExpr {
-    pub file_path: String,
+    pub file_path: EscapedString,
     pub loc: LoLocation,
 }
 
@@ -557,7 +557,7 @@ impl Locatable for CodeExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EscapedString(pub String);
 
 impl EscapedString {

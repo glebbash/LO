@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, lexer::*, parser_v2::*, wasm::*};
+use crate::{ast::*, core::*, lexer::*, wasm::*};
 use alloc::{
     boxed::Box,
     format,
@@ -298,6 +298,9 @@ struct LoConstDef {
 pub struct CodeGen {
     pub errors: LoErrorManager,
 
+    mode: CompilerMode,
+    pub fm: FileManager,
+
     type_defs: Vec<LoTypeDef>,
     struct_defs: Vec<LoStructDef>,
     globals: Vec<LoGlobalDef>,
@@ -319,8 +322,9 @@ pub struct CodeGen {
 }
 
 impl CodeGen {
-    pub fn with_default_types() -> Self {
+    pub fn new(mode: CompilerMode) -> Self {
         let mut codegen = Self::default();
+        codegen.mode = mode;
         codegen.type_defs.push(LoTypeDef {
             name: String::from("never"),
             value: LoType::Never,
@@ -386,11 +390,16 @@ impl CodeGen {
             value: LoType::F64,
             loc: LoLocation::internal(),
         });
+
+        if codegen.mode == CompilerMode::Inspect {
+            stdout_writeln("[");
+        }
+
         return codegen;
     }
 
-    pub fn add_file(&mut self, file: FileInfo) -> Result<(), LoError> {
-        for expr in file.ast.exprs {
+    pub fn process_file(&mut self, ast: AST) -> Result<(), LoError> {
+        for expr in ast.exprs {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed earlier
                 TopLevelExpr::FnDef(fn_def) => {
@@ -896,6 +905,11 @@ impl CodeGen {
         }
 
         wasm_module.types.append(&mut self.wasm_types.borrow_mut());
+
+        if self.mode == CompilerMode::Inspect {
+            stdout_writeln("{ \"type\": \"end\" }");
+            stdout_writeln("]");
+        }
 
         Ok(wasm_module)
     }

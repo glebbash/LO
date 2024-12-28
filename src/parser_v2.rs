@@ -3,60 +3,6 @@ use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 use LoTokenType::*;
 
-#[derive(Debug)]
-pub struct FileInfo {
-    pub path: String,
-    pub ast: AST,
-}
-
-pub fn parse_file_and_deps(
-    files: &mut Vec<FileInfo>,
-    file_name: &str,
-    parsed_files: &mut Vec<String>,
-    loc: &LoLocation,
-) -> Result<(), LoError> {
-    let file_path = resolve_path(file_name, &loc.file_name);
-
-    for parsed_file in parsed_files.iter() {
-        // file already parsed, skip
-        if *parsed_file == file_path {
-            return Ok(());
-        }
-    }
-
-    let chars = file_read_utf8(&file_path).map_err(|message| LoError {
-        message,
-        loc: loc.clone(),
-    })?;
-    let tokens = Lexer::lex(&file_path, &chars)?;
-    let ast = ParserV2::parse(tokens)?;
-
-    let mut includes = Vec::new();
-    for expr in &ast.exprs {
-        if let TopLevelExpr::Include(include) = expr {
-            includes.push(include.clone());
-        };
-    }
-
-    parsed_files.push(file_path.clone());
-
-    for include in includes {
-        parse_file_and_deps(
-            files,
-            &Lexer::unescape_string(&include.file_path),
-            parsed_files,
-            &include.loc,
-        )?;
-    }
-
-    files.push(FileInfo {
-        path: file_path.into(),
-        ast,
-    });
-
-    Ok(())
-}
-
 pub struct ParserV2 {
     pub tokens: Vec<LoToken>,
     pub tokens_processed: usize,
@@ -166,7 +112,7 @@ impl ParserV2 {
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::Include(IncludeExpr {
-                file_path: file_path.value,
+                file_path: EscapedString(file_path.value),
                 loc,
             }));
         }

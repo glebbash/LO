@@ -37,10 +37,9 @@ mod wasm_target {
 
 // TODO: add tests for --inspect mode
 // TODO: add --inspect functionality for v2
-// TODO: add debug section emitting for v2
 
 static USAGE: &str = "\
-Usage: lo <file> [<mode>] [--v2]
+Usage: lo <file> [<mode>] [--v1|--v2]
   Where <mode> is either:
     --compile (default if not provided)
     --inspect
@@ -51,22 +50,22 @@ Usage: lo <file> [<mode>] [--v2]
 
 mod wasi_api {
     use crate::{
-        codegen::*, core::*, lexer::*, parser, parser_v2::*, printer::*, wasm_eval::*,
+        ast::*, codegen::*, core::*, lexer::*, parser, parser_v2::*, printer::*, wasm_eval::*,
         wasm_parser::*, USAGE,
     };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
     #[no_mangle]
     pub extern "C" fn _start() {
-        start().unwrap_or_else(|err_message| {
-            stdout_disable_bufferring();
+        let err = start().err();
 
+        stdout_disable_bufferring();
+
+        if let Some(err_message) = err {
             stderr_write(err_message);
             stderr_write("\n");
             proc_exit(1);
-        });
-
-        stdout_disable_bufferring();
+        }
     }
 
     fn start() -> Result<(), String> {
@@ -80,24 +79,44 @@ mod wasi_api {
             file_name = "<stdin>";
         }
 
-        let compiler_mode = match args.get(2) {
-            None => CompilerMode::Compile,
-            Some("--compile") => CompilerMode::Compile,
-            Some("--inspect") => CompilerMode::Inspect,
-            Some("--pretty-print") => CompilerMode::PrettyPrint,
-            Some("--eval") => CompilerMode::Eval,
-            Some("--eval-wasm") => CompilerMode::EvalWasm,
-            Some(unknown_mode) => {
-                return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
-            }
-        };
-
         let mut is_v2 = false;
+        let mut compiler_mode = CompilerMode::Compile;
+
+        if let Some(compiler_mode_arg) = args.get(2) {
+            match compiler_mode_arg {
+                "--compile" => {
+                    compiler_mode = CompilerMode::Compile;
+                }
+                "--inspect" => {
+                    is_v2 = true;
+                    compiler_mode = CompilerMode::Inspect;
+                }
+                "--pretty-print" => {
+                    compiler_mode = CompilerMode::PrettyPrint;
+                }
+                "--eval" => {
+                    compiler_mode = CompilerMode::Eval;
+                }
+                "--eval-wasm" => {
+                    compiler_mode = CompilerMode::EvalWasm;
+                }
+                unknown_mode => {
+                    return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
+                }
+            }
+        }
+
         if let Some(version_arg) = args.get(3) {
-            if version_arg == "--v2" {
-                is_v2 = true;
-            } else {
-                return Err(format!("Unknown version: {version_arg}\n{}", USAGE));
+            match version_arg {
+                "--v1" => {
+                    is_v2 = false;
+                }
+                "--v2" => {
+                    is_v2 = true;
+                }
+                unknown_version => {
+                    return Err(format!("Unknown version: {unknown_version}\n{}", USAGE));
+                }
             }
         }
 
@@ -110,7 +129,7 @@ mod wasi_api {
             Printer::print(Rc::new(ast));
 
             return Ok(());
-        };
+        }
 
         if compiler_mode == CompilerMode::EvalWasm {
             let module_bytes = file_read(file_name)?;
@@ -127,23 +146,29 @@ mod wasi_api {
         }
 
         let wasm_module = if is_v2 {
-            let mut files = Vec::new();
-            parse_file_and_deps(
-                &mut files,
-                file_name,
-                &mut Vec::new(),
-                &LoLocation::internal(),
+            let mut codegen = CodeGen::new(compiler_mode);
+
+            let (file_index, file_contents) = codegen
+                .fm
+                .include_file(file_name, &LoLocation::internal())?;
+
+            let mut asts = Vec::new();
+            parse_file_tree(
+                compiler_mode,
+                &mut codegen.fm,
+                &mut asts,
+                file_index,
+                file_contents.unwrap(),
             )?;
 
-            let mut codegen = CodeGen::with_default_types();
-            for file in files {
-                codegen.add_file(file)?;
+            for ast in asts {
+                codegen.process_file(ast)?;
             }
             codegen.errors.print_all()?;
 
             codegen.generate()?
         } else {
-            let ctx = &mut parser::init(compiler_mode.clone());
+            let ctx = &mut parser::init(compiler_mode);
             parser::parse_file(ctx, file_name, &LoLocation::internal())?;
             parser::finalize(ctx)?;
 
@@ -161,5 +186,57 @@ mod wasi_api {
         }
 
         return Ok(());
+    }
+
+    fn parse_file_tree(
+        mode: CompilerMode,
+        fm: &mut FileManager,
+        asts: &mut Vec<AST>,
+        file_index: u32,
+        file_contents: String,
+    ) -> Result<(), LoError> {
+        let absolute_file_path = fm.get_file_path(file_index).unwrap();
+
+        if mode == CompilerMode::Inspect {
+            stdout_writeln(format!(
+                "{{ \"type\": \"file\", \
+                    \"index\": {}, \
+                    \"path\": \"{}\" }}, ",
+                file_index, absolute_file_path
+            ));
+        }
+
+        let tokens = Lexer::lex(&absolute_file_path, &file_contents)?;
+        let ast = ParserV2::parse(tokens)?;
+
+        for expr in &ast.exprs {
+            let TopLevelExpr::Include(include) = expr else {
+                continue;
+            };
+
+            let (target_file_index, file_contents) =
+                fm.include_file(&include.file_path.unescape(), &include.loc)?;
+
+            if let Some(file_contents) = file_contents {
+                parse_file_tree(mode, fm, asts, target_file_index, file_contents)?;
+            }
+
+            if mode == CompilerMode::Inspect {
+                let source_index = file_index;
+                let source_range = RangeDisplay(&include.loc);
+                let target_index = target_file_index;
+                let target_range = "1:1-1:1";
+
+                stdout_writeln(format!(
+                    "{{ \"type\": \"info\", \
+                        \"link\": \"{target_index}/{target_range}\", \
+                        \"loc\": \"{source_index}/{source_range}\" }}, ",
+                ));
+            }
+        }
+
+        asts.push(ast);
+
+        Ok(())
     }
 }
