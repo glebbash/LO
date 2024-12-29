@@ -630,7 +630,7 @@ impl ParserV2 {
             let expr = Box::new(self.parse_code_expr(0)?);
             self.expect(Delim, ")")?;
 
-            loc.end_pos = self.current().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Paren(ParenExpr { expr, loc }));
         };

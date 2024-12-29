@@ -74,9 +74,21 @@ impl LoType {
 struct LoFnInfo {
     fn_name: String,
     fn_type: LoFnType,
+    fn_params: Vec<LoFnParam>,
     fn_source: LoFnSource,
     exported_as: Vec<String>,
     definition_loc: LoLocation,
+}
+
+struct LoFnParam {
+    param_name: String,
+    param_type: LoType,
+}
+
+impl core::fmt::Display for LoFnParam {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}: {}", self.param_name, self.param_type)
+    }
 }
 
 enum LoFnSource {
@@ -446,6 +458,7 @@ impl CodeGen {
                     ctx.lo_fn_index = Some(self.lo_functions.len());
                     ctx.enter_scope(LoScopeType::Function);
 
+                    let mut fn_params = Vec::new();
                     let mut inputs = Vec::new();
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
                         for var in &ctx.current_scope().locals {
@@ -463,6 +476,11 @@ impl CodeGen {
 
                         let param_type = self.get_fn_param_type(&fn_def.decl, fn_param)?;
                         inputs.push(param_type.clone());
+
+                        fn_params.push(LoFnParam {
+                            param_name: fn_param.param_name.clone(),
+                            param_type: param_type.clone(),
+                        });
 
                         self.define_local(
                             &mut ctx,
@@ -493,12 +511,13 @@ impl CodeGen {
                     self.lo_functions.push(LoFnInfo {
                         fn_name: fn_def.decl.fn_name.repr,
                         fn_type: LoFnType { inputs, output },
+                        fn_params,
                         fn_source: LoFnSource::Guest {
                             ctx,
                             body: fn_def.body,
                         },
                         exported_as,
-                        definition_loc: fn_def.loc.clone(),
+                        definition_loc: fn_def.decl.fn_name.loc.clone(),
                     });
                 }
                 TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
@@ -521,7 +540,7 @@ impl CodeGen {
                 TopLevelExpr::Import(ImportExpr {
                     module_name,
                     items,
-                    loc,
+                    loc: _,
                 }) => {
                     let module_name = module_name.unescape();
 
@@ -538,9 +557,14 @@ impl CodeGen {
                             inputs: Vec::new(),
                             output: LoType::Void,
                         };
+                        let mut fn_params = Vec::new();
                         for fn_param in &fn_decl.fn_params {
                             let param_type = self.get_fn_param_type(&fn_decl, fn_param)?;
                             fn_type.inputs.push(param_type.clone());
+                            fn_params.push(LoFnParam {
+                                param_name: fn_param.param_name.clone(),
+                                param_type: param_type.clone(),
+                            });
                         }
                         if let Some(return_type) = fn_decl.return_type {
                             fn_type.output = self.build_type(&self.const_ctx, &return_type)?;
@@ -561,12 +585,13 @@ impl CodeGen {
                         self.lo_functions.push(LoFnInfo {
                             fn_name: fn_decl.fn_name.repr.clone(),
                             fn_type,
+                            fn_params,
                             fn_source: LoFnSource::Host {
                                 module_name: module_name.clone(),
                                 external_fn_name: fn_decl.fn_name.parts.last().unwrap().clone(),
                             },
                             exported_as: Vec::new(),
-                            definition_loc: loc.clone(),
+                            definition_loc: fn_decl.fn_name.loc.clone(),
                         });
                     }
                 }
@@ -1585,18 +1610,22 @@ impl CodeGen {
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
 
-            CodeExpr::FnCall(FnCallExpr { fn_name, args, loc }) => {
-                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, args, loc)?;
+            CodeExpr::FnCall(FnCallExpr {
+                fn_name,
+                args,
+                loc: _,
+            }) => {
+                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, args, &fn_name.loc)?;
             }
             CodeExpr::MethodCall(MethodCallExpr {
                 lhs,
                 field_name,
                 args,
-                loc,
+                loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.codegen_fn_call(ctx, instrs, &fn_name, Some(lhs), args, loc)?;
+                self.codegen_fn_call(ctx, instrs, &fn_name, Some(lhs), args, &field_name.loc)?;
             }
             CodeExpr::MacroFnCall(MacroFnCallExpr {
                 fn_name,
@@ -1961,6 +1990,16 @@ impl CodeGen {
                     ListDisplay(&lo_fn_info.fn_type.inputs),
                 ),
                 loc: loc.clone(),
+            });
+        }
+
+        if self.mode == CompilerMode::Inspect {
+            let params = ListDisplay(&lo_fn_info.fn_params);
+            let return_type = &lo_fn_info.fn_type.output;
+            self.print_inspection(&InspectInfo {
+                message: format!("fn {fn_name}({params}): {return_type}"),
+                loc: loc.clone(),
+                linked_loc: Some(lo_fn_info.definition_loc.clone()),
             });
         }
 

@@ -280,9 +280,11 @@ impl Lexer {
     }
 
     fn lex_delim(&mut self) -> Result<LoToken, LoError> {
-        let loc = self.loc();
+        let mut loc = self.loc();
 
         self.next_char(); // skip delimiter char
+
+        loc.end_pos = self.pos();
 
         Ok(LoToken {
             type_: LoTokenType::Delim,

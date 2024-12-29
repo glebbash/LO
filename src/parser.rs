@@ -1638,7 +1638,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             let params = ListDisplay(&fn_def.fn_params);
             let return_type = &fn_def.type_.output;
 
-            // TODO(v2): implement
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"link\": \"{target_index}/{target_range}\", \
@@ -1919,7 +1918,7 @@ fn parse_macro_call(
         stdout_writeln(format!(
             "{{ \"type\": \"info\", \
                 \"link\": \"{target_index}/{target_range}\", \
-                \"hover\": \"fn {macro_name}!<{type_params}>({params}): {return_type}\", \
+                \"hover\": \"macro {macro_name}!<{type_params}>({params}): {return_type}\", \
                 \"loc\": \"{source_index}/{source_range}\" }}, ",
         ));
     }
@@ -2123,7 +2122,6 @@ fn parse_postfix(
                     let params = ListDisplay(&fn_def.fn_params);
                     let return_type = &fn_def.type_.output;
 
-                    // TODO(v2): implement
                     stdout_writeln(format!(
                         "{{ \"type\": \"info\", \
                             \"link\": \"{target_index}/{target_range}\", \
