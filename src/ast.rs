@@ -323,6 +323,7 @@ pub struct InfixOpExpr {
 pub struct PrefixOpExpr {
     pub op_tag: PrefixOpTag,
     pub expr: Box<CodeExpr>,
+    pub op_loc: LoLocation,
     pub loc: LoLocation,
 }
 
@@ -343,7 +344,7 @@ pub enum ElseBlock {
 
 #[derive(Debug)]
 pub struct LetExpr {
-    pub local_name: String,
+    pub local_name: IdentExpr,
     pub value: Box<CodeExpr>,
     pub loc: LoLocation,
 }

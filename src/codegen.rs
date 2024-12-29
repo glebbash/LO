@@ -132,7 +132,7 @@ struct LoCodeUnit {
 struct LoScope {
     scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
-    macro_args: Vec<(String, LoCodeUnit)>,
+    macro_args: Vec<LoConstDef>,
     macro_type_args: Vec<(String, LoType)>,
 }
 
@@ -199,11 +199,11 @@ impl LoExprContext {
         None
     }
 
-    fn get_macro_arg(&self, arg_name: &str) -> Option<&LoCodeUnit> {
+    fn get_macro_arg(&self, arg_name: &str) -> Option<&LoConstDef> {
         for scope in self.scopes.iter().rev() {
             for macro_arg in &scope.macro_args {
-                if macro_arg.0 == arg_name {
-                    return Some(&macro_arg.1);
+                if macro_arg.const_name == arg_name {
+                    return Some(&macro_arg);
                 }
             }
         }
@@ -252,42 +252,76 @@ struct LoTypeLayout {
     byte_length: u32,
 }
 
-enum VariableInfo {
+enum LoVariableInfo {
     Local {
         local_index: u32,
         local_type: LoType,
+        inspect_info: Option<InspectInfo>,
     },
     Global {
         global_index: u32,
         global_type: LoType,
+        inspect_info: Option<InspectInfo>,
     },
     Stored {
         address: LoCodeUnit,
         offset: u32,
         value_type: LoType,
+        inspect_info: Option<InspectInfo>,
     },
 }
 
-impl VariableInfo {
-    fn get_type(self) -> LoType {
+impl LoVariableInfo {
+    fn get_type(&self) -> &LoType {
         match self {
-            VariableInfo::Local {
+            LoVariableInfo::Local {
                 local_index: _,
                 local_type,
+                inspect_info: _,
             } => local_type,
-            VariableInfo::Global {
+            LoVariableInfo::Global {
                 global_index: _,
                 global_type,
+                inspect_info: _,
             } => global_type,
-            VariableInfo::Stored {
+            LoVariableInfo::Stored {
                 address: _,
                 offset: _,
                 value_type,
+                inspect_info: _,
             } => value_type,
+        }
+    }
+
+    fn inspect_info(&self) -> &Option<InspectInfo> {
+        match self {
+            LoVariableInfo::Local {
+                local_index: _,
+                local_type: _,
+                inspect_info,
+            }
+            | LoVariableInfo::Global {
+                global_index: _,
+                global_type: _,
+                inspect_info,
+            }
+            | LoVariableInfo::Stored {
+                address: _,
+                offset: _,
+                value_type: _,
+                inspect_info,
+            } => inspect_info,
         }
     }
 }
 
+struct InspectInfo {
+    message: String,
+    loc: LoLocation,
+    linked_loc: Option<LoLocation>,
+}
+
+#[derive(Clone)]
 struct LoConstDef {
     const_name: String,
     code_unit: LoCodeUnit,
@@ -567,6 +601,16 @@ impl CodeGen {
                         GlobalDefValue::DataSize => LoType::U32,
                     };
 
+                    if self.mode == CompilerMode::Inspect {
+                        let global_name = &global.global_name.repr;
+
+                        self.print_inspection(&InspectInfo {
+                            message: format!("global {global_name}: {value_type}"),
+                            loc: global.loc.clone(),
+                            linked_loc: None,
+                        });
+                    }
+
                     self.globals.push(LoGlobalDef {
                         def_expr: global,
                         global_type: value_type,
@@ -673,6 +717,18 @@ impl CodeGen {
 
                     let mut const_ctx = LoExprContext::default();
                     let code_unit = self.build_code_unit(&mut const_ctx, &const_def.const_value)?;
+
+                    if self.mode == CompilerMode::Inspect {
+                        let const_name = &const_def.const_name.repr;
+                        let const_type = &code_unit.lo_type;
+
+                        self.print_inspection(&InspectInfo {
+                            message: format!("const {const_name}: {const_type}"),
+                            loc: const_def.loc.clone(),
+                            linked_loc: None,
+                        });
+                    }
+
                     self.const_defs.push(LoConstDef {
                         const_name: const_def.const_name.repr.clone(),
                         code_unit,
@@ -1261,38 +1317,63 @@ impl CodeGen {
             }
 
             CodeExpr::Ident(ident) => {
-                if let Some(const_expr) = self.get_const(ctx, &ident.repr) {
-                    for instr in &const_expr.instrs {
+                if let Some(const_def) = self.get_const(ctx, &ident.repr) {
+                    if self.mode == CompilerMode::Inspect {
+                        self.print_inspection(&InspectInfo {
+                            message: format!(
+                                "const {}: {}",
+                                ident.repr, const_def.code_unit.lo_type
+                            ),
+                            loc: ident.loc.clone(),
+                            linked_loc: Some(const_def.loc.clone()),
+                        });
+                    }
+
+                    for instr in &const_def.code_unit.instrs {
                         instrs.push(instr.clone());
                     }
                     return Ok(());
                 }
 
                 let var = self.var_from_ident(ctx, ident)?;
+                if let Some(inspect_info) = var.inspect_info() {
+                    self.print_inspection(inspect_info);
+                }
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
             CodeExpr::Let(LetExpr {
                 local_name,
                 value,
-                loc,
+                loc: _,
             }) => {
-                if local_name == "_" {
+                let local_type = self.get_expr_type(ctx, &value)?;
+
+                if local_name.repr == "_" {
                     self.codegen(ctx, instrs, value)?;
 
-                    let local_type = self.get_expr_type(ctx, &value)?;
                     for _ in 0..self.count_wasm_type_components(&local_type) {
                         instrs.push(WasmInstr::Drop);
                     }
                     return Ok(());
                 }
 
-                let local_type = self.get_expr_type(ctx, &value)?;
-                let local_index =
-                    self.define_local(ctx, loc.clone(), local_name.clone(), &local_type, false)?;
-                let var = VariableInfo::Local {
+                let local_index = self.define_local(
+                    ctx,
+                    local_name.loc.clone(),
+                    local_name.repr.clone(),
+                    &local_type,
+                    false,
+                )?;
+                let var = self.var_local(
+                    &local_name.repr,
+                    local_type,
                     local_index,
-                    local_type: local_type.clone(),
-                };
+                    local_name.loc.clone(),
+                    None,
+                );
+                if let Some(inspect_info) = var.inspect_info() {
+                    self.print_inspection(inspect_info);
+                }
                 self.codegen_var_set_prepare(ctx, instrs, &var);
                 self.codegen(ctx, instrs, value)?;
                 self.codegen_var_set(ctx, instrs, &var)?;
@@ -1325,9 +1406,17 @@ impl CodeGen {
                     });
                 }
             }
-            CodeExpr::PrefixOp(PrefixOpExpr { op_tag, expr, loc }) => match op_tag {
+            CodeExpr::PrefixOp(PrefixOpExpr {
+                op_tag,
+                expr,
+                op_loc,
+                loc,
+            }) => match op_tag {
                 PrefixOpTag::Dereference => {
-                    let var = self.var_from_deref(ctx, expr)?;
+                    let var = self.var_from_deref(ctx, expr, op_loc)?;
+                    if let Some(inspect_info) = var.inspect_info() {
+                        self.print_inspection(inspect_info);
+                    }
                     self.codegen_var_get(ctx, instrs, &var)?;
                 }
                 PrefixOpTag::Not => {
@@ -1449,6 +1538,9 @@ impl CodeGen {
                             loc: op_loc.clone(),
                         });
                     };
+                    if let Some(inspect_info) = var.inspect_info() {
+                        self.print_inspection(inspect_info);
+                    }
 
                     self.codegen_var_get(ctx, instrs, &var)?;
                     self.codegen_var_set_prepare(ctx, instrs, &var);
@@ -1478,12 +1570,18 @@ impl CodeGen {
                         loc: op_loc.clone(),
                     });
                 };
+                if let Some(inspect_info) = var.inspect_info() {
+                    self.print_inspection(inspect_info);
+                }
                 self.codegen_var_set_prepare(ctx, instrs, &var);
                 self.codegen(ctx, instrs, rhs)?;
                 self.codegen_var_set(ctx, instrs, &var)?;
             }
             CodeExpr::FieldAccess(field_access) => {
                 let var = self.var_from_field_access(ctx, field_access)?;
+                if let Some(inspect_info) = var.inspect_info() {
+                    self.print_inspection(inspect_info);
+                }
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
 
@@ -1684,10 +1782,16 @@ impl CodeGen {
                 // define counter and set value to start
                 let local_index =
                     self.define_local(ctx, loc.clone(), counter.clone(), &counter_type, false)?;
-                let counter_var = VariableInfo::Local {
+                let counter_var = self.var_local(
+                    counter,
+                    counter_type.clone(),
                     local_index,
-                    local_type: counter_type.clone(),
-                };
+                    loc.clone(),
+                    None,
+                );
+                if let Some(inspect_info) = counter_var.inspect_info() {
+                    self.print_inspection(inspect_info);
+                }
                 self.codegen_var_set_prepare(ctx, instrs, &counter_var);
                 self.codegen(ctx, instrs, start)?;
                 self.codegen_var_set(ctx, instrs, &counter_var)?;
@@ -1982,9 +2086,12 @@ impl CodeGen {
 
         // TODO: check for const shadowing
         for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
-            ctx.current_scope_mut()
-                .macro_args
-                .push((macro_param.param_name.clone(), macro_arg));
+            let const_def = LoConstDef {
+                const_name: macro_param.param_name.clone(),
+                code_unit: macro_arg,
+                loc: macro_param.loc.clone(),
+            };
+            ctx.current_scope_mut().macro_args.push(const_def);
         }
 
         for expr in &macro_def.body.exprs {
@@ -2013,13 +2120,32 @@ impl CodeGen {
         self.codegen(ctx, instrs, expr)?;
 
         // pop error
-        let error_bind = if let Some((error_bind, _)) = catch_details {
-            error_bind.repr.clone()
+        let (error_bind, error_bind_loc) = if let Some((error_bind, _)) = catch_details {
+            (error_bind.repr.clone(), error_bind.loc.clone())
         } else {
-            String::from("<err>")
+            (String::from("<err>"), LoLocation::internal())
         };
-        let err_local_index = self.define_local(ctx, loc.clone(), error_bind, &err_type, false)?;
-        self.codegen_local_set(instrs, err_type, err_local_index);
+        let err_local_index = self.define_local(
+            ctx,
+            error_bind_loc.clone(),
+            error_bind.clone(),
+            &err_type,
+            false,
+        )?;
+        let err_var = self.var_local(
+            &error_bind,
+            err_type.clone(),
+            err_local_index,
+            error_bind_loc.clone(),
+            None,
+        );
+        if error_bind_loc.file_index != 0 {
+            if let Some(inspect_info) = err_var.inspect_info() {
+                self.print_inspection(inspect_info);
+            }
+        }
+        self.codegen_var_set_prepare(ctx, instrs, &err_var);
+        self.codegen_var_set(ctx, instrs, &err_var)?;
 
         // pop ok
         let ok_bind = String::from("<ok>");
@@ -2027,9 +2153,7 @@ impl CodeGen {
         self.codegen_local_set(instrs, ok_type, ok_local_index);
 
         // cond: error != 0
-        instrs.push(WasmInstr::LocalGet {
-            local_index: err_local_index,
-        });
+        self.codegen_var_get(ctx, instrs, &err_var)?;
 
         let in_out_type_index = self.get_block_inout_type(&[], ok_type);
         instrs.push(WasmInstr::BlockStart {
@@ -2051,9 +2175,7 @@ impl CodeGen {
             // return ok_type of function's result + caught error
             let (fn_ok_type, _) = self.get_result_literal_type(ctx, &None, loc)?;
             self.codegen_default_value(ctx, instrs, &fn_ok_type);
-            instrs.push(WasmInstr::LocalGet {
-                local_index: err_local_index,
-            });
+            self.codegen_var_get(ctx, instrs, &err_var)?;
 
             self.emit_deferred(ctx, instrs)?;
             instrs.push(WasmInstr::Return);
@@ -2062,9 +2184,10 @@ impl CodeGen {
         instrs.push(WasmInstr::Else);
 
         // no error, push ok value
-        let ok_var = VariableInfo::Local {
+        let ok_var = LoVariableInfo::Local {
             local_index: ok_local_index,
             local_type: ok_type.clone(),
+            inspect_info: None,
         };
         self.codegen_var_get(ctx, instrs, &ok_var)?;
 
@@ -2359,11 +2482,11 @@ impl CodeGen {
 
             CodeExpr::Ident(ident) => {
                 if let Some(const_expr) = self.get_const(ctx, &ident.repr) {
-                    return Ok(const_expr.lo_type.clone());
+                    return Ok(const_expr.code_unit.lo_type.clone());
                 }
 
                 let var = self.var_from_ident(ctx, ident)?;
-                Ok(var.get_type())
+                Ok(var.get_type().clone())
             }
             CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
@@ -2408,7 +2531,12 @@ impl CodeGen {
                 | InfixOpTag::Catch
                 | InfixOpTag::ErrorPropagation => unreachable!(),
             },
-            CodeExpr::PrefixOp(PrefixOpExpr { op_tag, expr, loc }) => match op_tag {
+            CodeExpr::PrefixOp(PrefixOpExpr {
+                op_tag,
+                expr,
+                op_loc: _,
+                loc,
+            }) => match op_tag {
                 PrefixOpTag::Not => Ok(LoType::Bool),
                 PrefixOpTag::Dereference => {
                     let expr_type = self.get_expr_type(ctx, expr)?;
@@ -2549,7 +2677,7 @@ impl CodeGen {
         &self,
         ctx: &mut LoExprContext,
         expr: &CodeExpr,
-    ) -> Result<Option<VariableInfo>, LoError> {
+    ) -> Result<Option<LoVariableInfo>, LoError> {
         Ok(match expr {
             CodeExpr::Ident(ident) => Some(self.var_from_ident(ctx, ident)?),
             CodeExpr::FieldAccess(field_access) => {
@@ -2559,31 +2687,69 @@ impl CodeGen {
             CodeExpr::PrefixOp(PrefixOpExpr {
                 op_tag,
                 expr,
+                op_loc,
                 loc: _,
             }) => match op_tag {
-                PrefixOpTag::Dereference => Some(self.var_from_deref(ctx, expr)?),
+                PrefixOpTag::Dereference => Some(self.var_from_deref(ctx, expr, op_loc)?),
                 _ => None,
             },
             _ => None,
         })
     }
 
+    fn var_local(
+        &self,
+        local_name: &str,
+        local_type: LoType,
+        local_index: u32,
+        loc: LoLocation,
+        linked_loc: Option<LoLocation>,
+    ) -> LoVariableInfo {
+        let inspect_info = if self.mode == CompilerMode::Inspect {
+            Some(InspectInfo {
+                message: format!("let {}: {}", local_name, local_type),
+                loc: loc.clone(),
+                linked_loc,
+            })
+        } else {
+            None
+        };
+
+        LoVariableInfo::Local {
+            local_index,
+            local_type,
+            inspect_info,
+        }
+    }
+
     fn var_from_ident(
         &self,
         ctx: &LoExprContext,
         ident: &IdentExpr,
-    ) -> Result<VariableInfo, LoError> {
+    ) -> Result<LoVariableInfo, LoError> {
         if let Some(local) = ctx.get_local(&ident.repr) {
-            return Ok(VariableInfo::Local {
-                local_index: local.local_index,
-                local_type: local.local_type.clone(),
-            });
+            return Ok(self.var_local(
+                &ident.repr,
+                local.local_type.clone(),
+                local.local_index,
+                ident.loc.clone(),
+                Some(local.definition_loc.clone()),
+            ));
         };
 
         if let Some(global) = self.get_global(&ident.repr) {
-            return Ok(VariableInfo::Global {
+            return Ok(LoVariableInfo::Global {
                 global_index: global.global_index,
                 global_type: global.global_type.clone(),
+                inspect_info: if self.mode == CompilerMode::Inspect {
+                    Some(InspectInfo {
+                        message: format!("global {}: {}", ident.repr, global.global_type),
+                        loc: ident.loc.clone(),
+                        linked_loc: Some(global.def_expr.loc.clone()),
+                    })
+                } else {
+                    None
+                },
             });
         }
 
@@ -2597,41 +2763,66 @@ impl CodeGen {
         &self,
         ctx: &mut LoExprContext,
         field_access: &FieldAccessExpr,
-    ) -> Result<VariableInfo, LoError> {
+    ) -> Result<LoVariableInfo, LoError> {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref())?;
 
         let (is_ref, field) = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
 
+        let inspect_info = if self.mode == CompilerMode::Inspect {
+            Some(InspectInfo {
+                message: format!("{}.{}: {}", lhs_type, field.field_name, field.field_type),
+                loc: field_access.field_name.loc.clone(),
+                linked_loc: Some(field.loc.clone()),
+            })
+        } else {
+            None
+        };
+
         if is_ref {
-            return Ok(VariableInfo::Stored {
+            return Ok(LoVariableInfo::Stored {
                 address: self.build_code_unit(ctx, &field_access.lhs)?,
                 offset: field.byte_offset,
                 value_type: field.field_type.clone(),
+                inspect_info,
             });
         }
 
         if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref())? {
-            if let VariableInfo::Local {
+            if let LoVariableInfo::Local {
                 local_index,
                 local_type: _,
+                inspect_info: parent_inspect_info,
             } = var
             {
-                return Ok(VariableInfo::Local {
+                if let Some(inspect_info) = parent_inspect_info {
+                    self.print_inspection(&inspect_info);
+                }
+
+                return Ok(LoVariableInfo::Local {
                     local_index: local_index + field.field_index,
                     local_type: field.field_type.clone(),
+                    inspect_info,
                 });
             }
 
-            if let VariableInfo::Stored {
+            // TODO(QOL): technically parent_inspect_info returns a reference
+            //   and inspect_info's lhs_type should be changed to reference as well
+            if let LoVariableInfo::Stored {
                 address,
                 offset,
                 value_type: _,
+                inspect_info: parent_inspect_info,
             } = var
             {
-                return Ok(VariableInfo::Stored {
-                    address: address,
+                if let Some(inspect_info) = parent_inspect_info {
+                    self.print_inspection(&inspect_info);
+                }
+
+                return Ok(LoVariableInfo::Stored {
+                    address,
                     offset: offset + field.byte_offset,
                     value_type: field.field_type.clone(),
+                    inspect_info,
                 });
             }
         };
@@ -2701,14 +2892,26 @@ impl CodeGen {
         &self,
         ctx: &mut LoExprContext,
         addr_expr: &CodeExpr,
-    ) -> Result<VariableInfo, LoError> {
+        op_loc: &LoLocation,
+    ) -> Result<LoVariableInfo, LoError> {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let LoType::Pointer { pointee } = &addr_type {
-            return Ok(VariableInfo::Stored {
+            let inspect_info = if self.mode == CompilerMode::Inspect {
+                Some(InspectInfo {
+                    message: format!("<deref>: {}", pointee), // TODO: is this message ok?
+                    loc: op_loc.clone(),
+                    linked_loc: None,
+                })
+            } else {
+                None
+            };
+
+            return Ok(LoVariableInfo::Stored {
                 address: self.build_code_unit(ctx, addr_expr)?,
                 offset: 0,
                 value_type: pointee.as_ref().clone(),
+                inspect_info,
             });
         };
 
@@ -2722,12 +2925,13 @@ impl CodeGen {
         &self,
         ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
-        var: &VariableInfo,
+        var: &LoVariableInfo,
     ) -> Result<(), LoError> {
         match var {
-            VariableInfo::Local {
+            LoVariableInfo::Local {
                 local_index,
                 local_type,
+                inspect_info: _,
             } => {
                 for i in 0..self.count_wasm_type_components(local_type) {
                     instrs.push(WasmInstr::LocalGet {
@@ -2735,9 +2939,10 @@ impl CodeGen {
                     });
                 }
             }
-            VariableInfo::Global {
+            LoVariableInfo::Global {
                 global_index,
                 global_type,
+                inspect_info: _,
             } => {
                 for i in 0..self.count_wasm_type_components(global_type) {
                     instrs.push(WasmInstr::GlobalGet {
@@ -2745,10 +2950,11 @@ impl CodeGen {
                     });
                 }
             }
-            VariableInfo::Stored {
+            LoVariableInfo::Stored {
                 address,
                 offset,
                 value_type,
+                inspect_info: _,
             } => {
                 let mut loads = Vec::new();
                 self.codegen_load_or_store(&mut loads, &value_type, *offset, false);
@@ -2783,13 +2989,14 @@ impl CodeGen {
         &self,
         _ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
-        var: &VariableInfo,
+        var: &LoVariableInfo,
     ) {
         match var {
-            VariableInfo::Stored {
+            LoVariableInfo::Stored {
                 address,
                 offset: _,
                 value_type: _,
+                inspect_info: _,
             } => {
                 for instr in &address.instrs {
                     instrs.push(instr.clone());
@@ -2803,18 +3010,20 @@ impl CodeGen {
         &self,
         ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
-        var: &VariableInfo,
+        var: &LoVariableInfo,
     ) -> Result<(), LoError> {
         match var {
-            VariableInfo::Local {
+            LoVariableInfo::Local {
                 local_index,
                 local_type,
+                inspect_info: _,
             } => {
                 self.codegen_local_set(instrs, local_type, *local_index);
             }
-            VariableInfo::Global {
+            LoVariableInfo::Global {
                 global_index,
                 global_type,
+                inspect_info: _,
             } => {
                 for i in (0..self.count_wasm_type_components(global_type)).rev() {
                     instrs.push(WasmInstr::GlobalSet {
@@ -2822,10 +3031,11 @@ impl CodeGen {
                     });
                 }
             }
-            VariableInfo::Stored {
+            LoVariableInfo::Stored {
                 address: _,
                 offset,
                 value_type,
+                inspect_info: _,
             } => {
                 let mut stores = Vec::new();
                 self.codegen_load_or_store(&mut stores, &value_type, *offset, true);
@@ -2978,7 +3188,7 @@ impl CodeGen {
     }
 
     fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<(u32, u32), LoError> {
-        if let None = self.memory {
+        if self.memory.is_none() && self.mode != CompilerMode::Inspect {
             return Err(LoError {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: loc.clone(),
@@ -3042,9 +3252,9 @@ impl CodeGen {
         None
     }
 
-    fn get_const<'a>(&'a self, ctx: &'a LoExprContext, const_name: &str) -> Option<&'a LoCodeUnit> {
+    fn get_const<'a>(&'a self, ctx: &'a LoExprContext, const_name: &str) -> Option<&'a LoConstDef> {
         if let Some(const_def) = self.get_const_def(const_name) {
-            return Some(&const_def.code_unit);
+            return Some(const_def);
         }
 
         if let Some(macro_arg) = ctx.get_macro_arg(const_name) {
@@ -3555,6 +3765,31 @@ impl CodeGen {
         }
 
         None
+    }
+
+    fn print_inspection(&self, inspect_info: &InspectInfo) {
+        let source_index = inspect_info.loc.file_index;
+        let source_range = RangeDisplay(&inspect_info.loc);
+        let message = &inspect_info.message;
+
+        let Some(linked_loc) = &inspect_info.linked_loc else {
+            stdout_writeln(format!(
+                "{{ \"type\": \"info\", \
+                    \"hover\": \"{message}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
+            ));
+            return;
+        };
+
+        let target_index = linked_loc.file_index;
+        let target_range = RangeDisplay(&linked_loc);
+
+        stdout_writeln(format!(
+            "{{ \"type\": \"info\", \
+                \"link\": \"{target_index}/{target_range}\", \
+                \"hover\": \"{message}\", \
+                \"loc\": \"{source_index}/{source_range}\" }}, ",
+        ));
     }
 }
 

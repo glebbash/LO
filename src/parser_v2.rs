@@ -630,7 +630,7 @@ impl ParserV2 {
             let expr = Box::new(self.parse_code_expr(0)?);
             self.expect(Delim, ")")?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.current().loc.end_pos.clone();
 
             return Ok(CodeExpr::Paren(ParenExpr { expr, loc }));
         };
@@ -638,14 +638,14 @@ impl ParserV2 {
         if let Some(_) = self.eat(Symbol, "let")? {
             let mut loc = self.prev().loc.clone();
 
-            let local_name = self.expect_any(Symbol)?.clone();
+            let local_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
             let value = self.parse_code_expr(0)?;
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::Let(LetExpr {
-                local_name: local_name.value,
+                local_name,
                 value: Box::new(value),
                 loc,
             }));
@@ -749,6 +749,7 @@ impl ParserV2 {
                         return Ok(CodeExpr::PrefixOp(PrefixOpExpr {
                             expr,
                             op_tag: op.tag,
+                            op_loc: op.token.loc,
                             loc,
                         }));
                     }

@@ -85,7 +85,7 @@ mod wasi_api {
                     compiler_mode = CompilerMode::Compile;
                 }
                 "--inspect" => {
-                    // is_v2 = true;
+                    is_v2 = true;
                     compiler_mode = CompilerMode::Inspect;
                 }
                 "--pretty-print" => {

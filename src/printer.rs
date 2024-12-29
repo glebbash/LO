@@ -446,7 +446,7 @@ impl Printer {
                 loc: _,
             }) => {
                 stdout_write("let ");
-                stdout_write(local_name);
+                stdout_write(&local_name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(&value);
             }
@@ -474,6 +474,7 @@ impl Printer {
             CodeExpr::PrefixOp(PrefixOpExpr {
                 expr,
                 op_tag,
+                op_loc: _,
                 loc: _,
             }) => {
                 stdout_write(op_tag.to_str());

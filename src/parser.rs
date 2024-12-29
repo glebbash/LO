@@ -400,7 +400,6 @@ fn parse_top_level_expr(
 
             let global_name = &global_name.value;
 
-            // TODO(v2): implement
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"hover\": \"global {global_name}: {lo_type}\", \
@@ -545,7 +544,6 @@ fn parse_top_level_expr(
             let const_name = &const_name.value;
             let const_type = const_value.get_type(ctx);
 
-            // TODO(v2): implement
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"hover\": \"const {const_name}: {const_type}\", \
@@ -1559,7 +1557,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             let local_name = &value.value;
             let value_type = &local.value_type;
 
-            // TODO(v2): implement
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"link\": \"{target_index}/{target_range}\", \
@@ -1586,7 +1583,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             let const_name = &value.value;
             let const_type = const_def.value.get_type(ctx.module);
 
-            // TODO(v2): implement
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"link\": \"{target_index}/{target_range}\", \
@@ -1608,7 +1604,6 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
             let global_name = &value.value;
             let global_type = &global.value_type;
 
-            // TODO(v2): implement
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"link\": \"{target_index}/{target_range}\", \
@@ -1794,7 +1789,6 @@ fn define_local(
 
         let local_name = &local_name.value;
 
-        // TODO(v2): implement
         stdout_writeln(format!(
             "{{ \"type\": \"info\", \
                 \"hover\": \"let {local_name}: {value_type}\", \
@@ -2177,7 +2171,6 @@ fn parse_postfix(
                     let field_name = &field_name.value;
                     let field_type = &field.value_type;
 
-                    // TODO(v2): implement
                     stdout_writeln(format!(
                         "{{ \"type\": \"info\", \
                             \"link\": \"{target_index}/{target_range}\", \
@@ -2230,7 +2223,6 @@ fn parse_postfix(
                     let field_name = &field_name.value;
                     let field_type = &field.value_type;
 
-                    // TODO(v2): implement
                     stdout_writeln(format!(
                         "{{ \"type\": \"info\", \
                             \"link\": \"{target_index}/{target_range}\", \
@@ -2278,7 +2270,6 @@ fn parse_postfix(
                         let field_name = &field_name.value;
                         let field_type = &field.value_type;
 
-                        // TODO(v2): implement
                         stdout_writeln(format!(
                             "{{ \"type\": \"info\", \
                                 \"link\": \"{target_index}/{target_range}\", \
