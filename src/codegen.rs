@@ -1247,8 +1247,7 @@ impl CodeGen {
                 if let LoType::U8 = &item_type {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
-                        // TODO: remove U32 check, it is for compat with V1 only
-                        if current_item_type != item_type && current_item_type != LoType::U32 {
+                        if current_item_type != item_type {
                             return Err(LoError {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
@@ -2988,7 +2987,7 @@ impl CodeGen {
         if let LoType::Pointer { pointee } = &addr_type {
             let inspect_info = if self.mode == CompilerMode::Inspect {
                 Some(InspectInfo {
-                    message: format!("<deref>: {}", pointee), // TODO: is this message ok?
+                    message: format!("<deref>: {}", pointee),
                     loc: op_loc.clone(),
                     linked_loc: None,
                 })

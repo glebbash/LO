@@ -1,14 +1,14 @@
 include "./lib/wasm4.lo";
 
 const SMILEY = [u8][
-    0xC3,
-    0x81,
-    0x24,
-    0x24,
-    0x00,
-    0x24,
-    0x99,
-    0xC3,
+    0xC3 as u8,
+    0x81 as u8,
+    0x24 as u8,
+    0x24 as u8,
+    0x00 as u8,
+    0x24 as u8,
+    0x99 as u8,
+    0xC3 as u8,
 ];
 
 export fn start() {

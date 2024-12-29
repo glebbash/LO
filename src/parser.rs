@@ -1087,7 +1087,6 @@ impl Parser {
             InfixOpTag::Assign => {
                 let mut loc = primary.loc().clone();
 
-                // TODO: validate that this is a proper lhs for assignment
                 let value = self.parse_code_expr(min_bp)?;
 
                 loc.end_pos = self.prev().loc.end_pos.clone();
