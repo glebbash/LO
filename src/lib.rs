@@ -35,9 +35,6 @@ mod wasm_target {
     }
 }
 
-// TODO: add tests for --inspect mode
-// TODO: add --inspect functionality for v2
-
 static USAGE: &str = "\
 Usage: lo <file> [<mode>] [--v1|--v2]
   Where <mode> is either:
