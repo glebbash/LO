@@ -273,40 +273,6 @@ pub fn debug(msg: impl AsRef<str>) {
     stderr_write(format!("{}\n", msg.as_ref()));
 }
 
-pub fn resolve_path(file_path: &str, relative_to: &str) -> String {
-    if !file_path.starts_with('.') {
-        return file_path.into();
-    }
-
-    let mut path_items = relative_to.split('/').collect::<Vec<_>>();
-    path_items.pop(); // remove `relative_to`'s file name
-
-    path_items.extend(file_path.split('/'));
-
-    let mut i = 0;
-    loop {
-        if i >= path_items.len() {
-            break;
-        }
-
-        if path_items[i] == "." {
-            path_items.remove(i);
-            continue;
-        }
-
-        if path_items[i] == ".." && i > 0 {
-            i -= 1;
-            path_items.remove(i);
-            path_items.remove(i);
-            continue;
-        }
-
-        i += 1;
-    }
-
-    path_items.join("/")
-}
-
 pub struct ListDisplay<'a, T: core::fmt::Display>(pub &'a [T]);
 
 impl<'a, T: core::fmt::Display> core::fmt::Display for ListDisplay<'a, T> {
@@ -413,4 +379,38 @@ impl FileManager {
     pub fn get_file_path(&self, file_index: u32) -> &str {
         &self.files[file_index as usize].file_path
     }
+}
+
+fn resolve_path(file_path: &str, relative_to: &str) -> String {
+    if !file_path.starts_with('.') {
+        return file_path.into();
+    }
+
+    let mut path_items = relative_to.split('/').collect::<Vec<_>>();
+    path_items.pop(); // remove `relative_to`'s file name
+
+    path_items.extend(file_path.split('/'));
+
+    let mut i = 0;
+    loop {
+        if i >= path_items.len() {
+            break;
+        }
+
+        if path_items[i] == "." {
+            path_items.remove(i);
+            continue;
+        }
+
+        if path_items[i] == ".." && i > 0 {
+            i -= 1;
+            path_items.remove(i);
+            path_items.remove(i);
+            continue;
+        }
+
+        i += 1;
+    }
+
+    path_items.join("/")
 }
