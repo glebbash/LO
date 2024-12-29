@@ -6,10 +6,8 @@ import process from "node:process";
 import { test, describe } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
-import crypto from "node:crypto";
 
 const COMPILER_PATH = "lo.wasm";
-const TMP_DIR = "tmp";
 
 const COMMANDS = {
     compile: compileCommand,
@@ -56,23 +54,19 @@ async function runCommand() {
         compilerArgs = compilerArgs.slice(0, programArgsStart);
     }
 
-    const program = await runWithTmpFile(async (stdout, stdoutFile) => {
-        const exitCode = await runWASI(await fs.readFile(COMPILER_PATH), {
-            stdout: stdout.fd,
-            preopens: { ".": "." },
-            args: ["lo", ...compilerArgs],
-        });
-
-        if (exitCode !== 0) {
-            throw new Error("Compilation failed, see compiler error above");
-        }
-
-        return fs.readFile(stdoutFile);
-    }).catch((err) => {
-        console.error(err.message);
-        process.exit(1);
+    const stdout = new WASI.VirtualFD();
+    const exitCode = await runWASI(await fs.readFile(COMPILER_PATH), {
+        stdout,
+        preopens: { ".": "." },
+        args: ["lo", ...compilerArgs],
     });
 
+    if (exitCode !== 0) {
+        console.error("Compilation failed, see compiler error(s) above");
+        process.exit(1);
+    }
+
+    const program = stdout.flushAndRead();
     await runWASI(program, {
         preopens: { ".": "." },
         returnOnExit: false,
@@ -213,10 +207,9 @@ async function testCommand() {
             "./examples/test/demos/hello-world-raw.lo"
         );
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(output, "Hello World!\n");
     });
@@ -312,7 +305,10 @@ async function testCommand() {
     testCompilers("compiles wasi.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/lib/wasi.lo");
 
-        const wasi = await WASI.NodeFS({ version: "preview1" });
+        const wasi = new WASI({
+            version: "preview1",
+            sysCalls: await WASI.NodeSysCalls(),
+        });
         const wasm = await WebAssembly.compile(output);
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
@@ -362,7 +358,7 @@ async function testCommand() {
         assert.strictEqual(lib.vec_len(vec), 7);
 
         /**
-         * @param {{buffer: ArrayBufferLike;}} memory
+         * @param {{buffer: Uint8Array;}} memory
          * @param {number} ptr
          * @param {Uint8Array} data
          */
@@ -378,10 +374,9 @@ async function testCommand() {
     testCompilers("compiles hello-world.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/hello-world.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(output, "Hello World!\n");
     });
@@ -389,13 +384,13 @@ async function testCommand() {
     testCompilers("compiles echo.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/echo.lo");
 
-        const output = await runWithTmpFile(async (stdin, stdinFile) => {
-            await fs.writeFile(stdinFile, "abc");
-            return runWithTmpFile(async (stdout, stdoutFile) => {
-                await runWASI(program, { stdin: stdin.fd, stdout: stdout.fd });
-                return fs.readFile(stdoutFile, { encoding: "utf-8" });
-            });
-        });
+        const stdin = new WASI.VirtualFD();
+        stdin.writeString("abc");
+        stdin.flush();
+
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdin, stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(output, "abc");
     });
@@ -403,13 +398,9 @@ async function testCommand() {
     testCompilers("compiles args.test.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/args.test.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, {
-                stdout: stdout.fd,
-                args: ["123", "456", "789"],
-            });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout, args: ["123", "456", "789"] });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(output, "123\n456\n789\n");
     });
@@ -417,14 +408,13 @@ async function testCommand() {
     testCompilers("compiles cat.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/cat.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, {
-                stdout: stdout.fd,
-                args: ["cat.lo", "examples/test/42.lo"],
-                preopens: { ".": "." },
-            });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, {
+            stdout,
+            args: ["cat.lo", "examples/test/42.lo"],
+            preopens: { ".": "." },
         });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(
             output,
@@ -435,10 +425,9 @@ async function testCommand() {
     testCompilers("compiles tracing.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/tracing.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(
             output,
@@ -449,10 +438,9 @@ async function testCommand() {
     testCompilers("compiles struct-in-struct.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/struct-in-struct.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
     });
@@ -460,10 +448,9 @@ async function testCommand() {
     testCompilers("compiles heap-alloc.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/heap-alloc.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(
             output,
@@ -479,10 +466,9 @@ async function testCommand() {
     testCompilers("compiles defer.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/defer.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(
             output,
@@ -501,10 +487,9 @@ async function testCommand() {
     testCompilers("compiles errors.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/errors.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, { stdout: stdout.fd });
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(
             output,
@@ -520,22 +505,15 @@ async function testCommand() {
     testCompilers("compiles lo.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/lo.lo");
 
-        const [stdout, stderr] = await runWithTmpFile(
-            async (stdout, stdoutFile) =>
-                await runWithTmpFile(async (stderr, stderrFile) => {
-                    await runWASI(program, {
-                        stdout: stdout.fd,
-                        stderr: stderr.fd,
-                    });
-                    return [
-                        await fs.readFile(stdoutFile, { encoding: "utf-8" }),
-                        await fs.readFile(stderrFile, { encoding: "utf-8" }),
-                    ];
-                })
-        );
+        const stdout = new WASI.VirtualFD();
+        const stderr = new WASI.VirtualFD();
+        await runWASI(program, { stdout, stderr });
 
-        assert.strictEqual(stdout, "");
-        assert.strictEqual(stderr, "Usage: lo <file> [options]\n");
+        assert.strictEqual(stdout.flushAndReadUtf8(), "");
+        assert.strictEqual(
+            stderr.flushAndReadUtf8(),
+            "Usage: lo <file> [options]\n"
+        );
     });
 
     describe("<stdin> input", async () => {
@@ -646,20 +624,17 @@ async function testCommand() {
         async function runAoc(compile, path) {
             const program = await compile(path);
 
-            return await runWithTmpFile(async (stdout, stdoutFile) => {
-                const exitCode = await runWASI(program, {
-                    stdout: stdout.fd,
-                    preopens: { ".": "." },
-                });
-
-                if (exitCode !== 0) {
-                    throw new Error(
-                        `Process exited with error code: ${exitCode}`
-                    );
-                }
-
-                return fs.readFile(stdoutFile, { encoding: "utf-8" });
+            const stdout = new WASI.VirtualFD();
+            const exitCode = await runWASI(program, {
+                stdout,
+                preopens: { ".": "." },
             });
+
+            if (exitCode !== 0) {
+                throw new Error(`Process exited with error code: ${exitCode}`);
+            }
+
+            return stdout.flushAndReadUtf8();
         }
     });
 
@@ -720,14 +695,9 @@ async function testCommand() {
     testCompilers("lexer.test.lo (vS unit test)", {}, async (compile) => {
         const program = await compile("./examples/test/lexer.test.lo");
 
-        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-            await runWASI(program, {
-                stdout: stdout.fd,
-                preopens: { ".": "." },
-            });
-
-            return fs.readFile(stdoutFile, { encoding: "utf-8" });
-        });
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout, preopens: {} });
+        const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(
             output,
@@ -851,7 +821,9 @@ async function testCommand() {
 
         for (const fileName of formattedFiles) {
             test(`formats ${fileName}`, async () => {
-                const formatted = (await format(fileName)).toString();
+                const formatted = new TextDecoder().decode(
+                    await format(fileName)
+                );
                 const expected = await fs.readFile(fileName, "utf8");
 
                 // formatting the file to update snapshot
@@ -877,7 +849,7 @@ async function testCommand() {
         test("interprets 42.lo", async () => {
             const res = await interpret("examples/test/42.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 42\n"
             );
         });
@@ -885,7 +857,7 @@ async function testCommand() {
         test("interprets include.lo", async () => {
             const res = await interpret("examples/test/include.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 120\n"
             );
         });
@@ -893,7 +865,7 @@ async function testCommand() {
         test("interprets else-if.lo", async () => {
             const res = await interpret("examples/test/else-if.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 13\n"
             );
         });
@@ -901,7 +873,7 @@ async function testCommand() {
         test("interprets globals.lo", async () => {
             const res = await interpret("examples/test/globals.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 69\n"
             );
         });
@@ -909,7 +881,7 @@ async function testCommand() {
         test("interprets hex-and-shifts.lo", async () => {
             const res = await interpret("examples/test/hex-and-shifts.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 31\n"
             );
         });
@@ -917,7 +889,7 @@ async function testCommand() {
         test("interprets loop.lo", async () => {
             const res = await interpret("./examples/test/loop.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 120\n"
             );
         });
@@ -925,7 +897,7 @@ async function testCommand() {
         test("interprets for-loop.lo", async () => {
             const res = await interpret("./examples/test/for-loop.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 138\n"
             );
         });
@@ -933,7 +905,7 @@ async function testCommand() {
         test("interprets methods.lo", async () => {
             const res = await interpret("./examples/test/methods.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 1\n"
             );
         });
@@ -941,7 +913,7 @@ async function testCommand() {
         test("interprets decl-nesting.lo", async () => {
             const res = await interpret("./examples/test/decl-nesting.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 16\n"
             );
         });
@@ -949,7 +921,7 @@ async function testCommand() {
         test("interprets struct.lo", async () => {
             const res = await interpret("./examples/test/struct.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 13\n"
             );
         });
@@ -957,7 +929,7 @@ async function testCommand() {
         test("interprets nested-if-break.lo", async () => {
             const res = await interpret("./examples/test/nested-if-break.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 1\n"
             );
         });
@@ -965,7 +937,7 @@ async function testCommand() {
         test("interprets struct-ref.lo", async () => {
             const res = await interpret("./examples/test/struct-ref.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 3\n"
             );
         });
@@ -973,7 +945,7 @@ async function testCommand() {
         test("interprets macro.lo", async () => {
             const res = await interpret("./examples/test/macro.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 16\n"
             );
         });
@@ -982,7 +954,7 @@ async function testCommand() {
             const res = await interpret("./examples/test/import.lo");
             // NOTE: can't really see debug output because it's on stderr and that is ignored on exit = 0
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: \n"
             );
         });
@@ -990,7 +962,7 @@ async function testCommand() {
         test("interprets string-pooling.lo", async () => {
             const res = await interpret("./examples/test/string-pooling.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "result of `main` is: 13\n"
             );
         });
@@ -1001,24 +973,24 @@ async function testCommand() {
             const res = await interpret(
                 "./examples/test/demos/hello-world-raw.lo"
             );
-            assert.strictEqual(res.toString("utf-8"), "Hello World!\n");
+            assert.strictEqual(new TextDecoder().decode(res), "Hello World!\n");
         });
 
         test("interprets hello-world.lo", async () => {
             const res = await interpret("./examples/test/demos/hello-world.lo");
-            assert.strictEqual(res.toString("utf-8"), "Hello World!\n");
+            assert.strictEqual(new TextDecoder().decode(res), "Hello World!\n");
         });
 
         test("interprets echo.lo", async () => {
             const res = await interpret("./examples/test/demos/echo.lo");
             // NOTE: no stdin provided so no output
-            assert.strictEqual(res.toString("utf-8"), "");
+            assert.strictEqual(new TextDecoder().decode(res), "");
         });
 
         test("interprets args.test.lo", async () => {
             const res = await interpret("./examples/test/args.test.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 m`
                 lo
                 ./examples/test/args.test.lo
@@ -1041,20 +1013,23 @@ async function testCommand() {
         test("interprets tracing.lo", async () => {
             const res = await interpret("./examples/test/tracing.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 "examples/test/tracing.lo:4:10 - hello there\n"
             );
         });
 
         test("interprets struct-in-struct.lo", async () => {
             const res = await interpret("./examples/test/struct-in-struct.lo");
-            assert.strictEqual(res.toString("utf-8"), "3\n3\n3\n3\n3\n3\n3\n");
+            assert.strictEqual(
+                new TextDecoder().decode(res),
+                "3\n3\n3\n3\n3\n3\n3\n"
+            );
         });
 
         test("interprets heap-alloc.lo", async () => {
             const res = await interpret("./examples/test/heap-alloc.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 m`
                 p1 = 1048597
                 p2 = 1048597
@@ -1067,7 +1042,7 @@ async function testCommand() {
         test("interprets defer.lo", async () => {
             const res = await interpret("./examples/test/defer.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 m`
                 defer(inner_fn): 3
                 defer(inner_fn): 2
@@ -1083,7 +1058,7 @@ async function testCommand() {
         test("interprets errors.lo", async () => {
             const res = await interpret("./examples/test/errors.lo");
             assert.strictEqual(
-                res.toString("utf-8"),
+                new TextDecoder().decode(res),
                 m`
                 10 / 5 = 2, remainder = 0
                 10 / 3 = 3, remainder = 1
@@ -1098,63 +1073,63 @@ async function testCommand() {
         // TODO: look into performance of part 2
         test("interprets aoc2020 day 1", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/1.lo");
-            assert.strictEqual(res1.toString("utf-8"), "157059\n");
+            assert.strictEqual(new TextDecoder().decode(res1), "157059\n");
 
             const res2 = await interpret(
                 "./examples/test/demos/aoc2020/1-part2.lo"
             );
-            assert.strictEqual(res2.toString("utf-8"), "165080960\n");
+            assert.strictEqual(new TextDecoder().decode(res2), "165080960\n");
         });
 
         test("interprets aoc2020 day 2", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/2.lo");
-            assert.strictEqual(res1.toString("utf-8"), "560\n");
+            assert.strictEqual(new TextDecoder().decode(res1), "560\n");
 
             const res2 = await interpret(
                 "./examples/test/demos/aoc2020/2-part2.lo"
             );
-            assert.strictEqual(res2.toString("utf-8"), "303\n");
+            assert.strictEqual(new TextDecoder().decode(res2), "303\n");
         });
 
         test("interprets aoc2020 day 3", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/3.lo");
-            assert.strictEqual(res1.toString("utf-8"), "151\n");
+            assert.strictEqual(new TextDecoder().decode(res1), "151\n");
 
             const res2 = await interpret(
                 "./examples/test/demos/aoc2020/3-part2.lo"
             );
-            assert.strictEqual(res2.toString("utf-8"), "7540141059\n");
+            assert.strictEqual(new TextDecoder().decode(res2), "7540141059\n");
         });
 
         test("interprets aoc2020 day 4", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/4.lo");
-            assert.strictEqual(res1.toString("utf-8"), "264\n");
+            assert.strictEqual(new TextDecoder().decode(res1), "264\n");
 
             const res2 = await interpret(
                 "./examples/test/demos/aoc2020/4-part2.lo"
             );
-            assert.strictEqual(res2.toString("utf-8"), "224\n");
+            assert.strictEqual(new TextDecoder().decode(res2), "224\n");
         });
 
         // TODO: look into performance of part 2
         test("interprets aoc2020 day 5", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/5.lo");
-            assert.strictEqual(res1.toString("utf-8"), "947\n");
+            assert.strictEqual(new TextDecoder().decode(res1), "947\n");
 
             const res2 = await interpret(
                 "./examples/test/demos/aoc2020/5-part2.lo"
             );
-            assert.strictEqual(res2.toString("utf-8"), "636\n");
+            assert.strictEqual(new TextDecoder().decode(res2), "636\n");
         });
 
         test("interprets aoc2023 day 1", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2023/1.lo");
-            assert.strictEqual(res1.toString("utf-8"), "54450\n");
+            assert.strictEqual(new TextDecoder().decode(res1), "54450\n");
 
             const res2 = await interpret(
                 "./examples/test/demos/aoc2023/1-part2.lo"
             );
-            assert.strictEqual(res2.toString("utf-8"), "54265\n");
+            assert.strictEqual(new TextDecoder().decode(res2), "54265\n");
         });
     });
 
@@ -1169,10 +1144,10 @@ async function testCommand() {
         }
     }
 
-    /** @typedef {(sourcePath: string) => Promise<InstanceType<typeof global.Buffer>>} Compile */
+    /** @typedef {(sourcePath: string) => Promise<Uint8Array>} Compile */
 
     /**
-     * @param {InstanceType<typeof global.Buffer>} compilerWasmBinary
+     * @param {Uint8Array} compilerWasmBinary
      * @returns {Promise<Compile>}
      */
     async function loadCompilerWithWasiAPI(
@@ -1187,71 +1162,55 @@ async function testCommand() {
     ) {
         const mod = await WebAssembly.compile(compilerWasmBinary);
 
-        /**
-         * @param {string} [fileName]
-         * @param {number} [stdinFd]
-         */
-        const compile = (fileName, stdinFd) =>
-            runWithTmpFile((stderr, stderrFile) =>
-                runWithTmpFile(async (stdout, stdoutFile) => {
-                    const wasi = await WASI.NodeFS({
-                        version: "preview1",
-                        stdin: stdinFd,
-                        stdout: stdout.fd,
-                        stderr: stderr.fd,
-                        args: buildArgs(fileName),
-                        preopens: { ".": "." },
-                    });
-
-                    const instance = await WebAssembly.instantiate(mod, {
-                        ...wasi.getImportObject(),
-                        ...{ console: { ...console } },
-                    });
-
-                    try {
-                        const exitCode = wasi.start(instance);
-
-                        if (exitCode ?? 0 !== 0) {
-                            throw new Error(
-                                await fs.readFile(stderrFile, "utf-8")
-                            );
-                        }
-
-                        return fs.readFile(stdoutFile);
-                    } catch (err) {
-                        const errorMessage = await fs.readFile(
-                            stderrFile,
-                            "utf-8"
-                        );
-                        if (errorMessage !== "") {
-                            if (
-                                err instanceof WebAssembly.RuntimeError &&
-                                err.message.includes("unreachable")
-                            ) {
-                                err.message = errorMessage;
-                            } else {
-                                throw new Error(errorMessage);
-                            }
-                        }
-
-                        throw err;
-                    }
-                })
-            );
-
-        /**
-         * @param {string} sourcePath
-         */
+        /** @param {string} sourcePath */
         return async (sourcePath) => {
-            if (!mockStdin) {
-                return compile(sourcePath);
+            const stdin = mockStdin ? new WASI.VirtualFD() : undefined;
+            const stdout = new WASI.VirtualFD();
+            const stderr = new WASI.VirtualFD();
+
+            if (stdin) {
+                stdin.write(await fs.readFile(sourcePath));
+                stdin.flush();
             }
 
-            return await runWithTmpFile(async (stdin, stdinFile) => {
-                await fs.writeFile(stdinFile, await fs.readFile(sourcePath));
-
-                return compile(undefined, stdin.fd);
+            const wasi = new WASI({
+                version: "preview1",
+                stdin,
+                stdout,
+                stderr,
+                args: buildArgs(sourcePath),
+                preopens: { ".": "." },
+                sysCalls: await WASI.NodeSysCalls(),
             });
+
+            const instance = await WebAssembly.instantiate(mod, {
+                ...wasi.getImportObject(),
+                ...{ console: { ...console } },
+            });
+
+            try {
+                const exitCode = wasi.start(instance);
+
+                if (exitCode ?? 0 !== 0) {
+                    throw new Error(stderr.flushAndReadUtf8());
+                }
+
+                return stdout.flushAndRead();
+            } catch (err) {
+                const errorMessage = stderr.flushAndReadUtf8();
+                if (errorMessage !== "") {
+                    if (
+                        err instanceof WebAssembly.RuntimeError &&
+                        err.message.includes("unreachable")
+                    ) {
+                        err.message = errorMessage;
+                    } else {
+                        throw new Error(errorMessage);
+                    }
+                }
+
+                throw err;
+            }
         };
     }
 }
@@ -1259,7 +1218,7 @@ async function testCommand() {
 // utils
 
 /**
- * @param {BufferSource} data
+ * @param {Uint8Array} data
  * @param {WebAssembly.Imports} [imports]
  * @returns {Promise<any>}
  */
@@ -1269,12 +1228,16 @@ async function loadWasm(data, imports) {
 }
 
 /**
- * @param {BufferSource} data
+ * @param {Uint8Array} data
  * @param {Omit<import("./wasi-shim.mjs").WASIOptions, 'version' | 'sysCalls'>} [wasiOptions]
  * @returns {Promise<number>}
  */
 async function runWASI(data, wasiOptions, additionalImports = {}) {
-    const wasi = await WASI.NodeFS({ version: "preview1", ...wasiOptions });
+    const wasi = new WASI({
+        version: "preview1",
+        sysCalls: await WASI.NodeSysCalls(),
+        ...wasiOptions,
+    });
 
     const wasm = await WebAssembly.compile(data);
     const instance = await WebAssembly.instantiate(wasm, {
@@ -1301,22 +1264,6 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
             }
         }
         throw err;
-    }
-}
-
-/**
- * @template T
- * @param {(file: import("node:fs/promises").FileHandle, fileName: string) => T} run
- */
-async function runWithTmpFile(run) {
-    const fileName = `${TMP_DIR}/${crypto.randomUUID()}.tmp`;
-    const fileHandle = await fs.open(fileName, "w+");
-
-    try {
-        return await run(fileHandle, fileName);
-    } finally {
-        await fileHandle.close();
-        await fs.unlink(fileName);
     }
 }
 

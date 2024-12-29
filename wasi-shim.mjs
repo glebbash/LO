@@ -3,9 +3,9 @@
 /**
  * @typedef {{
  *   version: "preview1",
- *   stdin?: number,
- *   stdout?: number,
- *   stderr?: number,
+ *   stdin?: number | FD,
+ *   stdout?: number | FD,
+ *   stderr?: number | FD,
  *   args?: string[],
  *   env?: Record<string, string | undefined>
  *   preopens?: Record<string, string>,
@@ -25,6 +25,16 @@
  * }} WASISysCalls
  */
 
+/**
+ * @typedef {{
+ *   getPreopenDirName(): string,
+ *   openChild(fileName: string, mode: "r" | "w"): [number, FD | undefined],
+ *   read(buffer: Uint8Array): [number, number | undefined],
+ *   write(buffer: Uint8Array): [number, number | undefined],
+ *   close(): [number],
+ * }} FD
+ */
+
 const WASI_ERRNO_SUCCESS = 0;
 const WASI_ERRNO_BADF = 8;
 const WASI_ERRNO_NOENT = 2;
@@ -33,7 +43,189 @@ const WASI_ERRNO_INVAL = 28;
 const WASI_FILETYPE_DIRECTORY = 3;
 const WASI_FILETYPE_REGULAR_FILE = 4;
 
+/** @implements {FD} */
+class SysFD {
+    /**
+     * @param {number|null} sysFileFd
+     * @param {string} sysDirName
+     * @param {WASISysCalls} sysCalls
+     */
+    constructor(sysFileFd, sysDirName, sysCalls) {
+        /** @type {number|null} */
+        this.sysFileFd = sysFileFd;
+
+        /** @type {string} */
+        this.sysDirName = sysDirName;
+
+        /** @type {WASISysCalls} */
+        this.sysCalls = sysCalls;
+    }
+
+    getPreopenDirName() {
+        return this.sysDirName;
+    }
+
+    /**
+     * @param {string} fileName
+     * @param {'r' | 'w'} mode
+     * @returns {[number, FD|undefined]}
+     */
+    openChild(fileName, mode) {
+        const fullPath = `${this.sysDirName}/${fileName}`;
+        try {
+            const sysFd = this.sysCalls.pathOpen(fullPath, mode);
+            const fd = new SysFD(sysFd, fullPath, this.sysCalls);
+
+            return [WASI_ERRNO_SUCCESS, fd];
+        } catch {
+            return [WASI_ERRNO_NOENT, undefined];
+        }
+    }
+
+    /**
+     * @param {Uint8Array} buffer
+     * @returns {[number, number|undefined]}
+     */
+    read(buffer) {
+        if (this.sysFileFd === null) {
+            return [WASI_ERRNO_INVAL, undefined];
+        }
+
+        try {
+            const bytesRead = this.sysCalls.fdRead(this.sysFileFd, buffer);
+            return [WASI_ERRNO_SUCCESS, bytesRead];
+        } catch {
+            return [WASI_ERRNO_INVAL, undefined];
+        }
+    }
+
+    /**
+     * @param {Uint8Array} buffer
+     * @returns {[number, number|undefined]}
+     */
+    write(buffer) {
+        if (this.sysFileFd === null) {
+            return [WASI_ERRNO_INVAL, undefined];
+        }
+
+        try {
+            const bytesRead = this.sysCalls.fdWrite(this.sysFileFd, buffer);
+            return [WASI_ERRNO_SUCCESS, bytesRead];
+        } catch {
+            return [WASI_ERRNO_INVAL, undefined];
+        }
+    }
+
+    /** @returns {[number]} */
+    close() {
+        if (this.sysFileFd !== null && this.sysFileFd >= 3) {
+            try {
+                this.sysCalls.fdClose(this.sysFileFd);
+            } catch {
+                return [WASI_ERRNO_INVAL];
+            }
+        }
+        return [WASI_ERRNO_SUCCESS];
+    }
+}
+
+/** @implements {FD} */
+class VirtualFD {
+    constructor() {
+        /** @type {Uint8Array} */
+        this.contents = new Uint8Array();
+
+        /** @type {number} */
+        this.readCursor = 0;
+
+        /** @type {Uint8Array[]} */
+        this.writes = [];
+    }
+
+    /**
+     * @param {Uint8Array} buffer
+     * @returns {[number, number|undefined]}
+     */
+    read(buffer) {
+        if (this.readCursor >= this.contents.length - 1) {
+            return [WASI_ERRNO_SUCCESS, 0];
+        }
+
+        const bytesRead = Math.min(
+            buffer.length,
+            this.contents.length - this.readCursor
+        );
+        buffer.set(
+            this.contents.subarray(this.readCursor, this.readCursor + bytesRead)
+        );
+
+        this.readCursor += bytesRead;
+
+        return [WASI_ERRNO_SUCCESS, bytesRead];
+    }
+
+    /**
+     * @param {Uint8Array} buffer
+     * @returns {[number, number|undefined]}
+     */
+    write(buffer) {
+        this.writes.push(buffer.slice());
+        return [0, buffer.length];
+    }
+
+    /** @param {string} str */
+    writeString(str) {
+        this.write(new TextEncoder().encode(str));
+    }
+
+    flushAndRead() {
+        this.flush();
+        return this.contents;
+    }
+
+    flushAndReadUtf8() {
+        this.flush();
+        return new TextDecoder().decode(this.contents);
+    }
+
+    flush() {
+        if (this.writes.length === 0) {
+            return;
+        }
+
+        const newSize = this.writes.reduce((acc, w) => acc + w.length, 0);
+        this.contents = new Uint8Array(newSize);
+
+        let offset = 0;
+        for (let i = 0; i < this.writes.length; i++) {
+            const write = this.writes[i];
+            this.contents.set(write, offset);
+            offset += write.length;
+        }
+
+        this.writes = [];
+    }
+
+    /** @returns {[number]} */
+    close() {
+        return [WASI_ERRNO_SUCCESS];
+    }
+
+    /** @returns {never} */
+    getPreopenDirName() {
+        throw new Error("Not supported");
+    }
+
+    /** @returns {never} */
+    openChild() {
+        throw new Error("Not supported");
+    }
+}
+
 export class WASI {
+    static FD = SysFD;
+    static VirtualFD = VirtualFD;
+
     /** @param {WASIOptions} options */
     constructor(options) {
         /** @type {WASIOptions} */
@@ -41,15 +233,6 @@ export class WASI {
 
         /** @type {string[]} */
         this.args = this.options.args ?? [];
-
-        /** @type {Record<string, string>} */
-        this.preopens = this.options.preopens ?? {};
-
-        /** @type {Map<number, number>} */
-        this.fileDescriptors = new Map();
-        this.fileDescriptors.set(0, this.options.stdin ?? 0);
-        this.fileDescriptors.set(1, this.options.stdout ?? 1);
-        this.fileDescriptors.set(2, this.options.stderr ?? 2);
 
         /** @type {number} */
         this.nextFd = 3;
@@ -61,28 +244,66 @@ export class WASI {
         this.returnOnExit = this.options.returnOnExit ?? true;
 
         /** @type {WASISysCalls} */
-        this.ops = this.options.sysCalls;
+        this.sysCalls = this.options.sysCalls;
+
+        /** @type {FD[]} */
+        this.fds = [];
+
+        if (typeof this.options.stdin === "object") {
+            this.fds.push(this.options.stdin);
+        } else {
+            this.fds.push(
+                new SysFD(this.options.stdin ?? 0, "<stdin>", this.sysCalls)
+            );
+        }
+
+        if (typeof this.options.stdout === "object") {
+            this.fds.push(this.options.stdout);
+        } else {
+            this.fds.push(
+                new SysFD(this.options.stdout ?? 1, "<stdout>", this.sysCalls)
+            );
+        }
+
+        if (typeof this.options.stderr === "object") {
+            this.fds.push(this.options.stderr);
+        } else {
+            this.fds.push(
+                new SysFD(this.options.stderr ?? 2, "<stderr>", this.sysCalls)
+            );
+        }
+
+        for (const path of Object.values(this.options.preopens ?? {})) {
+            this.fds.push(new SysFD(null, path, this.sysCalls));
+        }
+
+        /** @type {number} */
+        this.preopenCount = this.fds.length;
     }
 
-    /** @param {Omit<WASIOptions, 'sysCalls'>} options */
-    static async NodeFS(options) {
+    /** @returns {Promise<WASISysCalls>} */
+    static async NodeSysCalls() {
         const fs = await import("node:fs");
         const process = await import("node:process");
 
-        /** @type {WASISysCalls} */
-        const sysCalls = {
+        return {
             processExit: (exitCode) => process.exit(exitCode),
             pathOpen: (path, mode) => fs.openSync(path, mode),
             fdRead: (fd, buffer) => fs.readSync(fd, buffer),
             fdWrite: (fd, buffer) => fs.writeSync(fd, buffer),
-            fdClose: (fd) => fs.closeSync(fd),
+            fdClose: (fd) => {
+                try {
+                    fs.closeSync(fd);
+                } catch (err) {
+                    console.error(err);
+                    process.exit(1);
+                }
+            },
         };
-
-        return new WASI({ ...options, sysCalls });
     }
 
-    /** @param {Omit<WASIOptions, 'sysCalls'>} options */
-    static DenoFS(options) {
+    /** @returns {WASISysCalls} */
+    static DenoSysCalls() {
         /** @type {Map<number, Deno.FsFile>} */
         const files = new Map();
 
@@ -103,8 +324,7 @@ export class WASI {
             return file;
         };
 
-        /** @type {WASISysCalls} */
-        const sysCalls = {
+        return {
             processExit: (exitCode) => Deno.exit(exitCode),
             pathOpen: (path, mode) => {
                 const file = Deno.openSync(
@@ -129,8 +349,6 @@ export class WASI {
                 return file.close();
             },
         };
-
-        return new WASI({ ...options, sysCalls });
     }
 
     /**
@@ -154,15 +372,13 @@ export class WASI {
 
             exitCode = err.exitCode;
         } finally {
-            for (const [inFd, fd] of this.fileDescriptors) {
-                if ([0, 1, 2].includes(inFd)) continue;
-
-                this.ops.fdClose(fd);
+            for (let fd = this.preopenCount; fd < this.fds.length; fd++) {
+                this.fds[fd].close();
             }
         }
 
         if (!this.returnOnExit) {
-            this.ops.processExit(exitCode);
+            this.sysCalls.processExit(exitCode);
         }
 
         return exitCode;
@@ -207,12 +423,11 @@ export class WASI {
                     _fdflags,
                     fd_ptr
                 ) => {
-                    const dirNameIn = Object.keys(this.preopens)[dirfd - 3];
-                    if (dirNameIn === undefined) {
+                    const dir = this.fds[dirfd];
+                    if (dir === undefined) {
                         return WASI_ERRNO_BADF;
                     }
 
-                    const dirNameReal = this.preopens[dirNameIn];
                     const pathBytes = new Uint8Array(
                         this.memory.buffer,
                         path_ptr,
@@ -222,25 +437,24 @@ export class WASI {
                         .decode(pathBytes)
                         .replace(/\0/g, "");
 
-                    const fullPath = `${dirNameReal}/${path}`;
-                    try {
-                        const fd = this.ops.pathOpen(fullPath, "r");
-                        this.fileDescriptors.set(this.nextFd, fd);
+                    const [err, childFile] = dir.openChild(path, "r");
+                    if (childFile !== undefined) {
+                        this.fds.push(childFile);
+
+                        const childFd = this.fds.length - 1;
                         const memory = new DataView(this.memory.buffer);
-                        memory.setUint32(fd_ptr, this.nextFd, true);
-                        this.nextFd += 1;
-                        return WASI_ERRNO_SUCCESS;
-                    } catch {
-                        return WASI_ERRNO_NOENT;
+                        memory.setUint32(fd_ptr, childFd, true);
                     }
+
+                    return err;
                 },
                 /** @type {(fd: number, iovs_ptr: number, iovs_len: number, nread_ptr: number) => number} */
                 fd_read: (fd, iovs_ptr, iovs_len, nread_ptr) => {
-                    if (!this.fileDescriptors.has(fd)) {
+                    const file = this.fds[fd];
+                    if (file === undefined) {
                         return WASI_ERRNO_BADF;
                     }
 
-                    const fdHandle = this.fileDescriptors.get(fd) ?? 0;
                     let totalBytesRead = 0;
 
                     const memory = new DataView(this.memory.buffer);
@@ -256,15 +470,14 @@ export class WASI {
                             bufLen
                         );
 
-                        try {
-                            const bytesRead = this.ops.fdRead(fdHandle, buffer);
-                            totalBytesRead += bytesRead;
+                        const [err, bytesRead] = file.read(buffer);
+                        if (bytesRead === undefined) {
+                            return err;
+                        }
+                        totalBytesRead += bytesRead;
 
-                            if (bytesRead < bufLen) {
-                                break;
-                            }
-                        } catch {
-                            return WASI_ERRNO_INVAL;
+                        if (bytesRead < bufLen) {
+                            break;
                         }
                     }
 
@@ -273,11 +486,11 @@ export class WASI {
                 },
                 /** @type {(fd: number, iovs_ptr: number, iovs_len: number, nwritten_ptr: number) => number} */
                 fd_write: (fd, iovs_ptr, iovs_len, nwritten_ptr) => {
-                    if (!this.fileDescriptors.has(fd)) {
+                    const file = this.fds[fd];
+                    if (file === undefined) {
                         return WASI_ERRNO_BADF;
                     }
 
-                    const fdHandle = this.fileDescriptors.get(fd) ?? 0;
                     let totalBytesWritten = 0;
 
                     const memory = new DataView(this.memory.buffer);
@@ -293,18 +506,14 @@ export class WASI {
                             bufLen
                         );
 
-                        try {
-                            const bytesWritten = this.ops.fdWrite(
-                                fdHandle,
-                                buffer
-                            );
-                            totalBytesWritten += bytesWritten;
+                        const [err, bytesWritten] = file.write(buffer);
+                        if (bytesWritten === undefined) {
+                            return err;
+                        }
+                        totalBytesWritten += bytesWritten;
 
-                            if (bytesWritten < bufLen) {
-                                break;
-                            }
-                        } catch {
-                            return WASI_ERRNO_INVAL;
+                        if (bytesWritten < bufLen) {
+                            break;
                         }
                     }
 
@@ -317,19 +526,23 @@ export class WASI {
                 },
                 /** @type {(fd: number) => number} */
                 fd_close: (fd) => {
-                    if (!this.fileDescriptors.has(fd)) {
+                    // don't allow closing preopens
+                    if (fd < this.preopenCount) {
+                        return WASI_ERRNO_INVAL;
+                    }
+
+                    const file = this.fds[fd];
+                    if (file === undefined) {
                         return WASI_ERRNO_BADF;
                     }
 
-                    const fdHandle = this.fileDescriptors.get(fd) ?? 0;
-                    try {
-                        this.ops.fdClose(fdHandle);
-                        this.fileDescriptors.delete(fd);
+                    const [err] = file.close();
 
-                        return WASI_ERRNO_SUCCESS;
-                    } catch {
-                        return WASI_ERRNO_INVAL;
+                    if (err === WASI_ERRNO_SUCCESS) {
+                        this.fds.splice(fd, 1);
                     }
+
+                    return err;
                 },
                 /** @type {(argc_ptr: number, argv_buf_size_ptr: number) => number} */
                 args_sizes_get: (argc_ptr, argv_buf_size_ptr) => {
@@ -376,33 +589,46 @@ export class WASI {
                 },
                 /** @type {(fd: number, buf_ptr: number) => number} */
                 fd_prestat_get: (fd, buf_ptr) => {
-                    const memory = new DataView(this.memory.buffer);
+                    // don't allow touching non-preopens
+                    if (fd >= this.preopenCount) {
+                        return WASI_ERRNO_INVAL;
+                    }
 
-                    const dirNameIn = Object.keys(this.preopens)[fd - 3];
-                    if (dirNameIn === undefined) {
+                    const dir = this.fds[fd];
+                    if (dir === undefined) {
                         return WASI_ERRNO_BADF;
                     }
 
+                    const memory = new DataView(this.memory.buffer);
+
                     memory.setUint8(buf_ptr, 0); // dir
 
-                    const dirPath = this.preopens[dirNameIn];
-                    memory.setUint32(buf_ptr + 4, dirPath.length, true);
+                    const dirName = dir.getPreopenDirName();
+                    memory.setUint32(buf_ptr + 4, dirName.length, true);
 
                     return WASI_ERRNO_SUCCESS;
                 },
                 /** @type {(fd: number, path_ptr: number, path_len: number) => number} */
                 fd_prestat_dir_name: (fd, path_ptr, path_len) => {
-                    const dirNameIn = Object.keys(this.preopens)[fd - 3];
-                    if (dirNameIn === undefined) {
+                    // don't allow touching non-preopens
+                    if (fd >= this.preopenCount) {
+                        return WASI_ERRNO_INVAL;
+                    }
+
+                    const dir = this.fds[fd];
+                    if (dir === undefined) {
                         return WASI_ERRNO_BADF;
                     }
 
-                    const dirPath = this.preopens[dirNameIn];
+                    const preopenDirName = dir.getPreopenDirName();
 
-                    const bytesToWrite = Math.min(path_len, dirPath.length);
+                    const bytesToWrite = Math.min(
+                        path_len,
+                        preopenDirName.length
+                    );
 
                     const encoder = new TextEncoder();
-                    const dirBytes = encoder.encode(dirPath);
+                    const dirBytes = encoder.encode(preopenDirName);
                     new Uint8Array(
                         this.memory.buffer,
                         path_ptr,
