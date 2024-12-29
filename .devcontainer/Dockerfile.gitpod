@@ -1,7 +1,0 @@
-FROM gitpod/workspace-full
-
-RUN rustup install nightly && \
-    rustup default nightly && \
-    rustup component add rustfmt && \
-    rustup target add wasm32-unknown-unknown && \
-    sudo apt install wabt

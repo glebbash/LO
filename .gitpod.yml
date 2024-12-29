@@ -1,7 +1,0 @@
-image:
-  file: .devcontainer/Dockerfile.gitpod
-
-vscode:
-  extensions:
-    - rust-lang.rust-analyzer
-    - gengjiawen.vscode-wasm
