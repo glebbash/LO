@@ -187,7 +187,6 @@ pub fn finalize(ctx: &mut ModuleContext) -> Result<(), LoError> {
     Ok(())
 }
 
-// TODO: add local names (requires sizable refactoring to achieve)
 fn write_debug_info(ctx: &mut ModuleContext) -> Result<(), LoError> {
     use crate::wasm::*;
 
@@ -2369,7 +2368,6 @@ fn parse_catch(
             ],
         };
 
-        // TODO: this is duplicated like 3 times, should wrap in a function
         if let Some(mut values) = get_deferred(catch_ctx) {
             values.insert(0, return_value);
             return_value = LoInstr::MultiValueEmit { values }.casted(LoType::Void);
@@ -2681,7 +2679,6 @@ fn err_incompatible_op<T>(op: &InfixOp, operand_type: LoType) -> Result<T, LoErr
     })
 }
 
-// TODO: support all numeric types
 fn build_cast(
     ctx: &ModuleContext,
     value: LoInstr,
@@ -2939,7 +2936,6 @@ fn parse_lo_type_(
     let primary = parse_lo_type_primary(ctx, type_scope, tokens, is_referenced)?;
 
     if let Some(_) = tokens.eat(Symbol, "of")? {
-        // TODO: attach as metadata and use in type equality check
         parse_lo_type_(ctx, type_scope, tokens, is_referenced)?;
 
         return Ok(primary);
@@ -3111,7 +3107,6 @@ fn parse_const_str(
     }))
 }
 
-// TODO: support sequences of any type
 fn parse_const_sequence(
     ctx: &ModuleContext,
     tokens: &mut LoTokenStream,
@@ -3185,7 +3180,6 @@ fn extract_method_receiver_and_name(
                 loc: token.loc.clone(),
             };
 
-            // TODO: correct `end_pos` info is lost during creation of nested_symbol
             token.loc.end_pos = token.loc.pos.clone();
 
             (

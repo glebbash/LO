@@ -821,6 +821,7 @@ impl CodeGen {
         Ok(())
     }
 
+    // TODO: add local names to debug info
     pub fn generate(&mut self) -> Result<WasmModule, LoError> {
         let mut wasm_module = WasmModule::default();
 
@@ -1103,6 +1104,7 @@ impl CodeGen {
             }
             TypeExpr::Of {
                 container_type,
+                // TODO?: attach as metadata and use in type equality check
                 item_type: _,
                 loc: _,
             } => {
@@ -1231,6 +1233,7 @@ impl CodeGen {
                     });
                 }
             }
+            // TODO: support sequences of any type?
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
                 items,
@@ -3540,6 +3543,7 @@ impl CodeGen {
         }
     }
 
+    // TODO?: support all numeric types
     fn get_cast_instr(&self, casted_from: &LoType, casted_to: &LoType) -> Option<WasmInstr> {
         if *casted_to == LoType::I64 || *casted_to == LoType::U64 {
             if *casted_from == LoType::I8
