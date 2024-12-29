@@ -173,11 +173,6 @@ class VirtualFD {
         return [0, buffer.length];
     }
 
-    /** @param {string} str */
-    writeString(str) {
-        this.write(new TextEncoder().encode(str));
-    }
-
     flushAndRead() {
         this.flush();
         return this.contents;

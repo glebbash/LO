@@ -385,7 +385,7 @@ async function testCommand() {
         const program = await compile("./examples/test/demos/echo.lo");
 
         const stdin = new WASI.VirtualFD();
-        stdin.writeString("abc");
+        stdin.write(new TextEncoder().encode("abc"));
         stdin.flush();
 
         const stdout = new WASI.VirtualFD();
