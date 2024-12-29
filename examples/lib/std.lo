@@ -19,7 +19,7 @@ const AbortCode::STACK_UNDERFLOW = 3;
 const AbortCode::VEC_OUT_OF_BOUNDS = 4;
 const AbortCode::STACK_VECTOR_GROW = 5;
 
-fn abort(abort_code: u32): never {
+fn abort(abort_code: AbortCode): never {
     // error indicator
     *(0 as &u32) = 69420;
     *(4 as &u32) = abort_code;

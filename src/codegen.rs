@@ -234,6 +234,7 @@ struct WasmFnInfo {
 struct LoTypeDef {
     name: String,
     value: LoType,
+    type_alias: bool,
     loc: LoLocation,
 }
 
@@ -374,66 +375,79 @@ impl CodeGen {
         codegen.type_defs.push(LoTypeDef {
             name: String::from("never"),
             value: LoType::Never,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("void"),
             value: LoType::Void,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("bool"),
             value: LoType::Bool,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("u8"),
             value: LoType::U8,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("i8"),
             value: LoType::I8,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("u16"),
             value: LoType::U16,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("i16"),
             value: LoType::I16,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("u32"),
             value: LoType::U32,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("i32"),
             value: LoType::I32,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("f32"),
             value: LoType::F32,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("u64"),
             value: LoType::U64,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("i64"),
             value: LoType::I64,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
             name: String::from("f64"),
             value: LoType::F64,
+            type_alias: false,
             loc: LoLocation::internal(),
         });
 
@@ -669,6 +683,7 @@ impl CodeGen {
                         value: LoType::StructInstance {
                             struct_name: struct_name.repr.clone(),
                         },
+                        type_alias: false,
                         loc,
                     });
 
@@ -725,6 +740,7 @@ impl CodeGen {
                     self.type_defs.push(LoTypeDef {
                         name: typedef.type_name.repr,
                         value: type_value,
+                        type_alias: true,
                         loc: typedef.loc,
                     });
                 }
@@ -3301,14 +3317,38 @@ impl CodeGen {
         Ok(())
     }
 
-    fn get_type_or_err(&self, type_name: &str, err_loc: &LoLocation) -> Result<LoType, LoError> {
-        if let Some(t) = self.get_typedef(type_name) {
-            return Ok(t.value.clone());
+    fn get_type_or_err(&self, type_name: &str, loc: &LoLocation) -> Result<LoType, LoError> {
+        if let Some(typedef) = self.get_typedef(type_name) {
+            if self.mode == CompilerMode::Inspect {
+                if typedef.loc.file_index != 0 {
+                    if typedef.type_alias {
+                        self.print_inspection(&InspectInfo {
+                            message: format!("type {type_name} = {}", typedef.value),
+                            loc: loc.clone(),
+                            linked_loc: Some(typedef.loc.clone()),
+                        });
+                    } else {
+                        self.print_inspection(&InspectInfo {
+                            message: format!("struct {type_name} {{ ... }}"),
+                            loc: loc.clone(),
+                            linked_loc: Some(typedef.loc.clone()),
+                        });
+                    }
+                } else {
+                    self.print_inspection(&InspectInfo {
+                        message: format!("type {type_name} = <builtin>"),
+                        loc: loc.clone(),
+                        linked_loc: None,
+                    });
+                }
+            }
+
+            return Ok(typedef.value.clone());
         }
 
         Err(LoError {
             message: format!("Unknown type: {}", type_name),
-            loc: err_loc.clone(),
+            loc: loc.clone(),
         })
     }
 

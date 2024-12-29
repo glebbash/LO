@@ -3037,7 +3037,6 @@ fn get_type_by_name(
 
                         let fields = ListDisplay(&struct_def.fields);
 
-                        // TODO(v2): implement
                         stdout_writeln(format!(
                             "{{ \"type\": \"info\", \
                                 \"link\": \"{target_index}/{target_range}\", \
@@ -3054,8 +3053,6 @@ fn get_type_by_name(
 
                 let type_name = &token.value;
 
-                // TODO(v2): implement
-                // TODO: add links
                 stdout_writeln(format!(
                     "{{ \"type\": \"info\", \
                         \"hover\": \"type {type_name} = {type_}\", \
