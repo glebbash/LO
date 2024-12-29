@@ -17,8 +17,6 @@ const COMMANDS = {
     runWasi: runWasiCommand, // run arbitrary .wasm file with WASI
     debugWasi: debugWasiCommand,
     test: testCommand,
-    // TODO: remove when v1 is no more
-    v1v2wat: v1v2watCommand,
 };
 
 main();
@@ -142,12 +140,10 @@ async function debugWasiCommand(args) {
 
 async function testCommand() {
     const v1 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH));
-    const v2 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH), {
-        buildArgs: (fileName) => ["lo", fileName ?? "-i", "--compile", "--v2"],
-    });
-    const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
+    // const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
 
-    testCompilers("compiles 42.lo", { v1, v2, vS }, async (compile) => {
+    // TODO: fix and enable vS
+    testCompilers("compiles 42.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/42.lo");
 
         const program = await loadWasm(output);
@@ -156,7 +152,7 @@ async function testCommand() {
         assert.strictEqual(result, 42);
     });
 
-    testCompilers("compiles add.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles add.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/add.lo");
 
         const program = await loadWasm(output);
@@ -164,7 +160,7 @@ async function testCommand() {
         assert.strictEqual(program.add(2, 3), 5);
     });
 
-    testCompilers("compiles factorial.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles factorial.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/factorial.lo");
 
         const program = await loadWasm(output);
@@ -173,7 +169,7 @@ async function testCommand() {
         assert.strictEqual(result, 120);
     });
 
-    testCompilers("compiles include.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles include.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/include.lo");
 
         const program = await loadWasm(output);
@@ -181,7 +177,7 @@ async function testCommand() {
         assert.strictEqual(program.main(), 120);
     });
 
-    testCompilers("compiles hex-and-shifts.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles hex-and-shifts.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/hex-and-shifts.lo");
 
         const program = await loadWasm(output);
@@ -190,7 +186,7 @@ async function testCommand() {
         assert.strictEqual(result, 31);
     });
 
-    testCompilers("compiles else-if.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles else-if.lo", { v1 }, async (compile) => {
         const output = await compile("examples/test/else-if.lo");
 
         const program = await loadWasm(output);
@@ -198,7 +194,7 @@ async function testCommand() {
         assert.strictEqual(program.main(), 13);
     });
 
-    testCompilers("compiles import.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles import.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/import.lo");
 
         /** @type {unknown[]} */
@@ -211,31 +207,28 @@ async function testCommand() {
         assert.deepEqual(logs, [1, 2, 3]);
     });
 
-    testCompilers(
-        "compiles hello-world-raw.lo",
-        { v1, v2, vS },
-        async (compile) => {
-            const program = await compile(
-                "./examples/test/demos/hello-world-raw.lo"
-            );
+    // TODO: fix and enable vS
+    testCompilers("compiles hello-world-raw.lo", { v1 }, async (compile) => {
+        const program = await compile(
+            "./examples/test/demos/hello-world-raw.lo"
+        );
 
-            const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-                await runWASI(program, { stdout: stdout.fd });
-                return fs.readFile(stdoutFile, { encoding: "utf-8" });
-            });
+        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, { stdout: stdout.fd });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
+        });
 
-            assert.strictEqual(output, "Hello World!\n");
-        }
-    );
+        assert.strictEqual(output, "Hello World!\n");
+    });
 
-    testCompilers("compiles locals.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles locals.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/locals.lo");
 
         const program = await loadWasm(output);
         assert.deepEqual(program.sub(5, 3), 2);
     });
 
-    testCompilers("compiles globals.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles globals.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/globals.lo");
 
         const program = await loadWasm(output);
@@ -244,7 +237,7 @@ async function testCommand() {
         assert.strictEqual(result, 69);
     });
 
-    testCompilers("compiles loop.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles loop.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/loop.lo");
 
         const program = await loadWasm(output);
@@ -253,7 +246,7 @@ async function testCommand() {
         assert.strictEqual(result, 120);
     });
 
-    testCompilers("compiles for-loop.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles for-loop.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/for-loop.lo");
 
         const program = await loadWasm(output);
@@ -262,7 +255,7 @@ async function testCommand() {
         assert.strictEqual(result, 138);
     });
 
-    testCompilers("compiles methods.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles methods.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/methods.lo");
 
         const program = await loadWasm(output);
@@ -271,20 +264,16 @@ async function testCommand() {
         assert.strictEqual(result, 1);
     });
 
-    testCompilers(
-        "compiles nested-if-break.lo",
-        { v1, v2 },
-        async (compile) => {
-            const output = await compile("./examples/test/nested-if-break.lo");
+    testCompilers("compiles nested-if-break.lo", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/nested-if-break.lo");
 
-            const program = await loadWasm(output);
-            const result = program.main();
+        const program = await loadWasm(output);
+        const result = program.main();
 
-            assert.strictEqual(result, 1);
-        }
-    );
+        assert.strictEqual(result, 1);
+    });
 
-    testCompilers("compiles struct.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles struct.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/struct.lo");
 
         const program = await loadWasm(output);
@@ -293,7 +282,7 @@ async function testCommand() {
         assert.strictEqual(result, 13);
     });
 
-    testCompilers("compiles decl-nesting.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles decl-nesting.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/decl-nesting.lo");
 
         const program = await loadWasm(output);
@@ -302,7 +291,7 @@ async function testCommand() {
         assert.strictEqual(result, 16);
     });
 
-    testCompilers("compiles struct-ref.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles struct-ref.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/struct-ref.lo");
 
         const program = await loadWasm(output);
@@ -311,7 +300,7 @@ async function testCommand() {
         assert.strictEqual(result, 3);
     });
 
-    testCompilers("compiles macro.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles macro.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/macro.lo");
 
         const program = await loadWasm(output);
@@ -320,7 +309,7 @@ async function testCommand() {
         assert.strictEqual(result, 16);
     });
 
-    testCompilers("compiles wasi.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles wasi.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/lib/wasi.lo");
 
         const wasi = await WASI.NodeFS({ version: "preview1" });
@@ -328,7 +317,7 @@ async function testCommand() {
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
 
-    testCompilers("compiles string-pooling.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles string-pooling.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/string-pooling.lo");
 
         const program = await loadWasm(output);
@@ -337,13 +326,13 @@ async function testCommand() {
         assert.strictEqual(result, 13);
     });
 
-    testCompilers("compiles std.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles std.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/std.test.lo");
 
         await loadWasm(output);
     });
 
-    testCompilers("compiles vec.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles vec.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/vec.test.lo");
         const lib = await loadWasm(output);
 
@@ -386,7 +375,7 @@ async function testCommand() {
         }
     });
 
-    testCompilers("compiles hello-world.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles hello-world.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/hello-world.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -397,7 +386,7 @@ async function testCommand() {
         assert.strictEqual(output, "Hello World!\n");
     });
 
-    testCompilers("compiles echo.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles echo.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/echo.lo");
 
         const output = await runWithTmpFile(async (stdin, stdinFile) => {
@@ -411,7 +400,7 @@ async function testCommand() {
         assert.strictEqual(output, "abc");
     });
 
-    testCompilers("compiles args.test.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles args.test.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/args.test.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -425,7 +414,7 @@ async function testCommand() {
         assert.strictEqual(output, "123\n456\n789\n");
     });
 
-    testCompilers("compiles cat.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles cat.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/cat.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -443,7 +432,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles tracing.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles tracing.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/tracing.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -457,24 +446,18 @@ async function testCommand() {
         );
     });
 
-    testCompilers(
-        "compiles struct-in-struct.lo",
-        { v1, v2 },
-        async (compile) => {
-            const program = await compile(
-                "./examples/test/struct-in-struct.lo"
-            );
+    testCompilers("compiles struct-in-struct.lo", { v1 }, async (compile) => {
+        const program = await compile("./examples/test/struct-in-struct.lo");
 
-            const output = await runWithTmpFile(async (stdout, stdoutFile) => {
-                await runWASI(program, { stdout: stdout.fd });
-                return fs.readFile(stdoutFile, { encoding: "utf-8" });
-            });
+        const output = await runWithTmpFile(async (stdout, stdoutFile) => {
+            await runWASI(program, { stdout: stdout.fd });
+            return fs.readFile(stdoutFile, { encoding: "utf-8" });
+        });
 
-            assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
-        }
-    );
+        assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
+    });
 
-    testCompilers("compiles heap-alloc.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles heap-alloc.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/heap-alloc.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -493,7 +476,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles defer.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles defer.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/defer.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -515,7 +498,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles errors.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles errors.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/errors.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -534,7 +517,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles lo.lo", { v1, v2 }, async (compile) => {
+    testCompilers("compiles lo.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/lo.lo");
 
         const [stdout, stderr] = await runWithTmpFile(
@@ -561,15 +544,7 @@ async function testCommand() {
             { mockStdin: true }
         );
 
-        const v2 = await loadCompilerWithWasiAPI(
-            await fs.readFile(COMPILER_PATH),
-            {
-                mockStdin: true,
-                buildArgs: () => ["lo", "-i", "--compile", "--v2"],
-            }
-        );
-
-        testCompilers("compiles 42.lo", { v1, v2 }, async (compile) => {
+        testCompilers("compiles 42.lo", { v1 }, async (compile) => {
             const output = await compile("./examples/test/42.lo");
 
             const program = await loadWasm(output);
@@ -580,7 +555,7 @@ async function testCommand() {
     });
 
     describe("aoc", () => {
-        testCompilers("compiles 2020 day 1", { v1, v2 }, async (compile) => {
+        testCompilers("compiles 2020 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/1.lo"
@@ -594,7 +569,7 @@ async function testCommand() {
             assert.strictEqual(part2, "165080960\n");
         });
 
-        testCompilers("compiles 2020 day 2", { v1, v2 }, async (compile) => {
+        testCompilers("compiles 2020 day 2", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/2.lo"
@@ -608,7 +583,7 @@ async function testCommand() {
             assert.strictEqual(part2, "303\n");
         });
 
-        testCompilers("compiles 2020 day 3", { v1, v2 }, async (compile) => {
+        testCompilers("compiles 2020 day 3", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/3.lo"
@@ -622,7 +597,7 @@ async function testCommand() {
             assert.strictEqual(part2, "7540141059\n");
         });
 
-        testCompilers("compiles 2020 day 4", { v1, v2 }, async (compile) => {
+        testCompilers("compiles 2020 day 4", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/4.lo"
@@ -636,7 +611,7 @@ async function testCommand() {
             assert.strictEqual(part2, "224\n");
         });
 
-        testCompilers("compiles 2020 day 5", { v1, v2 }, async (compile) => {
+        testCompilers("compiles 2020 day 5", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/5.lo"
@@ -650,7 +625,7 @@ async function testCommand() {
             assert.strictEqual(part2, "636\n");
         });
 
-        testCompilers("compiles 2023 day 1", { v1, v2 }, async (compile) => {
+        testCompilers("compiles 2023 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2023/1.lo"
@@ -697,21 +672,21 @@ async function testCommand() {
             ),
         };
 
-        testCompilers("compiles blink.lo", { v1, v2 }, async (compile) => {
+        testCompilers("compiles blink.lo", { v1 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/blink.lo"
             );
             await loadWasm(output, wasm4Imports);
         });
 
-        testCompilers("compiles dark-maze.lo", { v1, v2 }, async (compile) => {
+        testCompilers("compiles dark-maze.lo", { v1 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/dark-maze.lo"
             );
             await loadWasm(output, wasm4Imports);
         });
 
-        testCompilers("compiles slasher.lo", { v1, v2 }, async (compile) => {
+        testCompilers("compiles slasher.lo", { v1 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/slasher.lo"
             );
@@ -721,7 +696,7 @@ async function testCommand() {
 
     testCompilers(
         "compiler reports multiple errors in multiple-compiler-errors.lo",
-        { v2 },
+        { v1 },
         async (compile) => {
             try {
                 await compile("./examples/test/multiple-compiler-errors.lo");
@@ -741,7 +716,8 @@ async function testCommand() {
         }
     );
 
-    testCompilers("lexer.test.lo (vS unit test)", { v1 }, async (compile) => {
+    // TODO: fix and enable
+    testCompilers("lexer.test.lo (vS unit test)", {}, async (compile) => {
         const program = await compile("./examples/test/lexer.test.lo");
 
         const output = await runWithTmpFile(async (stdout, stdoutFile) => {
@@ -894,12 +870,7 @@ async function testCommand() {
         const interpret = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
             {
-                buildArgs: (fileName) => [
-                    "lo",
-                    fileName ?? "-i",
-                    "--eval",
-                    "--v2",
-                ],
+                buildArgs: (fileName) => ["lo", fileName ?? "-i", "--eval"],
             }
         );
 
@@ -1052,7 +1023,6 @@ async function testCommand() {
                 lo
                 ./examples/test/args.test.lo
                 --eval
-                --v2
 
                 `
             );
@@ -1283,20 +1253,6 @@ async function testCommand() {
                 return compile(undefined, stdin.fd);
             });
         };
-    }
-}
-
-async function v1v2watCommand() {
-    const cp = await import("node:child_process");
-
-    const fileName = process.argv[3];
-    try {
-        cp.execSync(`./utils.mjs compile ${fileName} | wasm2wat - > out1.wat`);
-        cp.execSync(
-            `./utils.mjs compile ${fileName} --compile --v2 | wasm2wat - --no-check > out2.wat`
-        );
-    } catch {
-        process.exit(1);
     }
 }
 

@@ -19,6 +19,16 @@ pub struct LoToken {
     pub loc: LoLocation,
 }
 
+impl LoToken {
+    pub fn is_any(&self, type_: LoTokenType) -> bool {
+        self.type_ == type_
+    }
+
+    pub fn is(&self, type_: LoTokenType, value: &str) -> bool {
+        self.is_any(type_) && self.value == value
+    }
+}
+
 #[derive(Debug)]
 pub struct Comment {
     pub content: String,

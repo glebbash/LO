@@ -181,21 +181,6 @@ pub enum WasmBlockType {
     InOut { type_index: u32 },
 }
 
-impl WasmStoreKind {
-    pub fn from_load_kind(kind: &WasmLoadKind) -> Self {
-        match kind {
-            WasmLoadKind::I32 => Self::I32,
-            WasmLoadKind::I64 => Self::I64,
-            WasmLoadKind::F32 => Self::F32,
-            WasmLoadKind::F64 => Self::F64,
-            WasmLoadKind::I32I8 => Self::I32_8,
-            WasmLoadKind::I32U8 => Self::I32_8,
-            WasmLoadKind::I32I16 => Self::I32_16,
-            WasmLoadKind::I32U16 => Self::I32_16,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum WasmInstr {
     Unreachable,

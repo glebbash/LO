@@ -6,10 +6,8 @@ extern crate alloc;
 mod ast;
 mod codegen;
 mod core;
-mod ir;
 mod lexer;
 mod parser;
-mod parser_v2;
 mod printer;
 mod wasm;
 mod wasm_eval;
@@ -36,7 +34,7 @@ mod wasm_target {
 }
 
 static USAGE: &str = "\
-Usage: lo <file> [<mode>] [--v1|--v2]
+Usage: lo <file> [<mode>]
   Where <mode> is either:
     --compile (default if not provided)
     --inspect
@@ -47,8 +45,8 @@ Usage: lo <file> [<mode>] [--v1|--v2]
 
 mod wasi_api {
     use crate::{
-        ast::*, codegen::*, core::*, lexer::*, parser, parser_v2::*, printer::*, wasm_eval::*,
-        wasm_parser::*, USAGE,
+        ast::*, codegen::*, core::*, lexer::*, parser::*, printer::*, wasm_eval::*, wasm_parser::*,
+        USAGE,
     };
     use alloc::{format, rc::Rc, string::String, vec::Vec};
 
@@ -76,7 +74,6 @@ mod wasi_api {
             file_name = "<stdin>";
         }
 
-        let mut is_v2 = false;
         let mut compiler_mode = CompilerMode::Compile;
 
         if let Some(compiler_mode_arg) = args.get(2) {
@@ -85,7 +82,6 @@ mod wasi_api {
                     compiler_mode = CompilerMode::Compile;
                 }
                 "--inspect" => {
-                    is_v2 = true;
                     compiler_mode = CompilerMode::Inspect;
                 }
                 "--pretty-print" => {
@@ -103,20 +99,6 @@ mod wasi_api {
             }
         }
 
-        if let Some(version_arg) = args.get(3) {
-            match version_arg {
-                "--v1" => {
-                    is_v2 = false;
-                }
-                "--v2" => {
-                    is_v2 = true;
-                }
-                unknown_version => {
-                    return Err(format!("Unknown version: {unknown_version}\n{}", USAGE));
-                }
-            }
-        }
-
         if compiler_mode == CompilerMode::PrettyPrint {
             let mut fm = FileManager::default();
             let (file_index, file_contents) = fm
@@ -125,7 +107,7 @@ mod wasi_api {
 
             let tokens = Lexer::lex(file_index, &file_contents.unwrap())
                 .map_err(|err| err.to_string(&fm))?;
-            let ast = ParserV2::parse(tokens).map_err(|err| err.to_string(&fm))?;
+            let ast = Parser::parse(tokens).map_err(|err| err.to_string(&fm))?;
 
             stdout_enable_bufferring();
             Printer::print(Rc::new(ast));
@@ -147,42 +129,33 @@ mod wasi_api {
             stdout_enable_bufferring();
         }
 
-        let wasm_module = if is_v2 {
-            let mut codegen = CodeGen::new(compiler_mode);
+        let mut codegen = CodeGen::new(compiler_mode);
 
-            let (file_index, file_contents) = codegen
-                .fm
-                .include_file(file_name, &LoLocation::internal())
-                .map_err(|err| err.to_string(&codegen.fm))?;
-
-            let mut asts = Vec::new();
-            parse_file_tree(
-                compiler_mode,
-                &mut codegen.fm,
-                &mut asts,
-                file_index,
-                file_contents.unwrap(),
-            )
+        let (file_index, file_contents) = codegen
+            .fm
+            .include_file(file_name, &LoLocation::internal())
             .map_err(|err| err.to_string(&codegen.fm))?;
 
-            for ast in asts {
-                codegen
-                    .process_file(ast)
-                    .map_err(|err| err.to_string(&codegen.fm))?;
-            }
-            codegen.errors.print_all(&codegen.fm)?;
+        let mut asts = Vec::new();
+        parse_file_tree(
+            compiler_mode,
+            &mut codegen.fm,
+            &mut asts,
+            file_index,
+            file_contents.unwrap(),
+        )
+        .map_err(|err| err.to_string(&codegen.fm))?;
 
+        for ast in asts {
             codegen
-                .generate()
-                .map_err(|err| err.to_string(&codegen.fm))?
-        } else {
-            let ctx = &mut parser::init(compiler_mode);
-            parser::parse_file(ctx, file_name, &LoLocation::internal())
-                .map_err(|err| err.to_string(&ctx.fm))?;
-            parser::finalize(ctx).map_err(|err| err.to_string(&ctx.fm))?;
+                .process_file(ast)
+                .map_err(|err| err.to_string(&codegen.fm))?;
+        }
+        codegen.errors.print_all(&codegen.fm)?;
 
-            ctx.wasm_module.take()
-        };
+        let wasm_module = codegen
+            .generate()
+            .map_err(|err| err.to_string(&codegen.fm))?;
 
         if compiler_mode == CompilerMode::Compile {
             let mut binary = Vec::new();
@@ -214,7 +187,7 @@ mod wasi_api {
         }
 
         let tokens = Lexer::lex(file_index, &file_contents)?;
-        let ast = ParserV2::parse(tokens)?;
+        let ast = Parser::parse(tokens)?;
 
         for expr in &ast.exprs {
             let TopLevelExpr::Include(include) = expr else {

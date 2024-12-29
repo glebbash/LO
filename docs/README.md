@@ -2,7 +2,7 @@
 
 Documentation of LO language features.
 
-> This is WIP and is updated in sync with [ParserV2](../src/parser_v2.rs). Main goal is to document **all** features for now, better structuring and wording will come later.
+> This is WIP. Main goal is to document **all** features for now, better structuring and wording will come later.
 >
 > For up-to-date code examples see [examples](../examples) directory.
 
