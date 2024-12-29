@@ -1631,20 +1631,36 @@ impl CodeGen {
                 fn_name,
                 type_args,
                 args,
-                loc,
+                loc: _,
             }) => {
-                self.codegen_macro_call(ctx, instrs, &fn_name.repr, type_args, None, args, loc)?;
+                self.codegen_macro_call(
+                    ctx,
+                    instrs,
+                    &fn_name.repr,
+                    type_args,
+                    None,
+                    args,
+                    &fn_name.loc,
+                )?;
             }
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
                 lhs,
                 field_name,
                 type_args,
                 args,
-                loc,
+                loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.codegen_macro_call(ctx, instrs, &macro_name, type_args, Some(lhs), args, loc)?;
+                self.codegen_macro_call(
+                    ctx,
+                    instrs,
+                    &macro_name,
+                    type_args,
+                    Some(lhs),
+                    args,
+                    &field_name.loc,
+                )?;
             }
 
             CodeExpr::Dbg(DbgExpr { message, loc }) => {
@@ -2089,7 +2105,7 @@ impl CodeGen {
 
         ctx.enter_scope(LoScopeType::Macro);
 
-        if type_args.len() != macro_def.macro_type_params.len() {
+        if all_type_args.len() != macro_def.macro_type_params.len() {
             return Err(LoError {
                 message: format!(
                     "Invalid number of type args, expected {}, got {}",
@@ -2101,14 +2117,10 @@ impl CodeGen {
         }
 
         // TODO: check for type shadowing
-        for (type_param, type_arg) in macro_def
-            .macro_type_params
-            .iter()
-            .zip(all_type_args.into_iter())
-        {
+        for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(all_type_args.iter()) {
             ctx.current_scope_mut()
                 .macro_type_args
-                .push((type_param.clone(), type_arg));
+                .push((type_param.clone(), type_arg.clone()));
         }
 
         // TODO: type check margo args against param types
@@ -2123,6 +2135,8 @@ impl CodeGen {
             });
         }
 
+        let mut macro_args = Vec::new();
+
         // TODO: check for const shadowing
         for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
             let const_def = LoConstDef {
@@ -2130,7 +2144,24 @@ impl CodeGen {
                 code_unit: macro_arg,
                 loc: macro_param.loc.clone(),
             };
+
+            macro_args.push(LoFnParam {
+                param_name: const_def.const_name.clone(),
+                param_type: const_def.code_unit.lo_type.clone(),
+            });
+
             ctx.current_scope_mut().macro_args.push(const_def);
+        }
+
+        if self.mode == CompilerMode::Inspect {
+            let lo_type_args = ListDisplay(&all_type_args);
+            let args = ListDisplay(&macro_args);
+            let return_type = self.get_macro_return_type(ctx, macro_name, type_args, loc)?;
+            self.print_inspection(&InspectInfo {
+                message: format!("macro {macro_name}!<{lo_type_args}>({args}): {return_type}"),
+                loc: loc.clone(),
+                linked_loc: Some(macro_def.macro_name.loc.clone()),
+            });
         }
 
         for expr in &macro_def.body.exprs {

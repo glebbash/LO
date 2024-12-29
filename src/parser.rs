@@ -1914,7 +1914,6 @@ fn parse_macro_call(
         let type_params = ListDisplay(&macro_def.type_params);
         let return_type = &macro_def.return_type;
 
-        // TODO(v2): implement
         stdout_writeln(format!(
             "{{ \"type\": \"info\", \
                 \"link\": \"{target_index}/{target_range}\", \
