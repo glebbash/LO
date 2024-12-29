@@ -5,6 +5,7 @@ use core::cell::RefCell;
 #[derive(Default)]
 pub struct ModuleContext<'a> {
     pub mode: CompilerMode,
+    pub fm: FileManager,
     pub wasm_module: RefCell<WasmModule>,
     pub fn_defs: BTreeMap<String, FnDef>,
     pub fn_bodies: RefCell<Vec<FnBody>>,
@@ -18,7 +19,6 @@ pub struct ModuleContext<'a> {
     pub data_size: RefCell<u32>,
     pub string_pool: RefCell<BTreeMap<String, u32>>,
     pub constants: RefCell<BTreeMap<String, ConstDef>>,
-    pub included_modules: BTreeMap<String, u32>,
     pub macros: BTreeMap<String, MacroDef>,
     pub type_scope: LoTypeScope<'a>,
 }
@@ -60,10 +60,6 @@ impl<'a> ModuleContext<'a> {
         *self.data_size.borrow_mut() += bytes_len;
 
         bytes_ptr
-    }
-
-    pub fn get_loc_module_index(&self, loc: &LoLocation) -> u32 {
-        *self.included_modules.get(&loc.file_name as &str).unwrap() // safe
     }
 }
 

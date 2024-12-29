@@ -449,7 +449,8 @@ impl CodeGen {
                         self.errors.report(LoError {
                             message: format!(
                                 "Duplicate function definition: {}, previously defined at {}",
-                                fn_def.decl.fn_name.repr, fn_info.definition_loc
+                                fn_def.decl.fn_name.repr,
+                                fn_info.definition_loc.to_string(&self.fm)
                             ),
                             loc: fn_def.decl.loc.clone(),
                         });
@@ -516,7 +517,8 @@ impl CodeGen {
                             self.errors.report(LoError {
                                 message: format!(
                                     "Duplicate function definition: {}, previously defined at {}",
-                                    fn_decl.fn_name.repr, fn_info.definition_loc
+                                    fn_decl.fn_name.repr,
+                                    fn_info.definition_loc.to_string(&self.fm)
                                 ),
                                 loc: fn_decl.loc.clone(),
                             });
@@ -540,7 +542,8 @@ impl CodeGen {
                         return Err(LoError {
                             message: format!(
                                 "Cannot redefine global {}, previously defined at {}",
-                                global.global_name.repr, existing_global.def_expr.global_name.loc,
+                                global.global_name.repr,
+                                existing_global.def_expr.global_name.loc.to_string(&self.fm),
                             ),
                             loc: global.loc,
                         });
@@ -579,7 +582,8 @@ impl CodeGen {
                         return Err(LoError {
                             message: format!(
                                 "Cannot redefine type {}, already defined at {}",
-                                struct_name.repr, existing_typedef.loc
+                                struct_name.repr,
+                                existing_typedef.loc.to_string(&self.fm)
                             ),
                             loc: struct_name.loc,
                         });
@@ -608,7 +612,8 @@ impl CodeGen {
                                 return Err(LoError {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
-                                        field.field_name, existing_field.loc,
+                                        field.field_name,
+                                        existing_field.loc.to_string(&self.fm),
                                     ),
                                     loc: field.loc,
                                 });
@@ -639,7 +644,8 @@ impl CodeGen {
                         return Err(LoError {
                             message: format!(
                                 "Cannot redefine type {}, already defined at {}",
-                                typedef.type_name.repr, existing_typedef.loc
+                                typedef.type_name.repr,
+                                existing_typedef.loc.to_string(&self.fm)
                             ),
                             loc: typedef.loc,
                         });
@@ -658,7 +664,8 @@ impl CodeGen {
                         return Err(LoError {
                             message: format!(
                                 "Cannot redefine constant {}, already defined at {}",
-                                const_def.const_name.repr, existing_const.loc
+                                const_def.const_name.repr,
+                                existing_const.loc.to_string(&self.fm)
                             ),
                             loc: const_def.loc,
                         });
@@ -702,7 +709,8 @@ impl CodeGen {
                         return Err(LoError {
                             message: format!(
                                 "Cannot redefine macro {}, already defined at {}",
-                                macro_def.macro_name.repr, existing_macro.loc
+                                macro_def.macro_name.repr,
+                                existing_macro.loc.to_string(&self.fm)
                             ),
                             loc: macro_def.loc,
                         });
@@ -923,7 +931,7 @@ impl CodeGen {
             return Err(LoError {
                 message: format!(
                     "Cannot redefine memory, first defined at {}",
-                    existing_memory.loc
+                    existing_memory.loc.to_string(&self.fm)
                 ),
                 loc: memory.loc,
             });
@@ -1513,7 +1521,7 @@ impl CodeGen {
             }
 
             CodeExpr::Dbg(DbgExpr { message, loc }) => {
-                let debug_message = format!("{} - {}", loc, message.unescape());
+                let debug_message = format!("{} - {}", loc.to_string(&self.fm), message.unescape());
                 let (str_ptr, str_len) = self.process_const_string(debug_message, loc)?;
 
                 // emit str struct values
@@ -2878,7 +2886,8 @@ impl CodeGen {
                 return Err(LoError {
                     message: format!(
                         "Cannot redefine local {}, previously defined at {}",
-                        local_name, definition_loc
+                        local_name,
+                        definition_loc.to_string(&self.fm)
                     ),
                     loc,
                 });

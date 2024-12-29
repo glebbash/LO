@@ -20,39 +20,33 @@ pub fn parse_file(
     file_path: &str,
     loc: &LoLocation,
 ) -> Result<u32, LoError> {
-    let file_path = resolve_path(file_path, &loc.file_name);
+    let (file_index, file_contents) = ctx.fm.include_file(file_path, loc)?;
 
-    if let Some(file_index) = ctx.included_modules.get(&file_path) {
-        return Ok(*file_index);
-    }
+    let Some(file_contents) = file_contents else {
+        return Ok(file_index);
+    };
 
-    let chars = file_read_utf8(&file_path).map_err(|message| LoError {
-        message,
-        loc: loc.clone(),
-    })?;
-
-    let file_index = parse_file_contents(ctx, file_path, &chars)?;
+    let file_index = parse_file_contents(ctx, file_index, &file_contents)?;
 
     return Ok(file_index);
 }
 
 pub fn parse_file_contents(
     ctx: &mut ModuleContext,
-    file_path: String,
-    chars: &str,
+    file_index: u32,
+    file_contents: &str,
 ) -> Result<u32, LoError> {
-    let tokens = Lexer::lex(&file_path, &chars)?;
+    let tokens = Lexer::lex(file_index, file_contents)?;
     let mut tokens = LoTokenStream::new(tokens.tokens, tokens.end_loc);
 
-    let file_index = ctx.included_modules.len() as u32;
     if ctx.mode == CompilerMode::Inspect {
+        let file_path = ctx.fm.get_file_path(file_index);
         stdout_writeln(format!(
             "{{ \"type\": \"file\", \
                 \"index\": {file_index}, \
                 \"path\": \"{file_path}\" }}, "
         ));
     }
-    ctx.included_modules.insert(file_path, file_index);
 
     parse_file_tokens(ctx, &mut tokens)?;
 
@@ -401,7 +395,7 @@ fn parse_top_level_expr(
         }
 
         if ctx.mode == CompilerMode::Inspect {
-            let source_index = ctx.get_loc_module_index(&global_name.loc);
+            let source_index = global_name.loc.file_index;
             let source_range = RangeDisplay(&global_name.loc);
 
             let global_name = &global_name.value;
@@ -544,7 +538,7 @@ fn parse_top_level_expr(
         }
 
         if ctx.mode == CompilerMode::Inspect {
-            let source_index = ctx.get_loc_module_index(&const_name.loc);
+            let source_index = const_name.loc.file_index;
             let source_range = RangeDisplay(&const_name.loc);
 
             let const_name = &const_name.value;
@@ -576,7 +570,7 @@ fn parse_top_level_expr(
         let target_index = parse_file(ctx, &file_path, loc)?;
 
         if ctx.mode == CompilerMode::Inspect {
-            let source_index = ctx.get_loc_module_index(loc);
+            let source_index = loc.file_index;
             let source_range = RangeDisplay(loc);
             let target_range = "1:1-1:1";
 
@@ -1135,20 +1129,20 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
         let expr = parse_expr(ctx, tokens, 0)?;
         let expr_type = expr.get_type(ctx.module);
-        debug(format!(
-            "{}",
+        debug(
             LoError {
                 message: format!("{expr_type:?}"),
                 loc,
             }
-        ));
+            .to_string(&ctx.module.fm),
+        );
         return Ok(LoInstr::NoInstr);
     }
 
     if let Some(dbg_token) = tokens.eat(Symbol, "dbg")?.cloned() {
         let message = tokens.expect_any(StringLiteral)?;
         let message = Lexer::unescape_string(&message.value);
-        let debug_message = format!("{} - {}", dbg_token.loc, message);
+        let debug_message = format!("{} - {}", dbg_token.loc.to_string(&ctx.module.fm), message);
         return parse_const_str(ctx.module, tokens, debug_message);
     }
 
@@ -1555,9 +1549,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(local) = ctx.block.get_local(&value.value) {
         if ctx.module.mode == CompilerMode::Inspect {
-            let source_index = ctx.module.get_loc_module_index(&value.loc);
+            let source_index = value.loc.file_index;
             let source_range = RangeDisplay(&value.loc);
-            let target_index = ctx.module.get_loc_module_index(&local.loc);
+            let target_index = local.loc.file_index;
             let target_range = RangeDisplay(&local.loc);
 
             let local_name = &value.value;
@@ -1581,9 +1575,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(const_def) = ctx.module.constants.borrow().get(&value.value) {
         if ctx.module.mode == CompilerMode::Inspect {
-            let source_index = ctx.module.get_loc_module_index(&value.loc);
+            let source_index = value.loc.file_index;
             let source_range = RangeDisplay(&value.loc);
-            let target_index = ctx.module.get_loc_module_index(&const_def.loc);
+            let target_index = const_def.loc.file_index;
             let target_range = RangeDisplay(&const_def.loc);
 
             let const_name = &value.value;
@@ -1602,9 +1596,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
 
     if let Some(global) = ctx.module.globals.get(&value.value) {
         if ctx.module.mode == CompilerMode::Inspect {
-            let source_index = ctx.module.get_loc_module_index(&value.loc);
+            let source_index = value.loc.file_index;
             let source_range = RangeDisplay(&value.loc);
-            let target_index = ctx.module.get_loc_module_index(&global.loc);
+            let target_index = global.loc.file_index;
             let target_range = RangeDisplay(&global.loc);
 
             let global_name = &value.value;
@@ -1635,9 +1629,9 @@ fn parse_primary(ctx: &mut BlockContext, tokens: &mut LoTokenStream) -> Result<L
         )?;
 
         if ctx.module.mode == CompilerMode::Inspect {
-            let source_index = ctx.module.get_loc_module_index(&value.loc);
+            let source_index = value.loc.file_index;
             let source_range = RangeDisplay(&value.loc);
-            let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
+            let target_index = fn_def.loc.file_index;
             let target_range = RangeDisplay(&fn_def.loc);
 
             let fn_name = &value.value;
@@ -1789,7 +1783,7 @@ fn define_local(
     }
 
     if ctx.module.mode == CompilerMode::Inspect {
-        let source_index = ctx.module.get_loc_module_index(&local_name.loc);
+        let source_index = local_name.loc.file_index;
         let source_range = RangeDisplay(&local_name.loc);
 
         let local_name = &local_name.value;
@@ -1911,9 +1905,9 @@ fn parse_macro_call(
         parse_block_contents(macro_ctx, &mut macro_def.body.clone(), return_type.clone())?.exprs;
 
     if ctx.module.mode == CompilerMode::Inspect {
-        let source_index = ctx.module.get_loc_module_index(&macro_token.loc);
+        let source_index = macro_token.loc.file_index;
         let source_range = RangeDisplay(&macro_token.loc);
-        let target_index = ctx.module.get_loc_module_index(&macro_def.loc);
+        let target_index = macro_def.loc.file_index;
         let target_range = RangeDisplay(&macro_def.loc);
 
         let params = ListDisplay(&macro_def.params);
@@ -2119,9 +2113,9 @@ fn parse_postfix(
                 )?;
 
                 if ctx.module.mode == CompilerMode::Inspect {
-                    let source_index = ctx.module.get_loc_module_index(&method_name.loc);
+                    let source_index = method_name.loc.file_index;
                     let source_range = RangeDisplay(&method_name.loc);
-                    let target_index = ctx.module.get_loc_module_index(&fn_def.loc);
+                    let target_index = fn_def.loc.file_index;
                     let target_range = RangeDisplay(&fn_def.loc);
 
                     let params = ListDisplay(&fn_def.fn_params);
@@ -2166,9 +2160,9 @@ fn parse_postfix(
                 };
 
                 if ctx.module.mode == CompilerMode::Inspect {
-                    let source_index = ctx.module.get_loc_module_index(&field_name.loc);
+                    let source_index = field_name.loc.file_index;
                     let source_range = RangeDisplay(&field_name.loc);
-                    let target_index = ctx.module.get_loc_module_index(&field.loc);
+                    let target_index = field.loc.file_index;
                     let target_range = RangeDisplay(&field.loc);
 
                     let field_name = &field_name.value;
@@ -2218,9 +2212,9 @@ fn parse_postfix(
                 };
 
                 if ctx.module.mode == CompilerMode::Inspect {
-                    let source_index = ctx.module.get_loc_module_index(&field_name.loc);
+                    let source_index = field_name.loc.file_index;
                     let source_range = RangeDisplay(&field_name.loc);
-                    let target_index = ctx.module.get_loc_module_index(&field.loc);
+                    let target_index = field.loc.file_index;
                     let target_range = RangeDisplay(&field.loc);
 
                     let field_name = &field_name.value;
@@ -2265,9 +2259,9 @@ fn parse_postfix(
                     };
 
                     if ctx.module.mode == CompilerMode::Inspect {
-                        let source_index = ctx.module.get_loc_module_index(&field_name.loc);
+                        let source_index = field_name.loc.file_index;
                         let source_range = RangeDisplay(&field_name.loc);
-                        let target_index = ctx.module.get_loc_module_index(&field.loc);
+                        let target_index = field.loc.file_index;
                         let target_range = RangeDisplay(&field.loc);
 
                         let field_name = &field_name.value;
@@ -3036,9 +3030,9 @@ fn get_type_by_name(
                     is_type_alias = false;
 
                     if ctx.mode == CompilerMode::Inspect {
-                        let source_index = ctx.get_loc_module_index(&token.loc);
+                        let source_index = token.loc.file_index;
                         let source_range = RangeDisplay(&token.loc);
-                        let target_index = ctx.get_loc_module_index(&struct_def.loc);
+                        let target_index = struct_def.loc.file_index;
                         let target_range = RangeDisplay(&struct_def.loc);
 
                         let fields = ListDisplay(&struct_def.fields);
@@ -3054,7 +3048,7 @@ fn get_type_by_name(
             }
 
             if ctx.mode == CompilerMode::Inspect && is_type_alias {
-                let source_index = ctx.get_loc_module_index(&token.loc);
+                let source_index = token.loc.file_index;
                 let source_range = RangeDisplay(&token.loc);
 
                 let type_name = &token.value;

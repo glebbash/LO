@@ -1,5 +1,5 @@
 use crate::core::*;
-use alloc::{format, rc::Rc, string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum LoTokenType {
@@ -26,7 +26,7 @@ pub struct Comment {
 }
 
 pub struct Lexer {
-    file_name: Rc<str>,
+    file_index: u32,
     chars: Vec<char>,
     index: usize,
     line: usize,
@@ -42,9 +42,9 @@ pub struct Tokens {
 }
 
 impl Lexer {
-    pub fn lex(file_name: &str, chars: &str) -> Result<Tokens, LoError> {
+    pub fn lex(file_index: u32, chars: &str) -> Result<Tokens, LoError> {
         let mut lexer = Lexer {
-            file_name: file_name.into(),
+            file_index,
             chars: chars.chars().collect::<Vec<_>>(),
             index: 0,
             line: 1,
@@ -427,8 +427,7 @@ impl Lexer {
 
     fn loc(&self) -> LoLocation {
         LoLocation {
-            file_name: self.file_name.clone(),
-
+            file_index: self.file_index,
             pos: self.pos(),
             end_pos: self.pos(),
         }

@@ -1,5 +1,5 @@
-use alloc::{format, rc::Rc, string::String, vec, vec::Vec};
-use core::{cell::RefCell, ffi::CStr, str};
+use alloc::{fmt, format, string::String, vec, vec::Vec};
+use core::{cell::RefCell, default, ffi::CStr, str};
 
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum CompilerMode {
@@ -27,15 +27,16 @@ macro_rules! lo_todo {
     };
 }
 
-impl core::fmt::Display for LoError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{loc} - {msg}", loc = self.loc, msg = self.message)
+impl LoError {
+    pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
+        self.loc.format(out, &fm)?;
+        write!(out, " - {}", self.message)
     }
-}
 
-impl From<LoError> for String {
-    fn from(err: LoError) -> Self {
-        format!("{err}")
+    pub fn to_string(&self, fm: &FileManager) -> String {
+        let mut out = String::new();
+        self.format(&mut out, fm).unwrap();
+        out
     }
 }
 
@@ -48,8 +49,7 @@ pub struct LoPosition {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct LoLocation {
-    pub file_name: Rc<str>,
-
+    pub file_index: u32,
     pub pos: LoPosition,
     pub end_pos: LoPosition,
 }
@@ -57,7 +57,7 @@ pub struct LoLocation {
 impl LoLocation {
     pub fn internal() -> Self {
         LoLocation {
-            file_name: "<internal>".into(),
+            file_index: 0, // internal
             pos: LoPosition {
                 offset: 0,
                 line: 1,
@@ -70,11 +70,16 @@ impl LoLocation {
             },
         }
     }
-}
 
-impl core::fmt::Display for LoLocation {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}:{}:{}", self.file_name, self.pos.line, self.pos.col)
+    pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
+        let file_path = fm.get_file_path(self.file_index);
+        write!(out, "{}:{}:{}", file_path, self.pos.line, self.pos.col)
+    }
+
+    pub fn to_string(&self, fm: &FileManager) -> String {
+        let mut out = String::new();
+        self.format(&mut out, fm).unwrap();
+        out
     }
 }
 
@@ -341,13 +346,14 @@ impl LoErrorManager {
         self.errors.push(error);
     }
 
-    pub fn print_all(&self) -> Result<(), String> {
+    pub fn print_all(&self, fm: &FileManager) -> Result<(), String> {
         if self.errors.len() == 0 {
             return Ok(());
         }
 
         for error in &self.errors {
-            stderr_write(format!("{error}\n"));
+            stderr_write(error.to_string(fm));
+            stderr_write("\n");
         }
 
         Err(format!(""))
@@ -357,12 +363,22 @@ impl LoErrorManager {
 #[derive(Debug)]
 struct FileInfo {
     file_index: u32,
-    path: String,
+    file_path: String,
 }
 
-#[derive(Default)]
 pub struct FileManager {
     files: Vec<FileInfo>,
+}
+
+impl default::Default for FileManager {
+    fn default() -> Self {
+        let mut files = Vec::new();
+        files.push(FileInfo {
+            file_index: 0,
+            file_path: String::from("<internal>"),
+        });
+        Self { files }
+    }
 }
 
 impl FileManager {
@@ -371,10 +387,11 @@ impl FileManager {
         file_name: &str,
         loc: &LoLocation,
     ) -> Result<(u32, Option<String>), LoError> {
-        let absolute_file_path = resolve_path(file_name, &loc.file_name);
+        let parent_path = self.get_file_path(loc.file_index);
+        let absolute_file_path = resolve_path(file_name, parent_path);
 
         for parsed_file in &self.files {
-            if parsed_file.path == absolute_file_path {
+            if parsed_file.file_path == absolute_file_path {
                 return Ok((parsed_file.file_index, None));
             }
         }
@@ -387,17 +404,13 @@ impl FileManager {
         let file_index = self.files.len() as u32;
         self.files.push(FileInfo {
             file_index,
-            path: absolute_file_path.into(),
+            file_path: absolute_file_path.into(),
         });
 
         Ok((file_index, Some(file_contents)))
     }
 
-    pub fn get_file_path(&self, file_index: u32) -> Option<&str> {
-        if let Some(file) = self.files.get(file_index as usize) {
-            return Some(&file.path);
-        }
-
-        None
+    pub fn get_file_path(&self, file_index: u32) -> &str {
+        &self.files[file_index as usize].file_path
     }
 }

@@ -88,7 +88,7 @@ mod wasi_api {
                     compiler_mode = CompilerMode::Compile;
                 }
                 "--inspect" => {
-                    is_v2 = true;
+                    // is_v2 = true;
                     compiler_mode = CompilerMode::Inspect;
                 }
                 "--pretty-print" => {
@@ -121,9 +121,14 @@ mod wasi_api {
         }
 
         if compiler_mode == CompilerMode::PrettyPrint {
-            let chars = file_read_utf8(file_name)?;
-            let tokens = Lexer::lex(file_name, &chars)?;
-            let ast = ParserV2::parse(tokens)?;
+            let mut fm = FileManager::default();
+            let (file_index, file_contents) = fm
+                .include_file(file_name, &LoLocation::internal())
+                .map_err(|err| err.to_string(&fm))?;
+
+            let tokens = Lexer::lex(file_index, &file_contents.unwrap())
+                .map_err(|err| err.to_string(&fm))?;
+            let ast = ParserV2::parse(tokens).map_err(|err| err.to_string(&fm))?;
 
             stdout_enable_bufferring();
             Printer::print(Rc::new(ast));
@@ -150,7 +155,8 @@ mod wasi_api {
 
             let (file_index, file_contents) = codegen
                 .fm
-                .include_file(file_name, &LoLocation::internal())?;
+                .include_file(file_name, &LoLocation::internal())
+                .map_err(|err| err.to_string(&codegen.fm))?;
 
             let mut asts = Vec::new();
             parse_file_tree(
@@ -159,18 +165,24 @@ mod wasi_api {
                 &mut asts,
                 file_index,
                 file_contents.unwrap(),
-            )?;
+            )
+            .map_err(|err| err.to_string(&codegen.fm))?;
 
             for ast in asts {
-                codegen.process_file(ast)?;
+                codegen
+                    .process_file(ast)
+                    .map_err(|err| err.to_string(&codegen.fm))?;
             }
-            codegen.errors.print_all()?;
+            codegen.errors.print_all(&codegen.fm)?;
 
-            codegen.generate()?
+            codegen
+                .generate()
+                .map_err(|err| err.to_string(&codegen.fm))?
         } else {
             let ctx = &mut parser::init(compiler_mode);
-            parser::parse_file(ctx, file_name, &LoLocation::internal())?;
-            parser::finalize(ctx)?;
+            parser::parse_file(ctx, file_name, &LoLocation::internal())
+                .map_err(|err| err.to_string(&ctx.fm))?;
+            parser::finalize(ctx).map_err(|err| err.to_string(&ctx.fm))?;
 
             ctx.wasm_module.take()
         };
@@ -195,18 +207,16 @@ mod wasi_api {
         file_index: u32,
         file_contents: String,
     ) -> Result<(), LoError> {
-        let absolute_file_path = fm.get_file_path(file_index).unwrap();
-
         if mode == CompilerMode::Inspect {
+            let file_path = fm.get_file_path(file_index);
             stdout_writeln(format!(
                 "{{ \"type\": \"file\", \
-                    \"index\": {}, \
-                    \"path\": \"{}\" }}, ",
-                file_index, absolute_file_path
+                    \"index\": {file_index}, \
+                    \"path\": \"{file_path}\" }}, ",
             ));
         }
 
-        let tokens = Lexer::lex(&absolute_file_path, &file_contents)?;
+        let tokens = Lexer::lex(file_index, &file_contents)?;
         let ast = ParserV2::parse(tokens)?;
 
         for expr in &ast.exprs {
