@@ -1,0 +1,47 @@
+struct Point2D {
+    x: i32,
+    y: i32,
+};
+
+struct Point2DPair {
+    p1: Point2D,
+    p2: Point2D,
+};
+
+export fn main(): i32 {
+    let res = +0;
+    // +1
+    res += .Point2D {
+        x: +1,
+        y: +2,
+    }.x;
+    // +4
+    res += get_pos().y;
+    let tmp = get_point_pair().p1;
+    // +6
+    res += tmp.y;
+    // +7
+    res += get_point_pair().p2.x;
+    // = 18
+    return res;
+};
+
+fn get_point_pair(): Point2DPair {
+    return .Point2DPair {
+        p1: .Point2D {
+            x: +5,
+            y: +6,
+        },
+        p2: .Point2D {
+            x: +7,
+            y: +8,
+        },
+    };
+};
+
+fn get_pos(): Point2D {
+    return .Point2D {
+        x: +3,
+        y: +4,
+    };
+};

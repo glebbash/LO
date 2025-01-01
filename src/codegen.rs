@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, lexer::*, wasm::*};
+use crate::{ast::*, core::*, lexer::*, lo_todo, wasm::*};
 use alloc::{
     boxed::Box,
     format,
@@ -282,6 +282,14 @@ enum LoVariableInfo {
         value_type: LoType,
         inspect_info: Option<InspectInfo>,
     },
+    StructValueField {
+        struct_value: LoCodeUnit,
+        field_type: LoType,
+        drops_before: u32,
+        drops_after: u32,
+        loc: LoLocation,
+        inspect_info: Option<InspectInfo>,
+    },
 }
 
 impl LoVariableInfo {
@@ -303,6 +311,14 @@ impl LoVariableInfo {
                 value_type,
                 inspect_info: _,
             } => value_type,
+            LoVariableInfo::StructValueField {
+                struct_value: _,
+                field_type,
+                drops_before: _,
+                drops_after: _,
+                loc: _,
+                inspect_info: _,
+            } => field_type,
         }
     }
 
@@ -322,6 +338,14 @@ impl LoVariableInfo {
                 address: _,
                 offset: _,
                 value_type: _,
+                inspect_info,
+            }
+            | LoVariableInfo::StructValueField {
+                struct_value: _,
+                field_type: _,
+                drops_before: _,
+                drops_after: _,
+                loc: _,
                 inspect_info,
             } => inspect_info,
         }
@@ -2876,51 +2900,86 @@ impl CodeGen {
         }
 
         if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref())? {
-            if let LoVariableInfo::Local {
-                local_index,
-                local_type: _,
-                inspect_info: parent_inspect_info,
-            } = var
-            {
-                if let Some(inspect_info) = parent_inspect_info {
-                    self.print_inspection(&inspect_info);
+            match var {
+                // struct globals are not supported so these are handled the same way as struct values
+                LoVariableInfo::Global {
+                    global_index: _,
+                    global_type: _,
+                    inspect_info: _,
+                } => {}
+                LoVariableInfo::Local {
+                    local_index,
+                    local_type: _,
+                    inspect_info: parent_inspect_info,
+                } => {
+                    if let Some(inspect_info) = parent_inspect_info {
+                        self.print_inspection(&inspect_info);
+                    }
+
+                    return Ok(LoVariableInfo::Local {
+                        local_index: local_index + field.field_index,
+                        local_type: field.field_type.clone(),
+                        inspect_info,
+                    });
                 }
-
-                return Ok(LoVariableInfo::Local {
-                    local_index: local_index + field.field_index,
-                    local_type: field.field_type.clone(),
-                    inspect_info,
-                });
-            }
-
-            // TODO(QOL): technically parent_inspect_info returns a reference
-            //   and inspect_info's lhs_type should be changed to reference as well
-            if let LoVariableInfo::Stored {
-                address,
-                offset,
-                value_type: _,
-                inspect_info: parent_inspect_info,
-            } = var
-            {
-                if let Some(inspect_info) = parent_inspect_info {
-                    self.print_inspection(&inspect_info);
-                }
-
-                return Ok(LoVariableInfo::Stored {
+                // TODO(QOL): technically parent_inspect_info returns a reference
+                //   and inspect_info's lhs_type should be changed to reference as well
+                LoVariableInfo::Stored {
                     address,
-                    offset: offset + field.byte_offset,
-                    value_type: field.field_type.clone(),
-                    inspect_info,
-                });
-            }
+                    offset,
+                    value_type: _,
+                    inspect_info: parent_inspect_info,
+                } => {
+                    if let Some(inspect_info) = parent_inspect_info {
+                        self.print_inspection(&inspect_info);
+                    }
+
+                    return Ok(LoVariableInfo::Stored {
+                        address,
+                        offset: offset + field.byte_offset,
+                        value_type: field.field_type.clone(),
+                        inspect_info,
+                    });
+                }
+                LoVariableInfo::StructValueField {
+                    struct_value,
+                    field_type: _,
+                    drops_before,
+                    drops_after,
+                    loc: _,
+                    inspect_info: parent_inspect_info,
+                } => {
+                    if let Some(inspect_info) = parent_inspect_info {
+                        self.print_inspection(&inspect_info);
+                    }
+
+                    let struct_components_count = self.count_wasm_type_components(&lhs_type);
+                    let field_components_count = self.count_wasm_type_components(&field.field_type);
+
+                    return Ok(LoVariableInfo::StructValueField {
+                        struct_value,
+                        field_type: field.field_type.clone(),
+                        drops_before: drops_before + struct_components_count
+                            - field.field_index
+                            - field_components_count,
+                        drops_after: drops_after + field.field_index,
+                        loc: field_access.field_name.loc.clone(),
+                        inspect_info,
+                    });
+                }
+            };
         };
 
-        return Err(LoError {
-            message: format!(
-                "Cannot access struct field '{}' invalid lhs",
-                field_access.field_name.repr
-            ),
-            loc: field_access.lhs.loc().clone(),
+        let struct_components_count = self.count_wasm_type_components(&lhs_type);
+        let field_components_count = self.count_wasm_type_components(&field.field_type);
+
+        return Ok(LoVariableInfo::StructValueField {
+            struct_value: self.build_code_unit(ctx, &field_access.lhs)?,
+            field_type: field.field_type.clone(),
+            drops_before: struct_components_count - field.field_index - field_components_count,
+            drops_after: field.field_index,
+            loc: field_access.field_name.loc.clone(),
+            inspect_info,
         });
     }
 
@@ -3067,6 +3126,40 @@ impl CodeGen {
                     instrs.append(&mut loads);
                 }
             }
+            LoVariableInfo::StructValueField {
+                struct_value,
+                field_type,
+                drops_before,
+                drops_after,
+                loc,
+                inspect_info: _,
+            } => {
+                for instr in &struct_value.instrs {
+                    instrs.push(instr.clone());
+                }
+                for _ in 0..*drops_before {
+                    instrs.push(WasmInstr::Drop);
+                }
+
+                if *drops_after > 0 {
+                    let local_index =
+                        self.define_unnamed_local(ctx, loc.clone(), field_type, false);
+
+                    let var = LoVariableInfo::Local {
+                        local_index,
+                        local_type: field_type.clone(),
+                        inspect_info: None,
+                    };
+                    self.codegen_var_set_prepare(ctx, instrs, &var);
+                    self.codegen_var_set(ctx, instrs, &var)?;
+
+                    for _ in 0..*drops_after {
+                        instrs.push(WasmInstr::Drop);
+                    }
+
+                    self.codegen_var_get(ctx, instrs, &var)?;
+                }
+            }
         }
 
         Ok(())
@@ -3151,6 +3244,14 @@ impl CodeGen {
                     instrs.append(&mut stores);
                 }
             }
+            LoVariableInfo::StructValueField {
+                struct_value: _,
+                field_type: _,
+                drops_before: _,
+                drops_after: _,
+                loc,
+                inspect_info: _,
+            } => return Err(lo_todo!(loc.clone())),
         };
 
         Ok(())

@@ -275,6 +275,21 @@ async function testCommand() {
         assert.strictEqual(result, 13);
     });
 
+    testCompilers(
+        "compiles struct-value-field-access.lo",
+        { v1 },
+        async (compile) => {
+            const output = await compile(
+                "./examples/test/struct-value-field-access.lo"
+            );
+
+            const program = await loadWasm(output);
+            const result = program.main();
+
+            assert.strictEqual(result, 18);
+        }
+    );
+
     testCompilers("compiles decl-nesting.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/decl-nesting.lo");
 
