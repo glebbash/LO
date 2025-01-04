@@ -23,11 +23,13 @@ Documentation of LO language features.
 - [🧱 Types](#-types)
 - [💬 Comments](#-comments)
 - [🔨 Compiler usage](#-compiler-usage)
-  - [Compiling to WASM (main target)](#compiling-to-wasm-main-target)
+  - [(info) Error reporting](#info-error-reporting)
+  - [Compiling](#compiling)
   - [Inspecting code (IDE intergration)](#inspecting-code-ide-intergration)
   - [Pretty Printing](#pretty-printing)
+  - [(experimental) Interpreting source code](#experimental-interpreting-source-code)
+  - [(experimental) Interpreting WASM modules](#experimental-interpreting-wasm-modules)
     - [Comment rearrangement](#comment-rearrangement)
-  - [Error format](#error-format)
 - [🧪 Compiler development](#-compiler-development)
   - [Building the initial compiler](#building-the-initial-compiler)
   - [Running tests](#running-tests)
@@ -130,7 +132,7 @@ if x < 0 {
 
 > NOTE: parens are not required around the condition
 
-> NOTE: semicolon **is required** after if expression, it not optional like in C
+> NOTE: semicolon **is required** after if expression, it not is optional like in C
 
 Supports `else if` and `else` branches:
 
@@ -194,29 +196,38 @@ wasmtime --dir=. lo.wasm
 This should print something like the following:
 
 ```text
-Usage: lo <file> [mode]
-  where [mode] is either:
+Usage: lo <file> [<mode>]
+  Where <mode> is either:
+    --compile (default if not provided)
     --inspect
     --pretty-print
-  No [mode] means compilation to wasm
+    --eval (experimental)
+    --eval-wasm (experimental)
 ```
 
 ---
 
-> NOTE: following examples will be using `lo` "executable". This is OS dependant and is not shipped with the compiler.
+> NOTE: following examples will be using `lo` "executable". This is OS dependent and is not shipped with the compiler.
 >
-> In Linux/MacOS you can alias it to `wasmtime --dir=. lo.wasm $@`
+> On Linux/MacOS you can alias it to `wasmtime --dir=. lo.wasm $@`
 
-### Compiling to WASM (main target)
+### (info) Error reporting
+
+Compiler errors are printed to `<stderr>` using the following format:
+
+```text
+<file-path>:<line>:<col> - <message>
+```
+
+### Compiling
 
 ```bash
 lo input.lo
 ```
 
-> Compiles `input.lo` file into a wasm module
+> Compiles `input.lo` file into a WASM module
 >
-> `<stdout>` - WASM module in binary format <br>
-> `<stderr>` - Any compilation errors. See [error format](#error-format)
+> `<stdout>` - WASM module in binary format
 
 > NOTE: any imported files will be automatically resolved. You don't need to provide them separately.
 
@@ -228,15 +239,13 @@ lo input.lo --inspect
 
 > Prints inspection info of `input.lo` file in JSON format. Useful for IDE integrations.
 >
-> `<stdout>` - JSON object with inspection results <br>
-> `<stderr>` - Any compilation errors. See [error format](#error-format)
+> `<stdout>` - JSON object with inspection results
 
 Inspection object schema is defined as `DiagnisticItem` in [VSCode extension sources](../vscode-ext/src/extension.ts)
 
 ### Pretty Printing
 
-> NOTE: this feature is WIP and does not support the full syntax yet <br>
-> NOTE: this currently does not resolve imports, processes only the single file
+> NOTE: this formats a single file at a time, imported files are not formatted
 
 Usage:
 
@@ -246,8 +255,31 @@ lo input.lo --pretty-print
 
 > Formats `input.lo` using non-configurable formatting style
 >
-> `<stdout>` - Formatted source <br>
-> `<stderr>` - Any compilation errors. See [error format](#error-format)
+> `<stdout>` - Formatted source
+
+### (experimental) Interpreting source code
+
+Usage:
+
+```bash
+lo input.lo --eval
+```
+
+> Compiles `input.lo` and interprets the WASM module built (without producing any intermediate files). Supports a subset of WASI. Entrypoint is either `_start` or `main`.
+>
+> `<stdout>` - Interpreted program output (if any). In case of `main` entrypoint the function's result is printed.
+
+### (experimental) Interpreting WASM modules
+
+Usage:
+
+```bash
+lo input.wasm --eval-wasm
+```
+
+> Parses and interprets `input.wasm`. Supports a subset of WASI. Entrypoint is either `_start` or `main`.
+>
+> `<stdout>` - Interpreted program output (if any). In case of `main` entrypoint the function's result is printed.
 
 #### Comment rearrangement
 
@@ -279,18 +311,6 @@ fn main(): u32 {
     // this will also be moved
 };
 ```
-
-### Error format
-
-Errors are printed to `<stderr>` in the following format:
-
-```text
-<file-path>:<line>:<col> - <message>
-```
-
-This makes errors clickable in VSCode's terminal (and probably others).
-
-> NOTE: Currently only a single error can be emitted.
 
 ## 🧪 Compiler development
 
