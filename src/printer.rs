@@ -259,6 +259,11 @@ impl Printer {
                     stdout_write(": ");
                     self.print_type_expr(&expr);
                 }
+                FnParamType::Infer { name } => {
+                    stdout_write(&fn_param.param_name);
+                    stdout_write(": infer ");
+                    stdout_write(name);
+                }
             }
         }
         stdout_write(")");

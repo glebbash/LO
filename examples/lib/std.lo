@@ -178,7 +178,7 @@ global heap::FIRST_BLOCK = 0 as &heap::Block;
 
 global heap::CURRENT_BLOCK = 0 as &heap::Block;
 
-macro heap::new!<T>(value: T): &T {
+macro heap::new!(value: infer T): &T {
     let ptr = heap::alloc!<T>();
     *ptr = value;
     ptr;

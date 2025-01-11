@@ -2,7 +2,7 @@ include "./core-types.lo";
 include "./parser.lo";
 
 fn LoContext::new(): &LoContext {
-    return heap::new!<LoContext>(.LoContext {
+    return heap::new!(.LoContext {
         included_files: Vec::new!<LoIncludedFile>(),
         wasm_module: WasmModule::new(),
         fn_defs: StringMap::new!<LoFnDef>(),
@@ -10,7 +10,7 @@ fn LoContext::new(): &LoContext {
         memories: StringMap::new!<u32>(),
         fn_bodies: Vec::new!<LoFnBody>(),
         imported_fns_count: 0,
-        type_scope: heap::new!<LoTypeScope>(.LoTypeScope {
+        type_scope: heap::new!(.LoTypeScope {
         }),
     });
 };
@@ -39,7 +39,7 @@ fn LoContext::include_file(&self, file_path: str): Result<u32, &LoError> {
         let message = String::from_str("Cannot include file: ");
         message.push_str(file_path);
         message.push('\n');
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: message,
             loc: LoLocation::internal(),
         }));

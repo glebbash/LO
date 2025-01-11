@@ -271,7 +271,7 @@ impl Parser {
                 }
             }
 
-            let macro_params = self.parse_fn_params()?;
+            let macro_params = self.parse_fn_params(true)?;
 
             let return_type = if let Some(_) = self.eat(Operator, ":")? {
                 Some(self.parse_type_expr()?)
@@ -378,7 +378,7 @@ impl Parser {
         let mut loc = self.prev().loc.clone();
 
         let fn_name = self.parse_ident()?;
-        let fn_params = self.parse_fn_params()?;
+        let fn_params = self.parse_fn_params(false)?;
 
         let return_type = if let Some(_) = self.eat(Operator, ":")? {
             Some(self.parse_type_expr()?)
@@ -396,7 +396,7 @@ impl Parser {
         })
     }
 
-    fn parse_fn_params(&mut self) -> Result<Vec<FnParam>, LoError> {
+    fn parse_fn_params(&mut self, infer_allowed: bool) -> Result<Vec<FnParam>, LoError> {
         let mut params = Vec::<FnParam>::new();
 
         let _ = self.expect(Delim, "(")?;
@@ -422,9 +422,24 @@ impl Parser {
                 }
 
                 self.expect(Operator, ":")?;
-                p_type = FnParamType::Type {
-                    expr: self.parse_type_expr()?,
-                };
+
+                if let Some(infer) = self.eat(Symbol, "infer")? {
+                    if !infer_allowed {
+                        return Err(LoError {
+                            message: format!("Cannot use `infer` outside macro parameter list"),
+                            loc: infer.loc.clone(),
+                        });
+                    }
+
+                    let infer_as = self.expect_any(Symbol)?;
+                    p_type = FnParamType::Infer {
+                        name: infer_as.value.clone(),
+                    };
+                } else {
+                    p_type = FnParamType::Type {
+                        expr: self.parse_type_expr()?,
+                    };
+                }
             }
 
             loc.end_pos = self.prev().loc.end_pos.clone();

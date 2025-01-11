@@ -1094,6 +1094,7 @@ impl CodeGen {
                 });
             }
             FnParamType::Type { expr } => self.build_type(&self.const_ctx, &expr),
+            FnParamType::Infer { name: _ } => unreachable!(),
         }
     }
 
@@ -2070,61 +2071,34 @@ impl CodeGen {
 
     fn get_macro_return_type(
         &self,
-        ctx: &LoExprContext,
+        ctx: &mut LoExprContext,
         macro_name: &str,
         type_args: &Vec<TypeExpr>,
+        args: &Vec<CodeExpr>,
+        receiver_arg: Option<&CodeExpr>,
         loc: &LoLocation,
     ) -> Result<LoType, LoError> {
-        let Some(macro_def) = self.get_macro_def(&macro_name) else {
-            return Err(LoError {
-                message: format!("Unknown macro: {}", macro_name),
-                loc: loc.clone(),
-            });
+        let (macro_def, _) =
+            self.populate_ctx_from_macro_call(ctx, macro_name, type_args, receiver_arg, args, loc)?;
+
+        let return_type = if let Some(return_type) = &macro_def.return_type {
+            self.build_type(ctx, return_type)?
+        } else {
+            LoType::Void
         };
-
-        if type_args.len() != macro_def.macro_type_params.len() {
-            return Err(LoError {
-                message: format!(
-                    "Invalid number of type args, expected {}, got {}",
-                    macro_def.macro_type_params.len(),
-                    type_args.len()
-                ),
-                loc: macro_def.loc.clone(),
-            });
-        }
-
-        let mut return_type = LoType::Void;
-        if let Some(macro_return_type) = &macro_def.return_type {
-            let mut ctx = ctx.clone();
-            ctx.enter_scope(LoScopeType::Macro);
-
-            for i in 0..macro_def.macro_type_params.len() {
-                let type_param = &macro_def.macro_type_params[i];
-                let type_arg = &type_args[i];
-
-                let lo_type = self.build_type(&ctx, &type_arg)?;
-                ctx.current_scope_mut()
-                    .macro_type_args
-                    .push((type_param.clone(), lo_type));
-            }
-
-            return_type = self.build_type(&ctx, macro_return_type)?;
-        }
 
         Ok(return_type)
     }
 
-    // TODO: typecheck actual macro return with its specified return type
-    fn codegen_macro_call(
+    fn populate_ctx_from_macro_call(
         &self,
         ctx: &mut LoExprContext,
-        instrs: &mut Vec<WasmInstr>,
         macro_name: &str,
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
         loc: &LoLocation,
-    ) -> Result<(), LoError> {
+    ) -> Result<(&MacroDefExpr, Vec<LoType>), LoError> {
         let Some(macro_def) = self.get_macro_def(macro_name) else {
             return Err(LoError {
                 message: format!("Unknown macro: {}", macro_name),
@@ -2140,26 +2114,24 @@ impl CodeGen {
             all_args.push(self.build_code_unit(ctx, arg)?);
         }
 
-        let mut all_type_args = Vec::new();
+        let mut lo_type_args = Vec::new();
         for type_arg in type_args {
-            all_type_args.push(self.build_type(ctx, &type_arg)?);
+            lo_type_args.push(self.build_type(ctx, &type_arg)?);
         }
 
-        ctx.enter_scope(LoScopeType::Macro);
-
-        if all_type_args.len() != macro_def.macro_type_params.len() {
+        if lo_type_args.len() != macro_def.macro_type_params.len() {
             return Err(LoError {
                 message: format!(
                     "Invalid number of type args, expected {}, got {}",
                     macro_def.macro_type_params.len(),
                     type_args.len()
                 ),
-                loc: macro_def.loc.clone(),
+                loc: loc.clone(),
             });
         }
 
         // TODO: check for type shadowing
-        for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(all_type_args.iter()) {
+        for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(lo_type_args.iter()) {
             ctx.current_scope_mut()
                 .macro_type_args
                 .push((type_param.clone(), type_arg.clone()));
@@ -2173,11 +2145,9 @@ impl CodeGen {
                     macro_def.macro_params.len(),
                     all_args.len()
                 ),
-                loc: macro_def.loc.clone(),
+                loc: loc.clone(),
             });
         }
-
-        let mut macro_args = Vec::new();
 
         // TODO: check for const shadowing
         for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
@@ -2187,20 +2157,56 @@ impl CodeGen {
                 loc: macro_param.loc.clone(),
             };
 
-            macro_args.push(LoFnParam {
-                param_name: const_def.const_name.clone(),
-                param_type: const_def.code_unit.lo_type.clone(),
-            });
+            if let FnParamType::Infer { name } = &macro_param.param_type {
+                ctx.current_scope_mut()
+                    .macro_type_args
+                    .push((name.clone(), const_def.code_unit.lo_type.clone()));
+            }
 
             ctx.current_scope_mut().macro_args.push(const_def);
         }
 
+        Ok((macro_def, lo_type_args))
+    }
+
+    // TODO: typecheck actual macro return with its specified return type
+    fn codegen_macro_call(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        macro_name: &str,
+        type_args: &Vec<TypeExpr>,
+        receiver_arg: Option<&CodeExpr>,
+        args: &Vec<CodeExpr>,
+        loc: &LoLocation,
+    ) -> Result<(), LoError> {
+        ctx.enter_scope(LoScopeType::Macro);
+
+        let (macro_def, lo_type_args) =
+            self.populate_ctx_from_macro_call(ctx, macro_name, type_args, receiver_arg, args, loc)?;
+
         if self.mode == CompilerMode::Inspect {
-            let lo_type_args = ListDisplay(&all_type_args);
-            let args = ListDisplay(&macro_args);
-            let return_type = self.get_macro_return_type(ctx, macro_name, type_args, loc)?;
+            let lo_type_args = ListDisplay(&lo_type_args);
+
+            let mut macro_args = Vec::new();
+            let macro_args_len = ctx.current_scope().macro_args.len();
+            for i in macro_args_len - macro_def.macro_params.len()..macro_args_len {
+                let const_def = &ctx.current_scope().macro_args[i];
+                macro_args.push(LoFnParam {
+                    param_name: const_def.const_name.clone(),
+                    param_type: const_def.code_unit.lo_type.clone(),
+                });
+            }
+            let lo_args = ListDisplay(&macro_args);
+
+            let return_type = if let Some(return_type) = &macro_def.return_type {
+                self.build_type(ctx, return_type)?
+            } else {
+                LoType::Void
+            };
+
             self.print_inspection(&InspectInfo {
-                message: format!("macro {macro_name}!<{lo_type_args}>({args}): {return_type}"),
+                message: format!("macro {macro_name}!<{lo_type_args}>({lo_args}): {return_type}"),
                 loc: loc.clone(),
                 linked_loc: Some(macro_def.macro_name.loc.clone()),
             });
@@ -2735,19 +2741,26 @@ impl CodeGen {
             CodeExpr::MacroFnCall(MacroFnCallExpr {
                 fn_name,
                 type_args,
-                args: _,
+                args,
                 loc,
-            }) => self.get_macro_return_type(ctx, &fn_name.repr, type_args, loc),
+            }) => {
+                let mut ctx = ctx.clone();
+                ctx.enter_scope(LoScopeType::Macro);
+                self.get_macro_return_type(&mut ctx, &fn_name.repr, type_args, args, None, loc)
+            }
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
                 lhs,
                 field_name,
                 type_args,
-                args: _,
+                args,
                 loc,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.get_macro_return_type(ctx, &macro_name, type_args, loc)
+
+                let mut ctx = ctx.clone();
+                ctx.enter_scope(LoScopeType::Macro);
+                self.get_macro_return_type(&mut ctx, &macro_name, type_args, args, Some(&lhs), loc)
             }
             CodeExpr::Catch(CatchExpr {
                 lhs,

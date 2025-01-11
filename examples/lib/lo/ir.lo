@@ -117,7 +117,7 @@ macro LoInstr::Return::new!(value: LoInstr): LoInstr {
     .LoInstr {
         kind: LoInstr::Return::KIND,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<LoInstr::Return>(.LoInstr::Return {
+        data: heap::new!(.LoInstr::Return {
             value: value,
         }) as &void,
     };
@@ -136,7 +136,7 @@ macro LoInstr::CallAndDrop::new!(fn_index: u32, return_type: LoType, args: &Vec 
     .LoInstr {
         kind: LoInstr::CallAndDrop::KIND,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<LoInstr::CallAndDrop>(.LoInstr::CallAndDrop {
+        data: heap::new!(.LoInstr::CallAndDrop {
             fn_index: fn_index,
             return_type: return_type,
             args: args,
@@ -156,7 +156,7 @@ macro LoInstr::U32Store::new!(address: LoInstr, value: LoInstr): LoInstr {
     .LoInstr {
         kind: LoInstr::U32Store::KIND,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<LoInstr::U32Store>(.LoInstr::U32Store {
+        data: heap::new!(.LoInstr::U32Store {
             address: address,
             value: value,
         }) as &void,

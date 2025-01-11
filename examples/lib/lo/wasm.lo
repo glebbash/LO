@@ -62,7 +62,7 @@ fn WasmInstr::Call::new(fn_index: u32): WasmInstr {
     return .WasmInstr {
         op_code: WasmInstr::Call::OP_CODE,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<WasmInstr::Call>(.WasmInstr::Call {
+        data: heap::new!(.WasmInstr::Call {
             fn_index: fn_index,
         }) as &void,
     };
@@ -91,7 +91,7 @@ fn WasmInstr::I32Store::new(align: u32, offset: u32): WasmInstr {
     return .WasmInstr {
         op_code: WasmInstr::I32Store::OP_CODE,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<WasmInstr::I32Store>(.WasmInstr::I32Store {
+        data: heap::new!(.WasmInstr::I32Store {
             align: align,
             offset: offset,
         }) as &void,
@@ -108,7 +108,7 @@ fn WasmInstr::I32Const::new(value: i32): WasmInstr {
     return .WasmInstr {
         op_code: WasmInstr::I32Const::OP_CODE,
         // TODO: won't need a cast if coersion is introduced
-        data: heap::new!<WasmInstr::I32Const>(.WasmInstr::I32Const {
+        data: heap::new!(.WasmInstr::I32Const {
             value: value,
         }) as &void,
     };
@@ -166,7 +166,7 @@ struct WasmModule {
 };
 
 fn WasmModule::new(): &WasmModule {
-    return heap::new!<WasmModule>(.WasmModule {
+    return heap::new!(.WasmModule {
         types: Vec::new!<WasmFnType>(),
         imports: Vec::new!<WasmImport>(),
         functions: Vec::new!<u32>(),

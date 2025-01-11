@@ -54,6 +54,7 @@ pub enum FnParamType {
     Self_,
     SelfRef,
     Type { expr: TypeExpr },
+    Infer { name: String },
 }
 
 #[derive(Debug, Clone)]

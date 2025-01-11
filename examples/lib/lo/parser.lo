@@ -20,7 +20,7 @@ fn LoParser::parse_all(self): Result<void, &LoError> {
     if some_token.exists {
         let message = String::from_str("Unexpected token on top level: ");
         message.push_str(some_token.token.repr);
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: message,
             loc: some_token.token.loc,
         }));
@@ -59,7 +59,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
         let unexpected = some_token.token;
         let message = String::from_str("Unexpected exportable: ");
         message.push_str(unexpected.repr);
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: message,
             loc: unexpected.loc,
         }));
@@ -81,7 +81,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
             if self.ctx.fn_defs.contains_key(fn_decl.fn_name.as_str()) {
                 let message = String::from_str("Cannot redefine function: ");
                 message.push_str(fn_decl.fn_name.as_str());
-                return Err(heap::new!<LoError>(.LoError {
+                return Err(heap::new!(.LoError {
                     message: message,
                     loc: fn_decl.loc,
                 }));
@@ -145,7 +145,7 @@ fn LoParser::parse_top_level_expr(self): Result<void, &LoError> {
     let unexpected = some_token.token;
     let message = String::from_str("Unexpected top level token: ");
     message.push_str(unexpected.repr);
-    return Err(heap::new!<LoError>(.LoError {
+    return Err(heap::new!(.LoError {
         message: message,
         loc: unexpected.loc,
     }));
@@ -157,7 +157,7 @@ fn LoParser::parse_fn_def(self, exported: bool): Result<void, &LoError> {
     if self.ctx.fn_defs.contains_key(fn_decl.fn_name.as_str()) {
         let message = String::from_str("Cannot redefine function: ");
         message.push_str(fn_decl.fn_name.as_str());
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: message,
             loc: fn_decl.loc,
         }));
@@ -277,7 +277,7 @@ fn LoParser::parse_fn_params(self, type_scope: &LoTypeScope, receiver_type: &LoT
             if param.name.as_str().equals(p_name.repr) {
                 let message = String::from_str("Found function param with conflicting name: ");
                 message.push_str(p_name.repr);
-                return Err(heap::new!<LoError>(.LoError {
+                return Err(heap::new!(.LoError {
                     message: message,
                     loc: p_name.loc,
                 }));
@@ -395,7 +395,7 @@ fn LoParser::parse_expr(ctx: &LoContext, tokens: &LoTokenStream, min_bp: u32): R
     some_token = tokens.peek();
     let message = String::from_str("Unexpected token: ");
     message.push_str(LoTokenType::to_str(some_token.token.type_));
-    return Err(heap::new!<LoError>(.LoError {
+    return Err(heap::new!(.LoError {
         message: message,
         loc: some_token.token.loc,
     }));
@@ -411,7 +411,7 @@ fn LoParser::parse_memory(self): Result<LoMemoryDef, &LoError> {
     if self.ctx.memories.contains_key(memory_name.as_str()) {
         let message = String::from_str("Duplicate memory definition: ");
         message.push_str(memory_name.as_str());
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: message,
             loc: self.tokens.loc(),
         }));
@@ -477,7 +477,7 @@ fn LoParser::parse_lo_type_(self, type_scope: &LoTypeScope, is_referenced: bool)
     if some_token.exists {
         return Ok(LoType::U32!());
     };
-    return Err(heap::new!<LoError>(.LoError {
+    return Err(heap::new!(.LoError {
         message: String::from_str(dbg "TODO: implement"),
         loc: LoLocation::internal(),
     }));

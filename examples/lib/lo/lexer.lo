@@ -46,7 +46,7 @@ fn LoToken::free(self) {
 fn LoToken::clone(self): LoToken {
     if self.type_ == LoTokenType::IntLiteral {
         // TODO: won't need a cast if coersion is introduced
-        self.value = heap::new!<u64>(*(self.value as &u64)) as &void;
+        self.value = heap::new!(*(self.value as &u64)) as &void;
     } else if self.type_ == LoTokenType::StringLiteral {
         // TODO: won't need a cast if coersion is introduced
         self.value = (self.value as String).clone() as &void;
@@ -89,7 +89,7 @@ macro LoTokenMaybe::none!(tokens: &LoTokenStream): LoTokenMaybe {
 };
 
 fn LoTokenStream::new(tokens: &Vec of LoToken, eof_location: LoLocation): &LoTokenStream {
-    return heap::new!<LoTokenStream>(.LoTokenStream {
+    return heap::new!(.LoTokenStream {
         tokens: tokens,
         index: 0,
         terminal_token: .LoToken {
@@ -123,7 +123,7 @@ fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): Result<LoToken, 
     message.push_str("', wanted '");
     message.push_str(repr);
     message.push_str("'");
-    return Err(heap::new!<LoError>(.LoError {
+    return Err(heap::new!(.LoError {
         message: message,
         loc: unexpected.loc,
     }));
@@ -142,7 +142,7 @@ fn LoTokenStream::expect_any(&self, type_: LoTokenType): Result<LoToken, &LoErro
     message.push_str("', wanted '");
     message.push_str(LoTokenType::to_str(type_));
     message.push_str("'");
-    return Err(heap::new!<LoError>(.LoError {
+    return Err(heap::new!(.LoError {
         message: message,
         loc: unexpected.loc,
     }));
@@ -173,7 +173,7 @@ fn LoTokenStream::eat(&self, type_: LoTokenType, repr: str): Result<LoTokenMaybe
 fn LoTokenStream::next_is(&self, type_: LoTokenType, repr: str): Result<bool, &LoError> {
     let some_token = self.peek();
     if !some_token.exists {
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: String::from_str("Unexpected EOF"),
             loc: self.terminal_token.loc,
         }));
@@ -214,7 +214,7 @@ struct LoLexer {
 };
 
 fn LoLexer::new(file_index: u32, chars: str): &LoLexer {
-    return heap::new!<LoLexer>(.LoLexer {
+    return heap::new!(.LoLexer {
         file_index: file_index,
         chars: chars,
         index: 0,
@@ -262,7 +262,7 @@ fn LoLexer::lex_token(&self): LexResult {
     };
     let message = String::from_str("Unexpected char: ");
     message.push(c);
-    return Err(heap::new!<LoError>(.LoError {
+    return Err(heap::new!(.LoError {
         message: message,
         loc: self.loc(),
     }));
@@ -310,7 +310,7 @@ fn LoLexer::lex_char(&self): LexResult {
         } else {
             let message = String::from_str("ParseError: Invalid escape sequence: \\");
             message.push(c as u8);
-            return Err(heap::new!<LoError>(.LoError {
+            return Err(heap::new!(.LoError {
                 message: message,
                 loc: self.loc(),
             }));
@@ -322,7 +322,7 @@ fn LoLexer::lex_char(&self): LexResult {
         let message = String::from_str("ParseError: Unexpected character `");
         message.push(c as u8);
         message.push_str("`, expected `'`");
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: message,
             loc: self.loc(),
         }));
@@ -366,7 +366,7 @@ fn LoLexer::lex_string(&self): LexResult {
             } else {
                 let message = String::from_str("ParseError: Invalid escape sequence: \\");
                 message.push(c as u8);
-                return Err(heap::new!<LoError>(.LoError {
+                return Err(heap::new!(.LoError {
                     message: message,
                     loc: self.loc(),
                 }));
@@ -432,7 +432,7 @@ fn LoLexer::lex_int_literal(&self): LexResult {
         repr: self.chars.slice(loc.pos.offset, loc.end_pos.offset),
         loc: loc,
         // TODO: won't need a cast if coersion is introduced
-        value: heap::new!<u64>(value) as &void,
+        value: heap::new!(value) as &void,
     });
 };
 
@@ -567,7 +567,7 @@ fn LoLexer::lex_operator(&self): LexResult {
     if !matched_fully {
         let message = String::from_str("Unexpected char: ");
         message.push(self.current_char()?);
-        return Err(heap::new!<LoError>(.LoError {
+        return Err(heap::new!(.LoError {
             message: message,
             loc: self.loc(),
         }));
@@ -656,7 +656,7 @@ fn LoLexer::peek_next_char(&self): Result<u8, &LoError> {
 };
 
 fn LoLexer::err_unexpected_eof(&self): &LoError {
-    return heap::new!<LoError>(.LoError {
+    return heap::new!(.LoError {
         message: String::from_str("ParseError: Unexpected EOF"),
         loc: self.loc(),
     });
