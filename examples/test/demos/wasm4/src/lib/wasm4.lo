@@ -1,5 +1,3 @@
-struct wasm4 {};
-
 import from "env" {
     memory {
         min_pages: 1,

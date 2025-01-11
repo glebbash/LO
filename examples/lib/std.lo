@@ -27,8 +27,6 @@ fn abort(abort_code: AbortCode): never {
 };
 
 // memory instructions
-struct mem {};
-
 const mem::POINTER_SIZE = 4;
 const mem::PAGE_SIZE = 65_536;
 
@@ -104,8 +102,6 @@ fn free(alloc_id: u32, ptr: &void, size: u32) {
 };
 
 // stack
-struct stack {};
-
 // 1MB, ~20 pages (65_536b)
 global stack::SIZE = 1_048_576;
 
@@ -159,8 +155,6 @@ macro tmp_alloc_many!<T>(count: u32): *&T {
 };
 
 // heap
-struct heap {};
-
 struct heap::Block {
     size: u32,
     used: bool,

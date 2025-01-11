@@ -1,7 +1,3 @@
-struct std {};
-
-struct std::mem {};
-
 export fn main(): u32 {
     return std::mem::align_to(12, 8);
 };

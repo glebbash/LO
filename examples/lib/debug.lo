@@ -1,9 +1,5 @@
 // provided by utils.mjs
 // useful for debugging when WASI fd_write is not available
-struct debug_u32 {};
-
-struct debug_u32_2 {};
-
 import from "console" {
     fn debug_u32::log(x: u32);
 

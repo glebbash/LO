@@ -1,5 +1,3 @@
-struct wasi {};
-
 type wasi::Err = u32;
 
 const wasi::Err::SUCCESS = 0;
