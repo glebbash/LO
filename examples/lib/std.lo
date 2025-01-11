@@ -315,8 +315,9 @@ fn Vec::swap(&self, index1: u32, index2: u32) {
     self._panic_if_out_of_bounds!(index1);
     self._panic_if_out_of_bounds!(index2);
     let item_size = self.item_size;
-    // TODO: find a way to format this nicer
-    mem::swap((self.data as u32 + index1 * item_size) as &void, (self.data as u32 + index2 * item_size) as &void, item_size);
+    let item_addr1 = (self.data as u32 + index1 * item_size) as &void;
+    let item_addr2 = (self.data as u32 + index2 * item_size) as &void;
+    mem::swap(item_addr1, item_addr2, item_size);
 };
 
 macro Vec::push!<T>(&self, item: T) {
@@ -329,10 +330,10 @@ fn Vec::push(&self): &void {
 };
 
 fn Vec::push_all(&self, items: &void, items_len: u32) {
-    let old_len = self.size;
-    self._grow_to_size(old_len + items_len);
-    // TODO: find a way to format this nicer
-    mem::copy!(items, (self.data as u32 + old_len * self.item_size) as &void, items_len * self.item_size);
+    let prev_len = self.size;
+    self._grow_to_size(prev_len + items_len);
+    let items_dest = (self.data as u32 + prev_len * self.item_size) as &void;
+    mem::copy!(items, items_dest, items_len * self.item_size);
 };
 
 fn Vec::append(&self, other: &Vec) {
