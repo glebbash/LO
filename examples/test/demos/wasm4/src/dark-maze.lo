@@ -145,7 +145,7 @@ fn mark_checked(x: i32, y: i32, checked: &Vec of u32): bool {
             return false;
         };
     };
-    checked.push!<u32>(pos);
+    checked.push!(pos);
     return true;
 };
 

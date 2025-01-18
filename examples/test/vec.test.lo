@@ -16,7 +16,7 @@ export fn vec_len(vec: &Vec): u32 {
 };
 
 export fn vec_push_u8(vec: &Vec, item: u8) {
-    vec.push!<u8>(item);
+    vec.push!(item);
 };
 
 export fn vec_get_u8(vec: &Vec, index: u32): u8 {

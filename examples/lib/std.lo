@@ -63,7 +63,7 @@ fn mem::swap(ref1: &void, ref2: &void, size: u32) {
 const alloc::STACK = 0;
 const alloc::HEAP = 1;
 
-macro new!<T>(alloc_id: u32, value: T): &T {
+macro new!(alloc_id: u32, value: infer T): &T {
     let ptr = alloc(alloc_id, sizeof T) as &T;
     *ptr = value;
     ptr;
@@ -270,7 +270,7 @@ fn Vec::with_capacity(capacity: u32, item_size: u32): &Vec {
 };
 
 fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32): &Vec {
-    return new!<Vec>(alloc_id, .Vec {
+    return new!(alloc_id, .Vec {
         data: alloc(alloc_id, capacity * item_size),
         size: 0,
         capacity: capacity,
@@ -292,7 +292,7 @@ macro Vec::get!<T>(&self, index: u32): T {
     *self.at!<T>(index);
 };
 
-macro Vec::set!<T>(&self, index: u32, item: T) {
+macro Vec::set!(&self, index: u32, item: infer T) {
     *self.at!<T>(index) = item;
 };
 
@@ -314,7 +314,7 @@ fn Vec::swap(&self, index1: u32, index2: u32) {
     mem::swap(item_addr1, item_addr2, item_size);
 };
 
-macro Vec::push!<T>(&self, item: T) {
+macro Vec::push!(&self, item: infer T) {
     *(self.push() as &T) = item;
 };
 
@@ -429,7 +429,7 @@ fn String::push_str(self, value: str) {
 };
 
 fn String::push(self, c: u8) {
-    self.chars.push!<u8>(c);
+    self.chars.push!(c);
 };
 
 fn String::char_at(self, index: u32): u8 {

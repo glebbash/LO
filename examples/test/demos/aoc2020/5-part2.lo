@@ -10,7 +10,7 @@ fn main() {
     let seat_ids = Vec::with_capacity!<u32>(tickets_count);
     for i in 0..tickets_count {
         let seat_id = parse_seat_id(input.skip_chars(i * 11));
-        seat_ids.push!<u32>(seat_id);
+        seat_ids.push!(seat_id);
     };
     selection_sort(seat_ids);
     let prev_seat_id = 0;

@@ -37,7 +37,7 @@ fn StringMap::contains_key(self, key: str): bool {
     return !is_null!<void>(self.get(key));
 };
 
-macro StringMap::insert!<T>(self, key: String, item: T) {
+macro StringMap::insert!(self, key: String, item: infer T) {
     let existing = self.get!<T>(key.as_str());
     if existing {
         *existing = item;

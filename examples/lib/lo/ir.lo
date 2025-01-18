@@ -176,26 +176,26 @@ fn LoInstr::lower_all(exprs: &Vec of LoInstr, out: &Vec of WasmInstr) {
 // TODO: implement complete
 fn LoInstr::lower(self, out: &Vec of WasmInstr) {
     if self.kind == LoInstr::U32Const::KIND {
-        out.push!<WasmInstr>(WasmInstr::I32Const::new(self.data as i32));
+        out.push!(WasmInstr::I32Const::new(self.data as i32));
         return;
     };
     if self.kind == LoInstr::Return::KIND {
         (*(self.data as &LoInstr)).lower(out);
-        out.push!<WasmInstr>(WasmInstr::Return::new());
+        out.push!(WasmInstr::Return::new());
         return;
     };
     if self.kind == LoInstr::U32Store::KIND {
         let store = *(self.data as &LoInstr::U32Store);
         store.address.lower(out);
         store.value.lower(out);
-        out.push!<WasmInstr>(WasmInstr::I32Store::new(0, 0));
+        out.push!(WasmInstr::I32Store::new(0, 0));
         return;
     };
     if self.kind == LoInstr::CallAndDrop::KIND {
         let call = *(self.data as &LoInstr::CallAndDrop);
         LoInstr::lower_all(call.args, out);
-        out.push!<WasmInstr>(WasmInstr::Call::new(call.fn_index));
-        out.push!<WasmInstr>(WasmInstr::Drop::new());
+        out.push!(WasmInstr::Call::new(call.fn_index));
+        out.push!(WasmInstr::Drop::new());
         return;
     };
     unreachable;

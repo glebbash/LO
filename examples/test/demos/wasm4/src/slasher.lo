@@ -48,7 +48,7 @@ fn process_input() {
     // press
     if click && !prev_click {
         if boss_health != 5 {
-            trails.push!<&Trail>(trail);
+            trails.push!(trail);
             trail = Vec::new!<Pos>();
         };
     };
@@ -57,7 +57,7 @@ fn process_input() {
         let x = (*wasm4::MOUSE_X) as i32;
         let y = (*wasm4::MOUSE_Y) as i32;
         if x >= +0 && x <= +159 && y >= +0 && y <= +159 {
-            trail.push!<Pos>(.Pos {
+            trail.push!(.Pos {
                 x: x,
                 y: y,
             });
@@ -84,9 +84,9 @@ fn process_input() {
             let random_trail = trails.get!<&Trail>(random_i);
             flip_trail_randomly(random_trail);
             if showing_trails.size == 0 {
-                showing_trails.push!<&Trail>(random_trail);
+                showing_trails.push!(random_trail);
             } else {
-                showing_trails.set!<&Trail>(0, random_trail);
+                showing_trails.set!(0, random_trail);
             };
         };
     };

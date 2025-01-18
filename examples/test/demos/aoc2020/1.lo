@@ -29,7 +29,7 @@ fn parse_numbers(input: String): &Vec of u32 {
             current_number += (c - '0') as u32;
         };
         if c == '\n' {
-            numbers.push!<u32>(current_number);
+            numbers.push!(current_number);
             current_number = 0;
         };
     };

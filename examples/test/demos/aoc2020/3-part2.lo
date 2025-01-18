@@ -31,13 +31,13 @@ fn Map::parse(input: String): Map {
     for i in 0..input.len() {
         let c = input.char_at(i);
         if c == '#' {
-            current_row.push!<Tile>(Tile::TREE);
+            current_row.push!(Tile::TREE);
         };
         if c == '.' {
-            current_row.push!<Tile>(Tile::EMPTY);
+            current_row.push!(Tile::EMPTY);
         };
         if c == '\n' {
-            rows.push!<&Vec of Tile>(current_row);
+            rows.push!(current_row);
             current_row = Vec::new!<Tile>();
         };
     };

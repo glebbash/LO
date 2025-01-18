@@ -231,7 +231,7 @@ fn LoLexer::lex_all(&self): Result<&LoTokenStream, &LoError> {
         if self.index >= self.chars.size {
             break;
         };
-        tokens.push!<LoToken>(self.lex_token()?);
+        tokens.push!(self.lex_token()?);
         self.skip_space();
     };
     return Ok(LoTokenStream::new(tokens, self.loc()));
