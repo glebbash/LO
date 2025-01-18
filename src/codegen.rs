@@ -1083,7 +1083,11 @@ impl CodeGen {
                 }
 
                 let self_type_name = &fn_decl.fn_name.parts[0];
-                let self_type = self.get_type_or_err(self_type_name, &fn_decl.loc)?;
+                let mut self_type_loc = fn_decl.fn_name.loc.clone();
+                self_type_loc.end_pos = self_type_loc.pos.clone();
+                self_type_loc.end_pos.offset += self_type_name.len();
+                self_type_loc.end_pos.col += self_type_name.len();
+                let self_type = self.get_type_or_err(self_type_name, &self_type_loc)?;
 
                 if let FnParamType::Self_ = fn_param.param_type {
                     return Ok(self_type);
