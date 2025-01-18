@@ -10,8 +10,7 @@ fn LoContext::new(): &LoContext {
         memories: StringMap::new!<u32>(),
         fn_bodies: Vec::new!<LoFnBody>(),
         imported_fns_count: 0,
-        type_scope: heap::new!(.LoTypeScope {
-        }),
+        type_scope: heap::new!(.LoTypeScope {}),
     });
 };
 

@@ -565,6 +565,12 @@ impl Printer {
             }) => {
                 stdout_write(".");
                 stdout_write(&struct_name.repr);
+
+                if fields.len() == 0 {
+                    stdout_write(" {}");
+                    return;
+                }
+
                 stdout_writeln(" {");
                 self.indent += 1;
                 for field in fields {
