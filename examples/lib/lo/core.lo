@@ -1,5 +1,21 @@
-include "./core-types.lo";
-include "./parser.lo";
+include "../../lo.lo";
+
+struct LoIncludedFile {
+    path: String,
+    contents: String,
+};
+
+// TODO: add free
+struct LoContext {
+    included_files: &Vec of LoIncludedFile,
+    wasm_module: &WasmModule,
+    fn_defs: StringMap of LoFnDef,
+    fn_exports: &Vec of LoFnExport,
+    memories: StringMap of u32,
+    fn_bodies: &Vec of LoFnBody,
+    imported_fns_count: u32,
+    type_scope: &LoTypeScope,
+};
 
 fn LoContext::new(): &LoContext {
     return heap::new!(.LoContext {

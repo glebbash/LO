@@ -1,6 +1,13 @@
 include "./lib/cli.lo";
 include "./lib/args.lo";
+include "./lib/fs.lo";
+include "./lib/string_map.lo";
+include "./lib/lo/wasm.lo";
+include "./lib/lo/utils.lo";
+include "./lib/lo/lexer.lo";
+include "./lib/lo/ir.lo";
 include "./lib/lo/core.lo";
+include "./lib/lo/parser.lo";
 
 fn main() {
     let args = Args::load();

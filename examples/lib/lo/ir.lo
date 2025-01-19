@@ -1,9 +1,4 @@
-include "../std.lo";
-include "../fs.lo";
-include "../string_map.lo";
-include "./utils.lo";
-include "./wasm.lo";
-include "./lexer.lo";
+include "../../lo.lo";
 
 type LoType::_ = u32;
 
