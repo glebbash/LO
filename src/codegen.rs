@@ -1614,8 +1614,8 @@ impl CodeGen {
                         self.print_inspection(inspect_info);
                     }
 
-                    self.codegen_var_get(ctx, instrs, &var)?;
                     self.codegen_var_set_prepare(ctx, instrs, &var);
+                    self.codegen_var_get(ctx, instrs, &var)?;
                     self.codegen(ctx, instrs, rhs)?;
                     let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
                     instrs.push(WasmInstr::BinaryOp { kind });

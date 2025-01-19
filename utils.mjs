@@ -706,12 +706,11 @@ async function testCommand() {
         }
     );
 
-    // TODO: fix and enable
-    testCompilers("lexer.test.lo (vS unit test)", {}, async (compile) => {
+    testCompilers("lexer.test.lo (vS unit test)", { v1 }, async (compile) => {
         const program = await compile("./examples/test/lexer.test.lo");
 
         const stdout = new WASI.VirtualFD();
-        await runWASI(program, { stdout, preopens: {} });
+        await runWASI(program, { stdout, preopens: { ".": "." } });
         const output = stdout.flushAndReadUtf8();
 
         assert.strictEqual(
