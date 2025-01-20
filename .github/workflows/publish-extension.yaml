@@ -1,0 +1,21 @@
+name: Publish VS Code Extension
+
+on:
+  push:
+    paths:
+      - vscode-ext/lo.vsix
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - run: npx vsce publish --packagePath ./vscode-ext/lo.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - run: npx ovsx publish --packagePath ./vscode-ext/lo.vsix
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
