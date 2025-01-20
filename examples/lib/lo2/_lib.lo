@@ -1,0 +1,128 @@
+// dependencies:
+include "../args.lo";
+include "../print.lo";
+// components:
+include "./ast.lo";
+include "./codegen.lo";
+include "./core.lo";
+include "./lexer.lo";
+include "./parser.lo";
+include "./printer.lo";
+include "./wasm_eval.lo";
+include "./wasm_parser.lo";
+include "./wasm.lo";
+
+export memory {
+};
+
+const USAGE = "Usage: lo <file> [<mode>]
+  Where <mode> is either:
+    --compile (default if not provided)
+    --inspect
+    --pretty-print
+    --eval (experimental)
+    --eval-wasm (experimental)";
+
+export fn _start() {
+    let res = try_start();
+    stdout_disable_buffering();
+    res catch err_message {
+        eputs(err_message.as_str());
+        eputs("\n");
+        proc_exit(1);
+    };
+};
+
+fn try_start(): Result<void, String> {
+    let args = Args::load();
+    defer args.free();
+    if args.argc < 2 {
+        return Err(String::from_str(USAGE));
+    };
+    let file_name = args.get(1);
+    if file_name.equals("-i") {
+        file_name = "<stdin>";
+    };
+    let compiler_mode = CompilerMode::Compile;
+    if args.argc >= 3 {
+        let compiler_mode_arg = args.get(2);
+        if compiler_mode_arg.equals("--compile") {
+            compiler_mode = CompilerMode::Compile;
+        } else if compiler_mode_arg.equals("--inspect") {
+            compiler_mode = CompilerMode::Inspect;
+        } else if compiler_mode_arg.equals("--pretty-print") {
+            compiler_mode = CompilerMode::PrettyPrint;
+        } else if compiler_mode_arg.equals("--eval") {
+            compiler_mode = CompilerMode::Eval;
+        } else if compiler_mode_arg.equals("--eval-wasm") {
+            compiler_mode = CompilerMode::EvalWasm;
+        } else {
+            let err_message = String::from_str("Unknown compiler mode: ");
+            err_message.push_str(compiler_mode_arg);
+            err_message.push_str("\n");
+            err_message.push_str(USAGE);
+            return Err(err_message);
+        };
+    };
+    if compiler_mode == CompilerMode::PrettyPrint {
+        let fm = FileManager::new();
+        defer fm.free();
+        // TODO: port
+        // let (file_index, file_contents) = fm
+        //     .include_file(file_name, &LoLocation::internal())
+        //     .map_err(|err| err.to_string(&fm))?;
+        // let tokens = Lexer::lex(file_index, &file_contents.unwrap())
+        //     .map_err(|err| err.to_string(&fm))?;
+        // let ast = Parser::parse(tokens).map_err(|err| err.to_string(&fm))?;
+        stdout_enable_buffering();
+        // TODO: port
+        // Printer::print(Rc::new(ast));
+        return Ok();
+    };
+    if compiler_mode == CompilerMode::EvalWasm {
+        let module_bytes = file_read(file_name)?;
+        // TODO: port
+        // let wasm_module = WasmParser::parse(String::from(file_name), module_bytes)?;
+        // WasmEval::eval(wasm_module).map_err(|err| err.message)?;
+        return Ok();
+    };
+    if compiler_mode == CompilerMode::Inspect {
+        stdout_enable_buffering();
+    };
+    // TODO: port
+    // let mut codegen = CodeGen::new(compiler_mode);
+    // let (file_index, file_contents) = codegen
+    //     .fm
+    //     .include_file(file_name, &LoLocation::internal())
+    //     .map_err(|err| err.to_string(&codegen.fm))?;
+    // let mut asts = Vec::new();
+    // parse_file_tree(
+    //     compiler_mode,
+    //     &mut codegen.fm,
+    //     &mut asts,
+    //     file_index,
+    //     file_contents.unwrap(),
+    // )
+    // .map_err(|err| err.to_string(&codegen.fm))?;
+    // for ast in asts {
+    //     codegen
+    //         .process_file(ast)
+    //         .map_err(|err| err.to_string(&codegen.fm))?;
+    // }
+    // codegen.errors.print_all(&codegen.fm)?;
+    // let wasm_module = codegen
+    //     .generate()
+    //     .map_err(|err| err.to_string(&codegen.fm))?;
+    if compiler_mode == CompilerMode::Compile {
+        let binary = String::new(16);
+        defer binary.free();
+        // TODO: port
+        // wasm_module.dump(binary);
+        puts(binary.as_str());
+    };
+    if compiler_mode == CompilerMode::Eval {
+        // TODO: port
+        // WasmEval::eval(wasm_module).map_err(|err| err.message)?;
+    };
+    return Ok();
+};

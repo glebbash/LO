@@ -1,0 +1,48 @@
+include "./_lib.lo";
+
+type CompilerMode = u8;
+
+const CompilerMode::Compile = 0 as u8;
+const CompilerMode::Inspect = 1 as u8;
+const CompilerMode::PrettyPrint = 2 as u8;
+const CompilerMode::Eval = 3 as u8;
+const CompilerMode::EvalWasm = 4 as u8;
+
+macro todo!() {
+    unreachable;
+};
+
+fn proc_exit(exit_code: u32) {
+    todo!();
+};
+
+fn file_read(file_path: str): Result<String, String> {
+    todo!();
+};
+
+fn stdout_enable_buffering() {
+    todo!();
+};
+
+fn stdout_disable_buffering() {
+    todo!();
+};
+
+struct FileInfo {
+    file_index: u32,
+    file_path: String,
+};
+
+struct FileManager {
+    files: &Vec of FileInfo,
+};
+
+fn FileManager::new(): FileManager {
+    return .FileManager {
+        files: Vec::new!<FileInfo>(),
+    };
+};
+
+fn FileManager::free(self) {
+    todo!();
+};
