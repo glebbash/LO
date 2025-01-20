@@ -1,5 +1,3 @@
-use core::usize;
-
 use crate::{ast::*, core::*};
 use alloc::{rc::Rc, string::ToString, vec::Vec};
 

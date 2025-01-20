@@ -1,6 +1,5 @@
 use crate::{ast::*, core::*, lexer::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
-
 use LoTokenType::*;
 
 pub struct Parser {

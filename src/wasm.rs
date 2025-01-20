@@ -1,4 +1,4 @@
-use ::alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 #[derive(Default, Clone, Debug, PartialEq, PartialOrd)]
 pub struct WasmModule {
