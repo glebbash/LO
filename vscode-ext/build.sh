@@ -2,9 +2,11 @@
 set -e
 
 main() {
+    rm -rf assets/initial-project
     mkdir assets/initial-project
     cp -r ../examples/lib assets/initial-project
     cp ../examples/test/demos/hello-world.lo assets/initial-project/main.lo
+    sed -i '1s|../../lib/cli.lo|./lib/cli.lo|' assets/initial-project/main.lo
     cp ../lo.wasm assets/initial-project/lo.wasm
 
     npm version patch
