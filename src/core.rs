@@ -219,11 +219,11 @@ pub fn stdout_writeln(message: impl AsRef<str>) {
 static STDOUT_BUFFER: RefCell<Option<Vec<u8>>> = RefCell::new(None);
 const STDOUT_BUFFER_SIZE: usize = 4096;
 
-pub fn stdout_enable_bufferring() {
+pub fn stdout_enable_buffering() {
     *STDOUT_BUFFER.borrow_mut() = Some(Vec::with_capacity(STDOUT_BUFFER_SIZE));
 }
 
-pub fn stdout_disable_bufferring() {
+pub fn stdout_disable_buffering() {
     if let Some(buffer) = &mut *STDOUT_BUFFER.borrow_mut() {
         if !buffer.is_empty() {
             fputs(wasi::FD_STDOUT, &buffer);
@@ -347,18 +347,26 @@ impl default::Default for FileManager {
     }
 }
 
+pub struct IncludedFile {
+    pub file_index: u32,
+    pub file_contents: Option<String>,
+}
+
 impl FileManager {
     pub fn include_file(
         &mut self,
         file_name: &str,
         loc: &LoLocation,
-    ) -> Result<(u32, Option<String>), LoError> {
+    ) -> Result<IncludedFile, LoError> {
         let parent_path = self.get_file_path(loc.file_index);
         let absolute_file_path = resolve_path(file_name, parent_path);
 
         for parsed_file in &self.files {
             if parsed_file.file_path == absolute_file_path {
-                return Ok((parsed_file.file_index, None));
+                return Ok(IncludedFile {
+                    file_index: parsed_file.file_index,
+                    file_contents: None,
+                });
             }
         }
 
@@ -373,7 +381,10 @@ impl FileManager {
             file_path: absolute_file_path.into(),
         });
 
-        Ok((file_index, Some(file_contents)))
+        Ok(IncludedFile {
+            file_index,
+            file_contents: Some(file_contents),
+        })
     }
 
     pub fn get_file_path(&self, file_index: u32) -> &str {

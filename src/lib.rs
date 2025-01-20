@@ -54,7 +54,7 @@ mod wasi_api {
     pub extern "C" fn _start() {
         let err = start().err();
 
-        stdout_disable_bufferring();
+        stdout_disable_buffering();
 
         if let Some(err_message) = err {
             stderr_write(err_message);
@@ -101,15 +101,18 @@ mod wasi_api {
 
         if compiler_mode == CompilerMode::PrettyPrint {
             let mut fm = FileManager::default();
-            let (file_index, file_contents) = fm
+            let included_file = fm
                 .include_file(file_name, &LoLocation::internal())
                 .map_err(|err| err.to_string(&fm))?;
 
-            let tokens = Lexer::lex(file_index, &file_contents.unwrap())
-                .map_err(|err| err.to_string(&fm))?;
+            let tokens = Lexer::lex(
+                included_file.file_index,
+                &included_file.file_contents.unwrap(),
+            )
+            .map_err(|err| err.to_string(&fm))?;
             let ast = Parser::parse(tokens).map_err(|err| err.to_string(&fm))?;
 
-            stdout_enable_bufferring();
+            stdout_enable_buffering();
             Printer::print(Rc::new(ast));
 
             return Ok(());
@@ -126,12 +129,12 @@ mod wasi_api {
         }
 
         if compiler_mode == CompilerMode::Inspect {
-            stdout_enable_bufferring();
+            stdout_enable_buffering();
         }
 
         let mut codegen = CodeGen::new(compiler_mode);
 
-        let (file_index, file_contents) = codegen
+        let included_file = codegen
             .fm
             .include_file(file_name, &LoLocation::internal())
             .map_err(|err| err.to_string(&codegen.fm))?;
@@ -141,8 +144,8 @@ mod wasi_api {
             compiler_mode,
             &mut codegen.fm,
             &mut asts,
-            file_index,
-            file_contents.unwrap(),
+            included_file.file_index,
+            included_file.file_contents.unwrap(),
         )
         .map_err(|err| err.to_string(&codegen.fm))?;
 
@@ -194,17 +197,16 @@ mod wasi_api {
                 continue;
             };
 
-            let (target_file_index, file_contents) =
-                fm.include_file(&include.file_path.unescape(), &include.loc)?;
+            let included_file = fm.include_file(&include.file_path.unescape(), &include.loc)?;
 
-            if let Some(file_contents) = file_contents {
-                parse_file_tree(mode, fm, asts, target_file_index, file_contents)?;
+            if let Some(file_contents) = included_file.file_contents {
+                parse_file_tree(mode, fm, asts, included_file.file_index, file_contents)?;
             }
 
             if mode == CompilerMode::Inspect {
                 let source_index = file_index;
                 let source_range = RangeDisplay(&include.loc);
-                let target_index = target_file_index;
+                let target_index = included_file.file_index;
                 let target_range = "1:1-1:1";
 
                 stdout_writeln(format!(

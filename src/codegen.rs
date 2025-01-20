@@ -145,6 +145,7 @@ struct LoScope {
     scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
     macro_args: Vec<LoConstDef>,
+    // TODO: don't use tuples
     macro_type_args: Vec<(String, LoType)>,
 }
 
@@ -384,6 +385,7 @@ pub struct CodeGen {
     memory: Option<MemoryDefExpr>,
     memory_imported_from: Option<String>,
     datas: RefCell<Vec<WasmData>>,
+    // TODO: don't use tuples
     string_pool: RefCell<Vec<(String, u32)>>,
     data_size: RefCell<u32>,
 
@@ -2094,6 +2096,7 @@ impl CodeGen {
         Ok(return_type)
     }
 
+    // TODO: don't use tuples
     fn populate_ctx_from_macro_call(
         &self,
         ctx: &mut LoExprContext,
@@ -2225,6 +2228,7 @@ impl CodeGen {
         Ok(())
     }
 
+    // TODO: don't use tuples
     fn codegen_catch(
         &self,
         ctx: &mut LoExprContext,
@@ -2471,6 +2475,7 @@ impl CodeGen {
         }
     }
 
+    // TODO: don't use tuples
     fn get_result_literal_type(
         &self,
         ctx: &LoExprContext,
@@ -3011,6 +3016,7 @@ impl CodeGen {
         return addr_local_index;
     }
 
+    // TODO: don't use tuples
     fn get_struct_or_struct_ref_field(
         &self,
         _ctx: &LoExprContext,
@@ -3341,6 +3347,7 @@ impl CodeGen {
         local_index
     }
 
+    // TODO: don't use tuples
     fn assert_catchable_type<'a>(
         &self,
         expr_type: &'a LoType,
@@ -3393,6 +3400,7 @@ impl CodeGen {
         Ok(code_unit)
     }
 
+    // TODO: don't use tuples
     fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<(u32, u32), LoError> {
         if self.memory.is_none() && self.mode != CompilerMode::Inspect {
             return Err(LoError {
@@ -3977,6 +3985,7 @@ impl CodeGen {
         None
     }
 
+    // TODO: don't use tuples
     fn get_fn_info(&self, fn_name: &str) -> Option<(&LoFnInfo, &WasmFnInfo)> {
         for wasm_fn_info in &self.wasm_functions {
             if wasm_fn_info.fn_name == fn_name {

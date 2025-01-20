@@ -15,9 +15,9 @@ impl Printer {
             comments_printed: 0,
         };
 
-        stdout_enable_bufferring();
+        stdout_enable_buffering();
         printer.print_file();
-        stdout_disable_bufferring();
+        stdout_disable_buffering();
     }
 
     fn print_file(&mut self) {

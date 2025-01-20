@@ -24,6 +24,7 @@ pub struct WasmEval {
     call_stack: Vec<CallFrame>,
     memory: LinearMemory,
     host_fns: Vec<String>,
+    // TODO: don't use tuples
     jump_tables: Vec<(u32, JumpTable)>,
 }
 
