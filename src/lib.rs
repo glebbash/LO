@@ -163,7 +163,7 @@ mod wasi_api {
         if compiler_mode == CompilerMode::Compile {
             let mut binary = Vec::new();
             wasm_module.dump(&mut binary);
-            fputs(wasi::FD_STDOUT, binary.as_slice());
+            stdout_write(binary.as_slice());
         }
 
         if compiler_mode == CompilerMode::Eval {

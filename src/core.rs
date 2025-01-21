@@ -210,7 +210,7 @@ fn fd_read_all(fd: u32) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
-pub fn stdout_writeln(message: impl AsRef<str>) {
+pub fn stdout_writeln(message: impl AsRef<[u8]>) {
     stdout_write(message);
     stdout_write("\n");
 }
@@ -233,8 +233,8 @@ pub fn stdout_disable_buffering() {
     *STDOUT_BUFFER.borrow_mut() = None;
 }
 
-pub fn stdout_write(message: impl AsRef<str>) {
-    let message_bytes = message.as_ref().as_bytes();
+pub fn stdout_write(message: impl AsRef<[u8]>) {
+    let message_bytes = message.as_ref();
 
     let Some(buffer) = &mut *STDOUT_BUFFER.borrow_mut() else {
         fputs(wasi::FD_STDOUT, message_bytes);
