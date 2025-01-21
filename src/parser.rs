@@ -9,7 +9,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse(tokens: Tokens) -> Result<AST, LoError> {
+    pub fn parse(tokens: LoTokens) -> Result<AST, LoError> {
         let mut parser = Parser {
             tokens: tokens.tokens,
             tokens_processed: 0,

@@ -45,14 +45,14 @@ pub struct Lexer {
     comments: Vec<Comment>,
 }
 
-pub struct Tokens {
+pub struct LoTokens {
     pub tokens: Vec<LoToken>,
     pub end_loc: LoLocation,
     pub comments: Vec<Comment>,
 }
 
 impl Lexer {
-    pub fn lex(file_index: u32, chars: &str) -> Result<Tokens, LoError> {
+    pub fn lex(file_index: u32, chars: &str) -> Result<LoTokens, LoError> {
         let mut lexer = Lexer {
             file_index,
             chars: chars.chars().collect::<Vec<_>>(),
@@ -65,7 +65,7 @@ impl Lexer {
 
         let tokens = lexer.lex_file()?;
 
-        Ok(Tokens {
+        Ok(LoTokens {
             tokens,
             end_loc: lexer.loc(),
             comments: lexer.comments,

@@ -2718,12 +2718,12 @@ impl CodeGen {
             CodeExpr::FnCall(FnCallExpr {
                 fn_name,
                 args: _,
-                loc,
+                loc: _,
             }) => {
                 let Some((fn_info, _)) = self.get_fn_info(&fn_name.repr) else {
                     return Err(LoError {
                         message: format!("Unknown function: {}", fn_name.repr),
-                        loc: loc.clone(),
+                        loc: fn_name.loc.clone(),
                     });
                 };
 
@@ -2733,7 +2733,7 @@ impl CodeGen {
                 lhs,
                 field_name,
                 args: _,
-                loc,
+                loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
@@ -2741,7 +2741,7 @@ impl CodeGen {
                 let Some((fn_info, _)) = self.get_fn_info(&fn_name) else {
                     return Err(LoError {
                         message: format!("Unknown function: {}", fn_name),
-                        loc: loc.clone(),
+                        loc: field_name.loc.clone(),
                     });
                 };
 
