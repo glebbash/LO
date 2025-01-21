@@ -32,8 +32,6 @@ fn Args::get(self, i: u32): str {
 };
 
 fn Args::free(self) {
-    // TODO: won't need a cast if coersion is introduced
-    heap::free(self.argv as &void);
-    // TODO: won't need a cast if coersion is introduced
-    heap::free(self.argv_buf as &void);
+    heap::free!(self.argv);
+    heap::free!(self.argv_buf);
 };

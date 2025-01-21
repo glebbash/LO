@@ -213,6 +213,10 @@ fn heap::alloc(size: u32): &void {
     return heap::CURRENT_BLOCK.data!();
 };
 
+macro heap::free!(ptr: infer T) {
+    heap::free(ptr as &void);
+};
+
 fn heap::free(ptr: &void) {
     let block = heap::get_block(ptr);
     block.used = false;
@@ -277,6 +281,12 @@ fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32): &Vec 
         item_size: item_size,
         alloc_id: alloc_id,
     });
+};
+
+macro Vec::free_deep!<T>(&self) {
+    for i in 0..self.size {
+        self.get!<T>(i).free();
+    };
 };
 
 fn Vec::free(&self) {

@@ -106,8 +106,7 @@ fn LoTokenStream::free(&self) {
         let t = self.tokens.get!<LoToken>(i);
         t.free();
     };
-    // TODO: won't need a cast if coersion is introduced
-    heap::free(self as &void);
+    heap::free!(self);
 };
 
 fn LoTokenStream::expect(&self, type_: LoTokenType, repr: str): Result<LoToken, &LoError> {
