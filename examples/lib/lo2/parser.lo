@@ -1,2 +1,9 @@
+// TODO: implement the module
 include "./_lib.lo";
+
 // TODO: implement
+struct Parser {};
+
+fn Parser::parse(tokens: LoTokens): Result<AST, &LoError> {
+    todo!();
+};

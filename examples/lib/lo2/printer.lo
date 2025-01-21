@@ -1,2 +1,9 @@
+// TODO: implement the module
 include "./_lib.lo";
+
 // TODO: implement
+struct Printer {};
+
+fn Printer::print(ast: AST) {
+    todo!();
+};

@@ -1,2 +1,19 @@
+// TODO: implement the module
 include "./_lib.lo";
+
 // TODO: implement
+struct Lexer {};
+
+struct LoTokens {
+    tokens: &Vec of LoToken,
+    end_loc: LoLocation,
+    comments: &Vec of Comment,
+};
+
+fn LoTokens::free(self) {
+    todo!();
+};
+
+fn Lexer::lex(file_index: u32, file_contents: String): Result<LoTokens, &LoError> {
+    todo!();
+};

@@ -1,2 +1,9 @@
+// TODO: implement the module
 include "./_lib.lo";
+
 // TODO: implement
+struct WasmParser {};
+
+fn WasmParser::parse(file_name: String, module_bytes: String): Result<WasmModule, String> {
+    todo!();
+};
