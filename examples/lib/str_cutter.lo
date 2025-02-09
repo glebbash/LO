@@ -33,11 +33,11 @@ fn StrCutter::cut_at(self, delim: str): StrCutter {
     return .StrCutter {
         piece: .str {
             data: self.rest.data,
-            size: cut_start - cut_width - 1,
+            size: cut_start - cut_width + 1,
         },
         rest: .str {
             data: (self.rest.data as u32 + cut_start + 1) as *&u8,
-            size: self.rest.size - cut_start + 1,
+            size: self.rest.size - cut_start - 1,
         },
     };
 };

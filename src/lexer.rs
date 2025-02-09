@@ -704,7 +704,6 @@ impl PrefixOp {
 #[derive(PartialEq)]
 pub enum OpAssoc {
     L,
-    R,
     None,
 }
 
@@ -715,8 +714,8 @@ pub struct OpInfo {
 
 impl OpInfo {
     pub fn get_min_bp_for_next(&self) -> u32 {
-        if self.assoc == OpAssoc::R {
-            self.bp - 1
+        if self.assoc == OpAssoc::L {
+            self.bp + 1
         } else {
             self.bp
         }
