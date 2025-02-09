@@ -484,6 +484,19 @@ impl Parser {
             return Ok(TypeExpr::Pointer { pointee, loc });
         }
 
+        // lexer joins two `&` into `&&`
+        if let Some(_) = self.eat(Operator, "&&")? {
+            let pointee = Box::new(self.parse_type_expr()?);
+            loc.end_pos = self.prev().loc.end_pos.clone();
+            return Ok(TypeExpr::Pointer {
+                pointee: Box::new(TypeExpr::Pointer {
+                    pointee,
+                    loc: loc.clone(),
+                }),
+                loc,
+            });
+        }
+
         if let Some(_) = self.eat(Operator, "*&")? {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos.clone();

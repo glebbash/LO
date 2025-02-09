@@ -27,11 +27,10 @@ fn abort(abort_code: AbortCode): never {
 };
 
 // memory instructions
-const mem::POINTER_SIZE = 4;
 const mem::PAGE_SIZE = 65_536;
 
 fn mem::align(size: u32): u32 {
-    return mem::align_to(size, mem::POINTER_SIZE);
+    return mem::align_to(size, sizeof &void);
 };
 
 fn mem::align_to(size: u32, size_multiple: u32): u32 {
