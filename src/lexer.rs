@@ -369,8 +369,6 @@ impl Lexer {
         self.next_char(); /* `/` */
 
         loop {
-            self.next_char();
-
             let Ok(char) = self.current_char() else {
                 break;
             };
@@ -378,6 +376,8 @@ impl Lexer {
             if char == '\n' {
                 break;
             }
+
+            self.next_char();
         }
 
         loc.end_pos = self.pos();
