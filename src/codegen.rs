@@ -245,10 +245,10 @@ struct LoStructDef {
     fully_defined: bool, // used for self-reference checks
 }
 
-#[derive(Clone)]
 pub struct LoStructField {
     field_name: String,
     field_type: LoType,
+    field_layout: LoTypeLayout,
     field_index: u32,
     byte_offset: u32,
     loc: LoLocation,
@@ -260,10 +260,11 @@ struct LoGlobalDef {
     global_index: u32,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct LoTypeLayout {
     primities_count: u32,
-    byte_length: u32,
+    byte_size: u32,
+    alignment: u32,
 }
 
 enum LoVariableInfo {
@@ -713,8 +714,9 @@ impl CodeGen {
                         loc,
                     });
 
-                    let mut struct_layout = LoTypeLayout::default();
                     let mut struct_fields = Vec::<LoStructField>::new();
+                    let mut struct_primitives_count = 0;
+                    let mut struct_aligment = 1;
 
                     for field in fields {
                         for existing_field in &struct_fields {
@@ -730,19 +732,33 @@ impl CodeGen {
                             }
                         }
 
+                        let field_index = struct_primitives_count;
                         // TODO: add self reference check
                         let field_type = self.build_type(&self.const_ctx, &field.field_type)?;
+                        let mut field_layout = LoTypeLayout::default();
+                        self.get_type_layout(&field_type, &mut field_layout);
+
+                        struct_aligment = u32::max(struct_aligment, field_layout.alignment);
+                        struct_primitives_count += field_layout.primities_count;
 
                         struct_fields.push(LoStructField {
                             field_name: field.field_name,
                             field_type: field_type.clone(),
-                            field_index: struct_layout.primities_count,
-                            byte_offset: struct_layout.byte_length,
+                            field_layout,
+                            field_index,
+                            byte_offset: 0, // will be set during field alignment
                             loc: field.loc,
                         });
+                    }
 
-                        // append field's layout to total struct layout
-                        self.get_type_layout(&field_type, &mut struct_layout);
+                    // align fields
+                    let mut byte_offset = 0;
+                    for field in &mut struct_fields {
+                        byte_offset = align(byte_offset, field.field_layout.alignment);
+
+                        field.byte_offset = byte_offset;
+
+                        byte_offset += field.field_layout.byte_size;
                     }
 
                     let struct_def = self.get_struct_def_mut(&struct_name.repr).unwrap();
@@ -1730,7 +1746,7 @@ impl CodeGen {
                 self.get_type_layout(&lo_type, &mut type_layout);
 
                 instrs.push(WasmInstr::I32Const {
-                    value: type_layout.byte_length as i32,
+                    value: type_layout.byte_size as i32,
                 });
             }
             CodeExpr::MemorySize(MemorySizeExpr { loc: _ }) => {
@@ -3633,14 +3649,18 @@ impl CodeGen {
 
     fn get_type_layout<'a>(&self, lo_type: &LoType, layout: &'a mut LoTypeLayout) {
         match lo_type {
-            LoType::Never | LoType::Void => {}
+            LoType::Never | LoType::Void => {
+                layout.alignment = u32::max(layout.alignment, 1);
+            }
             LoType::Bool | LoType::U8 | LoType::I8 => {
                 layout.primities_count += 1;
-                layout.byte_length += 1;
+                layout.alignment = u32::max(layout.alignment, 1);
+                layout.byte_size = align(layout.byte_size, 1) + 1;
             }
             LoType::U16 | LoType::I16 => {
                 layout.primities_count += 1;
-                layout.byte_length += 2;
+                layout.alignment = u32::max(layout.alignment, 2);
+                layout.byte_size = align(layout.byte_size, 2) + 2;
             }
             LoType::U32
             | LoType::I32
@@ -3648,18 +3668,24 @@ impl CodeGen {
             | LoType::Pointer { pointee: _ }
             | LoType::SequencePointer { pointee: _ } => {
                 layout.primities_count += 1;
-                layout.byte_length += 4;
+                layout.alignment = u32::max(layout.alignment, 4);
+                layout.byte_size = align(layout.byte_size, 4) + 4;
             }
             LoType::U64 | LoType::I64 | LoType::F64 => {
                 layout.primities_count += 1;
-                layout.byte_length += 8;
+                layout.alignment = u32::max(layout.alignment, 8);
+                layout.byte_size = align(layout.byte_size, 8) + 8;
             }
             LoType::StructInstance { struct_name } => {
                 let struct_def = self.get_struct_def(struct_name).unwrap();
 
+                // append each field's layout to total struct layout
                 for field in &struct_def.fields {
                     self.get_type_layout(&field.field_type, layout);
                 }
+
+                layout.alignment = u32::max(layout.alignment, 1);
+                layout.byte_size = align(layout.byte_size, layout.alignment);
             }
             LoType::Result { ok_type, err_type } => {
                 self.get_type_layout(ok_type, layout);
@@ -4036,4 +4062,8 @@ impl CodeGen {
 fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {
     let resolved_receiver_type = receiver_type.deref_rec();
     format!("{resolved_receiver_type}::{method_name}")
+}
+
+fn align(value: u32, alignment: u32) -> u32 {
+    return (value + alignment - 1) / alignment * alignment;
 }

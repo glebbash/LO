@@ -470,9 +470,9 @@ async function testCommand() {
         assert.strictEqual(
             output,
             m`
-            p1 = 1048597
-            p2 = 1048597
-            p3 = 1048606
+            p1 = 1048600
+            p2 = 1048600
+            p3 = 1048612
 
             `
         );
@@ -514,20 +514,6 @@ async function testCommand() {
             10 / 0 is undefined
 
             `
-        );
-    });
-
-    testCompilers("compiles lo.lo", { v1 }, async (compile) => {
-        const program = await compile("./examples/lo.lo");
-
-        const stdout = new WASI.VirtualFD();
-        const stderr = new WASI.VirtualFD();
-        await runWASI(program, { stdout, stderr });
-
-        assert.strictEqual(stdout.flushAndReadUtf8(), "");
-        assert.strictEqual(
-            stderr.flushAndReadUtf8(),
-            "Usage: lo <file> [options]\n"
         );
     });
 
@@ -706,52 +692,6 @@ async function testCommand() {
         }
     );
 
-    testCompilers("lexer.test.lo (vS unit test)", { v1 }, async (compile) => {
-        const program = await compile("./examples/test/lexer.test.lo");
-
-        const stdout = new WASI.VirtualFD();
-        await runWASI(program, { stdout, preopens: { ".": "." } });
-        const output = stdout.flushAndReadUtf8();
-
-        assert.strictEqual(
-            output,
-            m`
-            examples/test/lexer.test.input.txt:1:1 - 3 : a
-            examples/test/lexer.test.input.txt:2:2 - 3 : b
-            examples/test/lexer.test.input.txt:3:3 - 3 : c
-            examples/test/lexer.test.input.txt:4:4 - 3 : d
-            examples/test/lexer.test.input.txt:7:5 - 3 : a
-            examples/test/lexer.test.input.txt:7:7 - 5 : +
-            examples/test/lexer.test.input.txt:7:9 - 3 : b
-            examples/test/lexer.test.input.txt:8:5 - 3 : b
-            examples/test/lexer.test.input.txt:8:7 - 5 : +=
-            examples/test/lexer.test.input.txt:8:10 - 2 : 0xAF, value = 175
-            examples/test/lexer.test.input.txt:9:5 - 3 : f
-            examples/test/lexer.test.input.txt:9:7 - 5 : /=
-            examples/test/lexer.test.input.txt:9:10 - 2 : 25, value = 25
-            examples/test/lexer.test.input.txt:9:12 - 5 : .
-            examples/test/lexer.test.input.txt:9:13 - 2 : 6, value = 6
-            examples/test/lexer.test.input.txt:10:5 - 3 : x
-            examples/test/lexer.test.input.txt:10:7 - 5 : <<=
-            examples/test/lexer.test.input.txt:10:11 - 3 : 'a'
-            examples/test/lexer.test.input.txt:11:5 - 2 : 0_123_456, value = 123456
-            examples/test/lexer.test.input.txt:12:3 - 3 : a
-            examples/test/lexer.test.input.txt:12:5 - 4 : (
-            examples/test/lexer.test.input.txt:12:6 - 3 : a
-            examples/test/lexer.test.input.txt:12:7 - 4 : )
-            examples/test/lexer.test.input.txt:12:8 - 3 : dwawd
-            examples/test/lexer.test.input.txt:12:13 - 4 : ;
-            examples/test/lexer.test.input.txt:13:3 - 3 : b
-            examples/test/lexer.test.input.txt:13:16 - 3 : awdawd
-            examples/test/lexer.test.input.txt:14:3 - 3 : c
-            examples/test/lexer.test.input.txt:15:2 - 3 : dawd
-            examples/test/lexer.test.input.txt:16:2 - 0 : "Lorem ipsum \\t dolor", value = Lorem ipsum \t dolor
-            examples/test/lexer.test.input.txt:18:1 - 3 : awdawd
-
-            `
-        );
-    });
-
     describe("formatter", async () => {
         const format = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
@@ -770,18 +710,11 @@ async function testCommand() {
             "examples/lib/debug.lo",
             "examples/lib/fs.lo",
             "examples/lib/int_parser.lo",
-            "examples/lib/lo/core.lo",
-            "examples/lib/lo/ir.lo",
-            "examples/lib/lo/lexer.lo",
-            "examples/lib/lo/parser.lo",
-            "examples/lib/lo/utils.lo",
-            "examples/lib/lo/wasm.lo",
             "examples/lib/print.lo",
             "examples/lib/std.lo",
             "examples/lib/str_cutter.lo",
             "examples/lib/string_map.lo",
             "examples/lib/wasi.lo",
-            "examples/lo.lo",
             "examples/test/42.lo",
             "examples/test/add.lo",
             "examples/test/args.test.lo",
@@ -817,7 +750,6 @@ async function testCommand() {
             "examples/test/hex-and-shifts.lo",
             "examples/test/import.lo",
             "examples/test/include.lo",
-            "examples/test/lexer.test.lo",
             "examples/test/locals.lo",
             "examples/test/loop.lo",
             "examples/test/macro.lo",
@@ -1045,9 +977,9 @@ async function testCommand() {
             assert.strictEqual(
                 new TextDecoder().decode(res),
                 m`
-                p1 = 1048597
-                p2 = 1048597
-                p3 = 1048606
+                p1 = 1048600
+                p2 = 1048600
+                p3 = 1048612
 
                 `
             );

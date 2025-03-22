@@ -156,8 +156,7 @@ macro tmp_alloc_many!<T>(count: u32): *&T {
 // heap
 struct heap::Block {
     size: u32,
-    // TODO: move alignment to the compiler
-    used: u32,
+    used: bool,
 };
 
 macro heap::Block::data!(&self): &void {
