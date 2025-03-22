@@ -1,0 +1,14 @@
+// TODO: implement the module
+include "./_.lo";
+
+// TODO: implement
+struct TopLevelExpr {};
+
+// TODO: implement
+struct AST {
+    exprs: &Vec of TopLevelExpr,
+};
+
+fn AST::free(self) {
+    todo!();
+};

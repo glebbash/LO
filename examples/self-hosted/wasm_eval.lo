@@ -1,0 +1,14 @@
+// TODO: implement the module
+include "./_.lo";
+
+// TODO: implement
+struct EvalError {
+    message: String,
+};
+
+// TODO: implement
+struct WasmEval {};
+
+fn WasmEval::eval(wasm_module: WasmModule): Result<void, &EvalError> {
+    todo!();
+};

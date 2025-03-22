@@ -1,0 +1,124 @@
+// TODO: implement the module
+include "./_.lo";
+
+type CompilerMode = u8;
+
+const CompilerMode::Compile = 0 as u8;
+const CompilerMode::Inspect = 1 as u8;
+const CompilerMode::PrettyPrint = 2 as u8;
+const CompilerMode::Eval = 3 as u8;
+const CompilerMode::EvalWasm = 4 as u8;
+
+struct LoPosition {
+    offset: u32,
+    line: u32,
+    col: u32,
+};
+
+struct LoLocation {
+    file_index: u32,
+    pos: LoPosition,
+    end_pos: LoPosition,
+};
+
+fn LoLocation::internal(): LoLocation {
+    todo!();
+};
+
+struct LoError {
+    message: String,
+    loc: LoLocation,
+};
+
+fn LoError::free(&self) {
+    todo!();
+};
+
+macro todo!() {
+    unreachable;
+};
+
+fn proc_exit(exit_code: u32) {
+    wasi::proc_exit(exit_code);
+};
+
+fn file_read(file_path: str): Result<String, String> {
+    todo!();
+};
+
+fn stdout_enable_buffering() {
+    todo!();
+};
+
+fn stdout_disable_buffering() {
+    // todo!();
+};
+
+fn stdout_write(message: str) {
+    todo!();
+};
+
+fn stderr_write(message: str) {
+    // todo!();
+    let _ = fputs(wasi::FD_STDERR, message);
+};
+
+struct LoErrorManager {
+    errors: &Vec of LoError,
+};
+
+fn LoErrorManager::report(&self, error: LoError) {
+    self.errors.push!(error);
+};
+
+struct FileInfo {
+    file_index: u32,
+    file_path: String,
+};
+
+struct FileManager {
+    files: &Vec of FileInfo,
+};
+
+fn FileManager::new(): &FileManager {
+    return heap::new!(.FileManager {
+        files: Vec::new!<FileInfo>(),
+    });
+};
+
+fn FileManager::free(&self) {
+    todo!();
+};
+
+struct OptionString {};
+
+fn OptionString::unwrap(self): String {
+    todo!();
+};
+
+struct IncludedFile {
+    file_index: u32,
+    file_contents: OptionString,
+};
+
+fn FileManager::include_file(&self, file_name: str, loc: LoLocation): Result<IncludedFile, &LoError> {
+    todo!();
+};
+
+// can't be defined earlier, depends on FileManager
+fn LoError::to_string(&self, fm: &FileManager): String {
+    todo!();
+};
+
+// can't be defined earlier, depends on FileManager
+fn LoErrorManager::print_all(&self, fm: &FileManager): Result<void, String> {
+    if self.errors.size == 0 {
+        return Ok();
+    };
+    for i in 0..self.errors.size {
+        let error = self.errors.at!<LoError>(i);
+        stderr_write(error.to_string(fm).as_str());
+        stderr_write("\n");
+    };
+    return Err(String::from_str(""));
+};

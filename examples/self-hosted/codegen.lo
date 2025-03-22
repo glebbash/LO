@@ -1,0 +1,24 @@
+// TODO: implement the module
+include "./_.lo";
+
+// TODO: implement
+struct CodeGen {
+    fm: &FileManager,
+    errors: &LoErrorManager,
+};
+
+fn CodeGen::new(compiler_mode: CompilerMode): CodeGen {
+    todo!();
+};
+
+fn CodeGen::free(self) {
+    todo!();
+};
+
+fn CodeGen::process_file(self, ast: AST): Result<void, &LoError> {
+    todo!();
+};
+
+fn CodeGen::generate(self): Result<WasmModule, &LoError> {
+    todo!();
+};

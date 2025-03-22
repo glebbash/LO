@@ -1,0 +1,13 @@
+// TODO: implement the module
+include "./_.lo";
+
+// TODO: implement
+struct WasmModule {};
+
+fn WasmModule::free(self) {
+    todo!();
+};
+
+fn WasmModule::dump(self, binary: String) {
+    todo!();
+};
