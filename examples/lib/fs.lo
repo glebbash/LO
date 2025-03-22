@@ -47,7 +47,7 @@ fn fs::_unlock() {
     if err != wasi::Err::SUCCESS {
         return;
     };
-    // alignment forced by wasmtime
+    // TODO: support alignment in std
     let fdstat = mem::align_to(tmp_alloc_many!<wasi::fdstat>(2) as u32, 8) as &wasi::fdstat;
     err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat);
     if err != wasi::Err::SUCCESS {
