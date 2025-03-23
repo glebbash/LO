@@ -2589,7 +2589,7 @@ impl CodeGen {
                 repr: _,
                 value: _,
                 tag,
-                loc: _,
+                loc,
             }) => match tag.as_deref() {
                 Some("u8") => Ok(LoType::U8),
                 Some("i8") => Ok(LoType::I8),
@@ -2601,7 +2601,7 @@ impl CodeGen {
                 Some("u64") => Ok(LoType::U64),
                 Some("i64") => Ok(LoType::I64),
                 Some("f64") => Ok(LoType::F64),
-                Some(_) => todo!(),
+                Some(_) => return Err(lo_todo!(loc.clone())),
                 None => Ok(LoType::U32),
             },
             CodeExpr::StringLiteral(StringLiteralExpr {
