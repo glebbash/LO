@@ -16,7 +16,7 @@ const wasm4::SCREEN_SIZE = 160;
 // │ Memory Addresses                                                          │
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
-const wasm4::PALETTE = 0x04 as &u32;
+const wasm4::PALETTE = 0x04 as *&u32;
 const wasm4::DRAW_COLORS = 0x14 as &u16;
 const wasm4::GAMEPAD1 = 0x16 as &u8;
 const wasm4::GAMEPAD2 = 0x17 as &u8;

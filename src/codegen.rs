@@ -515,7 +515,11 @@ impl CodeGen {
                             }
                         }
 
-                        let param_type = self.get_fn_param_type(&fn_def.decl, fn_param)?;
+                        let param_type = self.get_fn_param_type(
+                            &self.const_ctx,
+                            &fn_def.decl.fn_name,
+                            fn_param,
+                        )?;
                         inputs.push(param_type.clone());
 
                         fn_params.push(LoFnParam {
@@ -600,7 +604,11 @@ impl CodeGen {
                         };
                         let mut fn_params = Vec::new();
                         for fn_param in &fn_decl.fn_params {
-                            let param_type = self.get_fn_param_type(&fn_decl, fn_param)?;
+                            let param_type = self.get_fn_param_type(
+                                &self.const_ctx,
+                                &fn_decl.fn_name,
+                                fn_param,
+                            )?;
                             fn_type.inputs.push(param_type.clone());
                             fn_params.push(LoFnParam {
                                 param_name: fn_param.param_name.clone(),
@@ -1087,21 +1095,22 @@ impl CodeGen {
     }
 
     fn get_fn_param_type(
-        &mut self,
-        fn_decl: &FnDeclExpr,
+        &self,
+        ctx: &LoExprContext,
+        fn_name: &IdentExpr,
         fn_param: &FnParam,
     ) -> Result<LoType, LoError> {
         match &fn_param.param_type {
             FnParamType::Self_ | FnParamType::SelfRef => {
-                if fn_decl.fn_name.parts.len() == 1 {
+                if fn_name.parts.len() == 1 {
                     return Err(LoError {
                         message: format!("Cannot use self param in non-method function"),
                         loc: fn_param.loc.clone(),
                     });
                 }
 
-                let self_type_name = &fn_decl.fn_name.parts[0];
-                let mut self_type_loc = fn_decl.fn_name.loc.clone();
+                let self_type_name = &fn_name.parts[0..&fn_name.parts.len() - 1].join("::");
+                let mut self_type_loc = fn_name.loc.clone();
                 self_type_loc.end_pos = self_type_loc.pos.clone();
                 self_type_loc.end_pos.offset += self_type_name.len();
                 self_type_loc.end_pos.col += self_type_name.len();
@@ -1115,7 +1124,7 @@ impl CodeGen {
                     pointee: Box::new(self_type),
                 });
             }
-            FnParamType::Type { expr } => self.build_type(&self.const_ctx, &expr),
+            FnParamType::Type { expr } => self.build_type(ctx, &expr),
             FnParamType::Infer { name: _ } => unreachable!(),
         }
     }
@@ -2101,6 +2110,8 @@ impl CodeGen {
         receiver_arg: Option<&CodeExpr>,
         loc: &LoLocation,
     ) -> Result<LoType, LoError> {
+        ctx.enter_scope(LoScopeType::Macro);
+
         let (macro_def, _) =
             self.populate_ctx_from_macro_call(ctx, macro_name, type_args, receiver_arg, args, loc)?;
 
@@ -2113,7 +2124,6 @@ impl CodeGen {
         Ok(return_type)
     }
 
-    // TODO: don't use tuples
     fn populate_ctx_from_macro_call(
         &self,
         ctx: &mut LoExprContext,
@@ -2122,6 +2132,7 @@ impl CodeGen {
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
         loc: &LoLocation,
+        // TODO: don't use tuples
     ) -> Result<(&MacroDefExpr, Vec<LoType>), LoError> {
         let Some(macro_def) = self.get_macro_def(macro_name) else {
             return Err(LoError {
@@ -2161,7 +2172,6 @@ impl CodeGen {
                 .push((type_param.clone(), type_arg.clone()));
         }
 
-        // TODO: type check margo args against param types
         if all_args.len() != macro_def.macro_params.len() {
             return Err(LoError {
                 message: format!(
@@ -2171,6 +2181,11 @@ impl CodeGen {
                 ),
                 loc: loc.clone(),
             });
+        }
+
+        let mut arg_types = Vec::<LoType>::new();
+        for arg in &all_args {
+            arg_types.push(arg.lo_type.clone());
         }
 
         // TODO: check for const shadowing
@@ -2188,6 +2203,27 @@ impl CodeGen {
             }
 
             ctx.current_scope_mut().macro_args.push(const_def);
+        }
+
+        let mut macro_types = Vec::<LoType>::new();
+        for macro_param in &macro_def.macro_params {
+            let macro_type = if let FnParamType::Infer { name } = &macro_param.param_type {
+                ctx.get_macro_type_arg(name).unwrap().clone()
+            } else {
+                self.get_fn_param_type(ctx, &macro_def.macro_name, macro_param)?
+            };
+            macro_types.push(macro_type);
+        }
+
+        if !self.is_types_compatible(&macro_types, &arg_types) {
+            return Err(LoError {
+                message: format!(
+                    "Invalid macro args, expected {}, got {}",
+                    ListDisplay(&macro_types),
+                    ListDisplay(&arg_types)
+                ),
+                loc: loc.clone(),
+            });
         }
 
         Ok((macro_def, lo_type_args))
@@ -2245,12 +2281,12 @@ impl CodeGen {
         Ok(())
     }
 
-    // TODO: don't use tuples
     fn codegen_catch(
         &self,
         ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
+        // TODO: don't use tuples
         catch_details: Option<(&IdentExpr, &CodeBlockExpr)>,
         loc: &LoLocation,
     ) -> Result<(), LoError> {
@@ -2771,7 +2807,6 @@ impl CodeGen {
                 loc,
             }) => {
                 let mut ctx = ctx.clone();
-                ctx.enter_scope(LoScopeType::Macro);
                 self.get_macro_return_type(&mut ctx, &fn_name.repr, type_args, args, None, loc)
             }
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
@@ -2785,7 +2820,6 @@ impl CodeGen {
                 let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
 
                 let mut ctx = ctx.clone();
-                ctx.enter_scope(LoScopeType::Macro);
                 self.get_macro_return_type(&mut ctx, &macro_name, type_args, args, Some(&lhs), loc)
             }
             CodeExpr::Catch(CatchExpr {

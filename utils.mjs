@@ -134,9 +134,7 @@ async function debugWasiCommand(args) {
 
 async function testCommand() {
     const v1 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH));
-    // const vS = await loadCompilerWithWasiAPI(await v1("examples/lo.lo"));
 
-    // TODO: fix and enable vS
     testCompilers("compiles 42.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/42.lo");
 
@@ -201,7 +199,6 @@ async function testCommand() {
         assert.deepEqual(logs, [1, 2, 3]);
     });
 
-    // TODO: fix and enable vS
     testCompilers("compiles hello-world-raw.lo", { v1 }, async (compile) => {
         const program = await compile(
             "./examples/test/demos/hello-world-raw.lo"
