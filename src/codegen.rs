@@ -1800,6 +1800,7 @@ impl CodeGen {
             }
 
             CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
+                // TODO!!!: typecheck returns
                 if let Some(return_expr) = expr {
                     self.codegen(ctx, instrs, return_expr)?;
                 }
@@ -2062,7 +2063,7 @@ impl CodeGen {
             self.codegen(ctx, instrs, arg)?;
         }
 
-        if arg_types != lo_fn_info.fn_type.inputs {
+        if !self.is_types_compatible(&lo_fn_info.fn_type.inputs, &arg_types) {
             return Err(LoError {
                 message: format!(
                     "Invalid function arguments for function {}: [{}], expected [{}]",
@@ -3608,6 +3609,36 @@ impl CodeGen {
             }),
             _ => todo!(),
         }
+    }
+
+    fn is_types_compatible(&self, slots: &Vec<LoType>, values: &Vec<LoType>) -> bool {
+        if slots.len() != values.len() {
+            return false;
+        }
+
+        for i in 0..slots.len() {
+            if !self.is_type_compatible(&slots[i], &values[i]) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn is_type_compatible(&self, slot: &LoType, value: &LoType) -> bool {
+        if let LoType::Pointer { pointee } = slot {
+            if **pointee == LoType::Void {
+                if let LoType::Pointer { pointee: _ } = value {
+                    return true;
+                }
+
+                if let LoType::SequencePointer { pointee: _ } = value {
+                    return true;
+                }
+            }
+        }
+
+        slot == value
     }
 
     fn lower_type(&self, lo_type: &LoType, wasm_types: &mut Vec<WasmType>) {

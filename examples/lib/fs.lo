@@ -85,8 +85,7 @@ fn fs::read_fd(fd: u32): Result<&Vec of u8, wasi::Err> {
         if nread == 0 {
             break;
         };
-        // TODO: won't need a cast if coersion is introduced
-        output.push_all(chunk as &void, nread);
+        output.push_all(chunk, nread);
     };
     return Ok(output);
 };

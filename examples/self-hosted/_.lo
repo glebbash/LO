@@ -97,7 +97,7 @@ fn try_start(): Result<void, String> {
         let wasm_module = WasmParser::parse(String::from_str(file_name), module_bytes)?;
         defer wasm_module.free();
         WasmEval::eval(wasm_module) catch err {
-            defer heap::free!(err);
+            defer heap::free(err);
             return Err(err.message);
         };
         return Ok();
