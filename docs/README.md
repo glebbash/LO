@@ -320,7 +320,7 @@ fn main(): u32 {
   - Install [rustup](https://www.rust-lang.org/tools/install)
   - Install nightly: `rustup toolchain install nightly`
   - Add WASM target: `rustup +nightly target add wasm32-unknown-unknown`
-  - You can also find configs for GitHub Codespaces and GitPod in this repo
+  - You can also find DevContainers setup in this repo
 - Run `./build.sh`
 
     > This will build the compiler with cargo, putting resulting WASM binary into `lo.wasm`

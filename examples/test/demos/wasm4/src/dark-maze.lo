@@ -73,7 +73,7 @@ fn title_screen_update() {
     set_draw_color(Color::RED);
     wasm4::text("      X"0, +16, +116);
     set_draw_color(Color::GRAY);
-    wasm4::text("@glebbash 2024"0, +24, +146);
+    wasm4::text("@glebbash 2025"0, +24, +146);
     if just_pressed(wasm4::BUTTON_1) {
         screen = Screen::GAME;
     };
