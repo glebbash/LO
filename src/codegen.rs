@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, lexer::*, lo_todo, wasm::*};
+use crate::{ast::*, core::*, lexer::*, wasm::*};
 use alloc::{
     boxed::Box,
     format,
@@ -1289,7 +1289,7 @@ impl CodeGen {
                     });
                 }
             }
-            // TODO: support sequences of any type?
+            // TODO?: support sequences of any type
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
                 items,
@@ -2055,12 +2055,13 @@ impl CodeGen {
         args: &Vec<CodeExpr>,
         loc: &LoLocation,
     ) -> Result<(), LoError> {
-        let Some((lo_fn_info, wasm_fn_info)) = self.get_fn_info(fn_name) else {
+        let Some(wasm_fn_info) = self.get_wasm_fn_info(fn_name) else {
             return Err(LoError {
                 message: format!("Unknown function: {}", fn_name),
                 loc: loc.clone(),
             });
         };
+        let lo_fn_info = self.get_lo_fn_info(wasm_fn_info);
 
         let mut arg_types = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -2112,8 +2113,15 @@ impl CodeGen {
     ) -> Result<LoType, LoError> {
         ctx.enter_scope(LoScopeType::Macro);
 
-        let (macro_def, _) =
-            self.populate_ctx_from_macro_call(ctx, macro_name, type_args, receiver_arg, args, loc)?;
+        let macro_def = self.populate_ctx_from_macro_call(
+            ctx,
+            macro_name,
+            type_args,
+            receiver_arg,
+            args,
+            loc,
+            None,
+        )?;
 
         let return_type = if let Some(return_type) = &macro_def.return_type {
             self.build_type(ctx, return_type)?
@@ -2132,8 +2140,8 @@ impl CodeGen {
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
         loc: &LoLocation,
-        // TODO: don't use tuples
-    ) -> Result<(&MacroDefExpr, Vec<LoType>), LoError> {
+        lo_type_args: Option<&mut Vec<LoType>>,
+    ) -> Result<&MacroDefExpr, LoError> {
         let Some(macro_def) = self.get_macro_def(macro_name) else {
             return Err(LoError {
                 message: format!("Unknown macro: {}", macro_name),
@@ -2149,11 +2157,13 @@ impl CodeGen {
             all_args.push(self.build_code_unit(ctx, arg)?);
         }
 
-        let mut lo_type_args = Vec::new();
+        let lo_type_args = match lo_type_args {
+            Some(lo_type_args) => lo_type_args,
+            None => &mut Vec::new(),
+        };
         for type_arg in type_args {
             lo_type_args.push(self.build_type(ctx, &type_arg)?);
         }
-
         if lo_type_args.len() != macro_def.macro_type_params.len() {
             return Err(LoError {
                 message: format!(
@@ -2226,7 +2236,7 @@ impl CodeGen {
             });
         }
 
-        Ok((macro_def, lo_type_args))
+        Ok(macro_def)
     }
 
     // TODO: typecheck actual macro return with its specified return type
@@ -2242,8 +2252,16 @@ impl CodeGen {
     ) -> Result<(), LoError> {
         ctx.enter_scope(LoScopeType::Macro);
 
-        let (macro_def, lo_type_args) =
-            self.populate_ctx_from_macro_call(ctx, macro_name, type_args, receiver_arg, args, loc)?;
+        let mut lo_type_args = Vec::new();
+        let macro_def = self.populate_ctx_from_macro_call(
+            ctx,
+            macro_name,
+            type_args,
+            receiver_arg,
+            args,
+            loc,
+            Some(&mut lo_type_args),
+        )?;
 
         if self.mode == CompilerMode::Inspect {
             let lo_type_args = ListDisplay(&lo_type_args);
@@ -2591,6 +2609,7 @@ impl CodeGen {
                 tag,
                 loc,
             }) => match tag.as_deref() {
+                None => Ok(LoType::U32),
                 Some("u8") => Ok(LoType::U8),
                 Some("i8") => Ok(LoType::I8),
                 Some("u16") => Ok(LoType::U16),
@@ -2601,8 +2620,12 @@ impl CodeGen {
                 Some("u64") => Ok(LoType::U64),
                 Some("i64") => Ok(LoType::I64),
                 Some("f64") => Ok(LoType::F64),
-                Some(_) => return Err(lo_todo!(loc.clone())),
-                None => Ok(LoType::U32),
+                Some(tag) => {
+                    return Err(LoError {
+                        message: format!("Unknown int literal tag: {tag}"),
+                        loc: loc.clone(),
+                    })
+                }
             },
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
@@ -2764,8 +2787,7 @@ impl CodeGen {
             }) => self.build_type(ctx, casted_to),
             CodeExpr::FieldAccess(field_access) => {
                 let lhs_type = self.get_expr_type(ctx, &field_access.lhs)?;
-                let (_, field) =
-                    self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
+                let field = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
                 Ok(field.field_type.clone())
             }
             CodeExpr::FnCall(FnCallExpr {
@@ -2773,14 +2795,15 @@ impl CodeGen {
                 args: _,
                 loc: _,
             }) => {
-                let Some((fn_info, _)) = self.get_fn_info(&fn_name.repr) else {
+                let Some(wasm_fn_info) = self.get_wasm_fn_info(&fn_name.repr) else {
                     return Err(LoError {
                         message: format!("Unknown function: {}", fn_name.repr),
                         loc: fn_name.loc.clone(),
                     });
                 };
+                let lo_fn_info = self.get_lo_fn_info(wasm_fn_info);
 
-                Ok(fn_info.fn_type.output.clone())
+                Ok(lo_fn_info.fn_type.output.clone())
             }
             CodeExpr::MethodCall(MethodCallExpr {
                 lhs,
@@ -2791,14 +2814,15 @@ impl CodeGen {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
 
-                let Some((fn_info, _)) = self.get_fn_info(&fn_name) else {
+                let Some(wasm_fn_info) = self.get_wasm_fn_info(&fn_name) else {
                     return Err(LoError {
                         message: format!("Unknown function: {}", fn_name),
                         loc: field_name.loc.clone(),
                     });
                 };
+                let lo_fn_info = self.get_lo_fn_info(wasm_fn_info);
 
-                Ok(fn_info.fn_type.output.clone())
+                Ok(lo_fn_info.fn_type.output.clone())
             }
             CodeExpr::MacroFnCall(MacroFnCallExpr {
                 fn_name,
@@ -2951,7 +2975,7 @@ impl CodeGen {
     ) -> Result<LoVariableInfo, LoError> {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref())?;
 
-        let (is_ref, field) = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
+        let field = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
 
         let inspect_info = if self.mode == CompilerMode::Inspect {
             Some(InspectInfo {
@@ -2963,7 +2987,7 @@ impl CodeGen {
             None
         };
 
-        if is_ref {
+        if let LoType::Pointer { pointee: _ } = lhs_type {
             return Ok(LoVariableInfo::Stored {
                 address: self.build_code_unit(ctx, &field_access.lhs)?,
                 offset: field.byte_offset,
@@ -2995,8 +3019,6 @@ impl CodeGen {
                         inspect_info,
                     });
                 }
-                // TODO(QOL): technically parent_inspect_info returns a reference
-                //   and inspect_info's lhs_type should be changed to reference as well
                 LoVariableInfo::Stored {
                     address,
                     offset,
@@ -3067,17 +3089,13 @@ impl CodeGen {
         return addr_local_index;
     }
 
-    // TODO: don't use tuples
     fn get_struct_or_struct_ref_field(
         &self,
         _ctx: &LoExprContext,
         mut lhs_type: &LoType,
         field_access: &FieldAccessExpr,
-    ) -> Result<(bool, &LoStructField), LoError> {
-        let mut is_ref = false;
-
+    ) -> Result<&LoStructField, LoError> {
         if let LoType::Pointer { pointee } = &lhs_type {
-            is_ref = true;
             lhs_type = pointee;
         }
 
@@ -3106,7 +3124,7 @@ impl CodeGen {
             });
         };
 
-        Ok((is_ref, field))
+        Ok(field)
     }
 
     fn var_from_deref(
@@ -3325,7 +3343,12 @@ impl CodeGen {
                 drops_after: _,
                 loc,
                 inspect_info: _,
-            } => return Err(lo_todo!(loc.clone())),
+            } => {
+                return Err(LoError {
+                    message: format!("Cannot set field on a struct value"),
+                    loc: loc.clone(),
+                })
+            }
         };
 
         Ok(())
@@ -3637,7 +3660,7 @@ impl CodeGen {
         tag: Option<&str>,
     ) {
         match tag.as_deref() {
-            Some("u32") | Some("i32") | None => instrs.push(WasmInstr::I32Const { value: value }),
+            Some("u32") | Some("i32") | None => instrs.push(WasmInstr::I32Const { value }),
             Some("u64") | Some("i64") => instrs.push(WasmInstr::I64Const {
                 value: value as i64,
             }),
@@ -4076,16 +4099,19 @@ impl CodeGen {
         None
     }
 
-    // TODO: don't use tuples
-    fn get_fn_info(&self, fn_name: &str) -> Option<(&LoFnInfo, &WasmFnInfo)> {
+    fn get_wasm_fn_info(&self, fn_name: &str) -> Option<&WasmFnInfo> {
         for wasm_fn_info in &self.wasm_functions {
             if wasm_fn_info.fn_name == fn_name {
-                let lo_fn_info = &self.lo_functions[wasm_fn_info.lo_fn_index];
-                return Some((lo_fn_info, wasm_fn_info));
+                return Some(wasm_fn_info);
             }
         }
 
         None
+    }
+
+    fn get_lo_fn_info(&self, wasm_fn_info: &WasmFnInfo) -> &LoFnInfo {
+        let lo_fn_info = &self.lo_functions[wasm_fn_info.lo_fn_index];
+        return lo_fn_info;
     }
 
     fn get_global(&self, global_name: &str) -> Option<&LoGlobalDef> {

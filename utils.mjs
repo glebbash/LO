@@ -784,9 +784,7 @@ async function testCommand() {
     describe("interpreter", async () => {
         const interpret = await loadCompilerWithWasiAPI(
             await fs.readFile(COMPILER_PATH),
-            {
-                buildArgs: (fileName) => ["lo", fileName ?? "-i", "--eval"],
-            }
+            { buildArgs: (fileName) => ["lo", fileName ?? "-i", "--eval"] }
         );
 
         test("interprets 42.lo", async () => {
