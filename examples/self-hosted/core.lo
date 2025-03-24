@@ -1,6 +1,9 @@
-// TODO: implement the module
-include "./_bin.lo";
+include "../lib/wasi.lo";
+include "../lib/args.lo";
+// tmp, for use in `std*_write` functions
+include "../lib/print.lo";
 
+// TODO: implement the module
 type CompilerMode = u8;
 
 const CompilerMode::Compile = 0 as u8;
@@ -31,6 +34,10 @@ struct LoError {
 };
 
 fn LoError::free(&self) {
+    todo!();
+};
+
+fn LoError::to_string(&self, fm: &FileManager): String {
     todo!();
 };
 
@@ -71,6 +78,18 @@ fn LoErrorManager::report(&self, error: LoError) {
     self.errors.push!(error);
 };
 
+fn LoErrorManager::print_all(&self, fm: &FileManager): Result<void, String> {
+    if self.errors.size == 0 {
+        return Ok();
+    };
+    for i in 0..self.errors.size {
+        let error = self.errors.at!<LoError>(i);
+        stderr_write(error.to_string(fm).as_str());
+        stderr_write("\n");
+    };
+    return Err(String::from_str(""));
+};
+
 struct FileInfo {
     file_index: u32,
     file_path: String,
@@ -103,22 +122,4 @@ struct IncludedFile {
 
 fn FileManager::include_file(&self, file_name: str, loc: LoLocation): Result<IncludedFile, &LoError> {
     todo!();
-};
-
-// can't be defined earlier, depends on FileManager
-fn LoError::to_string(&self, fm: &FileManager): String {
-    todo!();
-};
-
-// can't be defined earlier, depends on FileManager
-fn LoErrorManager::print_all(&self, fm: &FileManager): Result<void, String> {
-    if self.errors.size == 0 {
-        return Ok();
-    };
-    for i in 0..self.errors.size {
-        let error = self.errors.at!<LoError>(i);
-        stderr_write(error.to_string(fm).as_str());
-        stderr_write("\n");
-    };
-    return Err(String::from_str(""));
 };

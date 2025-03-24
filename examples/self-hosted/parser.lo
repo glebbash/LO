@@ -1,5 +1,7 @@
 // TODO: implement the module
-include "./_bin.lo";
+include "./core.lo";
+include "./ast.lo";
+include "./lexer.lo";
 
 // TODO: implement
 struct Parser {};

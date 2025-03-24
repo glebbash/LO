@@ -1,5 +1,6 @@
 // TODO: implement the module
-include "./_bin.lo";
+include "./core.lo";
+include "./ast.lo";
 
 // TODO: implement
 struct Printer {};

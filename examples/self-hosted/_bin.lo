@@ -1,11 +1,5 @@
-// dependencies:
-include "../lib/wasi.lo";
-include "../lib/args.lo";
-// tmp, for use in `std*_write` functions
-include "../lib/print.lo";
-// components:
-include "./ast.lo";
 include "./core.lo";
+include "./ast.lo";
 include "./wasm.lo";
 include "./codegen.lo";
 include "./lexer.lo";

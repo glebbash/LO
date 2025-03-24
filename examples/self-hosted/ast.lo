@@ -1,5 +1,5 @@
 // TODO: implement the module
-include "./_bin.lo";
+include "./core.lo";
 
 // TODO: implement
 struct TopLevelExpr {};
