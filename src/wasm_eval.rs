@@ -24,8 +24,7 @@ pub struct WasmEval {
     call_stack: Vec<CallFrame>,
     memory: LinearMemory,
     host_fns: Vec<String>,
-    // TODO: don't use tuples
-    jump_tables: Vec<(u32, JumpTable)>,
+    jump_tables_per_fn_index: Vec<JumpTable>,
 }
 
 impl WasmEval {
@@ -118,10 +117,9 @@ impl WasmEval {
             });
         }
 
-        for (fn_code, i) in self.wasm_module.codes.iter().zip(0..) {
-            let fn_index = (self.fn_imports_len + i) as u32;
+        for fn_code in &self.wasm_module.codes {
             let jump_table = JumpTable::for_expr(&fn_code.expr);
-            self.jump_tables.push((fn_index, jump_table));
+            self.jump_tables_per_fn_index.push(jump_table);
         }
 
         Ok(())
@@ -670,12 +668,7 @@ impl WasmEval {
     }
 
     fn get_jump_table_for_fn(&mut self, fn_index: u32) -> &'static JumpTable {
-        let jt_index = self
-            .jump_tables
-            .binary_search_by_key(&fn_index, |jt| jt.0)
-            .unwrap();
-
-        unsafe_borrow(&self.jump_tables[jt_index].1)
+        unsafe_borrow(&self.jump_tables_per_fn_index[fn_index as usize - self.fn_imports_len])
     }
 
     fn get_fn_info(&self, fn_index: u32) -> Result<(&WasmFnType, &WasmFn), EvalError> {
