@@ -1,5 +1,5 @@
 // TODO: implement the module
-include "./_.lo";
+include "./_bin.lo";
 
 // TODO: implement
 struct Printer {};
