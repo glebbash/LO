@@ -31,8 +31,6 @@ export async function runWasiProgram(
     const stdout = accumulateBytes(wasm.createReadable());
     const stderr = accumulateBytes(wasm.createReadable());
 
-    // TODO: figure out why this doesn't work
-    // { kind: "workspaceFolder" },
     let mountPoint: MountPointDescriptor = {
         kind: "vscodeFileSystem",
         uri: options.cwdUri,

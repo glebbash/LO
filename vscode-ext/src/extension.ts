@@ -242,7 +242,6 @@ export async function activate(context: vscode.ExtensionContext) {
                         fileName: redirectTo,
                         pipe: wasi.accumulateBytes(wasm.createReadable()),
                     };
-                    // TODO: this should use StdioFileDescriptor when workspaceFolder mount is setup
                     processStdio.out = {
                         kind: "pipeOut",
                         pipe: stdoutRedirect.pipe,
@@ -269,8 +268,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 const process = await wasm.createProcess(
                     command,
                     programModule,
-                    // TODO: figure out why this doesn't work
-                    // { stdio: processStdio, args, rootFileSystem }
                     {
                         stdio: processStdio,
                         args,
