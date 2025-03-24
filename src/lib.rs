@@ -149,9 +149,14 @@ mod wasi_api {
         )
         .map_err(|err| err.to_string(&codegen.fm))?;
 
+        for ast in &asts {
+            codegen
+                .process_file_pass1(ast)
+                .map_err(|err| err.to_string(&codegen.fm))?;
+        }
         for ast in asts {
             codegen
-                .process_file(ast)
+                .process_file_pass2(ast)
                 .map_err(|err| err.to_string(&codegen.fm))?;
         }
         codegen.errors.print_all(&codegen.fm)?;
@@ -192,6 +197,7 @@ mod wasi_api {
         let tokens = Lexer::lex(file_index, &file_contents)?;
         let ast = Parser::parse(tokens)?;
 
+        // pass 0: parse all included files (recursive)
         for expr in &ast.exprs {
             let TopLevelExpr::Include(include) = expr else {
                 continue;

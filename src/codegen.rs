@@ -485,10 +485,125 @@ impl CodeGen {
         return codegen;
     }
 
-    pub fn process_file(&mut self, ast: AST) -> Result<(), LoError> {
+    pub fn process_file_pass1(&mut self, ast: &AST) -> Result<(), LoError> {
+        for expr in &ast.exprs {
+            match expr {
+                TopLevelExpr::StructDef(StructDefExpr {
+                    struct_name,
+                    fields,
+                    loc,
+                }) => {
+                    if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine type {}, already defined at {}",
+                                struct_name.repr,
+                                existing_typedef.loc.to_string(&self.fm)
+                            ),
+                            loc: struct_name.loc.clone(),
+                        });
+                    }
+
+                    self.struct_defs.push(LoStructDef {
+                        struct_name: struct_name.repr.clone(),
+                        fields: Vec::new(),
+                        fully_defined: false,
+                    });
+
+                    self.type_defs.push(LoTypeDef {
+                        name: struct_name.repr.clone(),
+                        value: LoType::StructInstance {
+                            struct_name: struct_name.repr.clone(),
+                        },
+                        type_alias: false,
+                        loc: loc.clone(),
+                    });
+
+                    let mut struct_fields = Vec::<LoStructField>::new();
+                    let mut struct_primitives_count = 0;
+                    let mut struct_aligment = 1;
+
+                    for field in fields {
+                        for existing_field in &struct_fields {
+                            if existing_field.field_name == field.field_name {
+                                return Err(LoError {
+                                    message: format!(
+                                        "Cannot redefine struct field '{}', already defined at {}",
+                                        field.field_name,
+                                        existing_field.loc.to_string(&self.fm),
+                                    ),
+                                    loc: field.loc.clone(),
+                                });
+                            }
+                        }
+
+                        let field_index = struct_primitives_count;
+                        // TODO: add self reference check
+                        let field_type = self.build_type(&self.const_ctx, &field.field_type)?;
+                        let mut field_layout = LoTypeLayout::default();
+                        self.get_type_layout(&field_type, &mut field_layout);
+
+                        struct_aligment = u32::max(struct_aligment, field_layout.alignment);
+                        struct_primitives_count += field_layout.primities_count;
+
+                        struct_fields.push(LoStructField {
+                            field_name: field.field_name.clone(),
+                            field_type: field_type.clone(),
+                            field_layout,
+                            field_index,
+                            byte_offset: 0, // will be set during field alignment
+                            loc: field.loc.clone(),
+                        });
+                    }
+
+                    // align fields
+                    let mut byte_offset = 0;
+                    for field in &mut struct_fields {
+                        byte_offset = align(byte_offset, field.field_layout.alignment);
+
+                        field.byte_offset = byte_offset;
+
+                        byte_offset += field.field_layout.byte_size;
+                    }
+
+                    let struct_def = self.get_struct_def_mut(&struct_name.repr).unwrap();
+                    struct_def.fields.append(&mut struct_fields);
+                    struct_def.fully_defined = true;
+                }
+                TopLevelExpr::TypeDef(typedef) => {
+                    if let Some(existing_typedef) = self.get_typedef(&typedef.type_name.repr) {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine type {}, already defined at {}",
+                                typedef.type_name.repr,
+                                existing_typedef.loc.to_string(&self.fm)
+                            ),
+                            loc: typedef.loc.clone(),
+                        });
+                    }
+
+                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value)?;
+
+                    self.type_defs.push(LoTypeDef {
+                        name: typedef.type_name.repr.clone(),
+                        value: type_value,
+                        type_alias: true,
+                        loc: typedef.loc.clone(),
+                    });
+                }
+                _ => {} // skip, not interested
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn process_file_pass2(&mut self, ast: AST) -> Result<(), LoError> {
         for expr in ast.exprs {
             match expr {
-                TopLevelExpr::Include(_) => {} // skip, processed earlier
+                TopLevelExpr::Include(_) => {}   // skip, processed in pass 0
+                TopLevelExpr::StructDef(_) => {} // skip, processed in pass 1
+                TopLevelExpr::TypeDef(_) => {}   // skip, processed in pass 1
                 TopLevelExpr::FnDef(fn_def) => {
                     let output = match &fn_def.decl.return_type {
                         Some(return_type) => self.build_type(&self.const_ctx, return_type)?,
@@ -689,109 +804,6 @@ impl CodeGen {
                         def_expr: global,
                         global_type: value_type,
                         global_index: self.globals.len() as u32,
-                    });
-                }
-                TopLevelExpr::StructDef(StructDefExpr {
-                    struct_name,
-                    fields,
-                    loc,
-                }) => {
-                    if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
-                        return Err(LoError {
-                            message: format!(
-                                "Cannot redefine type {}, already defined at {}",
-                                struct_name.repr,
-                                existing_typedef.loc.to_string(&self.fm)
-                            ),
-                            loc: struct_name.loc,
-                        });
-                    }
-
-                    self.struct_defs.push(LoStructDef {
-                        struct_name: struct_name.repr.clone(),
-                        fields: Vec::new(),
-                        fully_defined: false,
-                    });
-
-                    self.type_defs.push(LoTypeDef {
-                        name: struct_name.repr.clone(),
-                        value: LoType::StructInstance {
-                            struct_name: struct_name.repr.clone(),
-                        },
-                        type_alias: false,
-                        loc,
-                    });
-
-                    let mut struct_fields = Vec::<LoStructField>::new();
-                    let mut struct_primitives_count = 0;
-                    let mut struct_aligment = 1;
-
-                    for field in fields {
-                        for existing_field in &struct_fields {
-                            if existing_field.field_name == field.field_name {
-                                return Err(LoError {
-                                    message: format!(
-                                        "Cannot redefine struct field '{}', already defined at {}",
-                                        field.field_name,
-                                        existing_field.loc.to_string(&self.fm),
-                                    ),
-                                    loc: field.loc,
-                                });
-                            }
-                        }
-
-                        let field_index = struct_primitives_count;
-                        // TODO: add self reference check
-                        let field_type = self.build_type(&self.const_ctx, &field.field_type)?;
-                        let mut field_layout = LoTypeLayout::default();
-                        self.get_type_layout(&field_type, &mut field_layout);
-
-                        struct_aligment = u32::max(struct_aligment, field_layout.alignment);
-                        struct_primitives_count += field_layout.primities_count;
-
-                        struct_fields.push(LoStructField {
-                            field_name: field.field_name,
-                            field_type: field_type.clone(),
-                            field_layout,
-                            field_index,
-                            byte_offset: 0, // will be set during field alignment
-                            loc: field.loc,
-                        });
-                    }
-
-                    // align fields
-                    let mut byte_offset = 0;
-                    for field in &mut struct_fields {
-                        byte_offset = align(byte_offset, field.field_layout.alignment);
-
-                        field.byte_offset = byte_offset;
-
-                        byte_offset += field.field_layout.byte_size;
-                    }
-
-                    let struct_def = self.get_struct_def_mut(&struct_name.repr).unwrap();
-                    struct_def.fields.append(&mut struct_fields);
-                    struct_def.fully_defined = true;
-                }
-                TopLevelExpr::TypeDef(typedef) => {
-                    if let Some(existing_typedef) = self.get_typedef(&typedef.type_name.repr) {
-                        return Err(LoError {
-                            message: format!(
-                                "Cannot redefine type {}, already defined at {}",
-                                typedef.type_name.repr,
-                                existing_typedef.loc.to_string(&self.fm)
-                            ),
-                            loc: typedef.loc,
-                        });
-                    }
-
-                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value)?;
-
-                    self.type_defs.push(LoTypeDef {
-                        name: typedef.type_name.repr,
-                        value: type_value,
-                        type_alias: true,
-                        loc: typedef.loc,
                     });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
