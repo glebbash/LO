@@ -371,7 +371,7 @@ struct LoConstDef {
 pub struct CodeGen {
     pub errors: LoErrorManager,
 
-    mode: CompilerMode,
+    mode: LoCommand,
     pub fm: FileManager,
 
     type_defs: Vec<LoTypeDef>,
@@ -396,7 +396,7 @@ pub struct CodeGen {
 }
 
 impl CodeGen {
-    pub fn new(mode: CompilerMode) -> Self {
+    pub fn new(mode: LoCommand) -> Self {
         let mut codegen = Self::default();
         codegen.mode = mode;
         codegen.type_defs.push(LoTypeDef {
@@ -478,7 +478,7 @@ impl CodeGen {
             loc: LoLocation::internal(),
         });
 
-        if codegen.mode == CompilerMode::Inspect {
+        if codegen.mode == LoCommand::Inspect {
             stdout_writeln("[");
         }
 
@@ -790,7 +790,7 @@ impl CodeGen {
                         GlobalDefValue::DataSize => LoType::U32,
                     };
 
-                    if self.mode == CompilerMode::Inspect {
+                    if self.mode == LoCommand::Inspect {
                         let global_name = &global.global_name.repr;
 
                         self.print_inspection(&InspectInfo {
@@ -821,7 +821,7 @@ impl CodeGen {
                     let mut const_ctx = LoExprContext::default();
                     let code_unit = self.build_code_unit(&mut const_ctx, &const_def.const_value)?;
 
-                    if self.mode == CompilerMode::Inspect {
+                    if self.mode == LoCommand::Inspect {
                         let const_name = &const_def.const_name.repr;
                         let const_type = &code_unit.lo_type;
 
@@ -1074,7 +1074,7 @@ impl CodeGen {
 
         wasm_module.types.append(&mut self.wasm_types.borrow_mut());
 
-        if self.mode == CompilerMode::Inspect {
+        if self.mode == LoCommand::Inspect {
             stdout_writeln("{ \"type\": \"end\" }");
             stdout_writeln("]");
         }
@@ -1429,7 +1429,7 @@ impl CodeGen {
 
             CodeExpr::Ident(ident) => {
                 if let Some(const_def) = self.get_const(ctx, &ident.repr) {
-                    if self.mode == CompilerMode::Inspect {
+                    if self.mode == LoCommand::Inspect {
                         self.print_inspection(&InspectInfo {
                             message: format!(
                                 "const {}: {}",
@@ -2097,7 +2097,7 @@ impl CodeGen {
             });
         }
 
-        if self.mode == CompilerMode::Inspect {
+        if self.mode == LoCommand::Inspect {
             let params = ListDisplay(&lo_fn_info.fn_params);
             let return_type = &lo_fn_info.fn_type.output;
             self.print_inspection(&InspectInfo {
@@ -2275,7 +2275,7 @@ impl CodeGen {
             Some(&mut lo_type_args),
         )?;
 
-        if self.mode == CompilerMode::Inspect {
+        if self.mode == LoCommand::Inspect {
             let lo_type_args = ListDisplay(&lo_type_args);
 
             let mut macro_args = Vec::new();
@@ -2926,7 +2926,7 @@ impl CodeGen {
         loc: LoLocation,
         linked_loc: Option<LoLocation>,
     ) -> LoVariableInfo {
-        let inspect_info = if self.mode == CompilerMode::Inspect {
+        let inspect_info = if self.mode == LoCommand::Inspect {
             Some(InspectInfo {
                 message: format!("let {}: {}", local_name, local_type),
                 loc: loc.clone(),
@@ -2962,7 +2962,7 @@ impl CodeGen {
             return Ok(LoVariableInfo::Global {
                 global_index: global.global_index,
                 global_type: global.global_type.clone(),
-                inspect_info: if self.mode == CompilerMode::Inspect {
+                inspect_info: if self.mode == LoCommand::Inspect {
                     Some(InspectInfo {
                         message: format!("global {}: {}", ident.repr, global.global_type),
                         loc: ident.loc.clone(),
@@ -2989,7 +2989,7 @@ impl CodeGen {
 
         let field = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
 
-        let inspect_info = if self.mode == CompilerMode::Inspect {
+        let inspect_info = if self.mode == LoCommand::Inspect {
             Some(InspectInfo {
                 message: format!("{}.{}: {}", lhs_type, field.field_name, field.field_type),
                 loc: field_access.field_name.loc.clone(),
@@ -3148,7 +3148,7 @@ impl CodeGen {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let LoType::Pointer { pointee } = &addr_type {
-            let inspect_info = if self.mode == CompilerMode::Inspect {
+            let inspect_info = if self.mode == LoCommand::Inspect {
                 Some(InspectInfo {
                     message: format!("<deref>: {}", pointee),
                     loc: op_loc.clone(),
@@ -3488,7 +3488,7 @@ impl CodeGen {
 
     // TODO: don't use tuples
     fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<(u32, u32), LoError> {
-        if self.memory.is_none() && self.mode != CompilerMode::Inspect {
+        if self.memory.is_none() && self.mode != LoCommand::Inspect {
             return Err(LoError {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: loc.clone(),
@@ -3533,7 +3533,7 @@ impl CodeGen {
 
     fn get_type_or_err(&self, type_name: &str, loc: &LoLocation) -> Result<LoType, LoError> {
         if let Some(typedef) = self.get_typedef(type_name) {
-            if self.mode == CompilerMode::Inspect {
+            if self.mode == LoCommand::Inspect {
                 if typedef.loc.file_index != 0 {
                     if typedef.type_alias {
                         self.print_inspection(&InspectInfo {

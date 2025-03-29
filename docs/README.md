@@ -329,8 +329,8 @@ fn main(): u32 {
 
 - Requirements:
   - Install [Node.js](https://nodejs.org/en/download/package-manager) for running tests
-- Run `./utils.mjs test`
+- Run `./utils.ts test`
 
-    > This runs tests defined in `utils.mjs`. Test programs are located in `examples/test`
+    > This runs tests defined in `utils.ts`. Test programs are located in `examples/test`
 
 > NOTE: there is currently no built-in testing solution in the compiler, existing test setup is good enough for now.

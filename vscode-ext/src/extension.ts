@@ -44,7 +44,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const compilerResult = await wasi.runWasiProgram({
             processName: "lo",
             cwdUri: workspaceUri,
-            args: [vscode.workspace.asRelativePath(document.uri), "--inspect"],
+            args: ["inspect", vscode.workspace.asRelativePath(document.uri)],
             module: ctx.compilerModule,
         });
         inspectLatency.measureAndLog(logChannel);
@@ -140,7 +140,10 @@ export async function activate(context: vscode.ExtensionContext) {
             const compilerResult = await wasi.runWasiProgram({
                 processName: "lo",
                 cwdUri: workspaceUri,
-                args: [vscode.workspace.asRelativePath(currentFile.uri)],
+                args: [
+                    "compile",
+                    vscode.workspace.asRelativePath(currentFile.uri),
+                ],
                 module: ctx.compilerModule,
             });
             compileLatency.measureAndLog(logChannel);
@@ -372,7 +375,7 @@ async function formatFile(
     const compilerResult = await wasi.runWasiProgram({
         processName: "lo",
         cwdUri: workspaceUri,
-        args: [tmpFileName, "--pretty-print"],
+        args: ["format", tmpFileName],
         module: ctx.compilerModule,
         memoryFs: {
             [tmpFileName]: new TextEncoder().encode(currentFile.getText()),

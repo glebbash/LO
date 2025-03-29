@@ -71,9 +71,9 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 3️⃣ Using Node.js
 
-- Install [Node.js](https://github.com/bytecodealliance/wasmtime)
-- Compiling files: `./utils.mjs compile <input>.lo > <output>.wasm`
-- Compiling & running files: `./utils.mjs run <input>.lo`
+- Install [Node.js 22+](https://nodejs.org/)
+- Compiling files: `./utils.ts compile <input>.lo > <output>.wasm`
+- Compiling & running files: `./utils.ts run <input>.lo`
 
 ---
 

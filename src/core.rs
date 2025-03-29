@@ -2,13 +2,13 @@ use alloc::{fmt, format, string::String, vec, vec::Vec};
 use core::{cell::RefCell, default, ffi::CStr, str};
 
 #[derive(Default, PartialEq, Clone, Copy)]
-pub enum CompilerMode {
+pub enum LoCommand {
     #[default]
     Compile,
     Inspect,
-    PrettyPrint,
+    Format,
     Eval,
-    EvalWasm,
+    Wasi,
 }
 
 #[derive(PartialEq)]

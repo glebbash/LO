@@ -358,7 +358,10 @@ export class WASI {
         let exitCode = 0;
 
         try {
-            // @ts-expect-error: _start is a function
+            if (typeof instance.exports._start !== "function") {
+                throw new Error("_start function is not exported");
+            }
+
             instance.exports._start();
         } catch (err) {
             if (!(err instanceof ProcExitError)) {

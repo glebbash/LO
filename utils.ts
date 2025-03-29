@@ -1,52 +1,49 @@
-#!/usr/bin/env -S node
-// @ts-check
+#!/usr/bin/env -S node --experimental-strip-types --disable-warning=ExperimentalWarning
 
-import { WASI } from "./wasi-shim.mjs";
 import process from "node:process";
 import { test, describe } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
+import { WASI, type WASIOptions } from "./wasi-shim.mjs";
 
 const COMPILER_PATH = "lo.wasm";
 
-const COMMANDS = {
-    compile: compileCommand,
-    run: runCommand, // compile + execute
-    runWasi: runWasiCommand, // run arbitrary .wasm file with WASI
-    debugWasi: debugWasiCommand,
-    test: testCommand,
-};
+await main();
 
-main();
+async function main() {
+    process.chdir(import.meta.dirname!);
 
-function main() {
-    process.chdir(/** @type {never} */ (import.meta.dirname));
-
-    const command = process.argv[2];
-    const args = process.argv.slice(3);
-
-    if (!(command in COMMANDS)) {
-        console.log("Invalid command:", command);
-        process.exit(1);
+    if (process.argv[2] === "test") {
+        return commandTest();
     }
 
-    COMMANDS[/** @type {keyof typeof COMMANDS} */ (command)](args);
-}
+    if (process.argv[2] === "run") {
+        return commandRun(process.argv.slice(3));
+    }
 
-async function compileCommand() {
-    const compilerArgs = process.argv.slice(3);
+    if (process.argv[2] === "debugWasi") {
+        return commandDebugWasi(process.argv.slice(3));
+    }
+
+    if (process.argv[2] === "runWasi") {
+        const filePath = new URL(process.argv[3], import.meta.url);
+        const input = await fs.readFile(filePath);
+        return runWASI(input, {
+            args: process.argv.slice(3),
+            env: process.env,
+            preopens: { ".": "." },
+        });
+    }
 
     return runWASI(await fs.readFile(COMPILER_PATH), {
         preopens: { ".": "." },
-        args: ["lo", ...compilerArgs],
+        args: ["lo", ...process.argv.slice(2)],
         returnOnExit: false,
     });
 }
 
-async function runCommand() {
-    let compilerArgs = process.argv.slice(3);
-    /** @type {string[]} */
-    let programArgs = [];
+async function commandRun(compilerArgs: string[]) {
+    let programArgs = [] as string[];
 
     const programArgsStart = compilerArgs.indexOf("--");
     if (programArgsStart !== -1) {
@@ -58,7 +55,7 @@ async function runCommand() {
     const exitCode = await runWASI(await fs.readFile(COMPILER_PATH), {
         stdout,
         preopens: { ".": "." },
-        args: ["lo", ...compilerArgs],
+        args: ["lo", "compile", ...compilerArgs],
     });
 
     if (exitCode !== 0) {
@@ -74,22 +71,10 @@ async function runCommand() {
     });
 }
 
-/** @param {string[]} args */
-async function runWasiCommand(args) {
-    const filePath = new URL(args[0], import.meta.url);
-    const input = await fs.readFile(filePath);
-    await runWASI(input, {
-        args,
-        env: process.env,
-        preopens: { ".": "." },
-    });
-}
-
 /**
  * Start an http server that runs provided WASI module for debugging with Dev Tools
- * @param {string[]} args
  */
-async function debugWasiCommand(args) {
+async function commandDebugWasi(args: string[]) {
     const filePath = new URL(args[0], import.meta.url);
 
     const http = await import("node:http");
@@ -132,10 +117,11 @@ async function debugWasiCommand(args) {
     });
 }
 
-async function testCommand() {
-    const v1 = await loadCompilerWithWasiAPI(await fs.readFile(COMPILER_PATH));
+async function commandTest() {
+    const v1Run = await loadCompiler(await fs.readFile(COMPILER_PATH));
+    const v1 = (fileName = "-i") => v1Run(["compile", fileName]);
 
-    testCompilers("compiles 42.lo", { v1 }, async (compile) => {
+    testVersions("compiles 42.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/42.lo");
 
         const program = await loadWasm(output);
@@ -144,7 +130,7 @@ async function testCommand() {
         assert.strictEqual(result, 42);
     });
 
-    testCompilers("compiles add.lo", { v1 }, async (compile) => {
+    testVersions("compiles add.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/add.lo");
 
         const program = await loadWasm(output);
@@ -152,7 +138,7 @@ async function testCommand() {
         assert.strictEqual(program.add(2, 3), 5);
     });
 
-    testCompilers("compiles factorial.lo", { v1 }, async (compile) => {
+    testVersions("compiles factorial.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/factorial.lo");
 
         const program = await loadWasm(output);
@@ -161,7 +147,7 @@ async function testCommand() {
         assert.strictEqual(result, 120);
     });
 
-    testCompilers("compiles include.lo", { v1 }, async (compile) => {
+    testVersions("compiles include.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/include.lo");
 
         const program = await loadWasm(output);
@@ -169,7 +155,7 @@ async function testCommand() {
         assert.strictEqual(program.main(), 120);
     });
 
-    testCompilers("compiles hex-and-shifts.lo", { v1 }, async (compile) => {
+    testVersions("compiles hex-and-shifts.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/hex-and-shifts.lo");
 
         const program = await loadWasm(output);
@@ -178,7 +164,7 @@ async function testCommand() {
         assert.strictEqual(result, 31);
     });
 
-    testCompilers("compiles else-if.lo", { v1 }, async (compile) => {
+    testVersions("compiles else-if.lo", { v1 }, async (compile) => {
         const output = await compile("examples/test/else-if.lo");
 
         const program = await loadWasm(output);
@@ -186,20 +172,19 @@ async function testCommand() {
         assert.strictEqual(program.main(), 13);
     });
 
-    testCompilers("compiles import.lo", { v1 }, async (compile) => {
+    testVersions("compiles import.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/import.lo");
 
-        /** @type {unknown[]} */
-        const logs = [];
+        const logs = [] as unknown[];
         const program = await loadWasm(output, {
-            utils: { debug: (/** @type {unknown} */ x) => logs.push(x) },
+            utils: { debug: (x: unknown) => logs.push(x) },
         });
 
         program.main();
         assert.deepEqual(logs, [1, 2, 3]);
     });
 
-    testCompilers("compiles hello-world-raw.lo", { v1 }, async (compile) => {
+    testVersions("compiles hello-world-raw.lo", { v1 }, async (compile) => {
         const program = await compile(
             "./examples/test/demos/hello-world-raw.lo"
         );
@@ -211,14 +196,14 @@ async function testCommand() {
         assert.strictEqual(output, "Hello World!\n");
     });
 
-    testCompilers("compiles locals.lo", { v1 }, async (compile) => {
+    testVersions("compiles locals.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/locals.lo");
 
         const program = await loadWasm(output);
         assert.deepEqual(program.sub(5, 3), 2);
     });
 
-    testCompilers("compiles globals.lo", { v1 }, async (compile) => {
+    testVersions("compiles globals.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/globals.lo");
 
         const program = await loadWasm(output);
@@ -227,7 +212,7 @@ async function testCommand() {
         assert.strictEqual(result, 69);
     });
 
-    testCompilers("compiles loop.lo", { v1 }, async (compile) => {
+    testVersions("compiles loop.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/loop.lo");
 
         const program = await loadWasm(output);
@@ -236,7 +221,7 @@ async function testCommand() {
         assert.strictEqual(result, 120);
     });
 
-    testCompilers("compiles for-loop.lo", { v1 }, async (compile) => {
+    testVersions("compiles for-loop.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/for-loop.lo");
 
         const program = await loadWasm(output);
@@ -245,7 +230,7 @@ async function testCommand() {
         assert.strictEqual(result, 138);
     });
 
-    testCompilers("compiles methods.lo", { v1 }, async (compile) => {
+    testVersions("compiles methods.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/methods.lo");
 
         const program = await loadWasm(output);
@@ -254,7 +239,7 @@ async function testCommand() {
         assert.strictEqual(result, 1);
     });
 
-    testCompilers("compiles nested-if-break.lo", { v1 }, async (compile) => {
+    testVersions("compiles nested-if-break.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/nested-if-break.lo");
 
         const program = await loadWasm(output);
@@ -263,7 +248,7 @@ async function testCommand() {
         assert.strictEqual(result, 1);
     });
 
-    testCompilers("compiles struct.lo", { v1 }, async (compile) => {
+    testVersions("compiles struct.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/struct.lo");
 
         const program = await loadWasm(output);
@@ -272,7 +257,7 @@ async function testCommand() {
         assert.strictEqual(result, 13);
     });
 
-    testCompilers(
+    testVersions(
         "compiles struct-value-field-access.lo",
         { v1 },
         async (compile) => {
@@ -287,7 +272,7 @@ async function testCommand() {
         }
     );
 
-    testCompilers("compiles decl-nesting.lo", { v1 }, async (compile) => {
+    testVersions("compiles decl-nesting.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/decl-nesting.lo");
 
         const program = await loadWasm(output);
@@ -296,7 +281,7 @@ async function testCommand() {
         assert.strictEqual(result, 16);
     });
 
-    testCompilers("compiles struct-ref.lo", { v1 }, async (compile) => {
+    testVersions("compiles struct-ref.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/struct-ref.lo");
 
         const program = await loadWasm(output);
@@ -305,7 +290,7 @@ async function testCommand() {
         assert.strictEqual(result, 3);
     });
 
-    testCompilers("compiles macro.lo", { v1 }, async (compile) => {
+    testVersions("compiles macro.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/macro.lo");
 
         const program = await loadWasm(output);
@@ -314,7 +299,7 @@ async function testCommand() {
         assert.strictEqual(result, 16);
     });
 
-    testCompilers("compiles wasi.lo", { v1 }, async (compile) => {
+    testVersions("compiles wasi.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/lib/wasi.lo");
 
         const wasi = new WASI({
@@ -325,7 +310,7 @@ async function testCommand() {
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });
 
-    testCompilers("compiles string-pooling.lo", { v1 }, async (compile) => {
+    testVersions("compiles string-pooling.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/string-pooling.lo");
 
         const program = await loadWasm(output);
@@ -334,13 +319,13 @@ async function testCommand() {
         assert.strictEqual(result, 13);
     });
 
-    testCompilers("compiles std.lo", { v1 }, async (compile) => {
+    testVersions("compiles std.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/std.test.lo");
 
         await loadWasm(output);
     });
 
-    testCompilers("compiles vec.lo", { v1 }, async (compile) => {
+    testVersions("compiles vec.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/vec.test.lo");
         const lib = await loadWasm(output);
 
@@ -369,12 +354,11 @@ async function testCommand() {
         assert.strictEqual(lib.vec_get_u8(vec, 6), 7);
         assert.strictEqual(lib.vec_len(vec), 7);
 
-        /**
-         * @param {{buffer: Uint8Array;}} memory
-         * @param {number} ptr
-         * @param {Uint8Array} data
-         */
-        function storeData(memory, ptr, data) {
+        function storeData(
+            memory: WebAssembly.Memory,
+            ptr: number,
+            data: Uint8Array
+        ) {
             const region = { ptr, size: data.byteLength };
 
             new Uint8Array(memory.buffer, region.ptr, region.size).set(data);
@@ -383,7 +367,7 @@ async function testCommand() {
         }
     });
 
-    testCompilers("compiles hello-world.lo", { v1 }, async (compile) => {
+    testVersions("compiles hello-world.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/hello-world.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -393,7 +377,7 @@ async function testCommand() {
         assert.strictEqual(output, "Hello World!\n");
     });
 
-    testCompilers("compiles echo.lo", { v1 }, async (compile) => {
+    testVersions("compiles echo.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/echo.lo");
 
         const stdin = new WASI.VirtualFD();
@@ -407,7 +391,7 @@ async function testCommand() {
         assert.strictEqual(output, "abc");
     });
 
-    testCompilers("compiles args.test.lo", { v1 }, async (compile) => {
+    testVersions("compiles args.test.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/args.test.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -417,7 +401,7 @@ async function testCommand() {
         assert.strictEqual(output, "123\n456\n789\n");
     });
 
-    testCompilers("compiles cat.lo", { v1 }, async (compile) => {
+    testVersions("compiles cat.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/demos/cat.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -434,7 +418,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles tracing.lo", { v1 }, async (compile) => {
+    testVersions("compiles tracing.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/tracing.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -447,7 +431,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles struct-in-struct.lo", { v1 }, async (compile) => {
+    testVersions("compiles struct-in-struct.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/struct-in-struct.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -457,7 +441,7 @@ async function testCommand() {
         assert.strictEqual(output, "3\n3\n3\n3\n3\n3\n3\n");
     });
 
-    testCompilers("compiles heap-alloc.lo", { v1 }, async (compile) => {
+    testVersions("compiles heap-alloc.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/heap-alloc.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -475,7 +459,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles defer.lo", { v1 }, async (compile) => {
+    testVersions("compiles defer.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/defer.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -496,7 +480,7 @@ async function testCommand() {
         );
     });
 
-    testCompilers("compiles errors.lo", { v1 }, async (compile) => {
+    testVersions("compiles errors.lo", { v1 }, async (compile) => {
         const program = await compile("./examples/test/errors.lo");
 
         const stdout = new WASI.VirtualFD();
@@ -514,14 +498,15 @@ async function testCommand() {
         );
     });
 
-    describe("<stdin> input", async () => {
-        const v1 = await loadCompilerWithWasiAPI(
-            await fs.readFile(COMPILER_PATH),
-            { mockStdin: true }
-        );
+    describe("<stdin> input", () => {
+        const v1 = v1Run;
 
-        testCompilers("compiles 42.lo", { v1 }, async (compile) => {
-            const output = await compile("./examples/test/42.lo");
+        testVersions("compiles 42.lo", { v1 }, async (run) => {
+            const stdin = new WASI.VirtualFD();
+            stdin.write(await fs.readFile("./examples/test/42.lo"));
+            stdin.flush();
+
+            const output = await run(["compile", "-i"], { stdin });
 
             const program = await loadWasm(output);
             const result = program.main();
@@ -531,7 +516,7 @@ async function testCommand() {
     });
 
     describe("aoc", () => {
-        testCompilers("compiles 2020 day 1", { v1 }, async (compile) => {
+        testVersions("compiles 2020 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/1.lo"
@@ -545,7 +530,7 @@ async function testCommand() {
             assert.strictEqual(part2, "165080960\n");
         });
 
-        testCompilers("compiles 2020 day 2", { v1 }, async (compile) => {
+        testVersions("compiles 2020 day 2", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/2.lo"
@@ -559,7 +544,7 @@ async function testCommand() {
             assert.strictEqual(part2, "303\n");
         });
 
-        testCompilers("compiles 2020 day 3", { v1 }, async (compile) => {
+        testVersions("compiles 2020 day 3", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/3.lo"
@@ -573,7 +558,7 @@ async function testCommand() {
             assert.strictEqual(part2, "7540141059\n");
         });
 
-        testCompilers("compiles 2020 day 4", { v1 }, async (compile) => {
+        testVersions("compiles 2020 day 4", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/4.lo"
@@ -587,7 +572,7 @@ async function testCommand() {
             assert.strictEqual(part2, "224\n");
         });
 
-        testCompilers("compiles 2020 day 5", { v1 }, async (compile) => {
+        testVersions("compiles 2020 day 5", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2020/5.lo"
@@ -601,7 +586,7 @@ async function testCommand() {
             assert.strictEqual(part2, "636\n");
         });
 
-        testCompilers("compiles 2023 day 1", { v1 }, async (compile) => {
+        testVersions("compiles 2023 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
                 "./examples/test/demos/aoc2023/1.lo"
@@ -615,11 +600,10 @@ async function testCommand() {
             assert.strictEqual(part2, "54265\n");
         });
 
-        /**
-         * @param {Compile} compile
-         * @param {string} path
-         */
-        async function runAoc(compile, path) {
+        async function runAoc(
+            compile: (sourcePath: string) => Promise<Uint8Array>,
+            path: string
+        ) {
             const program = await compile(path);
 
             const stdout = new WASI.VirtualFD();
@@ -645,21 +629,21 @@ async function testCommand() {
             ),
         };
 
-        testCompilers("compiles blink.lo", { v1 }, async (compile) => {
+        testVersions("compiles blink.lo", { v1 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/blink.lo"
             );
             await loadWasm(output, wasm4Imports);
         });
 
-        testCompilers("compiles dark-maze.lo", { v1 }, async (compile) => {
+        testVersions("compiles dark-maze.lo", { v1 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/dark-maze.lo"
             );
             await loadWasm(output, wasm4Imports);
         });
 
-        testCompilers("compiles slasher.lo", { v1 }, async (compile) => {
+        testVersions("compiles slasher.lo", { v1 }, async (compile) => {
             const output = await compile(
                 "./examples/test/demos/wasm4/src/slasher.lo"
             );
@@ -667,7 +651,7 @@ async function testCommand() {
         });
     });
 
-    testCompilers(
+    testVersions(
         "compiler reports multiple errors in multiple-compiler-errors.lo",
         { v1 },
         async (compile) => {
@@ -689,17 +673,8 @@ async function testCommand() {
         }
     );
 
-    describe("formatter", async () => {
-        const format = await loadCompilerWithWasiAPI(
-            await fs.readFile(COMPILER_PATH),
-            {
-                buildArgs: (fileName) => [
-                    "lo",
-                    fileName ?? "-i",
-                    "--pretty-print",
-                ],
-            }
-        );
+    describe("formatter", () => {
+        const format = (fileName = "-i") => v1Run(["format", fileName]);
 
         const formattedFiles = [
             "examples/lib/args.lo",
@@ -781,11 +756,8 @@ async function testCommand() {
         return;
     }
 
-    describe("interpreter", async () => {
-        const interpret = await loadCompilerWithWasiAPI(
-            await fs.readFile(COMPILER_PATH),
-            { buildArgs: (fileName) => ["lo", fileName ?? "-i", "--eval"] }
-        );
+    describe("interpreter", () => {
+        const interpret = (fileName = "-i") => v1Run(["eval", fileName]);
 
         test("interprets 42.lo", async () => {
             const res = await interpret("examples/test/42.lo");
@@ -934,8 +906,8 @@ async function testCommand() {
                 new TextDecoder().decode(res),
                 m`
                 lo
+                eval
                 ./examples/test/args.test.lo
-                --eval
 
                 `
             );
@@ -1074,52 +1046,33 @@ async function testCommand() {
         });
     });
 
-    /**
-     * @param {string} testName
-     * @param {Record<string, Compile>} compilers
-     * @param {(compile: Compile) => Promise<void>} testFn
-     */
-    function testCompilers(testName, compilers, testFn) {
+    function testVersions<T>(
+        testName: string,
+        compilers: Record<string, T>,
+        testFn: (compile: T) => Promise<void>
+    ) {
         for (const [compilerName, compile] of Object.entries(compilers)) {
             test(`${testName} (${compilerName})`, () => testFn(compile));
         }
     }
 
-    /** @typedef {(sourcePath: string) => Promise<Uint8Array>} Compile */
-
-    /**
-     * @param {Uint8Array} compilerWasmBinary
-     * @returns {Promise<Compile>}
-     */
-    async function loadCompilerWithWasiAPI(
-        compilerWasmBinary,
-        {
-            mockStdin = false,
-            buildArgs = (/** @type {string | undefined} */ fileName) => [
-                "lo",
-                fileName ?? "-i",
-            ],
-        } = {}
-    ) {
+    async function loadCompiler(compilerWasmBinary: Uint8Array) {
         const mod = await WebAssembly.compile(compilerWasmBinary);
 
-        /** @param {string} sourcePath */
-        return async (sourcePath) => {
-            const stdin = mockStdin ? new WASI.VirtualFD() : undefined;
-            const stdout = new WASI.VirtualFD();
-            const stderr = new WASI.VirtualFD();
-
-            if (stdin) {
-                stdin.write(await fs.readFile(sourcePath));
-                stdin.flush();
-            }
-
+        return async (
+            args = ["help"],
+            {
+                stdin = new WASI.VirtualFD(),
+                stdout = new WASI.VirtualFD(),
+                stderr = new WASI.VirtualFD(),
+            } = {}
+        ) => {
             const wasi = new WASI({
                 version: "preview1",
                 stdin,
                 stdout,
                 stderr,
-                args: buildArgs(sourcePath),
+                args: ["lo", ...args],
                 preopens: { ".": "." },
                 sysCalls: await WASI.NodeSysCalls(),
             });
@@ -1158,22 +1111,17 @@ async function testCommand() {
 
 // utils
 
-/**
- * @param {Uint8Array} data
- * @param {WebAssembly.Imports} [imports]
- * @returns {Promise<any>}
- */
-async function loadWasm(data, imports) {
+async function loadWasm(data: Uint8Array, imports?: WebAssembly.Imports) {
     const mod = await WebAssembly.instantiate(data, imports);
-    return mod.instance.exports;
+    // deno-lint-ignore no-explicit-any
+    return mod.instance.exports as any;
 }
 
-/**
- * @param {Uint8Array} data
- * @param {Omit<import("./wasi-shim.mjs").WASIOptions, 'version' | 'sysCalls'>} [wasiOptions]
- * @returns {Promise<number>}
- */
-async function runWASI(data, wasiOptions, additionalImports = {}) {
+async function runWASI(
+    data: Uint8Array,
+    wasiOptions?: Omit<WASIOptions, "version" | "sysCalls">,
+    additionalImports = {}
+) {
     const wasi = new WASI({
         version: "preview1",
         sysCalls: await WASI.NodeSysCalls(),
@@ -1192,9 +1140,7 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
     } catch (err) {
         if (err instanceof WebAssembly.RuntimeError) {
             if (err.message.includes("unreachable")) {
-                const memory = /** @type {WebAssembly.Memory} */ (
-                    instance.exports.memory
-                );
+                const memory = instance.exports.memory as WebAssembly.Memory;
                 const [errorIndicator, errorCode] = new Uint32Array(
                     memory.buffer.slice(0, 8)
                 );
@@ -1208,11 +1154,7 @@ async function runWASI(data, wasiOptions, additionalImports = {}) {
     }
 }
 
-/**
- * @param {TemplateStringsArray} strings
- * @param {unknown[]} args
- */
-function m(strings, ...args) {
+function m(strings: TemplateStringsArray, ...args: unknown[]) {
     const INDENT_PLACEHOLDER = "```";
 
     // interpolate

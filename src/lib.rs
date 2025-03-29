@@ -34,13 +34,12 @@ mod wasm_target {
 }
 
 static USAGE: &str = "\
-Usage: lo <file> [<mode>]
-  Where <mode> is either:
-    --compile (default if not provided)
-    --inspect
-    --pretty-print
-    --eval (experimental)
-    --eval-wasm (experimental)\
+Usage:
+  lo compile <input.lo>
+  lo inspect <input.lo>
+  lo format <input.lo>
+  lo eval <input.lo> (experimental)
+  lo wasi <input.lo> (experimental)\
 ";
 
 mod wasi_api {
@@ -65,41 +64,27 @@ mod wasi_api {
 
     fn start() -> Result<(), String> {
         let args = WasiArgs::load().unwrap();
-        if args.len() < 2 {
+        if args.len() < 3 {
             return Err(format!("{}", USAGE));
         }
 
-        let mut file_name = args.get(1).unwrap();
+        let command = match args.get(1).unwrap() {
+            "compile" => LoCommand::Compile,
+            "inspect" => LoCommand::Inspect,
+            "format" => LoCommand::Format,
+            "eval" => LoCommand::Eval,
+            "wasi" => LoCommand::Wasi,
+            unknown_command => {
+                return Err(format!("Unknown command: {unknown_command}\n{}", USAGE));
+            }
+        };
+
+        let mut file_name = args.get(2).unwrap();
         if file_name == "-i" {
             file_name = "<stdin>";
         }
 
-        let mut compiler_mode = CompilerMode::Compile;
-
-        if let Some(compiler_mode_arg) = args.get(2) {
-            match compiler_mode_arg {
-                "--compile" => {
-                    compiler_mode = CompilerMode::Compile;
-                }
-                "--inspect" => {
-                    compiler_mode = CompilerMode::Inspect;
-                }
-                "--pretty-print" => {
-                    compiler_mode = CompilerMode::PrettyPrint;
-                }
-                "--eval" => {
-                    compiler_mode = CompilerMode::Eval;
-                }
-                "--eval-wasm" => {
-                    compiler_mode = CompilerMode::EvalWasm;
-                }
-                unknown_mode => {
-                    return Err(format!("Unknown compiler mode: {unknown_mode}\n{}", USAGE));
-                }
-            }
-        }
-
-        if compiler_mode == CompilerMode::PrettyPrint {
+        if command == LoCommand::Format {
             let mut fm = FileManager::default();
             let included_file = fm
                 .include_file(file_name, &LoLocation::internal())
@@ -118,7 +103,7 @@ mod wasi_api {
             return Ok(());
         }
 
-        if compiler_mode == CompilerMode::EvalWasm {
+        if command == LoCommand::Wasi {
             let module_bytes = file_read(file_name)?;
 
             let wasm_module = WasmParser::parse(String::from(file_name), module_bytes)?;
@@ -128,11 +113,11 @@ mod wasi_api {
             return Ok(());
         }
 
-        if compiler_mode == CompilerMode::Inspect {
+        if command == LoCommand::Inspect {
             stdout_enable_buffering();
         }
 
-        let mut codegen = CodeGen::new(compiler_mode);
+        let mut codegen = CodeGen::new(command);
 
         let included_file = codegen
             .fm
@@ -141,7 +126,7 @@ mod wasi_api {
 
         let mut asts = Vec::new();
         parse_file_tree(
-            compiler_mode,
+            command,
             &mut codegen.fm,
             &mut asts,
             included_file.file_index,
@@ -165,13 +150,13 @@ mod wasi_api {
             .generate()
             .map_err(|err| err.to_string(&codegen.fm))?;
 
-        if compiler_mode == CompilerMode::Compile {
+        if command == LoCommand::Compile {
             let mut binary = Vec::new();
             wasm_module.dump(&mut binary);
             stdout_write(binary.as_slice());
         }
 
-        if compiler_mode == CompilerMode::Eval {
+        if command == LoCommand::Eval {
             WasmEval::eval(wasm_module).map_err(|err| err.message)?;
         }
 
@@ -179,13 +164,13 @@ mod wasi_api {
     }
 
     fn parse_file_tree(
-        mode: CompilerMode,
+        mode: LoCommand,
         fm: &mut FileManager,
         asts: &mut Vec<AST>,
         file_index: u32,
         file_contents: String,
     ) -> Result<(), LoError> {
-        if mode == CompilerMode::Inspect {
+        if mode == LoCommand::Inspect {
             let file_path = fm.get_file_path(file_index);
             stdout_writeln(format!(
                 "{{ \"type\": \"file\", \
@@ -209,7 +194,7 @@ mod wasi_api {
                 parse_file_tree(mode, fm, asts, included_file.file_index, file_contents)?;
             }
 
-            if mode == CompilerMode::Inspect {
+            if mode == LoCommand::Inspect {
                 let source_index = file_index;
                 let source_range = RangeDisplay(&include.loc);
                 let target_index = included_file.file_index;

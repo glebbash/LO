@@ -1,4 +1,4 @@
-// provided by utils.mjs
+// provided by utils.ts
 // useful for debugging when WASI fd_write is not available
 import from "console" {
     fn debug_u32::log(x: u32);
