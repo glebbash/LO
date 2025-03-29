@@ -136,12 +136,17 @@ mod wasi_api {
 
         for ast in &asts {
             codegen
-                .process_file_pass1(ast)
+                .pass_collect_typedefs(ast)
+                .map_err(|err| err.to_string(&codegen.fm))?;
+        }
+        for ast in &asts {
+            codegen
+                .pass_build_structs(ast)
                 .map_err(|err| err.to_string(&codegen.fm))?;
         }
         for ast in asts {
             codegen
-                .process_file_pass2(ast)
+                .pass_main(ast)
                 .map_err(|err| err.to_string(&codegen.fm))?;
         }
         codegen.errors.print_all(&codegen.fm)?;

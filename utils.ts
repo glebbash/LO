@@ -257,6 +257,15 @@ async function commandTest() {
         assert.strictEqual(result, 13);
     });
 
+    testVersions("compiles auto-forward-decl.lo", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/auto-forward-decl.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 42);
+    });
+
     testVersions(
         "compiles struct-value-field-access.lo",
         { v1 },
@@ -673,69 +682,13 @@ async function commandTest() {
         }
     );
 
-    describe("formatter", () => {
+    describe("formatter", async () => {
         const format = (fileName = "-i") => v1Run(["format", fileName]);
 
-        const formattedFiles = [
-            "examples/lib/args.lo",
-            "examples/lib/cli.lo",
-            "examples/lib/debug.lo",
-            "examples/lib/fs.lo",
-            "examples/lib/int_parser.lo",
-            "examples/lib/print.lo",
-            "examples/lib/std.lo",
-            "examples/lib/str_cutter.lo",
-            "examples/lib/string_map.lo",
-            "examples/lib/wasi.lo",
-            "examples/test/42.lo",
-            "examples/test/add.lo",
-            "examples/test/args.test.lo",
-            "examples/test/decl-nesting.lo",
-            "examples/test/defer.lo",
-            "examples/test/demos/aoc2020/1-part2.lo",
-            "examples/test/demos/aoc2020/1.lo",
-            "examples/test/demos/aoc2020/2-part2.lo",
-            "examples/test/demos/aoc2020/2.lo",
-            "examples/test/demos/aoc2020/3-part2.lo",
-            "examples/test/demos/aoc2020/3.lo",
-            "examples/test/demos/aoc2020/4-part2.lo",
-            "examples/test/demos/aoc2020/4.lo",
-            "examples/test/demos/aoc2020/5-part2.lo",
-            "examples/test/demos/aoc2020/5.lo",
-            "examples/test/demos/aoc2023/1-part2.lo",
-            "examples/test/demos/aoc2023/1.lo",
-            "examples/test/demos/cat.lo",
-            "examples/test/demos/echo.lo",
-            "examples/test/demos/hello-world-raw.lo",
-            "examples/test/demos/hello-world.lo",
-            "examples/test/demos/vscode_wasm_issue_161.lo",
-            "examples/test/demos/wasm4/src/blink.lo",
-            "examples/test/demos/wasm4/src/dark-maze.lo",
-            "examples/test/demos/wasm4/src/lib/wasm4.lo",
-            "examples/test/demos/wasm4/src/slasher.lo",
-            "examples/test/else-if.lo",
-            "examples/test/errors.lo",
-            "examples/test/factorial.lo",
-            "examples/test/for-loop.lo",
-            "examples/test/globals.lo",
-            "examples/test/heap-alloc.lo",
-            "examples/test/hex-and-shifts.lo",
-            "examples/test/import.lo",
-            "examples/test/include.lo",
-            "examples/test/locals.lo",
-            "examples/test/loop.lo",
-            "examples/test/macro.lo",
-            "examples/test/methods.lo",
-            "examples/test/multiple-compiler-errors.lo",
-            "examples/test/nested-if-break.lo",
-            "examples/test/std.test.lo",
-            "examples/test/string-pooling.lo",
-            "examples/test/struct-in-struct.lo",
-            "examples/test/struct-ref.lo",
-            "examples/test/struct.lo",
-            "examples/test/tracing.lo",
-            "examples/test/vec.test.lo",
-        ];
+        const formattedFiles = await fs
+            .readdir("examples", { recursive: true })
+            .then((files) => files.filter((f) => f.endsWith(".lo")))
+            .then((files) => files.map((f) => `examples/${f}`));
 
         for (const fileName of formattedFiles) {
             test(`formats ${fileName}`, async () => {

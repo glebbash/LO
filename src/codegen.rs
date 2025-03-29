@@ -232,10 +232,17 @@ struct WasmFnInfo {
 }
 
 #[derive(Clone)]
+enum LoTypeDefKind {
+    Builtin,
+    Struct,
+    Alias,
+}
+
+#[derive(Clone)]
 struct LoTypeDef {
+    kind: LoTypeDefKind,
     name: String,
     value: LoType,
-    type_alias: bool,
     loc: LoLocation,
 }
 
@@ -400,81 +407,81 @@ impl CodeGen {
         let mut codegen = Self::default();
         codegen.mode = mode;
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("never"),
             value: LoType::Never,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("void"),
             value: LoType::Void,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("bool"),
             value: LoType::Bool,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("u8"),
             value: LoType::U8,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("i8"),
             value: LoType::I8,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("u16"),
             value: LoType::U16,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("i16"),
             value: LoType::I16,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("u32"),
             value: LoType::U32,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("i32"),
             value: LoType::I32,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("f32"),
             value: LoType::F32,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("u64"),
             value: LoType::U64,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("i64"),
             value: LoType::I64,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
         codegen.type_defs.push(LoTypeDef {
+            kind: LoTypeDefKind::Builtin,
             name: String::from("f64"),
             value: LoType::F64,
-            type_alias: false,
             loc: LoLocation::internal(),
         });
 
@@ -485,12 +492,12 @@ impl CodeGen {
         return codegen;
     }
 
-    pub fn process_file_pass1(&mut self, ast: &AST) -> Result<(), LoError> {
+    pub fn pass_collect_typedefs(&mut self, ast: &AST) -> Result<(), LoError> {
         for expr in &ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(StructDefExpr {
                     struct_name,
-                    fields,
+                    fields: _,
                     loc,
                 }) => {
                     if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
@@ -515,10 +522,46 @@ impl CodeGen {
                         value: LoType::StructInstance {
                             struct_name: struct_name.repr.clone(),
                         },
-                        type_alias: false,
+                        kind: LoTypeDefKind::Struct,
                         loc: loc.clone(),
                     });
+                }
+                TopLevelExpr::TypeDef(typedef) => {
+                    if let Some(existing_typedef) = self.get_typedef(&typedef.type_name.repr) {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot redefine type {}, already defined at {}",
+                                typedef.type_name.repr,
+                                existing_typedef.loc.to_string(&self.fm)
+                            ),
+                            loc: typedef.loc.clone(),
+                        });
+                    }
 
+                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value)?;
+
+                    self.type_defs.push(LoTypeDef {
+                        kind: LoTypeDefKind::Alias,
+                        name: typedef.type_name.repr.clone(),
+                        value: type_value,
+                        loc: typedef.loc.clone(),
+                    });
+                }
+                _ => {} // skip, not interested
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn pass_build_structs(&mut self, ast: &AST) -> Result<(), LoError> {
+        for expr in &ast.exprs {
+            match expr {
+                TopLevelExpr::StructDef(StructDefExpr {
+                    struct_name,
+                    fields,
+                    loc: _,
+                }) => {
                     let mut struct_fields = Vec::<LoStructField>::new();
                     let mut struct_primitives_count = 0;
                     let mut struct_aligment = 1;
@@ -538,8 +581,12 @@ impl CodeGen {
                         }
 
                         let field_index = struct_primitives_count;
-                        // TODO: add self reference check
-                        let field_type = self.build_type(&self.const_ctx, &field.field_type)?;
+                        let field_type = self.build_type_check_ref(
+                            &self.const_ctx,
+                            &field.field_type,
+                            false,
+                            field.field_type.loc(),
+                        )?;
                         let mut field_layout = LoTypeLayout::default();
                         self.get_type_layout(&field_type, &mut field_layout);
 
@@ -570,27 +617,6 @@ impl CodeGen {
                     struct_def.fields.append(&mut struct_fields);
                     struct_def.fully_defined = true;
                 }
-                TopLevelExpr::TypeDef(typedef) => {
-                    if let Some(existing_typedef) = self.get_typedef(&typedef.type_name.repr) {
-                        return Err(LoError {
-                            message: format!(
-                                "Cannot redefine type {}, already defined at {}",
-                                typedef.type_name.repr,
-                                existing_typedef.loc.to_string(&self.fm)
-                            ),
-                            loc: typedef.loc.clone(),
-                        });
-                    }
-
-                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value)?;
-
-                    self.type_defs.push(LoTypeDef {
-                        name: typedef.type_name.repr.clone(),
-                        value: type_value,
-                        type_alias: true,
-                        loc: typedef.loc.clone(),
-                    });
-                }
                 _ => {} // skip, not interested
             }
         }
@@ -598,12 +624,12 @@ impl CodeGen {
         Ok(())
     }
 
-    pub fn process_file_pass2(&mut self, ast: AST) -> Result<(), LoError> {
+    pub fn pass_main(&mut self, ast: AST) -> Result<(), LoError> {
         for expr in ast.exprs {
             match expr {
-                TopLevelExpr::Include(_) => {}   // skip, processed in pass 0
-                TopLevelExpr::StructDef(_) => {} // skip, processed in pass 1
-                TopLevelExpr::TypeDef(_) => {}   // skip, processed in pass 1
+                TopLevelExpr::Include(_) => {}   // skip, processed in parse_file_tree
+                TopLevelExpr::TypeDef(_) => {}   // skip, processed in pass_collect_typedefs
+                TopLevelExpr::StructDef(_) => {} // skip, processed in pass_build_structs
                 TopLevelExpr::FnDef(fn_def) => {
                     let output = match &fn_def.decl.return_type {
                         Some(return_type) => self.build_type(&self.const_ctx, return_type)?,
@@ -1142,21 +1168,44 @@ impl CodeGen {
     }
 
     fn build_type(&self, ctx: &LoExprContext, type_expr: &TypeExpr) -> Result<LoType, LoError> {
+        return self.build_type_check_ref(ctx, type_expr, true, &LoLocation::internal());
+    }
+
+    fn build_type_check_ref(
+        &self,
+        ctx: &LoExprContext,
+        type_expr: &TypeExpr,
+        is_referenced: bool,
+        loc: &LoLocation,
+    ) -> Result<LoType, LoError> {
         match type_expr {
             TypeExpr::Named { name } => {
                 if let Some(macro_type_arg) = ctx.get_macro_type_arg(&name.repr) {
                     return Ok(macro_type_arg.clone());
                 }
 
-                self.get_type_or_err(&name.repr, &name.loc)
+                let lo_type = self.get_type_or_err(&name.repr, &name.loc)?;
+                if let LoType::StructInstance { struct_name } = &lo_type {
+                    let struct_def = self.get_struct_def(&struct_name).unwrap();
+                    if !is_referenced && !struct_def.fully_defined {
+                        return Err(LoError {
+                            message: format!(
+                                "Cannot use partially defined struct '{}' here",
+                                struct_name
+                            ),
+                            loc: loc.clone(),
+                        });
+                    }
+                }
+                Ok(lo_type)
             }
             TypeExpr::Pointer { pointee, loc: _ } => {
-                let pointee = Box::new(self.build_type(ctx, &pointee)?);
+                let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
 
                 Ok(LoType::Pointer { pointee })
             }
             TypeExpr::SequencePointer { pointee, loc: _ } => {
-                let pointee = Box::new(self.build_type(ctx, &pointee)?);
+                let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
 
                 Ok(LoType::SequencePointer { pointee })
             }
@@ -1165,8 +1214,8 @@ impl CodeGen {
                 err_type,
                 loc: _,
             } => {
-                let ok_type = Box::new(self.build_type(ctx, &ok_type)?);
-                let err_type = Box::new(self.build_type(ctx, &err_type)?);
+                let ok_type = Box::new(self.build_type_check_ref(ctx, &ok_type, false, loc)?);
+                let err_type = Box::new(self.build_type_check_ref(ctx, &err_type, false, loc)?);
 
                 Ok(LoType::Result { ok_type, err_type })
             }
@@ -1176,7 +1225,7 @@ impl CodeGen {
                 item_type: _,
                 loc: _,
             } => {
-                let actual_type = self.build_type(ctx, container_type)?;
+                let actual_type = self.build_type_check_ref(ctx, container_type, true, loc)?;
 
                 Ok(actual_type)
             }
@@ -1291,7 +1340,7 @@ impl CodeGen {
 
                 if fields.len() < struct_def.fields.len() {
                     let mut missing_fields = Vec::new();
-                    for i in (fields.len() - 1)..struct_def.fields.len() {
+                    for i in fields.len()..struct_def.fields.len() {
                         missing_fields.push(&struct_def.fields[i].field_name)
                     }
 
@@ -3534,26 +3583,28 @@ impl CodeGen {
     fn get_type_or_err(&self, type_name: &str, loc: &LoLocation) -> Result<LoType, LoError> {
         if let Some(typedef) = self.get_typedef(type_name) {
             if self.mode == LoCommand::Inspect {
-                if typedef.loc.file_index != 0 {
-                    if typedef.type_alias {
+                match typedef.kind {
+                    LoTypeDefKind::Builtin => {
                         self.print_inspection(&InspectInfo {
-                            message: format!("type {type_name} = {}", typedef.value),
+                            message: format!("type {type_name} = <builtin>"),
                             loc: loc.clone(),
-                            linked_loc: Some(typedef.loc.clone()),
+                            linked_loc: None,
                         });
-                    } else {
+                    }
+                    LoTypeDefKind::Struct => {
                         self.print_inspection(&InspectInfo {
                             message: format!("struct {type_name} {{ ... }}"),
                             loc: loc.clone(),
                             linked_loc: Some(typedef.loc.clone()),
                         });
                     }
-                } else {
-                    self.print_inspection(&InspectInfo {
-                        message: format!("type {type_name} = <builtin>"),
-                        loc: loc.clone(),
-                        linked_loc: None,
-                    });
+                    LoTypeDefKind::Alias => {
+                        self.print_inspection(&InspectInfo {
+                            message: format!("type {type_name} = {}", typedef.value),
+                            loc: loc.clone(),
+                            linked_loc: Some(typedef.loc.clone()),
+                        });
+                    }
                 }
             }
 
