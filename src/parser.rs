@@ -175,14 +175,14 @@ impl Parser {
             while let None = self.eat(Delim, "}")? {
                 let mut field_loc = self.current().loc.clone();
 
-                let field_name = self.expect_any(Symbol)?.clone();
+                let field_name = self.parse_ident()?;
                 self.expect(Operator, ":")?;
                 let field_type = self.parse_type_expr()?;
 
                 field_loc.end_pos = self.prev().loc.end_pos.clone();
 
                 fields.push(StructDefField {
-                    field_name: field_name.value,
+                    field_name,
                     field_type,
                     loc: field_loc,
                 });

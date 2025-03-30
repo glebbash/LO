@@ -107,7 +107,7 @@ pub struct StructDefExpr {
 
 #[derive(Debug)]
 pub struct StructDefField {
-    pub field_name: String,
+    pub field_name: IdentExpr,
     pub field_type: TypeExpr,
     pub loc: LoLocation,
 }

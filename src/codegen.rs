@@ -589,18 +589,18 @@ impl CodeGen {
                     let mut struct_primitives_count = 0;
                     let mut struct_aligment = 1;
 
-                    for field in fields {
+                    'fields: for field in fields {
                         for existing_field in &struct_fields {
-                            if existing_field.field_name == field.field_name {
+                            if existing_field.field_name == field.field_name.repr {
                                 self.report_error(LoError {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
-                                        field.field_name,
+                                        field.field_name.repr,
                                         existing_field.loc.to_string(&self.fm),
                                     ),
-                                    loc: field.loc.clone(),
+                                    loc: field.field_name.loc.clone(),
                                 });
-                                continue 'exprs;
+                                continue 'fields;
                             }
                         }
 
@@ -622,12 +622,12 @@ impl CodeGen {
                         struct_primitives_count += field_layout.primities_count;
 
                         struct_fields.push(LoStructField {
-                            field_name: field.field_name.clone(),
+                            field_name: field.field_name.repr.clone(),
                             field_type: field_type.clone(),
                             field_layout,
                             field_index,
                             byte_offset: 0, // will be set during field alignment
-                            loc: field.loc.clone(),
+                            loc: field.field_name.loc.clone(),
                         });
                     }
 

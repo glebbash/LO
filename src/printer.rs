@@ -115,7 +115,7 @@ impl Printer {
                     for field in fields {
                         self.print_comments_before_pos(field.loc.pos.offset);
                         self.print_indent();
-                        stdout_write(&field.field_name);
+                        stdout_write(&field.field_name.repr);
                         stdout_write(": ");
                         self.print_type_expr(&field.field_type);
                         stdout_writeln(",");
