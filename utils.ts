@@ -663,18 +663,58 @@ async function commandTest() {
     });
 
     testVersions(
-        "compiler reports multiple errors in multiple-compiler-errors.lo",
+        "compiler reports multiple errors in fault-tolerance.lo",
         { v1 },
         async (compile) => {
             try {
-                await compile("./examples/test/multiple-compiler-errors.lo");
+                await compile("./examples/test/fault-tolerance.lo");
             } catch (err) {
                 assert.strictEqual(
                     (err as Error).message,
                     m`
-                    examples/test/multiple-compiler-errors.lo:2:14 - Duplicate function parameter name: a
-                    examples/test/multiple-compiler-errors.lo:6:14 - Duplicate function parameter name: b
-                    examples/test/multiple-compiler-errors.lo:10:14 - Duplicate function parameter name: c
+                    examples/test/fault-tolerance.lo:2:17 - Duplicate function parameter name: a
+                    examples/test/fault-tolerance.lo:10:1 - Duplicate function definition: main, previously defined at examples/test/fault-tolerance.lo:2:4
+                    examples/test/fault-tolerance.lo:5:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9
+                    examples/test/fault-tolerance.lo:13:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9
+
+                    `
+                );
+            }
+        }
+    );
+
+    testVersions(
+        "inspect emits partial diagnostics and multiple errors in fault-tolerance.lo",
+        { v1: v1Run },
+        async (run) => {
+            const stdout = new WASI.VirtualFD();
+            try {
+                await run(["inspect", "./examples/test/fault-tolerance.lo"], {
+                    stdout,
+                });
+            } catch (err) {
+                // stderr is empty
+                assert.strictEqual((err as Error).message, "");
+
+                // stdout contains partial diagnostics and errors in json format
+                assert.strictEqual(
+                    stdout.flushAndReadUtf8(),
+                    m`
+                    [
+                    { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
+                    { "type": "info", "hover": "type u32 = <builtin>", "loc": "1/2:12-2:15" },
+                    { "type": "message", "content": "Duplicate function parameter name: a", "severity": "error", "loc": "1/2:17-2:23" },
+                    { "type": "message", "content": "Duplicate function definition: main, previously defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:1-10:10" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
+                    { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
+                    { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },
+                    { "type": "info", "link": "1/3:9-3:10", "hover": "let x: u32", "loc": "1/6:13-6:14" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/11:9-11:10" },
+                    { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
+                    { "type": "info", "hover": "let y: u32", "loc": "1/14:9-14:10" },
+                    { "type": "info", "link": "1/11:9-11:10", "hover": "let x: u32", "loc": "1/14:13-14:14" },
+                    { "type": "end" }
+                    ]
 
                     `
                 );

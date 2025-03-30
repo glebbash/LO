@@ -502,7 +502,7 @@ impl CodeGen {
                 "{{ \"type\": \"message\", \
                     \"content\": \"{content}\", \
                     \"severity\": \"error\", \
-                    \"loc\": \"{source_index}/{source_range}\" }}, ",
+                    \"loc\": \"{source_index}/{source_range}\" }},",
             ));
             return;
         }
@@ -4271,7 +4271,7 @@ impl CodeGen {
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"hover\": \"{message}\", \
-                    \"loc\": \"{source_index}/{source_range}\" }}, ",
+                    \"loc\": \"{source_index}/{source_range}\" }},",
             ));
             return;
         };
@@ -4283,7 +4283,7 @@ impl CodeGen {
             "{{ \"type\": \"info\", \
                 \"link\": \"{target_index}/{target_range}\", \
                 \"hover\": \"{message}\", \
-                \"loc\": \"{source_index}/{source_range}\" }}, ",
+                \"loc\": \"{source_index}/{source_range}\" }},",
         ));
     }
 }

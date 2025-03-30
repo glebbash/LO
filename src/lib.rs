@@ -185,7 +185,7 @@ fn parse_file_tree(
         stdout_writeln(format!(
             "{{ \"type\": \"file\", \
                 \"index\": {file_index}, \
-                \"path\": \"{file_path}\" }}, ",
+                \"path\": \"{file_path}\" }},",
         ));
     }
 
@@ -224,7 +224,7 @@ fn parse_file_tree(
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
                     \"link\": \"{target_index}/{target_range}\", \
-                    \"loc\": \"{source_index}/{source_range}\" }}, ",
+                    \"loc\": \"{source_index}/{source_range}\" }},",
             ));
         }
     }

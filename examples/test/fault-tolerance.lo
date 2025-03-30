@@ -1,0 +1,15 @@
+// error 1: param redeclaration
+fn main(a: u32, a: u32) {
+    let x = 1;
+    // error 2: var redeclaration
+    let x = 2;
+    let y = x + 1;
+};
+
+// error 3: function redeclaration
+fn main() {
+    let x = 1;
+    // error 4: var redeclaration in duplicate function
+    let x = 2;
+    let y = x + 1;
+};

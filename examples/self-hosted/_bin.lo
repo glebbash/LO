@@ -144,7 +144,7 @@ fn parse_file_tree(mode: CompilerMode, fm: &FileManager, asts: &Vec of AST, file
         // stdout_writeln(format!(
         //     "{{ \"type\": \"file\", \
         //         \"index\": {file_index}, \
-        //         \"path\": \"{file_path}\" }}, ",
+        //         \"path\": \"{file_path}\" }},",
         // ));
     };
     let tokens = Lexer::lex(file_index, file_contents)?;
@@ -167,7 +167,7 @@ fn parse_file_tree(mode: CompilerMode, fm: &FileManager, asts: &Vec of AST, file
         //     stdout_writeln(format!(
         //         "{{ \"type\": \"info\", \
         //             \"link\": \"{target_index}/{target_range}\", \
-        //             \"loc\": \"{source_index}/{source_range}\" }}, ",
+        //             \"loc\": \"{source_index}/{source_range}\" }},",
         //     ));
         // };
     };
