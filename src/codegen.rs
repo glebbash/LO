@@ -1072,11 +1072,14 @@ impl CodeGen {
             let mut ctx = ctx.clone();
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
             let mut had_return = false;
-            for expr in &body.exprs {
+            for expr in unsafe_borrow(&body.exprs) {
                 if let CodeExpr::Return(_) = expr {
                     had_return = true;
                 }
-                self.codegen(&mut ctx, &mut wasm_expr.instrs, expr)?;
+                catch!(self.codegen(&mut ctx, &mut wasm_expr.instrs, expr), err, {
+                    self.report_error(err);
+                    continue;
+                });
             }
             if !had_return {
                 self.emit_deferred(&mut ctx, &mut wasm_expr.instrs)?;
@@ -1173,6 +1176,8 @@ impl CodeGen {
 
     pub fn end_inspection(&self) {
         if self.command == LoCommand::Inspect {
+            // this node is a stub to make json array valid
+            //   as last inspection ended with a comma
             stdout_writeln("{ \"type\": \"end\" }");
             stdout_writeln("]");
         }

@@ -416,3 +416,7 @@ macro_rules! catch {
     };
 }
 pub(crate) use catch;
+
+pub fn unsafe_borrow<T>(x: &T) -> &'static T {
+    unsafe { &*(x as *const T) }
+}

@@ -1353,7 +1353,3 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
 
     Ok(())
 }
-
-fn unsafe_borrow<T>(x: &T) -> &'static T {
-    unsafe { &*(x as *const T) }
-}
