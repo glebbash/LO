@@ -633,8 +633,10 @@ async function commandTest() {
         const wasm4Imports = {
             env: new Proxy(
                 { memory: new WebAssembly.Memory({ initial: 1 }) },
-                // @ts-ignore: don't care
-                { get: (target, prop) => target[prop] ?? (() => void 0) }
+                {
+                    get: (target, prop) =>
+                        target[prop as keyof typeof target] ?? (() => void 0),
+                }
             ),
         };
 
@@ -668,13 +670,11 @@ async function commandTest() {
                 await compile("./examples/test/multiple-compiler-errors.lo");
             } catch (err) {
                 assert.strictEqual(
-                    // @ts-ignore:
-                    err.message,
+                    (err as Error).message,
                     m`
                     examples/test/multiple-compiler-errors.lo:2:14 - Duplicate function parameter name: a
                     examples/test/multiple-compiler-errors.lo:6:14 - Duplicate function parameter name: b
                     examples/test/multiple-compiler-errors.lo:10:14 - Duplicate function parameter name: c
-
 
                     `
                 );
@@ -871,8 +871,10 @@ async function commandTest() {
             try {
                 await interpret("./examples/test/demos/cat.lo");
             } catch (err) {
-                // @ts-ignore:
-                assert.strictEqual(err.message, "Usage cat.lo <file>");
+                assert.strictEqual(
+                    (err as Error).message,
+                    "Usage cat.lo <file>"
+                );
             }
         });
 
@@ -1124,8 +1126,7 @@ function m(strings: TemplateStringsArray, ...args: unknown[]) {
         .split("\n")
         .slice(1);
 
-    // @ts-ignore: don't care
-    const lastLineIndentation = stringLines.pop().length;
+    const lastLineIndentation = stringLines.pop()!.length;
 
     // dedent
     return stringLines

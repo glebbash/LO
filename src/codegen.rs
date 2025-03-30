@@ -376,10 +376,9 @@ struct LoConstDef {
 
 #[derive(Default)]
 pub struct CodeGen {
-    pub errors: LoErrorManager,
-
-    mode: LoCommand,
+    pub command: LoCommand,
     pub fm: FileManager,
+    pub error_count: u32,
 
     type_defs: Vec<LoTypeDef>,
     struct_defs: Vec<LoStructDef>,
@@ -403,9 +402,9 @@ pub struct CodeGen {
 }
 
 impl CodeGen {
-    pub fn new(mode: LoCommand) -> Self {
+    pub fn new(command: LoCommand) -> Self {
         let mut codegen = Self::default();
-        codegen.mode = mode;
+        codegen.command = command;
         codegen.type_defs.push(LoTypeDef {
             kind: LoTypeDefKind::Builtin,
             name: String::from("never"),
@@ -485,14 +484,34 @@ impl CodeGen {
             loc: LoLocation::internal(),
         });
 
-        if codegen.mode == LoCommand::Inspect {
+        if codegen.command == LoCommand::Inspect {
             stdout_writeln("[");
         }
 
         return codegen;
     }
 
-    pub fn pass_collect_typedefs(&mut self, ast: &AST) -> Result<(), LoError> {
+    pub fn report_error(&mut self, err: LoError) {
+        self.error_count += 1;
+
+        if self.command == LoCommand::Inspect {
+            let source_index = err.loc.file_index;
+            let source_range = RangeDisplay(&err.loc);
+            let content = &err.message;
+            stdout_writeln(format!(
+                "{{ \"type\": \"message\", \
+                    \"content\": \"{content}\", \
+                    \"severity\": \"error\", \
+                    \"loc\": \"{source_index}/{source_range}\" }}, ",
+            ));
+            return;
+        }
+
+        stderr_write(err.to_string(&self.fm));
+        stderr_write("\n");
+    }
+
+    pub fn pass_collect_typedefs(&mut self, ast: &AST) {
         for expr in &ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(StructDefExpr {
@@ -501,7 +520,7 @@ impl CodeGen {
                     loc,
                 }) => {
                     if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
-                        return Err(LoError {
+                        self.report_error(LoError {
                             message: format!(
                                 "Cannot redefine type {}, already defined at {}",
                                 struct_name.repr,
@@ -509,6 +528,7 @@ impl CodeGen {
                             ),
                             loc: struct_name.loc.clone(),
                         });
+                        continue;
                     }
 
                     self.struct_defs.push(LoStructDef {
@@ -528,7 +548,7 @@ impl CodeGen {
                 }
                 TopLevelExpr::TypeDef(typedef) => {
                     if let Some(existing_typedef) = self.get_typedef(&typedef.type_name.repr) {
-                        return Err(LoError {
+                        self.report_error(LoError {
                             message: format!(
                                 "Cannot redefine type {}, already defined at {}",
                                 typedef.type_name.repr,
@@ -536,9 +556,14 @@ impl CodeGen {
                             ),
                             loc: typedef.loc.clone(),
                         });
+                        continue;
                     }
 
-                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value)?;
+                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value);
+                    let type_value = catch!(type_value, err, {
+                        self.report_error(err);
+                        continue;
+                    });
 
                     self.type_defs.push(LoTypeDef {
                         kind: LoTypeDefKind::Alias,
@@ -550,12 +575,10 @@ impl CodeGen {
                 _ => {} // skip, not interested
             }
         }
-
-        Ok(())
     }
 
-    pub fn pass_build_structs(&mut self, ast: &AST) -> Result<(), LoError> {
-        for expr in &ast.exprs {
+    pub fn pass_build_structs(&mut self, ast: &AST) {
+        'exprs: for expr in &ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(StructDefExpr {
                     struct_name,
@@ -569,7 +592,7 @@ impl CodeGen {
                     for field in fields {
                         for existing_field in &struct_fields {
                             if existing_field.field_name == field.field_name {
-                                return Err(LoError {
+                                self.report_error(LoError {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
                                         field.field_name,
@@ -577,16 +600,21 @@ impl CodeGen {
                                     ),
                                     loc: field.loc.clone(),
                                 });
+                                continue 'exprs;
                             }
                         }
 
                         let field_index = struct_primitives_count;
-                        let field_type = self.build_type_check_ref(
+                        let field_type_res = self.build_type_check_ref(
                             &self.const_ctx,
                             &field.field_type,
                             false,
                             field.field_type.loc(),
-                        )?;
+                        );
+                        let field_type = catch!(field_type_res, err, {
+                            self.report_error(err);
+                            continue 'exprs;
+                        });
                         let mut field_layout = LoTypeLayout::default();
                         self.get_type_layout(&field_type, &mut field_layout);
 
@@ -620,11 +648,9 @@ impl CodeGen {
                 _ => {} // skip, not interested
             }
         }
-
-        Ok(())
     }
 
-    pub fn pass_main(&mut self, ast: AST) -> Result<(), LoError> {
+    pub fn pass_main(&mut self, ast: AST) {
         for expr in ast.exprs {
             match expr {
                 TopLevelExpr::Include(_) => {}   // skip, processed in parse_file_tree
@@ -632,7 +658,12 @@ impl CodeGen {
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_build_structs
                 TopLevelExpr::FnDef(fn_def) => {
                     let output = match &fn_def.decl.return_type {
-                        Some(return_type) => self.build_type(&self.const_ctx, return_type)?,
+                        Some(return_type) => {
+                            catch!(self.build_type(&self.const_ctx, return_type), err, {
+                                self.report_error(err);
+                                continue;
+                            })
+                        }
                         _ => LoType::Void,
                     };
 
@@ -645,7 +676,7 @@ impl CodeGen {
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
                         for var in &ctx.current_scope().locals {
                             if var.local_name == fn_param.param_name {
-                                self.errors.report(LoError {
+                                self.report_error(LoError {
                                     message: format!(
                                         "Duplicate function parameter name: {}",
                                         fn_param.param_name
@@ -656,11 +687,12 @@ impl CodeGen {
                             }
                         }
 
-                        let param_type = self.get_fn_param_type(
-                            &self.const_ctx,
-                            &fn_def.decl.fn_name,
-                            fn_param,
-                        )?;
+                        let param_type =
+                            self.get_fn_param_type(&self.const_ctx, &fn_def.decl.fn_name, fn_param);
+                        let param_type = catch!(param_type, err, {
+                            self.report_error(err);
+                            continue 'param_loop;
+                        });
                         inputs.push(param_type.clone());
 
                         fn_params.push(LoFnParam {
@@ -668,13 +700,17 @@ impl CodeGen {
                             param_type: param_type.clone(),
                         });
 
-                        self.define_local(
+                        let res = self.define_local(
                             &mut ctx,
                             fn_param.loc.clone(),
                             fn_param.param_name.clone(),
                             &param_type,
                             true,
-                        )?;
+                        );
+                        catch!(res, err, {
+                            self.report_error(err);
+                            continue;
+                        });
                     }
 
                     let mut exported_as = Vec::new();
@@ -684,7 +720,7 @@ impl CodeGen {
 
                     // TODO: make sure function name does not collide with intrinsics
                     if let Some(fn_info) = self.get_fn_def(&fn_def.decl.fn_name.repr) {
-                        self.errors.report(LoError {
+                        self.report_error(LoError {
                             message: format!(
                                 "Duplicate function definition: {}, previously defined at {}",
                                 fn_def.decl.fn_name.repr,
@@ -712,13 +748,14 @@ impl CodeGen {
                     loc,
                 }) => {
                     let Some(fn_info) = self.get_fn_def_mut(&in_fn_name.repr) else {
-                        return Err(LoError {
+                        self.report_error(LoError {
                             message: format!(
                                 "Cannot re-export not existing function: {}",
                                 in_fn_name.repr
                             ),
                             loc: loc.clone(),
                         });
+                        continue;
                     };
 
                     fn_info.exported_as.push(out_fn_name.unescape());
@@ -730,11 +767,14 @@ impl CodeGen {
                 }) => {
                     let module_name = module_name.unescape();
 
-                    for item in items {
+                    'items: for item in items {
                         let fn_decl = match item {
                             ImportItem::FnDecl(fn_decl) => fn_decl,
                             ImportItem::Memory(memory) => {
-                                self.define_memory(memory, Some(module_name.clone()))?;
+                                let res = self.define_memory(memory, Some(module_name.clone()));
+                                catch!(res, err, {
+                                    self.report_error(err);
+                                });
                                 continue;
                             }
                         };
@@ -745,11 +785,12 @@ impl CodeGen {
                         };
                         let mut fn_params = Vec::new();
                         for fn_param in &fn_decl.fn_params {
-                            let param_type = self.get_fn_param_type(
-                                &self.const_ctx,
-                                &fn_decl.fn_name,
-                                fn_param,
-                            )?;
+                            let param_type =
+                                self.get_fn_param_type(&self.const_ctx, &fn_decl.fn_name, fn_param);
+                            let param_type = catch!(param_type, err, {
+                                self.report_error(err);
+                                continue 'items;
+                            });
                             fn_type.inputs.push(param_type.clone());
                             fn_params.push(LoFnParam {
                                 param_name: fn_param.param_name.clone(),
@@ -757,12 +798,16 @@ impl CodeGen {
                             });
                         }
                         if let Some(return_type) = fn_decl.return_type {
-                            fn_type.output = self.build_type(&self.const_ctx, &return_type)?;
+                            fn_type.output =
+                                catch!(self.build_type(&self.const_ctx, &return_type), err, {
+                                    self.report_error(err);
+                                    continue 'items;
+                                });
                         }
 
                         // TODO: make sure function name does not collide with intrinsics
                         if let Some(fn_info) = self.get_fn_def(&fn_decl.fn_name.repr) {
-                            self.errors.report(LoError {
+                            self.report_error(LoError {
                                 message: format!(
                                     "Duplicate function definition: {}, previously defined at {}",
                                     fn_decl.fn_name.repr,
@@ -788,7 +833,7 @@ impl CodeGen {
                 TopLevelExpr::GlobalDef(global) => {
                     let existing_global = self.get_global(&global.global_name.repr);
                     if let Some(existing_global) = existing_global {
-                        return Err(LoError {
+                        self.report_error(LoError {
                             message: format!(
                                 "Cannot redefine global {}, previously defined at {}",
                                 global.global_name.repr,
@@ -796,27 +841,36 @@ impl CodeGen {
                             ),
                             loc: global.loc,
                         });
+                        continue;
                     }
 
                     let value_type = match &global.global_value {
                         GlobalDefValue::Expr(expr) => {
-                            self.ensure_const_expr(expr)?;
-                            let value_type = self.get_expr_type(&self.const_ctx, expr)?;
+                            catch!(self.ensure_const_expr(expr), err, {
+                                self.report_error(err);
+                                // continue processing global def
+                            });
+                            let value_type = self.get_expr_type(&self.const_ctx, expr);
+                            let value_type = catch!(value_type, err, {
+                                self.report_error(err);
+                                continue;
+                            });
                             let value_comp_count = self.count_wasm_type_components(&value_type);
                             if value_comp_count != 1 {
-                                return Err(LoError {
+                                self.report_error(LoError {
                                     message: format!(
                                         "Cannot define global with non-primitive type {value_type}",
                                     ),
                                     loc: global.loc,
                                 });
+                                continue;
                             }
                             value_type
                         }
                         GlobalDefValue::DataSize => LoType::U32,
                     };
 
-                    if self.mode == LoCommand::Inspect {
+                    if self.command == LoCommand::Inspect {
                         let global_name = &global.global_name.repr;
 
                         self.print_inspection(&InspectInfo {
@@ -834,7 +888,7 @@ impl CodeGen {
                 }
                 TopLevelExpr::ConstDef(const_def) => {
                     if let Some(existing_const) = self.get_const_def(&const_def.const_name.repr) {
-                        return Err(LoError {
+                        self.report_error(LoError {
                             message: format!(
                                 "Cannot redefine constant {}, already defined at {}",
                                 const_def.const_name.repr,
@@ -842,12 +896,17 @@ impl CodeGen {
                             ),
                             loc: const_def.loc,
                         });
+                        continue;
                     }
 
                     let mut const_ctx = LoExprContext::default();
-                    let code_unit = self.build_code_unit(&mut const_ctx, &const_def.const_value)?;
+                    let code_unit = self.build_code_unit(&mut const_ctx, &const_def.const_value);
+                    let code_unit = catch!(code_unit, err, {
+                        self.report_error(err);
+                        continue;
+                    });
 
-                    if self.mode == LoCommand::Inspect {
+                    if self.command == LoCommand::Inspect {
                         let const_name = &const_def.const_name.repr;
                         let const_type = &code_unit.lo_type;
 
@@ -865,18 +924,28 @@ impl CodeGen {
                     });
                 }
                 TopLevelExpr::MemoryDef(memory) => {
-                    self.define_memory(memory, None)?;
+                    catch!(self.define_memory(memory, None), err, {
+                        self.report_error(err);
+                        continue;
+                    });
                 }
                 TopLevelExpr::StaticDataStore(static_data_store) => {
                     let mut const_ctx = LoExprContext::default();
 
                     let mut offset_expr = WasmExpr { instrs: Vec::new() };
-                    self.ensure_const_expr(&static_data_store.addr)?;
-                    self.codegen(
+                    catch!(self.ensure_const_expr(&static_data_store.addr), err, {
+                        self.report_error(err);
+                        // continue processing data store
+                    });
+                    let res = self.codegen(
                         &mut const_ctx,
                         &mut offset_expr.instrs,
                         &static_data_store.addr,
-                    )?;
+                    );
+                    catch!(res, err, {
+                        self.report_error(err);
+                        // continue processing data store
+                    });
                     let bytes = match &static_data_store.data {
                         StaticDataStorePayload::String { value } => {
                             value.unescape().as_bytes().to_vec()
@@ -891,7 +960,7 @@ impl CodeGen {
                 }
                 TopLevelExpr::MacroDef(macro_def) => {
                     if let Some(existing_macro) = self.get_macro_def(&macro_def.macro_name.repr) {
-                        return Err(LoError {
+                        self.report_error(LoError {
                             message: format!(
                                 "Cannot redefine macro {}, already defined at {}",
                                 macro_def.macro_name.repr,
@@ -899,14 +968,13 @@ impl CodeGen {
                             ),
                             loc: macro_def.loc,
                         });
+                        continue;
                     }
 
                     self.macro_defs.push(macro_def);
                 }
             }
         }
-
-        Ok(())
     }
 
     // TODO: add local names to debug info
@@ -1100,12 +1168,14 @@ impl CodeGen {
 
         wasm_module.types.append(&mut self.wasm_types.borrow_mut());
 
-        if self.mode == LoCommand::Inspect {
+        Ok(wasm_module)
+    }
+
+    pub fn end_inspection(&self) {
+        if self.command == LoCommand::Inspect {
             stdout_writeln("{ \"type\": \"end\" }");
             stdout_writeln("]");
         }
-
-        Ok(wasm_module)
     }
 
     fn define_memory(
@@ -1478,7 +1548,7 @@ impl CodeGen {
 
             CodeExpr::Ident(ident) => {
                 if let Some(const_def) = self.get_const(ctx, &ident.repr) {
-                    if self.mode == LoCommand::Inspect {
+                    if self.command == LoCommand::Inspect {
                         self.print_inspection(&InspectInfo {
                             message: format!(
                                 "const {}: {}",
@@ -2146,7 +2216,7 @@ impl CodeGen {
             });
         }
 
-        if self.mode == LoCommand::Inspect {
+        if self.command == LoCommand::Inspect {
             let params = ListDisplay(&lo_fn_info.fn_params);
             let return_type = &lo_fn_info.fn_type.output;
             self.print_inspection(&InspectInfo {
@@ -2324,7 +2394,7 @@ impl CodeGen {
             Some(&mut lo_type_args),
         )?;
 
-        if self.mode == LoCommand::Inspect {
+        if self.command == LoCommand::Inspect {
             let lo_type_args = ListDisplay(&lo_type_args);
 
             let mut macro_args = Vec::new();
@@ -2975,7 +3045,7 @@ impl CodeGen {
         loc: LoLocation,
         linked_loc: Option<LoLocation>,
     ) -> LoVariableInfo {
-        let inspect_info = if self.mode == LoCommand::Inspect {
+        let inspect_info = if self.command == LoCommand::Inspect {
             Some(InspectInfo {
                 message: format!("let {}: {}", local_name, local_type),
                 loc: loc.clone(),
@@ -3011,7 +3081,7 @@ impl CodeGen {
             return Ok(LoVariableInfo::Global {
                 global_index: global.global_index,
                 global_type: global.global_type.clone(),
-                inspect_info: if self.mode == LoCommand::Inspect {
+                inspect_info: if self.command == LoCommand::Inspect {
                     Some(InspectInfo {
                         message: format!("global {}: {}", ident.repr, global.global_type),
                         loc: ident.loc.clone(),
@@ -3038,7 +3108,7 @@ impl CodeGen {
 
         let field = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
 
-        let inspect_info = if self.mode == LoCommand::Inspect {
+        let inspect_info = if self.command == LoCommand::Inspect {
             Some(InspectInfo {
                 message: format!("{}.{}: {}", lhs_type, field.field_name, field.field_type),
                 loc: field_access.field_name.loc.clone(),
@@ -3197,7 +3267,7 @@ impl CodeGen {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let LoType::Pointer { pointee } = &addr_type {
-            let inspect_info = if self.mode == LoCommand::Inspect {
+            let inspect_info = if self.command == LoCommand::Inspect {
                 Some(InspectInfo {
                     message: format!("<deref>: {}", pointee),
                     loc: op_loc.clone(),
@@ -3537,7 +3607,7 @@ impl CodeGen {
 
     // TODO: don't use tuples
     fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<(u32, u32), LoError> {
-        if self.memory.is_none() && self.mode != LoCommand::Inspect {
+        if self.memory.is_none() && self.command != LoCommand::Inspect {
             return Err(LoError {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: loc.clone(),
@@ -3582,7 +3652,7 @@ impl CodeGen {
 
     fn get_type_or_err(&self, type_name: &str, loc: &LoLocation) -> Result<LoType, LoError> {
         if let Some(typedef) = self.get_typedef(type_name) {
-            if self.mode == LoCommand::Inspect {
+            if self.command == LoCommand::Inspect {
                 match typedef.kind {
                     LoTypeDefKind::Builtin => {
                         self.print_inspection(&InspectInfo {

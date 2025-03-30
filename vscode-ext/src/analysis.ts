@@ -4,6 +4,7 @@ export type FileAnalysis = {
     uri: vscode.Uri;
     hovers: vscode.Hover[];
     links: vscode.LocationLink[];
+    messages: vscode.Diagnostic[];
 };
 
 export class FileAnalysisCollection
@@ -59,6 +60,15 @@ export class FileAnalysisCollection
         }
 
         return null;
+    }
+
+    showMessages() {
+        for (const analysis of this.analysisPerUri.values()) {
+            this.diagnosticCollection.set(analysis.uri, [
+                ...(this.diagnosticCollection.get(analysis.uri) ?? []),
+                ...analysis.messages,
+            ]);
+        }
     }
 
     clear() {

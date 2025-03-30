@@ -15,6 +15,7 @@ export type WebShellCommandHandler = (
 type DiagnisticItem =
     | { type: "file"; index: number; path: string }
     | { type: "info"; loc: string; link?: string; hover?: string }
+    | { type: "message"; loc: string; content: string; severity?: string }
     | { type: "end" };
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -51,12 +52,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
         analysis.clear();
         if (compilerResult.exitCode !== 0) {
-            return showCompilerError(
-                workspaceUri,
-                analysis,
-                new TextDecoder().decode(compilerResult.stderr),
-                compilerResult.exitCode
-            );
+            const stderr = new TextDecoder().decode(compilerResult.stderr);
+            // when stderr is empty stdout contains error diagnostics in json format
+            if (stderr !== "") {
+                return showCompilerError(
+                    workspaceUri,
+                    analysis,
+                    stderr,
+                    compilerResult.exitCode
+                );
+            }
         }
 
         const diagnostics: DiagnisticItem[] = JSON.parse(
@@ -66,9 +71,15 @@ export async function activate(context: vscode.ExtensionContext) {
         for (const d of diagnostics) {
             if (d.type === "file") {
                 const uri = vscode.Uri.joinPath(workspaceUri, d.path);
-                const diag = { uri, hovers: [], links: [] };
+                const diag = {
+                    uri,
+                    hovers: [],
+                    links: [],
+                    messages: [],
+                } satisfies FileAnalysis;
                 analysis.push(diag);
                 analysisPerIndex.set(d.index, diag);
+                continue;
             }
 
             if (d.type === "info") {
@@ -98,8 +109,36 @@ export async function activate(context: vscode.ExtensionContext) {
                         )
                     );
                 }
+                continue;
             }
+
+            if (d.type === "message") {
+                const sourceIndex = Number(d.loc.split("/")[0]);
+                const sourceRange = parseRange(d.loc.split("/")[1]);
+                const fileDiagnostic = analysisPerIndex.get(sourceIndex)!;
+
+                let severity = vscode.DiagnosticSeverity.Information;
+                if (d.severity === "error") {
+                    severity = vscode.DiagnosticSeverity.Error;
+                } else if (d.severity === "warning") {
+                    severity = vscode.DiagnosticSeverity.Warning;
+                }
+
+                fileDiagnostic.messages.push(
+                    new vscode.Diagnostic(sourceRange, d.content, severity)
+                );
+
+                continue;
+            }
+
+            if (d.type === "end") {
+                continue;
+            }
+
+            d satisfies never;
         }
+
+        analysis.showMessages();
     };
 
     context.subscriptions.push(

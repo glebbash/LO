@@ -259,6 +259,11 @@ pub fn stderr_write(message: impl AsRef<str>) {
     fputs(wasi::FD_STDERR, message.as_ref().as_bytes());
 }
 
+pub fn stderr_writeln(message: impl AsRef<str>) {
+    stderr_write(message);
+    stderr_write("\n");
+}
+
 pub fn fputs(fd: u32, message: &[u8]) {
     let out_vec = [wasi::Ciovec {
         buf: message.as_ptr(),
@@ -299,30 +304,6 @@ impl<'a> core::fmt::Display for RangeDisplay<'a> {
 
         write!(f, "{sl}:{sc}-{el}:{ec}")?;
         Ok(())
-    }
-}
-
-#[derive(Default)]
-pub struct LoErrorManager {
-    errors: Vec<LoError>,
-}
-
-impl LoErrorManager {
-    pub fn report(&mut self, error: LoError) {
-        self.errors.push(error);
-    }
-
-    pub fn print_all(&self, fm: &FileManager) -> Result<(), String> {
-        if self.errors.len() == 0 {
-            return Ok(());
-        }
-
-        for error in &self.errors {
-            stderr_write(error.to_string(fm));
-            stderr_write("\n");
-        }
-
-        Err(format!(""))
     }
 }
 
@@ -425,3 +406,13 @@ fn resolve_path(file_path: &str, relative_to: &str) -> String {
 
     path_items.join("/")
 }
+
+macro_rules! catch {
+    ($result:expr, $err_var:ident, $err_block:block) => {
+        match $result {
+            Ok(val) => val,
+            Err($err_var) => $err_block,
+        }
+    };
+}
+pub(crate) use catch;
