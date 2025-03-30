@@ -522,7 +522,7 @@ impl Printer {
                 loc: _,
             }) => {
                 stdout_write("for ");
-                stdout_write(counter);
+                stdout_write(&counter.repr);
                 stdout_write(" in ");
                 self.print_code_expr(&start);
                 stdout_write("..");

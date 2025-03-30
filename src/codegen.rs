@@ -875,7 +875,7 @@ impl CodeGen {
 
                         self.print_inspection(&InspectInfo {
                             message: format!("global {global_name}: {value_type}"),
-                            loc: global.loc.clone(),
+                            loc: global.global_name.loc.clone(),
                             linked_loc: None,
                         });
                     }
@@ -912,7 +912,7 @@ impl CodeGen {
 
                         self.print_inspection(&InspectInfo {
                             message: format!("const {const_name}: {const_type}"),
-                            loc: const_def.loc.clone(),
+                            loc: const_def.const_name.loc.clone(),
                             linked_loc: None,
                         });
                     }
@@ -2036,13 +2036,18 @@ impl CodeGen {
                 ctx.enter_scope(LoScopeType::ForLoop);
 
                 // define counter and set value to start
-                let local_index =
-                    self.define_local(ctx, loc.clone(), counter.clone(), &counter_type, false)?;
+                let local_index = self.define_local(
+                    ctx,
+                    counter.loc.clone(),
+                    counter.repr.clone(),
+                    &counter_type,
+                    false,
+                )?;
                 let counter_var = self.var_local(
-                    counter,
+                    &counter.repr,
                     counter_type.clone(),
                     local_index,
-                    loc.clone(),
+                    counter.loc.clone(),
                     None,
                 );
                 if let Some(inspect_info) = counter_var.inspect_info() {

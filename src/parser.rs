@@ -700,7 +700,7 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "for")? {
             let mut loc = self.prev().loc.clone();
 
-            let counter = self.expect_any(Symbol)?.clone();
+            let counter = self.parse_ident()?;
             self.expect(Symbol, "in")?;
             let start = self.parse_code_expr(0)?;
             self.expect(Operator, "..")?;
@@ -710,7 +710,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(CodeExpr::ForLoop(ForLoopExpr {
-                counter: counter.value,
+                counter,
                 start: Box::new(start),
                 end: Box::new(end),
                 body: Box::new(body),

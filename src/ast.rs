@@ -368,7 +368,7 @@ pub struct UnreachableExpr {
 
 #[derive(Debug)]
 pub struct ForLoopExpr {
-    pub counter: String,
+    pub counter: IdentExpr,
     pub start: Box<CodeExpr>,
     pub end: Box<CodeExpr>,
     pub body: Box<CodeBlockExpr>,
