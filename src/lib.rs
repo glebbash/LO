@@ -154,6 +154,7 @@ pub extern "C" fn _start() {
     });
 
     codegen.end_inspection();
+
     if codegen.error_count > 0 {
         finalize_and_exit(1);
     }
@@ -162,6 +163,7 @@ pub extern "C" fn _start() {
         let mut binary = Vec::new();
         wasm_module.dump(&mut binary);
         stdout_write(binary.as_slice());
+        finalize_and_exit(0);
     }
 
     if command == LoCommand::Eval {
@@ -169,9 +171,10 @@ pub extern "C" fn _start() {
             stderr_writeln(err.message);
             finalize_and_exit(1);
         });
+        finalize_and_exit(0);
     }
 
-    finalize_and_exit(0);
+    unreachable!();
 }
 
 fn parse_file_tree(
