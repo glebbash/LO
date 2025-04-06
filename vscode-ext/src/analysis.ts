@@ -51,15 +51,17 @@ export class FileAnalysisCollection
         position: vscode.Position,
         _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.LocationLink[] | vscode.Definition> {
+        const outRefs = [];
+
         const links =
             this.analysisPerUri.get(document.uri.toString(true))?.links ?? [];
         for (const ref of links) {
             if (ref.originSelectionRange!.contains(position)) {
-                return [ref];
+                outRefs.push(ref);
             }
         }
 
-        return null;
+        return outRefs.length === 0 ? null : outRefs;
     }
 
     showMessages() {

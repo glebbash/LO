@@ -96,6 +96,12 @@ export async function activate(context: vscode.ExtensionContext) {
                         targetUri: analysisPerIndex.get(targetIndex)!.uri,
                         targetRange: targetRange,
                     });
+
+                    analysisPerIndex.get(targetIndex)!.links.push({
+                        originSelectionRange: targetRange,
+                        targetUri: fileDiagnostic.uri,
+                        targetRange: sourceRange,
+                    });
                 }
 
                 if (d.hover) {
