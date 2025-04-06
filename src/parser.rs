@@ -403,20 +403,20 @@ impl Parser {
         while let None = self.eat(Delim, ")")? {
             let mut loc = self.current().loc.clone();
 
-            let mut p_type = FnParamType::Self_;
+            let mut param_type = FnParamType::Self_;
             if let Some(_) = self.eat(Operator, "&")? {
-                p_type = FnParamType::SelfRef;
+                param_type = FnParamType::SelfRef;
             }
 
-            let p_name = self.expect_any(Symbol)?.clone();
+            let param_name = self.parse_ident()?;
 
-            if p_name.value != "self" {
-                if let FnParamType::SelfRef = p_type {
+            if param_name.repr != "self" {
+                if let FnParamType::SelfRef = param_type {
                     return Err(LoError {
                         message: format!(
                             "Only `self` param can be preceded by the reference operator"
                         ),
-                        loc: p_name.loc,
+                        loc: param_name.loc,
                     });
                 }
 
@@ -431,11 +431,11 @@ impl Parser {
                     }
 
                     let infer_as = self.expect_any(Symbol)?;
-                    p_type = FnParamType::Infer {
+                    param_type = FnParamType::Infer {
                         name: infer_as.value.clone(),
                     };
                 } else {
-                    p_type = FnParamType::Type {
+                    param_type = FnParamType::Type {
                         expr: self.parse_type_expr()?,
                     };
                 }
@@ -448,8 +448,8 @@ impl Parser {
             }
 
             params.push(FnParam {
-                param_name: p_name.value,
-                param_type: p_type,
+                param_name,
+                param_type,
                 loc,
             });
         }

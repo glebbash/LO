@@ -44,7 +44,7 @@ pub struct FnDeclExpr {
 
 #[derive(Debug)]
 pub struct FnParam {
-    pub param_name: String,
+    pub param_name: IdentExpr,
     pub param_type: FnParamType,
     pub loc: LoLocation,
 }

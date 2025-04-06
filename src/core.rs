@@ -210,11 +210,6 @@ fn fd_read_all(fd: u32) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
-pub fn stdout_writeln(message: impl AsRef<[u8]>) {
-    stdout_write(message);
-    stdout_write("\n");
-}
-
 #[thread_local]
 static STDOUT_BUFFER: RefCell<Option<Vec<u8>>> = RefCell::new(None);
 const STDOUT_BUFFER_SIZE: usize = 4096;
@@ -231,6 +226,11 @@ pub fn stdout_disable_buffering() {
         }
     }
     *STDOUT_BUFFER.borrow_mut() = None;
+}
+
+pub fn stdout_writeln(message: impl AsRef<[u8]>) {
+    stdout_write(message);
+    stdout_write("\n");
 }
 
 pub fn stdout_write(message: impl AsRef<[u8]>) {

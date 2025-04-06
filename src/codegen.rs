@@ -540,7 +540,7 @@ impl CodeGen {
                 TopLevelExpr::StructDef(StructDefExpr {
                     struct_name,
                     fields: _,
-                    loc,
+                    loc: _,
                 }) => {
                     if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
                         self.report_error(LoError {
@@ -566,23 +566,27 @@ impl CodeGen {
                             struct_name: struct_name.repr.clone(),
                         },
                         kind: LoTypeDefKind::Struct,
-                        loc: loc.clone(),
+                        loc: struct_name.loc.clone(),
                     });
                 }
-                TopLevelExpr::TypeDef(typedef) => {
-                    if let Some(existing_typedef) = self.get_typedef(&typedef.type_name.repr) {
+                TopLevelExpr::TypeDef(TypeDefExpr {
+                    type_name,
+                    type_value,
+                    loc: _,
+                }) => {
+                    if let Some(existing_typedef) = self.get_typedef(&type_name.repr) {
                         self.report_error(LoError {
                             message: format!(
                                 "Cannot redefine type {}, already defined at {}",
-                                typedef.type_name.repr,
+                                type_name.repr,
                                 existing_typedef.loc.to_string(&self.fm)
                             ),
-                            loc: typedef.loc.clone(),
+                            loc: type_name.loc.clone(),
                         });
                         continue;
                     }
 
-                    let type_value = self.build_type(&self.const_ctx, &typedef.type_value);
+                    let type_value = self.build_type(&self.const_ctx, &type_value);
                     let type_value = catch!(type_value, err, {
                         self.report_error(err);
                         continue;
@@ -590,9 +594,9 @@ impl CodeGen {
 
                     self.type_defs.push(LoTypeDef {
                         kind: LoTypeDefKind::Alias,
-                        name: typedef.type_name.repr.clone(),
+                        name: type_name.repr.clone(),
                         value: type_value,
-                        loc: typedef.loc.clone(),
+                        loc: type_name.loc.clone(),
                     });
                 }
                 _ => {} // skip, not interested
@@ -698,11 +702,11 @@ impl CodeGen {
                     let mut inputs = Vec::new();
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
                         for var in &ctx.current_scope().locals {
-                            if var.local_name == fn_param.param_name {
+                            if var.local_name == fn_param.param_name.repr {
                                 self.report_error(LoError {
                                     message: format!(
                                         "Duplicate function parameter name: {}",
-                                        fn_param.param_name
+                                        fn_param.param_name.repr
                                     ),
                                     loc: fn_param.loc.clone(),
                                 });
@@ -719,14 +723,14 @@ impl CodeGen {
                         inputs.push(param_type.clone());
 
                         fn_params.push(LoFnParam {
-                            param_name: fn_param.param_name.clone(),
+                            param_name: fn_param.param_name.repr.clone(),
                             param_type: param_type.clone(),
                         });
 
                         let res = self.define_local(
                             &mut ctx,
-                            fn_param.loc.clone(),
-                            fn_param.param_name.clone(),
+                            fn_param.param_name.loc.clone(),
+                            fn_param.param_name.repr.clone(),
                             &param_type,
                             true,
                         );
@@ -816,7 +820,7 @@ impl CodeGen {
                             });
                             fn_type.inputs.push(param_type.clone());
                             fn_params.push(LoFnParam {
-                                param_name: fn_param.param_name.clone(),
+                                param_name: fn_param.param_name.repr.clone(),
                                 param_type: param_type.clone(),
                             });
                         }
@@ -2402,7 +2406,7 @@ impl CodeGen {
         // TODO: check for const shadowing
         for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
             let const_def = LoConstDef {
-                const_name: macro_param.param_name.clone(),
+                const_name: macro_param.param_name.repr.clone(),
                 code_unit: macro_arg,
                 loc: macro_param.loc.clone(),
             };

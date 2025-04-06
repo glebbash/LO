@@ -246,19 +246,19 @@ impl Printer {
 
             match &fn_param.param_type {
                 FnParamType::Self_ => {
-                    stdout_write(&fn_param.param_name);
+                    stdout_write(&fn_param.param_name.repr);
                 }
                 FnParamType::SelfRef => {
                     stdout_write("&");
-                    stdout_write(&fn_param.param_name);
+                    stdout_write(&fn_param.param_name.repr);
                 }
                 FnParamType::Type { expr } => {
-                    stdout_write(&fn_param.param_name);
+                    stdout_write(&fn_param.param_name.repr);
                     stdout_write(": ");
                     self.print_type_expr(&expr);
                 }
                 FnParamType::Infer { name } => {
-                    stdout_write(&fn_param.param_name);
+                    stdout_write(&fn_param.param_name.repr);
                     stdout_write(": infer ");
                     stdout_write(name);
                 }
