@@ -7,6 +7,10 @@ struct EvalError {
     message: String,
 };
 
+fn EvalError::free(&self) {
+    self.message.free();
+};
+
 // TODO: implement
 struct WasmEval {};
 

@@ -437,6 +437,7 @@ fn String::char_at(self, index: u32): u8 {
     return *self.chars.at!<u8>(index);
 };
 
+// TODO: figure out a way to use this as a method
 fn String::as_str(self): str {
     return .str {
         data: self.chars.data as *&u8,

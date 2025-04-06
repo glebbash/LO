@@ -4,13 +4,13 @@ include "../lib/args.lo";
 include "../lib/print.lo";
 
 // TODO: implement the module
-type CompilerMode = u8;
+type LoCommand = u8;
 
-const CompilerMode::Compile = 0 as u8;
-const CompilerMode::Inspect = 1 as u8;
-const CompilerMode::PrettyPrint = 2 as u8;
-const CompilerMode::Eval = 3 as u8;
-const CompilerMode::EvalWasm = 4 as u8;
+const LoCommand::Compile = 0 as u8;
+const LoCommand::Inspect = 1 as u8;
+const LoCommand::Format = 2 as u8;
+const LoCommand::Eval = 3 as u8;
+const LoCommand::Wasi = 4 as u8;
 
 struct LoPosition {
     offset: u32,
@@ -61,33 +61,20 @@ fn stdout_disable_buffering() {
     // todo!();
 };
 
+// TODO: add support for buffering
 fn stdout_write(message: str) {
-    todo!();
+    let _ = fputs(wasi::FD_STDOUT, message);
 };
 
+// TODO: add support for buffering
+fn stderr_writeln(message: str) {
+    stderr_write(message);
+    stderr_write("\n");
+};
+
+// TODO: add support for buffering
 fn stderr_write(message: str) {
-    // todo!();
     let _ = fputs(wasi::FD_STDERR, message);
-};
-
-struct LoErrorManager {
-    errors: &Vec of LoError,
-};
-
-fn LoErrorManager::report(&self, error: LoError) {
-    self.errors.push!(error);
-};
-
-fn LoErrorManager::print_all(&self, fm: &FileManager): Result<void, String> {
-    if self.errors.size == 0 {
-        return Ok();
-    };
-    for i in 0..self.errors.size {
-        let error = self.errors.at!<LoError>(i);
-        stderr_write(error.to_string(fm).as_str());
-        stderr_write("\n");
-    };
-    return Err(String::from_str(""));
 };
 
 struct FileInfo {
@@ -106,6 +93,12 @@ fn FileManager::new(): &FileManager {
 };
 
 fn FileManager::free(&self) {
+    todo!();
+};
+
+// NOTE: this doesn't match Rust impl to not do extra String allocation and just print parts
+//   mostly because freeing is cumbersome and not really about efficiency
+fn FileManager::print_error(&self, err: &LoError) {
     todo!();
 };
 

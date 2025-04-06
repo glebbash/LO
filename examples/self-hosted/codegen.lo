@@ -5,22 +5,39 @@ include "./wasm.lo";
 
 // TODO: implement
 struct CodeGen {
+    command: LoCommand,
     fm: &FileManager,
-    errors: &LoErrorManager,
+    error_count: u32,
 };
 
-fn CodeGen::new(compiler_mode: CompilerMode): CodeGen {
+fn CodeGen::new(command: LoCommand): &CodeGen {
     todo!();
 };
 
-fn CodeGen::free(self) {
+fn CodeGen::free(&self) {
     todo!();
 };
 
-fn CodeGen::process_file(self, ast: AST): Result<void, &LoError> {
+fn CodeGen::report_error(&self, err: &LoError) {
     todo!();
 };
 
-fn CodeGen::generate(self): Result<WasmModule, &LoError> {
+fn CodeGen::end_inspection(&self) {
+    todo!();
+};
+
+fn CodeGen::pass_collect_typedefs(&self, ast: &AST): Result<void, &LoError> {
+    todo!();
+};
+
+fn CodeGen::pass_build_structs(&self, ast: &AST): Result<void, &LoError> {
+    todo!();
+};
+
+fn CodeGen::pass_main(&self, ast: &AST): Result<void, &LoError> {
+    todo!();
+};
+
+fn CodeGen::generate(&self): Result<WasmModule, &LoError> {
     todo!();
 };

@@ -12,133 +12,163 @@ export memory {
     min_pages: 1,
 };
 
-const USAGE = "Usage: lo <file> [<mode>]
-  Where <mode> is either:
-    --compile (default if not provided)
-    --inspect
-    --pretty-print
-    --eval (experimental)
-    --eval-wasm (experimental)";
+const USAGE = "Usage:
+  lo compile <input.lo>
+  lo inspect <input.lo>
+  lo format <input.lo>
+  lo eval <input.lo> (experimental)
+  lo wasi <input.lo> (experimental)";
 
+// TODO: Compiling function #108:"_start" failed: expected 0 elements on the stack for fallthru, found 1
 export fn _start() {
-    let res = try_start();
-    stdout_disable_buffering();
-    res catch err_message {
-        defer err_message.free();
-        stderr_write(err_message.as_str());
-        stderr_write("\n");
-        proc_exit(1);
-    };
-};
-
-fn try_start(): Result<void, String> {
     let args = Args::load();
     defer args.free();
-    if args.argc < 2 {
-        return Err(String::from_str(USAGE));
+    if args.argc < 3 {
+        stderr_writeln(USAGE);
+        return finalize_and_exit(1);
     };
-    let file_name = args.get(1);
+    //
+    let command = LoCommand::Compile;
+    let command_arg = args.get(1);
+    if command_arg.equals("compile") {
+        command = LoCommand::Compile;
+    } else if command_arg.equals("inspect") {
+        command = LoCommand::Inspect;
+    } else if command_arg.equals("format") {
+        command = LoCommand::Format;
+    } else if command_arg.equals("eval") {
+        command = LoCommand::Eval;
+    } else if command_arg.equals("wasi") {
+        command = LoCommand::Wasi;
+    } else {
+        stderr_write("Unknown command: ");
+        stderr_writeln(command_arg);
+        stderr_writeln(USAGE);
+        return finalize_and_exit(1);
+    };
+    //
+    let file_name = args.get(2);
     if file_name.equals("-i") {
         file_name = "<stdin>";
     };
-    let compiler_mode = CompilerMode::Compile;
-    if args.argc >= 3 {
-        let compiler_mode_arg = args.get(2);
-        if compiler_mode_arg.equals("--compile") {
-            compiler_mode = CompilerMode::Compile;
-        } else if compiler_mode_arg.equals("--inspect") {
-            compiler_mode = CompilerMode::Inspect;
-        } else if compiler_mode_arg.equals("--pretty-print") {
-            compiler_mode = CompilerMode::PrettyPrint;
-        } else if compiler_mode_arg.equals("--eval") {
-            compiler_mode = CompilerMode::Eval;
-        } else if compiler_mode_arg.equals("--eval-wasm") {
-            compiler_mode = CompilerMode::EvalWasm;
-        } else {
-            let err_message = String::from_str("Unknown compiler mode: ");
-            err_message.push_str(compiler_mode_arg);
-            err_message.push_str("\n");
-            err_message.push_str(USAGE);
-            return Err(err_message);
-        };
-    };
-    if compiler_mode == CompilerMode::PrettyPrint {
+    //
+    if command == LoCommand::Format {
         let fm = FileManager::new();
         defer fm.free();
         let included_file = fm.include_file(file_name, LoLocation::internal()) catch err {
             defer err.free();
-            return Err(err.to_string(fm));
+            fm.print_error(err);
+            return finalize_and_exit(1);
         };
-        let file_contents = included_file.file_contents.unwrap();
-        defer file_contents.free();
-        let tokens = Lexer::lex(included_file.file_index, file_contents) catch err {
+        //
+        let tokens = Lexer::lex(included_file.file_index, included_file.file_contents.unwrap()) catch err {
             defer err.free();
-            return Err(err.to_string(fm));
+            fm.print_error(err);
+            return finalize_and_exit(1);
         };
         defer tokens.free();
         let ast = Parser::parse(tokens) catch err {
             defer err.free();
-            return Err(err.to_string(fm));
+            fm.print_error(err);
+            return finalize_and_exit(1);
         };
         defer ast.free();
+        //
         stdout_enable_buffering();
         Printer::print(ast);
-        return Ok();
+        //
+        return finalize_and_exit(0);
     };
-    if compiler_mode == CompilerMode::EvalWasm {
-        let module_bytes = file_read(file_name)?;
-        defer module_bytes.free();
-        let wasm_module = WasmParser::parse(String::from_str(file_name), module_bytes)?;
-        defer wasm_module.free();
-        WasmEval::eval(wasm_module) catch err {
-            defer heap::free(err);
-            return Err(err.message);
+    //
+    if command == LoCommand::Wasi {
+        let module_bytes = file_read(file_name) catch err {
+            defer err.free();
+            stderr_writeln(String::as_str(err));
+            return finalize_and_exit(1);
         };
-        return Ok();
+        //
+        let wasm_module = WasmParser::parse(String::from_str(file_name), module_bytes) catch err {
+            defer err.free();
+            stderr_writeln(String::as_str(err));
+            return finalize_and_exit(1);
+        };
+        defer wasm_module.free();
+        //
+        WasmEval::eval(wasm_module) catch err {
+            defer err.free();
+            stderr_writeln(String::as_str(err.message));
+            return finalize_and_exit(1);
+        };
+        //
+        return finalize_and_exit(0);
     };
-    if compiler_mode == CompilerMode::Inspect {
+    //
+    if command == LoCommand::Inspect {
         stdout_enable_buffering();
     };
-    let codegen = CodeGen::new(compiler_mode);
+    //
+    let codegen = CodeGen::new(command);
     defer codegen.free();
+    //
     let included_file = codegen.fm.include_file(file_name, LoLocation::internal()) catch err {
         defer err.free();
-        return Err(err.to_string(codegen.fm));
+        codegen.fm.print_error(err);
+        return finalize_and_exit(1);
     };
+    //
     let asts = Vec::new!<AST>();
     defer asts.free_deep!<AST>();
-    parse_file_tree(compiler_mode, codegen.fm, asts, included_file.file_index, included_file.file_contents.unwrap()) catch err {
-        return err.to_string(codegen.fm);
+    parse_file_tree(codegen, asts, included_file.file_index, included_file.file_contents.unwrap());
+    //
+    for i in 0..asts.size {
+        let ast = asts.at!<AST>(i);
+        codegen.pass_collect_typedefs(ast);
     };
     for i in 0..asts.size {
-        let ast = asts.get!<AST>(i);
-        codegen.process_file(ast) catch err {
-            defer err.free();
-            return err.to_string(codegen.fm);
-        };
+        let ast = asts.at!<AST>(i);
+        codegen.pass_build_structs(ast);
     };
-    codegen.errors.print_all(codegen.fm)?;
+    for i in 0..asts.size {
+        let ast = asts.at!<AST>(i);
+        codegen.pass_main(ast);
+    };
+    //
     let wasm_module = codegen.generate() catch err {
         defer err.free();
-        return err.to_string(codegen.fm);
+        codegen.report_error(err);
+        codegen.end_inspection();
+        return finalize_and_exit(1);
     };
     defer wasm_module.free();
-    if compiler_mode == CompilerMode::Compile {
+    //
+    codegen.end_inspection();
+    //
+    if codegen.error_count > 0 {
+        return finalize_and_exit(1);
+    };
+    //
+    if command == LoCommand::Compile {
         let binary = String::new(16);
         defer binary.free();
         wasm_module.dump(binary);
         stdout_write(binary.as_str());
+        return finalize_and_exit(0);
     };
-    if compiler_mode == CompilerMode::Eval {
+    //
+    if command == LoCommand::Eval {
         WasmEval::eval(wasm_module) catch err {
-            return Err(err.message);
+            defer err.free();
+            stderr_writeln(String::as_str(err.message));
+            return finalize_and_exit(1);
         };
+        return finalize_and_exit(0);
     };
-    return Ok();
+    //
+    unreachable;
 };
 
-fn parse_file_tree(mode: CompilerMode, fm: &FileManager, asts: &Vec of AST, file_index: u32, file_contents: String): Result<void, &LoError> {
-    if mode == CompilerMode::Inspect {
+fn parse_file_tree(codegen: &CodeGen, asts: &Vec of AST, file_index: u32, file_contents: String) {
+    if codegen.command == LoCommand::Inspect {
         // TODO: port
         // let file_path = fm.get_file_path(file_index);
         // stdout_writeln(format!(
@@ -147,19 +177,32 @@ fn parse_file_tree(mode: CompilerMode, fm: &FileManager, asts: &Vec of AST, file
         //         \"path\": \"{file_path}\" }},",
         // ));
     };
-    let tokens = Lexer::lex(file_index, file_contents)?;
-    let ast = Parser::parse(tokens)?;
+    let tokens = Lexer::lex(file_index, file_contents) catch err {
+        return codegen.report_error(err);
+    };
+    let ast = Parser::parse(tokens) catch err {
+        return codegen.report_error(err);
+    };
     for i in 0..ast.exprs.size {
         // TODO: port
         // let expr = ast.exprs.get!<TopLevelExpr>(i);
         // let TopLevelExpr::Include(include) = expr else {
         //     continue;
         // };
-        // let included_file = fm.include_file(include.file_path.unescape(), include.loc)?;
+        //
+        // let included_file = codegen
+        //     .fm
+        //     .include_file(&include.file_path.unescape(), &include.loc);
+        // let included_file = catch!(included_file, err, {
+        //     codegen.report_error(err);
+        //     continue;
+        // });
+        //
         // if let Some(file_contents) = included_file.file_contents {
-        //     parse_file_tree(mode, fm, asts, included_file.file_index, file_contents)?;
+        //     parse_file_tree(codegen, asts, included_file.file_index, file_contents);
         // }
-        // if mode == CompilerMode::Inspect {
+        //
+        // if codegen.command == LoCommand::Inspect {
         //     let source_index = file_index;
         //     let source_range = RangeDisplay(&include.loc);
         //     let target_index = included_file.file_index;
@@ -169,8 +212,12 @@ fn parse_file_tree(mode: CompilerMode, fm: &FileManager, asts: &Vec of AST, file
         //             \"link\": \"{target_index}/{target_range}\", \
         //             \"loc\": \"{source_index}/{source_range}\" }},",
         //     ));
-        // };
+        // }
     };
     asts.push!(ast);
-    return Ok();
+};
+
+fn finalize_and_exit(exit_code: u32): never {
+    stdout_disable_buffering();
+    proc_exit(exit_code);
 };
