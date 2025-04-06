@@ -243,25 +243,26 @@ pub fn stdout_write(message: impl AsRef<[u8]>) {
 
     if buffer.len() + message_bytes.len() > STDOUT_BUFFER_SIZE {
         if !buffer.is_empty() {
-            fputs(wasi::FD_STDOUT, &buffer);
+            fputs(wasi::FD_STDOUT, buffer);
             buffer.clear();
         }
     }
 
     if message_bytes.len() >= STDOUT_BUFFER_SIZE {
         fputs(wasi::FD_STDOUT, message_bytes);
-    } else {
-        buffer.extend_from_slice(message_bytes);
+        return;
     }
-}
 
-pub fn stderr_write(message: impl AsRef<str>) {
-    fputs(wasi::FD_STDERR, message.as_ref().as_bytes());
+    buffer.extend_from_slice(message_bytes);
 }
 
 pub fn stderr_writeln(message: impl AsRef<str>) {
     stderr_write(message);
     stderr_write("\n");
+}
+
+pub fn stderr_write(message: impl AsRef<str>) {
+    fputs(wasi::FD_STDERR, message.as_ref().as_bytes());
 }
 
 pub fn fputs(fd: u32, message: &[u8]) {

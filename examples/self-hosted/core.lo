@@ -53,26 +53,46 @@ fn file_read(file_path: str): Result<String, String> {
     todo!();
 };
 
+global STDOUT_BUFFER = 0 as String;
+
+const STDOUT_BUFFER_SIZE = 4096;
+
 fn stdout_enable_buffering() {
-    todo!();
+    STDOUT_BUFFER = String::new(STDOUT_BUFFER_SIZE);
 };
 
 fn stdout_disable_buffering() {
-    // todo!();
+    if STDOUT_BUFFER as u32 != 0 && STDOUT_BUFFER.len() > 0 {
+        let _ = fputs(wasi::FD_STDOUT, STDOUT_BUFFER.as_str());
+        STDOUT_BUFFER.chars.size = 0;
+    };
+    STDOUT_BUFFER = 0 as String;
 };
 
-// TODO: add support for buffering
 fn stdout_write(message: str) {
-    let _ = fputs(wasi::FD_STDOUT, message);
+    if STDOUT_BUFFER as u32 == 0 {
+        let _ = fputs(wasi::FD_STDOUT, message);
+        return;
+    };
+    //
+    if STDOUT_BUFFER.len() + message.size > STDOUT_BUFFER_SIZE && STDOUT_BUFFER.len() > 0 {
+        let _ = fputs(wasi::FD_STDOUT, STDOUT_BUFFER.as_str());
+        STDOUT_BUFFER.chars.size = 0;
+    };
+    //
+    if message.size >= STDOUT_BUFFER_SIZE {
+        let _ = fputs(wasi::FD_STDOUT, message);
+        return;
+    };
+    //
+    STDOUT_BUFFER.push_str(message);
 };
 
-// TODO: add support for buffering
 fn stderr_writeln(message: str) {
     stderr_write(message);
     stderr_write("\n");
 };
 
-// TODO: add support for buffering
 fn stderr_write(message: str) {
     let _ = fputs(wasi::FD_STDERR, message);
 };

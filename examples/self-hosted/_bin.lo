@@ -82,20 +82,20 @@ export fn _start() {
     if command == LoCommand::Wasi {
         let module_bytes = file_read(file_name) catch err {
             defer err.free();
-            stderr_writeln(String::as_str(err));
+            stderr_writeln(err.as_str());
             return finalize_and_exit(1);
         };
         //
         let wasm_module = WasmParser::parse(String::from_str(file_name), module_bytes) catch err {
             defer err.free();
-            stderr_writeln(String::as_str(err));
+            stderr_writeln(err.as_str());
             return finalize_and_exit(1);
         };
         defer wasm_module.free();
         //
         WasmEval::eval(wasm_module) catch err {
             defer err.free();
-            stderr_writeln(String::as_str(err.message));
+            stderr_writeln(err.message.as_str());
             return finalize_and_exit(1);
         };
         //
@@ -157,7 +157,7 @@ export fn _start() {
     if command == LoCommand::Eval {
         WasmEval::eval(wasm_module) catch err {
             defer err.free();
-            stderr_writeln(String::as_str(err.message));
+            stderr_writeln(err.message.as_str());
             return finalize_and_exit(1);
         };
         return finalize_and_exit(0);
