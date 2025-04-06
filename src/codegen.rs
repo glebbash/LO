@@ -2238,6 +2238,16 @@ impl CodeGen {
             self.codegen(ctx, instrs, arg)?;
         }
 
+        if self.command == LoCommand::Inspect {
+            let params = ListDisplay(&lo_fn_info.fn_params);
+            let return_type = &lo_fn_info.fn_type.output;
+            self.print_inspection(&InspectInfo {
+                message: format!("fn {fn_name}({params}): {return_type}"),
+                loc: loc.clone(),
+                linked_loc: Some(lo_fn_info.definition_loc.clone()),
+            });
+        }
+
         if !self.is_types_compatible(&lo_fn_info.fn_type.inputs, &arg_types) {
             return Err(LoError {
                 message: format!(
@@ -2247,16 +2257,6 @@ impl CodeGen {
                     ListDisplay(&lo_fn_info.fn_type.inputs),
                 ),
                 loc: loc.clone(),
-            });
-        }
-
-        if self.command == LoCommand::Inspect {
-            let params = ListDisplay(&lo_fn_info.fn_params);
-            let return_type = &lo_fn_info.fn_type.output;
-            self.print_inspection(&InspectInfo {
-                message: format!("fn {fn_name}({params}): {return_type}"),
-                loc: loc.clone(),
-                linked_loc: Some(lo_fn_info.definition_loc.clone()),
             });
         }
 
