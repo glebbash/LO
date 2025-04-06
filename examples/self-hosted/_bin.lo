@@ -19,7 +19,6 @@ const USAGE = "Usage:
   lo eval <input.lo> (experimental)
   lo wasi <input.lo> (experimental)";
 
-// TODO: Compiling function #108:"_start" failed: expected 0 elements on the stack for fallthru, found 1
 export fn _start() {
     let args = Args::load();
     defer args.free();

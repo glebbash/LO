@@ -152,7 +152,7 @@ pub extern "C" fn _start() {
     codegen.generate(&mut wasm_module);
 
     codegen.end_inspection();
-    if codegen.error_count > 0 {
+    if *codegen.error_count.borrow() > 0 {
         finalize_and_exit(1);
     }
 

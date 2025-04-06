@@ -26,15 +26,15 @@ fn CodeGen::end_inspection(&self) {
     todo!();
 };
 
-fn CodeGen::pass_collect_typedefs(&self, ast: &AST): Result<void, &LoError> {
+fn CodeGen::pass_collect_typedefs(&self, ast: &AST) {
     todo!();
 };
 
-fn CodeGen::pass_build_structs(&self, ast: &AST): Result<void, &LoError> {
+fn CodeGen::pass_build_structs(&self, ast: &AST) {
     todo!();
 };
 
-fn CodeGen::pass_main(&self, ast: &AST): Result<void, &LoError> {
+fn CodeGen::pass_main(&self, ast: &AST) {
     todo!();
 };
 

@@ -378,7 +378,7 @@ struct LoConstDef {
 pub struct CodeGen {
     pub command: LoCommand,
     pub fm: FileManager,
-    pub error_count: u32,
+    pub error_count: RefCell<u32>,
 
     type_defs: Vec<LoTypeDef>,
     struct_defs: Vec<LoStructDef>,
@@ -491,8 +491,8 @@ impl CodeGen {
         return codegen;
     }
 
-    pub fn report_error(&mut self, err: LoError) {
-        self.error_count += 1;
+    pub fn report_error(&self, err: LoError) {
+        *self.error_count.borrow_mut() += 1;
 
         if self.command == LoCommand::Inspect {
             let source_index = err.loc.file_index;
@@ -1069,19 +1069,10 @@ impl CodeGen {
 
             let mut ctx = ctx.clone();
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
-            let mut had_return = false;
-            for expr in unsafe_borrow(&body.exprs) {
-                if let CodeExpr::Return(_) = expr {
-                    had_return = true;
-                }
-                catch!(self.codegen(&mut ctx, &mut wasm_expr.instrs, expr), err, {
-                    self.report_error(err);
-                    continue;
-                });
-            }
-            if !had_return {
-                let res = self.emit_deferred(&mut ctx, &mut wasm_expr.instrs);
-                catch!(res, err, {
+            let terminated_early =
+                self.codegen_code_block(&mut ctx, &mut wasm_expr.instrs, body, true);
+            if !terminated_early {
+                catch!(self.emit_deferred(&mut ctx, &mut wasm_expr.instrs), err, {
                     self.report_error(err);
                 });
             }
@@ -1184,6 +1175,44 @@ impl CodeGen {
             stdout_writeln("{ \"type\": \"end\" }");
             stdout_writeln("]");
         }
+    }
+
+    fn codegen_code_block(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        body: &CodeBlockExpr,
+        void_only: bool,
+    ) -> bool {
+        let mut terminated_early = false;
+        for expr in &body.exprs {
+            let expr_type = catch!(self.get_expr_type(ctx, expr), err, {
+                self.report_error(err);
+                continue;
+            });
+
+            if expr_type == LoType::Never {
+                terminated_early = true;
+            }
+
+            let mut type_layout = LoTypeLayout::default();
+            self.get_type_layout(&expr_type, &mut type_layout);
+            if type_layout.primities_count > 0 && void_only {
+                self.report_error(LoError {
+                    message: format!(
+                        "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
+                    ),
+                    loc: expr.loc().clone(),
+                });
+            }
+
+            catch!(self.codegen(ctx, instrs, expr), err, {
+                self.report_error(err);
+                continue;
+            });
+        }
+
+        terminated_early
     }
 
     fn define_memory(
@@ -1971,9 +2000,7 @@ impl CodeGen {
                 });
 
                 ctx.enter_scope(LoScopeType::Block);
-                for expr in &then_block.exprs {
-                    self.codegen(ctx, instrs, &expr)?;
-                }
+                self.codegen_code_block(ctx, instrs, &then_block, true);
                 ctx.exit_scope();
 
                 match else_block {
@@ -1981,9 +2008,7 @@ impl CodeGen {
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
                         ctx.enter_scope(LoScopeType::Block);
-                        for expr in &code_block_expr.exprs {
-                            self.codegen(ctx, instrs, &expr)?;
-                        }
+                        self.codegen_code_block(ctx, instrs, &code_block_expr, true);
                         ctx.exit_scope();
                     }
                     ElseBlock::ElseIf(code_expr) => {
@@ -2007,9 +2032,7 @@ impl CodeGen {
                 });
 
                 ctx.enter_scope(LoScopeType::Loop);
-                for expr in &body.exprs {
-                    self.codegen(ctx, instrs, expr)?;
-                }
+                self.codegen_code_block(ctx, instrs, body, true);
                 ctx.exit_scope();
 
                 // implicit continue
@@ -2086,9 +2109,7 @@ impl CodeGen {
                                 block_type: WasmBlockType::NoOut,
                             });
 
-                            for expr in &body.exprs {
-                                self.codegen(ctx, instrs, &expr)?;
-                            }
+                            self.codegen_code_block(ctx, instrs, body, true);
 
                             instrs.push(WasmInstr::BlockEnd);
                         }
@@ -2434,9 +2455,8 @@ impl CodeGen {
             });
         }
 
-        for expr in &macro_def.body.exprs {
-            self.codegen(ctx, instrs, expr)?;
-        }
+        // TODO: type check that block emits only what's defined by return type
+        self.codegen_code_block(ctx, instrs, &macro_def.body, false);
 
         ctx.exit_scope(); // exit macro scope
 
@@ -2506,12 +2526,13 @@ impl CodeGen {
 
         // catch error
         if let Some((_, catch_body)) = catch_details {
-            for expr in &catch_body.exprs {
-                self.codegen(ctx, instrs, &expr)?;
+            let terminated_early = self.codegen_code_block(ctx, instrs, catch_body, true);
+            if !terminated_early {
+                self.report_error(LoError {
+                    message: format!("Catch expression must resolve to never, got other type"),
+                    loc: catch_body.loc.clone(),
+                });
             }
-
-            // TODO: push this conditionally
-            instrs.push(WasmInstr::Unreachable);
         } else {
             // return ok_type of function's result + caught error
             let (fn_ok_type, _) = self.get_result_literal_type(ctx, &None, loc)?;
