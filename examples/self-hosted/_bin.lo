@@ -168,23 +168,29 @@ export fn _start() {
 
 fn parse_file_tree(codegen: &CodeGen, asts: &Vec of AST, file_index: u32, file_contents: String) {
     if codegen.command == LoCommand::Inspect {
-        // TODO: port
-        // let file_path = fm.get_file_path(file_index);
-        // stdout_writeln(format!(
-        //     "{{ \"type\": \"file\", \
-        //         \"index\": {file_index}, \
-        //         \"path\": \"{file_path}\" }},",
-        // ));
+        let file_index_str = file_index.write(String::new_using(6, alloc::STACK));
+        defer file_index_str.free();
+        //
+        let file_path = codegen.fm.get_file_path(file_index);
+        stdout_write("{ \"type\": \"file\", \"index\": ");
+        stdout_write(file_index_str.as_str());
+        stdout_write(", \"path\": \"");
+        stdout_write(file_path);
+        stdout_write("\" },");
     };
+    //
     let tokens = Lexer::lex(file_index, file_contents) catch err {
         return codegen.report_error(err);
     };
+    //
     let ast = Parser::parse(tokens) catch err {
         return codegen.report_error(err);
     };
+    //
+    // pass 0: parse all included files (recursive)
     for i in 0..ast.exprs.size {
+        let expr = ast.exprs.get!<TopLevelExpr>(i);
         // TODO: port
-        // let expr = ast.exprs.get!<TopLevelExpr>(i);
         // let TopLevelExpr::Include(include) = expr else {
         //     continue;
         // };

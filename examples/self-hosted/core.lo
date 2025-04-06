@@ -69,6 +69,11 @@ fn stdout_disable_buffering() {
     STDOUT_BUFFER = 0 as String;
 };
 
+fn stdout_writeln(message: str) {
+    stdout_write(message);
+    stdout_write("\n");
+};
+
 fn stdout_write(message: str) {
     if STDOUT_BUFFER as u32 == 0 {
         let _ = fputs(wasi::FD_STDOUT, message);
@@ -120,6 +125,10 @@ fn FileManager::free(&self) {
 //   mostly because freeing is cumbersome and not really about efficiency
 fn FileManager::print_error(&self, err: &LoError) {
     todo!();
+};
+
+fn FileManager::get_file_path(&self, file_index: u32): str {
+    return self.files.at!<FileInfo>(file_index).file_path.as_str();
 };
 
 struct OptionString {};
