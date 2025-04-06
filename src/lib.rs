@@ -34,7 +34,8 @@ mod wasm_target {
 }
 
 use crate::{
-    ast::*, codegen::*, core::*, lexer::*, parser::*, printer::*, wasm_eval::*, wasm_parser::*,
+    ast::*, codegen::*, core::*, lexer::*, parser::*, printer::*, wasm::*, wasm_eval::*,
+    wasm_parser::*,
 };
 use alloc::{format, rc::Rc, string::String, vec::Vec};
 
@@ -147,16 +148,16 @@ pub extern "C" fn _start() {
         codegen.pass_main(ast);
     }
 
-    let wasm_module = catch!(codegen.generate(), err, {
-        codegen.report_error(err);
-        codegen.end_inspection();
-        finalize_and_exit(1);
-    });
+    let mut wasm_module = WasmModule::default();
+    codegen.generate(&mut wasm_module);
 
     codegen.end_inspection();
-
     if codegen.error_count > 0 {
         finalize_and_exit(1);
+    }
+
+    if command == LoCommand::Inspect {
+        finalize_and_exit(0);
     }
 
     if command == LoCommand::Compile {

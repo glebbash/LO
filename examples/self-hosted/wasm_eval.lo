@@ -14,6 +14,6 @@ fn EvalError::free(&self) {
 // TODO: implement
 struct WasmEval {};
 
-fn WasmEval::eval(wasm_module: WasmModule): Result<void, &EvalError> {
+fn WasmEval::eval(wasm_module: &WasmModule): Result<void, &EvalError> {
     todo!();
 };

@@ -133,18 +133,18 @@ export fn _start() {
         codegen.pass_main(ast);
     };
     //
-    let wasm_module = codegen.generate() catch err {
-        defer err.free();
-        codegen.report_error(err);
-        codegen.end_inspection();
-        return finalize_and_exit(1);
-    };
+    let wasm_module = WasmModule::new();
     defer wasm_module.free();
     //
-    codegen.end_inspection();
+    codegen.generate(wasm_module);
     //
+    codegen.end_inspection();
     if codegen.error_count > 0 {
         return finalize_and_exit(1);
+    };
+    //
+    if command == LoCommand::Inspect {
+        finalize_and_exit(0);
     };
     //
     if command == LoCommand::Compile {

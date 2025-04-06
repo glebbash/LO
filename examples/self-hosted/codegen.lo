@@ -38,6 +38,6 @@ fn CodeGen::pass_main(&self, ast: &AST): Result<void, &LoError> {
     todo!();
 };
 
-fn CodeGen::generate(&self): Result<WasmModule, &LoError> {
+fn CodeGen::generate(&self, wasm_module: &WasmModule) {
     todo!();
 };

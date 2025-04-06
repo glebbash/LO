@@ -978,9 +978,7 @@ impl CodeGen {
     }
 
     // TODO: add local names to debug info
-    pub fn generate(&mut self) -> Result<WasmModule, LoError> {
-        let mut wasm_module = WasmModule::default();
-
+    pub fn generate(&mut self, wasm_module: &mut WasmModule) {
         let mut fn_imports_count = 0;
         for fn_info in &self.lo_functions {
             if let LoFnSource::Host { .. } = fn_info.fn_source {
@@ -1082,7 +1080,10 @@ impl CodeGen {
                 });
             }
             if !had_return {
-                self.emit_deferred(&mut ctx, &mut wasm_expr.instrs)?;
+                let res = self.emit_deferred(&mut ctx, &mut wasm_expr.instrs);
+                catch!(res, err, {
+                    self.report_error(err);
+                });
             }
 
             let mut wasm_locals_flat = Vec::new();
@@ -1147,7 +1148,8 @@ impl CodeGen {
         let mut const_ctx = LoExprContext::default();
 
         let mut wasm_types_buf = Vec::with_capacity(1);
-        for global in &self.globals {
+        for i in 0..self.globals.len() {
+            let global = &self.globals[i];
             self.lower_type(&global.global_type, &mut wasm_types_buf);
             let wasm_value_type = wasm_types_buf.pop().unwrap();
 
@@ -1155,7 +1157,10 @@ impl CodeGen {
 
             match &global.def_expr.global_value {
                 GlobalDefValue::Expr(expr) => {
-                    self.codegen(&mut const_ctx, &mut initial_value.instrs, expr)?;
+                    let res = self.codegen(&mut const_ctx, &mut initial_value.instrs, expr);
+                    catch!(res, err, {
+                        self.report_error(err);
+                    });
                 }
                 GlobalDefValue::DataSize => initial_value.instrs.push(WasmInstr::I32Const {
                     value: *self.data_size.borrow() as i32,
@@ -1170,8 +1175,6 @@ impl CodeGen {
         }
 
         wasm_module.types.append(&mut self.wasm_types.borrow_mut());
-
-        Ok(wasm_module)
     }
 
     pub fn end_inspection(&self) {
