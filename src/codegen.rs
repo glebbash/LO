@@ -379,6 +379,7 @@ pub struct CodeGen {
     pub command: LoCommand,
     pub fm: FileManager,
     pub error_count: RefCell<u32>,
+    pub warning_count: RefCell<u32>,
 
     type_defs: Vec<LoTypeDef>,
     struct_defs: Vec<LoStructDef>,
@@ -507,6 +508,28 @@ impl CodeGen {
             return;
         }
 
+        stderr_write("ERROR: ");
+        stderr_write(err.to_string(&self.fm));
+        stderr_write("\n");
+    }
+
+    pub fn report_warning(&self, err: LoError) {
+        *self.warning_count.borrow_mut() += 1;
+
+        if self.command == LoCommand::Inspect {
+            let source_index = err.loc.file_index;
+            let source_range = RangeDisplay(&err.loc);
+            let content = &err.message;
+            stdout_writeln(format!(
+                "{{ \"type\": \"message\", \
+                    \"content\": \"{content}\", \
+                    \"severity\": \"warning\", \
+                    \"loc\": \"{source_index}/{source_range}\" }},",
+            ));
+            return;
+        }
+
+        stderr_write("WARNING: ");
         stderr_write(err.to_string(&self.fm));
         stderr_write("\n");
     }
@@ -1190,6 +1213,13 @@ impl CodeGen {
                 self.report_error(err);
                 continue;
             });
+
+            if terminated_early {
+                self.report_warning(LoError {
+                    message: format!("Unreachable expression"),
+                    loc: expr.loc().clone(),
+                });
+            }
 
             if expr_type == LoType::Never {
                 terminated_early = true;
@@ -2263,6 +2293,12 @@ impl CodeGen {
         instrs.push(WasmInstr::Call {
             fn_index: wasm_fn_info.wasm_fn_index,
         });
+
+        // TODO: insert this kind of logic into other places
+        //   like conditionals where each branch resolves to `never`
+        if lo_fn_info.fn_type.output == LoType::Never {
+            instrs.push(WasmInstr::Unreachable);
+        }
 
         Ok(())
     }

@@ -672,10 +672,10 @@ async function commandTest() {
                 assert.strictEqual(
                     (err as Error).message,
                     m`
-                    examples/test/fault-tolerance.lo:2:17 - Duplicate function parameter name: a
-                    examples/test/fault-tolerance.lo:10:1 - Duplicate function definition: main, previously defined at examples/test/fault-tolerance.lo:2:4
-                    examples/test/fault-tolerance.lo:5:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9
-                    examples/test/fault-tolerance.lo:13:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9
+                    ERROR: examples/test/fault-tolerance.lo:2:17 - Duplicate function parameter name: a
+                    ERROR: examples/test/fault-tolerance.lo:10:1 - Duplicate function definition: main, previously defined at examples/test/fault-tolerance.lo:2:4
+                    ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9
+                    ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9
 
                     `
                 );
