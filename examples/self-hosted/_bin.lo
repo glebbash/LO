@@ -80,7 +80,7 @@ export fn _start() {
     };
     //
     if command == LoCommand::Wasi {
-        let module_bytes = file_read(file_name, 1) catch err {
+        let module_bytes = file_read(file_name) catch err {
             defer err.free();
             stderr_writeln(String::as_str(err));
             return finalize_and_exit(1);
