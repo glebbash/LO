@@ -176,7 +176,7 @@ fn parse_file_tree(codegen: &CodeGen, asts: &Vec of AST, file_index: u32, file_c
         stdout_write(file_index_str.as_str());
         stdout_write(", \"path\": \"");
         stdout_write(file_path);
-        stdout_write("\" },");
+        stdout_write("\" },\n");
     };
     //
     let tokens = Lexer::lex(file_index, file_contents) catch err {
