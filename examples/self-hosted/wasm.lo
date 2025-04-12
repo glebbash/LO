@@ -1,17 +1,17 @@
 // TODO: implement the module
-include "./core.lo";
+include "./core.lo"
 
 // TODO: implement
-struct WasmModule {};
+struct WasmModule {}
 
 fn WasmModule::new(): &WasmModule {
-    todo!();
-};
+    todo!()
+}
 
 fn WasmModule::free(&self) {
-    todo!();
-};
+    todo!()
+}
 
 fn WasmModule::dump(&self, binary: String) {
-    todo!();
-};
+    todo!()
+}

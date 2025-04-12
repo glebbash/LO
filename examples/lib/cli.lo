@@ -1,12 +1,12 @@
-include "./std.lo";
-include "./wasi.lo";
-include "./print.lo";
+include "./std.lo"
+include "./wasi.lo"
+include "./print.lo"
 
 // 1MB stack + 1MB heap
 export memory {
     min_pages: 40,
-};
+}
 
 export fn _start() {
-    let _ = main();
-};
+    let _ = main()
+}

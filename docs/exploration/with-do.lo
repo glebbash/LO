@@ -3,7 +3,7 @@
 //     "{{ \"type\": \"info\", \
 //         \"link\": \"{target_index}/{target_range}\", \
 //         \"loc\": \"{source_index}/{source_range}\" }},",
-// ));
+// ))
 // string formatting is too heavy so looking for alternatives
 
 // pro: minimal language changes (except that first arg is a block)

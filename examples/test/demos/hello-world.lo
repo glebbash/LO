@@ -1,5 +1,5 @@
-include "../../lib/cli.lo";
+include "../../lib/cli.lo"
 
 fn main() {
-    puts("Hello World!\n");
-};
+    puts("Hello World!\n")
+}

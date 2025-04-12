@@ -1,229 +1,229 @@
-include "./core.lo";
-include "./ast.lo";
-include "./wasm.lo";
-include "./codegen.lo";
-include "./lexer.lo";
-include "./parser.lo";
-include "./printer.lo";
-include "./wasm_eval.lo";
-include "./wasm_parser.lo";
+include "./core.lo"
+include "./ast.lo"
+include "./wasm.lo"
+include "./codegen.lo"
+include "./lexer.lo"
+include "./parser.lo"
+include "./printer.lo"
+include "./wasm_eval.lo"
+include "./wasm_parser.lo"
 
 export memory {
     min_pages: 1,
-};
+}
 
 const USAGE = "Usage:
   lo compile <input.lo>
   lo inspect <input.lo>
   lo format <input.lo>
   lo eval <input.lo> (experimental)
-  lo wasi <input.lo> (experimental)";
+  lo wasi <input.lo> (experimental)"
 
 export fn _start() {
-    let args = Args::load();
-    defer args.free();
+    let args = Args::load()
+    defer args.free()
     if args.argc < 3 {
-        stderr_writeln(USAGE);
-        return finalize_and_exit(1);
-    };
+        stderr_writeln(USAGE)
+        return finalize_and_exit(1)
+    }
     //
-    let command = LoCommand::Compile;
-    let command_arg = args.get(1);
+    let command = LoCommand::Compile
+    let command_arg = args.get(1)
     if command_arg.equals("compile") {
-        command = LoCommand::Compile;
+        command = LoCommand::Compile
     } else if command_arg.equals("inspect") {
-        command = LoCommand::Inspect;
+        command = LoCommand::Inspect
     } else if command_arg.equals("format") {
-        command = LoCommand::Format;
+        command = LoCommand::Format
     } else if command_arg.equals("eval") {
-        command = LoCommand::Eval;
+        command = LoCommand::Eval
     } else if command_arg.equals("wasi") {
-        command = LoCommand::Wasi;
+        command = LoCommand::Wasi
     } else {
-        stderr_write("Unknown command: ");
-        stderr_writeln(command_arg);
-        stderr_writeln(USAGE);
-        return finalize_and_exit(1);
-    };
+        stderr_write("Unknown command: ")
+        stderr_writeln(command_arg)
+        stderr_writeln(USAGE)
+        return finalize_and_exit(1)
+    }
     //
-    let file_name = args.get(2);
+    let file_name = args.get(2)
     if file_name.equals("-i") {
-        file_name = "<stdin>";
-    };
+        file_name = "<stdin>"
+    }
     //
     if command == LoCommand::Format {
-        let fm = FileManager::new();
-        defer fm.free();
+        let fm = FileManager::new()
+        defer fm.free()
         let included_file = fm.include_file(file_name, LoLocation::internal()) catch err {
-            defer err.free();
-            fm.print_error(err);
-            return finalize_and_exit(1);
-        };
+            defer err.free()
+            fm.print_error(err)
+            return finalize_and_exit(1)
+        }
         //
         let tokens = Lexer::lex(included_file.file_index, included_file.file_contents.unwrap()) catch err {
-            defer err.free();
-            fm.print_error(err);
-            return finalize_and_exit(1);
-        };
-        defer tokens.free();
+            defer err.free()
+            fm.print_error(err)
+            return finalize_and_exit(1)
+        }
+        defer tokens.free()
         let ast = Parser::parse(tokens) catch err {
-            defer err.free();
-            fm.print_error(err);
-            return finalize_and_exit(1);
-        };
-        defer ast.free();
+            defer err.free()
+            fm.print_error(err)
+            return finalize_and_exit(1)
+        }
+        defer ast.free()
         //
-        stdout_enable_buffering();
-        Printer::print(ast);
+        stdout_enable_buffering()
+        Printer::print(ast)
         //
-        return finalize_and_exit(0);
-    };
+        return finalize_and_exit(0)
+    }
     //
     if command == LoCommand::Wasi {
         let module_bytes = file_read(file_name) catch err {
-            defer err.free();
-            stderr_writeln(err.as_str());
-            return finalize_and_exit(1);
-        };
+            defer err.free()
+            stderr_writeln(err.as_str())
+            return finalize_and_exit(1)
+        }
         //
         let wasm_module = WasmParser::parse(String::from_str(file_name), module_bytes) catch err {
-            defer err.free();
-            stderr_writeln(err.as_str());
-            return finalize_and_exit(1);
-        };
-        defer wasm_module.free();
+            defer err.free()
+            stderr_writeln(err.as_str())
+            return finalize_and_exit(1)
+        }
+        defer wasm_module.free()
         //
         WasmEval::eval(wasm_module) catch err {
-            defer err.free();
-            stderr_writeln(err.message.as_str());
-            return finalize_and_exit(1);
-        };
+            defer err.free()
+            stderr_writeln(err.message.as_str())
+            return finalize_and_exit(1)
+        }
         //
-        return finalize_and_exit(0);
-    };
+        return finalize_and_exit(0)
+    }
     //
     if command == LoCommand::Inspect {
-        stdout_enable_buffering();
-    };
+        stdout_enable_buffering()
+    }
     //
-    let codegen = CodeGen::new(command);
-    defer codegen.free();
+    let codegen = CodeGen::new(command)
+    defer codegen.free()
     //
     let included_file = codegen.fm.include_file(file_name, LoLocation::internal()) catch err {
-        defer err.free();
-        codegen.fm.print_error(err);
-        return finalize_and_exit(1);
-    };
+        defer err.free()
+        codegen.fm.print_error(err)
+        return finalize_and_exit(1)
+    }
     //
-    let asts = Vec::new!<AST>();
-    defer asts.free_deep!<AST>();
-    parse_file_tree(codegen, asts, included_file.file_index, included_file.file_contents.unwrap());
+    let asts = Vec::new!<AST>()
+    defer asts.free_deep!<AST>()
+    parse_file_tree(codegen, asts, included_file.file_index, included_file.file_contents.unwrap())
     //
     for i in 0..asts.size {
-        let ast = asts.at!<AST>(i);
-        codegen.pass_collect_typedefs(ast);
-    };
+        let ast = asts.at!<AST>(i)
+        codegen.pass_collect_typedefs(ast)
+    }
     for i in 0..asts.size {
-        let ast = asts.at!<AST>(i);
-        codegen.pass_build_structs(ast);
-    };
+        let ast = asts.at!<AST>(i)
+        codegen.pass_build_structs(ast)
+    }
     for i in 0..asts.size {
-        let ast = asts.at!<AST>(i);
-        codegen.pass_main(ast);
-    };
+        let ast = asts.at!<AST>(i)
+        codegen.pass_main(ast)
+    }
     //
-    let wasm_module = WasmModule::new();
-    defer wasm_module.free();
+    let wasm_module = WasmModule::new()
+    defer wasm_module.free()
     //
-    codegen.generate(wasm_module);
+    codegen.generate(wasm_module)
     //
-    codegen.end_inspection();
+    codegen.end_inspection()
     if codegen.error_count > 0 {
-        return finalize_and_exit(1);
-    };
+        return finalize_and_exit(1)
+    }
     //
     if command == LoCommand::Inspect {
-        finalize_and_exit(0);
-    };
+        finalize_and_exit(0)
+    }
     //
     if command == LoCommand::Compile {
-        let binary = String::new(16);
-        defer binary.free();
-        wasm_module.dump(binary);
-        stdout_write(binary.as_str());
-        return finalize_and_exit(0);
-    };
+        let binary = String::new(16)
+        defer binary.free()
+        wasm_module.dump(binary)
+        stdout_write(binary.as_str())
+        return finalize_and_exit(0)
+    }
     //
     if command == LoCommand::Eval {
         WasmEval::eval(wasm_module) catch err {
-            defer err.free();
-            stderr_writeln(err.message.as_str());
-            return finalize_and_exit(1);
-        };
-        return finalize_and_exit(0);
-    };
+            defer err.free()
+            stderr_writeln(err.message.as_str())
+            return finalize_and_exit(1)
+        }
+        return finalize_and_exit(0)
+    }
     //
-    unreachable;
-};
+    unreachable
+}
 
 fn parse_file_tree(codegen: &CodeGen, asts: &Vec of AST, file_index: u32, file_contents: String) {
     if codegen.command == LoCommand::Inspect {
-        let file_index_str = file_index.write(String::new_using(6, alloc::STACK));
-        defer file_index_str.free();
+        let file_index_str = file_index.write(String::new_using(6, alloc::STACK))
+        defer file_index_str.free()
         //
-        let file_path = codegen.fm.get_file_path(file_index);
-        stdout_write("{ \"type\": \"file\", \"index\": ");
-        stdout_write(file_index_str.as_str());
-        stdout_write(", \"path\": \"");
-        stdout_write(file_path);
-        stdout_write("\" },\n");
-    };
+        let file_path = codegen.fm.get_file_path(file_index)
+        stdout_write("{ \"type\": \"file\", \"index\": ")
+        stdout_write(file_index_str.as_str())
+        stdout_write(", \"path\": \"")
+        stdout_write(file_path)
+        stdout_write("\" },\n")
+    }
     //
     let tokens = Lexer::lex(file_index, file_contents) catch err {
-        return codegen.report_error(err);
-    };
+        return codegen.report_error(err)
+    }
     //
     let ast = Parser::parse(tokens) catch err {
-        return codegen.report_error(err);
-    };
+        return codegen.report_error(err)
+    }
     //
     // pass 0: parse all included files (recursive)
     for i in 0..ast.exprs.size {
         // TODO: port
         // TODO: this line breaks the type system somehow:
-        // let expr = ast.exprs.get!<TopLevelExpr>(i);
+        // let expr = ast.exprs.get!<TopLevelExpr>(i)
         // let TopLevelExpr::Include(include) = expr else {
-        //     continue;
-        // };
+        //     continue
+        // }
         //
         // let included_file = codegen
         //     .fm
-        //     .include_file(&include.file_path.unescape(), &include.loc);
+        //     .include_file(&include.file_path.unescape(), &include.loc)
         // let included_file = catch!(included_file, err, {
-        //     codegen.report_error(err);
-        //     continue;
-        // });
+        //     codegen.report_error(err)
+        //     continue
+        // })
         //
         // if let Some(file_contents) = included_file.file_contents {
-        //     parse_file_tree(codegen, asts, included_file.file_index, file_contents);
+        //     parse_file_tree(codegen, asts, included_file.file_index, file_contents)
         // }
         //
         // if codegen.command == LoCommand::Inspect {
-        //     let source_index = file_index;
-        //     let source_range = RangeDisplay(&include.loc);
-        //     let target_index = included_file.file_index;
-        //     let target_range = "1:1-1:1";
+        //     let source_index = file_index
+        //     let source_range = RangeDisplay(&include.loc)
+        //     let target_index = included_file.file_index
+        //     let target_range = "1:1-1:1"
         //     stdout_writeln(format!(
         //         "{{ \"type\": \"info\", \
         //             \"link\": \"{target_index}/{target_range}\", \
         //             \"loc\": \"{source_index}/{source_range}\" }},",
-        //     ));
+        //     ))
         // }
-    };
-    asts.push!(ast);
-};
+    }
+    asts.push!(ast)
+}
 
 fn finalize_and_exit(exit_code: u32): never {
-    stdout_disable_buffering();
-    proc_exit(exit_code);
-};
+    stdout_disable_buffering()
+    proc_exit(exit_code)
+}

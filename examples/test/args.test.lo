@@ -1,11 +1,11 @@
-include "../lib/cli.lo";
-include "../lib/args.lo";
+include "../lib/cli.lo"
+include "../lib/args.lo"
 
 fn main() {
-    let args = Args::load();
+    let args = Args::load()
     for i in 0..args.argc {
-        let arg = args.get(i);
-        puts(arg);
-        puts("\n");
-    };
-};
+        let arg = args.get(i)
+        puts(arg)
+        puts("\n")
+    }
+}

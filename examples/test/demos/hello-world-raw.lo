@@ -1,21 +1,21 @@
 import from "wasi_snapshot_preview1" {
-    fn fd_write(fd: u32, iovs: u32, iovs_len: u32, nwritten: u32): u32;
-};
+    fn fd_write(fd: u32, iovs: u32, iovs_len: u32, nwritten: u32): u32
+}
 
 export memory {
     min_pages: 1,
-};
+}
 
-*12 = "Hello World!\n";
+*12 = "Hello World!\n"
 
 export fn _start() {
     // wasi::IOVec.base = "Hello World!\n".ptr
-    *(4 as &u32) = 12;
+    *(4 as &u32) = 12
     // wasi::IOVec.size = "Hello World!\n".length
-    *(8 as &u32) = 13;
+    *(8 as &u32) = 13
     // arg #1 - File descriptor, STDOUT = 1
     // arg #2 - The pointer to the iov array
     // arg #3 - Amount of wasi::IOVec
     // arg #4 - Pointer to store the number of bytes written
-    let _ = fd_write(1, 4, 1, 0);
-};
+    let _ = fd_write(1, 4, 1, 0)
+}

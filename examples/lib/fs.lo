@@ -1,127 +1,127 @@
-include "./std.lo";
-include "./wasi.lo";
-include "./print.lo";
+include "./std.lo"
+include "./wasi.lo"
+include "./print.lo"
 
 // fs expects host to preopen "." on fd 3
-const fs::CWD_PREOPEN_FD = 3;
+const fs::CWD_PREOPEN_FD = 3
 
 macro fs::read_file!(file_name: str): String {
     fs::read_file(file_name) catch err {
-        eputs("Error reading file '");
-        eputs(file_name);
-        eputs("': code ");
-        eprint_u32(err);
-        eputs("\n");
-        wasi::proc_exit(1);
-    };
-};
+        eputs("Error reading file '")
+        eputs(file_name)
+        eputs("': code ")
+        eprint_u32(err)
+        eputs("\n")
+        wasi::proc_exit(1)
+    }
+}
 
 fn fs::read_file(file_name: str): Result<String, wasi::Err> {
-    fs::_unlock();
-    let fd = fs::open(file_name)?;
-    defer let _ = wasi::fd_close(fd);
-    return Ok(String::from_chars(fs::read_fd(fd)?));
-};
+    fs::_unlock()
+    let fd = fs::open(file_name)?
+    defer let _ = wasi::fd_close(fd)
+    return Ok(String::from_chars(fs::read_fd(fd)?))
+}
 
-global fs::unlocked = false;
+global fs::unlocked = false
 
 // https://github.com/microsoft/vscode-wasm/issues/161
 fn fs::_unlock() {
     if fs::unlocked {
-        return;
-    };
-    let err = 0;
+        return
+    }
+    let err = 0
     defer if err != 0 {
-        eputs("Error unlocking fs: code ");
-        eprint_u32(err);
-        eputs("\n");
-        wasi::proc_exit(1);
-    };
-    let prestat = tmp_alloc!<wasi::prestat>();
-    err = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD, prestat);
+        eputs("Error unlocking fs: code ")
+        eprint_u32(err)
+        eputs("\n")
+        wasi::proc_exit(1)
+    }
+    let prestat = tmp_alloc!<wasi::prestat>()
+    err = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD, prestat)
     if err != wasi::Err::SUCCESS {
-        return;
-    };
-    let dir_path = tmp_alloc_many!<u8>(prestat.pr_name_len);
-    err = wasi::fd_prestat_dir_name(fs::CWD_PREOPEN_FD, dir_path, prestat.pr_name_len);
+        return
+    }
+    let dir_path = tmp_alloc_many!<u8>(prestat.pr_name_len)
+    err = wasi::fd_prestat_dir_name(fs::CWD_PREOPEN_FD, dir_path, prestat.pr_name_len)
     if err != wasi::Err::SUCCESS {
-        return;
-    };
+        return
+    }
     // TODO: support alignment in std
-    let fdstat = mem::align_to(tmp_alloc_many!<wasi::fdstat>(2) as u32, 8) as &wasi::fdstat;
-    err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat);
+    let fdstat = mem::align_to(tmp_alloc_many!<wasi::fdstat>(2) as u32, 8) as &wasi::fdstat
+    err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat)
     if err != wasi::Err::SUCCESS {
-        return;
-    };
-    let prestat2 = tmp_alloc!<wasi::prestat>();
-    let _ = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD + 1, prestat2);
-    fs::unlocked = true;
-};
+        return
+    }
+    let prestat2 = tmp_alloc!<wasi::prestat>()
+    let _ = wasi::fd_prestat_get(fs::CWD_PREOPEN_FD + 1, prestat2)
+    fs::unlocked = true
+}
 
 fn fs::open(file_path: str): Result<u32, wasi::Err> {
-    let fd_ref = tmp_alloc!<u32>();
-    let err = wasi::path_open(fs::CWD_PREOPEN_FD, 1, file_path.data, file_path.size, 0, 264_240_830u64, 268_435_455u64, 0, fd_ref);
+    let fd_ref = tmp_alloc!<u32>()
+    let err = wasi::path_open(fs::CWD_PREOPEN_FD, 1, file_path.data, file_path.size, 0, 264_240_830u64, 268_435_455u64, 0, fd_ref)
     if err != wasi::Err::SUCCESS {
-        return Err(err);
-    };
-    return Ok(*fd_ref);
-};
+        return Err(err)
+    }
+    return Ok(*fd_ref)
+}
 
 fn fs::read_fd(fd: u32): Result<&Vec of u8, wasi::Err> {
-    let output = Vec::with_capacity!<u8>(256);
-    let chunk = tmp_alloc_many!<u8>(256);
-    let in_vec = tmp_alloc!<wasi::IOVec>();
+    let output = Vec::with_capacity!<u8>(256)
+    let chunk = tmp_alloc_many!<u8>(256)
+    let in_vec = tmp_alloc!<wasi::IOVec>()
     *in_vec = .wasi::IOVec {
         base: chunk,
         size: 256,
-    };
-    let nread_ref = tmp_alloc!<u32>();
+    }
+    let nread_ref = tmp_alloc!<u32>()
     loop {
-        let err = wasi::fd_read(fd, in_vec as *&wasi::IOVec, 1, nread_ref);
+        let err = wasi::fd_read(fd, in_vec as *&wasi::IOVec, 1, nread_ref)
         if err != wasi::Err::SUCCESS {
-            return Err(err);
-        };
-        let nread = *nread_ref;
+            return Err(err)
+        }
+        let nread = *nread_ref
         if nread == 0 {
-            break;
-        };
-        output.push_all(chunk, nread);
-    };
-    return Ok(output);
-};
+            break
+        }
+        output.push_all(chunk, nread)
+    }
+    return Ok(output)
+}
 
 fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
-    let chunk = tmp_alloc_many!<u8>(chunk_size);
-    let iov = tmp_alloc!<wasi::IOVec>();
+    let chunk = tmp_alloc_many!<u8>(chunk_size)
+    let iov = tmp_alloc!<wasi::IOVec>()
     *iov = .wasi::IOVec {
         base: chunk,
         size: 0,
-    };
-    let iovs = iov as *&wasi::IOVec;
-    let nread_ref = tmp_alloc!<u32>();
+    }
+    let iovs = iov as *&wasi::IOVec
+    let nread_ref = tmp_alloc!<u32>()
     loop {
-        iov.size = chunk_size;
-        let err = wasi::fd_read(fd_in, iovs, 1, nread_ref);
+        iov.size = chunk_size
+        let err = wasi::fd_read(fd_in, iovs, 1, nread_ref)
         if err != wasi::Err::SUCCESS {
-            return Err(err);
-        };
-        let nread = *nread_ref;
+            return Err(err)
+        }
+        let nread = *nread_ref
         if nread == 0 {
-            break;
-        };
-        iov.size = nread;
-        err = wasi::fd_write(fd_out, iovs, 1, nread_ref);
+            break
+        }
+        iov.size = nread
+        err = wasi::fd_write(fd_out, iovs, 1, nread_ref)
         if err != wasi::Err::SUCCESS {
-            return Err(err);
-        };
-    };
-    return Ok();
-};
+            return Err(err)
+        }
+    }
+    return Ok()
+}
 
 fn fs::close(fd: u32): Result<void, wasi::Err> {
-    let err = wasi::fd_close(fd);
+    let err = wasi::fd_close(fd)
     if err != wasi::Err::SUCCESS {
-        return Err(err);
-    };
-    return Ok();
-};
+        return Err(err)
+    }
+    return Ok()
+}

@@ -1,20 +1,20 @@
-include "../../lib/cli.lo";
-include "../../lib/args.lo";
-include "../../lib/fs.lo";
+include "../../lib/cli.lo"
+include "../../lib/args.lo"
+include "../../lib/fs.lo"
 
 fn main() {
-    let args = Args::load();
-    defer args.free();
+    let args = Args::load()
+    defer args.free()
     if args.argc != 2 {
-        eputs("Usage cat.lo <file>");
-        wasi::proc_exit(1);
-    };
-    let file_path = args.get(1);
+        eputs("Usage cat.lo <file>")
+        wasi::proc_exit(1)
+    }
+    let file_path = args.get(1)
     let fd = fs::open(file_path) catch _ {
-        wasi::proc_exit(1);
-    };
-    defer let _ = fs::close(fd);
+        wasi::proc_exit(1)
+    }
+    defer let _ = fs::close(fd)
     fs::pipe(fd, wasi::FD_STDOUT, 256) catch _ {
-        wasi::proc_exit(1);
-    };
-};
+        wasi::proc_exit(1)
+    }
+}

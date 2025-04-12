@@ -1,35 +1,35 @@
-include "./std.lo";
+include "./std.lo"
 
 struct StrCutter {
     piece: str,
     rest: str,
-};
+}
 
 fn StrCutter::new(source: str): StrCutter {
     return .StrCutter {
         piece: "",
         rest: source,
-    };
-};
+    }
+}
 
 fn StrCutter::cut_at(self, delim: str): StrCutter {
-    let cut_start = 0;
-    let cut_width = 0;
+    let cut_start = 0
+    let cut_width = 0
     loop {
         if cut_start == self.rest.size {
-            cut_start -= 1;
-            break;
-        };
+            cut_start -= 1
+            break
+        }
         if self.rest.char_at(cut_start) == delim.char_at(cut_width) {
-            cut_width += 1;
+            cut_width += 1
         } else {
-            cut_width = 0;
-        };
+            cut_width = 0
+        }
         if cut_width == delim.size {
-            break;
-        };
-        cut_start += 1;
-    };
+            break
+        }
+        cut_start += 1
+    }
     return .StrCutter {
         piece: .str {
             data: self.rest.data,
@@ -39,5 +39,5 @@ fn StrCutter::cut_at(self, delim: str): StrCutter {
             data: (self.rest.data as u32 + cut_start + 1) as *&u8,
             size: self.rest.size - cut_start - 1,
         },
-    };
-};
+    }
+}

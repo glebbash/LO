@@ -1,10 +1,10 @@
 // TODO: implement the module
-include "./core.lo";
-include "./wasm.lo";
+include "./core.lo"
+include "./wasm.lo"
 
 // TODO: implement
-struct WasmParser {};
+struct WasmParser {}
 
 fn WasmParser::parse(file_name: String, module_bytes: String): Result<&WasmModule, String> {
-    todo!();
-};
+    todo!()
+}

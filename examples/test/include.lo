@@ -1,5 +1,5 @@
-include "./factorial.lo";
+include "./factorial.lo"
 
 export fn main(): u32 {
-    return factorial(5);
-};
+    return factorial(5)
+}

@@ -1,6 +1,6 @@
-include "../../lib/cli.lo";
-include "../../lib/fs.lo";
+include "../../lib/cli.lo"
+include "../../lib/fs.lo"
 
 fn main() {
-    let _err = fs::pipe(wasi::FD_STDIN, wasi::FD_STDOUT, 256);
-};
+    let _err = fs::pipe(wasi::FD_STDIN, wasi::FD_STDOUT, 256)
+}

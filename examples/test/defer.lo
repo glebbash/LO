@@ -1,20 +1,20 @@
-include "../lib/cli.lo";
+include "../lib/cli.lo"
 
 fn main() {
-    defer puts("defer(return): 1\n");
-    defer puts("defer(return): 2\n");
-    defer puts("defer(return): 3\n");
-    inner_fn();
-};
+    defer puts("defer(return): 1\n")
+    defer puts("defer(return): 2\n")
+    defer puts("defer(return): 3\n")
+    inner_fn()
+}
 
 fn inner_fn() {
-    defer puts("defer(inner_fn): 1\n");
+    defer puts("defer(inner_fn): 1\n")
     for i in 0..10 {
         // exprs in loops are only deferred once
-        defer puts("defer(inner_fn): 2\n");
-    };
+        defer puts("defer(inner_fn): 2\n")
+    }
     if false {
         // exprs are deferred even if `if` body never executes
-        defer puts("defer(inner_fn): 3\n");
-    };
-};
+        defer puts("defer(inner_fn): 3\n")
+    }
+}

@@ -1,12 +1,12 @@
-include "../../../lib/cli.lo";
-include "../../../lib/fs.lo";
+include "../../../lib/cli.lo"
+include "../../../lib/fs.lo"
 
-type Step = u32;
+type Step = u32
 
-const Step::READ_MIN_OCCURANCES = 0;
-const Step::READ_MAX_OCCURANCES = 1;
-const Step::READ_CHAR_TO_COUNT = 2;
-const Step::COUNT_OCCURANCES = 3;
+const Step::READ_MIN_OCCURANCES = 0
+const Step::READ_MAX_OCCURANCES = 1
+const Step::READ_CHAR_TO_COUNT = 2
+const Step::COUNT_OCCURANCES = 3
 
 struct PasswordCheckState {
     step: Step,
@@ -14,7 +14,7 @@ struct PasswordCheckState {
     max_occurances: u32,
     current_occurances: u32,
     char_to_count: u8,
-};
+}
 
 fn initial_check_state(): PasswordCheckState {
     return .PasswordCheckState {
@@ -23,52 +23,52 @@ fn initial_check_state(): PasswordCheckState {
         max_occurances: 0,
         current_occurances: 0,
         char_to_count: '\0',
-    };
-};
+    }
+}
 
 fn main() {
-    let input = fs::read_file!("./examples/test/demos/aoc2020/2.txt");
-    defer input.free();
-    let valid_passwords_count = 0;
-    let state = initial_check_state();
+    let input = fs::read_file!("./examples/test/demos/aoc2020/2.txt")
+    defer input.free()
+    let valid_passwords_count = 0
+    let state = initial_check_state()
     for i in 0..input.len() {
-        let c = input.char_at(i);
+        let c = input.char_at(i)
         if state.step == Step::READ_MIN_OCCURANCES {
             if c == '-' {
-                state.step = Step::READ_MAX_OCCURANCES;
-                continue;
-            };
-            state.min_occurances *= 10;
-            state.min_occurances += (c - '0') as u32;
-        };
+                state.step = Step::READ_MAX_OCCURANCES
+                continue
+            }
+            state.min_occurances *= 10
+            state.min_occurances += (c - '0') as u32
+        }
         if state.step == Step::READ_MAX_OCCURANCES {
             if c == ' ' {
-                state.step = Step::READ_CHAR_TO_COUNT;
-                continue;
-            };
-            state.max_occurances *= 10;
-            state.max_occurances += (c - '0') as u32;
-        };
+                state.step = Step::READ_CHAR_TO_COUNT
+                continue
+            }
+            state.max_occurances *= 10
+            state.max_occurances += (c - '0') as u32
+        }
         if state.step == Step::READ_CHAR_TO_COUNT {
-            state.char_to_count = c;
+            state.char_to_count = c
             // skip `${c}: `, (+1 will be skipped by loop)
-            i += 2;
-            state.step = Step::COUNT_OCCURANCES;
-            continue;
-        };
+            i += 2
+            state.step = Step::COUNT_OCCURANCES
+            continue
+        }
         if state.step == Step::COUNT_OCCURANCES {
             if c == '\n' {
                 if state.current_occurances >= state.min_occurances && state.current_occurances <= state.max_occurances {
-                    valid_passwords_count += 1;
-                };
-                state = initial_check_state();
-                continue;
-            };
+                    valid_passwords_count += 1
+                }
+                state = initial_check_state()
+                continue
+            }
             if c == state.char_to_count {
-                state.current_occurances += 1;
-            };
-        };
-    };
-    print_u32(valid_passwords_count);
-    puts("\n");
-};
+                state.current_occurances += 1
+            }
+        }
+    }
+    print_u32(valid_passwords_count)
+    puts("\n")
+}

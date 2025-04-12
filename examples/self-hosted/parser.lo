@@ -1,11 +1,11 @@
 // TODO: implement the module
-include "./core.lo";
-include "./ast.lo";
-include "./lexer.lo";
+include "./core.lo"
+include "./ast.lo"
+include "./lexer.lo"
 
 // TODO: implement
-struct Parser {};
+struct Parser {}
 
 fn Parser::parse(tokens: LoTokens): Result<AST, &LoError> {
-    todo!();
-};
+    todo!()
+}

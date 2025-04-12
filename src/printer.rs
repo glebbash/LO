@@ -44,12 +44,12 @@ impl Printer {
                 self.print_fn_decl(decl);
                 stdout_write(" ");
                 self.print_code_block_expr(body);
-                stdout_writeln(";");
+                stdout_writeln("");
             }
             TopLevelExpr::Include(IncludeExpr { file_path, loc: _ }) => {
                 stdout_write("include ");
                 stdout_write(&file_path.0);
-                stdout_writeln(";");
+                stdout_writeln("");
 
                 if let Some(TopLevelExpr::Include(_)) = self.ast.exprs.get(expr_index + 1) {
                     return;
@@ -72,7 +72,7 @@ impl Printer {
                         ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
                         ImportItem::Memory(memory_def) => self.print_memory_def(memory_def),
                     }
-                    stdout_writeln(";");
+                    stdout_writeln("");
                     if i != items.len() - 1 {
                         stdout_writeln("");
                     }
@@ -83,7 +83,8 @@ impl Printer {
 
                 self.indent -= 1;
                 self.print_indent();
-                stdout_writeln("};");
+                stdout_write("}");
+                stdout_writeln("");
             }
             TopLevelExpr::GlobalDef(GlobalDefExpr {
                 global_name,
@@ -97,7 +98,7 @@ impl Printer {
                     GlobalDefValue::Expr(expr) => self.print_code_expr(expr),
                     GlobalDefValue::DataSize => stdout_write("@data_size"),
                 }
-                stdout_writeln(";");
+                stdout_writeln("");
             }
             TopLevelExpr::StructDef(StructDefExpr {
                 struct_name,
@@ -108,7 +109,8 @@ impl Printer {
                 stdout_write(&struct_name.repr);
 
                 if fields.len() == 0 {
-                    stdout_writeln(" {};");
+                    stdout_write(" {}");
+                    stdout_writeln("");
                 } else {
                     stdout_writeln(" {");
                     self.indent += 1;
@@ -127,7 +129,8 @@ impl Printer {
                     self.indent -= 1;
                     self.print_indent();
 
-                    stdout_writeln("};");
+                    stdout_write("}");
+                    stdout_writeln("");
                 }
             }
             TopLevelExpr::TypeDef(TypeDefExpr {
@@ -139,7 +142,7 @@ impl Printer {
                 stdout_write(&type_name.repr);
                 stdout_write(" = ");
                 self.print_type_expr(type_value);
-                stdout_writeln(";");
+                stdout_writeln("");
 
                 if let Some(TopLevelExpr::TypeDef(_)) = self.ast.exprs.get(expr_index + 1) {
                     return;
@@ -154,7 +157,7 @@ impl Printer {
                 stdout_write(&const_name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(const_value);
-                stdout_writeln(";");
+                stdout_writeln("");
 
                 if let Some(TopLevelExpr::ConstDef(_)) = self.ast.exprs.get(expr_index + 1) {
                     return;
@@ -162,7 +165,7 @@ impl Printer {
             }
             TopLevelExpr::MemoryDef(memory_def) => {
                 self.print_memory_def(memory_def);
-                stdout_writeln(";");
+                stdout_writeln("");
             }
             TopLevelExpr::StaticDataStore(StaticDataStoreExpr { addr, data, loc: _ }) => {
                 stdout_write("*");
@@ -173,7 +176,7 @@ impl Printer {
                         stdout_write(&value.0);
                     }
                 }
-                stdout_writeln(";");
+                stdout_writeln("");
             }
             TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
                 in_fn_name,
@@ -184,7 +187,7 @@ impl Printer {
                 stdout_write(&in_fn_name.repr);
                 stdout_write(" as ");
                 stdout_write(&out_fn_name.0);
-                stdout_writeln(";");
+                stdout_writeln("");
             }
             TopLevelExpr::MacroDef(MacroDefExpr {
                 macro_name,
@@ -214,7 +217,7 @@ impl Printer {
                 }
                 stdout_write(" ");
                 self.print_code_block_expr(body);
-                stdout_writeln(";");
+                stdout_writeln("");
             }
         }
 
@@ -343,7 +346,7 @@ impl Printer {
             self.print_comments_before_pos(expr.loc().pos.offset);
             self.print_indent();
             self.print_code_expr(expr);
-            stdout_writeln(";");
+            stdout_writeln("");
         }
 
         // print the rest of the comments

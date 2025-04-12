@@ -34,8 +34,6 @@ impl Parser {
         while self.peek().is_some() {
             let expr = self.parse_top_level_expr()?;
             ast.exprs.push(expr);
-
-            self.expect(Delim, ";")?;
         }
 
         if let Some(unexpected) = self.peek() {
@@ -128,7 +126,6 @@ impl Parser {
             while let None = self.eat(Delim, "}")? {
                 let item = self.parse_importable()?;
                 items.push(item);
-                self.expect(Delim, ";")?;
             }
 
             loc.end_pos = self.prev().loc.end_pos.clone();
@@ -533,8 +530,6 @@ impl Parser {
         while let None = self.eat(Delim, "}")? {
             let expr = self.parse_code_expr(0)?;
             code_block.exprs.push(expr);
-
-            self.expect(Delim, ";")?;
         }
 
         // close curly pos
@@ -548,6 +543,9 @@ impl Parser {
 
         while self.peek().is_some() {
             let op_symbol = self.current().clone();
+            if op_symbol.loc.end_pos.line != primary.loc().end_pos.line {
+                break;
+            }
             let Some(op) = InfixOp::parse(op_symbol) else {
                 break;
             };
@@ -568,7 +566,7 @@ impl Parser {
             let mut loc = self.prev().loc.clone();
 
             let mut expr = None;
-            if !self.current().is(Delim, ";") {
+            if self.current().loc.end_pos.line == loc.end_pos.line {
                 expr = Some(Box::new(self.parse_code_expr(0)?));
             }
 

@@ -1,31 +1,31 @@
-include "../../../lib/cli.lo";
-include "../../../lib/fs.lo";
+include "../../../lib/cli.lo"
+include "../../../lib/fs.lo"
 
 fn main() {
-    let input = fs::read_file!("./examples/test/demos/aoc2023/1.txt");
-    defer input.free();
-    let calibration_sum = 0;
-    let first_digit = 0;
-    let last_digit = 0;
+    let input = fs::read_file!("./examples/test/demos/aoc2023/1.txt")
+    defer input.free()
+    let calibration_sum = 0
+    let first_digit = 0
+    let last_digit = 0
     for i in 0..input.len() {
-        let c = input.char_at(i);
+        let c = input.char_at(i)
         if c >= '0' && c <= '9' {
             if first_digit == 0 {
-                first_digit = (c - '0') as u32;
-                last_digit = (c - '0') as u32;
+                first_digit = (c - '0') as u32
+                last_digit = (c - '0') as u32
             } else {
-                last_digit = (c - '0') as u32;
-            };
-            continue;
-        };
+                last_digit = (c - '0') as u32
+            }
+            continue
+        }
         if c == '\n' {
-            let calibration_value = first_digit * 10 + last_digit;
-            calibration_sum += calibration_value;
-            first_digit = 0;
-            last_digit = 0;
-            continue;
-        };
-    };
-    print_u32(calibration_sum);
-    puts("\n");
-};
+            let calibration_value = first_digit * 10 + last_digit
+            calibration_sum += calibration_value
+            first_digit = 0
+            last_digit = 0
+            continue
+        }
+    }
+    print_u32(calibration_sum)
+    puts("\n")
+}

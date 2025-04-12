@@ -1,27 +1,27 @@
 memory {
     min_pages: 1,
-};
+}
 
-global STATIC_DATA_SIZE = @data_size;
+global STATIC_DATA_SIZE = @data_size
 
 struct str {
     data: &void,
     size: u32,
-};
+}
 
 export fn main(): u32 {
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    let _ = "Hello World!\n";
-    return STATIC_DATA_SIZE;
-};
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    let _ = "Hello World!\n"
+    return STATIC_DATA_SIZE
+}

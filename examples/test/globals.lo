@@ -1,13 +1,13 @@
-global HEAP_INDEX = 0;
+global HEAP_INDEX = 0
 
 export fn main(): u32 {
-    let _ = alloc(45);
-    let _ = alloc(24);
-    return HEAP_INDEX;
-};
+    let _ = alloc(45)
+    let _ = alloc(24)
+    return HEAP_INDEX
+}
 
 fn alloc(size: u32): u32 {
-    let ptr = HEAP_INDEX;
-    HEAP_INDEX += size;
-    return ptr;
-};
+    let ptr = HEAP_INDEX
+    HEAP_INDEX += size
+    return ptr
+}

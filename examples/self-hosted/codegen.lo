@@ -1,43 +1,43 @@
 // TODO: implement the module
-include "./core.lo";
-include "./ast.lo";
-include "./wasm.lo";
+include "./core.lo"
+include "./ast.lo"
+include "./wasm.lo"
 
 // TODO: implement
 struct CodeGen {
     command: LoCommand,
     fm: &FileManager,
     error_count: u32,
-};
+}
 
 fn CodeGen::new(command: LoCommand): &CodeGen {
-    todo!();
-};
+    todo!()
+}
 
 fn CodeGen::free(&self) {
-    todo!();
-};
+    todo!()
+}
 
 fn CodeGen::report_error(&self, err: &LoError) {
-    todo!();
-};
+    todo!()
+}
 
 fn CodeGen::end_inspection(&self) {
-    todo!();
-};
+    todo!()
+}
 
 fn CodeGen::pass_collect_typedefs(&self, ast: &AST) {
-    todo!();
-};
+    todo!()
+}
 
 fn CodeGen::pass_build_structs(&self, ast: &AST) {
-    todo!();
-};
+    todo!()
+}
 
 fn CodeGen::pass_main(&self, ast: &AST) {
-    todo!();
-};
+    todo!()
+}
 
 fn CodeGen::generate(&self, wasm_module: &WasmModule) {
-    todo!();
-};
+    todo!()
+}

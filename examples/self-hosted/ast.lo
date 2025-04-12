@@ -1,14 +1,14 @@
 // TODO: implement the module
-include "./core.lo";
+include "./core.lo"
 
 // TODO: implement
-struct TopLevelExpr {};
+struct TopLevelExpr {}
 
 // TODO: implement
 struct AST {
     exprs: &Vec of TopLevelExpr,
-};
+}
 
 fn AST::free(self) {
-    todo!();
-};
+    todo!()
+}

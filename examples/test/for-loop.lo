@@ -1,28 +1,28 @@
 export fn main(): u32 {
-    let result = 0;
+    let result = 0
     for i in 0..10 {
-        result += i;
-    };
+        result += i
+    }
     for i in 0..10 {
-        result += i;
+        result += i
         if i == 7 {
-            break;
-        };
-    };
+            break
+        }
+    }
     for i in 0..10 {
         if i == 4 {
-            continue;
-        };
-        result += i;
-    };
+            continue
+        }
+        result += i
+    }
     for i in 0..10 {
         if i == 4 {
-            continue;
-        };
-        result += i;
+            continue
+        }
+        result += i
         if i == 7 {
-            break;
-        };
-    };
-    return result;
-};
+            break
+        }
+    }
+    return result
+}

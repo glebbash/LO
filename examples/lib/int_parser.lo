@@ -1,51 +1,51 @@
-include "./std.lo";
+include "./std.lo"
 
 struct ParseIntResult {
     value: u32,
     chars_consumed: u32,
-};
+}
 
 fn parse_u32(input: str): ParseIntResult {
     let result = .ParseIntResult {
         value: 0,
         chars_consumed: 0,
-    };
+    }
     loop {
         if result.chars_consumed == input.size {
-            break;
-        };
-        let c = input.char_at(result.chars_consumed);
+            break
+        }
+        let c = input.char_at(result.chars_consumed)
         if c >= '0' && c <= '9' {
-            result.value *= 10;
-            result.value += (c - '0') as u32;
+            result.value *= 10
+            result.value += (c - '0') as u32
         } else {
-            break;
-        };
-        result.chars_consumed += 1;
-    };
-    return result;
-};
+            break
+        }
+        result.chars_consumed += 1
+    }
+    return result
+}
 
 fn parse_u32_hex(input: str): ParseIntResult {
     let result = .ParseIntResult {
         value: 0,
         chars_consumed: 0,
-    };
+    }
     loop {
         if result.chars_consumed == input.size {
-            break;
-        };
-        let c = input.char_at(result.chars_consumed);
+            break
+        }
+        let c = input.char_at(result.chars_consumed)
         if c >= '0' && c <= '9' {
-            result.value *= 16;
-            result.value += (c - '0') as u32;
+            result.value *= 16
+            result.value += (c - '0') as u32
         } else if c >= 'a' && c <= 'f' {
-            result.value *= 16;
-            result.value += 11 + (c - 'a') as u32;
+            result.value *= 16
+            result.value += 11 + (c - 'a') as u32
         } else {
-            break;
-        };
-        result.chars_consumed += 1;
-    };
-    return result;
-};
+            break
+        }
+        result.chars_consumed += 1
+    }
+    return result
+}
