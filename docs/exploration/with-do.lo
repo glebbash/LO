@@ -1,0 +1,101 @@
+// problem: how to support something like the following Rust code:
+// stdout_writeln(format!(
+//     "{{ \"type\": \"info\", \
+//         \"link\": \"{target_index}/{target_range}\", \
+//         \"loc\": \"{source_index}/{source_range}\" }},",
+// ));
+// string formatting is too heavy so looking for alternatives
+
+// pro: minimal language changes (except that first arg is a block)
+// con: requires a special compiler implemented macro
+//   which is completely different from user defined macros
+// con: hardcoded `@expr`
+fn option_macro() {
+    apply!({ stdout_write(@expr) }, "{",
+    " \"type\": \"file\",",
+    " \"index\": ", file_index.to_str(), ",",
+    " \"path\": ", file_path, " ",
+    "}")
+}
+
+// con: `expr` is defined after it's used in the do block
+//   which requires reading backwards
+fn option_do_for() {
+    do { stdout_write(expr) } for expr in (
+        "{",
+        " \"type\": \"file\",",
+        " \"index\": ", file_index.to_str(), ",",
+        " \"path\": ", file_path, " ",
+        "}"
+    )
+}
+
+// con: hardcoded `it`
+fn option_do_with() {
+    do { stdout_write(it) } with (
+        \"{",
+        \" \"type\": \"file\",",
+        \" \"index\": ", file_index.to_str(), ",",
+        \" \"path\": \"", file_path, "\" ",
+        \"},",
+    )
+}
+
+// pro: maybe the most intuitive and familiar option
+// con: introduces compile time foreach loop
+//   which looks too similar to runtime for loop
+// con: multiline form adds quite a lot of extra lines
+fn option_comptime_for() {
+    @for expr in (
+        "{",
+        " \"type\": \"file\",",
+        " \"index\": ", file_index.to_str(), ",",
+        " \"path\": ", file_path, " ",
+        "}"
+    ) {
+        stdout_write(expr)
+    }
+
+    // short form:
+    @for x in (1, 2, 3) { stdout_write(x) }
+}
+
+fn with_iterations() {
+    // literal comptime foreach but `with` instead of `@for`
+    with x in (1, 2, 3) do { stdout_write(x) }
+
+    // item name def is closer to where it's used
+    with (1, 2, 3) as x do { stdout_write(x) }
+}
+
+// pro: reads nice
+// con: looks exactly like Pythons `with` statement
+//   so you might think that `x` is bound to a tuple instead of iterating
+//   if tuples will ever be introduced this will become super confusing
+fn option_with_do() {
+    with (
+        \"{",
+        \" \"type\": \"file\",",
+        \" \"index\": ", file_index.to_str(), ",",
+        \" \"path\": \"", file_path, "\" ",
+        \"},",
+    ) as x do { stdout_write(x) }
+
+    // short form:
+    with (1, 2, 3) as x do { stdout_write(x) }
+
+    // alternative use:
+    with (create_button()) as b do {
+        b.show()
+    }
+
+    // TODO: consider removing the need for parens after `with`
+    // TODO: look into how to format `short form` and `alternative use` nicely
+}
+
+// TODO: check if backslashes make semicolons redundant (globally)
+// TODO: consider support for backtick strings
+//   as printing quotes (both single and double) is much more common then backticks
+//   will make priting json much more pleasant
+//   but making it the only string syntax is probably not the best idea
+//     cause I heard some keyboard layouts are ass for typing backticks
