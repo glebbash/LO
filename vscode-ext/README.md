@@ -8,9 +8,9 @@ This extension adds the following commands:
 
 To compile `.lo` files to `.wasm` (using [WebShell](https://marketplace.visualstudio.com/items?itemName=ms-vscode.webshell)):
   - Open Web Shell using Command Palette: `Terminal: Create New Web Shell`
-  - Run: `run lo.wasm <input>.lo > <output>.wasm`
+  - Run: `run lo.wasm compile <input>.lo > <output>.wasm`
 
 To compile `.lo` files to `.wasm` (using [wasmtime](https://wasmtime.dev/)):
-  - Run: `wasmtime --dir=. lo.wasm <input>.lo > <output>.wasm`
+  - Run: `wasmtime --dir=. lo.wasm compile <input>.lo > <output>.wasm`
 
 > Check [the source](https://github.com/glebbash/LO) for more info

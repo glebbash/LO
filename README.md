@@ -57,7 +57,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 - To run currently open file: execute Command Palette: `LO: Run current file`, or press ▶️ button in the top toolbar
 - Compiling files:
   - Open Web Shell: execute Command Palette: `Terminal: Create New Web Shell`
-  - Run: `run lo.wasm <input>.lo > <output>.wasm`
+  - Run: `run lo.wasm compile <input>.lo > <output>.wasm`
 
 ---
 
