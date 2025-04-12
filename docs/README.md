@@ -215,7 +215,7 @@ Usage:
 Compiler errors are printed to `<stderr>` using the following format:
 
 ```text
-[ERROR|WARNING] <file-path>:<line>:<col> - <message>
+[ERROR|WARNING]: <file-path>:<line>:<col> - <message>
 ```
 
 ### Compiling
