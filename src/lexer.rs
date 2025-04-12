@@ -337,7 +337,7 @@ impl Lexer {
         if !matched_fully {
             return Err(LoError {
                 message: format!("Unexpected char: '{}'", self.current_char()?),
-                loc,
+                loc: self.loc(),
             });
         };
 
@@ -438,10 +438,15 @@ impl Lexer {
     }
 
     fn loc(&self) -> LoLocation {
+        let pos = self.pos();
+
+        let mut end_pos = pos.clone();
+        end_pos.col += 1;
+
         LoLocation {
             file_index: self.file_index,
-            pos: self.pos(),
-            end_pos: self.pos(),
+            pos,
+            end_pos,
         }
     }
 
