@@ -38,7 +38,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 ![Hello World sample](./docs/assets/hello-world.png)
 
-- Advent of Code 2020 Day 1 [(source)](examples/test/demos/hello-world.lo):
+- Advent of Code 2020 Day 1 [(source)](examples/test/demos/aoc2020/1.lo):
 
 ![AOC 2020 sample](./docs/assets/aoc-2020-day1.png)
 
