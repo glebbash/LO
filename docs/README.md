@@ -26,9 +26,9 @@ Documentation of LO language features.
   - [(info) Error reporting](#info-error-reporting)
   - [Compiling](#compiling)
   - [Inspecting code (IDE intergration)](#inspecting-code-ide-intergration)
-  - [Pretty Printing](#pretty-printing)
+  - [Formatting](#formatting)
   - [(experimental) Interpreting source code](#experimental-interpreting-source-code)
-  - [(experimental) Interpreting WASM modules](#experimental-interpreting-wasm-modules)
+  - [(experimental) Interpreting WASM modules (supports small WASI subset)](#experimental-interpreting-wasm-modules-supports-small-wasi-subset)
     - [Comment rearrangement](#comment-rearrangement)
 - [🧪 Compiler development](#-compiler-development)
   - [Building the initial compiler](#building-the-initial-compiler)
@@ -42,8 +42,8 @@ Top level expressions are only allowed at the top level of the file (not inside 
 
 ```lo
 fn add(x: u32, y: u32): u32 {
-    return a + b;
-};
+    return a + b
+}
 ```
 
 #### Exporting functions
@@ -52,7 +52,7 @@ Function can be exported from WASM module like this:
 
 ```lo
 export fn main(): u32 {
-    return 0;
+    return 0
 }
 ```
 
@@ -61,7 +61,7 @@ export fn main(): u32 {
 ### Include
 
 ```lo
-include "./file.lo";
+include "./file.lo"
 ```
 
 Include pathes are relative to the file they are included to.
@@ -73,8 +73,8 @@ File paths are fully resolved before including.
 Example:
 
 ```lo
-include "./abc.lo"; // will include
-include "./some-folder/../abc.lo"; // will skip
+include "./abc.lo" // will include
+include "./some-folder/../abc.lo" // will skip
 ```
 
 ## 🧑‍💻 Code Expressions
@@ -95,7 +95,7 @@ Int literals are always fully typed, there is no generic "number" type that will
 ### Return expressions
 
 ```lo
-return 123;
+return 123
 ```
 
 > Expression type: `never`
@@ -124,8 +124,8 @@ Binary operators require both operands to be of the same type.
 
 ```lo
 if x < 0 {
-    return 1;
-};
+    return 1
+}
 ```
 
 > Expression type: `void`
@@ -143,13 +143,13 @@ if x < 0 {
     // positive
 } else {
     // zero
-};
+}
 ```
 
 ### Function calls
 
 ```lo
-add(2, 2);
+add(2, 2)
 ```
 
 > Expression type: same as function return type
@@ -175,8 +175,8 @@ Only `//` comments are supported for now.
 // this is a comment
 fn main(): u32 {
     // this is another comment
-    return 0;
-};
+    return 0
+}
 ```
 
 Comments are allowed between any tokens, but they might get moved during formatting. See [Pretty Printing](#pretty-printing) for more info.
@@ -196,13 +196,12 @@ wasmtime --dir=. lo.wasm
 This should print something like the following:
 
 ```text
-Usage: lo <file> [<mode>]
-  Where <mode> is either:
-    --compile (default if not provided)
-    --inspect
-    --pretty-print
-    --eval (experimental)
-    --eval-wasm (experimental)
+Usage:
+  lo compile <input.lo>
+  lo inspect <input.lo>
+  lo format <input.lo>
+  lo eval <input.lo> (experimental)
+  lo wasi <input.lo> (experimental)
 ```
 
 ---
@@ -216,13 +215,13 @@ Usage: lo <file> [<mode>]
 Compiler errors are printed to `<stderr>` using the following format:
 
 ```text
-<file-path>:<line>:<col> - <message>
+[ERROR|WARNING] <file-path>:<line>:<col> - <message>
 ```
 
 ### Compiling
 
 ```bash
-lo input.lo
+lo compile input.lo
 ```
 
 > Compiles `input.lo` file into a WASM module
@@ -234,23 +233,24 @@ lo input.lo
 ### Inspecting code (IDE intergration)
 
 ```bash
-lo input.lo --inspect
+lo inspect input.lo
 ```
 
 > Prints inspection info of `input.lo` file in JSON format. Useful for IDE integrations.
 >
 > `<stdout>` - JSON object with inspection results
+> NOTE: during inspection errors are reported in JSON format as well so stderr will be empty
 
 Inspection object schema is defined as `DiagnisticItem` in [VSCode extension sources](../vscode-ext/src/extension.ts)
 
-### Pretty Printing
+### Formatting
 
 > NOTE: this formats a single file at a time, imported files are not formatted
 
 Usage:
 
 ```bash
-lo input.lo --pretty-print
+lo format input.lo
 ```
 
 > Formats `input.lo` using non-configurable formatting style
@@ -262,19 +262,19 @@ lo input.lo --pretty-print
 Usage:
 
 ```bash
-lo input.lo --eval
+lo eval input.lo
 ```
 
 > Compiles `input.lo` and interprets the WASM module built (without producing any intermediate files). Supports a subset of WASI. Entrypoint is either `_start` or `main`.
 >
 > `<stdout>` - Interpreted program output (if any). In case of `main` entrypoint the function's result is printed.
 
-### (experimental) Interpreting WASM modules
+### (experimental) Interpreting WASM modules (supports small WASI subset)
 
 Usage:
 
 ```bash
-lo input.wasm --eval-wasm
+lo wasi input.wasm
 ```
 
 > Parses and interprets `input.wasm`. Supports a subset of WASI. Entrypoint is either `_start` or `main`.
@@ -295,8 +295,8 @@ fn main():
 // this will be moved
 u32 { // this will also be moved
     // this is fine
-    return 0; // this will also be moved
-};
+    return 0 // this will also be moved
+}
 ```
 
 Will get formatted as:
@@ -307,9 +307,9 @@ fn main(): u32 {
     // this will be moved
     // this will also be moved
     // this is fine
-    return 0;
+    return 0
     // this will also be moved
-};
+}
 ```
 
 ## 🧪 Compiler development

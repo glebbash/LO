@@ -64,8 +64,8 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 2️⃣ Using wasmtime
 
 - Install [wasmtime](https://github.com/bytecodealliance/wasmtime)
-- Compiling files: `wasmtime --dir=. lo.wasm <input>.lo > <output>.wasm`
-- Getting diagnostics (in json format): `wasmtime --dir=. lo.wasm <input>.lo --inspect`
+- Compiling files: `wasmtime --dir=. lo.wasm compile <input>.lo > <output>.wasm`
+- Getting diagnostics (in json format): `wasmtime --dir=. lo.wasm inspect <input>.lo`
 
 ---
 
