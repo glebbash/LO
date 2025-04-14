@@ -471,7 +471,7 @@ fn is_symbol_char(c: char) -> bool {
 }
 
 fn is_delim_char(c: char) -> bool {
-    "(){}[],".contains(c)
+    "(){}[],\\".contains(c)
 }
 
 static OPERATORS: &[&str] = &[

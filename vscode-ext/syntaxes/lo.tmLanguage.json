@@ -252,6 +252,12 @@
                     "comment": "line comments",
                     "name": "comment.line.double-slash.lo",
                     "match": "\\s*//.*"
+                },
+
+                {
+                    "comment": "expression continuation",
+                    "name": "comment.baskslash.continue.lo",
+                    "match": "\\\\"
                 }
             ]
         },
@@ -773,11 +779,6 @@
                     "comment": "subpattern binding",
                     "name": "keyword.operator.subpattern.lo",
                     "match": "@"
-                },
-                {
-                    "comment": "backslash",
-                    "name": "keyword.operator.backslash.lo",
-                    "match": "\\\\"
                 },
                 {
                     "comment": "dot access",

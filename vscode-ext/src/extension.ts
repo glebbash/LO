@@ -64,9 +64,21 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         }
 
-        const diagnostics: DiagnisticItem[] = JSON.parse(
-            new TextDecoder().decode(compilerResult.stdout)
-        );
+        const diagnostics: DiagnisticItem[] = [];
+        try {
+            diagnostics.push(
+                ...JSON.parse(new TextDecoder().decode(compilerResult.stdout))
+            );
+        } catch {
+            return showCompilerError(
+                workspaceUri,
+                analysis,
+                "Inspect output is not a valid JSON array: " +
+                    new TextDecoder().decode(compilerResult.stdout),
+                compilerResult.exitCode
+            );
+        }
+
         const analysisPerIndex = new Map<number, FileAnalysis>();
         for (const d of diagnostics) {
             if (d.type === "file") {
@@ -359,23 +371,6 @@ export async function activate(context: vscode.ExtensionContext) {
         }) satisfies WebShellCommandHandler)
     );
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand("lo.formatFile", async () => {
-            const currentFile = vscode.window.activeTextEditor?.document;
-            if (currentFile === undefined) {
-                return vscode.window.showErrorMessage("No files opened");
-            }
-
-            const formatLatency = new Latency("Format " + currentFile.fileName);
-            const edits = await formatFile(workspaceUri, currentFile, analysis);
-            formatLatency.measureAndLog(logChannel);
-
-            const workspaceEdit = new vscode.WorkspaceEdit();
-            workspaceEdit.set(currentFile.uri, edits);
-            await vscode.workspace.applyEdit(workspaceEdit);
-        })
-    );
-
     const config = vscode.workspace.getConfiguration("lo");
     if (config.get<boolean>("enableFormatting") ?? true) {
         context.subscriptions.push(
@@ -485,7 +480,7 @@ async function showCompilerError(
     errorMessage: string,
     exitCode: number
 ) {
-    const match = errorMessage.match(/^(.+):(\d+):(\d+) - (.+)\n$/);
+    const match = errorMessage.match(/^(?:ERROR: )?(.+):(\d+):(\d+) - (.+)\n$/);
     if (match === null) {
         return vscode.window.showErrorMessage(
             `Compiler errored (exit code: ${exitCode})`,

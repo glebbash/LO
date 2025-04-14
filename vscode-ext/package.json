@@ -5,7 +5,7 @@
     "author": "glebbash",
     "publisher": "glebbash",
     "license": "MIT",
-    "version": "0.0.69",
+    "version": "0.0.78",
     "engines": {
         "vscode": "^1.88.0"
     },
@@ -54,11 +54,6 @@
                 "title": "LO: Run current file",
                 "category": "LO",
                 "icon": "$(debug-start)"
-            },
-            {
-                "command": "lo.formatFile",
-                "title": "LO: Format current file",
-                "category": "LO"
             }
         ],
         "menus": {

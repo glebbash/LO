@@ -498,7 +498,7 @@ impl CodeGen {
         if self.command == LoCommand::Inspect {
             let source_index = err.loc.file_index;
             let source_range = RangeDisplay(&err.loc);
-            let content = &err.message;
+            let content = json_str_escape(&err.message);
             stdout_writeln(format!(
                 "{{ \"type\": \"message\", \
                     \"content\": \"{content}\", \
@@ -519,7 +519,7 @@ impl CodeGen {
         if self.command == LoCommand::Inspect {
             let source_index = err.loc.file_index;
             let source_range = RangeDisplay(&err.loc);
-            let content = &err.message;
+            let content = json_str_escape(&err.message);
             stdout_writeln(format!(
                 "{{ \"type\": \"message\", \
                     \"content\": \"{content}\", \
@@ -4355,6 +4355,10 @@ impl CodeGen {
                 \"loc\": \"{source_index}/{source_range}\" }},",
         ));
     }
+}
+
+fn json_str_escape(value: &str) -> String {
+    value.replace("\\", "\\\\")
 }
 
 fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {
