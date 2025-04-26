@@ -1,0 +1,70 @@
+fn backslash_test() {
+    let x = 1
+    //
+    let x1 = x + 
+        \ x + 
+        \ x
+    //
+    let x2 = (
+        \ x
+    ) + x
+    //
+    let x3 = 2 + f(
+        \ x,
+    ) + f(
+        \ x,
+    )
+    //
+    let x4 = x + 
+        \ f(
+            \ x,
+        ) + f(
+            \ x,
+        )
+    //
+    let x5 = x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(
+                                        \ x,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    //
+    if false {
+        let x6 = x + 
+            \ .s {
+                x: 0,
+            }.x + x
+    }
+    let x7 = x + 
+        \ x + 
+        \ (x + 
+            \ x + .s {
+                x: 0,
+            }.x
+        ) + x
+    //
+    let x8 = x + 
+        \ f(x + 
+            \ x + 
+            \ x,
+        )
+}
+
+struct s {
+    x: u32,
+}
+
+fn f(x: u32): u32 {
+    return f2(.s {
+        x: x,
+    }.x)
+}
+
+fn f2(x: u32) {
+    return x
+}

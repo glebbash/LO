@@ -23,6 +23,7 @@ impl Parser {
         let mut ast = AST {
             exprs: Vec::new(),
             comments: tokens.comments,
+            backslashes: tokens.backslashes,
         };
 
         parser.parse_file(&mut ast)?;

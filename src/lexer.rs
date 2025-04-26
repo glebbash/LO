@@ -35,6 +35,11 @@ pub struct Comment {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct Backslash {
+    pub loc: LoLocation,
+}
+
 pub struct Lexer {
     file_index: u32,
     chars: Vec<char>,
@@ -43,12 +48,14 @@ pub struct Lexer {
     col: usize,
     was_newline: bool,
     comments: Vec<Comment>,
+    backslashes: Vec<Backslash>,
 }
 
 pub struct LoTokens {
     pub tokens: Vec<LoToken>,
     pub end_loc: LoLocation,
     pub comments: Vec<Comment>,
+    pub backslashes: Vec<Backslash>,
 }
 
 impl Lexer {
@@ -61,14 +68,15 @@ impl Lexer {
             col: 1,
             was_newline: false,
             comments: Vec::new(),
+            backslashes: Vec::new(),
         };
-
         let tokens = lexer.lex_file()?;
 
         Ok(LoTokens {
             tokens,
             end_loc: lexer.loc(),
             comments: lexer.comments,
+            backslashes: lexer.backslashes,
         })
     }
 
@@ -358,6 +366,12 @@ impl Lexer {
         if self.current_char() == Ok('/') && self.peek_next_char() == Ok('/') {
             let comment = self.lex_comment();
             self.comments.push(comment);
+            self.skip_space();
+        }
+
+        if self.current_char() == Ok('\\') {
+            self.backslashes.push(Backslash { loc: self.loc() });
+            self.next_char();
             self.skip_space();
         }
     }

@@ -9,6 +9,7 @@ pub trait Locatable {
 pub struct AST {
     pub exprs: Vec<TopLevelExpr>,
     pub comments: Vec<Comment>,
+    pub backslashes: Vec<Backslash>,
 }
 
 #[derive(Debug)]
