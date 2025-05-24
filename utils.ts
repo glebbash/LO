@@ -507,6 +507,24 @@ async function commandTest() {
         );
     });
 
+    testVersions("compiles with-in-do.lo", { v1 }, async (compile) => {
+        const program = await compile("./examples/test/with-in-do.lo");
+
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
+
+        assert.strictEqual(
+            output,
+            m`
+            123456789
+            -------------
+            { "type": "file", "index": 1, "path": "some_path.lo" },
+
+            `
+        );
+    });
+
     describe("<stdin> input", () => {
         const v1 = v1Run;
 

@@ -265,6 +265,7 @@ pub enum CodeExpr {
     Unreachable(UnreachableExpr),
     ForLoop(ForLoopExpr),
     Continue(ContinueExpr),
+    With(WithExpr),
     Defer(DeferExpr),
     Catch(CatchExpr),
     Paren(ParenExpr),
@@ -378,6 +379,14 @@ pub struct ForLoopExpr {
 
 #[derive(Debug)]
 pub struct ContinueExpr {
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct WithExpr {
+    pub bind: IdentExpr,
+    pub args: Vec<CodeExpr>,
+    pub body: CodeBlockExpr,
     pub loc: LoLocation,
 }
 
@@ -557,6 +566,7 @@ impl Locatable for CodeExpr {
             CodeExpr::MemoryGrow(e) => &e.loc,
             CodeExpr::MemoryCopy(e) => &e.loc,
             CodeExpr::Unreachable(e) => &e.loc,
+            CodeExpr::With(e) => &e.loc,
         }
     }
 }

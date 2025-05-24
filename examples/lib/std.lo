@@ -517,6 +517,13 @@ fn u32::to_string(value: u32): String {
     return u32::write(value, String::new(32))
 }
 
+macro u32::to_tmp_str!(value: u32): str {
+    let s = String::new_using(32, alloc::STACK)
+    defer s.free()
+    //
+    u32::write(value, s).as_str()
+}
+
 fn u32::write(value: u32, output: String): String {
     let start_size = output.len()
     if value == 0 {

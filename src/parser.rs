@@ -723,6 +723,25 @@ impl Parser {
             return Ok(CodeExpr::Continue(ContinueExpr { loc }));
         }
 
+        if let Some(_) = self.eat(Symbol, "with")? {
+            let mut loc = self.prev().loc.clone();
+
+            let bind = self.parse_ident()?;
+            self.expect(Symbol, "in")?;
+            let args = self.parse_fn_args()?;
+            self.expect(Symbol, "do")?;
+            let body = self.parse_code_block_expr()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::With(WithExpr {
+                bind,
+                args,
+                body,
+                loc,
+            }));
+        }
+
         if let Some(_) = self.eat(Symbol, "dbg")? {
             let mut loc = self.prev().loc.clone();
 

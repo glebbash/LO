@@ -1,0 +1,25 @@
+include "../lib/cli.lo"
+
+fn main() {
+    with x in (
+        \ 1, 2, 3, 
+        \ 4, 5, 6, 
+        \ 7, 8, 9,
+    ) do {
+        print_u32(x)
+    }
+    //
+    puts("\n-------------\n")
+    //
+    with x in (
+        \ "{", 
+        \ " \"type\": \"file\",", 
+        \ " \"index\": ", 1.to_tmp_str!(), ",", 
+        \ " \"path\": \"", "some_path.lo", "\" ", 
+        \ "},",
+    ) do {
+        puts(x)
+    }
+    //
+    puts("\n")
+}

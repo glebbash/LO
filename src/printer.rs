@@ -549,6 +549,19 @@ impl Printer {
             CodeExpr::Continue(ContinueExpr { loc: _ }) => {
                 stdout_write("continue");
             }
+            CodeExpr::With(WithExpr {
+                bind,
+                args,
+                body,
+                loc: _,
+            }) => {
+                stdout_write("with ");
+                stdout_write(&bind.repr);
+                stdout_write(" in ");
+                self.print_args(args);
+                stdout_write(" do ");
+                self.print_code_block_expr(body);
+            }
             CodeExpr::Unreachable(UnreachableExpr { loc: _ }) => {
                 stdout_write("unreachable");
             }

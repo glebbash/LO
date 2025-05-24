@@ -2219,6 +2219,28 @@ impl CodeGen {
 
                 instrs.push(WasmInstr::Branch { label_index });
             }
+            CodeExpr::With(WithExpr {
+                bind,
+                args,
+                body,
+                loc: _,
+            }) => {
+                for arg in args {
+                    ctx.enter_scope(LoScopeType::Block);
+                    let arg_type = self.get_expr_type(ctx, arg)?;
+                    let arg_local_index = self.define_local(
+                        ctx,
+                        bind.loc.clone(),
+                        bind.repr.clone(),
+                        &arg_type,
+                        false,
+                    )?;
+                    self.codegen(ctx, instrs, arg)?;
+                    self.codegen_local_set(instrs, &arg_type, arg_local_index);
+                    self.codegen_code_block(ctx, instrs, body, true);
+                    ctx.exit_scope();
+                }
+            }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 let code_unit = self.build_code_unit(ctx, expr)?;
                 ctx.deferred.push(code_unit);
@@ -2887,7 +2909,6 @@ impl CodeGen {
                     err_type: Box::new(err_type.clone()),
                 });
             }
-
             CodeExpr::Ident(ident) => {
                 if let Some(const_expr) = self.get_const(ctx, &ident.repr) {
                     return Ok(const_expr.code_unit.lo_type.clone());
@@ -3081,6 +3102,7 @@ impl CodeGen {
             CodeExpr::ForLoop(_) => Ok(LoType::Void),
             CodeExpr::Break(_) => Ok(LoType::Never),
             CodeExpr::Continue(_) => Ok(LoType::Never),
+            CodeExpr::With(_) => Ok(LoType::Void),
             CodeExpr::Return(_) => Ok(LoType::Never),
             CodeExpr::Unreachable(_) => Ok(LoType::Never),
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(ctx, expr),
