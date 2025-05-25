@@ -189,8 +189,8 @@ fn parse_file_tree(codegen: &CodeGen, asts: &Vec of AST, file_index: u32, file_c
     //
     // pass 0: parse all included files (recursive)
     for i in 0..ast.exprs.size {
-        // TODO: port
         let expr = ast.exprs.get!<TopLevelExpr>(i)
+        // TODO: port
         // let TopLevelExpr::Include(include) = expr else {
         //     continue
         // }
