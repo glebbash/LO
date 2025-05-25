@@ -328,6 +328,15 @@ async function commandTest() {
         assert.strictEqual(result, 13);
     });
 
+    testVersions("compiles zst-noop.lo", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/zst-noop.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, undefined);
+    });
+
     testVersions("compiles std.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/std.test.lo");
 

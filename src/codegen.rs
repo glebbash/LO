@@ -2630,7 +2630,7 @@ impl CodeGen {
         is_store: bool,
     ) {
         match pointee_type {
-            LoType::Never | LoType::Void => unreachable!(),
+            LoType::Never | LoType::Void => {} // noop
             LoType::Bool | LoType::U8 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
@@ -3425,6 +3425,10 @@ impl CodeGen {
                 let mut loads = Vec::new();
                 self.codegen_load_or_store(&mut loads, &value_type, *offset, false);
 
+                if loads.len() == 0 {
+                    return Ok(());
+                }
+
                 for instr in &address.instrs {
                     instrs.push(instr.clone());
                 }
@@ -3495,9 +3499,13 @@ impl CodeGen {
             LoVariableInfo::Stored {
                 address,
                 offset: _,
-                value_type: _,
+                value_type,
                 inspect_info: _,
             } => {
+                if self.count_wasm_type_components(value_type) == 0 {
+                    return;
+                }
+
                 for instr in &address.instrs {
                     instrs.push(instr.clone());
                 }

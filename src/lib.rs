@@ -13,7 +13,6 @@ mod wasm;
 mod wasm_eval;
 mod wasm_parser;
 
-#[cfg(target_arch = "wasm32")]
 mod wasm_target {
     use lol_alloc::{FreeListAllocator, LockedAllocator};
 
@@ -26,6 +25,7 @@ mod wasm_target {
         core::arch::wasm32::unreachable()
     }
 
+    #[cfg(not(test))]
     #[panic_handler]
     fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
         crate::core::stderr_write(alloc::format!("{info}\n"));

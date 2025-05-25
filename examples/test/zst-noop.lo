@@ -1,0 +1,8 @@
+struct S {
+    zero: void,
+}
+
+export fn main() {
+    let x1 = (0 as &S).zero
+    let x2 = *(0 as &void)
+}
