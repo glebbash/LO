@@ -39,14 +39,12 @@ use crate::{
 };
 use alloc::{format, rc::Rc, string::String, vec::Vec};
 
-static USAGE: &str = "\
-Usage:
+static USAGE: &str = "Usage:
   lo compile <input.lo>
   lo inspect <input.lo>
   lo format <input.lo>
   lo eval <input.lo> (experimental)
-  lo wasi <input.lo> (experimental)\
-";
+  lo wasi <input.lo> (experimental)";
 
 #[no_mangle]
 pub extern "C" fn _start() {

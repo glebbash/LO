@@ -55,12 +55,14 @@ fn main() {
                 }
                 if field_name.equals("hgt") {
                     let parse_res = parse_u32(field_value)
-                    hgt_is_valid = (field_value.size == 5 && 
+                    hgt_is_valid = (
+                        \ field_value.size == 5 && 
                         \ parse_res.chars_consumed == 3 && 
                         \ parse_res.value >= 150 && 
                         \ parse_res.value <= 193 && 
                         \ field_value.skip_chars(3).equals("cm")
-                    ) || (field_value.size == 4 && 
+                    ) || (
+                        \ field_value.size == 4 && 
                         \ parse_res.chars_consumed == 2 && 
                         \ parse_res.value >= 59 && 
                         \ parse_res.value <= 76 && 
@@ -86,7 +88,8 @@ fn main() {
                 }
                 if field_name.equals("pid") {
                     let parse_res = parse_u32(field_value)
-                    pid_is_valid = field_value.size == 9 && 
+                    pid_is_valid = 
+                        \ field_value.size == 9 && 
                         \ parse_res.chars_consumed == 9
                 }
                 if fields.rest.size == 0 {
@@ -97,8 +100,9 @@ fn main() {
                 break
             }
         }
-        if byr_is_valid && iyr_is_valid && eyr_is_valid && hgt_is_valid && hcl_is_valid && ecl_is_valid && pid_is_valid {
-            valid_passwords += 1
+        if byr_is_valid && iyr_is_valid && eyr_is_valid && hgt_is_valid && 
+            \ hcl_is_valid && ecl_is_valid && pid_is_valid {
+                valid_passwords += 1
         }
         if passwords.rest.size == 0 {
             break
