@@ -2023,10 +2023,30 @@ impl CodeGen {
                 instrs.push(WasmInstr::MemoryCopy);
             }
 
-            CodeExpr::Return(ReturnExpr { expr, loc: _ }) => {
-                // TODO!!!: typecheck returns
+            CodeExpr::Return(ReturnExpr { expr, loc }) => {
+                let Some(lo_fn_index) = ctx.lo_fn_index else {
+                    return Err(LoError {
+                        message: format!("Cannot use `return` in const context"),
+                        loc: loc.clone(),
+                    });
+                };
+
+                let mut return_type = LoType::Void;
+
                 if let Some(return_expr) = expr {
                     self.codegen(ctx, instrs, return_expr)?;
+                    return_type = self.get_expr_type(ctx, &return_expr)?;
+                };
+
+                let fn_return_type = &self.lo_functions[lo_fn_index].fn_type.output;
+                if return_type != *fn_return_type {
+                    return Err(LoError {
+                        message: format!(
+                            "Invalid return type: {}, expected: {}",
+                            return_type, fn_return_type
+                        ),
+                        loc: loc.clone(),
+                    });
                 }
 
                 self.emit_deferred(ctx, instrs)?;
