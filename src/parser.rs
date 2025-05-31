@@ -459,7 +459,7 @@ impl Parser {
         let mut loc = self.current().loc.clone();
         let primary = self.parse_type_expr_primary()?;
 
-        if let Some(_) = self.eat(Symbol, "of")? {
+        if let Ok(Some(_)) = self.eat(Symbol, "of") {
             let container_type = Box::new(primary);
             let item_type = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos.clone();
@@ -945,7 +945,7 @@ impl Parser {
             ident.parts.push(ident_part.value.clone());
             ident.repr += ident_part.value.as_str();
 
-            if let Some(_) = self.eat(Operator, "::")? {
+            if let Ok(Some(_)) = self.eat(Operator, "::") {
                 ident.repr += "::";
                 continue;
             }
