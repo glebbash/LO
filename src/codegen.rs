@@ -22,19 +22,16 @@ pub enum LoType {
     U64,
     I64,
     F64,
-    Pointer {
-        pointee: Box<LoType>,
-    },
-    SequencePointer {
-        pointee: Box<LoType>,
-    },
-    StructInstance {
-        struct_name: String,
-    },
-    Result {
-        ok_type: Box<LoType>,
-        err_type: Box<LoType>,
-    },
+    Pointer { pointee: Box<LoType> },
+    SequencePointer { pointee: Box<LoType> },
+    StructInstance { struct_name: String },
+    Result(LoResultType),
+}
+
+#[derive(Clone, PartialEq)]
+pub struct LoResultType {
+    ok: Box<LoType>,
+    err: Box<LoType>,
 }
 
 impl core::fmt::Display for LoType {
@@ -56,7 +53,7 @@ impl core::fmt::Display for LoType {
             LoType::Pointer { pointee } => write!(f, "&{pointee}"),
             LoType::SequencePointer { pointee } => write!(f, "*&{pointee}"),
             LoType::StructInstance { struct_name } => f.write_str(&struct_name),
-            LoType::Result { ok_type, err_type } => write!(f, "Result<{ok_type}, {err_type}>"),
+            LoType::Result(result) => write!(f, "Result<{}, {}>", result.ok, result.err),
         }
     }
 }
@@ -141,12 +138,17 @@ struct LoCodeUnit {
 }
 
 #[derive(Clone)]
+struct LoMacroTypeArg {
+    name: String,
+    lo_type: LoType,
+}
+
+#[derive(Clone)]
 struct LoScope {
     scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
     macro_args: Vec<LoConstDef>,
-    // TODO: don't use tuples
-    macro_type_args: Vec<(String, LoType)>,
+    macro_type_args: Vec<LoMacroTypeArg>,
 }
 
 #[derive(Clone)]
@@ -203,8 +205,8 @@ impl LoExprContext {
     fn get_macro_type_arg(&self, type_name: &str) -> Option<&LoType> {
         for scope in self.scopes.iter().rev() {
             for macro_type_arg in &scope.macro_type_args {
-                if macro_type_arg.0 == type_name {
-                    return Some(&macro_type_arg.1);
+                if macro_type_arg.name == type_name {
+                    return Some(&macro_type_arg.lo_type);
                 }
             }
         }
@@ -374,6 +376,18 @@ struct LoConstDef {
     loc: LoLocation,
 }
 
+#[derive(Clone)]
+struct PooledString {
+    value: String,
+    ptr: u32,
+}
+
+#[derive(Clone)]
+struct LoStr {
+    ptr: u32,
+    len: u32,
+}
+
 #[derive(Default)]
 pub struct CodeGen {
     pub command: LoCommand,
@@ -393,8 +407,7 @@ pub struct CodeGen {
     memory: Option<MemoryDefExpr>,
     memory_imported_from: Option<String>,
     datas: RefCell<Vec<WasmData>>,
-    // TODO: don't use tuples
-    string_pool: RefCell<Vec<(String, u32)>>,
+    string_pool: RefCell<Vec<PooledString>>,
     data_size: RefCell<u32>,
 
     wasm_types: RefCell<Vec<WasmFnType>>,
@@ -1355,10 +1368,10 @@ impl CodeGen {
                 err_type,
                 loc: _,
             } => {
-                let ok_type = Box::new(self.build_type_check_ref(ctx, &ok_type, false, loc)?);
-                let err_type = Box::new(self.build_type_check_ref(ctx, &err_type, false, loc)?);
+                let ok = Box::new(self.build_type_check_ref(ctx, &ok_type, false, loc)?);
+                let err = Box::new(self.build_type_check_ref(ctx, &err_type, false, loc)?);
 
-                Ok(LoType::Result { ok_type, err_type })
+                Ok(LoType::Result(LoResultType { ok, err }))
             }
             TypeExpr::Of {
                 container_type,
@@ -1413,11 +1426,11 @@ impl CodeGen {
                     value.push('\0');
                 }
 
-                let (string_ptr, string_len) = self.process_const_string(value, &loc)?;
+                let str = self.process_const_string(value, &loc)?;
 
                 if *zero_terminated {
                     instrs.push(WasmInstr::I32Const {
-                        value: string_ptr as i32,
+                        value: str.ptr as i32,
                     });
 
                     return Ok(());
@@ -1425,10 +1438,10 @@ impl CodeGen {
 
                 // emit str struct values
                 instrs.push(WasmInstr::I32Const {
-                    value: string_ptr as i32,
+                    value: str.ptr as i32,
                 });
                 instrs.push(WasmInstr::I32Const {
-                    value: string_len as i32,
+                    value: str.len as i32,
                 });
             }
             CodeExpr::StructLiteral(StructLiteralExpr {
@@ -1575,7 +1588,7 @@ impl CodeGen {
                 value,
                 loc,
             }) => {
-                let (ok_type, err_type) = self.get_result_literal_type(ctx, result_type, loc)?;
+                let result = self.get_result_literal_type(ctx, result_type, loc)?;
 
                 let mut value_type = LoType::Void;
                 if let Some(value) = value {
@@ -1583,11 +1596,11 @@ impl CodeGen {
                 }
 
                 if *is_ok {
-                    if value_type != ok_type {
+                    if value_type != *result.ok {
                         return Err(LoError {
                             message: format!(
                                 "Cannot create result, Ok type mismatch. Got {}, expected: {}",
-                                value_type, ok_type
+                                value_type, result.ok
                             ),
                             loc: loc.clone(),
                         });
@@ -1603,17 +1616,17 @@ impl CodeGen {
                     return Ok(());
                 }
 
-                if value_type != err_type {
+                if value_type != *result.err {
                     return Err(LoError {
                         message: format!(
                             "Cannot create result, Err type mismatch. Got {}, expected: {}",
-                            value_type, err_type
+                            value_type, result.err
                         ),
                         loc: loc.clone(),
                     });
                 }
 
-                self.codegen_default_value(ctx, instrs, &ok_type);
+                self.codegen_default_value(ctx, instrs, &result.ok);
                 self.codegen(ctx, instrs, value.as_ref().unwrap())?;
             }
 
@@ -1941,14 +1954,14 @@ impl CodeGen {
 
             CodeExpr::Dbg(DbgExpr { message, loc }) => {
                 let debug_message = format!("{} - {}", loc.to_string(&self.fm), message.unescape());
-                let (str_ptr, str_len) = self.process_const_string(debug_message, loc)?;
+                let str = self.process_const_string(debug_message, loc)?;
 
                 // emit str struct values
                 instrs.push(WasmInstr::I32Const {
-                    value: str_ptr as i32,
+                    value: str.ptr as i32,
                 });
                 instrs.push(WasmInstr::I32Const {
-                    value: str_len as i32,
+                    value: str.len as i32,
                 });
             }
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
@@ -2251,10 +2264,10 @@ impl CodeGen {
                 catch_body,
                 loc,
             }) => {
-                self.codegen_catch(ctx, instrs, lhs, Some((&error_bind, catch_body)), loc)?;
+                self.codegen_catch(ctx, instrs, lhs, Some(&error_bind), Some(catch_body), loc)?;
             }
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
-                self.codegen_catch(ctx, instrs, expr, None, loc)?;
+                self.codegen_catch(ctx, instrs, expr, None, None, loc)?;
             }
             CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
                 self.codegen(ctx, instrs, expr)?;
@@ -2406,7 +2419,10 @@ impl CodeGen {
         for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(lo_type_args.iter()) {
             ctx.current_scope_mut()
                 .macro_type_args
-                .push((type_param.clone(), type_arg.clone()));
+                .push(LoMacroTypeArg {
+                    name: type_param.clone(),
+                    lo_type: type_arg.clone(),
+                });
         }
 
         if all_args.len() != macro_def.macro_params.len() {
@@ -2436,7 +2452,10 @@ impl CodeGen {
             if let FnParamType::Infer { name } = &macro_param.param_type {
                 ctx.current_scope_mut()
                     .macro_type_args
-                    .push((name.clone(), const_def.code_unit.lo_type.clone()));
+                    .push(LoMacroTypeArg {
+                        name: name.clone(),
+                        lo_type: const_def.code_unit.lo_type.clone(),
+                    });
             }
 
             ctx.current_scope_mut().macro_args.push(const_def);
@@ -2530,12 +2549,12 @@ impl CodeGen {
         ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
-        // TODO: don't use tuples
-        catch_details: Option<(&IdentExpr, &CodeBlockExpr)>,
+        error_bind: Option<&IdentExpr>,
+        catch_body: Option<&CodeBlockExpr>,
         loc: &LoLocation,
     ) -> Result<(), LoError> {
         let expr_type = self.get_expr_type(ctx, expr)?;
-        let (ok_type, err_type) = self.assert_catchable_type(&expr_type, loc)?;
+        let result = self.assert_catchable_type(&expr_type, loc)?;
 
         ctx.enter_scope(LoScopeType::Block); // enter catch scope
 
@@ -2543,7 +2562,7 @@ impl CodeGen {
         self.codegen(ctx, instrs, expr)?;
 
         // pop error
-        let (error_bind, error_bind_loc) = if let Some((error_bind, _)) = catch_details {
+        let (error_bind, error_bind_loc) = if let Some(error_bind) = error_bind {
             (error_bind.repr.clone(), error_bind.loc.clone())
         } else {
             (String::from("<err>"), LoLocation::internal())
@@ -2552,12 +2571,12 @@ impl CodeGen {
             ctx,
             error_bind_loc.clone(),
             error_bind.clone(),
-            &err_type,
+            &result.err,
             false,
         )?;
         let err_var = self.var_local(
             &error_bind,
-            err_type.clone(),
+            result.err.as_ref().clone(),
             err_local_index,
             error_bind_loc.clone(),
             None,
@@ -2572,13 +2591,13 @@ impl CodeGen {
 
         // pop ok
         let ok_bind = String::from("<ok>");
-        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &ok_type, false)?;
-        self.codegen_local_set(instrs, ok_type, ok_local_index);
+        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &result.ok, false)?;
+        self.codegen_local_set(instrs, &result.ok, ok_local_index);
 
         // cond: error != 0
         self.codegen_var_get(ctx, instrs, &err_var)?;
 
-        let in_out_type_index = self.get_block_inout_type(&[], ok_type);
+        let in_out_type_index = self.get_block_inout_type(&[], &result.ok);
         instrs.push(WasmInstr::BlockStart {
             block_kind: WasmBlockKind::If,
             block_type: WasmBlockType::InOut {
@@ -2587,7 +2606,7 @@ impl CodeGen {
         });
 
         // catch error
-        if let Some((_, catch_body)) = catch_details {
+        if let Some(catch_body) = catch_body {
             let terminated_early = self.codegen_code_block(ctx, instrs, catch_body, true);
             if !terminated_early {
                 self.report_error(LoError {
@@ -2597,8 +2616,8 @@ impl CodeGen {
             }
         } else {
             // return ok_type of function's result + caught error
-            let (fn_ok_type, _) = self.get_result_literal_type(ctx, &None, loc)?;
-            self.codegen_default_value(ctx, instrs, &fn_ok_type);
+            let fn_result = self.get_result_literal_type(ctx, &None, loc)?;
+            self.codegen_default_value(ctx, instrs, &fn_result.ok);
             self.codegen_var_get(ctx, instrs, &err_var)?;
 
             self.emit_deferred(ctx, instrs)?;
@@ -2610,7 +2629,7 @@ impl CodeGen {
         // no error, push ok value
         let ok_var = LoVariableInfo::Local {
             local_index: ok_local_index,
-            local_type: ok_type.clone(),
+            local_type: result.ok.as_ref().clone(),
             inspect_info: None,
         };
         self.codegen_var_get(ctx, instrs, &ok_var)?;
@@ -2766,24 +2785,20 @@ impl CodeGen {
                     );
                 }
             }
-            LoType::Result {
-                ok_type: _,
-                err_type: _,
-            } => todo!(),
+            LoType::Result(_) => todo!(),
         }
     }
 
-    // TODO: don't use tuples
     fn get_result_literal_type(
         &self,
         ctx: &LoExprContext,
-        explicit_type: &Option<(TypeExpr, TypeExpr)>,
+        explicit_type: &Option<ResultTypeExpr>,
         loc: &LoLocation,
-    ) -> Result<(LoType, LoType), LoError> {
-        if let Some((ok_type_expr, err_type_expr)) = explicit_type {
-            let ok_type = self.build_type(ctx, &ok_type_expr)?;
-            let err_type = self.build_type(ctx, &err_type_expr)?;
-            return Ok((ok_type, err_type));
+    ) -> Result<LoResultType, LoError> {
+        if let Some(result_type) = explicit_type {
+            let ok = Box::new(self.build_type(ctx, &result_type.ok)?);
+            let err = Box::new(self.build_type(ctx, &result_type.err)?);
+            return Ok(LoResultType { ok, err });
         }
 
         let Some(lo_fn_index) = ctx.lo_fn_index else {
@@ -2794,7 +2809,7 @@ impl CodeGen {
         };
 
         let fn_info = &self.lo_functions[lo_fn_index];
-        let LoType::Result { ok_type, err_type } = &fn_info.fn_type.output else {
+        let LoType::Result(result) = &fn_info.fn_type.output else {
             return Err(LoError {
                 message: format!(
                     "Cannot create implicitly typed result: function does not return result"
@@ -2803,7 +2818,10 @@ impl CodeGen {
             });
         };
 
-        Ok((ok_type.as_ref().clone(), err_type.as_ref().clone()))
+        Ok(LoResultType {
+            ok: result.ok.clone(),
+            err: result.err.clone(),
+        })
     }
 
     fn get_block_inout_type(&self, inputs: &[LoType], output: &LoType) -> u32 {
@@ -2902,12 +2920,8 @@ impl CodeGen {
                 value: _,
                 loc,
             }) => {
-                let (ok_type, err_type) = self.get_result_literal_type(ctx, result_type, loc)?;
-
-                return Ok(LoType::Result {
-                    ok_type: Box::new(ok_type.clone()),
-                    err_type: Box::new(err_type.clone()),
-                });
+                let result = self.get_result_literal_type(ctx, result_type, loc)?;
+                return Ok(LoType::Result(result));
             }
             CodeExpr::Ident(ident) => {
                 if let Some(const_expr) = self.get_const(ctx, &ident.repr) {
@@ -2999,10 +3013,7 @@ impl CodeGen {
                         | LoType::Pointer { pointee: _ }
                         | LoType::SequencePointer { pointee: _ }
                         | LoType::StructInstance { struct_name: _ }
-                        | LoType::Result {
-                            ok_type: _,
-                            err_type: _,
-                        } => Ok(expr_type),
+                        | LoType::Result(_) => Ok(expr_type),
                     }
                 }
             },
@@ -3079,13 +3090,13 @@ impl CodeGen {
                 loc,
             }) => {
                 let expr_type = self.get_expr_type(ctx, lhs)?;
-                let (ok_type, _) = self.assert_catchable_type(&expr_type, loc)?;
-                Ok(ok_type.clone())
+                let result = self.assert_catchable_type(&expr_type, loc)?;
+                Ok(result.ok.as_ref().clone())
             }
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
                 let expr_type = self.get_expr_type(ctx, expr)?;
-                let (ok_type, _) = self.assert_catchable_type(&expr_type, loc)?;
-                Ok(ok_type.clone())
+                let result = self.assert_catchable_type(&expr_type, loc)?;
+                Ok(result.ok.as_ref().clone())
             }
             CodeExpr::Dbg(_) => Ok(LoType::StructInstance {
                 struct_name: String::from("str"),
@@ -3656,13 +3667,12 @@ impl CodeGen {
         local_index
     }
 
-    // TODO: don't use tuples
     fn assert_catchable_type<'a>(
         &self,
         expr_type: &'a LoType,
         loc: &LoLocation,
-    ) -> Result<(&'a LoType, &'a LoType), LoError> {
-        let LoType::Result { ok_type, err_type } = expr_type else {
+    ) -> Result<&'a LoResultType, LoError> {
+        let LoType::Result(result) = expr_type else {
             return Err(LoError {
                 message: format!("Cannot catch error from expr of type {}", expr_type),
                 loc: loc.clone(),
@@ -3670,15 +3680,18 @@ impl CodeGen {
         };
 
         let mut err_type_components = Vec::new();
-        self.lower_type(&err_type, &mut err_type_components);
+        self.lower_type(&result.err, &mut err_type_components);
         if err_type_components != [WasmType::I32] {
             return Err(LoError {
-                message: format!("Invalid Result error type: {}, must lower to i32", err_type),
+                message: format!(
+                    "Invalid Result error type: {}, must lower to i32",
+                    result.err
+                ),
                 loc: loc.clone(),
             });
         }
 
-        Ok((ok_type, err_type))
+        Ok(result)
     }
 
     fn emit_deferred(
@@ -3709,8 +3722,7 @@ impl CodeGen {
         Ok(code_unit)
     }
 
-    // TODO: don't use tuples
-    fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<(u32, u32), LoError> {
+    fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<LoStr, LoError> {
         if self.memory.is_none() && self.command != LoCommand::Inspect {
             return Err(LoError {
                 message: format!("Cannot use strings with no memory defined"),
@@ -3720,17 +3732,25 @@ impl CodeGen {
 
         let string_len = value.as_bytes().len() as u32;
 
-        for (string_value, string_ptr) in self.string_pool.borrow().iter() {
-            if *string_value == value {
-                return Ok((*string_ptr, string_len));
+        for pooled_str in self.string_pool.borrow().iter() {
+            if *pooled_str.value == value {
+                return Ok(LoStr {
+                    ptr: pooled_str.ptr,
+                    len: string_len,
+                });
             }
         }
 
-        let string_ptr = self.append_data(value.clone().into_bytes());
+        let ptr = self.append_data(value.clone().into_bytes());
 
-        self.string_pool.borrow_mut().push((value, string_ptr));
+        self.string_pool
+            .borrow_mut()
+            .push(PooledString { value, ptr });
 
-        return Ok((string_ptr, string_len));
+        return Ok(LoStr {
+            ptr,
+            len: string_len,
+        });
     }
 
     fn append_data(&self, bytes: Vec<u8>) -> u32 {
@@ -3882,9 +3902,9 @@ impl CodeGen {
                     self.codegen_default_value(ctx, instrs, &field.field_type);
                 }
             }
-            LoType::Result { ok_type, err_type } => {
-                self.codegen_default_value(ctx, instrs, &ok_type);
-                self.codegen_default_value(ctx, instrs, &err_type);
+            LoType::Result(result) => {
+                self.codegen_default_value(ctx, instrs, &result.ok);
+                self.codegen_default_value(ctx, instrs, &result.err);
             }
         }
     }
@@ -3959,9 +3979,9 @@ impl CodeGen {
                     self.lower_type(&field.field_type, wasm_types);
                 }
             }
-            LoType::Result { ok_type, err_type } => {
-                self.lower_type(ok_type, wasm_types);
-                self.lower_type(err_type, wasm_types);
+            LoType::Result(result) => {
+                self.lower_type(&result.ok, wasm_types);
+                self.lower_type(&result.err, wasm_types);
             }
         }
     }
@@ -4012,9 +4032,9 @@ impl CodeGen {
                 layout.alignment = u32::max(layout.alignment, 1);
                 layout.byte_size = align(layout.byte_size, layout.alignment);
             }
-            LoType::Result { ok_type, err_type } => {
-                self.get_type_layout(ok_type, layout);
-                self.get_type_layout(err_type, layout);
+            LoType::Result(result) => {
+                self.get_type_layout(&result.ok, layout);
+                self.get_type_layout(&result.err, layout);
             }
         }
     }

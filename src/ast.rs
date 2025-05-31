@@ -426,10 +426,15 @@ pub struct ArrayLiteralExpr {
 #[derive(Debug)]
 pub struct ResultLiteralExpr {
     pub is_ok: bool,
-    // TODO: don't use tuples
-    pub result_type: Option<(TypeExpr, TypeExpr)>,
+    pub result_type: Option<ResultTypeExpr>,
     pub value: Option<Box<CodeExpr>>,
     pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct ResultTypeExpr {
+    pub ok: TypeExpr,
+    pub err: TypeExpr,
 }
 
 #[derive(Debug)]

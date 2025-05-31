@@ -435,11 +435,11 @@ impl Printer {
                 loc: _,
             }) => {
                 stdout_write(if *is_ok { "Ok" } else { "Err" });
-                if let Some((ok_type, err_type)) = result_type {
+                if let Some(result_type) = result_type {
                     stdout_write("::<");
-                    self.print_type_expr(ok_type);
+                    self.print_type_expr(&result_type.ok);
                     stdout_write(", ");
-                    self.print_type_expr(err_type);
+                    self.print_type_expr(&result_type.err);
                     stdout_write(">");
                 }
                 stdout_write("(");

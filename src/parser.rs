@@ -853,12 +853,12 @@ impl Parser {
             let mut result_type = None;
             if let Some(_) = self.eat(Operator, "::")? {
                 self.expect(Operator, "<")?;
-                let ok_type = self.parse_type_expr()?;
+                let ok = self.parse_type_expr()?;
                 self.expect(Delim, ",")?;
-                let err_type = self.parse_type_expr()?;
+                let err = self.parse_type_expr()?;
                 self.expect(Operator, ">")?;
 
-                result_type = Some((ok_type, err_type));
+                result_type = Some(ResultTypeExpr { ok, err });
             }
 
             self.expect(Delim, "(")?;
