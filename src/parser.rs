@@ -292,7 +292,7 @@ impl Parser {
 
         let unexpected = self.current();
         return Err(LoError {
-            message: format!("Unexpected top level token: {:?}", unexpected.value),
+            message: format!("Unexpected top level token: {}", unexpected.value),
             loc: unexpected.loc.clone(),
         });
     }
