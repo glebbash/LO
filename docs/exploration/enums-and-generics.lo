@@ -1,0 +1,25 @@
+type Point2D = struct { x: i32, y: i32 }
+type Switch = enum (bool, void) {
+    On(true, void),
+    Off(false, void),
+}
+type Result<T, E> = enum (u8, &void) {
+    Ok(0x01, &T),
+    Err(0x00, &E),
+}
+type AppResult<T> = Result<T, AppErr>
+type Numba = i32
+type some_namespace::XYZ = u32
+type List<T> = struct { value: T, next: &List<T> }
+
+fn main() {
+    let some_switch = Switch::On()
+    if let Switch::On(_) = some_switch {
+        do_shit()
+    }
+
+    let some_other_switch = Switch::Off()
+    let Switch::Off(_) = some_other_switch else {
+        return
+    }
+}

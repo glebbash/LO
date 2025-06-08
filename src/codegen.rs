@@ -1325,6 +1325,7 @@ impl CodeGen {
         return self.build_type_check_ref(ctx, type_expr, true, &LoLocation::internal());
     }
 
+    // builds a type asserting it doesn't have infinite size
     fn build_type_check_ref(
         &self,
         ctx: &LoExprContext,
