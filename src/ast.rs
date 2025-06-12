@@ -190,37 +190,52 @@ impl Locatable for TopLevelExpr {
 
 #[derive(Debug)]
 pub enum TypeExpr {
-    Named {
-        name: IdentExpr,
-    },
-    Pointer {
-        pointee: Box<TypeExpr>,
-        loc: LoLocation,
-    },
-    SequencePointer {
-        pointee: Box<TypeExpr>,
-        loc: LoLocation,
-    },
-    Result {
-        ok_type: Box<TypeExpr>,
-        err_type: Box<TypeExpr>,
-        loc: LoLocation,
-    },
-    Of {
-        container_type: Box<TypeExpr>,
-        item_type: Box<TypeExpr>,
-        loc: LoLocation,
-    },
+    Named(TypeExprNamed),
+    Pointer(TypeExprPointer),
+    SequencePointer(TypeExprSequencePointer),
+    Result(TypeExprResult),
+    Of(TypeExprOf),
+}
+
+#[derive(Debug)]
+pub struct TypeExprNamed {
+    pub name: IdentExpr,
+}
+
+#[derive(Debug)]
+pub struct TypeExprPointer {
+    pub pointee: Box<TypeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct TypeExprSequencePointer {
+    pub pointee: Box<TypeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct TypeExprResult {
+    pub ok_type: Box<TypeExpr>,
+    pub err_type: Box<TypeExpr>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
+pub struct TypeExprOf {
+    pub container_type: Box<TypeExpr>,
+    pub item_type: Box<TypeExpr>,
+    pub loc: LoLocation,
 }
 
 impl Locatable for TypeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
-            TypeExpr::Named { name, .. } => &name.loc,
-            TypeExpr::Pointer { loc, .. } => loc,
-            TypeExpr::SequencePointer { loc, .. } => loc,
-            TypeExpr::Result { loc, .. } => loc,
-            TypeExpr::Of { loc, .. } => loc,
+            TypeExpr::Named(e) => &e.name.loc,
+            TypeExpr::Pointer(e) => &e.loc,
+            TypeExpr::SequencePointer(e) => &e.loc,
+            TypeExpr::Result(e) => &e.loc,
+            TypeExpr::Of(e) => &e.loc,
         }
     }
 }

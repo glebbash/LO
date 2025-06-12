@@ -1334,7 +1334,7 @@ impl CodeGen {
         loc: &LoLocation,
     ) -> Result<LoType, LoError> {
         match type_expr {
-            TypeExpr::Named { name } => {
+            TypeExpr::Named(TypeExprNamed { name }) => {
                 if let Some(macro_type_arg) = ctx.get_macro_type_arg(&name.repr) {
                     return Ok(macro_type_arg.clone());
                 }
@@ -1354,32 +1354,31 @@ impl CodeGen {
                 }
                 Ok(lo_type)
             }
-            TypeExpr::Pointer { pointee, loc: _ } => {
+            TypeExpr::Pointer(TypeExprPointer { pointee, loc: _ }) => {
                 let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
 
                 Ok(LoType::Pointer { pointee })
             }
-            TypeExpr::SequencePointer { pointee, loc: _ } => {
+            TypeExpr::SequencePointer(TypeExprSequencePointer { pointee, loc: _ }) => {
                 let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
 
                 Ok(LoType::SequencePointer { pointee })
             }
-            TypeExpr::Result {
+            TypeExpr::Result(TypeExprResult {
                 ok_type,
                 err_type,
                 loc: _,
-            } => {
+            }) => {
                 let ok = Box::new(self.build_type_check_ref(ctx, &ok_type, false, loc)?);
                 let err = Box::new(self.build_type_check_ref(ctx, &err_type, false, loc)?);
 
                 Ok(LoType::Result(LoResultType { ok, err }))
             }
-            TypeExpr::Of {
+            TypeExpr::Of(TypeExprOf {
                 container_type,
-                // TODO?: attach as metadata and use in type equality check
                 item_type: _,
                 loc: _,
-            } => {
+            }) => {
                 let actual_type = self.build_type_check_ref(ctx, container_type, true, loc)?;
 
                 Ok(actual_type)
