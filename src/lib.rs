@@ -73,15 +73,14 @@ pub extern "C" fn _start() {
 
     if command == LoCommand::Format {
         let mut fm = FileManager::default();
-        let included_file = catch!(fm.include_file(file_name, &LoLocation::internal()), err, {
+
+        let file_index = fm.include_file(file_name, None, &LoLocation::internal());
+        let file_index = catch!(file_index, err, {
             stderr_writeln(err.to_string(&fm));
             finalize_and_exit(1);
         });
 
-        let tokens = Lexer::lex(
-            included_file.file_index,
-            &included_file.file_contents.unwrap(),
-        );
+        let tokens = Lexer::lex(file_index, fm.get_file_contents(file_index));
         let tokens = catch!(tokens, err, {
             stderr_writeln(err.to_string(&fm));
             finalize_and_exit(1);
@@ -123,19 +122,16 @@ pub extern "C" fn _start() {
 
     let mut codegen = CodeGen::new(command);
 
-    let included_file = codegen.fm.include_file(file_name, &LoLocation::internal());
-    let included_file = catch!(included_file, err, {
+    let file_index = codegen
+        .fm
+        .include_file(file_name, None, &LoLocation::internal());
+    let file_index = catch!(file_index, err, {
         stderr_writeln(err.to_string(&codegen.fm));
         finalize_and_exit(1);
     });
 
     let mut asts = Vec::new();
-    parse_file_tree(
-        &mut codegen,
-        &mut asts,
-        included_file.file_index,
-        included_file.file_contents.unwrap(),
-    );
+    parse_file_tree(&mut codegen, &mut asts, file_index);
     for ast in &asts {
         codegen.pass_collect_typedefs(ast);
     }
@@ -176,12 +172,7 @@ pub extern "C" fn _start() {
     unreachable!();
 }
 
-fn parse_file_tree(
-    codegen: &mut CodeGen,
-    asts: &mut Vec<AST>,
-    file_index: u32,
-    file_contents: String,
-) {
+fn parse_file_tree(codegen: &mut CodeGen, asts: &mut Vec<AST>, file_index: u32) {
     if codegen.command == LoCommand::Inspect {
         let file_path = codegen.fm.get_file_path(file_index);
         stdout_writeln(format!(
@@ -191,7 +182,8 @@ fn parse_file_tree(
         ));
     }
 
-    let tokens = catch!(Lexer::lex(file_index, &file_contents), err, {
+    let tokens = Lexer::lex(file_index, &codegen.fm.get_file_contents(file_index));
+    let tokens = catch!(tokens, err, {
         return codegen.report_error(err);
     });
 
@@ -205,22 +197,25 @@ fn parse_file_tree(
             continue;
         };
 
-        let included_file = codegen
-            .fm
-            .include_file(&include.file_path.unescape(), &include.loc);
-        let included_file = catch!(included_file, err, {
+        let mut is_newly_added = false;
+        let file_index = codegen.fm.include_file(
+            &include.file_path.unescape(),
+            Some(&mut is_newly_added),
+            &include.loc,
+        );
+        let file_index = catch!(file_index, err, {
             codegen.report_error(err);
             continue;
         });
 
-        if let Some(file_contents) = included_file.file_contents {
-            parse_file_tree(codegen, asts, included_file.file_index, file_contents);
+        if is_newly_added {
+            parse_file_tree(codegen, asts, file_index);
         }
 
         if codegen.command == LoCommand::Inspect {
             let source_index = file_index;
             let source_range = RangeDisplay(&include.loc);
-            let target_index = included_file.file_index;
+            let target_index = file_index;
             let target_range = "1:1-1:1";
 
             stdout_writeln(format!(

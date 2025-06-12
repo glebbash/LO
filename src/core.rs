@@ -310,8 +310,9 @@ impl<'a> core::fmt::Display for RangeDisplay<'a> {
 
 #[derive(Debug)]
 struct FileInfo {
-    file_index: u32,
-    file_path: String,
+    index: u32,
+    path: String,
+    contents: String,
 }
 
 pub struct FileManager {
@@ -322,33 +323,27 @@ impl default::Default for FileManager {
     fn default() -> Self {
         let mut files = Vec::new();
         files.push(FileInfo {
-            file_index: 0,
-            file_path: String::from("<internal>"),
+            index: 0,
+            path: String::from("<internal>"),
+            contents: String::from(""),
         });
         Self { files }
     }
-}
-
-pub struct IncludedFile {
-    pub file_index: u32,
-    pub file_contents: Option<String>,
 }
 
 impl FileManager {
     pub fn include_file(
         &mut self,
         file_name: &str,
+        is_newly_added: Option<&mut bool>,
         loc: &LoLocation,
-    ) -> Result<IncludedFile, LoError> {
+    ) -> Result<u32, LoError> {
         let parent_path = self.get_file_path(loc.file_index);
         let absolute_file_path = resolve_path(file_name, parent_path);
 
         for parsed_file in &self.files {
-            if parsed_file.file_path == absolute_file_path {
-                return Ok(IncludedFile {
-                    file_index: parsed_file.file_index,
-                    file_contents: None,
-                });
+            if parsed_file.path == absolute_file_path {
+                return Ok(parsed_file.index);
             }
         }
 
@@ -359,18 +354,24 @@ impl FileManager {
 
         let file_index = self.files.len() as u32;
         self.files.push(FileInfo {
-            file_index,
-            file_path: absolute_file_path.into(),
+            index: file_index,
+            path: absolute_file_path.into(),
+            contents: file_contents,
         });
 
-        Ok(IncludedFile {
-            file_index,
-            file_contents: Some(file_contents),
-        })
+        if let Some(is_newly_added) = is_newly_added {
+            *is_newly_added = true;
+        }
+
+        Ok(file_index)
     }
 
     pub fn get_file_path(&self, file_index: u32) -> &str {
-        &self.files[file_index as usize].file_path
+        &self.files[file_index as usize].path
+    }
+
+    pub fn get_file_contents(&self, file_index: u32) -> &str {
+        &self.files[file_index as usize].contents
     }
 }
 
