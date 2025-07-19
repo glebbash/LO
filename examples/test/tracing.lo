@@ -1,5 +1,0 @@
-include "../lib/cli.lo"
-
-fn main() {
-    puts(dbg "hello there\n")
-}

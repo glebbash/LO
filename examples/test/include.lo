@@ -1,5 +1,0 @@
-include "./factorial.lo"
-
-export fn main(): u32 {
-    return factorial(5)
-}
