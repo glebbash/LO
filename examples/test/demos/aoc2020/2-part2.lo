@@ -8,14 +8,7 @@ const Step::READ_END_INDEX = 1
 const Step::READ_CHAR_TO_FIND = 2
 const Step::CHECK_PASSWORD = 3
 
-struct PasswordCheckState {
-    step: Step,
-    start_index: u32,
-    end_index: u32,
-    current_index: u32,
-    match_found: bool,
-    char_to_check: u8,
-}
+struct PasswordCheckState { step: Step, start_index: u32, end_index: u32, current_index: u32, match_found: bool, char_to_check: u8, }
 
 fn initial_check_state(): PasswordCheckState {
     return .PasswordCheckState {

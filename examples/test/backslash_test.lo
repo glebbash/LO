@@ -55,9 +55,7 @@ fn backslash_test() {
         )
 }
 
-struct s {
-    x: u32,
-}
+struct s { x: u32, }
 
 fn f(x: u32): u32 {
     return f2(.s {

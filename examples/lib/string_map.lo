@@ -1,8 +1,6 @@
 include "./std.lo"
 
-struct StringMap {
-    items: &Vec,
-}
+struct StringMap { items: &Vec, }
 
 macro StringMap::new!<T>(): StringMap {
     .StringMap {

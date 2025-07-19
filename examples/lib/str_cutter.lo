@@ -1,9 +1,6 @@
 include "./std.lo"
 
-struct StrCutter {
-    piece: str,
-    rest: str,
-}
+struct StrCutter { piece: str, rest: str, }
 
 fn StrCutter::new(source: str): StrCutter {
     return .StrCutter {

@@ -6,22 +6,11 @@ const wasi::FD_STDIN = 0
 const wasi::FD_STDOUT = 1
 const wasi::FD_STDERR = 2
 
-struct wasi::IOVec {
-    base: *&u8,
-    size: u32,
-}
+struct wasi::IOVec { base: *&u8, size: u32, }
 
-struct wasi::prestat {
-    tag: u32,
-    pr_name_len: u32,
-}
+struct wasi::prestat { tag: u32, pr_name_len: u32, }
 
-struct wasi::fdstat {
-    fs_filetype: u8,
-    fs_flags: u16,
-    fs_rights_base: u64,
-    fs_rights_inheriting: u64,
-}
+struct wasi::fdstat { fs_filetype: u8, fs_flags: u16, fs_rights_base: u64, fs_rights_inheriting: u64, }
 
 import from "wasi_snapshot_preview1" {
     // @param dirfd ---------------- The file descriptor representing the directory that the file is located in.

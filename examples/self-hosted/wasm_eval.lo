@@ -3,9 +3,7 @@ include "./core.lo"
 include "./wasm.lo"
 
 // TODO: implement
-struct EvalError {
-    message: String,
-}
+struct EvalError { message: String, }
 
 fn EvalError::free(&self) {
     self.message.free()

@@ -1,9 +1,6 @@
 include "./std.lo"
 
-struct ParseIntResult {
-    value: u32,
-    chars_consumed: u32,
-}
+struct ParseIntResult { value: u32, chars_consumed: u32, }
 
 fn parse_u32(input: str): ParseIntResult {
     let result = .ParseIntResult {

@@ -25,6 +25,7 @@ pub enum LoType {
     Pointer { pointee: Box<LoType> },
     SequencePointer { pointee: Box<LoType> },
     StructInstance { struct_name: String },
+    AnonymousStruct { fields: Vec<LoStructField> },
     Result(LoResultType),
 }
 
@@ -53,6 +54,23 @@ impl core::fmt::Display for LoType {
             LoType::Pointer { pointee } => write!(f, "&{pointee}"),
             LoType::SequencePointer { pointee } => write!(f, "*&{pointee}"),
             LoType::StructInstance { struct_name } => f.write_str(&struct_name),
+            LoType::AnonymousStruct { fields } => {
+                f.write_str("struct {")?;
+                for i in 0..fields.len() {
+                    if i != 0 {
+                        f.write_str(", ")?;
+                    } else {
+                        f.write_str(" ")?;
+                    }
+                    fields[i].field_name.fmt(f)?;
+                    f.write_str(": ")?;
+                    fields[i].field_type.fmt(f)?;
+                }
+                if fields.len() > 0 {
+                    f.write_str(" ")?;
+                }
+                f.write_str("}")
+            }
             LoType::Result(result) => write!(f, "Result<{}, {}>", result.ok, result.err),
         }
     }
@@ -254,6 +272,7 @@ struct LoStructDef {
     fully_defined: bool, // used for self-reference checks
 }
 
+#[derive(Clone)]
 pub struct LoStructField {
     field_name: String,
     field_type: LoType,
@@ -263,13 +282,24 @@ pub struct LoStructField {
     loc: LoLocation,
 }
 
+impl PartialEq for LoStructField {
+    fn eq(&self, other: &Self) -> bool {
+        // `loc` is not included
+        self.field_name == other.field_name
+            && self.field_type == other.field_type
+            && self.field_layout == other.field_layout
+            && self.field_index == other.field_index
+            && self.byte_offset == other.byte_offset
+    }
+}
+
 struct LoGlobalDef {
     def_expr: GlobalDefExpr,
     global_type: LoType,
     global_index: u32,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, PartialEq)]
 struct LoTypeLayout {
     primities_count: u32,
     byte_size: u32,
@@ -553,6 +583,7 @@ impl CodeGen {
                 TopLevelExpr::StructDef(StructDefExpr {
                     struct_name,
                     fields: _,
+                    multiline: _,
                     loc: _,
                 }) => {
                     if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
@@ -623,63 +654,13 @@ impl CodeGen {
                 TopLevelExpr::StructDef(StructDefExpr {
                     struct_name,
                     fields,
+                    multiline: _,
                     loc: _,
                 }) => {
-                    let mut struct_fields = Vec::<LoStructField>::new();
-                    let mut struct_primitives_count = 0;
-                    let mut struct_aligment = 1;
-
-                    'fields: for field in fields {
-                        for existing_field in &struct_fields {
-                            if existing_field.field_name == field.field_name.repr {
-                                self.report_error(LoError {
-                                    message: format!(
-                                        "Cannot redefine struct field '{}', already defined at {}",
-                                        field.field_name.repr,
-                                        existing_field.loc.to_string(&self.fm),
-                                    ),
-                                    loc: field.field_name.loc.clone(),
-                                });
-                                continue 'fields;
-                            }
-                        }
-
-                        let field_index = struct_primitives_count;
-                        let field_type_res = self.build_type_check_ref(
-                            &self.const_ctx,
-                            &field.field_type,
-                            false,
-                            field.field_type.loc(),
-                        );
-                        let field_type = catch!(field_type_res, err, {
-                            self.report_error(err);
-                            continue 'exprs;
-                        });
-                        let mut field_layout = LoTypeLayout::default();
-                        self.get_type_layout(&field_type, &mut field_layout);
-
-                        struct_aligment = u32::max(struct_aligment, field_layout.alignment);
-                        struct_primitives_count += field_layout.primities_count;
-
-                        struct_fields.push(LoStructField {
-                            field_name: field.field_name.repr.clone(),
-                            field_type: field_type.clone(),
-                            field_layout,
-                            field_index,
-                            byte_offset: 0, // will be set during field alignment
-                            loc: field.field_name.loc.clone(),
-                        });
-                    }
-
-                    // align fields
-                    let mut byte_offset = 0;
-                    for field in &mut struct_fields {
-                        byte_offset = align(byte_offset, field.field_layout.alignment);
-
-                        field.byte_offset = byte_offset;
-
-                        byte_offset += field.field_layout.byte_size;
-                    }
+                    let mut struct_fields = catch!(self.collect_struct_def_fields(fields), err, {
+                        self.report_error(err);
+                        continue 'exprs;
+                    });
 
                     let struct_def = self.get_struct_def_mut(&struct_name.repr).unwrap();
                     struct_def.fields.append(&mut struct_fields);
@@ -688,6 +669,55 @@ impl CodeGen {
                 _ => {} // skip, not interested
             }
         }
+    }
+
+    fn collect_struct_def_fields(
+        &self,
+        fields: &Vec<StructDefField>,
+    ) -> Result<Vec<LoStructField>, LoError> {
+        let mut struct_fields = Vec::<LoStructField>::new();
+        let mut struct_primitives_count = 0;
+
+        'fields: for field in fields {
+            for existing_field in &struct_fields {
+                if existing_field.field_name == field.field_name.repr {
+                    self.report_error(LoError {
+                        message: format!(
+                            "Cannot redefine struct field '{}', already defined at {}",
+                            field.field_name.repr,
+                            existing_field.loc.to_string(&self.fm),
+                        ),
+                        loc: field.field_name.loc.clone(),
+                    });
+                    continue 'fields;
+                }
+            }
+
+            let field_type = self.build_type_check_ref(
+                &self.const_ctx,
+                &field.field_type,
+                false,
+                field.field_type.loc(),
+            )?;
+            let mut field_layout = LoTypeLayout::default();
+            self.get_type_layout(&field_type, &mut field_layout);
+
+            let field_index = struct_primitives_count;
+            struct_primitives_count += field_layout.primities_count;
+
+            struct_fields.push(LoStructField {
+                field_name: field.field_name.repr.clone(),
+                field_type: field_type.clone(),
+                field_layout,
+                field_index,
+                byte_offset: 0, // will be set during field alignment
+                loc: field.field_name.loc.clone(),
+            });
+        }
+
+        align_struct_fields(&mut struct_fields);
+
+        Ok(struct_fields)
     }
 
     pub fn pass_main(&mut self, ast: AST) {
@@ -1383,6 +1413,15 @@ impl CodeGen {
 
                 Ok(actual_type)
             }
+            TypeExpr::Struct(TypeExprStruct {
+                fields,
+                multiline: _,
+                loc: _,
+            }) => {
+                let fields = self.collect_struct_def_fields(fields)?;
+
+                Ok(LoType::AnonymousStruct { fields })
+            }
         }
     }
 
@@ -1502,6 +1541,11 @@ impl CodeGen {
                         message: format!("Missing struct fields: {}", ListDisplay(&missing_fields)),
                         loc: loc.clone(),
                     });
+                }
+            }
+            CodeExpr::AnonStructLiteral(AnonStructLiteralExpr { fields, loc: _ }) => {
+                for field_index in 0..fields.len() {
+                    self.codegen(ctx, instrs, &fields[field_index].value)?;
                 }
             }
             // TODO?: support sequences of any type
@@ -2805,6 +2849,16 @@ impl CodeGen {
                     );
                 }
             }
+            LoType::AnonymousStruct { fields } => {
+                for struct_field in fields.iter().rev() {
+                    self.codegen_load_or_store(
+                        instrs,
+                        &struct_field.field_type,
+                        offset + struct_field.byte_offset,
+                        is_store,
+                    );
+                }
+            }
             LoType::Result(_) => todo!(),
         }
     }
@@ -2924,6 +2978,34 @@ impl CodeGen {
                     struct_name: struct_name.repr.clone(),
                 });
             }
+            CodeExpr::AnonStructLiteral(AnonStructLiteralExpr { fields, loc: _ }) => {
+                let mut lo_fields = Vec::new();
+                let mut struct_primitives_count = 0;
+
+                for field in fields {
+                    let field_name = field.field_name.clone();
+                    let field_type = self.get_expr_type(ctx, &field.value)?;
+
+                    let mut field_layout = LoTypeLayout::default();
+                    self.get_type_layout(&field_type, &mut field_layout);
+
+                    let field_index = struct_primitives_count;
+                    struct_primitives_count += field_layout.primities_count;
+
+                    lo_fields.push(LoStructField {
+                        field_name,
+                        field_type,
+                        field_layout,
+                        field_index,
+                        byte_offset: 0, // will be set during field alignment
+                        loc: field.loc.clone(),
+                    });
+                }
+
+                align_struct_fields(&mut lo_fields);
+
+                return Ok(LoType::AnonymousStruct { fields: lo_fields });
+            }
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
                 items: _,
@@ -3033,6 +3115,7 @@ impl CodeGen {
                         | LoType::Pointer { pointee: _ }
                         | LoType::SequencePointer { pointee: _ }
                         | LoType::StructInstance { struct_name: _ }
+                        | LoType::AnonymousStruct { fields: _ }
                         | LoType::Result(_) => Ok(expr_type),
                     }
                 }
@@ -3355,6 +3438,23 @@ impl CodeGen {
     ) -> Result<&LoStructField, LoError> {
         if let LoType::Pointer { pointee } = &lhs_type {
             lhs_type = pointee;
+        }
+
+        if let LoType::AnonymousStruct { fields } = lhs_type {
+            let Some(field) = fields
+                .iter()
+                .find(|f| &f.field_name == &field_access.field_name.repr)
+            else {
+                return Err(LoError {
+                    message: format!(
+                        "Unknown field {} in struct {}",
+                        field_access.field_name.repr, lhs_type
+                    ),
+                    loc: field_access.field_name.loc.clone(),
+                });
+            };
+
+            return Ok(unsafe_borrow(field));
         }
 
         let LoType::StructInstance { struct_name } = lhs_type else {
@@ -3922,6 +4022,11 @@ impl CodeGen {
                     self.codegen_default_value(ctx, instrs, &field.field_type);
                 }
             }
+            LoType::AnonymousStruct { fields } => {
+                for field in fields {
+                    self.codegen_default_value(ctx, instrs, &field.field_type);
+                }
+            }
             LoType::Result(result) => {
                 self.codegen_default_value(ctx, instrs, &result.ok);
                 self.codegen_default_value(ctx, instrs, &result.err);
@@ -3999,6 +4104,11 @@ impl CodeGen {
                     self.lower_type(&field.field_type, wasm_types);
                 }
             }
+            LoType::AnonymousStruct { fields } => {
+                for field in fields {
+                    self.lower_type(&field.field_type, wasm_types);
+                }
+            }
             LoType::Result(result) => {
                 self.lower_type(&result.ok, wasm_types);
                 self.lower_type(&result.err, wasm_types);
@@ -4046,6 +4156,15 @@ impl CodeGen {
 
                 // append each field's layout to total struct layout
                 for field in &struct_def.fields {
+                    self.get_type_layout(&field.field_type, layout);
+                }
+
+                layout.alignment = u32::max(layout.alignment, 1);
+                layout.byte_size = align(layout.byte_size, layout.alignment);
+            }
+            LoType::AnonymousStruct { fields } => {
+                // append each field's layout to total struct layout
+                for field in fields {
                     self.get_type_layout(&field.field_type, layout);
                 }
 
@@ -4424,6 +4543,17 @@ impl CodeGen {
                 \"hover\": \"{message}\", \
                 \"loc\": \"{source_index}/{source_range}\" }},",
         ));
+    }
+}
+
+fn align_struct_fields(struct_fields: &mut Vec<LoStructField>) {
+    let mut byte_offset = 0;
+    for field in struct_fields {
+        byte_offset = align(byte_offset, field.field_layout.alignment);
+
+        field.byte_offset = byte_offset;
+
+        byte_offset += field.field_layout.byte_size;
     }
 }
 

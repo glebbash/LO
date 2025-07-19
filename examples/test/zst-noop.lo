@@ -1,6 +1,4 @@
-struct S {
-    zero: void,
-}
+struct S { zero: void, }
 
 export fn main() {
     let x1 = (0 as &S).zero

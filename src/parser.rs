@@ -167,34 +167,15 @@ impl Parser {
 
             let struct_name = self.parse_ident()?;
 
-            let mut fields = Vec::new();
-
-            self.expect(Delim, "{")?;
-            while let None = self.eat(Delim, "}")? {
-                let mut field_loc = self.current().loc.clone();
-
-                let field_name = self.parse_ident()?;
-                self.expect(Operator, ":")?;
-                let field_type = self.parse_type_expr()?;
-
-                field_loc.end_pos = self.prev().loc.end_pos.clone();
-
-                fields.push(StructDefField {
-                    field_name,
-                    field_type,
-                    loc: field_loc,
-                });
-
-                if !self.current().is(Delim, "}") {
-                    self.expect(Delim, ",")?;
-                }
-            }
+            let mut multiline = false;
+            let fields = self.parse_struct_def_fields(&mut multiline)?;
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::StructDef(StructDefExpr {
                 struct_name,
                 fields,
+                multiline,
                 loc,
             }));
         }
@@ -295,6 +276,41 @@ impl Parser {
             message: format!("Unexpected top level token: {}", unexpected.value),
             loc: unexpected.loc.clone(),
         });
+    }
+
+    fn parse_struct_def_fields(
+        &mut self,
+        multiline: &mut bool,
+    ) -> Result<Vec<StructDefField>, LoError> {
+        let mut fields = Vec::new();
+
+        self.expect(Delim, "{")?;
+
+        if let Some(_) = self.eat(Delim, "\\")? {
+            *multiline = true;
+        }
+
+        while let None = self.eat(Delim, "}")? {
+            let mut field_loc = self.current().loc.clone();
+
+            let field_name = self.parse_ident()?;
+            self.expect(Operator, ":")?;
+            let field_type = self.parse_type_expr()?;
+
+            field_loc.end_pos = self.prev().loc.end_pos.clone();
+
+            fields.push(StructDefField {
+                field_name,
+                field_type,
+                loc: field_loc,
+            });
+
+            if !self.current().is(Delim, "}") {
+                self.expect(Delim, ",")?;
+            }
+        }
+
+        Ok(fields)
     }
 
     fn parse_fn_def(&mut self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
@@ -515,6 +531,17 @@ impl Parser {
             return Ok(TypeExpr::Result(TypeExprResult {
                 ok_type,
                 err_type,
+                loc,
+            }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "struct")? {
+            let mut multiline = false;
+            let fields = self.parse_struct_def_fields(&mut multiline)?;
+            loc.end_pos = self.prev().loc.end_pos.clone();
+            return Ok(TypeExpr::Struct(TypeExprStruct {
+                fields,
+                multiline,
                 loc,
             }));
         }
@@ -842,10 +869,29 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Operator, ".")? {
-            let loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc.clone();
+
+            if self.current().is(Delim, "{") {
+                let fields = self.parse_struct_literal_fields()?;
+
+                loc.end_pos = self.prev().loc.end_pos.clone();
+
+                return Ok(CodeExpr::AnonStructLiteral(AnonStructLiteralExpr {
+                    fields,
+                    loc,
+                }));
+            }
+
             let struct_name = self.parse_ident()?;
-            let struct_literal = self.parse_struct_literal(struct_name, loc)?;
-            return Ok(CodeExpr::StructLiteral(struct_literal));
+            let fields = self.parse_struct_literal_fields()?;
+
+            loc.end_pos = self.prev().loc.end_pos.clone();
+
+            return Ok(CodeExpr::StructLiteral(StructLiteralExpr {
+                struct_name,
+                fields,
+                loc,
+            }));
         }
 
         let ident = self.parse_ident()?;
@@ -961,11 +1007,7 @@ impl Parser {
         Ok(ident)
     }
 
-    fn parse_struct_literal(
-        &mut self,
-        ident: IdentExpr,
-        mut loc: LoLocation,
-    ) -> Result<StructLiteralExpr, LoError> {
+    fn parse_struct_literal_fields(&mut self) -> Result<Vec<StructLiteralField>, LoError> {
         let mut fields = Vec::new();
 
         self.expect(Delim, "{")?;
@@ -989,13 +1031,7 @@ impl Parser {
             }
         }
 
-        loc.end_pos = self.prev().loc.end_pos.clone();
-
-        return Ok(StructLiteralExpr {
-            struct_name: ident,
-            fields,
-            loc,
-        });
+        return Ok(fields);
     }
 
     fn parse_fn_args(&mut self) -> Result<Vec<CodeExpr>, LoError> {

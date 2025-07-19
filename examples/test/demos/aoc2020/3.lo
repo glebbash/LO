@@ -30,9 +30,7 @@ fn main() {
     puts("\n")
 }
 
-struct Map {
-    rows: &Vec of &Vec of Tile,
-}
+struct Map { rows: &Vec of &Vec of Tile, }
 
 fn Map::parse(input: String): Map {
     let rows = Vec::new!<&Vec of Tile>()

@@ -8,13 +8,7 @@ const Step::READ_MAX_OCCURANCES = 1
 const Step::READ_CHAR_TO_COUNT = 2
 const Step::COUNT_OCCURANCES = 3
 
-struct PasswordCheckState {
-    step: Step,
-    min_occurances: u32,
-    max_occurances: u32,
-    current_occurances: u32,
-    char_to_count: u8,
-}
+struct PasswordCheckState { step: Step, min_occurances: u32, max_occurances: u32, current_occurances: u32, char_to_count: u8, }
 
 fn initial_check_state(): PasswordCheckState {
     return .PasswordCheckState {

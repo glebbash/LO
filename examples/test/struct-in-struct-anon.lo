@@ -1,16 +1,15 @@
 include "../lib/cli.lo"
 
-struct Point2D { x: u32, y: u32, }
-
-struct Rect { tl: Point2D, br: Point2D, }
+type Point2D = struct { x: u32, y: struct { x: u32, y: struct { x: u32, y: struct { x: u32, y: struct { x: u32, y: u32, }, }, }, }, }
+type Rect = struct { tl: Point2D, br: Point2D, }
 
 fn main() {
-    let r = .Rect {
-        tl: .Point2D {
+    let r = .{
+        tl: .{
             x: 1,
             y: 2,
         },
-        br: .Point2D {
+        br: .{
             x: 3,
             y: 4,
         },

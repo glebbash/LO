@@ -2,10 +2,7 @@ memory {
     min_pages: 1,
 }
 
-struct Point2D {
-    x: u32,
-    y: u32,
-}
+struct Point2D { x: u32, y: u32, }
 
 export fn main(): u32 {
     let p = 0 as &Point2D

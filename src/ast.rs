@@ -103,6 +103,7 @@ pub enum GlobalDefValue {
 pub struct StructDefExpr {
     pub struct_name: IdentExpr,
     pub fields: Vec<StructDefField>,
+    pub multiline: bool,
     pub loc: LoLocation,
 }
 
@@ -195,6 +196,7 @@ pub enum TypeExpr {
     SequencePointer(TypeExprSequencePointer),
     Result(TypeExprResult),
     Of(TypeExprOf),
+    Struct(TypeExprStruct),
 }
 
 #[derive(Debug)]
@@ -228,6 +230,13 @@ pub struct TypeExprOf {
     pub loc: LoLocation,
 }
 
+#[derive(Debug)]
+pub struct TypeExprStruct {
+    pub fields: Vec<StructDefField>,
+    pub multiline: bool,
+    pub loc: LoLocation,
+}
+
 impl Locatable for TypeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -236,6 +245,7 @@ impl Locatable for TypeExpr {
             TypeExpr::SequencePointer(e) => &e.loc,
             TypeExpr::Result(e) => &e.loc,
             TypeExpr::Of(e) => &e.loc,
+            TypeExpr::Struct(e) => &e.loc,
         }
     }
 }
@@ -248,6 +258,7 @@ pub enum CodeExpr {
     IntLiteral(IntLiteralExpr),
     StringLiteral(StringLiteralExpr),
     StructLiteral(StructLiteralExpr),
+    AnonStructLiteral(AnonStructLiteralExpr),
     ArrayLiteral(ArrayLiteralExpr),
     ResultLiteral(ResultLiteralExpr),
 
@@ -432,6 +443,12 @@ pub struct StructLiteralExpr {
 }
 
 #[derive(Debug)]
+pub struct AnonStructLiteralExpr {
+    pub fields: Vec<StructLiteralField>,
+    pub loc: LoLocation,
+}
+
+#[derive(Debug)]
 pub struct ArrayLiteralExpr {
     pub item_type: TypeExpr,
     pub items: Vec<CodeExpr>,
@@ -558,6 +575,8 @@ impl Locatable for CodeExpr {
             CodeExpr::StringLiteral(e) => &e.loc,
             CodeExpr::ArrayLiteral(e) => &e.loc,
             CodeExpr::ResultLiteral(e) => &e.loc,
+            CodeExpr::StructLiteral(e) => &e.loc,
+            CodeExpr::AnonStructLiteral(e) => &e.loc,
             CodeExpr::Return(e) => &e.loc,
             CodeExpr::Ident(e) => &e.loc,
             CodeExpr::InfixOp(e) => &e.loc,
@@ -570,7 +589,6 @@ impl Locatable for CodeExpr {
             CodeExpr::Dbg(e) => &e.loc,
             CodeExpr::Defer(e) => &e.loc,
             CodeExpr::Cast(e) => &e.loc,
-            CodeExpr::StructLiteral(e) => &e.loc,
             CodeExpr::Assign(e) => &e.loc,
             CodeExpr::FieldAccess(e) => &e.loc,
             CodeExpr::Catch(e) => &e.loc,

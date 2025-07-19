@@ -16,14 +16,9 @@ fn calc_answer(a: A): u32 {
     return a.b.x
 }
 
-struct B {
-    x: u32,
-    // auto forward decl (allowed for struct pointers)
-    a: &A,
+struct B { x: u32, a: &A,     // auto forward decl (allowed for struct pointers)
 }
 
-struct A {
-    // NOTE: structs must be defined before their values can be used
+struct A { b: B,     // NOTE: structs must be defined before their values can be used
     // TODO?: should this be supported at the cost of extra pass?
-    b: B,
 }

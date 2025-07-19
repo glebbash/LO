@@ -1,0 +1,17 @@
+include "examples/lib/cli.lo"
+
+fn main() {
+    let sum = pair_sum(.{
+        a: 42,
+        b: 27,
+    })
+    //
+    print_u32(sum)
+    puts("\n")
+}
+
+type AB = struct { a: u32, b: u32, }
+
+fn pair_sum(args: AB): u32 {
+    return args.a + args.b
+}

@@ -1,10 +1,7 @@
 include "../../../../lib/std.lo"
 include "./lib/wasm4.lo"
 
-struct Pos {
-    x: i32,
-    y: i32,
-}
+struct Pos { x: i32, y: i32, }
 
 type Trail = Vec of Pos
 type Mode = u32

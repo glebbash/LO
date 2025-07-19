@@ -1,11 +1,7 @@
 include "./std.lo"
 include "./wasi.lo"
 
-struct Args {
-    argc: u32,
-    argv: *&*&u8,
-    argv_buf: *&u8,
-}
+struct Args { argc: u32, argv: *&*&u8, argv_buf: *&u8, }
 
 fn Args::load(): Args {
     let argc_ref = tmp_alloc!<u32>()

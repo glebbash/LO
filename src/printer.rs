@@ -109,35 +109,14 @@ impl Printer {
             TopLevelExpr::StructDef(StructDefExpr {
                 struct_name,
                 fields,
+                multiline,
                 loc,
             }) => {
                 stdout_write("struct ");
                 stdout_write(&struct_name.repr);
 
-                if fields.len() == 0 {
-                    stdout_write(" {}");
-                    stdout_writeln("");
-                } else {
-                    stdout_writeln(" {");
-                    self.indent += 1;
-                    for field in fields {
-                        self.print_comments_before_pos(field.loc.pos.offset);
-                        self.print_indent();
-                        stdout_write(&field.field_name.repr);
-                        stdout_write(": ");
-                        self.print_type_expr(&field.field_type);
-                        stdout_writeln(",");
-                    }
-
-                    // print the rest of the comments
-                    self.print_comments_before_pos(loc.end_pos.offset);
-
-                    self.indent -= 1;
-                    self.print_indent();
-
-                    stdout_write("}");
-                    stdout_writeln("");
-                }
+                self.print_struct_def_fields(fields, *multiline, loc);
+                stdout_writeln("");
             }
             TopLevelExpr::TypeDef(TypeDefExpr {
                 type_name,
@@ -229,6 +208,50 @@ impl Printer {
 
         if expr_index != self.ast.exprs.len() - 1 {
             stdout_writeln("");
+        }
+    }
+
+    fn print_struct_def_fields(
+        &mut self,
+        fields: &Vec<StructDefField>,
+        multiline: bool,
+        loc: &LoLocation,
+    ) {
+        if fields.len() == 0 {
+            stdout_write(" {}");
+        } else {
+            stdout_write(" {");
+            if multiline {
+                stdout_write("\\n");
+            } else {
+                stdout_write(" ");
+            }
+            self.indent += 1;
+            for field in fields {
+                self.print_comments_before_pos(field.loc.pos.offset);
+                if multiline {
+                    self.print_indent();
+                }
+                stdout_write(&field.field_name.repr);
+                stdout_write(": ");
+                self.print_type_expr(&field.field_type);
+                stdout_write(",");
+                if multiline {
+                    stdout_write("\n");
+                } else {
+                    stdout_write(" ");
+                }
+            }
+
+            // print the rest of the comments
+            self.print_comments_before_pos(loc.end_pos.offset);
+
+            self.indent -= 1;
+            if multiline {
+                self.print_indent();
+            }
+
+            stdout_write("}");
         }
     }
 
@@ -339,6 +362,14 @@ impl Printer {
                 self.print_type_expr(container_type);
                 stdout_write(" of ");
                 self.print_type_expr(item_type);
+            }
+            TypeExpr::Struct(TypeExprStruct {
+                fields,
+                multiline,
+                loc,
+            }) => {
+                stdout_write("struct");
+                self.print_struct_def_fields(fields, *multiline, loc);
             }
         }
     }
@@ -590,29 +621,14 @@ impl Printer {
                 stdout_write(".");
                 stdout_write(&struct_name.repr);
 
-                if fields.len() == 0 {
-                    stdout_write(" {}");
-                    return;
-                }
+                stdout_write(" ");
 
-                stdout_writeln(" {");
-                self.indent += 1;
-                for field in fields {
-                    self.print_comments_before_pos(field.loc.pos.offset);
-                    self.print_indent();
-                    stdout_write(&field.field_name);
-                    stdout_write(": ");
-                    self.print_code_expr(&field.value);
-                    stdout_writeln(",");
-                }
+                self.print_struct_literal_fields(fields, loc);
+            }
+            CodeExpr::AnonStructLiteral(AnonStructLiteralExpr { fields, loc }) => {
+                stdout_write(".");
 
-                // print the rest of the comments
-                self.print_comments_before_pos(loc.end_pos.offset);
-
-                self.indent -= 1;
-                self.print_indent();
-
-                stdout_write("}");
+                self.print_struct_literal_fields(fields, loc);
             }
             CodeExpr::Assign(AssignExpr {
                 op_loc: _,
@@ -722,6 +738,31 @@ impl Printer {
                 self.print_args(args);
             }
         }
+    }
+
+    fn print_struct_literal_fields(&mut self, fields: &Vec<StructLiteralField>, loc: &LoLocation) {
+        if fields.len() == 0 {
+            stdout_write("{}");
+            return;
+        }
+
+        stdout_writeln("{");
+        self.indent += 1;
+        for field in fields {
+            self.print_comments_before_pos(field.loc.pos.offset);
+            self.print_indent();
+            stdout_write(&field.field_name);
+            stdout_write(": ");
+            self.print_code_expr(&field.value);
+            stdout_writeln(",");
+        }
+        // print the rest of the comments
+        self.print_comments_before_pos(loc.end_pos.offset);
+
+        self.indent -= 1;
+        self.print_indent();
+
+        stdout_write("}");
     }
 
     fn print_args(&mut self, args: &Vec<CodeExpr>) {

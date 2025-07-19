@@ -4,11 +4,7 @@ include "./ast.lo"
 include "./wasm.lo"
 
 // TODO: implement
-struct CodeGen {
-    command: LoCommand,
-    fm: &FileManager,
-    error_count: u32,
-}
+struct CodeGen { command: LoCommand, fm: &FileManager, error_count: u32, }
 
 fn CodeGen::new(command: LoCommand): &CodeGen {
     todo!()

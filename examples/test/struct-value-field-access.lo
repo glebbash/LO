@@ -1,12 +1,6 @@
-struct Point2D {
-    x: i32,
-    y: i32,
-}
+struct Point2D { x: i32, y: i32, }
 
-struct Point2DPair {
-    p1: Point2D,
-    p2: Point2D,
-}
+struct Point2DPair { p1: Point2D, p2: Point2D, }
 
 export fn main(): i32 {
     let res = +0

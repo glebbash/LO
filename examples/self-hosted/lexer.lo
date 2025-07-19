@@ -4,11 +4,7 @@ include "./core.lo"
 // TODO: implement
 struct Lexer {}
 
-struct LoTokens {
-    tokens: &Vec of LoToken,
-    end_loc: LoLocation,
-    comments: &Vec of Comment,
-}
+struct LoTokens { tokens: &Vec of LoToken, end_loc: LoLocation, comments: &Vec of Comment, }
 
 fn LoTokens::free(self) {
     todo!()

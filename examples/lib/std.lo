@@ -1,8 +1,5 @@
 // str literal type
-struct str {
-    data: *&u8,
-    size: u32,
-}
+struct str { data: *&u8, size: u32, }
 
 // constants
 const u32::MAX = 4_294_967_295
@@ -152,10 +149,7 @@ macro tmp_alloc_many!<T>(count: u32): *&T {
 }
 
 // heap
-struct heap::Block {
-    size: u32,
-    used: bool,
-}
+struct heap::Block { size: u32, used: bool, }
 
 macro heap::Block::data!(&self): &void {
     (self as u32 + sizeof heap::Block) as &void
@@ -238,13 +232,7 @@ fn heap::find_free_block(size: u32): &heap::Block {
 }
 
 // vec
-struct Vec {
-    data: &void,
-    size: u32,
-    capacity: u32,
-    item_size: u32,
-    alloc_id: u32,
-}
+struct Vec { data: &void, size: u32, capacity: u32, item_size: u32, alloc_id: u32, }
 
 macro Vec::new!<T>(): &Vec {
     Vec::new(sizeof T)
@@ -382,9 +370,7 @@ macro Vec::_panic_if_out_of_bounds!(&self, index: u32) {
 }
 
 // string
-struct String {
-    chars: &Vec of u8,
-}
+struct String { chars: &Vec of u8, }
 
 fn String::new(capacity: u32): String {
     return .String {

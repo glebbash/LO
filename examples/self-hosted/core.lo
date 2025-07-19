@@ -12,26 +12,15 @@ const LoCommand::Format = 2 as u8
 const LoCommand::Eval = 3 as u8
 const LoCommand::Wasi = 4 as u8
 
-struct LoPosition {
-    offset: u32,
-    line: u32,
-    col: u32,
-}
+struct LoPosition { offset: u32, line: u32, col: u32, }
 
-struct LoLocation {
-    file_index: u32,
-    pos: LoPosition,
-    end_pos: LoPosition,
-}
+struct LoLocation { file_index: u32, pos: LoPosition, end_pos: LoPosition, }
 
 fn LoLocation::internal(): LoLocation {
     todo!()
 }
 
-struct LoError {
-    message: String,
-    loc: LoLocation,
-}
+struct LoError { message: String, loc: LoLocation, }
 
 fn LoError::free(&self) {
     todo!()
@@ -102,14 +91,9 @@ fn stderr_write(message: str) {
     let _ = fputs(wasi::FD_STDERR, message)
 }
 
-struct FileInfo {
-    file_index: u32,
-    file_path: String,
-}
+struct FileInfo { file_index: u32, file_path: String, }
 
-struct FileManager {
-    files: &Vec of FileInfo,
-}
+struct FileManager { files: &Vec of FileInfo, }
 
 fn FileManager::new(): &FileManager {
     return heap::new!(.FileManager {
@@ -137,10 +121,7 @@ fn OptionString::unwrap(self): String {
     todo!()
 }
 
-struct IncludedFile {
-    file_index: u32,
-    file_contents: OptionString,
-}
+struct IncludedFile { file_index: u32, file_contents: OptionString, }
 
 fn FileManager::include_file(&self, file_name: str, loc: LoLocation): Result<IncludedFile, &LoError> {
     todo!()

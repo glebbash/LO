@@ -35,10 +35,7 @@ type DivideError = u8
 
 const DivideError::DIVIDE_BY_ZERO = 1 as DivideError
 
-struct DivisionResult {
-    full: u32,
-    remainder: u32,
-}
+struct DivisionResult { full: u32, remainder: u32, }
 
 fn divide(a: u32, b: u32): Result<DivisionResult, DivideError> {
     if b == 0 {
