@@ -71,7 +71,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 3️⃣ Using Node.js (also works with Deno)
 
-- Install [Node.js 22+](https://nodejs.org/)
+- Install [Node.js 24+](https://nodejs.org/)
 - Compiling files: `./utils.ts compile <input>.lo > <output>.wasm`
 - Compiling & running files: `./utils.ts run <input>.lo`
 

@@ -25,7 +25,7 @@ fn Args::get(self, i: u32): str {
     if i >= self.argc {
         abort(AbortCode::VEC_OUT_OF_BOUNDS)
     }
-    let arg = *((self.argv as u32 + i * sizeof *&u8) as &*&u8)
+    let arg = *array_at!<*&u8>(self.argv, i)
     return str::from_cstr(arg)
 }
 

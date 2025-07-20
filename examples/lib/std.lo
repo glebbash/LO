@@ -562,11 +562,3 @@ fn u64::write_to(value: u64, output: String) {
 macro array_at!<T>(array: *&T, index: u32): &T {
     (array as u32 + index * sizeof T) as &T
 }
-
-macro null!<T>(): &T {
-    0 as &T
-}
-
-macro is_null!<T>(t: &T): bool {
-    t as u32 == 0
-}

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --experimental-strip-types --disable-warning=ExperimentalWarning
+#!/usr/bin/env -S node
 
 import process from "node:process";
 import { test, describe } from "node:test";
