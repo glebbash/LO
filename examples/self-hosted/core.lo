@@ -25,7 +25,20 @@ struct LoLocation {
 }
 
 fn LoLocation::internal(): LoLocation {
-    todo!()
+    return .LoLocation {
+        // internal
+        file_index: 0,
+        pos: .LoPosition {
+            offset: 0,
+            line: 1,
+            col: 1,
+        },
+        end_pos: .LoPosition {
+            offset: 0,
+            line: 1,
+            col: 1,
+        },
+    }
 }
 
 struct LoError {
@@ -34,14 +47,23 @@ struct LoError {
 }
 
 fn LoError::free(&self) {
-    todo!()
+    panic!(dbg "todo")
+}
+
+fn LoError::internal(message: str): &LoError {
+    return heap::new!(.LoError {
+        message: String::from_str(message),
+        loc: LoLocation::internal(),
+    })
 }
 
 fn LoError::to_string(&self, fm: &FileManager): String {
-    todo!()
+    panic!(dbg "todo")
 }
 
-macro todo!() {
+macro panic!(message: str) {
+    eputs(message)
+    eputs("\n")
     unreachable
 }
 
@@ -50,7 +72,7 @@ fn proc_exit(exit_code: u32) {
 }
 
 fn file_read(file_path: str): Result<String, String> {
-    todo!()
+    panic!(dbg "todo")
 }
 
 global STDOUT_BUFFER = 0 as String
@@ -118,13 +140,13 @@ fn FileManager::new(): &FileManager {
 }
 
 fn FileManager::free(&self) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 // NOTE: this doesn't match Rust impl to not do extra String allocation and just print parts
 //   mostly because freeing is cumbersome and not really about efficiency
 fn FileManager::print_error(&self, err: &LoError) {
-    todo!()
+    panic!(err.message.as_str())
 }
 
 fn FileManager::get_file_path(&self, file_index: u32): str {
@@ -134,7 +156,7 @@ fn FileManager::get_file_path(&self, file_index: u32): str {
 struct OptionString {}
 
 fn OptionString::unwrap(self): String {
-    todo!()
+    panic!(dbg "todo")
 }
 
 struct IncludedFile {
@@ -143,5 +165,5 @@ struct IncludedFile {
 }
 
 fn FileManager::include_file(&self, file_name: str, loc: LoLocation): Result<IncludedFile, &LoError> {
-    todo!()
+    return Err(LoError::internal(dbg "todo"))
 }

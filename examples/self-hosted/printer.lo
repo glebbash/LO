@@ -6,5 +6,5 @@ include "./ast.lo"
 struct Printer {}
 
 fn Printer::print(ast: AST) {
-    todo!()
+    panic!(dbg "todo")
 }

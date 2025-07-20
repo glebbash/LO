@@ -11,9 +11,9 @@ struct LoTokens {
 }
 
 fn LoTokens::free(self) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 fn Lexer::lex(file_index: u32, file_contents: String): Result<LoTokens, &LoError> {
-    todo!()
+    return Err(LoError::internal(dbg "todo"))
 }

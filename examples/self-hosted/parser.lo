@@ -7,5 +7,5 @@ include "./lexer.lo"
 struct Parser {}
 
 fn Parser::parse(tokens: LoTokens): Result<AST, &LoError> {
-    todo!()
+    return Err(LoError::internal(dbg "todo"))
 }

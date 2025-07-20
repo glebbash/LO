@@ -11,33 +11,37 @@ struct CodeGen {
 }
 
 fn CodeGen::new(command: LoCommand): &CodeGen {
-    todo!()
+    return heap::new!(.CodeGen {
+        command: command,
+        fm: FileManager::new(),
+        error_count: 0,
+    })
 }
 
 fn CodeGen::free(&self) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 fn CodeGen::report_error(&self, err: &LoError) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 fn CodeGen::end_inspection(&self) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 fn CodeGen::pass_collect_typedefs(&self, ast: &AST) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 fn CodeGen::pass_build_structs(&self, ast: &AST) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 fn CodeGen::pass_main(&self, ast: &AST) {
-    todo!()
+    panic!(dbg "todo")
 }
 
 fn CodeGen::generate(&self, wasm_module: &WasmModule) {
-    todo!()
+    panic!(dbg "todo")
 }

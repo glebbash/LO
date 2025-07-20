@@ -6,5 +6,5 @@ include "./wasm.lo"
 struct WasmParser {}
 
 fn WasmParser::parse(file_name: String, module_bytes: String): Result<&WasmModule, String> {
-    todo!()
+    panic!(dbg "todo")
 }

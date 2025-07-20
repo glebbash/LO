@@ -15,5 +15,5 @@ fn EvalError::free(&self) {
 struct WasmEval {}
 
 fn WasmEval::eval(wasm_module: &WasmModule): Result<void, &EvalError> {
-    todo!()
+    panic!(dbg "todo")
 }

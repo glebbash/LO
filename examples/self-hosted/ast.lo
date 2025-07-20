@@ -10,5 +10,5 @@ struct AST {
 }
 
 fn AST::free(self) {
-    todo!()
+    panic!(dbg "todo")
 }

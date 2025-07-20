@@ -2039,7 +2039,7 @@ impl CodeGen {
                 };
 
                 let fn_return_type = &self.lo_functions[lo_fn_index].fn_type.output;
-                if return_type != *fn_return_type {
+                if return_type != *fn_return_type && return_type != LoType::Never {
                     return Err(LoError {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
