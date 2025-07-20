@@ -7,7 +7,7 @@ fn main() {
     print_9(
         \ "{",
         \ " \"type\": \"file\",",
-        \ " \"index\": ", file_index.to_string().as_str(), ",",
+        \ " \"index\": ", file_index.to_tmp_str!(), ",",
         \ " \"path\": \"", file_path, "\" ",
         \ "},",
     )

@@ -23,7 +23,7 @@ fn CodeGen::free(&self) {
 }
 
 fn CodeGen::report_error(&self, err: &LoError) {
-    panic!(dbg "todo")
+    // TODO: implement
 }
 
 fn CodeGen::end_inspection(&self) {

@@ -1,5 +1,6 @@
 include "../lib/wasi.lo"
 include "../lib/args.lo"
+include "../lib/fs.lo"
 // tmp, for use in `std*_write` functions
 include "../lib/print.lo"
 
@@ -145,10 +146,21 @@ fn FileManager::get_file_path(&self, file_index: u32): str {
     return self.files.at!<FileInfo>(file_index).file_path.as_str()
 }
 
-struct OptionString {}
+// TODO: add better optionals
+struct OptionString {
+    has_value: bool,
+    value: String,
+}
+
+fn OptionString::some(value: String): OptionString {
+    return .OptionString { has_value: true, value: value }
+}
 
 fn OptionString::unwrap(self): String {
-    panic!(dbg "todo")
+    if !self.has_value {
+        panic!("attempt to unwrap none")
+    }
+    return self.value
 }
 
 struct IncludedFile {
@@ -156,6 +168,20 @@ struct IncludedFile {
     file_contents: OptionString,
 }
 
+// TODO: implement proper
 fn FileManager::include_file(&self, file_name: str, loc: LoLocation): Result<IncludedFile, &LoError> {
-    return Err(LoError::internal(dbg "todo"))
+    let file_contents = fs::read_file(file_name) catch err {
+        let message = String::from_str("error reading file ")
+        message.push_str(file_name)
+        message.push_str(", code = ")
+        // TODO!!!: make defers scoped to the block
+        message.push_str(err.to_tmp_str!())
+        //
+        return Err(heap::new!(.LoError { message: message, loc: loc }))
+    }
+    //
+    return Ok(.IncludedFile {
+        file_index: 0,
+        file_contents: OptionString::some(file_contents),
+    })
 }

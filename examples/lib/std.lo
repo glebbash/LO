@@ -506,22 +506,20 @@ fn char_is_numeric(c: u8): bool {
 }
 
 // conversions
-fn u32::to_string(value: u32): String {
-    return u32::write(value, String::new(32))
-}
-
 macro u32::to_tmp_str!(value: u32): str {
-    let s = String::new_using(32, alloc::STACK)
+    let s = String::new_using(10, alloc::STACK)
     defer s.free()
     //
-    u32::write(value, s).as_str()
+    value.write_to(s)
+    //
+    s.as_str()
 }
 
-fn u32::write(value: u32, output: String): String {
+fn u32::write_to(value: u32, output: String) {
     let start_size = output.len()
     if value == 0 {
         output.push('0')
-        return output
+        return
     }
     loop {
         let rem = value % 10
@@ -532,18 +530,22 @@ fn u32::write(value: u32, output: String): String {
         }
     }
     output.chars.reverse_range(start_size, output.len() - 1)
-    return output
 }
 
-fn u64::to_string(value: u64): String {
-    return u64::write(value, String::new(32))
+macro u64::to_tmp_str!(value: u64): str {
+    let s = String::new_using(20, alloc::STACK)
+    defer s.free()
+    //
+    value.write_to(s)
+    //
+    s.as_str()
 }
 
-fn u64::write(value: u64, output: String): String {
+fn u64::write_to(value: u64, output: String) {
     let start_size = output.len()
     if value == 0u64 {
         output.push('0')
-        return output
+        return
     }
     loop {
         let rem = value % 10u64
@@ -554,7 +556,6 @@ fn u64::write(value: u64, output: String): String {
         }
     }
     output.chars.reverse_range(start_size, output.len() - 1)
-    return output
 }
 
 // utils

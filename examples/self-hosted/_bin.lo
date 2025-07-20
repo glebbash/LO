@@ -168,12 +168,9 @@ export fn _start() {
 
 fn parse_file_tree(codegen: &CodeGen, asts: &Vec of AST, file_index: u32, file_contents: String) {
     if codegen.command == LoCommand::Inspect {
-        let file_index_str = file_index.write(String::new_using(6, alloc::STACK))
-        defer file_index_str.free()
-        //
         let file_path = codegen.fm.get_file_path(file_index)
         stdout_write("{ \"type\": \"file\", \"index\": ")
-        stdout_write(file_index_str.as_str())
+        stdout_write(file_index.to_tmp_str!())
         stdout_write(", \"path\": \"")
         stdout_write(file_path)
         stdout_write("\" },\n")

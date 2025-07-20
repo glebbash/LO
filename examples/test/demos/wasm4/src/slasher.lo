@@ -94,7 +94,7 @@ fn render() {
     if mode == Mode::SLASH {
         wasm4::text("Slash!!!"0, +10, +10)
         let health_txt = String::from_str("HP: ")
-        let _ = u32::write(boss_health, health_txt)
+        boss_health.write_to(health_txt)
         health_txt.push(0 as u8)
         wasm4::text(health_txt.chars.data as *&u8, +110, +10)
         health_txt.free()
