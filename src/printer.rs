@@ -585,34 +585,55 @@ impl Printer {
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
                 fields,
+                has_trailing_comma,
                 loc,
             }) => {
                 stdout_write(".");
                 stdout_write(&struct_name.repr);
+                stdout_write(" {");
 
-                if fields.len() == 0 {
-                    stdout_write(" {}");
+                if *has_trailing_comma {
+                    stdout_writeln("");
+
+                    self.indent += 1;
+
+                    for field in fields {
+                        self.print_comments_before_pos(field.loc.pos.offset);
+                        self.print_indent();
+                        stdout_write(&field.field_name);
+                        stdout_write(": ");
+                        self.print_code_expr(&field.value);
+                        stdout_writeln(",");
+                    }
+
+                    // print the rest of the comments
+                    self.print_comments_before_pos(loc.end_pos.offset);
+
+                    self.indent -= 1;
+                    self.print_indent();
+                    stdout_write("}");
                     return;
                 }
 
-                stdout_writeln(" {");
-                self.indent += 1;
-                for field in fields {
-                    self.print_comments_before_pos(field.loc.pos.offset);
-                    self.print_indent();
+                if fields.len() == 0 {
+                    stdout_write("}");
+                    return;
+                }
+
+                stdout_write(" ");
+
+                for i in 0..fields.len() {
+                    if i != 0 {
+                        stdout_write(", ");
+                    }
+
+                    let field = &fields[i];
                     stdout_write(&field.field_name);
                     stdout_write(": ");
                     self.print_code_expr(&field.value);
-                    stdout_writeln(",");
                 }
 
-                // print the rest of the comments
-                self.print_comments_before_pos(loc.end_pos.offset);
-
-                self.indent -= 1;
-                self.print_indent();
-
-                stdout_write("}");
+                stdout_write(" }");
             }
             CodeExpr::Assign(AssignExpr {
                 op_loc: _,

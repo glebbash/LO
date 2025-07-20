@@ -28,16 +28,8 @@ fn LoLocation::internal(): LoLocation {
     return .LoLocation {
         // internal
         file_index: 0,
-        pos: .LoPosition {
-            offset: 0,
-            line: 1,
-            col: 1,
-        },
-        end_pos: .LoPosition {
-            offset: 0,
-            line: 1,
-            col: 1,
-        },
+        pos: .LoPosition { offset: 0, line: 1, col: 1 },
+        end_pos: .LoPosition { offset: 0, line: 1, col: 1 },
     }
 }
 

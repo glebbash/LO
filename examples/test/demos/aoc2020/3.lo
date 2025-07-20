@@ -50,9 +50,7 @@ fn Map::parse(input: String): Map {
             current_row = Vec::new!<Tile>()
         }
     }
-    return .Map {
-        rows: rows,
-    }
+    return .Map { rows: rows }
 }
 
 fn Map::get(self, i: u32, j: u32): Tile {

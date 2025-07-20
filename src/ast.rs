@@ -428,6 +428,7 @@ pub struct CastExpr {
 pub struct StructLiteralExpr {
     pub struct_name: IdentExpr,
     pub fields: Vec<StructLiteralField>,
+    pub has_trailing_comma: bool,
     pub loc: LoLocation,
 }
 

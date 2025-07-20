@@ -399,9 +399,7 @@ fn String::new_using(capacity: u32, alloc_id: u32): String {
 }
 
 fn String::from_chars(chars: &Vec of u8): String {
-    return .String {
-        chars: chars,
-    }
+    return .String { chars: chars }
 }
 
 fn String::from_str(value: str): String {
@@ -453,10 +451,7 @@ fn str::from_cstr(value: *&u8): str {
         }
         len += 1
     }
-    return .str {
-        data: value,
-        size: len,
-    }
+    return .str { data: value, size: len }
 }
 
 fn str::char_at(self, index: u32): u8 {
@@ -466,10 +461,8 @@ fn str::char_at(self, index: u32): u8 {
 fn str::clone(self): str {
     let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size)
     mem::copy!(self.data, cloned_data, self.size)
-    return .str {
-        data: cloned_data,
-        size: self.size,
-    }
+    //
+    return .str { data: cloned_data, size: self.size }
 }
 
 fn str::equals(self, other: str): bool {

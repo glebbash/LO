@@ -2,10 +2,7 @@ export fn main(): u32 {
     // auto forward decl
     let a = .A {
         // auto forward decl
-        b: .B {
-            x: 42,
-            a: 0 as &A,
-        },
+        b: .B { x: 42, a: 0 as &A },
     }
     // auto forward decl
     return calc_answer(a)

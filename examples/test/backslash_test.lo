@@ -60,11 +60,9 @@ struct s {
 }
 
 fn f(x: u32): u32 {
-    return f2(.s {
-        x: x,
-    }.x)
+    return f2(.s { x: x }.x)
 }
 
-fn f2(x: u32) {
+fn f2(x: u32): u32 {
     return x
 }

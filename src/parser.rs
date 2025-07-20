@@ -967,9 +967,12 @@ impl Parser {
         mut loc: LoLocation,
     ) -> Result<StructLiteralExpr, LoError> {
         let mut fields = Vec::new();
+        let mut has_trailing_comma = false;
 
         self.expect(Delim, "{")?;
         while let None = self.eat(Delim, "}")? {
+            has_trailing_comma = false;
+
             let mut field_loc = self.current().loc.clone();
 
             let field_name = self.expect_any(Symbol)?.clone();
@@ -986,6 +989,7 @@ impl Parser {
 
             if !self.current().is(Delim, "}") {
                 self.expect(Delim, ",")?;
+                has_trailing_comma = true;
             }
         }
 
@@ -994,6 +998,7 @@ impl Parser {
         return Ok(StructLiteralExpr {
             struct_name: ident,
             fields,
+            has_trailing_comma,
             loc,
         });
     }

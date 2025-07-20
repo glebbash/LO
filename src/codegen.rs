@@ -1447,6 +1447,7 @@ impl CodeGen {
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
                 fields,
+                has_trailing_comma: _,
                 loc,
             }) => {
                 let Some(struct_def) = self.get_struct_def(&struct_name.repr) else {
@@ -2911,6 +2912,7 @@ impl CodeGen {
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
                 fields: _,
+                has_trailing_comma: _,
                 loc,
             }) => {
                 let Some(_) = self.get_struct_def(&struct_name.repr) else {
