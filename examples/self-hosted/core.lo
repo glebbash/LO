@@ -174,7 +174,6 @@ fn FileManager::include_file(&self, file_name: str, loc: LoLocation): Result<Inc
         let message = String::from_str("error reading file ")
         message.push_str(file_name)
         message.push_str(", code = ")
-        // TODO!!!: make defers scoped to the block
         message.push_str(err.to_tmp_str!())
         //
         return Err(heap::new!(.LoError { message: message, loc: loc }))

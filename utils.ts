@@ -487,12 +487,13 @@ async function commandTest() {
         assert.strictEqual(
             output,
             m`
-            defer(inner_fn): 3
-            defer(inner_fn): 2
-            defer(inner_fn): 1
-            defer(return): 3
-            defer(return): 2
-            defer(return): 1
+            defer(inner_fn): loop (iteration #1)
+            defer(inner_fn): loop (iteration #2)
+            defer(inner_fn): loop (iteration #3)
+            defer(inner_fn): top level
+            defer(main): 3
+            defer(main): 2
+            defer(main): 1
 
             `
         );
@@ -979,12 +980,13 @@ async function commandTest() {
             assert.strictEqual(
                 new TextDecoder().decode(res),
                 m`
-                defer(inner_fn): 3
-                defer(inner_fn): 2
-                defer(inner_fn): 1
-                defer(return): 3
-                defer(return): 2
-                defer(return): 1
+                defer(inner_fn): loop (iteration #1)
+                defer(inner_fn): loop (iteration #2)
+                defer(inner_fn): loop (iteration #3)
+                defer(inner_fn): top level
+                defer(main): 3
+                defer(main): 2
+                defer(main): 1
 
                 `
             );

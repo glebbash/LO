@@ -110,7 +110,6 @@ struct LoExprContext {
     locals: Vec<LoLocal>,
     next_local_index: u32,
     addr_local_index: Option<u32>,
-    deferred: Vec<LoCodeUnit>,
     scopes: Vec<LoScope>,
 }
 
@@ -147,6 +146,7 @@ struct LoMacroTypeArg {
 struct LoScope {
     scope_type: LoScopeType,
     locals: Vec<LoScopedLocal>,
+    deferred: Vec<LoCodeUnit>,
     macro_args: Vec<LoConstDef>,
     macro_type_args: Vec<LoMacroTypeArg>,
 }
@@ -163,6 +163,7 @@ impl LoExprContext {
         let mut new_scope = LoScope {
             scope_type,
             locals: Vec::new(),
+            deferred: Vec::new(),
             macro_args: Vec::new(),
             macro_type_args: Vec::new(),
         };
@@ -1109,13 +1110,8 @@ impl CodeGen {
 
             let mut ctx = ctx.clone();
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
-            let terminated_early =
-                self.codegen_code_block(&mut ctx, &mut wasm_expr.instrs, body, true);
-            if !terminated_early {
-                catch!(self.emit_deferred(&mut ctx, &mut wasm_expr.instrs), err, {
-                    self.report_error(err);
-                });
-            }
+
+            self.codegen_code_block(&mut ctx, &mut wasm_expr.instrs, body, true);
 
             let mut wasm_locals_flat = Vec::new();
             for local in &ctx.locals {
@@ -1258,6 +1254,8 @@ impl CodeGen {
                 continue;
             });
         }
+
+        self.emit_deferred(ctx.current_scope(), instrs);
 
         terminated_early
     }
@@ -2050,8 +2048,7 @@ impl CodeGen {
                     });
                 }
 
-                self.emit_deferred(ctx, instrs)?;
-
+                self.emit_deferred_for_return(ctx, instrs);
                 instrs.push(WasmInstr::Return);
             }
             CodeExpr::If(IfExpr {
@@ -2277,7 +2274,14 @@ impl CodeGen {
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 let code_unit = self.build_code_unit(ctx, expr)?;
-                ctx.deferred.push(code_unit);
+
+                // macros defer into parent scope
+                if let LoScopeType::Macro = ctx.current_scope().scope_type {
+                    let parent_scope_index = ctx.scopes.len() - 2;
+                    ctx.scopes[parent_scope_index].deferred.push(code_unit);
+                } else {
+                    ctx.current_scope_mut().deferred.push(code_unit);
+                }
             }
             CodeExpr::Catch(CatchExpr {
                 lhs,
@@ -2641,7 +2645,7 @@ impl CodeGen {
             self.codegen_default_value(ctx, instrs, &fn_result.ok);
             self.codegen_var_get(ctx, instrs, &err_var)?;
 
-            self.emit_deferred(ctx, instrs)?;
+            self.emit_deferred_for_return(ctx, instrs);
             instrs.push(WasmInstr::Return);
         }
 
@@ -3716,18 +3720,19 @@ impl CodeGen {
         Ok(result)
     }
 
-    fn emit_deferred(
-        &self,
-        ctx: &mut LoExprContext,
-        instrs: &mut Vec<WasmInstr>,
-    ) -> Result<(), LoError> {
-        for expr in ctx.deferred.iter().rev() {
+    fn emit_deferred(&self, scope: &LoScope, instrs: &mut Vec<WasmInstr>) {
+        for expr in scope.deferred.iter().rev() {
             for instr in &expr.instrs {
                 instrs.push(instr.clone());
             }
         }
+    }
 
-        Ok(())
+    // TODO!!!: add similar logic for break/continue
+    fn emit_deferred_for_return(&self, ctx: &LoExprContext, instrs: &mut Vec<WasmInstr>) {
+        for scope in ctx.scopes.iter().rev() {
+            self.emit_deferred(scope, instrs);
+        }
     }
 
     fn build_code_unit(
