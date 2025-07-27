@@ -52,26 +52,17 @@ export fn _start() {
     }
     //
     if command == LoCommand::Format {
-        let fm = FileManager::new()
-        defer fm.free()
-        let included_file = fm.include_file(file_name, LoLocation::internal()) catch err {
-            defer err.free()
-            fm.print_error(err)
-            return finalize_and_exit(1)
-        }
+        let codegen = CodeGen::new(command)
+        defer codegen.free()
+        let asts = Vec::new!<AST>()
+        defer asts.free_deep!<AST>()
         //
-        let tokens = Lexer::lex(included_file.file_index, included_file.file_contents.unwrap()) catch err {
-            defer err.free()
-            fm.print_error(err)
+        // in format mode `pass_parse_files_rec` only parses a single AST (or none if lexing failed)
+        codegen.pass_parse_files_rec(asts, file_name, LoLocation::internal())
+        if asts.size == 0 {
             return finalize_and_exit(1)
         }
-        defer tokens.free()
-        let ast = Parser::parse(tokens) catch err {
-            defer err.free()
-            fm.print_error(err)
-            return finalize_and_exit(1)
-        }
-        defer ast.free()
+        let ast = asts.get!<AST>(0)
         //
         stdout_enable_buffering()
         Printer::print(ast)
@@ -109,24 +100,21 @@ export fn _start() {
     let codegen = CodeGen::new(command)
     defer codegen.free()
     //
-    let included_file = codegen.fm.include_file(file_name, LoLocation::internal()) catch err {
-        defer err.free()
-        codegen.fm.print_error(err)
-        return finalize_and_exit(1)
-    }
-    //
     let asts = Vec::new!<AST>()
     defer asts.free_deep!<AST>()
-    parse_file_tree(codegen, asts, included_file.file_index, included_file.file_contents.unwrap())
+    //
+    codegen.pass_parse_files_rec(asts, file_name, LoLocation::internal())
     //
     for i in 0..asts.size {
         let ast = asts.at!<AST>(i)
         codegen.pass_collect_typedefs(ast)
     }
+    //
     for i in 0..asts.size {
         let ast = asts.at!<AST>(i)
         codegen.pass_build_structs(ast)
     }
+    //
     for i in 0..asts.size {
         let ast = asts.at!<AST>(i)
         codegen.pass_main(ast)
@@ -164,59 +152,6 @@ export fn _start() {
     }
     //
     unreachable
-}
-
-fn parse_file_tree(codegen: &CodeGen, asts: &Vec of AST, file_index: u32, file_contents: String) {
-    if codegen.command == LoCommand::Inspect {
-        let file_path = codegen.fm.get_file_path(file_index)
-        stdout_write("{ \"type\": \"file\", \"index\": ")
-        stdout_write(file_index.to_tmp_str!())
-        stdout_write(", \"path\": \"")
-        stdout_write(file_path)
-        stdout_write("\" },\n")
-    }
-    //
-    let tokens = Lexer::lex(file_index, file_contents) catch err {
-        return codegen.report_error(err)
-    }
-    //
-    let ast = Parser::parse(tokens) catch err {
-        return codegen.report_error(err)
-    }
-    //
-    // pass 0: parse all included files (recursive)
-    for i in 0..ast.exprs.size {
-        let expr = ast.exprs.get!<TopLevelExpr>(i)
-        // TODO: port
-        // let TopLevelExpr::Include(include) = expr else {
-        //     continue
-        // }
-        //
-        // let included_file = codegen
-        //     .fm
-        //     .include_file(&include.file_path.unescape(), &include.loc)
-        // let included_file = catch!(included_file, err, {
-        //     codegen.report_error(err)
-        //     continue
-        // })
-        //
-        // if let Some(file_contents) = included_file.file_contents {
-        //     parse_file_tree(codegen, asts, included_file.file_index, file_contents)
-        // }
-        //
-        // if codegen.command == LoCommand::Inspect {
-        //     let source_index = file_index
-        //     let source_range = RangeDisplay(&include.loc)
-        //     let target_index = included_file.file_index
-        //     let target_range = "1:1-1:1"
-        //     stdout_writeln(format!(
-        //         "{{ \"type\": \"info\", \
-        //             \"link\": \"{target_index}/{target_range}\", \
-        //             \"loc\": \"{source_index}/{source_range}\" }},",
-        //     ))
-        // }
-    }
-    asts.push!(ast)
 }
 
 fn finalize_and_exit(exit_code: u32): never {

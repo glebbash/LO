@@ -5,7 +5,7 @@ include "./core.lo"
 struct WasmModule {}
 
 fn WasmModule::new(): &WasmModule {
-    panic!(dbg "todo")
+    return heap::new!(.WasmModule {})
 }
 
 fn WasmModule::free(&self) {
@@ -13,5 +13,5 @@ fn WasmModule::free(&self) {
 }
 
 fn WasmModule::dump(&self, binary: String) {
-    panic!(dbg "todo")
+    // TODO: implement
 }

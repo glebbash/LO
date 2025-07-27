@@ -1,8 +1,6 @@
 include "../lib/wasi.lo"
 include "../lib/args.lo"
 include "../lib/fs.lo"
-// tmp, for use in `std*_write` functions
-include "../lib/print.lo"
 
 // TODO: implement the module
 type LoCommand = u8
@@ -136,51 +134,6 @@ fn FileManager::free(&self) {
     panic!(dbg "todo")
 }
 
-// NOTE: this doesn't match Rust impl to not do extra String allocation and just print parts
-//   mostly because freeing is cumbersome and not really about efficiency
-fn FileManager::print_error(&self, err: &LoError) {
-    panic!(err.message.as_str())
-}
-
 fn FileManager::get_file_path(&self, file_index: u32): str {
     return self.files.at!<FileInfo>(file_index).file_path.as_str()
-}
-
-// TODO: add better optionals
-struct OptionString {
-    has_value: bool,
-    value: String,
-}
-
-fn OptionString::some(value: String): OptionString {
-    return .OptionString { has_value: true, value: value }
-}
-
-fn OptionString::unwrap(self): String {
-    if !self.has_value {
-        panic!("attempt to unwrap none")
-    }
-    return self.value
-}
-
-struct IncludedFile {
-    file_index: u32,
-    file_contents: OptionString,
-}
-
-// TODO: implement proper
-fn FileManager::include_file(&self, file_name: str, loc: LoLocation): Result<IncludedFile, &LoError> {
-    let file_contents = fs::read_file(file_name) catch err {
-        let message = String::from_str("error reading file ")
-        message.push_str(file_name)
-        message.push_str(", code = ")
-        message.push_str(err.to_tmp_str!())
-        //
-        return Err(heap::new!(.LoError { message: message, loc: loc }))
-    }
-    //
-    return Ok(.IncludedFile {
-        file_index: 0,
-        file_contents: OptionString::some(file_contents),
-    })
 }

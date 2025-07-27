@@ -2,6 +2,8 @@
 include "./core.lo"
 include "./ast.lo"
 include "./wasm.lo"
+include "./lexer.lo"
+include "./parser.lo"
 
 // TODO: implement
 struct CodeGen {
@@ -26,8 +28,73 @@ fn CodeGen::report_error(&self, err: &LoError) {
     // TODO: implement
 }
 
+fn CodeGen::pass_parse_files_rec(&self, asts: &Vec of AST, file_name: str, include_loc: LoLocation) {
+    // TODO: remove this stubs
+    let is_newly_added = false
+    let file_index = 0
+    let file_contents = String::from_str("")
+    //
+    // TODO: port
+    // let file_index = self
+    //     .fm
+    //     .include_file(file_name, Some(&mut is_newly_added), include_loc);
+    // let file_index = catch!(file_index, err, {
+    //     self.report_error(err);
+    //     return;
+    // });
+    //
+    if self.command == LoCommand::Inspect {
+        if is_newly_added {
+            let file_path = self.fm.get_file_path(file_index)
+            stdout_write("{ \"type\": \"file\", \"index\": ")
+            stdout_write(file_index.to_tmp_str!())
+            stdout_write(", \"path\": \"")
+            stdout_write(file_path)
+            stdout_write("\" },\n")
+        }
+        //
+        // TODO: port
+        // if include_loc.file_index != 0 {
+        //     let source_index = include_loc.file_index;
+        //     let source_range = RangeDisplay(include_loc);
+        //     let target_index = file_index;
+        //     let target_range = "1:1-1:1";
+        //     stdout_writeln(format!(
+        //         "{{ \"type\": \"info\", \
+        //             \"link\": \"{target_index}/{target_range}\", \
+        //             \"loc\": \"{source_index}/{source_range}\" }},",
+        //     ));
+        // }
+    }
+    //
+    if !is_newly_added {
+        return
+    }
+    //
+    let tokens = Lexer::lex(file_index, file_contents) catch err {
+        return self.report_error(err)
+    }
+    //
+    let ast = Parser::parse(tokens) catch err {
+        return self.report_error(err)
+    }
+    //
+    if self.command != LoCommand::Format {
+        for i in 0..ast.exprs.size {
+            let expr = ast.exprs.get!<TopLevelExpr>(i)
+            // TODO: port
+            // let TopLevelExpr::Include(include) = expr else {
+            //     continue;
+            // };
+            // self.pass_parse_files_rec(asts, &include.file_path.unescape(), &include.loc);
+        }
+    }
+    //
+    asts.push!(ast)
+}
+
 fn CodeGen::end_inspection(&self) {
-    panic!(dbg "todo")
+    // TODO: implement
 }
 
 fn CodeGen::pass_collect_typedefs(&self, ast: &AST) {
@@ -43,5 +110,5 @@ fn CodeGen::pass_main(&self, ast: &AST) {
 }
 
 fn CodeGen::generate(&self, wasm_module: &WasmModule) {
-    panic!(dbg "todo")
+    // TODO: implement
 }

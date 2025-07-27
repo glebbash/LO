@@ -1,4 +1,4 @@
-use crate::{ast::*, core::*, lexer::*, wasm::*};
+use crate::{ast::*, core::*, lexer::*, parser::Parser, wasm::*};
 use alloc::{
     boxed::Box,
     format,
@@ -546,6 +546,71 @@ impl CodeGen {
         stderr_write("WARNING: ");
         stderr_write(err.to_string(&self.fm));
         stderr_write("\n");
+    }
+
+    pub fn pass_parse_files_rec(
+        &mut self,
+        asts: &mut Vec<AST>,
+        file_name: &str,
+        include_loc: &LoLocation,
+    ) {
+        let mut is_newly_added = false;
+        let file_index = self
+            .fm
+            .include_file(file_name, Some(&mut is_newly_added), include_loc);
+        let file_index = catch!(file_index, err, {
+            self.report_error(err);
+            return;
+        });
+
+        if self.command == LoCommand::Inspect {
+            if is_newly_added {
+                let file_path = self.fm.get_file_path(file_index);
+                stdout_writeln(format!(
+                    "{{ \"type\": \"file\", \
+                        \"index\": {file_index}, \
+                        \"path\": \"{file_path}\" }},",
+                ));
+            }
+
+            if include_loc.file_index != 0 {
+                let source_index = include_loc.file_index;
+                let source_range = RangeDisplay(include_loc);
+                let target_index = file_index;
+                let target_range = "1:1-1:1";
+
+                stdout_writeln(format!(
+                    "{{ \"type\": \"info\", \
+                        \"link\": \"{target_index}/{target_range}\", \
+                        \"loc\": \"{source_index}/{source_range}\" }},",
+                ));
+            }
+        }
+
+        if !is_newly_added {
+            return;
+        }
+
+        let tokens = Lexer::lex(file_index, &self.fm.get_file_contents(file_index));
+        let tokens = catch!(tokens, err, {
+            return self.report_error(err);
+        });
+
+        let ast = catch!(Parser::parse(tokens), err, {
+            return self.report_error(err);
+        });
+
+        if self.command != LoCommand::Format {
+            for expr in &ast.exprs {
+                let TopLevelExpr::Include(include) = expr else {
+                    continue;
+                };
+
+                self.pass_parse_files_rec(asts, &include.file_path.unescape(), &include.loc);
+            }
+        }
+
+        asts.push(ast);
     }
 
     pub fn pass_collect_typedefs(&mut self, ast: &AST) {

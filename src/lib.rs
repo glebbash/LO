@@ -33,10 +33,7 @@ mod wasm_target {
     }
 }
 
-use crate::{
-    ast::*, codegen::*, core::*, lexer::*, parser::*, printer::*, wasm::*, wasm_eval::*,
-    wasm_parser::*,
-};
+use crate::{codegen::*, core::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
 use alloc::{format, rc::Rc, string::String, vec::Vec};
 
 static USAGE: &str = "Usage:
@@ -51,7 +48,7 @@ pub extern "C" fn _start() {
     let args = WasiArgs::load().unwrap();
     if args.len() < 3 {
         stderr_writeln(USAGE);
-        finalize_and_exit(1);
+        return finalize_and_exit(1);
     }
 
     let command = match args.get(1).unwrap() {
@@ -62,7 +59,7 @@ pub extern "C" fn _start() {
         "wasi" => LoCommand::Wasi,
         unknown_command => {
             stderr_writeln(format!("Unknown command: {unknown_command}\n{}", USAGE));
-            finalize_and_exit(1);
+            return finalize_and_exit(1);
         }
     };
 
@@ -72,48 +69,40 @@ pub extern "C" fn _start() {
     }
 
     if command == LoCommand::Format {
-        let mut fm = FileManager::default();
+        let mut codegen = CodeGen::new(command);
+        let mut asts = Vec::new();
 
-        let file_index = fm.include_file(file_name, None, &LoLocation::internal());
-        let file_index = catch!(file_index, err, {
-            stderr_writeln(err.to_string(&fm));
-            finalize_and_exit(1);
-        });
+        codegen.pass_parse_files_rec(&mut asts, file_name, &LoLocation::internal());
 
-        let tokens = Lexer::lex(file_index, fm.get_file_contents(file_index));
-        let tokens = catch!(tokens, err, {
-            stderr_writeln(err.to_string(&fm));
-            finalize_and_exit(1);
-        });
-        let ast = catch!(Parser::parse(tokens), err, {
-            stderr_writeln(err.to_string(&fm));
-            finalize_and_exit(1);
-        });
+        // in format mode `pass_parse_files_rec` only parses a single AST (or none if lexing failed)
+        let Some(ast) = asts.into_iter().next() else {
+            return finalize_and_exit(1);
+        };
 
         stdout_enable_buffering();
         Printer::print(Rc::new(ast));
 
-        finalize_and_exit(0);
+        return finalize_and_exit(0);
     }
 
     if command == LoCommand::Wasi {
         let module_bytes = catch!(file_read(file_name), err, {
             stderr_writeln(err);
-            finalize_and_exit(1);
+            return finalize_and_exit(1);
         });
 
         let wasm_module = WasmParser::parse(String::from(file_name), module_bytes);
         let wasm_module = catch!(wasm_module, err, {
             stderr_writeln(err);
-            finalize_and_exit(1);
+            return finalize_and_exit(1);
         });
 
         catch!(WasmEval::eval(wasm_module), err, {
             stderr_writeln(err.message);
-            finalize_and_exit(1);
+            return finalize_and_exit(1);
         });
 
-        finalize_and_exit(0);
+        return finalize_and_exit(0);
     }
 
     if command == LoCommand::Inspect {
@@ -122,22 +111,18 @@ pub extern "C" fn _start() {
 
     let mut codegen = CodeGen::new(command);
 
-    let file_index = codegen
-        .fm
-        .include_file(file_name, None, &LoLocation::internal());
-    let file_index = catch!(file_index, err, {
-        stderr_writeln(err.to_string(&codegen.fm));
-        finalize_and_exit(1);
-    });
-
     let mut asts = Vec::new();
-    parse_file_tree(&mut codegen, &mut asts, file_index);
+
+    codegen.pass_parse_files_rec(&mut asts, file_name, &LoLocation::internal());
+
     for ast in &asts {
         codegen.pass_collect_typedefs(ast);
     }
+
     for ast in &asts {
         codegen.pass_build_structs(ast);
     }
+
     for ast in asts {
         codegen.pass_main(ast);
     }
@@ -147,89 +132,32 @@ pub extern "C" fn _start() {
 
     codegen.end_inspection();
     if *codegen.error_count.borrow() > 0 {
-        finalize_and_exit(1);
+        return finalize_and_exit(1);
     }
 
     if command == LoCommand::Inspect {
-        finalize_and_exit(0);
+        return finalize_and_exit(0);
     }
 
     if command == LoCommand::Compile {
         let mut binary = Vec::new();
         wasm_module.dump(&mut binary);
         stdout_write(binary.as_slice());
-        finalize_and_exit(0);
+        return finalize_and_exit(0);
     }
 
     if command == LoCommand::Eval {
         catch!(WasmEval::eval(wasm_module), err, {
             stderr_writeln(err.message);
-            finalize_and_exit(1);
+            return finalize_and_exit(1);
         });
-        finalize_and_exit(0);
+        return finalize_and_exit(0);
     }
 
     unreachable!();
 }
 
-fn parse_file_tree(codegen: &mut CodeGen, asts: &mut Vec<AST>, file_index: u32) {
-    if codegen.command == LoCommand::Inspect {
-        let file_path = codegen.fm.get_file_path(file_index);
-        stdout_writeln(format!(
-            "{{ \"type\": \"file\", \
-                \"index\": {file_index}, \
-                \"path\": \"{file_path}\" }},",
-        ));
-    }
-
-    let tokens = Lexer::lex(file_index, &codegen.fm.get_file_contents(file_index));
-    let tokens = catch!(tokens, err, {
-        return codegen.report_error(err);
-    });
-
-    let ast = catch!(Parser::parse(tokens), err, {
-        return codegen.report_error(err);
-    });
-
-    // pass 0: parse all included files (recursive)
-    for expr in &ast.exprs {
-        let TopLevelExpr::Include(include) = expr else {
-            continue;
-        };
-
-        let mut is_newly_added = false;
-        let file_index = codegen.fm.include_file(
-            &include.file_path.unescape(),
-            Some(&mut is_newly_added),
-            &include.loc,
-        );
-        let file_index = catch!(file_index, err, {
-            codegen.report_error(err);
-            continue;
-        });
-
-        if is_newly_added {
-            parse_file_tree(codegen, asts, file_index);
-        }
-
-        if codegen.command == LoCommand::Inspect {
-            let source_index = file_index;
-            let source_range = RangeDisplay(&include.loc);
-            let target_index = file_index;
-            let target_range = "1:1-1:1";
-
-            stdout_writeln(format!(
-                "{{ \"type\": \"info\", \
-                    \"link\": \"{target_index}/{target_range}\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
-            ));
-        }
-    }
-
-    asts.push(ast);
-}
-
-fn finalize_and_exit(exit_code: u32) -> ! {
+fn finalize_and_exit(exit_code: u32) {
     stdout_disable_buffering();
     proc_exit(exit_code);
 }
