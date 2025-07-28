@@ -13,7 +13,7 @@ fn inner_fn() {
         let message = String::from_str("defer(inner_fn): loop (iteration #")
         message.push_str((i + 1).to_tmp_str!())
         message.push_str(")\n")
-        //
+
         // exprs in loops run after each iteration
         defer puts(message.as_str())
     }

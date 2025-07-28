@@ -1,27 +1,28 @@
 fn backslash_test() {
     let x = 1
-    //
+
+    // TODO(fmt): remove extra space at line end
     let x1 = x + 
         \ x + 
         \ x
-    //
+
     let x2 = (
         \ x
     ) + x
-    //
+
     let x3 = 2 + f(
         \ x,
     ) + f(
         \ x,
     )
-    //
+
     let x4 = x + 
         \ f(
             \ x,
         ) + f(
             \ x,
         )
-    //
+
     let x5 = x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(
                                         \ x,
                                     ),
@@ -33,7 +34,7 @@ fn backslash_test() {
             ),
         ),
     )
-    //
+
     if false {
         let x6 = x + 
             \ .s {
@@ -47,7 +48,7 @@ fn backslash_test() {
                 x: 0,
             }.x
         ) + x
-    //
+
     let x8 = x + 
         \ f(x + 
             \ x + 

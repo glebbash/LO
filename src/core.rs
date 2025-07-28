@@ -40,7 +40,7 @@ impl LoError {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct LoPosition {
     pub offset: usize,
     pub line: usize,

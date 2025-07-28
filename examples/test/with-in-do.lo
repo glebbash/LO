@@ -8,9 +8,9 @@ fn main() {
     ) do {
         print_u32(x)
     }
-    //
+
     puts("\n-------------\n")
-    //
+
     with x in (
         \ "{", 
         \ " \"type\": \"file\",", 
@@ -20,6 +20,6 @@ fn main() {
     ) do {
         puts(x)
     }
-    //
+
     puts("\n")
 }

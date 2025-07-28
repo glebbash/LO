@@ -94,7 +94,7 @@ fn fs::pipe(fd_in: u32, fd_out: u32, chunk_size: u32): Result<void, wasi::Err> {
     let chunk = tmp_alloc_many!<u8>(chunk_size)
     let iov = tmp_alloc!<wasi::IOVec>()
     *iov = .wasi::IOVec { base: chunk, size: 0 }
-    //
+
     let iovs = iov as *&wasi::IOVec
     let nread_ref = tmp_alloc!<u32>()
     loop {

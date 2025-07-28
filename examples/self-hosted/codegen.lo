@@ -33,7 +33,7 @@ fn CodeGen::pass_parse_files_rec(&self, asts: &Vec of AST, file_name: str, inclu
     let is_newly_added = false
     let file_index = 0
     let file_contents = String::from_str("")
-    //
+
     // TODO: port
     // let file_index = self
     //     .fm
@@ -42,7 +42,7 @@ fn CodeGen::pass_parse_files_rec(&self, asts: &Vec of AST, file_name: str, inclu
     //     self.report_error(err);
     //     return;
     // });
-    //
+
     if self.command == LoCommand::Inspect {
         if is_newly_added {
             let file_path = self.fm.get_file_path(file_index)
@@ -52,7 +52,7 @@ fn CodeGen::pass_parse_files_rec(&self, asts: &Vec of AST, file_name: str, inclu
             stdout_write(file_path)
             stdout_write("\" },\n")
         }
-        //
+
         // TODO: port
         // if include_loc.file_index != 0 {
         //     let source_index = include_loc.file_index;
@@ -66,19 +66,19 @@ fn CodeGen::pass_parse_files_rec(&self, asts: &Vec of AST, file_name: str, inclu
         //     ));
         // }
     }
-    //
+
     if !is_newly_added {
         return
     }
-    //
+
     let tokens = Lexer::lex(file_index, file_contents) catch err {
         return self.report_error(err)
     }
-    //
+
     let ast = Parser::parse(tokens) catch err {
         return self.report_error(err)
     }
-    //
+
     if self.command != LoCommand::Format {
         for i in 0..ast.exprs.size {
             let expr = ast.exprs.get!<TopLevelExpr>(i)
@@ -89,7 +89,7 @@ fn CodeGen::pass_parse_files_rec(&self, asts: &Vec of AST, file_name: str, inclu
             // self.pass_parse_files_rec(asts, &include.file_path.unescape(), &include.loc);
         }
     }
-    //
+
     asts.push!(ast)
 }
 

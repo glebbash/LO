@@ -58,7 +58,7 @@ fn process_input() {
         let y = (*wasm4::MOUSE_Y) as i32
         if x >= +0 && x <= +159 && y >= +0 && y <= +159 {
             trail.push!(.Pos { x: x, y: y })
-            //
+
             if trail.size == 6 {
                 swap_trail.size = 0
                 swap_trail.push_all((trail.data as u32 + sizeof Pos) as &void, trail.size - 1)

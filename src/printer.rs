@@ -8,6 +8,7 @@ pub struct Printer {
     backslashes_printed: usize,
     is_multiline_stmt: bool,
     multiline_stmt_indent: usize,
+    last_printed_item_line: usize,
 }
 
 impl Printer {
@@ -19,6 +20,7 @@ impl Printer {
             backslashes_printed: 0,
             is_multiline_stmt: false,
             multiline_stmt_indent: 0,
+            last_printed_item_line: 1,
         };
 
         stdout_enable_buffering();
@@ -27,16 +29,21 @@ impl Printer {
     }
 
     fn print_file(&mut self) {
-        for (expr, i) in self.ast.clone().exprs.iter().zip(0..) {
-            self.print_comments_before_pos(expr.loc().pos.offset);
-            self.print_top_level_expr(expr, i);
+        for expr in &self.ast.clone().exprs {
+            self.print_top_level_expr(expr);
         }
 
         // print the rest of the comments
-        self.print_comments_before_pos(usize::MAX);
+        self.print_comments_before(LoPosition {
+            offset: usize::MAX,
+            line: self.last_printed_item_line,
+            col: usize::MAX,
+        });
     }
 
-    fn print_top_level_expr(&mut self, expr: &TopLevelExpr, expr_index: usize) {
+    fn print_top_level_expr(&mut self, expr: &TopLevelExpr) {
+        self.print_comments_before(expr.loc().pos);
+
         match &expr {
             TopLevelExpr::FnDef(FnDefExpr {
                 exported,
@@ -56,10 +63,6 @@ impl Printer {
                 stdout_write("include ");
                 stdout_write(&file_path.0);
                 stdout_writeln("");
-
-                if let Some(TopLevelExpr::Include(_)) = self.ast.exprs.get(expr_index + 1) {
-                    return;
-                }
             }
             TopLevelExpr::Import(ImportExpr {
                 module_name,
@@ -71,21 +74,18 @@ impl Printer {
                 stdout_write(" {\n");
                 self.indent += 1;
 
-                for (item, i) in items.iter().zip(0..) {
-                    self.print_comments_before_pos(item.loc().pos.offset);
+                for item in items {
+                    self.print_comments_before(item.loc().pos);
                     self.print_indent();
                     match item {
                         ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
                         ImportItem::Memory(memory_def) => self.print_memory_def(memory_def),
                     }
                     stdout_writeln("");
-                    if i != items.len() - 1 {
-                        stdout_writeln("");
-                    }
                 }
 
                 // print the rest of the comments
-                self.print_comments_before_pos(loc.end_pos.offset);
+                self.print_comments_before(loc.end_pos);
 
                 self.indent -= 1;
                 self.print_indent();
@@ -121,7 +121,7 @@ impl Printer {
                     stdout_writeln(" {");
                     self.indent += 1;
                     for field in fields {
-                        self.print_comments_before_pos(field.loc.pos.offset);
+                        self.print_comments_before(field.loc.pos);
                         self.print_indent();
                         stdout_write(&field.field_name.repr);
                         stdout_write(": ");
@@ -130,7 +130,7 @@ impl Printer {
                     }
 
                     // print the rest of the comments
-                    self.print_comments_before_pos(loc.end_pos.offset);
+                    self.print_comments_before(loc.end_pos);
 
                     self.indent -= 1;
                     self.print_indent();
@@ -149,10 +149,6 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_type_expr(type_value);
                 stdout_writeln("");
-
-                if let Some(TopLevelExpr::TypeDef(_)) = self.ast.exprs.get(expr_index + 1) {
-                    return;
-                }
             }
             TopLevelExpr::ConstDef(ConstDefExpr {
                 const_name,
@@ -164,10 +160,6 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(const_value);
                 stdout_writeln("");
-
-                if let Some(TopLevelExpr::ConstDef(_)) = self.ast.exprs.get(expr_index + 1) {
-                    return;
-                }
             }
             TopLevelExpr::MemoryDef(memory_def) => {
                 self.print_memory_def(memory_def);
@@ -227,9 +219,7 @@ impl Printer {
             }
         }
 
-        if expr_index != self.ast.exprs.len() - 1 {
-            stdout_writeln("");
-        }
+        self.last_printed_item_line = expr.loc().end_pos.line;
     }
 
     // TODO: figure out multiline param printing
@@ -276,27 +266,25 @@ impl Printer {
         stdout_write(")");
     }
 
-    fn print_memory_def(
-        &mut self,
-        MemoryDefExpr {
-            exported,
-            min_pages,
-            data_start,
-            loc: _,
-        }: &MemoryDefExpr,
-    ) {
-        if *exported {
+    fn print_memory_def(&mut self, mem: &MemoryDefExpr) {
+        if mem.exported {
             stdout_write("export ");
         }
+        if mem.loc.pos.line == mem.loc.end_pos.line {
+            return stdout_write("memory {}");
+        }
+
         stdout_writeln("memory {");
+        self.last_printed_item_line = mem.loc.end_pos.line;
+
         self.indent += 1;
-        if let Some(min_pages) = min_pages {
+        if let Some(min_pages) = mem.min_pages {
             self.print_indent();
             stdout_write("min_pages: ");
             stdout_write(min_pages.to_string());
             stdout_writeln(",");
         }
-        if let Some(data_start) = data_start {
+        if let Some(data_start) = mem.data_start {
             self.print_indent();
             stdout_write("data_start: ");
             stdout_write(data_start.to_string());
@@ -344,12 +332,17 @@ impl Printer {
     }
 
     fn print_code_block_expr(&mut self, code_block: &CodeBlockExpr) {
+        if code_block.loc.pos.line == code_block.loc.end_pos.line {
+            return stdout_write("{}");
+        }
+
         stdout_writeln("{");
+        self.last_printed_item_line = code_block.loc.pos.line;
 
         self.indent += 1;
 
         for expr in &code_block.exprs {
-            self.print_comments_before_pos(expr.loc().pos.offset);
+            self.print_comments_before(expr.loc().pos);
             self.print_indent();
             self.print_code_expr(expr);
             stdout_writeln("");
@@ -358,7 +351,7 @@ impl Printer {
         }
 
         // print the rest of the comments
-        self.print_comments_before_pos(code_block.loc.end_pos.offset);
+        self.print_comments_before(code_block.loc.end_pos);
 
         self.indent -= 1;
 
@@ -367,7 +360,7 @@ impl Printer {
     }
 
     fn print_code_expr(&mut self, expr: &CodeExpr) {
-        self.print_backslashes_before_pos(expr.loc().pos.offset);
+        self.print_backslashes_before(expr.loc().pos.offset);
 
         match expr {
             CodeExpr::BoolLiteral(BoolLiteralExpr { value, loc: _ }) => {
@@ -417,13 +410,13 @@ impl Printer {
                 stdout_writeln("[");
                 self.indent += 1;
                 for item in items {
-                    self.print_comments_before_pos(item.loc().pos.offset);
+                    self.print_comments_before(item.loc().pos);
                     self.print_indent();
                     self.print_code_expr(item);
                     stdout_writeln(",");
                 }
                 // print the rest of the comments
-                self.print_comments_before_pos(loc.end_pos.offset);
+                self.print_comments_before(loc.end_pos);
                 self.indent -= 1;
                 self.print_indent();
                 stdout_write("]");
@@ -591,6 +584,7 @@ impl Printer {
                 stdout_write(".");
                 stdout_write(&struct_name.repr);
                 stdout_write(" {");
+                self.last_printed_item_line = loc.pos.line;
 
                 if *has_trailing_comma {
                     stdout_writeln("");
@@ -598,7 +592,7 @@ impl Printer {
                     self.indent += 1;
 
                     for field in fields {
-                        self.print_comments_before_pos(field.loc.pos.offset);
+                        self.print_comments_before(field.loc.pos);
                         self.print_indent();
                         stdout_write(&field.field_name);
                         stdout_write(": ");
@@ -607,7 +601,7 @@ impl Printer {
                     }
 
                     // print the rest of the comments
-                    self.print_comments_before_pos(loc.end_pos.offset);
+                    self.print_comments_before(loc.end_pos);
 
                     self.indent -= 1;
                     self.print_indent();
@@ -743,6 +737,8 @@ impl Printer {
                 self.print_args(args);
             }
         }
+
+        self.last_printed_item_line = expr.loc().end_pos.line
     }
 
     fn print_args(&mut self, args: &Vec<CodeExpr>) {
@@ -780,20 +776,33 @@ impl Printer {
         stdout_write(">");
     }
 
-    fn print_comments_before_pos(&mut self, offset: usize) {
+    fn print_comments_before(&mut self, pos: LoPosition) {
         while self.comments_printed < self.ast.comments.len() {
-            let comment = &self.ast.comments[self.comments_printed];
-            if comment.loc.end_pos.offset > offset {
+            let comment = unsafe_borrow(&self.ast.comments[self.comments_printed]);
+            if comment.loc.end_pos.offset > pos.offset {
                 break;
             }
+
+            self.print_blank_line_before(comment.loc.pos.line);
+            self.last_printed_item_line = comment.loc.end_pos.line;
 
             self.print_indent();
             stdout_writeln(&comment.content);
             self.comments_printed += 1;
         }
+
+        self.print_blank_line_before(pos.line);
+        self.last_printed_item_line = pos.line;
     }
 
-    fn print_backslashes_before_pos(&mut self, offset: usize) {
+    fn print_blank_line_before(&mut self, line: usize) {
+        let lines_since_last_item = line - self.last_printed_item_line;
+        if lines_since_last_item > 1 {
+            stdout_writeln("");
+        }
+    }
+
+    fn print_backslashes_before(&mut self, offset: usize) {
         while self.backslashes_printed < self.ast.backslashes.len() {
             let backslash = &self.ast.backslashes[self.backslashes_printed];
             if backslash.loc.end_pos.offset > offset {

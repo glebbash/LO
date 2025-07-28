@@ -461,7 +461,7 @@ fn str::char_at(self, index: u32): u8 {
 fn str::clone(self): str {
     let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size)
     mem::copy!(self.data, cloned_data, self.size)
-    //
+
     return .str { data: cloned_data, size: self.size }
 }
 
@@ -509,9 +509,9 @@ fn char_is_numeric(c: u8): bool {
 macro u32::to_tmp_str!(value: u32): str {
     let s = String::new_using(10, alloc::STACK)
     defer s.free()
-    //
+
     value.write_to(s)
-    //
+
     s.as_str()
 }
 
@@ -535,9 +535,9 @@ fn u32::write_to(value: u32, output: String) {
 macro u64::to_tmp_str!(value: u64): str {
     let s = String::new_using(20, alloc::STACK)
     defer s.free()
-    //
+
     value.write_to(s)
-    //
+
     s.as_str()
 }
 

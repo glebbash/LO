@@ -11,8 +11,7 @@ const SMILEY = [u8][
     0xC3 as u8,
 ]
 
-export fn start() {
-}
+export fn start() {}
 
 export fn update() {
     *wasm4::DRAW_COLORS = 2 as u16

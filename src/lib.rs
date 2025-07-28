@@ -79,7 +79,6 @@ pub extern "C" fn _start() {
             return finalize_and_exit(1);
         };
 
-        stdout_enable_buffering();
         Printer::print(Rc::new(ast));
 
         return finalize_and_exit(0);

@@ -3,7 +3,7 @@ include "./examples/lib/cli.lo"
 fn main() {
     let file_index = 2
     let file_path = "test.lo"
-    //
+
     print_9(
         \ "{",
         \ " \"type\": \"file\",",
@@ -11,7 +11,7 @@ fn main() {
         \ " \"path\": \"", file_path, "\" ",
         \ "},",
     )
-    //
+
     print_9("1", "2", "3",
         \ "4", "5", "6",
         \ "7", "8", "9",
