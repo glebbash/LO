@@ -1,3 +1,4 @@
+use crate::wasi;
 use alloc::{fmt, format, string::String, vec, vec::Vec};
 use core::{cell::RefCell, default, ffi::CStr, str};
 
@@ -92,17 +93,26 @@ pub struct WasiArgs {
 }
 
 impl WasiArgs {
-    pub fn load() -> Result<Self, wasi::Errno> {
-        let (argv_size, argv_buf_size) = unsafe { wasi::args_sizes_get() }?;
+    pub fn load() -> Result<Self, u32> {
+        let mut argc = 0u32;
+        let mut argv_buf_size = 0u32;
+        let err =
+            unsafe { wasi::args_sizes_get(&mut argc as *mut u32, &mut argv_buf_size as *mut u32) };
+        if err != wasi::ERR_SUCCESS {
+            return Err(err);
+        }
 
-        let mut argv = vec![core::ptr::null::<u8>() as *mut u8; argv_size];
-        let mut _argv_buf = vec![0u8; argv_buf_size];
-        if argv_size != 0 {
-            unsafe { wasi::args_get(argv.as_mut_ptr() as *mut *mut u8, _argv_buf.as_mut_ptr()) }?;
+        let mut argv = vec![core::ptr::null::<u8>() as *mut u8; argc as usize];
+        let mut _argv_buf = vec![0u8; argv_buf_size as usize];
+        if argc != 0 {
+            let err = unsafe { wasi::args_get(argv.as_mut_ptr(), _argv_buf.as_mut_ptr()) };
+            if err != wasi::ERR_SUCCESS {
+                return Err(err);
+            }
         }
 
         Ok(Self {
-            size: argv_size,
+            size: argc as usize,
             argv,
             _argv_buf,
         })
@@ -123,19 +133,30 @@ impl WasiArgs {
 
 pub fn proc_exit(exit_code: u32) -> ! {
     unsafe { wasi::proc_exit(exit_code) };
-    unreachable!(); // needed for typesystem
 }
 
 /// Hack for https://github.com/microsoft/vscode-wasm/issues/161
-pub fn unlock_fs() -> Result<(), wasi::Errno> {
-    use alloc::alloc::*;
+pub fn unlock_fs() -> Result<(), u32> {
+    let mut prestat = wasi::Prestat::default();
+    let err = unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD, &mut prestat as *mut wasi::Prestat) };
+    if err != wasi::ERR_SUCCESS {
+        return Err(err);
+    }
 
-    let prestat = unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD) }?;
-    let path_len = unsafe { prestat.u.dir.pr_name_len };
-    let path_buf = unsafe { alloc_zeroed(Layout::from_size_align(path_len, 8).unwrap()) };
-    let _ = unsafe { wasi::fd_prestat_dir_name(CWD_PREOPEN_FD, path_buf, path_len) }?;
-    let _ = unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD + 1) };
-    let _ = unsafe { wasi::fd_fdstat_get(CWD_PREOPEN_FD) };
+    let path_len = prestat.pr_name_len;
+    let mut path_buf = vec![0u8; path_len as usize];
+    let err = unsafe { wasi::fd_prestat_dir_name(CWD_PREOPEN_FD, path_buf.as_mut_ptr(), path_len) };
+    if err != wasi::ERR_SUCCESS {
+        return Err(err);
+    }
+
+    let mut fdstat = wasi::Fdstat::default();
+    let _err = unsafe { wasi::fd_fdstat_get(CWD_PREOPEN_FD, &mut fdstat as *mut wasi::Fdstat) };
+
+    let mut prestat2 = wasi::Prestat::default();
+    let _err =
+        unsafe { wasi::fd_prestat_get(CWD_PREOPEN_FD + 1, &mut prestat2 as *mut wasi::Prestat) };
+
     Ok(())
 }
 
@@ -167,44 +188,69 @@ pub fn file_read(file_path: &str) -> Result<Vec<u8>, String> {
 
     let bytes = fd_read_all(fd).map_err(|err| format!("Cannot read file {file_path}: {err}"))?;
 
-    if let Err(err) = unsafe { wasi::fd_close(fd) } {
+    let err = unsafe { wasi::fd_close(fd) };
+    if err != wasi::ERR_SUCCESS {
         return Err(format!("Cannot close file {file_path}: error code = {err}"));
-    }
+    };
 
     return Ok(bytes);
 }
 
-fn fd_open(file_path: &str) -> Result<u32, wasi::Errno> {
-    unsafe { wasi::path_open(CWD_PREOPEN_FD, 1, &file_path, 0, 264240830, 268435455, 0) }
+fn fd_open(file_path: &str) -> Result<u32, u32> {
+    let mut fd = 0;
+    let err = unsafe {
+        wasi::path_open(
+            CWD_PREOPEN_FD,
+            1,
+            file_path.as_ptr(),
+            file_path.len() as u32,
+            0,
+            264240830,
+            268435455,
+            0,
+            &mut fd as *mut u32,
+        )
+    };
+    if err != wasi::ERR_SUCCESS {
+        return Err(err);
+    }
+
+    Ok(fd)
 }
 
 fn fd_read_all(fd: u32) -> Result<Vec<u8>, String> {
     let mut output = Vec::<u8>::new();
     let mut chunk = [0; 256];
 
-    let in_vec = [wasi::Iovec {
-        buf: chunk.as_mut_ptr(),
-        buf_len: chunk.len(),
-    }];
+    let mut in_vec = wasi::IOVecMut {
+        base: chunk.as_mut_ptr(),
+        size: chunk.len() as u32,
+    };
 
     loop {
-        let nread = match unsafe { wasi::fd_read(fd, &in_vec) } {
-            Ok(nread) => nread,
-            Err(err) => {
-                // stdin is empty
-                if fd == 0 && err == wasi::ERRNO_AGAIN {
-                    break;
-                }
-
-                return Err(alloc::format!("Error reading file: fd={fd}, err={err}\n"));
-            }
+        let mut nread = 0u32;
+        let err = unsafe {
+            wasi::fd_read(
+                fd,
+                &mut in_vec as *mut wasi::IOVecMut,
+                1,
+                &mut nread as *mut u32,
+            )
         };
+        if err != wasi::ERR_SUCCESS {
+            // stdin is empty
+            if fd == 0 && err == wasi::ERR_AGAIN {
+                break;
+            }
+
+            return Err(alloc::format!("Error reading file: fd={fd}, err={err}\n"));
+        }
 
         if nread == 0 {
             break;
         }
 
-        output.extend(&chunk[0..nread]);
+        output.extend(&chunk[0..nread as usize]);
     }
 
     Ok(output)
@@ -266,12 +312,22 @@ pub fn stderr_write(message: impl AsRef<str>) {
 }
 
 pub fn fputs(fd: u32, message: &[u8]) {
-    let out_vec = [wasi::Ciovec {
-        buf: message.as_ptr(),
-        buf_len: message.len(),
-    }];
-
-    unsafe { wasi::fd_write(fd, &out_vec) }.unwrap();
+    let mut nwritten = 0u32;
+    let out_vec = wasi::IOVec {
+        base: message.as_ptr(),
+        size: message.len() as u32,
+    };
+    let err = unsafe {
+        wasi::fd_write(
+            fd,
+            &out_vec as *const wasi::IOVec,
+            1,
+            &mut nwritten as *mut u32,
+        )
+    };
+    if err != wasi::ERR_SUCCESS {
+        unreachable!()
+    };
 }
 
 #[allow(dead_code)]

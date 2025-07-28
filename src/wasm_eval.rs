@@ -1,11 +1,5 @@
-use crate::{core::*, wasm::*};
-use alloc::{
-    alloc::{alloc, dealloc, Layout},
-    format, str,
-    string::String,
-    vec,
-    vec::Vec,
-};
+use crate::{core::*, wasi, wasm::*};
+use alloc::{format, str, string::String, vec, vec::Vec};
 
 const PAGE_SIZE: usize = 65_536;
 
@@ -1128,17 +1122,15 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let buf = eval.pop_i32();
             let fd = eval.pop_i32();
 
-            match unsafe { wasi::fd_prestat_get(fd as u32) } {
-                Ok(prestat) => {
-                    let pr_name_len = unsafe { prestat.u.dir.pr_name_len as i32 };
-                    eval.memory.store_i32(buf as usize, prestat.tag as i32);
-                    eval.memory.store_i32(buf as usize + 4, pr_name_len);
+            let mut prestat = wasi::Prestat::default();
+            let err =
+                unsafe { wasi::fd_prestat_get(fd as u32, &mut prestat as *mut wasi::Prestat) };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
 
-                    eval.stack.push(WasmValue::I32 { value: 0 });
-                }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
+            if err == wasi::ERR_SUCCESS {
+                eval.memory.store_i32(buf as usize, prestat.tag as i32);
+                eval.memory
+                    .store_i32(buf as usize + 4, prestat.pr_name_len as i32);
             }
         }
         "wasi_snapshot_preview1::fd_prestat_dir_name" => {
@@ -1146,49 +1138,34 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let path = eval.pop_i32();
             let fd = eval.pop_i32();
 
-            let layout = Layout::array::<u8>(path_len as usize).unwrap();
-            let path_buf = unsafe { alloc(layout) };
+            let mut path_buf = vec![0u8; path_len as usize];
 
-            match unsafe { wasi::fd_prestat_dir_name(fd as u32, path_buf, path_len as usize) } {
-                Ok(()) => {
-                    let path_slice = unsafe {
-                        ::core::ptr::slice_from_raw_parts(path_buf, path_len as usize)
-                            .as_ref()
-                            .unwrap()
-                    };
-                    eval.memory.bytes[path as usize..path as usize + path_len as usize]
-                        .copy_from_slice(path_slice);
+            let err = unsafe {
+                wasi::fd_prestat_dir_name(fd as u32, path_buf.as_mut_ptr(), path_len as u32)
+            };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
 
-                    eval.stack.push(WasmValue::I32 { value: 0 })
-                }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
-            }
-
-            unsafe {
-                dealloc(path_buf, layout);
+            if err == wasi::ERR_SUCCESS {
+                eval.memory.bytes[path as usize..path as usize + path_len as usize]
+                    .copy_from_slice(&path_buf);
             }
         }
         "wasi_snapshot_preview1::fd_fdstat_get" => {
             let fdstat_ptr = eval.pop_i32();
             let fd = eval.pop_i32();
 
-            match unsafe { wasi::fd_fdstat_get(fd as u32) } {
-                Ok(fdstat) => {
-                    eval.memory.bytes[fdstat_ptr as usize] = fdstat.fs_filetype.raw();
-                    eval.memory
-                        .store_i16(fdstat_ptr as usize + 2, fdstat.fs_flags as i16);
-                    eval.memory
-                        .store_i64(fdstat_ptr as usize + 8, fdstat.fs_rights_base as i64);
-                    eval.memory
-                        .store_i64(fdstat_ptr as usize + 16, fdstat.fs_rights_inheriting as i64);
+            let mut fdstat = wasi::Fdstat::default();
+            let err = unsafe { wasi::fd_fdstat_get(fd as u32, &mut fdstat as *mut wasi::Fdstat) };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
 
-                    eval.stack.push(WasmValue::I32 { value: 0 });
-                }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
+            if err == wasi::ERR_SUCCESS {
+                eval.memory.bytes[fdstat_ptr as usize] = fdstat.fs_filetype;
+                eval.memory
+                    .store_i16(fdstat_ptr as usize + 2, fdstat.fs_flags as i16);
+                eval.memory
+                    .store_i64(fdstat_ptr as usize + 8, fdstat.fs_rights_base as i64);
+                eval.memory
+                    .store_i64(fdstat_ptr as usize + 16, fdstat.fs_rights_inheriting as i64);
             }
         }
         "wasi_snapshot_preview1::path_open" => {
@@ -1205,24 +1182,24 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let path_bytes =
                 &eval.memory.bytes[path_ptr as usize..path_ptr as usize + path_len as usize];
 
-            match unsafe {
+            let mut fd = 0u32;
+            let err = unsafe {
                 wasi::path_open(
                     dirfd as u32,
                     dirflags as u32,
-                    str::from_utf8(path_bytes).unwrap(),
-                    oflags as u16,
+                    path_bytes.as_ptr(),
+                    path_bytes.len() as u32,
+                    oflags as u32,
                     fs_rights_base as u64,
                     fs_rights_inheriting as u64,
-                    fdflags as u16,
+                    fdflags as u32,
+                    &mut fd as *mut u32,
                 )
-            } {
-                Ok(fd) => {
-                    eval.stack.push(WasmValue::I32 { value: 0 });
-                    eval.memory.store_i32(fd_ptr as usize, fd as i32);
-                }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
+            };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
+
+            if err == wasi::ERR_SUCCESS {
+                eval.memory.store_i32(fd_ptr as usize, fd as i32);
             }
         }
         "wasi_snapshot_preview1::fd_write" => {
@@ -1238,22 +1215,21 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                 let str_len = eval.memory.load_i32(iov_base + 4);
 
                 let buf = (&mut eval.memory.bytes[str_ptr as usize]) as *const u8;
-                iovs.push(wasi::Ciovec {
-                    buf,
-                    buf_len: str_len as usize,
+                iovs.push(wasi::IOVec {
+                    base: buf,
+                    size: str_len as u32,
                 });
             }
 
-            match unsafe { wasi::fd_write(fd as u32, &iovs) } {
-                Ok(nwritten) => {
-                    eval.stack.push(WasmValue::I32 { value: 0 });
-                    eval.memory
-                        .store_i32(nwritten_ptr as usize, nwritten as i32);
-                }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
-            };
+            let mut nwritten = 0u32;
+            let err =
+                unsafe { wasi::fd_write(fd as u32, iovs.as_ptr(), 1, &mut nwritten as *mut u32) };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
+
+            if err == wasi::ERR_SUCCESS {
+                eval.memory
+                    .store_i32(nwritten_ptr as usize, nwritten as i32);
+            }
         }
         "wasi_snapshot_preview1::fd_read" => {
             let nread_ptr = eval.pop_i32();
@@ -1267,48 +1243,49 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
                 let str_ptr = eval.memory.load_i32(iov_base);
                 let str_len = eval.memory.load_i32(iov_base + 4);
 
-                let buf = (&mut eval.memory.bytes[str_ptr as usize]) as *mut u8;
-                iovs.push(wasi::Iovec {
-                    buf,
-                    buf_len: str_len as usize,
+                let buf = &mut eval.memory.bytes[str_ptr as usize] as *mut u8;
+                iovs.push(wasi::IOVecMut {
+                    base: buf,
+                    size: str_len as u32,
                 })
             }
 
-            match unsafe { wasi::fd_read(fd as u32, &iovs) } {
-                Ok(nread) => {
-                    eval.stack.push(WasmValue::I32 { value: 0 });
-                    eval.memory.store_i32(nread_ptr as usize, nread as i32);
-                }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
+            let mut nread = 0u32;
+            let err = unsafe {
+                wasi::fd_read(
+                    fd as u32,
+                    iovs.as_mut_ptr(),
+                    iovs_len as u32,
+                    &mut nread as *mut u32,
+                )
             };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
+
+            if err == wasi::ERR_SUCCESS {
+                eval.memory.store_i32(nread_ptr as usize, nread as i32);
+            }
         }
         "wasi_snapshot_preview1::fd_close" => {
             let fd = eval.pop_i32();
 
-            match unsafe { wasi::fd_close(fd as u32) } {
-                Ok(()) => eval.stack.push(WasmValue::I32 { value: 0 }),
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
-            }
+            let err = unsafe { wasi::fd_close(fd as u32) };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
         }
         "wasi_snapshot_preview1::args_sizes_get" => {
             let argv_buf_size_ptr = eval.pop_i32();
             let argc_ptr = eval.pop_i32();
 
-            match unsafe { wasi::args_sizes_get() } {
-                Ok((argc, argv_buf_size)) => {
-                    eval.memory.store_i32(argc_ptr as usize, argc as i32);
-                    eval.memory
-                        .store_i32(argv_buf_size_ptr as usize, argv_buf_size as i32);
+            let mut argc = 0u32;
+            let mut argv_buf_size = 0u32;
+            let err = unsafe {
+                wasi::args_sizes_get(&mut argc as *mut u32, &mut argv_buf_size as *mut u32)
+            };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
 
-                    eval.stack.push(WasmValue::I32 { value: 0 });
-                }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
+            if err == wasi::ERR_SUCCESS {
+                eval.memory.store_i32(argc_ptr as usize, argc as i32);
+                eval.memory
+                    .store_i32(argv_buf_size_ptr as usize, argv_buf_size as i32);
             }
         }
         "wasi_snapshot_preview1::args_get" => {
@@ -1318,26 +1295,28 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             let argv = &mut eval.memory.bytes[argv_ptr as usize] as *mut u8 as *mut *mut u8;
             let argv_buf = &mut eval.memory.bytes[argv_buf_ptr as usize] as *mut u8;
 
-            match unsafe { wasi::args_get(argv, argv_buf) } {
-                Ok(()) => {
-                    // fix argv pointers to point to guest memory instead of host memory
-                    {
-                        let mem_base = (&eval.memory.bytes).as_ptr() as usize;
+            let err = unsafe { wasi::args_get(argv, argv_buf) };
+            eval.stack.push(WasmValue::I32 { value: err as i32 });
 
-                        let (argc, _) = unsafe { wasi::args_sizes_get() }.unwrap();
-                        for i in 0..argc {
-                            unsafe {
-                                let argv_i = argv.add(i);
-                                *argv_i = (((*argv_i) as usize) - mem_base) as *mut u8;
-                            }
-                        }
-                    };
+            if err == wasi::ERR_SUCCESS {
+                let mem_base = (&eval.memory.bytes).as_ptr() as usize;
 
-                    eval.stack.push(WasmValue::I32 { value: 0 });
+                let mut argc = 0u32;
+                let mut argv_buf_size = 0u32;
+                let err = unsafe {
+                    wasi::args_sizes_get(&mut argc as *mut u32, &mut argv_buf_size as *mut u32)
+                };
+                if err != wasi::ERR_SUCCESS {
+                    unreachable!()
                 }
-                Err(err) => eval.stack.push(WasmValue::I32 {
-                    value: err.raw() as i32,
-                }),
+
+                // fixing argv pointers to point to guest memory instead of host memory
+                for i in 0..argc {
+                    unsafe {
+                        let argv_i = argv.add(i as usize);
+                        *argv_i = (((*argv_i) as usize) - mem_base) as *mut u8;
+                    }
+                }
             }
         }
         "wasi_snapshot_preview1::proc_exit" => {

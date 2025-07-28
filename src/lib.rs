@@ -9,6 +9,7 @@ mod core;
 mod lexer;
 mod parser;
 mod printer;
+mod wasi;
 mod wasm;
 mod wasm_eval;
 mod wasm_parser;
