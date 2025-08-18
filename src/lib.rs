@@ -7,6 +7,7 @@ mod ast;
 mod codegen;
 mod core;
 mod lexer;
+mod lol_alloc;
 mod parser;
 mod printer;
 mod wasi;
@@ -15,11 +16,11 @@ mod wasm_eval;
 mod wasm_parser;
 
 mod wasm_target {
-    use lol_alloc::{FreeListAllocator, LockedAllocator};
+    use crate::lol_alloc::{AssumeSingleThreaded, FreeListAllocator};
 
     #[global_allocator]
-    static ALLOCATOR: LockedAllocator<FreeListAllocator> =
-        LockedAllocator::new(FreeListAllocator::new());
+    static ALLOCATOR: AssumeSingleThreaded<FreeListAllocator> =
+        unsafe { AssumeSingleThreaded::new(FreeListAllocator::new()) };
 
     #[alloc_error_handler]
     fn oom(_: core::alloc::Layout) -> ! {
