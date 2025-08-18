@@ -16,11 +16,10 @@ mod wasm_eval;
 mod wasm_parser;
 
 mod wasm_target {
-    use crate::lol_alloc::{AssumeSingleThreaded, FreeListAllocator};
+    use crate::lol_alloc::LolAlloc;
 
     #[global_allocator]
-    static ALLOCATOR: AssumeSingleThreaded<FreeListAllocator> =
-        unsafe { AssumeSingleThreaded::new(FreeListAllocator::new()) };
+    static ALLOCATOR: LolAlloc = LolAlloc::new();
 
     #[alloc_error_handler]
     fn oom(_: core::alloc::Layout) -> ! {

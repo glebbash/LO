@@ -1,28 +1,4 @@
-// Vendored from https://github.com/Craig-Macomber/lol_alloc
-
-// MIT License
-
-// Copyright (c) 2022 Craig
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-
-// source: lol_alloc/lib.rs
+// modified version of https://github.com/Craig-Macomber/lol_alloc, MIT License
 
 use core::{
     alloc::{GlobalAlloc, Layout},
@@ -30,95 +6,26 @@ use core::{
     ptr::{self, null_mut},
 };
 
-#[derive(Eq, PartialEq)]
-struct PageCount(usize);
-
-impl PageCount {
-    fn size_in_bytes(self) -> usize {
-        self.0 * PAGE_SIZE
-    }
-}
-
 /// The WebAssembly page size, in bytes.
 const PAGE_SIZE: usize = 65536;
 
 /// Invalid number of pages used to indicate out of memory errors.
-const ERROR_PAGE_COUNT: PageCount = PageCount(usize::MAX);
-
-/// Wrapper for core::arch::wasm::memory_grow.
-/// Adding this level of indirection allows for improved testing,
-/// especially on non wasm platforms.
-trait MemoryGrower {
-    /// See core::arch::wasm::memory_grow for semantics.
-    fn memory_grow(&self, delta: PageCount) -> PageCount;
-}
-
-/// Stateless heap grower.
-/// On wasm32, provides a default implementation of [MemoryGrower].
-pub struct DefaultGrower;
-
-#[cfg(target_arch = "wasm32")]
-impl MemoryGrower for DefaultGrower {
-    fn memory_grow(&self, delta: PageCount) -> PageCount {
-        // This should use `core::arch::wasm` instead of `core::arch::wasm32`,
-        // but `core::arch::wasm` depends on `#![feature(simd_wasm64)]` on current nightly.
-        // See https://github.com/Craig-Macomber/lol_alloc/issues/1
-        PageCount(core::arch::wasm32::memory_grow(0, delta.0))
-    }
-}
-
-// source: lol_alloc/single_threaded_allocator.rs
-
-/// A non-thread safe allocator created by wrapping an allocator in a `Sync` implementation that assumes all use is from the same thread.
-/// Using this (and thus defeating Rust's thread safety checking) is useful due to global allocators having to be stored in statics,
-/// which requires `Sync` even in single threaded applications.
-pub struct AssumeSingleThreaded<T> {
-    inner: T,
-}
-
-impl<T> AssumeSingleThreaded<T> {
-    /// Converts a potentially non-`Sync` allocator into a `Sync` one by assuming it will only be used by one thread.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the returned value is only accessed by a single thread.
-    pub const unsafe fn new(t: T) -> Self {
-        AssumeSingleThreaded { inner: t }
-    }
-}
-
-/// This is an invalid implementation of Sync.
-/// AssumeSingleThreaded must not actually be used from multiple threads concurrently.
-unsafe impl<T> Sync for AssumeSingleThreaded<T> {}
-
-unsafe impl<T: GlobalAlloc> GlobalAlloc for AssumeSingleThreaded<T> {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.inner.alloc(layout)
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.inner.dealloc(ptr, layout);
-    }
-}
-
-// source: lol_alloc/free_list_allocator.rs
+const ERROR_PAGE_COUNT: usize = usize::MAX;
 
 /// A non-thread safe allocator that uses a free list.
 /// Allocations and frees have runtime O(length of free list).
 ///
 /// The free list is kept sorted by address, and adjacent blocks of memory are coalesced when inserting new blocks.
-pub struct FreeListAllocator<T = DefaultGrower> {
+pub struct LolAlloc {
     free_list: UnsafeCell<*mut FreeListNode>,
-    grower: T,
 }
 
 #[cfg(target_arch = "wasm32")]
-impl FreeListAllocator<DefaultGrower> {
+impl LolAlloc {
     pub const fn new() -> Self {
-        FreeListAllocator {
+        LolAlloc {
             // Use a special value for empty, which is never valid otherwise.
             free_list: UnsafeCell::new(EMPTY_FREE_LIST),
-            grower: DefaultGrower,
         }
     }
 }
@@ -137,9 +44,13 @@ const NODE_SIZE: usize = core::mem::size_of::<FreeListNode>();
 
 // Safety: No one besides us has the raw pointer, so we can safely transfer the
 // FreeListAllocator to another thread.
-unsafe impl<T> Send for FreeListAllocator<T> {}
+unsafe impl Send for LolAlloc {}
 
-unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
+/// This is an invalid implementation of Sync.
+/// FreeListAllocator must not actually be used from multiple threads concurrently.
+unsafe impl Sync for LolAlloc {}
+
+unsafe impl GlobalAlloc for LolAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // This assumes PAGE_SIZE is always a multiple of the required alignment, which should be true for all practical use.
         debug_assert!(PAGE_SIZE % layout.align() == 0);
@@ -193,14 +104,12 @@ unsafe impl<T: MemoryGrower> GlobalAlloc for FreeListAllocator<T> {
         // This should never need to recurse more than once.
 
         let requested_bytes = round_up(size, PAGE_SIZE);
-        let previous_page_count = self
-            .grower
-            .memory_grow(PageCount(requested_bytes / PAGE_SIZE));
+        let previous_page_count = core::arch::wasm32::memory_grow(0, requested_bytes / PAGE_SIZE);
         if previous_page_count == ERROR_PAGE_COUNT {
             return null_mut();
         }
 
-        let ptr = previous_page_count.size_in_bytes() as *mut u8;
+        let ptr = (previous_page_count * PAGE_SIZE) as *mut u8;
         self.dealloc(
             ptr,
             Layout::from_size_align_unchecked(requested_bytes, PAGE_SIZE),
