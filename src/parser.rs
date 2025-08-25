@@ -12,28 +12,23 @@ pub struct Parser {
     // context
     pub source: UBox<[u8]>,
     pub tokens: Vec<LoToken>,
-    pub terminal_token: LoToken,
 
     // state
     pub tokens_processed: RefCell<usize>,
 }
 
 impl Parser {
-    pub fn parse(source: UBox<[u8]>, tokens: LoTokens) -> Result<AST, LoError> {
+    pub fn parse(source: UBox<[u8]>, lex: LexerResult) -> Result<AST, LoError> {
         let parser = Parser {
             source,
-            tokens: tokens.tokens,
+            tokens: lex.tokens,
             tokens_processed: RefCell::new(0),
-            terminal_token: LoToken {
-                type_: LoTokenType::Terminal,
-                loc: tokens.end_loc,
-            },
         };
 
         let mut ast = AST {
             exprs: Vec::new(),
-            comments: tokens.comments,
-            backslashes: tokens.backslashes,
+            comments: lex.comments,
+            backslashes: lex.backslashes,
         };
 
         parser.parse_file(&mut ast)?;
@@ -1197,35 +1192,33 @@ impl Parser {
     // utils
 
     fn expect_any(&self, type_: LoTokenType) -> Result<&LoToken, LoError> {
-        match self.peek() {
-            Some(token) if token.is_any(type_) => Ok(self.next().unwrap()),
-            other => {
-                let unexpected = other.unwrap_or(&self.terminal_token);
-                Err(LoError {
-                    message: format!(
-                        "Unexpected token '{}', wanted {type_:?}",
-                        unexpected.get_value(self.source)
-                    ),
-                    loc: unexpected.loc.clone(),
-                })
-            }
+        let token = self.current();
+        if !token.is_any(type_) {
+            return Err(LoError {
+                message: format!(
+                    "Unexpected token '{}', wanted {type_:?}",
+                    token.get_value(self.source)
+                ),
+                loc: token.loc.clone(),
+            });
         }
+
+        Ok(self.next().unwrap())
     }
 
     fn expect(&self, type_: LoTokenType, value: &str) -> Result<&LoToken, LoError> {
-        match self.peek() {
-            Some(token) if token.is(type_, value, self.source) => Ok(self.next().unwrap()),
-            other => {
-                let unexpected = other.unwrap_or(&self.terminal_token);
-                Err(LoError {
-                    message: format!(
-                        "Unexpected token '{}', wanted '{value}'",
-                        unexpected.get_value(self.source)
-                    ),
-                    loc: unexpected.loc.clone(),
-                })
-            }
+        let token = self.current();
+        if !token.is(type_, value, self.source) {
+            return Err(LoError {
+                message: format!(
+                    "Unexpected token '{}', wanted '{value}'",
+                    token.get_value(self.source)
+                ),
+                loc: token.loc.clone(),
+            });
         }
+
+        Ok(self.next().unwrap())
     }
 
     fn eat_any(&self, type_: LoTokenType) -> Result<Option<&LoToken>, LoError> {
@@ -1247,31 +1240,31 @@ impl Parser {
     }
 
     fn peek(&self) -> Option<&LoToken> {
-        self.tokens.get(*self.tokens_processed.borrow())
-    }
-
-    fn next(&self) -> Option<&LoToken> {
-        let token = self.tokens.get(*self.tokens_processed.borrow());
-        *self.tokens_processed.borrow_mut() += 1;
-        token
-    }
-
-    fn prev(&self) -> &LoToken {
-        self.look_ahead(-1)
+        self.look(0)
     }
 
     fn current(&self) -> &LoToken {
-        self.look_ahead(0)
+        self.look(0).unwrap_or_else(|| self.tokens.last().unwrap())
     }
 
-    fn look_ahead(&self, token_count: isize) -> &LoToken {
-        if let Some(token) = self
-            .tokens
-            .get((*self.tokens_processed.borrow() as isize + token_count) as usize)
-        {
-            &token
-        } else {
-            &self.terminal_token
+    fn prev(&self) -> &LoToken {
+        self.look(-1).unwrap_or_else(|| self.tokens.last().unwrap())
+    }
+
+    fn look(&self, relative_offset: isize) -> Option<&LoToken> {
+        let index = (*self.tokens_processed.borrow() as isize + relative_offset) as usize;
+
+        // terminal token is never returned
+        if index >= self.tokens.len() - 1 {
+            return None;
         }
+
+        Some(&self.tokens[index])
+    }
+
+    fn next(&self) -> Option<&LoToken> {
+        let token = self.peek();
+        *self.tokens_processed.borrow_mut() += 1;
+        token
     }
 }

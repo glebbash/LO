@@ -54,15 +54,14 @@ pub struct Lexer {
     backslashes: Vec<Backslash>,
 }
 
-pub struct LoTokens {
+pub struct LexerResult {
     pub tokens: Vec<LoToken>,
-    pub end_loc: LoLocation,
     pub comments: Vec<Comment>,
     pub backslashes: Vec<Backslash>,
 }
 
 impl Lexer {
-    pub fn lex(source: UBox<[u8]>, file_index: u32) -> Result<LoTokens, LoError> {
+    pub fn lex(source: UBox<[u8]>, file_index: u32) -> Result<LexerResult, LoError> {
         let mut lexer = Lexer {
             file_index,
             source,
@@ -77,11 +76,11 @@ impl Lexer {
             comments: Vec::new(),
             backslashes: Vec::new(),
         };
+
         let tokens = lexer.lex_file()?;
 
-        Ok(LoTokens {
+        Ok(LexerResult {
             tokens,
-            end_loc: lexer.loc(),
             comments: lexer.comments,
             backslashes: lexer.backslashes,
         })
@@ -96,6 +95,11 @@ impl Lexer {
             tokens.push(self.lex_token()?);
             self.skip_space();
         }
+
+        tokens.push(LoToken {
+            type_: LoTokenType::Terminal,
+            loc: self.loc(),
+        });
 
         Ok(tokens)
     }
