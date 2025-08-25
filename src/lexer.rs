@@ -15,23 +15,25 @@ pub enum LoTokenType {
 #[derive(Debug, Clone)]
 pub struct LoToken {
     pub type_: LoTokenType,
-    pub value: String,
     pub loc: LoLocation,
 }
 
 impl LoToken {
+    pub fn get_value(&self, source: UBox<[u8]>) -> &str {
+        return self.loc.read_span(source);
+    }
+
     pub fn is_any(&self, type_: LoTokenType) -> bool {
         self.type_ == type_
     }
 
-    pub fn is(&self, type_: LoTokenType, value: &str) -> bool {
-        self.is_any(type_) && self.value == value
+    pub fn is(&self, type_: LoTokenType, value: &str, source: UBox<[u8]>) -> bool {
+        self.is_any(type_) && self.get_value(source) == value
     }
 }
 
 #[derive(Debug)]
 pub struct Comment {
-    pub content: String,
     pub loc: LoLocation,
 }
 
@@ -41,11 +43,12 @@ pub struct Backslash {
 }
 
 pub struct Lexer {
+    // context
     file_index: u32,
-    chars: Vec<char>,
-    index: usize,
-    line: usize,
-    col: usize,
+    source: UBox<[u8]>,
+
+    // state
+    source_pos: LoPosition,
     was_newline: bool,
     comments: Vec<Comment>,
     backslashes: Vec<Backslash>,
@@ -59,13 +62,17 @@ pub struct LoTokens {
 }
 
 impl Lexer {
-    pub fn lex(file_index: u32, chars: &str) -> Result<LoTokens, LoError> {
+    pub fn lex(source: UBox<[u8]>, file_index: u32) -> Result<LoTokens, LoError> {
         let mut lexer = Lexer {
             file_index,
-            chars: chars.chars().collect::<Vec<_>>(),
-            index: 0,
-            line: 1,
-            col: 1,
+            source,
+
+            source_pos: LoPosition {
+                offset: 0,
+                line: 1,
+                col: 1,
+            },
+
             was_newline: false,
             comments: Vec::new(),
             backslashes: Vec::new(),
@@ -85,7 +92,7 @@ impl Lexer {
 
         self.skip_space();
 
-        while self.index < self.chars.len() {
+        while self.source_pos.offset < self.source.len() {
             tokens.push(self.lex_token()?);
             self.skip_space();
         }
@@ -117,7 +124,7 @@ impl Lexer {
         }
 
         Err(LoError {
-            message: format!("Unexpected char: {char}"),
+            message: format!("Unexpected char: {}", char),
             loc: self.loc(),
         })
     }
@@ -129,11 +136,10 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.end_pos = self.pos();
+        loc.end_pos = self.source_pos.clone();
 
         Ok(LoToken {
             type_: LoTokenType::Symbol,
-            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
     }
@@ -169,11 +175,10 @@ impl Lexer {
         }
         self.next_char(); // skip end quote
 
-        loc.end_pos = self.pos();
+        loc.end_pos = self.source_pos.clone();
 
         Ok(LoToken {
             type_: LoTokenType::CharLiteral,
-            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
     }
@@ -192,14 +197,14 @@ impl Lexer {
     fn lex_int_literal(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
 
-        let hex = match (self.current_char(), self.peek_next_char()) {
-            (Ok('0'), Ok('x')) => {
+        let mut hex = false;
+        if let Ok('0') = self.current_char() {
+            if let Ok('x') = self.peek_next_char() {
                 self.next_char();
                 self.next_char();
-                true
+                hex = true;
             }
-            _ => false,
-        };
+        }
 
         loop {
             match self.current_char() {
@@ -210,11 +215,10 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.end_pos = self.pos();
+        loc.end_pos = self.source_pos.clone();
 
         Ok(LoToken {
             type_: LoTokenType::IntLiteral,
-            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
     }
@@ -256,11 +260,10 @@ impl Lexer {
 
         self.next_char(); // skip end quote
 
-        loc.end_pos = self.pos();
+        loc.end_pos = self.source_pos.clone();
 
         Ok(LoToken {
             type_: LoTokenType::StringLiteral,
-            value: self.chars[loc.pos.offset..self.index].iter().collect(),
             loc,
         })
     }
@@ -302,11 +305,10 @@ impl Lexer {
 
         self.next_char(); // skip delimiter char
 
-        loc.end_pos = self.pos();
+        loc.end_pos = self.source_pos.clone();
 
         Ok(LoToken {
             type_: LoTokenType::Delim,
-            value: self.chars[loc.pos.offset].into(),
             loc,
         })
     }
@@ -349,11 +351,10 @@ impl Lexer {
             });
         };
 
-        loc.end_pos = self.pos();
+        loc.end_pos = self.source_pos.clone();
 
         Ok(LoToken {
             type_: LoTokenType::Operator,
-            value,
             loc,
         })
     }
@@ -394,65 +395,69 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.end_pos = self.pos();
+        loc.end_pos = self.source_pos.clone();
 
-        Comment {
-            content: self.chars[loc.pos.offset..self.index].iter().collect(),
-            loc,
-        }
+        Comment { loc }
     }
 
     fn next_char(&mut self) {
-        self.index += 1;
+        let _ = next_utf8_char(&self.source, &mut self.source_pos.offset);
 
         let Ok(char) = self.current_char() else {
             return;
         };
 
-        self.col += 1;
+        self.source_pos.col += 1;
 
         if char == '\n' {
             // NOTE(edge case): when first character is encountered
             //  was_newline is not true but rather undefined,
             //  thus we don't bump the line count
-            if self.index == 0 || self.was_newline {
-                self.line += 1;
+            if self.source_pos.offset == 0 || self.was_newline {
+                self.source_pos.line += 1;
             }
             self.was_newline = true;
             return;
         }
 
         if self.was_newline {
-            self.line += 1;
-            self.col = 1;
+            self.source_pos.line += 1;
+            self.source_pos.col = 1;
             self.was_newline = false;
-            return;
         }
     }
 
     fn current_char(&mut self) -> Result<char, LoError> {
-        self.chars
-            .get(self.index)
-            .copied()
-            .ok_or_else(|| self.err_unexpected_eof())
+        let mut char_offset = self.source_pos.offset;
+        next_utf8_char(&self.source, &mut char_offset).map_err(|err| match err {
+            NextCharError::InvalidUtf8 => LoError {
+                message: format!("ParseError: Invalid UTF-8 sequence"),
+                loc: self.loc(),
+            },
+            NextCharError::EndOfSource => LoError {
+                message: format!("ParseError: Unexpected EOF"),
+                loc: self.loc(),
+            },
+        })
     }
 
     fn peek_next_char(&mut self) -> Result<char, LoError> {
-        self.chars
-            .get(self.index + 1)
-            .copied()
-            .ok_or_else(|| self.err_unexpected_eof())
-    }
-
-    fn err_unexpected_eof(&self) -> LoError {
-        LoError {
-            message: format!("ParseError: Unexpected EOF"),
-            loc: self.loc(),
-        }
+        let mut char_offset = self.source_pos.offset;
+        let _ = next_utf8_char(&self.source, &mut char_offset);
+        next_utf8_char(&self.source, &mut char_offset).map_err(|err| match err {
+            NextCharError::InvalidUtf8 => LoError {
+                message: format!("ParseError: Invalid UTF-8 sequence"),
+                loc: self.loc(),
+            },
+            NextCharError::EndOfSource => LoError {
+                message: format!("ParseError: Unexpected EOF"),
+                loc: self.loc(),
+            },
+        })
     }
 
     fn loc(&self) -> LoLocation {
-        let pos = self.pos();
+        let pos = self.source_pos.clone();
 
         let mut end_pos = pos.clone();
         end_pos.col += 1;
@@ -461,14 +466,6 @@ impl Lexer {
             file_index: self.file_index,
             pos,
             end_pos,
-        }
-    }
-
-    fn pos(&self) -> LoPosition {
-        LoPosition {
-            offset: self.index,
-            line: self.line,
-            col: self.col,
         }
     }
 }
@@ -622,10 +619,10 @@ pub struct InfixOp {
 }
 
 impl InfixOp {
-    pub fn parse(token: LoToken) -> Option<Self> {
+    pub fn parse(token: LoToken, source: UBox<[u8]>) -> Option<Self> {
         use InfixOpTag::*;
         use OpAssoc::*;
-        let (tag, info) = match token.value.as_str() {
+        let (tag, info) = match token.get_value(source) {
             "catch" => (Catch, OpInfo { bp: 13, assoc: L }),
 
             "." => (FieldAccess, OpInfo { bp: 12, assoc: L }),
@@ -706,10 +703,10 @@ pub struct PrefixOp {
 }
 
 impl PrefixOp {
-    pub fn parse(token: LoToken) -> Option<Self> {
+    pub fn parse(token: LoToken, source: UBox<[u8]>) -> Option<Self> {
         use OpAssoc::*;
         use PrefixOpTag::*;
-        let (tag, info) = match token.value.as_str() {
+        let (tag, info) = match token.get_value(source) {
             "!" => (Not, OpInfo { bp: 8, assoc: L }),
             "*" => (Dereference, OpInfo { bp: 8, assoc: L }),
             "+" => (Positive, OpInfo { bp: 9, assoc: L }),
@@ -739,4 +736,64 @@ impl OpInfo {
             self.bp
         }
     }
+}
+
+#[derive(Debug)]
+pub enum NextCharError {
+    EndOfSource,
+    InvalidUtf8,
+}
+
+pub fn next_utf8_char(source: &[u8], offset: &mut usize) -> Result<char, NextCharError> {
+    if *offset >= source.len() {
+        return Err(NextCharError::EndOfSource);
+    }
+
+    let first = source[*offset];
+    let width: usize;
+    let min: u32;
+    let mut code: u32;
+
+    // determine sequence length and minimum valid code point
+    if first <= 0x7F {
+        width = 1;
+        min = 0;
+        code = first as u32;
+    } else if first >= 0xC2 && first <= 0xDF {
+        width = 2;
+        min = 0x80;
+        code = (first & 0x1F) as u32;
+    } else if first >= 0xE0 && first <= 0xEF {
+        width = 3;
+        min = 0x800;
+        code = (first & 0x0F) as u32;
+    } else if first >= 0xF0 && first <= 0xF4 {
+        width = 4;
+        min = 0x10000;
+        code = (first & 0x07) as u32;
+    } else {
+        return Err(NextCharError::InvalidUtf8);
+    }
+
+    if *offset + width > source.len() {
+        return Err(NextCharError::EndOfSource);
+    }
+
+    // process continuation bytes
+    for i in 1..width {
+        let b = source[*offset + i];
+        if (b & 0xC0) != 0x80 {
+            return Err(NextCharError::InvalidUtf8);
+        }
+        code = (code << 6) | ((b & 0x3F) as u32);
+    }
+
+    // validate code point
+    if code < min || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF) {
+        return Err(NextCharError::InvalidUtf8);
+    }
+
+    *offset += width;
+
+    Ok(unsafe { char::from_u32_unchecked(code) })
 }

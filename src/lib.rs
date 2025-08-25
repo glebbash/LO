@@ -4,7 +4,7 @@
 extern crate alloc;
 
 mod ast;
-mod codegen;
+mod compiler;
 mod core;
 mod lexer;
 mod lol_alloc;
@@ -34,8 +34,8 @@ mod wasm_target {
     }
 }
 
-use crate::{codegen::*, core::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
-use alloc::{format, rc::Rc, string::String, vec::Vec};
+use crate::{compiler::*, core::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
+use alloc::{format, string::String, vec::Vec};
 
 static USAGE: &str = "Usage:
   lo compile <input.lo>
@@ -70,17 +70,12 @@ pub extern "C" fn _start() {
     }
 
     if command == LoCommand::Format {
-        let mut codegen = CodeGen::new(command);
-        let mut asts = Vec::new();
-
-        codegen.pass_parse_files_rec(&mut asts, file_name, &LoLocation::internal());
-
-        // in format mode `pass_parse_files_rec` only parses a single AST (or none if lexing failed)
-        let Some(ast) = asts.into_iter().next() else {
+        let mut compiler = Compiler::new(command);
+        let Some(module) = compiler.import(file_name, &LoLocation::internal()) else {
             return finalize_and_exit(1);
         };
 
-        Printer::print(Rc::new(ast));
+        Printer::print(UBox::new(&module.ast), module.source);
 
         return finalize_and_exit(0);
     }
@@ -109,29 +104,29 @@ pub extern "C" fn _start() {
         stdout_enable_buffering();
     }
 
-    let mut codegen = CodeGen::new(command);
+    let mut compiler = Compiler::new(command);
+    compiler.import(file_name, &LoLocation::internal());
 
-    let mut asts = Vec::new();
+    // safety: passes won't change size of modules
+    let modules = unsafe_borrow(&compiler.modules);
 
-    codegen.pass_parse_files_rec(&mut asts, file_name, &LoLocation::internal());
-
-    for ast in &asts {
-        codegen.pass_collect_typedefs(ast);
+    for module in modules {
+        compiler.pass_collect_typedefs(&module);
     }
 
-    for ast in &asts {
-        codegen.pass_build_structs(ast);
+    for module in modules {
+        compiler.pass_build_structs(&module);
     }
 
-    for ast in asts {
-        codegen.pass_main(ast);
+    for module in modules {
+        compiler.pass_main(&module);
     }
 
     let mut wasm_module = WasmModule::default();
-    codegen.generate(&mut wasm_module);
+    compiler.generate(&mut wasm_module);
 
-    codegen.end_inspection();
-    if *codegen.error_count.borrow() > 0 {
+    compiler.end_inspection();
+    if *compiler.error_count.borrow() > 0 {
         return finalize_and_exit(1);
     }
 

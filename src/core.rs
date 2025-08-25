@@ -1,6 +1,6 @@
 use crate::wasi;
 use alloc::{fmt, format, string::String, vec, vec::Vec};
-use core::{cell::RefCell, default, ffi::CStr, str};
+use core::{cell::RefCell, ffi::CStr, ops::Deref, str};
 
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum LoCommand {
@@ -12,7 +12,7 @@ pub enum LoCommand {
     Wasi,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct LoError {
     pub message: String,
     pub loc: LoLocation,
@@ -30,7 +30,7 @@ macro_rules! lo_todo {
 
 impl LoError {
     pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
-        self.loc.format(out, &fm)?;
+        self.loc.format(out, fm)?;
         write!(out, " - {}", self.message)
     }
 
@@ -70,6 +70,12 @@ impl LoLocation {
                 col: 1,
             },
         }
+    }
+
+    pub fn read_span<'a>(&self, source: UBox<[u8]>) -> &'a str {
+        return unsafe {
+            str::from_utf8_unchecked(&unsafe_borrow(&source)[self.pos.offset..self.end_pos.offset])
+        };
     }
 
     pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
@@ -367,67 +373,70 @@ impl<'a> core::fmt::Display for RangeDisplay<'a> {
 #[derive(Debug)]
 struct FileInfo {
     index: u32,
-    path: String,
-    contents: String,
+    absolute_path: String,
+    source: String,
 }
 
+#[derive(Default)]
 pub struct FileManager {
     files: Vec<FileInfo>,
 }
 
-impl default::Default for FileManager {
-    fn default() -> Self {
-        let mut files = Vec::new();
-        files.push(FileInfo {
-            index: 0,
-            path: String::from("<internal>"),
-            contents: String::from(""),
-        });
-        Self { files }
-    }
+pub struct IncludedFile {
+    pub index: u32,
+    pub is_newly_added: bool,
 }
 
 impl FileManager {
     pub fn include_file(
         &mut self,
-        file_name: &str,
-        is_newly_added: Option<&mut bool>,
+        relative_path: &str,
         loc: &LoLocation,
-    ) -> Result<u32, LoError> {
+    ) -> Result<IncludedFile, LoError> {
         let parent_path = self.get_file_path(loc.file_index);
-        let absolute_file_path = resolve_path(file_name, parent_path);
+        let absolute_path = resolve_path(relative_path, parent_path);
 
-        for parsed_file in &self.files {
-            if parsed_file.path == absolute_file_path {
-                return Ok(parsed_file.index);
+        for file in &self.files {
+            if file.absolute_path == absolute_path {
+                return Ok(IncludedFile {
+                    index: file.index,
+                    is_newly_added: false,
+                });
             }
         }
 
-        let file_contents = file_read_utf8(&absolute_file_path).map_err(|message| LoError {
+        let file_contents = file_read_utf8(&absolute_path).map_err(|message| LoError {
             message,
             loc: loc.clone(),
         })?;
 
-        let file_index = self.files.len() as u32;
+        let file_index = self.files.len() as u32 + 1;
         self.files.push(FileInfo {
             index: file_index,
-            path: absolute_file_path.into(),
-            contents: file_contents,
+            absolute_path: absolute_path.into(),
+            source: file_contents,
         });
 
-        if let Some(is_newly_added) = is_newly_added {
-            *is_newly_added = true;
-        }
-
-        Ok(file_index)
+        Ok(IncludedFile {
+            index: file_index,
+            is_newly_added: true,
+        })
     }
 
     pub fn get_file_path(&self, file_index: u32) -> &str {
-        &self.files[file_index as usize].path
+        if file_index == 0 {
+            return "<internal>";
+        }
+
+        &self.files[file_index as usize - 1].absolute_path
     }
 
-    pub fn get_file_contents(&self, file_index: u32) -> &str {
-        &self.files[file_index as usize].contents
+    pub fn get_file_source(&self, file_index: u32) -> &str {
+        if file_index == 0 {
+            return "";
+        }
+
+        &self.files[file_index as usize - 1].source
     }
 }
 
@@ -475,6 +484,34 @@ macro_rules! catch {
 }
 pub(crate) use catch;
 
-pub fn unsafe_borrow<T>(x: &T) -> &'static T {
+pub fn unsafe_borrow<T: ?Sized>(x: &T) -> &'static T {
     unsafe { &*(x as *const T) }
+}
+
+// unsafe box
+pub struct UBox<T: ?Sized> {
+    value: *const T,
+}
+
+impl<T: ?Sized> UBox<T> {
+    pub fn new(value: &T) -> Self {
+        return Self {
+            value: value as *const T,
+        };
+    }
+}
+
+impl<T: ?Sized> Deref for UBox<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        return unsafe { &*self.value };
+    }
+}
+
+impl<T: ?Sized> Copy for UBox<T> {}
+impl<T: ?Sized> Clone for UBox<T> {
+    fn clone(&self) -> Self {
+        Self { value: self.value }
+    }
 }

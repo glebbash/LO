@@ -1,11 +1,14 @@
-use crate::{core::LoLocation, lexer::*};
+use crate::{
+    core::{LoLocation, UBox},
+    lexer::*,
+};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 pub trait Locatable {
     fn loc(&self) -> &LoLocation;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AST {
     pub exprs: Vec<TopLevelExpr>,
     pub comments: Vec<Comment>,
@@ -127,7 +130,7 @@ pub struct ConstDefExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryDefExpr {
     pub exported: bool,
     pub min_pages: Option<u32>,
@@ -408,6 +411,7 @@ pub struct WithExpr {
 #[derive(Debug)]
 pub struct DbgExpr {
     pub message: EscapedString,
+    pub message_unescaped: String, // TODO: look for better options
     pub loc: LoLocation,
 }
 
@@ -593,10 +597,14 @@ impl Locatable for CodeExpr {
 }
 
 #[derive(Debug, Clone)]
-pub struct EscapedString(pub String);
+pub struct EscapedString(pub LoLocation);
 
 impl EscapedString {
-    pub fn unescape(&self) -> String {
-        Lexer::unescape_string(&self.0)
+    pub fn get_raw(&self, source: UBox<[u8]>) -> &str {
+        return self.0.read_span(source);
+    }
+
+    pub fn unescape(&self, source: UBox<[u8]>) -> String {
+        Lexer::unescape_string(self.get_raw(source))
     }
 }

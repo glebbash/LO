@@ -1,8 +1,9 @@
 use crate::{ast::*, core::*};
-use alloc::{rc::Rc, string::ToString, vec::Vec};
+use alloc::{string::ToString, vec::Vec};
 
 pub struct Printer {
-    ast: Rc<AST>,
+    ast: UBox<AST>,
+    source: UBox<[u8]>,
     indent: usize,
     comments_printed: usize,
     backslashes_printed: usize,
@@ -12,9 +13,10 @@ pub struct Printer {
 }
 
 impl Printer {
-    pub fn print(ast: Rc<AST>) {
+    pub fn print(ast: UBox<AST>, source: UBox<[u8]>) {
         let mut printer = Printer {
             ast,
+            source,
             indent: 0,
             comments_printed: 0,
             backslashes_printed: 0,
@@ -61,7 +63,7 @@ impl Printer {
             }
             TopLevelExpr::Include(IncludeExpr { file_path, loc: _ }) => {
                 stdout_write("include ");
-                stdout_write(&file_path.0);
+                stdout_write(file_path.get_raw(self.source));
                 stdout_writeln("");
             }
             TopLevelExpr::Import(ImportExpr {
@@ -70,7 +72,7 @@ impl Printer {
                 loc,
             }) => {
                 stdout_write("import from ");
-                stdout_write(&module_name.0);
+                stdout_write(module_name.get_raw(self.source));
                 stdout_write(" {\n");
                 self.indent += 1;
 
@@ -171,7 +173,7 @@ impl Printer {
                 stdout_write(" = ");
                 match data {
                     StaticDataStorePayload::String { value } => {
-                        stdout_write(&value.0);
+                        stdout_write(value.get_raw(self.source));
                     }
                 }
                 stdout_writeln("");
@@ -184,7 +186,7 @@ impl Printer {
                 stdout_write("export existing fn ");
                 stdout_write(&in_fn_name.repr);
                 stdout_write(" as ");
-                stdout_write(&out_fn_name.0);
+                stdout_write(out_fn_name.get_raw(self.source));
                 stdout_writeln("");
             }
             TopLevelExpr::MacroDef(MacroDefExpr {
@@ -558,9 +560,13 @@ impl Printer {
             CodeExpr::Unreachable(UnreachableExpr { loc: _ }) => {
                 stdout_write("unreachable");
             }
-            CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
+            CodeExpr::Dbg(DbgExpr {
+                message,
+                message_unescaped: _,
+                loc: _,
+            }) => {
                 stdout_write("dbg ");
-                stdout_write(&message.0);
+                stdout_write(message.get_raw(self.source));
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 stdout_write("defer ");
@@ -787,7 +793,7 @@ impl Printer {
             self.last_printed_item_line = comment.loc.end_pos.line;
 
             self.print_indent();
-            stdout_writeln(&comment.content);
+            stdout_writeln(&comment.loc.read_span(self.source));
             self.comments_printed += 1;
         }
 

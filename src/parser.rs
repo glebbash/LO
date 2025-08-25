@@ -1,21 +1,31 @@
 use crate::{ast::*, core::*, lexer::*};
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::cell::RefCell;
 use LoTokenType::*;
 
 pub struct Parser {
+    // context
+    pub source: UBox<[u8]>,
     pub tokens: Vec<LoToken>,
-    pub tokens_processed: usize,
     pub terminal_token: LoToken,
+
+    // state
+    pub tokens_processed: RefCell<usize>,
 }
 
 impl Parser {
-    pub fn parse(tokens: LoTokens) -> Result<AST, LoError> {
-        let mut parser = Parser {
+    pub fn parse(source: UBox<[u8]>, tokens: LoTokens) -> Result<AST, LoError> {
+        let parser = Parser {
+            source,
             tokens: tokens.tokens,
-            tokens_processed: 0,
+            tokens_processed: RefCell::new(0),
             terminal_token: LoToken {
                 type_: LoTokenType::Terminal,
-                value: "<EOF>".into(),
                 loc: tokens.end_loc,
             },
         };
@@ -31,7 +41,7 @@ impl Parser {
         Ok(ast)
     }
 
-    fn parse_file(&mut self, ast: &mut AST) -> Result<(), LoError> {
+    fn parse_file(&self, ast: &mut AST) -> Result<(), LoError> {
         while self.peek().is_some() {
             let expr = self.parse_top_level_expr()?;
             ast.exprs.push(expr);
@@ -41,7 +51,7 @@ impl Parser {
             return Err(LoError {
                 message: format!(
                     "Unexpected top level token: {}, EOF expected",
-                    unexpected.value
+                    unexpected.get_value(self.source)
                 ),
                 loc: unexpected.loc.clone(),
             });
@@ -50,7 +60,7 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_top_level_expr(&mut self) -> Result<TopLevelExpr, LoError> {
+    fn parse_top_level_expr(&self) -> Result<TopLevelExpr, LoError> {
         if let Some(_) = self.eat(Symbol, "export")? {
             let loc = self.prev().loc.clone();
 
@@ -76,14 +86,17 @@ impl Parser {
 
                 return Ok(TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
                     in_fn_name,
-                    out_fn_name: EscapedString(out_fn_name.value),
+                    out_fn_name: EscapedString(out_fn_name.loc),
                     loc,
                 }));
             }
 
             let unexpected = self.current();
             return Err(LoError {
-                message: format!("Unexpected exportable: {:?}", unexpected.value),
+                message: format!(
+                    "Unexpected exportable: {:?}",
+                    unexpected.get_value(self.source)
+                ),
                 loc: unexpected.loc.clone(),
             });
         }
@@ -110,7 +123,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::Include(IncludeExpr {
-                file_path: EscapedString(file_path.value),
+                file_path: EscapedString(file_path.loc),
                 loc,
             }));
         }
@@ -132,7 +145,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos.clone();
 
             return Ok(TopLevelExpr::Import(ImportExpr {
-                module_name: EscapedString(module_name.value),
+                module_name: EscapedString(module_name.loc),
                 items,
                 loc,
             }));
@@ -185,7 +198,7 @@ impl Parser {
                     loc: field_loc,
                 });
 
-                if !self.current().is(Delim, "}") {
+                if !self.current().is(Delim, "}", self.source) {
                     self.expect(Delim, ",")?;
                 }
             }
@@ -244,7 +257,7 @@ impl Parser {
             return Ok(TopLevelExpr::StaticDataStore(StaticDataStoreExpr {
                 addr,
                 data: StaticDataStorePayload::String {
-                    value: EscapedString(chars.value),
+                    value: EscapedString(chars.loc),
                 },
                 loc,
             }));
@@ -260,9 +273,9 @@ impl Parser {
             if let Some(_) = self.eat(Operator, "<")? {
                 while let None = self.eat(Operator, ">")? {
                     let type_param = self.expect_any(Symbol)?;
-                    macro_type_params.push(type_param.value.clone());
+                    macro_type_params.push(type_param.get_value(self.source).to_string());
 
-                    if !self.current().is(Operator, ">") {
+                    if !self.current().is(Operator, ">", self.source) {
                         self.expect(Delim, ",")?;
                     }
                 }
@@ -292,12 +305,15 @@ impl Parser {
 
         let unexpected = self.current();
         return Err(LoError {
-            message: format!("Unexpected top level token: {}", unexpected.value),
+            message: format!(
+                "Unexpected top level token: {}",
+                unexpected.get_value(self.source)
+            ),
             loc: unexpected.loc.clone(),
         });
     }
 
-    fn parse_fn_def(&mut self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
+    fn parse_fn_def(&self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
         let decl = self.parse_fn_decl()?;
         let body = self.parse_code_block_expr()?;
 
@@ -312,7 +328,7 @@ impl Parser {
     }
 
     fn parse_memory_def(
-        &mut self,
+        &self,
         exported: bool,
         mut loc: LoLocation,
     ) -> Result<MemoryDefExpr, LoError> {
@@ -322,7 +338,7 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "min_pages")? {
             self.expect(Operator, ":")?;
             let int = self.expect_any(IntLiteral)?;
-            let int_value = Lexer::parse_int_literal_value(&int.value) as u32;
+            let int_value = Lexer::parse_int_literal_value(&int.get_value(self.source)) as u32;
             self.expect(Delim, ",")?;
 
             min_pages = Some(int_value);
@@ -332,7 +348,7 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "data_start")? {
             self.expect(Operator, ":")?;
             let int = self.expect_any(IntLiteral)?;
-            let int_value = Lexer::parse_int_literal_value(&int.value) as u32;
+            let int_value = Lexer::parse_int_literal_value(&int.get_value(self.source)) as u32;
             self.eat(Delim, ",")?;
 
             data_start = Some(int_value);
@@ -349,7 +365,7 @@ impl Parser {
         })
     }
 
-    fn parse_importable(&mut self) -> Result<ImportItem, LoError> {
+    fn parse_importable(&self) -> Result<ImportItem, LoError> {
         if let Some(_) = self.eat(Symbol, "fn")? {
             let decl = self.parse_fn_decl()?;
             return Ok(ImportItem::FnDecl(decl));
@@ -365,13 +381,13 @@ impl Parser {
         return Err(LoError {
             message: format!(
                 "Unexpected token in importable item: {:?}",
-                unexpected.value
+                unexpected.get_value(self.source)
             ),
             loc: unexpected.loc.clone(),
         });
     }
 
-    fn parse_fn_decl(&mut self) -> Result<FnDeclExpr, LoError> {
+    fn parse_fn_decl(&self) -> Result<FnDeclExpr, LoError> {
         let mut loc = self.prev().loc.clone();
 
         let fn_name = self.parse_ident()?;
@@ -393,7 +409,7 @@ impl Parser {
         })
     }
 
-    fn parse_fn_params(&mut self, infer_allowed: bool) -> Result<Vec<FnParam>, LoError> {
+    fn parse_fn_params(&self, infer_allowed: bool) -> Result<Vec<FnParam>, LoError> {
         let mut params = Vec::<FnParam>::new();
 
         let _ = self.expect(Delim, "(")?;
@@ -430,7 +446,7 @@ impl Parser {
 
                     let infer_as = self.expect_any(Symbol)?;
                     param_type = FnParamType::Infer {
-                        name: infer_as.value.clone(),
+                        name: infer_as.get_value(self.source).to_string(),
                     };
                 } else {
                     param_type = FnParamType::Type {
@@ -441,7 +457,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
-            if !self.current().is(Delim, ")") {
+            if !self.current().is(Delim, ")", self.source) {
                 self.expect(Delim, ",")?;
             }
 
@@ -455,7 +471,7 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_type_expr(&mut self) -> Result<TypeExpr, LoError> {
+    fn parse_type_expr(&self) -> Result<TypeExpr, LoError> {
         let mut loc = self.current().loc.clone();
         let primary = self.parse_type_expr_primary()?;
 
@@ -473,7 +489,7 @@ impl Parser {
         return Ok(primary);
     }
 
-    fn parse_type_expr_primary(&mut self) -> Result<TypeExpr, LoError> {
+    fn parse_type_expr_primary(&self) -> Result<TypeExpr, LoError> {
         let mut loc = self.current().loc.clone();
 
         if let Some(_) = self.eat(Operator, "&")? {
@@ -523,7 +539,7 @@ impl Parser {
         return Ok(TypeExpr::Named(TypeExprNamed { name: ident }));
     }
 
-    fn parse_code_block_expr(&mut self) -> Result<CodeBlockExpr, LoError> {
+    fn parse_code_block_expr(&self) -> Result<CodeBlockExpr, LoError> {
         self.expect(Delim, "{")?;
 
         let mut code_block = CodeBlockExpr {
@@ -542,7 +558,7 @@ impl Parser {
         return Ok(code_block);
     }
 
-    fn parse_code_expr(&mut self, min_bp: u32) -> Result<CodeExpr, LoError> {
+    fn parse_code_expr(&self, min_bp: u32) -> Result<CodeExpr, LoError> {
         let mut primary = self.parse_code_expr_primary()?;
 
         while self.peek().is_some() {
@@ -550,7 +566,7 @@ impl Parser {
             if op_symbol.loc.end_pos.line != primary.loc().end_pos.line {
                 break;
             }
-            let Some(op) = InfixOp::parse(op_symbol) else {
+            let Some(op) = InfixOp::parse(op_symbol, self.source) else {
                 break;
             };
 
@@ -565,7 +581,7 @@ impl Parser {
         Ok(primary)
     }
 
-    fn parse_code_expr_primary(&mut self) -> Result<CodeExpr, LoError> {
+    fn parse_code_expr_primary(&self) -> Result<CodeExpr, LoError> {
         if let Some(_) = self.eat(Symbol, "return")? {
             let mut loc = self.prev().loc.clone();
 
@@ -586,7 +602,7 @@ impl Parser {
             let then_block = Box::new(self.parse_code_block_expr()?);
             let mut else_block = ElseBlock::None;
             if let Some(_) = self.eat(Symbol, "else")? {
-                if self.current().is(Symbol, "if") {
+                if self.current().is(Symbol, "if", self.source) {
                     let if_expr = self.parse_code_expr(0)?;
                     else_block = ElseBlock::ElseIf(Box::new(if_expr));
                 } else {
@@ -619,8 +635,8 @@ impl Parser {
 
         if let Some(char) = self.eat_any(CharLiteral)?.cloned() {
             return Ok(CodeExpr::CharLiteral(CharLiteralExpr {
-                repr: char.value.clone(),
-                value: Lexer::parse_char_literal_value(&char.value) as u32,
+                repr: char.get_value(self.source).to_string(),
+                value: Lexer::parse_char_literal_value(&char.get_value(self.source)) as u32,
                 loc: char.loc.clone(),
             }));
         };
@@ -632,8 +648,8 @@ impl Parser {
             }
 
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
-                repr: int.value.clone(),
-                value: Lexer::parse_int_literal_value(&int.value) as u32,
+                repr: int.get_value(self.source).to_string(),
+                value: Lexer::parse_int_literal_value(&int.get_value(self.source)) as u32,
                 tag,
                 loc: int.loc.clone(),
             }));
@@ -646,8 +662,8 @@ impl Parser {
             }
 
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                value: Lexer::unescape_string(&string.value),
-                repr: string.value,
+                value: Lexer::unescape_string(&string.get_value(self.source)),
+                repr: string.get_value(self.source).to_string(),
                 zero_terminated,
                 loc: string.loc,
             }));
@@ -752,8 +768,10 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos.clone();
 
+            let message = EscapedString(message.loc);
             return Ok(CodeExpr::Dbg(DbgExpr {
-                message: EscapedString(message.value),
+                message_unescaped: message.unescape(self.source),
+                message,
                 loc,
             }));
         }
@@ -778,7 +796,7 @@ impl Parser {
         }
 
         if let Some(token) = self.peek().cloned() {
-            if let Some(op) = PrefixOp::parse(token) {
+            if let Some(op) = PrefixOp::parse(token, self.source) {
                 self.next(); // skip operator
 
                 let mut loc = self.prev().loc.clone();
@@ -827,7 +845,7 @@ impl Parser {
                 let item = self.parse_code_expr(0)?;
                 items.push(item);
 
-                if !self.current().is(Delim, "]") {
+                if !self.current().is(Delim, "]", self.source) {
                     self.expect(Delim, ",")?;
                 }
             }
@@ -881,7 +899,7 @@ impl Parser {
             }));
         }
 
-        if self.current().is(Delim, "(") {
+        if self.current().is(Delim, "(", self.source) {
             let mut loc = ident.loc.clone();
 
             let args = self.parse_fn_args()?;
@@ -936,7 +954,7 @@ impl Parser {
         Ok(CodeExpr::Ident(ident))
     }
 
-    fn parse_ident(&mut self) -> Result<IdentExpr, LoError> {
+    fn parse_ident(&self) -> Result<IdentExpr, LoError> {
         let mut ident = IdentExpr {
             repr: String::new(),
             parts: Vec::new(),
@@ -945,8 +963,10 @@ impl Parser {
 
         loop {
             let ident_part = self.expect_any(Symbol)?;
-            ident.parts.push(ident_part.value.clone());
-            ident.repr += ident_part.value.as_str();
+            ident
+                .parts
+                .push(ident_part.get_value(self.source).to_string());
+            ident.repr += ident_part.get_value(self.source);
 
             if let Ok(Some(_)) = self.eat(Operator, "::") {
                 ident.repr += "::";
@@ -962,7 +982,7 @@ impl Parser {
     }
 
     fn parse_struct_literal(
-        &mut self,
+        &self,
         ident: IdentExpr,
         mut loc: LoLocation,
     ) -> Result<StructLiteralExpr, LoError> {
@@ -982,12 +1002,12 @@ impl Parser {
             field_loc.end_pos = self.prev().loc.end_pos.clone();
 
             fields.push(StructLiteralField {
-                field_name: field_name.value,
+                field_name: field_name.get_value(self.source).to_string(),
                 value,
                 loc: field_loc,
             });
 
-            if !self.current().is(Delim, "}") {
+            if !self.current().is(Delim, "}", self.source) {
                 self.expect(Delim, ",")?;
                 has_trailing_comma = true;
             }
@@ -1003,13 +1023,13 @@ impl Parser {
         });
     }
 
-    fn parse_fn_args(&mut self) -> Result<Vec<CodeExpr>, LoError> {
+    fn parse_fn_args(&self) -> Result<Vec<CodeExpr>, LoError> {
         let mut args = Vec::new();
         self.expect(Delim, "(")?;
         while let None = self.eat(Delim, ")")? {
             args.push(self.parse_code_expr(0)?);
 
-            if !self.current().is(Delim, ")") {
+            if !self.current().is(Delim, ")", self.source) {
                 self.expect(Delim, ",")?;
             }
         }
@@ -1017,7 +1037,7 @@ impl Parser {
         return Ok(args);
     }
 
-    fn parse_macro_type_args(&mut self) -> Result<Vec<TypeExpr>, LoError> {
+    fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, LoError> {
         let mut type_args = Vec::new();
 
         let Some(_) = self.eat(Operator, "<")? else {
@@ -1027,7 +1047,7 @@ impl Parser {
         while let None = self.eat(Operator, ">")? {
             type_args.push(self.parse_type_expr()?);
 
-            if !self.current().is(Operator, ">") {
+            if !self.current().is(Operator, ">", self.source) {
                 self.expect(Delim, ",")?;
             }
         }
@@ -1035,11 +1055,7 @@ impl Parser {
         return Ok(type_args);
     }
 
-    fn parse_code_expr_postfix(
-        &mut self,
-        primary: CodeExpr,
-        op: InfixOp,
-    ) -> Result<CodeExpr, LoError> {
+    fn parse_code_expr_postfix(&self, primary: CodeExpr, op: InfixOp) -> Result<CodeExpr, LoError> {
         let min_bp = op.info.get_min_bp_for_next();
 
         match op.tag {
@@ -1101,7 +1117,7 @@ impl Parser {
 
                 let field_name = self.parse_ident()?;
 
-                if self.current().is(Delim, "(") {
+                if self.current().is(Delim, "(", self.source) {
                     let args = self.parse_fn_args()?;
 
                     loc.end_pos = self.prev().loc.end_pos.clone();
@@ -1180,33 +1196,39 @@ impl Parser {
 
     // utils
 
-    fn expect_any(&mut self, type_: LoTokenType) -> Result<&LoToken, LoError> {
+    fn expect_any(&self, type_: LoTokenType) -> Result<&LoToken, LoError> {
         match self.peek() {
             Some(token) if token.is_any(type_) => Ok(self.next().unwrap()),
             other => {
                 let unexpected = other.unwrap_or(&self.terminal_token);
                 Err(LoError {
-                    message: format!("Unexpected token '{}', wanted {type_:?}", unexpected.value),
+                    message: format!(
+                        "Unexpected token '{}', wanted {type_:?}",
+                        unexpected.get_value(self.source)
+                    ),
                     loc: unexpected.loc.clone(),
                 })
             }
         }
     }
 
-    fn expect(&mut self, type_: LoTokenType, value: &str) -> Result<&LoToken, LoError> {
+    fn expect(&self, type_: LoTokenType, value: &str) -> Result<&LoToken, LoError> {
         match self.peek() {
-            Some(token) if token.is(type_, value) => Ok(self.next().unwrap()),
+            Some(token) if token.is(type_, value, self.source) => Ok(self.next().unwrap()),
             other => {
                 let unexpected = other.unwrap_or(&self.terminal_token);
                 Err(LoError {
-                    message: format!("Unexpected token '{}', wanted '{value}'", unexpected.value),
+                    message: format!(
+                        "Unexpected token '{}', wanted '{value}'",
+                        unexpected.get_value(self.source)
+                    ),
                     loc: unexpected.loc.clone(),
                 })
             }
         }
     }
 
-    fn eat_any(&mut self, type_: LoTokenType) -> Result<Option<&LoToken>, LoError> {
+    fn eat_any(&self, type_: LoTokenType) -> Result<Option<&LoToken>, LoError> {
         let was_some = self.peek().is_some();
         match self.expect_any(type_) {
             Ok(t) => Ok(Some(t)),
@@ -1215,7 +1237,7 @@ impl Parser {
         }
     }
 
-    fn eat(&mut self, type_: LoTokenType, value: &str) -> Result<Option<&LoToken>, LoError> {
+    fn eat(&self, type_: LoTokenType, value: &str) -> Result<Option<&LoToken>, LoError> {
         let was_some = self.peek().is_some();
         match self.expect(type_, value) {
             Ok(t) => Ok(Some(t)),
@@ -1225,27 +1247,27 @@ impl Parser {
     }
 
     fn peek(&self) -> Option<&LoToken> {
-        self.tokens.get(self.tokens_processed)
+        self.tokens.get(*self.tokens_processed.borrow())
     }
 
-    fn next(&mut self) -> Option<&LoToken> {
-        let token = self.tokens.get(self.tokens_processed);
-        self.tokens_processed += 1;
+    fn next(&self) -> Option<&LoToken> {
+        let token = self.tokens.get(*self.tokens_processed.borrow());
+        *self.tokens_processed.borrow_mut() += 1;
         token
     }
 
-    fn prev(&mut self) -> &LoToken {
+    fn prev(&self) -> &LoToken {
         self.look_ahead(-1)
     }
 
-    fn current(&mut self) -> &LoToken {
+    fn current(&self) -> &LoToken {
         self.look_ahead(0)
     }
 
-    fn look_ahead(&mut self, token_count: isize) -> &LoToken {
+    fn look_ahead(&self, token_count: isize) -> &LoToken {
         if let Some(token) = self
             .tokens
-            .get((self.tokens_processed as isize + token_count) as usize)
+            .get((*self.tokens_processed.borrow() as isize + token_count) as usize)
         {
             &token
         } else {
