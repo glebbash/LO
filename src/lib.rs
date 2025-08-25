@@ -49,7 +49,7 @@ pub extern "C" fn _start() {
     let args = WasiArgs::load().unwrap();
     if args.len() < 3 {
         stderr_writeln(USAGE);
-        return finalize_and_exit(1);
+        proc_exit(1);
     }
 
     let command = args.get(1).unwrap();
@@ -61,21 +61,21 @@ pub extern "C" fn _start() {
     if command == "wasi" {
         let module_bytes = catch!(file_read(file_name), err, {
             stderr_writeln(err);
-            return finalize_and_exit(1);
+            proc_exit(1);
         });
 
         let wasm_module = WasmParser::parse(String::from(file_name), module_bytes);
         let wasm_module = catch!(wasm_module, err, {
             stderr_writeln(err);
-            return finalize_and_exit(1);
+            proc_exit(1);
         });
 
         catch!(WasmEval::eval(wasm_module), err, {
             stderr_writeln(err.message);
-            return finalize_and_exit(1);
+            proc_exit(1);
         });
 
-        return finalize_and_exit(0);
+        return;
     }
 
     let mut compiler = Compiler::new();
@@ -84,12 +84,12 @@ pub extern "C" fn _start() {
         compiler.in_single_file_mode = true;
 
         let Some(module) = compiler.import(file_name, &LoLocation::internal()) else {
-            return finalize_and_exit(1);
+            proc_exit(1);
         };
 
         Printer::print(UBox::new(&module.ast), module.source);
 
-        return finalize_and_exit(0);
+        return;
     }
 
     if command == "inspect" {
@@ -120,34 +120,29 @@ pub extern "C" fn _start() {
         compiler.end_inspection();
 
         if *compiler.error_count.borrow() == 0 {
-            return finalize_and_exit(0);
+            return;
         }
     }
 
     if *compiler.error_count.borrow() > 0 {
-        return finalize_and_exit(1);
+        proc_exit(1);
     }
 
     if command == "compile" {
         let mut binary = Vec::new();
         wasm_module.dump(&mut binary);
         stdout_write(binary.as_slice());
-        return finalize_and_exit(0);
+        return;
     }
 
     if command == "eval" {
         catch!(WasmEval::eval(wasm_module), err, {
             stderr_writeln(err.message);
-            return finalize_and_exit(1);
+            proc_exit(1);
         });
-        return finalize_and_exit(0);
+        return;
     }
 
     stderr_writeln(format!("Unknown command: {command}\n{}", USAGE));
-    return finalize_and_exit(1);
-}
-
-fn finalize_and_exit(exit_code: u32) {
-    stdout_disable_buffering();
-    proc_exit(exit_code);
+    proc_exit(1);
 }

@@ -521,6 +521,7 @@ impl Compiler {
         //   as last inspection ended with a comma
         stdout_writeln("{ \"type\": \"end\" }");
         stdout_writeln("]");
+        stdout_disable_buffering();
     }
 
     pub fn import(&mut self, relative_path: &str, loc: &LoLocation) -> Option<&Module> {
