@@ -396,7 +396,9 @@ pub struct Module {
 
 #[derive(Default)]
 pub struct Compiler {
-    pub command: LoCommand,
+    pub in_inspection_mode: bool,
+    pub in_single_file_mode: bool,
+
     pub fm: FileManager,
     pub modules: Vec<Module>,
     pub error_count: RefCell<u32>,
@@ -423,9 +425,8 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn new(command: LoCommand) -> Self {
+    pub fn new() -> Self {
         let mut self_ = Self::default();
-        self_.command = command;
         self_.type_defs.push(LoTypeDef {
             kind: LoTypeDefKind::Builtin,
             name: String::from("never"),
@@ -505,11 +506,21 @@ impl Compiler {
             loc: LoLocation::internal(),
         });
 
-        if self_.command == LoCommand::Inspect {
-            stdout_writeln("[");
-        }
-
         return self_;
+    }
+
+    pub fn begin_inspection(&mut self) {
+        self.in_inspection_mode = true;
+        stdout_enable_buffering();
+        stdout_writeln("[");
+    }
+
+    pub fn end_inspection(&mut self) {
+        self.in_inspection_mode = false;
+        // this item is a stub to make json array valid
+        //   as last inspection ended with a comma
+        stdout_writeln("{ \"type\": \"end\" }");
+        stdout_writeln("]");
     }
 
     pub fn import(&mut self, relative_path: &str, loc: &LoLocation) -> Option<&Module> {
@@ -518,7 +529,7 @@ impl Compiler {
             return None;
         });
 
-        if self.command == LoCommand::Inspect {
+        if self.in_inspection_mode {
             if file.is_newly_added {
                 let file_index = file.index;
                 let file_path = self.fm.get_file_path(file.index);
@@ -560,7 +571,7 @@ impl Compiler {
             return None;
         });
 
-        if self.command != LoCommand::Format {
+        if !self.in_single_file_mode {
             for expr in &ast.exprs {
                 let TopLevelExpr::Include(include) = expr else {
                     continue;
@@ -578,7 +589,7 @@ impl Compiler {
     pub fn report_error(&self, err: &LoError) {
         *self.error_count.borrow_mut() += 1;
 
-        if self.command == LoCommand::Inspect {
+        if self.in_inspection_mode {
             let source_index = err.loc.file_index;
             let source_range = RangeDisplay(&err.loc);
             let content = json_str_escape(&err.message);
@@ -599,7 +610,7 @@ impl Compiler {
     pub fn report_warning(&self, err: &LoError) {
         *self.warning_count.borrow_mut() += 1;
 
-        if self.command == LoCommand::Inspect {
+        if self.in_inspection_mode {
             let source_index = err.loc.file_index;
             let source_range = RangeDisplay(&err.loc);
             let content = json_str_escape(&err.message);
@@ -983,7 +994,7 @@ impl Compiler {
                         GlobalDefValue::DataSize => LoType::U32,
                     };
 
-                    if self.command == LoCommand::Inspect {
+                    if self.in_inspection_mode {
                         let global_name = &global.global_name.repr;
 
                         self.print_inspection(&InspectInfo {
@@ -1019,7 +1030,7 @@ impl Compiler {
                         continue;
                     });
 
-                    if self.command == LoCommand::Inspect {
+                    if self.in_inspection_mode {
                         let const_name = &const_def.const_name.repr;
                         let const_type = &code_unit.lo_type;
 
@@ -1274,15 +1285,6 @@ impl Compiler {
         }
 
         wasm_module.types.append(&mut self.wasm_types.borrow_mut());
-    }
-
-    pub fn end_inspection(&self) {
-        if self.command == LoCommand::Inspect {
-            // this node is a stub to make json array valid
-            //   as last inspection ended with a comma
-            stdout_writeln("{ \"type\": \"end\" }");
-            stdout_writeln("]");
-        }
     }
 
     fn codegen_code_block(
@@ -1703,7 +1705,7 @@ impl Compiler {
 
             CodeExpr::Ident(ident) => {
                 if let Some(const_def) = self.get_const(ctx, &ident.repr) {
-                    if self.command == LoCommand::Inspect {
+                    if self.in_inspection_mode {
                         self.print_inspection(&InspectInfo {
                             message: format!(
                                 "const {}: {}",
@@ -2408,7 +2410,7 @@ impl Compiler {
             self.codegen(ctx, instrs, arg)?;
         }
 
-        if self.command == LoCommand::Inspect {
+        if self.in_inspection_mode {
             let params = ListDisplay(&lo_fn_info.fn_params);
             let return_type = &lo_fn_info.fn_type.output;
             self.print_inspection(&InspectInfo {
@@ -2610,7 +2612,7 @@ impl Compiler {
             Some(&mut lo_type_args),
         )?;
 
-        if self.command == LoCommand::Inspect {
+        if self.in_inspection_mode {
             let lo_type_args = ListDisplay(&lo_type_args);
 
             let mut macro_args = Vec::new();
@@ -3254,7 +3256,7 @@ impl Compiler {
         loc: LoLocation,
         linked_loc: Option<LoLocation>,
     ) -> LoVariableInfo {
-        let inspect_info = if self.command == LoCommand::Inspect {
+        let inspect_info = if self.in_inspection_mode {
             Some(InspectInfo {
                 message: format!("let {}: {}", local_name, local_type),
                 loc: loc.clone(),
@@ -3290,7 +3292,7 @@ impl Compiler {
             return Ok(LoVariableInfo::Global {
                 global_index: global.global_index,
                 global_type: global.global_type.clone(),
-                inspect_info: if self.command == LoCommand::Inspect {
+                inspect_info: if self.in_inspection_mode {
                     Some(InspectInfo {
                         message: format!("global {}: {}", ident.repr, global.global_type),
                         loc: ident.loc.clone(),
@@ -3317,7 +3319,7 @@ impl Compiler {
 
         let field = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
 
-        let inspect_info = if self.command == LoCommand::Inspect {
+        let inspect_info = if self.in_inspection_mode {
             Some(InspectInfo {
                 message: format!("{}.{}: {}", lhs_type, field.field_name, field.field_type),
                 loc: field_access.field_name.loc.clone(),
@@ -3476,7 +3478,7 @@ impl Compiler {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let LoType::Pointer { pointee } = &addr_type {
-            let inspect_info = if self.command == LoCommand::Inspect {
+            let inspect_info = if self.in_inspection_mode {
                 Some(InspectInfo {
                     message: format!("<deref>: {}", pointee),
                     loc: op_loc.clone(),
@@ -3826,7 +3828,7 @@ impl Compiler {
     }
 
     fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<LoStr, LoError> {
-        if self.memory.is_none() && self.command != LoCommand::Inspect {
+        if self.memory.is_none() && !self.in_inspection_mode {
             return Err(LoError {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: loc.clone(),
@@ -3879,7 +3881,7 @@ impl Compiler {
 
     fn get_type_or_err(&self, type_name: &str, loc: &LoLocation) -> Result<LoType, LoError> {
         if let Some(typedef) = self.get_typedef(type_name) {
-            if self.command == LoCommand::Inspect {
+            if self.in_inspection_mode {
                 match typedef.kind {
                     LoTypeDefKind::Builtin => {
                         self.print_inspection(&InspectInfo {

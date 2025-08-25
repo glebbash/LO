@@ -2,16 +2,6 @@ use crate::wasi;
 use alloc::{fmt, format, string::String, vec, vec::Vec};
 use core::{cell::RefCell, ffi::CStr, ops::Deref, str};
 
-#[derive(Default, PartialEq, Clone, Copy)]
-pub enum LoCommand {
-    #[default]
-    Compile,
-    Inspect,
-    Format,
-    Eval,
-    Wasi,
-}
-
 #[derive(PartialEq, Clone)]
 pub struct LoError {
     pub message: String,

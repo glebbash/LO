@@ -52,35 +52,13 @@ pub extern "C" fn _start() {
         return finalize_and_exit(1);
     }
 
-    let command = match args.get(1).unwrap() {
-        "compile" => LoCommand::Compile,
-        "inspect" => LoCommand::Inspect,
-        "format" => LoCommand::Format,
-        "eval" => LoCommand::Eval,
-        "wasi" => LoCommand::Wasi,
-        unknown_command => {
-            stderr_writeln(format!("Unknown command: {unknown_command}\n{}", USAGE));
-            return finalize_and_exit(1);
-        }
-    };
-
+    let command = args.get(1).unwrap();
     let mut file_name = args.get(2).unwrap();
     if file_name == "-i" {
         file_name = "<stdin>";
     }
 
-    if command == LoCommand::Format {
-        let mut compiler = Compiler::new(command);
-        let Some(module) = compiler.import(file_name, &LoLocation::internal()) else {
-            return finalize_and_exit(1);
-        };
-
-        Printer::print(UBox::new(&module.ast), module.source);
-
-        return finalize_and_exit(0);
-    }
-
-    if command == LoCommand::Wasi {
+    if command == "wasi" {
         let module_bytes = catch!(file_read(file_name), err, {
             stderr_writeln(err);
             return finalize_and_exit(1);
@@ -100,11 +78,24 @@ pub extern "C" fn _start() {
         return finalize_and_exit(0);
     }
 
-    if command == LoCommand::Inspect {
-        stdout_enable_buffering();
+    let mut compiler = Compiler::new();
+
+    if command == "format" {
+        compiler.in_single_file_mode = true;
+
+        let Some(module) = compiler.import(file_name, &LoLocation::internal()) else {
+            return finalize_and_exit(1);
+        };
+
+        Printer::print(UBox::new(&module.ast), module.source);
+
+        return finalize_and_exit(0);
     }
 
-    let mut compiler = Compiler::new(command);
+    if command == "inspect" {
+        compiler.begin_inspection();
+    }
+
     compiler.import(file_name, &LoLocation::internal());
 
     // safety: passes won't change size of modules
@@ -125,23 +116,26 @@ pub extern "C" fn _start() {
     let mut wasm_module = WasmModule::default();
     compiler.generate(&mut wasm_module);
 
-    compiler.end_inspection();
+    if compiler.in_inspection_mode {
+        compiler.end_inspection();
+
+        if *compiler.error_count.borrow() == 0 {
+            return finalize_and_exit(0);
+        }
+    }
+
     if *compiler.error_count.borrow() > 0 {
         return finalize_and_exit(1);
     }
 
-    if command == LoCommand::Inspect {
-        return finalize_and_exit(0);
-    }
-
-    if command == LoCommand::Compile {
+    if command == "compile" {
         let mut binary = Vec::new();
         wasm_module.dump(&mut binary);
         stdout_write(binary.as_slice());
         return finalize_and_exit(0);
     }
 
-    if command == LoCommand::Eval {
+    if command == "eval" {
         catch!(WasmEval::eval(wasm_module), err, {
             stderr_writeln(err.message);
             return finalize_and_exit(1);
@@ -149,7 +143,8 @@ pub extern "C" fn _start() {
         return finalize_and_exit(0);
     }
 
-    unreachable!();
+    stderr_writeln(format!("Unknown command: {command}\n{}", USAGE));
+    return finalize_and_exit(1);
 }
 
 fn finalize_and_exit(exit_code: u32) {
