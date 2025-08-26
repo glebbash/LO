@@ -98,7 +98,7 @@ pub extern "C" fn _start() {
 
     compiler.import(file_name, &LoLocation::internal());
 
-    // safety: passes won't change size of modules
+    // safety: passes don't modify modules vector, only the contents of modules
     let modules = unsafe_borrow(&compiler.modules);
 
     for module in modules {

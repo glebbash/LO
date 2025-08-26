@@ -4514,7 +4514,7 @@ impl Compiler {
 }
 
 fn json_str_escape(value: &str) -> String {
-    value.replace("\\", "\\\\")
+    value.replace("\\", "\\\\").replace("\"", "\\\"")
 }
 
 fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {
