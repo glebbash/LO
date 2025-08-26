@@ -35,7 +35,7 @@ impl WasmEval {
     }
 
     fn init_module(&mut self) -> Result<(), EvalError> {
-        for global in unsafe_borrow(&self.wasm_module.globals) {
+        for global in UBox::relax(&self.wasm_module.globals) {
             self.eval_expr(
                 &global.initial_value,
                 &JumpTable::for_expr(&global.initial_value),
@@ -50,7 +50,7 @@ impl WasmEval {
             });
         }
 
-        for element in unsafe_borrow(&self.wasm_module.elements) {
+        for element in UBox::relax(&self.wasm_module.elements) {
             match element {
                 WasmElement::Passive { expr, fn_idx } => {
                     self.eval_expr(expr, &JumpTable::for_expr(expr))?;
@@ -69,7 +69,7 @@ impl WasmEval {
                 bytes: vec![0; memory.min as usize * PAGE_SIZE],
             };
 
-            for data in unsafe_borrow(&self.wasm_module.datas) {
+            for data in UBox::relax(&self.wasm_module.datas) {
                 match data {
                     WasmData::Active { offset, bytes } => {
                         self.eval_expr(offset, &JumpTable::for_expr(offset))?;
@@ -149,7 +149,7 @@ impl WasmEval {
             return call_host_fn(self, fn_index);
         }
 
-        let (fn_type, code) = unsafe_borrow(self).get_fn_info(fn_index)?;
+        let (fn_type, code) = UBox::relax(self).get_fn_info(fn_index)?;
 
         let mut call_frame = CallFrame {
             fn_index,
@@ -662,7 +662,7 @@ impl WasmEval {
     }
 
     fn get_jump_table_for_fn(&mut self, fn_index: u32) -> &'static JumpTable {
-        unsafe_borrow(&self.jump_tables_per_fn_index[fn_index as usize - self.fn_imports_len])
+        UBox::relax(&self.jump_tables_per_fn_index[fn_index as usize - self.fn_imports_len])
     }
 
     fn get_fn_info(&self, fn_index: u32) -> Result<(&WasmFnType, &WasmFn), EvalError> {

@@ -700,8 +700,8 @@ async function commandTest() {
                 assert.strictEqual(
                     (err as Error).message,
                     m`
+                    ERROR: examples/test/fault-tolerance.lo:10:4 - Cannot redefine main, already defined at examples/test/fault-tolerance.lo:2:4
                     ERROR: examples/test/fault-tolerance.lo:2:17 - Duplicate function parameter name: a
-                    ERROR: examples/test/fault-tolerance.lo:10:1 - Duplicate function definition: main, previously defined at examples/test/fault-tolerance.lo:2:4
                     ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9
                     ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9
 
@@ -730,9 +730,9 @@ async function commandTest() {
                     m`
                     [
                     { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
+                    { "type": "message", "content": "Cannot redefine main, already defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
                     { "type": "info", "hover": "type u32 = <builtin>", "loc": "1/2:12-2:15" },
                     { "type": "message", "content": "Duplicate function parameter name: a", "severity": "error", "loc": "1/2:17-2:23" },
-                    { "type": "message", "content": "Duplicate function definition: main, previously defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:1-10:10" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
                     { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
                     { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },

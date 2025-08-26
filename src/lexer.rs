@@ -20,6 +20,10 @@ pub struct LoToken {
 
 impl LoToken {
     pub fn get_value(&self, source: UBox<[u8]>) -> &str {
+        if self.type_ == LoTokenType::Terminal {
+            return "<EOF>";
+        }
+
         return self.loc.read_span(source);
     }
 
@@ -140,7 +144,7 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.end_pos = self.source_pos.clone();
+        loc.end_pos = self.source_pos;
 
         Ok(LoToken {
             type_: LoTokenType::Symbol,
@@ -179,7 +183,7 @@ impl Lexer {
         }
         self.next_char(); // skip end quote
 
-        loc.end_pos = self.source_pos.clone();
+        loc.end_pos = self.source_pos;
 
         Ok(LoToken {
             type_: LoTokenType::CharLiteral,
@@ -219,7 +223,7 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.end_pos = self.source_pos.clone();
+        loc.end_pos = self.source_pos;
 
         Ok(LoToken {
             type_: LoTokenType::IntLiteral,
@@ -264,7 +268,7 @@ impl Lexer {
 
         self.next_char(); // skip end quote
 
-        loc.end_pos = self.source_pos.clone();
+        loc.end_pos = self.source_pos;
 
         Ok(LoToken {
             type_: LoTokenType::StringLiteral,
@@ -309,7 +313,7 @@ impl Lexer {
 
         self.next_char(); // skip delimiter char
 
-        loc.end_pos = self.source_pos.clone();
+        loc.end_pos = self.source_pos;
 
         Ok(LoToken {
             type_: LoTokenType::Delim,
@@ -355,7 +359,7 @@ impl Lexer {
             });
         };
 
-        loc.end_pos = self.source_pos.clone();
+        loc.end_pos = self.source_pos;
 
         Ok(LoToken {
             type_: LoTokenType::Operator,
@@ -399,7 +403,7 @@ impl Lexer {
             self.next_char();
         }
 
-        loc.end_pos = self.source_pos.clone();
+        loc.end_pos = self.source_pos;
 
         Comment { loc }
     }
@@ -461,9 +465,9 @@ impl Lexer {
     }
 
     fn loc(&self) -> LoLocation {
-        let pos = self.source_pos.clone();
+        let pos = self.source_pos;
 
-        let mut end_pos = pos.clone();
+        let mut end_pos = pos;
         end_pos.col += 1;
 
         LoLocation {

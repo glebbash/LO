@@ -7,6 +7,8 @@ use alloc::{
 };
 use core::cell::RefCell;
 
+// TODO: make sure function names can't not collide with intrinsics
+
 #[derive(Clone, PartialEq)]
 pub enum LoType {
     Never,
@@ -389,9 +391,36 @@ struct LoStr {
     len: u32,
 }
 
+struct ModuleItem {
+    name: String,
+    collection: ModuleItemCollection,
+    collection_index: usize,
+    loc: LoLocation,
+}
+
+enum ModuleItemCollection {
+    Type,
+    Function,
+}
+
 pub struct Module {
+    pub index: usize,
     pub source: UBox<[u8]>,
     pub ast: AST,
+    pub own_items: Vec<ModuleItem>,
+    pub all_items: Vec<ModuleItem>,
+}
+
+impl Module {
+    fn get_own_item(&self, item_name: &str) -> Option<&ModuleItem> {
+        for item in &self.own_items {
+            if item.name == item_name {
+                return Some(item);
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Default)]
@@ -421,12 +450,17 @@ pub struct Compiler {
 
     wasm_types: RefCell<Vec<WasmFnType>>,
 
+    current_module_index: usize,
     const_ctx: LoExprContext,
 }
 
 impl Compiler {
     pub fn new() -> Self {
         let mut self_ = Self::default();
+
+        // prevent accidental module scoped access before we are in module scope
+        self_.current_module_index = usize::MAX;
+
         self_.type_defs.push(LoTypeDef {
             kind: LoTypeDefKind::Builtin,
             name: String::from("never"),
@@ -560,7 +594,6 @@ impl Compiler {
         }
 
         let source = self.fm.get_file_source(file.index);
-        let source = UBox::new(source.as_bytes());
 
         let tokens = catch!(Lexer::lex(source, file.index), err, {
             self.report_error(&err);
@@ -582,54 +615,35 @@ impl Compiler {
             }
         }
 
-        self.modules.push(Module { source, ast });
+        self.modules.push(Module {
+            index: self.modules.len(),
+            source,
+            ast,
+            own_items: Vec::new(),
+            all_items: Vec::new(),
+        });
 
         Some(self.modules.last().unwrap())
     }
 
-    pub fn report_error(&self, err: &LoError) {
-        *self.error_count.borrow_mut() += 1;
-
-        if self.in_inspection_mode {
-            let source_index = err.loc.file_index;
-            let source_range = RangeDisplay(&err.loc);
-            let content = json_str_escape(&err.message);
-            stdout_writeln(format!(
-                "{{ \"type\": \"message\", \
-                    \"content\": \"{content}\", \
-                    \"severity\": \"error\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
-            ));
-            return;
+    pub fn run_passes(&mut self) {
+        for module in UBox::relax_mut(&mut self.modules) {
+            self.current_module_index = module.index;
+            self.pass_collect_own_items(module);
         }
 
-        stderr_write("ERROR: ");
-        stderr_write(err.to_string(&self.fm));
-        stderr_write("\n");
-    }
-
-    pub fn report_warning(&self, err: &LoError) {
-        *self.warning_count.borrow_mut() += 1;
-
-        if self.in_inspection_mode {
-            let source_index = err.loc.file_index;
-            let source_range = RangeDisplay(&err.loc);
-            let content = json_str_escape(&err.message);
-            stdout_writeln(format!(
-                "{{ \"type\": \"message\", \
-                    \"content\": \"{content}\", \
-                    \"severity\": \"warning\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
-            ));
-            return;
+        for module in UBox::relax(&self.modules) {
+            self.current_module_index = module.index;
+            self.pass_build_structs(module);
         }
 
-        stderr_write("WARNING: ");
-        stderr_write(err.to_string(&self.fm));
-        stderr_write("\n");
+        for module in UBox::relax(&self.modules) {
+            self.current_module_index = module.index;
+            self.pass_main(module);
+        }
     }
 
-    pub fn pass_collect_typedefs(&mut self, module: &Module) {
+    pub fn pass_collect_own_items(&mut self, module: &mut Module) {
         for expr in &module.ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(StructDefExpr {
@@ -637,12 +651,12 @@ impl Compiler {
                     fields: _,
                     loc: _,
                 }) => {
-                    if let Some(existing_typedef) = self.get_typedef(&struct_name.repr) {
+                    if let Some(item) = module.get_own_item(&struct_name.repr) {
                         self.report_error(&LoError {
                             message: format!(
-                                "Cannot redefine type {}, already defined at {}",
+                                "Cannot redefine {}, already defined at {}",
                                 struct_name.repr,
-                                existing_typedef.loc.to_string(&self.fm)
+                                item.loc.to_string(&self.fm)
                             ),
                             loc: struct_name.loc.clone(),
                         });
@@ -663,18 +677,25 @@ impl Compiler {
                         kind: LoTypeDefKind::Struct,
                         loc: struct_name.loc.clone(),
                     });
+
+                    module.own_items.push(ModuleItem {
+                        name: struct_name.repr.clone(),
+                        collection: ModuleItemCollection::Type,
+                        collection_index: self.type_defs.len() - 1,
+                        loc: struct_name.loc.clone(),
+                    })
                 }
                 TopLevelExpr::TypeDef(TypeDefExpr {
                     type_name,
                     type_value,
                     loc: _,
                 }) => {
-                    if let Some(existing_typedef) = self.get_typedef(&type_name.repr) {
+                    if let Some(item) = module.get_own_item(&type_name.repr) {
                         self.report_error(&LoError {
                             message: format!(
-                                "Cannot redefine type {}, already defined at {}",
+                                "Cannot redefine {}, already defined at {}",
                                 type_name.repr,
-                                existing_typedef.loc.to_string(&self.fm)
+                                item.loc.to_string(&self.fm)
                             ),
                             loc: type_name.loc.clone(),
                         });
@@ -692,6 +713,38 @@ impl Compiler {
                         name: type_name.repr.clone(),
                         value: type_value,
                         loc: type_name.loc.clone(),
+                    });
+
+                    module.own_items.push(ModuleItem {
+                        name: type_name.repr.clone(),
+                        collection: ModuleItemCollection::Type,
+                        collection_index: self.type_defs.len() - 1,
+                        loc: type_name.loc.clone(),
+                    })
+                }
+                TopLevelExpr::FnDef(FnDefExpr {
+                    decl,
+                    exported: _,
+                    body: _,
+                    loc: _,
+                }) => {
+                    if let Some(item) = module.get_own_item(&decl.fn_name.repr) {
+                        self.report_error(&LoError {
+                            message: format!(
+                                "Cannot redefine {}, already defined at {}",
+                                decl.fn_name.repr,
+                                item.loc.to_string(&self.fm)
+                            ),
+                            loc: decl.fn_name.loc.clone(),
+                        });
+                        continue;
+                    }
+
+                    module.own_items.push(ModuleItem {
+                        name: decl.fn_name.repr.clone(),
+                        collection: ModuleItemCollection::Function,
+                        collection_index: 0, // TODO: fill in with lo_fn_index
+                        loc: decl.fn_name.loc.clone(),
                     });
                 }
                 _ => {} // skip, not interested
@@ -840,18 +893,6 @@ impl Compiler {
                         exported_as.push(fn_def.decl.fn_name.repr.clone());
                     }
 
-                    // TODO: make sure function name does not collide with intrinsics
-                    if let Some(fn_info) = self.get_fn_def(&fn_def.decl.fn_name.repr) {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Duplicate function definition: {}, previously defined at {}",
-                                fn_def.decl.fn_name.repr,
-                                fn_info.definition_loc.to_string(&self.fm)
-                            ),
-                            loc: fn_def.decl.loc.clone(),
-                        });
-                    }
-
                     self.lo_functions.push(LoFnInfo {
                         fn_name: fn_def.decl.fn_name.repr.clone(),
                         fn_type: LoFnType { inputs, output },
@@ -930,7 +971,6 @@ impl Compiler {
                                 });
                         }
 
-                        // TODO: make sure function name does not collide with intrinsics
                         if let Some(fn_info) = self.get_fn_def(&fn_decl.fn_name.repr) {
                             self.report_error(&LoError {
                                 message: format!(
@@ -1376,7 +1416,7 @@ impl Compiler {
 
                 let self_type_name = &fn_name.parts[0..&fn_name.parts.len() - 1].join("::");
                 let mut self_type_loc = fn_name.loc.clone();
-                self_type_loc.end_pos = self_type_loc.pos.clone();
+                self_type_loc.end_pos = self_type_loc.pos;
                 self_type_loc.end_pos.offset += self_type_name.len();
                 self_type_loc.end_pos.col += self_type_name.len();
                 let self_type = self.get_type_or_err(self_type_name, &self_type_loc)?;
@@ -4485,6 +4525,48 @@ impl Compiler {
         }
 
         None
+    }
+
+    fn report_error(&self, err: &LoError) {
+        *self.error_count.borrow_mut() += 1;
+
+        if self.in_inspection_mode {
+            let source_index = err.loc.file_index;
+            let source_range = RangeDisplay(&err.loc);
+            let content = json_str_escape(&err.message);
+            stdout_writeln(format!(
+                "{{ \"type\": \"message\", \
+                    \"content\": \"{content}\", \
+                    \"severity\": \"error\", \
+                    \"loc\": \"{source_index}/{source_range}\" }},",
+            ));
+            return;
+        }
+
+        stderr_write("ERROR: ");
+        stderr_write(err.to_string(&self.fm));
+        stderr_write("\n");
+    }
+
+    fn report_warning(&self, err: &LoError) {
+        *self.warning_count.borrow_mut() += 1;
+
+        if self.in_inspection_mode {
+            let source_index = err.loc.file_index;
+            let source_range = RangeDisplay(&err.loc);
+            let content = json_str_escape(&err.message);
+            stdout_writeln(format!(
+                "{{ \"type\": \"message\", \
+                    \"content\": \"{content}\", \
+                    \"severity\": \"warning\", \
+                    \"loc\": \"{source_index}/{source_range}\" }},",
+            ));
+            return;
+        }
+
+        stderr_write("WARNING: ");
+        stderr_write(err.to_string(&self.fm));
+        stderr_write("\n");
     }
 
     fn print_inspection(&self, inspect_info: &InspectInfo) {

@@ -64,7 +64,7 @@ impl LoLocation {
 
     pub fn read_span<'a>(&self, source: UBox<[u8]>) -> &'a str {
         return unsafe {
-            str::from_utf8_unchecked(&unsafe_borrow(&source)[self.pos.offset..self.end_pos.offset])
+            str::from_utf8_unchecked(&UBox::relax(&source)[self.pos.offset..self.end_pos.offset])
         };
     }
 
@@ -421,12 +421,12 @@ impl FileManager {
         &self.files[file_index as usize - 1].absolute_path
     }
 
-    pub fn get_file_source(&self, file_index: u32) -> &str {
+    pub fn get_file_source(&self, file_index: u32) -> UBox<[u8]> {
         if file_index == 0 {
-            return "";
+            return UBox::new("".as_bytes());
         }
 
-        &self.files[file_index as usize - 1].source
+        UBox::new(self.files[file_index as usize - 1].source.as_bytes())
     }
 }
 
@@ -474,10 +474,6 @@ macro_rules! catch {
 }
 pub(crate) use catch;
 
-pub fn unsafe_borrow<T: ?Sized>(x: &T) -> &'static T {
-    unsafe { &*(x as *const T) }
-}
-
 // unsafe box
 pub struct UBox<T: ?Sized> {
     value: *const T,
@@ -488,6 +484,14 @@ impl<T: ?Sized> UBox<T> {
         return Self {
             value: value as *const T,
         };
+    }
+
+    pub fn relax(x: &T) -> &'static T {
+        unsafe { &*(x as *const T) }
+    }
+
+    pub fn relax_mut(x: &mut T) -> &'static mut T {
+        unsafe { &mut *(x as *mut T) }
     }
 }
 

@@ -61,9 +61,10 @@ pub enum FnParamType {
     Infer { name: String },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IncludeExpr {
     pub file_path: EscapedString,
+    pub alias: Option<IdentExpr>,
     pub loc: LoLocation,
 }
 

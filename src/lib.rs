@@ -34,7 +34,7 @@ mod wasm_target {
     }
 }
 
-use crate::{compiler::*, core::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
+use crate::{compiler::*, core::*, lexer::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
 use alloc::{format, string::String, vec::Vec};
 
 static USAGE: &str = "Usage:
@@ -78,6 +78,33 @@ pub extern "C" fn _start() {
         return;
     }
 
+    // for debug purposes only, not public api
+    if command == "lex" {
+        let mut fm = FileManager::default();
+        let file = catch!(fm.include_file(file_name, &LoLocation::internal()), err, {
+            stderr_writeln(err.to_string(&fm));
+            proc_exit(1)
+        });
+        let source = fm.get_file_source(file.index);
+
+        let lex = Lexer::lex(source, file.index);
+        let lex = catch!(lex, err, {
+            stderr_writeln(err.to_string(&fm));
+            proc_exit(1)
+        });
+
+        for token in lex.tokens {
+            stdout_writeln(format!(
+                "{} - [[{}]] {:?}",
+                token.loc.to_string(&fm),
+                token.loc.read_span(source).replace("\n", "\\n"),
+                token.type_
+            ));
+        }
+
+        proc_exit(0)
+    }
+
     let mut compiler = Compiler::new();
 
     if command == "format" {
@@ -98,20 +125,7 @@ pub extern "C" fn _start() {
 
     compiler.import(file_name, &LoLocation::internal());
 
-    // safety: passes don't modify modules vector, only the contents of modules
-    let modules = unsafe_borrow(&compiler.modules);
-
-    for module in modules {
-        compiler.pass_collect_typedefs(&module);
-    }
-
-    for module in modules {
-        compiler.pass_build_structs(&module);
-    }
-
-    for module in modules {
-        compiler.pass_main(&module);
-    }
+    compiler.run_passes();
 
     let mut wasm_module = WasmModule::default();
     compiler.generate(&mut wasm_module);

@@ -77,7 +77,7 @@ impl Parser {
                 self.expect(Symbol, "as")?;
                 let out_fn_name = self.expect_any(StringLiteral)?.clone();
 
-                loc.end_pos = self.prev().loc.end_pos.clone();
+                loc.end_pos = self.prev().loc.end_pos;
 
                 return Ok(TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
                     in_fn_name,
@@ -114,11 +114,16 @@ impl Parser {
             let mut loc = self.prev().loc.clone();
 
             let file_path = self.expect_any(StringLiteral)?.clone();
+            let mut alias = None;
+            if let Ok(Some(_)) = self.eat(Symbol, "as") {
+                alias = Some(self.parse_ident()?);
+            }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::Include(IncludeExpr {
                 file_path: EscapedString(file_path.loc),
+                alias,
                 loc,
             }));
         }
@@ -137,7 +142,7 @@ impl Parser {
                 items.push(item);
             }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::Import(ImportExpr {
                 module_name: EscapedString(module_name.loc),
@@ -161,7 +166,7 @@ impl Parser {
                 GlobalDefValue::Expr(expr)
             };
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::GlobalDef(GlobalDefExpr {
                 global_name,
@@ -185,7 +190,7 @@ impl Parser {
                 self.expect(Operator, ":")?;
                 let field_type = self.parse_type_expr()?;
 
-                field_loc.end_pos = self.prev().loc.end_pos.clone();
+                field_loc.end_pos = self.prev().loc.end_pos;
 
                 fields.push(StructDefField {
                     field_name,
@@ -198,7 +203,7 @@ impl Parser {
                 }
             }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::StructDef(StructDefExpr {
                 struct_name,
@@ -214,7 +219,7 @@ impl Parser {
             self.expect(Operator, "=")?;
             let type_value = self.parse_type_expr()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
                 type_name,
@@ -230,7 +235,7 @@ impl Parser {
             self.expect(Operator, "=")?;
             let const_value = self.parse_code_expr(0)?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::ConstDef(ConstDefExpr {
                 const_name,
@@ -247,7 +252,7 @@ impl Parser {
             self.expect(Operator, "=")?;
             let chars = self.expect_any(StringLiteral)?.clone();
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::StaticDataStore(StaticDataStoreExpr {
                 addr,
@@ -286,7 +291,7 @@ impl Parser {
 
             let body = self.parse_code_block_expr()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::MacroDef(MacroDefExpr {
                 macro_name,
@@ -312,7 +317,7 @@ impl Parser {
         let decl = self.parse_fn_decl()?;
         let body = self.parse_code_block_expr()?;
 
-        loc.end_pos = self.prev().loc.end_pos.clone();
+        loc.end_pos = self.prev().loc.end_pos;
 
         Ok(FnDefExpr {
             exported,
@@ -350,7 +355,7 @@ impl Parser {
         }
         self.expect(Delim, "}")?;
 
-        loc.end_pos = self.prev().loc.end_pos.clone();
+        loc.end_pos = self.prev().loc.end_pos;
 
         Ok(MemoryDefExpr {
             exported,
@@ -394,7 +399,7 @@ impl Parser {
             None
         };
 
-        loc.end_pos = self.prev().loc.end_pos.clone();
+        loc.end_pos = self.prev().loc.end_pos;
 
         Ok(FnDeclExpr {
             fn_name,
@@ -450,7 +455,7 @@ impl Parser {
                 }
             }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             if !self.current().is(Delim, ")", self.source) {
                 self.expect(Delim, ",")?;
@@ -473,7 +478,7 @@ impl Parser {
         if let Ok(Some(_)) = self.eat(Symbol, "of") {
             let container_type = Box::new(primary);
             let item_type = Box::new(self.parse_type_expr()?);
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::Of(TypeExprOf {
                 container_type,
                 item_type,
@@ -489,14 +494,14 @@ impl Parser {
 
         if let Some(_) = self.eat(Operator, "&")? {
             let pointee = Box::new(self.parse_type_expr()?);
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::Pointer(TypeExprPointer { pointee, loc }));
         }
 
         // lexer joins two `&` into `&&`
         if let Some(_) = self.eat(Operator, "&&")? {
             let pointee = Box::new(self.parse_type_expr()?);
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::Pointer(TypeExprPointer {
                 pointee: Box::new(TypeExpr::Pointer(TypeExprPointer {
                     pointee,
@@ -508,7 +513,7 @@ impl Parser {
 
         if let Some(_) = self.eat(Operator, "*&")? {
             let pointee = Box::new(self.parse_type_expr()?);
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::SequencePointer(TypeExprSequencePointer {
                 pointee,
                 loc,
@@ -521,7 +526,7 @@ impl Parser {
             self.expect(Delim, ",")?;
             let err_type = Box::new(self.parse_type_expr()?);
             self.expect(Operator, ">")?;
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TypeExpr::Result(TypeExprResult {
                 ok_type,
@@ -548,7 +553,7 @@ impl Parser {
         }
 
         // close curly pos
-        code_block.loc.end_pos = self.prev().loc.end_pos.clone();
+        code_block.loc.end_pos = self.prev().loc.end_pos;
 
         return Ok(code_block);
     }
@@ -585,7 +590,7 @@ impl Parser {
                 expr = Some(Box::new(self.parse_code_expr(0)?));
             }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Return(ReturnExpr { expr, loc }));
         };
@@ -606,7 +611,7 @@ impl Parser {
                 }
             }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::If(IfExpr {
                 cond: expr,
@@ -670,7 +675,7 @@ impl Parser {
             let expr = Box::new(self.parse_code_expr(0)?);
             self.expect(Delim, ")")?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Paren(ParenExpr { expr, loc }));
         };
@@ -682,7 +687,7 @@ impl Parser {
             self.expect(Operator, "=")?;
             let value = self.parse_code_expr(0)?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Let(LetExpr {
                 local_name,
@@ -696,7 +701,7 @@ impl Parser {
 
             let body = self.parse_code_block_expr()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Loop(LoopExpr {
                 body: Box::new(body),
@@ -720,7 +725,7 @@ impl Parser {
             let end = self.parse_code_expr(0)?;
             let body = self.parse_code_block_expr()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::ForLoop(ForLoopExpr {
                 counter,
@@ -746,7 +751,7 @@ impl Parser {
             self.expect(Symbol, "do")?;
             let body = self.parse_code_block_expr()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::With(WithExpr {
                 bind,
@@ -761,7 +766,7 @@ impl Parser {
 
             let message = self.expect_any(StringLiteral)?.clone();
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             let message = EscapedString(message.loc);
             return Ok(CodeExpr::Dbg(DbgExpr {
@@ -782,7 +787,7 @@ impl Parser {
 
             let expr = self.parse_code_expr(0)?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Defer(DeferExpr {
                 expr: Box::new(expr),
@@ -805,7 +810,7 @@ impl Parser {
                     | PrefixOpTag::Negative => {
                         let expr = Box::new(self.parse_code_expr(min_bp)?);
 
-                        loc.end_pos = self.prev().loc.end_pos.clone();
+                        loc.end_pos = self.prev().loc.end_pos;
 
                         return Ok(CodeExpr::PrefixOp(PrefixOpExpr {
                             expr,
@@ -823,7 +828,7 @@ impl Parser {
 
             let type_expr = self.parse_type_expr()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Sizeof(SizeofExpr { type_expr, loc }));
         };
@@ -845,7 +850,7 @@ impl Parser {
                 }
             }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
@@ -884,7 +889,7 @@ impl Parser {
                 self.expect(Delim, ")")?;
             }
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::ResultLiteral(ResultLiteralExpr {
                 is_ok: ident.repr == "Ok",
@@ -899,7 +904,7 @@ impl Parser {
 
             let args = self.parse_fn_args()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             if ident.repr == "__memory_size" {
                 if args.len() != 0 {
@@ -936,7 +941,7 @@ impl Parser {
             let type_args = self.parse_macro_type_args()?;
             let args = self.parse_fn_args()?;
 
-            loc.end_pos = self.prev().loc.end_pos.clone();
+            loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::MacroFnCall(MacroFnCallExpr {
                 fn_name: ident,
@@ -971,7 +976,7 @@ impl Parser {
             break;
         }
 
-        ident.loc.end_pos = self.prev().loc.end_pos.clone();
+        ident.loc.end_pos = self.prev().loc.end_pos;
 
         Ok(ident)
     }
@@ -994,7 +999,7 @@ impl Parser {
             self.expect(Operator, ":")?;
             let value = self.parse_code_expr(0)?;
 
-            field_loc.end_pos = self.prev().loc.end_pos.clone();
+            field_loc.end_pos = self.prev().loc.end_pos;
 
             fields.push(StructLiteralField {
                 field_name: field_name.get_value(self.source).to_string(),
@@ -1008,7 +1013,7 @@ impl Parser {
             }
         }
 
-        loc.end_pos = self.prev().loc.end_pos.clone();
+        loc.end_pos = self.prev().loc.end_pos;
 
         return Ok(StructLiteralExpr {
             struct_name: ident,
@@ -1084,7 +1089,7 @@ impl Parser {
                 let rhs = self.parse_code_expr(min_bp)?;
 
                 let mut loc = lhs.loc().clone();
-                loc.end_pos = rhs.loc().end_pos.clone();
+                loc.end_pos = rhs.loc().end_pos;
 
                 Ok(CodeExpr::InfixOp(InfixOpExpr {
                     op_tag: op.tag,
@@ -1099,7 +1104,7 @@ impl Parser {
 
                 let casted_to = self.parse_type_expr()?;
 
-                loc.end_pos = self.prev().loc.end_pos.clone();
+                loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::Cast(CastExpr {
                     expr: Box::new(primary),
@@ -1115,7 +1120,7 @@ impl Parser {
                 if self.current().is(Delim, "(", self.source) {
                     let args = self.parse_fn_args()?;
 
-                    loc.end_pos = self.prev().loc.end_pos.clone();
+                    loc.end_pos = self.prev().loc.end_pos;
 
                     return Ok(CodeExpr::MethodCall(MethodCallExpr {
                         lhs: Box::new(primary),
@@ -1129,7 +1134,7 @@ impl Parser {
                     let type_args = self.parse_macro_type_args()?;
                     let args = self.parse_fn_args()?;
 
-                    loc.end_pos = self.prev().loc.end_pos.clone();
+                    loc.end_pos = self.prev().loc.end_pos;
 
                     return Ok(CodeExpr::MacroMethodCall(MacroMethodCallExpr {
                         lhs: Box::new(primary),
@@ -1140,7 +1145,7 @@ impl Parser {
                     }));
                 }
 
-                loc.end_pos = self.prev().loc.end_pos.clone();
+                loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::FieldAccess(FieldAccessExpr {
                     lhs: Box::new(primary),
@@ -1153,7 +1158,7 @@ impl Parser {
 
                 let value = self.parse_code_expr(min_bp)?;
 
-                loc.end_pos = self.prev().loc.end_pos.clone();
+                loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::Assign(AssignExpr {
                     op_loc: op.token.loc,
@@ -1168,7 +1173,7 @@ impl Parser {
                 let error_bind = self.parse_ident()?;
                 let catch_body = self.parse_code_block_expr()?;
 
-                loc.end_pos = self.prev().loc.end_pos.clone();
+                loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::Catch(CatchExpr {
                     lhs: Box::new(primary),
@@ -1179,7 +1184,7 @@ impl Parser {
             }
             InfixOpTag::ErrorPropagation => {
                 let mut loc = primary.loc().clone();
-                loc.end_pos = self.prev().loc.end_pos.clone();
+                loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::PropagateError(PropagateErrorExpr {
                     expr: Box::new(primary),

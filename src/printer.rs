@@ -61,9 +61,17 @@ impl Printer {
                 self.print_code_block_expr(body);
                 stdout_writeln("");
             }
-            TopLevelExpr::Include(IncludeExpr { file_path, loc: _ }) => {
+            TopLevelExpr::Include(IncludeExpr {
+                file_path,
+                alias,
+                loc: _,
+            }) => {
                 stdout_write("include ");
                 stdout_write(file_path.get_raw(self.source));
+                if let Some(alias) = alias {
+                    stdout_write(" as ");
+                    stdout_write(&alias.repr);
+                }
                 stdout_writeln("");
             }
             TopLevelExpr::Import(ImportExpr {
@@ -784,7 +792,7 @@ impl Printer {
 
     fn print_comments_before(&mut self, pos: LoPosition) {
         while self.comments_printed < self.ast.comments.len() {
-            let comment = unsafe_borrow(&self.ast.comments[self.comments_printed]);
+            let comment = UBox::relax(&self.ast.comments[self.comments_printed]);
             if comment.loc.end_pos.offset > pos.offset {
                 break;
             }
