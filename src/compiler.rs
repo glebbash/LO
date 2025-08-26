@@ -722,29 +722,52 @@ impl Compiler {
                         loc: type_name.loc.clone(),
                     })
                 }
-                TopLevelExpr::FnDef(FnDefExpr {
-                    decl,
-                    exported: _,
-                    body: _,
-                    loc: _,
-                }) => {
-                    if let Some(item) = module.get_own_item(&decl.fn_name.repr) {
+                TopLevelExpr::FnDef(fn_def) => {
+                    if let Some(item) = module.get_own_item(&fn_def.decl.fn_name.repr) {
                         self.report_error(&LoError {
                             message: format!(
                                 "Cannot redefine {}, already defined at {}",
-                                decl.fn_name.repr,
+                                fn_def.decl.fn_name.repr,
                                 item.loc.to_string(&self.fm)
                             ),
-                            loc: decl.fn_name.loc.clone(),
+                            loc: fn_def.decl.fn_name.loc.clone(),
                         });
-                        continue;
+
+                        // continue processing, this will make an item with duplicate name
+                        //   but this is fine because these items will be linked to different functions
+                        //   and only the first defined item will be accessible by name
                     }
 
+                    let mut ctx = LoExprContext::default();
+                    ctx.lo_fn_index = Some(self.lo_functions.len());
+                    ctx.enter_scope(LoScopeType::Function);
+
+                    let mut exported_as = Vec::new();
+                    if fn_def.exported {
+                        exported_as.push(fn_def.decl.fn_name.repr.clone());
+                    }
+
+                    // fill in as much as possible before types can be resolved
+                    self.lo_functions.push(LoFnInfo {
+                        fn_name: fn_def.decl.fn_name.repr.clone(),
+                        fn_type: LoFnType {
+                            inputs: Vec::new(),
+                            output: LoType::Void,
+                        },
+                        fn_params: Vec::new(),
+                        fn_source: LoFnSource::Guest {
+                            ctx,
+                            body: UBox::new(&fn_def.body),
+                        },
+                        exported_as,
+                        definition_loc: fn_def.decl.fn_name.loc.clone(),
+                    });
+
                     module.own_items.push(ModuleItem {
-                        name: decl.fn_name.repr.clone(),
+                        name: fn_def.decl.fn_name.repr.clone(),
                         collection: ModuleItemCollection::Function,
-                        collection_index: 0, // TODO: fill in with lo_fn_index
-                        loc: decl.fn_name.loc.clone(),
+                        collection_index: self.lo_functions.len() - 1,
+                        loc: fn_def.decl.fn_name.loc.clone(),
                     });
                 }
                 _ => {} // skip, not interested
@@ -832,7 +855,11 @@ impl Compiler {
                 TopLevelExpr::TypeDef(_) => {}   // skip, processed in pass_collect_typedefs
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_build_structs
                 TopLevelExpr::FnDef(fn_def) => {
-                    let output = match &fn_def.decl.return_type {
+                    let fn_info_item = module.get_own_item(&fn_def.decl.fn_name.repr).unwrap();
+                    let lo_fn_info =
+                        UBox::relax_mut(&mut self.lo_functions[fn_info_item.collection_index]);
+
+                    lo_fn_info.fn_type.output = match &fn_def.decl.return_type {
                         Some(return_type) => {
                             catch!(self.build_type(&self.const_ctx, return_type), err, {
                                 self.report_error(&err);
@@ -842,12 +869,14 @@ impl Compiler {
                         _ => LoType::Void,
                     };
 
-                    let mut ctx = LoExprContext::default();
-                    ctx.lo_fn_index = Some(self.lo_functions.len());
-                    ctx.enter_scope(LoScopeType::Function);
+                    let LoFnSource::Guest {
+                        ref mut ctx,
+                        body: _,
+                    } = &mut lo_fn_info.fn_source
+                    else {
+                        unreachable!()
+                    };
 
-                    let mut fn_params = Vec::new();
-                    let mut inputs = Vec::new();
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
                         for var in &ctx.current_scope().locals {
                             if var.local_name == fn_param.param_name.repr {
@@ -868,15 +897,15 @@ impl Compiler {
                             self.report_error(&err);
                             continue 'param_loop;
                         });
-                        inputs.push(param_type.clone());
+                        lo_fn_info.fn_type.inputs.push(param_type.clone());
 
-                        fn_params.push(LoFnParam {
+                        lo_fn_info.fn_params.push(LoFnParam {
                             param_name: fn_param.param_name.repr.clone(),
                             param_type: param_type.clone(),
                         });
 
                         let res = self.define_local(
-                            &mut ctx,
+                            ctx,
                             fn_param.param_name.loc.clone(),
                             fn_param.param_name.repr.clone(),
                             &param_type,
@@ -887,23 +916,6 @@ impl Compiler {
                             continue;
                         });
                     }
-
-                    let mut exported_as = Vec::new();
-                    if fn_def.exported {
-                        exported_as.push(fn_def.decl.fn_name.repr.clone());
-                    }
-
-                    self.lo_functions.push(LoFnInfo {
-                        fn_name: fn_def.decl.fn_name.repr.clone(),
-                        fn_type: LoFnType { inputs, output },
-                        fn_params,
-                        fn_source: LoFnSource::Guest {
-                            ctx,
-                            body: UBox::new(&fn_def.body),
-                        },
-                        exported_as,
-                        definition_loc: fn_def.decl.fn_name.loc.clone(),
-                    });
                 }
                 TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
                     in_fn_name,
