@@ -2,8 +2,8 @@ use crate::{ast::*, core::*};
 use alloc::{string::ToString, vec::Vec};
 
 pub struct Printer {
-    ast: UBox<AST>,
-    source: UBox<[u8]>,
+    ast: &'static AST,
+    source: &'static [u8],
     indent: usize,
     comments_printed: usize,
     backslashes_printed: usize,
@@ -13,7 +13,7 @@ pub struct Printer {
 }
 
 impl Printer {
-    pub fn print(ast: UBox<AST>, source: UBox<[u8]>) {
+    pub fn print(ast: &'static AST, source: &'static [u8]) {
         let mut printer = Printer {
             ast,
             source,
@@ -31,7 +31,7 @@ impl Printer {
     }
 
     fn print_file(&mut self) {
-        for expr in &self.ast.clone().exprs {
+        for expr in &self.ast.exprs {
             self.print_top_level_expr(expr);
         }
 
@@ -64,6 +64,7 @@ impl Printer {
             TopLevelExpr::Include(IncludeExpr {
                 file_path,
                 alias,
+                with_extern,
                 loc: _,
             }) => {
                 stdout_write("include ");
@@ -71,6 +72,9 @@ impl Printer {
                 if let Some(alias) = alias {
                     stdout_write(" as ");
                     stdout_write(&alias.repr);
+                }
+                if *with_extern {
+                    stdout_write(" with extern");
                 }
                 stdout_writeln("");
             }
@@ -186,15 +190,19 @@ impl Printer {
                 }
                 stdout_writeln("");
             }
-            TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
-                in_fn_name,
-                out_fn_name,
+            TopLevelExpr::TryExport(TryExportExpr {
+                in_name,
+                out_name,
+                from_root,
                 loc: _,
             }) => {
-                stdout_write("export existing fn ");
-                stdout_write(&in_fn_name.repr);
+                stdout_write("try export ");
+                stdout_write(&in_name.repr);
                 stdout_write(" as ");
-                stdout_write(out_fn_name.get_raw(self.source));
+                stdout_write(out_name.get_raw(self.source));
+                if *from_root {
+                    stdout_write(" from root");
+                }
                 stdout_writeln("");
             }
             TopLevelExpr::MacroDef(MacroDefExpr {
@@ -666,6 +674,7 @@ impl Printer {
                 lhs,
                 error_bind,
                 catch_body,
+                catch_loc: _,
                 loc: _,
             }) => {
                 self.print_code_expr(lhs);
@@ -792,7 +801,7 @@ impl Printer {
 
     fn print_comments_before(&mut self, pos: LoPosition) {
         while self.comments_printed < self.ast.comments.len() {
-            let comment = UBox::relax(&self.ast.comments[self.comments_printed]);
+            let comment = self.ast.comments[self.comments_printed].relax();
             if comment.loc.end_pos.offset > pos.offset {
                 break;
             }

@@ -1,12 +1,10 @@
-include "./std.lo"
-include "./wasi.lo"
-include "./print.lo"
+include "./std.lo" with extern
+include "./wasi.lo" with extern
+include "./print.lo" with extern
 
 // 1MB stack + 1MB heap
 export memory {
     min_pages: 40,
 }
 
-export fn _start() {
-    let _ = main()
-}
+try export main as "_start" from root

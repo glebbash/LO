@@ -19,7 +19,7 @@ pub struct LoToken {
 }
 
 impl LoToken {
-    pub fn get_value(&self, source: UBox<[u8]>) -> &str {
+    pub fn get_value(&self, source: &'static [u8]) -> &str {
         if self.type_ == LoTokenType::Terminal {
             return "<EOF>";
         }
@@ -31,7 +31,7 @@ impl LoToken {
         self.type_ == type_
     }
 
-    pub fn is(&self, type_: LoTokenType, value: &str, source: UBox<[u8]>) -> bool {
+    pub fn is(&self, type_: LoTokenType, value: &str, source: &'static [u8]) -> bool {
         self.is_any(type_) && self.get_value(source) == value
     }
 }
@@ -49,7 +49,7 @@ pub struct Backslash {
 pub struct Lexer {
     // context
     file_index: u32,
-    source: UBox<[u8]>,
+    source: &'static [u8],
 
     // state
     source_pos: LoPosition,
@@ -65,7 +65,7 @@ pub struct LexerResult {
 }
 
 impl Lexer {
-    pub fn lex(source: UBox<[u8]>, file_index: u32) -> Result<LexerResult, LoError> {
+    pub fn lex(source: &'static [u8], file_index: u32) -> Result<LexerResult, LoError> {
         let mut lexer = Lexer {
             file_index,
             source,
@@ -627,7 +627,7 @@ pub struct InfixOp {
 }
 
 impl InfixOp {
-    pub fn parse(token: LoToken, source: UBox<[u8]>) -> Option<Self> {
+    pub fn parse(token: LoToken, source: &'static [u8]) -> Option<Self> {
         use InfixOpTag::*;
         use OpAssoc::*;
         let (tag, info) = match token.get_value(source) {
@@ -711,7 +711,7 @@ pub struct PrefixOp {
 }
 
 impl PrefixOp {
-    pub fn parse(token: LoToken, source: UBox<[u8]>) -> Option<Self> {
+    pub fn parse(token: LoToken, source: &'static [u8]) -> Option<Self> {
         use OpAssoc::*;
         use PrefixOpTag::*;
         let (tag, info) = match token.get_value(source) {

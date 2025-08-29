@@ -1,6 +1,6 @@
 use crate::wasi;
 use alloc::{fmt, format, string::String, vec, vec::Vec};
-use core::{cell::RefCell, ffi::CStr, ops::Deref, str};
+use core::{cell::RefCell, ffi::CStr, str};
 
 #[derive(PartialEq, Clone)]
 pub struct LoError {
@@ -62,10 +62,8 @@ impl LoLocation {
         }
     }
 
-    pub fn read_span<'a>(&self, source: UBox<[u8]>) -> &'a str {
-        return unsafe {
-            str::from_utf8_unchecked(&UBox::relax(&source)[self.pos.offset..self.end_pos.offset])
-        };
+    pub fn read_span(&self, source: &'static [u8]) -> &str {
+        return unsafe { str::from_utf8_unchecked(&source[self.pos.offset..self.end_pos.offset]) };
     }
 
     pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
@@ -421,12 +419,15 @@ impl FileManager {
         &self.files[file_index as usize - 1].absolute_path
     }
 
-    pub fn get_file_source(&self, file_index: u32) -> UBox<[u8]> {
+    pub fn get_file_source(&self, file_index: u32) -> &'static [u8] {
         if file_index == 0 {
-            return UBox::new("".as_bytes());
+            return "".as_bytes().relax();
         }
 
-        UBox::new(self.files[file_index as usize - 1].source.as_bytes())
+        self.files[file_index as usize - 1]
+            .source
+            .as_bytes()
+            .relax()
     }
 }
 
@@ -474,38 +475,23 @@ macro_rules! catch {
 }
 pub(crate) use catch;
 
-// unsafe box
-pub struct UBox<T: ?Sized> {
-    value: *const T,
+pub(crate) trait UnsafeGoodies {
+    fn be_mut(&self) -> &mut Self;
+    fn relax(&self) -> &'static Self;
+    fn relax_mut(&mut self) -> &'static mut Self;
 }
 
-impl<T: ?Sized> UBox<T> {
-    pub fn new(value: &T) -> Self {
-        return Self {
-            value: value as *const T,
-        };
+impl<T: ?Sized> UnsafeGoodies for T {
+    #[allow(invalid_reference_casting)]
+    fn be_mut(&self) -> &mut Self {
+        unsafe { &mut *(self as *const Self as *mut Self) }
     }
 
-    pub fn relax(x: &T) -> &'static T {
-        unsafe { &*(x as *const T) }
+    fn relax(&self) -> &'static T {
+        unsafe { &*(self as *const T) }
     }
 
-    pub fn relax_mut(x: &mut T) -> &'static mut T {
-        unsafe { &mut *(x as *mut T) }
-    }
-}
-
-impl<T: ?Sized> Deref for UBox<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        return unsafe { &*self.value };
-    }
-}
-
-impl<T: ?Sized> Copy for UBox<T> {}
-impl<T: ?Sized> Clone for UBox<T> {
-    fn clone(&self) -> Self {
-        Self { value: self.value }
+    fn relax_mut(&mut self) -> &'static mut T {
+        unsafe { &mut *(self as *mut T) }
     }
 }

@@ -1,7 +1,4 @@
-use crate::{
-    core::{LoLocation, UBox},
-    lexer::*,
-};
+use crate::{core::*, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 pub trait Locatable {
@@ -26,7 +23,7 @@ pub enum TopLevelExpr {
     ConstDef(ConstDefExpr),
     MemoryDef(MemoryDefExpr),
     StaticDataStore(StaticDataStoreExpr),
-    ExportExistingFn(ExportExistingFnExpr),
+    TryExport(TryExportExpr),
     MacroDef(MacroDefExpr),
 }
 
@@ -61,10 +58,16 @@ pub enum FnParamType {
     Infer { name: String },
 }
 
+/// DOC: `include "<module path>" [as <alias>] [with extern]` syntax was chosen
+///   because it reuses existing rust keywords and reads nicely (mostly).
+///
+/// Another option was `import "..." [as ...] [and expose]`
+///   but `import` is already a WASM concept and `and expose` is two new keyword for just one flag
 #[derive(Debug)]
 pub struct IncludeExpr {
     pub file_path: EscapedString,
     pub alias: Option<IdentExpr>,
+    pub with_extern: bool,
     pub loc: LoLocation,
 }
 
@@ -151,10 +154,13 @@ pub enum StaticDataStorePayload {
     String { value: EscapedString },
 }
 
+/// DOC: `try export <in> as "<out>" [from root]` syntax was chosen
+///   because it reuses existing rust keywords and reads nicely
 #[derive(Debug)]
-pub struct ExportExistingFnExpr {
-    pub in_fn_name: IdentExpr,
-    pub out_fn_name: EscapedString,
+pub struct TryExportExpr {
+    pub in_name: IdentExpr,
+    pub out_name: EscapedString,
+    pub from_root: bool,
     pub loc: LoLocation,
 }
 
@@ -186,7 +192,7 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
             TopLevelExpr::StaticDataStore(e) => &e.loc,
-            TopLevelExpr::ExportExistingFn(e) => &e.loc,
+            TopLevelExpr::TryExport(e) => &e.loc,
             TopLevelExpr::MacroDef(e) => &e.loc,
         }
     }
@@ -485,6 +491,7 @@ pub struct CatchExpr {
     pub lhs: Box<CodeExpr>,
     pub error_bind: IdentExpr,
     pub catch_body: CodeBlockExpr,
+    pub catch_loc: LoLocation, // on `catch` keyword used to report catch errors
     pub loc: LoLocation,
 }
 
@@ -601,11 +608,11 @@ impl Locatable for CodeExpr {
 pub struct EscapedString(pub LoLocation);
 
 impl EscapedString {
-    pub fn get_raw(&self, source: UBox<[u8]>) -> &str {
+    pub fn get_raw(&self, source: &'static [u8]) -> &str {
         return self.0.read_span(source);
     }
 
-    pub fn unescape(&self, source: UBox<[u8]>) -> String {
+    pub fn unescape(&self, source: &'static [u8]) -> String {
         Lexer::unescape_string(self.get_raw(source))
     }
 }

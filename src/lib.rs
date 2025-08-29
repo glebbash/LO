@@ -114,7 +114,7 @@ pub extern "C" fn _start() {
             proc_exit(1);
         };
 
-        Printer::print(UBox::new(&module.ast), module.source);
+        Printer::print(module.ast.relax(), module.source);
 
         return;
     }

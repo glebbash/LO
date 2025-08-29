@@ -5,8 +5,11 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Write};
 
+// TODO!!: fix duplicated items problem in `inline_includes` (only visible with __inspect_items in `examples/self-hosted.lo`)
+// TODO!: change all magic functions to have `@some_magic_fn<...type_args>(...args)` syntax:
+//   @sizeof<T>(), @data_size, @__inspect(), @memory_size(), etc...
 // TODO: make sure function names can't not collide with intrinsics
 
 #[derive(Clone, PartialEq)]
@@ -70,12 +73,13 @@ impl LoType {
     }
 }
 
-struct LoFnInfo {
+struct FnInfo {
     fn_name: String,
     fn_type: LoFnType,
     fn_params: Vec<LoFnParam>,
     fn_source: LoFnSource,
     exported_as: Vec<String>,
+    wasm_fn_index: u32,
     definition_loc: LoLocation,
 }
 
@@ -93,7 +97,7 @@ impl core::fmt::Display for LoFnParam {
 enum LoFnSource {
     Guest {
         ctx: LoExprContext,
-        body: UBox<CodeBlockExpr>,
+        body: &'static CodeBlockExpr,
     },
     Host {
         module_name: String,
@@ -106,13 +110,27 @@ struct LoFnType {
     output: LoType,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 struct LoExprContext {
-    lo_fn_index: Option<usize>,
+    module_index: usize,
+    fn_index: Option<usize>,
     locals: Vec<LoLocal>,
     next_local_index: u32,
     addr_local_index: Option<u32>,
     scopes: Vec<LoScope>,
+}
+
+impl LoExprContext {
+    fn new(module_index: usize, fn_index: Option<usize>) -> Self {
+        Self {
+            module_index,
+            fn_index,
+            locals: Vec::new(),
+            next_local_index: 0,
+            addr_local_index: None,
+            scopes: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -134,14 +152,14 @@ enum LoScopeType {
 
 #[derive(Clone)]
 struct LoCodeUnit {
-    lo_type: LoType,
+    type_: LoType,
     instrs: Vec<WasmInstr>,
 }
 
 #[derive(Clone)]
 struct LoMacroTypeArg {
     name: String,
-    lo_type: LoType,
+    type_: LoType,
 }
 
 #[derive(Clone)]
@@ -209,7 +227,7 @@ impl LoExprContext {
         for scope in self.scopes.iter().rev() {
             for macro_type_arg in &scope.macro_type_args {
                 if macro_type_arg.name == type_name {
-                    return Some(&macro_type_arg.lo_type);
+                    return Some(&macro_type_arg.type_);
                 }
             }
         }
@@ -228,12 +246,6 @@ impl LoExprContext {
 
         None
     }
-}
-
-struct WasmFnInfo {
-    fn_name: String,
-    lo_fn_index: usize,
-    wasm_fn_index: u32,
 }
 
 #[derive(Clone)]
@@ -267,7 +279,8 @@ pub struct LoStructField {
 }
 
 struct LoGlobalDef {
-    def_expr: UBox<GlobalDefExpr>,
+    module_ctx: &'static LoExprContext,
+    def_expr: &'static GlobalDefExpr,
     global_type: LoType,
     global_index: u32,
 }
@@ -391,6 +404,23 @@ struct LoStr {
     len: u32,
 }
 
+pub struct Module {
+    pub index: usize,
+    pub file_index: u32,
+    pub source: &'static [u8],
+    pub ast: AST,
+    includes: Vec<ModuleInclude>,
+    own_items: Vec<ModuleItem>,
+    all_items: Vec<ModuleItem>,
+    ctx: LoExprContext,
+}
+
+pub struct ModuleInclude {
+    module_index: usize,
+    include_expr: &'static IncludeExpr,
+}
+
+#[derive(Clone)]
 struct ModuleItem {
     name: String,
     collection: ModuleItemCollection,
@@ -398,20 +428,23 @@ struct ModuleItem {
     loc: LoLocation,
 }
 
+#[derive(Clone, Debug)]
 enum ModuleItemCollection {
     Type,
     Function,
 }
 
-pub struct Module {
-    pub index: usize,
-    pub source: UBox<[u8]>,
-    pub ast: AST,
-    pub own_items: Vec<ModuleItem>,
-    pub all_items: Vec<ModuleItem>,
-}
-
 impl Module {
+    fn get_item(&self, item_name: &str) -> Option<&ModuleItem> {
+        for item in &self.all_items {
+            if item.name == item_name {
+                return Some(item);
+            }
+        }
+
+        None
+    }
+
     fn get_own_item(&self, item_name: &str) -> Option<&ModuleItem> {
         for item in &self.own_items {
             if item.name == item_name {
@@ -437,10 +470,9 @@ pub struct Compiler {
     struct_defs: Vec<LoStructDef>,
     globals: Vec<LoGlobalDef>,
     const_defs: Vec<LoConstDef>,
-    macro_defs: Vec<UBox<MacroDefExpr>>,
+    macro_defs: Vec<&'static MacroDefExpr>,
 
-    lo_functions: Vec<LoFnInfo>,
-    wasm_functions: Vec<WasmFnInfo>,
+    functions: Vec<FnInfo>,
 
     memory: Option<MemoryDefExpr>,
     memory_imported_from: Option<String>,
@@ -449,17 +481,11 @@ pub struct Compiler {
     data_size: RefCell<u32>,
 
     wasm_types: RefCell<Vec<WasmFnType>>,
-
-    current_module_index: usize,
-    const_ctx: LoExprContext,
 }
 
 impl Compiler {
     pub fn new() -> Self {
         let mut self_ = Self::default();
-
-        // prevent accidental module scoped access before we are in module scope
-        self_.current_module_index = usize::MAX;
 
         self_.type_defs.push(LoTypeDef {
             kind: LoTypeDefKind::Builtin,
@@ -590,7 +616,7 @@ impl Compiler {
         }
 
         if !file.is_newly_added {
-            return None;
+            return self.get_module_by_file_index(file.index);
         }
 
         let source = self.fm.get_file_source(file.index);
@@ -605,20 +631,36 @@ impl Compiler {
             return None;
         });
 
+        let mut includes = Vec::new();
+
         if !self.in_single_file_mode {
             for expr in &ast.exprs {
                 let TopLevelExpr::Include(include) = expr else {
                     continue;
                 };
 
-                self.import(&include.file_path.unescape(source), &include.loc);
+                let Some(module) = self.import(&include.file_path.unescape(source), &include.loc)
+                else {
+                    continue;
+                };
+
+                includes.push(ModuleInclude {
+                    module_index: module.index,
+                    include_expr: include.relax(),
+                });
             }
         }
 
+        let module_index = self.modules.len();
+        let ctx = LoExprContext::new(module_index, None);
+
         self.modules.push(Module {
-            index: self.modules.len(),
+            index: module_index,
+            file_index: file.index,
             source,
             ast,
+            ctx,
+            includes,
             own_items: Vec::new(),
             all_items: Vec::new(),
         });
@@ -627,23 +669,24 @@ impl Compiler {
     }
 
     pub fn run_passes(&mut self) {
-        for module in UBox::relax_mut(&mut self.modules) {
-            self.current_module_index = module.index;
+        for module in self.modules.relax_mut() {
             self.pass_collect_own_items(module);
         }
 
-        for module in UBox::relax(&self.modules) {
-            self.current_module_index = module.index;
+        for module in self.modules.relax_mut() {
+            self.pass_collect_all_items(module);
+        }
+
+        for module in self.modules.relax() {
             self.pass_build_structs(module);
         }
 
-        for module in UBox::relax(&self.modules) {
-            self.current_module_index = module.index;
+        for module in self.modules.relax() {
             self.pass_main(module);
         }
     }
 
-    pub fn pass_collect_own_items(&mut self, module: &mut Module) {
+    fn pass_collect_own_items(&mut self, module: &mut Module) {
         for expr in &module.ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(StructDefExpr {
@@ -702,7 +745,7 @@ impl Compiler {
                         continue;
                     }
 
-                    let type_value = self.build_type(&self.const_ctx, &type_value);
+                    let type_value = self.build_type(&module.ctx, &type_value);
                     let type_value = catch!(type_value, err, {
                         self.report_error(&err);
                         continue;
@@ -738,8 +781,7 @@ impl Compiler {
                         //   and only the first defined item will be accessible by name
                     }
 
-                    let mut ctx = LoExprContext::default();
-                    ctx.lo_fn_index = Some(self.lo_functions.len());
+                    let mut ctx = LoExprContext::new(module.index, Some(self.functions.len()));
                     ctx.enter_scope(LoScopeType::Function);
 
                     let mut exported_as = Vec::new();
@@ -748,7 +790,7 @@ impl Compiler {
                     }
 
                     // fill in as much as possible before types can be resolved
-                    self.lo_functions.push(LoFnInfo {
+                    self.functions.push(FnInfo {
                         fn_name: fn_def.decl.fn_name.repr.clone(),
                         fn_type: LoFnType {
                             inputs: Vec::new(),
@@ -757,25 +799,106 @@ impl Compiler {
                         fn_params: Vec::new(),
                         fn_source: LoFnSource::Guest {
                             ctx,
-                            body: UBox::new(&fn_def.body),
+                            body: fn_def.body.relax(),
                         },
                         exported_as,
+                        wasm_fn_index: u32::MAX, // not known at this point
                         definition_loc: fn_def.decl.fn_name.loc.clone(),
                     });
 
                     module.own_items.push(ModuleItem {
                         name: fn_def.decl.fn_name.repr.clone(),
                         collection: ModuleItemCollection::Function,
-                        collection_index: self.lo_functions.len() - 1,
+                        collection_index: self.functions.len() - 1,
                         loc: fn_def.decl.fn_name.loc.clone(),
                     });
+                }
+                TopLevelExpr::Import(ImportExpr {
+                    module_name,
+                    items,
+                    loc: _,
+                }) => {
+                    let module_name = module_name.unescape(module.source);
+
+                    for item in items {
+                        let ImportItem::FnDecl(fn_decl) = item else {
+                            continue;
+                        };
+
+                        if let Some(item) = module.get_own_item(&fn_decl.fn_name.repr) {
+                            self.report_error(&LoError {
+                                message: format!(
+                                    "Cannot redefine {}, already defined at {}",
+                                    fn_decl.fn_name.repr,
+                                    item.loc.to_string(&self.fm)
+                                ),
+                                loc: fn_decl.fn_name.loc.clone(),
+                            });
+
+                            // continue processing, this will make an item with duplicate name
+                            //   but this is fine because these items will be linked to different functions
+                            //   and only the first defined item will be accessible by name
+                        }
+
+                        self.functions.push(FnInfo {
+                            fn_name: fn_decl.fn_name.repr.clone(),
+                            fn_type: LoFnType {
+                                inputs: Vec::new(),
+                                output: LoType::Void,
+                            },
+                            fn_params: Vec::new(),
+                            fn_source: LoFnSource::Host {
+                                module_name: module_name.clone(),
+                                external_fn_name: fn_decl.fn_name.parts.last().unwrap().clone(),
+                            },
+                            exported_as: Vec::new(),
+                            wasm_fn_index: u32::MAX, // not known at this point
+                            definition_loc: fn_decl.fn_name.loc.clone(),
+                        });
+
+                        module.own_items.push(ModuleItem {
+                            name: fn_decl.fn_name.repr.clone(),
+                            collection: ModuleItemCollection::Function,
+                            collection_index: self.functions.len() - 1,
+                            loc: fn_decl.fn_name.loc.clone(),
+                        });
+                    }
                 }
                 _ => {} // skip, not interested
             }
         }
     }
 
-    pub fn pass_build_structs(&mut self, module: &Module) {
+    fn pass_collect_all_items(&mut self, module: &mut Module) {
+        self.inline_includes(module.relax_mut(), module, "");
+    }
+
+    fn inline_includes(&mut self, from: &Module, to: &mut Module, prefix: &str) {
+        for item in &from.own_items {
+            let imported_item = ModuleItem {
+                name: format!("{}{}", prefix, item.name),
+                ..item.clone()
+            };
+            to.all_items.push(imported_item)
+        }
+
+        for include in &from.includes {
+            if !(include.include_expr.with_extern || prefix == "") {
+                continue;
+            }
+
+            let included_module = self.modules[include.module_index].relax();
+
+            let Some(alias) = &include.include_expr.alias else {
+                self.inline_includes(included_module, to, prefix);
+                continue;
+            };
+
+            self.inline_includes(included_module, to, &format!("{}{}::", prefix, alias.repr));
+        }
+    }
+
+    fn pass_build_structs(&mut self, module: &Module) {
         'exprs: for expr in &module.ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(StructDefExpr {
@@ -804,7 +927,7 @@ impl Compiler {
 
                         let field_index = struct_primitives_count;
                         let field_type_res = self.build_type_check_ref(
-                            &self.const_ctx,
+                            &module.ctx,
                             &field.field_type,
                             false,
                             field.field_type.loc(),
@@ -848,20 +971,106 @@ impl Compiler {
         }
     }
 
-    pub fn pass_main(&mut self, module: &Module) {
+    fn pass_main(&mut self, module: &Module) {
         for expr in &module.ast.exprs {
             match expr {
                 TopLevelExpr::Include(_) => {}   // skip, processed in parse_file_tree
-                TopLevelExpr::TypeDef(_) => {}   // skip, processed in pass_collect_typedefs
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_build_structs
-                TopLevelExpr::FnDef(fn_def) => {
-                    let fn_info_item = module.get_own_item(&fn_def.decl.fn_name.repr).unwrap();
-                    let lo_fn_info =
-                        UBox::relax_mut(&mut self.lo_functions[fn_info_item.collection_index]);
+                // debug tools, will have different syntax or just be removed later
+                TopLevelExpr::TypeDef(TypeDefExpr {
+                    type_name,
+                    type_value: _,
+                    loc: _,
+                }) => {
+                    if type_name.repr.starts_with("__inspect_") {
+                        let command = type_name.repr.replacen("__inspect_", "", 1);
 
-                    lo_fn_info.fn_type.output = match &fn_def.decl.return_type {
+                        if self.in_inspection_mode {
+                            match command.as_str() {
+                                "items" => {
+                                    let mut message = String::new();
+                                    for item in &module.all_items {
+                                        write!(message, "{}\n", item.name).unwrap();
+                                    }
+
+                                    self.print_inspection(&InspectInfo {
+                                        message,
+                                        loc: type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                                "includes" => {
+                                    let mut message = String::new();
+                                    write!(
+                                        message,
+                                        "current: {}\n\n",
+                                        self.fm.get_file_path(module.file_index)
+                                    )
+                                    .unwrap();
+
+                                    for include in &module.includes {
+                                        write!(
+                                            message,
+                                            "{}\n",
+                                            include.include_expr.file_path.unescape(module.source)
+                                        )
+                                        .unwrap();
+                                    }
+
+                                    self.print_inspection(&InspectInfo {
+                                        message,
+                                        loc: type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                                "modules" => {
+                                    let mut message = String::new();
+
+                                    for module in &self.modules {
+                                        write!(
+                                            message,
+                                            "module: {}:\n",
+                                            self.fm.get_file_path(module.file_index)
+                                        )
+                                        .unwrap();
+
+                                        for include in &module.includes {
+                                            write!(
+                                                message,
+                                                "- {}\n",
+                                                include
+                                                    .include_expr
+                                                    .file_path
+                                                    .unescape(module.source)
+                                            )
+                                            .unwrap();
+                                        }
+                                    }
+
+                                    self.print_inspection(&InspectInfo {
+                                        message,
+                                        loc: type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                                _ => {
+                                    self.print_inspection(&InspectInfo {
+                                        message: format!("Invalid inspection call"),
+                                        loc: type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                TopLevelExpr::FnDef(fn_def) => {
+                    let item = module.get_own_item(&fn_def.decl.fn_name.repr).unwrap();
+                    let fn_info = self.functions[item.collection_index].relax_mut();
+
+                    fn_info.fn_type.output = match &fn_def.decl.return_type {
                         Some(return_type) => {
-                            catch!(self.build_type(&self.const_ctx, return_type), err, {
+                            catch!(self.build_type(&module.ctx, return_type), err, {
                                 self.report_error(&err);
                                 continue;
                             })
@@ -872,7 +1081,7 @@ impl Compiler {
                     let LoFnSource::Guest {
                         ref mut ctx,
                         body: _,
-                    } = &mut lo_fn_info.fn_source
+                    } = &mut fn_info.fn_source
                     else {
                         unreachable!()
                     };
@@ -892,14 +1101,14 @@ impl Compiler {
                         }
 
                         let param_type =
-                            self.get_fn_param_type(&self.const_ctx, &fn_def.decl.fn_name, fn_param);
+                            self.get_fn_param_type(&module.ctx, &fn_def.decl.fn_name, fn_param);
                         let param_type = catch!(param_type, err, {
                             self.report_error(&err);
                             continue 'param_loop;
                         });
-                        lo_fn_info.fn_type.inputs.push(param_type.clone());
+                        fn_info.fn_type.inputs.push(param_type.clone());
 
-                        lo_fn_info.fn_params.push(LoFnParam {
+                        fn_info.fn_params.push(LoFnParam {
                             param_name: fn_param.param_name.repr.clone(),
                             param_type: param_type.clone(),
                         });
@@ -917,25 +1126,36 @@ impl Compiler {
                         });
                     }
                 }
-                TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
-                    in_fn_name,
-                    out_fn_name,
+                TopLevelExpr::TryExport(TryExportExpr {
+                    in_name,
+                    out_name,
+                    from_root,
                     loc,
                 }) => {
-                    let Some(fn_info) = self.get_fn_def_mut(&in_fn_name.repr) else {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Cannot re-export not existing function: {}",
-                                in_fn_name.repr
-                            ),
-                            loc: loc.clone(),
-                        });
-                        continue;
+                    let mut target_module = module;
+                    if *from_root {
+                        target_module = &self.modules.last().unwrap();
+                    }
+
+                    // TODO: same syntax should probably also be able to export named memories
+                    let Ok(fn_info) =
+                        self.get_fn_info_for_call(&target_module.ctx, &in_name.repr, loc)
+                    else {
+                        return; // ignore if it doesn't exist or is not a function
                     };
 
+                    if self.in_inspection_mode {
+                        self.print_inspection(&InspectInfo {
+                            message: in_name.repr.clone(),
+                            loc: loc.clone(),
+                            linked_loc: Some(fn_info.definition_loc.clone()),
+                        });
+                    }
+
                     fn_info
+                        .be_mut()
                         .exported_as
-                        .push(out_fn_name.unescape(module.source));
+                        .push(out_name.unescape(module.source));
                 }
                 TopLevelExpr::Import(ImportExpr {
                     module_name,
@@ -957,54 +1177,30 @@ impl Compiler {
                             }
                         };
 
-                        let mut fn_type = LoFnType {
-                            inputs: Vec::new(),
-                            output: LoType::Void,
-                        };
-                        let mut fn_params = Vec::new();
+                        let item = module.get_own_item(&fn_decl.fn_name.repr).unwrap();
+                        let fn_info = self.functions[item.collection_index].relax_mut();
+
                         for fn_param in &fn_decl.fn_params {
                             let param_type =
-                                self.get_fn_param_type(&self.const_ctx, &fn_decl.fn_name, fn_param);
+                                self.get_fn_param_type(&module.ctx, &fn_decl.fn_name, fn_param);
                             let param_type = catch!(param_type, err, {
                                 self.report_error(&err);
                                 continue 'items;
                             });
-                            fn_type.inputs.push(param_type.clone());
-                            fn_params.push(LoFnParam {
+                            fn_info.fn_type.inputs.push(param_type.clone());
+                            fn_info.fn_params.push(LoFnParam {
                                 param_name: fn_param.param_name.repr.clone(),
                                 param_type: param_type.clone(),
                             });
                         }
+
                         if let Some(return_type) = &fn_decl.return_type {
-                            fn_type.output =
-                                catch!(self.build_type(&self.const_ctx, &return_type), err, {
+                            fn_info.fn_type.output =
+                                catch!(self.build_type(&module.ctx, &return_type), err, {
                                     self.report_error(&err);
                                     continue 'items;
                                 });
                         }
-
-                        if let Some(fn_info) = self.get_fn_def(&fn_decl.fn_name.repr) {
-                            self.report_error(&LoError {
-                                message: format!(
-                                    "Duplicate function definition: {}, previously defined at {}",
-                                    fn_decl.fn_name.repr,
-                                    fn_info.definition_loc.to_string(&self.fm)
-                                ),
-                                loc: fn_decl.loc.clone(),
-                            });
-                        }
-
-                        self.lo_functions.push(LoFnInfo {
-                            fn_name: fn_decl.fn_name.repr.clone(),
-                            fn_type,
-                            fn_params,
-                            fn_source: LoFnSource::Host {
-                                module_name: module_name.clone(),
-                                external_fn_name: fn_decl.fn_name.parts.last().unwrap().clone(),
-                            },
-                            exported_as: Vec::new(),
-                            definition_loc: fn_decl.fn_name.loc.clone(),
-                        });
                     }
                 }
                 TopLevelExpr::GlobalDef(global) => {
@@ -1027,7 +1223,7 @@ impl Compiler {
                                 self.report_error(&err);
                                 // continue processing global def
                             });
-                            let value_type = self.get_expr_type(&self.const_ctx, expr);
+                            let value_type = self.get_expr_type(&module.ctx, expr);
                             let value_type = catch!(value_type, err, {
                                 self.report_error(&err);
                                 continue;
@@ -1058,7 +1254,8 @@ impl Compiler {
                     }
 
                     self.globals.push(LoGlobalDef {
-                        def_expr: UBox::new(global),
+                        module_ctx: module.ctx.relax(),
+                        def_expr: global.relax(),
                         global_type: value_type,
                         global_index: self.globals.len() as u32,
                     });
@@ -1076,8 +1273,8 @@ impl Compiler {
                         continue;
                     }
 
-                    let mut const_ctx = LoExprContext::default();
-                    let code_unit = self.build_code_unit(&mut const_ctx, &const_def.const_value);
+                    let code_unit =
+                        self.build_code_unit(module.ctx.be_mut(), &const_def.const_value);
                     let code_unit = catch!(code_unit, err, {
                         self.report_error(&err);
                         continue;
@@ -1085,7 +1282,7 @@ impl Compiler {
 
                     if self.in_inspection_mode {
                         let const_name = &const_def.const_name.repr;
-                        let const_type = &code_unit.lo_type;
+                        let const_type = &code_unit.type_;
 
                         self.print_inspection(&InspectInfo {
                             message: format!("const {const_name}: {const_type}"),
@@ -1107,15 +1304,13 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::StaticDataStore(static_data_store) => {
-                    let mut const_ctx = LoExprContext::default();
-
                     let mut offset_expr = WasmExpr { instrs: Vec::new() };
                     catch!(self.ensure_const_expr(&static_data_store.addr), err, {
                         self.report_error(&err);
                         // continue processing data store
                     });
                     let res = self.codegen(
-                        &mut const_ctx,
+                        module.ctx.be_mut(),
                         &mut offset_expr.instrs,
                         &static_data_store.addr,
                     );
@@ -1148,7 +1343,7 @@ impl Compiler {
                         continue;
                     }
 
-                    self.macro_defs.push(UBox::new(macro_def));
+                    self.macro_defs.push(macro_def.relax());
                 }
             }
         }
@@ -1157,7 +1352,7 @@ impl Compiler {
     // TODO: add local names to debug info
     pub fn generate(&mut self, wasm_module: &mut WasmModule) {
         let mut fn_imports_count = 0;
-        for fn_info in &self.lo_functions {
+        for fn_info in &self.functions {
             if let LoFnSource::Host { .. } = fn_info.fn_source {
                 fn_imports_count += 1;
             }
@@ -1166,8 +1361,8 @@ impl Compiler {
         // resolve wasm fn indicies and populate type, import and export sections
         let mut wasm_import_fn_index = 0;
         let mut wasm_fn_index = fn_imports_count;
-        for lo_fn_index in 0..self.lo_functions.len() {
-            let fn_info = &self.lo_functions[lo_fn_index];
+        for fn_index in 0..self.functions.len() {
+            let fn_info = self.functions[fn_index].relax_mut();
 
             let mut wasm_fn_type = WasmFnType {
                 inputs: Vec::new(),
@@ -1197,11 +1392,7 @@ impl Compiler {
                         fn_name: fn_info.fn_name.clone(),
                     });
 
-                    self.wasm_functions.push(WasmFnInfo {
-                        fn_name: fn_info.fn_name.clone(),
-                        lo_fn_index,
-                        wasm_fn_index,
-                    });
+                    fn_info.wasm_fn_index = wasm_fn_index;
 
                     wasm_fn_index += 1;
                 }
@@ -1209,11 +1400,8 @@ impl Compiler {
                     module_name,
                     external_fn_name,
                 } => {
-                    self.wasm_functions.push(WasmFnInfo {
-                        fn_name: fn_info.fn_name.clone(),
-                        lo_fn_index,
-                        wasm_fn_index: wasm_import_fn_index,
-                    });
+                    fn_info.wasm_fn_index = wasm_import_fn_index;
+
                     wasm_module.imports.push(WasmImport {
                         module_name: module_name.clone(),
                         item_name: external_fn_name.clone(),
@@ -1225,22 +1413,18 @@ impl Compiler {
                 }
             }
 
-            let exported_item_index = self.wasm_functions.last().unwrap().wasm_fn_index;
             for export_name in &fn_info.exported_as {
                 wasm_module.exports.push(WasmExport {
                     export_type: WasmExportType::Func,
                     export_name: export_name.clone(),
-                    exported_item_index,
+                    exported_item_index: fn_info.wasm_fn_index,
                 });
             }
         }
 
         // build function codes
-        for i in 0..self.wasm_functions.len() {
-            let wasm_fn_info = &self.wasm_functions[i];
-            let lo_fn_info = &self.lo_functions[wasm_fn_info.lo_fn_index];
-
-            let LoFnSource::Guest { ctx, body } = &lo_fn_info.fn_source else {
+        for fn_info in &self.functions {
+            let LoFnSource::Guest { ctx, body } = &fn_info.fn_source else {
                 continue;
             };
 
@@ -1308,8 +1492,6 @@ impl Compiler {
             wasm_module.datas.push(static_data_store.clone());
         }
 
-        let mut const_ctx = LoExprContext::default();
-
         let mut wasm_types_buf = Vec::with_capacity(1);
         for i in 0..self.globals.len() {
             let global = &self.globals[i];
@@ -1320,7 +1502,8 @@ impl Compiler {
 
             match &global.def_expr.global_value {
                 GlobalDefValue::Expr(expr) => {
-                    let res = self.codegen(&mut const_ctx, &mut initial_value.instrs, expr);
+                    let res =
+                        self.codegen(global.module_ctx.be_mut(), &mut initial_value.instrs, expr);
                     catch!(res, err, {
                         self.report_error(&err);
                     });
@@ -1760,10 +1943,7 @@ impl Compiler {
                 if let Some(const_def) = self.get_const(ctx, &ident.repr) {
                     if self.in_inspection_mode {
                         self.print_inspection(&InspectInfo {
-                            message: format!(
-                                "const {}: {}",
-                                ident.repr, const_def.code_unit.lo_type
-                            ),
+                            message: format!("const {}: {}", ident.repr, const_def.code_unit.type_),
                             loc: ident.loc.clone(),
                             linked_loc: Some(const_def.loc.clone()),
                         });
@@ -2154,7 +2334,7 @@ impl Compiler {
             }
 
             CodeExpr::Return(ReturnExpr { expr, loc }) => {
-                let Some(lo_fn_index) = ctx.lo_fn_index else {
+                let Some(fn_index) = ctx.fn_index else {
                     return Err(LoError {
                         message: format!("Cannot use `return` in const context"),
                         loc: loc.clone(),
@@ -2168,7 +2348,7 @@ impl Compiler {
                     return_type = self.get_expr_type(ctx, &return_expr)?;
                 };
 
-                let fn_return_type = &self.lo_functions[lo_fn_index].fn_type.output;
+                let fn_return_type = &self.functions[fn_index].fn_type.output;
                 if return_type != *fn_return_type && return_type != LoType::Never {
                     return Err(LoError {
                         message: format!(
@@ -2418,9 +2598,17 @@ impl Compiler {
                 lhs,
                 error_bind,
                 catch_body,
-                loc,
+                catch_loc,
+                loc: _,
             }) => {
-                self.codegen_catch(ctx, instrs, lhs, Some(&error_bind), Some(catch_body), loc)?;
+                self.codegen_catch(
+                    ctx,
+                    instrs,
+                    lhs,
+                    Some(&error_bind),
+                    Some(catch_body),
+                    catch_loc,
+                )?;
             }
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
                 self.codegen_catch(ctx, instrs, expr, None, None, loc)?;
@@ -2445,13 +2633,7 @@ impl Compiler {
         args: &Vec<CodeExpr>,
         loc: &LoLocation,
     ) -> Result<(), LoError> {
-        let Some(wasm_fn_info) = self.get_wasm_fn_info(fn_name) else {
-            return Err(LoError {
-                message: format!("Unknown function: {}", fn_name),
-                loc: loc.clone(),
-            });
-        };
-        let lo_fn_info = self.get_lo_fn_info(wasm_fn_info);
+        let fn_info = self.get_fn_info_for_call(ctx, fn_name, loc)?;
 
         let mut arg_types = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -2464,38 +2646,65 @@ impl Compiler {
         }
 
         if self.in_inspection_mode {
-            let params = ListDisplay(&lo_fn_info.fn_params);
-            let return_type = &lo_fn_info.fn_type.output;
+            let params = ListDisplay(&fn_info.fn_params);
+            let return_type = &fn_info.fn_type.output;
             self.print_inspection(&InspectInfo {
                 message: format!("fn {fn_name}({params}): {return_type}"),
                 loc: loc.clone(),
-                linked_loc: Some(lo_fn_info.definition_loc.clone()),
+                linked_loc: Some(fn_info.definition_loc.clone()),
             });
         }
 
-        if !self.is_types_compatible(&lo_fn_info.fn_type.inputs, &arg_types) {
+        if !self.is_types_compatible(&fn_info.fn_type.inputs, &arg_types) {
             return Err(LoError {
                 message: format!(
                     "Invalid function arguments for function {}: [{}], expected [{}]",
-                    lo_fn_info.fn_name,
+                    fn_info.fn_name,
                     ListDisplay(&arg_types),
-                    ListDisplay(&lo_fn_info.fn_type.inputs),
+                    ListDisplay(&fn_info.fn_type.inputs),
                 ),
                 loc: loc.clone(),
             });
         }
 
         instrs.push(WasmInstr::Call {
-            fn_index: wasm_fn_info.wasm_fn_index,
+            fn_index: fn_info.wasm_fn_index,
         });
 
         // TODO: insert this kind of logic into other places
         //   like conditionals where each branch resolves to `never`
-        if lo_fn_info.fn_type.output == LoType::Never {
+        if fn_info.fn_type.output == LoType::Never {
             instrs.push(WasmInstr::Unreachable);
         }
 
         Ok(())
+    }
+
+    fn get_fn_info_for_call(
+        &self,
+        ctx: &LoExprContext,
+        fn_name: &str,
+        loc: &LoLocation,
+    ) -> Result<&FnInfo, LoError> {
+        let Some(item) = self.modules[ctx.module_index].get_item(fn_name) else {
+            return Err(LoError {
+                message: format!("Unknown function: {}", fn_name),
+                loc: loc.clone(),
+            });
+        };
+
+        let ModuleItemCollection::Function = item.collection else {
+            return Err(LoError {
+                message: format!(
+                    "Trying to call {} which is not a function, defined at: {}",
+                    fn_name,
+                    item.loc.to_string(&self.fm)
+                ),
+                loc: loc.clone(),
+            });
+        };
+
+        Ok(&self.functions[item.collection_index])
     }
 
     fn get_macro_return_type(
@@ -2577,7 +2786,7 @@ impl Compiler {
                 .macro_type_args
                 .push(LoMacroTypeArg {
                     name: type_param.clone(),
-                    lo_type: type_arg.clone(),
+                    type_: type_arg.clone(),
                 });
         }
 
@@ -2594,7 +2803,7 @@ impl Compiler {
 
         let mut arg_types = Vec::<LoType>::new();
         for arg in &all_args {
-            arg_types.push(arg.lo_type.clone());
+            arg_types.push(arg.type_.clone());
         }
 
         // TODO: check for const shadowing
@@ -2610,7 +2819,7 @@ impl Compiler {
                     .macro_type_args
                     .push(LoMacroTypeArg {
                         name: name.clone(),
-                        lo_type: const_def.code_unit.lo_type.clone(),
+                        type_: const_def.code_unit.type_.clone(),
                     });
             }
 
@@ -2674,7 +2883,7 @@ impl Compiler {
                 let const_def = &ctx.current_scope().macro_args[i];
                 macro_args.push(LoFnParam {
                     param_name: const_def.const_name.clone(),
-                    param_type: const_def.code_unit.lo_type.clone(),
+                    param_type: const_def.code_unit.type_.clone(),
                 });
             }
             let lo_args = ListDisplay(&macro_args);
@@ -2767,7 +2976,7 @@ impl Compiler {
             if !terminated_early {
                 self.report_error(&LoError {
                     message: format!("Catch expression must resolve to never, got other type"),
-                    loc: catch_body.loc.clone(),
+                    loc: loc.clone(),
                 });
             }
         } else {
@@ -2957,14 +3166,14 @@ impl Compiler {
             return Ok(LoResultType { ok, err });
         }
 
-        let Some(lo_fn_index) = ctx.lo_fn_index else {
+        let Some(fn_index) = ctx.fn_index else {
             return Err(LoError {
                 message: format!("Cannot create implicitly typed result in const context"),
                 loc: loc.clone(),
             });
         };
 
-        let fn_info = &self.lo_functions[lo_fn_index];
+        let fn_info = &self.functions[fn_index];
         let LoType::Result(result) = &fn_info.fn_type.output else {
             return Err(LoError {
                 message: format!(
@@ -3082,7 +3291,7 @@ impl Compiler {
             }
             CodeExpr::Ident(ident) => {
                 if let Some(const_expr) = self.get_const(ctx, &ident.repr) {
-                    return Ok(const_expr.code_unit.lo_type.clone());
+                    return Ok(const_expr.code_unit.type_.clone());
                 }
 
                 let var = self.var_from_ident(ctx, ident)?;
@@ -3189,15 +3398,9 @@ impl Compiler {
                 args: _,
                 loc: _,
             }) => {
-                let Some(wasm_fn_info) = self.get_wasm_fn_info(&fn_name.repr) else {
-                    return Err(LoError {
-                        message: format!("Unknown function: {}", fn_name.repr),
-                        loc: fn_name.loc.clone(),
-                    });
-                };
-                let lo_fn_info = self.get_lo_fn_info(wasm_fn_info);
+                let fn_info = self.get_fn_info_for_call(ctx, &fn_name.repr, &fn_name.loc)?;
 
-                Ok(lo_fn_info.fn_type.output.clone())
+                Ok(fn_info.fn_type.output.clone())
             }
             CodeExpr::MethodCall(MethodCallExpr {
                 lhs,
@@ -3208,15 +3411,9 @@ impl Compiler {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
 
-                let Some(wasm_fn_info) = self.get_wasm_fn_info(&fn_name) else {
-                    return Err(LoError {
-                        message: format!("Unknown function: {}", fn_name),
-                        loc: field_name.loc.clone(),
-                    });
-                };
-                let lo_fn_info = self.get_lo_fn_info(wasm_fn_info);
+                let fn_info = self.get_fn_info_for_call(ctx, &fn_name, &field_name.loc)?;
 
-                Ok(lo_fn_info.fn_type.output.clone())
+                Ok(fn_info.fn_type.output.clone())
             }
             CodeExpr::MacroFnCall(MacroFnCallExpr {
                 fn_name,
@@ -3244,10 +3441,11 @@ impl Compiler {
                 lhs,
                 error_bind: _,
                 catch_body: _,
-                loc,
+                catch_loc,
+                loc: _,
             }) => {
                 let expr_type = self.get_expr_type(ctx, lhs)?;
-                let result = self.assert_catchable_type(&expr_type, loc)?;
+                let result = self.assert_catchable_type(&expr_type, catch_loc)?;
                 Ok(result.ok.as_ref().clone())
             }
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
@@ -3872,7 +4070,7 @@ impl Compiler {
         expr: &CodeExpr,
     ) -> Result<LoCodeUnit, LoError> {
         let mut code_unit = LoCodeUnit {
-            lo_type: self.get_expr_type(ctx, expr)?,
+            type_: self.get_expr_type(ctx, expr)?,
             instrs: Vec::new(),
         };
         self.codegen(ctx, &mut code_unit.instrs, expr)?;
@@ -4494,45 +4692,20 @@ impl Compiler {
         }
     }
 
-    fn get_fn_def(&self, fn_name: &str) -> Option<&LoFnInfo> {
-        for fn_info in &self.lo_functions {
-            if fn_info.fn_name == fn_name {
-                return Some(fn_info);
-            }
-        }
-
-        None
-    }
-
-    fn get_fn_def_mut(&mut self, fn_name: &str) -> Option<&mut LoFnInfo> {
-        for fn_info in &mut self.lo_functions {
-            if fn_info.fn_name == fn_name {
-                return Some(fn_info);
-            }
-        }
-
-        None
-    }
-
-    fn get_wasm_fn_info(&self, fn_name: &str) -> Option<&WasmFnInfo> {
-        for wasm_fn_info in &self.wasm_functions {
-            if wasm_fn_info.fn_name == fn_name {
-                return Some(wasm_fn_info);
-            }
-        }
-
-        None
-    }
-
-    fn get_lo_fn_info(&self, wasm_fn_info: &WasmFnInfo) -> &LoFnInfo {
-        let lo_fn_info = &self.lo_functions[wasm_fn_info.lo_fn_index];
-        return lo_fn_info;
-    }
-
     fn get_global(&self, global_name: &str) -> Option<&LoGlobalDef> {
         for global_def in &self.globals {
             if global_def.def_expr.global_name.repr == global_name {
                 return Some(global_def);
+            }
+        }
+
+        None
+    }
+
+    fn get_module_by_file_index(&self, file_index: u32) -> Option<&Module> {
+        for module in &self.modules {
+            if module.file_index == file_index {
+                return Some(module);
             }
         }
 
@@ -4584,7 +4757,7 @@ impl Compiler {
     fn print_inspection(&self, inspect_info: &InspectInfo) {
         let source_index = inspect_info.loc.file_index;
         let source_range = RangeDisplay(&inspect_info.loc);
-        let message = &inspect_info.message;
+        let message = json_str_escape(&inspect_info.message);
 
         let Some(linked_loc) = &inspect_info.linked_loc else {
             stdout_writeln(format!(
@@ -4608,7 +4781,10 @@ impl Compiler {
 }
 
 fn json_str_escape(value: &str) -> String {
-    value.replace("\\", "\\\\").replace("\"", "\\\"")
+    value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
 }
 
 fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {

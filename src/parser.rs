@@ -10,7 +10,7 @@ use LoTokenType::*;
 
 pub struct Parser {
     // context
-    pub source: UBox<[u8]>,
+    pub source: &'static [u8],
     pub tokens: Vec<LoToken>,
 
     // state
@@ -18,7 +18,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse(source: UBox<[u8]>, lex: LexerResult) -> Result<AST, LoError> {
+    pub fn parse(source: &'static [u8], lex: LexerResult) -> Result<AST, LoError> {
         let parser = Parser {
             source,
             tokens: lex.tokens,
@@ -69,23 +69,6 @@ impl Parser {
                 return Ok(TopLevelExpr::MemoryDef(memory_def));
             }
 
-            if let Some(_) = self.eat(Symbol, "existing")? {
-                let mut loc = self.prev().loc.clone();
-
-                self.expect(Symbol, "fn")?;
-                let in_fn_name = self.parse_ident()?;
-                self.expect(Symbol, "as")?;
-                let out_fn_name = self.expect_any(StringLiteral)?.clone();
-
-                loc.end_pos = self.prev().loc.end_pos;
-
-                return Ok(TopLevelExpr::ExportExistingFn(ExportExistingFnExpr {
-                    in_fn_name,
-                    out_fn_name: EscapedString(out_fn_name.loc),
-                    loc,
-                }));
-            }
-
             let unexpected = self.current();
             return Err(LoError {
                 message: format!(
@@ -94,6 +77,31 @@ impl Parser {
                 ),
                 loc: unexpected.loc.clone(),
             });
+        }
+
+        if let Some(_) = self.eat(Symbol, "try")? {
+            let mut loc = self.prev().loc.clone();
+
+            self.expect(Symbol, "export")?;
+            let in_name = self.parse_ident()?;
+
+            self.expect(Symbol, "as")?;
+            let out_name = self.expect_any(StringLiteral)?.clone();
+
+            let mut from_root = false;
+            if let Ok(Some(_)) = self.eat(Symbol, "from") {
+                self.expect(Symbol, "root")?;
+                from_root = true;
+            }
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(TopLevelExpr::TryExport(TryExportExpr {
+                in_name,
+                out_name: EscapedString(out_name.loc),
+                from_root,
+                loc,
+            }));
         }
 
         if let Some(_) = self.eat(Symbol, "fn")? {
@@ -119,11 +127,18 @@ impl Parser {
                 alias = Some(self.parse_ident()?);
             }
 
+            let mut with_extern = false;
+            if let Ok(Some(_)) = self.eat(Symbol, "with") {
+                self.expect(Symbol, "extern")?;
+                with_extern = true;
+            }
+
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::Include(IncludeExpr {
                 file_path: EscapedString(file_path.loc),
                 alias,
+                with_extern,
                 loc,
             }));
         }
@@ -1179,6 +1194,7 @@ impl Parser {
                     lhs: Box::new(primary),
                     error_bind,
                     catch_body,
+                    catch_loc: op.token.loc,
                     loc,
                 }))
             }
