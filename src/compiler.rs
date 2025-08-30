@@ -7,10 +7,10 @@ use alloc::{
 };
 use core::{cell::RefCell, fmt::Write};
 
-// TODO: make globals, macros and consts be stored in modules items
+// TODO: make globals, macros and consts be stored in module's items
 // TODO!: change all magic functions to have `@some_magic_fn<...type_args>(...args)` syntax:
 //   @sizeof<T>(), @data_size, @__inspect(), @memory_size(), etc...
-// TODO: make sure function names can't not collide with intrinsics
+// TODO: make sure function names can't collide with intrinsics
 
 #[derive(Clone, PartialEq)]
 pub enum LoType {
