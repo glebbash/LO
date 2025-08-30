@@ -870,31 +870,37 @@ impl Compiler {
     }
 
     fn pass_collect_all_items(&mut self, module: &mut Module) {
-        self.inline_includes(module.relax_mut(), module, "");
+        self.inline_includes(module.relax_mut(), module, &mut String::from(""), true);
     }
 
-    fn inline_includes(&mut self, from: &Module, to: &mut Module, prefix: &str) {
-        for item in &from.own_items {
-            let imported_item = ModuleItem {
+    fn inline_includes(
+        &mut self,
+        includer: &mut Module,
+        includee: &Module,
+        prefix: &mut String,
+        force_go_deeper: bool,
+    ) {
+        for item in &includee.own_items {
+            includer.all_items.push(ModuleItem {
                 name: format!("{}{}", prefix, item.name),
                 ..item.clone()
-            };
-            to.all_items.push(imported_item)
+            })
         }
 
-        for include in &from.includes {
-            if !(include.include_expr.with_extern || prefix == "") {
+        let original_prefix_len = prefix.len();
+        for include in &includee.includes {
+            if !(include.include_expr.with_extern || force_go_deeper) {
                 continue;
             }
 
+            if let Some(alias) = &include.include_expr.alias {
+                prefix.push_str(&alias.repr);
+                prefix.push_str("::");
+            }
+
             let included_module = self.modules[include.module_index].relax();
-
-            let Some(alias) = &include.include_expr.alias else {
-                self.inline_includes(included_module, to, prefix);
-                continue;
-            };
-
-            self.inline_includes(included_module, to, &format!("{}{}::", prefix, alias.repr));
+            self.inline_includes(includer, included_module, prefix, false);
+            prefix.truncate(original_prefix_len);
         }
     }
 
