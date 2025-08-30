@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::{cell::RefCell, fmt::Write};
 
-// TODO!!: fix duplicated items problem in `inline_includes` (only visible with __inspect_items in `examples/self-hosted.lo`)
+// TODO: make globals, macros and consts be stored in modules items
 // TODO!: change all magic functions to have `@some_magic_fn<...type_args>(...args)` syntax:
 //   @sizeof<T>(), @data_size, @__inspect(), @memory_size(), etc...
 // TODO: make sure function names can't not collide with intrinsics
