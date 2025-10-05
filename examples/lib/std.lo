@@ -198,9 +198,13 @@ fn heap::alloc(size: u32): &void {
     } else {
         heap::CURRENT_BLOCK = heap::CURRENT_BLOCK.next!()
     }
-    let new_memory_needed = (heap::CURRENT_BLOCK as u32 + sizeof heap::Block + size) as i32 - __memory_size() * mem::PAGE_SIZE as i32
+    let new_memory_needed = (
+        \ heap::CURRENT_BLOCK as u32 + sizeof heap::Block + size
+    ) as i32 - __memory_size() * mem::PAGE_SIZE as i32
     if new_memory_needed > +0 {
-        let pages_needed = (new_memory_needed as u32 + mem::PAGE_SIZE) / mem::PAGE_SIZE
+        let pages_needed = (
+            \ new_memory_needed as u32 + mem::PAGE_SIZE
+        ) / mem::PAGE_SIZE
         if __memory_grow(pages_needed) == -1 {
             abort(AbortCode::OOM)
         }
@@ -474,7 +478,9 @@ fn str::equals(self, other: str): bool {
         return false
     }
     for i in 0..self.size {
-        if *((self.data as u32 + i) as &u8) != *((other.data as u32 + i) as &u8) {
+        if *((self.data as u32 + i) as &u8) != 
+            \ *((other.data as u32 + i) as &u8)
+        {
             return false
         }
     }

@@ -2204,7 +2204,7 @@ impl Compiler {
                 args,
                 loc: _,
             }) => {
-                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, args, &fn_name.loc)?;
+                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, &args.items, &fn_name.loc)?;
             }
             CodeExpr::MethodCall(MethodCallExpr {
                 lhs,
@@ -2214,7 +2214,14 @@ impl Compiler {
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.codegen_fn_call(ctx, instrs, &fn_name, Some(lhs), args, &field_name.loc)?;
+                self.codegen_fn_call(
+                    ctx,
+                    instrs,
+                    &fn_name,
+                    Some(lhs),
+                    &args.items,
+                    &field_name.loc,
+                )?;
             }
             CodeExpr::MacroFnCall(MacroFnCallExpr {
                 fn_name,
@@ -2228,7 +2235,7 @@ impl Compiler {
                     &fn_name.repr,
                     type_args,
                     None,
-                    args,
+                    &args.items,
                     &fn_name.loc,
                 )?;
             }
@@ -2247,7 +2254,7 @@ impl Compiler {
                     &macro_name,
                     type_args,
                     Some(lhs),
-                    args,
+                    &args.items,
                     &field_name.loc,
                 )?;
             }
@@ -2282,7 +2289,7 @@ impl Compiler {
             }
             CodeExpr::MemoryGrow(MemoryGrowExpr { args, loc }) => {
                 let mut arg_types = Vec::new();
-                for arg in args {
+                for arg in &args.items {
                     arg_types.push(self.get_expr_type(ctx, arg)?);
                 }
                 let param_types = &[LoType::U32];
@@ -2297,7 +2304,7 @@ impl Compiler {
                     });
                 }
 
-                for arg in args {
+                for arg in &args.items {
                     self.codegen(ctx, instrs, arg)?;
                 }
 
@@ -2305,7 +2312,7 @@ impl Compiler {
             }
             CodeExpr::MemoryCopy(MemoryCopyExpr { args, loc }) => {
                 let mut arg_types = Vec::new();
-                for arg in args {
+                for arg in &args.items {
                     arg_types.push(self.get_expr_type(ctx, arg)?);
                 }
                 let param_types = &[LoType::U32, LoType::U32, LoType::U32];
@@ -2320,7 +2327,7 @@ impl Compiler {
                     });
                 }
 
-                for arg in args {
+                for arg in &args.items {
                     self.codegen(ctx, instrs, arg)?;
                 }
 
@@ -2561,7 +2568,7 @@ impl Compiler {
                 body,
                 loc: _,
             }) => {
-                for arg in args {
+                for arg in &args.items {
                     ctx.enter_scope(LoScopeType::Block);
                     let arg_type = self.get_expr_type(ctx, arg)?;
                     let arg_local_index = self.define_local(
@@ -3415,7 +3422,14 @@ impl Compiler {
                 loc,
             }) => {
                 let mut ctx = ctx.clone();
-                self.get_macro_return_type(&mut ctx, &fn_name.repr, type_args, args, None, loc)
+                self.get_macro_return_type(
+                    &mut ctx,
+                    &fn_name.repr,
+                    type_args,
+                    &args.items,
+                    None,
+                    loc,
+                )
             }
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
                 lhs,
@@ -3428,7 +3442,14 @@ impl Compiler {
                 let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
 
                 let mut ctx = ctx.clone();
-                self.get_macro_return_type(&mut ctx, &macro_name, type_args, args, Some(&lhs), loc)
+                self.get_macro_return_type(
+                    &mut ctx,
+                    &macro_name,
+                    type_args,
+                    &args.items,
+                    Some(&lhs),
+                    loc,
+                )
             }
             CodeExpr::Catch(CatchExpr {
                 lhs,

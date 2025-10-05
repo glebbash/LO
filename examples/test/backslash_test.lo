@@ -11,28 +11,28 @@ fn backslash_test() {
     ) + x
 
     let x3 = 2 + f(
-        \ x,
+        \ x
     ) + f(
-        \ x,
+        \ x
     )
 
     let x4 = x + 
         \ f(
-            \ x,
+            \ x
         ) + f(
-            \ x,
+            \ x
         )
 
     let x5 = x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(
-                                        \ x,
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
+                                        \ x
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
     )
 
     if false {
@@ -52,8 +52,14 @@ fn backslash_test() {
     let x8 = x + 
         \ f(x + 
             \ x + 
-            \ x,
+            \ x
         )
+
+    let x9 = f2(
+        1 + 
+            \ 1,
+        1,
+    )
 }
 
 struct s {
@@ -61,9 +67,9 @@ struct s {
 }
 
 fn f(x: u32): u32 {
-    return f2(.s { x: x }.x)
+    return .s { x: x }.x
 }
 
-fn f2(x: u32): u32 {
-    return x
+fn f2(x: u32, y: u32): u32 {
+    return x + y
 }

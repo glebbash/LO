@@ -77,7 +77,10 @@ export fn _start() {
             return finalize_and_exit(1)
         }
 
-        let wasm_module = WasmParser::parse(String::from_str(file_name), module_bytes) catch err {
+        let wasm_module = WasmParser::parse(
+            String::from_str(file_name),
+            module_bytes,
+        ) catch err {
             defer err.free()
             stderr_writeln(err.as_str())
             return finalize_and_exit(1)

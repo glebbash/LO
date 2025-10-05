@@ -101,8 +101,9 @@ fn main() {
             }
         }
         if byr_is_valid && iyr_is_valid && eyr_is_valid && hgt_is_valid && 
-            \ hcl_is_valid && ecl_is_valid && pid_is_valid {
-                valid_passwords += 1
+            \ hcl_is_valid && ecl_is_valid && pid_is_valid
+        {
+            valid_passwords += 1
         }
         if passwords.rest.size == 0 {
             break

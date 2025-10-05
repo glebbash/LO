@@ -23,7 +23,17 @@ fn main() {
     let prestat2 = tmp_alloc!<wasi::prestat>()
     let _ = wasi::fd_prestat_get(dir_fd + 1, prestat2)
     let file_fd = tmp_alloc!<u32>()
-    err = wasi::path_open(dir_fd, 1, file_path.data, file_path.size, 0, 264240830u64, 268435455u64, 0, file_fd)
+    err = wasi::path_open(
+        dir_fd,
+        1,
+        file_path.data,
+        file_path.size,
+        0,
+        264240830u64,
+        268435455u64,
+        0,
+        file_fd,
+    )
     if err != 0 {
         wasi::proc_exit(err)
     }

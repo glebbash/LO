@@ -43,12 +43,19 @@ fn fs::_unlock() {
         return
     }
     let dir_path = tmp_alloc_many!<u8>(prestat.pr_name_len)
-    err = wasi::fd_prestat_dir_name(fs::CWD_PREOPEN_FD, dir_path, prestat.pr_name_len)
+    err = wasi::fd_prestat_dir_name(
+        fs::CWD_PREOPEN_FD,
+        dir_path,
+        prestat.pr_name_len,
+    )
     if err != wasi::Err::SUCCESS {
         return
     }
     // TODO: support alignment in std
-    let fdstat = mem::align_to(tmp_alloc_many!<wasi::fdstat>(2) as u32, 8) as &wasi::fdstat
+    let fdstat = mem::align_to(
+        tmp_alloc_many!<wasi::fdstat>(2) as u32,
+        8,
+    ) as &wasi::fdstat
     err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat)
     if err != wasi::Err::SUCCESS {
         return
@@ -60,7 +67,17 @@ fn fs::_unlock() {
 
 fn fs::open(file_path: str): Result<u32, wasi::Err> {
     let fd_ref = tmp_alloc!<u32>()
-    let err = wasi::path_open(fs::CWD_PREOPEN_FD, 1, file_path.data, file_path.size, 0, 264_240_830u64, 268_435_455u64, 0, fd_ref)
+    let err = wasi::path_open(
+        fs::CWD_PREOPEN_FD,
+        1,
+        file_path.data,
+        file_path.size,
+        0,
+        264_240_830u64,
+        268_435_455u64,
+        0,
+        fd_ref,
+    )
     if err != wasi::Err::SUCCESS {
         return Err(err)
     }

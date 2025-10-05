@@ -910,11 +910,11 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             if ident.repr == "__memory_size" {
-                if args.len() != 0 {
+                if args.items.len() != 0 {
                     return Err(LoError {
                         message: format!(
                             "__memory accepts no arguments, but {} was provided",
-                            args.len()
+                            args.items.len()
                         ),
                         loc,
                     });
@@ -1026,18 +1026,26 @@ impl Parser {
         });
     }
 
-    fn parse_fn_args(&self) -> Result<Vec<CodeExpr>, LoError> {
-        let mut args = Vec::new();
+    fn parse_fn_args(&self) -> Result<CodeExprList, LoError> {
+        let mut has_trailing_comma = false;
+        let mut items = Vec::new();
+
         self.expect(Delim, "(")?;
         while let None = self.eat(Delim, ")")? {
-            args.push(self.parse_code_expr(0)?);
+            has_trailing_comma = false;
+
+            items.push(self.parse_code_expr(0)?);
 
             if !self.current().is(Delim, ")", self.source) {
                 self.expect(Delim, ",")?;
+                has_trailing_comma = true;
             }
         }
 
-        return Ok(args);
+        return Ok(CodeExprList {
+            items,
+            is_multiline: has_trailing_comma,
+        });
     }
 
     fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, LoError> {

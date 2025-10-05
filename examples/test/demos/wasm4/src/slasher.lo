@@ -61,7 +61,10 @@ fn process_input() {
 
             if trail.size == 6 {
                 swap_trail.size = 0
-                swap_trail.push_all((trail.data as u32 + sizeof Pos) as &void, trail.size - 1)
+                swap_trail.push_all(
+                    (trail.data as u32 + sizeof Pos) as &void,
+                    trail.size - 1,
+                )
                 swap_trail.size = trail.size - 1
                 let tmp = trail
                 trail = swap_trail

@@ -189,11 +189,21 @@ fn rand_u32(max: u32): u32 {
 }
 
 fn set_draw_color(c1: u32) {
-    set_draw_colors(c1, Color::TRANSPARENT, Color::TRANSPARENT, Color::TRANSPARENT)
+    set_draw_colors(
+        c1,
+        Color::TRANSPARENT,
+        Color::TRANSPARENT,
+        Color::TRANSPARENT,
+    )
 }
 
 fn set_draw_colors(c1: u32, c2: u32, c3: u32, c4: u32) {
-    *wasm4::DRAW_COLORS = ((c1 << 00) | (c2 << 04) | (c3 << 08) | (c4 << 12)) as u16
+    *wasm4::DRAW_COLORS = (
+        \ (c1 << 00) | 
+        \ (c2 << 04) | 
+        \ (c3 << 08) | 
+        \ (c4 << 12)
+    ) as u16
 }
 
 fn just_pressed(button: u8): bool {

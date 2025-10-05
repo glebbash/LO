@@ -524,8 +524,20 @@ impl Printer {
             }) => {
                 stdout_write("if");
                 stdout_write(" ");
+
+                let prev_backslashes_printed = self.backslashes_printed;
                 self.print_code_expr(cond);
-                stdout_write(" ");
+
+                // TODO: find a cleaner way to do this, also this logic is needed for other complex constructs
+                if self.backslashes_printed != prev_backslashes_printed {
+                    stdout_writeln("");
+                    self.is_multiline_stmt = false;
+                    self.multiline_stmt_indent = 0;
+                    self.print_indent();
+                } else {
+                    stdout_write(" ");
+                }
+
                 self.print_code_block_expr(then_block);
                 match else_block {
                     ElseBlock::None => {}
@@ -768,23 +780,42 @@ impl Printer {
         self.last_printed_item_line = expr.loc().end_pos.line
     }
 
-    // TODO: handle multiline variant when `has_trailing_comma`
-    fn print_args(&mut self, args: &Vec<CodeExpr>) {
+    fn print_args(&mut self, args: &CodeExprList) {
         stdout_write("(");
+
+        if args.is_multiline {
+            self.indent += 1;
+            stdout_writeln("");
+        }
+
         let prev_backslashes_printed = self.backslashes_printed;
-        self.multiline_stmt_indent += 1;
-        for (arg, index) in args.iter().zip(0..) {
-            if index != 0 {
+        for (arg, index) in args.items.iter().zip(0..) {
+            if args.is_multiline {
+                if index != 0 {
+                    stdout_writeln(",");
+                }
+
+                self.print_comments_before(arg.loc().pos);
+                self.print_indent();
+            } else if index != 0 {
                 stdout_write(", ");
             }
 
+            self.multiline_stmt_indent += 1;
             self.print_code_expr(arg);
+            self.multiline_stmt_indent -= 1;
         }
-        self.multiline_stmt_indent -= 1;
-        if self.backslashes_printed != prev_backslashes_printed {
-            stdout_writeln(",");
+        if !args.is_multiline && self.backslashes_printed != prev_backslashes_printed {
+            stdout_writeln("");
             self.print_indent();
         }
+
+        if args.is_multiline {
+            stdout_writeln(",");
+            self.indent -= 1;
+            self.print_indent();
+        }
+
         stdout_write(")");
     }
 

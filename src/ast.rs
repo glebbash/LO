@@ -396,9 +396,15 @@ pub struct ContinueExpr {
 }
 
 #[derive(Debug)]
+pub struct CodeExprList {
+    pub items: Vec<CodeExpr>,
+    pub is_multiline: bool,
+}
+
+#[derive(Debug)]
 pub struct WithExpr {
     pub bind: IdentExpr,
-    pub args: Vec<CodeExpr>,
+    pub args: CodeExprList,
     pub body: CodeBlockExpr,
     pub loc: LoLocation,
 }
@@ -497,7 +503,7 @@ pub struct ParenExpr {
 #[derive(Debug)]
 pub struct FnCallExpr {
     pub fn_name: IdentExpr,
-    pub args: Vec<CodeExpr>,
+    pub args: CodeExprList,
     pub loc: LoLocation,
 }
 
@@ -505,7 +511,7 @@ pub struct FnCallExpr {
 pub struct MethodCallExpr {
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
-    pub args: Vec<CodeExpr>,
+    pub args: CodeExprList,
     pub loc: LoLocation,
 }
 
@@ -513,7 +519,7 @@ pub struct MethodCallExpr {
 pub struct MacroFnCallExpr {
     pub fn_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
-    pub args: Vec<CodeExpr>,
+    pub args: CodeExprList,
     pub loc: LoLocation,
 }
 
@@ -522,7 +528,7 @@ pub struct MacroMethodCallExpr {
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
-    pub args: Vec<CodeExpr>,
+    pub args: CodeExprList,
     pub loc: LoLocation,
 }
 
@@ -539,13 +545,13 @@ pub struct MemorySizeExpr {
 
 #[derive(Debug)]
 pub struct MemoryGrowExpr {
-    pub args: Vec<CodeExpr>,
+    pub args: CodeExprList,
     pub loc: LoLocation,
 }
 
 #[derive(Debug)]
 pub struct MemoryCopyExpr {
-    pub args: Vec<CodeExpr>,
+    pub args: CodeExprList,
     pub loc: LoLocation,
 }
 

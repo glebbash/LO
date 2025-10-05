@@ -58,7 +58,9 @@ fn main() {
         }
         if state.step == Step::COUNT_OCCURANCES {
             if c == '\n' {
-                if state.current_occurances >= state.min_occurances && state.current_occurances <= state.max_occurances {
+                if state.current_occurances >= state.min_occurances && 
+                    \ state.current_occurances <= state.max_occurances
+                {
                     valid_passwords_count += 1
                 }
                 state = initial_check_state()
