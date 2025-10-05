@@ -2252,12 +2252,12 @@ impl Compiler {
                 )?;
             }
 
-            CodeExpr::Dbg(DbgExpr {
-                message: _,
-                message_unescaped,
-                loc,
-            }) => {
-                let debug_message = format!("{} - {}", loc.to_string(&self.fm), message_unescaped);
+            CodeExpr::Dbg(DbgExpr { message, loc }) => {
+                let debug_message = format!(
+                    "{} - {}",
+                    loc.to_string(&self.fm),
+                    message.unescape(self.fm.get_file_source(loc.file_index))
+                );
                 let str = self.process_const_string(debug_message, loc)?;
 
                 // emit str struct values

@@ -565,11 +565,7 @@ impl Printer {
             CodeExpr::Unreachable(UnreachableExpr { loc: _ }) => {
                 stdout_write("unreachable");
             }
-            CodeExpr::Dbg(DbgExpr {
-                message,
-                message_unescaped: _,
-                loc: _,
-            }) => {
+            CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
                 stdout_write(message.get_raw(self.source));
             }

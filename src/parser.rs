@@ -765,11 +765,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             let message = EscapedString(message.loc);
-            return Ok(CodeExpr::Dbg(DbgExpr {
-                message_unescaped: message.unescape(self.source),
-                message,
-                loc,
-            }));
+            return Ok(CodeExpr::Dbg(DbgExpr { message, loc }));
         }
 
         if let Some(_) = self.eat(Symbol, "unreachable")? {

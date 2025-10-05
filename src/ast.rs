@@ -404,7 +404,6 @@ pub struct WithExpr {
 #[derive(Debug)]
 pub struct DbgExpr {
     pub message: EscapedString,
-    pub message_unescaped: String, // TODO: look for better options
     pub loc: LoLocation,
 }
 
