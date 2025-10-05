@@ -229,7 +229,6 @@ impl Printer {
         self.last_printed_item_line = expr.loc().end_pos.line;
     }
 
-    // TODO: figure out multiline param printing
     fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
         stdout_write("fn ");
         stdout_write(&fn_decl.fn_name.repr);
@@ -243,6 +242,7 @@ impl Printer {
         self.print_type_expr(&return_type);
     }
 
+    // TODO: handle multiline variant when `has_trailing_comma`
     fn print_fn_params(&mut self, fn_params: &Vec<FnParam>) {
         stdout_write("(");
         for (fn_param, index) in fn_params.iter().zip(0..) {
@@ -680,7 +680,6 @@ impl Printer {
                 }
                 stdout_write(")");
             }
-            // TODO: figure out multiline arg printing
             CodeExpr::FnCall(FnCallExpr {
                 fn_name,
                 args,
@@ -749,6 +748,7 @@ impl Printer {
         self.last_printed_item_line = expr.loc().end_pos.line
     }
 
+    // TODO: handle multiline variant when `has_trailing_comma`
     fn print_args(&mut self, args: &Vec<CodeExpr>) {
         stdout_write("(");
         let prev_backslashes_printed = self.backslashes_printed;

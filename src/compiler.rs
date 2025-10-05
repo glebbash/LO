@@ -2844,7 +2844,6 @@ impl Compiler {
         Ok(macro_def)
     }
 
-    // TODO: typecheck actual macro return with its specified return type
     fn codegen_macro_call(
         &self,
         ctx: &mut LoExprContext,
@@ -4305,7 +4304,7 @@ impl Compiler {
             Some("u64") | Some("i64") => instrs.push(WasmInstr::I64Const {
                 value: value as i64,
             }),
-            _ => todo!(),
+            _ => unreachable!(),
         }
     }
 
