@@ -277,7 +277,8 @@ impl Parser {
                 }
             }
 
-            let macro_params = self.parse_fn_params(true)?;
+            let mut macro_params_trailing_comma = false;
+            let macro_params = self.parse_fn_params(true, &mut macro_params_trailing_comma)?;
 
             let return_type = if let Some(_) = self.eat(Operator, ":")? {
                 Some(self.parse_type_expr()?)
@@ -292,6 +293,7 @@ impl Parser {
             return Ok(TopLevelExpr::MacroDef(MacroDefExpr {
                 macro_name,
                 macro_params,
+                macro_params_trailing_comma,
                 macro_type_params,
                 return_type,
                 body,
@@ -387,7 +389,8 @@ impl Parser {
         let mut loc = self.prev().loc.clone();
 
         let fn_name = self.parse_ident()?;
-        let fn_params = self.parse_fn_params(false)?;
+        let mut fn_params_trailing_comma = false;
+        let fn_params = self.parse_fn_params(false, &mut fn_params_trailing_comma)?;
 
         let return_type = if let Some(_) = self.eat(Operator, ":")? {
             Some(self.parse_type_expr()?)
@@ -400,17 +403,24 @@ impl Parser {
         Ok(FnDeclExpr {
             fn_name,
             fn_params,
+            fn_params_trailing_comma,
             return_type,
             loc,
         })
     }
 
-    fn parse_fn_params(&self, infer_allowed: bool) -> Result<Vec<FnParam>, LoError> {
+    fn parse_fn_params(
+        &self,
+        infer_allowed: bool,
+        trailing_comma: &mut bool,
+    ) -> Result<Vec<FnParam>, LoError> {
         let mut params = Vec::<FnParam>::new();
 
         let _ = self.expect(Delim, "(")?;
 
         while let None = self.eat(Delim, ")")? {
+            *trailing_comma = false;
+
             let mut loc = self.current().loc.clone();
 
             let mut param_type = FnParamType::Self_;
@@ -455,6 +465,7 @@ impl Parser {
 
             if !self.current().is(Delim, ")", self.source) {
                 self.expect(Delim, ",")?;
+                *trailing_comma = true;
             }
 
             params.push(FnParam {

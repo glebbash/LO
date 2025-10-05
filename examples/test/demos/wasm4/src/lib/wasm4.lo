@@ -47,12 +47,28 @@ const wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2
 // └───────────────────────────────────────────────────────────────────────────┘
 import from "env" {
     // Copies pixels to the framebuffer.
-    // @param data - const u8*
-    fn wasm4::blit(data: *&u8, x: i32, y: i32, width: u32, height: u32, flags: u32)
+    fn wasm4::blit(
+        data: *&u8,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        flags: u32,
+    )
 
     // Copies a subregion within a larger sprite atlas to the framebuffer.
-    // @param data - const u8*
-    fn wasm4::blitSub(data: *&u8, x: i32, y: i32, width: u32, height: u32, srcX: u32, srcY: u32, stride: u32, flags: u32)
+    fn wasm4::blitSub(
+        data: *&u8,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        srcX: u32,
+        srcY: u32,
+        stride: u32,
+        flags: u32,
+    )
+
 }
 
 const wasm4::BLIT_2BPP = 1
@@ -89,7 +105,13 @@ import from "env" {
 // └───────────────────────────────────────────────────────────────────────────┘
 import from "env" {
     // Plays a sound tone.
-    fn wasm4::tone(frequency: u32, duration: u32, volume: u32, flags: u32)
+    fn wasm4::tone(
+        frequency: u32,
+        duration: u32,
+        volume: u32,
+        flags: u32,
+    )
+
 }
 
 const wasm4::TONE_PULSE1 = 0

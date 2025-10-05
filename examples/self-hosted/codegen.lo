@@ -28,7 +28,12 @@ fn CodeGen::report_error(&self, err: &LoError) {
     // TODO: implement
 }
 
-fn CodeGen::pass_parse_files_rec(&self, asts: &Vec of AST, file_name: str, include_loc: LoLocation) {
+fn CodeGen::pass_parse_files_rec(
+    &self,
+    asts: &Vec of AST,
+    file_name: str,
+    include_loc: LoLocation,
+) {
     // TODO: remove this stubs
     let is_newly_added = false
     let file_index = 0

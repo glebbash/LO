@@ -38,6 +38,7 @@ pub struct FnDefExpr {
 pub struct FnDeclExpr {
     pub fn_name: IdentExpr,
     pub fn_params: Vec<FnParam>,
+    pub fn_params_trailing_comma: bool,
     pub return_type: Option<TypeExpr>,
     pub loc: LoLocation,
 }
@@ -155,6 +156,7 @@ pub struct TryExportExpr {
 pub struct MacroDefExpr {
     pub macro_name: IdentExpr,
     pub macro_params: Vec<FnParam>,
+    pub macro_params_trailing_comma: bool,
     pub macro_type_params: Vec<String>,
     pub return_type: Option<TypeExpr>,
     pub body: CodeBlockExpr,

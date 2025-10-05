@@ -88,14 +88,10 @@ fn option_with_do() {
     with (create_button()) as b do {
         b.show()
     }
-
-    // TODO: consider removing the need for parens after `with`
-    // TODO: look into how to format `short form` and `alternative use` nicely
 }
 
-// TODO: check if backslashes make semicolons redundant (globally)
 // TODO: consider support for backtick strings
-//   as printing quotes (both single and double) is much more common then backticks
+//   as printing quotes (both single and double) is much more common than backticks
 //   will make priting json much more pleasant
 //   but making it the only string syntax is probably not the best idea
-//     cause I heard some keyboard layouts are ass for typing backticks
+//     cause some keyboard layouts are ass for typing backticks

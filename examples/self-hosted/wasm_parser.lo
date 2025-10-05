@@ -5,6 +5,9 @@ include "./wasm.lo"
 // TODO: implement
 struct WasmParser {}
 
-fn WasmParser::parse(file_name: String, module_bytes: String): Result<&WasmModule, String> {
+fn WasmParser::parse(
+    file_name: String,
+    module_bytes: String,
+): Result<&WasmModule, String> {
     panic!(dbg "todo")
 }

@@ -24,28 +24,48 @@ struct wasi::fdstat {
 }
 
 import from "wasi_snapshot_preview1" {
-    // @param dirfd ---------------- The file descriptor representing the directory that the file is located in.
-    // @param dirflags ------------- Flags specifying how the path will be resolved.
-    // @param path ----------------- A wasm pointer to a null-terminated string containing the path of the file or directory to open.
-    // @param path_len ------------- The length of the path string.
-    // @param oflags --------------- Flags specifying how the file will be opened.
-    // @param fs_rights_base ------- The rights of the created file descriptor.
-    // @param fs_rights_inheriting - The rights of file descriptors derived from the created file descriptor.
-    // @param fdflags -------------- The flags of the file descriptor.
-    // @param fd ------------------- A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
-    fn wasi::path_open(dirfd: u32, dirflags: u32, path: *&u8, path_len: u32, oflags: u32, fs_rights_base: u64, fs_rights_inheriting: u64, fdflags: u32, fd: &u32): wasi::Err
+    fn wasi::path_open(
+        // The file descriptor representing the directory that the file is located in.
+        dirfd: u32,
+        // Flags specifying how the path will be resolved.
+        dirflags: u32,
+        // A wasm pointer to a null-terminated string containing the path of the file or directory to open.
+        path: *&u8,
+        // The length of the path string.
+        path_len: u32,
+        // Flags specifying how the file will be opened.
+        oflags: u32,
+        // The rights of the created file descriptor.
+        fs_rights_base: u64,
+        // The rights of file descriptors derived from the created file descriptor.
+        fs_rights_inheriting: u64,
+        // The flags of the file descriptor.
+        fdflags: u32,
+        // A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
+        fd: &u32,
+    ): wasi::Err
 
-    // @param fd ------- file_descriptor
-    // @param iovs ----- The pointer to the iov array
-    // @param iovs_len - Amount of wasi::IOVec
-    // @param nread ---- Pointer to store the number of bytes read
-    fn wasi::fd_read(fd: u32, iovs: *&wasi::IOVec, iovs_len: u32, nread: &u32): wasi::Err
+    fn wasi::fd_read(
+        // File descriptor
+        fd: u32,
+        // The pointer to the iov array
+        iovs: *&wasi::IOVec,
+        // Amount of wasi::IOVec
+        iovs_len: u32,
+        // Pointer to store the number of bytes read
+        nread: &u32,
+    ): wasi::Err
 
-    // @param fd ------- file_descriptor
-    // @param iovs ----- The pointer to the iov array
-    // @param iovs_len - Amount of wasi::IOVec
-    // @param nwritten - Pointer to store the number of bytes written
-    fn wasi::fd_write(fd: u32, iovs: *&wasi::IOVec, iovs_len: u32, nwritten: &u32): wasi::Err
+    fn wasi::fd_write(
+        // File descriptor
+        fd: u32,
+        // The pointer to the iov array
+        iovs: *&wasi::IOVec,
+        // Amount of wasi::IOVec
+        iovs_len: u32,
+        // Pointer to store the number of bytes written
+        nwritten: &u32,
+    ): wasi::Err
 
     // @param fd - file_descriptor
     fn wasi::fd_close(fd: u32): wasi::Err

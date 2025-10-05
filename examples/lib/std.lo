@@ -266,7 +266,11 @@ fn Vec::with_capacity(capacity: u32, item_size: u32): &Vec {
     return Vec::with_capacity_using(capacity, item_size, alloc::HEAP)
 }
 
-fn Vec::with_capacity_using(capacity: u32, item_size: u32, alloc_id: u32): &Vec {
+fn Vec::with_capacity_using(
+    capacity: u32,
+    item_size: u32,
+    alloc_id: u32,
+): &Vec {
     return new!(alloc_id, .Vec {
         data: alloc(alloc_id, capacity * item_size),
         size: 0,

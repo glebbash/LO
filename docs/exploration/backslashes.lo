@@ -18,7 +18,17 @@ fn main() {
     )
 }
 
-fn print_9(a1: str, a2: str, a3: str, a4: str, a5: str, a6: str, a7: str, a8: str, a9: str) {
+fn print_9(
+    a1: str,
+    a2: str,
+    a3: str,
+    a4: str,
+    a5: str,
+    a6: str,
+    a7: str,
+    a8: str,
+    a9: str,
+) {
     puts(a1)
     puts(a2)
     puts(a3)

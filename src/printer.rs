@@ -85,7 +85,7 @@ impl Printer {
             }) => {
                 stdout_write("import from ");
                 stdout_write(module_name.get_raw(self.source));
-                stdout_write(" {\n");
+                stdout_writeln(" {");
                 self.indent += 1;
 
                 for item in items {
@@ -198,6 +198,7 @@ impl Printer {
                 macro_name,
                 macro_params,
                 macro_type_params,
+                macro_params_trailing_comma,
                 return_type,
                 body,
                 loc: _,
@@ -215,7 +216,7 @@ impl Printer {
                     }
                     stdout_write(">");
                 }
-                self.print_fn_params(macro_params);
+                self.print_fn_params(macro_params, *macro_params_trailing_comma);
                 if let Some(return_type) = return_type {
                     stdout_write(": ");
                     self.print_type_expr(return_type);
@@ -232,7 +233,7 @@ impl Printer {
     fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
         stdout_write("fn ");
         stdout_write(&fn_decl.fn_name.repr);
-        self.print_fn_params(&fn_decl.fn_params);
+        self.print_fn_params(&fn_decl.fn_params, fn_decl.fn_params_trailing_comma);
 
         let Some(return_type) = &fn_decl.return_type else {
             return;
@@ -242,11 +243,23 @@ impl Printer {
         self.print_type_expr(&return_type);
     }
 
-    // TODO: handle multiline variant when `has_trailing_comma`
-    fn print_fn_params(&mut self, fn_params: &Vec<FnParam>) {
+    fn print_fn_params(&mut self, fn_params: &Vec<FnParam>, is_multiline: bool) {
         stdout_write("(");
+
+        if is_multiline {
+            self.indent += 1;
+            stdout_writeln("");
+        }
+
         for (fn_param, index) in fn_params.iter().zip(0..) {
-            if index != 0 {
+            if is_multiline {
+                if index != 0 {
+                    stdout_writeln(",");
+                }
+
+                self.print_comments_before(fn_param.loc.pos);
+                self.print_indent();
+            } else if index != 0 {
                 stdout_write(", ");
             }
 
@@ -270,6 +283,13 @@ impl Printer {
                 }
             }
         }
+
+        if is_multiline {
+            stdout_writeln(",");
+            self.indent -= 1;
+            self.print_indent();
+        }
+
         stdout_write(")");
     }
 
