@@ -9,7 +9,7 @@ use core::{cell::RefCell, fmt::Write};
 
 // TODO: make globals, macros and consts be stored in module's items
 // TODO!: change all magic functions to have `@some_magic_fn<...type_args>(...args)` syntax:
-//   @sizeof<T>(), @data_size, @__inspect(), @memory_size(), etc...
+//   @sizeof<T>(), @data_size(), @__inspect(), @memory_size(), etc...
 // TODO: make sure function names can't collide with intrinsics
 
 #[derive(Clone, PartialEq)]
@@ -303,6 +303,11 @@ enum LoVariableInfo {
         global_type: LoType,
         inspect_info: Option<InspectInfo>,
     },
+    Const {
+        code_unit: &'static LoCodeUnit,
+        loc: LoLocation,
+        inspect_info: Option<InspectInfo>,
+    },
     Stored {
         address: LoCodeUnit,
         offset: u32,
@@ -332,6 +337,11 @@ impl LoVariableInfo {
                 global_type,
                 inspect_info: _,
             } => global_type,
+            LoVariableInfo::Const {
+                code_unit,
+                loc: _,
+                inspect_info: _,
+            } => &code_unit.type_,
             LoVariableInfo::Stored {
                 address: _,
                 offset: _,
@@ -359,6 +369,11 @@ impl LoVariableInfo {
             | LoVariableInfo::Global {
                 global_index: _,
                 global_type: _,
+                inspect_info,
+            }
+            | LoVariableInfo::Const {
+                code_unit: _,
+                loc: _,
                 inspect_info,
             }
             | LoVariableInfo::Stored {
@@ -1308,33 +1323,6 @@ impl Compiler {
                         self.report_error(&err);
                         continue;
                     });
-                }
-                TopLevelExpr::StaticDataStore(static_data_store) => {
-                    let mut offset_expr = WasmExpr { instrs: Vec::new() };
-                    catch!(self.ensure_const_expr(&static_data_store.addr), err, {
-                        self.report_error(&err);
-                        // continue processing data store
-                    });
-                    let res = self.codegen(
-                        module.ctx.be_mut(),
-                        &mut offset_expr.instrs,
-                        &static_data_store.addr,
-                    );
-                    catch!(res, err, {
-                        self.report_error(&err);
-                        // continue processing data store
-                    });
-                    let bytes = match &static_data_store.data {
-                        StaticDataStorePayload::String { value } => {
-                            value.unescape(module.source).as_bytes().to_vec()
-                        }
-                    };
-
-                    let data = WasmData::Active {
-                        offset: offset_expr,
-                        bytes,
-                    };
-                    self.datas.borrow_mut().push(data);
                 }
                 TopLevelExpr::MacroDef(macro_def) => {
                     if let Some(existing_macro) = self.get_macro_def(&macro_def.macro_name.repr) {
@@ -3561,6 +3549,22 @@ impl Compiler {
             });
         }
 
+        if let Some(const_) = self.get_const(ctx, &ident.repr) {
+            return Ok(LoVariableInfo::Const {
+                code_unit: const_.code_unit.relax(),
+                loc: const_.loc.clone(),
+                inspect_info: if self.in_inspection_mode {
+                    Some(InspectInfo {
+                        message: format!("const {}: {}", ident.repr, const_.code_unit.type_),
+                        loc: ident.loc.clone(),
+                        linked_loc: Some(const_.loc.clone()),
+                    })
+                } else {
+                    None
+                },
+            });
+        }
+
         return Err(LoError {
             message: format!("Unknown variable: {}", ident.repr),
             loc: ident.loc.clone(),
@@ -3601,6 +3605,12 @@ impl Compiler {
                 LoVariableInfo::Global {
                     global_index: _,
                     global_type: _,
+                    inspect_info: _,
+                } => {}
+                // consts are handled as struct values as well
+                LoVariableInfo::Const {
+                    code_unit: _,
+                    loc: _,
                     inspect_info: _,
                 } => {}
                 LoVariableInfo::Local {
@@ -3788,6 +3798,13 @@ impl Compiler {
                     });
                 }
             }
+            LoVariableInfo::Const {
+                code_unit,
+                loc: _,
+                inspect_info: _,
+            } => {
+                instrs.extend_from_slice(&code_unit.instrs);
+            }
             LoVariableInfo::Stored {
                 address,
                 offset,
@@ -3943,7 +3960,12 @@ impl Compiler {
                     instrs.append(&mut stores);
                 }
             }
-            LoVariableInfo::StructValueField {
+            LoVariableInfo::Const {
+                code_unit: _,
+                loc,
+                inspect_info: _,
+            }
+            | LoVariableInfo::StructValueField {
                 struct_value: _,
                 field_type: _,
                 drops_before: _,
@@ -3952,7 +3974,7 @@ impl Compiler {
                 inspect_info: _,
             } => {
                 return Err(LoError {
-                    message: format!("Cannot set field on a struct value"),
+                    message: format!("Cannot mutate a constant"),
                     loc: loc.clone(),
                 })
             }

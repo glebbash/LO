@@ -179,17 +179,6 @@ impl Printer {
                 self.print_memory_def(memory_def);
                 stdout_writeln("");
             }
-            TopLevelExpr::StaticDataStore(StaticDataStoreExpr { addr, data, loc: _ }) => {
-                stdout_write("*");
-                self.print_code_expr(addr);
-                stdout_write(" = ");
-                match data {
-                    StaticDataStorePayload::String { value } => {
-                        stdout_write(value.get_raw(self.source));
-                    }
-                }
-                stdout_writeln("");
-            }
             TopLevelExpr::TryExport(TryExportExpr {
                 in_name,
                 out_name,

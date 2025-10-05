@@ -23,5 +23,6 @@ export fn main(): u32 {
     let _ = "Hello World!\n"
     let _ = "Hello World!\n"
     let _ = "Hello World!\n"
+
     return STATIC_DATA_SIZE
 }

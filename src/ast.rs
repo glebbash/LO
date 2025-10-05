@@ -22,7 +22,6 @@ pub enum TopLevelExpr {
     TypeDef(TypeDefExpr),
     ConstDef(ConstDefExpr),
     MemoryDef(MemoryDefExpr),
-    StaticDataStore(StaticDataStoreExpr),
     TryExport(TryExportExpr),
     MacroDef(MacroDefExpr),
 }
@@ -142,18 +141,6 @@ pub struct MemoryDefExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
-pub struct StaticDataStoreExpr {
-    pub addr: CodeExpr,
-    pub data: StaticDataStorePayload,
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
-pub enum StaticDataStorePayload {
-    String { value: EscapedString },
-}
-
 /// DOC: `try export <in> as "<out>" [from root]` syntax was chosen
 ///   because it reuses existing rust keywords and reads nicely
 #[derive(Debug)]
@@ -191,7 +178,6 @@ impl Locatable for TopLevelExpr {
             TopLevelExpr::TypeDef(e) => &e.loc,
             TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
-            TopLevelExpr::StaticDataStore(e) => &e.loc,
             TopLevelExpr::TryExport(e) => &e.loc,
             TopLevelExpr::MacroDef(e) => &e.loc,
         }

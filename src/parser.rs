@@ -259,25 +259,6 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Operator, "*")? {
-            let mut loc = self.prev().loc.clone();
-
-            // can't use `parse_code_expr` as that will capture `=` token
-            let addr = self.parse_code_expr_primary()?;
-            self.expect(Operator, "=")?;
-            let chars = self.expect_any(StringLiteral)?.clone();
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::StaticDataStore(StaticDataStoreExpr {
-                addr,
-                data: StaticDataStorePayload::String {
-                    value: EscapedString(chars.loc),
-                },
-                loc,
-            }));
-        }
-
         if let Some(_) = self.eat(Symbol, "macro")? {
             let mut loc = self.prev().loc.clone();
 

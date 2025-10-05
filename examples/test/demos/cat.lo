@@ -9,11 +9,13 @@ fn main() {
         eputs("Usage cat.lo <file>")
         wasi::proc_exit(1)
     }
+
     let file_path = args.get(1)
     let fd = fs::open(file_path) catch _ {
         wasi::proc_exit(1)
     }
     defer let _ = fs::close(fd)
+
     fs::pipe(fd, wasi::FD_STDOUT, 256) catch _ {
         wasi::proc_exit(1)
     }
