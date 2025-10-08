@@ -1,0 +1,31 @@
+include "./examples/lib/cli.lo"
+
+fn main() {
+    let file_index = 2
+    let file_path = "test.lo"
+
+    print_9(
+        "{",
+        " \"type\": \"file\",",
+        " \"index\": ", \\ file_index.to_tmp_str!(), \\ ",",
+        " \"path\": \"", \\ file_path, \\ "\" ",
+        "},",
+    )
+
+    print_9(
+        "1", \\ "2", \\ "3",
+        "4", \\ "5", \\ "6",
+        "7", \\ "8", \\ "9",
+    )
+}
+
+fn print_9(
+    a1: str, \\ a2: str, \\ a3: str,
+    a4: str, \\ a5: str, \\ a6: str,
+    a7: str, \\ a8: str, \\ a9: str,
+) {
+    puts(a1) \\ puts(a2) \\ puts(a3)
+    puts(a4) \\ puts(a5) \\ puts(a6)
+    puts(a7) \\ puts(a8) \\ puts(a9)
+    puts("\n")
+}
