@@ -8,9 +8,11 @@ fn main() {
     defer input.free()
 
     let valid_passwords = 0
-    let passwords = StrCutter::new(input.as_str())
 
+    let passwords = StrCutter::new(input.as_str())
     loop {
+        passwords = passwords.cut_at("\n\n")
+
         let byr_is_valid = false
         let iyr_is_valid = false
         let eyr_is_valid = false
@@ -19,16 +21,18 @@ fn main() {
         let ecl_is_valid = false
         let pid_is_valid = false
 
-        passwords = passwords.cut_at("\n\n")
         let lines = StrCutter::new(passwords.piece)
         loop {
             lines = lines.cut_at("\n")
+
             let fields = StrCutter::new(lines.piece)
             loop {
                 fields = fields.cut_at(" ")
+
                 let field_parts = StrCutter::new(fields.piece).cut_at(":")
                 let field_name = field_parts.piece
                 let field_value = field_parts.rest
+
                 if field_name.equals("byr") {
                     let parse_res = parse_u32(field_value)
                     byr_is_valid = field_value.size == 4 \
@@ -86,10 +90,12 @@ fn main() {
                     pid_is_valid = field_value.size == 9 \
                         && parse_res.chars_consumed == 9
                 }
+
                 if fields.rest.size == 0 {
                     break
                 }
             }
+
             if lines.rest.size == 0 {
                 break
             }
@@ -99,10 +105,12 @@ fn main() {
         {
             valid_passwords += 1
         }
+
         if passwords.rest.size == 0 {
             break
         }
     }
+
     print_u32(valid_passwords)
     puts("\n")
 }

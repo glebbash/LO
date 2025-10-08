@@ -5,6 +5,7 @@ fn main() {
     let input_buf = fs::read_file!("./examples/test/demos/aoc2020/5.txt")
     defer input_buf.free()
     let input = input_buf.as_str()
+
     // 10 chars seat + newline
     let tickets_count = input.size / 11
     let seat_ids = Vec::with_capacity!<u32>(tickets_count)

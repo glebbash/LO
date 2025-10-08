@@ -1,20 +1,24 @@
 export fn main(): u32 {
     let result = 0
+
     for i in 0..10 {
         result += i
     }
+
     for i in 0..10 {
         result += i
         if i == 7 {
             break
         }
     }
+
     for i in 0..10 {
         if i == 4 {
             continue
         }
         result += i
     }
+
     for i in 0..10 {
         if i == 4 {
             continue
@@ -24,5 +28,6 @@ export fn main(): u32 {
             break
         }
     }
+
     return result
 }

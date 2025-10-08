@@ -5,6 +5,7 @@ fn main() {
     let input_buf = fs::read_file!("./examples/test/demos/aoc2020/5.txt")
     defer input_buf.free()
     let input = input_buf.as_str()
+
     // 10 chars seat + newline
     let tickets_count = input.size / 11
     let max_seat_id = 0
@@ -14,6 +15,7 @@ fn main() {
             max_seat_id = seat_id
         }
     }
+
     print_u32(max_seat_id)
     puts("\n")
 }

@@ -26,6 +26,7 @@ fn main() {
 fn parse_numbers(input: String): &Vec of u32 {
     let numbers = Vec::new!<u32>()
     let current_number = 0
+
     for i in 0..input.len() {
         let c = input.char_at(i)
         if c >= '0' && c <= '9' {
@@ -37,5 +38,6 @@ fn parse_numbers(input: String): &Vec of u32 {
             current_number = 0
         }
     }
+
     return numbers
 }

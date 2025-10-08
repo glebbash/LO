@@ -11,21 +11,26 @@ const SLOPE_J = 3
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/3.txt")
     defer input.free()
+
     let map = Map::parse(input)
     defer map.free()
+
     let tree_count = 0
     let i = 0
     let j = 0
     loop {
         i += SLOPE_I
         j += SLOPE_J
+
         if i == map.rows.size {
             break
         }
+
         if map.get(i, j) == Tile::TREE {
             tree_count += 1
         }
     }
+
     print_u32(tree_count)
     puts("\n")
 }
@@ -50,6 +55,7 @@ fn Map::parse(input: String): Map {
             current_row = Vec::new!<Tile>()
         }
     }
+
     return .Map { rows: rows }
 }
 
@@ -63,5 +69,6 @@ fn Map::free(self) {
         let row = self.rows.get!<&Vec of Tile>(i)
         row.free()
     }
+
     self.rows.free()
 }

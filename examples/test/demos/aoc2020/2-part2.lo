@@ -31,8 +31,10 @@ fn initial_check_state(): PasswordCheckState {
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/2.txt")
     defer input.free()
+
     let valid_passwords_count = 0
     let state = initial_check_state()
+
     for i in 0..input.len() {
         let c = input.char_at(i)
         if state.step == Step::READ_START_INDEX {
@@ -77,6 +79,7 @@ fn main() {
             }
         }
     }
+
     print_u32(valid_passwords_count)
     puts("\n")
 }

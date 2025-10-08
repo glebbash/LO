@@ -3,6 +3,7 @@ include "../../lib/cli.lo"
 // https://github.com/microsoft/vscode-wasm/issues/161
 fn main() {
     let err = 0
+
     let dir_fd = 3
     let file_path = "./examples/hello-world.lo"
     let prestat = tmp_alloc!<wasi::prestat>()
@@ -10,16 +11,19 @@ fn main() {
     if err != 0 {
         wasi::proc_exit(err)
     }
+
     let dir_path = tmp_alloc_many!<u8>(prestat.pr_name_len)
     err = wasi::fd_prestat_dir_name(dir_fd, dir_path, prestat.pr_name_len)
     if err != 0 {
         wasi::proc_exit(err)
     }
+
     let fdstat = tmp_alloc!<wasi::fdstat>()
     err = wasi::fd_fdstat_get(dir_fd, fdstat)
     if err != 0 {
         wasi::proc_exit(err)
     }
+
     let prestat2 = tmp_alloc!<wasi::prestat>()
     let _ = wasi::fd_prestat_get(dir_fd + 1, prestat2)
     let file_fd = tmp_alloc!<u32>()
@@ -37,5 +41,6 @@ fn main() {
     if err != 0 {
         wasi::proc_exit(err)
     }
+
     puts("All good\n")
 }

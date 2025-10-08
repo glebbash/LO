@@ -9,14 +9,17 @@ const Tile::EMPTY = false
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/3.txt")
     defer input.free()
+
     let map = Map::parse(input)
     defer map.free()
+
     let result = 1u64
     result *= map.count_trees_on_slope(1, 1) as u64
     result *= map.count_trees_on_slope(1, 3) as u64
     result *= map.count_trees_on_slope(1, 5) as u64
     result *= map.count_trees_on_slope(1, 7) as u64
     result *= map.count_trees_on_slope(2, 1) as u64
+
     print_u64(result)
     puts("\n")
 }
