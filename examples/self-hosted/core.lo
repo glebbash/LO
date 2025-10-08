@@ -95,8 +95,8 @@ fn stdout_write(message: str) {
         return
     }
 
-    if STDOUT_BUFFER.len() + message.size > STDOUT_BUFFER_SIZE && 
-        \ STDOUT_BUFFER.len() > 0
+    if STDOUT_BUFFER.len() + message.size > STDOUT_BUFFER_SIZE \
+        && STDOUT_BUFFER.len() > 0
     {
         let _ = fputs(wasi::FD_STDOUT, STDOUT_BUFFER.as_str())
         STDOUT_BUFFER.chars.size = 0

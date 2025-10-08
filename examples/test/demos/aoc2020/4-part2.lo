@@ -31,66 +31,60 @@ fn main() {
                 let field_value = field_parts.rest
                 if field_name.equals("byr") {
                     let parse_res = parse_u32(field_value)
-                    byr_is_valid = 
-                        \ field_value.size == 4 && 
-                        \ parse_res.chars_consumed == 4 && 
-                        \ parse_res.value >= 1920 && 
-                        \ parse_res.value <= 2002
+                    byr_is_valid = field_value.size == 4 \
+                        && parse_res.chars_consumed == 4 \
+                        && parse_res.value >= 1920 \
+                        && parse_res.value <= 2002
                 }
                 if field_name.equals("iyr") {
                     let parse_res = parse_u32(field_value)
-                    iyr_is_valid = 
-                        \ field_value.size == 4 && 
-                        \ parse_res.chars_consumed == 4 && 
-                        \ parse_res.value >= 2010 && 
-                        \ parse_res.value <= 2020
+                    iyr_is_valid = field_value.size == 4 \
+                        && parse_res.chars_consumed == 4 \
+                        && parse_res.value >= 2010 \
+                        && parse_res.value <= 2020
                 }
                 if field_name.equals("eyr") {
                     let parse_res = parse_u32(field_value)
-                    eyr_is_valid = 
-                        \ field_value.size == 4 && 
-                        \ parse_res.chars_consumed == 4 && 
-                        \ parse_res.value >= 2020 && 
-                        \ parse_res.value <= 2030
+                    eyr_is_valid = field_value.size == 4 \
+                        && parse_res.chars_consumed == 4 \
+                        && parse_res.value >= 2020 \
+                        && parse_res.value <= 2030
                 }
                 if field_name.equals("hgt") {
                     let parse_res = parse_u32(field_value)
                     hgt_is_valid = (
-                        \ field_value.size == 5 && 
-                        \ parse_res.chars_consumed == 3 && 
-                        \ parse_res.value >= 150 && 
-                        \ parse_res.value <= 193 && 
-                        \ field_value.skip_chars(3).equals("cm")
+                        field_value.size == 5 \
+                            && parse_res.chars_consumed == 3 \
+                            && parse_res.value >= 150 \
+                            && parse_res.value <= 193 \
+                            && field_value.skip_chars(3).equals("cm"),
                     ) || (
-                        \ field_value.size == 4 && 
-                        \ parse_res.chars_consumed == 2 && 
-                        \ parse_res.value >= 59 && 
-                        \ parse_res.value <= 76 && 
-                        \ field_value.skip_chars(2).equals("in")
+                        field_value.size == 4 \
+                            && parse_res.chars_consumed == 2 \
+                            && parse_res.value >= 59 \
+                            && parse_res.value <= 76 \
+                            && field_value.skip_chars(2).equals("in"),
                     )
                 }
                 if field_name.equals("hcl") {
                     let parse_res = parse_u32_hex(field_value.skip_chars(1))
-                    hcl_is_valid = 
-                        \ field_value.char_at(0) == '#' && 
-                        \ field_value.size == 7 && 
-                        \ parse_res.chars_consumed == 6
+                    hcl_is_valid = field_value.char_at(0) == '#' \
+                        && field_value.size == 7 \
+                        && parse_res.chars_consumed == 6
                 }
                 if field_name.equals("ecl") {
-                    ecl_is_valid = 
-                        \ field_value.equals("amb") || 
-                        \ field_value.equals("blu") || 
-                        \ field_value.equals("brn") || 
-                        \ field_value.equals("gry") || 
-                        \ field_value.equals("grn") || 
-                        \ field_value.equals("hzl") || 
-                        \ field_value.equals("oth")
+                    ecl_is_valid = field_value.equals("amb") \
+                        || field_value.equals("blu") \
+                        || field_value.equals("brn") \
+                        || field_value.equals("gry") \
+                        || field_value.equals("grn") \
+                        || field_value.equals("hzl") \
+                        || field_value.equals("oth")
                 }
                 if field_name.equals("pid") {
                     let parse_res = parse_u32(field_value)
-                    pid_is_valid = 
-                        \ field_value.size == 9 && 
-                        \ parse_res.chars_consumed == 9
+                    pid_is_valid = field_value.size == 9 \
+                        && parse_res.chars_consumed == 9
                 }
                 if fields.rest.size == 0 {
                     break
@@ -100,8 +94,8 @@ fn main() {
                 break
             }
         }
-        if byr_is_valid && iyr_is_valid && eyr_is_valid && hgt_is_valid && 
-            \ hcl_is_valid && ecl_is_valid && pid_is_valid
+        if byr_is_valid && iyr_is_valid && eyr_is_valid \
+            && hgt_is_valid && hcl_is_valid && ecl_is_valid && pid_is_valid
         {
             valid_passwords += 1
         }

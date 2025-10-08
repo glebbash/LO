@@ -1,30 +1,34 @@
 fn backslash_test() {
-    let x = 1
+    let _ = 1 + 1 \
+        + 1
 
-    // TODO(fmt): remove extra space at line end
-    let x1 = x + 
-        \ x + 
-        \ x
+    let _ = (1 \
+        + 1) \
+        + 1
 
-    let x2 = (
-        \ x
-    ) + x
+    let _ = 1 - 1 - (1 - 1) \
+        - 1 \
+        - 1 \
+        - 1
 
-    let x3 = 2 + f(
-        \ x
-    ) + f(
-        \ x
-    )
+    let _ = 2 + f(
+        1,
+    ) + f(1)
 
-    let x4 = x + 
-        \ f(
-            \ x
-        ) + f(
-            \ x
-        )
+    let _ = 1 \
+        + f(1) \
+        + f(1)
 
-    let x5 = x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(x + f(
-                                        \ x
+    let _ = 1 \
+        + f(1 \
+            + f(1 \
+                + f(1 \
+                    + f(1 \
+                        + f(1 \
+                            + f(1 \
+                                + f(1 \
+                                    + f(1 \
+                                        + f(1)
                                     )
                                 )
                             )
@@ -33,33 +37,59 @@ fn backslash_test() {
                 )
             )
         )
-    )
 
     if false {
-        let x6 = x + 
-            \ .s {
-                x: 0,
-            }.x + x
+        let _ = 1 \
+            + .s { x: 1 }.x \
+            + 1
     }
-    let x7 = x + 
-        \ x + 
-        \ (x + 
-            \ x + .s {
-                x: 0,
-            }.x
-        ) + x
+    let _ = 1 + 1 \
+        + (1 \
+            + 1 \
+            + .s { x: 1 }.x) + 1
 
-    let x8 = x + 
-        \ f(x + 
-            \ x + 
-            \ x
-        )
+    let _ = 1 + f(1 \
+        + 1 \
+        + 1
+    )
 
-    let x9 = f2(
-        1 + 
-            \ 1,
+    let _ = 1 + f(
+        1 \
+            + 1 \
+            + 1,
+    )
+
+    let _ = f2(
+        1 \
+            + 1,
         1,
     )
+
+    let x = 0 as &InfX
+    let _ = x \
+        .call(x.x.x.x.call(x)) \
+        .call(x \
+            .call(
+
+                // TODO: fix problem with blank lines above
+                x.x,
+            ) \
+            .call(x \
+                .x.x.x.x.call(x) \
+                .call(
+
+                    // TODO: fix problem with blank lines above
+                    x.call(x) \
+                        .call(x \
+                            .call(x) \
+                            .call(x \
+                                .x
+                            )
+                        ),
+                )
+            )
+        ) as u32 \
+        + 1
 }
 
 struct s {
@@ -71,5 +101,14 @@ fn f(x: u32): u32 {
 }
 
 fn f2(x: u32, y: u32): u32 {
-    return x + y
+    return x \
+        + y
+}
+
+struct InfX {
+    x: &InfX,
+}
+
+fn InfX::call(&self, other: &InfX): &InfX {
+    return self
 }

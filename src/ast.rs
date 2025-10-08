@@ -398,7 +398,7 @@ pub struct ContinueExpr {
 #[derive(Debug)]
 pub struct CodeExprList {
     pub items: Vec<CodeExpr>,
-    pub is_multiline: bool,
+    pub has_trailing_comma: bool,
 }
 
 #[derive(Debug)]
@@ -497,6 +497,7 @@ pub struct PropagateErrorExpr {
 #[derive(Debug)]
 pub struct ParenExpr {
     pub expr: Box<CodeExpr>,
+    pub has_trailing_comma: bool,
     pub loc: LoLocation,
 }
 

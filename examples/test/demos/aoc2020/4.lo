@@ -54,13 +54,8 @@ fn main() {
                 break
             }
         }
-        if has_byr && 
-            \ has_iyr && 
-            \ has_eyr && 
-            \ has_hgt && 
-            \ has_hcl && 
-            \ has_ecl && 
-            \ has_pid
+        if has_byr && has_iyr && has_eyr \
+            && has_hgt && has_hcl && has_ecl && has_pid
         {
             valid_passwords += 1
         }

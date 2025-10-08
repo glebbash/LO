@@ -4,12 +4,17 @@ use alloc::{string::ToString, vec::Vec};
 pub struct Printer {
     ast: &'static AST,
     source: &'static [u8],
+
     indent: usize,
+
     comments_printed: usize,
-    backslashes_printed: usize,
-    is_multiline_stmt: bool,
-    multiline_stmt_indent: usize,
+
+    // needed for printing blank lines
     last_printed_item_line: usize,
+
+    backslashes_printed: usize,
+    baskslash_stack: Vec<bool>,
+    last_stmt_had_backslash: bool,
 }
 
 impl Printer {
@@ -18,11 +23,14 @@ impl Printer {
             ast,
             source,
             indent: 0,
+
             comments_printed: 0,
-            backslashes_printed: 0,
-            is_multiline_stmt: false,
-            multiline_stmt_indent: 0,
+
             last_printed_item_line: 1,
+
+            backslashes_printed: 0,
+            baskslash_stack: Vec::new(),
+            last_stmt_had_backslash: false,
         };
 
         stdout_enable_buffering();
@@ -57,7 +65,7 @@ impl Printer {
                     stdout_write("export ");
                 }
                 self.print_fn_decl(decl);
-                stdout_write(" ");
+
                 self.print_code_block_expr(body);
                 stdout_writeln("");
             }
@@ -221,7 +229,6 @@ impl Printer {
                     stdout_write(": ");
                     self.print_type_expr(return_type);
                 }
-                stdout_write(" ");
                 self.print_code_block_expr(body);
                 stdout_writeln("");
             }
@@ -359,6 +366,14 @@ impl Printer {
     }
 
     fn print_code_block_expr(&mut self, code_block: &CodeBlockExpr) {
+        if self.last_stmt_had_backslash {
+            self.last_stmt_had_backslash = false;
+            stdout_writeln("");
+            self.print_indent();
+        } else {
+            stdout_write(" ");
+        }
+
         if code_block.loc.pos.line == code_block.loc.end_pos.line {
             return stdout_write("{}");
         }
@@ -373,8 +388,7 @@ impl Printer {
             self.print_indent();
             self.print_code_expr(expr);
             stdout_writeln("");
-            self.is_multiline_stmt = false;
-            self.multiline_stmt_indent = 0;
+            self.last_stmt_had_backslash = false;
         }
 
         // print the rest of the comments
@@ -387,8 +401,14 @@ impl Printer {
     }
 
     fn print_code_expr(&mut self, expr: &CodeExpr) {
-        self.print_backslashes_before(expr.loc().pos.offset);
+        self.baskslash_stack.push(false);
 
+        self.print_code_expr_(expr);
+
+        self.baskslash_stack.pop();
+    }
+
+    fn print_code_expr_(&mut self, expr: &CodeExpr) {
         match expr {
             CodeExpr::BoolLiteral(BoolLiteralExpr { value, loc: _ }) => {
                 if *value {
@@ -496,13 +516,15 @@ impl Printer {
             }
             CodeExpr::InfixOp(InfixOpExpr {
                 op_tag,
-                op_loc: _,
+                op_loc,
                 lhs,
                 rhs,
                 loc: _,
             }) => {
                 self.print_code_expr(lhs);
-                stdout_write(" ");
+                if !self.print_backslashes_before(op_loc.pos.offset) {
+                    stdout_write(" ");
+                }
                 stdout_write(op_tag.to_str());
                 stdout_write(" ");
                 self.print_code_expr(rhs);
@@ -524,27 +546,14 @@ impl Printer {
             }) => {
                 stdout_write("if");
                 stdout_write(" ");
-
-                let prev_backslashes_printed = self.backslashes_printed;
                 self.print_code_expr(cond);
-
-                // TODO: find a cleaner way to do this, also this logic is needed for other complex constructs
-                if self.backslashes_printed != prev_backslashes_printed {
-                    stdout_writeln("");
-                    self.is_multiline_stmt = false;
-                    self.multiline_stmt_indent = 0;
-                    self.print_indent();
-                } else {
-                    stdout_write(" ");
-                }
-
                 self.print_code_block_expr(then_block);
+
                 match else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(else_block) => {
                         stdout_write(" ");
                         stdout_write("else");
-                        stdout_write(" ");
                         self.print_code_block_expr(&else_block);
                     }
                     ElseBlock::ElseIf(if_expr) => {
@@ -556,7 +565,7 @@ impl Printer {
                 }
             }
             CodeExpr::Loop(LoopExpr { body, loc: _ }) => {
-                stdout_write("loop ");
+                stdout_write("loop");
                 self.print_code_block_expr(&body);
             }
             CodeExpr::ForLoop(ForLoopExpr {
@@ -572,7 +581,6 @@ impl Printer {
                 self.print_code_expr(&start);
                 stdout_write("..");
                 self.print_code_expr(&end);
-                stdout_write(" ");
                 self.print_code_block_expr(&body);
             }
             CodeExpr::Break(BreakExpr { loc: _ }) => {
@@ -591,7 +599,7 @@ impl Printer {
                 stdout_write(&bind.repr);
                 stdout_write(" in ");
                 self.print_args(args);
-                stdout_write(" do ");
+                stdout_write(" do");
                 self.print_code_block_expr(body);
             }
             CodeExpr::Unreachable(UnreachableExpr { loc: _ }) => {
@@ -684,6 +692,7 @@ impl Printer {
                 loc: _,
             }) => {
                 self.print_code_expr(lhs);
+                self.print_backslashes_before(field_name.loc.pos.offset);
                 stdout_write(".");
                 stdout_write(&field_name.repr);
             }
@@ -697,17 +706,25 @@ impl Printer {
                 self.print_code_expr(lhs);
                 stdout_write(" catch ");
                 stdout_write(&error_bind.repr);
-                stdout_write(" ");
                 self.print_code_block_expr(catch_body);
             }
-            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
+            CodeExpr::Paren(ParenExpr {
+                expr,
+                has_trailing_comma,
+                loc: _,
+            }) => {
                 stdout_write("(");
-                let prev_backslashes_printed = self.backslashes_printed;
-                self.multiline_stmt_indent += 1;
-                self.print_code_expr(expr);
-                self.multiline_stmt_indent -= 1;
-                if self.backslashes_printed != prev_backslashes_printed {
+                if *has_trailing_comma {
                     stdout_writeln("");
+                    self.indent += 1;
+                    self.print_indent();
+                }
+
+                self.print_code_expr(expr);
+
+                if *has_trailing_comma {
+                    self.indent -= 1;
+                    stdout_writeln(",");
                     self.print_indent();
                 }
                 stdout_write(")");
@@ -727,6 +744,7 @@ impl Printer {
                 loc: _,
             }) => {
                 self.print_code_expr(lhs);
+                self.print_backslashes_before(field_name.loc.pos.offset);
                 stdout_write(".");
                 stdout_write(&field_name.repr);
                 self.print_args(args);
@@ -750,6 +768,7 @@ impl Printer {
                 loc: _,
             }) => {
                 self.print_code_expr(lhs);
+                self.print_backslashes_before(field_name.loc.pos.offset);
                 stdout_write(".");
                 stdout_write(&field_name.repr);
                 stdout_write("!");
@@ -783,14 +802,14 @@ impl Printer {
     fn print_args(&mut self, args: &CodeExprList) {
         stdout_write("(");
 
-        if args.is_multiline {
+        if args.has_trailing_comma {
             self.indent += 1;
             stdout_writeln("");
         }
 
         let prev_backslashes_printed = self.backslashes_printed;
         for (arg, index) in args.items.iter().zip(0..) {
-            if args.is_multiline {
+            if args.has_trailing_comma {
                 if index != 0 {
                     stdout_writeln(",");
                 }
@@ -801,16 +820,14 @@ impl Printer {
                 stdout_write(", ");
             }
 
-            self.multiline_stmt_indent += 1;
             self.print_code_expr(arg);
-            self.multiline_stmt_indent -= 1;
         }
-        if !args.is_multiline && self.backslashes_printed != prev_backslashes_printed {
+        if !args.has_trailing_comma && self.backslashes_printed != prev_backslashes_printed {
             stdout_writeln("");
             self.print_indent();
         }
 
-        if args.is_multiline {
+        if args.has_trailing_comma {
             stdout_writeln(",");
             self.indent -= 1;
             self.print_indent();
@@ -861,33 +878,38 @@ impl Printer {
         }
     }
 
-    fn print_backslashes_before(&mut self, offset: usize) {
+    fn print_backslashes_before(&mut self, offset: usize) -> bool {
+        let mut printed = false;
+
         while self.backslashes_printed < self.ast.backslashes.len() {
             let backslash = &self.ast.backslashes[self.backslashes_printed];
             if backslash.loc.end_pos.offset > offset {
                 break;
             }
 
-            // implicit indent
-            if !self.is_multiline_stmt && self.multiline_stmt_indent == 0 {
-                self.multiline_stmt_indent = 1;
-            }
-
-            self.is_multiline_stmt = true;
             self.backslashes_printed += 1;
 
-            stdout_writeln("");
-            self.print_indent();
-            stdout_write("\\ ");
+            if !printed {
+                printed = true;
+
+                *self.baskslash_stack.last_mut().unwrap() = true;
+                self.last_stmt_had_backslash = true;
+
+                stdout_writeln(" \\");
+                self.print_indent();
+            }
         }
+
+        printed
     }
 
     fn print_indent(&self) {
         for _ in 0..self.indent {
             stdout_write("    ");
         }
-        if self.is_multiline_stmt {
-            for _ in 0..self.multiline_stmt_indent {
+
+        for indent in &self.baskslash_stack {
+            if *indent {
                 stdout_write("    ");
             }
         }

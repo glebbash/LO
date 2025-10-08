@@ -15,6 +15,9 @@ pub struct Parser {
 
     // state
     pub tokens_processed: RefCell<usize>,
+
+    // output
+    pub ast: AST,
 }
 
 impl Parser {
@@ -23,23 +26,22 @@ impl Parser {
             source,
             tokens: lex.tokens,
             tokens_processed: RefCell::new(0),
+            ast: AST {
+                exprs: Vec::new(),
+                comments: lex.comments,
+                backslashes: lex.backslashes,
+            },
         };
 
-        let mut ast = AST {
-            exprs: Vec::new(),
-            comments: lex.comments,
-            backslashes: lex.backslashes,
-        };
+        parser.parse_file()?;
 
-        parser.parse_file(&mut ast)?;
-
-        Ok(ast)
+        Ok(parser.ast)
     }
 
-    fn parse_file(&self, ast: &mut AST) -> Result<(), LoError> {
+    fn parse_file(&self) -> Result<(), LoError> {
         while self.peek().is_some() {
             let expr = self.parse_top_level_expr()?;
-            ast.exprs.push(expr);
+            self.ast.relax().be_mut().exprs.push(expr);
         }
 
         if let Some(unexpected) = self.peek() {
@@ -570,7 +572,10 @@ impl Parser {
 
         while self.peek().is_some() {
             let op_symbol = self.current().clone();
-            if op_symbol.loc.end_pos.line != primary.loc().end_pos.line {
+            if op_symbol.loc.pos.line != primary.loc().end_pos.line
+                && !self
+                    .has_backslashes_between(primary.loc().end_pos.offset, op_symbol.loc.pos.offset)
+            {
                 break;
             }
             let Some(op) = InfixOp::parse(op_symbol, self.source) else {
@@ -586,6 +591,17 @@ impl Parser {
         }
 
         Ok(primary)
+    }
+
+    // TODO: this could be optimized by storing backslashes checked index but it's not that simple
+    fn has_backslashes_between(&self, offset1: usize, offset2: usize) -> bool {
+        for backslash in &self.ast.backslashes {
+            if backslash.loc.pos.offset >= offset1 && backslash.loc.end_pos.offset <= offset2 {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn parse_code_expr_primary(&self) -> Result<CodeExpr, LoError> {
@@ -680,11 +696,17 @@ impl Parser {
             let mut loc = self.prev().loc.clone();
 
             let expr = Box::new(self.parse_code_expr(0)?);
+
+            let has_trailing_comma = self.eat(Delim, ",")?.is_some();
             self.expect(Delim, ")")?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::Paren(ParenExpr { expr, loc }));
+            return Ok(CodeExpr::Paren(ParenExpr {
+                expr,
+                has_trailing_comma,
+                loc,
+            }));
         };
 
         if let Some(_) = self.eat(Symbol, "let")? {
@@ -1044,7 +1066,7 @@ impl Parser {
 
         return Ok(CodeExprList {
             items,
-            is_multiline: has_trailing_comma,
+            has_trailing_comma,
         });
     }
 

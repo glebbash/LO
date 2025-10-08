@@ -198,12 +198,10 @@ fn set_draw_color(c1: u32) {
 }
 
 fn set_draw_colors(c1: u32, c2: u32, c3: u32, c4: u32) {
-    *wasm4::DRAW_COLORS = (
-        \ (c1 << 00) | 
-        \ (c2 << 04) | 
-        \ (c3 << 08) | 
-        \ (c4 << 12)
-    ) as u16
+    *wasm4::DRAW_COLORS = ((c1 << 00) \
+        | (c2 << 04) \
+        | (c3 << 08) \
+        | (c4 << 12)) as u16
 }
 
 fn just_pressed(button: u8): bool {

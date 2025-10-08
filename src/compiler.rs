@@ -2614,7 +2614,11 @@ impl Compiler {
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
                 self.codegen_catch(ctx, instrs, expr, None, None, loc)?;
             }
-            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => {
+            CodeExpr::Paren(ParenExpr {
+                expr,
+                has_trailing_comma: _,
+                loc: _,
+            }) => {
                 self.codegen(ctx, instrs, expr)?;
             }
             CodeExpr::Unreachable(_) => {
@@ -3485,7 +3489,11 @@ impl Compiler {
             CodeExpr::With(_) => Ok(LoType::Void),
             CodeExpr::Return(_) => Ok(LoType::Never),
             CodeExpr::Unreachable(_) => Ok(LoType::Never),
-            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.get_expr_type(ctx, expr),
+            CodeExpr::Paren(ParenExpr {
+                expr,
+                has_trailing_comma: _,
+                loc: _,
+            }) => self.get_expr_type(ctx, expr),
         }
     }
 
@@ -3499,7 +3507,11 @@ impl Compiler {
             CodeExpr::FieldAccess(field_access) => {
                 Some(self.var_from_field_access(ctx, field_access)?)
             }
-            CodeExpr::Paren(ParenExpr { expr, loc: _ }) => self.var_from_expr(ctx, expr)?,
+            CodeExpr::Paren(ParenExpr {
+                expr,
+                has_trailing_comma: _,
+                loc: _,
+            }) => self.var_from_expr(ctx, expr)?,
             CodeExpr::PrefixOp(PrefixOpExpr {
                 op_tag,
                 expr,
