@@ -63,17 +63,17 @@ export fn update() {
 
 fn title_screen_update() {
     set_draw_color(Color::WHITE)
-    wasm4::text("Dark     "0, +46, +60)
+    wasm4::text("Dark     \0".data, +46, +60)
     light_block(+1, -1, 1024)
     light_block(+2, -1, 1024)
     set_draw_color(Color::RED)
-    wasm4::text("     Maze"0, +46, +60)
+    wasm4::text("     Maze\0".data, +46, +60)
     set_draw_color(Color::WHITE)
-    wasm4::text("Press X to start"0, +16, +116)
+    wasm4::text("Press X to start\0".data, +16, +116)
     set_draw_color(Color::RED)
-    wasm4::text("      X"0, +16, +116)
+    wasm4::text("      X\0".data, +16, +116)
     set_draw_color(Color::GRAY)
-    wasm4::text("@glebbash 2025"0, +24, +146)
+    wasm4::text("@glebbash 2025\0".data, +24, +146)
     if just_pressed(wasm4::BUTTON_1) {
         screen = Screen::GAME
     }

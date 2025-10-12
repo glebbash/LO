@@ -679,15 +679,9 @@ impl Parser {
         };
 
         if let Some(string) = self.eat_any(StringLiteral)?.cloned() {
-            let mut zero_terminated = false;
-            if let Some(_) = self.eat(IntLiteral, "0")? {
-                zero_terminated = true;
-            }
-
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
                 value: Lexer::unescape_string(&string.get_value(self.source)),
                 repr: string.get_value(self.source).to_string(),
-                zero_terminated,
                 loc: string.loc,
             }));
         };

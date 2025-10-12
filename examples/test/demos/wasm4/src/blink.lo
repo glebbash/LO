@@ -1,3 +1,4 @@
+include "../../../../lib/std.lo"
 include "./lib/wasm4.lo"
 
 const SMILEY = [u8][
@@ -15,11 +16,11 @@ export fn start() {}
 
 export fn update() {
     *wasm4::DRAW_COLORS = 2 as u16
-    wasm4::text("Hello from LO!"0, +10, +10)
+    wasm4::text("Hello from LO!\0".data, +10, +10)
     let gamepad = *wasm4::GAMEPAD1
     if gamepad & wasm4::BUTTON_1 {
         *wasm4::DRAW_COLORS = 4 as u16
     }
     wasm4::blit(SMILEY, +76, +76, 8, 8, wasm4::BLIT_1BPP)
-    wasm4::text("Press X to blink"0, +16, +90)
+    wasm4::text("Press X to blink\0".data, +16, +90)
 }

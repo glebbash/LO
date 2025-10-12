@@ -1720,23 +1720,9 @@ impl Compiler {
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
                 value,
-                zero_terminated,
                 loc,
             }) => {
-                let mut value = value.clone();
-                if *zero_terminated {
-                    value.push('\0');
-                }
-
-                let str = self.process_const_string(value, &loc)?;
-
-                if *zero_terminated {
-                    instrs.push(WasmInstr::I32Const {
-                        value: str.ptr as i32,
-                    });
-
-                    return Ok(());
-                }
+                let str = self.process_const_string(value.clone(), &loc)?;
 
                 // emit str struct values
                 instrs.push(WasmInstr::I32Const {
@@ -3244,19 +3230,10 @@ impl Compiler {
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
                 value: _,
-                zero_terminated,
                 loc: _,
-            }) => {
-                if *zero_terminated {
-                    Ok(LoType::SequencePointer {
-                        pointee: Box::new(LoType::U8),
-                    })
-                } else {
-                    Ok(LoType::StructInstance {
-                        struct_name: String::from("str"),
-                    })
-                }
-            }
+            }) => Ok(LoType::StructInstance {
+                struct_name: String::from("str"),
+            }),
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
                 fields: _,

@@ -437,14 +437,10 @@ impl Printer {
             }
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr,
-                zero_terminated,
                 value: _,
                 loc: _,
             }) => {
                 stdout_write(repr);
-                if *zero_terminated {
-                    stdout_write("0");
-                }
             }
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,

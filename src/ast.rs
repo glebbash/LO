@@ -309,7 +309,6 @@ pub struct IntLiteralExpr {
 pub struct StringLiteralExpr {
     pub repr: String,
     pub value: String,
-    pub zero_terminated: bool,
     pub loc: LoLocation,
 }
 
