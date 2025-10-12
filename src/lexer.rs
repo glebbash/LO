@@ -323,30 +323,35 @@ impl Lexer {
 
     fn lex_operator(&mut self) -> Result<LoToken, LoError> {
         let mut loc = self.loc();
-        let mut value = String::new();
 
         loop {
-            value.push(self.current_char()?);
+            let current_op = unsafe {
+                str::from_utf8_unchecked(&self.source[loc.pos.offset..self.source_pos.offset + 1])
+            };
 
             let mut is_start_of_operator = false;
             for operator in OPERATORS {
-                if operator.starts_with(&value) {
+                if operator.starts_with(current_op) {
                     is_start_of_operator = true;
                     break;
                 }
             }
 
             if !is_start_of_operator {
-                value.pop();
                 break;
-            };
+            }
 
             self.next_char();
+            self.current_char()?; // EOF check
         }
+
+        let op = unsafe {
+            str::from_utf8_unchecked(&self.source[loc.pos.offset..self.source_pos.offset])
+        };
 
         let mut matched_fully = false;
         for operator in OPERATORS {
-            if operator == &value {
+            if *operator == op {
                 matched_fully = true;
                 break;
             }
@@ -357,7 +362,7 @@ impl Lexer {
                 message: format!("Unexpected char: '{}'", self.current_char()?),
                 loc: self.loc(),
             });
-        };
+        }
 
         loc.end_pos = self.source_pos;
 
