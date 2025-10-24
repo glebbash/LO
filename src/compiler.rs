@@ -4433,7 +4433,6 @@ impl Compiler {
         }
     }
 
-    // TODO?: support all numeric types
     fn get_cast_instr(&self, casted_from: &LoType, casted_to: &LoType) -> Option<WasmInstr> {
         if *casted_to == LoType::I64 || *casted_to == LoType::U64 {
             if *casted_from == LoType::I8
