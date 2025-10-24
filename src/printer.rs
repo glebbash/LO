@@ -589,12 +589,12 @@ impl Printer {
                 bind,
                 args,
                 body,
-                loc: _,
+                loc,
             }) => {
                 stdout_write("with ");
                 stdout_write(&bind.repr);
                 stdout_write(" in ");
-                self.print_args(args);
+                self.print_args(args, loc);
                 stdout_write(" do");
                 self.print_code_block_expr(body);
             }
@@ -707,12 +707,15 @@ impl Printer {
             CodeExpr::Paren(ParenExpr {
                 expr,
                 has_trailing_comma,
-                loc: _,
+                loc,
             }) => {
                 stdout_write("(");
+                self.last_printed_item_line = loc.pos.line;
+
                 if *has_trailing_comma {
                     stdout_writeln("");
                     self.indent += 1;
+                    self.print_comments_before(expr.loc().pos);
                     self.print_indent();
                 }
 
@@ -725,13 +728,9 @@ impl Printer {
                 }
                 stdout_write(")");
             }
-            CodeExpr::FnCall(FnCallExpr {
-                fn_name,
-                args,
-                loc: _,
-            }) => {
+            CodeExpr::FnCall(FnCallExpr { fn_name, args, loc }) => {
                 stdout_write(&fn_name.repr);
-                self.print_args(args);
+                self.print_args(args, loc);
             }
             CodeExpr::MethodCall(MethodCallExpr {
                 lhs,
@@ -743,18 +742,18 @@ impl Printer {
                 self.print_backslashes_before(field_name.loc.pos.offset);
                 stdout_write(".");
                 stdout_write(&field_name.repr);
-                self.print_args(args);
+                self.print_args(args, &field_name.loc);
             }
             CodeExpr::MacroFnCall(MacroFnCallExpr {
                 fn_name,
                 args,
                 type_args,
-                loc: _,
+                loc,
             }) => {
                 stdout_write(&fn_name.repr);
                 stdout_write("!");
                 self.print_type_args(type_args);
-                self.print_args(args);
+                self.print_args(args, loc);
             }
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
                 lhs,
@@ -769,7 +768,7 @@ impl Printer {
                 stdout_write(&field_name.repr);
                 stdout_write("!");
                 self.print_type_args(type_args);
-                self.print_args(args);
+                self.print_args(args, &field_name.loc);
             }
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
                 stdout_write("sizeof ");
@@ -782,25 +781,26 @@ impl Printer {
             CodeExpr::MemorySize(MemorySizeExpr { loc: _ }) => {
                 stdout_write("__memory_size()");
             }
-            CodeExpr::MemoryGrow(MemoryGrowExpr { args, loc: _ }) => {
+            CodeExpr::MemoryGrow(MemoryGrowExpr { args, loc }) => {
                 stdout_write("__memory_grow");
-                self.print_args(args);
+                self.print_args(args, loc);
             }
-            CodeExpr::MemoryCopy(MemoryCopyExpr { args, loc: _ }) => {
+            CodeExpr::MemoryCopy(MemoryCopyExpr { args, loc }) => {
                 stdout_write("__memory_copy");
-                self.print_args(args);
+                self.print_args(args, loc);
             }
         }
 
         self.last_printed_item_line = expr.loc().end_pos.line
     }
 
-    fn print_args(&mut self, args: &CodeExprList) {
+    fn print_args(&mut self, args: &CodeExprList, open_paren_loc: &LoLocation) {
         stdout_write("(");
 
         if args.has_trailing_comma {
             self.indent += 1;
             stdout_writeln("");
+            self.last_printed_item_line = open_paren_loc.pos.line;
         }
 
         let prev_backslashes_printed = self.backslashes_printed;

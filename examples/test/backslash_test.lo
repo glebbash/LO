@@ -70,15 +70,11 @@ fn backslash_test() {
         .call(x.x.x.x.call(x)) \
         .call(x \
             .call(
-
-                // TODO: fix problem with blank lines above
                 x.x,
             ) \
             .call(x \
                 .x.x.x.x.call(x) \
                 .call(
-
-                    // TODO: fix problem with blank lines above
                     x.call(x) \
                         .call(x \
                             .call(x) \
