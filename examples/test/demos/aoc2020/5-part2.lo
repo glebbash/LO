@@ -18,7 +18,7 @@ fn main() {
     for i in 0..tickets_count {
         let seat_id = seat_ids.get!<u32>(i)
         if prev_seat_id + 2 == seat_id {
-            print_u32(prev_seat_id + 1)
+            puts((prev_seat_id + 1).to_tmp_str!())
             puts("\n")
             break
         }

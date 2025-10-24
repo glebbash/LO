@@ -75,6 +75,6 @@ fn main() {
         }
     }
 
-    print_u32(valid_passwords)
+    puts(valid_passwords.to_tmp_str!())
     puts("\n")
 }

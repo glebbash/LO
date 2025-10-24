@@ -16,29 +16,29 @@ fn main() {
         br: .Point2D { x: 3, y: 4 },
     }
     let br = r.br
-    print_u32(br.x)
+    puts(br.x.to_tmp_str!())
     puts("\n")
 
-    print_u32(r.br.x)
+    puts(r.br.x.to_tmp_str!())
     puts("\n")
 
     let r_ref = tmp_alloc!<Rect>()
     *r_ref = r
     let r2 = *r_ref
-    print_u32(r2.br.x)
+    puts(r2.br.x.to_tmp_str!())
     puts("\n")
 
     let br2 = r_ref.br
-    print_u32(br2.x)
+    puts(br2.x.to_tmp_str!())
     puts("\n")
 
     let br_ref = (r_ref as u32 + sizeof Point2D) as &Point2D
-    print_u32(br_ref.x)
+    puts(br_ref.x.to_tmp_str!())
     puts("\n")
 
-    print_u32((*br_ref).x)
+    puts((*br_ref).x.to_tmp_str!())
     puts("\n")
 
-    print_u32(r_ref.br.x)
+    puts(r_ref.br.x.to_tmp_str!())
     puts("\n")
 }

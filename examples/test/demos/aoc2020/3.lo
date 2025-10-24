@@ -31,7 +31,7 @@ fn main() {
         }
     }
 
-    print_u32(tree_count)
+    puts(tree_count.to_tmp_str!())
     puts("\n")
 }
 

@@ -18,7 +18,7 @@ fn main() {
                 let c = numbers.get!<u32>(k)
 
                 if a + b + c == 2020 {
-                    print_u32(a * b * c)
+                    puts((a * b * c).to_tmp_str!())
                     puts("\n")
                     return
                 }

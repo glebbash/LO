@@ -20,36 +20,6 @@ fn fputs(fd: u32, value: str): Result<u32, wasi::Err> {
     return Ok(*nwritten)
 }
 
-// TODO: replace in favor of u32::to_tmp_str!
-fn print_u32(num: u32) {
-    let _ = fprint_u32(wasi::FD_STDOUT, num)
-}
-
-// TODO: replace in favor of u32::to_tmp_str!
-fn eprint_u32(num: u32) {
-    let _ = fprint_u32(wasi::FD_STDERR, num)
-}
-
-// TODO: replace in favor of u32::to_tmp_str!
-fn fprint_u32(fd: u32, num: u32): Result<u32, wasi::Err> {
-    return fputs(fd, num.to_tmp_str!())
-}
-
-// TODO: replace in favor of u64::to_tmp_str!
-fn print_u64(num: u64) {
-    let _ = fprint_u64(wasi::FD_STDOUT, num)
-}
-
-// TODO: replace in favor of u64::to_tmp_str!
-fn eprint_u64(num: u64) {
-    let _ = fprint_u64(wasi::FD_STDERR, num)
-}
-
-// TODO: replace in favor of u64::to_tmp_str!
-fn fprint_u64(fd: u32, num: u64): Result<u32, wasi::Err> {
-    return fputs(fd, num.to_tmp_str!())
-}
-
 fn print_str(value: &str) {
     let _ = fprint_str(wasi::FD_STDOUT, value)
 }

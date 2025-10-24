@@ -2,7 +2,7 @@ include "../lib/cli.lo"
 
 fn main() {
     with x in (1, 2, 3, 4, 5, 6, 7, 8, 9) do {
-        print_u32(x)
+        puts(x.to_tmp_str!())
     }
 
     puts("\n-------------\n")

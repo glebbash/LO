@@ -16,7 +16,7 @@ fn main() {
         }
     }
 
-    print_u32(max_seat_id)
+    puts(max_seat_id.to_tmp_str!())
     puts("\n")
 }
 

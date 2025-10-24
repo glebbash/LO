@@ -17,17 +17,17 @@ fn main() {
 }
 
 fn divide_and_print(a: u32, b: u32) {
-    print_u32(a)
+    puts(a.to_tmp_str!())
     puts(" / ")
-    print_u32(b)
+    puts(b.to_tmp_str!())
     let result = divide(a, b) catch _ {
         puts(" is undefined\n")
         return
     }
     puts(" = ")
-    print_u32(result.full)
+    puts(result.full.to_tmp_str!())
     puts(", remainder = ")
-    print_u32(result.remainder)
+    puts(result.remainder.to_tmp_str!())
     puts("\n")
 }
 

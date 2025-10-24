@@ -48,6 +48,6 @@ fn main() {
             continue
         }
     }
-    print_u32(calibration_sum)
+    puts(calibration_sum.to_tmp_str!())
     puts("\n")
 }

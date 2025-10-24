@@ -10,7 +10,7 @@ macro fs::read_file!(file_name: str): String {
         eputs("Error reading file '")
         eputs(file_name)
         eputs("': code ")
-        eprint_u32(err)
+        eputs(err.to_tmp_str!())
         eputs("\n")
         wasi::proc_exit(1)
     }
@@ -33,7 +33,7 @@ fn fs::_unlock() {
     let err = 0
     defer if err != 0 {
         eputs("Error unlocking fs: code ")
-        eprint_u32(err)
+        eputs(err.to_tmp_str!())
         eputs("\n")
         wasi::proc_exit(1)
     }
