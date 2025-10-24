@@ -7,10 +7,8 @@ use alloc::{
 };
 use core::{cell::RefCell, fmt::Write};
 
-// TODO: make globals, macros and consts be stored in module's items
 // TODO!: change all magic functions to have `@some_magic_fn<...type_args>(...args)` syntax:
 //   @sizeof<T>(), @data_size(), @__inspect(), @memory_size(), etc...
-// TODO: make sure function names can't collide with intrinsics
 
 #[derive(Clone, PartialEq)]
 pub enum LoType {
@@ -447,6 +445,9 @@ struct ModuleItem {
 enum ModuleItemCollection {
     Type,
     Function,
+    Global,
+    Macro,
+    Const,
 }
 
 impl Module {
@@ -696,7 +697,7 @@ impl Compiler {
             self.pass_build_structs(module);
         }
 
-        for module in self.modules.relax() {
+        for module in self.modules.relax_mut() {
             self.pass_main(module);
         }
     }
@@ -704,63 +705,55 @@ impl Compiler {
     fn pass_collect_own_items(&mut self, module: &mut Module) {
         for expr in &module.ast.exprs {
             match expr {
-                TopLevelExpr::StructDef(StructDefExpr {
-                    struct_name,
-                    fields: _,
-                    loc: _,
-                }) => {
-                    if let Some(item) = module.get_own_item(&struct_name.repr) {
+                TopLevelExpr::StructDef(struct_def) => {
+                    if let Some(item) = module.get_own_item(&struct_def.struct_name.repr) {
                         self.report_error(&LoError {
                             message: format!(
                                 "Cannot redefine {}, already defined at {}",
-                                struct_name.repr,
+                                struct_def.struct_name.repr,
                                 item.loc.to_string(&self.fm)
                             ),
-                            loc: struct_name.loc.clone(),
+                            loc: struct_def.struct_name.loc.clone(),
                         });
                         continue;
                     }
 
                     self.struct_defs.push(LoStructDef {
-                        struct_name: struct_name.repr.clone(),
+                        struct_name: struct_def.struct_name.repr.clone(),
                         fields: Vec::new(),
                         fully_defined: false,
                     });
 
                     self.type_defs.push(LoTypeDef {
-                        name: struct_name.repr.clone(),
+                        name: struct_def.struct_name.repr.clone(),
                         value: LoType::StructInstance {
-                            struct_name: struct_name.repr.clone(),
+                            struct_name: struct_def.struct_name.repr.clone(),
                         },
                         kind: LoTypeDefKind::Struct,
-                        loc: struct_name.loc.clone(),
+                        loc: struct_def.struct_name.loc.clone(),
                     });
 
                     module.own_items.push(ModuleItem {
-                        name: struct_name.repr.clone(),
+                        name: struct_def.struct_name.repr.clone(),
                         collection: ModuleItemCollection::Type,
                         collection_index: self.type_defs.len() - 1,
-                        loc: struct_name.loc.clone(),
+                        loc: struct_def.struct_name.loc.clone(),
                     })
                 }
-                TopLevelExpr::TypeDef(TypeDefExpr {
-                    type_name,
-                    type_value,
-                    loc: _,
-                }) => {
-                    if let Some(item) = module.get_own_item(&type_name.repr) {
+                TopLevelExpr::TypeDef(type_def) => {
+                    if let Some(item) = module.get_own_item(&type_def.type_name.repr) {
                         self.report_error(&LoError {
                             message: format!(
                                 "Cannot redefine {}, already defined at {}",
-                                type_name.repr,
+                                type_def.type_name.repr,
                                 item.loc.to_string(&self.fm)
                             ),
-                            loc: type_name.loc.clone(),
+                            loc: type_def.type_name.loc.clone(),
                         });
                         continue;
                     }
 
-                    let type_value = self.build_type(&module.ctx, &type_value);
+                    let type_value = self.build_type(&module.ctx, &type_def.type_value);
                     let type_value = catch!(type_value, err, {
                         self.report_error(&err);
                         continue;
@@ -768,16 +761,16 @@ impl Compiler {
 
                     self.type_defs.push(LoTypeDef {
                         kind: LoTypeDefKind::Alias,
-                        name: type_name.repr.clone(),
+                        name: type_def.type_name.repr.clone(),
                         value: type_value,
-                        loc: type_name.loc.clone(),
+                        loc: type_def.type_name.loc.clone(),
                     });
 
                     module.own_items.push(ModuleItem {
-                        name: type_name.repr.clone(),
+                        name: type_def.type_name.repr.clone(),
                         collection: ModuleItemCollection::Type,
                         collection_index: self.type_defs.len() - 1,
-                        loc: type_name.loc.clone(),
+                        loc: type_def.type_name.loc.clone(),
                     })
                 }
                 TopLevelExpr::FnDef(fn_def) => {
@@ -828,14 +821,10 @@ impl Compiler {
                         loc: fn_def.decl.fn_name.loc.clone(),
                     });
                 }
-                TopLevelExpr::Import(ImportExpr {
-                    module_name,
-                    items,
-                    loc: _,
-                }) => {
-                    let module_name = module_name.unescape(module.source);
+                TopLevelExpr::Import(import_expr) => {
+                    let module_name = import_expr.module_name.unescape(module.source);
 
-                    for item in items {
+                    for item in &import_expr.items {
                         let ImportItem::FnDecl(fn_decl) = item else {
                             continue;
                         };
@@ -922,16 +911,12 @@ impl Compiler {
     fn pass_build_structs(&mut self, module: &Module) {
         'exprs: for expr in &module.ast.exprs {
             match expr {
-                TopLevelExpr::StructDef(StructDefExpr {
-                    struct_name,
-                    fields,
-                    loc: _,
-                }) => {
+                TopLevelExpr::StructDef(struct_def) => {
                     let mut struct_fields = Vec::<LoStructField>::new();
                     let mut struct_primitives_count = 0;
                     let mut struct_aligment = 1;
 
-                    'fields: for field in fields {
+                    'fields: for field in &struct_def.fields {
                         for existing_field in &struct_fields {
                             if existing_field.field_name == field.field_name.repr {
                                 self.report_error(&LoError {
@@ -983,7 +968,9 @@ impl Compiler {
                         byte_offset += field.field_layout.byte_size;
                     }
 
-                    let struct_def = self.get_struct_def_mut(&struct_name.repr).unwrap();
+                    let struct_def = self
+                        .get_struct_def_mut(&struct_def.struct_name.repr)
+                        .unwrap();
                     struct_def.fields.append(&mut struct_fields);
                     struct_def.fully_defined = true;
                 }
@@ -992,99 +979,12 @@ impl Compiler {
         }
     }
 
-    fn pass_main(&mut self, module: &Module) {
+    fn pass_main(&mut self, module: &mut Module) {
         for expr in &module.ast.exprs {
             match expr {
-                TopLevelExpr::Include(_) => {}   // skip, processed in parse_file_tree
+                TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_items
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_build_structs
-                // debug tools, will have different syntax or just be removed later
-                TopLevelExpr::TypeDef(TypeDefExpr {
-                    type_name,
-                    type_value: _,
-                    loc: _,
-                }) => {
-                    if type_name.repr.starts_with("__inspect_") {
-                        let command = type_name.repr.replacen("__inspect_", "", 1);
 
-                        if self.in_inspection_mode {
-                            match command.as_str() {
-                                "items" => {
-                                    let mut message = String::new();
-                                    for item in &module.all_items {
-                                        write!(message, "{}\n", item.name).unwrap();
-                                    }
-
-                                    self.print_inspection(&InspectInfo {
-                                        message,
-                                        loc: type_name.loc.clone(),
-                                        linked_loc: None,
-                                    });
-                                }
-                                "includes" => {
-                                    let mut message = String::new();
-                                    write!(
-                                        message,
-                                        "current: {}\n\n",
-                                        self.fm.get_file_path(module.file_index)
-                                    )
-                                    .unwrap();
-
-                                    for include in &module.includes {
-                                        write!(
-                                            message,
-                                            "{}\n",
-                                            include.include_expr.file_path.unescape(module.source)
-                                        )
-                                        .unwrap();
-                                    }
-
-                                    self.print_inspection(&InspectInfo {
-                                        message,
-                                        loc: type_name.loc.clone(),
-                                        linked_loc: None,
-                                    });
-                                }
-                                "modules" => {
-                                    let mut message = String::new();
-
-                                    for module in &self.modules {
-                                        write!(
-                                            message,
-                                            "module: {}:\n",
-                                            self.fm.get_file_path(module.file_index)
-                                        )
-                                        .unwrap();
-
-                                        for include in &module.includes {
-                                            write!(
-                                                message,
-                                                "- {}\n",
-                                                include
-                                                    .include_expr
-                                                    .file_path
-                                                    .unescape(module.source)
-                                            )
-                                            .unwrap();
-                                        }
-                                    }
-
-                                    self.print_inspection(&InspectInfo {
-                                        message,
-                                        loc: type_name.loc.clone(),
-                                        linked_loc: None,
-                                    });
-                                }
-                                _ => {
-                                    self.print_inspection(&InspectInfo {
-                                        message: format!("Invalid inspection call"),
-                                        loc: type_name.loc.clone(),
-                                        linked_loc: None,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
                 TopLevelExpr::FnDef(fn_def) => {
                     let item = module.get_own_item(&fn_def.decl.fn_name.repr).unwrap();
                     let fn_info = self.functions[item.collection_index].relax_mut();
@@ -1147,28 +1047,25 @@ impl Compiler {
                         });
                     }
                 }
-                TopLevelExpr::TryExport(TryExportExpr {
-                    in_name,
-                    out_name,
-                    from_root,
-                    loc,
-                }) => {
-                    let mut target_module = module;
-                    if *from_root {
+                TopLevelExpr::TryExport(try_export_expr) => {
+                    let mut target_module = module as &Module;
+                    if try_export_expr.from_root {
                         target_module = &self.modules.last().unwrap();
                     }
 
                     // TODO: same syntax should probably also be able to export named memories
-                    let Ok(fn_info) =
-                        self.get_fn_info_for_call(&target_module.ctx, &in_name.repr, loc)
-                    else {
+                    let Ok(fn_info) = self.get_fn_info_for_call(
+                        &target_module.ctx,
+                        &try_export_expr.in_name.repr,
+                        &try_export_expr.loc,
+                    ) else {
                         return; // ignore if it doesn't exist or is not a function
                     };
 
                     if self.in_inspection_mode {
                         self.print_inspection(&InspectInfo {
-                            message: in_name.repr.clone(),
-                            loc: loc.clone(),
+                            message: try_export_expr.in_name.repr.clone(),
+                            loc: try_export_expr.loc.clone(),
                             linked_loc: Some(fn_info.definition_loc.clone()),
                         });
                     }
@@ -1176,16 +1073,12 @@ impl Compiler {
                     fn_info
                         .be_mut()
                         .exported_as
-                        .push(out_name.unescape(module.source));
+                        .push(try_export_expr.out_name.unescape(module.source));
                 }
-                TopLevelExpr::Import(ImportExpr {
-                    module_name,
-                    items,
-                    loc: _,
-                }) => {
-                    let module_name = module_name.unescape(module.source);
+                TopLevelExpr::Import(import_expr) => {
+                    let module_name = import_expr.module_name.unescape(module.source);
 
-                    'items: for item in items {
+                    'items: for item in &import_expr.items {
                         let fn_decl = match item {
                             ImportItem::FnDecl(fn_decl) => fn_decl,
                             ImportItem::Memory(memory) => {
@@ -1224,21 +1117,26 @@ impl Compiler {
                         }
                     }
                 }
-                TopLevelExpr::GlobalDef(global) => {
-                    let existing_global = self.get_global(&global.global_name.repr);
-                    if let Some(existing_global) = existing_global {
+                TopLevelExpr::MemoryDef(memory_def) => {
+                    catch!(self.define_memory(memory_def.clone(), None), err, {
+                        self.report_error(&err);
+                        continue;
+                    });
+                }
+                TopLevelExpr::GlobalDef(global_def) => {
+                    if let Some(item) = module.get_own_item(&global_def.global_name.repr) {
                         self.report_error(&LoError {
                             message: format!(
-                                "Cannot redefine global {}, previously defined at {}",
-                                global.global_name.repr,
-                                existing_global.def_expr.global_name.loc.to_string(&self.fm),
+                                "Cannot redefine {}, already defined at {}",
+                                global_def.global_name.repr,
+                                item.loc.to_string(&self.fm)
                             ),
-                            loc: global.loc.clone(),
+                            loc: global_def.global_name.loc.clone(),
                         });
                         continue;
                     }
 
-                    let value_type = match &global.global_value {
+                    let value_type = match &global_def.global_value {
                         GlobalDefValue::Expr(expr) => {
                             catch!(self.ensure_const_expr(expr), err, {
                                 self.report_error(&err);
@@ -1255,7 +1153,7 @@ impl Compiler {
                                     message: format!(
                                         "Cannot define global with non-primitive type {value_type}",
                                     ),
-                                    loc: global.loc.clone(),
+                                    loc: global_def.loc.clone(),
                                 });
                                 continue;
                             }
@@ -1265,31 +1163,38 @@ impl Compiler {
                     };
 
                     if self.in_inspection_mode {
-                        let global_name = &global.global_name.repr;
+                        let global_name = &global_def.global_name.repr;
 
                         self.print_inspection(&InspectInfo {
                             message: format!("global {global_name}: {value_type}"),
-                            loc: global.global_name.loc.clone(),
+                            loc: global_def.global_name.loc.clone(),
                             linked_loc: None,
                         });
                     }
 
                     self.globals.push(LoGlobalDef {
                         module_ctx: module.ctx.relax(),
-                        def_expr: global.relax(),
+                        def_expr: global_def.relax(),
                         global_type: value_type,
                         global_index: self.globals.len() as u32,
                     });
+
+                    module.own_items.push(ModuleItem {
+                        name: global_def.global_name.repr.clone(),
+                        collection: ModuleItemCollection::Global,
+                        collection_index: self.globals.len() - 1,
+                        loc: global_def.global_name.loc.clone(),
+                    });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
-                    if let Some(existing_const) = self.get_const_def(&const_def.const_name.repr) {
+                    if let Some(item) = module.get_own_item(&const_def.const_name.repr) {
                         self.report_error(&LoError {
                             message: format!(
-                                "Cannot redefine constant {}, already defined at {}",
+                                "Cannot redefine {}, already defined at {}",
                                 const_def.const_name.repr,
-                                existing_const.loc.to_string(&self.fm)
+                                item.loc.to_string(&self.fm)
                             ),
-                            loc: const_def.loc.clone(),
+                            loc: const_def.const_name.loc.clone(),
                         });
                         continue;
                     }
@@ -1317,27 +1222,123 @@ impl Compiler {
                         code_unit,
                         loc: const_def.loc.clone(),
                     });
-                }
-                TopLevelExpr::MemoryDef(memory) => {
-                    catch!(self.define_memory(memory.clone(), None), err, {
-                        self.report_error(&err);
-                        continue;
+
+                    module.own_items.push(ModuleItem {
+                        name: const_def.const_name.repr.clone(),
+                        collection: ModuleItemCollection::Const,
+                        collection_index: self.const_defs.len() - 1,
+                        loc: const_def.const_name.loc.clone(),
                     });
                 }
                 TopLevelExpr::MacroDef(macro_def) => {
-                    if let Some(existing_macro) = self.get_macro_def(&macro_def.macro_name.repr) {
+                    let mut macro_item_name = macro_def.macro_name.repr.clone();
+                    macro_item_name.push('!');
+
+                    if let Some(item) = module.get_own_item(&macro_item_name) {
                         self.report_error(&LoError {
                             message: format!(
-                                "Cannot redefine macro {}, already defined at {}",
-                                macro_def.macro_name.repr,
-                                existing_macro.loc.to_string(&self.fm)
+                                "Cannot redefine {}, already defined at {}",
+                                macro_item_name,
+                                item.loc.to_string(&self.fm)
                             ),
-                            loc: macro_def.loc.clone(),
+                            loc: macro_def.macro_name.loc.clone(),
                         });
                         continue;
                     }
 
                     self.macro_defs.push(macro_def.relax());
+
+                    module.own_items.push(ModuleItem {
+                        name: macro_item_name,
+                        collection: ModuleItemCollection::Macro,
+                        collection_index: self.macro_defs.len() - 1,
+                        loc: macro_def.macro_name.loc.clone(),
+                    });
+                }
+
+                // debug tools, will have different syntax or just be removed later:
+                TopLevelExpr::TypeDef(type_def) => {
+                    if type_def.type_name.repr.starts_with("__inspect_") {
+                        let command = type_def.type_name.repr.replacen("__inspect_", "", 1);
+
+                        if self.in_inspection_mode {
+                            match command.as_str() {
+                                "items" => {
+                                    let mut message = String::new();
+                                    for item in &module.all_items {
+                                        write!(message, "{}\n", item.name).unwrap();
+                                    }
+
+                                    self.print_inspection(&InspectInfo {
+                                        message,
+                                        loc: type_def.type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                                "includes" => {
+                                    let mut message = String::new();
+                                    write!(
+                                        message,
+                                        "current: {}\n\n",
+                                        self.fm.get_file_path(module.file_index)
+                                    )
+                                    .unwrap();
+
+                                    for include in &module.includes {
+                                        write!(
+                                            message,
+                                            "{}\n",
+                                            include.include_expr.file_path.unescape(module.source)
+                                        )
+                                        .unwrap();
+                                    }
+
+                                    self.print_inspection(&InspectInfo {
+                                        message,
+                                        loc: type_def.type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                                "modules" => {
+                                    let mut message = String::new();
+
+                                    for module in &self.modules {
+                                        write!(
+                                            message,
+                                            "module: {}:\n",
+                                            self.fm.get_file_path(module.file_index)
+                                        )
+                                        .unwrap();
+
+                                        for include in &module.includes {
+                                            write!(
+                                                message,
+                                                "- {}\n",
+                                                include
+                                                    .include_expr
+                                                    .file_path
+                                                    .unescape(module.source)
+                                            )
+                                            .unwrap();
+                                        }
+                                    }
+
+                                    self.print_inspection(&InspectInfo {
+                                        message,
+                                        loc: type_def.type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                                _ => {
+                                    self.print_inspection(&InspectInfo {
+                                        message: format!("Invalid inspection call"),
+                                        loc: type_def.type_name.loc.clone(),
+                                        linked_loc: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
