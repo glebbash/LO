@@ -1,10 +1,6 @@
 use crate::{core::*, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-pub trait Locatable {
-    fn loc(&self) -> &LoLocation;
-}
-
 #[derive(Debug, Default)]
 pub struct AST {
     pub exprs: Vec<TopLevelExpr>,
@@ -63,7 +59,7 @@ pub enum FnParamType {
 ///   because it reuses existing rust keywords and reads nicely (mostly).
 ///
 /// Another option was `import "..." [as ...] [and expose]`
-///   but `import` is already a WASM concept and `and expose` is two new keyword for just one flag
+///   but `import` is already a WASM concept and `and expose` is two new keywords for just one flag
 #[derive(Debug)]
 pub struct IncludeExpr {
     pub file_path: EscapedString,
@@ -85,8 +81,8 @@ pub enum ImportItem {
     Memory(MemoryDefExpr),
 }
 
-impl Locatable for ImportItem {
-    fn loc(&self) -> &LoLocation {
+impl ImportItem {
+    pub fn loc(&self) -> &LoLocation {
         match self {
             ImportItem::FnDecl(e) => &e.loc,
             ImportItem::Memory(e) => &e.loc,
@@ -170,8 +166,8 @@ pub struct CodeBlockExpr {
     pub loc: LoLocation,
 }
 
-impl Locatable for TopLevelExpr {
-    fn loc(&self) -> &LoLocation {
+impl TopLevelExpr {
+    pub fn loc(&self) -> &LoLocation {
         match self {
             TopLevelExpr::FnDef(e) => &e.loc,
             TopLevelExpr::Include(e) => &e.loc,
@@ -227,8 +223,8 @@ pub struct TypeExprOf {
     pub loc: LoLocation,
 }
 
-impl Locatable for TypeExpr {
-    fn loc(&self) -> &LoLocation {
+impl TypeExpr {
+    pub fn loc(&self) -> &LoLocation {
         match self {
             TypeExpr::Named(e) => &e.name.loc,
             TypeExpr::Pointer(e) => &e.loc,
@@ -533,8 +529,8 @@ pub struct SizeofExpr {
     pub loc: LoLocation,
 }
 
-impl Locatable for CodeExpr {
-    fn loc(&self) -> &LoLocation {
+impl CodeExpr {
+    pub fn loc(&self) -> &LoLocation {
         match self {
             CodeExpr::BoolLiteral(e) => &e.loc,
             CodeExpr::CharLiteral(e) => &e.loc,
