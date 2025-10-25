@@ -1,7 +1,7 @@
 use crate::{core::*, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct AST {
     pub exprs: Vec<TopLevelExpr>,
     pub comments: Vec<LoLocation>,
@@ -9,7 +9,6 @@ pub struct AST {
     pub double_backslashes: Vec<LoLocation>,
 }
 
-#[derive(Debug)]
 pub enum TopLevelExpr {
     FnDef(FnDefExpr),
     Include(IncludeExpr),
@@ -23,7 +22,6 @@ pub enum TopLevelExpr {
     MacroDef(MacroDefExpr),
 }
 
-#[derive(Debug)]
 pub struct FnDefExpr {
     pub exported: bool,
     pub decl: FnDeclExpr,
@@ -31,7 +29,6 @@ pub struct FnDefExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct FnDeclExpr {
     pub fn_name: IdentExpr,
     pub fn_params: Vec<FnParam>,
@@ -40,14 +37,12 @@ pub struct FnDeclExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct FnParam {
     pub param_name: IdentExpr,
     pub param_type: FnParamType,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub enum FnParamType {
     Self_,
     SelfRef,
@@ -60,7 +55,7 @@ pub enum FnParamType {
 ///
 /// Another option was `import "..." [as ...] [and expose]`
 ///   but `import` is already a WASM concept and `and expose` is two new keywords for just one flag
-#[derive(Debug)]
+
 pub struct IncludeExpr {
     pub file_path: EscapedString,
     pub alias: Option<IdentExpr>,
@@ -68,14 +63,12 @@ pub struct IncludeExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ImportExpr {
     pub module_name: EscapedString,
     pub items: Vec<ImportItem>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub enum ImportItem {
     FnDecl(FnDeclExpr),
     Memory(MemoryDefExpr),
@@ -90,48 +83,41 @@ impl ImportItem {
     }
 }
 
-#[derive(Debug)]
 pub struct GlobalDefExpr {
     pub global_name: IdentExpr,
     pub global_value: GlobalDefValue,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub enum GlobalDefValue {
     Expr(CodeExpr),
     DataSize,
 }
 
-#[derive(Debug)]
 pub struct StructDefExpr {
     pub struct_name: IdentExpr,
     pub fields: Vec<StructDefField>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct StructDefField {
     pub field_name: IdentExpr,
     pub field_type: TypeExpr,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct TypeDefExpr {
     pub type_name: IdentExpr,
     pub type_value: TypeExpr,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ConstDefExpr {
     pub const_name: IdentExpr,
     pub const_value: CodeExpr,
     pub loc: LoLocation,
 }
 
-#[derive(Debug, Clone)]
 pub struct MemoryDefExpr {
     pub exported: bool,
     pub min_pages: Option<u32>,
@@ -141,7 +127,7 @@ pub struct MemoryDefExpr {
 
 /// DOC: `try export <in> as "<out>" [from root]` syntax was chosen
 ///   because it reuses existing rust keywords and reads nicely
-#[derive(Debug)]
+
 pub struct TryExportExpr {
     pub in_name: IdentExpr,
     pub out_name: EscapedString,
@@ -149,7 +135,6 @@ pub struct TryExportExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct MacroDefExpr {
     pub macro_name: IdentExpr,
     pub macro_params: Vec<FnParam>,
@@ -160,7 +145,6 @@ pub struct MacroDefExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct CodeBlockExpr {
     pub exprs: Vec<CodeExpr>,
     pub loc: LoLocation,
@@ -183,7 +167,6 @@ impl TopLevelExpr {
     }
 }
 
-#[derive(Debug)]
 pub enum TypeExpr {
     Named(TypeExprNamed),
     Pointer(TypeExprPointer),
@@ -192,31 +175,26 @@ pub enum TypeExpr {
     Of(TypeExprOf),
 }
 
-#[derive(Debug)]
 pub struct TypeExprNamed {
     pub name: IdentExpr,
 }
 
-#[derive(Debug)]
 pub struct TypeExprPointer {
     pub pointee: Box<TypeExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct TypeExprSequencePointer {
     pub pointee: Box<TypeExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct TypeExprResult {
     pub ok_type: Box<TypeExpr>,
     pub err_type: Box<TypeExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct TypeExprOf {
     pub container_type: Box<TypeExpr>,
     pub item_type: Box<TypeExpr>,
@@ -235,7 +213,6 @@ impl TypeExpr {
     }
 }
 
-#[derive(Debug)]
 pub enum CodeExpr {
     // literals
     BoolLiteral(BoolLiteralExpr),
@@ -280,20 +257,17 @@ pub enum CodeExpr {
     Sizeof(SizeofExpr),
 }
 
-#[derive(Debug)]
 pub struct BoolLiteralExpr {
     pub value: bool,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct CharLiteralExpr {
     pub repr: String,
     pub value: u32,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct IntLiteralExpr {
     pub repr: String,
     pub value: u32,
@@ -301,27 +275,23 @@ pub struct IntLiteralExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct StringLiteralExpr {
     pub repr: String,
     pub value: String,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ReturnExpr {
     pub expr: Option<Box<CodeExpr>>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct IdentExpr {
     pub repr: String,
     pub parts: Vec<String>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct InfixOpExpr {
     pub op_tag: InfixOpTag,
     pub op_loc: LoLocation,
@@ -330,7 +300,6 @@ pub struct InfixOpExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct PrefixOpExpr {
     pub op_tag: PrefixOpTag,
     pub expr: Box<CodeExpr>,
@@ -338,7 +307,6 @@ pub struct PrefixOpExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct IfExpr {
     pub cond: Box<CodeExpr>,
     pub then_block: Box<CodeBlockExpr>,
@@ -346,32 +314,27 @@ pub struct IfExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub enum ElseBlock {
     None,
     Else(Box<CodeBlockExpr>),
     ElseIf(Box<CodeExpr>),
 }
 
-#[derive(Debug)]
 pub struct LetExpr {
     pub local_name: IdentExpr,
     pub value: Box<CodeExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct LoopExpr {
     pub body: Box<CodeBlockExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct BreakExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ForLoopExpr {
     pub counter: IdentExpr,
     pub start: Box<CodeExpr>,
@@ -380,18 +343,15 @@ pub struct ForLoopExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ContinueExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct CodeExprList {
     pub items: Vec<CodeExpr>,
     pub has_trailing_comma: bool,
 }
 
-#[derive(Debug)]
 pub struct WithExpr {
     pub bind: IdentExpr,
     pub args: CodeExprList,
@@ -399,26 +359,22 @@ pub struct WithExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct DbgExpr {
     pub message: EscapedString,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct DeferExpr {
     pub expr: Box<CodeExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct CastExpr {
     pub expr: Box<CodeExpr>,
     pub casted_to: TypeExpr,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct StructLiteralExpr {
     pub struct_name: IdentExpr,
     pub fields: Vec<StructLiteralField>,
@@ -426,14 +382,12 @@ pub struct StructLiteralExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ArrayLiteralExpr {
     pub item_type: TypeExpr,
     pub items: Vec<CodeExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ResultLiteralExpr {
     pub is_ok: bool,
     pub result_type: Option<ResultTypeExpr>,
@@ -441,20 +395,17 @@ pub struct ResultLiteralExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ResultTypeExpr {
     pub ok: TypeExpr,
     pub err: TypeExpr,
 }
 
-#[derive(Debug)]
 pub struct StructLiteralField {
     pub field_name: String,
     pub value: CodeExpr,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct AssignExpr {
     pub op_loc: LoLocation,
     pub lhs: Box<CodeExpr>,
@@ -462,14 +413,12 @@ pub struct AssignExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct FieldAccessExpr {
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct CatchExpr {
     pub lhs: Box<CodeExpr>,
     pub error_bind: IdentExpr,
@@ -478,27 +427,23 @@ pub struct CatchExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct PropagateErrorExpr {
     pub expr: Box<CodeExpr>,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct ParenExpr {
     pub expr: Box<CodeExpr>,
     pub has_trailing_comma: bool,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct FnCallExpr {
     pub fn_name: IdentExpr,
     pub args: CodeExprList,
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct MethodCallExpr {
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
@@ -506,7 +451,6 @@ pub struct MethodCallExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct MacroFnCallExpr {
     pub fn_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
@@ -514,7 +458,6 @@ pub struct MacroFnCallExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct MacroMethodCallExpr {
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
@@ -523,7 +466,6 @@ pub struct MacroMethodCallExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
 pub struct SizeofExpr {
     pub type_expr: TypeExpr,
     pub loc: LoLocation,
@@ -568,7 +510,7 @@ impl CodeExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EscapedString(pub LoLocation);
 
 impl EscapedString {

@@ -12,7 +12,7 @@ pub enum LoTokenType {
     Terminal,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LoToken {
     pub type_: LoTokenType,
     pub loc: LoLocation,
@@ -551,7 +551,7 @@ fn is_operator_start_char(c: char) -> bool {
     return false;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum InfixOpTag {
     Equal,
     NotEqual,
@@ -693,7 +693,6 @@ impl InfixOp {
     }
 }
 
-#[derive(Debug)]
 pub enum PrefixOpTag {
     Not,
     Dereference,
@@ -754,7 +753,6 @@ impl OpInfo {
     }
 }
 
-#[derive(Debug)]
 pub enum NextCharError {
     EndOfSource,
     InvalidUtf8,

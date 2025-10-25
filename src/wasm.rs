@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-#[derive(Default, Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct WasmModule {
     pub types: Vec<WasmFnType>,
     pub imports: Vec<WasmImport>,
@@ -15,54 +15,54 @@ pub struct WasmModule {
     pub debug_fn_info: Vec<WasmDebugFnInfo>,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmFnType {
     pub inputs: Vec<WasmType>,
     pub outputs: Vec<WasmType>,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmImport {
     pub module_name: String,
     pub item_name: String,
     pub item_desc: WasmImportDesc,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmImportDesc {
     Func { type_index: u32 },
     Memory(WasmLimits),
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmTable {
     pub limits: WasmLimits,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmElement {
     Passive { expr: WasmExpr, fn_idx: Vec<u32> },
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmFn {
     pub locals: Vec<WasmLocals>,
     pub expr: WasmExpr,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmLocals {
     pub count: u32,
     pub value_type: WasmType,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmExpr {
     pub instrs: Vec<WasmInstr>,
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum WasmUnaryOpKind {
     I32_EQZ = 0x45,
@@ -71,7 +71,7 @@ pub enum WasmUnaryOpKind {
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum WasmBinaryOpKind {
     I32_EQ = 0x46,
@@ -149,7 +149,7 @@ pub enum WasmBinaryOpKind {
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmLoadKind {
     I32 = 0x28,
     I64 = 0x29,
@@ -162,7 +162,7 @@ pub enum WasmLoadKind {
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmStoreKind {
     I32 = 0x36,
     I64 = 0x37,
@@ -174,14 +174,14 @@ pub enum WasmStoreKind {
     I64_32 = 0x3E,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmBlockType {
     NoOut,
     SingleOut { wasm_type: WasmType },
     InOut { type_index: u32 },
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmInstr {
     Unreachable,
     Drop,
@@ -265,7 +265,7 @@ pub enum WasmInstr {
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmBlockKind {
     Block = 0x02,
     Loop = 0x03,
@@ -273,7 +273,7 @@ pub enum WasmBlockKind {
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmType {
     FuncRef = 0x70,
     I32 = 0x7F,
@@ -282,20 +282,20 @@ pub enum WasmType {
     F64 = 0x7C,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmLimits {
     pub min: u32,
     pub max: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmGlobal {
     pub mutable: bool,
     pub value_type: WasmType,
     pub initial_value: WasmExpr,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmExport {
     pub export_type: WasmExportType,
     pub export_name: String,
@@ -303,18 +303,18 @@ pub struct WasmExport {
 }
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmExportType {
     Func = 0x00,
     Mem = 0x02,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WasmData {
     Active { offset: WasmExpr, bytes: Vec<u8> },
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WasmDebugFnInfo {
     pub fn_index: u32,
     pub fn_name: String,

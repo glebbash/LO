@@ -31,14 +31,14 @@ impl LoError {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct LoPosition {
     pub offset: usize,
     pub line: usize,
     pub col: usize,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub struct LoLocation {
     pub file_index: u32,
     pub pos: LoPosition,
@@ -358,7 +358,6 @@ impl<'a> core::fmt::Display for RangeDisplay<'a> {
     }
 }
 
-#[derive(Debug)]
 struct FileInfo {
     index: u32,
     absolute_path: String,

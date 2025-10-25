@@ -280,7 +280,7 @@ struct LoGlobalDef {
     global_index: u32,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 struct LoTypeLayout {
     primities_count: u32,
     byte_size: u32,
@@ -438,7 +438,7 @@ struct ModuleItem {
     loc: LoLocation,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum ModuleItemCollection {
     Type,
     Function,
@@ -487,7 +487,7 @@ pub struct Compiler {
 
     functions: Vec<FnInfo>,
 
-    memory: Option<MemoryDefExpr>,
+    memory: Option<&'static MemoryDefExpr>,
     memory_imported_from: Option<String>,
     datas: RefCell<Vec<WasmData>>,
     string_pool: RefCell<Vec<PooledString>>,
@@ -1164,7 +1164,7 @@ impl Compiler {
                             ImportItem::FnDecl(fn_decl) => fn_decl,
                             ImportItem::Memory(memory) => {
                                 let res =
-                                    self.define_memory(memory.clone(), Some(module_name.clone()));
+                                    self.define_memory(memory.relax(), Some(module_name.clone()));
                                 catch!(res, err, {
                                     self.report_error(&err);
                                 });
@@ -1199,7 +1199,7 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::MemoryDef(memory_def) => {
-                    catch!(self.define_memory(memory_def.clone(), None), err, {
+                    catch!(self.define_memory(memory_def.relax(), None), err, {
                         self.report_error(&err);
                         continue;
                     });
@@ -1504,7 +1504,7 @@ impl Compiler {
 
     fn define_memory(
         &mut self,
-        memory: MemoryDefExpr,
+        memory: &'static MemoryDefExpr,
         imported_from: Option<String>,
     ) -> Result<(), LoError> {
         if let Some(existing_memory) = &self.memory {
@@ -1513,7 +1513,7 @@ impl Compiler {
                     "Cannot redefine memory, first defined at {}",
                     existing_memory.loc.to_string(&self.fm)
                 ),
-                loc: memory.loc,
+                loc: memory.loc.clone(),
             });
         }
 
