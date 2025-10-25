@@ -36,16 +36,6 @@ impl LoToken {
     }
 }
 
-#[derive(Debug)]
-pub struct Comment {
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
-pub struct Backslash {
-    pub loc: LoLocation,
-}
-
 pub struct Lexer {
     // context
     file_index: u32,
@@ -54,14 +44,16 @@ pub struct Lexer {
     // state
     source_pos: LoPosition,
     was_newline: bool,
-    comments: Vec<Comment>,
-    backslashes: Vec<Backslash>,
+    comments: Vec<LoLocation>,
+    backslashes: Vec<LoLocation>,
+    double_backslashes: Vec<LoLocation>,
 }
 
 pub struct LexerResult {
     pub tokens: Vec<LoToken>,
-    pub comments: Vec<Comment>,
-    pub backslashes: Vec<Backslash>,
+    pub comments: Vec<LoLocation>,
+    pub backslashes: Vec<LoLocation>,
+    pub double_backslashes: Vec<LoLocation>,
 }
 
 impl Lexer {
@@ -79,6 +71,7 @@ impl Lexer {
             was_newline: false,
             comments: Vec::new(),
             backslashes: Vec::new(),
+            double_backslashes: Vec::new(),
         };
 
         let tokens = lexer.lex_file()?;
@@ -87,6 +80,7 @@ impl Lexer {
             tokens,
             comments: lexer.comments,
             backslashes: lexer.backslashes,
+            double_backslashes: lexer.double_backslashes,
         })
     }
 
@@ -384,17 +378,26 @@ impl Lexer {
         }
 
         if self.current_char() == Ok('\\') {
-            self.backslashes.push(Backslash { loc: self.loc() });
+            let loc = self.loc();
+
             self.next_char();
+
+            if self.current_char() == Ok('\\') {
+                self.next_char();
+                self.double_backslashes.push(loc)
+            } else {
+                self.backslashes.push(loc);
+            }
+
             self.skip_space();
         }
     }
 
-    fn lex_comment(&mut self) -> Comment {
+    fn lex_comment(&mut self) -> LoLocation {
         let mut loc = self.loc();
 
-        self.next_char(); /* `/` */
-        self.next_char(); /* `/` */
+        self.next_char(); // `/`
+        self.next_char(); // `/`
 
         loop {
             let Ok(char) = self.current_char() else {
@@ -410,7 +413,7 @@ impl Lexer {
 
         loc.end_pos = self.source_pos;
 
-        Comment { loc }
+        loc
     }
 
     fn next_char(&mut self) {

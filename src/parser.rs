@@ -30,6 +30,7 @@ impl Parser {
                 exprs: Vec::new(),
                 comments: lex.comments,
                 backslashes: lex.backslashes,
+                double_backslashes: lex.double_backslashes,
             },
         };
 
@@ -598,7 +599,7 @@ impl Parser {
     // TODO: this could be optimized by storing backslashes checked index but it's not that simple
     fn has_backslashes_between(&self, offset1: usize, offset2: usize) -> bool {
         for backslash in &self.ast.backslashes {
-            if backslash.loc.pos.offset >= offset1 && backslash.loc.end_pos.offset <= offset2 {
+            if backslash.pos.offset >= offset1 && backslash.end_pos.offset <= offset2 {
                 return true;
             }
         }

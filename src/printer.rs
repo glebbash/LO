@@ -15,6 +15,8 @@ pub struct Printer {
     backslashes_printed: usize,
     baskslash_stack: Vec<bool>,
     last_stmt_had_backslash: bool,
+
+    double_backslashes_printed: usize,
 }
 
 impl Printer {
@@ -31,6 +33,8 @@ impl Printer {
             backslashes_printed: 0,
             baskslash_stack: Vec::new(),
             last_stmt_had_backslash: false,
+
+            double_backslashes_printed: 0,
         };
 
         stdout_enable_buffering();
@@ -259,15 +263,21 @@ impl Printer {
         }
 
         for (fn_param, index) in fn_params.iter().zip(0..) {
-            if is_multiline {
+            if index != 0 {
+                stdout_write(",");
+            }
+
+            let continues = self.print_double_backslashes_before(fn_param.loc.pos.offset);
+
+            if is_multiline && !continues {
                 if index != 0 {
-                    stdout_writeln(",");
+                    stdout_writeln("");
                 }
 
                 self.print_comments_before(fn_param.loc.pos);
                 self.print_indent();
             } else if index != 0 {
-                stdout_write(", ");
+                stdout_write(" ");
             }
 
             match &fn_param.param_type {
@@ -289,6 +299,8 @@ impl Printer {
                     stdout_write(name);
                 }
             }
+
+            self.last_printed_item_line = fn_param.loc.pos.line;
         }
 
         if is_multiline {
@@ -378,18 +390,25 @@ impl Printer {
             return stdout_write("{}");
         }
 
-        stdout_writeln("{");
+        stdout_write("{");
         self.last_printed_item_line = code_block.loc.pos.line;
 
         self.indent += 1;
 
         for expr in &code_block.exprs {
-            self.print_comments_before(expr.loc().pos);
-            self.print_indent();
+            let continues = self.print_double_backslashes_before(expr.loc().pos.offset);
+            if continues {
+                stdout_write(" ");
+            } else {
+                stdout_writeln("");
+                self.print_comments_before(expr.loc().pos);
+                self.print_indent();
+            }
+
             self.print_code_expr(expr);
-            stdout_writeln("");
             self.last_stmt_had_backslash = false;
         }
+        stdout_writeln("");
 
         // print the rest of the comments
         self.print_comments_before(code_block.loc.end_pos);
@@ -802,15 +821,21 @@ impl Printer {
 
         let prev_backslashes_printed = self.backslashes_printed;
         for (arg, index) in args.items.iter().zip(0..) {
-            if args.has_trailing_comma {
+            if index != 0 {
+                stdout_write(",");
+            }
+
+            let continues = self.print_double_backslashes_before(arg.loc().pos.offset);
+
+            if args.has_trailing_comma && !continues {
                 if index != 0 {
-                    stdout_writeln(",");
+                    stdout_writeln("");
                 }
 
                 self.print_comments_before(arg.loc().pos);
                 self.print_indent();
             } else if index != 0 {
-                stdout_write(", ");
+                stdout_write(" ");
             }
 
             self.print_code_expr(arg);
@@ -848,15 +873,15 @@ impl Printer {
     fn print_comments_before(&mut self, pos: LoPosition) {
         while self.comments_printed < self.ast.comments.len() {
             let comment = self.ast.comments[self.comments_printed].relax();
-            if comment.loc.end_pos.offset > pos.offset {
+            if comment.end_pos.offset > pos.offset {
                 break;
             }
 
-            self.print_blank_line_before(comment.loc.pos.line);
-            self.last_printed_item_line = comment.loc.end_pos.line;
+            self.print_blank_line_before(comment.pos.line);
+            self.last_printed_item_line = comment.end_pos.line;
 
             self.print_indent();
-            stdout_writeln(&comment.loc.read_span(self.source));
+            stdout_writeln(&comment.read_span(self.source));
             self.comments_printed += 1;
         }
 
@@ -876,7 +901,7 @@ impl Printer {
 
         while self.backslashes_printed < self.ast.backslashes.len() {
             let backslash = &self.ast.backslashes[self.backslashes_printed];
-            if backslash.loc.end_pos.offset > offset {
+            if backslash.end_pos.offset > offset {
                 break;
             }
 
@@ -890,6 +915,27 @@ impl Printer {
 
                 stdout_writeln(" \\");
                 self.print_indent();
+            }
+        }
+
+        printed
+    }
+
+    fn print_double_backslashes_before(&mut self, offset: usize) -> bool {
+        let mut printed = false;
+
+        while self.double_backslashes_printed < self.ast.double_backslashes.len() {
+            let dbs = &self.ast.double_backslashes[self.double_backslashes_printed];
+            if dbs.end_pos.offset > offset {
+                break;
+            }
+
+            self.double_backslashes_printed += 1;
+
+            if !printed {
+                printed = true;
+
+                stdout_write(" \\\\");
             }
         }
 

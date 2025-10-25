@@ -1,0 +1,19 @@
+include "../lib/print.lo"
+
+fn main() {
+    let x = 1 \\ let y = 2 \\ let z = 3
+
+    let _ = do_smth_with_6_args(
+        x, \\ y, \\ z,
+        4, \\ 5, \\ 6,
+    )
+}
+
+fn do_smth_with_6_args(
+    a1: u32, \\ a2: u32,
+    a3: u32, \\ a4: u32,
+    a5: u32, \\ a6: u32,
+): u32 {
+    return a1 + a2 + a3 \
+        + a4 + a5 + a6
+}
