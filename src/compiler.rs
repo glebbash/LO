@@ -4419,7 +4419,7 @@ impl Compiler {
         layout.primities_count
     }
 
-    fn get_type_layout<'a>(&self, lo_type: &LoType, layout: &'a mut LoTypeLayout) {
+    fn get_type_layout(&self, lo_type: &LoType, layout: &mut LoTypeLayout) {
         match lo_type {
             LoType::Never | LoType::Void => {
                 layout.alignment = u32::max(layout.alignment, 1);
