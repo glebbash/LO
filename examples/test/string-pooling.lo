@@ -2,7 +2,7 @@ memory {
     min_pages: 1,
 }
 
-global STATIC_DATA_SIZE = @data_size
+global STATIC_DATA_SIZE = @data_size()
 
 struct str {
     data: &void,

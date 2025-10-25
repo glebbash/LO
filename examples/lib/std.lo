@@ -7,7 +7,7 @@ struct str {
 // constants
 const u32::MAX = 4_294_967_295
 
-global STATIC_DATA_SIZE = @data_size
+global STATIC_DATA_SIZE = @data_size()
 
 // abort
 type AbortCode = u32
@@ -23,7 +23,7 @@ fn abort(abort_code: AbortCode): never {
     // error indicator
     *(0 as &u32) = 69420
     *(4 as &u32) = abort_code
-    unreachable
+    @unreachable()
 }
 
 // memory instructions
@@ -43,7 +43,7 @@ fn mem::align_to(size: u32, size_multiple: u32): u32 {
 }
 
 macro mem::copy!(src: &void, dest: &void, size: u32) {
-    __memory_copy(dest as u32, src as u32, size)
+    @memory_copy(dest as u32, src as u32, size)
 }
 
 fn mem::swap(ref1: &void, ref2: &void, size: u32) {
@@ -202,11 +202,11 @@ fn heap::alloc(size: u32): &void {
 
     let new_memory_needed = (
         heap::CURRENT_BLOCK as u32 + sizeof heap::Block + size,
-    ) as i32 - __memory_size() * mem::PAGE_SIZE as i32
+    ) as i32 - @memory_size() * mem::PAGE_SIZE as i32
     if new_memory_needed > +0 {
         let pages_needed = (new_memory_needed as u32 + mem::PAGE_SIZE) \
             / mem::PAGE_SIZE
-        if __memory_grow(pages_needed) == -1 {
+        if @memory_grow(pages_needed) == -1 {
             abort(AbortCode::OOM)
         }
     }

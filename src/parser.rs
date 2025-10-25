@@ -176,6 +176,8 @@ impl Parser {
 
             let global_value = if let Some(_) = self.eat(Operator, "@")? {
                 self.expect(Symbol, "data_size")?;
+                self.expect(Delim, "(")?;
+                self.expect(Delim, ")")?;
 
                 GlobalDefValue::DataSize
             } else {
@@ -784,6 +786,23 @@ impl Parser {
             }));
         }
 
+        if let Some(_) = self.eat(Operator, "@")? {
+            let mut loc = self.prev().loc.clone();
+
+            let fn_name = self.parse_ident()?;
+            let type_args = self.parse_macro_type_args()?;
+            let args = self.parse_fn_args()?;
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::IntrinsicCall(MacroFnCallExpr {
+                fn_name,
+                args,
+                type_args,
+                loc,
+            }));
+        }
+
         if let Some(_) = self.eat(Symbol, "dbg")? {
             let mut loc = self.prev().loc.clone();
 
@@ -793,12 +812,6 @@ impl Parser {
 
             let message = EscapedString(message.loc);
             return Ok(CodeExpr::Dbg(DbgExpr { message, loc }));
-        }
-
-        if let Some(_) = self.eat(Symbol, "unreachable")? {
-            let loc = self.prev().loc.clone();
-
-            return Ok(CodeExpr::Unreachable(UnreachableExpr { loc }));
         }
 
         if let Some(_) = self.eat(Symbol, "defer")? {
@@ -924,28 +937,6 @@ impl Parser {
             let args = self.parse_fn_args()?;
 
             loc.end_pos = self.prev().loc.end_pos;
-
-            if ident.repr == "__memory_size" {
-                if args.items.len() != 0 {
-                    return Err(LoError {
-                        message: format!(
-                            "__memory accepts no arguments, but {} was provided",
-                            args.items.len()
-                        ),
-                        loc,
-                    });
-                }
-
-                return Ok(CodeExpr::MemorySize(MemorySizeExpr { loc }));
-            }
-
-            if ident.repr == "__memory_grow" {
-                return Ok(CodeExpr::MemoryGrow(MemoryGrowExpr { args, loc }));
-            }
-
-            if ident.repr == "__memory_copy" {
-                return Ok(CodeExpr::MemoryCopy(MemoryCopyExpr { args, loc }));
-            }
 
             return Ok(CodeExpr::FnCall(FnCallExpr {
                 fn_name: ident,

@@ -124,7 +124,7 @@ impl Printer {
                 stdout_write(" = ");
                 match global_value {
                     GlobalDefValue::Expr(expr) => self.print_code_expr(expr),
-                    GlobalDefValue::DataSize => stdout_write("@data_size"),
+                    GlobalDefValue::DataSize => stdout_write("@data_size()"),
                 }
                 stdout_writeln("");
             }
@@ -598,9 +598,6 @@ impl Printer {
                 stdout_write(" do");
                 self.print_code_block_expr(body);
             }
-            CodeExpr::Unreachable(UnreachableExpr { loc: _ }) => {
-                stdout_write("unreachable");
-            }
             CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
                 stdout_write(message.get_raw(self.source));
@@ -755,6 +752,17 @@ impl Printer {
                 self.print_type_args(type_args);
                 self.print_args(args, loc);
             }
+            CodeExpr::IntrinsicCall(MacroFnCallExpr {
+                fn_name,
+                args,
+                type_args,
+                loc,
+            }) => {
+                stdout_write("@");
+                stdout_write(&fn_name.repr);
+                self.print_type_args(type_args);
+                self.print_args(args, loc);
+            }
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
                 lhs,
                 field_name,
@@ -777,17 +785,6 @@ impl Printer {
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc: _ }) => {
                 self.print_code_expr(expr);
                 stdout_write("?");
-            }
-            CodeExpr::MemorySize(MemorySizeExpr { loc: _ }) => {
-                stdout_write("__memory_size()");
-            }
-            CodeExpr::MemoryGrow(MemoryGrowExpr { args, loc }) => {
-                stdout_write("__memory_grow");
-                self.print_args(args, loc);
-            }
-            CodeExpr::MemoryCopy(MemoryCopyExpr { args, loc }) => {
-                stdout_write("__memory_copy");
-                self.print_args(args, loc);
             }
         }
 

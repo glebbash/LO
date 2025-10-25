@@ -264,24 +264,23 @@ pub enum CodeExpr {
     MethodCall(MethodCallExpr),
     MacroFnCall(MacroFnCallExpr),
     MacroMethodCall(MacroMethodCallExpr),
-    Dbg(DbgExpr),
-    Sizeof(SizeofExpr),
-    MemorySize(MemorySizeExpr),
-    MemoryGrow(MemoryGrowExpr),
-    MemoryCopy(MemoryCopyExpr),
+    IntrinsicCall(MacroFnCallExpr),
 
     // control flow
     Return(ReturnExpr),
     If(IfExpr),
     Loop(LoopExpr),
     Break(BreakExpr),
-    Unreachable(UnreachableExpr),
     ForLoop(ForLoopExpr),
     Continue(ContinueExpr),
     With(WithExpr),
     Defer(DeferExpr),
     Catch(CatchExpr),
     Paren(ParenExpr),
+
+    // TODO?: should these use intrinsic syntax?
+    Dbg(DbgExpr),
+    Sizeof(SizeofExpr),
 }
 
 #[derive(Debug)]
@@ -372,11 +371,6 @@ pub struct LoopExpr {
 
 #[derive(Debug)]
 pub struct BreakExpr {
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
-pub struct UnreachableExpr {
     pub loc: LoLocation,
 }
 
@@ -538,23 +532,6 @@ pub struct SizeofExpr {
     pub loc: LoLocation,
 }
 
-#[derive(Debug)]
-pub struct MemorySizeExpr {
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
-pub struct MemoryGrowExpr {
-    pub args: CodeExprList,
-    pub loc: LoLocation,
-}
-
-#[derive(Debug)]
-pub struct MemoryCopyExpr {
-    pub args: CodeExprList,
-    pub loc: LoLocation,
-}
-
 impl Locatable for CodeExpr {
     fn loc(&self) -> &LoLocation {
         match self {
@@ -584,14 +561,11 @@ impl Locatable for CodeExpr {
             CodeExpr::FnCall(e) => &e.loc,
             CodeExpr::MethodCall(e) => &e.loc,
             CodeExpr::MacroFnCall(e) => &e.loc,
+            CodeExpr::IntrinsicCall(e) => &e.loc,
             CodeExpr::MacroMethodCall(e) => &e.loc,
             CodeExpr::Sizeof(e) => &e.loc,
             CodeExpr::PropagateError(e) => &e.loc,
             CodeExpr::PrefixOp(e) => &e.loc,
-            CodeExpr::MemorySize(e) => &e.loc,
-            CodeExpr::MemoryGrow(e) => &e.loc,
-            CodeExpr::MemoryCopy(e) => &e.loc,
-            CodeExpr::Unreachable(e) => &e.loc,
             CodeExpr::With(e) => &e.loc,
         }
     }
