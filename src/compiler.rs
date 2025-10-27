@@ -112,7 +112,7 @@ impl core::fmt::Display for LoFnParam {
 enum LoFnSource {
     Guest {
         ctx: LoExprContext,
-        body: &'static CodeBlockExpr,
+        body: &'static CodeBlock,
     },
     Host {
         module_name: String,
@@ -1456,17 +1456,17 @@ impl Compiler {
         &self,
         ctx: &mut LoExprContext,
         instrs: &mut Vec<WasmInstr>,
-        body: &CodeBlockExpr,
+        body: &CodeBlock,
         void_only: bool,
     ) -> bool {
-        let mut terminated_early = false;
+        let mut terminates_early = false;
         for expr in &body.exprs {
             let expr_type = catch!(self.get_expr_type(ctx, expr), err, {
                 self.report_error(&err);
                 continue;
             });
 
-            if terminated_early {
+            if terminates_early {
                 self.report_warning(&LoError {
                     message: format!("Unreachable expression"),
                     loc: expr.loc().clone(),
@@ -1474,7 +1474,7 @@ impl Compiler {
             }
 
             if expr_type == LoType::Never {
-                terminated_early = true;
+                terminates_early = true;
             }
 
             let mut type_layout = LoTypeLayout::default();
@@ -1496,7 +1496,7 @@ impl Compiler {
 
         self.emit_deferred(ctx.current_scope(), instrs);
 
-        terminated_early
+        terminates_early
     }
 
     fn define_memory(
@@ -2374,6 +2374,13 @@ impl Compiler {
                 });
             }
 
+            CodeExpr::Paren(ParenExpr {
+                expr,
+                has_trailing_comma: _,
+                loc: _,
+            }) => {
+                self.codegen(ctx, instrs, expr)?;
+            }
             CodeExpr::Return(ReturnExpr { expr, loc }) => {
                 let Some(fn_index) = ctx.fn_index else {
                     return Err(LoError {
@@ -2409,14 +2416,34 @@ impl Compiler {
                 else_block,
                 loc: _,
             }) => {
-                self.codegen(ctx, instrs, cond)?;
+                match cond {
+                    IfCond::Expr(expr) => {
+                        self.codegen(ctx, instrs, expr)?;
+
+                        // `if` condition runs outside of then_branch's scope
+                        ctx.enter_scope(LoScopeType::Block);
+                    }
+                    IfCond::Match(match_header) => {
+                        // `if match` condition runs inside of then_branch's scope
+                        ctx.enter_scope(LoScopeType::Block);
+
+                        let enum_ctor = self.codegen_match_header(ctx, instrs, match_header)?;
+
+                        // pop enum's variant from the stack and compare it to the expected variant
+                        instrs.push(WasmInstr::I32Const {
+                            value: enum_ctor.variant_index as i32,
+                        });
+                        instrs.push(WasmInstr::BinaryOp {
+                            kind: WasmBinaryOpKind::I32_EQ,
+                        });
+                    }
+                }
 
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::If,
                     block_type: WasmBlockType::NoOut,
                 });
 
-                ctx.enter_scope(LoScopeType::Block);
                 self.codegen_code_block(ctx, instrs, &then_block, true);
                 ctx.exit_scope();
 
@@ -2436,6 +2463,40 @@ impl Compiler {
                     }
                 }
 
+                instrs.push(WasmInstr::BlockEnd);
+            }
+            CodeExpr::Match(MatchExpr {
+                header,
+                else_branch,
+                loc: _,
+            }) => {
+                let enum_ctor = self.codegen_match_header(ctx, instrs, header)?;
+
+                // pop enum's variant from the stack and compare it to the expected variant
+                // if it's not equal then `else_branch`` must run
+                instrs.push(WasmInstr::I32Const {
+                    value: enum_ctor.variant_index as i32,
+                });
+                instrs.push(WasmInstr::BinaryOp {
+                    kind: WasmBinaryOpKind::I32_NE,
+                });
+
+                instrs.push(WasmInstr::BlockStart {
+                    block_kind: WasmBlockKind::If,
+                    block_type: WasmBlockType::NoOut,
+                });
+
+                ctx.enter_scope(LoScopeType::Block);
+                let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
+                if !terminates_early {
+                    self.report_error(&LoError {
+                        message: format!(
+                            "Match's else block must resolve to never, got other type"
+                        ),
+                        loc: else_branch.loc.clone(),
+                    });
+                }
+                ctx.exit_scope();
                 instrs.push(WasmInstr::BlockEnd);
             }
             CodeExpr::Loop(LoopExpr { body, loc: _ }) => {
@@ -2654,16 +2715,55 @@ impl Compiler {
             CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
                 self.codegen_catch(ctx, instrs, expr, None, None, loc)?;
             }
-            CodeExpr::Paren(ParenExpr {
-                expr,
-                has_trailing_comma: _,
-                loc: _,
-            }) => {
-                self.codegen(ctx, instrs, expr)?;
-            }
         };
 
         Ok(())
+    }
+
+    /// defines a local with match bind's name and pushes enum's variant to the stack
+    fn codegen_match_header(
+        &self,
+        ctx: &mut LoExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        header: &Box<MatchHeader>,
+    ) -> Result<&LoEnumConstructor, LoError> {
+        let Some(item) = self.modules[ctx.module_index].get_item(&header.variant_name.repr) else {
+            return Err(LoError {
+                message: format!("Unkown enum constructor: {}", header.variant_name.repr),
+                loc: header.variant_name.loc.clone(),
+            });
+        };
+        let ModuleItemCollection::EnumConstructor = item.collection else {
+            return Err(LoError {
+                message: format!("Not an enum constructor: {}", header.variant_name.repr),
+                loc: header.variant_name.loc.clone(),
+            });
+        };
+
+        let enum_ctor = &self.enum_ctors[item.collection_index];
+        let enum_variant = &self.enum_defs[enum_ctor.enum_index].variants[enum_ctor.variant_index];
+        let local_index = self.define_local(
+            ctx,
+            header.variant_bind.loc.clone(),
+            header.variant_bind.repr.clone(),
+            &enum_variant.variant_type,
+            false,
+        )?;
+        let local = self.var_local(
+            &header.variant_bind.repr,
+            enum_variant.variant_type.clone(),
+            local_index,
+            header.variant_bind.loc.clone(),
+            None,
+        );
+        if let Some(inspect_info) = local.inspect_info() {
+            self.print_inspection(inspect_info);
+        }
+        self.codegen_var_set_prepare(ctx, instrs, &local);
+        self.codegen(ctx, instrs, &header.expr_to_match)?;
+        self.codegen_var_set(ctx, instrs, &local)?;
+
+        Ok(enum_ctor)
     }
 
     fn codegen_fn_call(
@@ -2957,7 +3057,7 @@ impl Compiler {
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
         error_bind: Option<&IdentExpr>,
-        catch_body: Option<&CodeBlockExpr>,
+        catch_body: Option<&CodeBlock>,
         loc: &LoLocation,
     ) -> Result<(), LoError> {
         let expr_type = self.get_expr_type(ctx, expr)?;
@@ -3014,8 +3114,8 @@ impl Compiler {
 
         // catch error
         if let Some(catch_body) = catch_body {
-            let terminated_early = self.codegen_code_block(ctx, instrs, catch_body, true);
-            if !terminated_early {
+            let terminates_early = self.codegen_code_block(ctx, instrs, catch_body, true);
+            if !terminates_early {
                 self.report_error(&LoError {
                     message: format!("Catch expression must resolve to never, got other type"),
                     loc: loc.clone(),
@@ -3604,6 +3704,7 @@ impl Compiler {
             CodeExpr::Assign(_) => Ok(LoType::Void),
             CodeExpr::Defer(_) => Ok(LoType::Void),
             CodeExpr::If(_) => Ok(LoType::Void),
+            CodeExpr::Match(_) => Ok(LoType::Void),
             CodeExpr::Loop(_) => Ok(LoType::Void),
             CodeExpr::ForLoop(_) => Ok(LoType::Void),
             CodeExpr::Break(_) => Ok(LoType::Never),

@@ -70,7 +70,7 @@ impl Printer {
                 }
                 self.print_fn_decl(decl);
 
-                self.print_code_block_expr(body);
+                self.print_code_block(body);
                 stdout_writeln("");
             }
             TopLevelExpr::Include(IncludeExpr {
@@ -267,7 +267,7 @@ impl Printer {
                     stdout_write(": ");
                     self.print_type_expr(return_type);
                 }
-                self.print_code_block_expr(body);
+                self.print_code_block(body);
                 stdout_writeln("");
             }
         }
@@ -411,7 +411,7 @@ impl Printer {
         }
     }
 
-    fn print_code_block_expr(&mut self, code_block: &CodeBlockExpr) {
+    fn print_code_block(&mut self, code_block: &CodeBlock) {
         if self.last_stmt_had_backslash {
             self.last_stmt_had_backslash = false;
             stdout_writeln("");
@@ -595,15 +595,24 @@ impl Printer {
             }) => {
                 stdout_write("if");
                 stdout_write(" ");
-                self.print_code_expr(cond);
-                self.print_code_block_expr(then_block);
+
+                match cond {
+                    IfCond::Expr(expr) => {
+                        self.print_code_expr(expr);
+                    }
+                    IfCond::Match(match_header) => {
+                        self.print_match_header(match_header);
+                    }
+                }
+
+                self.print_code_block(then_block);
 
                 match else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(else_block) => {
                         stdout_write(" ");
                         stdout_write("else");
-                        self.print_code_block_expr(&else_block);
+                        self.print_code_block(&else_block);
                     }
                     ElseBlock::ElseIf(if_expr) => {
                         stdout_write(" ");
@@ -613,9 +622,18 @@ impl Printer {
                     }
                 }
             }
+            CodeExpr::Match(MatchExpr {
+                header,
+                else_branch,
+                loc: _,
+            }) => {
+                self.print_match_header(header);
+                stdout_write(" else");
+                self.print_code_block(else_branch);
+            }
             CodeExpr::Loop(LoopExpr { body, loc: _ }) => {
                 stdout_write("loop");
-                self.print_code_block_expr(&body);
+                self.print_code_block(&body);
             }
             CodeExpr::ForLoop(ForLoopExpr {
                 counter,
@@ -630,7 +648,7 @@ impl Printer {
                 self.print_code_expr(&start);
                 stdout_write("..");
                 self.print_code_expr(&end);
-                self.print_code_block_expr(&body);
+                self.print_code_block(&body);
             }
             CodeExpr::Break(BreakExpr { loc: _ }) => {
                 stdout_write("break");
@@ -649,7 +667,7 @@ impl Printer {
                 stdout_write(" in ");
                 self.print_args(args, loc);
                 stdout_write(" do");
-                self.print_code_block_expr(body);
+                self.print_code_block(body);
             }
             CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
@@ -752,7 +770,7 @@ impl Printer {
                 self.print_code_expr(lhs);
                 stdout_write(" catch ");
                 stdout_write(&error_bind.repr);
-                self.print_code_block_expr(catch_body);
+                self.print_code_block(catch_body);
             }
             CodeExpr::Paren(ParenExpr {
                 expr,
@@ -842,6 +860,15 @@ impl Printer {
         }
 
         self.last_printed_item_line = expr.loc().end_pos.line
+    }
+
+    fn print_match_header(&mut self, match_header: &MatchHeader) {
+        stdout_write("match ");
+        stdout_write(&match_header.variant_name.repr);
+        stdout_write("(");
+        stdout_write(&match_header.variant_bind.repr);
+        stdout_write(") = ");
+        self.print_code_expr(&match_header.expr_to_match);
     }
 
     fn print_args(&mut self, args: &CodeExprList, open_paren_loc: &LoLocation) {

@@ -329,7 +329,7 @@ impl Parser {
                 None
             };
 
-            let body = self.parse_code_block_expr()?;
+            let body = self.parse_code_block()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
@@ -356,7 +356,7 @@ impl Parser {
 
     fn parse_fn_def(&self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
         let decl = self.parse_fn_decl()?;
-        let body = self.parse_code_block_expr()?;
+        let body = self.parse_code_block()?;
 
         loc.end_pos = self.prev().loc.end_pos;
 
@@ -589,10 +589,10 @@ impl Parser {
         return Ok(TypeExpr::Named(TypeExprNamed { name: ident }));
     }
 
-    fn parse_code_block_expr(&self) -> Result<CodeBlockExpr, LoError> {
+    fn parse_code_block(&self) -> Result<CodeBlock, LoError> {
         self.expect(Delim, "{")?;
 
-        let mut code_block = CodeBlockExpr {
+        let mut code_block = CodeBlock {
             exprs: Vec::new(),
             loc: self.prev().loc.clone(),
         };
@@ -646,45 +646,6 @@ impl Parser {
     }
 
     fn parse_code_expr_primary(&self) -> Result<CodeExpr, LoError> {
-        if let Some(_) = self.eat(Symbol, "return")? {
-            let mut loc = self.prev().loc.clone();
-
-            let mut expr = None;
-            if self.current().loc.end_pos.line == loc.end_pos.line {
-                expr = Some(Box::new(self.parse_code_expr(0)?));
-            }
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(CodeExpr::Return(ReturnExpr { expr, loc }));
-        };
-
-        if let Some(_) = self.eat(Symbol, "if")? {
-            let mut loc = self.prev().loc.clone();
-
-            let expr = Box::new(self.parse_code_expr(0)?);
-            let then_block = Box::new(self.parse_code_block_expr()?);
-            let mut else_block = ElseBlock::None;
-            if let Some(_) = self.eat(Symbol, "else")? {
-                if self.current().is(Symbol, "if", self.source) {
-                    let if_expr = self.parse_code_expr(0)?;
-                    else_block = ElseBlock::ElseIf(Box::new(if_expr));
-                } else {
-                    let block = self.parse_code_block_expr()?;
-                    else_block = ElseBlock::Else(Box::new(block));
-                }
-            }
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(CodeExpr::If(IfExpr {
-                cond: expr,
-                then_block,
-                else_block,
-                loc,
-            }));
-        };
-
         if let Some(_) = self.eat(Symbol, "true")? {
             let loc = self.prev().loc.clone();
 
@@ -760,10 +721,72 @@ impl Parser {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "return")? {
+            let mut loc = self.prev().loc.clone();
+
+            let mut expr = None;
+            if self.current().loc.end_pos.line == loc.end_pos.line {
+                expr = Some(Box::new(self.parse_code_expr(0)?));
+            }
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::Return(ReturnExpr { expr, loc }));
+        };
+
+        if let Some(_) = self.eat(Symbol, "if")? {
+            let mut loc = self.prev().loc.clone();
+
+            let cond: IfCond;
+            if let Some(_) = self.eat(Symbol, "match")? {
+                cond = IfCond::Match(Box::new(self.parse_match_header()?));
+            } else {
+                cond = IfCond::Expr(Box::new(self.parse_code_expr(0)?));
+            };
+
+            let then_block = Box::new(self.parse_code_block()?);
+
+            let mut else_block = ElseBlock::None;
+            if let Some(_) = self.eat(Symbol, "else")? {
+                if self.current().is(Symbol, "if", self.source) {
+                    let if_expr = self.parse_code_expr(0)?;
+                    else_block = ElseBlock::ElseIf(Box::new(if_expr));
+                } else {
+                    let block = self.parse_code_block()?;
+                    else_block = ElseBlock::Else(Box::new(block));
+                }
+            }
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::If(IfExpr {
+                cond,
+                then_block,
+                else_block,
+                loc,
+            }));
+        };
+
+        if let Some(_) = self.eat(Symbol, "match")? {
+            let mut loc = self.prev().loc.clone();
+
+            let match_header = self.parse_match_header()?;
+            self.expect(Symbol, "else")?;
+            let else_branch = self.parse_code_block()?;
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::Match(MatchExpr {
+                header: Box::new(match_header),
+                else_branch,
+                loc,
+            }));
+        }
+
         if let Some(_) = self.eat(Symbol, "loop")? {
             let mut loc = self.prev().loc.clone();
 
-            let body = self.parse_code_block_expr()?;
+            let body = self.parse_code_block()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
@@ -787,7 +810,7 @@ impl Parser {
             let start = self.parse_code_expr(0)?;
             self.expect(Operator, "..")?;
             let end = self.parse_code_expr(0)?;
-            let body = self.parse_code_block_expr()?;
+            let body = self.parse_code_block()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
@@ -813,7 +836,7 @@ impl Parser {
             self.expect(Symbol, "in")?;
             let args = self.parse_fn_args()?;
             self.expect(Symbol, "do")?;
-            let body = self.parse_code_block_expr()?;
+            let body = self.parse_code_block()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
@@ -1001,6 +1024,21 @@ impl Parser {
         }
 
         Ok(CodeExpr::Ident(ident))
+    }
+
+    fn parse_match_header(&self) -> Result<MatchHeader, LoError> {
+        let variant_name = self.parse_ident()?;
+        self.expect(Delim, "(")?;
+        let variant_bind = self.parse_ident()?;
+        self.expect(Delim, ")")?;
+        self.expect(Operator, "=")?;
+        let expr_to_match = self.parse_code_expr(0)?;
+
+        Ok(MatchHeader {
+            variant_name,
+            variant_bind,
+            expr_to_match,
+        })
     }
 
     fn parse_ident(&self) -> Result<IdentExpr, LoError> {
@@ -1228,7 +1266,7 @@ impl Parser {
                 let mut loc = primary.loc().clone();
 
                 let error_bind = self.parse_ident()?;
-                let catch_body = self.parse_code_block_expr()?;
+                let catch_body = self.parse_code_block()?;
 
                 loc.end_pos = self.prev().loc.end_pos;
 

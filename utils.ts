@@ -535,6 +535,39 @@ async function commandTest() {
         );
     });
 
+    testVersions("compiles enums.lo", { v1 }, async (compile) => {
+        const program = await compile("./examples/test/enums.lo");
+
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
+
+        assert.strictEqual(
+            output,
+            m`
+            +a
+
+            `
+        );
+    });
+
+    testVersions("compiles if-match-chain.lo", { v1 }, async (compile) => {
+        const program = await compile("./examples/test/if-match-chain.lo");
+
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
+
+        assert.strictEqual(
+            output,
+            m`
+            going left 5 steps
+            going right 3 steps
+
+            `
+        );
+    });
+
     describe("<stdin> input", () => {
         const v1 = v1Run;
 
@@ -999,6 +1032,29 @@ async function commandTest() {
                 10 / 5 = 2, remainder = 0
                 10 / 3 = 3, remainder = 1
                 10 / 0 is undefined
+
+                `
+            );
+        });
+
+        test("interprets enums.lo", async () => {
+            const res = await interpret("./examples/test/enums.lo");
+            assert.strictEqual(
+                new TextDecoder().decode(res),
+                m`
+                +a
+
+                `
+            );
+        });
+
+        test("interprets if-match-chain.lo", async () => {
+            const res = await interpret("./examples/test/if-match-chain.lo");
+            assert.strictEqual(
+                new TextDecoder().decode(res),
+                m`
+                going left 5 steps
+                going right 3 steps
 
                 `
             );

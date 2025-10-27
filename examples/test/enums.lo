@@ -1,5 +1,4 @@
-include "../lib/std.lo"
-include "../lib/print.lo"
+include "../lib/cli.lo"
 
 enum Expr {
     Binary(&ExprBinary),
@@ -23,14 +22,13 @@ fn main() {
         rhs: Expr::Item(heap::new!(.ExprItem { name: "b" })),
     }))
 
-    // TODO: support enum variant matching
-    // if match Expr::Binary(bin) = expr {
-    //     puts(bin.operator)
-    // }
+    if match Expr::Binary(bin) = expr {
+        puts(bin.operator)
 
-    // TODO: support enum variant matching
-    // match Expr::Binary(bin) = expr else {
-    //     @unreachable()
-    // }
-    // puts(bin.operator)
+        match Expr::Item(item) = bin.lhs else {
+            @unreachable()
+        }
+        puts(item.name)
+        puts("\n")
+    }
 }

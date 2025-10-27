@@ -26,7 +26,7 @@ pub enum TopLevelExpr {
 pub struct FnDefExpr {
     pub exported: bool,
     pub decl: FnDeclExpr,
-    pub body: CodeBlockExpr,
+    pub body: CodeBlock,
     pub loc: LoLocation,
 }
 
@@ -154,11 +154,11 @@ pub struct MacroDefExpr {
     pub macro_params_trailing_comma: bool,
     pub macro_type_params: Vec<String>,
     pub return_type: Option<TypeExpr>,
-    pub body: CodeBlockExpr,
+    pub body: CodeBlock,
     pub loc: LoLocation,
 }
 
-pub struct CodeBlockExpr {
+pub struct CodeBlock {
     pub exprs: Vec<CodeExpr>,
     pub loc: LoLocation,
 }
@@ -255,6 +255,7 @@ pub enum CodeExpr {
     IntrinsicCall(MacroFnCallExpr),
 
     // control flow
+    Paren(ParenExpr),
     Return(ReturnExpr),
     If(IfExpr),
     Loop(LoopExpr),
@@ -264,7 +265,7 @@ pub enum CodeExpr {
     With(WithExpr),
     Defer(DeferExpr),
     Catch(CatchExpr),
-    Paren(ParenExpr),
+    Match(MatchExpr),
 
     // TODO?: should these use intrinsic syntax?
     Dbg(DbgExpr),
@@ -322,15 +323,26 @@ pub struct PrefixOpExpr {
 }
 
 pub struct IfExpr {
-    pub cond: Box<CodeExpr>,
-    pub then_block: Box<CodeBlockExpr>,
+    pub cond: IfCond,
+    pub then_block: Box<CodeBlock>,
     pub else_block: ElseBlock,
     pub loc: LoLocation,
 }
 
+pub enum IfCond {
+    Expr(Box<CodeExpr>),
+    Match(Box<MatchHeader>),
+}
+
+pub struct MatchHeader {
+    pub variant_name: IdentExpr,
+    pub variant_bind: IdentExpr,
+    pub expr_to_match: CodeExpr,
+}
+
 pub enum ElseBlock {
     None,
-    Else(Box<CodeBlockExpr>),
+    Else(Box<CodeBlock>),
     ElseIf(Box<CodeExpr>),
 }
 
@@ -341,7 +353,7 @@ pub struct LetExpr {
 }
 
 pub struct LoopExpr {
-    pub body: Box<CodeBlockExpr>,
+    pub body: Box<CodeBlock>,
     pub loc: LoLocation,
 }
 
@@ -353,7 +365,7 @@ pub struct ForLoopExpr {
     pub counter: IdentExpr,
     pub start: Box<CodeExpr>,
     pub end: Box<CodeExpr>,
-    pub body: Box<CodeBlockExpr>,
+    pub body: Box<CodeBlock>,
     pub loc: LoLocation,
 }
 
@@ -369,7 +381,7 @@ pub struct CodeExprList {
 pub struct WithExpr {
     pub bind: IdentExpr,
     pub args: CodeExprList,
-    pub body: CodeBlockExpr,
+    pub body: CodeBlock,
     pub loc: LoLocation,
 }
 
@@ -436,8 +448,14 @@ pub struct FieldAccessExpr {
 pub struct CatchExpr {
     pub lhs: Box<CodeExpr>,
     pub error_bind: IdentExpr,
-    pub catch_body: CodeBlockExpr,
+    pub catch_body: CodeBlock,
     pub catch_loc: LoLocation, // on `catch` keyword used to report catch errors
+    pub loc: LoLocation,
+}
+
+pub struct MatchExpr {
+    pub header: Box<MatchHeader>,
+    pub else_branch: CodeBlock,
     pub loc: LoLocation,
 }
 
@@ -510,6 +528,7 @@ impl CodeExpr {
             CodeExpr::Assign(e) => &e.loc,
             CodeExpr::FieldAccess(e) => &e.loc,
             CodeExpr::Catch(e) => &e.loc,
+            CodeExpr::Match(e) => &e.loc,
             CodeExpr::Paren(e) => &e.loc,
             CodeExpr::FnCall(e) => &e.loc,
             CodeExpr::MethodCall(e) => &e.loc,
