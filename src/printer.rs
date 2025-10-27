@@ -165,6 +165,40 @@ impl Printer {
                     stdout_writeln("");
                 }
             }
+            TopLevelExpr::EnumDef(EnumDefExpr {
+                enum_name,
+                variants,
+                loc,
+            }) => {
+                stdout_write("enum ");
+                stdout_write(&enum_name.repr);
+
+                if variants.len() == 0 {
+                    stdout_write(" {}");
+                    stdout_writeln("");
+                } else {
+                    stdout_writeln(" {");
+                    self.indent += 1;
+                    for variant in variants {
+                        self.print_comments_before(variant.loc.pos);
+                        self.print_indent();
+                        stdout_write(&variant.variant_name.repr);
+                        stdout_write("(");
+                        self.print_type_expr(&variant.variant_type);
+                        stdout_write(")");
+                        stdout_writeln(",");
+                    }
+
+                    // print the rest of the comments
+                    self.print_comments_before(loc.end_pos);
+
+                    self.indent -= 1;
+                    self.print_indent();
+
+                    stdout_write("}");
+                    stdout_writeln("");
+                }
+            }
             TopLevelExpr::TypeDef(TypeDefExpr {
                 type_name,
                 type_value,

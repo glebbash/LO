@@ -731,7 +731,6 @@ async function commandTest() {
                     [
                     { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
                     { "type": "message", "content": "Cannot redefine main, already defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
-                    { "type": "info", "hover": "type u32 = <builtin>", "loc": "1/2:12-2:15" },
                     { "type": "message", "content": "Duplicate function parameter name: a", "severity": "error", "loc": "1/2:17-2:23" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
                     { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },

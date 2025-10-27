@@ -1,14 +1,17 @@
 include "./std.lo"
 include "./wasi.lo"
 
+// TODO: rename to `print`
 fn puts(value: str) {
     let _ = fputs(wasi::FD_STDOUT, value)
 }
 
+// TODO: rename to `eprint`
 fn eputs(value: str) {
     let _ = fputs(wasi::FD_STDERR, value)
 }
 
+// TODO: rename to `fprint`
 fn fputs(fd: u32, value: str): Result<u32, wasi::Err> {
     let nwritten = tmp_alloc!<u32>()
     let value_ref = tmp_alloc!<str>()

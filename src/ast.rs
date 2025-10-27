@@ -15,6 +15,7 @@ pub enum TopLevelExpr {
     Import(ImportExpr),
     GlobalDef(GlobalDefExpr),
     StructDef(StructDefExpr),
+    EnumDef(EnumDefExpr),
     TypeDef(TypeDefExpr),
     ConstDef(ConstDefExpr),
     MemoryDef(MemoryDefExpr),
@@ -106,6 +107,18 @@ pub struct StructDefField {
     pub loc: LoLocation,
 }
 
+pub struct EnumDefExpr {
+    pub enum_name: IdentExpr,
+    pub variants: Vec<EnumDefVariant>,
+    pub loc: LoLocation,
+}
+
+pub struct EnumDefVariant {
+    pub variant_name: IdentExpr,
+    pub variant_type: TypeExpr,
+    pub loc: LoLocation,
+}
+
 pub struct TypeDefExpr {
     pub type_name: IdentExpr,
     pub type_value: TypeExpr,
@@ -158,6 +171,7 @@ impl TopLevelExpr {
             TopLevelExpr::Import(e) => &e.loc,
             TopLevelExpr::GlobalDef(e) => &e.loc,
             TopLevelExpr::StructDef(e) => &e.loc,
+            TopLevelExpr::EnumDef(e) => &e.loc,
             TopLevelExpr::TypeDef(e) => &e.loc,
             TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,

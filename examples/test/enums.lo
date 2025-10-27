@@ -1,0 +1,36 @@
+include "../lib/std.lo"
+include "../lib/print.lo"
+
+enum Expr {
+    Binary(&ExprBinary),
+    Item(&ExprItem),
+}
+
+struct ExprBinary {
+    operator: str,
+    lhs: Expr,
+    rhs: Expr,
+}
+
+struct ExprItem {
+    name: str,
+}
+
+fn main() {
+    let expr = Expr::Binary(heap::new!(.ExprBinary {
+        operator: "+",
+        lhs: Expr::Item(heap::new!(.ExprItem { name: "a" })),
+        rhs: Expr::Item(heap::new!(.ExprItem { name: "b" })),
+    }))
+
+    // TODO: support enum variant matching
+    // if match Expr::Binary(bin) = expr {
+    //     puts(bin.operator)
+    // }
+
+    // TODO: support enum variant matching
+    // match Expr::Binary(bin) = expr else {
+    //     @unreachable()
+    // }
+    // puts(bin.operator)
+}

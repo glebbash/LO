@@ -232,6 +232,44 @@ impl Parser {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "enum")? {
+            let mut loc = self.prev().loc.clone();
+
+            let enum_name = self.parse_ident()?;
+
+            let mut variants = Vec::new();
+
+            self.expect(Delim, "{")?;
+            while let None = self.eat(Delim, "}")? {
+                let mut variant_loc = self.current().loc.clone();
+
+                let variant_name = self.parse_ident()?;
+                self.expect(Delim, "(")?;
+                let variant_type = self.parse_type_expr()?;
+                self.expect(Delim, ")")?;
+
+                variant_loc.end_pos = self.prev().loc.end_pos;
+
+                variants.push(EnumDefVariant {
+                    variant_name,
+                    variant_type,
+                    loc: variant_loc,
+                });
+
+                if !self.current().is(Delim, "}", self.source) {
+                    self.expect(Delim, ",")?;
+                }
+            }
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(TopLevelExpr::EnumDef(EnumDefExpr {
+                enum_name,
+                variants,
+                loc,
+            }));
+        }
+
         if let Some(_) = self.eat(Symbol, "type")? {
             let mut loc = self.prev().loc.clone();
 

@@ -7,6 +7,8 @@ use alloc::{
 };
 use core::{cell::RefCell, fmt::Write};
 
+const STR_TYPE_NAME: &str = "str";
+
 #[derive(Clone, PartialEq)]
 pub enum LoType {
     Never,
@@ -22,9 +24,20 @@ pub enum LoType {
     U64,
     I64,
     F64,
-    Pointer { pointee: Box<LoType> },
-    SequencePointer { pointee: Box<LoType> },
-    StructInstance { struct_name: String },
+    Pointer {
+        pointee: Box<LoType>,
+    },
+    SequencePointer {
+        pointee: Box<LoType>,
+    },
+    StructInstance {
+        struct_name: String, // TODO: remove (only used by Display impl)
+        struct_index: usize,
+    },
+    EnumInstance {
+        enum_name: String, // TODO: remove (only used by Display impl)
+        enum_index: usize,
+    },
     Result(LoResultType),
 }
 
@@ -52,7 +65,14 @@ impl core::fmt::Display for LoType {
             LoType::F64 => f.write_str("f64"),
             LoType::Pointer { pointee } => write!(f, "&{pointee}"),
             LoType::SequencePointer { pointee } => write!(f, "*&{pointee}"),
-            LoType::StructInstance { struct_name } => f.write_str(&struct_name),
+            LoType::StructInstance {
+                struct_name,
+                struct_index: _,
+            } => f.write_str(&struct_name),
+            LoType::EnumInstance {
+                enum_name,
+                enum_index: _,
+            } => f.write_str(&enum_name),
             LoType::Result(result) => write!(f, "Result<{}, {}>", result.ok, result.err),
         }
     }
@@ -243,21 +263,6 @@ impl LoExprContext {
     }
 }
 
-#[derive(Clone)]
-enum LoTypeDefKind {
-    Builtin,
-    Struct,
-    Alias,
-}
-
-#[derive(Clone)]
-struct LoTypeDef {
-    kind: LoTypeDefKind,
-    name: String,
-    value: LoType,
-    loc: LoLocation,
-}
-
 struct LoStructDef {
     struct_name: String,
     fields: Vec<LoStructField>,
@@ -271,6 +276,23 @@ pub struct LoStructField {
     field_index: u32,
     byte_offset: u32,
     loc: LoLocation,
+}
+
+struct LoEnumDef {
+    enum_name: String,
+    variant_type: LoType,
+    variants: Vec<LoEnumVariant>,
+}
+
+pub struct LoEnumVariant {
+    variant_name: String,
+    variant_type: LoType,
+    loc: LoLocation,
+}
+
+pub struct LoEnumConstructor {
+    enum_index: usize,
+    variant_index: usize,
 }
 
 struct LoGlobalDef {
@@ -440,11 +462,14 @@ struct ModuleItem {
 
 #[derive(Clone)]
 enum ModuleItemCollection {
-    Type,
+    TypeAlias,
     Function,
-    Global,
     Macro,
+    Global,
     Const,
+    Struct,
+    Enum,
+    EnumConstructor,
 }
 
 impl Module {
@@ -479,8 +504,12 @@ pub struct Compiler {
     pub error_count: RefCell<u32>,
     pub warning_count: RefCell<u32>,
 
-    type_defs: Vec<LoTypeDef>,
+    global_items: Vec<ModuleItem>,
+
+    type_aliases: Vec<LoType>,
     struct_defs: Vec<LoStructDef>,
+    enum_defs: Vec<LoEnumDef>,
+    enum_ctors: Vec<LoEnumConstructor>,
     globals: Vec<LoGlobalDef>,
     const_defs: Vec<LoConstDef>,
     macro_defs: Vec<&'static MacroDefExpr>,
@@ -500,86 +529,32 @@ impl Compiler {
     pub fn new() -> Self {
         let mut self_ = Self::default();
 
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("never"),
-            value: LoType::Never,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("void"),
-            value: LoType::Void,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("bool"),
-            value: LoType::Bool,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("u8"),
-            value: LoType::U8,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("i8"),
-            value: LoType::I8,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("u16"),
-            value: LoType::U16,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("i16"),
-            value: LoType::I16,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("u32"),
-            value: LoType::U32,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("i32"),
-            value: LoType::I32,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("f32"),
-            value: LoType::F32,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("u64"),
-            value: LoType::U64,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("i64"),
-            value: LoType::I64,
-            loc: LoLocation::internal(),
-        });
-        self_.type_defs.push(LoTypeDef {
-            kind: LoTypeDefKind::Builtin,
-            name: String::from("f64"),
-            value: LoType::F64,
-            loc: LoLocation::internal(),
-        });
+        self_.add_builtin_type("never", LoType::Never);
+        self_.add_builtin_type("void", LoType::Void);
+        self_.add_builtin_type("bool", LoType::Bool);
+        self_.add_builtin_type("u8", LoType::U8);
+        self_.add_builtin_type("i8", LoType::I8);
+        self_.add_builtin_type("u16", LoType::U16);
+        self_.add_builtin_type("i16", LoType::I16);
+        self_.add_builtin_type("u32", LoType::U32);
+        self_.add_builtin_type("i32", LoType::I32);
+        self_.add_builtin_type("f32", LoType::F32);
+        self_.add_builtin_type("u64", LoType::U64);
+        self_.add_builtin_type("i64", LoType::I64);
+        self_.add_builtin_type("f64", LoType::F64);
 
         return self_;
+    }
+
+    #[inline]
+    fn add_builtin_type(&mut self, name: &str, type_: LoType) {
+        self.global_items.push(ModuleItem {
+            name: String::from(name),
+            collection: ModuleItemCollection::TypeAlias,
+            collection_index: self.type_aliases.len(),
+            loc: LoLocation::internal(),
+        });
+        self.type_aliases.push(type_);
     }
 
     pub fn begin_inspection(&mut self) {
@@ -691,7 +666,7 @@ impl Compiler {
         }
 
         for module in self.modules.relax() {
-            self.pass_build_structs(module);
+            self.pass_assemble_complex_types(module);
         }
 
         for module in self.modules.relax_mut() {
@@ -703,88 +678,67 @@ impl Compiler {
         for expr in &module.ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(struct_def) => {
-                    if let Some(item) = module.get_own_item(&struct_def.struct_name.repr) {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Cannot redefine {}, already defined at {}",
-                                struct_def.struct_name.repr,
-                                item.loc.to_string(&self.fm)
-                            ),
-                            loc: struct_def.struct_name.loc.clone(),
-                        });
-                        continue;
-                    }
+                    self.define_item(ModuleItem {
+                        name: struct_def.struct_name.repr.clone(),
+                        collection: ModuleItemCollection::Struct,
+                        collection_index: self.struct_defs.len(),
+                        loc: struct_def.struct_name.loc.clone(),
+                    });
 
                     self.struct_defs.push(LoStructDef {
                         struct_name: struct_def.struct_name.repr.clone(),
                         fields: Vec::new(),
                         fully_defined: false,
                     });
-
-                    self.type_defs.push(LoTypeDef {
-                        name: struct_def.struct_name.repr.clone(),
-                        value: LoType::StructInstance {
-                            struct_name: struct_def.struct_name.repr.clone(),
-                        },
-                        kind: LoTypeDefKind::Struct,
-                        loc: struct_def.struct_name.loc.clone(),
+                }
+                TopLevelExpr::EnumDef(enum_def) => {
+                    self.define_item(ModuleItem {
+                        name: enum_def.enum_name.repr.clone(),
+                        collection: ModuleItemCollection::Enum,
+                        collection_index: self.enum_defs.len(),
+                        loc: enum_def.enum_name.loc.clone(),
                     });
 
-                    module.own_items.push(ModuleItem {
-                        name: struct_def.struct_name.repr.clone(),
-                        collection: ModuleItemCollection::Type,
-                        collection_index: self.type_defs.len() - 1,
-                        loc: struct_def.struct_name.loc.clone(),
-                    })
+                    self.enum_defs.push(LoEnumDef {
+                        enum_name: enum_def.enum_name.repr.clone(),
+                        variant_type: LoType::Void, // placeholder
+                        variants: Vec::new(),       // placeholder
+                    });
+
+                    for (variant, variant_index) in enum_def.variants.iter().zip(0..) {
+                        let constructor_name =
+                            format!("{}::{}", enum_def.enum_name.repr, variant.variant_name.repr);
+
+                        self.define_item(ModuleItem {
+                            name: constructor_name,
+                            collection: ModuleItemCollection::EnumConstructor,
+                            collection_index: self.enum_ctors.len(),
+                            loc: enum_def.enum_name.loc.clone(),
+                        });
+
+                        self.enum_ctors.push(LoEnumConstructor {
+                            enum_index: self.enum_defs.len() - 1,
+                            variant_index,
+                        });
+                    }
                 }
                 TopLevelExpr::TypeDef(type_def) => {
-                    if let Some(item) = module.get_own_item(&type_def.type_name.repr) {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Cannot redefine {}, already defined at {}",
-                                type_def.type_name.repr,
-                                item.loc.to_string(&self.fm)
-                            ),
-                            loc: type_def.type_name.loc.clone(),
-                        });
-                        continue;
-                    }
-
-                    let type_value = self.build_type(&module.ctx, &type_def.type_value);
-                    let type_value = catch!(type_value, err, {
-                        self.report_error(&err);
-                        continue;
-                    });
-
-                    self.type_defs.push(LoTypeDef {
-                        kind: LoTypeDefKind::Alias,
+                    self.define_item(ModuleItem {
                         name: type_def.type_name.repr.clone(),
-                        value: type_value,
+                        collection: ModuleItemCollection::TypeAlias,
+                        collection_index: self.type_aliases.len(),
                         loc: type_def.type_name.loc.clone(),
                     });
 
-                    module.own_items.push(ModuleItem {
-                        name: type_def.type_name.repr.clone(),
-                        collection: ModuleItemCollection::Type,
-                        collection_index: self.type_defs.len() - 1,
-                        loc: type_def.type_name.loc.clone(),
-                    })
+                    self.type_aliases.push(LoType::Never); // placeholder
                 }
                 TopLevelExpr::FnDef(fn_def) => {
-                    if let Some(item) = module.get_own_item(&fn_def.decl.fn_name.repr) {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Cannot redefine {}, already defined at {}",
-                                fn_def.decl.fn_name.repr,
-                                item.loc.to_string(&self.fm)
-                            ),
-                            loc: fn_def.decl.fn_name.loc.clone(),
-                        });
-
-                        // continue processing, this will make an item with duplicate name
-                        //   but this is fine because these items will be linked to different functions
-                        //   and only the first defined item will be accessible by name
-                    }
+                    self.define_item(ModuleItem {
+                        name: fn_def.decl.fn_name.repr.clone(),
+                        collection: ModuleItemCollection::Function,
+                        collection_index: self.functions.len(),
+                        loc: fn_def.decl.fn_name.loc.clone(),
+                    });
 
                     let mut ctx = LoExprContext::new(module.index, Some(self.functions.len()));
                     ctx.enter_scope(LoScopeType::Function);
@@ -794,7 +748,6 @@ impl Compiler {
                         exported_as.push(fn_def.decl.fn_name.repr.clone());
                     }
 
-                    // fill in as much as possible before types can be resolved
                     self.functions.push(FnInfo {
                         fn_name: fn_def.decl.fn_name.repr.clone(),
                         fn_type: LoFnType {
@@ -807,15 +760,8 @@ impl Compiler {
                             body: fn_def.body.relax(),
                         },
                         exported_as,
-                        wasm_fn_index: u32::MAX, // not known at this point
+                        wasm_fn_index: u32::MAX, // placeholder
                         definition_loc: fn_def.decl.fn_name.loc.clone(),
-                    });
-
-                    module.own_items.push(ModuleItem {
-                        name: fn_def.decl.fn_name.repr.clone(),
-                        collection: ModuleItemCollection::Function,
-                        collection_index: self.functions.len() - 1,
-                        loc: fn_def.decl.fn_name.loc.clone(),
                     });
                 }
                 TopLevelExpr::Import(import_expr) => {
@@ -826,20 +772,12 @@ impl Compiler {
                             continue;
                         };
 
-                        if let Some(item) = module.get_own_item(&fn_decl.fn_name.repr) {
-                            self.report_error(&LoError {
-                                message: format!(
-                                    "Cannot redefine {}, already defined at {}",
-                                    fn_decl.fn_name.repr,
-                                    item.loc.to_string(&self.fm)
-                                ),
-                                loc: fn_decl.fn_name.loc.clone(),
-                            });
-
-                            // continue processing, this will make an item with duplicate name
-                            //   but this is fine because these items will be linked to different functions
-                            //   and only the first defined item will be accessible by name
-                        }
+                        self.define_item(ModuleItem {
+                            name: fn_decl.fn_name.repr.clone(),
+                            collection: ModuleItemCollection::Function,
+                            collection_index: self.functions.len(),
+                            loc: fn_decl.fn_name.loc.clone(),
+                        });
 
                         self.functions.push(FnInfo {
                             fn_name: fn_decl.fn_name.repr.clone(),
@@ -856,52 +794,28 @@ impl Compiler {
                             wasm_fn_index: u32::MAX, // not known at this point
                             definition_loc: fn_decl.fn_name.loc.clone(),
                         });
-
-                        module.own_items.push(ModuleItem {
-                            name: fn_decl.fn_name.repr.clone(),
-                            collection: ModuleItemCollection::Function,
-                            collection_index: self.functions.len() - 1,
-                            loc: fn_decl.fn_name.loc.clone(),
-                        });
                     }
                 }
                 TopLevelExpr::MacroDef(macro_def) => {
                     let mut macro_item_name = macro_def.macro_name.repr.clone();
                     macro_item_name.push('!');
 
-                    if let Some(item) = module.get_own_item(&macro_item_name) {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Cannot redefine {}, already defined at {}",
-                                macro_item_name,
-                                item.loc.to_string(&self.fm)
-                            ),
-                            loc: macro_def.macro_name.loc.clone(),
-                        });
-                        continue;
-                    }
-
-                    self.macro_defs.push(macro_def.relax());
-
-                    module.own_items.push(ModuleItem {
+                    self.define_item(ModuleItem {
                         name: macro_item_name,
                         collection: ModuleItemCollection::Macro,
-                        collection_index: self.macro_defs.len() - 1,
+                        collection_index: self.macro_defs.len(),
                         loc: macro_def.macro_name.loc.clone(),
                     });
+
+                    self.macro_defs.push(macro_def.relax());
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
-                    if let Some(item) = module.get_own_item(&global_def.global_name.repr) {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Cannot redefine {}, already defined at {}",
-                                global_def.global_name.repr,
-                                item.loc.to_string(&self.fm)
-                            ),
-                            loc: global_def.global_name.loc.clone(),
-                        });
-                        continue;
-                    }
+                    self.define_item(ModuleItem {
+                        name: global_def.global_name.repr.clone(),
+                        collection: ModuleItemCollection::Global,
+                        collection_index: self.globals.len(),
+                        loc: global_def.global_name.loc.clone(),
+                    });
 
                     self.globals.push(LoGlobalDef {
                         module_ctx: module.ctx.relax(),
@@ -909,42 +823,22 @@ impl Compiler {
                         global_type: LoType::Never, // placeholder
                         global_index: self.globals.len() as u32,
                     });
-
-                    module.own_items.push(ModuleItem {
-                        name: global_def.global_name.repr.clone(),
-                        collection: ModuleItemCollection::Global,
-                        collection_index: self.globals.len() - 1,
-                        loc: global_def.global_name.loc.clone(),
-                    });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
-                    if let Some(item) = module.get_own_item(&const_def.const_name.repr) {
-                        self.report_error(&LoError {
-                            message: format!(
-                                "Cannot redefine {}, already defined at {}",
-                                const_def.const_name.repr,
-                                item.loc.to_string(&self.fm)
-                            ),
-                            loc: const_def.const_name.loc.clone(),
-                        });
-                        continue;
-                    }
+                    self.define_item(ModuleItem {
+                        name: const_def.const_name.repr.clone(),
+                        collection: ModuleItemCollection::Const,
+                        collection_index: self.const_defs.len(),
+                        loc: const_def.const_name.loc.clone(),
+                    });
 
                     self.const_defs.push(LoConstDef {
                         const_name: const_def.const_name.repr.clone(),
-                        // to be filled in `pass_main`
                         code_unit: LoCodeUnit {
-                            type_: LoType::Never,
-                            instrs: Vec::new(),
+                            type_: LoType::Never, // placeholder
+                            instrs: Vec::new(),   // placeholder
                         },
                         loc: const_def.loc.clone(),
-                    });
-
-                    module.own_items.push(ModuleItem {
-                        name: const_def.const_name.repr.clone(),
-                        collection: ModuleItemCollection::Const,
-                        collection_index: self.const_defs.len() - 1,
-                        loc: const_def.const_name.loc.clone(),
                     });
                 }
                 _ => {} // skip, not interested
@@ -952,7 +846,31 @@ impl Compiler {
         }
     }
 
+    fn define_item(&mut self, item: ModuleItem) {
+        let module = self
+            .get_module_by_file_index(item.loc.file_index)
+            .unwrap()
+            .be_mut();
+
+        if let Some(existing_item) = module.get_own_item(&item.name) {
+            self.report_error(&LoError {
+                message: format!(
+                    "Cannot redefine {}, already defined at {}",
+                    item.name,
+                    existing_item.loc.to_string(&self.fm)
+                ),
+                loc: item.loc.clone(),
+            });
+        }
+
+        module.own_items.push(item);
+    }
+
     fn pass_collect_all_items(&mut self, module: &mut Module) {
+        for item in &self.global_items {
+            module.all_items.push(item.clone());
+        }
+
         self.inline_includes(module.relax_mut(), module, &mut String::from(""), true);
     }
 
@@ -987,7 +905,7 @@ impl Compiler {
         }
     }
 
-    fn pass_build_structs(&mut self, module: &Module) {
+    fn pass_assemble_complex_types(&mut self, module: &Module) {
         'exprs: for expr in &module.ast.exprs {
             match expr {
                 TopLevelExpr::StructDef(struct_def) => {
@@ -1047,11 +965,79 @@ impl Compiler {
                         byte_offset += field.field_layout.byte_size;
                     }
 
-                    let struct_def = self
-                        .get_struct_def_mut(&struct_def.struct_name.repr)
-                        .unwrap();
-                    struct_def.fields.append(&mut struct_fields);
-                    struct_def.fully_defined = true;
+                    let item = module.get_own_item(&struct_def.struct_name.repr).unwrap();
+                    let ModuleItemCollection::Struct = item.collection else {
+                        continue;
+                    };
+                    let struct_ = &mut self.struct_defs[item.collection_index];
+
+                    struct_.fields.append(&mut struct_fields);
+                    struct_.fully_defined = true;
+                }
+                TopLevelExpr::EnumDef(enum_def) => {
+                    let item = module.get_own_item(&enum_def.enum_name.repr).unwrap();
+                    let ModuleItemCollection::Enum = item.collection else {
+                        continue;
+                    };
+                    let enum_ = self.enum_defs[item.collection_index].relax_mut();
+
+                    let mut enum_variant_wasm_types = Vec::new();
+
+                    'variants: for (variant, i) in enum_def.variants.iter().zip(0..) {
+                        for existing_variant in &enum_.variants {
+                            if existing_variant.variant_name == variant.variant_name.repr {
+                                self.report_error(&LoError {
+                                    message: format!(
+                                        "Cannot redefine enum variant '{}', already defined at {}",
+                                        variant.variant_name.repr,
+                                        existing_variant.loc.to_string(&self.fm),
+                                    ),
+                                    loc: variant.variant_name.loc.clone(),
+                                });
+                                continue 'variants;
+                            }
+                        }
+
+                        let variant_type =
+                            catch!(self.build_type(&module.ctx, &variant.variant_type), err, {
+                                self.report_error(&err);
+                                continue 'variants;
+                            });
+
+                        if i == 0 {
+                            enum_.variant_type = variant_type.clone();
+                            self.lower_type(&enum_.variant_type, &mut enum_variant_wasm_types);
+                        } else {
+                            let mut this_variant_wasm_types = Vec::new();
+                            self.lower_type(&variant_type, &mut this_variant_wasm_types);
+
+                            if enum_variant_wasm_types != this_variant_wasm_types {
+                                self.report_error(&LoError {
+                                    message: format!("Enum variants don't lower to the same types"),
+                                    loc: variant.variant_name.loc.clone(),
+                                });
+                            }
+                        }
+
+                        enum_.variants.push(LoEnumVariant {
+                            variant_name: variant.variant_name.repr.clone(),
+                            variant_type,
+                            loc: variant.variant_name.loc.clone(),
+                        });
+                    }
+                }
+                TopLevelExpr::TypeDef(type_def) => {
+                    let type_value = self.build_type(&module.ctx, &type_def.type_value);
+                    let type_value = catch!(type_value, err, {
+                        self.report_error(&err);
+                        continue;
+                    });
+
+                    let item = module.get_own_item(&type_def.type_name.repr).unwrap();
+                    let ModuleItemCollection::TypeAlias = item.collection else {
+                        continue;
+                    };
+                    self.type_aliases[item.collection_index] = type_value;
                 }
                 _ => {} // skip, not interested
             }
@@ -1062,12 +1048,16 @@ impl Compiler {
         for expr in &module.ast.exprs {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_items
-                TopLevelExpr::StructDef(_) => {} // skip, processed in pass_build_structs
                 TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_items
                 TopLevelExpr::MacroDef(_) => {} // skip, processed in pass_collect_all_items
+                TopLevelExpr::StructDef(_) => {} // skip, processed in pass_assemble_complex_types
+                TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
 
                 TopLevelExpr::FnDef(fn_def) => {
                     let item = module.get_own_item(&fn_def.decl.fn_name.repr).unwrap();
+                    let ModuleItemCollection::Function = item.collection else {
+                        continue;
+                    };
                     let fn_info = self.functions[item.collection_index].relax_mut();
 
                     fn_info.fn_type.output = match &fn_def.decl.return_type {
@@ -1173,6 +1163,9 @@ impl Compiler {
                         };
 
                         let item = module.get_own_item(&fn_decl.fn_name.repr).unwrap();
+                        let ModuleItemCollection::Function = item.collection else {
+                            continue;
+                        };
                         let fn_info = self.functions[item.collection_index].relax_mut();
 
                         for fn_param in &fn_decl.fn_params {
@@ -1206,14 +1199,17 @@ impl Compiler {
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
                     let item = module.get_own_item(&global_def.global_name.repr).unwrap();
+                    let ModuleItemCollection::Global = item.collection else {
+                        continue;
+                    };
                     let global = self.globals[item.collection_index].relax_mut();
 
                     let value_type = match &global_def.global_value {
                         GlobalDefValue::Expr(expr) => {
                             catch!(self.ensure_const_expr(expr), err, {
                                 self.report_error(&err);
-                                // continue processing global def
                             });
+
                             let value_type = self.get_expr_type(&module.ctx, expr);
                             let value_type = catch!(value_type, err, {
                                 self.report_error(&err);
@@ -1248,6 +1244,7 @@ impl Compiler {
                 }
                 TopLevelExpr::ConstDef(const_def) => {
                     let item = module.get_own_item(&const_def.const_name.repr).unwrap();
+
                     let const_ = self.const_defs[item.collection_index].relax_mut();
 
                     let const_type = self.get_expr_type(&module.ctx, &const_def.const_value);
@@ -1428,7 +1425,7 @@ impl Compiler {
         for i in 0..self.globals.len() {
             let global = &self.globals[i];
             self.lower_type(&global.global_type, &mut wasm_types_buf);
-            let wasm_value_type = wasm_types_buf.pop().unwrap();
+            let wasm_value_type = wasm_types_buf.pop().unwrap_or(WasmType::I32);
 
             let mut initial_value = WasmExpr { instrs: Vec::new() };
 
@@ -1580,13 +1577,17 @@ impl Compiler {
                 }
 
                 let lo_type = self.get_type_or_err(&name.repr, &name.loc)?;
-                if let LoType::StructInstance { struct_name } = &lo_type {
-                    let struct_def = self.get_struct_def(&struct_name).unwrap();
+                if let LoType::StructInstance {
+                    struct_name: _,
+                    struct_index,
+                } = &lo_type
+                {
+                    let struct_def = &self.struct_defs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
                         return Err(LoError {
                             message: format!(
                                 "Cannot use partially defined struct '{}' here",
-                                struct_name
+                                struct_def.struct_name
                             ),
                             loc: loc.clone(),
                         });
@@ -1676,12 +1677,14 @@ impl Compiler {
                 has_trailing_comma: _,
                 loc,
             }) => {
-                let Some(struct_def) = self.get_struct_def(&struct_name.repr) else {
+                let Some(item) = self.modules[ctx.module_index].get_item(&struct_name.repr) else {
                     return Err(LoError {
                         message: format!("Unknown struct: {}", struct_name.repr),
                         loc: loc.clone(),
                     });
                 };
+
+                let struct_def = &self.struct_defs[item.collection_index];
 
                 for field_index in 0..fields.len() {
                     let field_literal = &fields[field_index];
@@ -1765,8 +1768,11 @@ impl Compiler {
 
                         bytes.push(value as u8);
                     }
-                } else if let LoType::StructInstance { struct_name } = &item_type
-                    && struct_name == "str"
+                } else if let LoType::StructInstance {
+                    struct_name,
+                    struct_index: _,
+                } = &item_type
+                    && struct_name == STR_TYPE_NAME
                 {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
@@ -2128,6 +2134,44 @@ impl Compiler {
                 args,
                 loc: _,
             }) => {
+                // TODO: add inspections
+                if let Some(item) = self.modules[ctx.module_index].get_item(&fn_name.repr) {
+                    if let ModuleItemCollection::EnumConstructor = item.collection {
+                        let ctor = &self.enum_ctors[item.collection_index];
+                        let enum_ = &self.enum_defs[ctor.enum_index];
+                        let variant = &enum_.variants[ctor.variant_index];
+
+                        self.codegen_int_const(ctx, instrs, ctor.variant_index as i32, None);
+
+                        if variant.variant_type == LoType::Void && args.items.len() == 0 {
+                            return Ok(());
+                        }
+
+                        if args.items.len() != 1 {
+                            return Err(LoError {
+                                message: format!(
+                                    "Non-void enum constructors require exactly one argument"
+                                ),
+                                loc: fn_name.loc.clone(),
+                            });
+                        }
+
+                        let expr_type = self.get_expr_type(ctx, &args.items[0])?;
+                        if !self.is_type_compatible(&variant.variant_type, &expr_type) {
+                            return Err(LoError {
+                                message: format!(
+                                    "Invalid enum payload: {expr_type}, expected: {}",
+                                    variant.variant_type
+                                ),
+                                loc: fn_name.loc.clone(),
+                            });
+                        }
+
+                        self.codegen(ctx, instrs, &args.items[0])?;
+                        return Ok(());
+                    }
+                }
+
                 self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, &args.items, &fn_name.loc)?;
             }
             CodeExpr::MethodCall(MethodCallExpr {
@@ -2745,12 +2789,16 @@ impl Compiler {
         loc: &LoLocation,
         lo_type_args: Option<&mut Vec<LoType>>,
     ) -> Result<&MacroDefExpr, LoError> {
-        let Some(macro_def) = self.get_macro_def(macro_name) else {
+        // TODO: find a way to not allocate
+        let Some(item) = self.modules[ctx.module_index].get_item(&(String::from(macro_name) + "!"))
+        else {
             return Err(LoError {
                 message: format!("Unknown macro: {}", macro_name),
                 loc: loc.clone(),
             });
         };
+
+        let macro_def = self.macro_defs[item.collection_index];
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -2778,7 +2826,6 @@ impl Compiler {
             });
         }
 
-        // TODO: check for type shadowing
         for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(lo_type_args.iter()) {
             ctx.current_scope_mut()
                 .macro_type_args
@@ -2804,7 +2851,6 @@ impl Compiler {
             arg_types.push(arg.type_.clone());
         }
 
-        // TODO: check for const shadowing
         for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
             let const_def = LoConstDef {
                 const_name: macro_param.param_name.repr.clone(),
@@ -2898,7 +2944,6 @@ impl Compiler {
             });
         }
 
-        // TODO: type check that block emits only what's defined by return type
         self.codegen_code_block(ctx, instrs, &macro_def.body, false);
 
         ctx.exit_scope(); // exit macro scope
@@ -3135,8 +3180,11 @@ impl Compiler {
                     })
                 }
             }
-            LoType::StructInstance { struct_name } => {
-                let struct_def = self.get_struct_def(struct_name).unwrap();
+            LoType::StructInstance {
+                struct_name: _,
+                struct_index,
+            } => {
+                let struct_def = &self.struct_defs[*struct_index];
 
                 for struct_field in struct_def.fields.iter().rev() {
                     self.codegen_load_or_store(
@@ -3147,7 +3195,34 @@ impl Compiler {
                     );
                 }
             }
-            LoType::Result(_) => todo!(),
+            LoType::EnumInstance {
+                enum_name: _,
+                enum_index,
+            } => {
+                let enum_def = &self.enum_defs[*enum_index];
+
+                let mut tag_layout = LoTypeLayout::default();
+                self.get_type_layout(&LoType::U32, &mut tag_layout);
+
+                // TODO: figure out alignment
+
+                self.codegen_load_or_store(instrs, &LoType::U32, offset, is_store);
+                self.codegen_load_or_store(
+                    instrs,
+                    &enum_def.variant_type,
+                    offset + tag_layout.byte_size,
+                    is_store,
+                );
+            }
+            LoType::Result(LoResultType { ok, err }) => {
+                let mut ok_layout = LoTypeLayout::default();
+                self.get_type_layout(&ok, &mut ok_layout);
+
+                // TODO: figure out alignment
+
+                self.codegen_load_or_store(instrs, &ok, offset, is_store);
+                self.codegen_load_or_store(instrs, &err, offset + ok_layout.byte_size, is_store);
+            }
         }
     }
 
@@ -3237,17 +3312,28 @@ impl Compiler {
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
                 value: _,
-                loc: _,
-            }) => Ok(LoType::StructInstance {
-                struct_name: String::from("str"),
-            }),
+                loc,
+            }) => {
+                let Some(item) = self.modules[ctx.module_index].get_item(STR_TYPE_NAME) else {
+                    return Err(LoError {
+                        message: format!("Cannot use strings with no `str` struct defined"),
+                        loc: loc.clone(),
+                    });
+                };
+
+                Ok(LoType::StructInstance {
+                    struct_name: String::from(STR_TYPE_NAME),
+
+                    struct_index: item.collection_index,
+                })
+            }
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
                 fields: _,
                 has_trailing_comma: _,
                 loc,
             }) => {
-                let Some(_) = self.get_struct_def(&struct_name.repr) else {
+                let Some(item) = self.modules[ctx.module_index].get_item(&struct_name.repr) else {
                     return Err(LoError {
                         message: format!("Unknown struct: {}", struct_name.repr),
                         loc: loc.clone(),
@@ -3256,6 +3342,7 @@ impl Compiler {
 
                 return Ok(LoType::StructInstance {
                     struct_name: struct_name.repr.clone(),
+                    struct_index: item.collection_index,
                 });
             }
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
@@ -3366,7 +3453,14 @@ impl Compiler {
                         | LoType::F64
                         | LoType::Pointer { pointee: _ }
                         | LoType::SequencePointer { pointee: _ }
-                        | LoType::StructInstance { struct_name: _ }
+                        | LoType::StructInstance {
+                            struct_name: _,
+                            struct_index: _,
+                        }
+                        | LoType::EnumInstance {
+                            enum_name: _,
+                            enum_index: _,
+                        }
                         | LoType::Result(_) => Ok(expr_type),
                     }
                 }
@@ -3386,6 +3480,18 @@ impl Compiler {
                 args: _,
                 loc: _,
             }) => {
+                if let Some(item) = self.modules[ctx.module_index].get_item(&fn_name.repr) {
+                    if let ModuleItemCollection::EnumConstructor = item.collection {
+                        let ctor = &self.enum_ctors[item.collection_index];
+                        let enum_ = &self.enum_defs[ctor.enum_index];
+
+                        return Ok(LoType::EnumInstance {
+                            enum_name: enum_.enum_name.clone(),
+                            enum_index: ctor.enum_index,
+                        });
+                    }
+                }
+
                 let fn_info = self.get_fn_info_for_call(ctx, &fn_name.repr, &fn_name.loc)?;
 
                 Ok(fn_info.fn_type.output.clone())
@@ -3487,7 +3593,11 @@ impl Compiler {
                 Ok(result.ok.as_ref().clone())
             }
             CodeExpr::Dbg(_) => Ok(LoType::StructInstance {
-                struct_name: String::from("str"),
+                struct_name: String::from(STR_TYPE_NAME),
+                struct_index: self.modules[ctx.module_index]
+                    .get_item(STR_TYPE_NAME)
+                    .unwrap()
+                    .collection_index,
             }),
             CodeExpr::Sizeof(_) => Ok(LoType::U32),
             CodeExpr::Let(_) => Ok(LoType::Void),
@@ -3576,20 +3686,24 @@ impl Compiler {
             ));
         };
 
-        if let Some(global) = self.get_global(&ident.repr) {
-            return Ok(LoVariableInfo::Global {
-                global_index: global.global_index,
-                global_type: global.global_type.clone(),
-                inspect_info: if self.in_inspection_mode {
-                    Some(InspectInfo {
-                        message: format!("global {}: {}", ident.repr, global.global_type),
-                        loc: ident.loc.clone(),
-                        linked_loc: Some(global.def_expr.loc.clone()),
-                    })
-                } else {
-                    None
-                },
-            });
+        if let Some(item) = self.modules[ctx.module_index].get_item(&ident.repr) {
+            if let ModuleItemCollection::Global = item.collection {
+                let global = &self.globals[item.collection_index];
+
+                return Ok(LoVariableInfo::Global {
+                    global_index: global.global_index,
+                    global_type: global.global_type.clone(),
+                    inspect_info: if self.in_inspection_mode {
+                        Some(InspectInfo {
+                            message: format!("global {}: {}", ident.repr, global.global_type),
+                            loc: ident.loc.clone(),
+                            linked_loc: Some(global.def_expr.loc.clone()),
+                        })
+                    } else {
+                        None
+                    },
+                });
+            }
         }
 
         if let Some(const_) = self.get_const(ctx, &ident.repr) {
@@ -3751,7 +3865,11 @@ impl Compiler {
             lhs_type = pointee;
         }
 
-        let LoType::StructInstance { struct_name } = lhs_type else {
+        let LoType::StructInstance {
+            struct_name,
+            struct_index,
+        } = lhs_type
+        else {
             return Err(LoError {
                 message: format!(
                     "Cannot get field '{}' on non struct: {lhs_type}",
@@ -3761,7 +3879,7 @@ impl Compiler {
             });
         };
 
-        let struct_def = self.get_struct_def(&struct_name).unwrap();
+        let struct_def = &self.struct_defs[*struct_index];
         let Some(field) = struct_def
             .fields
             .iter()
@@ -4202,99 +4320,83 @@ impl Compiler {
     }
 
     fn get_type_or_err(&self, type_name: &str, loc: &LoLocation) -> Result<LoType, LoError> {
-        if let Some(typedef) = self.get_typedef(type_name) {
-            if self.in_inspection_mode {
-                match typedef.kind {
-                    LoTypeDefKind::Builtin => {
-                        self.print_inspection(&InspectInfo {
-                            message: format!("type {type_name} = <builtin>"),
-                            loc: loc.clone(),
-                            linked_loc: None,
-                        });
-                    }
-                    LoTypeDefKind::Struct => {
-                        self.print_inspection(&InspectInfo {
-                            message: format!("struct {type_name} {{ ... }}"),
-                            loc: loc.clone(),
-                            linked_loc: Some(typedef.loc.clone()),
-                        });
-                    }
-                    LoTypeDefKind::Alias => {
-                        self.print_inspection(&InspectInfo {
-                            message: format!("type {type_name} = {}", typedef.value),
-                            loc: loc.clone(),
-                            linked_loc: Some(typedef.loc.clone()),
-                        });
-                    }
+        let Some(item) = self
+            .get_module_by_file_index(loc.file_index)
+            .unwrap()
+            .get_item(type_name)
+        else {
+            return Err(LoError {
+                message: format!("Unknown type: {}", type_name),
+                loc: loc.clone(),
+            });
+        };
+
+        match item.collection {
+            ModuleItemCollection::Struct => {
+                if self.in_inspection_mode {
+                    self.print_inspection(&InspectInfo {
+                        message: format!("struct {type_name} {{ ... }}"),
+                        loc: loc.clone(),
+                        linked_loc: Some(item.loc.clone()),
+                    });
                 }
+
+                Ok(LoType::StructInstance {
+                    struct_name: String::from(type_name),
+                    struct_index: item.collection_index,
+                })
             }
+            ModuleItemCollection::Enum => {
+                if self.in_inspection_mode {
+                    self.print_inspection(&InspectInfo {
+                        message: format!("enum {type_name} {{ ... }}"),
+                        loc: loc.clone(),
+                        linked_loc: Some(item.loc.clone()),
+                    });
+                }
 
-            return Ok(typedef.value.clone());
-        }
-
-        Err(LoError {
-            message: format!("Unknown type: {}", type_name),
-            loc: loc.clone(),
-        })
-    }
-
-    fn get_typedef(&self, type_name: &str) -> Option<&LoTypeDef> {
-        for type_def in &self.type_defs {
-            if type_def.name == type_name {
-                return Some(type_def);
+                Ok(LoType::EnumInstance {
+                    enum_name: String::from(type_name),
+                    enum_index: item.collection_index,
+                })
             }
-        }
+            ModuleItemCollection::TypeAlias => {
+                let type_ = &self.type_aliases[item.collection_index];
 
-        None
+                // don't print inspection for built-ins
+                if self.in_inspection_mode && item.loc.file_index != 0 {
+                    self.print_inspection(&InspectInfo {
+                        message: format!("type {type_name} = {}", type_),
+                        loc: loc.clone(),
+                        linked_loc: Some(item.loc.clone()),
+                    });
+                }
+
+                Ok(type_.clone())
+            }
+            ModuleItemCollection::Function
+            | ModuleItemCollection::Macro
+            | ModuleItemCollection::Global
+            | ModuleItemCollection::Const
+            | ModuleItemCollection::EnumConstructor => Err(LoError {
+                message: format!("Item is not a type: {}", type_name),
+                loc: loc.clone(),
+            }),
+        }
     }
 
     fn get_const<'a>(&'a self, ctx: &'a LoExprContext, const_name: &str) -> Option<&'a LoConstDef> {
-        if let Some(const_def) = self.get_const_def(const_name) {
+        if let Some(item) = self.modules[ctx.module_index].get_item(const_name) {
+            let ModuleItemCollection::Const = item.collection else {
+                return None;
+            };
+
+            let const_def = &self.const_defs[item.collection_index];
             return Some(const_def);
         }
 
         if let Some(macro_arg) = ctx.get_macro_arg(const_name) {
             return Some(macro_arg);
-        }
-
-        None
-    }
-
-    fn get_const_def(&self, const_name: &str) -> Option<&LoConstDef> {
-        for const_def in &self.const_defs {
-            if const_def.const_name == const_name {
-                return Some(const_def);
-            }
-        }
-
-        None
-    }
-
-    fn get_macro_def(&self, macro_name: &str) -> Option<&MacroDefExpr> {
-        for macro_def in &self.macro_defs {
-            if macro_def.macro_name.repr == macro_name {
-                return Some(macro_def);
-            }
-        }
-
-        None
-    }
-
-    fn get_struct_def(&self, struct_name: &str) -> Option<&LoStructDef> {
-        for struct_def in &self.struct_defs {
-            if struct_def.struct_name == struct_name {
-                return Some(struct_def);
-            }
-        }
-
-        None
-    }
-
-    fn get_struct_def_mut(&mut self, struct_name: &str) -> Option<&mut LoStructDef> {
-        for struct_def in &mut self.struct_defs {
-            if struct_def.struct_name == struct_name {
-                return Some(struct_def);
-            }
         }
 
         None
@@ -4323,11 +4425,23 @@ impl Compiler {
             LoType::U64 | LoType::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
             LoType::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
             LoType::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
-            LoType::StructInstance { struct_name } => {
-                let struct_ref = self.get_struct_def(struct_name).unwrap();
+            LoType::StructInstance {
+                struct_name: _,
+                struct_index,
+            } => {
+                let struct_ref = &self.struct_defs[*struct_index];
                 for field in &struct_ref.fields {
                     self.codegen_default_value(ctx, instrs, &field.field_type);
                 }
+            }
+            LoType::EnumInstance {
+                enum_name: _,
+                enum_index,
+            } => {
+                let enum_def = &self.enum_defs[*enum_index];
+
+                self.codegen_default_value(ctx, instrs, &LoType::U32);
+                self.codegen_default_value(ctx, instrs, &enum_def.variant_type);
             }
             LoType::Result(result) => {
                 self.codegen_default_value(ctx, instrs, &result.ok);
@@ -4399,12 +4513,24 @@ impl Compiler {
             LoType::F64 => wasm_types.push(WasmType::F64),
             LoType::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
             LoType::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            LoType::StructInstance { struct_name } => {
-                let struct_def = self.get_struct_def(struct_name).unwrap();
+            LoType::StructInstance {
+                struct_name: _,
+                struct_index,
+            } => {
+                let struct_def = &self.struct_defs[*struct_index];
 
                 for field in &struct_def.fields {
                     self.lower_type(&field.field_type, wasm_types);
                 }
+            }
+            LoType::EnumInstance {
+                enum_name: _,
+                enum_index,
+            } => {
+                let enum_def = &self.enum_defs[*enum_index];
+
+                self.lower_type(&LoType::U32, wasm_types);
+                self.lower_type(&enum_def.variant_type, wasm_types);
             }
             LoType::Result(result) => {
                 self.lower_type(&result.ok, wasm_types);
@@ -4448,8 +4574,11 @@ impl Compiler {
                 layout.alignment = u32::max(layout.alignment, 8);
                 layout.byte_size = align(layout.byte_size, 8) + 8;
             }
-            LoType::StructInstance { struct_name } => {
-                let struct_def = self.get_struct_def(struct_name).unwrap();
+            LoType::StructInstance {
+                struct_name: _,
+                struct_index,
+            } => {
+                let struct_def = &self.struct_defs[*struct_index];
 
                 // append each field's layout to total struct layout
                 for field in &struct_def.fields {
@@ -4459,9 +4588,22 @@ impl Compiler {
                 layout.alignment = u32::max(layout.alignment, 1);
                 layout.byte_size = align(layout.byte_size, layout.alignment);
             }
+            LoType::EnumInstance {
+                enum_name: _,
+                enum_index,
+            } => {
+                let enum_def = &self.enum_defs[*enum_index];
+
+                self.get_type_layout(&LoType::U32, layout);
+                self.get_type_layout(&enum_def.variant_type, layout);
+
+                // TODO!!!: figure out the alignment and byte_size
+            }
             LoType::Result(result) => {
                 self.get_type_layout(&result.ok, layout);
                 self.get_type_layout(&result.err, layout);
+
+                // TODO!!!: figure out the alignment and byte_size
             }
         }
     }
@@ -4762,16 +4904,6 @@ impl Compiler {
         }
     }
 
-    fn get_global(&self, global_name: &str) -> Option<&LoGlobalDef> {
-        for global_def in &self.globals {
-            if global_def.def_expr.global_name.repr == global_name {
-                return Some(global_def);
-            }
-        }
-
-        None
-    }
-
     fn get_module_by_file_index(&self, file_index: u32) -> Option<&Module> {
         for module in &self.modules {
             if module.file_index == file_index {
@@ -4829,21 +4961,22 @@ impl Compiler {
         let source_range = RangeDisplay(&inspect_info.loc);
         let message = json_str_escape(&inspect_info.message);
 
-        let Some(linked_loc) = &inspect_info.linked_loc else {
-            stdout_writeln(format!(
-                "{{ \"type\": \"info\", \
-                    \"hover\": \"{message}\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
-            ));
-            return;
+        if let Some(linked_loc) = &inspect_info.linked_loc {
+            if linked_loc.file_index != 0 {
+                let target_index = linked_loc.file_index;
+                let target_range = RangeDisplay(&linked_loc);
+                stdout_writeln(format!(
+                    "{{ \"type\": \"info\", \
+                        \"link\": \"{target_index}/{target_range}\", \
+                        \"hover\": \"{message}\", \
+                        \"loc\": \"{source_index}/{source_range}\" }},",
+                ));
+                return;
+            }
         };
-
-        let target_index = linked_loc.file_index;
-        let target_range = RangeDisplay(&linked_loc);
 
         stdout_writeln(format!(
             "{{ \"type\": \"info\", \
-                \"link\": \"{target_index}/{target_range}\", \
                 \"hover\": \"{message}\", \
                 \"loc\": \"{source_index}/{source_range}\" }},",
         ));
