@@ -14,10 +14,9 @@ export fn _start() {
     defer args.free()
 
     if args.argc < 3 {
-        puts(USAGE)
-        puts("\n")
+        println(USAGE)
         return
     }
 
-    puts("WIP\n")
+    println("WIP")
 }

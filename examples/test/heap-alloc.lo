@@ -2,19 +2,19 @@ include "../lib/cli.lo"
 
 fn main() {
     let p1 = heap::alloc(1)
-    puts("p1 = ")
-    puts((p1 as u32).to_tmp_str!())
-    puts("\n")
+    print("p1 = ")
+    print((p1 as u32).to_tmp_str!())
+    print("\n")
 
     heap::free(p1)
 
     let p2 = heap::alloc(1)
-    puts("p2 = ")
-    puts((p2 as u32).to_tmp_str!())
-    puts("\n")
+    print("p2 = ")
+    print((p2 as u32).to_tmp_str!())
+    print("\n")
 
     let p3 = heap::alloc(1)
-    puts("p3 = ")
-    puts((p3 as u32).to_tmp_str!())
-    puts("\n")
+    print("p3 = ")
+    print((p3 as u32).to_tmp_str!())
+    print("\n")
 }

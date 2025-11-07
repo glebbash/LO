@@ -12,12 +12,12 @@ fn main() {
 
 fn go(dir: Dir) {
     if match Dir::Left(steps) = dir {
-        puts("going left ")
-        puts(steps.to_tmp_str!())
-        puts(" steps\n")
+        print("going left ")
+        print(steps.to_tmp_str!())
+        print(" steps\n")
     } else if match Dir::Right(steps) = dir {
-        puts("going right ")
-        puts(steps.to_tmp_str!())
-        puts(" steps\n")
+        print("going right ")
+        print(steps.to_tmp_str!())
+        print(" steps\n")
     }
 }

@@ -23,12 +23,11 @@ fn main() {
     }))
 
     if match Expr::Binary(bin) = expr {
-        puts(bin.operator)
+        print(bin.operator)
 
         match Expr::Item(item) = bin.lhs else {
             @unreachable()
         }
-        puts(item.name)
-        puts("\n")
+        println(item.name)
     }
 }

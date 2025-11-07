@@ -20,8 +20,7 @@ fn main() {
     result *= map.count_trees_on_slope(1, 7) as u64
     result *= map.count_trees_on_slope(2, 1) as u64
 
-    puts(result.to_tmp_str!())
-    puts("\n")
+    println(result.to_tmp_str!())
 }
 
 struct Map {

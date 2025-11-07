@@ -1,24 +1,24 @@
 include "../lib/cli.lo"
 
 fn main() {
-    defer puts("defer(main): 1\n")
-    defer puts("defer(main): 2\n")
-    defer puts("defer(main): 3\n")
+    defer println("defer(main): 1")
+    defer println("defer(main): 2")
+    defer println("defer(main): 3")
     inner_fn()
 }
 
 fn inner_fn() {
-    defer puts("defer(inner_fn): top level\n")
+    defer println("defer(inner_fn): top level")
     for i in 0..3 {
         let message = String::from_str("defer(inner_fn): loop (iteration #")
         message.push_str((i + 1).to_tmp_str!())
-        message.push_str(")\n")
+        message.push_str(")")
 
         // exprs in loops run after each iteration
-        defer puts(message.as_str())
+        defer println(message.as_str())
     }
     if false {
         // defers won't run if the scope was never entered
-        defer puts("defer(inner_fn): won't trigger\n")
+        defer println("defer(inner_fn): won't trigger")
     }
 }

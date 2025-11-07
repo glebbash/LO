@@ -75,6 +75,5 @@ fn main() {
         }
     }
 
-    puts(valid_passwords.to_tmp_str!())
-    puts("\n")
+    println(valid_passwords.to_tmp_str!())
 }

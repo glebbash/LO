@@ -6,7 +6,7 @@ fn main() {
     let args = Args::load()
     defer args.free()
     if args.argc != 2 {
-        eputs("Usage cat.lo <file>")
+        eprint("Usage cat.lo <file>\n")
         wasi::proc_exit(1)
     }
 

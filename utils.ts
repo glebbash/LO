@@ -445,7 +445,7 @@ async function commandTest() {
 
         assert.strictEqual(
             output,
-            "examples/test/tracing.lo:4:10 - hello there\n"
+            "examples/test/tracing.lo:4:13 - hello there\n"
         );
     });
 
@@ -973,7 +973,7 @@ async function commandTest() {
             } catch (err) {
                 assert.strictEqual(
                     (err as Error).message,
-                    "Usage cat.lo <file>"
+                    "Usage cat.lo <file>\n"
                 );
             }
         });
@@ -982,7 +982,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/tracing.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "examples/test/tracing.lo:4:10 - hello there\n"
+                "examples/test/tracing.lo:4:13 - hello there\n"
             );
         });
 

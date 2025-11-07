@@ -16,8 +16,7 @@ fn main() {
         }
     }
 
-    puts(max_seat_id.to_tmp_str!())
-    puts("\n")
+    println(max_seat_id.to_tmp_str!())
 }
 
 fn parse_seat_id(input: str): u32 {

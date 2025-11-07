@@ -7,11 +7,11 @@ const fs::CWD_PREOPEN_FD = 3
 
 macro fs::read_file!(file_name: str): String {
     fs::read_file(file_name) catch err {
-        eputs("Error reading file '")
-        eputs(file_name)
-        eputs("': code ")
-        eputs(err.to_tmp_str!())
-        eputs("\n")
+        eprint("Error reading file '")
+        eprint(file_name)
+        eprint("': code ")
+        eprint(err.to_tmp_str!())
+        eprint("\n")
         wasi::proc_exit(1)
     }
 }
@@ -32,9 +32,9 @@ fn fs::_unlock() {
     }
     let err = 0
     defer if err != 0 {
-        eputs("Error unlocking fs: code ")
-        eputs(err.to_tmp_str!())
-        eputs("\n")
+        eprint("Error unlocking fs: code ")
+        eprint(err.to_tmp_str!())
+        eprint("\n")
         wasi::proc_exit(1)
     }
     let prestat = tmp_alloc!<wasi::prestat>()

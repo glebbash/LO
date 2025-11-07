@@ -6,10 +6,10 @@ fn main() {
         4, \\ 5, \\ 6,
         7, \\ 8, \\ 9,
     ) do {
-        puts(x.to_tmp_str!())
+        print(x.to_tmp_str!())
     }
 
-    puts("\n-------------\n")
+    print("\n-------------\n")
 
     with x in (
         "{",
@@ -18,8 +18,8 @@ fn main() {
         " \"path\": \"", \\ "some_path.lo", \\ "\" ",
         "},",
     ) do {
-        puts(x)
+        print(x)
     }
 
-    puts("\n")
+    print("\n")
 }
