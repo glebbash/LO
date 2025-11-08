@@ -38,18 +38,14 @@ impl LoToken {
 
 pub struct Lexer {
     // context
-    file_index: u32,
-    source: &'static [u8],
+    pub file_index: u32,
+    pub source: &'static [u8],
 
     // state
-    source_pos: LoPosition,
-    was_newline: bool,
-    comments: Vec<LoLocation>,
-    backslashes: Vec<LoLocation>,
-    double_backslashes: Vec<LoLocation>,
-}
+    pub source_pos: LoPosition,
+    pub was_newline: bool,
 
-pub struct LexerResult {
+    // output
     pub tokens: Vec<LoToken>,
     pub comments: Vec<LoLocation>,
     pub backslashes: Vec<LoLocation>,
@@ -57,8 +53,8 @@ pub struct LexerResult {
 }
 
 impl Lexer {
-    pub fn lex(source: &'static [u8], file_index: u32) -> Result<LexerResult, LoError> {
-        let mut lexer = Lexer {
+    pub fn new(source: &'static [u8], file_index: u32) -> Self {
+        Self {
             file_index,
             source,
 
@@ -67,39 +63,31 @@ impl Lexer {
                 line: 1,
                 col: 1,
             },
-
             was_newline: false,
+
+            tokens: Vec::new(),
             comments: Vec::new(),
             backslashes: Vec::new(),
             double_backslashes: Vec::new(),
-        };
-
-        let tokens = lexer.lex_file()?;
-
-        Ok(LexerResult {
-            tokens,
-            comments: lexer.comments,
-            backslashes: lexer.backslashes,
-            double_backslashes: lexer.double_backslashes,
-        })
+        }
     }
 
-    fn lex_file(&mut self) -> Result<Vec<LoToken>, LoError> {
-        let mut tokens = Vec::new();
-
+    pub fn lex_file(&mut self) -> Result<(), LoError> {
         self.skip_space();
 
         while self.source_pos.offset < self.source.len() {
-            tokens.push(self.lex_token()?);
+            let token = self.lex_token()?;
+            self.tokens.push(token);
+
             self.skip_space();
         }
 
-        tokens.push(LoToken {
+        self.tokens.push(LoToken {
             type_: LoTokenType::Terminal,
             loc: self.loc(),
         });
 
-        Ok(tokens)
+        Ok(())
     }
 
     fn lex_token(&mut self) -> Result<LoToken, LoError> {

@@ -21,25 +21,21 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse(source: &'static [u8], lex: LexerResult) -> Result<AST, LoError> {
-        let parser = Parser {
-            source,
-            tokens: lex.tokens,
+    pub fn new(lexer: Lexer) -> Self {
+        Self {
+            source: lexer.source,
+            tokens: lexer.tokens,
             tokens_processed: RefCell::new(0),
             ast: AST {
                 exprs: Vec::new(),
-                comments: lex.comments,
-                backslashes: lex.backslashes,
-                double_backslashes: lex.double_backslashes,
+                comments: lexer.comments,
+                backslashes: lexer.backslashes,
+                double_backslashes: lexer.double_backslashes,
             },
-        };
-
-        parser.parse_file()?;
-
-        Ok(parser.ast)
+        }
     }
 
-    fn parse_file(&self) -> Result<(), LoError> {
+    pub fn parse_file(&self) -> Result<(), LoError> {
         while self.peek().is_some() {
             let expr = self.parse_top_level_expr()?;
             self.ast.relax().be_mut().exprs.push(expr);

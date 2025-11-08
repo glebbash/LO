@@ -609,12 +609,14 @@ impl Compiler {
 
         let source = self.fm.get_file_source(file.index);
 
-        let tokens = catch!(Lexer::lex(source, file.index), err, {
+        let mut lexer = Lexer::new(source, file.index);
+        catch!(lexer.lex_file(), err, {
             self.report_error(&err);
             return None;
         });
 
-        let ast = catch!(Parser::parse(source, tokens), err, {
+        let parser = Parser::new(lexer);
+        catch!(parser.parse_file(), err, {
             self.report_error(&err);
             return None;
         });
@@ -622,7 +624,7 @@ impl Compiler {
         let mut includes = Vec::new();
 
         if !self.in_single_file_mode {
-            for expr in &ast.exprs {
+            for expr in &parser.ast.exprs {
                 let TopLevelExpr::Include(include) = expr else {
                     continue;
                 };
@@ -646,7 +648,7 @@ impl Compiler {
             index: module_index,
             file_index: file.index,
             source,
-            ast,
+            ast: parser.ast,
             ctx,
             includes,
             own_items: Vec::new(),

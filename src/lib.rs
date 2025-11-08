@@ -87,13 +87,13 @@ pub extern "C" fn _start() {
         });
         let source = fm.get_file_source(file.index);
 
-        let lex = Lexer::lex(source, file.index);
-        let lex = catch!(lex, err, {
+        let mut lexer = Lexer::new(source, file.index);
+        catch!(lexer.lex_file(), err, {
             stderr_writeln(err.to_string(&fm));
             proc_exit(1)
         });
 
-        for token in lex.tokens {
+        for token in lexer.tokens {
             stdout_writeln(format!(
                 "{} - [[{}]] {:?}",
                 token.loc.to_string(&fm),
