@@ -434,13 +434,18 @@ impl WasmEval {
                 WasmInstr::UnaryOp { kind } => match kind {
                     WasmUnaryOpKind::I32_EQZ => {
                         let op = self.pop_i32();
-                        let value = if op == 0 { 1 } else { 0 };
+                        let value = !op;
                         self.stack.push(WasmValue::I32 { value });
                     }
                     WasmUnaryOpKind::I64_EQZ => {
                         let op = self.pop_i64();
-                        let value = if op == 0 { 1 } else { 0 };
+                        let value = !op as i32;
                         self.stack.push(WasmValue::I32 { value });
+                    }
+                    WasmUnaryOpKind::F32_NEG => {
+                        let op = self.pop_f32();
+                        let value = -op;
+                        self.stack.push(WasmValue::F32 { value });
                     }
                     WasmUnaryOpKind::F64_NEG => {
                         let op = self.pop_f64();
@@ -730,6 +735,20 @@ impl WasmEval {
         let WasmValue::I64 { value } = wasm_value else {
             let err = self.err_with_stack(format!(
                 "Trying to pop I64 but got {:?}",
+                wasm_value.get_type()
+            ));
+            stderr_write(format!("Error: {}\n", err.message));
+            proc_exit(1);
+        };
+
+        value
+    }
+
+    fn pop_f32(&mut self) -> f32 {
+        let wasm_value = self.stack.pop().unwrap();
+        let WasmValue::F32 { value } = wasm_value else {
+            let err = self.err_with_stack(format!(
+                "Trying to pop F32 but got {:?}",
                 wasm_value.get_type()
             ));
             stderr_write(format!("Error: {}\n", err.message));

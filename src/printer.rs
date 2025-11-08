@@ -564,7 +564,7 @@ impl Printer {
                 }
             }
             CodeExpr::InfixOp(InfixOpExpr {
-                op_tag,
+                op_tag: _,
                 op_loc,
                 lhs,
                 rhs,
@@ -574,17 +574,17 @@ impl Printer {
                 if !self.print_backslashes_before(op_loc.pos.offset) {
                     stdout_write(" ");
                 }
-                stdout_write(op_tag.to_str());
+                stdout_write(op_loc.read_span(self.source));
                 stdout_write(" ");
                 self.print_code_expr(rhs);
             }
             CodeExpr::PrefixOp(PrefixOpExpr {
                 expr,
-                op_tag,
-                op_loc: _,
+                op_tag: _,
+                op_loc,
                 loc: _,
             }) => {
-                stdout_write(op_tag.to_str());
+                stdout_write(op_loc.read_span(self.source));
                 self.print_code_expr(expr);
             }
             CodeExpr::If(IfExpr {
@@ -640,6 +640,7 @@ impl Printer {
                 start,
                 end,
                 body,
+                op_loc: _,
                 loc: _,
             }) => {
                 stdout_write("for ");

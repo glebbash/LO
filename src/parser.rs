@@ -682,7 +682,7 @@ impl Parser {
 
         if let Some(string) = self.eat_any(StringLiteral)?.cloned() {
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                value: Lexer::unescape_string(&string.get_value(self.source)),
+                value: EscapedString(string.loc.clone()).unescape(self.source),
                 repr: string.get_value(self.source).to_string(),
                 loc: string.loc,
             }));
@@ -808,7 +808,7 @@ impl Parser {
             let counter = self.parse_ident()?;
             self.expect(Symbol, "in")?;
             let start = self.parse_code_expr(0)?;
-            self.expect(Operator, "..")?;
+            let op = self.expect(Operator, "..")?.clone();
             let end = self.parse_code_expr(0)?;
             let body = self.parse_code_block()?;
 
@@ -819,6 +819,7 @@ impl Parser {
                 start: Box::new(start),
                 end: Box::new(end),
                 body: Box::new(body),
+                op_loc: op.loc,
                 loc,
             }));
         }

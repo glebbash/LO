@@ -67,6 +67,7 @@ pub struct WasmExpr {
 pub enum WasmUnaryOpKind {
     I32_EQZ = 0x45,
     I64_EQZ = 0x50,
+    F32_NEG = 0x8C,
     F64_NEG = 0x9A,
 }
 

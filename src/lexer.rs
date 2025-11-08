@@ -201,7 +201,7 @@ impl Lexer {
 
         let mut hex = false;
         if let Ok('0') = self.current_char() {
-            if let Ok('x') = self.peek_next_char() {
+            if let Ok('x') = self.peek_char(1) {
                 self.next_char();
                 self.next_char();
                 hex = true;
@@ -268,38 +268,6 @@ impl Lexer {
             type_: LoTokenType::StringLiteral,
             loc,
         })
-    }
-
-    pub fn unescape_string(escaped: &str) -> String {
-        let mut unescaped = String::new();
-
-        let mut chars = escaped.chars();
-
-        chars.next().unwrap(); // skip start quote
-
-        loop {
-            let char = chars.next().unwrap();
-            match char {
-                '"' => break,
-                '\\' => {
-                    let next_char = chars.next().unwrap();
-                    match next_char {
-                        'n' => unescaped.push('\n'),
-                        'r' => unescaped.push('\r'),
-                        't' => unescaped.push('\t'),
-                        '0' => unescaped.push('\0'),
-                        '\\' => unescaped.push('\\'),
-                        '"' => unescaped.push('"'),
-                        _ => unreachable!(),
-                    }
-                }
-                _ => {
-                    unescaped.push(char);
-                }
-            }
-        }
-
-        unescaped
     }
 
     fn lex_delim(&mut self) -> Result<LoToken, LoError> {
@@ -371,7 +339,7 @@ impl Lexer {
             self.next_char();
         }
 
-        if self.current_char() == Ok('/') && self.peek_next_char() == Ok('/') {
+        if self.current_char() == Ok('/') && self.peek_char(1) == Ok('/') {
             let comment = self.lex_comment();
             self.comments.push(comment);
             self.skip_space();
@@ -444,22 +412,14 @@ impl Lexer {
     }
 
     fn current_char(&mut self) -> Result<char, LoError> {
-        let mut char_offset = self.source_pos.offset;
-        next_utf8_char(&self.source, &mut char_offset).map_err(|err| match err {
-            NextCharError::InvalidUtf8 => LoError {
-                message: format!("ParseError: Invalid UTF-8 sequence"),
-                loc: self.loc(),
-            },
-            NextCharError::EndOfSource => LoError {
-                message: format!("ParseError: Unexpected EOF"),
-                loc: self.loc(),
-            },
-        })
+        self.peek_char(0)
     }
 
-    fn peek_next_char(&mut self) -> Result<char, LoError> {
+    fn peek_char(&mut self, skip_chars: usize) -> Result<char, LoError> {
         let mut char_offset = self.source_pos.offset;
-        let _ = next_utf8_char(&self.source, &mut char_offset);
+        for _ in 0..skip_chars {
+            let _ = next_utf8_char(&self.source, &mut char_offset);
+        }
         next_utf8_char(&self.source, &mut char_offset).map_err(|err| match err {
             NextCharError::InvalidUtf8 => LoError {
                 message: format!("ParseError: Invalid UTF-8 sequence"),
@@ -483,6 +443,48 @@ impl Lexer {
             pos,
             end_pos,
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct EscapedString(pub LoLocation);
+
+impl EscapedString {
+    pub fn get_raw(&self, source: &'static [u8]) -> &str {
+        return self.0.read_span(source);
+    }
+
+    pub fn unescape(&self, source: &'static [u8]) -> String {
+        let escaped = self.get_raw(source);
+        let mut unescaped = String::new();
+
+        let mut chars = escaped.chars();
+
+        chars.next().unwrap(); // skip start quote
+
+        loop {
+            let char = chars.next().unwrap();
+            match char {
+                '"' => break,
+                '\\' => {
+                    let next_char = chars.next().unwrap();
+                    match next_char {
+                        'n' => unescaped.push('\n'),
+                        'r' => unescaped.push('\r'),
+                        't' => unescaped.push('\t'),
+                        '0' => unescaped.push('\0'),
+                        '\\' => unescaped.push('\\'),
+                        '"' => unescaped.push('"'),
+                        _ => unreachable!(),
+                    }
+                }
+                _ => {
+                    unescaped.push(char);
+                }
+            }
+        }
+
+        unescaped
     }
 }
 
@@ -590,44 +592,6 @@ pub enum InfixOpTag {
     ErrorPropagation,
 }
 
-impl InfixOpTag {
-    pub fn to_str(&self) -> &str {
-        match self {
-            InfixOpTag::Equal => "==",
-            InfixOpTag::NotEqual => "!=",
-            InfixOpTag::Less => "<",
-            InfixOpTag::Greater => ">",
-            InfixOpTag::LessEqual => "<=",
-            InfixOpTag::GreaterEqual => ">=",
-            InfixOpTag::Add => "+",
-            InfixOpTag::Sub => "-",
-            InfixOpTag::Mul => "*",
-            InfixOpTag::Div => "/",
-            InfixOpTag::Mod => "%",
-            InfixOpTag::And => "&&",
-            InfixOpTag::BitAnd => "&",
-            InfixOpTag::Or => "||",
-            InfixOpTag::BitOr => "|",
-            InfixOpTag::ShiftLeft => "<<",
-            InfixOpTag::ShiftRight => ">>",
-            InfixOpTag::Assign => "=",
-            InfixOpTag::AddAssign => "+=",
-            InfixOpTag::SubAssign => "-=",
-            InfixOpTag::MulAssign => "*=",
-            InfixOpTag::DivAssign => "/=",
-            InfixOpTag::ModAssign => "%=",
-            InfixOpTag::BitAndAssign => "&=",
-            InfixOpTag::BitOrAssign => "|=",
-            InfixOpTag::ShiftLeftAssign => "<<=",
-            InfixOpTag::ShiftRightAssign => ">>=",
-            InfixOpTag::Cast => "as",
-            InfixOpTag::FieldAccess => ".",
-            InfixOpTag::Catch => "catch",
-            InfixOpTag::ErrorPropagation => "?",
-        }
-    }
-}
-
 pub struct InfixOp {
     pub tag: InfixOpTag,
     pub info: OpInfo,
@@ -638,6 +602,7 @@ impl InfixOp {
     pub fn parse(token: LoToken, source: &'static [u8]) -> Option<Self> {
         use InfixOpTag::*;
         use OpAssoc::*;
+
         let (tag, info) = match token.get_value(source) {
             "catch" => (Catch, OpInfo { bp: 13, assoc: L }),
 
@@ -700,17 +665,6 @@ pub enum PrefixOpTag {
     Negative,
 }
 
-impl PrefixOpTag {
-    pub fn to_str(&self) -> &str {
-        match self {
-            PrefixOpTag::Not => "!",
-            PrefixOpTag::Dereference => "*",
-            PrefixOpTag::Positive => "+",
-            PrefixOpTag::Negative => "-",
-        }
-    }
-}
-
 pub struct PrefixOp {
     pub tag: PrefixOpTag,
     pub info: OpInfo,
@@ -721,6 +675,7 @@ impl PrefixOp {
     pub fn parse(token: LoToken, source: &'static [u8]) -> Option<Self> {
         use OpAssoc::*;
         use PrefixOpTag::*;
+
         let (tag, info) = match token.get_value(source) {
             "!" => (Not, OpInfo { bp: 8, assoc: L }),
             "*" => (Dereference, OpInfo { bp: 8, assoc: L }),

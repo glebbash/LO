@@ -1655,7 +1655,7 @@ impl Compiler {
                 value,
                 tag,
                 loc: _,
-            }) => self.codegen_int_const(ctx, instrs, *value as i32, tag.as_deref()),
+            }) => self.codegen_int_const(instrs, *value as i32, tag.as_deref()),
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
                 value,
@@ -1918,7 +1918,7 @@ impl Compiler {
                 if let Some(inspect_info) = var.inspect_info() {
                     self.print_inspection(inspect_info);
                 }
-                self.codegen_var_set_prepare(ctx, instrs, &var);
+                self.codegen_var_set_prepare(instrs, &var);
                 self.codegen(ctx, instrs, value)?;
                 self.codegen_var_set(ctx, instrs, &var)?;
             }
@@ -1964,6 +1964,8 @@ impl Compiler {
                     self.codegen_var_get(ctx, instrs, &var)?;
                 }
                 PrefixOpTag::Not => {
+                    self.codegen(ctx, instrs, expr)?;
+
                     let operand_type = self.get_expr_type(ctx, expr)?;
                     let mut wasm_components = Vec::new();
                     self.lower_type(&operand_type, &mut wasm_components);
@@ -1978,16 +1980,26 @@ impl Compiler {
                     }
                     match wasm_components[0] {
                         WasmType::I32 => {
-                            instrs.push(WasmInstr::I32Const { value: 0 });
+                            instrs.push(WasmInstr::UnaryOp {
+                                kind: WasmUnaryOpKind::I32_EQZ,
+                            });
                         }
                         WasmType::I64 => {
-                            instrs.push(WasmInstr::I64Const { value: 0 });
+                            instrs.push(WasmInstr::UnaryOp {
+                                kind: WasmUnaryOpKind::I64_EQZ,
+                            });
                         }
                         WasmType::F32 => {
                             instrs.push(WasmInstr::F32Const { value: 0.0 });
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::F32_EQ,
+                            });
                         }
                         WasmType::F64 => {
                             instrs.push(WasmInstr::F64Const { value: 0.0 });
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::F64_EQ,
+                            });
                         }
                         WasmType::FuncRef => {
                             return Err(LoError {
@@ -1999,11 +2011,6 @@ impl Compiler {
                             });
                         }
                     }
-
-                    self.codegen(ctx, instrs, expr)?;
-                    instrs.push(WasmInstr::BinaryOp {
-                        kind: self.get_binary_op_kind(&InfixOpTag::Equal, &operand_type, loc)?,
-                    });
                 }
                 PrefixOpTag::Positive => {
                     self.codegen(ctx, instrs, expr)?;
@@ -2011,7 +2018,6 @@ impl Compiler {
                 PrefixOpTag::Negative => {
                     if let CodeExpr::IntLiteral(int_literal) = expr.as_ref() {
                         self.codegen_int_const(
-                            ctx,
                             instrs,
                             -(int_literal.value as i32),
                             int_literal.tag.as_deref(),
@@ -2031,15 +2037,29 @@ impl Compiler {
                     match wasm_components[0] {
                         WasmType::I32 => {
                             instrs.push(WasmInstr::I32Const { value: 0 });
+                            self.codegen(ctx, instrs, expr)?;
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::I32_SUB,
+                            });
                         }
                         WasmType::I64 => {
                             instrs.push(WasmInstr::I64Const { value: 0 });
+                            self.codegen(ctx, instrs, expr)?;
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::I64_SUB,
+                            });
                         }
                         WasmType::F32 => {
-                            instrs.push(WasmInstr::F32Const { value: 0.0 });
+                            self.codegen(ctx, instrs, expr)?;
+                            instrs.push(WasmInstr::UnaryOp {
+                                kind: WasmUnaryOpKind::F32_NEG,
+                            });
                         }
                         WasmType::F64 => {
-                            instrs.push(WasmInstr::F64Const { value: 0.0 });
+                            self.codegen(ctx, instrs, expr)?;
+                            instrs.push(WasmInstr::UnaryOp {
+                                kind: WasmUnaryOpKind::F64_NEG,
+                            });
                         }
                         WasmType::FuncRef => {
                             return Err(LoError {
@@ -2048,11 +2068,6 @@ impl Compiler {
                             });
                         }
                     }
-
-                    self.codegen(ctx, instrs, expr)?;
-                    instrs.push(WasmInstr::BinaryOp {
-                        kind: self.get_binary_op_kind(&InfixOpTag::Sub, &operand_type, loc)?,
-                    });
                 }
             },
             CodeExpr::InfixOp(InfixOpExpr {
@@ -2086,20 +2101,18 @@ impl Compiler {
                         self.print_inspection(inspect_info);
                     }
 
-                    self.codegen_var_set_prepare(ctx, instrs, &var);
+                    self.codegen_var_set_prepare(instrs, &var);
                     self.codegen_var_get(ctx, instrs, &var)?;
                     self.codegen(ctx, instrs, rhs)?;
-                    let kind = self.get_binary_op_kind(&base_op, &lhs_type, op_loc)?;
-                    instrs.push(WasmInstr::BinaryOp { kind });
+                    self.codegen_binary_op(instrs, &base_op, &lhs_type, op_loc)?;
+
                     self.codegen_var_set(ctx, instrs, &var)?;
                     return Ok(());
                 }
 
                 self.codegen(ctx, instrs, lhs)?;
                 self.codegen(ctx, instrs, rhs)?;
-
-                let kind = self.get_binary_op_kind(op_tag, &lhs_type, op_loc)?;
-                instrs.push(WasmInstr::BinaryOp { kind });
+                self.codegen_binary_op(instrs, &op_tag, &lhs_type, op_loc)?;
             }
 
             CodeExpr::Assign(AssignExpr {
@@ -2117,7 +2130,7 @@ impl Compiler {
                 if let Some(inspect_info) = var.inspect_info() {
                     self.print_inspection(inspect_info);
                 }
-                self.codegen_var_set_prepare(ctx, instrs, &var);
+                self.codegen_var_set_prepare(instrs, &var);
                 self.codegen(ctx, instrs, rhs)?;
                 self.codegen_var_set(ctx, instrs, &var)?;
             }
@@ -2141,7 +2154,7 @@ impl Compiler {
                         let enum_ = &self.enum_defs[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
 
-                        self.codegen_int_const(ctx, instrs, ctor.variant_index as i32, None);
+                        self.codegen_int_const(instrs, ctor.variant_index as i32, None);
 
                         if variant.variant_type == LoType::Void && args.items.len() == 0 {
                             return Ok(());
@@ -2524,6 +2537,7 @@ impl Compiler {
                 start,
                 end,
                 body,
+                op_loc,
                 loc,
             }) => {
                 let counter_type = self.get_expr_type(ctx, start)?;
@@ -2557,7 +2571,7 @@ impl Compiler {
                 if let Some(inspect_info) = counter_var.inspect_info() {
                     self.print_inspection(inspect_info);
                 }
-                self.codegen_var_set_prepare(ctx, instrs, &counter_var);
+                self.codegen_var_set_prepare(instrs, &counter_var);
                 self.codegen(ctx, instrs, start)?;
                 self.codegen_var_set(ctx, instrs, &counter_var)?;
 
@@ -2576,9 +2590,7 @@ impl Compiler {
                         // break if counter is equal to end
                         self.codegen(ctx, instrs, end)?;
                         self.codegen_var_get(ctx, instrs, &counter_var)?;
-                        let cmp_kind =
-                            self.get_binary_op_kind(&InfixOpTag::Equal, &counter_type, loc)?;
-                        instrs.push(WasmInstr::BinaryOp { kind: cmp_kind });
+                        self.codegen_binary_op(instrs, &InfixOpTag::Equal, &counter_type, op_loc)?;
                         instrs.push(WasmInstr::BranchIf { label_index: 1 });
 
                         {
@@ -2594,15 +2606,9 @@ impl Compiler {
 
                         // increment counter
                         self.codegen_var_get(ctx, instrs, &counter_var)?;
-                        self.codegen_var_set_prepare(ctx, instrs, &counter_var);
-                        self.codegen_int_const(
-                            ctx,
-                            instrs,
-                            1,
-                            Some(counter_type.to_string().as_str()),
-                        );
-                        let kind = self.get_binary_op_kind(&InfixOpTag::Add, &counter_type, loc)?;
-                        instrs.push(WasmInstr::BinaryOp { kind });
+                        self.codegen_var_set_prepare(instrs, &counter_var);
+                        self.codegen_int_const(instrs, 1, Some(counter_type.to_string().as_str()));
+                        self.codegen_binary_op(instrs, &InfixOpTag::Add, &counter_type, op_loc)?;
                         self.codegen_var_set(ctx, instrs, &counter_var)?;
 
                         // implicit continue
@@ -2759,7 +2765,7 @@ impl Compiler {
         if let Some(inspect_info) = local.inspect_info() {
             self.print_inspection(inspect_info);
         }
-        self.codegen_var_set_prepare(ctx, instrs, &local);
+        self.codegen_var_set_prepare(instrs, &local);
         self.codegen(ctx, instrs, &header.expr_to_match)?;
         self.codegen_var_set(ctx, instrs, &local)?;
 
@@ -3093,7 +3099,7 @@ impl Compiler {
                 self.print_inspection(inspect_info);
             }
         }
-        self.codegen_var_set_prepare(ctx, instrs, &err_var);
+        self.codegen_var_set_prepare(instrs, &err_var);
         self.codegen_var_set(ctx, instrs, &err_var)?;
 
         // pop ok
@@ -3572,7 +3578,7 @@ impl Compiler {
             }) => self.build_type(ctx, casted_to),
             CodeExpr::FieldAccess(field_access) => {
                 let lhs_type = self.get_expr_type(ctx, &field_access.lhs)?;
-                let field = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
+                let field = self.get_struct_or_struct_ref_field(&lhs_type, field_access)?;
                 Ok(field.field_type.clone())
             }
             CodeExpr::FnCall(FnCallExpr {
@@ -3836,7 +3842,7 @@ impl Compiler {
     ) -> Result<LoVariableInfo, LoError> {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref())?;
 
-        let field = self.get_struct_or_struct_ref_field(ctx, &lhs_type, field_access)?;
+        let field = self.get_struct_or_struct_ref_field(&lhs_type, field_access)?;
 
         let inspect_info = if self.in_inspection_mode {
             Some(InspectInfo {
@@ -3958,7 +3964,6 @@ impl Compiler {
 
     fn get_struct_or_struct_ref_field(
         &self,
-        _ctx: &LoExprContext,
         mut lhs_type: &LoType,
         field_access: &FieldAccessExpr,
     ) -> Result<&LoStructField, LoError> {
@@ -4124,7 +4129,7 @@ impl Compiler {
                         local_type: field_type.clone(),
                         inspect_info: None,
                     };
-                    self.codegen_var_set_prepare(ctx, instrs, &var);
+                    self.codegen_var_set_prepare(instrs, &var);
                     self.codegen_var_set(ctx, instrs, &var)?;
 
                     for _ in 0..*drops_after {
@@ -4140,12 +4145,7 @@ impl Compiler {
     }
 
     // should be called before set's value is pushed to the stack
-    fn codegen_var_set_prepare(
-        &self,
-        _ctx: &mut LoExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        var: &LoVariableInfo,
-    ) {
+    fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &LoVariableInfo) {
         match var {
             LoVariableInfo::Stored {
                 address,
@@ -4551,13 +4551,7 @@ impl Compiler {
         }
     }
 
-    fn codegen_int_const(
-        &self,
-        _ctx: &LoExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        value: i32,
-        tag: Option<&str>,
-    ) {
+    fn codegen_int_const(&self, instrs: &mut Vec<WasmInstr>, value: i32, tag: Option<&str>) {
         match tag.as_deref() {
             Some("u32") | Some("i32") | None => instrs.push(WasmInstr::I32Const { value }),
             Some("u64") | Some("i64") => instrs.push(WasmInstr::I64Const {
@@ -4741,11 +4735,23 @@ impl Compiler {
         None
     }
 
+    fn codegen_binary_op(
+        &self,
+        instrs: &mut Vec<WasmInstr>,
+        op_tag: &InfixOpTag,
+        operand_type: &LoType,
+        op_loc: &LoLocation,
+    ) -> Result<(), LoError> {
+        let kind = self.get_binary_op_kind(op_tag, operand_type, op_loc)?;
+        instrs.push(WasmInstr::BinaryOp { kind });
+        Ok(())
+    }
+
     fn get_binary_op_kind(
         &self,
         op_tag: &InfixOpTag,
         operand_type: &LoType,
-        loc: &LoLocation,
+        op_loc: &LoLocation,
     ) -> Result<WasmBinaryOpKind, LoError> {
         match op_tag {
             InfixOpTag::Equal => match operand_type {
@@ -4959,12 +4965,13 @@ impl Compiler {
             | InfixOpTag::ErrorPropagation => unreachable!(),
         }
 
+        let module = self.get_module_by_file_index(op_loc.file_index).unwrap();
         return Err(LoError {
             message: format!(
                 "Operator `{}` is incompatible with operands of type {operand_type}",
-                op_tag.to_str(),
+                op_loc.read_span(module.source),
             ),
-            loc: loc.clone(),
+            loc: op_loc.clone(),
         });
     }
 

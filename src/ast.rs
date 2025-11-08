@@ -366,6 +366,7 @@ pub struct ForLoopExpr {
     pub start: Box<CodeExpr>,
     pub end: Box<CodeExpr>,
     pub body: Box<CodeBlock>,
+    pub op_loc: LoLocation,
     pub loc: LoLocation,
 }
 
@@ -540,18 +541,5 @@ impl CodeExpr {
             CodeExpr::PrefixOp(e) => &e.loc,
             CodeExpr::With(e) => &e.loc,
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct EscapedString(pub LoLocation);
-
-impl EscapedString {
-    pub fn get_raw(&self, source: &'static [u8]) -> &str {
-        return self.0.read_span(source);
-    }
-
-    pub fn unescape(&self, source: &'static [u8]) -> String {
-        Lexer::unescape_string(self.get_raw(source))
     }
 }
