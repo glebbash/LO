@@ -424,10 +424,7 @@ fn String::free(self) {
 }
 
 fn String::clone(self): String {
-    return String::from_str(.str {
-        data: self.chars.data as *&u8,
-        size: self.chars.size,
-    })
+    return String::from_str(self.as_str())
 }
 
 fn String::len(self): u32 {
@@ -454,39 +451,29 @@ fn String::as_str(self): str {
 }
 
 // str utils
-fn str::from_cstr(value: *&u8): str {
-    let len = 0
-    loop {
-        if *((value as u32 + len) as &u8) == 0 as u8 {
-            break
-        }
-        len += 1
-    }
-    return .str { data: value, size: len }
-}
 
 fn str::char_at(self, index: u32): u8 {
-    return *((self.data as u32 + index) as &u8)
+    return *array_at!<u8>(self.data, index)
 }
 
 fn str::clone(self): str {
-    let cloned_data = alloc_many!<u8>(alloc::HEAP, self.size)
-    mem::copy!(self.data, cloned_data, self.size)
+    let new_data = heap::alloc_many!<u8>(self.size)
+    mem::copy!(self.data, new_data, self.size)
 
-    return .str { data: cloned_data, size: self.size }
+    return .str { data: new_data, size: self.size }
 }
 
 fn str::equals(self, other: str): bool {
     if self.size != other.size {
         return false
     }
+
     for i in 0..self.size {
-        if *((self.data as u32 + i) as &u8) \
-            != *((other.data as u32 + i) as &u8)
-        {
+        if self.char_at(i) != other.char_at(i) {
             return false
         }
     }
+
     return true
 }
 
@@ -495,23 +482,28 @@ fn str::starts_with(self, other: str): bool {
 }
 
 fn str::skip_chars(self, char_count: u32): str {
-    if char_count >= self.size {
-        return self
-    }
-    return .str {
-        data: (self.data as u32 + char_count) as *&u8,
-        size: self.size - char_count,
-    }
+    return self.slice(char_count, self.size)
 }
 
 fn str::slice(self, start: u32, end: u32): str {
-    if start >= self.size || end >= self.size || start > end {
+    if start >= self.size || end > self.size || start > end {
         return self
     }
     return .str {
         data: (self.data as u32 + start) as *&u8,
         size: end - start,
     }
+}
+
+fn str::from_cstr(value: *&u8): str {
+    let len = 0
+    loop {
+        if *array_at!<u8>(value, len) == 0 as u8 {
+            break
+        }
+        len += 1
+    }
+    return .str { data: value, size: len }
 }
 
 fn char_is_numeric(c: u8): bool {
@@ -572,6 +564,7 @@ fn u64::write_to(value: u64, output: String) {
 }
 
 // utils
+
 macro array_at!<T>(array: *&T, index: u32): &T {
     (array as u32 + index * sizeof T) as &T
 }
