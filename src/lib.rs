@@ -80,14 +80,14 @@ pub extern "C" fn _start() {
 
     // for debug purposes only, not public api
     if command == "lex" {
-        let mut fm = FileManager::default();
-        let file = catch!(fm.include_file(file_name, &LoLocation::internal()), err, {
+        let mut fm = FileManager::new();
+        let file_index = catch!(fm.include_file(file_name, &LoLocation::internal()), err, {
             stderr_writeln(err.to_string(&fm));
             proc_exit(1)
         });
-        let source = fm.get_file_source(file.index);
+        let source = fm.files[file_index].source.as_bytes().relax();
 
-        let mut lexer = Lexer::new(source, file.index);
+        let mut lexer = Lexer::new(source, file_index);
         catch!(lexer.lex_file(), err, {
             stderr_writeln(err.to_string(&fm));
             proc_exit(1)
@@ -110,7 +110,7 @@ pub extern "C" fn _start() {
     if command == "format" {
         compiler.in_single_file_mode = true;
 
-        let Some(module) = compiler.import(file_name, &LoLocation::internal()) else {
+        let Some(module) = compiler.include(file_name, &LoLocation::internal()) else {
             proc_exit(1);
         };
 
@@ -123,7 +123,7 @@ pub extern "C" fn _start() {
         compiler.begin_inspection();
     }
 
-    compiler.import(file_name, &LoLocation::internal());
+    compiler.include(file_name, &LoLocation::internal());
 
     compiler.run_passes();
 

@@ -302,11 +302,20 @@ struct LoGlobalDef {
     global_index: u32,
 }
 
-#[derive(Default)]
 struct LoTypeLayout {
     primities_count: u32,
     byte_size: u32,
     alignment: u32,
+}
+
+impl LoTypeLayout {
+    pub fn new() -> Self {
+        Self {
+            primities_count: 0,
+            byte_size: 0,
+            alignment: 0,
+        }
+    }
 }
 
 enum LoVariableInfo {
@@ -438,7 +447,7 @@ struct LoStr {
 
 pub struct Module {
     pub index: usize,
-    pub file_index: u32,
+    pub file_index: usize,
     pub source: &'static [u8],
     pub ast: AST,
     includes: Vec<ModuleInclude>,
@@ -494,7 +503,6 @@ impl Module {
     }
 }
 
-#[derive(Default)]
 pub struct Compiler {
     pub in_inspection_mode: bool,
     pub in_single_file_mode: bool,
@@ -513,7 +521,6 @@ pub struct Compiler {
     globals: Vec<LoGlobalDef>,
     const_defs: Vec<LoConstDef>,
     macro_defs: Vec<&'static MacroDefExpr>,
-
     functions: Vec<FnInfo>,
 
     memory: Option<&'static MemoryDefExpr>,
@@ -527,7 +534,34 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn new() -> Self {
-        let mut self_ = Self::default();
+        let mut self_ = Self {
+            in_inspection_mode: false,
+            in_single_file_mode: false,
+
+            fm: FileManager::new(),
+            modules: Vec::new(),
+            error_count: RefCell::new(0),
+            warning_count: RefCell::new(0),
+
+            global_items: Vec::new(),
+
+            type_aliases: Vec::new(),
+            struct_defs: Vec::new(),
+            enum_defs: Vec::new(),
+            enum_ctors: Vec::new(),
+            globals: Vec::new(),
+            const_defs: Vec::new(),
+            macro_defs: Vec::new(),
+            functions: Vec::new(),
+
+            memory: None,
+            memory_imported_from: None,
+            datas: RefCell::new(Vec::new()),
+            string_pool: RefCell::new(Vec::new()),
+            data_size: RefCell::new(0),
+
+            wasm_types: RefCell::new(Vec::new()),
+        };
 
         self_.add_builtin_type("never", LoType::Never);
         self_.add_builtin_type("void", LoType::Void);
@@ -572,16 +606,18 @@ impl Compiler {
         stdout_disable_buffering();
     }
 
-    pub fn import(&mut self, relative_path: &str, loc: &LoLocation) -> Option<&Module> {
-        let file = catch!(self.fm.include_file(relative_path, loc), err, {
+    pub fn include(&mut self, relative_path: &str, loc: &LoLocation) -> Option<&Module> {
+        let file_index = catch!(self.fm.include_file(relative_path, loc), err, {
             self.report_error(&err);
             return None;
         });
 
+        let file_is_newly_added = self.fm.files[file_index].included_times == 1;
+
         if self.in_inspection_mode {
-            if file.is_newly_added {
-                let file_index = file.index;
-                let file_path = self.fm.get_file_path(file.index);
+            if file_is_newly_added {
+                let file_index = file_index;
+                let file_path = &self.fm.files[file_index].absolute_path;
                 stdout_writeln(format!(
                     "{{ \"type\": \"file\", \
                         \"index\": {file_index}, \
@@ -592,7 +628,7 @@ impl Compiler {
             if loc.file_index != 0 {
                 let source_index = loc.file_index;
                 let source_range = RangeDisplay(loc);
-                let target_index = file.index;
+                let target_index = file_index;
                 let target_range = "1:1-1:1";
 
                 stdout_writeln(format!(
@@ -603,13 +639,13 @@ impl Compiler {
             }
         }
 
-        if !file.is_newly_added {
-            return self.get_module_by_file_index(file.index);
+        if !file_is_newly_added {
+            return self.get_module_by_file_index(file_index);
         }
 
-        let source = self.fm.get_file_source(file.index);
+        let source = self.fm.files[file_index].source.as_bytes().relax();
 
-        let mut lexer = Lexer::new(source, file.index);
+        let mut lexer = Lexer::new(source, file_index);
         catch!(lexer.lex_file(), err, {
             self.report_error(&err);
             return None;
@@ -629,7 +665,7 @@ impl Compiler {
                     continue;
                 };
 
-                let Some(module) = self.import(&include.file_path.unescape(source), &include.loc)
+                let Some(module) = self.include(&include.file_path.unescape(source), &include.loc)
                 else {
                     continue;
                 };
@@ -646,7 +682,7 @@ impl Compiler {
 
         self.modules.push(Module {
             index: module_index,
-            file_index: file.index,
+            file_index: file_index,
             source,
             ast: parser.ast,
             ctx,
@@ -941,7 +977,7 @@ impl Compiler {
                             self.report_error(&err);
                             continue 'exprs;
                         });
-                        let mut field_layout = LoTypeLayout::default();
+                        let mut field_layout = LoTypeLayout::new();
                         self.get_type_layout(&field_type, &mut field_layout);
 
                         struct_aligment = u32::max(struct_aligment, field_layout.alignment);
@@ -1479,7 +1515,7 @@ impl Compiler {
                 terminates_early = true;
             }
 
-            let mut type_layout = LoTypeLayout::default();
+            let mut type_layout = LoTypeLayout::new();
             self.get_type_layout(&expr_type, &mut type_layout);
             if type_layout.primities_count > 0 && void_only {
                 self.report_error(&LoError {
@@ -2367,7 +2403,7 @@ impl Compiler {
                 let debug_message = format!(
                     "{} - {}",
                     loc.to_string(&self.fm),
-                    message.unescape(self.fm.get_file_source(loc.file_index))
+                    message.unescape(self.fm.files[loc.file_index].source.as_bytes().relax())
                 );
                 let str = self.process_const_string(debug_message, loc)?;
 
@@ -2381,7 +2417,7 @@ impl Compiler {
             }
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
                 let lo_type = self.build_type(ctx, type_expr)?;
-                let mut type_layout = LoTypeLayout::default();
+                let mut type_layout = LoTypeLayout::new();
                 self.get_type_layout(&lo_type, &mut type_layout);
 
                 instrs.push(WasmInstr::I32Const {
@@ -3309,7 +3345,7 @@ impl Compiler {
             } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
-                let mut tag_layout = LoTypeLayout::default();
+                let mut tag_layout = LoTypeLayout::new();
                 self.get_type_layout(&LoType::U32, &mut tag_layout);
 
                 // TODO: figure out alignment
@@ -3323,7 +3359,7 @@ impl Compiler {
                 );
             }
             LoType::Result(LoResultType { ok, err }) => {
-                let mut ok_layout = LoTypeLayout::default();
+                let mut ok_layout = LoTypeLayout::new();
                 self.get_type_layout(&ok, &mut ok_layout);
 
                 // TODO: figure out alignment
@@ -4637,7 +4673,7 @@ impl Compiler {
     }
 
     fn count_wasm_type_components(&self, lo_type: &LoType) -> u32 {
-        let layout = &mut LoTypeLayout::default();
+        let layout = &mut LoTypeLayout::new();
         self.get_type_layout(lo_type, layout);
         layout.primities_count
     }
@@ -5014,7 +5050,7 @@ impl Compiler {
         }
     }
 
-    fn get_module_by_file_index(&self, file_index: u32) -> Option<&Module> {
+    fn get_module_by_file_index(&self, file_index: usize) -> Option<&Module> {
         for module in &self.modules {
             if module.file_index == file_index {
                 return Some(module);

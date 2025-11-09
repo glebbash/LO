@@ -38,7 +38,7 @@ impl LoToken {
 
 pub struct Lexer {
     // context
-    pub file_index: u32,
+    pub file_index: usize,
     pub source: &'static [u8],
 
     // state
@@ -53,7 +53,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(source: &'static [u8], file_index: u32) -> Self {
+    pub fn new(source: &'static [u8], file_index: usize) -> Self {
         Self {
             file_index,
             source,

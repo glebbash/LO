@@ -1,7 +1,6 @@
 use crate::{core::*, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-#[derive(Default)]
 pub struct AST {
     pub exprs: Vec<TopLevelExpr>,
     pub comments: Vec<LoLocation>,

@@ -40,7 +40,7 @@ pub struct LoPosition {
 
 #[derive(PartialEq, Clone)]
 pub struct LoLocation {
-    pub file_index: u32,
+    pub file_index: usize,
     pub pos: LoPosition,
     pub end_pos: LoPosition,
 }
@@ -67,7 +67,7 @@ impl LoLocation {
     }
 
     pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
-        let file_path = fm.get_file_path(self.file_index);
+        let file_path = &fm.files[self.file_index].absolute_path;
         write!(out, "{}:{}:{}", file_path, self.pos.line, self.pos.col)
     }
 
@@ -358,37 +358,41 @@ impl<'a> core::fmt::Display for RangeDisplay<'a> {
     }
 }
 
-struct FileInfo {
-    index: u32,
-    absolute_path: String,
-    source: String,
+pub struct FileInfo {
+    pub index: usize,
+    pub included_times: usize,
+    pub absolute_path: String,
+    pub source: String,
 }
 
-#[derive(Default)]
 pub struct FileManager {
-    files: Vec<FileInfo>,
-}
-
-pub struct IncludedFile {
-    pub index: u32,
-    pub is_newly_added: bool,
+    pub files: Vec<FileInfo>,
 }
 
 impl FileManager {
+    pub fn new() -> Self {
+        let mut files = Vec::new();
+        files.push(FileInfo {
+            index: 0,
+            included_times: 0,
+            absolute_path: String::from("<internal>"),
+            source: String::from(""),
+        });
+        Self { files }
+    }
+
     pub fn include_file(
         &mut self,
         relative_path: &str,
         loc: &LoLocation,
-    ) -> Result<IncludedFile, LoError> {
-        let parent_path = self.get_file_path(loc.file_index);
+    ) -> Result<usize, LoError> {
+        let parent_path = &self.files[loc.file_index].absolute_path;
         let absolute_path = resolve_path(relative_path, parent_path);
 
-        for file in &self.files {
+        for file in &mut self.files {
             if file.absolute_path == absolute_path {
-                return Ok(IncludedFile {
-                    index: file.index,
-                    is_newly_added: false,
-                });
+                file.included_times += 1;
+                return Ok(file.index);
             }
         }
 
@@ -397,36 +401,15 @@ impl FileManager {
             loc: loc.clone(),
         })?;
 
-        let file_index = self.files.len() as u32 + 1;
+        let file_index = self.files.len();
         self.files.push(FileInfo {
             index: file_index,
+            included_times: 1,
             absolute_path: absolute_path.into(),
             source: file_contents,
         });
 
-        Ok(IncludedFile {
-            index: file_index,
-            is_newly_added: true,
-        })
-    }
-
-    pub fn get_file_path(&self, file_index: u32) -> &str {
-        if file_index == 0 {
-            return "<internal>";
-        }
-
-        &self.files[file_index as usize - 1].absolute_path
-    }
-
-    pub fn get_file_source(&self, file_index: u32) -> &'static [u8] {
-        if file_index == 0 {
-            return "".as_bytes().relax();
-        }
-
-        self.files[file_index as usize - 1]
-            .source
-            .as_bytes()
-            .relax()
+        Ok(file_index)
     }
 }
 
