@@ -114,7 +114,7 @@ pub extern "C" fn _start() {
             proc_exit(1);
         };
 
-        Printer::print(module.ast.relax(), module.source);
+        Printer::print(module.parser.relax());
 
         return;
     }

@@ -447,9 +447,7 @@ struct LoStr {
 
 pub struct Module {
     pub index: usize,
-    pub file_index: usize,
-    pub source: &'static [u8],
-    pub ast: AST,
+    pub parser: Parser,
     includes: Vec<ModuleInclude>,
     own_items: Vec<ModuleItem>,
     all_items: Vec<ModuleItem>,
@@ -660,7 +658,7 @@ impl Compiler {
         let mut includes = Vec::new();
 
         if !self.in_single_file_mode {
-            for expr in &parser.ast.exprs {
+            for expr in &parser.ast {
                 let TopLevelExpr::Include(include) = expr else {
                     continue;
                 };
@@ -682,9 +680,7 @@ impl Compiler {
 
         self.modules.push(Module {
             index: module_index,
-            file_index: file_index,
-            source,
-            ast: parser.ast,
+            parser,
             ctx,
             includes,
             own_items: Vec::new(),
@@ -713,7 +709,7 @@ impl Compiler {
     }
 
     fn pass_collect_own_items(&mut self, module: &mut Module) {
-        for expr in &module.ast.exprs {
+        for expr in &module.parser.ast {
             match expr {
                 TopLevelExpr::StructDef(struct_def) => {
                     self.define_item(ModuleItem {
@@ -803,7 +799,7 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::Import(import_expr) => {
-                    let module_name = import_expr.module_name.unescape(module.source);
+                    let module_name = import_expr.module_name.unescape(module.parser.lexer.source);
 
                     for item in &import_expr.items {
                         let ImportItem::FnDecl(fn_decl) = item else {
@@ -944,7 +940,7 @@ impl Compiler {
     }
 
     fn pass_assemble_complex_types(&mut self, module: &Module) {
-        'exprs: for expr in &module.ast.exprs {
+        'exprs: for expr in &module.parser.ast {
             match expr {
                 TopLevelExpr::StructDef(struct_def) => {
                     let mut struct_fields = Vec::<LoStructField>::new();
@@ -1083,7 +1079,7 @@ impl Compiler {
     }
 
     fn pass_main(&mut self, module: &mut Module) {
-        for expr in &module.ast.exprs {
+        for expr in &module.parser.ast {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_items
                 TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_items
@@ -1179,13 +1175,13 @@ impl Compiler {
                         });
                     }
 
-                    fn_info
-                        .be_mut()
-                        .exported_as
-                        .push(try_export_expr.out_name.unescape(module.source));
+                    let exported_as = try_export_expr
+                        .out_name
+                        .unescape(module.parser.lexer.source);
+                    fn_info.be_mut().exported_as.push(exported_as);
                 }
                 TopLevelExpr::Import(import_expr) => {
-                    let module_name = import_expr.module_name.unescape(module.source);
+                    let module_name = import_expr.module_name.unescape(module.parser.lexer.source);
 
                     'items: for item in &import_expr.items {
                         let fn_decl = match item {
@@ -5007,7 +5003,7 @@ impl Compiler {
         return Err(LoError {
             message: format!(
                 "Operator `{}` is incompatible with operands of type {operand_type}",
-                op_loc.read_span(module.source),
+                op_loc.read_span(module.parser.lexer.source),
             ),
             loc: op_loc.clone(),
         });
@@ -5052,7 +5048,7 @@ impl Compiler {
 
     fn get_module_by_file_index(&self, file_index: usize) -> Option<&Module> {
         for module in &self.modules {
-            if module.file_index == file_index {
+            if module.parser.lexer.file_index == file_index {
                 return Some(module);
             }
         }

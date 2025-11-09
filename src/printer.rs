@@ -1,9 +1,8 @@
-use crate::{ast::*, core::*};
+use crate::{ast::*, core::*, parser::*};
 use alloc::{string::ToString, vec::Vec};
 
 pub struct Printer {
-    ast: &'static AST,
-    source: &'static [u8],
+    parser: &'static Parser,
 
     indent: usize,
 
@@ -20,10 +19,9 @@ pub struct Printer {
 }
 
 impl Printer {
-    pub fn print(ast: &'static AST, source: &'static [u8]) {
+    pub fn print(parser: &'static Parser) {
         let mut printer = Printer {
-            ast,
-            source,
+            parser,
             indent: 0,
 
             comments_printed: 0,
@@ -43,7 +41,7 @@ impl Printer {
     }
 
     fn print_file(&mut self) {
-        for expr in &self.ast.exprs {
+        for expr in &self.parser.ast {
             self.print_top_level_expr(expr);
         }
 
@@ -80,7 +78,7 @@ impl Printer {
                 loc: _,
             }) => {
                 stdout_write("include ");
-                stdout_write(file_path.get_raw(self.source));
+                stdout_write(file_path.get_raw(self.parser.lexer.source));
                 if let Some(alias) = alias {
                     stdout_write(" as ");
                     stdout_write(&alias.repr);
@@ -96,7 +94,7 @@ impl Printer {
                 loc,
             }) => {
                 stdout_write("import from ");
-                stdout_write(module_name.get_raw(self.source));
+                stdout_write(module_name.get_raw(self.parser.lexer.source));
                 stdout_writeln(" {");
                 self.indent += 1;
 
@@ -234,7 +232,7 @@ impl Printer {
                 stdout_write("try export ");
                 stdout_write(&in_name.repr);
                 stdout_write(" as ");
-                stdout_write(out_name.get_raw(self.source));
+                stdout_write(out_name.get_raw(self.parser.lexer.source));
                 if *from_root {
                     stdout_write(" from root");
                 }
@@ -574,7 +572,7 @@ impl Printer {
                 if !self.print_backslashes_before(op_loc.pos.offset) {
                     stdout_write(" ");
                 }
-                stdout_write(op_loc.read_span(self.source));
+                stdout_write(op_loc.read_span(self.parser.lexer.source));
                 stdout_write(" ");
                 self.print_code_expr(rhs);
             }
@@ -584,7 +582,7 @@ impl Printer {
                 op_loc,
                 loc: _,
             }) => {
-                stdout_write(op_loc.read_span(self.source));
+                stdout_write(op_loc.read_span(self.parser.lexer.source));
                 self.print_code_expr(expr);
             }
             CodeExpr::If(IfExpr {
@@ -672,7 +670,7 @@ impl Printer {
             }
             CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
-                stdout_write(message.get_raw(self.source));
+                stdout_write(message.get_raw(self.parser.lexer.source));
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 stdout_write("defer ");
@@ -933,8 +931,8 @@ impl Printer {
     }
 
     fn print_comments_before(&mut self, pos: LoPosition) {
-        while self.comments_printed < self.ast.comments.len() {
-            let comment = self.ast.comments[self.comments_printed].relax();
+        while self.comments_printed < self.parser.lexer.comments.len() {
+            let comment = self.parser.lexer.comments[self.comments_printed].relax();
             if comment.end_pos.offset > pos.offset {
                 break;
             }
@@ -943,7 +941,7 @@ impl Printer {
             self.last_printed_item_line = comment.end_pos.line;
 
             self.print_indent();
-            stdout_writeln(&comment.read_span(self.source));
+            stdout_writeln(&comment.read_span(self.parser.lexer.source));
             self.comments_printed += 1;
         }
 
@@ -961,8 +959,8 @@ impl Printer {
     fn print_backslashes_before(&mut self, offset: usize) -> bool {
         let mut printed = false;
 
-        while self.backslashes_printed < self.ast.backslashes.len() {
-            let backslash = &self.ast.backslashes[self.backslashes_printed];
+        while self.backslashes_printed < self.parser.lexer.backslashes.len() {
+            let backslash = &self.parser.lexer.backslashes[self.backslashes_printed];
             if backslash.end_pos.offset > offset {
                 break;
             }
@@ -986,8 +984,8 @@ impl Printer {
     fn print_double_backslashes_before(&mut self, offset: usize) -> bool {
         let mut printed = false;
 
-        while self.double_backslashes_printed < self.ast.double_backslashes.len() {
-            let dbs = &self.ast.double_backslashes[self.double_backslashes_printed];
+        while self.double_backslashes_printed < self.parser.lexer.double_backslashes.len() {
+            let dbs = &self.parser.lexer.double_backslashes[self.double_backslashes_printed];
             if dbs.end_pos.offset > offset {
                 break;
             }

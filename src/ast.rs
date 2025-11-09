@@ -1,13 +1,6 @@
 use crate::{core::*, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-pub struct AST {
-    pub exprs: Vec<TopLevelExpr>,
-    pub comments: Vec<LoLocation>,
-    pub backslashes: Vec<LoLocation>,
-    pub double_backslashes: Vec<LoLocation>,
-}
-
 pub enum TopLevelExpr {
     FnDef(FnDefExpr),
     Include(IncludeExpr),
