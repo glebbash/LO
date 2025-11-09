@@ -98,7 +98,7 @@ pub extern "C" fn _start() {
             ));
         }
 
-        proc_exit(0)
+        return;
     }
 
     let mut compiler = Compiler::new();
