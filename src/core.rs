@@ -1,6 +1,6 @@
 use crate::wasi;
-use alloc::{fmt, format, string::String, vec, vec::Vec};
-use core::{cell::RefCell, ffi::CStr, str};
+use alloc::{format, string::String, vec, vec::Vec};
+use core::{cell::RefCell, ffi::CStr, fmt::Write, str};
 
 #[derive(PartialEq, Clone)]
 pub struct LoError {
@@ -19,14 +19,11 @@ macro_rules! lo_todo {
 }
 
 impl LoError {
-    pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
-        self.loc.format(out, fm)?;
-        write!(out, " - {}", self.message)
-    }
-
     pub fn to_string(&self, fm: &FileManager) -> String {
         let mut out = String::new();
-        self.format(&mut out, fm).unwrap();
+        self.loc.format(&mut out, fm);
+        out.push_str(" - ");
+        out.push_str(&self.message);
         out
     }
 }
@@ -66,14 +63,14 @@ impl LoLocation {
         return unsafe { str::from_utf8_unchecked(&source[self.pos.offset..self.end_pos.offset]) };
     }
 
-    pub fn format(&self, out: &mut impl fmt::Write, fm: &FileManager) -> core::fmt::Result {
+    pub fn format(&self, out: &mut String, fm: &FileManager) {
         let file_path = &fm.files[self.file_index].absolute_path;
-        write!(out, "{}:{}:{}", file_path, self.pos.line, self.pos.col)
+        write!(out, "{}:{}:{}", file_path, self.pos.line, self.pos.col).unwrap();
     }
 
     pub fn to_string(&self, fm: &FileManager) -> String {
         let mut out = String::new();
-        self.format(&mut out, fm).unwrap();
+        self.format(&mut out, fm);
         out
     }
 }

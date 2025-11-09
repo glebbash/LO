@@ -34,7 +34,7 @@ mod wasm_target {
     }
 }
 
-use crate::{compiler::*, core::*, lexer::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
+use crate::{compiler::*, core::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
 use alloc::{format, string::String, vec::Vec};
 
 static USAGE: &str = "Usage:
@@ -80,23 +80,19 @@ pub extern "C" fn _start() {
 
     // for debug purposes only, not public api
     if command == "lex" {
-        let mut fm = FileManager::new();
-        let file_index = catch!(fm.include_file(file_name, &LoLocation::internal()), err, {
-            stderr_writeln(err.to_string(&fm));
+        let mut compiler = Compiler::new();
+        let Some(module) = compiler
+            .relax_mut()
+            .include(file_name, &LoLocation::internal())
+        else {
             proc_exit(1)
-        });
-        let source = fm.files[file_index].source.as_bytes().relax();
+        };
 
-        let mut lexer = Lexer::new(source, file_index);
-        catch!(lexer.lex_file(), err, {
-            stderr_writeln(err.to_string(&fm));
-            proc_exit(1)
-        });
-
-        for token in lexer.tokens {
+        let source = module.parser.lexer.source;
+        for token in &module.parser.lexer.tokens {
             stdout_writeln(format!(
                 "{} - [[{}]] {:?}",
-                token.loc.to_string(&fm),
+                token.loc.to_string(&compiler.fm),
                 token.loc.read_span(source).replace("\n", "\\n"),
                 token.type_
             ));
