@@ -229,9 +229,11 @@ impl LoExprContext {
     }
 
     fn get_local(&self, local_name: &str) -> Option<&LoLocal> {
-        for local in &self.current_scope().locals {
-            if local.local_name == local_name {
-                return Some(&self.locals[local.lo_local_index]);
+        for scope in self.scopes.iter().rev() {
+            for local in &scope.locals {
+                if local.local_name == local_name {
+                    return Some(&self.locals[local.lo_local_index]);
+                }
             }
         }
 
@@ -2114,7 +2116,8 @@ impl Compiler {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let rhs_type = self.get_expr_type(ctx, rhs)?;
 
-                if lhs_type != rhs_type {
+                // a hack to make &T == &void work
+                if !self.is_type_compatible(&rhs_type, &lhs_type) {
                     return Err(LoError {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
@@ -4795,7 +4798,9 @@ impl Compiler {
                 | LoType::I16
                 | LoType::U16
                 | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_EQ),
+                | LoType::U32
+                | LoType::Pointer { pointee: _ }
+                | LoType::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_EQ),
                 LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_EQ),
                 LoType::F32 => return Ok(WasmBinaryOpKind::F32_EQ),
                 LoType::F64 => return Ok(WasmBinaryOpKind::F64_EQ),
@@ -4808,7 +4813,9 @@ impl Compiler {
                 | LoType::I16
                 | LoType::U16
                 | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_NE),
+                | LoType::U32
+                | LoType::Pointer { pointee: _ }
+                | LoType::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_NE),
                 LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_NE),
                 LoType::F32 => return Ok(WasmBinaryOpKind::F32_NE),
                 LoType::F64 => return Ok(WasmBinaryOpKind::F64_NE),
