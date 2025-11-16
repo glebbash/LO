@@ -5,11 +5,14 @@ struct str {
 }
 
 // constants
+
+const NULL = 0 as &void
 const u32::MAX = 4_294_967_295
 
 global STATIC_DATA_SIZE = @data_size()
 
 // abort
+
 type AbortCode = u32
 
 const AbortCode::SHOULD_NOT_HAPPEN = 0
@@ -27,6 +30,7 @@ fn abort(abort_code: AbortCode): never {
 }
 
 // memory instructions
+
 const mem::PAGE_SIZE = 65_536
 
 fn mem::align(size: u32): u32 {
@@ -58,47 +62,60 @@ fn mem::swap(ref1: &void, ref2: &void, size: u32) {
     }
 }
 
-// alloc
-const alloc::STACK = 0
-const alloc::HEAP = 1
+// allocator interface
 
-macro new!(alloc_id: u32, value: infer T): &T {
-    let ptr = alloc(alloc_id, sizeof T) as &T
+type Alloc = &void
+const Alloc::STACK = 0 as Alloc
+const Alloc::HEAP = 1 as Alloc
+
+macro new!(a: Alloc, value: infer T): &T {
+    let ptr = alloc(a, sizeof T) as &T
     *ptr = value
     ptr
 }
 
-macro alloc!<T>(alloc_id: u32): &T {
-    alloc(alloc_id, sizeof T) as &T
+macro alloc!<T>(a: Alloc): &T {
+    alloc(alloc, sizeof T) as &T
 }
 
-macro alloc_many!<T>(alloc_id: u32, count: u32): *&T {
-    alloc(alloc_id, count * sizeof T) as *&T
+macro alloc_many!<T>(a: Alloc, count: u32): *&T {
+    alloc(alloc, count * sizeof T) as *&T
 }
 
-fn alloc(alloc_id: u32, size: u32): &void {
-    if alloc_id == 0 {
+fn alloc(a: Alloc, size: u32): &void {
+    if a == Alloc::STACK {
         return stack::alloc(size)
     }
-    return heap::alloc(size)
+
+    if a == Alloc::HEAP {
+        return heap::alloc(size)
+    }
+
+    return (a as &Arena).alloc(size)
 }
 
-macro free!<T>(alloc_id: u32, ptr: &T) {
-    free(alloc_id, ptr, sizeof T)
+macro free!<T>(a: Alloc, ptr: &T) {
+    free(a, ptr, sizeof T)
 }
 
-macro free_many!<T>(alloc_id: u32, ptr: *&T, count: u32) {
-    free(alloc_id, ptr, count * sizeof T)
+macro free_many!<T>(a: Alloc, ptr: *&T, count: u32) {
+    free(alloc, ptr, count * sizeof T)
 }
 
-fn free(alloc_id: u32, ptr: &void, size: u32) {
-    if alloc_id == 0 {
+fn free(a: Alloc, ptr: &void, size: u32) {
+    if a == Alloc::STACK {
         return stack::free(size)
     }
-    return heap::free(ptr)
+
+    if a == Alloc::HEAP {
+        return heap::free(ptr)
+    }
+
+    // arena free is a noop
 }
 
-// stack
+// stack allocator
+
 // 1MB, ~20 pages (65_536b)
 global stack::SIZE = 1_048_576
 
@@ -140,7 +157,14 @@ fn stack::free(size: u32) {
     }
 }
 
-// tmp alloc
+// tmp alloc utils (stack + defer free)
+
+macro ref!(value: infer T): &T {
+    let value_ref = tmp_alloc!<T>()
+    *value_ref = value
+    value_ref
+}
+
 macro tmp_alloc!<T>(): &T {
     stack::alloc(sizeof T) as &T
     defer stack::free(sizeof T)
@@ -151,7 +175,8 @@ macro tmp_alloc_many!<T>(count: u32): *&T {
     defer stack::free(count * sizeof T)
 }
 
-// heap
+// heap allocator
+
 struct heap::Block {
     size: u32,
     used: bool,
@@ -165,9 +190,9 @@ macro heap::Block::next!(&self): &heap::Block {
     (self.data!() as u32 + self.size) as &heap::Block
 }
 
-global heap::FIRST_BLOCK = 0 as &heap::Block
+global heap::FIRST_BLOCK = NULL as &heap::Block
 
-global heap::CURRENT_BLOCK = 0 as &heap::Block
+global heap::CURRENT_BLOCK = NULL as &heap::Block
 
 macro heap::new!(value: infer T): &T {
     let ptr = heap::alloc!<T>()
@@ -187,12 +212,12 @@ macro heap::alloc_many!<T>(count: u32): *&T {
 fn heap::alloc(size: u32): &void {
     size = mem::align(size)
     let free_block = heap::find_free_block(size)
-    if free_block as u32 != 0 {
+    if free_block != NULL {
         free_block.used = true
         return free_block.data!()
     }
 
-    if heap::CURRENT_BLOCK as u32 == 0 {
+    if heap::CURRENT_BLOCK == NULL {
         stack::check_init!()
         heap::CURRENT_BLOCK = (stack::MIN + stack::SIZE) as &heap::Block
         heap::FIRST_BLOCK = heap::CURRENT_BLOCK
@@ -229,8 +254,8 @@ fn heap::get_block(ptr: &void): &heap::Block {
 // first fit
 fn heap::find_free_block(size: u32): &heap::Block {
     let block = heap::FIRST_BLOCK
-    if block as u32 == 0 {
-        return 0 as &heap::Block
+    if block == NULL {
+        return NULL as &heap::Block
     }
     loop {
         if !block.used && block.size >= size {
@@ -241,7 +266,107 @@ fn heap::find_free_block(size: u32): &heap::Block {
         }
         block = block.next!()
     }
-    return 0 as &heap::Block
+    return NULL as &heap::Block
+}
+
+// arena allocator
+
+struct Arena {
+    head: &Arena::Block,
+    tail: &Arena::Block,
+    block_size: u32,
+    alloc: Alloc,
+}
+
+struct Arena::Block {
+    next: &Arena::Block,
+    size: u32,
+    used: u32,
+    base: &void,
+}
+
+fn Arena::Block::new(a: Alloc, size: u32): &Arena::Block {
+    let mem = alloc(a, size)
+    return new!(a, .Arena::Block {
+        next: NULL as &Arena::Block,
+        size: size,
+        used: 0,
+        base: mem,
+    })
+}
+
+fn Arena::new(): &Arena {
+    return Arena::new_with_config(Alloc::HEAP, 64)
+}
+
+fn Arena::new_with_config(a: Alloc, block_size: u32): &Arena {
+    let block = Arena::Block::new(a, block_size)
+    return new!(a, .Arena {
+        head: block,
+        tail: block,
+        block_size: block_size,
+        alloc: a,
+    })
+}
+
+macro Arena::new!<T>(&self, value: infer T): &T {
+    let ptr = self.alloc(sizeof T) as &T
+    *ptr = value
+    ptr
+}
+
+macro Arena::alloc!<T>(&self): &T {
+    self.alloc(sizeof T) as &T
+}
+
+macro Arena::alloc_many!<T>(&self, count: u32): *&T {
+    self.alloc(count * sizeof T) as *&T
+}
+
+fn Arena::alloc(&self, size: u32): &void {
+    size = mem::align(size)
+    let block = self.tail
+
+    if block.used + size > block.size {
+        let new_block_size = self.block_size
+        if size > self.block_size {
+            new_block_size = size
+        }
+        let new_block = Arena::Block::new(self.alloc, new_block_size)
+        self.tail.next = new_block
+        self.tail = new_block
+        block = new_block
+    }
+
+    let ptr = (block.base as u32 + block.used) as &void
+    block.used += size
+    return ptr
+}
+
+fn Arena::reset(&self) {
+    let block = self.head
+    loop {
+        block.used = 0
+        if block.next == NULL {
+            break
+        }
+        block = block.next
+    }
+    self.tail = self.head
+}
+
+fn Arena::free(&self) {
+    let block = self.head
+    loop {
+        free(self.alloc, block.base, block.size)
+        let next_block = block.next
+        free!<Arena::Block>(self.alloc, block)
+        if next_block == NULL {
+            break
+        }
+        block = next_block
+    }
+    free!<Arena>(self.alloc, self)
 }
 
 // vec
@@ -250,7 +375,7 @@ struct Vec {
     size: u32,
     capacity: u32,
     item_size: u32,
-    alloc_id: u32,
+    alloc: Alloc,
 }
 
 macro Vec::new!<T>(): &Vec {
@@ -261,8 +386,8 @@ fn Vec::new(item_size: u32): &Vec {
     return Vec::with_capacity(10, item_size)
 }
 
-fn Vec::new_using(item_size: u32, alloc_id: u32): &Vec {
-    return Vec::with_capacity_using(10, item_size, alloc_id)
+fn Vec::new_in(a: Alloc, item_size: u32): &Vec {
+    return Vec::with_capacity_in(a, 10, item_size)
 }
 
 macro Vec::with_capacity!<T>(capacity: u32): &Vec {
@@ -270,20 +395,16 @@ macro Vec::with_capacity!<T>(capacity: u32): &Vec {
 }
 
 fn Vec::with_capacity(capacity: u32, item_size: u32): &Vec {
-    return Vec::with_capacity_using(capacity, item_size, alloc::HEAP)
+    return Vec::with_capacity_in(Alloc::HEAP, capacity, item_size)
 }
 
-fn Vec::with_capacity_using(
-    capacity: u32,
-    item_size: u32,
-    alloc_id: u32,
-): &Vec {
-    return new!(alloc_id, .Vec {
-        data: alloc(alloc_id, capacity * item_size),
+fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
+    return new!(a, .Vec {
+        data: alloc(a, capacity * item_size),
         size: 0,
         capacity: capacity,
         item_size: item_size,
-        alloc_id: alloc_id,
+        alloc: a,
     })
 }
 
@@ -294,8 +415,8 @@ macro Vec::free_deep!<T>(&self) {
 }
 
 fn Vec::free(&self) {
-    free!<Vec>(self.alloc_id, self)
-    free(self.alloc_id, self.data, self.capacity)
+    free!<Vec>(self.alloc, self)
+    free(self.alloc, self.data, self.capacity)
 }
 
 macro Vec::at!<T>(&self, index: u32): &T {
@@ -374,15 +495,15 @@ fn Vec::_grow_to_size(&self, new_size: u32) {
     if self.size <= self.capacity {
         return
     }
-    if self.alloc_id == alloc::STACK {
+    if self.alloc == Alloc::STACK {
         abort(AbortCode::STACK_VECTOR_GROW)
     }
     let item_size = self.item_size
     let old_capacity = self.capacity
     let old_data = self.data
-    defer free(self.alloc_id, old_data, old_capacity * item_size)
+    defer free(self.alloc, old_data, old_capacity * item_size)
     self.capacity = old_capacity * 2
-    self.data = alloc(self.alloc_id, self.capacity * item_size)
+    self.data = alloc(self.alloc, self.capacity * item_size)
     mem::copy!(old_data, self.data, self.size * item_size)
 }
 
@@ -403,9 +524,9 @@ fn String::new(capacity: u32): String {
     }
 }
 
-fn String::new_using(capacity: u32, alloc_id: u32): String {
+fn String::new_in(a: Alloc, capacity: u32): String {
     return .String {
-        chars: Vec::with_capacity_using(capacity, sizeof u8, alloc_id),
+        chars: Vec::with_capacity_in(a, capacity, sizeof u8),
     }
 }
 
@@ -414,6 +535,10 @@ fn String::from_chars(chars: &Vec of u8): String {
 }
 
 fn String::from_str(value: str): String {
+    return String::from_str_in(Alloc::HEAP, value)
+}
+
+fn String::from_str_in(a: Alloc, value: str): String {
     let string = String::new(value.size)
     string.chars.push_all(value.data, value.size)
     return string
@@ -498,7 +623,7 @@ fn str::slice(self, start: u32, end: u32): str {
 fn str::from_cstr(value: *&u8): str {
     let len = 0
     loop {
-        if *array_at!<u8>(value, len) == 0 as u8 {
+        if *array_at!<u8>(value, len) == '\0' {
             break
         }
         len += 1
@@ -512,7 +637,7 @@ fn char_is_numeric(c: u8): bool {
 
 // conversions
 macro u32::to_tmp_str!(value: u32): str {
-    let s = String::new_using(10, alloc::STACK)
+    let s = String::new_in(Alloc::STACK, 10)
     defer s.free()
 
     value.write_to(s)
@@ -538,7 +663,7 @@ fn u32::write_to(value: u32, output: String) {
 }
 
 macro u64::to_tmp_str!(value: u64): str {
-    let s = String::new_using(20, alloc::STACK)
+    let s = String::new_in(Alloc::STACK, 20)
     defer s.free()
 
     value.write_to(s)
