@@ -90,6 +90,22 @@ fn option_with_do() {
     }
 }
 
+// con: hardcoded `it` which would have to be
+// pro: after trying `option_with_do` and implementing a formatter for it
+//   turned out that `option_do_with` is much more readable and that
+//   it's always used with just 1 expression in the do block
+//   so this updated version now makes the block implicit
+//   and supports only one expression
+fn option_do_with2() {
+    do stdout_write(it) with (
+        \"{",
+        \" \"type\": \"file\",",
+        \" \"index\": ", file_index.to_str(), ",",
+        \" \"path\": \"", file_path, "\" ",
+        \"},",
+    )
+}
+
 // TODO: consider support for backtick strings
 //   as printing quotes (both single and double) is much more common than backticks
 //   will make priting json much more pleasant

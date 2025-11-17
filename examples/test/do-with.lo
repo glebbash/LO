@@ -1,25 +1,21 @@
 include "../lib/cli.lo"
 
 fn main() {
-    with x in (
+    do print(it.to_tmp_str!()) with (
         1, \\ 2, \\ 3,
         4, \\ 5, \\ 6,
         7, \\ 8, \\ 9,
-    ) do {
-        print(x.to_tmp_str!())
-    }
+    )
 
     print("\n-------------\n")
 
-    with x in (
+    do print(it) with (
         "{",
         " \"type\": \"file\",",
         " \"index\": ", \\ 1.to_tmp_str!(), \\ ",",
         " \"path\": \"", \\ "some_path.lo", \\ "\" ",
         "},",
-    ) do {
-        print(x)
-    }
+    )
 
     print("\n")
 }

@@ -254,7 +254,7 @@ pub enum CodeExpr {
     Break(BreakExpr),
     ForLoop(ForLoopExpr),
     Continue(ContinueExpr),
-    With(WithExpr),
+    DoWith(DoWithExpr),
     Defer(DeferExpr),
     Catch(CatchExpr),
     Match(MatchExpr),
@@ -371,10 +371,10 @@ pub struct CodeExprList {
     pub has_trailing_comma: bool,
 }
 
-pub struct WithExpr {
-    pub bind: IdentExpr,
+pub struct DoWithExpr {
+    pub body: Box<CodeExpr>,
     pub args: CodeExprList,
-    pub body: CodeBlock,
+    pub with_loc: LoLocation,
     pub loc: LoLocation,
 }
 
@@ -531,7 +531,7 @@ impl CodeExpr {
             CodeExpr::Sizeof(e) => &e.loc,
             CodeExpr::PropagateError(e) => &e.loc,
             CodeExpr::PrefixOp(e) => &e.loc,
-            CodeExpr::With(e) => &e.loc,
+            CodeExpr::DoWith(e) => &e.loc,
         }
     }
 }

@@ -43,27 +43,22 @@ export fn _start() {
 
             defer a.reset()
 
-            with _ in (
+            do stderr_write(it) with (
                 token.loc.to_string_in(a, compiler.fm).as_str(),
                 " - [[",
                 String::from_str_in(a, token.loc.read_span(source)) \
                     .replace("\n", "\\n").as_str(),
                 "]] ",
                 token.type_.to_str(),
-            ) do
-            {
-                stderr_write(_)
-            }
+            )
         }
 
         return
     }
 
-    with _ in (
+    do stderr_write(it) with (
         "Unknown command: ", \\ args.get(1), \\ "\n",
         USAGE, \\ "\n",
-    ) do {
-        stderr_write(_)
-    }
+    )
     wasi::proc_exit(1)
 }

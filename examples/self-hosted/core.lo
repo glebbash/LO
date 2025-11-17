@@ -80,12 +80,10 @@ fn FileManager::new(): FileManager {
 fn FileManager::include(self, file_name: str, loc: &Loc): Result<u32, &Error> {
     let source = fs::read_file(file_name) catch err {
         let message = String::new(64)
-        with _ in (
+        do message.push_str(it) with (
             "Can't read file '", \\ file_name, \\ "', error code = ",
             err.to_tmp_str!(),
-        ) do {
-            message.push_str(_)
-        }
+        )
 
         return Err(heap::new!(.Error {
             message: message,

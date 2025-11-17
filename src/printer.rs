@@ -655,18 +655,16 @@ impl Printer {
             CodeExpr::Continue(ContinueExpr { loc: _ }) => {
                 stdout_write("continue");
             }
-            CodeExpr::With(WithExpr {
-                bind,
-                args,
+            CodeExpr::DoWith(DoWithExpr {
                 body,
+                args,
+                with_loc: _,
                 loc,
             }) => {
-                stdout_write("with ");
-                stdout_write(&bind.repr);
-                stdout_write(" in ");
+                stdout_write("do ");
+                self.print_code_expr(body);
+                stdout_write(" with ");
                 self.print_args(args, loc);
-                stdout_write(" do");
-                self.print_code_block(body);
             }
             CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");

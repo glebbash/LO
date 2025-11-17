@@ -2706,27 +2706,44 @@ impl Compiler {
 
                 instrs.push(WasmInstr::Branch { label_index });
             }
-            CodeExpr::With(WithExpr {
-                bind,
+            CodeExpr::DoWith(DoWithExpr {
                 args,
                 body,
+                with_loc,
                 loc: _,
             }) => {
+                let Some(first_arg) = args.items.first() else {
+                    self.report_error(&LoError {
+                        message: format!("do-with expressions must have at least one argument"),
+                        loc: with_loc.clone(),
+                    });
+                    return Ok(());
+                };
+
+                ctx.enter_scope(LoScopeType::Block);
+                let arg_type = self.get_expr_type(ctx, first_arg)?;
+                let arg_local_index =
+                    self.define_local(ctx, with_loc.clone(), String::from("it"), &arg_type, false)?;
+
                 for arg in &args.items {
-                    ctx.enter_scope(LoScopeType::Block);
-                    let arg_type = self.get_expr_type(ctx, arg)?;
-                    let arg_local_index = self.define_local(
-                        ctx,
-                        bind.loc.clone(),
-                        bind.repr.clone(),
-                        &arg_type,
-                        false,
-                    )?;
+                    let current_arg_type = self.get_expr_type(ctx, arg)?;
+                    if current_arg_type != arg_type {
+                        self.report_error(&LoError {
+                            message: format!(
+                                "do-with argument type mismatch. expected: {}, got: {}",
+                                arg_type, current_arg_type
+                            ),
+                            loc: arg.loc().clone(),
+                        });
+                        continue;
+                    }
+
                     self.codegen(ctx, instrs, arg)?;
                     self.codegen_local_set(instrs, &arg_type, arg_local_index);
-                    self.codegen_code_block(ctx, instrs, body, true);
-                    ctx.exit_scope();
+                    self.codegen(ctx, instrs, body)?;
                 }
+
+                ctx.exit_scope();
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 let code_unit = self.build_code_unit(ctx, expr)?;
@@ -3752,7 +3769,7 @@ impl Compiler {
             CodeExpr::ForLoop(_) => Ok(LoType::Void),
             CodeExpr::Break(_) => Ok(LoType::Never),
             CodeExpr::Continue(_) => Ok(LoType::Never),
-            CodeExpr::With(_) => Ok(LoType::Void),
+            CodeExpr::DoWith(_) => Ok(LoType::Void),
             CodeExpr::Return(_) => Ok(LoType::Never),
             CodeExpr::Paren(ParenExpr {
                 expr,

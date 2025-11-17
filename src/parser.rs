@@ -821,21 +821,19 @@ impl Parser {
             return Ok(CodeExpr::Continue(ContinueExpr { loc }));
         }
 
-        if let Some(_) = self.eat(Symbol, "with")? {
+        if let Some(_) = self.eat(Symbol, "do")? {
             let mut loc = self.prev().loc.clone();
 
-            let bind = self.parse_ident()?;
-            self.expect(Symbol, "in")?;
+            let body = Box::new(self.parse_code_expr(0)?);
+            let with = self.expect(Symbol, "with")?.clone();
             let args = self.parse_fn_args()?;
-            self.expect(Symbol, "do")?;
-            let body = self.parse_code_block()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::With(WithExpr {
-                bind,
-                args,
+            return Ok(CodeExpr::DoWith(DoWithExpr {
                 body,
+                args,
+                with_loc: with.loc,
                 loc,
             }));
         }
