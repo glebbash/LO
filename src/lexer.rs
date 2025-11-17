@@ -591,58 +591,56 @@ impl InfixOp {
         use InfixOpTag::*;
         use OpAssoc::*;
 
-        let (tag, info) = match token.get_value(source) {
-            "catch" => (Catch, OpInfo { bp: 13, assoc: L }),
+        fn op(token: LoToken, tag: InfixOpTag, bp: u32, assoc: OpAssoc) -> Option<InfixOp> {
+            let info = OpInfo { bp, assoc };
+            return Some(InfixOp { tag, info, token });
+        }
 
-            "." => (FieldAccess, OpInfo { bp: 12, assoc: L }),
+        match token.get_value(source) {
+            "catch" => op(token, Catch, 13, L),
 
-            "?" => (
-                ErrorPropagation,
-                OpInfo {
-                    bp: 11,
-                    assoc: None,
-                },
-            ),
+            "." => op(token, FieldAccess, 12, L),
 
-            "as" => (Cast, OpInfo { bp: 10, assoc: L }),
+            "?" => op(token, ErrorPropagation, 11, None),
 
-            "%" => (Mod, OpInfo { bp: 9, assoc: L }),
-            "/" => (Div, OpInfo { bp: 9, assoc: L }),
-            "*" => (Mul, OpInfo { bp: 9, assoc: L }),
+            "as" => op(token, Cast, 10, L),
 
-            "-" => (Sub, OpInfo { bp: 8, assoc: L }),
-            "+" => (Add, OpInfo { bp: 8, assoc: L }),
+            "%" => op(token, Mod, 9, L),
+            "/" => op(token, Div, 9, L),
+            "*" => op(token, Mul, 9, L),
 
-            ">>" => (ShiftRight, OpInfo { bp: 7, assoc: L }),
-            "<<" => (ShiftLeft, OpInfo { bp: 7, assoc: L }),
+            "-" => op(token, Sub, 8, L),
+            "+" => op(token, Add, 8, L),
 
-            "&" => (BitAnd, OpInfo { bp: 6, assoc: L }),
+            ">>" => op(token, ShiftRight, 7, L),
+            "<<" => op(token, ShiftLeft, 7, L),
 
-            "|" => (BitOr, OpInfo { bp: 5, assoc: L }),
+            "&" => op(token, BitAnd, 6, L),
 
-            ">=" => (GreaterEqual, OpInfo { bp: 4, assoc: L }),
-            ">" => (Greater, OpInfo { bp: 4, assoc: L }),
-            "<=" => (LessEqual, OpInfo { bp: 4, assoc: L }),
-            "<" => (Less, OpInfo { bp: 4, assoc: L }),
-            "!=" => (NotEqual, OpInfo { bp: 4, assoc: None }),
-            "==" => (Equal, OpInfo { bp: 4, assoc: None }),
+            "|" => op(token, BitOr, 5, L),
 
-            "&&" => (And, OpInfo { bp: 3, assoc: L }),
-            "||" => (Or, OpInfo { bp: 2, assoc: L }),
+            ">=" => op(token, GreaterEqual, 4, L),
+            ">" => op(token, Greater, 4, L),
+            "<=" => op(token, LessEqual, 4, L),
+            "<" => op(token, Less, 4, L),
+            "!=" => op(token, NotEqual, 4, None),
+            "==" => op(token, Equal, 4, None),
 
-            "=" => (Assign, OpInfo { bp: 1, assoc: None }),
-            "+=" => (AddAssign, OpInfo { bp: 1, assoc: None }),
-            "-=" => (SubAssign, OpInfo { bp: 1, assoc: None }),
-            "*=" => (MulAssign, OpInfo { bp: 1, assoc: None }),
-            "/=" => (DivAssign, OpInfo { bp: 1, assoc: None }),
-            "%=" => (ModAssign, OpInfo { bp: 1, assoc: None }),
-            "&=" => (BitAndAssign, OpInfo { bp: 1, assoc: None }),
-            "|=" => (BitOrAssign, OpInfo { bp: 1, assoc: None }),
-            "<<=" => (ShiftLeftAssign, OpInfo { bp: 1, assoc: None }),
-            ">>=" => (ShiftRightAssign, OpInfo { bp: 1, assoc: None }),
-            _ => return Option::None,
-        };
-        Some(Self { tag, info, token })
+            "&&" => op(token, And, 3, L),
+            "||" => op(token, Or, 2, L),
+
+            "=" => op(token, Assign, 1, None),
+            "+=" => op(token, AddAssign, 1, None),
+            "-=" => op(token, SubAssign, 1, None),
+            "*=" => op(token, MulAssign, 1, None),
+            "/=" => op(token, DivAssign, 1, None),
+            "%=" => op(token, ModAssign, 1, None),
+            "&=" => op(token, BitAndAssign, 1, None),
+            "|=" => op(token, BitOrAssign, 1, None),
+            "<<=" => op(token, ShiftLeftAssign, 1, None),
+            ">>=" => op(token, ShiftRightAssign, 1, None),
+            _ => Option::None,
+        }
     }
 }
 
