@@ -24,21 +24,33 @@ pub enum LoType {
     U64,
     I64,
     F64,
-    Pointer {
-        pointee: Box<LoType>,
-    },
-    SequencePointer {
-        pointee: Box<LoType>,
-    },
-    StructInstance {
-        struct_name: String, // TODO: remove (only used by Display impl)
-        struct_index: usize,
-    },
-    EnumInstance {
-        enum_name: String, // TODO: remove (only used by Display impl)
-        enum_index: usize,
-    },
+    Pointer { pointee: Box<LoType> },
+    SequencePointer { pointee: Box<LoType> },
+    StructInstance { struct_index: usize },
+    EnumInstance { enum_index: usize },
     Result(LoResultType),
+}
+
+pub struct TypeFmt<'a>(pub &'a Compiler, pub &'a LoType);
+
+impl<'a> core::fmt::Display for TypeFmt<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.1.format(f, self.0)
+    }
+}
+
+pub struct TypeListFmt<'a>(pub &'a Compiler, pub &'a [LoType]);
+
+impl<'a> core::fmt::Display for TypeListFmt<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        for (item, i) in self.1.iter().zip(0..) {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", TypeFmt(self.0, item))?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -47,8 +59,8 @@ pub struct LoResultType {
     err: Box<LoType>,
 }
 
-impl core::fmt::Display for LoType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl LoType {
+    fn format(&self, f: &mut core::fmt::Formatter<'_>, compiler: &Compiler) -> core::fmt::Result {
         match self {
             LoType::Never => f.write_str("never"),
             LoType::Void => f.write_str("void"),
@@ -63,17 +75,24 @@ impl core::fmt::Display for LoType {
             LoType::U64 => f.write_str("u64"),
             LoType::I64 => f.write_str("i64"),
             LoType::F64 => f.write_str("f64"),
-            LoType::Pointer { pointee } => write!(f, "&{pointee}"),
-            LoType::SequencePointer { pointee } => write!(f, "*&{pointee}"),
-            LoType::StructInstance {
-                struct_name,
-                struct_index: _,
-            } => f.write_str(&struct_name),
-            LoType::EnumInstance {
-                enum_name,
-                enum_index: _,
-            } => f.write_str(&enum_name),
-            LoType::Result(result) => write!(f, "Result<{}, {}>", result.ok, result.err),
+            LoType::Pointer { pointee } => write!(f, "&{}", TypeFmt(compiler, pointee)),
+            LoType::SequencePointer { pointee } => {
+                write!(f, "*&{}", TypeFmt(compiler, pointee))
+            }
+            LoType::StructInstance { struct_index } => {
+                f.write_str(&compiler.struct_defs[*struct_index].struct_name)
+            }
+            LoType::EnumInstance { enum_index } => {
+                f.write_str(&compiler.enum_defs[*enum_index].enum_name)
+            }
+            LoType::Result(result) => {
+                write!(
+                    f,
+                    "Result<{}, {}>",
+                    TypeFmt(compiler, &result.ok),
+                    TypeFmt(compiler, &result.err)
+                )
+            }
         }
     }
 }
@@ -101,12 +120,6 @@ struct FnInfo {
 struct LoFnParam {
     param_name: String,
     param_type: LoType,
-}
-
-impl core::fmt::Display for LoFnParam {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}: {}", self.param_name, self.param_type)
-    }
 }
 
 enum LoFnSource {
@@ -627,7 +640,7 @@ impl Compiler {
 
             if loc.file_index != 0 {
                 let source_index = loc.file_index;
-                let source_range = RangeDisplay(loc);
+                let source_range = RangeFmt(loc);
                 let target_index = file_index;
                 let target_range = "1:1-1:1";
 
@@ -1255,7 +1268,8 @@ impl Compiler {
                             if value_comp_count != 1 {
                                 self.report_error(&LoError {
                                     message: format!(
-                                        "Cannot define global with non-primitive type {value_type}",
+                                        "Cannot define global with non-primitive type {}",
+                                        TypeFmt(self, &value_type)
                                     ),
                                     loc: global_def.loc.clone(),
                                 });
@@ -1270,7 +1284,10 @@ impl Compiler {
                         let global_name = &global_def.global_name.repr;
 
                         self.print_inspection(&InspectInfo {
-                            message: format!("global {global_name}: {value_type}"),
+                            message: format!(
+                                "global {global_name}: {}",
+                                TypeFmt(self, &value_type)
+                            ),
                             loc: global_def.global_name.loc.clone(),
                             linked_loc: None,
                         });
@@ -1304,7 +1321,10 @@ impl Compiler {
                         let const_name = &const_def.const_name.repr;
 
                         self.print_inspection(&InspectInfo {
-                            message: format!("const {const_name}: {}", const_.code_unit.type_),
+                            message: format!(
+                                "const {const_name}: {}",
+                                TypeFmt(self, &const_.code_unit.type_)
+                            ),
                             loc: const_def.const_name.loc.clone(),
                             linked_loc: None,
                         });
@@ -1613,11 +1633,7 @@ impl Compiler {
                 }
 
                 let lo_type = self.get_type_or_err(&name.repr, &name.loc)?;
-                if let LoType::StructInstance {
-                    struct_name: _,
-                    struct_index,
-                } = &lo_type
-                {
+                if let LoType::StructInstance { struct_index } = &lo_type {
                     let struct_def = &self.struct_defs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
                         return Err(LoError {
@@ -1748,8 +1764,8 @@ impl Compiler {
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_name.repr,
                                 struct_field.field_name,
-                                struct_field.field_type,
-                                field_value_type
+                                TypeFmt(self, &struct_field.field_type,),
+                                TypeFmt(self, &field_value_type),
                             ),
                             loc: field_literal.value.loc().clone(),
                         });
@@ -1765,7 +1781,7 @@ impl Compiler {
                     }
 
                     return Err(LoError {
-                        message: format!("Missing struct fields: {}", ListDisplay(&missing_fields)),
+                        message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
                         loc: loc.clone(),
                     });
                 }
@@ -1788,7 +1804,8 @@ impl Compiler {
                             return Err(LoError {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
-                                    current_item_type, item_type,
+                                    TypeFmt(self, &current_item_type),
+                                    TypeFmt(self, &item_type),
                                 ),
                                 loc: item.loc().clone(),
                             });
@@ -1804,11 +1821,8 @@ impl Compiler {
 
                         bytes.push(value as u8);
                     }
-                } else if let LoType::StructInstance {
-                    struct_name,
-                    struct_index: _,
-                } = &item_type
-                    && struct_name == STR_TYPE_NAME
+                } else if let LoType::StructInstance { struct_index } = &item_type
+                    && self.struct_defs[*struct_index].struct_name == STR_TYPE_NAME
                 {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
@@ -1816,7 +1830,8 @@ impl Compiler {
                             return Err(LoError {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
-                                    current_item_type, item_type,
+                                    TypeFmt(self, &current_item_type),
+                                    TypeFmt(self, &item_type),
                                 ),
                                 loc: item.loc().clone(),
                             });
@@ -1841,7 +1856,10 @@ impl Compiler {
                     }
                 } else {
                     return Err(LoError {
-                        message: format!("Unsupported array literal element type: {}", item_type),
+                        message: format!(
+                            "Unsupported array literal element type: {}",
+                            TypeFmt(self, &item_type)
+                        ),
                         loc: loc.clone(),
                     });
                 }
@@ -1869,7 +1887,8 @@ impl Compiler {
                         return Err(LoError {
                             message: format!(
                                 "Cannot create result, Ok type mismatch. Got {}, expected: {}",
-                                value_type, result.ok
+                                TypeFmt(self, &value_type),
+                                TypeFmt(self, &result.ok),
                             ),
                             loc: loc.clone(),
                         });
@@ -1889,7 +1908,8 @@ impl Compiler {
                     return Err(LoError {
                         message: format!(
                             "Cannot create result, Err type mismatch. Got {}, expected: {}",
-                            value_type, result.err
+                            TypeFmt(self, &value_type),
+                            TypeFmt(self, &result.err),
                         ),
                         loc: loc.clone(),
                     });
@@ -1903,7 +1923,11 @@ impl Compiler {
                 if let Some(const_def) = self.get_const(ctx, &ident.repr) {
                     if self.in_inspection_mode {
                         self.print_inspection(&InspectInfo {
-                            message: format!("const {}: {}", ident.repr, const_def.code_unit.type_),
+                            message: format!(
+                                "const {}: {}",
+                                ident.repr,
+                                TypeFmt(self, &const_def.code_unit.type_)
+                            ),
                             loc: ident.loc.clone(),
                             linked_loc: Some(const_def.loc.clone()),
                         });
@@ -1981,7 +2005,11 @@ impl Compiler {
 
                 if castee_type_components != casted_to_type_components {
                     return Err(LoError {
-                        message: format!("Cannot cast from {castee_type} to {casted_to_type}"),
+                        message: format!(
+                            "Cannot cast from {} to {}",
+                            TypeFmt(self, &castee_type),
+                            TypeFmt(self, &casted_to_type)
+                        ),
                         loc: loc.clone(),
                     });
                 }
@@ -2009,7 +2037,7 @@ impl Compiler {
                         return Err(LoError {
                             message: format!(
                                 "Cannot apply not operation to expr of type {}",
-                                operand_type
+                                TypeFmt(self, &operand_type)
                             ),
                             loc: loc.clone(),
                         });
@@ -2041,7 +2069,7 @@ impl Compiler {
                             return Err(LoError {
                                 message: format!(
                                     "Cannot apply not operation to expr of type {}",
-                                    operand_type
+                                    TypeFmt(self, &operand_type)
                                 ),
                                 loc: loc.clone(),
                             });
@@ -2066,7 +2094,10 @@ impl Compiler {
                     self.lower_type(&operand_type, &mut wasm_components);
                     if wasm_components.len() != 1 {
                         return Err(LoError {
-                            message: format!("Cannot negate expr of type {}", operand_type),
+                            message: format!(
+                                "Cannot negate expr of type {}",
+                                TypeFmt(self, &operand_type)
+                            ),
                             loc: loc.clone(),
                         });
                     }
@@ -2099,7 +2130,10 @@ impl Compiler {
                         }
                         WasmType::FuncRef => {
                             return Err(LoError {
-                                message: format!("Cannot negate expr of type {}", operand_type),
+                                message: format!(
+                                    "Cannot negate expr of type {}",
+                                    TypeFmt(self, &operand_type)
+                                ),
                                 loc: loc.clone(),
                             });
                         }
@@ -2121,7 +2155,8 @@ impl Compiler {
                     return Err(LoError {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
-                            lhs_type, rhs_type
+                            TypeFmt(self, &lhs_type),
+                            TypeFmt(self, &rhs_type),
                         ),
                         loc: op_loc.clone(),
                     });
@@ -2210,8 +2245,9 @@ impl Compiler {
                         if !self.is_type_compatible(&variant.variant_type, &expr_type) {
                             return Err(LoError {
                                 message: format!(
-                                    "Invalid enum payload: {expr_type}, expected: {}",
-                                    variant.variant_type
+                                    "Invalid enum payload: {}, expected: {}",
+                                    TypeFmt(self, &expr_type),
+                                    TypeFmt(self, &variant.variant_type),
                                 ),
                                 loc: fn_name.loc.clone(),
                             });
@@ -2231,7 +2267,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
+                let fn_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
                 self.codegen_fn_call(
                     ctx,
                     instrs,
@@ -2304,7 +2340,7 @@ impl Compiler {
                         return Err(LoError {
                             message: format!(
                                 "Unexpected arguments [{}] for @{}(num_pages: u32): i32",
-                                ListDisplay(&arg_types),
+                                TypeListFmt(self, &arg_types),
                                 fn_name.repr,
                             ),
                             loc: fn_name.loc.clone(),
@@ -2336,7 +2372,7 @@ impl Compiler {
                         return Err(LoError {
                             message: format!(
                                 "Unexpected arguments [{}] for @{}(dest: u32, source: u32: num_bytes: u32)",
-                                ListDisplay(&arg_types),
+                                TypeListFmt(self, &arg_types),
                                 fn_name.repr,
                             ),
                             loc: fn_name.loc.clone(),
@@ -2386,7 +2422,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
+                let macro_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
                 self.codegen_macro_call(
                     ctx,
                     instrs,
@@ -2451,7 +2487,8 @@ impl Compiler {
                     return Err(LoError {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
-                            return_type, fn_return_type
+                            TypeFmt(self, &return_type),
+                            TypeFmt(self, &fn_return_type),
                         ),
                         loc: loc.clone(),
                     });
@@ -2581,8 +2618,9 @@ impl Compiler {
                 if self.get_expr_type(ctx, end)? != counter_type {
                     return Err(LoError {
                         message: format!(
-                            "Invalid range end type: {}, expected: {counter_type}",
-                            self.get_expr_type(ctx, end)?
+                            "Invalid range end type: {}, expected: {}",
+                            TypeFmt(self, &self.get_expr_type(ctx, end)?),
+                            TypeFmt(self, &counter_type),
                         ),
                         loc: loc.clone(),
                     });
@@ -2644,7 +2682,11 @@ impl Compiler {
                         // increment counter
                         self.codegen_var_get(ctx, instrs, &counter_var)?;
                         self.codegen_var_set_prepare(instrs, &counter_var);
-                        self.codegen_int_const(instrs, 1, Some(counter_type.to_string().as_str()));
+                        self.codegen_int_const(
+                            instrs,
+                            1,
+                            Some(TypeFmt(self, &counter_type).to_string().as_str()),
+                        );
                         self.codegen_binary_op(instrs, &InfixOpTag::Add, &counter_type, op_loc)?;
                         self.codegen_var_set(ctx, instrs, &counter_var)?;
 
@@ -2731,7 +2773,8 @@ impl Compiler {
                         self.report_error(&LoError {
                             message: format!(
                                 "do-with argument type mismatch. expected: {}, got: {}",
-                                arg_type, current_arg_type
+                                TypeFmt(self, &arg_type),
+                                TypeFmt(self, &current_arg_type),
                             ),
                             loc: arg.loc().clone(),
                         });
@@ -2848,10 +2891,25 @@ impl Compiler {
         }
 
         if self.in_inspection_mode {
-            let params = ListDisplay(&fn_info.fn_params);
-            let return_type = &fn_info.fn_type.output;
+            let mut message = String::new();
+
+            write!(&mut message, "fn {fn_name}(").unwrap();
+
+            for (param, i) in fn_info.fn_params.iter().zip(0..) {
+                if i != 0 {
+                    message.push_str(", ");
+                }
+
+                message.push_str(&param.param_name);
+                message.push_str(": ");
+                write!(&mut message, "{}", TypeFmt(self, &param.param_type)).unwrap();
+            }
+
+            let return_type = TypeFmt(self, &fn_info.fn_type.output);
+            write!(&mut message, "): {}", return_type).unwrap();
+
             self.print_inspection(&InspectInfo {
-                message: format!("fn {fn_name}({params}): {return_type}"),
+                message,
                 loc: loc.clone(),
                 linked_loc: Some(fn_info.definition_loc.clone()),
             });
@@ -2862,8 +2920,8 @@ impl Compiler {
                 message: format!(
                     "Invalid function arguments for function {}: [{}], expected [{}]",
                     fn_info.fn_name,
-                    ListDisplay(&arg_types),
-                    ListDisplay(&fn_info.fn_type.inputs),
+                    TypeListFmt(self, &arg_types),
+                    TypeListFmt(self, &fn_info.fn_type.inputs),
                 ),
                 loc: loc.clone(),
             });
@@ -3044,8 +3102,8 @@ impl Compiler {
             return Err(LoError {
                 message: format!(
                     "Invalid macro args, expected {}, got {}",
-                    ListDisplay(&macro_types),
-                    ListDisplay(&arg_types)
+                    TypeListFmt(self, &macro_types),
+                    TypeListFmt(self, &arg_types)
                 ),
                 loc: loc.clone(),
             });
@@ -3078,27 +3136,33 @@ impl Compiler {
         )?;
 
         if self.in_inspection_mode {
-            let lo_type_args = ListDisplay(&lo_type_args);
+            let mut message = String::new();
 
-            let mut macro_args = Vec::new();
+            let lo_type_args = TypeListFmt(self, &lo_type_args);
+            write!(&mut message, "macro {macro_name}!<{lo_type_args}>(").unwrap();
+
             let macro_args_len = ctx.current_scope().macro_args.len();
             for i in macro_args_len - macro_def.macro_params.len()..macro_args_len {
-                let const_def = &ctx.current_scope().macro_args[i];
-                macro_args.push(LoFnParam {
-                    param_name: const_def.const_name.clone(),
-                    param_type: const_def.code_unit.type_.clone(),
-                });
+                if i != 0 {
+                    message.push_str(", ");
+                }
+
+                let macro_arg = &ctx.current_scope().macro_args[i];
+                message.push_str(&macro_arg.const_name);
+                message.push_str(": ");
+                let arg_type = TypeFmt(self, &macro_arg.code_unit.type_);
+                write!(&mut message, "{arg_type}",).unwrap();
             }
-            let lo_args = ListDisplay(&macro_args);
 
             let return_type = if let Some(return_type) = &macro_def.return_type {
                 self.build_type(ctx, return_type)?
             } else {
                 LoType::Void
             };
+            write!(&mut message, "): {}", TypeFmt(self, &return_type)).unwrap();
 
             self.print_inspection(&InspectInfo {
-                message: format!("macro {macro_name}!<{lo_type_args}>({lo_args}): {return_type}"),
+                message,
                 loc: loc.clone(),
                 linked_loc: Some(macro_def.macro_name.loc.clone()),
             });
@@ -3340,10 +3404,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::StructInstance {
-                struct_name: _,
-                struct_index,
-            } => {
+            LoType::StructInstance { struct_index } => {
                 let struct_def = &self.struct_defs[*struct_index];
 
                 for struct_field in struct_def.fields.iter().rev() {
@@ -3355,10 +3416,7 @@ impl Compiler {
                     );
                 }
             }
-            LoType::EnumInstance {
-                enum_name: _,
-                enum_index,
-            } => {
+            LoType::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
                 let mut tag_layout = LoTypeLayout::new();
@@ -3482,8 +3540,6 @@ impl Compiler {
                 };
 
                 Ok(LoType::StructInstance {
-                    struct_name: String::from(STR_TYPE_NAME),
-
                     struct_index: item.collection_index,
                 })
             }
@@ -3501,7 +3557,6 @@ impl Compiler {
                 };
 
                 return Ok(LoType::StructInstance {
-                    struct_name: struct_name.repr.clone(),
                     struct_index: item.collection_index,
                 });
             }
@@ -3588,7 +3643,10 @@ impl Compiler {
                         expr_type
                     else {
                         return Err(LoError {
-                            message: format!("Cannot dereference expr of type {}", expr_type),
+                            message: format!(
+                                "Cannot dereference expr of type {}",
+                                TypeFmt(self, &expr_type)
+                            ),
                             loc: loc.clone(),
                         });
                     };
@@ -3613,14 +3671,8 @@ impl Compiler {
                         | LoType::F64
                         | LoType::Pointer { pointee: _ }
                         | LoType::SequencePointer { pointee: _ }
-                        | LoType::StructInstance {
-                            struct_name: _,
-                            struct_index: _,
-                        }
-                        | LoType::EnumInstance {
-                            enum_name: _,
-                            enum_index: _,
-                        }
+                        | LoType::StructInstance { struct_index: _ }
+                        | LoType::EnumInstance { enum_index: _ }
                         | LoType::Result(_) => Ok(expr_type),
                     }
                 }
@@ -3643,10 +3695,8 @@ impl Compiler {
                 if let Some(item) = self.modules[ctx.module_index].get_item(&fn_name.repr) {
                     if let ModuleItemCollection::EnumConstructor = item.collection {
                         let ctor = &self.enum_ctors[item.collection_index];
-                        let enum_ = &self.enum_defs[ctor.enum_index];
 
                         return Ok(LoType::EnumInstance {
-                            enum_name: enum_.enum_name.clone(),
                             enum_index: ctor.enum_index,
                         });
                     }
@@ -3663,7 +3713,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let fn_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
+                let fn_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
 
                 let fn_info = self.get_fn_info_for_call(ctx, &fn_name, &field_name.loc)?;
 
@@ -3724,7 +3774,7 @@ impl Compiler {
                 loc,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let macro_name = get_fn_name_from_method(&lhs_type, &field_name.repr);
+                let macro_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
 
                 let mut ctx = ctx.clone();
                 self.get_macro_return_type(
@@ -3753,7 +3803,6 @@ impl Compiler {
                 Ok(result.ok.as_ref().clone())
             }
             CodeExpr::Dbg(_) => Ok(LoType::StructInstance {
-                struct_name: String::from(STR_TYPE_NAME),
                 struct_index: self.modules[ctx.module_index]
                     .get_item(STR_TYPE_NAME)
                     .unwrap()
@@ -3817,7 +3866,7 @@ impl Compiler {
     ) -> LoVariableInfo {
         let inspect_info = if self.in_inspection_mode {
             Some(InspectInfo {
-                message: format!("let {}: {}", local_name, local_type),
+                message: format!("let {}: {}", local_name, TypeFmt(self, &local_type)),
                 loc: loc.clone(),
                 linked_loc,
             })
@@ -3856,7 +3905,11 @@ impl Compiler {
                     global_type: global.global_type.clone(),
                     inspect_info: if self.in_inspection_mode {
                         Some(InspectInfo {
-                            message: format!("global {}: {}", ident.repr, global.global_type),
+                            message: format!(
+                                "global {}: {}",
+                                ident.repr,
+                                TypeFmt(self, &global.global_type)
+                            ),
                             loc: ident.loc.clone(),
                             linked_loc: Some(global.def_expr.loc.clone()),
                         })
@@ -3873,7 +3926,11 @@ impl Compiler {
                 loc: const_.loc.clone(),
                 inspect_info: if self.in_inspection_mode {
                     Some(InspectInfo {
-                        message: format!("const {}: {}", ident.repr, const_.code_unit.type_),
+                        message: format!(
+                            "const {}: {}",
+                            ident.repr,
+                            TypeFmt(self, &const_.code_unit.type_)
+                        ),
                         loc: ident.loc.clone(),
                         linked_loc: Some(const_.loc.clone()),
                     })
@@ -3900,7 +3957,12 @@ impl Compiler {
 
         let inspect_info = if self.in_inspection_mode {
             Some(InspectInfo {
-                message: format!("{}.{}: {}", lhs_type, field.field_name, field.field_type),
+                message: format!(
+                    "{}.{}: {}",
+                    TypeFmt(self, &lhs_type),
+                    field.field_name,
+                    TypeFmt(self, &field.field_type),
+                ),
                 loc: field_access.field_name.loc.clone(),
                 linked_loc: Some(field.loc.clone()),
             })
@@ -4025,15 +4087,12 @@ impl Compiler {
             lhs_type = pointee;
         }
 
-        let LoType::StructInstance {
-            struct_name,
-            struct_index,
-        } = lhs_type
-        else {
+        let LoType::StructInstance { struct_index } = lhs_type else {
             return Err(LoError {
                 message: format!(
-                    "Cannot get field '{}' on non struct: {lhs_type}",
-                    field_access.field_name.repr
+                    "Cannot get field '{}' on non struct: {}",
+                    field_access.field_name.repr,
+                    TypeFmt(self, lhs_type),
                 ),
                 loc: field_access.field_name.loc.clone(),
             });
@@ -4047,8 +4106,8 @@ impl Compiler {
         else {
             return Err(LoError {
                 message: format!(
-                    "Unknown field {} in struct {struct_name}",
-                    field_access.field_name.repr
+                    "Unknown field {} in struct {}",
+                    field_access.field_name.repr, struct_def.struct_name
                 ),
                 loc: field_access.field_name.loc.clone(),
             });
@@ -4068,7 +4127,7 @@ impl Compiler {
         if let LoType::Pointer { pointee } = &addr_type {
             let inspect_info = if self.in_inspection_mode {
                 Some(InspectInfo {
-                    message: format!("<deref>: {}", pointee),
+                    message: format!("<deref>: {}", TypeFmt(self, &pointee)),
                     loc: op_loc.clone(),
                     linked_loc: None,
                 })
@@ -4085,7 +4144,10 @@ impl Compiler {
         };
 
         return Err(LoError {
-            message: format!("Cannot dereference expression of type '{}'", addr_type),
+            message: format!(
+                "Cannot dereference expression of type '{}'",
+                TypeFmt(self, &addr_type)
+            ),
             loc: addr_expr.loc().clone(),
         });
     }
@@ -4373,7 +4435,10 @@ impl Compiler {
     ) -> Result<&'a LoResultType, LoError> {
         let LoType::Result(result) = expr_type else {
             return Err(LoError {
-                message: format!("Cannot catch error from expr of type {}", expr_type),
+                message: format!(
+                    "Cannot catch error from expr of type {}",
+                    TypeFmt(self, &expr_type)
+                ),
                 loc: loc.clone(),
             });
         };
@@ -4384,7 +4449,7 @@ impl Compiler {
             return Err(LoError {
                 message: format!(
                     "Invalid Result error type: {}, must lower to i32",
-                    result.err
+                    TypeFmt(self, &result.err)
                 ),
                 loc: loc.clone(),
             });
@@ -4497,7 +4562,6 @@ impl Compiler {
                 }
 
                 Ok(LoType::StructInstance {
-                    struct_name: String::from(type_name),
                     struct_index: item.collection_index,
                 })
             }
@@ -4511,7 +4575,6 @@ impl Compiler {
                 }
 
                 Ok(LoType::EnumInstance {
-                    enum_name: String::from(type_name),
                     enum_index: item.collection_index,
                 })
             }
@@ -4521,7 +4584,7 @@ impl Compiler {
                 // don't print inspection for built-ins
                 if self.in_inspection_mode && item.loc.file_index != 0 {
                     self.print_inspection(&InspectInfo {
-                        message: format!("type {type_name} = {}", type_),
+                        message: format!("type {type_name} = {}", TypeFmt(self, &type_)),
                         loc: loc.clone(),
                         linked_loc: Some(item.loc.clone()),
                     });
@@ -4580,19 +4643,13 @@ impl Compiler {
             LoType::U64 | LoType::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
             LoType::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
             LoType::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
-            LoType::StructInstance {
-                struct_name: _,
-                struct_index,
-            } => {
+            LoType::StructInstance { struct_index } => {
                 let struct_ref = &self.struct_defs[*struct_index];
                 for field in &struct_ref.fields {
                     self.codegen_default_value(ctx, instrs, &field.field_type);
                 }
             }
-            LoType::EnumInstance {
-                enum_name: _,
-                enum_index,
-            } => {
+            LoType::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
                 self.codegen_default_value(ctx, instrs, &LoType::U32);
@@ -4662,20 +4719,14 @@ impl Compiler {
             LoType::F64 => wasm_types.push(WasmType::F64),
             LoType::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
             LoType::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            LoType::StructInstance {
-                struct_name: _,
-                struct_index,
-            } => {
+            LoType::StructInstance { struct_index } => {
                 let struct_def = &self.struct_defs[*struct_index];
 
                 for field in &struct_def.fields {
                     self.lower_type(&field.field_type, wasm_types);
                 }
             }
-            LoType::EnumInstance {
-                enum_name: _,
-                enum_index,
-            } => {
+            LoType::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
                 self.lower_type(&LoType::U32, wasm_types);
@@ -4723,10 +4774,7 @@ impl Compiler {
                 layout.alignment = u32::max(layout.alignment, 8);
                 layout.byte_size = align(layout.byte_size, 8) + 8;
             }
-            LoType::StructInstance {
-                struct_name: _,
-                struct_index,
-            } => {
+            LoType::StructInstance { struct_index } => {
                 let struct_def = &self.struct_defs[*struct_index];
 
                 // append each field's layout to total struct layout
@@ -4737,10 +4785,7 @@ impl Compiler {
                 layout.alignment = u32::max(layout.alignment, 1);
                 layout.byte_size = align(layout.byte_size, layout.alignment);
             }
-            LoType::EnumInstance {
-                enum_name: _,
-                enum_index,
-            } => {
+            LoType::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
                 self.get_type_layout(&LoType::U32, layout);
@@ -5026,8 +5071,9 @@ impl Compiler {
         let module = self.get_module_by_file_index(op_loc.file_index).unwrap();
         return Err(LoError {
             message: format!(
-                "Operator `{}` is incompatible with operands of type {operand_type}",
+                "Operator `{}` is incompatible with operands of type {}",
                 op_loc.read_span(module.parser.lexer.source),
+                TypeFmt(self, operand_type)
             ),
             loc: op_loc.clone(),
         });
@@ -5070,6 +5116,11 @@ impl Compiler {
         }
     }
 
+    fn get_fn_name_from_method(&self, receiver_type: &LoType, method_name: &str) -> String {
+        let receiver_type = TypeFmt(self, receiver_type.deref_rec());
+        format!("{receiver_type}::{method_name}")
+    }
+
     fn get_module_by_file_index(&self, file_index: usize) -> Option<&Module> {
         for module in &self.modules {
             if module.parser.lexer.file_index == file_index {
@@ -5085,7 +5136,7 @@ impl Compiler {
 
         if self.in_inspection_mode {
             let source_index = err.loc.file_index;
-            let source_range = RangeDisplay(&err.loc);
+            let source_range = RangeFmt(&err.loc);
             let content = json_str_escape(&err.message);
             stdout_writeln(format!(
                 "{{ \"type\": \"message\", \
@@ -5106,7 +5157,7 @@ impl Compiler {
 
         if self.in_inspection_mode {
             let source_index = err.loc.file_index;
-            let source_range = RangeDisplay(&err.loc);
+            let source_range = RangeFmt(&err.loc);
             let content = json_str_escape(&err.message);
             stdout_writeln(format!(
                 "{{ \"type\": \"message\", \
@@ -5124,13 +5175,13 @@ impl Compiler {
 
     fn print_inspection(&self, inspect_info: &InspectInfo) {
         let source_index = inspect_info.loc.file_index;
-        let source_range = RangeDisplay(&inspect_info.loc);
+        let source_range = RangeFmt(&inspect_info.loc);
         let message = json_str_escape(&inspect_info.message);
 
         if let Some(linked_loc) = &inspect_info.linked_loc {
             if linked_loc.file_index != 0 {
                 let target_index = linked_loc.file_index;
-                let target_range = RangeDisplay(&linked_loc);
+                let target_range = RangeFmt(&linked_loc);
                 stdout_writeln(format!(
                     "{{ \"type\": \"info\", \
                         \"link\": \"{target_index}/{target_range}\", \
@@ -5154,11 +5205,6 @@ fn json_str_escape(value: &str) -> String {
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
         .replace("\n", "\\n")
-}
-
-fn get_fn_name_from_method(receiver_type: &LoType, method_name: &str) -> String {
-    let resolved_receiver_type = receiver_type.deref_rec();
-    format!("{resolved_receiver_type}::{method_name}")
 }
 
 fn align(value: u32, alignment: u32) -> u32 {

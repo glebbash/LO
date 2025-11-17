@@ -140,7 +140,7 @@ impl WasmEval {
         }
         values.reverse();
 
-        stdout_write(format!("result of `main` is: {}\n", ListDisplay(&values)));
+        stdout_write(format!("result of `main` is: {}\n", ListFmt(&values)));
         Ok(())
     }
 

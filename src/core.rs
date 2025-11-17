@@ -326,9 +326,9 @@ pub fn debug(msg: impl AsRef<str>) {
     stderr_write(format!("{}\n", msg.as_ref()));
 }
 
-pub struct ListDisplay<'a, T: core::fmt::Display>(pub &'a [T]);
+pub struct ListFmt<'a, T: core::fmt::Display>(pub &'a [T]);
 
-impl<'a, T: core::fmt::Display> core::fmt::Display for ListDisplay<'a, T> {
+impl<'a, T: core::fmt::Display> core::fmt::Display for ListFmt<'a, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut iter = self.0.iter();
         if let Some(item) = iter.next() {
@@ -341,9 +341,9 @@ impl<'a, T: core::fmt::Display> core::fmt::Display for ListDisplay<'a, T> {
     }
 }
 
-pub struct RangeDisplay<'a>(pub &'a LoLocation);
+pub struct RangeFmt<'a>(pub &'a LoLocation);
 
-impl<'a> core::fmt::Display for RangeDisplay<'a> {
+impl<'a> core::fmt::Display for RangeFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let sl = self.0.pos.line;
         let sc = self.0.pos.col;
