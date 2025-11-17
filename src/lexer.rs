@@ -477,18 +477,21 @@ impl EscapedString {
 }
 
 fn is_space_char(c: char) -> bool {
-    match c {
-        ' ' | '\n' | '\t' | '\r' => true,
-        _ => false,
-    }
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
 fn is_symbol_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
+    return (c >= 'a' && c <= 'z')
+        || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9')
+        || (c == '_');
 }
 
 fn is_delim_char(c: char) -> bool {
-    "(){}[],\\".contains(c)
+    return (c == '(' || c == ')')
+        || (c == '{' || c == '}')
+        || (c == '[' || c == ']')
+        || (c == ',' || c == '\\');
 }
 
 static OPERATORS: &[&str] = &[
