@@ -1,6 +1,9 @@
 include "../lib/args.lo"
-include "../lib/print.lo"
-include "../lib/std.lo"
+include "../lib/wasi.lo"
+
+include "./core.lo"
+include "./lexer.lo"
+include "./compiler.lo"
 
 export memory {
     min_pages: 1,
@@ -14,9 +17,53 @@ export fn _start() {
     defer args.free()
 
     if args.argc < 3 {
-        println(USAGE)
+        stderr_writeln(USAGE)
+        wasi::proc_exit(1)
+    }
+
+    let file_name = args.get(2)
+
+    if args.get(1).equals("lex") {
+        let compiler = Compiler::new()
+        defer compiler.free()
+
+        let module = compiler.include(
+            file_name,
+            ref!(Loc::internal()),
+        ) catch _ {
+            wasi::proc_exit(1)
+        }
+
+        let a = Arena::new()
+        defer a.free()
+
+        let source = module.parser.lexer.source
+        for i in 0..module.parser.lexer.tokens.size {
+            let token = module.parser.lexer.tokens.get!<Token>(i)
+
+            defer a.reset()
+
+            with _ in (
+                token.loc.to_string_in(a, compiler.fm).as_str(),
+                " - [[",
+                String::from_str_in(a, token.loc.read_span(source)) \
+                    .replace("\n", "\\n").as_str(),
+                "]] ",
+                token.type_.to_str(),
+            ) do
+            {
+                stderr_write(_)
+            }
+        }
+
         return
     }
 
-    println("WIP")
+    with _ in (
+        "Unknown command: ", \\ args.get(1), \\ "\n",
+        USAGE, \\ "\n",
+    ) do {
+        stderr_write(_)
+    }
+    wasi::proc_exit(1)
 }

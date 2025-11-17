@@ -1,0 +1,9 @@
+include "./lexer.lo"
+
+struct Parser {
+    lexer: &Lexer,
+}
+
+fn Parser::new(lexer: &Lexer): Parser {
+    return .Parser { lexer: lexer }
+}

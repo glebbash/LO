@@ -1,0 +1,26 @@
+include "./core.lo"
+
+struct Token {
+    loc: Loc,
+    type_: TokenType,
+}
+
+enum TokenType {}
+
+fn TokenType::to_str(self): str {
+    todo!()
+}
+
+struct Lexer {
+    source: str,
+    tokens: &Vec of Token,
+}
+
+fn Lexer::new(source: str): &Lexer {
+    return heap::new!(.Lexer { source: source, tokens: Vec::new!<Token>() })
+}
+
+fn Lexer::lex_file(&self): Result<void, &Error> {
+    // TODO: implement
+    return Ok()
+}

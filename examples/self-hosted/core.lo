@@ -1,0 +1,128 @@
+include "../lib/std.lo" with extern
+include "../lib/fs.lo" with extern
+include "../lib/print.lo"
+
+struct Pos {
+    offset: u32,
+    line: u32,
+    col: u32,
+}
+
+struct Loc {
+    file_index: u32,
+    pos: Pos,
+    end_pos: Pos,
+}
+
+const Loc::FILE_INDEX_INTERNAL = 0
+
+fn Loc::internal(): Loc {
+    return .Loc {
+        file_index: Loc::FILE_INDEX_INTERNAL,
+        pos: .Pos { offset: 0, line: 1, col: 1 },
+        end_pos: .Pos { offset: 0, line: 1, col: 1 },
+    }
+}
+
+fn Loc::format(self, out: String, fm: FileManager) {
+    out.push_str(fm.get(self.file_index).absolute_path.as_str())
+    out.push_str(":")
+    out.push_str(self.pos.line.to_tmp_str!())
+    out.push_str(":")
+    out.push_str(self.pos.col.to_tmp_str!())
+}
+
+fn Loc::to_string_in(self, a: Alloc, fm: FileManager): String {
+    let out = String::new_in(a, 32)
+    self.format(out, fm)
+    return out
+}
+
+fn Loc::read_span(self, source: str): str {
+    todo!()
+}
+
+struct Error {
+    message: String,
+    loc: Loc,
+}
+
+fn Error::to_string_in(&self, a: Alloc, fm: FileManager): String {
+    let out = String::new_in(a, 32)
+    self.loc.format(out, fm)
+    out.push_str(" - ")
+    out.push_str(self.message.as_str())
+    return out
+}
+
+struct FileInfo {
+    index: u32,
+    included_times: u32,
+    absolute_path: String,
+    source: String,
+}
+
+struct FileManager {
+    files: &Vec of FileInfo,
+}
+
+fn FileManager::new(): FileManager {
+    let files = Vec::new!<FileInfo>()
+    files.push!(.FileInfo {
+        index: 0,
+        included_times: 0,
+        absolute_path: String::from_str("<internal>"),
+        source: String::new(0),
+    })
+    return .FileManager { files: files }
+}
+
+fn FileManager::include(self, file_name: str, loc: &Loc): Result<u32, &Error> {
+    let source = fs::read_file(file_name) catch err {
+        let message = String::new(64)
+        with _ in (
+            "Can't read file '", \\ file_name, \\ "', error code = ",
+            err.to_tmp_str!(),
+        ) do {
+            message.push_str(_)
+        }
+
+        return Err(heap::new!(.Error {
+            message: message,
+            loc: Loc::internal(),
+        }))
+    }
+
+    self.files.push!(.FileInfo {
+        index: self.files.size - 1,
+        included_times: 1,
+        absolute_path: String::from_str(file_name),
+        source: source,
+    })
+
+    return Ok(self.files.size - 1)
+}
+
+fn FileManager::get(self, file_index: u32): &FileInfo {
+    return self.files.at!<FileInfo>(file_index)
+}
+
+// utils
+
+macro todo!(): never {
+    @unreachable()
+}
+
+fn stderr_writeln(message: str) {
+    stderr_write(message)
+    stderr_write("\n")
+}
+
+fn stderr_write(message: str) {
+    // TODO: support buffering
+    eprint(message)
+}
+
+fn String::replace(self, search: str, replacement: str): String {
+    todo!()
+}

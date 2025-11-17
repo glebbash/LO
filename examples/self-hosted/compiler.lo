@@ -1,0 +1,46 @@
+include "./core.lo"
+include "./lexer.lo"
+include "./parser.lo"
+
+struct Module {
+    parser: Parser,
+}
+
+struct Compiler {
+    fm: FileManager,
+}
+
+fn Compiler::new(): &Compiler {
+    return heap::new!(.Compiler { fm: FileManager::new() })
+}
+
+fn Compiler::free(&self) {
+    heap::free(self)
+}
+
+fn Compiler::include(
+    &self, \\ file_name: str, \\ loc: &Loc,
+): Result<&Module, &never> {
+    let file_index = self.fm.include(file_name, loc) catch err {
+        self.report_error(err)
+        return Err(1 as &never)
+    }
+
+    let lexer = Lexer::new(self.fm.get(file_index).source.as_str())
+    lexer.lex_file() catch err {
+        self.report_error(err)
+        return Err(1 as &never)
+    }
+
+    return Ok(heap::new!(.Module {
+        parser: Parser::new(lexer),
+    }))
+}
+
+// TODO: free errors
+fn Compiler::report_error(&self, err: &Error) {
+    stderr_write("ERROR: ")
+    // TODO: don't leak memory
+    stderr_write(err.to_string_in(Alloc::HEAP, self.fm).as_str())
+    stderr_write("\n")
+}
