@@ -6,13 +6,13 @@ struct Token {
 }
 
 enum TokenType {
-    StringLiteral(&void),
-    CharLiteral(&void),
-    IntLiteral(&void),
-    Symbol(&void),
-    Delim(&void),
-    Operator(&void),
-    Terminal(&void),
+    StringLiteral(void),
+    CharLiteral(void),
+    IntLiteral(void),
+    Symbol(void),
+    Delim(void),
+    Operator(void),
+    Terminal(void),
 }
 
 fn TokenType::to_str(self): str {
@@ -66,7 +66,7 @@ fn Lexer::lex_file(&self): Result<void, &Error> {
 
     loc.pos = Pos { offset: 0, line: 1, col: 1 }
     loc.end_pos = Pos { offset: 7, line: 1, col: 8 }
-    self.tokens.push!(Token { loc: loc, type_: TokenType::Symbol(NULL) })
+    self.tokens.push!(Token { loc: loc, type_: TokenType::Symbol() })
 
     return Ok()
 }
