@@ -5,5 +5,5 @@ struct Parser {
 }
 
 fn Parser::new(lexer: &Lexer): Parser {
-    return .Parser { lexer: lexer }
+    return Parser { lexer: lexer }
 }

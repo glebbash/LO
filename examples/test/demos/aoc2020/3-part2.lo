@@ -43,7 +43,7 @@ fn Map::parse(input: String): Map {
             current_row = Vec::new!<Tile>()
         }
     }
-    return .Map { rows: rows }
+    return Map { rows: rows }
 }
 
 fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {

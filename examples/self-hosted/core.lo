@@ -17,10 +17,10 @@ struct Loc {
 const Loc::FILE_INDEX_INTERNAL = 0
 
 fn Loc::internal(): Loc {
-    return .Loc {
+    return Loc {
         file_index: Loc::FILE_INDEX_INTERNAL,
-        pos: .Pos { offset: 0, line: 1, col: 1 },
-        end_pos: .Pos { offset: 0, line: 1, col: 1 },
+        pos: Pos { offset: 0, line: 1, col: 1 },
+        end_pos: Pos { offset: 0, line: 1, col: 1 },
     }
 }
 
@@ -74,13 +74,13 @@ struct FileManager {
 
 fn FileManager::new(error_arena: &Arena): FileManager {
     let files = Vec::new!<FileInfo>()
-    files.push!(.FileInfo {
+    files.push!(FileInfo {
         index: 0,
         included_times: 0,
         absolute_path: String::from_str("<internal>"),
         source: String::new(0),
     })
-    return .FileManager { files: files, error_arena: error_arena }
+    return FileManager { files: files, error_arena: error_arena }
 }
 
 fn FileManager::get(self, file_index: u32): &FileInfo {
@@ -98,13 +98,13 @@ fn FileManager::include(self, relative_path: str, loc: &Loc): Result<u32, &Error
             err.to_tmp_str!(),
         )
 
-        return Err(self.error_arena.new!(.Error {
+        return Err(self.error_arena.new!(Error {
             message: message,
             loc: Loc::internal(),
         }))
     }
 
-    self.files.push!(.FileInfo {
+    self.files.push!(FileInfo {
         index: self.files.size - 1,
         included_times: 1,
         absolute_path: absolute_path,

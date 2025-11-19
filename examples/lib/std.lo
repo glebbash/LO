@@ -287,7 +287,7 @@ struct Arena::Block {
 
 fn Arena::Block::new(a: Alloc, size: u32): &Arena::Block {
     let mem = alloc(a, size)
-    return new!(a, .Arena::Block {
+    return new!(a, Arena::Block {
         next: NULL as &Arena::Block,
         size: size,
         used: 0,
@@ -301,7 +301,7 @@ fn Arena::new(): &Arena {
 
 fn Arena::new_with_config(a: Alloc, block_size: u32): &Arena {
     let block = Arena::Block::new(a, block_size)
-    return new!(a, .Arena {
+    return new!(a, Arena {
         head: block,
         tail: block,
         block_size: block_size,
@@ -399,7 +399,7 @@ fn Vec::with_capacity(capacity: u32, item_size: u32): &Vec {
 }
 
 fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
-    return new!(a, .Vec {
+    return new!(a, Vec {
         data: alloc(a, capacity * item_size),
         size: 0,
         capacity: capacity,
@@ -519,19 +519,19 @@ struct String {
 }
 
 fn String::new(capacity: u32): String {
-    return .String {
+    return String {
         chars: Vec::with_capacity!<u8>(capacity),
     }
 }
 
 fn String::new_in(a: Alloc, capacity: u32): String {
-    return .String {
+    return String {
         chars: Vec::with_capacity_in(a, capacity, sizeof u8),
     }
 }
 
 fn String::from_chars(chars: &Vec of u8): String {
-    return .String { chars: chars }
+    return String { chars: chars }
 }
 
 fn String::from_str(value: str): String {
@@ -612,7 +612,7 @@ fn String::join(items: &Vec of str, separator: u8): String {
 }
 
 fn String::as_str(self): str {
-    return .str {
+    return str {
         data: self.chars.data as *&u8,
         size: self.chars.size,
     }
@@ -628,7 +628,7 @@ fn str::clone(self): str {
     let new_data = heap::alloc_many!<u8>(self.size)
     mem::copy!(self.data, new_data, self.size)
 
-    return .str { data: new_data, size: self.size }
+    return str { data: new_data, size: self.size }
 }
 
 fn str::equals(self, other: str): bool {
@@ -657,7 +657,7 @@ fn str::slice(self, start: u32, end: u32): str {
     if start >= self.size || end > self.size || start > end {
         return self
     }
-    return .str {
+    return str {
         data: (self.data as u32 + start) as *&u8,
         size: end - start,
     }
@@ -671,7 +671,7 @@ fn str::from_cstr(value: *&u8): str {
         }
         len += 1
     }
-    return .str { data: value, size: len }
+    return str { data: value, size: len }
 }
 
 fn str::split(self, separator: u8, output: &Vec of str): &Vec of str {

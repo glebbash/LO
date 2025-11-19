@@ -8,12 +8,17 @@ use alloc::{
 use core::cell::RefCell;
 use LoTokenType::*;
 
+pub struct ParsingContext {
+    pub struct_literal_allowed: bool,
+}
+
 pub struct Parser {
     // context
     pub lexer: Lexer,
 
     // state
     pub tokens_processed: RefCell<usize>,
+    pub contexts: Vec<ParsingContext>,
 
     // output
     pub ast: Vec<TopLevelExpr>,
@@ -21,9 +26,15 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(lexer: Lexer) -> Self {
+        let mut contexts = Vec::new();
+        contexts.push(ParsingContext {
+            struct_literal_allowed: true,
+        });
+
         Self {
             lexer,
             tokens_processed: RefCell::new(0),
+            contexts,
             ast: Vec::new(),
         }
     }
@@ -682,7 +693,13 @@ impl Parser {
         if let Some(_) = self.eat(Delim, "(")? {
             let mut loc = self.prev().loc.clone();
 
+            self.push_ctx(ParsingContext {
+                struct_literal_allowed: true,
+            });
+
             let expr = Box::new(self.parse_code_expr(0)?);
+
+            self.pop_ctx();
 
             let has_trailing_comma = self.eat(Delim, ",")?.is_some();
             self.expect(Delim, ")")?;
@@ -728,12 +745,18 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "if")? {
             let mut loc = self.prev().loc.clone();
 
+            self.push_ctx(ParsingContext {
+                struct_literal_allowed: false,
+            });
+
             let cond: IfCond;
             if let Some(_) = self.eat(Symbol, "match")? {
                 cond = IfCond::Match(Box::new(self.parse_match_header()?));
             } else {
                 cond = IfCond::Expr(Box::new(self.parse_code_expr(0)?));
             };
+
+            self.pop_ctx();
 
             let then_block = Box::new(self.parse_code_block()?);
 
@@ -796,11 +819,18 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "for")? {
             let mut loc = self.prev().loc.clone();
 
+            self.push_ctx(ParsingContext {
+                struct_literal_allowed: false,
+            });
+
             let counter = self.parse_ident()?;
             self.expect(Symbol, "in")?;
             let start = self.parse_code_expr(0)?;
             let op = self.expect(Operator, "..")?.clone();
             let end = self.parse_code_expr(0)?;
+
+            self.pop_ctx();
+
             let body = self.parse_code_block()?;
 
             loc.end_pos = self.prev().loc.end_pos;
@@ -943,11 +973,16 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Operator, ".")? {
-            let loc = self.prev().loc.clone();
-            let struct_name = self.parse_ident()?;
-            let struct_literal = self.parse_struct_literal(struct_name, loc)?;
-            return Ok(CodeExpr::StructLiteral(struct_literal));
+        if self.eat(Operator, ":")?.is_some() || self.eat(Delim, "{")?.is_some() {
+            return Err(LoError {
+                message: format!(
+                    "Unexpected character '{}'. \
+                    If you were trying to create a struct in this context \
+                    surround it with parens.",
+                    self.prev().get_value(self.lexer.source)
+                ),
+                loc: self.prev().loc.clone(),
+            });
         }
 
         let ident = self.parse_ident()?;
@@ -983,10 +1018,23 @@ impl Parser {
             }));
         }
 
+        let ctx = self.contexts.last().unwrap();
+        if self.current().is(Delim, "{", self.lexer.source) && ctx.struct_literal_allowed {
+            let loc = ident.loc.clone();
+            let struct_literal = self.parse_struct_literal(ident, loc)?;
+            return Ok(CodeExpr::StructLiteral(struct_literal));
+        }
+
         if self.current().is(Delim, "(", self.lexer.source) {
             let mut loc = ident.loc.clone();
 
+            self.push_ctx(ParsingContext {
+                struct_literal_allowed: true,
+            });
+
             let args = self.parse_fn_args()?;
+
+            self.pop_ctx();
 
             loc.end_pos = self.prev().loc.end_pos;
 
@@ -1281,6 +1329,14 @@ impl Parser {
     }
 
     // utils
+
+    fn push_ctx(&self, ctx: ParsingContext) {
+        self.contexts.be_mut().push(ctx);
+    }
+
+    fn pop_ctx(&self) {
+        self.contexts.be_mut().pop();
+    }
 
     fn expect_any(&self, type_: LoTokenType) -> Result<&LoToken, LoError> {
         let token = self.current();

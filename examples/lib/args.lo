@@ -18,7 +18,7 @@ fn Args::load(): Args {
     let argv_buf = heap::alloc_many!<u8>(argv_buf_size)
     let _ = wasi::args_get(argv, argv_buf)
 
-    return .Args { argc: argc, argv: argv, argv_buf: argv_buf }
+    return Args { argc: argc, argv: argv, argv_buf: argv_buf }
 }
 
 fn Args::get(self, i: u32): str {

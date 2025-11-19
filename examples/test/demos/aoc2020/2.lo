@@ -17,7 +17,7 @@ struct PasswordCheckState {
 }
 
 fn initial_check_state(): PasswordCheckState {
-    return .PasswordCheckState {
+    return PasswordCheckState {
         step: Step::READ_MIN_OCCURANCES,
         min_occurances: 0,
         max_occurances: 0,

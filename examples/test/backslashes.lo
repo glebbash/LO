@@ -40,13 +40,13 @@ fn backslash_test() {
 
     if false {
         let _ = 1 \
-            + .s { x: 1 }.x \
+            + s { x: 1 }.x \
             + 1
     }
     let _ = 1 + 1 \
         + (1 \
             + 1 \
-            + .s { x: 1 }.x) + 1
+            + s { x: 1 }.x) + 1
 
     let _ = 1 + f(1 \
         + 1 \
@@ -93,7 +93,7 @@ struct s {
 }
 
 fn f(x: u32): u32 {
-    return .s { x: x }.x
+    return s { x: x }.x
 }
 
 fn f2(x: u32, y: u32): u32 {

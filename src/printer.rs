@@ -689,7 +689,6 @@ impl Printer {
                 has_trailing_comma,
                 loc,
             }) => {
-                stdout_write(".");
                 stdout_write(&struct_name.repr);
                 stdout_write(" {");
                 self.last_printed_item_line = loc.pos.line;

@@ -7,7 +7,7 @@ struct Module {
 }
 
 fn Module::new(parser: Parser): &Module {
-    return heap::new!(.Module { parser: parser })
+    return heap::new!(Module { parser: parser })
 }
 
 fn Module::free(&self) {
@@ -23,7 +23,7 @@ struct Compiler {
 fn Compiler::new(): &Compiler {
     let error_arena = Arena::new()
 
-    return heap::new!(.Compiler {
+    return heap::new!(Compiler {
         fm: FileManager::new(error_arena),
         modules: Vec::new!<Module>(),
         error_arena: error_arena,

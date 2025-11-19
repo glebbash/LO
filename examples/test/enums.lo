@@ -16,10 +16,10 @@ struct ExprItem {
 }
 
 fn main() {
-    let expr = Expr::Binary(heap::new!(.ExprBinary {
+    let expr = Expr::Binary(heap::new!(ExprBinary {
         operator: "+",
-        lhs: Expr::Item(heap::new!(.ExprItem { name: "a" })),
-        rhs: Expr::Item(heap::new!(.ExprItem { name: "b" })),
+        lhs: Expr::Item(heap::new!(ExprItem { name: "a" })),
+        rhs: Expr::Item(heap::new!(ExprItem { name: "b" })),
     }))
 
     if match Expr::Binary(bin) = expr {

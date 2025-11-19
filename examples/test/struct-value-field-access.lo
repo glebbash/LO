@@ -11,7 +11,7 @@ struct Point2DPair {
 export fn main(): i32 {
     let res = +0
     // +1
-    res += .Point2D { x: +1, y: +2 }.x
+    res += Point2D { x: +1, y: +2 }.x
     // +4
     res += get_pos().y
     let tmp = get_point_pair().p1
@@ -24,12 +24,12 @@ export fn main(): i32 {
 }
 
 fn get_point_pair(): Point2DPair {
-    return .Point2DPair {
-        p1: .Point2D { x: +5, y: +6 },
-        p2: .Point2D { x: +7, y: +8 },
+    return Point2DPair {
+        p1: Point2D { x: +5, y: +6 },
+        p2: Point2D { x: +7, y: +8 },
     }
 }
 
 fn get_pos(): Point2D {
-    return .Point2D { x: +3, y: +4 }
+    return Point2D { x: +3, y: +4 }
 }

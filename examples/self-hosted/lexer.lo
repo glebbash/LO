@@ -47,7 +47,7 @@ struct Lexer {
 }
 
 fn Lexer::new(source: str, file_index: u32, error_arena: &Arena): &Lexer {
-    return heap::new!(.Lexer {
+    return heap::new!(Lexer {
         source: source,
         file_index: file_index,
         error_arena: error_arena,
@@ -64,9 +64,9 @@ fn Lexer::lex_file(&self): Result<void, &Error> {
     let loc = Loc::internal()
     loc.file_index = self.file_index
 
-    loc.pos = .Pos { offset: 0, line: 1, col: 1 }
-    loc.end_pos = .Pos { offset: 7, line: 1, col: 8 }
-    self.tokens.push!(.Token { loc: loc, type_: TokenType::Symbol(NULL) })
+    loc.pos = Pos { offset: 0, line: 1, col: 1 }
+    loc.end_pos = Pos { offset: 7, line: 1, col: 8 }
+    self.tokens.push!(Token { loc: loc, type_: TokenType::Symbol(NULL) })
 
     return Ok()
 }
