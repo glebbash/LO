@@ -244,9 +244,12 @@ impl Parser {
                 let mut variant_loc = self.current().loc.clone();
 
                 let variant_name = self.parse_ident()?;
-                self.expect(Delim, "(")?;
-                let variant_type = self.parse_type_expr()?;
-                self.expect(Delim, ")")?;
+
+                let mut variant_type = None;
+                if let Some(_) = self.eat(Delim, "(")? {
+                    variant_type = Some(self.parse_type_expr()?);
+                    self.expect(Delim, ")")?;
+                }
 
                 variant_loc.end_pos = self.prev().loc.end_pos;
 

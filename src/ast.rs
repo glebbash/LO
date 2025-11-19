@@ -107,7 +107,7 @@ pub struct EnumDefExpr {
 
 pub struct EnumDefVariant {
     pub variant_name: IdentExpr,
-    pub variant_type: TypeExpr,
+    pub variant_type: Option<TypeExpr>,
     pub loc: LoLocation,
 }
 

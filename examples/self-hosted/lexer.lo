@@ -6,29 +6,29 @@ struct Token {
 }
 
 enum TokenType {
-    StringLiteral(void),
-    CharLiteral(void),
-    IntLiteral(void),
-    Symbol(void),
-    Delim(void),
-    Operator(void),
-    Terminal(void),
+    StringLiteral,
+    CharLiteral,
+    IntLiteral,
+    Symbol,
+    Delim,
+    Operator,
+    Terminal,
 }
 
 fn TokenType::to_str(self): str {
-    if match TokenType::StringLiteral(_) = self {
+    if self == TokenType::StringLiteral() {
         return "StringLiteral"
-    } else if match TokenType::CharLiteral(_) = self {
+    } else if self == TokenType::CharLiteral() {
         return "CharLiteral"
-    } else if match TokenType::IntLiteral(_) = self {
+    } else if self == TokenType::IntLiteral() {
         return "IntLiteral"
-    } else if match TokenType::Symbol(_) = self {
+    } else if self == TokenType::Symbol() {
         return "Symbol"
-    } else if match TokenType::Delim(_) = self {
+    } else if self == TokenType::Delim() {
         return "Delim"
-    } else if match TokenType::Operator(_) = self {
+    } else if self == TokenType::Operator() {
         return "Operator"
-    } else if match TokenType::Terminal(_) = self {
+    } else if self == TokenType::Terminal() {
         return "Terminal"
     }
 

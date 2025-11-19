@@ -181,9 +181,11 @@ impl Printer {
                         self.print_comments_before(variant.loc.pos);
                         self.print_indent();
                         stdout_write(&variant.variant_name.repr);
-                        stdout_write("(");
-                        self.print_type_expr(&variant.variant_type);
-                        stdout_write(")");
+                        if let Some(variant_type) = &variant.variant_type {
+                            stdout_write("(");
+                            self.print_type_expr(variant_type);
+                            stdout_write(")");
+                        }
                         stdout_writeln(",");
                     }
 

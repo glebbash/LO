@@ -1047,11 +1047,14 @@ impl Compiler {
                             }
                         }
 
-                        let variant_type =
-                            catch!(self.build_type(&module.ctx, &variant.variant_type), err, {
-                                self.report_error(&err);
-                                continue 'variants;
-                            });
+                        let mut variant_type = LoType::Void;
+                        if let Some(variant_type_expr) = &variant.variant_type {
+                            variant_type =
+                                catch!(self.build_type(&module.ctx, variant_type_expr), err, {
+                                    self.report_error(&err);
+                                    continue 'variants;
+                                });
+                        }
 
                         if i == 0 {
                             enum_.variant_type = variant_type.clone();
@@ -2225,6 +2228,14 @@ impl Compiler {
                         let ctor = &self.enum_ctors[item.collection_index];
                         let enum_ = &self.enum_defs[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
+
+                        if self.in_inspection_mode {
+                            self.print_inspection(&InspectInfo {
+                                message: format!("{} // {}", fn_name.repr, ctor.variant_index),
+                                loc: fn_name.loc.clone(),
+                                linked_loc: Some(variant.loc.clone()),
+                            });
+                        }
 
                         self.codegen_int_const(instrs, ctor.variant_index as i32, None);
 
@@ -4862,6 +4873,11 @@ impl Compiler {
                 | LoType::U32
                 | LoType::Pointer { pointee: _ }
                 | LoType::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_EQ),
+                LoType::EnumInstance { enum_index }
+                    if self.enum_defs[*enum_index].variant_type == LoType::Void =>
+                {
+                    return Ok(WasmBinaryOpKind::I32_EQ)
+                }
                 LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_EQ),
                 LoType::F32 => return Ok(WasmBinaryOpKind::F32_EQ),
                 LoType::F64 => return Ok(WasmBinaryOpKind::F64_EQ),
@@ -4877,6 +4893,11 @@ impl Compiler {
                 | LoType::U32
                 | LoType::Pointer { pointee: _ }
                 | LoType::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_NE),
+                LoType::EnumInstance { enum_index }
+                    if self.enum_defs[*enum_index].variant_type == LoType::Void =>
+                {
+                    return Ok(WasmBinaryOpKind::I32_NE)
+                }
                 LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_NE),
                 LoType::F32 => return Ok(WasmBinaryOpKind::F32_NE),
                 LoType::F64 => return Ok(WasmBinaryOpKind::F64_NE),
