@@ -50,6 +50,7 @@ export fn _start() {
                     .replace("\n", "\\n").as_str(),
                 "]] ",
                 token.type_.to_str(),
+                "\n",
             )
         }
 

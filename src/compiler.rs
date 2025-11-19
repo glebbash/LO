@@ -2293,6 +2293,25 @@ impl Compiler {
                     &fn_name.loc,
                 )?;
             }
+            CodeExpr::MacroMethodCall(MacroMethodCallExpr {
+                lhs,
+                field_name,
+                type_args,
+                args,
+                loc: _,
+            }) => {
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
+                let macro_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
+                self.codegen_macro_call(
+                    ctx,
+                    instrs,
+                    &macro_name,
+                    type_args,
+                    Some(lhs),
+                    &args.items,
+                    &field_name.loc,
+                )?;
+            }
             CodeExpr::IntrinsicCall(MacroFnCallExpr {
                 fn_name,
                 type_args,
@@ -2414,26 +2433,6 @@ impl Compiler {
                     loc: fn_name.loc.clone(),
                 });
             }
-            CodeExpr::MacroMethodCall(MacroMethodCallExpr {
-                lhs,
-                field_name,
-                type_args,
-                args,
-                loc: _,
-            }) => {
-                let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let macro_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.codegen_macro_call(
-                    ctx,
-                    instrs,
-                    &macro_name,
-                    type_args,
-                    Some(lhs),
-                    &args.items,
-                    &field_name.loc,
-                )?;
-            }
-
             CodeExpr::Dbg(DbgExpr { message, loc }) => {
                 let debug_message = format!(
                     "{} - {}",

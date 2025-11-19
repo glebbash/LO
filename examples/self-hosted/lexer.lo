@@ -5,22 +5,68 @@ struct Token {
     type_: TokenType,
 }
 
-enum TokenType {}
+enum TokenType {
+    StringLiteral(&void),
+    CharLiteral(&void),
+    IntLiteral(&void),
+    Symbol(&void),
+    Delim(&void),
+    Operator(&void),
+    Terminal(&void),
+}
 
 fn TokenType::to_str(self): str {
-    todo!()
+    if match TokenType::StringLiteral(_) = self {
+        return "StringLiteral"
+    } else if match TokenType::CharLiteral(_) = self {
+        return "CharLiteral"
+    } else if match TokenType::IntLiteral(_) = self {
+        return "IntLiteral"
+    } else if match TokenType::Symbol(_) = self {
+        return "Symbol"
+    } else if match TokenType::Delim(_) = self {
+        return "Delim"
+    } else if match TokenType::Operator(_) = self {
+        return "Operator"
+    } else if match TokenType::Terminal(_) = self {
+        return "Terminal"
+    }
+
+    // TODO: fix `else { @unreachable()}` not working
+    @unreachable()
 }
 
 struct Lexer {
+    // context
     source: str,
+    file_index: u32,
+    error_arena: &Arena,
+
+    // output
     tokens: &Vec of Token,
 }
 
-fn Lexer::new(source: str): &Lexer {
-    return heap::new!(.Lexer { source: source, tokens: Vec::new!<Token>() })
+fn Lexer::new(source: str, file_index: u32, error_arena: &Arena): &Lexer {
+    return heap::new!(.Lexer {
+        source: source,
+        file_index: file_index,
+        error_arena: error_arena,
+        tokens: Vec::new!<Token>(),
+    })
 }
 
+fn Lexer::free(&self) {
+    self.tokens.free()
+}
+
+// TODO: implement proper
 fn Lexer::lex_file(&self): Result<void, &Error> {
-    // TODO: implement
+    let loc = Loc::internal()
+    loc.file_index = self.file_index
+
+    loc.pos = .Pos { offset: 0, line: 1, col: 1 }
+    loc.end_pos = .Pos { offset: 7, line: 1, col: 8 }
+    self.tokens.push!(.Token { loc: loc, type_: TokenType::Symbol(NULL) })
+
     return Ok()
 }

@@ -39,7 +39,7 @@ fn Loc::to_string_in(self, a: Alloc, fm: FileManager): String {
 }
 
 fn Loc::read_span(self, source: str): str {
-    todo!()
+    return source.slice(self.pos.offset, self.end_pos.offset)
 }
 
 struct Error {
@@ -62,11 +62,17 @@ struct FileInfo {
     source: String,
 }
 
-struct FileManager {
-    files: &Vec of FileInfo,
+fn FileInfo::free(self) {
+    self.absolute_path.free()
+    self.source.free()
 }
 
-fn FileManager::new(): FileManager {
+struct FileManager {
+    files: &Vec of FileInfo,
+    error_arena: &Arena,
+}
+
+fn FileManager::new(error_arena: &Arena): FileManager {
     let files = Vec::new!<FileInfo>()
     files.push!(.FileInfo {
         index: 0,
@@ -74,18 +80,25 @@ fn FileManager::new(): FileManager {
         absolute_path: String::from_str("<internal>"),
         source: String::new(0),
     })
-    return .FileManager { files: files }
+    return .FileManager { files: files, error_arena: error_arena }
 }
 
-fn FileManager::include(self, file_name: str, loc: &Loc): Result<u32, &Error> {
-    let source = fs::read_file(file_name) catch err {
-        let message = String::new(64)
+fn FileManager::get(self, file_index: u32): &FileInfo {
+    return self.files.at!<FileInfo>(file_index)
+}
+
+fn FileManager::include(self, relative_path: str, loc: &Loc): Result<u32, &Error> {
+    let parent_path = self.files.get!<FileInfo>(loc.file_index).absolute_path
+    let absolute_path = resolve_path(relative_path, parent_path.as_str())
+
+    let source = fs::read_file(absolute_path.as_str()) catch err {
+        let message = String::new_in(self.error_arena, 64)
         do message.push_str(it) with (
-            "Can't read file '", \\ file_name, \\ "', error code = ",
+            "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
             err.to_tmp_str!(),
         )
 
-        return Err(heap::new!(.Error {
+        return Err(self.error_arena.new!(.Error {
             message: message,
             loc: Loc::internal(),
         }))
@@ -94,22 +107,53 @@ fn FileManager::include(self, file_name: str, loc: &Loc): Result<u32, &Error> {
     self.files.push!(.FileInfo {
         index: self.files.size - 1,
         included_times: 1,
-        absolute_path: String::from_str(file_name),
+        absolute_path: absolute_path,
         source: source,
     })
 
     return Ok(self.files.size - 1)
 }
 
-fn FileManager::get(self, file_index: u32): &FileInfo {
-    return self.files.at!<FileInfo>(file_index)
+fn FileManager::free(self) {
+    self.files.free_deep!<FileInfo>()
+}
+
+fn resolve_path(file_path: str, relative_to: str): String {
+    if !file_path.starts_with(".") {
+        return String::from_str(file_path)
+    }
+
+    let path_items = relative_to.split('/', Vec::new!<str>())
+
+    // remove filename
+    let _ = path_items.pop_unchecked()
+
+    let _ = file_path.split('/', path_items)
+
+    let normalized = Vec::new!<str>()
+    defer normalized.free()
+
+    for i in 0..path_items.size {
+        let item = path_items.get!<str>(i)
+
+        if item.equals(".") {
+            continue
+        }
+
+        if item.equals("..") {
+            if normalized.size > 0 {
+                let _ = normalized.pop_unchecked()
+            }
+            continue
+        }
+
+        normalized.push!(item)
+    }
+
+    return String::join(normalized, '/')
 }
 
 // utils
-
-macro todo!(): never {
-    @unreachable()
-}
 
 fn stderr_writeln(message: str) {
     stderr_write(message)
@@ -119,8 +163,4 @@ fn stderr_writeln(message: str) {
 fn stderr_write(message: str) {
     // TODO: support buffering
     eprint(message)
-}
-
-fn String::replace(self, search: str, replacement: str): String {
-    todo!()
 }

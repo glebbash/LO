@@ -309,7 +309,7 @@ fn Arena::new_with_config(a: Alloc, block_size: u32): &Arena {
     })
 }
 
-macro Arena::new!<T>(&self, value: infer T): &T {
+macro Arena::new!(&self, value: infer T): &T {
     let ptr = self.alloc(sizeof T) as &T
     *ptr = value
     ptr
@@ -568,6 +568,49 @@ fn String::char_at(self, index: u32): u8 {
     return *self.chars.at!<u8>(index)
 }
 
+// in-place modification, returns self
+fn String::replace(self, search: str, replacement: str): String {
+    if search.size == 0 {
+        return self
+    }
+
+    let output = Vec::with_capacity_in(self.chars.alloc, self.len(), sizeof u8)
+
+    let i = 0
+    loop {
+        if i >= self.len() {
+            break
+        }
+
+        if i + search.size <= self.len() {
+            if self.as_str().slice(i, i + search.size).equals(search) {
+                output.push_all(replacement.data, replacement.size)
+                i += search.size
+                continue
+            }
+        }
+
+        output.push!(self.char_at(i))
+        i += 1
+    }
+
+    self.chars.free()
+    self.chars = output
+
+    return self
+}
+
+fn String::join(items: &Vec of str, separator: u8): String {
+    let output = String::new(32)
+    for i in 0..items.size {
+        output.push_str(items.get!<str>(i))
+        if i + 1 < items.size {
+            output.push(separator)
+        }
+    }
+    return output
+}
+
 fn String::as_str(self): str {
     return .str {
         data: self.chars.data as *&u8,
@@ -631,8 +674,19 @@ fn str::from_cstr(value: *&u8): str {
     return .str { data: value, size: len }
 }
 
-fn char_is_numeric(c: u8): bool {
-    return c >= '0' && c <= '9'
+fn str::split(self, separator: u8, output: &Vec of str): &Vec of str {
+    let start = 0
+
+    for i in 0..self.size {
+        if self.char_at(i) == separator {
+            output.push!(self.slice(start, i))
+            start = i + 1
+        }
+    }
+
+    output.push!(self.slice(start, self.size))
+
+    return output
 }
 
 // conversions
@@ -689,6 +743,10 @@ fn u64::write_to(value: u64, output: String) {
 }
 
 // utils
+
+macro todo!(): never {
+    @unreachable()
+}
 
 macro array_at!<T>(array: *&T, index: u32): &T {
     (array as u32 + index * sizeof T) as &T

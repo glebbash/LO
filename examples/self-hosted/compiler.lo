@@ -6,41 +6,63 @@ struct Module {
     parser: Parser,
 }
 
+fn Module::new(parser: Parser): &Module {
+    return heap::new!(.Module { parser: parser })
+}
+
+fn Module::free(&self) {
+    self.parser.lexer.free()
+}
+
 struct Compiler {
     fm: FileManager,
+    modules: &Vec of &Module,
+    error_arena: &Arena,
 }
 
 fn Compiler::new(): &Compiler {
-    return heap::new!(.Compiler { fm: FileManager::new() })
+    let error_arena = Arena::new()
+
+    return heap::new!(.Compiler {
+        fm: FileManager::new(error_arena),
+        modules: Vec::new!<Module>(),
+        error_arena: error_arena,
+    })
 }
 
 fn Compiler::free(&self) {
+    self.fm.free()
+    self.modules.free_deep!<&Module>()
+    self.error_arena.free()
     heap::free(self)
 }
 
+type VoidError = u32
+const VoidError::VALUE = 1 as &VoidError
+
 fn Compiler::include(
     &self, \\ file_name: str, \\ loc: &Loc,
-): Result<&Module, &never> {
+): Result<&Module, &VoidError> {
     let file_index = self.fm.include(file_name, loc) catch err {
         self.report_error(err)
-        return Err(1 as &never)
+        return Err(VoidError::VALUE)
     }
 
-    let lexer = Lexer::new(self.fm.get(file_index).source.as_str())
+    let source = self.fm.get(file_index).source.as_str()
+    let lexer = Lexer::new(source, file_index, self.error_arena)
     lexer.lex_file() catch err {
         self.report_error(err)
-        return Err(1 as &never)
+        return Err(VoidError::VALUE)
     }
 
-    return Ok(heap::new!(.Module {
-        parser: Parser::new(lexer),
-    }))
+    let module = Module::new(Parser::new(lexer))
+    self.modules.push!(module)
+
+    return Ok(module)
 }
 
-// TODO: free errors
 fn Compiler::report_error(&self, err: &Error) {
     stderr_write("ERROR: ")
-    // TODO: don't leak memory
-    stderr_write(err.to_string_in(Alloc::HEAP, self.fm).as_str())
+    stderr_write(err.to_string_in(self.error_arena, self.fm).as_str())
     stderr_write("\n")
 }
