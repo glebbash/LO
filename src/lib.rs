@@ -88,13 +88,21 @@ pub extern "C" fn _start() {
             proc_exit(1)
         };
 
+        let file_path = &compiler.fm.files[module.parser.lexer.file_index].absolute_path;
+        stdout_writeln(format!("file_path: {file_path}"));
+
         let source = module.parser.lexer.source;
         for token in &module.parser.lexer.tokens {
             stdout_writeln(format!(
-                "{} - [[{}]] {:?}",
-                token.loc.to_string(&compiler.fm),
+                "{}:{}-{}:{} ({}-{}) {:?} >> {} <<",
+                token.loc.pos.line,
+                token.loc.pos.col,
+                token.loc.end_pos.line,
+                token.loc.end_pos.col,
+                token.loc.pos.offset,
+                token.loc.end_pos.offset,
+                token.type_,
                 token.loc.read_span(source).replace("\n", "\\n"),
-                token.type_
             ));
         }
 

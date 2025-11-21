@@ -37,19 +37,39 @@ export fn _start() {
         let a = Arena::new()
         defer a.free()
 
-        let source = module.parser.lexer.source
-        for i in 0..module.parser.lexer.tokens.size {
-            let token = module.parser.lexer.tokens.get!<Token>(i)
+        let lexer = module.parser.lexer
+
+        let file_path = compiler.fm.get(lexer.file_index).absolute_path
+        do stderr_write(it) with (
+            "file_path: ", \\ file_path.as_str(), \\ "\n",
+        )
+
+        for i in 0..lexer.tokens.size {
+            let token = lexer.tokens.get!<Token>(i)
 
             defer a.reset()
 
             do stderr_write(it) with (
-                token.loc.to_string_in(a, compiler.fm).as_str(),
-                " - [[",
-                String::from_str_in(a, token.loc.read_span(source)) \
+                token.loc.pos.line.to_tmp_str!(),
+                ":", \\ token.loc.pos.col.to_tmp_str!(),
+                "-",
+                token.loc.end_pos.line.to_tmp_str!(),
+                ":", \\ token.loc.end_pos.col.to_tmp_str!(),
+
+                " ", \\ "(", \\ token.loc.pos.offset.to_tmp_str!(),
+                "-", \\ token.loc.end_pos.offset.to_tmp_str!(), \\ ")",
+
+                " ", \\ token.type_.to_str(),
+
+                " ", \\ ">> ",
+                String::from_str_in(a, token.loc.read_span(lexer.source)) \
                     .replace("\n", "\\n").as_str(),
-                "]] ",
-                token.type_.to_str(),
+                // TODO: I'd like to see it like this:
+                // token.loc.read_span(lexer.source) \
+                //     |> String::from_str_in(a, it).replace("\n", "\\n")
+                //     |> it.as_str(),
+                " <<",
+
                 "\n",
             )
         }

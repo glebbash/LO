@@ -62,11 +62,38 @@ fn Lexer::free(&self) {
 // TODO: implement proper
 fn Lexer::lex_file(&self): Result<void, &Error> {
     let loc = Loc::internal()
-    loc.file_index = self.file_index
 
-    loc.pos = Pos { offset: 0, line: 1, col: 1 }
-    loc.end_pos = Pos { offset: 7, line: 1, col: 8 }
-    self.tokens.push!(Token { loc: loc, type_: TokenType::Symbol() })
+    self.tokens.push!(tok(loc, 01, 01, 01, 08, 00, 07, TokenType::Symbol()))
+    self.tokens.push!(tok(loc, 01, 09, 01, 27, 08, 26, TokenType::StringLiteral()))
+    self.tokens.push!(tok(loc, 03, 01, 03, 03, 28, 30, TokenType::Symbol()))
+    self.tokens.push!(tok(loc, 03, 04, 03, 08, 31, 35, TokenType::Symbol()))
+    self.tokens.push!(tok(loc, 03, 08, 03, 09, 35, 36, TokenType::Delim()))
+    self.tokens.push!(tok(loc, 03, 09, 03, 10, 36, 37, TokenType::Delim()))
+    self.tokens.push!(tok(loc, 03, 11, 03, 12, 38, 39, TokenType::Delim()))
+    self.tokens.push!(tok(loc, 04, 05, 04, 12, 44, 51, TokenType::Symbol()))
+    self.tokens.push!(tok(loc, 04, 12, 04, 13, 51, 52, TokenType::Delim()))
+    self.tokens.push!(tok(loc, 04, 13, 04, 27, 52, 66, TokenType::StringLiteral()))
+    self.tokens.push!(tok(loc, 04, 27, 04, 28, 66, 67, TokenType::Delim()))
+    self.tokens.push!(tok(loc, 05, 01, 05, 02, 68, 69, TokenType::Delim()))
+    self.tokens.push!(tok(loc, 05, 02, 05, 03, 70, 70, TokenType::Terminal()))
 
     return Ok()
+}
+
+fn tok(
+    loc: Loc,
+    line: u32, \\ col: u32,
+    end_line: u32, \\ end_col: u32,
+    offset: u32, \\ end_offset: u32,
+    type_: TokenType,
+): Token {
+    loc.pos.line = line
+    loc.pos.col = col
+    loc.pos.offset = offset
+
+    loc.end_pos.line = end_line
+    loc.end_pos.col = end_col
+    loc.end_pos.offset = end_offset
+
+    return Token { loc: loc, type_: type_ }
 }
