@@ -655,8 +655,9 @@ fn str::skip_chars(self, char_count: u32): str {
 
 fn str::slice(self, start: u32, end: u32): str {
     if start >= self.size || end > self.size || start > end {
-        return self
+        return ""
     }
+
     return str {
         data: (self.data as u32 + start) as *&u8,
         size: end - start,

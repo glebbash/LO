@@ -707,7 +707,7 @@
                 {
                     "comment": "logical operators",
                     "name": "keyword.operator.logical.lo",
-                    "match": "(\\^|\\||\\|\\||&&|<<|>>|!)(?!=)"
+                    "match": "(\\|>|\\^|\\||\\|\\||&&|<<|>>|!)(?!=)"
                 },
                 {
                     "comment": "logical AND, borrow references",

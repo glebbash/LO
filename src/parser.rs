@@ -1328,6 +1328,20 @@ impl Parser {
                     loc,
                 }))
             }
+            InfixOpTag::ExprPipe => {
+                let mut loc = primary.loc().clone();
+
+                let rhs = self.parse_code_expr(min_bp)?;
+
+                loc.end_pos = self.prev().loc.end_pos;
+
+                Ok(CodeExpr::ExprPipe(ExprPipeExpr {
+                    lhs: Box::new(primary),
+                    rhs: Box::new(rhs),
+                    op_loc: op.token.loc,
+                    loc,
+                }))
+            }
         }
     }
 

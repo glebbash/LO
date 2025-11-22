@@ -527,6 +527,7 @@ static OPERATORS: &[&str] = &[
     "^=",  // Bitwise exclusive OR and assignment
     "|",   // Bitwise OR
     "|=",  // Bitwise OR and assignment
+    "|>",  // Expression piping
     ".",   // Member access
     "..",  // Range operator
     ":",   // Type separator
@@ -581,6 +582,8 @@ pub enum InfixOpTag {
     Catch,
 
     ErrorPropagation,
+
+    ExprPipe,
 }
 
 pub struct InfixOp {
@@ -600,37 +603,39 @@ impl InfixOp {
         }
 
         match token.get_value(source) {
-            "catch" => op(token, Catch, 13, L),
+            "catch" => op(token, Catch, 14, Left),
 
-            "." => op(token, FieldAccess, 12, L),
+            "." => op(token, FieldAccess, 13, Left),
 
-            "?" => op(token, ErrorPropagation, 11, None),
+            "?" => op(token, ErrorPropagation, 12, None),
 
-            "as" => op(token, Cast, 10, L),
+            "as" => op(token, Cast, 11, Left),
 
-            "%" => op(token, Mod, 9, L),
-            "/" => op(token, Div, 9, L),
-            "*" => op(token, Mul, 9, L),
+            "%" => op(token, Mod, 10, Left),
+            "/" => op(token, Div, 10, Left),
+            "*" => op(token, Mul, 10, Left),
 
-            "-" => op(token, Sub, 8, L),
-            "+" => op(token, Add, 8, L),
+            "-" => op(token, Sub, 9, Left),
+            "+" => op(token, Add, 9, Left),
 
-            ">>" => op(token, ShiftRight, 7, L),
-            "<<" => op(token, ShiftLeft, 7, L),
+            ">>" => op(token, ShiftRight, 8, Left),
+            "<<" => op(token, ShiftLeft, 8, Left),
 
-            "&" => op(token, BitAnd, 6, L),
+            "&" => op(token, BitAnd, 7, Left),
 
-            "|" => op(token, BitOr, 5, L),
+            "|" => op(token, BitOr, 6, Left),
 
-            ">=" => op(token, GreaterEqual, 4, L),
-            ">" => op(token, Greater, 4, L),
-            "<=" => op(token, LessEqual, 4, L),
-            "<" => op(token, Less, 4, L),
-            "!=" => op(token, NotEqual, 4, None),
-            "==" => op(token, Equal, 4, None),
+            ">=" => op(token, GreaterEqual, 5, Left),
+            ">" => op(token, Greater, 5, Left),
+            "<=" => op(token, LessEqual, 5, Left),
+            "<" => op(token, Less, 5, Left),
+            "!=" => op(token, NotEqual, 5, None),
+            "==" => op(token, Equal, 5, None),
 
-            "&&" => op(token, And, 3, L),
-            "||" => op(token, Or, 2, L),
+            "&&" => op(token, And, 4, Left),
+            "||" => op(token, Or, 3, Left),
+
+            "|>" => op(token, ExprPipe, 2, Left),
 
             "=" => op(token, Assign, 1, None),
             "+=" => op(token, AddAssign, 1, None),
@@ -666,10 +671,10 @@ impl PrefixOp {
         use PrefixOpTag::*;
 
         let (tag, info) = match token.get_value(source) {
-            "!" => (Not, OpInfo { bp: 8, assoc: L }),
-            "*" => (Dereference, OpInfo { bp: 8, assoc: L }),
-            "+" => (Positive, OpInfo { bp: 9, assoc: L }),
-            "-" => (Negative, OpInfo { bp: 9, assoc: L }),
+            "!" => (Not, OpInfo { bp: 8, assoc: Left }),
+            "*" => (Dereference, OpInfo { bp: 8, assoc: Left }),
+            "+" => (Positive, OpInfo { bp: 9, assoc: Left }),
+            "-" => (Negative, OpInfo { bp: 9, assoc: Left }),
             _ => return Option::None,
         };
         Some(Self { tag, info, token })
@@ -678,7 +683,7 @@ impl PrefixOp {
 
 #[derive(PartialEq)]
 pub enum OpAssoc {
-    L,
+    Left,
     None,
 }
 
@@ -689,7 +694,7 @@ pub struct OpInfo {
 
 impl OpInfo {
     pub fn get_min_bp_for_next(&self) -> u32 {
-        if self.assoc == OpAssoc::L {
+        if self.assoc == OpAssoc::Left {
             self.bp + 1
         } else {
             self.bp

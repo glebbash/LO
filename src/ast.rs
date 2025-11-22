@@ -254,10 +254,12 @@ pub enum CodeExpr {
     Break(BreakExpr),
     ForLoop(ForLoopExpr),
     Continue(ContinueExpr),
-    DoWith(DoWithExpr),
     Defer(DeferExpr),
     Catch(CatchExpr),
     Match(MatchExpr),
+
+    DoWith(DoWithExpr),
+    ExprPipe(ExprPipeExpr),
 
     // TODO?: should these use intrinsic syntax?
     Dbg(DbgExpr),
@@ -375,6 +377,13 @@ pub struct DoWithExpr {
     pub body: Box<CodeExpr>,
     pub args: CodeExprList,
     pub with_loc: LoLocation,
+    pub loc: LoLocation,
+}
+
+pub struct ExprPipeExpr {
+    pub lhs: Box<CodeExpr>,
+    pub rhs: Box<CodeExpr>,
+    pub op_loc: LoLocation,
     pub loc: LoLocation,
 }
 
@@ -532,6 +541,7 @@ impl CodeExpr {
             CodeExpr::PropagateError(e) => &e.loc,
             CodeExpr::PrefixOp(e) => &e.loc,
             CodeExpr::DoWith(e) => &e.loc,
+            CodeExpr::ExprPipe(e) => &e.loc,
         }
     }
 }

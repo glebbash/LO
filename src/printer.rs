@@ -578,6 +578,20 @@ impl Printer {
                 stdout_write(" ");
                 self.print_code_expr(rhs);
             }
+            CodeExpr::ExprPipe(ExprPipeExpr {
+                lhs,
+                rhs,
+                op_loc,
+                loc: _,
+            }) => {
+                self.print_code_expr(lhs);
+                if !self.print_backslashes_before(op_loc.pos.offset) {
+                    stdout_write(" ");
+                }
+                stdout_write(op_loc.read_span(self.parser.lexer.source));
+                stdout_write(" ");
+                self.print_code_expr(rhs);
+            }
             CodeExpr::PrefixOp(PrefixOpExpr {
                 expr,
                 op_tag: _,

@@ -62,12 +62,9 @@ export fn _start() {
                 " ", \\ token.type_.to_str(),
 
                 " ", \\ ">> ",
-                String::from_str_in(a, token.loc.read_span(lexer.source)) \
-                    .replace("\n", "\\n").as_str(),
-                // TODO: I'd like to see it like this:
-                // token.loc.read_span(lexer.source) \
-                //     |> String::from_str_in(a, it).replace("\n", "\\n")
-                //     |> it.as_str(),
+                token.loc.read_span(lexer.source) \
+                    |> String::from_str_in(a, it).replace("\n", "\\n") \
+                    |> it.as_str(),
                 " <<",
 
                 "\n",

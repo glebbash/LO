@@ -1682,6 +1682,7 @@ impl Compiler {
         }
     }
 
+    // TODO: make this report errors instead of returning first error
     fn codegen(
         &self,
         ctx: &mut LoExprContext,
@@ -2772,10 +2773,7 @@ impl Compiler {
                     return Ok(());
                 };
 
-                ctx.enter_scope(LoScopeType::Block);
                 let arg_type = self.get_expr_type(ctx, first_arg)?;
-                let arg_local_index =
-                    self.define_local(ctx, with_loc.clone(), String::from("it"), &arg_type, false)?;
 
                 for arg in &args.items {
                     let current_arg_type = self.get_expr_type(ctx, arg)?;
@@ -2791,11 +2789,46 @@ impl Compiler {
                         continue;
                     }
 
+                    ctx.enter_scope(LoScopeType::Block);
+
                     self.codegen(ctx, instrs, arg)?;
+
+                    let arg_local_index = self.define_local(
+                        ctx,
+                        with_loc.clone(),
+                        String::from("it"),
+                        &arg_type,
+                        false,
+                    )?;
+
                     self.codegen_local_set(instrs, &arg_type, arg_local_index);
                     self.codegen(ctx, instrs, body)?;
-                }
 
+                    ctx.exit_scope();
+                }
+            }
+            CodeExpr::ExprPipe(ExprPipeExpr {
+                lhs,
+                rhs,
+                op_loc,
+                loc: _,
+            }) => {
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
+                catch!(self.codegen(ctx, instrs, lhs), err, {
+                    self.report_error(&err);
+                    return Ok(());
+                });
+
+                ctx.enter_scope(LoScopeType::Block);
+
+                let lhs_local_index =
+                    self.define_local(ctx, op_loc.clone(), String::from("it"), &lhs_type, false)?;
+
+                self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
+                catch!(self.codegen(ctx, instrs, rhs), err, {
+                    self.report_error(&err);
+                    return Ok(());
+                });
                 ctx.exit_scope();
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
@@ -3638,7 +3671,8 @@ impl Compiler {
                 | InfixOpTag::Assign
                 | InfixOpTag::FieldAccess
                 | InfixOpTag::Catch
-                | InfixOpTag::ErrorPropagation => unreachable!(),
+                | InfixOpTag::ErrorPropagation
+                | InfixOpTag::ExprPipe => unreachable!(),
             },
             CodeExpr::PrefixOp(PrefixOpExpr {
                 op_tag,
@@ -3811,6 +3845,39 @@ impl Compiler {
                 let expr_type = self.get_expr_type(ctx, expr)?;
                 let result = self.assert_catchable_type(&expr_type, loc)?;
                 Ok(result.ok.as_ref().clone())
+            }
+            CodeExpr::ExprPipe(ExprPipeExpr {
+                lhs,
+                rhs,
+                op_loc,
+                loc: _,
+            }) => {
+                let ctx = ctx.be_mut();
+
+                let lhs_type = catch!(self.get_expr_type(ctx, &lhs), err, {
+                    self.report_error(&err);
+                    return Ok(LoType::Never);
+                });
+
+                ctx.enter_scope(LoScopeType::Block);
+
+                ctx.current_scope_mut().macro_args.push(LoConstDef {
+                    const_name: String::from("it"),
+                    code_unit: LoCodeUnit {
+                        type_: lhs_type,
+                        instrs: Vec::new(),
+                    },
+                    loc: op_loc.clone(),
+                });
+
+                let rhs_type = catch!(self.get_expr_type(ctx, &rhs), err, {
+                    self.report_error(&err);
+                    return Ok(LoType::Never);
+                });
+
+                ctx.exit_scope();
+
+                return Ok(rhs_type);
             }
             CodeExpr::Dbg(_) => Ok(LoType::StructInstance {
                 struct_index: self.modules[ctx.module_index]
@@ -5085,7 +5152,8 @@ impl Compiler {
             | InfixOpTag::Assign
             | InfixOpTag::FieldAccess
             | InfixOpTag::Catch
-            | InfixOpTag::ErrorPropagation => unreachable!(),
+            | InfixOpTag::ErrorPropagation
+            | InfixOpTag::ExprPipe => unreachable!(),
         }
 
         let module = self.get_module_by_file_index(op_loc.file_index).unwrap();
@@ -5132,7 +5200,8 @@ impl Compiler {
             | InfixOpTag::Assign
             | InfixOpTag::FieldAccess
             | InfixOpTag::Catch
-            | InfixOpTag::ErrorPropagation => None,
+            | InfixOpTag::ErrorPropagation
+            | InfixOpTag::ExprPipe => None,
         }
     }
 
