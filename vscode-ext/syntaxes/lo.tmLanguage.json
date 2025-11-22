@@ -1125,7 +1125,7 @@
             "patterns": [
                 {
                     "name": "variable.language.self.lo",
-                    "match": "\\b[Ss]elf\\b"
+                    "match": "\\b([Ss]elf|it)\\b"
                 }
             ]
         },
