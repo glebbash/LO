@@ -46,7 +46,7 @@ impl Printer {
         }
 
         // print the rest of the comments
-        self.print_comments_before(LoPosition {
+        self.print_comments_before(Pos {
             offset: usize::MAX,
             line: self.last_printed_item_line,
             col: usize::MAX,
@@ -883,7 +883,7 @@ impl Printer {
         self.print_code_expr(&match_header.expr_to_match);
     }
 
-    fn print_args(&mut self, args: &CodeExprList, open_paren_loc: &LoLocation) {
+    fn print_args(&mut self, args: &CodeExprList, open_paren_loc: &Loc) {
         stdout_write("(");
 
         if args.has_trailing_comma {
@@ -943,7 +943,7 @@ impl Printer {
         stdout_write(">");
     }
 
-    fn print_comments_before(&mut self, pos: LoPosition) {
+    fn print_comments_before(&mut self, pos: Pos) {
         while self.comments_printed < self.parser.lexer.comments.len() {
             let comment = self.parser.lexer.comments[self.comments_printed].relax();
             if comment.end_pos.offset > pos.offset {

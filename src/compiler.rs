@@ -10,7 +10,7 @@ use core::{cell::RefCell, fmt::Write};
 const STR_TYPE_NAME: &str = "str";
 
 #[derive(Clone, PartialEq)]
-pub enum LoType {
+pub enum Type {
     Never,
     Void,
     Bool,
@@ -24,14 +24,14 @@ pub enum LoType {
     U64,
     I64,
     F64,
-    Pointer { pointee: Box<LoType> },
-    SequencePointer { pointee: Box<LoType> },
+    Pointer { pointee: Box<Type> },
+    SequencePointer { pointee: Box<Type> },
     StructInstance { struct_index: usize },
     EnumInstance { enum_index: usize },
-    Result(LoResultType),
+    Result(ResultType),
 }
 
-pub struct TypeFmt<'a>(pub &'a Compiler, pub &'a LoType);
+pub struct TypeFmt<'a>(pub &'a Compiler, pub &'a Type);
 
 impl<'a> core::fmt::Display for TypeFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -39,7 +39,7 @@ impl<'a> core::fmt::Display for TypeFmt<'a> {
     }
 }
 
-pub struct TypeListFmt<'a>(pub &'a Compiler, pub &'a [LoType]);
+pub struct TypeListFmt<'a>(pub &'a Compiler, pub &'a [Type]);
 
 impl<'a> core::fmt::Display for TypeListFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -54,38 +54,38 @@ impl<'a> core::fmt::Display for TypeListFmt<'a> {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct LoResultType {
-    ok: Box<LoType>,
-    err: Box<LoType>,
+pub struct ResultType {
+    ok: Box<Type>,
+    err: Box<Type>,
 }
 
-impl LoType {
+impl Type {
     fn format(&self, f: &mut core::fmt::Formatter<'_>, compiler: &Compiler) -> core::fmt::Result {
         match self {
-            LoType::Never => f.write_str("never"),
-            LoType::Void => f.write_str("void"),
-            LoType::Bool => f.write_str("bool"),
-            LoType::U8 => f.write_str("u8"),
-            LoType::I8 => f.write_str("i8"),
-            LoType::U16 => f.write_str("u16"),
-            LoType::I16 => f.write_str("i16"),
-            LoType::U32 => f.write_str("u32"),
-            LoType::I32 => f.write_str("i32"),
-            LoType::F32 => f.write_str("f32"),
-            LoType::U64 => f.write_str("u64"),
-            LoType::I64 => f.write_str("i64"),
-            LoType::F64 => f.write_str("f64"),
-            LoType::Pointer { pointee } => write!(f, "&{}", TypeFmt(compiler, pointee)),
-            LoType::SequencePointer { pointee } => {
+            Type::Never => f.write_str("never"),
+            Type::Void => f.write_str("void"),
+            Type::Bool => f.write_str("bool"),
+            Type::U8 => f.write_str("u8"),
+            Type::I8 => f.write_str("i8"),
+            Type::U16 => f.write_str("u16"),
+            Type::I16 => f.write_str("i16"),
+            Type::U32 => f.write_str("u32"),
+            Type::I32 => f.write_str("i32"),
+            Type::F32 => f.write_str("f32"),
+            Type::U64 => f.write_str("u64"),
+            Type::I64 => f.write_str("i64"),
+            Type::F64 => f.write_str("f64"),
+            Type::Pointer { pointee } => write!(f, "&{}", TypeFmt(compiler, pointee)),
+            Type::SequencePointer { pointee } => {
                 write!(f, "*&{}", TypeFmt(compiler, pointee))
             }
-            LoType::StructInstance { struct_index } => {
+            Type::StructInstance { struct_index } => {
                 f.write_str(&compiler.struct_defs[*struct_index].struct_name)
             }
-            LoType::EnumInstance { enum_index } => {
+            Type::EnumInstance { enum_index } => {
                 f.write_str(&compiler.enum_defs[*enum_index].enum_name)
             }
-            LoType::Result(result) => {
+            Type::Result(result) => {
                 write!(
                     f,
                     "Result<{}, {}>",
@@ -97,11 +97,11 @@ impl LoType {
     }
 }
 
-impl LoType {
-    fn deref_rec(&self) -> &LoType {
+impl Type {
+    fn deref_rec(&self) -> &Type {
         match self {
-            LoType::Pointer { pointee } => pointee.deref_rec(),
-            LoType::SequencePointer { pointee } => pointee.deref_rec(),
+            Type::Pointer { pointee } => pointee.deref_rec(),
+            Type::SequencePointer { pointee } => pointee.deref_rec(),
             other => other,
         }
     }
@@ -109,22 +109,22 @@ impl LoType {
 
 struct FnInfo {
     fn_name: String,
-    fn_type: LoFnType,
-    fn_params: Vec<LoFnParam>,
-    fn_source: LoFnSource,
+    fn_type: FnType,
+    fn_params: Vec<FnParameter>,
+    fn_source: FnSource,
     exported_as: Vec<String>,
     wasm_fn_index: u32,
-    definition_loc: LoLocation,
+    definition_loc: Loc,
 }
 
-struct LoFnParam {
+struct FnParameter {
     param_name: String,
-    param_type: LoType,
+    param_type: Type,
 }
 
-enum LoFnSource {
+enum FnSource {
     Guest {
-        ctx: LoExprContext,
+        ctx: ExprContext,
         body: &'static CodeBlock,
     },
     Host {
@@ -133,22 +133,22 @@ enum LoFnSource {
     },
 }
 
-struct LoFnType {
-    inputs: Vec<LoType>,
-    output: LoType,
+struct FnType {
+    inputs: Vec<Type>,
+    output: Type,
 }
 
 #[derive(Clone)]
-struct LoExprContext {
+struct ExprContext {
     module_index: usize,
     fn_index: Option<usize>,
-    locals: Vec<LoLocal>,
+    locals: Vec<Local>,
     next_local_index: u32,
     addr_local_index: Option<u32>,
-    scopes: Vec<LoScope>,
+    scopes: Vec<Scope>,
 }
 
-impl LoExprContext {
+impl ExprContext {
     fn new(module_index: usize, fn_index: Option<usize>) -> Self {
         Self {
             module_index,
@@ -162,15 +162,15 @@ impl LoExprContext {
 }
 
 #[derive(Clone)]
-struct LoLocal {
+struct Local {
     local_index: u32,
-    local_type: LoType,
-    definition_loc: LoLocation,
+    local_type: Type,
+    definition_loc: Loc,
     is_fn_param: bool,
 }
 
 #[derive(Clone)]
-enum LoScopeType {
+enum ScopeType {
     Function,
     Block,
     Loop,
@@ -179,36 +179,36 @@ enum LoScopeType {
 }
 
 #[derive(Clone)]
-struct LoCodeUnit {
-    type_: LoType,
+struct CodeUnit {
+    type_: Type,
     instrs: Vec<WasmInstr>,
 }
 
 #[derive(Clone)]
-struct LoMacroTypeArg {
+struct MacroTypeArg {
     name: String,
-    type_: LoType,
+    type_: Type,
 }
 
 #[derive(Clone)]
-struct LoScope {
-    scope_type: LoScopeType,
-    locals: Vec<LoScopedLocal>,
-    deferred: Vec<LoCodeUnit>,
-    macro_args: Vec<LoConstDef>,
-    macro_type_args: Vec<LoMacroTypeArg>,
+struct Scope {
+    scope_type: ScopeType,
+    locals: Vec<ScopedLocal>,
+    deferred: Vec<CodeUnit>,
+    macro_args: Vec<ConstDef>,
+    macro_type_args: Vec<MacroTypeArg>,
 }
 
 #[derive(Clone)]
-struct LoScopedLocal {
+struct ScopedLocal {
     local_name: String,
     lo_local_index: usize,
     defined_in_this_scope: bool,
 }
 
-impl LoExprContext {
-    fn enter_scope(&mut self, scope_type: LoScopeType) {
-        let mut new_scope = LoScope {
+impl ExprContext {
+    fn enter_scope(&mut self, scope_type: ScopeType) {
+        let mut new_scope = Scope {
             scope_type,
             locals: Vec::new(),
             deferred: Vec::new(),
@@ -218,7 +218,7 @@ impl LoExprContext {
 
         if let Some(parent_scope) = self.scopes.last() {
             for local in &parent_scope.locals {
-                new_scope.locals.push(LoScopedLocal {
+                new_scope.locals.push(ScopedLocal {
                     local_name: local.local_name.clone(),
                     lo_local_index: local.lo_local_index,
                     defined_in_this_scope: false,
@@ -233,15 +233,15 @@ impl LoExprContext {
         self.scopes.pop().unwrap();
     }
 
-    fn current_scope(&self) -> &LoScope {
+    fn current_scope(&self) -> &Scope {
         self.scopes.last().unwrap()
     }
 
-    fn current_scope_mut(&mut self) -> &mut LoScope {
+    fn current_scope_mut(&mut self) -> &mut Scope {
         self.scopes.last_mut().unwrap()
     }
 
-    fn get_local(&self, local_name: &str) -> Option<&LoLocal> {
+    fn get_local(&self, local_name: &str) -> Option<&Local> {
         for scope in self.scopes.iter().rev() {
             for local in &scope.locals {
                 if local.local_name == local_name {
@@ -253,7 +253,7 @@ impl LoExprContext {
         None
     }
 
-    fn get_macro_type_arg(&self, type_name: &str) -> Option<&LoType> {
+    fn get_macro_type_arg(&self, type_name: &str) -> Option<&Type> {
         for scope in self.scopes.iter().rev() {
             for macro_type_arg in &scope.macro_type_args {
                 if macro_type_arg.name == type_name {
@@ -265,7 +265,7 @@ impl LoExprContext {
         None
     }
 
-    fn get_macro_arg(&self, arg_name: &str) -> Option<&LoConstDef> {
+    fn get_macro_arg(&self, arg_name: &str) -> Option<&ConstDef> {
         for scope in self.scopes.iter().rev() {
             for macro_arg in &scope.macro_args {
                 if macro_arg.const_name == arg_name {
@@ -278,52 +278,52 @@ impl LoExprContext {
     }
 }
 
-struct LoStructDef {
+struct StructDef {
     struct_name: String,
-    fields: Vec<LoStructField>,
+    fields: Vec<StructField>,
     fully_defined: bool, // used for self-reference checks
 }
 
-pub struct LoStructField {
+pub struct StructField {
     field_name: String,
-    field_type: LoType,
-    field_layout: LoTypeLayout,
+    field_type: Type,
+    field_layout: TypeLayout,
     field_index: u32,
     byte_offset: u32,
-    loc: LoLocation,
+    loc: Loc,
 }
 
-struct LoEnumDef {
+struct EnumDef {
     enum_name: String,
-    variant_type: LoType,
-    variants: Vec<LoEnumVariant>,
+    variant_type: Type,
+    variants: Vec<EnumVariant>,
 }
 
-pub struct LoEnumVariant {
+pub struct EnumVariant {
     variant_name: String,
-    variant_type: LoType,
-    loc: LoLocation,
+    variant_type: Type,
+    loc: Loc,
 }
 
-pub struct LoEnumConstructor {
+pub struct EnumConstructor {
     enum_index: usize,
     variant_index: usize,
 }
 
-struct LoGlobalDef {
-    module_ctx: &'static LoExprContext,
+struct GlobalDef {
+    module_ctx: &'static ExprContext,
     def_expr: &'static GlobalDefExpr,
-    global_type: LoType,
+    global_type: Type,
     global_index: u32,
 }
 
-struct LoTypeLayout {
+struct TypeLayout {
     primities_count: u32,
     byte_size: u32,
     alignment: u32,
 }
 
-impl LoTypeLayout {
+impl TypeLayout {
     pub fn new() -> Self {
         Self {
             primities_count: 0,
@@ -333,63 +333,63 @@ impl LoTypeLayout {
     }
 }
 
-enum LoVariableInfo {
+enum VariableInfo {
     Local {
         local_index: u32,
-        local_type: LoType,
+        local_type: Type,
         inspect_info: Option<InspectInfo>,
     },
     Global {
         global_index: u32,
-        global_type: LoType,
+        global_type: Type,
         inspect_info: Option<InspectInfo>,
     },
     Const {
-        code_unit: &'static LoCodeUnit,
-        loc: LoLocation,
+        code_unit: &'static CodeUnit,
+        loc: Loc,
         inspect_info: Option<InspectInfo>,
     },
     Stored {
-        address: LoCodeUnit,
+        address: CodeUnit,
         offset: u32,
-        value_type: LoType,
+        value_type: Type,
         inspect_info: Option<InspectInfo>,
     },
     StructValueField {
-        struct_value: LoCodeUnit,
-        field_type: LoType,
+        struct_value: CodeUnit,
+        field_type: Type,
         drops_before: u32,
         drops_after: u32,
-        loc: LoLocation,
+        loc: Loc,
         inspect_info: Option<InspectInfo>,
     },
 }
 
-impl LoVariableInfo {
-    fn get_type(&self) -> &LoType {
+impl VariableInfo {
+    fn get_type(&self) -> &Type {
         match self {
-            LoVariableInfo::Local {
+            VariableInfo::Local {
                 local_index: _,
                 local_type,
                 inspect_info: _,
             } => local_type,
-            LoVariableInfo::Global {
+            VariableInfo::Global {
                 global_index: _,
                 global_type,
                 inspect_info: _,
             } => global_type,
-            LoVariableInfo::Const {
+            VariableInfo::Const {
                 code_unit,
                 loc: _,
                 inspect_info: _,
             } => &code_unit.type_,
-            LoVariableInfo::Stored {
+            VariableInfo::Stored {
                 address: _,
                 offset: _,
                 value_type,
                 inspect_info: _,
             } => value_type,
-            LoVariableInfo::StructValueField {
+            VariableInfo::StructValueField {
                 struct_value: _,
                 field_type,
                 drops_before: _,
@@ -402,28 +402,28 @@ impl LoVariableInfo {
 
     fn inspect_info(&self) -> &Option<InspectInfo> {
         match self {
-            LoVariableInfo::Local {
+            VariableInfo::Local {
                 local_index: _,
                 local_type: _,
                 inspect_info,
             }
-            | LoVariableInfo::Global {
+            | VariableInfo::Global {
                 global_index: _,
                 global_type: _,
                 inspect_info,
             }
-            | LoVariableInfo::Const {
+            | VariableInfo::Const {
                 code_unit: _,
                 loc: _,
                 inspect_info,
             }
-            | LoVariableInfo::Stored {
+            | VariableInfo::Stored {
                 address: _,
                 offset: _,
                 value_type: _,
                 inspect_info,
             }
-            | LoVariableInfo::StructValueField {
+            | VariableInfo::StructValueField {
                 struct_value: _,
                 field_type: _,
                 drops_before: _,
@@ -437,15 +437,15 @@ impl LoVariableInfo {
 
 struct InspectInfo {
     message: String,
-    loc: LoLocation,
-    linked_loc: Option<LoLocation>,
+    loc: Loc,
+    linked_loc: Option<Loc>,
 }
 
 #[derive(Clone)]
-struct LoConstDef {
+struct ConstDef {
     const_name: String,
-    code_unit: LoCodeUnit,
-    loc: LoLocation,
+    code_unit: CodeUnit,
+    loc: Loc,
 }
 
 #[derive(Clone)]
@@ -455,7 +455,7 @@ struct PooledString {
 }
 
 #[derive(Clone)]
-struct LoStr {
+struct Str {
     ptr: u32,
     len: u32,
 }
@@ -466,7 +466,7 @@ pub struct Module {
     includes: Vec<ModuleInclude>,
     own_items: Vec<ModuleItem>,
     all_items: Vec<ModuleItem>,
-    ctx: LoExprContext,
+    ctx: ExprContext,
 }
 
 pub struct ModuleInclude {
@@ -479,7 +479,7 @@ struct ModuleItem {
     name: String,
     collection: ModuleItemCollection,
     collection_index: usize,
-    loc: LoLocation,
+    loc: Loc,
 }
 
 #[derive(Clone)]
@@ -527,12 +527,12 @@ pub struct Compiler {
 
     global_items: Vec<ModuleItem>,
 
-    type_aliases: Vec<LoType>,
-    struct_defs: Vec<LoStructDef>,
-    enum_defs: Vec<LoEnumDef>,
-    enum_ctors: Vec<LoEnumConstructor>,
-    globals: Vec<LoGlobalDef>,
-    const_defs: Vec<LoConstDef>,
+    type_aliases: Vec<Type>,
+    struct_defs: Vec<StructDef>,
+    enum_defs: Vec<EnumDef>,
+    enum_ctors: Vec<EnumConstructor>,
+    globals: Vec<GlobalDef>,
+    const_defs: Vec<ConstDef>,
     macro_defs: Vec<&'static MacroDefExpr>,
     functions: Vec<FnInfo>,
 
@@ -576,30 +576,30 @@ impl Compiler {
             wasm_types: RefCell::new(Vec::new()),
         };
 
-        self_.add_builtin_type("never", LoType::Never);
-        self_.add_builtin_type("void", LoType::Void);
-        self_.add_builtin_type("bool", LoType::Bool);
-        self_.add_builtin_type("u8", LoType::U8);
-        self_.add_builtin_type("i8", LoType::I8);
-        self_.add_builtin_type("u16", LoType::U16);
-        self_.add_builtin_type("i16", LoType::I16);
-        self_.add_builtin_type("u32", LoType::U32);
-        self_.add_builtin_type("i32", LoType::I32);
-        self_.add_builtin_type("f32", LoType::F32);
-        self_.add_builtin_type("u64", LoType::U64);
-        self_.add_builtin_type("i64", LoType::I64);
-        self_.add_builtin_type("f64", LoType::F64);
+        self_.add_builtin_type("never", Type::Never);
+        self_.add_builtin_type("void", Type::Void);
+        self_.add_builtin_type("bool", Type::Bool);
+        self_.add_builtin_type("u8", Type::U8);
+        self_.add_builtin_type("i8", Type::I8);
+        self_.add_builtin_type("u16", Type::U16);
+        self_.add_builtin_type("i16", Type::I16);
+        self_.add_builtin_type("u32", Type::U32);
+        self_.add_builtin_type("i32", Type::I32);
+        self_.add_builtin_type("f32", Type::F32);
+        self_.add_builtin_type("u64", Type::U64);
+        self_.add_builtin_type("i64", Type::I64);
+        self_.add_builtin_type("f64", Type::F64);
 
         return self_;
     }
 
     #[inline]
-    fn add_builtin_type(&mut self, name: &str, type_: LoType) {
+    fn add_builtin_type(&mut self, name: &str, type_: Type) {
         self.global_items.push(ModuleItem {
             name: String::from(name),
             collection: ModuleItemCollection::TypeAlias,
             collection_index: self.type_aliases.len(),
-            loc: LoLocation::internal(),
+            loc: Loc::internal(),
         });
         self.type_aliases.push(type_);
     }
@@ -619,7 +619,7 @@ impl Compiler {
         stdout_disable_buffering();
     }
 
-    pub fn include(&mut self, relative_path: &str, loc: &LoLocation) -> Option<&Module> {
+    pub fn include(&mut self, relative_path: &str, loc: &Loc) -> Option<&Module> {
         let file_index = catch!(self.fm.include_file(relative_path, loc), err, {
             self.report_error(&err);
             return None;
@@ -691,7 +691,7 @@ impl Compiler {
         }
 
         let module_index = self.modules.len();
-        let ctx = LoExprContext::new(module_index, None);
+        let ctx = ExprContext::new(module_index, None);
 
         self.modules.push(Module {
             index: module_index,
@@ -734,7 +734,7 @@ impl Compiler {
                         loc: struct_def.struct_name.loc.clone(),
                     });
 
-                    self.struct_defs.push(LoStructDef {
+                    self.struct_defs.push(StructDef {
                         struct_name: struct_def.struct_name.repr.clone(),
                         fields: Vec::new(),
                         fully_defined: false,
@@ -748,10 +748,10 @@ impl Compiler {
                         loc: enum_def.enum_name.loc.clone(),
                     });
 
-                    self.enum_defs.push(LoEnumDef {
+                    self.enum_defs.push(EnumDef {
                         enum_name: enum_def.enum_name.repr.clone(),
-                        variant_type: LoType::Void, // placeholder
-                        variants: Vec::new(),       // placeholder
+                        variant_type: Type::Void, // placeholder
+                        variants: Vec::new(),     // placeholder
                     });
 
                     for (variant, variant_index) in enum_def.variants.iter().zip(0..) {
@@ -765,7 +765,7 @@ impl Compiler {
                             loc: enum_def.enum_name.loc.clone(),
                         });
 
-                        self.enum_ctors.push(LoEnumConstructor {
+                        self.enum_ctors.push(EnumConstructor {
                             enum_index: self.enum_defs.len() - 1,
                             variant_index,
                         });
@@ -779,7 +779,7 @@ impl Compiler {
                         loc: type_def.type_name.loc.clone(),
                     });
 
-                    self.type_aliases.push(LoType::Never); // placeholder
+                    self.type_aliases.push(Type::Never); // placeholder
                 }
                 TopLevelExpr::FnDef(fn_def) => {
                     self.define_item(ModuleItem {
@@ -789,8 +789,8 @@ impl Compiler {
                         loc: fn_def.decl.fn_name.loc.clone(),
                     });
 
-                    let mut ctx = LoExprContext::new(module.index, Some(self.functions.len()));
-                    ctx.enter_scope(LoScopeType::Function);
+                    let mut ctx = ExprContext::new(module.index, Some(self.functions.len()));
+                    ctx.enter_scope(ScopeType::Function);
 
                     let mut exported_as = Vec::new();
                     if fn_def.exported {
@@ -799,12 +799,12 @@ impl Compiler {
 
                     self.functions.push(FnInfo {
                         fn_name: fn_def.decl.fn_name.repr.clone(),
-                        fn_type: LoFnType {
+                        fn_type: FnType {
                             inputs: Vec::new(),
-                            output: LoType::Void,
+                            output: Type::Void,
                         },
                         fn_params: Vec::new(),
-                        fn_source: LoFnSource::Guest {
+                        fn_source: FnSource::Guest {
                             ctx,
                             body: fn_def.body.relax(),
                         },
@@ -830,12 +830,12 @@ impl Compiler {
 
                         self.functions.push(FnInfo {
                             fn_name: fn_decl.fn_name.repr.clone(),
-                            fn_type: LoFnType {
+                            fn_type: FnType {
                                 inputs: Vec::new(),
-                                output: LoType::Void,
+                                output: Type::Void,
                             },
                             fn_params: Vec::new(),
-                            fn_source: LoFnSource::Host {
+                            fn_source: FnSource::Host {
                                 module_name: module_name.clone(),
                                 external_fn_name: fn_decl.fn_name.parts.last().unwrap().clone(),
                             },
@@ -866,10 +866,10 @@ impl Compiler {
                         loc: global_def.global_name.loc.clone(),
                     });
 
-                    self.globals.push(LoGlobalDef {
+                    self.globals.push(GlobalDef {
                         module_ctx: module.ctx.relax(),
                         def_expr: global_def.relax(),
-                        global_type: LoType::Never, // placeholder
+                        global_type: Type::Never, // placeholder
                         global_index: self.globals.len() as u32,
                     });
                 }
@@ -881,11 +881,11 @@ impl Compiler {
                         loc: const_def.const_name.loc.clone(),
                     });
 
-                    self.const_defs.push(LoConstDef {
+                    self.const_defs.push(ConstDef {
                         const_name: const_def.const_name.repr.clone(),
-                        code_unit: LoCodeUnit {
-                            type_: LoType::Never, // placeholder
-                            instrs: Vec::new(),   // placeholder
+                        code_unit: CodeUnit {
+                            type_: Type::Never, // placeholder
+                            instrs: Vec::new(), // placeholder
                         },
                         loc: const_def.loc.clone(),
                     });
@@ -902,7 +902,7 @@ impl Compiler {
             .be_mut();
 
         if let Some(existing_item) = module.get_own_item(&item.name) {
-            self.report_error(&LoError {
+            self.report_error(&Error {
                 message: format!(
                     "Cannot redefine {}, already defined at {}",
                     item.name,
@@ -958,14 +958,14 @@ impl Compiler {
         'exprs: for expr in &module.parser.ast {
             match expr {
                 TopLevelExpr::StructDef(struct_def) => {
-                    let mut struct_fields = Vec::<LoStructField>::new();
+                    let mut struct_fields = Vec::<StructField>::new();
                     let mut struct_primitives_count = 0;
                     let mut struct_aligment = 1;
 
                     'fields: for field in &struct_def.fields {
                         for existing_field in &struct_fields {
                             if existing_field.field_name == field.field_name.repr {
-                                self.report_error(&LoError {
+                                self.report_error(&Error {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
                                         field.field_name.repr,
@@ -988,13 +988,13 @@ impl Compiler {
                             self.report_error(&err);
                             continue 'exprs;
                         });
-                        let mut field_layout = LoTypeLayout::new();
+                        let mut field_layout = TypeLayout::new();
                         self.get_type_layout(&field_type, &mut field_layout);
 
                         struct_aligment = u32::max(struct_aligment, field_layout.alignment);
                         struct_primitives_count += field_layout.primities_count;
 
-                        struct_fields.push(LoStructField {
+                        struct_fields.push(StructField {
                             field_name: field.field_name.repr.clone(),
                             field_type: field_type.clone(),
                             field_layout,
@@ -1035,7 +1035,7 @@ impl Compiler {
                     'variants: for (variant, i) in enum_def.variants.iter().zip(0..) {
                         for existing_variant in &enum_.variants {
                             if existing_variant.variant_name == variant.variant_name.repr {
-                                self.report_error(&LoError {
+                                self.report_error(&Error {
                                     message: format!(
                                         "Cannot redefine enum variant '{}', already defined at {}",
                                         variant.variant_name.repr,
@@ -1047,7 +1047,7 @@ impl Compiler {
                             }
                         }
 
-                        let mut variant_type = LoType::Void;
+                        let mut variant_type = Type::Void;
                         if let Some(variant_type_expr) = &variant.variant_type {
                             variant_type =
                                 catch!(self.build_type(&module.ctx, variant_type_expr), err, {
@@ -1064,14 +1064,14 @@ impl Compiler {
                             self.lower_type(&variant_type, &mut this_variant_wasm_types);
 
                             if enum_variant_wasm_types != this_variant_wasm_types {
-                                self.report_error(&LoError {
+                                self.report_error(&Error {
                                     message: format!("Enum variants don't lower to the same types"),
                                     loc: variant.variant_name.loc.clone(),
                                 });
                             }
                         }
 
-                        enum_.variants.push(LoEnumVariant {
+                        enum_.variants.push(EnumVariant {
                             variant_name: variant.variant_name.repr.clone(),
                             variant_type,
                             loc: variant.variant_name.loc.clone(),
@@ -1119,10 +1119,10 @@ impl Compiler {
                                 continue;
                             })
                         }
-                        _ => LoType::Void,
+                        _ => Type::Void,
                     };
 
-                    let LoFnSource::Guest {
+                    let FnSource::Guest {
                         ref mut ctx,
                         body: _,
                     } = &mut fn_info.fn_source
@@ -1133,7 +1133,7 @@ impl Compiler {
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
                         for var in &ctx.current_scope().locals {
                             if var.local_name == fn_param.param_name.repr {
-                                self.report_error(&LoError {
+                                self.report_error(&Error {
                                     message: format!(
                                         "Duplicate function parameter name: {}",
                                         fn_param.param_name.repr
@@ -1152,7 +1152,7 @@ impl Compiler {
                         });
                         fn_info.fn_type.inputs.push(param_type.clone());
 
-                        fn_info.fn_params.push(LoFnParam {
+                        fn_info.fn_params.push(FnParameter {
                             param_name: fn_param.param_name.repr.clone(),
                             param_type: param_type.clone(),
                         });
@@ -1228,7 +1228,7 @@ impl Compiler {
                                 continue 'items;
                             });
                             fn_info.fn_type.inputs.push(param_type.clone());
-                            fn_info.fn_params.push(LoFnParam {
+                            fn_info.fn_params.push(FnParameter {
                                 param_name: fn_param.param_name.repr.clone(),
                                 param_type: param_type.clone(),
                             });
@@ -1269,7 +1269,7 @@ impl Compiler {
                             });
                             let value_comp_count = self.count_wasm_type_components(&value_type);
                             if value_comp_count != 1 {
-                                self.report_error(&LoError {
+                                self.report_error(&Error {
                                     message: format!(
                                         "Cannot define global with non-primitive type {}",
                                         TypeFmt(self, &value_type)
@@ -1280,7 +1280,7 @@ impl Compiler {
                             }
                             value_type
                         }
-                        GlobalDefValue::DataSize => LoType::U32,
+                        GlobalDefValue::DataSize => Type::U32,
                     };
 
                     if self.in_inspection_mode {
@@ -1341,7 +1341,7 @@ impl Compiler {
     pub fn generate(&mut self, wasm_module: &mut WasmModule) {
         let mut fn_imports_count = 0;
         for fn_info in &self.functions {
-            if let LoFnSource::Host { .. } = fn_info.fn_source {
+            if let FnSource::Host { .. } = fn_info.fn_source {
                 fn_imports_count += 1;
             }
         }
@@ -1373,7 +1373,7 @@ impl Compiler {
             }
 
             match &fn_info.fn_source {
-                LoFnSource::Guest { ctx: _, body: _ } => {
+                FnSource::Guest { ctx: _, body: _ } => {
                     wasm_module.functions.push(fn_type_index);
                     wasm_module.debug_fn_info.push(WasmDebugFnInfo {
                         fn_index: wasm_fn_index,
@@ -1384,7 +1384,7 @@ impl Compiler {
 
                     wasm_fn_index += 1;
                 }
-                LoFnSource::Host {
+                FnSource::Host {
                     module_name,
                     external_fn_name,
                 } => {
@@ -1412,7 +1412,7 @@ impl Compiler {
 
         // build function codes
         for fn_info in &self.functions {
-            let LoFnSource::Guest { ctx, body } = &fn_info.fn_source else {
+            let FnSource::Guest { ctx, body } = &fn_info.fn_source else {
                 continue;
             };
 
@@ -1513,7 +1513,7 @@ impl Compiler {
 
     fn codegen_code_block(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         body: &CodeBlock,
         void_only: bool,
@@ -1526,20 +1526,20 @@ impl Compiler {
             });
 
             if terminates_early {
-                self.report_warning(&LoError {
+                self.report_warning(&Error {
                     message: format!("Unreachable expression"),
                     loc: expr.loc().clone(),
                 });
             }
 
-            if expr_type == LoType::Never {
+            if expr_type == Type::Never {
                 terminates_early = true;
             }
 
-            let mut type_layout = LoTypeLayout::new();
+            let mut type_layout = TypeLayout::new();
             self.get_type_layout(&expr_type, &mut type_layout);
             if type_layout.primities_count > 0 && void_only {
-                self.report_error(&LoError {
+                self.report_error(&Error {
                     message: format!(
                         "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
                     ),
@@ -1562,9 +1562,9 @@ impl Compiler {
         &mut self,
         memory: &'static MemoryDefExpr,
         imported_from: Option<String>,
-    ) -> Result<(), LoError> {
+    ) -> Result<(), Error> {
         if let Some(existing_memory) = &self.memory {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Cannot redefine memory, first defined at {}",
                     existing_memory.loc.to_string(&self.fm)
@@ -1584,14 +1584,14 @@ impl Compiler {
 
     fn get_fn_param_type(
         &self,
-        ctx: &LoExprContext,
+        ctx: &ExprContext,
         fn_name: &IdentExpr,
         fn_param: &FnParam,
-    ) -> Result<LoType, LoError> {
+    ) -> Result<Type, Error> {
         match &fn_param.param_type {
             FnParamType::Self_ | FnParamType::SelfRef => {
                 if fn_name.parts.len() == 1 {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Cannot use self param in non-method function"),
                         loc: fn_param.loc.clone(),
                     });
@@ -1608,7 +1608,7 @@ impl Compiler {
                     return Ok(self_type);
                 }
 
-                return Ok(LoType::Pointer {
+                return Ok(Type::Pointer {
                     pointee: Box::new(self_type),
                 });
             }
@@ -1617,18 +1617,18 @@ impl Compiler {
         }
     }
 
-    fn build_type(&self, ctx: &LoExprContext, type_expr: &TypeExpr) -> Result<LoType, LoError> {
-        return self.build_type_check_ref(ctx, type_expr, true, &LoLocation::internal());
+    fn build_type(&self, ctx: &ExprContext, type_expr: &TypeExpr) -> Result<Type, Error> {
+        return self.build_type_check_ref(ctx, type_expr, true, &Loc::internal());
     }
 
     // builds a type asserting it doesn't have infinite size
     fn build_type_check_ref(
         &self,
-        ctx: &LoExprContext,
+        ctx: &ExprContext,
         type_expr: &TypeExpr,
         is_referenced: bool,
-        loc: &LoLocation,
-    ) -> Result<LoType, LoError> {
+        loc: &Loc,
+    ) -> Result<Type, Error> {
         match type_expr {
             TypeExpr::Named(TypeExprNamed { name }) => {
                 if let Some(macro_type_arg) = ctx.get_macro_type_arg(&name.repr) {
@@ -1636,10 +1636,10 @@ impl Compiler {
                 }
 
                 let lo_type = self.get_type_or_err(&name.repr, &name.loc)?;
-                if let LoType::StructInstance { struct_index } = &lo_type {
+                if let Type::StructInstance { struct_index } = &lo_type {
                     let struct_def = &self.struct_defs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Cannot use partially defined struct '{}' here",
                                 struct_def.struct_name
@@ -1653,12 +1653,12 @@ impl Compiler {
             TypeExpr::Pointer(TypeExprPointer { pointee, loc: _ }) => {
                 let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
 
-                Ok(LoType::Pointer { pointee })
+                Ok(Type::Pointer { pointee })
             }
             TypeExpr::SequencePointer(TypeExprSequencePointer { pointee, loc: _ }) => {
                 let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
 
-                Ok(LoType::SequencePointer { pointee })
+                Ok(Type::SequencePointer { pointee })
             }
             TypeExpr::Result(TypeExprResult {
                 ok_type,
@@ -1668,7 +1668,7 @@ impl Compiler {
                 let ok = Box::new(self.build_type_check_ref(ctx, &ok_type, false, loc)?);
                 let err = Box::new(self.build_type_check_ref(ctx, &err_type, false, loc)?);
 
-                Ok(LoType::Result(LoResultType { ok, err }))
+                Ok(Type::Result(ResultType { ok, err }))
             }
             TypeExpr::Of(TypeExprOf {
                 container_type,
@@ -1685,10 +1685,10 @@ impl Compiler {
     // TODO: make this report errors instead of returning first error
     fn codegen(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
-    ) -> Result<(), LoError> {
+    ) -> Result<(), Error> {
         match expr {
             CodeExpr::BoolLiteral(BoolLiteralExpr { value, loc: _ }) => {
                 if *value {
@@ -1734,7 +1734,7 @@ impl Compiler {
                 loc,
             }) => {
                 let Some(item) = self.modules[ctx.module_index].get_item(&struct_name.repr) else {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
                         loc: loc.clone(),
                     });
@@ -1745,14 +1745,14 @@ impl Compiler {
                 for field_index in 0..fields.len() {
                     let field_literal = &fields[field_index];
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!("Excess field values"),
                             loc: field_literal.loc.clone(),
                         });
                     };
 
                     if &field_literal.field_name != &struct_field.field_name {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
@@ -1763,7 +1763,7 @@ impl Compiler {
 
                     let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
                     if field_value_type != struct_field.field_type {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_name.repr,
@@ -1784,7 +1784,7 @@ impl Compiler {
                         missing_fields.push(&struct_def.fields[i].field_name)
                     }
 
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
                         loc: loc.clone(),
                     });
@@ -1801,11 +1801,11 @@ impl Compiler {
                 let mut bytes = Vec::new();
                 let mut tmp_instrs = Vec::new();
 
-                if let LoType::U8 = &item_type {
+                if let Type::U8 = &item_type {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
                         if current_item_type != item_type {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
                                     TypeFmt(self, &current_item_type),
@@ -1817,7 +1817,7 @@ impl Compiler {
 
                         self.codegen(ctx, &mut tmp_instrs, item)?;
                         let WasmInstr::I32Const { value } = tmp_instrs.pop().unwrap() else {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!("Unexpected array element value"),
                                 loc: item.loc().clone(),
                             });
@@ -1825,13 +1825,13 @@ impl Compiler {
 
                         bytes.push(value as u8);
                     }
-                } else if let LoType::StructInstance { struct_index } = &item_type
+                } else if let Type::StructInstance { struct_index } = &item_type
                     && self.struct_defs[*struct_index].struct_name == STR_TYPE_NAME
                 {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
                         if current_item_type != item_type {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
                                     TypeFmt(self, &current_item_type),
@@ -1843,13 +1843,13 @@ impl Compiler {
 
                         self.codegen(ctx, &mut tmp_instrs, item)?;
                         let WasmInstr::I32Const { value: len } = tmp_instrs.pop().unwrap() else {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!("Unexpected array element value"),
                                 loc: item.loc().clone(),
                             });
                         };
                         let WasmInstr::I32Const { value: ptr } = tmp_instrs.pop().unwrap() else {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!("Unexpected array element value"),
                                 loc: item.loc().clone(),
                             });
@@ -1859,7 +1859,7 @@ impl Compiler {
                         bytes.extend_from_slice(&len.to_le_bytes());
                     }
                 } else {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!(
                             "Unsupported array literal element type: {}",
                             TypeFmt(self, &item_type)
@@ -1881,14 +1881,14 @@ impl Compiler {
             }) => {
                 let result = self.get_result_literal_type(ctx, result_type, loc)?;
 
-                let mut value_type = LoType::Void;
+                let mut value_type = Type::Void;
                 if let Some(value) = value {
                     value_type = self.get_expr_type(ctx, value)?;
                 }
 
                 if *is_ok {
                     if value_type != *result.ok {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Cannot create result, Ok type mismatch. Got {}, expected: {}",
                                 TypeFmt(self, &value_type),
@@ -1909,7 +1909,7 @@ impl Compiler {
                 }
 
                 if value_type != *result.err {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!(
                             "Cannot create result, Err type mismatch. Got {}, expected: {}",
                             TypeFmt(self, &value_type),
@@ -2008,7 +2008,7 @@ impl Compiler {
                 self.lower_type(&casted_to_type, &mut casted_to_type_components);
 
                 if castee_type_components != casted_to_type_components {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!(
                             "Cannot cast from {} to {}",
                             TypeFmt(self, &castee_type),
@@ -2038,7 +2038,7 @@ impl Compiler {
                     let mut wasm_components = Vec::new();
                     self.lower_type(&operand_type, &mut wasm_components);
                     if wasm_components.len() != 1 {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Cannot apply not operation to expr of type {}",
                                 TypeFmt(self, &operand_type)
@@ -2070,7 +2070,7 @@ impl Compiler {
                             });
                         }
                         WasmType::FuncRef => {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!(
                                     "Cannot apply not operation to expr of type {}",
                                     TypeFmt(self, &operand_type)
@@ -2097,7 +2097,7 @@ impl Compiler {
                     let mut wasm_components = Vec::new();
                     self.lower_type(&operand_type, &mut wasm_components);
                     if wasm_components.len() != 1 {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Cannot negate expr of type {}",
                                 TypeFmt(self, &operand_type)
@@ -2133,7 +2133,7 @@ impl Compiler {
                             });
                         }
                         WasmType::FuncRef => {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!(
                                     "Cannot negate expr of type {}",
                                     TypeFmt(self, &operand_type)
@@ -2156,7 +2156,7 @@ impl Compiler {
 
                 // a hack to make &T == &void work
                 if !self.is_type_compatible(&rhs_type, &lhs_type) {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
                             TypeFmt(self, &lhs_type),
@@ -2168,7 +2168,7 @@ impl Compiler {
 
                 if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
                     let Some(var) = self.var_from_expr(ctx, &lhs)? else {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!("Cannot perform compound assignment: invalid lhs"),
                             loc: op_loc.clone(),
                         });
@@ -2198,7 +2198,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let Some(var) = self.var_from_expr(ctx, lhs)? else {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Cannot perform assignment: invalid lhs"),
                         loc: op_loc.clone(),
                     });
@@ -2240,12 +2240,12 @@ impl Compiler {
 
                         self.codegen_int_const(instrs, ctor.variant_index as i32, None);
 
-                        if variant.variant_type == LoType::Void && args.items.len() == 0 {
+                        if variant.variant_type == Type::Void && args.items.len() == 0 {
                             return Ok(());
                         }
 
                         if args.items.len() != 1 {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!(
                                     "Non-void enum constructors require exactly one argument"
                                 ),
@@ -2255,7 +2255,7 @@ impl Compiler {
 
                         let expr_type = self.get_expr_type(ctx, &args.items[0])?;
                         if !self.is_type_compatible(&variant.variant_type, &expr_type) {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!(
                                     "Invalid enum payload: {}, expected: {}",
                                     TypeFmt(self, &expr_type),
@@ -2332,7 +2332,7 @@ impl Compiler {
             }) => {
                 if fn_name.repr == "unreachable" {
                     if args.items.len() != 0 || type_args.len() != 0 {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!("@{}() accepts no arguments", fn_name.repr),
                             loc: fn_name.loc.clone(),
                         });
@@ -2344,7 +2344,7 @@ impl Compiler {
 
                 if fn_name.repr == "memory_size" {
                     if args.items.len() != 0 || type_args.len() != 0 {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!("@{}() accepts no arguments", fn_name.repr),
                             loc: fn_name.loc.clone(),
                         });
@@ -2356,7 +2356,7 @@ impl Compiler {
 
                 if fn_name.repr == "memory_grow" {
                     if type_args.len() != 0 {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!("@{}() accepts no type arguments", fn_name.repr),
                             loc: fn_name.loc.clone(),
                         });
@@ -2366,9 +2366,9 @@ impl Compiler {
                     for arg in &args.items {
                         arg_types.push(self.get_expr_type(ctx, arg)?);
                     }
-                    let param_types = &[LoType::U32];
+                    let param_types = &[Type::U32];
                     if arg_types != param_types {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Unexpected arguments [{}] for @{}(num_pages: u32): i32",
                                 TypeListFmt(self, &arg_types),
@@ -2388,7 +2388,7 @@ impl Compiler {
 
                 if fn_name.repr == "memory_copy" {
                     if type_args.len() != 0 {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!("@{}() accepts no type arguments", fn_name.repr),
                             loc: fn_name.loc.clone(),
                         });
@@ -2398,9 +2398,9 @@ impl Compiler {
                     for arg in &args.items {
                         arg_types.push(self.get_expr_type(ctx, arg)?);
                     }
-                    let param_types = &[LoType::U32, LoType::U32, LoType::U32];
+                    let param_types = &[Type::U32, Type::U32, Type::U32];
                     if arg_types != param_types {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Unexpected arguments [{}] for @{}(dest: u32, source: u32: num_bytes: u32)",
                                 TypeListFmt(self, &arg_types),
@@ -2440,7 +2440,7 @@ impl Compiler {
                     return Ok(());
                 }
 
-                self.report_error(&LoError {
+                self.report_error(&Error {
                     message: format!("Unknown intrinsic: {}", fn_name.repr),
                     loc: fn_name.loc.clone(),
                 });
@@ -2463,7 +2463,7 @@ impl Compiler {
             }
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
                 let lo_type = self.build_type(ctx, type_expr)?;
-                let mut type_layout = LoTypeLayout::new();
+                let mut type_layout = TypeLayout::new();
                 self.get_type_layout(&lo_type, &mut type_layout);
 
                 instrs.push(WasmInstr::I32Const {
@@ -2480,13 +2480,13 @@ impl Compiler {
             }
             CodeExpr::Return(ReturnExpr { expr, loc }) => {
                 let Some(fn_index) = ctx.fn_index else {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Cannot use `return` in const context"),
                         loc: loc.clone(),
                     });
                 };
 
-                let mut return_type = LoType::Void;
+                let mut return_type = Type::Void;
 
                 if let Some(return_expr) = expr {
                     self.codegen(ctx, instrs, return_expr)?;
@@ -2494,8 +2494,8 @@ impl Compiler {
                 };
 
                 let fn_return_type = &self.functions[fn_index].fn_type.output;
-                if return_type != *fn_return_type && return_type != LoType::Never {
-                    return Err(LoError {
+                if return_type != *fn_return_type && return_type != Type::Never {
+                    return Err(Error {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
                             TypeFmt(self, &return_type),
@@ -2519,11 +2519,11 @@ impl Compiler {
                         self.codegen(ctx, instrs, expr)?;
 
                         // `if` condition runs outside of then_branch's scope
-                        ctx.enter_scope(LoScopeType::Block);
+                        ctx.enter_scope(ScopeType::Block);
                     }
                     IfCond::Match(match_header) => {
                         // `if match` condition runs inside of then_branch's scope
-                        ctx.enter_scope(LoScopeType::Block);
+                        ctx.enter_scope(ScopeType::Block);
 
                         let enum_ctor = self.codegen_match_header(ctx, instrs, match_header)?;
 
@@ -2549,13 +2549,13 @@ impl Compiler {
                     ElseBlock::None => {}
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
-                        ctx.enter_scope(LoScopeType::Block);
+                        ctx.enter_scope(ScopeType::Block);
                         self.codegen_code_block(ctx, instrs, &code_block_expr, true);
                         ctx.exit_scope();
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
-                        ctx.enter_scope(LoScopeType::Block);
+                        ctx.enter_scope(ScopeType::Block);
                         self.codegen(ctx, instrs, &code_expr)?;
                         ctx.exit_scope();
                     }
@@ -2584,10 +2584,10 @@ impl Compiler {
                     block_type: WasmBlockType::NoOut,
                 });
 
-                ctx.enter_scope(LoScopeType::Block);
+                ctx.enter_scope(ScopeType::Block);
                 let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
                 if !terminates_early {
-                    self.report_error(&LoError {
+                    self.report_error(&Error {
                         message: format!(
                             "Match's else block must resolve to never, got other type"
                         ),
@@ -2607,7 +2607,7 @@ impl Compiler {
                     block_type: WasmBlockType::NoOut,
                 });
 
-                ctx.enter_scope(LoScopeType::Loop);
+                ctx.enter_scope(ScopeType::Loop);
                 self.codegen_code_block(ctx, instrs, body, true);
                 ctx.exit_scope();
 
@@ -2627,7 +2627,7 @@ impl Compiler {
             }) => {
                 let counter_type = self.get_expr_type(ctx, start)?;
                 if self.get_expr_type(ctx, end)? != counter_type {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!(
                             "Invalid range end type: {}, expected: {}",
                             TypeFmt(self, &self.get_expr_type(ctx, end)?),
@@ -2637,7 +2637,7 @@ impl Compiler {
                     });
                 }
 
-                ctx.enter_scope(LoScopeType::ForLoop);
+                ctx.enter_scope(ScopeType::ForLoop);
 
                 // define counter and set value to start
                 let local_index = self.define_local(
@@ -2717,21 +2717,21 @@ impl Compiler {
 
                 for scope in ctx.scopes.iter().rev() {
                     match scope.scope_type {
-                        LoScopeType::Block => {
+                        ScopeType::Block => {
                             label_index += 1;
                         }
-                        LoScopeType::Function => {
-                            return Err(LoError {
+                        ScopeType::Function => {
+                            return Err(Error {
                                 message: format!("Cannot break outside of a loop"),
                                 loc: loc.clone(),
                             });
                         }
-                        LoScopeType::Loop => break,
-                        LoScopeType::ForLoop => {
+                        ScopeType::Loop => break,
+                        ScopeType::ForLoop => {
                             label_index += 1;
                             break;
                         }
-                        LoScopeType::Macro => continue,
+                        ScopeType::Macro => continue,
                     }
                 }
 
@@ -2742,18 +2742,18 @@ impl Compiler {
 
                 for scope in ctx.scopes.iter().rev() {
                     match scope.scope_type {
-                        LoScopeType::Block => {
+                        ScopeType::Block => {
                             label_index += 1;
                         }
-                        LoScopeType::Function => {
-                            return Err(LoError {
+                        ScopeType::Function => {
+                            return Err(Error {
                                 message: format!("Cannot continue outside of a loop"),
                                 loc: loc.clone(),
                             });
                         }
-                        LoScopeType::Loop => break,
-                        LoScopeType::ForLoop => break,
-                        LoScopeType::Macro => continue,
+                        ScopeType::Loop => break,
+                        ScopeType::ForLoop => break,
+                        ScopeType::Macro => continue,
                     }
                 }
 
@@ -2766,7 +2766,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let Some(first_arg) = args.items.first() else {
-                    self.report_error(&LoError {
+                    self.report_error(&Error {
                         message: format!("do-with expressions must have at least one argument"),
                         loc: with_loc.clone(),
                     });
@@ -2778,7 +2778,7 @@ impl Compiler {
                 for arg in &args.items {
                     let current_arg_type = self.get_expr_type(ctx, arg)?;
                     if current_arg_type != arg_type {
-                        self.report_error(&LoError {
+                        self.report_error(&Error {
                             message: format!(
                                 "do-with argument type mismatch. expected: {}, got: {}",
                                 TypeFmt(self, &arg_type),
@@ -2789,7 +2789,7 @@ impl Compiler {
                         continue;
                     }
 
-                    ctx.enter_scope(LoScopeType::Block);
+                    ctx.enter_scope(ScopeType::Block);
 
                     self.codegen(ctx, instrs, arg)?;
 
@@ -2819,7 +2819,7 @@ impl Compiler {
                     return Ok(());
                 });
 
-                ctx.enter_scope(LoScopeType::Block);
+                ctx.enter_scope(ScopeType::Block);
 
                 let lhs_local_index =
                     self.define_local(ctx, op_loc.clone(), String::from("it"), &lhs_type, false)?;
@@ -2835,7 +2835,7 @@ impl Compiler {
                 let code_unit = self.build_code_unit(ctx, expr)?;
 
                 // macros defer into parent scope
-                if let LoScopeType::Macro = ctx.current_scope().scope_type {
+                if let ScopeType::Macro = ctx.current_scope().scope_type {
                     let parent_scope_index = ctx.scopes.len() - 2;
                     ctx.scopes[parent_scope_index].deferred.push(code_unit);
                 } else {
@@ -2869,18 +2869,18 @@ impl Compiler {
     /// defines a local with match bind's name and pushes enum's variant to the stack
     fn codegen_match_header(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
-    ) -> Result<&LoEnumConstructor, LoError> {
+    ) -> Result<&EnumConstructor, Error> {
         let Some(item) = self.modules[ctx.module_index].get_item(&header.variant_name.repr) else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Unkown enum constructor: {}", header.variant_name.repr),
                 loc: header.variant_name.loc.clone(),
             });
         };
         let ModuleItemCollection::EnumConstructor = item.collection else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Not an enum constructor: {}", header.variant_name.repr),
                 loc: header.variant_name.loc.clone(),
             });
@@ -2914,13 +2914,13 @@ impl Compiler {
 
     fn codegen_fn_call(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         fn_name: &str,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
-        loc: &LoLocation,
-    ) -> Result<(), LoError> {
+        loc: &Loc,
+    ) -> Result<(), Error> {
         let fn_info = self.get_fn_info_for_call(ctx, fn_name, loc)?;
 
         let mut arg_types = Vec::new();
@@ -2959,7 +2959,7 @@ impl Compiler {
         }
 
         if !self.is_types_compatible(&fn_info.fn_type.inputs, &arg_types) {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Invalid function arguments for function {}: [{}], expected [{}]",
                     fn_info.fn_name,
@@ -2976,7 +2976,7 @@ impl Compiler {
 
         // TODO: insert this kind of logic into other places
         //   like conditionals where each branch resolves to `never`
-        if fn_info.fn_type.output == LoType::Never {
+        if fn_info.fn_type.output == Type::Never {
             instrs.push(WasmInstr::Unreachable);
         }
 
@@ -2985,19 +2985,19 @@ impl Compiler {
 
     fn get_fn_info_for_call(
         &self,
-        ctx: &LoExprContext,
+        ctx: &ExprContext,
         fn_name: &str,
-        loc: &LoLocation,
-    ) -> Result<&FnInfo, LoError> {
+        loc: &Loc,
+    ) -> Result<&FnInfo, Error> {
         let Some(item) = self.modules[ctx.module_index].get_item(fn_name) else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Unknown function: {}", fn_name),
                 loc: loc.clone(),
             });
         };
 
         let ModuleItemCollection::Function = item.collection else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Trying to call {} which is not a function, defined at: {}",
                     fn_name,
@@ -3012,14 +3012,14 @@ impl Compiler {
 
     fn get_macro_return_type(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         macro_name: &str,
         type_args: &Vec<TypeExpr>,
         args: &Vec<CodeExpr>,
         receiver_arg: Option<&CodeExpr>,
-        loc: &LoLocation,
-    ) -> Result<LoType, LoError> {
-        ctx.enter_scope(LoScopeType::Macro);
+        loc: &Loc,
+    ) -> Result<Type, Error> {
+        ctx.enter_scope(ScopeType::Macro);
 
         let macro_def = self.populate_ctx_from_macro_call(
             ctx,
@@ -3034,7 +3034,7 @@ impl Compiler {
         let return_type = if let Some(return_type) = &macro_def.return_type {
             self.build_type(ctx, return_type)?
         } else {
-            LoType::Void
+            Type::Void
         };
 
         Ok(return_type)
@@ -3042,18 +3042,18 @@ impl Compiler {
 
     fn populate_ctx_from_macro_call(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         macro_name: &str,
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
-        loc: &LoLocation,
-        lo_type_args: Option<&mut Vec<LoType>>,
-    ) -> Result<&MacroDefExpr, LoError> {
+        loc: &Loc,
+        lo_type_args: Option<&mut Vec<Type>>,
+    ) -> Result<&MacroDefExpr, Error> {
         // TODO: find a way to not allocate
         let Some(item) = self.modules[ctx.module_index].get_item(&(String::from(macro_name) + "!"))
         else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Unknown macro: {}", macro_name),
                 loc: loc.clone(),
             });
@@ -3077,7 +3077,7 @@ impl Compiler {
             lo_type_args.push(self.build_type(ctx, &type_arg)?);
         }
         if lo_type_args.len() != macro_def.macro_type_params.len() {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Invalid number of type args, expected {}, got {}",
                     macro_def.macro_type_params.len(),
@@ -3088,16 +3088,14 @@ impl Compiler {
         }
 
         for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(lo_type_args.iter()) {
-            ctx.current_scope_mut()
-                .macro_type_args
-                .push(LoMacroTypeArg {
-                    name: type_param.clone(),
-                    type_: type_arg.clone(),
-                });
+            ctx.current_scope_mut().macro_type_args.push(MacroTypeArg {
+                name: type_param.clone(),
+                type_: type_arg.clone(),
+            });
         }
 
         if all_args.len() != macro_def.macro_params.len() {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Invalid number of macro args, expected {}, got {}",
                     macro_def.macro_params.len(),
@@ -3107,31 +3105,29 @@ impl Compiler {
             });
         }
 
-        let mut arg_types = Vec::<LoType>::new();
+        let mut arg_types = Vec::<Type>::new();
         for arg in &all_args {
             arg_types.push(arg.type_.clone());
         }
 
         for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
-            let const_def = LoConstDef {
+            let const_def = ConstDef {
                 const_name: macro_param.param_name.repr.clone(),
                 code_unit: macro_arg,
                 loc: macro_param.loc.clone(),
             };
 
             if let FnParamType::Infer { name } = &macro_param.param_type {
-                ctx.current_scope_mut()
-                    .macro_type_args
-                    .push(LoMacroTypeArg {
-                        name: name.clone(),
-                        type_: const_def.code_unit.type_.clone(),
-                    });
+                ctx.current_scope_mut().macro_type_args.push(MacroTypeArg {
+                    name: name.clone(),
+                    type_: const_def.code_unit.type_.clone(),
+                });
             }
 
             ctx.current_scope_mut().macro_args.push(const_def);
         }
 
-        let mut macro_types = Vec::<LoType>::new();
+        let mut macro_types = Vec::<Type>::new();
         for macro_param in &macro_def.macro_params {
             let macro_type = if let FnParamType::Infer { name } = &macro_param.param_type {
                 ctx.get_macro_type_arg(name).unwrap().clone()
@@ -3142,7 +3138,7 @@ impl Compiler {
         }
 
         if !self.is_types_compatible(&macro_types, &arg_types) {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Invalid macro args, expected {}, got {}",
                     TypeListFmt(self, &macro_types),
@@ -3157,15 +3153,15 @@ impl Compiler {
 
     fn codegen_macro_call(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         macro_name: &str,
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
-        loc: &LoLocation,
-    ) -> Result<(), LoError> {
-        ctx.enter_scope(LoScopeType::Macro);
+        loc: &Loc,
+    ) -> Result<(), Error> {
+        ctx.enter_scope(ScopeType::Macro);
 
         let mut lo_type_args = Vec::new();
         let macro_def = self.populate_ctx_from_macro_call(
@@ -3200,7 +3196,7 @@ impl Compiler {
             let return_type = if let Some(return_type) = &macro_def.return_type {
                 self.build_type(ctx, return_type)?
             } else {
-                LoType::Void
+                Type::Void
             };
             write!(&mut message, "): {}", TypeFmt(self, &return_type)).unwrap();
 
@@ -3220,17 +3216,17 @@ impl Compiler {
 
     fn codegen_catch(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
         error_bind: Option<&IdentExpr>,
         catch_body: Option<&CodeBlock>,
-        loc: &LoLocation,
-    ) -> Result<(), LoError> {
+        loc: &Loc,
+    ) -> Result<(), Error> {
         let expr_type = self.get_expr_type(ctx, expr)?;
         let result = self.assert_catchable_type(&expr_type, loc)?;
 
-        ctx.enter_scope(LoScopeType::Block); // enter catch scope
+        ctx.enter_scope(ScopeType::Block); // enter catch scope
 
         // put result on the stack
         self.codegen(ctx, instrs, expr)?;
@@ -3239,7 +3235,7 @@ impl Compiler {
         let (error_bind, error_bind_loc) = if let Some(error_bind) = error_bind {
             (error_bind.repr.clone(), error_bind.loc.clone())
         } else {
-            (String::from("<err>"), LoLocation::internal())
+            (String::from("<err>"), Loc::internal())
         };
         let err_local_index = self.define_local(
             ctx,
@@ -3283,7 +3279,7 @@ impl Compiler {
         if let Some(catch_body) = catch_body {
             let terminates_early = self.codegen_code_block(ctx, instrs, catch_body, true);
             if !terminates_early {
-                self.report_error(&LoError {
+                self.report_error(&Error {
                     message: format!("Catch expression must resolve to never, got other type"),
                     loc: loc.clone(),
                 });
@@ -3301,7 +3297,7 @@ impl Compiler {
         instrs.push(WasmInstr::Else);
 
         // no error, push ok value
-        let ok_var = LoVariableInfo::Local {
+        let ok_var = VariableInfo::Local {
             local_index: ok_local_index,
             local_type: result.ok.as_ref().clone(),
             inspect_info: None,
@@ -3318,13 +3314,13 @@ impl Compiler {
     fn codegen_load_or_store(
         &self,
         instrs: &mut Vec<WasmInstr>,
-        pointee_type: &LoType,
+        pointee_type: &Type,
         offset: u32,
         is_store: bool,
     ) {
         match pointee_type {
-            LoType::Never | LoType::Void => {} // noop
-            LoType::Bool | LoType::U8 => {
+            Type::Never | Type::Void => {} // noop
+            Type::Bool | Type::U8 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::I32_8,
@@ -3339,7 +3335,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::I8 => {
+            Type::I8 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::I32_8,
@@ -3354,7 +3350,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::U16 => {
+            Type::U16 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::I32_16,
@@ -3369,7 +3365,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::I16 => {
+            Type::I16 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::I32_16,
@@ -3384,10 +3380,10 @@ impl Compiler {
                     })
                 }
             }
-            LoType::U32
-            | LoType::I32
-            | LoType::Pointer { pointee: _ }
-            | LoType::SequencePointer { pointee: _ } => {
+            Type::U32
+            | Type::I32
+            | Type::Pointer { pointee: _ }
+            | Type::SequencePointer { pointee: _ } => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::I32,
@@ -3402,7 +3398,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::U64 | LoType::I64 => {
+            Type::U64 | Type::I64 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::I64,
@@ -3417,7 +3413,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::F32 => {
+            Type::F32 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::F32,
@@ -3432,7 +3428,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::F64 => {
+            Type::F64 => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::F64,
@@ -3447,7 +3443,7 @@ impl Compiler {
                     })
                 }
             }
-            LoType::StructInstance { struct_index } => {
+            Type::StructInstance { struct_index } => {
                 let struct_def = &self.struct_defs[*struct_index];
 
                 for struct_field in struct_def.fields.iter().rev() {
@@ -3459,15 +3455,15 @@ impl Compiler {
                     );
                 }
             }
-            LoType::EnumInstance { enum_index } => {
+            Type::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
-                let mut tag_layout = LoTypeLayout::new();
-                self.get_type_layout(&LoType::U32, &mut tag_layout);
+                let mut tag_layout = TypeLayout::new();
+                self.get_type_layout(&Type::U32, &mut tag_layout);
 
                 // TODO: figure out alignment
 
-                self.codegen_load_or_store(instrs, &LoType::U32, offset, is_store);
+                self.codegen_load_or_store(instrs, &Type::U32, offset, is_store);
                 self.codegen_load_or_store(
                     instrs,
                     &enum_def.variant_type,
@@ -3475,8 +3471,8 @@ impl Compiler {
                     is_store,
                 );
             }
-            LoType::Result(LoResultType { ok, err }) => {
-                let mut ok_layout = LoTypeLayout::new();
+            Type::Result(ResultType { ok, err }) => {
+                let mut ok_layout = TypeLayout::new();
                 self.get_type_layout(&ok, &mut ok_layout);
 
                 // TODO: figure out alignment
@@ -3489,26 +3485,26 @@ impl Compiler {
 
     fn get_result_literal_type(
         &self,
-        ctx: &LoExprContext,
+        ctx: &ExprContext,
         explicit_type: &Option<ResultTypeExpr>,
-        loc: &LoLocation,
-    ) -> Result<LoResultType, LoError> {
+        loc: &Loc,
+    ) -> Result<ResultType, Error> {
         if let Some(result_type) = explicit_type {
             let ok = Box::new(self.build_type(ctx, &result_type.ok)?);
             let err = Box::new(self.build_type(ctx, &result_type.err)?);
-            return Ok(LoResultType { ok, err });
+            return Ok(ResultType { ok, err });
         }
 
         let Some(fn_index) = ctx.fn_index else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Cannot create implicitly typed result in const context"),
                 loc: loc.clone(),
             });
         };
 
         let fn_info = &self.functions[fn_index];
-        let LoType::Result(result) = &fn_info.fn_type.output else {
-            return Err(LoError {
+        let Type::Result(result) = &fn_info.fn_type.output else {
+            return Err(Error {
                 message: format!(
                     "Cannot create implicitly typed result: function does not return result"
                 ),
@@ -3516,13 +3512,13 @@ impl Compiler {
             });
         };
 
-        Ok(LoResultType {
+        Ok(ResultType {
             ok: result.ok.clone(),
             err: result.err.clone(),
         })
     }
 
-    fn get_block_inout_type(&self, inputs: &[LoType], output: &LoType) -> u32 {
+    fn get_block_inout_type(&self, inputs: &[Type], output: &Type) -> u32 {
         let mut inout_fn_type = WasmFnType {
             inputs: Vec::new(),
             outputs: Vec::new(),
@@ -3542,29 +3538,29 @@ impl Compiler {
         self.wasm_types.borrow().len() as u32 - 1
     }
 
-    fn get_expr_type(&self, ctx: &LoExprContext, expr: &CodeExpr) -> Result<LoType, LoError> {
+    fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> Result<Type, Error> {
         match expr {
-            CodeExpr::BoolLiteral(_) => Ok(LoType::Bool),
-            CodeExpr::CharLiteral(_) => Ok(LoType::U8),
+            CodeExpr::BoolLiteral(_) => Ok(Type::Bool),
+            CodeExpr::CharLiteral(_) => Ok(Type::U8),
             CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: _,
                 value: _,
                 tag,
                 loc,
             }) => match tag.as_deref() {
-                None => Ok(LoType::U32),
-                Some("u8") => Ok(LoType::U8),
-                Some("i8") => Ok(LoType::I8),
-                Some("u16") => Ok(LoType::U16),
-                Some("i16") => Ok(LoType::I16),
-                Some("u32") => Ok(LoType::U32),
-                Some("i32") => Ok(LoType::I32),
-                Some("f32") => Ok(LoType::F32),
-                Some("u64") => Ok(LoType::U64),
-                Some("i64") => Ok(LoType::I64),
-                Some("f64") => Ok(LoType::F64),
+                None => Ok(Type::U32),
+                Some("u8") => Ok(Type::U8),
+                Some("i8") => Ok(Type::I8),
+                Some("u16") => Ok(Type::U16),
+                Some("i16") => Ok(Type::I16),
+                Some("u32") => Ok(Type::U32),
+                Some("i32") => Ok(Type::I32),
+                Some("f32") => Ok(Type::F32),
+                Some("u64") => Ok(Type::U64),
+                Some("i64") => Ok(Type::I64),
+                Some("f64") => Ok(Type::F64),
                 Some(tag) => {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Unknown int literal tag: {tag}"),
                         loc: loc.clone(),
                     })
@@ -3576,13 +3572,13 @@ impl Compiler {
                 loc,
             }) => {
                 let Some(item) = self.modules[ctx.module_index].get_item(STR_TYPE_NAME) else {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Cannot use strings with no `str` struct defined"),
                         loc: loc.clone(),
                     });
                 };
 
-                Ok(LoType::StructInstance {
+                Ok(Type::StructInstance {
                     struct_index: item.collection_index,
                 })
             }
@@ -3593,13 +3589,13 @@ impl Compiler {
                 loc,
             }) => {
                 let Some(item) = self.modules[ctx.module_index].get_item(&struct_name.repr) else {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
                         loc: loc.clone(),
                     });
                 };
 
-                return Ok(LoType::StructInstance {
+                return Ok(Type::StructInstance {
                     struct_index: item.collection_index,
                 });
             }
@@ -3609,7 +3605,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let item_type = self.build_type(ctx, item_type)?;
-                return Ok(LoType::SequencePointer {
+                return Ok(Type::SequencePointer {
                     pointee: Box::new(item_type),
                 });
             }
@@ -3620,7 +3616,7 @@ impl Compiler {
                 loc,
             }) => {
                 let result = self.get_result_literal_type(ctx, result_type, loc)?;
-                return Ok(LoType::Result(result));
+                return Ok(Type::Result(result));
             }
             CodeExpr::Ident(ident) => {
                 if let Some(const_expr) = self.get_const(ctx, &ident.repr) {
@@ -3644,7 +3640,7 @@ impl Compiler {
                 | InfixOpTag::LessEqual
                 | InfixOpTag::GreaterEqual
                 | InfixOpTag::And
-                | InfixOpTag::Or => Ok(LoType::Bool),
+                | InfixOpTag::Or => Ok(Type::Bool),
 
                 InfixOpTag::Add
                 | InfixOpTag::Sub
@@ -3664,7 +3660,7 @@ impl Compiler {
                 | InfixOpTag::BitAndAssign
                 | InfixOpTag::BitOrAssign
                 | InfixOpTag::ShiftLeftAssign
-                | InfixOpTag::ShiftRightAssign => Ok(LoType::Void),
+                | InfixOpTag::ShiftRightAssign => Ok(Type::Void),
 
                 // have their own CodeExpr variants
                 InfixOpTag::Cast
@@ -3680,13 +3676,12 @@ impl Compiler {
                 op_loc: _,
                 loc,
             }) => match op_tag {
-                PrefixOpTag::Not => Ok(LoType::Bool),
+                PrefixOpTag::Not => Ok(Type::Bool),
                 PrefixOpTag::Dereference => {
                     let expr_type = self.get_expr_type(ctx, expr)?;
-                    let (LoType::Pointer { pointee } | LoType::SequencePointer { pointee }) =
-                        expr_type
+                    let (Type::Pointer { pointee } | Type::SequencePointer { pointee }) = expr_type
                     else {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!(
                                 "Cannot dereference expr of type {}",
                                 TypeFmt(self, &expr_type)
@@ -3700,24 +3695,24 @@ impl Compiler {
                     let expr_type = self.get_expr_type(ctx, expr)?;
 
                     match expr_type {
-                        LoType::U8 => Ok(LoType::I8),
-                        LoType::U16 => Ok(LoType::I16),
-                        LoType::U32 => Ok(LoType::I32),
-                        LoType::U64 => Ok(LoType::I64),
-                        LoType::Never
-                        | LoType::Void
-                        | LoType::Bool
-                        | LoType::I8
-                        | LoType::I16
-                        | LoType::I32
-                        | LoType::F32
-                        | LoType::I64
-                        | LoType::F64
-                        | LoType::Pointer { pointee: _ }
-                        | LoType::SequencePointer { pointee: _ }
-                        | LoType::StructInstance { struct_index: _ }
-                        | LoType::EnumInstance { enum_index: _ }
-                        | LoType::Result(_) => Ok(expr_type),
+                        Type::U8 => Ok(Type::I8),
+                        Type::U16 => Ok(Type::I16),
+                        Type::U32 => Ok(Type::I32),
+                        Type::U64 => Ok(Type::I64),
+                        Type::Never
+                        | Type::Void
+                        | Type::Bool
+                        | Type::I8
+                        | Type::I16
+                        | Type::I32
+                        | Type::F32
+                        | Type::I64
+                        | Type::F64
+                        | Type::Pointer { pointee: _ }
+                        | Type::SequencePointer { pointee: _ }
+                        | Type::StructInstance { struct_index: _ }
+                        | Type::EnumInstance { enum_index: _ }
+                        | Type::Result(_) => Ok(expr_type),
                     }
                 }
             },
@@ -3740,7 +3735,7 @@ impl Compiler {
                     if let ModuleItemCollection::EnumConstructor = item.collection {
                         let ctor = &self.enum_ctors[item.collection_index];
 
-                        return Ok(LoType::EnumInstance {
+                        return Ok(Type::EnumInstance {
                             enum_index: ctor.enum_index,
                         });
                     }
@@ -3786,26 +3781,26 @@ impl Compiler {
                 loc: _,
             }) => {
                 if fn_name.repr == "unreachable" {
-                    return Ok(LoType::Never);
+                    return Ok(Type::Never);
                 }
 
                 if fn_name.repr == "memory_size" {
-                    return Ok(LoType::I32);
+                    return Ok(Type::I32);
                 }
 
                 if fn_name.repr == "memory_grow" {
-                    return Ok(LoType::I32);
+                    return Ok(Type::I32);
                 }
 
                 if fn_name.repr == "memory_copy" {
-                    return Ok(LoType::Void);
+                    return Ok(Type::Void);
                 }
 
                 if fn_name.repr.starts_with("inspect_") {
-                    return Ok(LoType::Void);
+                    return Ok(Type::Void);
                 }
 
-                Err(LoError {
+                Err(Error {
                     message: format!("Unknown intrinsic macro: {}", fn_name.repr),
                     loc: fn_name.loc.clone(),
                 })
@@ -3856,14 +3851,14 @@ impl Compiler {
 
                 let lhs_type = catch!(self.get_expr_type(ctx, &lhs), err, {
                     self.report_error(&err);
-                    return Ok(LoType::Never);
+                    return Ok(Type::Never);
                 });
 
-                ctx.enter_scope(LoScopeType::Block);
+                ctx.enter_scope(ScopeType::Block);
 
-                ctx.current_scope_mut().macro_args.push(LoConstDef {
+                ctx.current_scope_mut().macro_args.push(ConstDef {
                     const_name: String::from("it"),
-                    code_unit: LoCodeUnit {
+                    code_unit: CodeUnit {
                         type_: lhs_type,
                         instrs: Vec::new(),
                     },
@@ -3872,31 +3867,31 @@ impl Compiler {
 
                 let rhs_type = catch!(self.get_expr_type(ctx, &rhs), err, {
                     self.report_error(&err);
-                    return Ok(LoType::Never);
+                    return Ok(Type::Never);
                 });
 
                 ctx.exit_scope();
 
                 return Ok(rhs_type);
             }
-            CodeExpr::Dbg(_) => Ok(LoType::StructInstance {
+            CodeExpr::Dbg(_) => Ok(Type::StructInstance {
                 struct_index: self.modules[ctx.module_index]
                     .get_item(STR_TYPE_NAME)
                     .unwrap()
                     .collection_index,
             }),
-            CodeExpr::Sizeof(_) => Ok(LoType::U32),
-            CodeExpr::Let(_) => Ok(LoType::Void),
-            CodeExpr::Assign(_) => Ok(LoType::Void),
-            CodeExpr::Defer(_) => Ok(LoType::Void),
-            CodeExpr::If(_) => Ok(LoType::Void),
-            CodeExpr::Match(_) => Ok(LoType::Void),
-            CodeExpr::Loop(_) => Ok(LoType::Void),
-            CodeExpr::ForLoop(_) => Ok(LoType::Void),
-            CodeExpr::Break(_) => Ok(LoType::Never),
-            CodeExpr::Continue(_) => Ok(LoType::Never),
-            CodeExpr::DoWith(_) => Ok(LoType::Void),
-            CodeExpr::Return(_) => Ok(LoType::Never),
+            CodeExpr::Sizeof(_) => Ok(Type::U32),
+            CodeExpr::Let(_) => Ok(Type::Void),
+            CodeExpr::Assign(_) => Ok(Type::Void),
+            CodeExpr::Defer(_) => Ok(Type::Void),
+            CodeExpr::If(_) => Ok(Type::Void),
+            CodeExpr::Match(_) => Ok(Type::Void),
+            CodeExpr::Loop(_) => Ok(Type::Void),
+            CodeExpr::ForLoop(_) => Ok(Type::Void),
+            CodeExpr::Break(_) => Ok(Type::Never),
+            CodeExpr::Continue(_) => Ok(Type::Never),
+            CodeExpr::DoWith(_) => Ok(Type::Void),
+            CodeExpr::Return(_) => Ok(Type::Never),
             CodeExpr::Paren(ParenExpr {
                 expr,
                 has_trailing_comma: _,
@@ -3907,9 +3902,9 @@ impl Compiler {
 
     fn var_from_expr(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         expr: &CodeExpr,
-    ) -> Result<Option<LoVariableInfo>, LoError> {
+    ) -> Result<Option<VariableInfo>, Error> {
         Ok(match expr {
             CodeExpr::Ident(ident) => Some(self.var_from_ident(ctx, ident)?),
             CodeExpr::FieldAccess(field_access) => {
@@ -3936,11 +3931,11 @@ impl Compiler {
     fn var_local(
         &self,
         local_name: &str,
-        local_type: LoType,
+        local_type: Type,
         local_index: u32,
-        loc: LoLocation,
-        linked_loc: Option<LoLocation>,
-    ) -> LoVariableInfo {
+        loc: Loc,
+        linked_loc: Option<Loc>,
+    ) -> VariableInfo {
         let inspect_info = if self.in_inspection_mode {
             Some(InspectInfo {
                 message: format!("let {}: {}", local_name, TypeFmt(self, &local_type)),
@@ -3951,18 +3946,14 @@ impl Compiler {
             None
         };
 
-        LoVariableInfo::Local {
+        VariableInfo::Local {
             local_index,
             local_type,
             inspect_info,
         }
     }
 
-    fn var_from_ident(
-        &self,
-        ctx: &LoExprContext,
-        ident: &IdentExpr,
-    ) -> Result<LoVariableInfo, LoError> {
+    fn var_from_ident(&self, ctx: &ExprContext, ident: &IdentExpr) -> Result<VariableInfo, Error> {
         if let Some(local) = ctx.get_local(&ident.repr) {
             return Ok(self.var_local(
                 &ident.repr,
@@ -3977,7 +3968,7 @@ impl Compiler {
             if let ModuleItemCollection::Global = item.collection {
                 let global = &self.globals[item.collection_index];
 
-                return Ok(LoVariableInfo::Global {
+                return Ok(VariableInfo::Global {
                     global_index: global.global_index,
                     global_type: global.global_type.clone(),
                     inspect_info: if self.in_inspection_mode {
@@ -3998,7 +3989,7 @@ impl Compiler {
         }
 
         if let Some(const_) = self.get_const(ctx, &ident.repr) {
-            return Ok(LoVariableInfo::Const {
+            return Ok(VariableInfo::Const {
                 code_unit: const_.code_unit.relax(),
                 loc: const_.loc.clone(),
                 inspect_info: if self.in_inspection_mode {
@@ -4017,7 +4008,7 @@ impl Compiler {
             });
         }
 
-        return Err(LoError {
+        return Err(Error {
             message: format!("Unknown variable: {}", ident.repr),
             loc: ident.loc.clone(),
         });
@@ -4025,9 +4016,9 @@ impl Compiler {
 
     fn var_from_field_access(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         field_access: &FieldAccessExpr,
-    ) -> Result<LoVariableInfo, LoError> {
+    ) -> Result<VariableInfo, Error> {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref())?;
 
         let field = self.get_struct_or_struct_ref_field(&lhs_type, field_access)?;
@@ -4047,8 +4038,8 @@ impl Compiler {
             None
         };
 
-        if let LoType::Pointer { pointee: _ } = lhs_type {
-            return Ok(LoVariableInfo::Stored {
+        if let Type::Pointer { pointee: _ } = lhs_type {
+            return Ok(VariableInfo::Stored {
                 address: self.build_code_unit(ctx, &field_access.lhs)?,
                 offset: field.byte_offset,
                 value_type: field.field_type.clone(),
@@ -4059,18 +4050,18 @@ impl Compiler {
         if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref())? {
             match var {
                 // struct globals are not supported so these are handled the same way as struct values
-                LoVariableInfo::Global {
+                VariableInfo::Global {
                     global_index: _,
                     global_type: _,
                     inspect_info: _,
                 } => {}
                 // consts are handled as struct values as well
-                LoVariableInfo::Const {
+                VariableInfo::Const {
                     code_unit: _,
                     loc: _,
                     inspect_info: _,
                 } => {}
-                LoVariableInfo::Local {
+                VariableInfo::Local {
                     local_index,
                     local_type: _,
                     inspect_info: parent_inspect_info,
@@ -4079,13 +4070,13 @@ impl Compiler {
                         self.print_inspection(&inspect_info);
                     }
 
-                    return Ok(LoVariableInfo::Local {
+                    return Ok(VariableInfo::Local {
                         local_index: local_index + field.field_index,
                         local_type: field.field_type.clone(),
                         inspect_info,
                     });
                 }
-                LoVariableInfo::Stored {
+                VariableInfo::Stored {
                     address,
                     offset,
                     value_type: _,
@@ -4095,14 +4086,14 @@ impl Compiler {
                         self.print_inspection(&inspect_info);
                     }
 
-                    return Ok(LoVariableInfo::Stored {
+                    return Ok(VariableInfo::Stored {
                         address,
                         offset: offset + field.byte_offset,
                         value_type: field.field_type.clone(),
                         inspect_info,
                     });
                 }
-                LoVariableInfo::StructValueField {
+                VariableInfo::StructValueField {
                     struct_value,
                     field_type: _,
                     drops_before,
@@ -4117,7 +4108,7 @@ impl Compiler {
                     let struct_components_count = self.count_wasm_type_components(&lhs_type);
                     let field_components_count = self.count_wasm_type_components(&field.field_type);
 
-                    return Ok(LoVariableInfo::StructValueField {
+                    return Ok(VariableInfo::StructValueField {
                         struct_value,
                         field_type: field.field_type.clone(),
                         drops_before: drops_before + struct_components_count
@@ -4134,7 +4125,7 @@ impl Compiler {
         let struct_components_count = self.count_wasm_type_components(&lhs_type);
         let field_components_count = self.count_wasm_type_components(&field.field_type);
 
-        return Ok(LoVariableInfo::StructValueField {
+        return Ok(VariableInfo::StructValueField {
             struct_value: self.build_code_unit(ctx, &field_access.lhs)?,
             field_type: field.field_type.clone(),
             drops_before: struct_components_count - field.field_index - field_components_count,
@@ -4144,28 +4135,27 @@ impl Compiler {
         });
     }
 
-    fn create_or_get_addr_local(&self, ctx: &mut LoExprContext) -> u32 {
+    fn create_or_get_addr_local(&self, ctx: &mut ExprContext) -> u32 {
         if let Some(addr_local_index) = ctx.addr_local_index {
             return addr_local_index;
         }
 
-        let addr_local_index =
-            self.define_unnamed_local(ctx, LoLocation::internal(), &LoType::U32, false);
+        let addr_local_index = self.define_unnamed_local(ctx, Loc::internal(), &Type::U32, false);
 
         return addr_local_index;
     }
 
     fn get_struct_or_struct_ref_field(
         &self,
-        mut lhs_type: &LoType,
+        mut lhs_type: &Type,
         field_access: &FieldAccessExpr,
-    ) -> Result<&LoStructField, LoError> {
-        if let LoType::Pointer { pointee } = &lhs_type {
+    ) -> Result<&StructField, Error> {
+        if let Type::Pointer { pointee } = &lhs_type {
             lhs_type = pointee;
         }
 
-        let LoType::StructInstance { struct_index } = lhs_type else {
-            return Err(LoError {
+        let Type::StructInstance { struct_index } = lhs_type else {
+            return Err(Error {
                 message: format!(
                     "Cannot get field '{}' on non struct: {}",
                     field_access.field_name.repr,
@@ -4181,7 +4171,7 @@ impl Compiler {
             .iter()
             .find(|f| &f.field_name == &field_access.field_name.repr)
         else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Unknown field {} in struct {}",
                     field_access.field_name.repr, struct_def.struct_name
@@ -4195,13 +4185,13 @@ impl Compiler {
 
     fn var_from_deref(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         addr_expr: &CodeExpr,
-        op_loc: &LoLocation,
-    ) -> Result<LoVariableInfo, LoError> {
+        op_loc: &Loc,
+    ) -> Result<VariableInfo, Error> {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
-        if let LoType::Pointer { pointee } = &addr_type {
+        if let Type::Pointer { pointee } = &addr_type {
             let inspect_info = if self.in_inspection_mode {
                 Some(InspectInfo {
                     message: format!("<deref>: {}", TypeFmt(self, &pointee)),
@@ -4212,7 +4202,7 @@ impl Compiler {
                 None
             };
 
-            return Ok(LoVariableInfo::Stored {
+            return Ok(VariableInfo::Stored {
                 address: self.build_code_unit(ctx, addr_expr)?,
                 offset: 0,
                 value_type: pointee.as_ref().clone(),
@@ -4220,7 +4210,7 @@ impl Compiler {
             });
         };
 
-        return Err(LoError {
+        return Err(Error {
             message: format!(
                 "Cannot dereference expression of type '{}'",
                 TypeFmt(self, &addr_type)
@@ -4231,12 +4221,12 @@ impl Compiler {
 
     fn codegen_var_get(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        var: &LoVariableInfo,
-    ) -> Result<(), LoError> {
+        var: &VariableInfo,
+    ) -> Result<(), Error> {
         match var {
-            LoVariableInfo::Local {
+            VariableInfo::Local {
                 local_index,
                 local_type,
                 inspect_info: _,
@@ -4247,7 +4237,7 @@ impl Compiler {
                     });
                 }
             }
-            LoVariableInfo::Global {
+            VariableInfo::Global {
                 global_index,
                 global_type,
                 inspect_info: _,
@@ -4258,14 +4248,14 @@ impl Compiler {
                     });
                 }
             }
-            LoVariableInfo::Const {
+            VariableInfo::Const {
                 code_unit,
                 loc: _,
                 inspect_info: _,
             } => {
                 instrs.extend_from_slice(&code_unit.instrs);
             }
-            LoVariableInfo::Stored {
+            VariableInfo::Stored {
                 address,
                 offset,
                 value_type,
@@ -4298,7 +4288,7 @@ impl Compiler {
                     instrs.append(&mut loads);
                 }
             }
-            LoVariableInfo::StructValueField {
+            VariableInfo::StructValueField {
                 struct_value,
                 field_type,
                 drops_before,
@@ -4317,7 +4307,7 @@ impl Compiler {
                     let local_index =
                         self.define_unnamed_local(ctx, loc.clone(), field_type, false);
 
-                    let var = LoVariableInfo::Local {
+                    let var = VariableInfo::Local {
                         local_index,
                         local_type: field_type.clone(),
                         inspect_info: None,
@@ -4338,9 +4328,9 @@ impl Compiler {
     }
 
     // should be called before set's value is pushed to the stack
-    fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &LoVariableInfo) {
+    fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &VariableInfo) {
         match var {
-            LoVariableInfo::Stored {
+            VariableInfo::Stored {
                 address,
                 offset: _,
                 value_type,
@@ -4360,19 +4350,19 @@ impl Compiler {
 
     fn codegen_var_set(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        var: &LoVariableInfo,
-    ) -> Result<(), LoError> {
+        var: &VariableInfo,
+    ) -> Result<(), Error> {
         match var {
-            LoVariableInfo::Local {
+            VariableInfo::Local {
                 local_index,
                 local_type,
                 inspect_info: _,
             } => {
                 self.codegen_local_set(instrs, local_type, *local_index);
             }
-            LoVariableInfo::Global {
+            VariableInfo::Global {
                 global_index,
                 global_type,
                 inspect_info: _,
@@ -4383,7 +4373,7 @@ impl Compiler {
                     });
                 }
             }
-            LoVariableInfo::Stored {
+            VariableInfo::Stored {
                 address: _,
                 offset,
                 value_type,
@@ -4394,7 +4384,7 @@ impl Compiler {
 
                 if stores.len() > 1 {
                     let tmp_value_local_index =
-                        self.define_unnamed_local(ctx, LoLocation::internal(), value_type, false);
+                        self.define_unnamed_local(ctx, Loc::internal(), value_type, false);
                     self.codegen_local_set(instrs, value_type, tmp_value_local_index);
 
                     let addr_local_index = self.create_or_get_addr_local(ctx);
@@ -4415,12 +4405,12 @@ impl Compiler {
                     instrs.append(&mut stores);
                 }
             }
-            LoVariableInfo::Const {
+            VariableInfo::Const {
                 code_unit: _,
                 loc,
                 inspect_info: _,
             }
-            | LoVariableInfo::StructValueField {
+            | VariableInfo::StructValueField {
                 struct_value: _,
                 field_type: _,
                 drops_before: _,
@@ -4428,7 +4418,7 @@ impl Compiler {
                 loc,
                 inspect_info: _,
             } => {
-                return Err(LoError {
+                return Err(Error {
                     message: format!("Cannot mutate a constant"),
                     loc: loc.clone(),
                 })
@@ -4438,12 +4428,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn codegen_local_set(
-        &self,
-        instrs: &mut Vec<WasmInstr>,
-        local_type: &LoType,
-        local_index: u32,
-    ) {
+    fn codegen_local_set(&self, instrs: &mut Vec<WasmInstr>, local_type: &Type, local_index: u32) {
         for i in (0..self.count_wasm_type_components(local_type)).rev() {
             instrs.push(WasmInstr::LocalSet {
                 local_index: local_index + i,
@@ -4453,17 +4438,17 @@ impl Compiler {
 
     fn define_local(
         &self,
-        ctx: &mut LoExprContext,
-        loc: LoLocation,
+        ctx: &mut ExprContext,
+        loc: Loc,
         local_name: String,
-        local_type: &LoType,
+        local_type: &Type,
         is_fn_param: bool,
-    ) -> Result<u32, LoError> {
+    ) -> Result<u32, Error> {
         for local in ctx.current_scope().locals.iter() {
             if local.local_name == local_name && local.defined_in_this_scope {
-                let LoLocal { definition_loc, .. } = &ctx.locals[local.lo_local_index];
+                let Local { definition_loc, .. } = &ctx.locals[local.lo_local_index];
 
-                return Err(LoError {
+                return Err(Error {
                     message: format!(
                         "Cannot redefine local {}, previously defined at {}",
                         local_name,
@@ -4477,7 +4462,7 @@ impl Compiler {
         let local_index = self.define_unnamed_local(ctx, loc, local_type, is_fn_param);
 
         let lo_local_index = ctx.locals.len() - 1;
-        ctx.current_scope_mut().locals.push(LoScopedLocal {
+        ctx.current_scope_mut().locals.push(ScopedLocal {
             local_name,
             lo_local_index,
             defined_in_this_scope: true,
@@ -4488,13 +4473,13 @@ impl Compiler {
 
     fn define_unnamed_local(
         &self,
-        ctx: &mut LoExprContext,
-        loc: LoLocation,
-        local_type: &LoType,
+        ctx: &mut ExprContext,
+        loc: Loc,
+        local_type: &Type,
         is_fn_param: bool,
     ) -> u32 {
         let local_index = ctx.next_local_index;
-        ctx.locals.push(LoLocal {
+        ctx.locals.push(Local {
             local_index,
             local_type: local_type.clone(),
             definition_loc: loc,
@@ -4507,11 +4492,11 @@ impl Compiler {
 
     fn assert_catchable_type<'a>(
         &self,
-        expr_type: &'a LoType,
-        loc: &LoLocation,
-    ) -> Result<&'a LoResultType, LoError> {
-        let LoType::Result(result) = expr_type else {
-            return Err(LoError {
+        expr_type: &'a Type,
+        loc: &Loc,
+    ) -> Result<&'a ResultType, Error> {
+        let Type::Result(result) = expr_type else {
+            return Err(Error {
                 message: format!(
                     "Cannot catch error from expr of type {}",
                     TypeFmt(self, &expr_type)
@@ -4523,7 +4508,7 @@ impl Compiler {
         let mut err_type_components = Vec::new();
         self.lower_type(&result.err, &mut err_type_components);
         if err_type_components != [WasmType::I32] {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Invalid Result error type: {}, must lower to i32",
                     TypeFmt(self, &result.err)
@@ -4535,7 +4520,7 @@ impl Compiler {
         Ok(result)
     }
 
-    fn emit_deferred(&self, scope: &LoScope, instrs: &mut Vec<WasmInstr>) {
+    fn emit_deferred(&self, scope: &Scope, instrs: &mut Vec<WasmInstr>) {
         for expr in scope.deferred.iter().rev() {
             for instr in &expr.instrs {
                 instrs.push(instr.clone());
@@ -4544,18 +4529,14 @@ impl Compiler {
     }
 
     // TODO!!!: add similar logic for break/continue
-    fn emit_deferred_for_return(&self, ctx: &LoExprContext, instrs: &mut Vec<WasmInstr>) {
+    fn emit_deferred_for_return(&self, ctx: &ExprContext, instrs: &mut Vec<WasmInstr>) {
         for scope in ctx.scopes.iter().rev() {
             self.emit_deferred(scope, instrs);
         }
     }
 
-    fn build_code_unit(
-        &self,
-        ctx: &mut LoExprContext,
-        expr: &CodeExpr,
-    ) -> Result<LoCodeUnit, LoError> {
-        let mut code_unit = LoCodeUnit {
+    fn build_code_unit(&self, ctx: &mut ExprContext, expr: &CodeExpr) -> Result<CodeUnit, Error> {
+        let mut code_unit = CodeUnit {
             type_: self.get_expr_type(ctx, expr)?,
             instrs: Vec::new(),
         };
@@ -4564,9 +4545,9 @@ impl Compiler {
         Ok(code_unit)
     }
 
-    fn process_const_string(&self, value: String, loc: &LoLocation) -> Result<LoStr, LoError> {
+    fn process_const_string(&self, value: String, loc: &Loc) -> Result<Str, Error> {
         if self.memory.is_none() && !self.in_inspection_mode {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: loc.clone(),
             });
@@ -4576,7 +4557,7 @@ impl Compiler {
 
         for pooled_str in self.string_pool.borrow().iter() {
             if *pooled_str.value == value {
-                return Ok(LoStr {
+                return Ok(Str {
                     ptr: pooled_str.ptr,
                     len: string_len,
                 });
@@ -4589,7 +4570,7 @@ impl Compiler {
             .borrow_mut()
             .push(PooledString { value, ptr });
 
-        return Ok(LoStr {
+        return Ok(Str {
             ptr,
             len: string_len,
         });
@@ -4612,17 +4593,17 @@ impl Compiler {
     }
 
     // TODO: add validation for const expr
-    fn ensure_const_expr(&self, _expr: &CodeExpr) -> Result<(), LoError> {
+    fn ensure_const_expr(&self, _expr: &CodeExpr) -> Result<(), Error> {
         Ok(())
     }
 
-    fn get_type_or_err(&self, type_name: &str, loc: &LoLocation) -> Result<LoType, LoError> {
+    fn get_type_or_err(&self, type_name: &str, loc: &Loc) -> Result<Type, Error> {
         let Some(item) = self
             .get_module_by_file_index(loc.file_index)
             .unwrap()
             .get_item(type_name)
         else {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Unknown type: {}", type_name),
                 loc: loc.clone(),
             });
@@ -4638,7 +4619,7 @@ impl Compiler {
                     });
                 }
 
-                Ok(LoType::StructInstance {
+                Ok(Type::StructInstance {
                     struct_index: item.collection_index,
                 })
             }
@@ -4651,7 +4632,7 @@ impl Compiler {
                     });
                 }
 
-                Ok(LoType::EnumInstance {
+                Ok(Type::EnumInstance {
                     enum_index: item.collection_index,
                 })
             }
@@ -4673,14 +4654,14 @@ impl Compiler {
             | ModuleItemCollection::Macro
             | ModuleItemCollection::Global
             | ModuleItemCollection::Const
-            | ModuleItemCollection::EnumConstructor => Err(LoError {
+            | ModuleItemCollection::EnumConstructor => Err(Error {
                 message: format!("Item is not a type: {}", type_name),
                 loc: loc.clone(),
             }),
         }
     }
 
-    fn get_const<'a>(&'a self, ctx: &'a LoExprContext, const_name: &str) -> Option<&'a LoConstDef> {
+    fn get_const<'a>(&'a self, ctx: &'a ExprContext, const_name: &str) -> Option<&'a ConstDef> {
         if let Some(item) = self.modules[ctx.module_index].get_item(const_name) {
             let ModuleItemCollection::Const = item.collection else {
                 return None;
@@ -4699,40 +4680,38 @@ impl Compiler {
 
     fn codegen_default_value(
         &self,
-        ctx: &mut LoExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        value_type: &LoType,
+        value_type: &Type,
     ) {
         match value_type {
-            LoType::Never => {}
-            LoType::Void => {}
-            LoType::Bool
-            | LoType::U8
-            | LoType::I8
-            | LoType::U16
-            | LoType::I16
-            | LoType::U32
-            | LoType::I32
-            | LoType::Pointer { pointee: _ }
-            | LoType::SequencePointer { pointee: _ } => {
-                instrs.push(WasmInstr::I32Const { value: 0 })
-            }
-            LoType::U64 | LoType::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
-            LoType::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
-            LoType::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
-            LoType::StructInstance { struct_index } => {
+            Type::Never => {}
+            Type::Void => {}
+            Type::Bool
+            | Type::U8
+            | Type::I8
+            | Type::U16
+            | Type::I16
+            | Type::U32
+            | Type::I32
+            | Type::Pointer { pointee: _ }
+            | Type::SequencePointer { pointee: _ } => instrs.push(WasmInstr::I32Const { value: 0 }),
+            Type::U64 | Type::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
+            Type::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
+            Type::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
+            Type::StructInstance { struct_index } => {
                 let struct_ref = &self.struct_defs[*struct_index];
                 for field in &struct_ref.fields {
                     self.codegen_default_value(ctx, instrs, &field.field_type);
                 }
             }
-            LoType::EnumInstance { enum_index } => {
+            Type::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
-                self.codegen_default_value(ctx, instrs, &LoType::U32);
+                self.codegen_default_value(ctx, instrs, &Type::U32);
                 self.codegen_default_value(ctx, instrs, &enum_def.variant_type);
             }
-            LoType::Result(result) => {
+            Type::Result(result) => {
                 self.codegen_default_value(ctx, instrs, &result.ok);
                 self.codegen_default_value(ctx, instrs, &result.err);
             }
@@ -4749,7 +4728,7 @@ impl Compiler {
         }
     }
 
-    fn is_types_compatible(&self, slots: &Vec<LoType>, values: &Vec<LoType>) -> bool {
+    fn is_types_compatible(&self, slots: &Vec<Type>, values: &Vec<Type>) -> bool {
         if slots.len() != values.len() {
             return false;
         }
@@ -4763,14 +4742,14 @@ impl Compiler {
         true
     }
 
-    fn is_type_compatible(&self, slot: &LoType, value: &LoType) -> bool {
-        if let LoType::Pointer { pointee } = slot {
-            if **pointee == LoType::Void {
-                if let LoType::Pointer { pointee: _ } = value {
+    fn is_type_compatible(&self, slot: &Type, value: &Type) -> bool {
+        if let Type::Pointer { pointee } = slot {
+            if **pointee == Type::Void {
+                if let Type::Pointer { pointee: _ } = value {
                     return true;
                 }
 
-                if let LoType::SequencePointer { pointee: _ } = value {
+                if let Type::SequencePointer { pointee: _ } = value {
                     return true;
                 }
             }
@@ -4779,79 +4758,79 @@ impl Compiler {
         slot == value
     }
 
-    fn lower_type(&self, lo_type: &LoType, wasm_types: &mut Vec<WasmType>) {
+    fn lower_type(&self, lo_type: &Type, wasm_types: &mut Vec<WasmType>) {
         match lo_type {
-            LoType::Never => {}
-            LoType::Void => {}
-            LoType::Bool => wasm_types.push(WasmType::I32),
-            LoType::U8 => wasm_types.push(WasmType::I32),
-            LoType::I8 => wasm_types.push(WasmType::I32),
-            LoType::U16 => wasm_types.push(WasmType::I32),
-            LoType::I16 => wasm_types.push(WasmType::I32),
-            LoType::U32 => wasm_types.push(WasmType::I32),
-            LoType::I32 => wasm_types.push(WasmType::I32),
-            LoType::F32 => wasm_types.push(WasmType::F32),
-            LoType::U64 => wasm_types.push(WasmType::I64),
-            LoType::I64 => wasm_types.push(WasmType::I64),
-            LoType::F64 => wasm_types.push(WasmType::F64),
-            LoType::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            LoType::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            LoType::StructInstance { struct_index } => {
+            Type::Never => {}
+            Type::Void => {}
+            Type::Bool => wasm_types.push(WasmType::I32),
+            Type::U8 => wasm_types.push(WasmType::I32),
+            Type::I8 => wasm_types.push(WasmType::I32),
+            Type::U16 => wasm_types.push(WasmType::I32),
+            Type::I16 => wasm_types.push(WasmType::I32),
+            Type::U32 => wasm_types.push(WasmType::I32),
+            Type::I32 => wasm_types.push(WasmType::I32),
+            Type::F32 => wasm_types.push(WasmType::F32),
+            Type::U64 => wasm_types.push(WasmType::I64),
+            Type::I64 => wasm_types.push(WasmType::I64),
+            Type::F64 => wasm_types.push(WasmType::F64),
+            Type::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
+            Type::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
+            Type::StructInstance { struct_index } => {
                 let struct_def = &self.struct_defs[*struct_index];
 
                 for field in &struct_def.fields {
                     self.lower_type(&field.field_type, wasm_types);
                 }
             }
-            LoType::EnumInstance { enum_index } => {
+            Type::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
-                self.lower_type(&LoType::U32, wasm_types);
+                self.lower_type(&Type::U32, wasm_types);
                 self.lower_type(&enum_def.variant_type, wasm_types);
             }
-            LoType::Result(result) => {
+            Type::Result(result) => {
                 self.lower_type(&result.ok, wasm_types);
                 self.lower_type(&result.err, wasm_types);
             }
         }
     }
 
-    fn count_wasm_type_components(&self, lo_type: &LoType) -> u32 {
-        let layout = &mut LoTypeLayout::new();
+    fn count_wasm_type_components(&self, lo_type: &Type) -> u32 {
+        let layout = &mut TypeLayout::new();
         self.get_type_layout(lo_type, layout);
         layout.primities_count
     }
 
-    fn get_type_layout(&self, lo_type: &LoType, layout: &mut LoTypeLayout) {
+    fn get_type_layout(&self, lo_type: &Type, layout: &mut TypeLayout) {
         match lo_type {
-            LoType::Never | LoType::Void => {
+            Type::Never | Type::Void => {
                 layout.alignment = u32::max(layout.alignment, 1);
             }
-            LoType::Bool | LoType::U8 | LoType::I8 => {
+            Type::Bool | Type::U8 | Type::I8 => {
                 layout.primities_count += 1;
                 layout.alignment = u32::max(layout.alignment, 1);
                 layout.byte_size = align(layout.byte_size, 1) + 1;
             }
-            LoType::U16 | LoType::I16 => {
+            Type::U16 | Type::I16 => {
                 layout.primities_count += 1;
                 layout.alignment = u32::max(layout.alignment, 2);
                 layout.byte_size = align(layout.byte_size, 2) + 2;
             }
-            LoType::U32
-            | LoType::I32
-            | LoType::F32
-            | LoType::Pointer { pointee: _ }
-            | LoType::SequencePointer { pointee: _ } => {
+            Type::U32
+            | Type::I32
+            | Type::F32
+            | Type::Pointer { pointee: _ }
+            | Type::SequencePointer { pointee: _ } => {
                 layout.primities_count += 1;
                 layout.alignment = u32::max(layout.alignment, 4);
                 layout.byte_size = align(layout.byte_size, 4) + 4;
             }
-            LoType::U64 | LoType::I64 | LoType::F64 => {
+            Type::U64 | Type::I64 | Type::F64 => {
                 layout.primities_count += 1;
                 layout.alignment = u32::max(layout.alignment, 8);
                 layout.byte_size = align(layout.byte_size, 8) + 8;
             }
-            LoType::StructInstance { struct_index } => {
+            Type::StructInstance { struct_index } => {
                 let struct_def = &self.struct_defs[*struct_index];
 
                 // append each field's layout to total struct layout
@@ -4862,15 +4841,15 @@ impl Compiler {
                 layout.alignment = u32::max(layout.alignment, 1);
                 layout.byte_size = align(layout.byte_size, layout.alignment);
             }
-            LoType::EnumInstance { enum_index } => {
+            Type::EnumInstance { enum_index } => {
                 let enum_def = &self.enum_defs[*enum_index];
 
-                self.get_type_layout(&LoType::U32, layout);
+                self.get_type_layout(&Type::U32, layout);
                 self.get_type_layout(&enum_def.variant_type, layout);
 
                 // TODO!!!: figure out the alignment and byte_size
             }
-            LoType::Result(result) => {
+            Type::Result(result) => {
                 self.get_type_layout(&result.ok, layout);
                 self.get_type_layout(&result.err, layout);
 
@@ -4879,31 +4858,25 @@ impl Compiler {
         }
     }
 
-    fn get_cast_instr(&self, casted_from: &LoType, casted_to: &LoType) -> Option<WasmInstr> {
-        if *casted_to == LoType::I64 || *casted_to == LoType::U64 {
-            if *casted_from == LoType::I8
-                || *casted_from == LoType::I16
-                || *casted_from == LoType::I32
-            {
+    fn get_cast_instr(&self, casted_from: &Type, casted_to: &Type) -> Option<WasmInstr> {
+        if *casted_to == Type::I64 || *casted_to == Type::U64 {
+            if *casted_from == Type::I8 || *casted_from == Type::I16 || *casted_from == Type::I32 {
                 return Some(WasmInstr::I64ExtendI32s);
             }
 
-            if *casted_from == LoType::U8
-                || *casted_from == LoType::U16
-                || *casted_from == LoType::U32
-            {
+            if *casted_from == Type::U8 || *casted_from == Type::U16 || *casted_from == Type::U32 {
                 return Some(WasmInstr::I64ExtendI32u);
             }
         }
 
-        if *casted_to == LoType::I8
-            || *casted_to == LoType::U8
-            || *casted_to == LoType::I16
-            || *casted_to == LoType::U16
-            || *casted_to == LoType::I32
-            || *casted_to == LoType::U32
+        if *casted_to == Type::I8
+            || *casted_to == Type::U8
+            || *casted_to == Type::I16
+            || *casted_to == Type::U16
+            || *casted_to == Type::I32
+            || *casted_to == Type::U32
         {
-            if *casted_from == LoType::I64 || *casted_from == LoType::U64 {
+            if *casted_from == Type::I64 || *casted_from == Type::U64 {
                 return Some(WasmInstr::I32WrapI64);
             }
         }
@@ -4915,9 +4888,9 @@ impl Compiler {
         &self,
         instrs: &mut Vec<WasmInstr>,
         op_tag: &InfixOpTag,
-        operand_type: &LoType,
-        op_loc: &LoLocation,
-    ) -> Result<(), LoError> {
+        operand_type: &Type,
+        op_loc: &Loc,
+    ) -> Result<(), Error> {
         let kind = self.get_binary_op_kind(op_tag, operand_type, op_loc)?;
         instrs.push(WasmInstr::BinaryOp { kind });
         Ok(())
@@ -4926,213 +4899,213 @@ impl Compiler {
     fn get_binary_op_kind(
         &self,
         op_tag: &InfixOpTag,
-        operand_type: &LoType,
-        op_loc: &LoLocation,
-    ) -> Result<WasmBinaryOpKind, LoError> {
+        operand_type: &Type,
+        op_loc: &Loc,
+    ) -> Result<WasmBinaryOpKind, Error> {
         match op_tag {
             InfixOpTag::Equal => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32
-                | LoType::Pointer { pointee: _ }
-                | LoType::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_EQ),
-                LoType::EnumInstance { enum_index }
-                    if self.enum_defs[*enum_index].variant_type == LoType::Void =>
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32
+                | Type::Pointer { pointee: _ }
+                | Type::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_EQ),
+                Type::EnumInstance { enum_index }
+                    if self.enum_defs[*enum_index].variant_type == Type::Void =>
                 {
                     return Ok(WasmBinaryOpKind::I32_EQ)
                 }
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_EQ),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_EQ),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_EQ),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_EQ),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_EQ),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_EQ),
                 _ => {}
             },
             InfixOpTag::NotEqual => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32
-                | LoType::Pointer { pointee: _ }
-                | LoType::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_NE),
-                LoType::EnumInstance { enum_index }
-                    if self.enum_defs[*enum_index].variant_type == LoType::Void =>
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32
+                | Type::Pointer { pointee: _ }
+                | Type::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_NE),
+                Type::EnumInstance { enum_index }
+                    if self.enum_defs[*enum_index].variant_type == Type::Void =>
                 {
                     return Ok(WasmBinaryOpKind::I32_NE)
                 }
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_NE),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_NE),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_NE),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_NE),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_NE),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_NE),
                 _ => {}
             },
             InfixOpTag::Less => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_LT_S),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_LT_S),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_LT_U)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_LT_S),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_LT_U),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_LT),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_LT),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_LT_S),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_LT_U),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_LT),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_LT),
                 _ => {}
             },
             InfixOpTag::Greater => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_GT_S),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_GT_S),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_GT_U)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_GT_S),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_GT_U),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_GT),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_GT),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_GT_S),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_GT_U),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_GT),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_GT),
                 _ => {}
             },
             InfixOpTag::LessEqual => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_LE_S),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_LE_S),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_LE_U)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_LE_S),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_LE_U),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_LE),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_LE),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_LE_S),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_LE_U),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_LE),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_LE),
                 _ => {}
             },
             InfixOpTag::GreaterEqual => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_GE_S),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_GE_S),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_GE_U)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_GE_S),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_GE_U),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_GE),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_GE),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_GE_S),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_GE_U),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_GE),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_GE),
                 _ => {}
             },
             InfixOpTag::Add => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_ADD),
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_ADD),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_ADD),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_ADD),
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32 => return Ok(WasmBinaryOpKind::I32_ADD),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_ADD),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_ADD),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_ADD),
                 _ => {}
             },
             InfixOpTag::Sub => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_SUB),
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_SUB),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_SUB),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_SUB),
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32 => return Ok(WasmBinaryOpKind::I32_SUB),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_SUB),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_SUB),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_SUB),
                 _ => {}
             },
             InfixOpTag::Mul => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_MUL),
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_MUL),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_MUL),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_MUL),
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32 => return Ok(WasmBinaryOpKind::I32_MUL),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_MUL),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_MUL),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_MUL),
                 _ => {}
             },
             InfixOpTag::Div => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_DIV_S),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_DIV_S),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_DIV_U)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_DIV_S),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_DIV_U),
-                LoType::F32 => return Ok(WasmBinaryOpKind::F32_DIV),
-                LoType::F64 => return Ok(WasmBinaryOpKind::F64_DIV),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_DIV_S),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_DIV_U),
+                Type::F32 => return Ok(WasmBinaryOpKind::F32_DIV),
+                Type::F64 => return Ok(WasmBinaryOpKind::F64_DIV),
                 _ => {}
             },
             InfixOpTag::Mod => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_REM_S),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_REM_S),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_REM_U)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_REM_S),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_REM_U),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_REM_S),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_REM_U),
                 _ => {}
             },
             InfixOpTag::ShiftLeft => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_SHL),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_SHL),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_SHL)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_SHL),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_SHL),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_SHL),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_SHL),
                 _ => {}
             },
             InfixOpTag::ShiftRight => match operand_type {
-                LoType::I8 | LoType::I16 | LoType::I32 => return Ok(WasmBinaryOpKind::I32_SHR_S),
-                LoType::Bool | LoType::U8 | LoType::U16 | LoType::U32 => {
+                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_SHR_S),
+                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
                     return Ok(WasmBinaryOpKind::I32_SHR_U)
                 }
-                LoType::I64 => return Ok(WasmBinaryOpKind::I64_SHR_S),
-                LoType::U64 => return Ok(WasmBinaryOpKind::I64_SHR_U),
+                Type::I64 => return Ok(WasmBinaryOpKind::I64_SHR_S),
+                Type::U64 => return Ok(WasmBinaryOpKind::I64_SHR_U),
                 _ => {}
             },
             InfixOpTag::And => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_AND),
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_AND),
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32 => return Ok(WasmBinaryOpKind::I32_AND),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_AND),
                 _ => {}
             },
             InfixOpTag::Or => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_OR),
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_OR),
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32 => return Ok(WasmBinaryOpKind::I32_OR),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_OR),
                 _ => {}
             },
             InfixOpTag::BitAnd => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_AND),
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_AND),
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32 => return Ok(WasmBinaryOpKind::I32_AND),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_AND),
                 _ => {}
             },
             InfixOpTag::BitOr => match operand_type {
-                LoType::Bool
-                | LoType::I8
-                | LoType::U8
-                | LoType::I16
-                | LoType::U16
-                | LoType::I32
-                | LoType::U32 => return Ok(WasmBinaryOpKind::I32_OR),
-                LoType::I64 | LoType::U64 => return Ok(WasmBinaryOpKind::I64_OR),
+                Type::Bool
+                | Type::I8
+                | Type::U8
+                | Type::I16
+                | Type::U16
+                | Type::I32
+                | Type::U32 => return Ok(WasmBinaryOpKind::I32_OR),
+                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_OR),
                 _ => {}
             },
 
@@ -5157,7 +5130,7 @@ impl Compiler {
         }
 
         let module = self.get_module_by_file_index(op_loc.file_index).unwrap();
-        return Err(LoError {
+        return Err(Error {
             message: format!(
                 "Operator `{}` is incompatible with operands of type {}",
                 op_loc.read_span(module.parser.lexer.source),
@@ -5205,7 +5178,7 @@ impl Compiler {
         }
     }
 
-    fn get_fn_name_from_method(&self, receiver_type: &LoType, method_name: &str) -> String {
+    fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
         let receiver_type = TypeFmt(self, receiver_type.deref_rec());
         format!("{receiver_type}::{method_name}")
     }
@@ -5220,7 +5193,7 @@ impl Compiler {
         None
     }
 
-    fn report_error(&self, err: &LoError) {
+    fn report_error(&self, err: &Error) {
         *self.error_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {
@@ -5241,7 +5214,7 @@ impl Compiler {
         stderr_write("\n");
     }
 
-    fn report_warning(&self, err: &LoError) {
+    fn report_warning(&self, err: &Error) {
         *self.warning_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {

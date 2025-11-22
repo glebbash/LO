@@ -83,7 +83,7 @@ pub extern "C" fn _start() {
         let mut compiler = Compiler::new();
         let Some(module) = compiler
             .relax_mut()
-            .include(file_name, &LoLocation::internal())
+            .include(file_name, &Loc::internal())
         else {
             proc_exit(1)
         };
@@ -114,7 +114,7 @@ pub extern "C" fn _start() {
     if command == "format" {
         compiler.in_single_file_mode = true;
 
-        let Some(module) = compiler.include(file_name, &LoLocation::internal()) else {
+        let Some(module) = compiler.include(file_name, &Loc::internal()) else {
             proc_exit(1);
         };
 
@@ -127,7 +127,7 @@ pub extern "C" fn _start() {
         compiler.begin_inspection();
     }
 
-    compiler.include(file_name, &LoLocation::internal());
+    compiler.include(file_name, &Loc::internal());
 
     compiler.run_passes();
 

@@ -2,7 +2,7 @@ use crate::core::*;
 use alloc::{format, string::String, vec::Vec};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
-pub enum LoTokenType {
+pub enum TokenType {
     StringLiteral,
     CharLiteral,
     IntLiteral,
@@ -13,25 +13,25 @@ pub enum LoTokenType {
 }
 
 #[derive(Clone)]
-pub struct LoToken {
-    pub type_: LoTokenType,
-    pub loc: LoLocation,
+pub struct Token {
+    pub type_: TokenType,
+    pub loc: Loc,
 }
 
-impl LoToken {
+impl Token {
     pub fn get_value(&self, source: &'static [u8]) -> &str {
-        if self.type_ == LoTokenType::Terminal {
+        if self.type_ == TokenType::Terminal {
             return "<EOF>";
         }
 
         return self.loc.read_span(source);
     }
 
-    pub fn is_any(&self, type_: LoTokenType) -> bool {
+    pub fn is_any(&self, type_: TokenType) -> bool {
         self.type_ == type_
     }
 
-    pub fn is(&self, type_: LoTokenType, value: &str, source: &'static [u8]) -> bool {
+    pub fn is(&self, type_: TokenType, value: &str, source: &'static [u8]) -> bool {
         self.is_any(type_) && self.get_value(source) == value
     }
 }
@@ -42,14 +42,14 @@ pub struct Lexer {
     pub source: &'static [u8],
 
     // state
-    pub source_pos: LoPosition,
+    pub source_pos: Pos,
     pub was_newline: bool,
 
     // output
-    pub tokens: Vec<LoToken>,
-    pub comments: Vec<LoLocation>,
-    pub backslashes: Vec<LoLocation>,
-    pub double_backslashes: Vec<LoLocation>,
+    pub tokens: Vec<Token>,
+    pub comments: Vec<Loc>,
+    pub backslashes: Vec<Loc>,
+    pub double_backslashes: Vec<Loc>,
 }
 
 impl Lexer {
@@ -58,7 +58,7 @@ impl Lexer {
             file_index,
             source,
 
-            source_pos: LoPosition {
+            source_pos: Pos {
                 offset: 0,
                 line: 1,
                 col: 1,
@@ -72,7 +72,7 @@ impl Lexer {
         }
     }
 
-    pub fn lex_file(&mut self) -> Result<(), LoError> {
+    pub fn lex_file(&mut self) -> Result<(), Error> {
         self.skip_space();
 
         while self.source_pos.offset < self.source.len() {
@@ -82,15 +82,15 @@ impl Lexer {
             self.skip_space();
         }
 
-        self.tokens.push(LoToken {
-            type_: LoTokenType::Terminal,
+        self.tokens.push(Token {
+            type_: TokenType::Terminal,
             loc: self.loc(),
         });
 
         Ok(())
     }
 
-    fn lex_token(&mut self) -> Result<LoToken, LoError> {
+    fn lex_token(&mut self) -> Result<Token, Error> {
         let char = self.current_char()?;
 
         if char == '\'' {
@@ -113,13 +113,13 @@ impl Lexer {
             return self.lex_operator();
         }
 
-        Err(LoError {
+        Err(Error {
             message: format!("Unexpected char: {}", char),
             loc: self.loc(),
         })
     }
 
-    fn lex_symbol(&mut self) -> Result<LoToken, LoError> {
+    fn lex_symbol(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         while is_symbol_char(self.current_char()?) {
@@ -128,13 +128,13 @@ impl Lexer {
 
         loc.end_pos = self.source_pos;
 
-        Ok(LoToken {
-            type_: LoTokenType::Symbol,
+        Ok(Token {
+            type_: TokenType::Symbol,
             loc,
         })
     }
 
-    fn lex_char(&mut self) -> Result<LoToken, LoError> {
+    fn lex_char(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         self.next_char(); // skip start quote
@@ -146,7 +146,7 @@ impl Lexer {
                     self.next_char(); // skip escaped character
                 }
                 c => {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!("ParseError: Invalid escape sequence: \\{c}"),
                         loc: self.loc(),
                     });
@@ -158,7 +158,7 @@ impl Lexer {
 
         let end_quote = self.current_char()?;
         if end_quote != '\'' {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("ParseError: Unexpected character `{end_quote}`, expected `'`",),
                 loc: self.loc(),
             });
@@ -167,8 +167,8 @@ impl Lexer {
 
         loc.end_pos = self.source_pos;
 
-        Ok(LoToken {
-            type_: LoTokenType::CharLiteral,
+        Ok(Token {
+            type_: TokenType::CharLiteral,
             loc,
         })
     }
@@ -184,7 +184,7 @@ impl Lexer {
         }
     }
 
-    fn lex_int_literal(&mut self) -> Result<LoToken, LoError> {
+    fn lex_int_literal(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         let mut hex = false;
@@ -207,8 +207,8 @@ impl Lexer {
 
         loc.end_pos = self.source_pos;
 
-        Ok(LoToken {
-            type_: LoTokenType::IntLiteral,
+        Ok(Token {
+            type_: TokenType::IntLiteral,
             loc,
         })
     }
@@ -223,7 +223,7 @@ impl Lexer {
         int_literal.parse().unwrap()
     }
 
-    fn lex_string(&mut self) -> Result<LoToken, LoError> {
+    fn lex_string(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         self.next_char(); // skip start quote
@@ -236,7 +236,7 @@ impl Lexer {
                     match self.current_char()? {
                         'n' | 'r' | 't' | '0' | '\\' | '"' => {}
                         c => {
-                            return Err(LoError {
+                            return Err(Error {
                                 message: format!("ParseError: Invalid escape sequence: \\{c}"),
                                 loc: self.loc(),
                             });
@@ -252,26 +252,26 @@ impl Lexer {
 
         loc.end_pos = self.source_pos;
 
-        Ok(LoToken {
-            type_: LoTokenType::StringLiteral,
+        Ok(Token {
+            type_: TokenType::StringLiteral,
             loc,
         })
     }
 
-    fn lex_delim(&mut self) -> Result<LoToken, LoError> {
+    fn lex_delim(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         self.next_char(); // skip delimiter char
 
         loc.end_pos = self.source_pos;
 
-        Ok(LoToken {
-            type_: LoTokenType::Delim,
+        Ok(Token {
+            type_: TokenType::Delim,
             loc,
         })
     }
 
-    fn lex_operator(&mut self) -> Result<LoToken, LoError> {
+    fn lex_operator(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         loop {
@@ -308,7 +308,7 @@ impl Lexer {
         }
 
         if !matched_fully {
-            return Err(LoError {
+            return Err(Error {
                 message: format!("Unexpected char: '{}'", self.current_char()?),
                 loc: self.loc(),
             });
@@ -316,8 +316,8 @@ impl Lexer {
 
         loc.end_pos = self.source_pos;
 
-        Ok(LoToken {
-            type_: LoTokenType::Operator,
+        Ok(Token {
+            type_: TokenType::Operator,
             loc,
         })
     }
@@ -349,7 +349,7 @@ impl Lexer {
         }
     }
 
-    fn lex_comment(&mut self) -> LoLocation {
+    fn lex_comment(&mut self) -> Loc {
         let mut loc = self.loc();
 
         self.next_char(); // `/`
@@ -399,34 +399,34 @@ impl Lexer {
         }
     }
 
-    fn current_char(&mut self) -> Result<char, LoError> {
+    fn current_char(&mut self) -> Result<char, Error> {
         self.peek_char(0)
     }
 
-    fn peek_char(&mut self, skip_chars: usize) -> Result<char, LoError> {
+    fn peek_char(&mut self, skip_chars: usize) -> Result<char, Error> {
         let mut char_offset = self.source_pos.offset;
         for _ in 0..skip_chars {
             let _ = next_utf8_char(&self.source, &mut char_offset);
         }
         next_utf8_char(&self.source, &mut char_offset).map_err(|err| match err {
-            NextCharError::InvalidUtf8 => LoError {
+            NextCharError::InvalidUtf8 => Error {
                 message: format!("ParseError: Invalid UTF-8 sequence"),
                 loc: self.loc(),
             },
-            NextCharError::EndOfSource => LoError {
+            NextCharError::EndOfSource => Error {
                 message: format!("ParseError: Unexpected EOF"),
                 loc: self.loc(),
             },
         })
     }
 
-    fn loc(&self) -> LoLocation {
+    fn loc(&self) -> Loc {
         let pos = self.source_pos;
 
         let mut end_pos = pos;
         end_pos.col += 1;
 
-        LoLocation {
+        Loc {
             file_index: self.file_index,
             pos,
             end_pos,
@@ -435,7 +435,7 @@ impl Lexer {
 }
 
 #[derive(Clone)]
-pub struct EscapedString(pub LoLocation);
+pub struct EscapedString(pub Loc);
 
 impl EscapedString {
     pub fn get_raw(&self, source: &'static [u8]) -> &str {
@@ -589,15 +589,15 @@ pub enum InfixOpTag {
 pub struct InfixOp {
     pub tag: InfixOpTag,
     pub info: OpInfo,
-    pub token: LoToken,
+    pub token: Token,
 }
 
 impl InfixOp {
-    pub fn parse(token: LoToken, source: &'static [u8]) -> Option<Self> {
+    pub fn parse(token: Token, source: &'static [u8]) -> Option<Self> {
         use InfixOpTag::*;
         use OpAssoc::*;
 
-        fn op(token: LoToken, tag: InfixOpTag, bp: u32, assoc: OpAssoc) -> Option<InfixOp> {
+        fn op(token: Token, tag: InfixOpTag, bp: u32, assoc: OpAssoc) -> Option<InfixOp> {
             let info = OpInfo { bp, assoc };
             return Some(InfixOp { tag, info, token });
         }
@@ -662,11 +662,11 @@ pub enum PrefixOpTag {
 pub struct PrefixOp {
     pub tag: PrefixOpTag,
     pub info: OpInfo,
-    pub token: LoToken,
+    pub token: Token,
 }
 
 impl PrefixOp {
-    pub fn parse(token: LoToken, source: &'static [u8]) -> Option<Self> {
+    pub fn parse(token: Token, source: &'static [u8]) -> Option<Self> {
         use OpAssoc::*;
         use PrefixOpTag::*;
 

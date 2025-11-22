@@ -6,7 +6,7 @@ use alloc::{
     vec::Vec,
 };
 use core::cell::RefCell;
-use LoTokenType::*;
+use TokenType::*;
 
 pub struct ParsingContext {
     pub struct_literal_allowed: bool,
@@ -39,14 +39,14 @@ impl Parser {
         }
     }
 
-    pub fn parse_file(&self) -> Result<(), LoError> {
+    pub fn parse_file(&self) -> Result<(), Error> {
         while self.peek().is_some() {
             let expr = self.parse_top_level_expr()?;
             self.ast.be_mut().push(expr);
         }
 
         if let Some(unexpected) = self.peek() {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Unexpected top level token: {}, EOF expected",
                     unexpected.get_value(self.lexer.source)
@@ -58,7 +58,7 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_top_level_expr(&self) -> Result<TopLevelExpr, LoError> {
+    fn parse_top_level_expr(&self) -> Result<TopLevelExpr, Error> {
         if let Some(_) = self.eat(Symbol, "export")? {
             let loc = self.prev().loc.clone();
 
@@ -73,7 +73,7 @@ impl Parser {
             }
 
             let unexpected = self.current();
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Unexpected exportable: {:?}",
                     unexpected.get_value(self.lexer.source)
@@ -348,7 +348,7 @@ impl Parser {
         }
 
         let unexpected = self.current();
-        return Err(LoError {
+        return Err(Error {
             message: format!(
                 "Unexpected top level token: {}",
                 unexpected.get_value(self.lexer.source)
@@ -357,7 +357,7 @@ impl Parser {
         });
     }
 
-    fn parse_fn_def(&self, exported: bool, mut loc: LoLocation) -> Result<FnDefExpr, LoError> {
+    fn parse_fn_def(&self, exported: bool, mut loc: Loc) -> Result<FnDefExpr, Error> {
         let decl = self.parse_fn_decl()?;
         let body = self.parse_code_block()?;
 
@@ -371,11 +371,7 @@ impl Parser {
         })
     }
 
-    fn parse_memory_def(
-        &self,
-        exported: bool,
-        mut loc: LoLocation,
-    ) -> Result<MemoryDefExpr, LoError> {
+    fn parse_memory_def(&self, exported: bool, mut loc: Loc) -> Result<MemoryDefExpr, Error> {
         self.expect(Delim, "{")?;
 
         let mut min_pages = None;
@@ -411,7 +407,7 @@ impl Parser {
         })
     }
 
-    fn parse_importable(&self) -> Result<ImportItem, LoError> {
+    fn parse_importable(&self) -> Result<ImportItem, Error> {
         if let Some(_) = self.eat(Symbol, "fn")? {
             let decl = self.parse_fn_decl()?;
             return Ok(ImportItem::FnDecl(decl));
@@ -424,7 +420,7 @@ impl Parser {
         }
 
         let unexpected = self.current();
-        return Err(LoError {
+        return Err(Error {
             message: format!(
                 "Unexpected token in importable item: {:?}",
                 unexpected.get_value(self.lexer.source)
@@ -433,7 +429,7 @@ impl Parser {
         });
     }
 
-    fn parse_fn_decl(&self) -> Result<FnDeclExpr, LoError> {
+    fn parse_fn_decl(&self) -> Result<FnDeclExpr, Error> {
         let mut loc = self.prev().loc.clone();
 
         let fn_name = self.parse_ident()?;
@@ -461,7 +457,7 @@ impl Parser {
         &self,
         infer_allowed: bool,
         trailing_comma: &mut bool,
-    ) -> Result<Vec<FnParam>, LoError> {
+    ) -> Result<Vec<FnParam>, Error> {
         let mut params = Vec::<FnParam>::new();
 
         let _ = self.expect(Delim, "(")?;
@@ -480,7 +476,7 @@ impl Parser {
 
             if param_name.repr != "self" {
                 if let FnParamType::SelfRef = param_type {
-                    return Err(LoError {
+                    return Err(Error {
                         message: format!(
                             "Only `self` param can be preceded by the reference operator"
                         ),
@@ -492,7 +488,7 @@ impl Parser {
 
                 if let Some(infer) = self.eat(Symbol, "infer")? {
                     if !infer_allowed {
-                        return Err(LoError {
+                        return Err(Error {
                             message: format!("Cannot use `infer` outside macro parameter list"),
                             loc: infer.loc.clone(),
                         });
@@ -526,7 +522,7 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_type_expr(&self) -> Result<TypeExpr, LoError> {
+    fn parse_type_expr(&self) -> Result<TypeExpr, Error> {
         let mut loc = self.current().loc.clone();
         let primary = self.parse_type_expr_primary()?;
 
@@ -544,7 +540,7 @@ impl Parser {
         return Ok(primary);
     }
 
-    fn parse_type_expr_primary(&self) -> Result<TypeExpr, LoError> {
+    fn parse_type_expr_primary(&self) -> Result<TypeExpr, Error> {
         let mut loc = self.current().loc.clone();
 
         if let Some(_) = self.eat(Operator, "&")? {
@@ -594,7 +590,7 @@ impl Parser {
         return Ok(TypeExpr::Named(TypeExprNamed { name: ident }));
     }
 
-    fn parse_code_block(&self) -> Result<CodeBlock, LoError> {
+    fn parse_code_block(&self) -> Result<CodeBlock, Error> {
         self.expect(Delim, "{")?;
 
         let mut code_block = CodeBlock {
@@ -613,7 +609,7 @@ impl Parser {
         return Ok(code_block);
     }
 
-    fn parse_code_expr(&self, min_bp: u32) -> Result<CodeExpr, LoError> {
+    fn parse_code_expr(&self, min_bp: u32) -> Result<CodeExpr, Error> {
         let mut primary = self.parse_code_expr_primary()?;
 
         while self.peek().is_some() {
@@ -650,7 +646,7 @@ impl Parser {
         false
     }
 
-    fn parse_code_expr_primary(&self) -> Result<CodeExpr, LoError> {
+    fn parse_code_expr_primary(&self) -> Result<CodeExpr, Error> {
         if let Some(_) = self.eat(Symbol, "true")? {
             let loc = self.prev().loc.clone();
 
@@ -977,7 +973,7 @@ impl Parser {
         }
 
         if self.eat(Operator, ":")?.is_some() || self.eat(Delim, "{")?.is_some() {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Unexpected character '{}'. \
                     If you were trying to create a struct in this context \
@@ -1067,7 +1063,7 @@ impl Parser {
         Ok(CodeExpr::Ident(ident))
     }
 
-    fn parse_match_header(&self) -> Result<MatchHeader, LoError> {
+    fn parse_match_header(&self) -> Result<MatchHeader, Error> {
         let variant_name = self.parse_ident()?;
         self.expect(Delim, "(")?;
         let variant_bind = self.parse_ident()?;
@@ -1082,7 +1078,7 @@ impl Parser {
         })
     }
 
-    fn parse_ident(&self) -> Result<IdentExpr, LoError> {
+    fn parse_ident(&self) -> Result<IdentExpr, Error> {
         let mut ident = IdentExpr {
             repr: String::new(),
             parts: Vec::new(),
@@ -1112,8 +1108,8 @@ impl Parser {
     fn parse_struct_literal(
         &self,
         ident: IdentExpr,
-        mut loc: LoLocation,
-    ) -> Result<StructLiteralExpr, LoError> {
+        mut loc: Loc,
+    ) -> Result<StructLiteralExpr, Error> {
         let mut fields = Vec::new();
         let mut has_trailing_comma = false;
 
@@ -1151,7 +1147,7 @@ impl Parser {
         });
     }
 
-    fn parse_fn_args(&self) -> Result<CodeExprList, LoError> {
+    fn parse_fn_args(&self) -> Result<CodeExprList, Error> {
         let mut has_trailing_comma = false;
         let mut items = Vec::new();
 
@@ -1173,7 +1169,7 @@ impl Parser {
         });
     }
 
-    fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, LoError> {
+    fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, Error> {
         let mut type_args = Vec::new();
 
         let Some(_) = self.eat(Operator, "<")? else {
@@ -1191,7 +1187,7 @@ impl Parser {
         return Ok(type_args);
     }
 
-    fn parse_code_expr_postfix(&self, primary: CodeExpr, op: InfixOp) -> Result<CodeExpr, LoError> {
+    fn parse_code_expr_postfix(&self, primary: CodeExpr, op: InfixOp) -> Result<CodeExpr, Error> {
         let min_bp = op.info.get_min_bp_for_next();
 
         match op.tag {
@@ -1355,10 +1351,10 @@ impl Parser {
         self.contexts.be_mut().pop();
     }
 
-    fn expect_any(&self, type_: LoTokenType) -> Result<&LoToken, LoError> {
+    fn expect_any(&self, type_: TokenType) -> Result<&Token, Error> {
         let token = self.current();
         if !token.is_any(type_) {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Unexpected token '{}', wanted {type_:?}",
                     token.get_value(self.lexer.source)
@@ -1370,10 +1366,10 @@ impl Parser {
         Ok(self.next().unwrap())
     }
 
-    fn expect(&self, type_: LoTokenType, value: &str) -> Result<&LoToken, LoError> {
+    fn expect(&self, type_: TokenType, value: &str) -> Result<&Token, Error> {
         let token = self.current();
         if !token.is(type_, value, self.lexer.source) {
-            return Err(LoError {
+            return Err(Error {
                 message: format!(
                     "Unexpected token '{}', wanted '{value}'",
                     token.get_value(self.lexer.source)
@@ -1385,7 +1381,7 @@ impl Parser {
         Ok(self.next().unwrap())
     }
 
-    fn eat_any(&self, type_: LoTokenType) -> Result<Option<&LoToken>, LoError> {
+    fn eat_any(&self, type_: TokenType) -> Result<Option<&Token>, Error> {
         let was_some = self.peek().is_some();
         match self.expect_any(type_) {
             Ok(t) => Ok(Some(t)),
@@ -1394,7 +1390,7 @@ impl Parser {
         }
     }
 
-    fn eat(&self, type_: LoTokenType, value: &str) -> Result<Option<&LoToken>, LoError> {
+    fn eat(&self, type_: TokenType, value: &str) -> Result<Option<&Token>, Error> {
         let was_some = self.peek().is_some();
         match self.expect(type_, value) {
             Ok(t) => Ok(Some(t)),
@@ -1403,21 +1399,21 @@ impl Parser {
         }
     }
 
-    fn peek(&self) -> Option<&LoToken> {
+    fn peek(&self) -> Option<&Token> {
         self.look(0)
     }
 
-    fn current(&self) -> &LoToken {
+    fn current(&self) -> &Token {
         self.look(0)
             .unwrap_or_else(|| self.lexer.tokens.last().unwrap())
     }
 
-    fn prev(&self) -> &LoToken {
+    fn prev(&self) -> &Token {
         self.look(-1)
             .unwrap_or_else(|| self.lexer.tokens.last().unwrap())
     }
 
-    fn look(&self, relative_offset: isize) -> Option<&LoToken> {
+    fn look(&self, relative_offset: isize) -> Option<&Token> {
         let index = (*self.tokens_processed.borrow() as isize + relative_offset) as usize;
 
         // terminal token is never returned
@@ -1428,7 +1424,7 @@ impl Parser {
         Some(&self.lexer.tokens[index])
     }
 
-    fn next(&self) -> Option<&LoToken> {
+    fn next(&self) -> Option<&Token> {
         let token = self.peek();
         *self.tokens_processed.borrow_mut() += 1;
         token

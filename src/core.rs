@@ -3,22 +3,22 @@ use alloc::{format, string::String, vec, vec::Vec};
 use core::{cell::RefCell, ffi::CStr, fmt::Write, str};
 
 #[derive(PartialEq, Clone)]
-pub struct LoError {
+pub struct Error {
     pub message: String,
-    pub loc: LoLocation,
+    pub loc: Loc,
 }
 
 #[macro_export]
 macro_rules! lo_todo {
     ($loc:expr) => {
-        LoError {
+        Error {
             message: format!("Not implemented feature at {}:{}", file!(), line!()),
             loc: $loc,
         }
     };
 }
 
-impl LoError {
+impl Error {
     pub fn to_string(&self, fm: &FileManager) -> String {
         let mut out = String::new();
         self.loc.format(&mut out, fm);
@@ -29,29 +29,29 @@ impl LoError {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-pub struct LoPosition {
+pub struct Pos {
     pub offset: usize,
     pub line: usize,
     pub col: usize,
 }
 
 #[derive(PartialEq, Clone)]
-pub struct LoLocation {
+pub struct Loc {
     pub file_index: usize,
-    pub pos: LoPosition,
-    pub end_pos: LoPosition,
+    pub pos: Pos,
+    pub end_pos: Pos,
 }
 
-impl LoLocation {
+impl Loc {
     pub fn internal() -> Self {
-        LoLocation {
+        Loc {
             file_index: 0, // internal
-            pos: LoPosition {
+            pos: Pos {
                 offset: 0,
                 line: 1,
                 col: 1,
             },
-            end_pos: LoPosition {
+            end_pos: Pos {
                 offset: 0,
                 line: 1,
                 col: 1,
@@ -341,7 +341,7 @@ impl<'a, T: core::fmt::Display> core::fmt::Display for ListFmt<'a, T> {
     }
 }
 
-pub struct RangeFmt<'a>(pub &'a LoLocation);
+pub struct RangeFmt<'a>(pub &'a Loc);
 
 impl<'a> core::fmt::Display for RangeFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -378,11 +378,7 @@ impl FileManager {
         Self { files }
     }
 
-    pub fn include_file(
-        &mut self,
-        relative_path: &str,
-        loc: &LoLocation,
-    ) -> Result<usize, LoError> {
+    pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Result<usize, Error> {
         let parent_path = &self.files[loc.file_index].absolute_path;
         let absolute_path = resolve_path(relative_path, parent_path);
 
@@ -393,7 +389,7 @@ impl FileManager {
             }
         }
 
-        let file_contents = file_read_utf8(&absolute_path).map_err(|message| LoError {
+        let file_contents = file_read_utf8(&absolute_path).map_err(|message| Error {
             message,
             loc: loc.clone(),
         })?;
