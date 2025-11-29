@@ -94,10 +94,10 @@ impl Lexer {
         let char = self.current_char()?;
 
         if char == '\'' {
-            return self.lex_char();
+            return self.lex_char_literal();
         }
         if char == '"' {
-            return self.lex_string();
+            return self.lex_string_literal();
         }
         if char.is_numeric() {
             return self.lex_int_literal();
@@ -134,7 +134,7 @@ impl Lexer {
         })
     }
 
-    fn lex_char(&mut self) -> Result<Token, Error> {
+    fn lex_char_literal(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         self.next_char(); // skip start quote
@@ -189,8 +189,9 @@ impl Lexer {
 
         let mut hex = false;
         if let Ok('0') = self.current_char() {
-            if let Ok('x') = self.peek_char(1) {
-                self.next_char();
+            self.next_char();
+
+            if let Ok('x') = self.current_char() {
                 self.next_char();
                 hex = true;
             }
@@ -223,7 +224,7 @@ impl Lexer {
         int_literal.parse().unwrap()
     }
 
-    fn lex_string(&mut self) -> Result<Token, Error> {
+    fn lex_string_literal(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
         self.next_char(); // skip start quote
@@ -323,35 +324,45 @@ impl Lexer {
     }
 
     fn skip_space(&mut self) {
-        while self.current_char().map(is_space_char).unwrap_or(false) {
+        while let Ok(c) = self.current_char() {
+            if !is_space_char(c) {
+                break;
+            }
+
             self.next_char();
         }
 
-        if self.current_char() == Ok('/') && self.peek_char(1) == Ok('/') {
-            let comment = self.lex_comment();
-            self.comments.push(comment);
-            self.skip_space();
-        }
-
-        if self.current_char() == Ok('\\') {
-            let loc = self.loc();
-
+        if let Ok('\\') = self.current_char() {
+            let mut loc = self.loc();
             self.next_char();
 
-            if self.current_char() == Ok('\\') {
+            if let Ok('\\') = self.current_char() {
                 self.next_char();
-                self.double_backslashes.push(loc)
+                loc.end_pos = self.source_pos;
+
+                self.double_backslashes.push(loc);
             } else {
                 self.backslashes.push(loc);
-            }
+            };
+
+            self.skip_space();
+
+            return;
+        }
+
+        if let Ok('/') = self.current_char()
+            && let Ok('/') = self.peek_char(1)
+        {
+            let mut loc = self.loc();
+            self.skip_comment();
+            loc.end_pos = self.source_pos;
+            self.comments.push(loc);
 
             self.skip_space();
         }
     }
 
-    fn lex_comment(&mut self) -> Loc {
-        let mut loc = self.loc();
-
+    fn skip_comment(&mut self) {
         self.next_char(); // `/`
         self.next_char(); // `/`
 
@@ -366,10 +377,6 @@ impl Lexer {
 
             self.next_char();
         }
-
-        loc.end_pos = self.source_pos;
-
-        loc
     }
 
     fn next_char(&mut self) {
