@@ -661,6 +661,7 @@ impl InfixOp {
 
 pub enum PrefixOpTag {
     Not,
+    Reference,
     Dereference,
     Positive,
     Negative,
@@ -679,6 +680,7 @@ impl PrefixOp {
 
         let (tag, info) = match token.get_value(source) {
             "!" => (Not, OpInfo { bp: 8, assoc: Left }),
+            "&" => (Reference, OpInfo { bp: 8, assoc: Left }),
             "*" => (Dereference, OpInfo { bp: 8, assoc: Left }),
             "+" => (Positive, OpInfo { bp: 9, assoc: Left }),
             "-" => (Negative, OpInfo { bp: 9, assoc: Left }),

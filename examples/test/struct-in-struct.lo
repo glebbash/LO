@@ -28,10 +28,9 @@ fn main() {
     let br2 = r_ref.br
     println(br2.x.to_tmp_str!())
 
-    let br_ref = (r_ref as u32 + sizeof Point2D) as &Point2D
-    println(br_ref.x.to_tmp_str!())
+    println((&r_ref.br).x.to_tmp_str!())
 
-    println((*br_ref).x.to_tmp_str!())
+    println((*(&r_ref.br)).x.to_tmp_str!())
 
     println(r_ref.br.x.to_tmp_str!())
 }

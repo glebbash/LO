@@ -2024,6 +2024,33 @@ impl Compiler {
                 op_loc,
                 loc,
             }) => match op_tag {
+                PrefixOpTag::Reference => {
+                    let Some(VariableInfo::Stored {
+                        mut address,
+                        offset,
+                        value_type: _,
+                        inspect_info,
+                    }) = self.var_from_expr(ctx, expr)?
+                    else {
+                        return Err(Error {
+                            message: format!(
+                                "Invalid reference expression. Only struct reference fields allowed.",
+                            ),
+                            loc: loc.clone(),
+                        });
+                    };
+                    if let Some(inspect_info) = inspect_info {
+                        self.print_inspection(&inspect_info);
+                    }
+
+                    instrs.append(&mut address.instrs);
+                    instrs.push(WasmInstr::I32Const {
+                        value: offset as i32,
+                    });
+                    instrs.push(WasmInstr::BinaryOp {
+                        kind: WasmBinaryOpKind::I32_ADD,
+                    });
+                }
                 PrefixOpTag::Dereference => {
                     let var = self.var_from_deref(ctx, expr, op_loc)?;
                     if let Some(inspect_info) = var.inspect_info() {
@@ -3677,6 +3704,12 @@ impl Compiler {
                 loc,
             }) => match op_tag {
                 PrefixOpTag::Not => Ok(Type::Bool),
+                PrefixOpTag::Reference => {
+                    let expr_type = self.get_expr_type(ctx, expr)?;
+                    Ok(Type::Pointer {
+                        pointee: Box::new(expr_type),
+                    })
+                }
                 PrefixOpTag::Dereference => {
                     let expr_type = self.get_expr_type(ctx, expr)?;
                     let (Type::Pointer { pointee } | Type::SequencePointer { pointee }) = expr_type

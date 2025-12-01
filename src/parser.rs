@@ -917,7 +917,8 @@ impl Parser {
                 let min_bp = op.info.get_min_bp_for_next();
 
                 match op.tag {
-                    PrefixOpTag::Dereference
+                    PrefixOpTag::Reference
+                    | PrefixOpTag::Dereference
                     | PrefixOpTag::Not
                     | PrefixOpTag::Positive
                     | PrefixOpTag::Negative => {
