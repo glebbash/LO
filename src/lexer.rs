@@ -43,7 +43,7 @@ pub struct Lexer {
 
     // state
     pub source_pos: Pos,
-    pub was_newline: bool,
+    pub current_char: Result<char, UTF8ReadError>,
 
     // output
     pub tokens: Vec<Token>,
@@ -63,7 +63,7 @@ impl Lexer {
                 line: 1,
                 col: 1,
             },
-            was_newline: false,
+            current_char: read_utf8_codepoint(source, 0),
 
             tokens: Vec::new(),
             comments: Vec::new(),
@@ -102,6 +102,7 @@ impl Lexer {
         if char.is_numeric() {
             return self.lex_int_literal();
         }
+
         // NOTE: must be after int because is_symbol_char matches digits
         if is_symbol_char(char) {
             return self.lex_symbol();
@@ -351,7 +352,7 @@ impl Lexer {
         }
 
         if let Ok('/') = self.current_char()
-            && let Ok('/') = self.peek_char(1)
+            && let Ok('/') = self.peek_next_char()
         {
             let mut loc = self.loc();
             self.skip_comment();
@@ -380,47 +381,41 @@ impl Lexer {
     }
 
     fn next_char(&mut self) {
-        let _ = next_utf8_char(&self.source, &mut self.source_pos.offset);
+        if let Ok(char) = self.current_char {
+            self.source_pos.offset += char.len_utf8();
 
-        let Ok(char) = self.current_char() else {
-            return;
-        };
-
-        self.source_pos.col += 1;
-
-        if char == '\n' {
-            // NOTE(edge case): when first character is encountered
-            //  was_newline is not true but rather undefined,
-            //  thus we don't bump the line count
-            if self.source_pos.offset == 0 || self.was_newline {
+            if char == '\n' {
                 self.source_pos.line += 1;
+                self.source_pos.col = 1;
+            } else {
+                self.source_pos.col += 1;
             }
-            self.was_newline = true;
-            return;
         }
 
-        if self.was_newline {
-            self.source_pos.line += 1;
-            self.source_pos.col = 1;
-            self.was_newline = false;
-        }
+        self.current_char = read_utf8_codepoint(self.source, self.source_pos.offset);
     }
 
     fn current_char(&mut self) -> Result<char, Error> {
-        self.peek_char(0)
+        self.map_utf8_read_err(self.current_char)
     }
 
-    fn peek_char(&mut self, skip_chars: usize) -> Result<char, Error> {
-        let mut char_offset = self.source_pos.offset;
-        for _ in 0..skip_chars {
-            let _ = next_utf8_char(&self.source, &mut char_offset);
-        }
-        next_utf8_char(&self.source, &mut char_offset).map_err(|err| match err {
-            NextCharError::InvalidUtf8 => Error {
+    fn peek_next_char(&mut self) -> Result<char, Error> {
+        let mut offset = self.source_pos.offset;
+
+        if let Ok(char) = self.current_char {
+            offset += char.len_utf8();
+        };
+
+        self.map_utf8_read_err(read_utf8_codepoint(self.source, offset))
+    }
+
+    fn map_utf8_read_err(&self, utf8_read: Result<char, UTF8ReadError>) -> Result<char, Error> {
+        utf8_read.map_err(|err| match err {
+            UTF8ReadError::InvalidUtf8 => Error {
                 message: format!("ParseError: Invalid UTF-8 sequence"),
                 loc: self.loc(),
             },
-            NextCharError::EndOfSource => Error {
+            UTF8ReadError::EndOfSource => Error {
                 message: format!("ParseError: Unexpected EOF"),
                 loc: self.loc(),
             },
@@ -711,17 +706,18 @@ impl OpInfo {
     }
 }
 
-pub enum NextCharError {
+#[derive(Clone, Copy)]
+pub enum UTF8ReadError {
     EndOfSource,
     InvalidUtf8,
 }
 
-pub fn next_utf8_char(source: &[u8], offset: &mut usize) -> Result<char, NextCharError> {
-    if *offset >= source.len() {
-        return Err(NextCharError::EndOfSource);
+pub fn read_utf8_codepoint(source: &[u8], offset: usize) -> Result<char, UTF8ReadError> {
+    if offset >= source.len() {
+        return Err(UTF8ReadError::EndOfSource);
     }
 
-    let first = source[*offset];
+    let first = source[offset];
     let width: usize;
     let min: u32;
     let mut code: u32;
@@ -744,28 +740,26 @@ pub fn next_utf8_char(source: &[u8], offset: &mut usize) -> Result<char, NextCha
         min = 0x10000;
         code = (first & 0x07) as u32;
     } else {
-        return Err(NextCharError::InvalidUtf8);
+        return Err(UTF8ReadError::InvalidUtf8);
     }
 
-    if *offset + width > source.len() {
-        return Err(NextCharError::EndOfSource);
+    if offset + width > source.len() {
+        return Err(UTF8ReadError::EndOfSource);
     }
 
     // process continuation bytes
     for i in 1..width {
-        let b = source[*offset + i];
+        let b = source[offset + i];
         if (b & 0xC0) != 0x80 {
-            return Err(NextCharError::InvalidUtf8);
+            return Err(UTF8ReadError::InvalidUtf8);
         }
         code = (code << 6) | ((b & 0x3F) as u32);
     }
 
     // validate code point
     if code < min || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF) {
-        return Err(NextCharError::InvalidUtf8);
+        return Err(UTF8ReadError::InvalidUtf8);
     }
-
-    *offset += width;
 
     Ok(unsafe { char::from_u32_unchecked(code) })
 }
