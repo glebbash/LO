@@ -164,3 +164,13 @@ fn stderr_write(message: str) {
     // TODO: support buffering
     eprint(message)
 }
+
+fn stdout_writeln(message: str) {
+    stdout_write(message)
+    stdout_write("\n")
+}
+
+fn stdout_write(message: str) {
+    // TODO: support buffering
+    print(message)
+}

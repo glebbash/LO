@@ -1,8 +1,8 @@
 include "./core.lo"
 
 struct Token {
-    loc: Loc,
     type_: TokenType,
+    loc: Loc,
 }
 
 enum TokenType {
@@ -40,18 +40,34 @@ struct Lexer {
     // context
     source: str,
     file_index: u32,
-    error_arena: &Arena,
+    a: &Arena,
+
+    // state
+    source_pos: Pos,
+    current_char: Result<u32, UTF8ReadError>,
+    was_newline: bool,
 
     // output
     tokens: &Vec of Token,
+    comments: &Vec of Loc,
+    backslashes: &Vec of Loc,
+    double_backslashes: &Vec of Loc,
 }
 
-fn Lexer::new(source: str, file_index: u32, error_arena: &Arena): &Lexer {
+fn Lexer::new(a: &Arena, source: str, file_index: u32): &Lexer {
     return heap::new!(Lexer {
         source: source,
         file_index: file_index,
-        error_arena: error_arena,
+        a: a,
+
+        source_pos: Pos { offset: 0, line: 1, col: 1 },
+        current_char: read_utf8_codepoint(source, 0),
+        was_newline: false,
+
         tokens: Vec::new!<Token>(),
+        comments: Vec::new!<Loc>(),
+        backslashes: Vec::new!<Loc>(),
+        double_backslashes: Vec::new!<Loc>(),
     })
 }
 
@@ -59,41 +75,376 @@ fn Lexer::free(&self) {
     self.tokens.free()
 }
 
-// TODO: implement proper
 fn Lexer::lex_file(&self): Result<void, &Error> {
-    let loc = Loc::internal()
+    self.skip_space()
 
-    self.tokens.push!(tok(loc, 01, 01, 01, 08, 00, 07, TokenType::Symbol()))
-    self.tokens.push!(tok(loc, 01, 09, 01, 27, 08, 26, TokenType::StringLiteral()))
-    self.tokens.push!(tok(loc, 03, 01, 03, 03, 28, 30, TokenType::Symbol()))
-    self.tokens.push!(tok(loc, 03, 04, 03, 08, 31, 35, TokenType::Symbol()))
-    self.tokens.push!(tok(loc, 03, 08, 03, 09, 35, 36, TokenType::Delim()))
-    self.tokens.push!(tok(loc, 03, 09, 03, 10, 36, 37, TokenType::Delim()))
-    self.tokens.push!(tok(loc, 03, 11, 03, 12, 38, 39, TokenType::Delim()))
-    self.tokens.push!(tok(loc, 04, 05, 04, 12, 44, 51, TokenType::Symbol()))
-    self.tokens.push!(tok(loc, 04, 12, 04, 13, 51, 52, TokenType::Delim()))
-    self.tokens.push!(tok(loc, 04, 13, 04, 27, 52, 66, TokenType::StringLiteral()))
-    self.tokens.push!(tok(loc, 04, 27, 04, 28, 66, 67, TokenType::Delim()))
-    self.tokens.push!(tok(loc, 05, 01, 05, 02, 68, 69, TokenType::Delim()))
-    self.tokens.push!(tok(loc, 05, 02, 05, 03, 70, 70, TokenType::Terminal()))
+    loop {
+        if self.source_pos.offset >= self.source.size {
+            break
+        }
+
+        let token = self.lex_token()?
+        self.tokens.push!(token)
+
+        self.skip_space()
+    }
+
+    self.tokens.push!(Token {
+        type_: TokenType::Terminal(),
+        loc: self.loc(),
+    })
 
     return Ok()
 }
 
-fn tok(
-    loc: Loc,
-    line: u32, \\ col: u32,
-    end_line: u32, \\ end_col: u32,
-    offset: u32, \\ end_offset: u32,
-    type_: TokenType,
-): Token {
-    loc.pos.line = line
-    loc.pos.col = col
-    loc.pos.offset = offset
+fn Lexer::lex_token(&self): Result<Token, &Error> {
+    let char = self.current_char()? as u8
 
-    loc.end_pos.line = end_line
-    loc.end_pos.col = end_col
-    loc.end_pos.offset = end_offset
+    if char == '\'' {
+        return self.lex_char_literal()
+    }
 
-    return Token { loc: loc, type_: type_ }
+    if char == '"' {
+        return self.lex_string_literal()
+    }
+
+    if char >= '0' && char <= '9' {
+        return self.lex_int_literal()
+    }
+
+    // NOTE: must be after int check because it matches digits
+    if Lexer::is_symbol_char(char) {
+        return self.lex_symbol()
+    }
+
+    if Lexer::is_delim_char(char) {
+        return self.lex_delim()
+    }
+
+    if Lexer::is_operator_start_char(char) {
+        return self.lex_operator()
+    }
+
+    let message = String::from_str_in(self.a, "Unexpected char: ")
+    message.push(char)
+
+    return Err(self.a.new!(Error {
+        message: message,
+        loc: self.loc(),
+    }))
+}
+
+fn Lexer::lex_char_literal(&self): Result<Token, &Error> {
+    todo!()
+}
+
+fn Lexer::lex_string_literal(&self): Result<Token, &Error> {
+    let loc = self.loc()
+
+    // skip start quote
+    self.next_char()
+
+    loop {
+        let char = self.current_char()? as u8
+        if char == '"' {
+            break
+        }
+
+        if char == '\\' {
+            self.next_char()
+
+            let c = self.current_char()? as u8
+            let correct_escape = c == 'n' || c == 'r' || c == 't' \
+                || c == '0' || c == '\\' || c == '"'
+
+            if !correct_escape {
+                let message = String::from_str_in(self.a, "ParseError: Invalid escape sequence: \\")
+                message.push(c)
+
+                return Err(self.a.new!(Error {
+                    message: message,
+                    loc: self.loc(),
+                }))
+            }
+        }
+
+        self.next_char()
+    }
+
+    // skip end quote
+    self.next_char()
+
+    loc.end_pos = self.source_pos
+
+    return Ok(Token {
+        type_: TokenType::StringLiteral(),
+        loc: loc,
+    })
+}
+
+fn Lexer::lex_int_literal(&self): Result<Token, &Error> {
+    todo!()
+}
+
+fn Lexer::lex_symbol(&self): Result<Token, &Error> {
+    let loc = self.loc()
+
+    loop {
+        if !Lexer::is_symbol_char(self.current_char()? as u8) {
+            break
+        }
+
+        self.next_char()
+    }
+
+    loc.end_pos = self.source_pos
+
+    return Ok(Token {
+        type_: TokenType::Symbol(),
+        loc: loc,
+    })
+}
+
+fn Lexer::lex_delim(&self): Result<Token, &Error> {
+    let loc = self.loc()
+
+    self.next_char()
+
+    loc.end_pos = self.source_pos
+
+    return Ok(Token {
+        type_: TokenType::Delim(),
+        loc: loc,
+    })
+}
+
+fn Lexer::lex_operator(&self): Result<Token, &Error> {
+    todo!()
+}
+
+fn Lexer::skip_space(&self) {
+    loop {
+        let c = self.current_char() catch _ {
+            break
+        }
+
+        if !Lexer::is_space_char(c as u8) {
+            break
+        }
+
+        self.next_char()
+    }
+
+    let char = self.current_char() catch _ {
+        return
+    }
+
+    if char as u8 == '\\' {
+        let loc = self.loc()
+
+        self.next_char()
+
+        let next_char = self.current_char() catch _ {
+            self.backslashes.push!(loc)
+            return
+        }
+
+        if next_char as u8 == '\\' {
+            self.next_char()
+            loc.end_pos = self.source_pos
+            self.double_backslashes.push!(loc)
+        } else {
+            self.backslashes.push!(loc)
+        }
+
+        self.skip_space()
+
+        return
+    }
+
+    if char as u8 == '/' {
+        let next_char = self.peek_next_char() catch _ {
+            return
+        }
+
+        if next_char as u8 != '/' {
+            return
+        }
+
+        let loc = self.loc()
+
+        self.next_char()
+        self.next_char()
+
+        loop {
+            let comment_char = self.current_char() catch _ {
+                break
+            }
+
+            if comment_char as u8 == '\n' {
+                break
+            }
+
+            self.next_char()
+        }
+
+        loc.end_pos = self.source_pos
+        self.comments.push!(loc)
+
+        self.skip_space()
+    }
+}
+
+fn Lexer::is_space_char(c: u8): bool {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+fn Lexer::is_symbol_char(c: u8): bool {
+    return c >= 'a' && c <= 'z' \
+        || c >= 'A' && c <= 'Z' \
+        || c >= '0' && c <= '9' \
+        || c == '_'
+}
+
+fn Lexer::is_delim_char(c: u8): bool {
+    return c == '(' || c == ')' \
+        || c == '{' || c == '}' \
+        || c == '[' || c == ']' \
+        || c == ',' || c == '\\'
+}
+
+fn Lexer::is_operator_start_char(c: u8): bool {
+    todo!()
+}
+
+fn Lexer::next_char(&self) {
+    let char = self.current_char catch _ {
+        return
+    }
+
+    self.source_pos.offset += char_len_utf8(char)
+
+    if char as u8 == '\n' {
+        self.source_pos.line += 1
+        self.source_pos.col = 1
+    } else {
+        self.source_pos.col += 1
+    }
+
+    self.current_char = read_utf8_codepoint(self.source, self.source_pos.offset)
+}
+
+fn Lexer::current_char(&self): Result<u32, &Error> {
+    return self.map_utf8_read_err(self.current_char)
+}
+
+fn Lexer::peek_next_char(&self): Result<u32, &Error> {
+    let char = self.current_char catch _ {
+        return self.current_char()
+    }
+
+    return self.map_utf8_read_err(read_utf8_codepoint(
+        self.source,
+        self.source_pos.offset + char_len_utf8(char),
+    ))
+}
+
+fn Lexer::map_utf8_read_err(&self, utf8_read: Result<u32, UTF8ReadError>): Result<u32, &Error> {
+    let char = utf8_read catch err {
+        let message = "ParseError: Invalid UTF-8 sequence"
+        if err == UTF8ReadError::EndOfSource() {
+            message = "ParseError: Unexpected EOF"
+        }
+        return Err(self.a.new!(Error {
+            message: String::from_str_in(self.a, message),
+            loc: self.loc(),
+        }))
+    }
+
+    return Ok(char)
+}
+
+fn Lexer::loc(&self): Loc {
+    let pos = self.source_pos
+
+    let end_pos = pos
+    end_pos.col += 1
+
+    return Loc {
+        file_index: self.file_index,
+        pos: pos,
+        end_pos: end_pos,
+    }
+}
+
+enum UTF8ReadError {
+    EndOfSource,
+    InvalidUtf8,
+}
+
+fn read_utf8_codepoint(source: str, offset: u32): Result<u32, UTF8ReadError> {
+    if offset >= source.size {
+        return Err(UTF8ReadError::EndOfSource())
+    }
+
+    let first = source.char_at(offset) as u32
+    let width = 0
+    let min = 0
+    let code = 0
+
+    // determine sequence length and minimum valid code point
+    if first <= 0x7F {
+        width = 1
+        min = 0
+        code = first as u32
+    } else if first >= 0xC2 && first <= 0xDF {
+        width = 2
+        min = 0x80
+        code = (first & 0x1F) as u32
+    } else if first >= 0xE0 && first <= 0xEF {
+        width = 3
+        min = 0x800
+        code = (first & 0x0F) as u32
+    } else if first >= 0xF0 && first <= 0xF4 {
+        width = 4
+        min = 0x10000
+        code = (first & 0x07) as u32
+    } else {
+        return Err(UTF8ReadError::InvalidUtf8())
+    }
+
+    if offset + width > source.size {
+        return Err(UTF8ReadError::EndOfSource())
+    }
+
+    // process continuation bytes
+    for i in 1..width {
+        let b = source.char_at(offset + i) as u32
+        if (b & 0xC0) != 0x80 {
+            return Err(UTF8ReadError::InvalidUtf8())
+        }
+        code = (code << 6) | ((b & 0x3F) as u32)
+    }
+
+    // validate code point
+    if code < min || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF) {
+        return Err(UTF8ReadError::InvalidUtf8())
+    }
+
+    return Ok(code)
+}
+
+fn char_len_utf8(char: u32): u32 {
+    if char <= 0x80 {
+        return 1
+    } else if char <= 0x800 {
+        return 2
+    } else if char <= 0x10000 {
+        return 3
+    } else {
+        return 4
+    }
+
+    // TODO: fix `else { @unreachable()}` not working
+    @unreachable()
 }

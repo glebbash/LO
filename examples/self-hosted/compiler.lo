@@ -49,7 +49,7 @@ fn Compiler::include(
     }
 
     let source = self.fm.get(file_index).source.as_str()
-    let lexer = Lexer::new(source, file_index, self.error_arena)
+    let lexer = Lexer::new(self.error_arena, source, file_index)
     lexer.lex_file() catch err {
         self.report_error(err)
         return Err(VoidError::VALUE)

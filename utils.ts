@@ -568,6 +568,65 @@ async function commandTest() {
         );
     });
 
+    testVersions(
+        "compiler reports multiple errors in fault-tolerance.lo",
+        { v1 },
+        async (compile) => {
+            try {
+                await compile("./examples/test/fault-tolerance.lo");
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/fault-tolerance.lo:10:4 - Cannot redefine main, already defined at examples/test/fault-tolerance.lo:2:4
+                    ERROR: examples/test/fault-tolerance.lo:2:17 - Duplicate function parameter name: a
+                    ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9
+                    ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9
+
+                    `
+                );
+            }
+        }
+    );
+
+    testVersions(
+        "inspect emits partial diagnostics and multiple errors in fault-tolerance.lo",
+        { v1: v1Run },
+        async (run) => {
+            const stdout = new WASI.VirtualFD();
+            try {
+                await run(["inspect", "./examples/test/fault-tolerance.lo"], {
+                    stdout,
+                });
+            } catch (err) {
+                // stderr is empty
+                assert.strictEqual((err as Error).message, "");
+
+                // stdout contains partial diagnostics and errors in json format
+                assert.strictEqual(
+                    stdout.flushAndReadUtf8(),
+                    m`
+                    [
+                    { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
+                    { "type": "message", "content": "Cannot redefine main, already defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
+                    { "type": "message", "content": "Duplicate function parameter name: a", "severity": "error", "loc": "1/2:17-2:23" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
+                    { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
+                    { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },
+                    { "type": "info", "link": "1/3:9-3:10", "hover": "let x: u32", "loc": "1/6:13-6:14" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/11:9-11:10" },
+                    { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
+                    { "type": "info", "hover": "let y: u32", "loc": "1/14:9-14:10" },
+                    { "type": "info", "link": "1/11:9-11:10", "hover": "let x: u32", "loc": "1/14:13-14:14" },
+                    { "type": "end" }
+                    ]
+
+                    `
+                );
+            }
+        }
+    );
+
     describe("<stdin> input", () => {
         const v1 = v1Run;
 
@@ -723,67 +782,11 @@ async function commandTest() {
         });
     });
 
-    testVersions(
-        "compiler reports multiple errors in fault-tolerance.lo",
-        { v1 },
-        async (compile) => {
-            try {
-                await compile("./examples/test/fault-tolerance.lo");
-            } catch (err) {
-                assert.strictEqual(
-                    (err as Error).message,
-                    m`
-                    ERROR: examples/test/fault-tolerance.lo:10:4 - Cannot redefine main, already defined at examples/test/fault-tolerance.lo:2:4
-                    ERROR: examples/test/fault-tolerance.lo:2:17 - Duplicate function parameter name: a
-                    ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9
-                    ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9
-
-                    `
-                );
-            }
-        }
-    );
-
-    testVersions(
-        "inspect emits partial diagnostics and multiple errors in fault-tolerance.lo",
-        { v1: v1Run },
-        async (run) => {
-            const stdout = new WASI.VirtualFD();
-            try {
-                await run(["inspect", "./examples/test/fault-tolerance.lo"], {
-                    stdout,
-                });
-            } catch (err) {
-                // stderr is empty
-                assert.strictEqual((err as Error).message, "");
-
-                // stdout contains partial diagnostics and errors in json format
-                assert.strictEqual(
-                    stdout.flushAndReadUtf8(),
-                    m`
-                    [
-                    { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
-                    { "type": "message", "content": "Cannot redefine main, already defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
-                    { "type": "message", "content": "Duplicate function parameter name: a", "severity": "error", "loc": "1/2:17-2:23" },
-                    { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
-                    { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
-                    { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },
-                    { "type": "info", "link": "1/3:9-3:10", "hover": "let x: u32", "loc": "1/6:13-6:14" },
-                    { "type": "info", "hover": "let x: u32", "loc": "1/11:9-11:10" },
-                    { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
-                    { "type": "info", "hover": "let y: u32", "loc": "1/14:9-14:10" },
-                    { "type": "info", "link": "1/11:9-11:10", "hover": "let x: u32", "loc": "1/14:13-14:14" },
-                    { "type": "end" }
-                    ]
-
-                    `
-                );
-            }
-        }
-    );
-
     describe("formatter", async () => {
-        const format = (fileName = "-i") => v1Run(["format", fileName]);
+        const format = async (fileName = "-i") => {
+            const output = await v1Run(["format", fileName]);
+            return new TextDecoder().decode(output);
+        };
 
         const formattedFiles = await fs
             .readdir("examples", { recursive: true })
@@ -792,9 +795,7 @@ async function commandTest() {
 
         for (const fileName of formattedFiles) {
             test(`formats ${fileName}`, async () => {
-                const formatted = new TextDecoder().decode(
-                    await format(fileName)
-                );
+                const formatted = await format(fileName);
                 const expected = await fs.readFile(fileName, "utf8");
 
                 // formatting the file to update snapshot
@@ -803,6 +804,39 @@ async function commandTest() {
                 assert.strictEqual(formatted, expected);
             });
         }
+    });
+
+    describe("self-hosted", async () => {
+        const sHRun = await loadCompiler(
+            await v1("examples/self-hosted/_bin.lo")
+        );
+
+        describe("lexer", () => {
+            const lexV1 = async (fileName = "-i") => {
+                const output = await v1Run(["lex", fileName]);
+                return new TextDecoder().decode(output);
+            };
+            const lexSH = async (fileName = "-i") => {
+                const output = await sHRun(["lex", fileName]);
+                return new TextDecoder().decode(output);
+            };
+
+            const filesToLex = ["examples/test/demos/hello-world.lo"];
+            // TODO: support all
+            // const filesToLex = await fs
+            //     .readdir("examples", { recursive: true })
+            //     .then((files) => files.filter((f) => f.endsWith(".lo")))
+            //     .then((files) => files.map((f) => `examples/${f}`));
+
+            for (const fileName of filesToLex) {
+                test(`lexes ${fileName} exactly as v1`, async () => {
+                    const v1 = await lexV1(fileName);
+                    const sh = await lexSH(fileName);
+
+                    assert.equal(sh, v1);
+                });
+            }
+        });
     });
 
     if (process.argv.includes("--fast")) {
