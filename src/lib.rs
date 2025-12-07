@@ -81,15 +81,14 @@ pub extern "C" fn _start() {
     // for debug purposes only, not public api
     if command == "lex" {
         let mut compiler = Compiler::new();
-        let Some(module) = compiler
-            .relax_mut()
-            .include(file_name, &Loc::internal())
-        else {
+        let Some(module) = compiler.relax_mut().include(file_name, &Loc::internal()) else {
             proc_exit(1)
         };
 
         let file_path = &compiler.fm.files[module.parser.lexer.file_index].absolute_path;
         stdout_writeln(format!("file_path: {file_path}"));
+
+        stdout_enable_buffering();
 
         let source = module.parser.lexer.source;
         for token in &module.parser.lexer.tokens {
@@ -105,6 +104,8 @@ pub extern "C" fn _start() {
                 token.loc.read_span(source).replace("\n", "\\n"),
             ));
         }
+
+        stdout_disable_buffering();
 
         return;
     }

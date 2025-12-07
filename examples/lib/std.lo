@@ -691,52 +691,56 @@ fn str::split(self, separator: u8, output: &Vec of str): &Vec of str {
 }
 
 // conversions
-macro u32::to_tmp_str!(value: u32): str {
+macro u32::to_tmp_str!(self): str {
     let s = String::new_in(Alloc::STACK, 10)
     defer s.free()
 
-    value.write_to(s)
-
+    self.write_to(s)
     s.as_str()
 }
 
-fn u32::write_to(value: u32, output: String) {
+macro u32::to_str_in!(self, a: Alloc): str {
+    let s = String::new_in(a, 10)
+    self.write_to(s)
+    s.as_str()
+}
+
+fn u32::write_to(self, output: String) {
     let start_size = output.len()
-    if value == 0 {
+    if self == 0 {
         output.push('0')
         return
     }
     loop {
-        let rem = value % 10
+        let rem = self % 10
         output.push('0' + rem as u8)
-        value = value / 10
-        if value == 0 {
+        self = self / 10
+        if self == 0 {
             break
         }
     }
     output.chars.reverse_range(start_size, output.len() - 1)
 }
 
-macro u64::to_tmp_str!(value: u64): str {
+macro u64::to_tmp_str!(self): str {
     let s = String::new_in(Alloc::STACK, 20)
     defer s.free()
 
-    value.write_to(s)
-
+    self.write_to(s)
     s.as_str()
 }
 
-fn u64::write_to(value: u64, output: String) {
+fn u64::write_to(self, output: String) {
     let start_size = output.len()
-    if value == 0u64 {
+    if self == 0u64 {
         output.push('0')
         return
     }
     loop {
-        let rem = value % 10u64
+        let rem = self % 10u64
         output.push('0' + rem as u32 as u8)
-        value = value / 10u64
-        if value == 0u64 {
+        self = self / 10u64
+        if self == 0u64 {
             break
         }
     }

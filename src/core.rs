@@ -259,7 +259,6 @@ pub fn stdout_disable_buffering() {
     if let Some(buffer) = &mut *STDOUT_BUFFER.borrow_mut() {
         if !buffer.is_empty() {
             fputs(wasi::FD_STDOUT, &buffer);
-            buffer.clear();
         }
     }
     *STDOUT_BUFFER.borrow_mut() = None;
@@ -290,7 +289,7 @@ pub fn stdout_write(message: impl AsRef<[u8]>) {
         return;
     }
 
-    buffer.extend_from_slice(message_bytes);
+    buffer.extend(message_bytes);
 }
 
 pub fn stderr_writeln(message: impl AsRef<str>) {

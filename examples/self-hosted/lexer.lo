@@ -135,7 +135,58 @@ fn Lexer::lex_token(&self): Result<Token, &Error> {
 }
 
 fn Lexer::lex_char_literal(&self): Result<Token, &Error> {
-    todo!()
+    let loc = self.loc()
+
+    // skip start quote
+    self.next_char()
+
+    let char = self.current_char()? as u8
+    if char == '\\' {
+        // skip `\`
+        self.next_char()
+
+        let c = self.current_char()? as u8
+        let correct_escape = c == 'n' || c == 'r' || c == 't' \
+            || c == '0' || c == '\\' || c == '\''
+
+        if !correct_escape {
+            let message = String::from_str_in(self.a, "ParseError: Invalid escape sequence: \\")
+            message.push(c)
+
+            return Err(self.a.new!(Error {
+                message: message,
+                loc: self.loc(),
+            }))
+        }
+
+        // skip escaped character
+        self.next_char()
+    } else {
+        // skip actual character
+        self.next_char()
+    }
+
+    let end_quote = self.current_char()? as u8
+    if end_quote != '\'' {
+        let message = String::from_str_in(self.a, "ParseError: Unexpected character `")
+        message.push(end_quote)
+        message.push_str("`, expected `'`")
+
+        return Err(self.a.new!(Error {
+            message: message,
+            loc: self.loc(),
+        }))
+    }
+
+    // skip end quote
+    self.next_char()
+
+    loc.end_pos = self.source_pos
+
+    return Ok(Token {
+        type_: TokenType::CharLiteral(),
+        loc: loc,
+    })
 }
 
 fn Lexer::lex_string_literal(&self): Result<Token, &Error> {
@@ -183,7 +234,38 @@ fn Lexer::lex_string_literal(&self): Result<Token, &Error> {
 }
 
 fn Lexer::lex_int_literal(&self): Result<Token, &Error> {
-    todo!()
+    let loc = self.loc()
+
+    let hex = false
+    if self.current_char()? as u8 == '0' {
+        self.next_char()
+
+        if self.current_char()? as u8 == 'x' {
+            self.next_char()
+            hex = true
+        }
+    }
+
+    loop {
+        let c = self.current_char()? as u8
+
+        let int_char = c == '_' \
+            || (c >= '0' && c <= '9') \
+            || (hex && c >= 'A' && c <= 'F')
+
+        if !int_char {
+            break
+        }
+
+        self.next_char()
+    }
+
+    loc.end_pos = self.source_pos
+
+    return Ok(Token {
+        type_: TokenType::IntLiteral(),
+        loc: loc,
+    })
 }
 
 fn Lexer::lex_symbol(&self): Result<Token, &Error> {
@@ -219,7 +301,60 @@ fn Lexer::lex_delim(&self): Result<Token, &Error> {
 }
 
 fn Lexer::lex_operator(&self): Result<Token, &Error> {
-    todo!()
+    let loc = self.loc()
+
+    loop {
+        let current_op = self.source.slice(loc.pos.offset, self.source_pos.offset + 1)
+
+        let is_start_of_operator = false
+        for i in 0..OPERATORS_LEN {
+            let operator = *array_at!<str>(OPERATORS, i)
+
+            if operator.starts_with(current_op) {
+                is_start_of_operator = true
+                break
+            }
+        }
+
+        if !is_start_of_operator {
+            break
+        }
+
+        self.next_char()
+
+        // EOF check
+        let _ = self.current_char()?
+    }
+
+    let op = self.source.slice(loc.pos.offset, self.source_pos.offset)
+
+    let matched_fully = false
+    for i in 0..OPERATORS_LEN {
+        let operator = *array_at!<str>(OPERATORS, i)
+
+        if operator.equals(op) {
+            matched_fully = true
+            break
+        }
+    }
+
+    if !matched_fully {
+        let message = String::from_str_in(self.a, "ParseError: Unexpected char: '")
+        message.push(self.current_char()? as u8)
+        message.push_str("'")
+
+        return Err(self.a.new!(Error {
+            message: message,
+            loc: self.loc(),
+        }))
+    }
+
+    loc.end_pos = self.source_pos
+
+    return Ok(Token {
+        type_: TokenType::Operator(),
+        loc: loc,
+    })
 }
 
 fn Lexer::skip_space(&self) {
@@ -313,8 +448,60 @@ fn Lexer::is_delim_char(c: u8): bool {
         || c == ',' || c == '\\'
 }
 
+// TODO: support first class slices, refactor statics
+const OPERATORS_LEN = 39
+const OPERATORS = [str][
+    "=",
+    "==",
+    "!=",
+    "!",
+    "&&",
+    "||",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "+",
+    "+=",
+    "-",
+    "-=",
+    "*",
+    "*=",
+    "/",
+    "/=",
+    "%",
+    "%=",
+    "&",
+    "*&",
+    "&=",
+    "<<",
+    "<<=",
+    "=>",
+    ">>",
+    ">>=",
+    "^",
+    "^=",
+    "|",
+    "|=",
+    "|>",
+    ".",
+    "..",
+    ":",
+    "::",
+    "@",
+    "?",
+]
+
 fn Lexer::is_operator_start_char(c: u8): bool {
-    todo!()
+    for i in 0..OPERATORS_LEN {
+        let operator = *array_at!<str>(OPERATORS, i)
+
+        if operator.char_at(0) == c {
+            return true
+        }
+    }
+
+    return false
 }
 
 fn Lexer::next_char(&self) {

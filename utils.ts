@@ -806,12 +806,16 @@ async function commandTest() {
         }
     });
 
+    if (process.argv.includes("--fast")) {
+        return;
+    }
+
     describe("self-hosted", async () => {
         const sHRun = await loadCompiler(
             await v1("examples/self-hosted/_bin.lo")
         );
 
-        describe("lexer", () => {
+        describe("lexer", async () => {
             const lexV1 = async (fileName = "-i") => {
                 const output = await v1Run(["lex", fileName]);
                 return new TextDecoder().decode(output);
@@ -821,15 +825,15 @@ async function commandTest() {
                 return new TextDecoder().decode(output);
             };
 
-            const filesToLex = ["examples/test/demos/hello-world.lo"];
-            // TODO: support all
-            // const filesToLex = await fs
-            //     .readdir("examples", { recursive: true })
-            //     .then((files) => files.filter((f) => f.endsWith(".lo")))
-            //     .then((files) => files.map((f) => `examples/${f}`));
+            const filesToLex = await fs
+                .readdir("examples", { recursive: true })
+                .then((files) => files.filter((f) => f.endsWith(".lo")))
+                .then((files) => files.map((f) => `examples/${f}`))
+                // TODO: look into printing performance
+                .then((files) => files.filter((f) => !f.includes("dark-maze")));
 
             for (const fileName of filesToLex) {
-                test(`lexes ${fileName} exactly as v1`, async () => {
+                test(`correctly lexes ${fileName}`, async () => {
                     const v1 = await lexV1(fileName);
                     const sh = await lexSH(fileName);
 
@@ -838,10 +842,6 @@ async function commandTest() {
             }
         });
     });
-
-    if (process.argv.includes("--fast")) {
-        return;
-    }
 
     describe("interpreter", () => {
         const interpret = (fileName = "-i") => v1Run(["eval", fileName]);

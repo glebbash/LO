@@ -44,20 +44,23 @@ export fn _start() {
             "file_path: ", \\ file_path.as_str(), \\ "\n",
         )
 
+        stdout_enable_buffering()
+
         for i in 0..lexer.tokens.size {
             let token = lexer.tokens.get!<Token>(i)
 
             defer a.reset()
 
+            // TODO: figure out why `u32::to_tmp_str!()` overflows stack here
             do stdout_write(it) with (
-                token.loc.pos.line.to_tmp_str!(),
-                ":", \\ token.loc.pos.col.to_tmp_str!(),
+                token.loc.pos.line.to_str_in!(a),
+                ":", \\ token.loc.pos.col.to_str_in!(a),
                 "-",
-                token.loc.end_pos.line.to_tmp_str!(),
-                ":", \\ token.loc.end_pos.col.to_tmp_str!(),
+                token.loc.end_pos.line.to_str_in!(a),
+                ":", \\ token.loc.end_pos.col.to_str_in!(a),
 
-                " ", \\ "(", \\ token.loc.pos.offset.to_tmp_str!(),
-                "-", \\ token.loc.end_pos.offset.to_tmp_str!(), \\ ")",
+                " ", \\ "(", \\ token.loc.pos.offset.to_str_in!(a),
+                "-", \\ token.loc.end_pos.offset.to_str_in!(a), \\ ")",
 
                 " ", \\ token.type_.to_str(),
 
@@ -70,6 +73,8 @@ export fn _start() {
                 "\n",
             )
         }
+
+        stdout_disable_buffering()
 
         return
     }

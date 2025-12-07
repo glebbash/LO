@@ -1,5 +1,6 @@
 include "../lib/std.lo" with extern
 include "../lib/fs.lo" with extern
+include "../lib/wasi.lo"
 include "../lib/print.lo"
 
 struct Pos {
@@ -161,8 +162,25 @@ fn stderr_writeln(message: str) {
 }
 
 fn stderr_write(message: str) {
-    // TODO: support buffering
     eprint(message)
+}
+
+global STDOUT_BUFFER = NULL as &Vec
+const STDOUT_BUFFER_SIZE = 4096
+
+fn stdout_enable_buffering() {
+    STDOUT_BUFFER = Vec::with_capacity(STDOUT_BUFFER_SIZE, sizeof u8)
+}
+
+fn stdout_disable_buffering() {
+    if STDOUT_BUFFER != NULL {
+        if STDOUT_BUFFER.size != 0 {
+            let _ = fprint_str(wasi::FD_STDOUT, STDOUT_BUFFER as &str)
+        }
+    }
+
+    STDOUT_BUFFER.free()
+    STDOUT_BUFFER = NULL
 }
 
 fn stdout_writeln(message: str) {
@@ -171,6 +189,22 @@ fn stdout_writeln(message: str) {
 }
 
 fn stdout_write(message: str) {
-    // TODO: support buffering
-    print(message)
+    if STDOUT_BUFFER == NULL {
+        print(message)
+        return
+    }
+
+    if STDOUT_BUFFER.size + message.size > STDOUT_BUFFER_SIZE {
+        if STDOUT_BUFFER.size != 0 {
+            let _ = fprint_str(wasi::FD_STDOUT, STDOUT_BUFFER as &str)
+            STDOUT_BUFFER.size = 0
+        }
+    }
+
+    if message.size >= STDOUT_BUFFER_SIZE {
+        print(message)
+        return
+    }
+
+    STDOUT_BUFFER.push_all(message.data, message.size)
 }

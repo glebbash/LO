@@ -218,18 +218,20 @@ impl Lexer {
         if self.current_char()? == '0' {
             self.next_char();
 
-            if let Ok('x') = self.current_char() {
+            if self.current_char()? == 'x' {
                 self.next_char();
                 hex = true;
             }
         }
 
         loop {
-            match self.current_char() {
-                Ok('_') | Ok('0'..='9') => {}
-                Ok('A'..='F') if hex => {}
-                _ => break,
+            let c = self.current_char()?;
+
+            let int_char = c == '_' || (c >= '0' && c <= '9') || (hex && c >= 'A' && c <= 'F');
+            if !int_char {
+                break;
             }
+
             self.next_char();
         }
 
