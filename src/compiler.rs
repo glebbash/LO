@@ -719,6 +719,10 @@ impl Compiler {
         }
 
         for module in self.modules.relax_mut() {
+            self.pass_define_memories(module);
+        }
+
+        for module in self.modules.relax_mut() {
             self.pass_main(module);
         }
     }
@@ -1096,6 +1100,34 @@ impl Compiler {
         }
     }
 
+    fn pass_define_memories(&mut self, module: &mut Module) {
+        for expr in &module.parser.ast {
+            match expr {
+                TopLevelExpr::MemoryDef(memory_def) => {
+                    catch!(self.define_memory(memory_def.relax(), None), err, {
+                        self.report_error(&err);
+                        continue;
+                    });
+                }
+                TopLevelExpr::Import(import_expr) => {
+                    let module_name = import_expr.module_name.unescape(module.parser.lexer.source);
+
+                    for item in &import_expr.items {
+                        let ImportItem::Memory(memory) = item else {
+                            continue;
+                        };
+
+                        let res = self.define_memory(memory.relax(), Some(module_name.clone()));
+                        catch!(res, err, {
+                            self.report_error(&err);
+                        });
+                    }
+                }
+                _ => {} // skip, not interested
+            }
+        }
+    }
+
     fn pass_main(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
@@ -1104,6 +1136,7 @@ impl Compiler {
                 TopLevelExpr::MacroDef(_) => {} // skip, processed in pass_collect_all_items
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_assemble_complex_types
                 TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
+                TopLevelExpr::MemoryDef(_) => {} // skip, processed in pass_define_memories
 
                 TopLevelExpr::FnDef(fn_def) => {
                     let item = module.get_own_item(&fn_def.decl.fn_name.repr).unwrap();
@@ -1199,18 +1232,11 @@ impl Compiler {
                     fn_info.be_mut().exported_as.push(exported_as);
                 }
                 TopLevelExpr::Import(import_expr) => {
-                    let module_name = import_expr.module_name.unescape(module.parser.lexer.source);
-
                     'items: for item in &import_expr.items {
                         let fn_decl = match item {
                             ImportItem::FnDecl(fn_decl) => fn_decl,
-                            ImportItem::Memory(memory) => {
-                                let res =
-                                    self.define_memory(memory.relax(), Some(module_name.clone()));
-                                catch!(res, err, {
-                                    self.report_error(&err);
-                                });
-                                continue;
+                            ImportItem::Memory(_) => {
+                                continue; // skip, already processed
                             }
                         };
 
@@ -1242,12 +1268,6 @@ impl Compiler {
                                 });
                         }
                     }
-                }
-                TopLevelExpr::MemoryDef(memory_def) => {
-                    catch!(self.define_memory(memory_def.relax(), None), err, {
-                        self.report_error(&err);
-                        continue;
-                    });
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
                     let item = module.get_own_item(&global_def.global_name.repr).unwrap();

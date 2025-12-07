@@ -215,7 +215,7 @@ impl Lexer {
         let mut loc = self.loc();
 
         let mut hex = false;
-        if let Ok('0') = self.current_char() {
+        if self.current_char()? == '0' {
             self.next_char();
 
             if let Ok('x') = self.current_char() {
