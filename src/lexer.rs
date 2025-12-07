@@ -96,20 +96,24 @@ impl Lexer {
         if char == '\'' {
             return self.lex_char_literal();
         }
+
         if char == '"' {
             return self.lex_string_literal();
         }
+
         if char.is_numeric() {
             return self.lex_int_literal();
         }
 
-        // NOTE: must be after int because is_symbol_char matches digits
-        if is_symbol_char(char) {
+        // NOTE: must be after int check because it matches digits
+        if Lexer::is_symbol_char(char) {
             return self.lex_symbol();
         }
-        if is_delim_char(char) {
+
+        if Lexer::is_delim_char(char) {
             return self.lex_delim();
         }
+
         if is_operator_start_char(char) {
             return self.lex_operator();
         }
@@ -117,21 +121,6 @@ impl Lexer {
         Err(Error {
             message: format!("Unexpected char: {}", char),
             loc: self.loc(),
-        })
-    }
-
-    fn lex_symbol(&mut self) -> Result<Token, Error> {
-        let mut loc = self.loc();
-
-        while is_symbol_char(self.current_char()?) {
-            self.next_char();
-        }
-
-        loc.end_pos = self.source_pos;
-
-        Ok(Token {
-            type_: TokenType::Symbol,
-            loc,
         })
     }
 
@@ -185,6 +174,43 @@ impl Lexer {
         }
     }
 
+    fn lex_string_literal(&mut self) -> Result<Token, Error> {
+        let mut loc = self.loc();
+
+        self.next_char(); // skip start quote
+
+        loop {
+            match self.current_char()? {
+                '"' => break,
+                '\\' => {
+                    self.next_char();
+
+                    let c = self.current_char()?;
+                    let correct_escape =
+                        c == 'n' || c == 'r' || c == 't' || c == '0' || c == '\\' || c == '"';
+
+                    if !correct_escape {
+                        return Err(Error {
+                            message: format!("ParseError: Invalid escape sequence: \\{c}"),
+                            loc: self.loc(),
+                        });
+                    }
+                }
+                _ => {}
+            };
+            self.next_char();
+        }
+
+        self.next_char(); // skip end quote
+
+        loc.end_pos = self.source_pos;
+
+        Ok(Token {
+            type_: TokenType::StringLiteral,
+            loc,
+        })
+    }
+
     fn lex_int_literal(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
@@ -225,37 +251,17 @@ impl Lexer {
         int_literal.parse().unwrap()
     }
 
-    fn lex_string_literal(&mut self) -> Result<Token, Error> {
+    fn lex_symbol(&mut self) -> Result<Token, Error> {
         let mut loc = self.loc();
 
-        self.next_char(); // skip start quote
-
-        loop {
-            match self.current_char()? {
-                '"' => break,
-                '\\' => {
-                    self.next_char();
-                    match self.current_char()? {
-                        'n' | 'r' | 't' | '0' | '\\' | '"' => {}
-                        c => {
-                            return Err(Error {
-                                message: format!("ParseError: Invalid escape sequence: \\{c}"),
-                                loc: self.loc(),
-                            });
-                        }
-                    }
-                }
-                _ => {}
-            };
+        while Lexer::is_symbol_char(self.current_char()?) {
             self.next_char();
         }
-
-        self.next_char(); // skip end quote
 
         loc.end_pos = self.source_pos;
 
         Ok(Token {
-            type_: TokenType::StringLiteral,
+            type_: TokenType::Symbol,
             loc,
         })
     }
@@ -326,18 +332,28 @@ impl Lexer {
 
     fn skip_space(&mut self) {
         while let Ok(c) = self.current_char() {
-            if !is_space_char(c) {
+            if !Lexer::is_space_char(c) {
                 break;
             }
 
             self.next_char();
         }
 
-        if let Ok('\\') = self.current_char() {
+        let Ok(char) = self.current_char() else {
+            return;
+        };
+
+        if char == '\\' {
             let mut loc = self.loc();
+
             self.next_char();
 
-            if let Ok('\\') = self.current_char() {
+            let Ok(next_char) = self.current_char() else {
+                self.backslashes.push(loc);
+                return;
+            };
+
+            if next_char == '\\' {
                 self.next_char();
                 loc.end_pos = self.source_pos;
 
@@ -351,11 +367,28 @@ impl Lexer {
             return;
         }
 
-        if let Ok('/') = self.current_char()
-            && let Ok('/') = self.peek_next_char()
-        {
+        if char == '/' {
+            let Ok('/') = self.peek_next_char() else {
+                return;
+            };
+
             let mut loc = self.loc();
-            self.skip_comment();
+
+            self.next_char(); // `/`
+            self.next_char(); // `/`
+
+            loop {
+                let Ok(comment_char) = self.current_char() else {
+                    break;
+                };
+
+                if comment_char == '\n' {
+                    break;
+                }
+
+                self.next_char();
+            }
+
             loc.end_pos = self.source_pos;
             self.comments.push(loc);
 
@@ -363,33 +396,36 @@ impl Lexer {
         }
     }
 
-    fn skip_comment(&mut self) {
-        self.next_char(); // `/`
-        self.next_char(); // `/`
+    fn is_space_char(c: char) -> bool {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    }
 
-        loop {
-            let Ok(char) = self.current_char() else {
-                break;
-            };
+    fn is_symbol_char(c: char) -> bool {
+        return (c >= 'a' && c <= 'z')
+            || (c >= 'A' && c <= 'Z')
+            || (c >= '0' && c <= '9')
+            || (c == '_');
+    }
 
-            if char == '\n' {
-                break;
-            }
-
-            self.next_char();
-        }
+    fn is_delim_char(c: char) -> bool {
+        return (c == '(' || c == ')')
+            || (c == '{' || c == '}')
+            || (c == '[' || c == ']')
+            || (c == ',' || c == '\\');
     }
 
     fn next_char(&mut self) {
-        if let Ok(char) = self.current_char {
-            self.source_pos.offset += char.len_utf8();
+        let Ok(char) = self.current_char else {
+            return;
+        };
 
-            if char == '\n' {
-                self.source_pos.line += 1;
-                self.source_pos.col = 1;
-            } else {
-                self.source_pos.col += 1;
-            }
+        self.source_pos.offset += char.len_utf8();
+
+        if char == '\n' {
+            self.source_pos.line += 1;
+            self.source_pos.col = 1;
+        } else {
+            self.source_pos.col += 1;
         }
 
         self.current_char = read_utf8_codepoint(self.source, self.source_pos.offset);
@@ -400,25 +436,27 @@ impl Lexer {
     }
 
     fn peek_next_char(&mut self) -> Result<char, Error> {
-        let mut offset = self.source_pos.offset;
-
-        if let Ok(char) = self.current_char {
-            offset += char.len_utf8();
+        let Ok(char) = self.current_char else {
+            return self.current_char();
         };
 
-        self.map_utf8_read_err(read_utf8_codepoint(self.source, offset))
+        self.map_utf8_read_err(read_utf8_codepoint(
+            self.source,
+            self.source_pos.offset + char.len_utf8(),
+        ))
     }
 
     fn map_utf8_read_err(&self, utf8_read: Result<char, UTF8ReadError>) -> Result<char, Error> {
-        utf8_read.map_err(|err| match err {
-            UTF8ReadError::InvalidUtf8 => Error {
-                message: format!("ParseError: Invalid UTF-8 sequence"),
+        utf8_read.map_err(|err| {
+            let mut message = "ParseError: Invalid UTF-8 sequence";
+            if let UTF8ReadError::EndOfSource = err {
+                message = "ParseError: Unexpected EOF";
+            }
+
+            Error {
+                message: String::from(message),
                 loc: self.loc(),
-            },
-            UTF8ReadError::EndOfSource => Error {
-                message: format!("ParseError: Unexpected EOF"),
-                loc: self.loc(),
-            },
+            }
         })
     }
 
@@ -476,24 +514,6 @@ impl EscapedString {
 
         unescaped
     }
-}
-
-fn is_space_char(c: char) -> bool {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-}
-
-fn is_symbol_char(c: char) -> bool {
-    return (c >= 'a' && c <= 'z')
-        || (c >= 'A' && c <= 'Z')
-        || (c >= '0' && c <= '9')
-        || (c == '_');
-}
-
-fn is_delim_char(c: char) -> bool {
-    return (c == '(' || c == ')')
-        || (c == '{' || c == '}')
-        || (c == '[' || c == ']')
-        || (c == ',' || c == '\\');
 }
 
 static OPERATORS: &[&str] = &[
