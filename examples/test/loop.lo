@@ -5,10 +5,7 @@ export fn main(): u32 {
 fn factorial(n: u32): u32 {
     let result = 1
     let i = n
-    loop {
-        if i == 0 {
-            break
-        }
+    while i != 0 {
         result *= i
         i -= 1
     }

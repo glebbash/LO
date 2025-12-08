@@ -250,9 +250,9 @@ pub enum CodeExpr {
     Paren(ParenExpr),
     Return(ReturnExpr),
     If(IfExpr),
-    Loop(LoopExpr),
-    Break(BreakExpr),
+    WhileLoop(WhileLoopExpr),
     ForLoop(ForLoopExpr),
+    Break(BreakExpr),
     Continue(ContinueExpr),
     Defer(DeferExpr),
     Catch(CatchExpr),
@@ -346,7 +346,8 @@ pub struct LetExpr {
     pub loc: Loc,
 }
 
-pub struct LoopExpr {
+pub struct WhileLoopExpr {
+    pub cond: Option<Box<CodeExpr>>,
     pub body: Box<CodeBlock>,
     pub loc: Loc,
 }
@@ -519,7 +520,7 @@ impl CodeExpr {
             CodeExpr::InfixOp(e) => &e.loc,
             CodeExpr::If(e) => &e.loc,
             CodeExpr::Let(e) => &e.loc,
-            CodeExpr::Loop(e) => &e.loc,
+            CodeExpr::WhileLoop(e) => &e.loc,
             CodeExpr::Break(e) => &e.loc,
             CodeExpr::ForLoop(e) => &e.loc,
             CodeExpr::Continue(e) => &e.loc,

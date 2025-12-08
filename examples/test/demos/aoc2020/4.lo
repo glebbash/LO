@@ -9,7 +9,7 @@ fn main() {
     let valid_passwords = 0
 
     let passwords = StrCutter::new(input.as_str())
-    loop {
+    while passwords.rest.size != 0 {
         passwords = passwords.cut_at("\n\n")
 
         let has_byr = false
@@ -21,11 +21,11 @@ fn main() {
         let has_pid = false
 
         let lines = StrCutter::new(passwords.piece)
-        loop {
+        while lines.rest.size != 0 {
             lines = lines.cut_at("\n")
 
             let fields = StrCutter::new(lines.piece)
-            loop {
+            while fields.rest.size != 0 {
                 fields = fields.cut_at(" ")
 
                 let field_parts = StrCutter::new(fields.piece).cut_at(":")
@@ -53,14 +53,6 @@ fn main() {
                 if field_name.equals("pid") {
                     has_pid = true
                 }
-
-                if fields.rest.size == 0 {
-                    break
-                }
-            }
-
-            if lines.rest.size == 0 {
-                break
             }
         }
 
@@ -68,10 +60,6 @@ fn main() {
             && has_hgt && has_hcl && has_ecl && has_pid
         {
             valid_passwords += 1
-        }
-
-        if passwords.rest.size == 0 {
-            break
         }
     }
 

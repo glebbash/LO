@@ -51,10 +51,7 @@ macro mem::copy!(src: &void, dest: &void, size: u32) {
 }
 
 fn mem::swap(ref1: &void, ref2: &void, size: u32) {
-    loop {
-        if size == 0 {
-            break
-        }
+    while size != 0 {
         size -= 1
         let tmp = *((ref1 as u32 + size) as &u8)
         *((ref1 as u32 + size) as &u8) = *((ref2 as u32 + size) as &u8)
@@ -480,10 +477,7 @@ fn Vec::reverse(&self) {
 }
 
 fn Vec::reverse_range(&self, start: u32, end: u32) {
-    loop {
-        if start >= end {
-            break
-        }
+    while start < end {
         self.swap(start, end)
         start += 1
         end -= 1
@@ -684,10 +678,7 @@ fn str::slice(self, start: u32, end: u32): str {
 
 fn str::from_cstr(value: *&u8): str {
     let len = 0
-    loop {
-        if *array_at!<u8>(value, len) == '\0' {
-            break
-        }
+    while *array_at!<u8>(value, len) != '\0' {
         len += 1
     }
     return str { data: value, size: len }

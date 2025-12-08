@@ -16,19 +16,15 @@ fn main() {
     defer map.free()
 
     let tree_count = 0
-    let i = 0
-    let j = 0
-    loop {
-        i += SLOPE_I
-        j += SLOPE_J
-
-        if i == map.rows.size {
-            break
-        }
-
+    let i = SLOPE_I
+    let j = SLOPE_J
+    while i < map.rows.size {
         if map.get(i, j) == Tile::TREE {
             tree_count += 1
         }
+
+        i += SLOPE_I
+        j += SLOPE_J
     }
 
     println(tree_count.to_tmp_str!())

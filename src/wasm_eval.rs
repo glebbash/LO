@@ -434,12 +434,12 @@ impl WasmEval {
                 WasmInstr::UnaryOp { kind } => match kind {
                     WasmUnaryOpKind::I32_EQZ => {
                         let op = self.pop_i32();
-                        let value = !op;
+                        let value = if op == 0 { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value });
                     }
                     WasmUnaryOpKind::I64_EQZ => {
                         let op = self.pop_i64();
-                        let value = !op as i32;
+                        let value = if op == 0 { 1 } else { 0 };
                         self.stack.push(WasmValue::I32 { value });
                     }
                     WasmUnaryOpKind::F32_NEG => {

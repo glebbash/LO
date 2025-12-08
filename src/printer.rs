@@ -645,8 +645,13 @@ impl Printer {
                 stdout_write(" else");
                 self.print_code_block(else_branch);
             }
-            CodeExpr::Loop(LoopExpr { body, loc: _ }) => {
-                stdout_write("loop");
+            CodeExpr::WhileLoop(WhileLoopExpr { cond, body, loc: _ }) => {
+                if let Some(cond) = cond {
+                    stdout_write("while ");
+                    self.print_code_expr(cond);
+                } else {
+                    stdout_write("loop");
+                }
                 self.print_code_block(&body);
             }
             CodeExpr::ForLoop(ForLoopExpr {

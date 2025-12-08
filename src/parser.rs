@@ -803,16 +803,31 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::Loop(LoopExpr {
+            return Ok(CodeExpr::WhileLoop(WhileLoopExpr {
+                cond: None,
                 body: Box::new(body),
                 loc,
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "break")? {
-            let loc = self.prev().loc.clone();
+        if let Some(_) = self.eat(Symbol, "while")? {
+            let mut loc = self.prev().loc.clone();
 
-            return Ok(CodeExpr::Break(BreakExpr { loc }));
+            self.push_ctx(ParsingContext {
+                struct_literal_allowed: false,
+            });
+            let cond = self.parse_code_expr(0)?;
+            self.pop_ctx();
+
+            let body = self.parse_code_block()?;
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::WhileLoop(WhileLoopExpr {
+                cond: Some(Box::new(cond)),
+                body: Box::new(body),
+                loc,
+            }));
         }
 
         if let Some(_) = self.eat(Symbol, "for")? {
@@ -842,6 +857,12 @@ impl Parser {
                 op_loc: op.loc,
                 loc,
             }));
+        }
+
+        if let Some(_) = self.eat(Symbol, "break")? {
+            let loc = self.prev().loc.clone();
+
+            return Ok(CodeExpr::Break(BreakExpr { loc }));
         }
 
         if let Some(_) = self.eat(Symbol, "continue")? {

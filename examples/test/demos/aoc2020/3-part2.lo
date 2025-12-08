@@ -48,17 +48,15 @@ fn Map::parse(input: String): Map {
 
 fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
     let tree_count = 0
-    let i = 0
-    let j = 0
-    loop {
-        i += slope_i
-        j += slope_j
-        if i >= self.rows.size {
-            break
-        }
+    let i = slope_i
+    let j = slope_j
+    while i < self.rows.size {
         if self.get(i, j) == Tile::TREE {
             tree_count += 1
         }
+
+        i += slope_i
+        j += slope_j
     }
     return tree_count
 }

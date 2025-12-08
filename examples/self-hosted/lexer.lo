@@ -78,11 +78,7 @@ fn Lexer::free(&self) {
 fn Lexer::lex_file(&self): Result<void, &Error> {
     self.skip_space()
 
-    loop {
-        if self.source_pos.offset >= self.source.size {
-            break
-        }
-
+    while self.source_pos.offset < self.source.size {
         let token = self.lex_token()?
         self.tokens.push!(token)
 
@@ -271,11 +267,7 @@ fn Lexer::lex_int_literal(&self): Result<Token, &Error> {
 fn Lexer::lex_symbol(&self): Result<Token, &Error> {
     let loc = self.loc()
 
-    loop {
-        if !Lexer::is_symbol_char(self.current_char()? as u8) {
-            break
-        }
-
+    while Lexer::is_symbol_char(self.current_char()? as u8) {
         self.next_char()
     }
 

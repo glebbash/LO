@@ -10,10 +10,7 @@ fn parse_u32(input: str): ParseIntResult {
         value: 0,
         chars_consumed: 0,
     }
-    loop {
-        if result.chars_consumed == input.size {
-            break
-        }
+    while result.chars_consumed != input.size {
         let c = input.char_at(result.chars_consumed)
         if c >= '0' && c <= '9' {
             result.value *= 10
@@ -31,10 +28,7 @@ fn parse_u32_hex(input: str): ParseIntResult {
         value: 0,
         chars_consumed: 0,
     }
-    loop {
-        if result.chars_consumed == input.size {
-            break
-        }
+    while result.chars_consumed != input.size {
         let c = input.char_at(result.chars_consumed)
         if c >= '0' && c <= '9' {
             result.value *= 16

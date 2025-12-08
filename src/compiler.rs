@@ -2644,7 +2644,7 @@ impl Compiler {
                 ctx.exit_scope();
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::Loop(LoopExpr { body, loc: _ }) => {
+            CodeExpr::WhileLoop(WhileLoopExpr { cond, body, loc: _ }) => {
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::Block,
                     block_type: WasmBlockType::NoOut,
@@ -2653,6 +2653,23 @@ impl Compiler {
                     block_kind: WasmBlockKind::Loop,
                     block_type: WasmBlockType::NoOut,
                 });
+
+                if let Some(cond) = cond {
+                    catch!(self.codegen(ctx, instrs, cond), err, {
+                        self.report_error(&err);
+                    });
+
+                    instrs.push(WasmInstr::UnaryOp {
+                        kind: WasmUnaryOpKind::I32_EQZ,
+                    });
+                    // instrs.push(WasmInstr::BranchIf { label_index: 1 });
+                    instrs.push(WasmInstr::BlockStart {
+                        block_kind: WasmBlockKind::If,
+                        block_type: WasmBlockType::NoOut,
+                    });
+                    instrs.push(WasmInstr::Branch { label_index: 2 });
+                    instrs.push(WasmInstr::BlockEnd);
+                }
 
                 ctx.enter_scope(ScopeType::Loop);
                 self.codegen_code_block(ctx, instrs, body, true);
@@ -3939,7 +3956,7 @@ impl Compiler {
             CodeExpr::Defer(_) => Ok(Type::Void),
             CodeExpr::If(_) => Ok(Type::Void),
             CodeExpr::Match(_) => Ok(Type::Void),
-            CodeExpr::Loop(_) => Ok(Type::Void),
+            CodeExpr::WhileLoop(_) => Ok(Type::Void),
             CodeExpr::ForLoop(_) => Ok(Type::Void),
             CodeExpr::Break(_) => Ok(Type::Never),
             CodeExpr::Continue(_) => Ok(Type::Never),
