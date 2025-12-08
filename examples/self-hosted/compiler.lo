@@ -21,7 +21,7 @@ struct Compiler {
 }
 
 fn Compiler::new(): &Compiler {
-    let error_arena = Arena::new()
+    let error_arena = Arena::new(128)
 
     return heap::new!(Compiler {
         fm: FileManager::new(error_arena),

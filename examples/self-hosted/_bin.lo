@@ -34,7 +34,7 @@ export fn _start() {
             wasi::proc_exit(1)
         }
 
-        let a = Arena::new()
+        let a = Arena::new(2048)
         defer a.free()
 
         let lexer = module.parser.lexer

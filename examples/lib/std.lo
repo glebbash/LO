@@ -295,11 +295,11 @@ fn Arena::Block::new(a: Alloc, size: u32): &Arena::Block {
     })
 }
 
-fn Arena::new(): &Arena {
-    return Arena::new_with_config(Alloc::HEAP, 64)
+fn Arena::new(block_size: u32): &Arena {
+    return Arena::new_in(Alloc::HEAP, block_size)
 }
 
-fn Arena::new_with_config(a: Alloc, block_size: u32): &Arena {
+fn Arena::new_in(a: Alloc, block_size: u32): &Arena {
     let block = Arena::Block::new(a, block_size)
     return new!(a, Arena {
         head: block,
@@ -574,28 +574,28 @@ fn String::replace(self, search: str, replacement: str): String {
         return self
     }
 
-    let output = Vec::with_capacity_in(self.chars.alloc, self.len(), sizeof u8)
+    if self.chars.alloc == Alloc::STACK {
+        abort(AbortCode::STACK_VECTOR_GROW)
+    }
 
-    let i = 0
+    let original = self.as_str()
+    let replaced = String::new_in(self.chars.alloc, self.len())
+
+    let pos = 0
     loop {
-        if i >= self.len() {
+        let index = original.find(search, pos) catch _ {
+            replaced.push_str(original.slice(pos, original.size))
             break
         }
 
-        if i + search.size <= self.len() {
-            if self.as_str().slice(i, i + search.size).equals(search) {
-                output.push_all(replacement.data, replacement.size)
-                i += search.size
-                continue
-            }
-        }
+        replaced.push_str(original.slice(pos, index))
+        replaced.push_str(replacement)
 
-        output.push!(self.char_at(i))
-        i += 1
+        pos = index + search.size
     }
 
     self.chars.free()
-    self.chars = output
+    self.chars = replaced
 
     return self
 }
@@ -643,6 +643,24 @@ fn str::equals(self, other: str): bool {
     }
 
     return true
+}
+
+fn str::find(self, search: str, start: u32): Result<u32, &void> {
+    if search.size == 0 {
+        return Ok(start)
+    }
+
+    if search.size > self.size {
+        return Err(1 as &void)
+    }
+
+    for i in start..(self.size - search.size + 1) {
+        if self.slice(i, i + search.size).equals(search) {
+            return Ok(i)
+        }
+    }
+
+    return Err(1 as &void)
 }
 
 fn str::starts_with(self, other: str): bool {
