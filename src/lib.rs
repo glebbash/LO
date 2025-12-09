@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(alloc_error_handler, thread_local, let_chains)]
+#![feature(alloc_error_handler, thread_local)]
 
 extern crate alloc;
 
@@ -44,7 +44,7 @@ static USAGE: &str = "Usage:
   lo eval <input.lo> (experimental)
   lo wasi <input.lo> (experimental)";
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn _start() {
     let args = WasiArgs::load().unwrap();
     if args.len() < 3 {

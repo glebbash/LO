@@ -198,7 +198,7 @@ impl WasmParser {
                     return Err(format!(
                         "{} Unknown memory mutability kind '0x{byte:02X}'",
                         self.loc_at(self.offset - 1)
-                    ))
+                    ));
                 }
             }
 
@@ -910,11 +910,11 @@ impl WasmParser {
         self.offset += 1;
     }
 
-    fn loc(&self) -> WasmParserLoc {
+    fn loc<'a>(&'a self) -> WasmParserLoc<'a> {
         WasmParserLoc(&self.file_name, self.offset)
     }
 
-    fn loc_at(&self, offset: usize) -> WasmParserLoc {
+    fn loc_at<'a>(&'a self, offset: usize) -> WasmParserLoc<'a> {
         WasmParserLoc(&self.file_name, offset)
     }
 }

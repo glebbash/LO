@@ -35,7 +35,7 @@ pub struct IOVecMut {
 }
 
 #[link(wasm_import_module = "wasi_snapshot_preview1")]
-extern "C" {
+unsafe extern "C" {
     // @param dirfd ---------------- The file descriptor representing the directory that the file is located in.
     // @param dirflags ------------- Flags specifying how the path will be resolved.
     // @param path ----------------- A wasm pointer to a null-terminated string containing the path of the file or directory to open.

@@ -1155,11 +1155,7 @@ impl Compiler {
                         _ => Type::Void,
                     };
 
-                    let FnSource::Guest {
-                        ref mut ctx,
-                        body: _,
-                    } = &mut fn_info.fn_source
-                    else {
+                    let FnSource::Guest { ctx, body: _ } = &mut fn_info.fn_source else {
                         unreachable!()
                     };
 
@@ -3627,7 +3623,7 @@ impl Compiler {
                     return Err(Error {
                         message: format!("Unknown int literal tag: {tag}"),
                         loc: loc.clone(),
-                    })
+                    });
                 }
             },
             CodeExpr::StringLiteral(StringLiteralExpr {
@@ -4491,7 +4487,7 @@ impl Compiler {
                 return Err(Error {
                     message: format!("Cannot mutate a constant"),
                     loc: loc.clone(),
-                })
+                });
             }
         };
 
@@ -4986,7 +4982,7 @@ impl Compiler {
                 Type::EnumInstance { enum_index }
                     if self.enum_defs[*enum_index].variant_type == Type::Void =>
                 {
-                    return Ok(WasmBinaryOpKind::I32_EQ)
+                    return Ok(WasmBinaryOpKind::I32_EQ);
                 }
                 Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_EQ),
                 Type::F32 => return Ok(WasmBinaryOpKind::F32_EQ),
@@ -5006,7 +5002,7 @@ impl Compiler {
                 Type::EnumInstance { enum_index }
                     if self.enum_defs[*enum_index].variant_type == Type::Void =>
                 {
-                    return Ok(WasmBinaryOpKind::I32_NE)
+                    return Ok(WasmBinaryOpKind::I32_NE);
                 }
                 Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_NE),
                 Type::F32 => return Ok(WasmBinaryOpKind::F32_NE),
@@ -5016,7 +5012,7 @@ impl Compiler {
             InfixOpTag::Less => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_LT_S),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_LT_U)
+                    return Ok(WasmBinaryOpKind::I32_LT_U);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_LT_S),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_LT_U),
@@ -5027,7 +5023,7 @@ impl Compiler {
             InfixOpTag::Greater => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_GT_S),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_GT_U)
+                    return Ok(WasmBinaryOpKind::I32_GT_U);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_GT_S),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_GT_U),
@@ -5038,7 +5034,7 @@ impl Compiler {
             InfixOpTag::LessEqual => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_LE_S),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_LE_U)
+                    return Ok(WasmBinaryOpKind::I32_LE_U);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_LE_S),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_LE_U),
@@ -5049,7 +5045,7 @@ impl Compiler {
             InfixOpTag::GreaterEqual => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_GE_S),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_GE_U)
+                    return Ok(WasmBinaryOpKind::I32_GE_U);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_GE_S),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_GE_U),
@@ -5099,7 +5095,7 @@ impl Compiler {
             InfixOpTag::Div => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_DIV_S),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_DIV_U)
+                    return Ok(WasmBinaryOpKind::I32_DIV_U);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_DIV_S),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_DIV_U),
@@ -5110,7 +5106,7 @@ impl Compiler {
             InfixOpTag::Mod => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_REM_S),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_REM_U)
+                    return Ok(WasmBinaryOpKind::I32_REM_U);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_REM_S),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_REM_U),
@@ -5119,7 +5115,7 @@ impl Compiler {
             InfixOpTag::ShiftLeft => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_SHL),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_SHL)
+                    return Ok(WasmBinaryOpKind::I32_SHL);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_SHL),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_SHL),
@@ -5128,7 +5124,7 @@ impl Compiler {
             InfixOpTag::ShiftRight => match operand_type {
                 Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_SHR_S),
                 Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_SHR_U)
+                    return Ok(WasmBinaryOpKind::I32_SHR_U);
                 }
                 Type::I64 => return Ok(WasmBinaryOpKind::I64_SHR_S),
                 Type::U64 => return Ok(WasmBinaryOpKind::I64_SHR_U),
