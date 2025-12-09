@@ -525,7 +525,7 @@ impl Printer {
             }) => {
                 stdout_write(if *is_ok { "Ok" } else { "Err" });
                 if let Some(result_type) = result_type {
-                    stdout_write("::<");
+                    stdout_write(":<");
                     self.print_type_expr(&result_type.ok);
                     stdout_write(", ");
                     self.print_type_expr(&result_type.err);

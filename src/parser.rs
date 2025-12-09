@@ -1,4 +1,5 @@
 use crate::{ast::*, core::*, lexer::*};
+use TokenType::*;
 use alloc::{
     boxed::Box,
     format,
@@ -6,7 +7,6 @@ use alloc::{
     vec::Vec,
 };
 use core::cell::RefCell;
-use TokenType::*;
 
 pub struct ParsingContext {
     pub struct_literal_allowed: bool,
@@ -1012,7 +1012,7 @@ impl Parser {
             let mut loc = ident.loc.clone();
 
             let mut result_type = None;
-            if let Some(_) = self.eat(Operator, "::")? {
+            if let Some(_) = self.eat(Operator, ":")? {
                 self.expect(Operator, "<")?;
                 let ok = self.parse_type_expr()?;
                 self.expect(Delim, ",")?;
