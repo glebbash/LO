@@ -30,10 +30,9 @@ fn TokenType::to_str(self): str {
         return "Operator"
     } else if self == TokenType::Terminal() {
         return "Terminal"
+    } else {
+        @unreachable()
     }
-
-    // TODO: fix `else { @unreachable()}` not working
-    @unreachable()
 }
 
 struct Lexer {
@@ -441,47 +440,25 @@ fn Lexer::is_delim_char(c: u8): bool {
 }
 
 // TODO: support first class slices, refactor statics
-const OPERATORS_LEN = 39
+const OPERATORS_LEN = 38
 const OPERATORS = [str][
-    "=",
-    "==",
-    "!=",
-    "!",
-    "&&",
-    "||",
-    "<",
-    "<=",
-    ">",
-    ">=",
-    "+",
-    "+=",
-    "-",
-    "-=",
-    "*",
-    "*=",
-    "/",
-    "/=",
-    "%",
-    "%=",
-    "&",
-    "*&",
-    "&=",
-    "<<",
-    "<<=",
-    "=>",
-    ">>",
-    ">>=",
-    "^",
-    "^=",
-    "|",
-    "|=",
-    "|>",
-    ".",
-    "..",
-    ":",
-    "::",
-    "@",
-    "?",
+    "=", \\ "==", \\ "!=",
+    "&&", \\ "||", \\ "!",
+    "<", \\ "<=",
+    ">", \\ ">=",
+    "+", \\ "+=",
+    "-", \\ "-=",
+    "*", \\ "*=",
+    "/", \\ "/=",
+    "%", \\ "%=",
+    "&", \\ "&=",
+    "<<", \\ "<<=",
+    ">>", \\ ">>=",
+    "^", \\ "^=",
+    "|", \\ "|=",
+
+    "*&", \\ "|>", \\ ".", \\ "..",
+    ":", \\ "::", \\ "@", \\ "?",
 ]
 
 fn Lexer::is_operator_start_char(c: u8): bool {
@@ -623,7 +600,4 @@ fn char_len_utf8(char: u32): u32 {
     } else {
         return 4
     }
-
-    // TODO: fix `else { @unreachable()}` not working
-    @unreachable()
 }

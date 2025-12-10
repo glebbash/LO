@@ -503,18 +503,9 @@ impl Printer {
                 stdout_write("[");
                 self.print_type_expr(item_type);
                 stdout_write("]");
-                stdout_writeln("[");
-                self.indent += 1;
-                for item in items {
-                    self.print_comments_before(item.loc().pos);
-                    self.print_indent();
-                    self.print_code_expr(item);
-                    stdout_writeln(",");
-                }
-                // print the rest of the comments
-                self.print_comments_before(loc.end_pos);
-                self.indent -= 1;
-                self.print_indent();
+
+                stdout_write("[");
+                self.print_expr_list(items, true, loc);
                 stdout_write("]");
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
@@ -890,22 +881,26 @@ impl Printer {
 
     fn print_args(&mut self, args: &CodeExprList, open_paren_loc: &Loc) {
         stdout_write("(");
+        self.print_expr_list(&args.items, args.has_trailing_comma, open_paren_loc);
+        stdout_write(")");
+    }
 
-        if args.has_trailing_comma {
+    fn print_expr_list(&mut self, exprs: &Vec<CodeExpr>, is_multiline: bool, start_loc: &Loc) {
+        if is_multiline {
             self.indent += 1;
             stdout_writeln("");
-            self.last_printed_item_line = open_paren_loc.pos.line;
+            self.last_printed_item_line = start_loc.pos.line;
         }
 
         let prev_backslashes_printed = self.backslashes_printed;
-        for (arg, index) in args.items.iter().zip(0..) {
+        for (arg, index) in exprs.iter().zip(0..) {
             if index != 0 {
                 stdout_write(",");
             }
 
             let continues = self.print_double_backslashes_before(arg.loc().pos.offset);
 
-            if args.has_trailing_comma && !continues {
+            if is_multiline && !continues {
                 if index != 0 {
                     stdout_writeln("");
                 }
@@ -918,18 +913,16 @@ impl Printer {
 
             self.print_code_expr(arg);
         }
-        if !args.has_trailing_comma && self.backslashes_printed != prev_backslashes_printed {
+        if !is_multiline && self.backslashes_printed != prev_backslashes_printed {
             stdout_writeln("");
             self.print_indent();
         }
 
-        if args.has_trailing_comma {
+        if is_multiline {
             stdout_writeln(",");
             self.indent -= 1;
             self.print_indent();
         }
-
-        stdout_write(")");
     }
 
     fn print_type_args(&mut self, type_args: &Vec<TypeExpr>) {

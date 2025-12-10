@@ -7,8 +7,6 @@ use alloc::{
 };
 use core::{cell::RefCell, fmt::Write};
 
-const STR_TYPE_NAME: &str = "str";
-
 #[derive(Clone, PartialEq)]
 pub enum Type {
     Never,
@@ -1534,7 +1532,9 @@ impl Compiler {
         body: &CodeBlock,
         void_only: bool,
     ) -> bool {
+        let mut naturally_diverges = false;
         let mut terminates_early = false;
+
         for expr in &body.exprs {
             let expr_type = catch!(self.get_expr_type(ctx, expr), err, {
                 self.report_error(&err);
@@ -1550,6 +1550,8 @@ impl Compiler {
 
             if expr_type == Type::Never {
                 terminates_early = true;
+
+                naturally_diverges = naturally_diverges || self.is_naturally_divergent(expr);
             }
 
             let mut type_layout = TypeLayout::new();
@@ -1570,6 +1572,10 @@ impl Compiler {
         }
 
         self.emit_deferred(ctx.current_scope(), instrs);
+
+        if void_only && terminates_early && !naturally_diverges {
+            instrs.push(WasmInstr::Unreachable);
+        }
 
         terminates_early
     }
@@ -1842,7 +1848,7 @@ impl Compiler {
                         bytes.push(value as u8);
                     }
                 } else if let Type::StructInstance { struct_index } = &item_type
-                    && self.struct_defs[*struct_index].struct_name == STR_TYPE_NAME
+                    && self.struct_defs[*struct_index].struct_name == "str"
                 {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
@@ -3034,12 +3040,6 @@ impl Compiler {
             fn_index: fn_info.wasm_fn_index,
         });
 
-        // TODO: insert this kind of logic into other places
-        //   like conditionals where each branch resolves to `never`
-        if fn_info.fn_type.output == Type::Never {
-            instrs.push(WasmInstr::Unreachable);
-        }
-
         Ok(())
     }
 
@@ -3631,7 +3631,7 @@ impl Compiler {
                 value: _,
                 loc,
             }) => {
-                let Some(item) = self.modules[ctx.module_index].get_item(STR_TYPE_NAME) else {
+                let Some(item) = self.modules[ctx.module_index].get_item("str") else {
                     return Err(Error {
                         message: format!("Cannot use strings with no `str` struct defined"),
                         loc: loc.clone(),
@@ -3942,15 +3942,54 @@ impl Compiler {
             }
             CodeExpr::Dbg(_) => Ok(Type::StructInstance {
                 struct_index: self.modules[ctx.module_index]
-                    .get_item(STR_TYPE_NAME)
+                    .get_item("str")
                     .unwrap()
                     .collection_index,
             }),
             CodeExpr::Sizeof(_) => Ok(Type::U32),
-            CodeExpr::Let(_) => Ok(Type::Void),
+            CodeExpr::Let(let_) => {
+                if self.get_expr_type(ctx, &let_.value)? == Type::Never {
+                    return Ok(Type::Never);
+                }
+                Ok(Type::Void)
+            }
             CodeExpr::Assign(_) => Ok(Type::Void),
             CodeExpr::Defer(_) => Ok(Type::Void),
-            CodeExpr::If(_) => Ok(Type::Void),
+            CodeExpr::If(IfExpr {
+                cond,
+                then_block,
+                else_block,
+                loc: _,
+            }) => {
+                match cond {
+                    IfCond::Expr(e) => {
+                        if self.get_expr_type(ctx, e)? == Type::Never {
+                            return Ok(Type::Never);
+                        }
+                    }
+                    IfCond::Match(_) => {}
+                };
+
+                let then_diverges =
+                    self.get_code_block_type(ctx, &then_block.exprs)? == Type::Never;
+
+                let mut else_diverges = false;
+                match else_block {
+                    ElseBlock::None => {}
+                    ElseBlock::Else(else_) => {
+                        else_diverges = self.get_code_block_type(ctx, &else_.exprs)? == Type::Never;
+                    }
+                    ElseBlock::ElseIf(e) => {
+                        else_diverges = self.get_expr_type(ctx, e)? == Type::Never;
+                    }
+                }
+
+                if then_diverges && else_diverges {
+                    return Ok(Type::Never);
+                }
+
+                Ok(Type::Void)
+            }
             CodeExpr::Match(_) => Ok(Type::Void),
             CodeExpr::WhileLoop(_) => Ok(Type::Void),
             CodeExpr::ForLoop(_) => Ok(Type::Void),
@@ -3963,6 +4002,98 @@ impl Compiler {
                 has_trailing_comma: _,
                 loc: _,
             }) => self.get_expr_type(ctx, expr),
+        }
+    }
+
+    fn get_code_block_type(&self, ctx: &ExprContext, exprs: &Vec<CodeExpr>) -> Result<Type, Error> {
+        let ctx = ctx.be_mut();
+
+        let mut diverges = false;
+
+        ctx.enter_scope(ScopeType::Block);
+
+        for expr in exprs {
+            if let CodeExpr::Let(LetExpr {
+                local_name,
+                value,
+                loc,
+            }) = expr
+            {
+                let value_type = self.get_expr_type(ctx, value)?;
+                diverges = diverges || value_type == Type::Never;
+
+                ctx.current_scope_mut().macro_args.push(ConstDef {
+                    const_name: local_name.repr.clone(),
+                    code_unit: CodeUnit {
+                        type_: value_type,
+                        instrs: Vec::new(),
+                    },
+                    loc: loc.clone(),
+                });
+
+                continue;
+            }
+
+            diverges = diverges || self.get_expr_type(ctx, expr)? == Type::Never;
+        }
+
+        ctx.exit_scope();
+
+        if diverges {
+            return Ok(Type::Never);
+        }
+
+        Ok(Type::Void)
+    }
+
+    fn is_naturally_divergent(&self, expr: &CodeExpr) -> bool {
+        match expr {
+            CodeExpr::BoolLiteral(_)
+            | CodeExpr::CharLiteral(_)
+            | CodeExpr::IntLiteral(_)
+            | CodeExpr::StringLiteral(_)
+            | CodeExpr::StructLiteral(_)
+            | CodeExpr::ArrayLiteral(_)
+            | CodeExpr::ResultLiteral(_)
+            | CodeExpr::Ident(_)
+            | CodeExpr::Let(_)
+            | CodeExpr::Cast(_)
+            | CodeExpr::Assign(_)
+            | CodeExpr::FieldAccess(_)
+            | CodeExpr::PropagateError(_)
+            | CodeExpr::FnCall(_)
+            | CodeExpr::MethodCall(_)
+            | CodeExpr::MacroFnCall(_)
+            | CodeExpr::If(_)
+            | CodeExpr::Dbg(_)
+            | CodeExpr::Sizeof(_)
+            | CodeExpr::WhileLoop(_)
+            | CodeExpr::ForLoop(_)
+            | CodeExpr::Defer(_)
+            | CodeExpr::MacroMethodCall(_) => false,
+
+            CodeExpr::Break(_) | CodeExpr::Continue(_) | CodeExpr::Return(_) => true,
+
+            CodeExpr::Paren(paren_expr) => self.is_naturally_divergent(&paren_expr.expr),
+            CodeExpr::IntrinsicCall(intrinsic) => intrinsic.fn_name.repr == "unreachable",
+
+            CodeExpr::Catch(catch_) => self.is_naturally_divergent(&catch_.lhs),
+            CodeExpr::InfixOp(infix) => {
+                self.is_naturally_divergent(&infix.lhs) || self.is_naturally_divergent(&infix.rhs)
+            }
+            CodeExpr::PrefixOp(prefix) => self.is_naturally_divergent(&prefix.expr),
+            CodeExpr::Match(match_) => self.is_naturally_divergent(&match_.header.expr_to_match),
+            CodeExpr::ExprPipe(pipe_) => {
+                self.is_naturally_divergent(&pipe_.lhs) || self.is_naturally_divergent(&pipe_.rhs)
+            }
+
+            CodeExpr::DoWith(do_with_) => {
+                let mut divergent = self.is_naturally_divergent(&do_with_.body);
+                for expr in &do_with_.args.items {
+                    divergent = divergent || self.is_naturally_divergent(expr);
+                }
+                divergent
+            }
         }
     }
 
