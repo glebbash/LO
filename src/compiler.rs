@@ -182,6 +182,11 @@ struct CodeUnit {
     instrs: Vec<WasmInstr>,
 }
 
+struct ConstSliceLen {
+    slice_offset: u32,
+    slice_len: usize,
+}
+
 #[derive(Clone)]
 struct MacroTypeArg {
     name: String,
@@ -533,6 +538,7 @@ pub struct Compiler {
     const_defs: Vec<ConstDef>,
     macro_defs: Vec<&'static MacroDefExpr>,
     functions: Vec<FnInfo>,
+    const_slice_lens: Vec<ConstSliceLen>,
 
     memory: Option<&'static MemoryDefExpr>,
     memory_imported_from: Option<String>,
@@ -564,6 +570,7 @@ impl Compiler {
             const_defs: Vec::new(),
             macro_defs: Vec::new(),
             functions: Vec::new(),
+            const_slice_lens: Vec::new(),
 
             memory: None,
             memory_imported_from: None,
@@ -889,7 +896,7 @@ impl Compiler {
                             type_: Type::Never, // placeholder
                             instrs: Vec::new(), // placeholder
                         },
-                        loc: const_def.loc.clone(),
+                        loc: const_def.const_name.loc.clone(),
                     });
                 }
                 _ => {} // skip, not interested
@@ -1893,6 +1900,11 @@ impl Compiler {
                 let ptr = self.append_data(bytes);
                 instrs.push(WasmInstr::I32Const { value: ptr as i32 });
 
+                self.const_slice_lens.be_mut().push(ConstSliceLen {
+                    slice_offset: ptr,
+                    slice_len: items.len(),
+                });
+
                 return Ok(());
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
@@ -2465,6 +2477,49 @@ impl Compiler {
 
                     instrs.push(WasmInstr::MemoryCopy);
                     return Ok(());
+                }
+
+                if fn_name.repr == "const_slice_len" {
+                    if args.items.len() != 1 {
+                        return report_error(self, fn_name);
+                    }
+
+                    let mut slice_ptr_instrs = Vec::new();
+                    if let Err(err) = self.codegen(ctx, &mut slice_ptr_instrs, &args.items[0]) {
+                        self.report_error(&err);
+                        return Ok(());
+                    };
+
+                    if slice_ptr_instrs.len() != 1 {
+                        return report_error(self, fn_name);
+                    }
+
+                    let WasmInstr::I32Const { value: slice_ptr } = &slice_ptr_instrs[0] else {
+                        return report_error(self, fn_name);
+                    };
+
+                    for const_slice_len in &self.const_slice_lens {
+                        if const_slice_len.slice_offset == *slice_ptr as u32 {
+                            instrs.push(WasmInstr::I32Const {
+                                value: const_slice_len.slice_len as i32,
+                            });
+                            return Ok(());
+                        }
+                    }
+
+                    return report_error(self, fn_name);
+
+                    fn report_error(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        compiler.report_error(&Error {
+                            message: format!(
+                                "Invalid arguments for @{}(items: const T[])",
+                                fn_name.repr,
+                            ),
+                            loc: fn_name.loc.clone(),
+                        });
+
+                        Ok(())
+                    }
                 }
 
                 if fn_name.repr == "inspect_items" {
@@ -3862,6 +3917,10 @@ impl Compiler {
                     return Ok(Type::Void);
                 }
 
+                if fn_name.repr == "const_slice_len" {
+                    return Ok(Type::U32);
+                }
+
                 if fn_name.repr.starts_with("inspect_") {
                     return Ok(Type::Void);
                 }
@@ -4165,43 +4224,45 @@ impl Compiler {
             if let ModuleItemCollection::Global = item.collection {
                 let global = &self.globals[item.collection_index];
 
+                let mut inspect_info = None;
+                if self.in_inspection_mode {
+                    inspect_info = Some(InspectInfo {
+                        message: format!(
+                            "global {}: {}",
+                            ident.repr,
+                            TypeFmt(self, &global.global_type)
+                        ),
+                        loc: ident.loc.clone(),
+                        linked_loc: Some(item.loc.clone()),
+                    });
+                }
+
                 return Ok(VariableInfo::Global {
                     global_index: global.global_index,
                     global_type: global.global_type.clone(),
-                    inspect_info: if self.in_inspection_mode {
-                        Some(InspectInfo {
-                            message: format!(
-                                "global {}: {}",
-                                ident.repr,
-                                TypeFmt(self, &global.global_type)
-                            ),
-                            loc: ident.loc.clone(),
-                            linked_loc: Some(global.def_expr.loc.clone()),
-                        })
-                    } else {
-                        None
-                    },
+                    inspect_info,
                 });
             }
         }
 
         if let Some(const_) = self.get_const(ctx, &ident.repr) {
+            let mut inspect_info = None;
+            if self.in_inspection_mode {
+                inspect_info = Some(InspectInfo {
+                    message: format!(
+                        "const {}: {}",
+                        ident.repr,
+                        TypeFmt(self, &const_.code_unit.type_)
+                    ),
+                    loc: ident.loc.clone(),
+                    linked_loc: Some(const_.loc.clone()),
+                })
+            }
+
             return Ok(VariableInfo::Const {
                 code_unit: const_.code_unit.relax(),
                 loc: const_.loc.clone(),
-                inspect_info: if self.in_inspection_mode {
-                    Some(InspectInfo {
-                        message: format!(
-                            "const {}: {}",
-                            ident.repr,
-                            TypeFmt(self, &const_.code_unit.type_)
-                        ),
-                        loc: ident.loc.clone(),
-                        linked_loc: Some(const_.loc.clone()),
-                    })
-                } else {
-                    None
-                },
+                inspect_info,
             });
         }
 

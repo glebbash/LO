@@ -298,7 +298,7 @@ fn Lexer::lex_operator(&self): Result<Token, &Error> {
         let current_op = self.source.slice(loc.pos.offset, self.source_pos.offset + 1)
 
         let is_start_of_operator = false
-        for i in 0..OPERATORS_LEN {
+        for i in 0..@const_slice_len(OPERATORS) {
             let operator = *array_at!<str>(OPERATORS, i)
 
             if operator.starts_with(current_op) {
@@ -320,7 +320,7 @@ fn Lexer::lex_operator(&self): Result<Token, &Error> {
     let op = self.source.slice(loc.pos.offset, self.source_pos.offset)
 
     let matched_fully = false
-    for i in 0..OPERATORS_LEN {
+    for i in 0..@const_slice_len(OPERATORS) {
         let operator = *array_at!<str>(OPERATORS, i)
 
         if operator.equals(op) {
@@ -439,8 +439,6 @@ fn Lexer::is_delim_char(c: u8): bool {
         || c == ',' || c == '\\'
 }
 
-// TODO: support first class slices, refactor statics
-const OPERATORS_LEN = 38
 const OPERATORS = [str][
     "=", \\ "==", \\ "!=",
     "&&", \\ "||", \\ "!",
@@ -462,7 +460,7 @@ const OPERATORS = [str][
 ]
 
 fn Lexer::is_operator_start_char(c: u8): bool {
-    for i in 0..OPERATORS_LEN {
+    for i in 0..@const_slice_len(OPERATORS) {
         let operator = *array_at!<str>(OPERATORS, i)
 
         if operator.char_at(0) == c {
