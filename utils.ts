@@ -783,6 +783,10 @@ async function commandTest() {
     });
 
     describe("formatter", async () => {
+        if (process.argv.includes("--skip-fmt")) {
+            return;
+        }
+
         const format = async (fileName = "-i") => {
             const output = await v1Run(["format", fileName]);
             return new TextDecoder().decode(output);

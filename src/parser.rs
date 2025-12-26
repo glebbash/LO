@@ -40,34 +40,24 @@ impl Parser {
     }
 
     pub fn parse_file(&self) -> Result<(), Error> {
-        while self.peek().is_some() {
+        while !self.current().is_terminal() {
             let expr = self.parse_top_level_expr()?;
             self.ast.be_mut().push(expr);
-        }
-
-        if let Some(unexpected) = self.peek() {
-            return Err(Error {
-                message: format!(
-                    "Unexpected top level token: {}, EOF expected",
-                    unexpected.get_value(self.lexer.source)
-                ),
-                loc: unexpected.loc.clone(),
-            });
         }
 
         Ok(())
     }
 
     fn parse_top_level_expr(&self) -> Result<TopLevelExpr, Error> {
-        if let Some(_) = self.eat(Symbol, "export")? {
+        if let Some(_) = self.eat(Symbol, "export") {
             let loc = self.prev().loc.clone();
 
-            if let Some(_) = self.eat(Symbol, "fn")? {
+            if let Some(_) = self.eat(Symbol, "fn") {
                 let fn_def = self.parse_fn_def(true, loc)?;
                 return Ok(TopLevelExpr::FnDef(fn_def));
             }
 
-            if let Some(_) = self.eat(Symbol, "memory")? {
+            if let Some(_) = self.eat(Symbol, "memory") {
                 let memory_def = self.parse_memory_def(true, loc)?;
                 return Ok(TopLevelExpr::MemoryDef(memory_def));
             }
@@ -82,7 +72,7 @@ impl Parser {
             });
         }
 
-        if let Some(_) = self.eat(Symbol, "try")? {
+        if let Some(_) = self.eat(Symbol, "try") {
             let mut loc = self.prev().loc.clone();
 
             self.expect(Symbol, "export")?;
@@ -92,7 +82,7 @@ impl Parser {
             let out_name = self.expect_any(StringLiteral)?.clone();
 
             let mut from_root = false;
-            if let Ok(Some(_)) = self.eat(Symbol, "from") {
+            if let Some(_) = self.eat(Symbol, "from") {
                 self.expect(Symbol, "root")?;
                 from_root = true;
             }
@@ -107,31 +97,31 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "fn")? {
+        if let Some(_) = self.eat(Symbol, "fn") {
             let loc = self.prev().loc.clone();
 
             let fn_def = self.parse_fn_def(false, loc)?;
             return Ok(TopLevelExpr::FnDef(fn_def));
         }
 
-        if let Some(_) = self.eat(Symbol, "memory")? {
+        if let Some(_) = self.eat(Symbol, "memory") {
             let loc = self.prev().loc.clone();
 
             let memory_def = self.parse_memory_def(false, loc)?;
             return Ok(TopLevelExpr::MemoryDef(memory_def));
         }
 
-        if let Some(_) = self.eat(Symbol, "include")? {
+        if let Some(_) = self.eat(Symbol, "include") {
             let mut loc = self.prev().loc.clone();
 
             let file_path = self.expect_any(StringLiteral)?.clone();
             let mut alias = None;
-            if let Ok(Some(_)) = self.eat(Symbol, "as") {
+            if let Some(_) = self.eat(Symbol, "as") {
                 alias = Some(self.parse_ident()?);
             }
 
             let mut with_extern = false;
-            if let Ok(Some(_)) = self.eat(Symbol, "with") {
+            if let Some(_) = self.eat(Symbol, "with") {
                 self.expect(Symbol, "extern")?;
                 with_extern = true;
             }
@@ -146,7 +136,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "import")? {
+        if let Some(_) = self.eat(Symbol, "import") {
             let mut loc = self.prev().loc.clone();
 
             self.expect(Symbol, "from")?;
@@ -155,7 +145,7 @@ impl Parser {
             self.expect(Delim, "{")?;
 
             let mut items = Vec::new();
-            while let None = self.eat(Delim, "}")? {
+            while let None = self.eat(Delim, "}") {
                 let item = self.parse_importable()?;
                 items.push(item);
             }
@@ -169,7 +159,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "global")? {
+        if let Some(_) = self.eat(Symbol, "global") {
             let mut loc = self.prev().loc.clone();
 
             let global_name = self.parse_ident()?;
@@ -186,7 +176,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "struct")? {
+        if let Some(_) = self.eat(Symbol, "struct") {
             let mut loc = self.prev().loc.clone();
 
             let struct_name = self.parse_ident()?;
@@ -194,7 +184,7 @@ impl Parser {
             let mut fields = Vec::new();
 
             self.expect(Delim, "{")?;
-            while let None = self.eat(Delim, "}")? {
+            while let None = self.eat(Delim, "}") {
                 let mut field_loc = self.current().loc.clone();
 
                 let field_name = self.parse_ident()?;
@@ -223,7 +213,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "enum")? {
+        if let Some(_) = self.eat(Symbol, "enum") {
             let mut loc = self.prev().loc.clone();
 
             let enum_name = self.parse_ident()?;
@@ -231,13 +221,13 @@ impl Parser {
             let mut variants = Vec::new();
 
             self.expect(Delim, "{")?;
-            while let None = self.eat(Delim, "}")? {
+            while let None = self.eat(Delim, "}") {
                 let mut variant_loc = self.current().loc.clone();
 
                 let variant_name = self.parse_ident()?;
 
                 let mut variant_type = None;
-                if let Some(_) = self.eat(Delim, "(")? {
+                if let Some(_) = self.eat(Delim, "(") {
                     variant_type = Some(self.parse_type_expr()?);
                     self.expect(Delim, ")")?;
                 }
@@ -264,7 +254,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "type")? {
+        if let Some(_) = self.eat(Symbol, "type") {
             let mut loc = self.prev().loc.clone();
 
             let type_name = self.parse_ident()?;
@@ -280,7 +270,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "const")? {
+        if let Some(_) = self.eat(Symbol, "const") {
             let mut loc = self.prev().loc.clone();
 
             let const_name = self.parse_ident()?;
@@ -296,15 +286,15 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "macro")? {
+        if let Some(_) = self.eat(Symbol, "macro") {
             let mut loc = self.prev().loc.clone();
 
             let macro_name = self.parse_ident()?;
             self.expect(Operator, "!")?;
 
             let mut macro_type_params = Vec::new();
-            if let Some(_) = self.eat(Operator, "<")? {
-                while let None = self.eat(Operator, ">")? {
+            if let Some(_) = self.eat(Operator, "<") {
+                while let None = self.eat(Operator, ">") {
                     let type_param = self.expect_any(Symbol)?;
                     macro_type_params.push(type_param.get_value(self.lexer.source).to_string());
 
@@ -317,7 +307,7 @@ impl Parser {
             let mut macro_params_trailing_comma = false;
             let macro_params = self.parse_fn_params(true, &mut macro_params_trailing_comma)?;
 
-            let return_type = if let Some(_) = self.eat(Operator, ":")? {
+            let return_type = if let Some(_) = self.eat(Operator, ":") {
                 Some(self.parse_type_expr()?)
             } else {
                 None
@@ -366,7 +356,7 @@ impl Parser {
         self.expect(Delim, "{")?;
 
         let mut min_pages = None;
-        if let Some(_) = self.eat(Symbol, "min_pages")? {
+        if let Some(_) = self.eat(Symbol, "min_pages") {
             self.expect(Operator, ":")?;
             let int = self.expect_any(IntLiteral)?;
             let int_value =
@@ -377,12 +367,12 @@ impl Parser {
         }
 
         let mut data_start = None;
-        if let Some(_) = self.eat(Symbol, "data_start")? {
+        if let Some(_) = self.eat(Symbol, "data_start") {
             self.expect(Operator, ":")?;
             let int = self.expect_any(IntLiteral)?;
             let int_value =
                 Lexer::parse_int_literal_value(&int.get_value(self.lexer.source)) as u32;
-            self.eat(Delim, ",")?;
+            self.eat(Delim, ",");
 
             data_start = Some(int_value);
         }
@@ -399,12 +389,12 @@ impl Parser {
     }
 
     fn parse_importable(&self) -> Result<ImportItem, Error> {
-        if let Some(_) = self.eat(Symbol, "fn")? {
+        if let Some(_) = self.eat(Symbol, "fn") {
             let decl = self.parse_fn_decl()?;
             return Ok(ImportItem::FnDecl(decl));
         }
 
-        if let Some(_) = self.eat(Symbol, "memory")? {
+        if let Some(_) = self.eat(Symbol, "memory") {
             let loc = self.prev().loc.clone();
             let memory_def = self.parse_memory_def(false, loc)?;
             return Ok(ImportItem::Memory(memory_def));
@@ -427,7 +417,7 @@ impl Parser {
         let mut fn_params_trailing_comma = false;
         let fn_params = self.parse_fn_params(false, &mut fn_params_trailing_comma)?;
 
-        let return_type = if let Some(_) = self.eat(Operator, ":")? {
+        let return_type = if let Some(_) = self.eat(Operator, ":") {
             Some(self.parse_type_expr()?)
         } else {
             None
@@ -453,13 +443,13 @@ impl Parser {
 
         let _ = self.expect(Delim, "(")?;
 
-        while let None = self.eat(Delim, ")")? {
+        while let None = self.eat(Delim, ")") {
             *trailing_comma = false;
 
             let mut loc = self.current().loc.clone();
 
             let mut param_type = FnParamType::Self_;
-            if let Some(_) = self.eat(Operator, "&")? {
+            if let Some(_) = self.eat(Operator, "&") {
                 param_type = FnParamType::SelfRef;
             }
 
@@ -477,7 +467,7 @@ impl Parser {
 
                 self.expect(Operator, ":")?;
 
-                if let Some(infer) = self.eat(Symbol, "infer")? {
+                if let Some(infer) = self.eat(Symbol, "infer") {
                     if !infer_allowed {
                         return Err(Error {
                             message: format!("Cannot use `infer` outside macro parameter list"),
@@ -517,7 +507,7 @@ impl Parser {
         let mut loc = self.current().loc.clone();
         let primary = self.parse_type_expr_primary()?;
 
-        if let Ok(Some(_)) = self.eat(Symbol, "of") {
+        if let Some(_) = self.eat(Symbol, "of") {
             let container_type = Box::new(primary);
             let item_type = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
@@ -534,14 +524,14 @@ impl Parser {
     fn parse_type_expr_primary(&self) -> Result<TypeExpr, Error> {
         let mut loc = self.current().loc.clone();
 
-        if let Some(_) = self.eat(Operator, "&")? {
+        if let Some(_) = self.eat(Operator, "&") {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::Pointer(TypeExprPointer { pointee, loc }));
         }
 
         // lexer joins two `&` into `&&`
-        if let Some(_) = self.eat(Operator, "&&")? {
+        if let Some(_) = self.eat(Operator, "&&") {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::Pointer(TypeExprPointer {
@@ -553,7 +543,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Operator, "*&")? {
+        if let Some(_) = self.eat(Operator, "*&") {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::SequencePointer(TypeExprSequencePointer {
@@ -562,7 +552,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "Result")? {
+        if let Some(_) = self.eat(Symbol, "Result") {
             self.expect(Operator, "<")?;
             let ok_type = Box::new(self.parse_type_expr()?);
             self.expect(Delim, ",")?;
@@ -589,7 +579,7 @@ impl Parser {
             loc: self.prev().loc.clone(),
         };
 
-        while let None = self.eat(Delim, "}")? {
+        while let None = self.eat(Delim, "}") {
             let expr = self.parse_code_expr(0)?;
             code_block.exprs.push(expr);
         }
@@ -604,7 +594,7 @@ impl Parser {
         let mut primary = self.parse_code_expr_primary()?;
         let mut backslash_start_hint = 0;
 
-        while self.peek().is_some() {
+        while !self.current().is_terminal() {
             let op_symbol = self.current().clone();
 
             let backslash_between = self.has_backslashes_between(
@@ -656,19 +646,19 @@ impl Parser {
     }
 
     fn parse_code_expr_primary(&self) -> Result<CodeExpr, Error> {
-        if let Some(_) = self.eat(Symbol, "true")? {
+        if let Some(_) = self.eat(Symbol, "true") {
             let loc = self.prev().loc.clone();
 
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: true, loc }));
         }
 
-        if let Some(_) = self.eat(Symbol, "false")? {
+        if let Some(_) = self.eat(Symbol, "false") {
             let loc = self.prev().loc.clone();
 
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: false, loc }));
         }
 
-        if let Some(char) = self.eat_any(CharLiteral)?.cloned() {
+        if let Some(char) = self.eat_any(CharLiteral).cloned() {
             return Ok(CodeExpr::CharLiteral(CharLiteralExpr {
                 repr: char.get_value(self.lexer.source).to_string(),
                 value: Lexer::parse_char_literal_value(&char.get_value(self.lexer.source)) as u32,
@@ -676,9 +666,9 @@ impl Parser {
             }));
         };
 
-        if let Some(int) = self.eat_any(IntLiteral)?.cloned() {
+        if let Some(int) = self.eat_any(IntLiteral).cloned() {
             let mut tag = None;
-            if let Some(_) = self.eat(Symbol, "u64")? {
+            if let Some(_) = self.eat(Symbol, "u64") {
                 tag = Some(String::from("u64"));
             }
 
@@ -690,7 +680,7 @@ impl Parser {
             }));
         };
 
-        if let Some(string) = self.eat_any(StringLiteral)?.cloned() {
+        if let Some(string) = self.eat_any(StringLiteral).cloned() {
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
                 value: EscapedString(string.loc.clone()).unescape(self.lexer.source),
                 repr: string.get_value(self.lexer.source).to_string(),
@@ -698,7 +688,7 @@ impl Parser {
             }));
         };
 
-        if let Some(_) = self.eat(Delim, "(")? {
+        if let Some(_) = self.eat(Delim, "(") {
             let mut loc = self.prev().loc.clone();
 
             self.push_ctx(ParsingContext {
@@ -709,7 +699,7 @@ impl Parser {
 
             self.pop_ctx();
 
-            let has_trailing_comma = self.eat(Delim, ",")?.is_some();
+            let has_trailing_comma = self.eat(Delim, ",").is_some();
             self.expect(Delim, ")")?;
 
             loc.end_pos = self.prev().loc.end_pos;
@@ -721,7 +711,7 @@ impl Parser {
             }));
         };
 
-        if let Some(_) = self.eat(Symbol, "let")? {
+        if let Some(_) = self.eat(Symbol, "let") {
             let mut loc = self.prev().loc.clone();
 
             let local_name = self.parse_ident()?;
@@ -737,7 +727,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "return")? {
+        if let Some(_) = self.eat(Symbol, "return") {
             let mut loc = self.prev().loc.clone();
 
             let mut expr = None;
@@ -750,7 +740,7 @@ impl Parser {
             return Ok(CodeExpr::Return(ReturnExpr { expr, loc }));
         };
 
-        if let Some(_) = self.eat(Symbol, "if")? {
+        if let Some(_) = self.eat(Symbol, "if") {
             let mut loc = self.prev().loc.clone();
 
             self.push_ctx(ParsingContext {
@@ -758,7 +748,7 @@ impl Parser {
             });
 
             let cond: IfCond;
-            if let Some(_) = self.eat(Symbol, "match")? {
+            if let Some(_) = self.eat(Symbol, "match") {
                 cond = IfCond::Match(Box::new(self.parse_match_header()?));
             } else {
                 cond = IfCond::Expr(Box::new(self.parse_code_expr(0)?));
@@ -769,7 +759,7 @@ impl Parser {
             let then_block = Box::new(self.parse_code_block()?);
 
             let mut else_block = ElseBlock::None;
-            if let Some(_) = self.eat(Symbol, "else")? {
+            if let Some(_) = self.eat(Symbol, "else") {
                 if self.current().is(Symbol, "if", self.lexer.source) {
                     let if_expr = self.parse_code_expr(0)?;
                     else_block = ElseBlock::ElseIf(Box::new(if_expr));
@@ -789,7 +779,7 @@ impl Parser {
             }));
         };
 
-        if let Some(_) = self.eat(Symbol, "match")? {
+        if let Some(_) = self.eat(Symbol, "match") {
             let mut loc = self.prev().loc.clone();
 
             let match_header = self.parse_match_header()?;
@@ -805,7 +795,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "loop")? {
+        if let Some(_) = self.eat(Symbol, "loop") {
             let mut loc = self.prev().loc.clone();
 
             let body = self.parse_code_block()?;
@@ -819,7 +809,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "while")? {
+        if let Some(_) = self.eat(Symbol, "while") {
             let mut loc = self.prev().loc.clone();
 
             self.push_ctx(ParsingContext {
@@ -839,7 +829,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "for")? {
+        if let Some(_) = self.eat(Symbol, "for") {
             let mut loc = self.prev().loc.clone();
 
             self.push_ctx(ParsingContext {
@@ -868,19 +858,19 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "break")? {
+        if let Some(_) = self.eat(Symbol, "break") {
             let loc = self.prev().loc.clone();
 
             return Ok(CodeExpr::Break(BreakExpr { loc }));
         }
 
-        if let Some(_) = self.eat(Symbol, "continue")? {
+        if let Some(_) = self.eat(Symbol, "continue") {
             let loc = self.prev().loc.clone();
 
             return Ok(CodeExpr::Continue(ContinueExpr { loc }));
         }
 
-        if let Some(_) = self.eat(Symbol, "do")? {
+        if let Some(_) = self.eat(Symbol, "do") {
             let mut loc = self.prev().loc.clone();
 
             let body = Box::new(self.parse_code_expr(0)?);
@@ -897,7 +887,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Operator, "@")? {
+        if let Some(_) = self.eat(Operator, "@") {
             let mut loc = self.prev().loc.clone();
 
             let fn_name = self.parse_ident()?;
@@ -914,7 +904,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "dbg")? {
+        if let Some(_) = self.eat(Symbol, "dbg") {
             let mut loc = self.prev().loc.clone();
 
             let message = self.expect_any(StringLiteral)?.clone();
@@ -925,7 +915,7 @@ impl Parser {
             return Ok(CodeExpr::Dbg(DbgExpr { message, loc }));
         }
 
-        if let Some(_) = self.eat(Symbol, "defer")? {
+        if let Some(_) = self.eat(Symbol, "defer") {
             let mut loc = self.prev().loc.clone();
 
             let expr = self.parse_code_expr(0)?;
@@ -938,8 +928,57 @@ impl Parser {
             }));
         }
 
-        if let Some(token) = self.peek().cloned() {
-            if let Some(op) = PrefixOp::parse(token, self.lexer.source) {
+        if let Some(_) = self.eat(Symbol, "sizeof") {
+            let mut loc = self.prev().loc.clone();
+
+            let type_expr = self.parse_type_expr()?;
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::Sizeof(SizeofExpr { type_expr, loc }));
+        };
+
+        if let Some(_) = self.eat(Delim, "[") {
+            let mut loc = self.prev().loc.clone();
+
+            let item_type = self.parse_type_expr()?;
+            self.expect(Delim, "]")?;
+
+            self.expect(Delim, "[")?;
+            let mut items = Vec::new();
+            while let None = self.eat(Delim, "]") {
+                let item = self.parse_code_expr(0)?;
+                items.push(item);
+
+                if !self.current().is(Delim, "]", self.lexer.source) {
+                    self.expect(Delim, ",")?;
+                }
+            }
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::ArrayLiteral(ArrayLiteralExpr {
+                item_type,
+                items,
+                loc,
+            }));
+        }
+
+        if self.eat(Operator, ":").is_some() || self.eat(Delim, "{").is_some() {
+            return Err(Error {
+                message: format!(
+                    "Unexpected character '{}'. \
+                    If you were trying to create a struct in this context \
+                    surround it with parens.",
+                    self.prev().get_value(self.lexer.source)
+                ),
+                loc: self.prev().loc.clone(),
+            });
+        }
+
+        let op_token = self.current();
+        if !op_token.is_terminal() {
+            if let Some(op) = PrefixOp::parse(op_token.clone(), self.lexer.source) {
                 self.next(); // skip operator
 
                 let mut loc = self.prev().loc.clone();
@@ -967,61 +1006,13 @@ impl Parser {
             }
         }
 
-        if let Some(_) = self.eat(Symbol, "sizeof")? {
-            let mut loc = self.prev().loc.clone();
-
-            let type_expr = self.parse_type_expr()?;
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(CodeExpr::Sizeof(SizeofExpr { type_expr, loc }));
-        };
-
-        if let Some(_) = self.eat(Delim, "[")? {
-            let mut loc = self.prev().loc.clone();
-
-            let item_type = self.parse_type_expr()?;
-            self.expect(Delim, "]")?;
-
-            self.expect(Delim, "[")?;
-            let mut items = Vec::new();
-            while let None = self.eat(Delim, "]")? {
-                let item = self.parse_code_expr(0)?;
-                items.push(item);
-
-                if !self.current().is(Delim, "]", self.lexer.source) {
-                    self.expect(Delim, ",")?;
-                }
-            }
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(CodeExpr::ArrayLiteral(ArrayLiteralExpr {
-                item_type,
-                items,
-                loc,
-            }));
-        }
-
-        if self.eat(Operator, ":")?.is_some() || self.eat(Delim, "{")?.is_some() {
-            return Err(Error {
-                message: format!(
-                    "Unexpected character '{}'. \
-                    If you were trying to create a struct in this context \
-                    surround it with parens.",
-                    self.prev().get_value(self.lexer.source)
-                ),
-                loc: self.prev().loc.clone(),
-            });
-        }
-
         let ident = self.parse_ident()?;
 
         if ident.repr == "Ok" || ident.repr == "Err" {
             let mut loc = ident.loc.clone();
 
             let mut result_type = None;
-            if let Some(_) = self.eat(Operator, ":")? {
+            if let Some(_) = self.eat(Operator, ":") {
                 self.expect(Operator, "<")?;
                 let ok = self.parse_type_expr()?;
                 self.expect(Delim, ",")?;
@@ -1033,7 +1024,7 @@ impl Parser {
 
             self.expect(Delim, "(")?;
             let mut value = None;
-            if let None = self.eat(Delim, ")")? {
+            if let None = self.eat(Delim, ")") {
                 value = Some(Box::new(self.parse_code_expr(0)?));
                 self.expect(Delim, ")")?;
             }
@@ -1075,7 +1066,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Operator, "!")? {
+        if let Some(_) = self.eat(Operator, "!") {
             let mut loc = ident.loc.clone();
 
             let type_args = self.parse_macro_type_args()?;
@@ -1121,7 +1112,7 @@ impl Parser {
             ident.parts.push(ident_part.loc.clone());
             ident.repr += ident_part.get_value(self.lexer.source);
 
-            if let Ok(Some(_)) = self.eat(Operator, "::") {
+            if let Some(_) = self.eat(Operator, "::") {
                 ident.repr += "::";
                 continue;
             }
@@ -1143,7 +1134,7 @@ impl Parser {
         let mut has_trailing_comma = false;
 
         self.expect(Delim, "{")?;
-        while let None = self.eat(Delim, "}")? {
+        while let None = self.eat(Delim, "}") {
             has_trailing_comma = false;
 
             let mut field_loc = self.current().loc.clone();
@@ -1181,7 +1172,7 @@ impl Parser {
         let mut items = Vec::new();
 
         self.expect(Delim, "(")?;
-        while let None = self.eat(Delim, ")")? {
+        while let None = self.eat(Delim, ")") {
             has_trailing_comma = false;
 
             items.push(self.parse_code_expr(0)?);
@@ -1201,11 +1192,11 @@ impl Parser {
     fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, Error> {
         let mut type_args = Vec::new();
 
-        let Some(_) = self.eat(Operator, "<")? else {
+        let Some(_) = self.eat(Operator, "<") else {
             return Ok(type_args);
         };
 
-        while let None = self.eat(Operator, ">")? {
+        while let None = self.eat(Operator, ">") {
             type_args.push(self.parse_type_expr()?);
 
             if !self.current().is(Operator, ">", self.lexer.source) {
@@ -1291,7 +1282,7 @@ impl Parser {
                     }));
                 }
 
-                if let Some(_) = self.eat(Operator, "!")? {
+                if let Some(_) = self.eat(Operator, "!") {
                     let type_args = self.parse_macro_type_args()?;
                     let args = self.parse_fn_args()?;
 
@@ -1392,7 +1383,7 @@ impl Parser {
             });
         }
 
-        Ok(self.next().unwrap())
+        Ok(self.next())
     }
 
     fn expect(&self, type_: TokenType, value: &str) -> Result<&Token, Error> {
@@ -1407,54 +1398,41 @@ impl Parser {
             });
         }
 
-        Ok(self.next().unwrap())
+        Ok(self.next())
     }
 
-    fn eat_any(&self, type_: TokenType) -> Result<Option<&Token>, Error> {
-        let was_some = self.peek().is_some();
-        match self.expect_any(type_) {
-            Ok(t) => Ok(Some(t)),
-            Err(_) if was_some => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-
-    fn eat(&self, type_: TokenType, value: &str) -> Result<Option<&Token>, Error> {
-        let was_some = self.peek().is_some();
-        match self.expect(type_, value) {
-            Ok(t) => Ok(Some(t)),
-            Err(_) if was_some => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-
-    fn peek(&self) -> Option<&Token> {
-        self.look(0)
-    }
-
-    fn current(&self) -> &Token {
-        self.look(0)
-            .unwrap_or_else(|| self.lexer.tokens.last().unwrap())
-    }
-
-    fn prev(&self) -> &Token {
-        self.look(-1)
-            .unwrap_or_else(|| self.lexer.tokens.last().unwrap())
-    }
-
-    fn look(&self, relative_offset: isize) -> Option<&Token> {
-        let index = (*self.tokens_processed.borrow() as isize + relative_offset) as usize;
-
-        // terminal token is never returned
-        if index >= self.lexer.tokens.len() - 1 {
+    fn eat_any(&self, type_: TokenType) -> Option<&Token> {
+        if !self.current().is_any(type_) {
             return None;
         }
 
-        Some(&self.lexer.tokens[index])
+        Some(self.next())
     }
 
-    fn next(&self) -> Option<&Token> {
-        let token = self.peek();
+    fn eat(&self, type_: TokenType, value: &str) -> Option<&Token> {
+        if !self.current().is(type_, value, self.lexer.source) {
+            return None;
+        }
+
+        Some(self.next())
+    }
+
+    // return current or terminal token
+    fn current(&self) -> &Token {
+        let mut index = *self.tokens_processed.borrow();
+        if index >= self.lexer.tokens.len() - 1 {
+            index = self.lexer.tokens.len() - 1;
+        }
+
+        &self.lexer.tokens[index]
+    }
+
+    fn prev(&self) -> &Token {
+        &self.lexer.tokens[*self.tokens_processed.borrow() - 1]
+    }
+
+    fn next(&self) -> &Token {
+        let token = self.current();
         *self.tokens_processed.borrow_mut() += 1;
         token
     }

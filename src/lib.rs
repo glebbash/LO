@@ -81,6 +81,8 @@ pub extern "C" fn _start() {
     // for debug purposes only, not public api
     if command == "lex" {
         let mut compiler = Compiler::new();
+        compiler.in_single_file_mode = true;
+
         let Some(module) = compiler.relax_mut().include(file_name, &Loc::internal()) else {
             proc_exit(1)
         };

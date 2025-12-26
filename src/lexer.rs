@@ -27,6 +27,10 @@ impl Token {
         return self.loc.read_span(source);
     }
 
+    pub fn is_terminal(&self) -> bool {
+        self.type_ == TokenType::Terminal
+    }
+
     pub fn is_any(&self, type_: TokenType) -> bool {
         self.type_ == type_
     }
