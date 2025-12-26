@@ -1758,7 +1758,7 @@ impl Compiler {
         }
     }
 
-    // TODO: make this report errors instead of returning first error
+    // TODO: this should report errors more (case-by-case decision)
     fn codegen(
         &self,
         ctx: &mut ExprContext,
