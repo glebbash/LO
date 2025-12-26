@@ -837,6 +837,11 @@ impl Compiler {
                             loc: fn_decl.fn_name.loc.clone(),
                         });
 
+                        let method_name = fn_decl.fn_name.parts.last().unwrap();
+                        let external_fn_name = method_name
+                            .read_span(module.parser.lexer.source)
+                            .to_string();
+
                         self.functions.push(FnInfo {
                             fn_name: fn_decl.fn_name.repr.clone(),
                             fn_type: FnType {
@@ -846,7 +851,7 @@ impl Compiler {
                             fn_params: Vec::new(),
                             fn_source: FnSource::Host {
                                 module_name: module_name.clone(),
-                                external_fn_name: fn_decl.fn_name.parts.last().unwrap().clone(),
+                                external_fn_name,
                             },
                             exported_as: Vec::new(),
                             wasm_fn_index: u32::MAX, // not known at this point
@@ -1164,6 +1169,9 @@ impl Compiler {
                         unreachable!()
                     };
 
+                    let self_type =
+                        self.get_fn_self_type(&fn_def.decl.fn_name, &fn_def.decl.fn_params);
+
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
                         for var in &ctx.current_scope().locals {
                             if var.local_name == fn_param.param_name.repr {
@@ -1178,8 +1186,7 @@ impl Compiler {
                             }
                         }
 
-                        let param_type =
-                            self.get_fn_param_type(&module.ctx, &fn_def.decl.fn_name, fn_param);
+                        let param_type = self.get_fn_param_type(&module.ctx, &self_type, fn_param);
                         let param_type = catch!(param_type, err, {
                             self.report_error(&err);
                             continue 'param_loop;
@@ -1247,9 +1254,11 @@ impl Compiler {
                         };
                         let fn_info = self.functions[item.collection_index].relax_mut();
 
+                        let self_type = self.get_fn_self_type(&fn_decl.fn_name, &fn_decl.fn_params);
+
                         for fn_param in &fn_decl.fn_params {
                             let param_type =
-                                self.get_fn_param_type(&module.ctx, &fn_decl.fn_name, fn_param);
+                                self.get_fn_param_type(&module.ctx, &self_type, fn_param);
                             let param_type = catch!(param_type, err, {
                                 self.report_error(&err);
                                 continue 'items;
@@ -1611,27 +1620,65 @@ impl Compiler {
         Ok(())
     }
 
+    fn get_fn_self_type(&self, fn_name: &IdentExpr, fn_params: &Vec<FnParam>) -> Option<Type> {
+        let mut has_self_param = false;
+        for fn_param in fn_params {
+            let (FnParamType::Self_ | FnParamType::SelfRef) = fn_param.param_type else {
+                continue;
+            };
+
+            has_self_param = true;
+
+            if fn_name.parts.len() == 1 {
+                self.report_error(&Error {
+                    message: format!("Cannot use self param in non-method function"),
+                    loc: fn_param.loc.clone(),
+                });
+                return Some(Type::Never);
+            }
+        }
+        if !has_self_param {
+            return None;
+        }
+
+        let fn_module = self
+            .get_module_by_file_index(fn_name.loc.file_index)
+            .unwrap();
+        let fn_source = fn_module.parser.lexer.source;
+
+        let mut self_type_name = String::from(fn_name.parts[0].read_span(fn_source));
+        for i in 1..fn_name.parts.len() - 1 {
+            self_type_name += "::";
+            self_type_name += fn_name.parts[i].read_span(fn_source);
+        }
+
+        let mut self_type_loc = fn_name.loc.clone();
+        self_type_loc.end_pos = self_type_loc.pos;
+        self_type_loc.end_pos.offset += self_type_name.len();
+        self_type_loc.end_pos.col += self_type_name.len();
+
+        let self_type = catch!(
+            self.get_type_or_err(&self_type_name, &self_type_loc),
+            err,
+            {
+                self.report_error(&err);
+                return Some(Type::Never);
+            }
+        );
+
+        Some(self_type)
+    }
+
     fn get_fn_param_type(
         &self,
         ctx: &ExprContext,
-        fn_name: &IdentExpr,
+        self_type: &Option<Type>,
         fn_param: &FnParam,
     ) -> Result<Type, Error> {
         match &fn_param.param_type {
             FnParamType::Self_ | FnParamType::SelfRef => {
-                if fn_name.parts.len() == 1 {
-                    return Err(Error {
-                        message: format!("Cannot use self param in non-method function"),
-                        loc: fn_param.loc.clone(),
-                    });
-                }
-
-                let self_type_name = &fn_name.parts[0..&fn_name.parts.len() - 1].join("::");
-                let mut self_type_loc = fn_name.loc.clone();
-                self_type_loc.end_pos = self_type_loc.pos;
-                self_type_loc.end_pos.offset += self_type_name.len();
-                self_type_loc.end_pos.col += self_type_name.len();
-                let self_type = self.get_type_or_err(self_type_name, &self_type_loc)?;
+                // SAFETY: `get_fn_self_type` does the check
+                let self_type = self_type.clone().unwrap();
 
                 if let FnParamType::Self_ = fn_param.param_type {
                     return Ok(self_type);
@@ -1650,7 +1697,7 @@ impl Compiler {
         return self.build_type_check_ref(ctx, type_expr, true, &Loc::internal());
     }
 
-    // builds a type asserting it doesn't have infinite size
+    // builds a type, asserting that it doesn't have infinite size
     fn build_type_check_ref(
         &self,
         ctx: &ExprContext,
@@ -3242,12 +3289,14 @@ impl Compiler {
             ctx.current_scope_mut().macro_args.push(const_def);
         }
 
+        let self_type = self.get_fn_self_type(&macro_def.macro_name, &macro_def.macro_params);
+
         let mut macro_types = Vec::<Type>::new();
         for macro_param in &macro_def.macro_params {
             let macro_type = if let FnParamType::Infer { name } = &macro_param.param_type {
                 ctx.get_macro_type_arg(name).unwrap().clone()
             } else {
-                self.get_fn_param_type(ctx, &macro_def.macro_name, macro_param)?
+                self.get_fn_param_type(ctx, &self_type, macro_param)?
             };
             macro_types.push(macro_type);
         }

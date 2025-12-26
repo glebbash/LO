@@ -297,7 +297,7 @@ pub struct ReturnExpr {
 
 pub struct IdentExpr {
     pub repr: String,
-    pub parts: Vec<String>,
+    pub parts: Vec<Loc>,
     pub loc: Loc,
 }
 

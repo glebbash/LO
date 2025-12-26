@@ -1127,9 +1127,7 @@ impl Parser {
 
         loop {
             let ident_part = self.expect_any(Symbol)?;
-            ident
-                .parts
-                .push(ident_part.get_value(self.lexer.source).to_string());
+            ident.parts.push(ident_part.loc.clone());
             ident.repr += ident_part.get_value(self.lexer.source);
 
             if let Ok(Some(_)) = self.eat(Operator, "::") {
