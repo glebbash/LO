@@ -1286,32 +1286,26 @@ impl Compiler {
                     };
                     let global = self.globals[item.collection_index].relax_mut();
 
-                    let value_type = match &global_def.global_value {
-                        GlobalDefValue::Expr(expr) => {
-                            catch!(self.ensure_const_expr(expr), err, {
-                                self.report_error(&err);
-                            });
+                    catch!(self.ensure_const_expr(&global_def.global_value), err, {
+                        self.report_error(&err);
+                    });
 
-                            let value_type = self.get_expr_type(&module.ctx, expr);
-                            let value_type = catch!(value_type, err, {
-                                self.report_error(&err);
-                                continue;
-                            });
-                            let value_comp_count = self.count_wasm_type_components(&value_type);
-                            if value_comp_count != 1 {
-                                self.report_error(&Error {
-                                    message: format!(
-                                        "Cannot define global with non-primitive type {}",
-                                        TypeFmt(self, &value_type)
-                                    ),
-                                    loc: global_def.loc.clone(),
-                                });
-                                continue;
-                            }
-                            value_type
-                        }
-                        GlobalDefValue::DataSize => Type::U32,
-                    };
+                    let value_type = self.get_expr_type(&module.ctx, &global_def.global_value);
+                    let value_type = catch!(value_type, err, {
+                        self.report_error(&err);
+                        continue;
+                    });
+                    let value_comp_count = self.count_wasm_type_components(&value_type);
+                    if value_comp_count != 1 {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Cannot define global with non-primitive type {}",
+                                TypeFmt(self, &value_type)
+                            ),
+                            loc: global_def.loc.clone(),
+                        });
+                        continue;
+                    }
 
                     if self.in_inspection_mode {
                         let global_name = &global_def.global_name.repr;
@@ -1518,18 +1512,14 @@ impl Compiler {
 
             let mut initial_value = WasmExpr { instrs: Vec::new() };
 
-            match &global.def_expr.global_value {
-                GlobalDefValue::Expr(expr) => {
-                    let res =
-                        self.codegen(global.module_ctx.be_mut(), &mut initial_value.instrs, expr);
-                    catch!(res, err, {
-                        self.report_error(&err);
-                    });
-                }
-                GlobalDefValue::DataSize => initial_value.instrs.push(WasmInstr::I32Const {
-                    value: *self.data_size.borrow() as i32,
-                }),
-            };
+            let res = self.codegen(
+                global.module_ctx.be_mut(),
+                &mut initial_value.instrs,
+                &global.def_expr.global_value,
+            );
+            catch!(res, err, {
+                self.report_error(&err);
+            });
 
             wasm_module.globals.push(WasmGlobal {
                 mutable: true,
@@ -2523,6 +2513,27 @@ impl Compiler {
                     }
 
                     instrs.push(WasmInstr::MemoryCopy);
+                    return Ok(());
+                }
+
+                if fn_name.repr == "data_size" {
+                    if args.items.len() != 0 || type_args.len() != 0 {
+                        return Err(Error {
+                            message: format!("@{}() accepts no arguments", fn_name.repr),
+                            loc: fn_name.loc.clone(),
+                        });
+                    }
+
+                    if let Some(_) = ctx.fn_index {
+                        return Err(Error {
+                            message: format!("@{}() can only be used in globals", fn_name.repr),
+                            loc: fn_name.loc.clone(),
+                        });
+                    }
+
+                    instrs.push(WasmInstr::I32Const {
+                        value: *self.data_size.borrow() as i32,
+                    });
                     return Ok(());
                 }
 
@@ -3964,6 +3975,10 @@ impl Compiler {
 
                 if fn_name.repr == "memory_copy" {
                     return Ok(Type::Void);
+                }
+
+                if fn_name.repr == "data_size" {
+                    return Ok(Type::U32);
                 }
 
                 if fn_name.repr == "const_slice_len" {

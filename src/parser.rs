@@ -175,16 +175,7 @@ impl Parser {
             let global_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
 
-            let global_value = if let Some(_) = self.eat(Operator, "@")? {
-                self.expect(Symbol, "data_size")?;
-                self.expect(Delim, "(")?;
-                self.expect(Delim, ")")?;
-
-                GlobalDefValue::DataSize
-            } else {
-                let expr = self.parse_code_expr(0)?;
-                GlobalDefValue::Expr(expr)
-            };
+            let global_value = self.parse_code_expr(0)?;
 
             loc.end_pos = self.prev().loc.end_pos;
 

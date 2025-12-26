@@ -78,13 +78,8 @@ impl ImportItem {
 
 pub struct GlobalDefExpr {
     pub global_name: IdentExpr,
-    pub global_value: GlobalDefValue,
+    pub global_value: CodeExpr,
     pub loc: Loc,
-}
-
-pub enum GlobalDefValue {
-    Expr(CodeExpr),
-    DataSize,
 }
 
 pub struct StructDefExpr {
