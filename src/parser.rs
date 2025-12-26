@@ -611,15 +611,21 @@ impl Parser {
 
     fn parse_code_expr(&self, min_bp: u32) -> Result<CodeExpr, Error> {
         let mut primary = self.parse_code_expr_primary()?;
+        let mut backslash_start_hint = 0;
 
         while self.peek().is_some() {
             let op_symbol = self.current().clone();
-            if op_symbol.loc.pos.line != primary.loc().end_pos.line
-                && !self
-                    .has_backslashes_between(primary.loc().end_pos.offset, op_symbol.loc.pos.offset)
-            {
+
+            let backslash_between = self.has_backslashes_between(
+                &mut backslash_start_hint,
+                primary.loc().end_pos.offset,
+                op_symbol.loc.pos.offset,
+            );
+
+            if op_symbol.loc.pos.line != primary.loc().end_pos.line && !backslash_between {
                 break;
             }
+
             let Some(op) = InfixOp::parse(op_symbol, self.lexer.source) else {
                 break;
             };
@@ -635,14 +641,26 @@ impl Parser {
         Ok(primary)
     }
 
-    // TODO: this could be optimized by storing backslashes checked index but it's not that simple
-    fn has_backslashes_between(&self, offset1: usize, offset2: usize) -> bool {
-        for backslash in &self.lexer.backslashes {
-            if backslash.pos.offset >= offset1 && backslash.end_pos.offset <= offset2 {
-                return true;
+    fn has_backslashes_between(
+        &self,
+        start_hint: &mut usize,
+        offset_start: usize,
+        offset_end: usize,
+    ) -> bool {
+        let mut i = *start_hint;
+
+        while i < self.lexer.backslashes.len() {
+            let backslash = &self.lexer.backslashes[i];
+            if backslash.pos.offset < offset_start {
+                i += 1;
+                continue;
             }
+
+            *start_hint = i;
+            return backslash.end_pos.offset <= offset_end;
         }
 
+        *start_hint = i;
         false
     }
 
