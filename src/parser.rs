@@ -18,7 +18,7 @@ pub struct Parser {
 
     // state
     pub tokens_processed: RefCell<usize>,
-    pub contexts: Vec<ParsingContext>,
+    pub context_stack: Vec<ParsingContext>,
 
     // output
     pub ast: Vec<TopLevelExpr>,
@@ -26,15 +26,15 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(lexer: Lexer) -> Self {
-        let mut contexts = Vec::new();
-        contexts.push(ParsingContext {
+        let mut context_stack = Vec::new();
+        context_stack.push(ParsingContext {
             struct_literal_allowed: true,
         });
 
         Self {
             lexer,
             tokens_processed: RefCell::new(0),
-            contexts,
+            context_stack,
             ast: Vec::new(),
         }
     }
@@ -1045,7 +1045,7 @@ impl Parser {
             }));
         }
 
-        let ctx = self.contexts.last().unwrap();
+        let ctx = self.context_stack.last().unwrap();
         if self.current().is(Delim, "{", self.lexer.source) && ctx.struct_literal_allowed {
             let loc = ident.loc.clone();
             let struct_literal = self.parse_struct_literal(ident, loc)?;
@@ -1370,11 +1370,11 @@ impl Parser {
     // utils
 
     fn push_ctx(&self, ctx: ParsingContext) {
-        self.contexts.be_mut().push(ctx);
+        self.context_stack.be_mut().push(ctx);
     }
 
     fn pop_ctx(&self) {
-        self.contexts.be_mut().pop();
+        self.context_stack.be_mut().pop();
     }
 
     fn expect_any(&self, type_: TokenType) -> Result<&Token, Error> {
