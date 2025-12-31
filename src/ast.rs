@@ -218,6 +218,7 @@ pub enum CodeExpr {
     // literals
     BoolLiteral(BoolLiteralExpr),
     CharLiteral(CharLiteralExpr),
+    NullLiteral(NullLiteralExpr),
     IntLiteral(IntLiteralExpr),
     StringLiteral(StringLiteralExpr),
     StructLiteral(StructLiteralExpr),
@@ -269,6 +270,10 @@ pub struct BoolLiteralExpr {
 pub struct CharLiteralExpr {
     pub repr: String,
     pub value: u32,
+    pub loc: Loc,
+}
+
+pub struct NullLiteralExpr {
     pub loc: Loc,
 }
 
@@ -506,6 +511,7 @@ impl CodeExpr {
         match self {
             CodeExpr::BoolLiteral(e) => &e.loc,
             CodeExpr::CharLiteral(e) => &e.loc,
+            CodeExpr::NullLiteral(e) => &e.loc,
             CodeExpr::IntLiteral(e) => &e.loc,
             CodeExpr::StringLiteral(e) => &e.loc,
             CodeExpr::ArrayLiteral(e) => &e.loc,

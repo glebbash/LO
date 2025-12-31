@@ -3,6 +3,9 @@ include "../lib/fs.lo" with extern
 include "../lib/wasi.lo"
 include "../lib/print.lo"
 
+type VoidError = u32
+const VoidError::VALUE = 1 as &VoidError
+
 struct Pos {
     offset: u32,
     line: u32,
@@ -165,7 +168,7 @@ fn stderr_write(message: str) {
     eprint(message)
 }
 
-global STDOUT_BUFFER = NULL as &Vec
+global STDOUT_BUFFER = null as &Vec
 const STDOUT_BUFFER_SIZE = 4096
 
 fn stdout_enable_buffering() {
@@ -173,14 +176,14 @@ fn stdout_enable_buffering() {
 }
 
 fn stdout_disable_buffering() {
-    if STDOUT_BUFFER != NULL {
+    if STDOUT_BUFFER != null {
         if STDOUT_BUFFER.size != 0 {
             let _ = fprint_str(wasi::FD_STDOUT, STDOUT_BUFFER as &str)
         }
     }
 
     STDOUT_BUFFER.free()
-    STDOUT_BUFFER = NULL
+    STDOUT_BUFFER = null
 }
 
 fn stdout_writeln(message: str) {
@@ -189,7 +192,7 @@ fn stdout_writeln(message: str) {
 }
 
 fn stdout_write(message: str) {
-    if STDOUT_BUFFER == NULL {
+    if STDOUT_BUFFER == null {
         print(message)
         return
     }

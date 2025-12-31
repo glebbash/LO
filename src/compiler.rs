@@ -10,6 +10,7 @@ use core::{cell::RefCell, fmt::Write};
 #[derive(Clone, PartialEq)]
 pub enum Type {
     Never,
+    Null,
     Void,
     Bool,
     U8,
@@ -61,6 +62,7 @@ impl Type {
     fn format(&self, f: &mut core::fmt::Formatter<'_>, compiler: &Compiler) -> core::fmt::Result {
         match self {
             Type::Never => f.write_str("never"),
+            Type::Null => f.write_str("null"),
             Type::Void => f.write_str("void"),
             Type::Bool => f.write_str("bool"),
             Type::U8 => f.write_str("u8"),
@@ -1772,6 +1774,9 @@ impl Compiler {
                     value: *value as i32,
                 });
             }
+            CodeExpr::NullLiteral(NullLiteralExpr { loc: _ }) => {
+                instrs.push(WasmInstr::I32Const { value: 0 });
+            }
             CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: _,
                 value,
@@ -1828,7 +1833,7 @@ impl Compiler {
                     }
 
                     let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
-                    if field_value_type != struct_field.field_type {
+                    if !self.is_type_compatible(&struct_field.field_type, &field_value_type) {
                         return Err(Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
@@ -2252,8 +2257,7 @@ impl Compiler {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let rhs_type = self.get_expr_type(ctx, rhs)?;
 
-                // a hack to make &T == &void work
-                if !self.is_type_compatible(&rhs_type, &lhs_type) {
+                if !self.is_type_compatible(&lhs_type, &rhs_type) {
                     return Err(Error {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
@@ -2656,7 +2660,7 @@ impl Compiler {
                 };
 
                 let fn_return_type = &self.functions[fn_index].fn_type.output;
-                if return_type != *fn_return_type && return_type != Type::Never {
+                if !self.is_type_compatible(fn_return_type, &return_type) {
                     return Err(Error {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
@@ -3557,6 +3561,7 @@ impl Compiler {
             }
             Type::U32
             | Type::I32
+            | Type::Null
             | Type::Pointer { pointee: _ }
             | Type::SequencePointer { pointee: _ } => {
                 if is_store {
@@ -3717,6 +3722,7 @@ impl Compiler {
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(Type::Bool),
             CodeExpr::CharLiteral(_) => Ok(Type::U8),
+            CodeExpr::NullLiteral(_) => Ok(Type::Null),
             CodeExpr::IntLiteral(IntLiteralExpr {
                 repr: _,
                 value: _,
@@ -3881,6 +3887,7 @@ impl Compiler {
                         Type::U32 => Ok(Type::I32),
                         Type::U64 => Ok(Type::I64),
                         Type::Never
+                        | Type::Null
                         | Type::Void
                         | Type::Bool
                         | Type::I8
@@ -4173,6 +4180,7 @@ impl Compiler {
         match expr {
             CodeExpr::BoolLiteral(_)
             | CodeExpr::CharLiteral(_)
+            | CodeExpr::NullLiteral(_)
             | CodeExpr::IntLiteral(_)
             | CodeExpr::StringLiteral(_)
             | CodeExpr::StructLiteral(_)
@@ -5007,8 +5015,7 @@ impl Compiler {
         value_type: &Type,
     ) {
         match value_type {
-            Type::Never => {}
-            Type::Void => {}
+            Type::Never | Type::Void => {}
             Type::Bool
             | Type::U8
             | Type::I8
@@ -5016,6 +5023,7 @@ impl Compiler {
             | Type::I16
             | Type::U32
             | Type::I32
+            | Type::Null
             | Type::Pointer { pointee: _ }
             | Type::SequencePointer { pointee: _ } => instrs.push(WasmInstr::I32Const { value: 0 }),
             Type::U64 | Type::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
@@ -5066,6 +5074,10 @@ impl Compiler {
 
     fn is_type_compatible(&self, slot: &Type, value: &Type) -> bool {
         if let Type::Pointer { pointee } = slot {
+            if *value == Type::Null {
+                return true;
+            }
+
             if **pointee == Type::Void {
                 if let Type::Pointer { pointee: _ } = value {
                     return true;
@@ -5077,20 +5089,24 @@ impl Compiler {
             }
         }
 
+        if *value == Type::Never {
+            return true;
+        }
+
         slot == value
     }
 
     fn lower_type(&self, lo_type: &Type, wasm_types: &mut Vec<WasmType>) {
         match lo_type {
-            Type::Never => {}
-            Type::Void => {}
-            Type::Bool => wasm_types.push(WasmType::I32),
-            Type::U8 => wasm_types.push(WasmType::I32),
-            Type::I8 => wasm_types.push(WasmType::I32),
-            Type::U16 => wasm_types.push(WasmType::I32),
-            Type::I16 => wasm_types.push(WasmType::I32),
-            Type::U32 => wasm_types.push(WasmType::I32),
-            Type::I32 => wasm_types.push(WasmType::I32),
+            Type::Never | Type::Void => {}
+            Type::Null
+            | Type::Bool
+            | Type::U8
+            | Type::I8
+            | Type::U16
+            | Type::I16
+            | Type::U32
+            | Type::I32 => wasm_types.push(WasmType::I32),
             Type::F32 => wasm_types.push(WasmType::F32),
             Type::U64 => wasm_types.push(WasmType::I64),
             Type::I64 => wasm_types.push(WasmType::I64),
@@ -5141,6 +5157,7 @@ impl Compiler {
             Type::U32
             | Type::I32
             | Type::F32
+            | Type::Null
             | Type::Pointer { pointee: _ }
             | Type::SequencePointer { pointee: _ } => {
                 layout.primities_count += 1;

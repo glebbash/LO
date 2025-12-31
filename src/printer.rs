@@ -474,6 +474,9 @@ impl Printer {
             }) => {
                 stdout_write(repr);
             }
+            CodeExpr::NullLiteral(NullLiteralExpr { loc: _ }) => {
+                stdout_write("null");
+            }
             CodeExpr::IntLiteral(IntLiteralExpr {
                 repr,
                 tag,

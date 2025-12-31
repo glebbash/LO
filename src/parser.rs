@@ -658,6 +658,12 @@ impl Parser {
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: false, loc }));
         }
 
+        if let Some(_) = self.eat(Symbol, "null") {
+            let loc = self.prev().loc.clone();
+
+            return Ok(CodeExpr::NullLiteral(NullLiteralExpr { loc }));
+        }
+
         if let Some(char) = self.eat_any(CharLiteral).cloned() {
             return Ok(CodeExpr::CharLiteral(CharLiteralExpr {
                 repr: char.get_value(self.lexer.source).to_string(),
@@ -1417,7 +1423,7 @@ impl Parser {
         Some(self.next())
     }
 
-    // return current or terminal token
+    // returns current or terminal token
     fn current(&self) -> &Token {
         let mut index = *self.tokens_processed.borrow();
         if index >= self.lexer.tokens.len() - 1 {

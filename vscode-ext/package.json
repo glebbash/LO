@@ -5,7 +5,7 @@
     "author": "glebbash",
     "publisher": "glebbash",
     "license": "MIT",
-    "version": "0.0.88",
+    "version": "0.0.90",
     "engines": {
         "vscode": "^1.88.0"
     },

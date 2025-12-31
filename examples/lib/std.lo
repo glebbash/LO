@@ -6,7 +6,6 @@ struct str {
 
 // constants
 
-const NULL = 0 as &void
 const u32::MAX = 4_294_967_295
 
 global STATIC_DATA_SIZE = @data_size()
@@ -187,9 +186,9 @@ macro heap::Block::next!(&self): &heap::Block {
     (self.data!() as u32 + self.size) as &heap::Block
 }
 
-global heap::FIRST_BLOCK = NULL as &heap::Block
+global heap::FIRST_BLOCK = null as &heap::Block
 
-global heap::CURRENT_BLOCK = NULL as &heap::Block
+global heap::CURRENT_BLOCK = null as &heap::Block
 
 macro heap::new!(value: infer T): &T {
     let ptr = heap::alloc!<T>()
@@ -209,12 +208,12 @@ macro heap::alloc_many!<T>(count: u32): *&T {
 fn heap::alloc(size: u32): &void {
     size = mem::align(size)
     let free_block = heap::find_free_block(size)
-    if free_block != NULL {
+    if free_block != null {
         free_block.used = true
         return free_block.data!()
     }
 
-    if heap::CURRENT_BLOCK == NULL {
+    if heap::CURRENT_BLOCK == null {
         stack::check_init!()
         heap::CURRENT_BLOCK = (stack::MIN + stack::SIZE) as &heap::Block
         heap::FIRST_BLOCK = heap::CURRENT_BLOCK
@@ -251,8 +250,8 @@ fn heap::get_block(ptr: &void): &heap::Block {
 // first fit
 fn heap::find_free_block(size: u32): &heap::Block {
     let block = heap::FIRST_BLOCK
-    if block == NULL {
-        return NULL as &heap::Block
+    if block == null {
+        return null
     }
     loop {
         if !block.used && block.size >= size {
@@ -263,7 +262,7 @@ fn heap::find_free_block(size: u32): &heap::Block {
         }
         block = block.next!()
     }
-    return NULL as &heap::Block
+    return null
 }
 
 // arena allocator
@@ -285,7 +284,7 @@ struct Arena::Block {
 fn Arena::Block::new(a: Alloc, size: u32): &Arena::Block {
     let mem = alloc(a, size)
     return new!(a, Arena::Block {
-        next: NULL as &Arena::Block,
+        next: null,
         size: size,
         used: 0,
         base: mem,
@@ -344,7 +343,7 @@ fn Arena::reset(&self) {
     let block = self.head
     loop {
         block.used = 0
-        if block.next == NULL {
+        if block.next == null {
             break
         }
         block = block.next
@@ -358,7 +357,7 @@ fn Arena::free(&self) {
         free(self.alloc, block.base, block.size)
         let next_block = block.next
         free!<Arena::Block>(self.alloc, block)
-        if next_block == NULL {
+        if next_block == null {
             break
         }
         block = next_block

@@ -367,6 +367,11 @@
                     "comment": "booleans",
                     "name": "constant.language.bool.lo",
                     "match": "\\b(true|false)\\b"
+                },
+                {
+                    "comment": "null",
+                    "name": "constant.language.null.lo",
+                    "match": "\\b(null)\\b"
                 }
             ]
         },
