@@ -612,10 +612,12 @@ async function commandTest() {
                     { "type": "message", "content": "Duplicate function parameter name: a", "severity": "error", "loc": "1/2:17-2:23" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
                     { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/5:9-5:10" },
                     { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },
                     { "type": "info", "link": "1/3:9-3:10", "hover": "let x: u32", "loc": "1/6:13-6:14" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/11:9-11:10" },
                     { "type": "message", "content": "Cannot redefine local x, previously defined at examples/test/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/13:9-13:10" },
                     { "type": "info", "hover": "let y: u32", "loc": "1/14:9-14:10" },
                     { "type": "info", "link": "1/11:9-11:10", "hover": "let x: u32", "loc": "1/14:13-14:14" },
                     { "type": "end" }

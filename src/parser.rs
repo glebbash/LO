@@ -65,7 +65,7 @@ impl Parser {
             let unexpected = self.current();
             return Err(Error {
                 message: format!(
-                    "Unexpected exportable: {:?}",
+                    "Unexpected exportable: {}",
                     unexpected.get_value(self.lexer.source)
                 ),
                 loc: unexpected.loc.clone(),
@@ -424,10 +424,9 @@ impl Parser {
         let mut fn_params_trailing_comma = false;
         let fn_params = self.parse_fn_params(false, &mut fn_params_trailing_comma)?;
 
-        let return_type = if let Some(_) = self.eat(Operator, ":") {
-            Some(self.parse_type_expr()?)
-        } else {
-            None
+        let mut return_type = None;
+        if let Some(_) = self.eat(Operator, ":") {
+            return_type = Some(self.parse_type_expr()?)
         };
 
         loc.end_pos = self.prev().loc.end_pos;
@@ -591,7 +590,7 @@ impl Parser {
             code_block.exprs.push(expr);
         }
 
-        // close curly pos
+        // closing curly pos
         code_block.loc.end_pos = self.prev().loc.end_pos;
 
         return Ok(code_block);
@@ -1125,12 +1124,11 @@ impl Parser {
             ident.parts.push(ident_part.loc.clone());
             ident.repr += ident_part.get_value(self.lexer.source);
 
-            if let Some(_) = self.eat(Operator, "::") {
-                ident.repr += "::";
-                continue;
+            if let None = self.eat(Operator, "::") {
+                break;
             }
 
-            break;
+            ident.repr += "::";
         }
 
         ident.loc.end_pos = self.prev().loc.end_pos;

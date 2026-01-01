@@ -1204,17 +1204,13 @@ impl Compiler {
                             param_type: param_type.clone(),
                         });
 
-                        let res = self.define_local(
+                        self.define_local(
                             ctx,
                             fn_param.param_name.loc.clone(),
                             fn_param.param_name.repr.clone(),
                             &param_type,
                             true,
                         );
-                        catch!(res, err, {
-                            self.report_error(&err);
-                            continue;
-                        });
                     }
                 }
                 TopLevelExpr::TryExport(try_export_expr) => {
@@ -1744,10 +1740,13 @@ impl Compiler {
             }
             TypeExpr::Of(TypeExprOf {
                 container_type,
-                item_type: _,
+                item_type,
                 loc: _,
             }) => {
                 let actual_type = self.build_type_check_ref(ctx, container_type, true, loc)?;
+
+                // used for inspection
+                self.build_type_check_ref(ctx, item_type, true, loc)?;
 
                 Ok(actual_type)
             }
@@ -1820,14 +1819,15 @@ impl Compiler {
                 for field_index in 0..fields.len() {
                     let field_literal = &fields[field_index];
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
-                        return Err(Error {
+                        self.report_error(&Error {
                             message: format!("Excess field values"),
                             loc: field_literal.loc.clone(),
                         });
+                        break;
                     };
 
                     if &field_literal.field_name != &struct_field.field_name {
-                        return Err(Error {
+                        self.report_error(&Error {
                             message: format!(
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
@@ -1836,9 +1836,17 @@ impl Compiler {
                         });
                     }
 
-                    let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
+                    catch!(self.codegen(ctx, instrs, &field_literal.value), err, {
+                        self.report_error(&err);
+                    });
+
+                    let field_value_type =
+                        catch!(self.get_expr_type(ctx, &field_literal.value), err, {
+                            self.report_error(&err);
+                            continue;
+                        });
                     if !self.is_type_compatible(&struct_field.field_type, &field_value_type) {
-                        return Err(Error {
+                        self.report_error(&Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_name.repr,
@@ -1849,8 +1857,6 @@ impl Compiler {
                             loc: field_literal.value.loc().clone(),
                         });
                     }
-
-                    self.codegen(ctx, instrs, &field_literal.value)?;
                 }
 
                 if fields.len() < struct_def.fields.len() {
@@ -1859,7 +1865,7 @@ impl Compiler {
                         missing_fields.push(&struct_def.fields[i].field_name)
                     }
 
-                    return Err(Error {
+                    self.report_error(&Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
                         loc: loc.clone(),
                     });
@@ -1967,7 +1973,7 @@ impl Compiler {
                 }
 
                 if *is_ok {
-                    if value_type != *result.ok {
+                    if !self.is_type_compatible(&result.ok, &value_type) {
                         return Err(Error {
                             message: format!(
                                 "Cannot create result, Ok type mismatch. Got {}, expected: {}",
@@ -1988,7 +1994,7 @@ impl Compiler {
                     return Ok(());
                 }
 
-                if value_type != *result.err {
+                if !self.is_type_compatible(&result.err, &value_type) {
                     return Err(Error {
                         message: format!(
                             "Cannot create result, Err type mismatch. Got {}, expected: {}",
@@ -2034,7 +2040,11 @@ impl Compiler {
                 value,
                 loc: _,
             }) => {
-                let local_type = self.get_expr_type(ctx, &value)?;
+                let mut local_type = Type::Never;
+                // any errors will be reported in `codegen` later
+                if let Ok(t) = self.get_expr_type(ctx, &value) {
+                    local_type = t;
+                }
 
                 if local_name.repr == "_" {
                     self.codegen(ctx, instrs, value)?;
@@ -2051,7 +2061,7 @@ impl Compiler {
                     local_name.repr.clone(),
                     &local_type,
                     false,
-                )?;
+                );
                 let var = self.var_local(
                     &local_name.repr,
                     local_type,
@@ -2833,7 +2843,7 @@ impl Compiler {
                     counter.repr.clone(),
                     &counter_type,
                     false,
-                )?;
+                );
                 let counter_var = self.var_local(
                     &counter.repr,
                     counter_type.clone(),
@@ -2986,7 +2996,7 @@ impl Compiler {
                         String::from("it"),
                         &arg_type,
                         false,
-                    )?;
+                    );
 
                     self.codegen_local_set(instrs, &arg_type, arg_local_index);
                     self.codegen(ctx, instrs, body)?;
@@ -3009,7 +3019,7 @@ impl Compiler {
                 ctx.enter_scope(ScopeType::Block);
 
                 let lhs_local_index =
-                    self.define_local(ctx, op_loc.clone(), String::from("it"), &lhs_type, false)?;
+                    self.define_local(ctx, op_loc.clone(), String::from("it"), &lhs_type, false);
 
                 self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
                 catch!(self.codegen(ctx, instrs, rhs), err, {
@@ -3081,7 +3091,7 @@ impl Compiler {
             header.variant_bind.repr.clone(),
             &enum_variant.variant_type,
             false,
-        )?;
+        );
         let local = self.var_local(
             &header.variant_bind.repr,
             enum_variant.variant_type.clone(),
@@ -3426,7 +3436,7 @@ impl Compiler {
             error_bind.clone(),
             &result.err,
             false,
-        )?;
+        );
         let err_var = self.var_local(
             &error_bind,
             result.err.as_ref().clone(),
@@ -3444,7 +3454,7 @@ impl Compiler {
 
         // pop ok
         let ok_bind = String::from("<ok>");
-        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &result.ok, false)?;
+        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &result.ok, false);
         self.codegen_local_set(instrs, &result.ok, ok_local_index);
 
         // cond: error != 0
@@ -4082,9 +4092,15 @@ impl Compiler {
             }),
             CodeExpr::Sizeof(_) => Ok(Type::U32),
             CodeExpr::Let(let_) => {
-                if self.get_expr_type(ctx, &let_.value)? == Type::Never {
+                let value_type = catch!(self.get_expr_type(ctx, &let_.value), _err, {
+                    // `_err` will be reported in `codegen`
+                    return Ok(Type::Void);
+                });
+
+                if value_type == Type::Never {
                     return Ok(Type::Never);
                 }
+
                 Ok(Type::Void)
             }
             CodeExpr::Assign(_) => Ok(Type::Void),
@@ -4777,19 +4793,21 @@ impl Compiler {
         local_name: String,
         local_type: &Type,
         is_fn_param: bool,
-    ) -> Result<u32, Error> {
+    ) -> u32 {
         for local in ctx.current_scope().locals.iter() {
             if local.local_name == local_name && local.defined_in_this_scope {
-                let Local { definition_loc, .. } = &ctx.locals[local.lo_local_index];
+                let local_ = &ctx.locals[local.lo_local_index];
 
-                return Err(Error {
+                self.report_error(&Error {
                     message: format!(
                         "Cannot redefine local {}, previously defined at {}",
                         local_name,
-                        definition_loc.to_string(&self.fm)
+                        local_.definition_loc.to_string(&self.fm)
                     ),
                     loc,
                 });
+
+                return local_.local_index;
             }
         }
 
@@ -4802,7 +4820,7 @@ impl Compiler {
             defined_in_this_scope: true,
         });
 
-        Ok(local_index)
+        local_index
     }
 
     fn define_unnamed_local(
