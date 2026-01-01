@@ -1046,9 +1046,14 @@ impl Compiler {
                     };
                     let enum_ = self.enum_defs[item.collection_index].relax_mut();
 
-                    let mut enum_variant_wasm_types = Vec::new();
+                    if let Some(type_) = &enum_def.variant_type {
+                        enum_.variant_type = catch!(self.build_type(&module.ctx, type_), err, {
+                            self.report_error(&err);
+                            return;
+                        });
+                    }
 
-                    'variants: for (variant, i) in enum_def.variants.iter().zip(0..) {
+                    'variants: for variant in enum_def.variants.iter() {
                         for existing_variant in &enum_.variants {
                             if existing_variant.variant_name == variant.variant_name.repr {
                                 self.report_error(&Error {
@@ -1072,19 +1077,14 @@ impl Compiler {
                                 });
                         }
 
-                        if i == 0 {
-                            enum_.variant_type = variant_type.clone();
-                            self.lower_type(&enum_.variant_type, &mut enum_variant_wasm_types);
-                        } else {
-                            let mut this_variant_wasm_types = Vec::new();
-                            self.lower_type(&variant_type, &mut this_variant_wasm_types);
-
-                            if enum_variant_wasm_types != this_variant_wasm_types {
-                                self.report_error(&Error {
-                                    message: format!("Enum variants don't lower to the same types"),
-                                    loc: variant.variant_name.loc.clone(),
-                                });
-                            }
+                        if !self.is_type_compatible(&enum_.variant_type, &variant_type) {
+                            self.report_error(&Error {
+                                message: format!(
+                                    "Enum variant is not compatible with {}",
+                                    TypeFmt(self, &enum_.variant_type)
+                                ),
+                                loc: variant.variant_name.loc.clone(),
+                            });
                         }
 
                         enum_.variants.push(EnumVariant {

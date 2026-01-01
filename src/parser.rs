@@ -218,6 +218,12 @@ impl Parser {
 
             let enum_name = self.parse_ident()?;
 
+            let mut data_type = None;
+            if let Some(_) = self.eat(Delim, "(") {
+                data_type = Some(self.parse_type_expr()?);
+                self.expect(Delim, ")")?;
+            }
+
             let mut variants = Vec::new();
 
             self.expect(Delim, "{")?;
@@ -249,6 +255,7 @@ impl Parser {
 
             return Ok(TopLevelExpr::EnumDef(EnumDefExpr {
                 enum_name,
+                variant_type: data_type,
                 variants,
                 loc,
             }));

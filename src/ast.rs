@@ -96,6 +96,7 @@ pub struct StructDefField {
 
 pub struct EnumDefExpr {
     pub enum_name: IdentExpr,
+    pub variant_type: Option<TypeExpr>,
     pub variants: Vec<EnumDefVariant>,
     pub loc: Loc,
 }

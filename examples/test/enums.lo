@@ -1,6 +1,6 @@
 include "../lib/cli.lo"
 
-enum Expr {
+enum Expr(&void) {
     Binary(&ExprBinary),
     Item(&ExprItem),
 }

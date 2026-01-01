@@ -162,11 +162,18 @@ impl Printer {
             }
             TopLevelExpr::EnumDef(EnumDefExpr {
                 enum_name,
+                variant_type: data_type,
                 variants,
                 loc,
             }) => {
                 stdout_write("enum ");
                 stdout_write(&enum_name.repr);
+
+                if let Some(data_type) = data_type {
+                    stdout_write("(");
+                    self.print_type_expr(data_type);
+                    stdout_write(")");
+                }
 
                 if variants.len() == 0 {
                     stdout_write(" {}");
