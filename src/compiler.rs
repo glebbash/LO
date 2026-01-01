@@ -530,6 +530,7 @@ pub struct Compiler {
     pub modules: Vec<Module>,
     pub error_count: RefCell<u32>,
     pub warning_count: RefCell<u32>,
+    pub reporting_enabled: RefCell<bool>,
 
     global_items: Vec<ModuleItem>,
 
@@ -563,6 +564,7 @@ impl Compiler {
             modules: Vec::new(),
             error_count: RefCell::new(0),
             warning_count: RefCell::new(0),
+            reporting_enabled: RefCell::new(true),
 
             global_items: Vec::new(),
 
@@ -2321,6 +2323,19 @@ impl Compiler {
                 if let Some(inspect_info) = var.inspect_info() {
                     self.print_inspection(inspect_info);
                 }
+
+                let rhs_type = self.get_expr_type(ctx, rhs)?;
+                if !self.is_type_compatible(var.get_type(), &rhs_type) {
+                    self.report_error(&Error {
+                        message: format!(
+                            "Cannot assign {} to variable of type {}",
+                            TypeFmt(self, &rhs_type),
+                            TypeFmt(self, var.get_type())
+                        ),
+                        loc: op_loc.clone(),
+                    });
+                }
+
                 self.codegen_var_set_prepare(instrs, &var);
                 self.codegen(ctx, instrs, rhs)?;
                 self.codegen_var_set(ctx, instrs, &var)?;
@@ -3211,6 +3226,11 @@ impl Compiler {
     ) -> Result<Type, Error> {
         ctx.enter_scope(ScopeType::Macro);
 
+        // a hack to not duplicate inspections and error when traversing macro twice
+        let was_in_inspection = self.in_inspection_mode;
+        self.be_mut().in_inspection_mode = false;
+        *self.reporting_enabled.borrow_mut() = false;
+
         let macro_def = self.populate_ctx_from_macro_call(
             ctx,
             macro_name,
@@ -3220,6 +3240,10 @@ impl Compiler {
             loc,
             None,
         )?;
+
+        // undo the hack
+        *self.reporting_enabled.borrow_mut() = true;
+        self.be_mut().in_inspection_mode = was_in_inspection;
 
         let return_type = if let Some(return_type) = &macro_def.return_type {
             self.build_type(ctx, return_type)?
@@ -5554,6 +5578,10 @@ impl Compiler {
     }
 
     fn report_error(&self, err: &Error) {
+        if !*self.reporting_enabled.borrow() {
+            return;
+        }
+
         *self.error_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {
@@ -5575,6 +5603,10 @@ impl Compiler {
     }
 
     fn report_warning(&self, err: &Error) {
+        if !*self.reporting_enabled.borrow() {
+            return;
+        }
+
         *self.warning_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {

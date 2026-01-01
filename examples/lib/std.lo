@@ -588,7 +588,7 @@ fn String::replace(self, search: str, replacement: str): String {
     }
 
     self.chars.free()
-    self.chars = replaced
+    self.chars = replaced as &Vec of u8
 
     return self
 }
