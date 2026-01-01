@@ -524,6 +524,7 @@ impl Module {
 pub struct Compiler {
     pub in_inspection_mode: bool,
     pub in_single_file_mode: bool,
+    pub lex_only: bool,
 
     pub fm: FileManager,
     pub modules: Vec<Module>,
@@ -556,6 +557,7 @@ impl Compiler {
         let mut self_ = Self {
             in_inspection_mode: false,
             in_single_file_mode: false,
+            lex_only: false,
 
             fm: FileManager::new(),
             modules: Vec::new(),
@@ -672,10 +674,12 @@ impl Compiler {
         });
 
         let parser = Parser::new(lexer);
-        catch!(parser.parse_file(), err, {
-            self.report_error(&err);
-            return None;
-        });
+        if !self.lex_only {
+            catch!(parser.parse_file(), err, {
+                self.report_error(&err);
+                return None;
+            });
+        }
 
         let mut includes = Vec::new();
 
