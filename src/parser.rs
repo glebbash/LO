@@ -483,7 +483,7 @@ impl Parser {
 
                     let infer_as = self.expect_any(Symbol)?;
                     param_type = FnParamType::Infer {
-                        name: infer_as.get_value(self.lexer.source).to_string(),
+                        name: infer_as.get_value(self.lexer.source).relax(),
                     };
                 } else {
                     param_type = FnParamType::Type {
@@ -680,13 +680,16 @@ impl Parser {
 
         if let Some(int) = self.eat_any(IntLiteral).cloned() {
             let mut tag = None;
-            if let Some(_) = self.eat(Symbol, "u64") {
-                tag = Some(String::from("u64"));
+            if let Some(tag_) = self.eat(Symbol, "u64") {
+                tag = Some(tag_.get_value(self.lexer.source).relax());
             }
 
+            let repr = int.get_value(self.lexer.source).relax();
+            let value = Lexer::parse_int_literal_value(repr);
+
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
-                repr: int.get_value(self.lexer.source).to_string(),
-                value: Lexer::parse_int_literal_value(&int.get_value(self.lexer.source)) as u32,
+                repr,
+                value,
                 tag,
                 loc: int.loc.clone(),
             }));

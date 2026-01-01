@@ -247,14 +247,14 @@ impl Lexer {
         })
     }
 
-    pub fn parse_int_literal_value(int_literal: &str) -> u64 {
+    pub fn parse_int_literal_value(int_literal: &str) -> i64 {
         let int_literal = int_literal.replace("_", "");
 
         if int_literal.starts_with("0x") {
-            return u64::from_str_radix(&int_literal[2..], 16).unwrap();
+            return i64::from_str_radix(&int_literal[2..], 16).unwrap();
         }
 
-        int_literal.parse().unwrap()
+        i64::from_str_radix(&int_literal, 10).unwrap()
     }
 
     fn lex_symbol(&mut self) -> Result<Token, Error> {

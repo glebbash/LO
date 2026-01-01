@@ -1785,7 +1785,7 @@ impl Compiler {
                 value,
                 tag,
                 loc: _,
-            }) => self.codegen_int_const(instrs, *value as i32, tag.as_deref()),
+            }) => self.codegen_int_const(instrs, *value, tag.as_deref()),
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
                 value,
@@ -1805,16 +1805,18 @@ impl Compiler {
                 struct_name,
                 fields,
                 has_trailing_comma: _,
-                loc,
+                loc: _,
             }) => {
-                let Some(item) = self.modules[ctx.module_index].get_item(&struct_name.repr) else {
+                let Type::StructInstance { struct_index } =
+                    self.get_type_or_err(&struct_name.repr, &struct_name.loc)?
+                else {
                     return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
-                        loc: loc.clone(),
+                        loc: struct_name.loc.clone(),
                     });
                 };
 
-                let struct_def = &self.struct_defs[item.collection_index];
+                let struct_def = &self.struct_defs[struct_index];
 
                 for field_index in 0..fields.len() {
                     let field_literal = &fields[field_index];
@@ -1838,13 +1840,10 @@ impl Compiler {
 
                     catch!(self.codegen(ctx, instrs, &field_literal.value), err, {
                         self.report_error(&err);
+                        continue;
                     });
 
-                    let field_value_type =
-                        catch!(self.get_expr_type(ctx, &field_literal.value), err, {
-                            self.report_error(&err);
-                            continue;
-                        });
+                    let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
                     if !self.is_type_compatible(&struct_field.field_type, &field_value_type) {
                         self.report_error(&Error {
                             message: format!(
@@ -1867,7 +1866,7 @@ impl Compiler {
 
                     self.report_error(&Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
-                        loc: loc.clone(),
+                        loc: struct_name.loc.clone(),
                     });
                 }
             }
@@ -2204,7 +2203,7 @@ impl Compiler {
                     if let CodeExpr::IntLiteral(int_literal) = expr.as_ref() {
                         self.codegen_int_const(
                             instrs,
-                            -(int_literal.value as i32),
+                            -int_literal.value,
                             int_literal.tag.as_deref(),
                         );
                         return Ok(());
@@ -2354,7 +2353,7 @@ impl Compiler {
                             });
                         }
 
-                        self.codegen_int_const(instrs, ctor.variant_index as i32, None);
+                        self.codegen_int_const(instrs, ctor.variant_index as i64, None);
 
                         if variant.variant_type == Type::Void && args.items.len() == 0 {
                             return Ok(());
@@ -3310,7 +3309,7 @@ impl Compiler {
 
             if let FnParamType::Infer { name } = &macro_param.param_type {
                 ctx.current_scope_mut().macro_type_args.push(MacroTypeArg {
-                    name: name.clone(),
+                    name: String::from(*name),
                     type_: const_def.code_unit.type_.clone(),
                 });
             }
@@ -5070,12 +5069,12 @@ impl Compiler {
         }
     }
 
-    fn codegen_int_const(&self, instrs: &mut Vec<WasmInstr>, value: i32, tag: Option<&str>) {
+    fn codegen_int_const(&self, instrs: &mut Vec<WasmInstr>, value: i64, tag: Option<&str>) {
         match tag.as_deref() {
-            Some("u32") | Some("i32") | None => instrs.push(WasmInstr::I32Const { value }),
-            Some("u64") | Some("i64") => instrs.push(WasmInstr::I64Const {
-                value: value as i64,
+            Some("u32") | Some("i32") | None => instrs.push(WasmInstr::I32Const {
+                value: value as i32,
             }),
+            Some("u64") | Some("i64") => instrs.push(WasmInstr::I64Const { value: value }),
             _ => unreachable!(),
         }
     }

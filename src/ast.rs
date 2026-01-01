@@ -40,7 +40,7 @@ pub enum FnParamType {
     Self_,
     SelfRef,
     Type { expr: TypeExpr },
-    Infer { name: String },
+    Infer { name: &'static str },
 }
 
 /// DOC: `include "<module path>" [as <alias>] [with extern]` syntax was chosen
@@ -279,9 +279,9 @@ pub struct NullLiteralExpr {
 }
 
 pub struct IntLiteralExpr {
-    pub repr: String,
-    pub value: u32,
-    pub tag: Option<String>,
+    pub repr: &'static str,
+    pub value: i64,
+    pub tag: Option<&'static str>,
     pub loc: Loc,
 }
 
