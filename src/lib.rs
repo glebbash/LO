@@ -78,18 +78,19 @@ pub extern "C" fn _start() {
         return;
     }
 
+    let mut compiler = Compiler::new();
+
     // for debug purposes only, not public api
     if command == "lex" {
-        let mut compiler = Compiler::new();
         compiler.in_single_file_mode = true;
-        compiler.lex_only = true;
+        compiler.in_lex_only_mode = true;
 
         let Some(module) = compiler.relax_mut().include(file_name, &Loc::internal()) else {
             proc_exit(1)
         };
 
-        let file_path = &compiler.fm.files[module.parser.lexer.file_index].absolute_path;
-        stdout_writeln(format!("file_path: {file_path}"));
+        let file_info = &compiler.fm.files[module.parser.lexer.file_index];
+        stdout_writeln(format!("file_path: {}", file_info.absolute_path));
 
         stdout_enable_buffering();
 
@@ -112,8 +113,6 @@ pub extern "C" fn _start() {
 
         return;
     }
-
-    let mut compiler = Compiler::new();
 
     if command == "format" {
         compiler.in_single_file_mode = true;
