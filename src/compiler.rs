@@ -4119,30 +4119,56 @@ impl Compiler {
                 else_block,
                 loc: _,
             }) => {
+                let mut should_exit_match_scope = false;
+
                 match cond {
                     IfCond::Expr(e) => {
                         if self.get_expr_type(ctx, e)? == Type::Never {
                             return Ok(Type::Never);
                         }
                     }
-                    IfCond::Match(_) => {}
+                    IfCond::Match(header) => {
+                        if let Some(item) =
+                            self.modules[ctx.module_index].get_item(&header.variant_name.repr)
+                        {
+                            if let ModuleItemCollection::EnumConstructor = item.collection {
+                                let enum_ctor = &self.enum_ctors[item.collection_index];
+                                let enum_variant = &self.enum_defs[enum_ctor.enum_index].variants
+                                    [enum_ctor.variant_index];
+
+                                should_exit_match_scope = true;
+                                ctx.be_mut().enter_scope(ScopeType::Block);
+                                ctx.be_mut().current_scope_mut().macro_args.push(ConstDef {
+                                    const_name: header.variant_bind.repr.clone(),
+                                    code_unit: CodeUnit {
+                                        type_: enum_variant.variant_type.clone(),
+                                        instrs: Vec::new(),
+                                    },
+                                    loc: header.variant_bind.loc.clone(),
+                                });
+                            };
+                        }
+                    }
                 };
 
-                let then_diverges =
-                    self.get_code_block_type(ctx, &then_block.exprs)? == Type::Never;
+                let then_type = self.get_code_block_type(ctx, &then_block.exprs);
+                if should_exit_match_scope {
+                    ctx.be_mut().exit_scope();
+                }
+                let then_type = then_type?;
 
-                let mut else_diverges = false;
+                let mut else_type = Type::Void;
                 match else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(else_) => {
-                        else_diverges = self.get_code_block_type(ctx, &else_.exprs)? == Type::Never;
+                        else_type = self.get_code_block_type(ctx, &else_.exprs)?;
                     }
                     ElseBlock::ElseIf(e) => {
-                        else_diverges = self.get_expr_type(ctx, e)? == Type::Never;
+                        else_type = self.get_expr_type(ctx, e)?;
                     }
                 }
 
-                if then_diverges && else_diverges {
+                if then_type == Type::Never && else_type == Type::Never {
                     return Ok(Type::Never);
                 }
 
