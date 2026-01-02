@@ -248,13 +248,27 @@ impl Lexer {
     }
 
     pub fn parse_int_literal_value(int_literal: &str) -> i64 {
-        let int_literal = int_literal.replace("_", "");
+        let mut int_literal = int_literal.as_bytes();
 
-        if int_literal.starts_with("0x") {
-            return i64::from_str_radix(&int_literal[2..], 16).unwrap();
+        let mut radix = 10;
+        if int_literal.starts_with(b"0x") {
+            int_literal = &int_literal[2..];
+            radix = 16;
+        };
+
+        let mut value = 0;
+        for &digit in int_literal {
+            if digit == b'_' {
+                continue;
+            }
+
+            if digit >= b'0' && digit <= b'9' {
+                value = value * radix + (digit - b'0') as i64;
+            } else {
+                value = value * radix + 10 + (digit - b'A') as i64;
+            }
         }
-
-        i64::from_str_radix(&int_literal, 10).unwrap()
+        value
     }
 
     fn lex_symbol(&mut self) -> Result<Token, Error> {
