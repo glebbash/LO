@@ -166,7 +166,6 @@ struct Local {
     local_index: u32,
     local_type: Type,
     definition_loc: Loc,
-    is_fn_param: bool,
 }
 
 #[derive(Clone)]
@@ -1209,7 +1208,6 @@ impl Compiler {
                             fn_param.param_name.loc.clone(),
                             fn_param.param_name.repr.clone(),
                             &param_type,
-                            true,
                         );
                     }
                 }
@@ -1448,8 +1446,9 @@ impl Compiler {
             self.codegen_code_block(&mut ctx, &mut wasm_expr.instrs, body, true);
 
             let mut wasm_locals_flat = Vec::new();
-            for local in &ctx.locals {
-                if local.is_fn_param {
+            for (i, local) in ctx.locals.iter().enumerate() {
+                let is_fn_param = i < fn_info.fn_params.len();
+                if is_fn_param {
                     continue;
                 }
 
@@ -2059,7 +2058,6 @@ impl Compiler {
                     local_name.loc.clone(),
                     local_name.repr.clone(),
                     &local_type,
-                    false,
                 );
                 let var = self.var_local(
                     &local_name.repr,
@@ -2854,7 +2852,6 @@ impl Compiler {
                     counter.loc.clone(),
                     counter.repr.clone(),
                     &counter_type,
-                    false,
                 );
                 let counter_var = self.var_local(
                     &counter.repr,
@@ -3002,13 +2999,8 @@ impl Compiler {
 
                     self.codegen(ctx, instrs, arg)?;
 
-                    let arg_local_index = self.define_local(
-                        ctx,
-                        with_loc.clone(),
-                        String::from("it"),
-                        &arg_type,
-                        false,
-                    );
+                    let arg_local_index =
+                        self.define_local(ctx, with_loc.clone(), String::from("it"), &arg_type);
 
                     self.codegen_local_set(instrs, &arg_type, arg_local_index);
                     self.codegen(ctx, instrs, body)?;
@@ -3031,7 +3023,7 @@ impl Compiler {
                 ctx.enter_scope(ScopeType::Block);
 
                 let lhs_local_index =
-                    self.define_local(ctx, op_loc.clone(), String::from("it"), &lhs_type, false);
+                    self.define_local(ctx, op_loc.clone(), String::from("it"), &lhs_type);
 
                 self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
                 catch!(self.codegen(ctx, instrs, rhs), err, {
@@ -3102,7 +3094,6 @@ impl Compiler {
             header.variant_bind.loc.clone(),
             header.variant_bind.repr.clone(),
             &enum_variant.variant_type,
-            false,
         );
         let local = self.var_local(
             &header.variant_bind.repr,
@@ -3452,13 +3443,8 @@ impl Compiler {
         } else {
             (String::from("<err>"), Loc::internal())
         };
-        let err_local_index = self.define_local(
-            ctx,
-            error_bind_loc.clone(),
-            error_bind.clone(),
-            &result.err,
-            false,
-        );
+        let err_local_index =
+            self.define_local(ctx, error_bind_loc.clone(), error_bind.clone(), &result.err);
         let err_var = self.var_local(
             &error_bind,
             result.err.as_ref().clone(),
@@ -3476,7 +3462,7 @@ impl Compiler {
 
         // pop ok
         let ok_bind = String::from("<ok>");
-        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &result.ok, false);
+        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &result.ok);
         self.codegen_local_set(instrs, &result.ok, ok_local_index);
 
         // cond: error != 0
@@ -4510,7 +4496,7 @@ impl Compiler {
             return addr_local_index;
         }
 
-        let addr_local_index = self.define_unnamed_local(ctx, Loc::internal(), &Type::U32, false);
+        let addr_local_index = self.define_unnamed_local(ctx, Loc::internal(), &Type::U32);
 
         return addr_local_index;
     }
@@ -4673,8 +4659,7 @@ impl Compiler {
                 }
 
                 if *drops_after > 0 {
-                    let local_index =
-                        self.define_unnamed_local(ctx, loc.clone(), field_type, false);
+                    let local_index = self.define_unnamed_local(ctx, loc.clone(), field_type);
 
                     let var = VariableInfo::Local {
                         local_index,
@@ -4753,7 +4738,7 @@ impl Compiler {
 
                 if stores.len() > 1 {
                     let tmp_value_local_index =
-                        self.define_unnamed_local(ctx, Loc::internal(), value_type, false);
+                        self.define_unnamed_local(ctx, Loc::internal(), value_type);
                     self.codegen_local_set(instrs, value_type, tmp_value_local_index);
 
                     let addr_local_index = self.create_or_get_addr_local(ctx);
@@ -4811,7 +4796,6 @@ impl Compiler {
         loc: Loc,
         local_name: String,
         local_type: &Type,
-        is_fn_param: bool,
     ) -> u32 {
         for local in ctx.current_scope().locals.iter() {
             if local.local_name == local_name && local.defined_in_this_scope {
@@ -4830,7 +4814,7 @@ impl Compiler {
             }
         }
 
-        let local_index = self.define_unnamed_local(ctx, loc, local_type, is_fn_param);
+        let local_index = self.define_unnamed_local(ctx, loc, local_type);
 
         let lo_local_index = ctx.locals.len() - 1;
         ctx.current_scope_mut().locals.push(ScopedLocal {
@@ -4842,19 +4826,12 @@ impl Compiler {
         local_index
     }
 
-    fn define_unnamed_local(
-        &self,
-        ctx: &mut ExprContext,
-        loc: Loc,
-        local_type: &Type,
-        is_fn_param: bool,
-    ) -> u32 {
+    fn define_unnamed_local(&self, ctx: &mut ExprContext, loc: Loc, local_type: &Type) -> u32 {
         let local_index = ctx.next_local_index;
         ctx.locals.push(Local {
             local_index,
             local_type: local_type.clone(),
             definition_loc: loc,
-            is_fn_param,
         });
         ctx.next_local_index += self.count_wasm_type_components(local_type);
 
