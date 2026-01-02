@@ -530,7 +530,6 @@ pub struct Compiler {
     pub modules: Vec<Module>,
     pub error_count: RefCell<u32>,
     pub warning_count: RefCell<u32>,
-    pub reporting_enabled: RefCell<bool>,
 
     global_items: Vec<ModuleItem>,
 
@@ -564,7 +563,6 @@ impl Compiler {
             modules: Vec::new(),
             error_count: RefCell::new(0),
             warning_count: RefCell::new(0),
-            reporting_enabled: RefCell::new(true),
 
             global_items: Vec::new(),
 
@@ -3226,11 +3224,6 @@ impl Compiler {
     ) -> Result<Type, Error> {
         ctx.enter_scope(ScopeType::Macro);
 
-        // a hack to not duplicate inspections and error when traversing macro twice
-        let was_in_inspection = self.in_inspection_mode;
-        self.be_mut().in_inspection_mode = false;
-        *self.reporting_enabled.borrow_mut() = false;
-
         let macro_def = self.populate_ctx_from_macro_call(
             ctx,
             macro_name,
@@ -3238,12 +3231,8 @@ impl Compiler {
             receiver_arg,
             args,
             loc,
-            None,
+            false,
         )?;
-
-        // undo the hack
-        *self.reporting_enabled.borrow_mut() = true;
-        self.be_mut().in_inspection_mode = was_in_inspection;
 
         let return_type = if let Some(return_type) = &macro_def.return_type {
             self.build_type(ctx, return_type)?
@@ -3262,7 +3251,7 @@ impl Compiler {
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
         loc: &Loc,
-        lo_type_args: Option<&mut Vec<Type>>,
+        build_code: bool,
     ) -> Result<&MacroDefExpr, Error> {
         // TODO: find a way to not allocate
         let Some(item) = self.modules[ctx.module_index].get_item(&(String::from(macro_name) + "!"))
@@ -3277,16 +3266,27 @@ impl Compiler {
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
-            all_args.push(self.build_code_unit(ctx, receiver_arg)?);
+            if build_code {
+                all_args.push(self.build_code_unit(ctx, receiver_arg)?);
+            } else {
+                all_args.push(CodeUnit {
+                    type_: self.get_expr_type(ctx, receiver_arg)?,
+                    instrs: Vec::new(),
+                })
+            }
         }
         for arg in args {
-            all_args.push(self.build_code_unit(ctx, arg)?);
+            if build_code {
+                all_args.push(self.build_code_unit(ctx, arg)?);
+            } else {
+                all_args.push(CodeUnit {
+                    type_: self.get_expr_type(ctx, arg)?,
+                    instrs: Vec::new(),
+                })
+            }
         }
 
-        let lo_type_args = match lo_type_args {
-            Some(lo_type_args) => lo_type_args,
-            None => &mut Vec::new(),
-        };
+        let mut lo_type_args = Vec::new();
         for type_arg in type_args {
             lo_type_args.push(self.build_type(ctx, &type_arg)?);
         }
@@ -3364,33 +3364,7 @@ impl Compiler {
             });
         }
 
-        Ok(macro_def)
-    }
-
-    fn codegen_macro_call(
-        &self,
-        ctx: &mut ExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        macro_name: &str,
-        type_args: &Vec<TypeExpr>,
-        receiver_arg: Option<&CodeExpr>,
-        args: &Vec<CodeExpr>,
-        loc: &Loc,
-    ) -> Result<(), Error> {
-        ctx.enter_scope(ScopeType::Macro);
-
-        let mut lo_type_args = Vec::new();
-        let macro_def = self.populate_ctx_from_macro_call(
-            ctx,
-            macro_name,
-            type_args,
-            receiver_arg,
-            args,
-            loc,
-            Some(&mut lo_type_args),
-        )?;
-
-        if self.in_inspection_mode {
+        if build_code && self.in_inspection_mode {
             let mut message = String::new();
 
             let lo_type_args = TypeListFmt(self, &lo_type_args);
@@ -3422,6 +3396,31 @@ impl Compiler {
                 linked_loc: Some(macro_def.macro_name.loc.clone()),
             });
         }
+
+        Ok(macro_def)
+    }
+
+    fn codegen_macro_call(
+        &self,
+        ctx: &mut ExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        macro_name: &str,
+        type_args: &Vec<TypeExpr>,
+        receiver_arg: Option<&CodeExpr>,
+        args: &Vec<CodeExpr>,
+        loc: &Loc,
+    ) -> Result<(), Error> {
+        ctx.enter_scope(ScopeType::Macro);
+
+        let macro_def = self.populate_ctx_from_macro_call(
+            ctx,
+            macro_name,
+            type_args,
+            receiver_arg,
+            args,
+            loc,
+            true,
+        )?;
 
         self.codegen_code_block(ctx, instrs, &macro_def.body, false);
 
@@ -4307,14 +4306,13 @@ impl Compiler {
         loc: Loc,
         linked_loc: Option<Loc>,
     ) -> VariableInfo {
-        let inspect_info = if self.in_inspection_mode {
-            Some(InspectInfo {
+        let mut inspect_info = None;
+        if self.in_inspection_mode {
+            inspect_info = Some(InspectInfo {
                 message: format!("let {}: {}", local_name, TypeFmt(self, &local_type)),
                 loc: loc.clone(),
                 linked_loc,
             })
-        } else {
-            None
         };
 
         VariableInfo::Local {
@@ -4396,8 +4394,9 @@ impl Compiler {
 
         let field = self.get_struct_or_struct_ref_field(&lhs_type, field_access)?;
 
-        let inspect_info = if self.in_inspection_mode {
-            Some(InspectInfo {
+        let mut inspect_info = None;
+        if self.in_inspection_mode {
+            inspect_info = Some(InspectInfo {
                 message: format!(
                     "{}.{}: {}",
                     TypeFmt(self, &lhs_type),
@@ -4407,8 +4406,6 @@ impl Compiler {
                 loc: field_access.field_name.loc.clone(),
                 linked_loc: Some(field.loc.clone()),
             })
-        } else {
-            None
         };
 
         if let Type::Pointer { pointee: _ } = lhs_type {
@@ -4565,14 +4562,13 @@ impl Compiler {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let Type::Pointer { pointee } = &addr_type {
-            let inspect_info = if self.in_inspection_mode {
-                Some(InspectInfo {
+            let mut inspect_info = None;
+            if self.in_inspection_mode {
+                inspect_info = Some(InspectInfo {
                     message: format!("<deref>: {}", TypeFmt(self, &pointee)),
                     loc: op_loc.clone(),
                     linked_loc: None,
                 })
-            } else {
-                None
             };
 
             return Ok(VariableInfo::Stored {
@@ -5578,10 +5574,6 @@ impl Compiler {
     }
 
     fn report_error(&self, err: &Error) {
-        if !*self.reporting_enabled.borrow() {
-            return;
-        }
-
         *self.error_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {
@@ -5603,10 +5595,6 @@ impl Compiler {
     }
 
     fn report_warning(&self, err: &Error) {
-        if !*self.reporting_enabled.borrow() {
-            return;
-        }
-
         *self.warning_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {
