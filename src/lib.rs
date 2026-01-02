@@ -121,7 +121,8 @@ pub extern "C" fn _start() {
             proc_exit(1);
         };
 
-        Printer::print(module.parser.relax());
+        let mut printer = Printer::new(&module.parser.relax());
+        printer.print_file();
 
         return;
     }

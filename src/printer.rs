@@ -19,8 +19,8 @@ pub struct Printer {
 }
 
 impl Printer {
-    pub fn print(parser: &'static Parser) {
-        let mut printer = Printer {
+    pub fn new(parser: &'static Parser) -> Self {
+        Printer {
             parser,
             indent: 0,
 
@@ -33,14 +33,12 @@ impl Printer {
             last_stmt_had_backslash: false,
 
             double_backslashes_printed: 0,
-        };
-
-        stdout_enable_buffering();
-        printer.print_file();
-        stdout_disable_buffering();
+        }
     }
 
-    fn print_file(&mut self) {
+    pub fn print_file(&mut self) {
+        stdout_enable_buffering();
+
         for expr in &self.parser.ast {
             self.print_top_level_expr(expr);
         }
@@ -51,6 +49,8 @@ impl Printer {
             line: self.last_printed_item_line,
             col: usize::MAX,
         });
+
+        stdout_disable_buffering();
     }
 
     fn print_top_level_expr(&mut self, expr: &TopLevelExpr) {
