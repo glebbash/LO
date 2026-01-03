@@ -1,0 +1,198 @@
+include "./core.lo"
+include "./ast.lo"
+include "./parser.lo"
+
+struct Printer {
+    parser: &Parser,
+
+    indent: u32,
+    comments_printed: u32,
+    last_printed_item_line: u32,
+    backslashes_printed: u32,
+    backslash_stack: &Vec of bool,
+    last_stmt_had_backslash: bool,
+    double_backslashes_printed: u32,
+}
+
+fn Printer::new(parser: &Parser): &Printer {
+    return heap::new!(Printer {
+        parser: parser,
+
+        indent: 0,
+        comments_printed: 0,
+        last_printed_item_line: 1,
+        backslashes_printed: 0,
+        backslash_stack: Vec::new!<bool>(),
+        last_stmt_had_backslash: false,
+        double_backslashes_printed: 0,
+    })
+}
+
+fn Printer::free(&self) {
+    self.backslash_stack.free()
+    heap::free(self)
+}
+
+fn Printer::print_file(&self) {
+    stdout_enable_buffering()
+
+    for i in 0..self.parser.ast.size {
+        let expr = self.parser.ast.get!<TopLevelExpr>(i)
+        self.print_top_level_expr(expr)
+    }
+
+    // print the rest of the comments
+    self.print_comments_before(Pos {
+        offset: u32::MAX,
+        line: self.last_printed_item_line,
+        col: u32::MAX,
+    })
+
+    stdout_disable_buffering()
+}
+
+fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
+    if match TopLevelExpr::FnDef(fn_def) = expr {
+        if fn_def.exported {
+            stdout_write("export ")
+        }
+        self.print_fn_decl(fn_def.decl)
+
+        self.print_code_block(fn_def.body)
+        stdout_write("\n")
+    } else {
+        todo!()
+    }
+}
+
+fn Printer::print_fn_decl(&self, fn_decl: &FnDeclExpr) {
+    stdout_write("fn ")
+    // TODO!: figure out why this is not working
+    // stdout_write(fn_decl.fn_name.repr.as_str())
+    stdout_write(fn_decl.fn_name.loc.read_span(self.parser.lexer.source))
+    self.print_fn_params(fn_decl.fn_params, fn_decl.fn_params_trailing_comma)
+
+    if fn_decl.return_type != null {
+        stdout_write(": ")
+        self.print_type_expr(*fn_decl.return_type)
+    }
+}
+
+fn Printer::print_fn_params(&self, params: &Vec of FnParam, is_multiline: bool) {
+    stdout_write("(")
+
+    if is_multiline {
+        self.indent += 1
+        stdout_write("\n")
+    }
+
+    // TODO: implement proper
+    for i in 0..0 {}
+
+    if is_multiline {
+        stdout_writeln(",")
+        self.indent -= 1
+        self.print_indent()
+    }
+
+    stdout_write(")")
+}
+
+fn Printer::print_type_expr(&self, expr: TypeExpr) {
+    if match TypeExpr::Named(named) = expr {
+        // TODO!: figure out why this is not working
+        // stdout_write(named.name.repr.as_str())
+        stdout_write(named.name.loc.read_span(self.parser.lexer.source))
+    } else {
+        todo!()
+    }
+}
+
+fn Printer::print_code_block(&self, code_block: &CodeBlock) {
+    if self.last_stmt_had_backslash {
+        self.last_stmt_had_backslash = false
+        stdout_write("\n")
+        self.print_indent()
+    } else {
+        stdout_write(" ")
+    }
+
+    if code_block.loc.pos.line == code_block.loc.end_pos.line {
+        return stdout_write("{}")
+    }
+
+    stdout_write("{")
+    self.last_printed_item_line = code_block.loc.pos.line
+
+    self.indent += 1
+
+    for i in 0..code_block.exprs.size {
+        let expr = code_block.exprs.get!<CodeExpr>(i)
+
+        let continues = self.print_double_backslashes_before(expr.loc().pos.offset)
+        if continues {
+            stdout_write(" ")
+        } else {
+            stdout_write("\n")
+            self.print_comments_before(expr.loc().pos)
+            self.print_indent()
+        }
+
+        self.print_code_expr(expr)
+        self.last_stmt_had_backslash = false
+    }
+    stdout_write("\n")
+
+    self.print_comments_before(code_block.loc.end_pos)
+
+    self.indent -= 1
+
+    self.print_indent()
+    stdout_write("}")
+}
+
+fn Printer::print_code_expr(&self, expr: CodeExpr) {
+    self.backslash_stack.push!(false)
+
+    self.print_code_expr_(expr)
+
+    self.backslash_stack.pop()
+}
+
+fn Printer::print_code_expr_(&self, expr: CodeExpr) {
+    if match CodeExpr::IntLiteral(int_literal) = expr {
+        stdout_write(int_literal.repr)
+        if int_literal.tag != null {
+            stdout_write(*int_literal.tag)
+        }
+    } else if match CodeExpr::Return(return_) = expr {
+        stdout_write("return")
+        if return_.expr != null {
+            stdout_write(" ")
+            self.print_code_expr(*return_.expr)
+        }
+    } else {
+        todo!()
+    }
+}
+
+fn Printer::print_comments_before(&self, pos: Pos) {
+    // TODO: implement proper
+}
+
+fn Printer::print_double_backslashes_before(&self, offset: u32): bool {
+    // TODO: implement proper
+    return false
+}
+
+fn Printer::print_indent(&self) {
+    for _ in 0..self.indent {
+        stdout_write("    ")
+    }
+
+    for i in 0..self.backslash_stack.size {
+        if self.backslash_stack.get!<bool>(i) {
+            stdout_write("    ")
+        }
+    }
+}

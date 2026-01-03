@@ -1,0 +1,126 @@
+include "./core.lo"
+
+enum TopLevelExpr(&void) {
+    FnDef(&FnDefExpr),
+}
+
+struct FnDefExpr {
+    exported: bool,
+    decl: &FnDeclExpr,
+    body: &CodeBlock,
+    loc: Loc,
+}
+
+struct FnDeclExpr {
+    fn_name: &IdentExpr,
+    // @leak
+    fn_params: &Vec of FnParam,
+    fn_params_trailing_comma: bool,
+    // @optional
+    return_type: &TypeExpr,
+    loc: Loc,
+}
+
+struct FnParam {
+    param_name: &IdentExpr,
+    param_type: FnParamType,
+    loc: Loc,
+}
+
+enum FnParamType(&void) {
+    Self_(&void),
+    SelfRef(&void),
+    Type(&FnParamTypeType),
+    Infer(&FnParamTypeInfer),
+}
+
+struct FnParamTypeType {
+    expr: TypeExpr,
+}
+
+struct FnParamTypeInfer {
+    name: str,
+}
+
+enum TypeExpr(&void) {
+    Named(&TypeExprNamed),
+    Pointer(&TypeExprPointer),
+    SequencePointer(&TypeExprSequencePointer),
+    Result(&TypeExprResult),
+    Of(&TypeExprOf),
+}
+
+struct TypeExprNamed {
+    name: &IdentExpr,
+}
+
+struct TypeExprPointer {
+    pointee: &TypeExpr,
+    loc: Loc,
+}
+
+struct TypeExprSequencePointer {
+    pointee: &TypeExpr,
+    loc: Loc,
+}
+
+struct TypeExprResult {
+    ok_type: &TypeExpr,
+    err_type: &TypeExpr,
+    loc: Loc,
+}
+
+struct TypeExprOf {
+    container_type: &TypeExpr,
+    item_type: &TypeExpr,
+    loc: Loc,
+}
+
+struct IdentExpr {
+    // @leak
+    repr: String,
+    // @leak
+    parts: &Vec of Loc,
+    loc: Loc,
+}
+
+struct CodeBlock {
+    // @leak
+    exprs: &Vec of CodeExpr,
+    loc: Loc,
+}
+
+// TODO: port other variants
+enum CodeExpr(&void) {
+    IntLiteral(&IntLiteralExpr),
+
+    Ident(&IdentExpr),
+
+    Return(&ReturnExpr),
+}
+
+struct IntLiteralExpr {
+    repr: str,
+    value: i64,
+    // @optional
+    tag: &str,
+    loc: Loc,
+}
+
+struct ReturnExpr {
+    // @optional
+    expr: &CodeExpr,
+    loc: Loc,
+}
+
+fn CodeExpr::loc(self): Loc {
+    if match CodeExpr::IntLiteral(e) = self {
+        return e.loc
+    } else if match CodeExpr::Ident(e) = self {
+        return e.loc
+    } else if match CodeExpr::Return(e) = self {
+        return e.loc
+    } else {
+        todo!()
+    }
+}

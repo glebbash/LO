@@ -4,12 +4,14 @@ include "../lib/wasi.lo"
 include "./core.lo"
 include "./lexer.lo"
 include "./compiler.lo"
+include "./printer.lo"
 
 export memory {
     min_pages: 1,
 }
 
 const USAGE = "Usage:
+  lo format <input.lo>
   lo lex <input.lo> (debug)"
 
 export fn _start() {
@@ -23,9 +25,12 @@ export fn _start() {
 
     let file_name = args.get(2)
 
+    let compiler = Compiler::new()
+    defer compiler.free()
+
     if args.get(1).equals("lex") {
-        let compiler = Compiler::new()
-        defer compiler.free()
+        compiler.in_single_file_mode = true
+        compiler.in_lex_only_mode = true
 
         let module = compiler.include(
             file_name,
@@ -37,17 +42,15 @@ export fn _start() {
         let a = Arena::new(2048)
         defer a.free()
 
-        let lexer = module.parser.lexer
-
-        let file_path = compiler.fm.get(lexer.file_index).absolute_path
+        let file_info = compiler.fm.get(module.parser.lexer.file_index)
         do stdout_write(it) with (
-            "file_path: ", \\ file_path.as_str(), \\ "\n",
+            "file_path: ", \\ file_info.absolute_path.as_str(), \\ "\n",
         )
 
         stdout_enable_buffering()
 
-        for i in 0..lexer.tokens.size {
-            let token = lexer.tokens.get!<Token>(i)
+        for i in 0..module.parser.lexer.tokens.size {
+            let token = module.parser.lexer.tokens.get!<Token>(i)
 
             defer a.reset()
 
@@ -65,7 +68,7 @@ export fn _start() {
                 " ", \\ token.type_.to_str(),
 
                 " ", \\ ">> ",
-                token.loc.read_span(lexer.source) \
+                token.loc.read_span(module.parser.lexer.source) \
                     |> String::from_str_in(a, it).replace("\n", "\\n") \
                     |> it.as_str(),
                 " <<",
@@ -75,6 +78,24 @@ export fn _start() {
         }
 
         stdout_disable_buffering()
+
+        return
+    }
+
+    if args.get(1).equals("format") {
+        compiler.in_single_file_mode = true
+
+        let module = compiler.include(
+            file_name,
+            ref!(Loc::internal()),
+        ) catch _ {
+            wasi::proc_exit(1)
+        }
+
+        let printer = Printer::new(module.parser)
+        defer printer.free()
+
+        printer.print_file()
 
         return
     }

@@ -3,18 +3,26 @@ include "./lexer.lo"
 include "./parser.lo"
 
 struct Module {
-    parser: Parser,
+    error_arena: &Arena,
+    parser: &Parser,
 }
 
-fn Module::new(parser: Parser): &Module {
-    return heap::new!(Module { parser: parser })
+fn Module::new(parser: &Parser): &Module {
+    return heap::new!(Module {
+        error_arena: parser.error_arena,
+        parser: parser,
+    })
 }
 
 fn Module::free(&self) {
     self.parser.lexer.free()
+    self.parser.free()
 }
 
 struct Compiler {
+    in_single_file_mode: bool,
+    in_lex_only_mode: bool,
+
     fm: FileManager,
     modules: &Vec of &Module,
     error_arena: &Arena,
@@ -24,6 +32,8 @@ fn Compiler::new(): &Compiler {
     let error_arena = Arena::new(128)
 
     return heap::new!(Compiler {
+        in_single_file_mode: false,
+        in_lex_only_mode: false,
         fm: FileManager::new(error_arena),
         modules: Vec::new!<Module>(),
         error_arena: error_arena,
@@ -37,9 +47,6 @@ fn Compiler::free(&self) {
     heap::free(self)
 }
 
-type VoidError = u32
-const VoidError::VALUE = 1 as &VoidError
-
 fn Compiler::include(
     &self, \\ file_name: str, \\ loc: &Loc,
 ): Result<&Module, &VoidError> {
@@ -49,13 +56,22 @@ fn Compiler::include(
     }
 
     let source = self.fm.get(file_index).source.as_str()
+
     let lexer = Lexer::new(self.error_arena, source, file_index)
     lexer.lex_file() catch err {
         self.report_error(err)
         return Err(VoidError::VALUE)
     }
 
-    let module = Module::new(Parser::new(lexer))
+    let parser = Parser::new(lexer)
+    if !self.in_lex_only_mode {
+        parser.parse_file() catch err {
+            self.report_error(err)
+            return Err(VoidError::VALUE)
+        }
+    }
+
+    let module = Module::new(parser)
     self.modules.push!(module)
 
     return Ok(module)

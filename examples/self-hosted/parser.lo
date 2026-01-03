@@ -1,9 +1,340 @@
+include "./core.lo"
 include "./lexer.lo"
+include "./ast.lo"
 
-struct Parser {
-    lexer: &Lexer,
+struct ParsingContext {
+    struct_literal_allowed: bool,
 }
 
-fn Parser::new(lexer: &Lexer): Parser {
-    return Parser { lexer: lexer }
+struct Parser {
+    // context
+    error_arena: &Arena,
+    lexer: &Lexer,
+
+    // state
+    tokens_processed: u32,
+    context_stack: &Vec of ParsingContext,
+
+    // output
+    ast_arena: &Arena,
+    ast: &Vec of TopLevelExpr,
+}
+
+fn Parser::new(lexer: &Lexer): &Parser {
+    let context_stack = Vec::new!<ParsingContext>()
+    context_stack.push!(ParsingContext {
+        struct_literal_allowed: true,
+    })
+
+    return heap::new!(Parser {
+        error_arena: lexer.error_arena,
+        lexer: lexer,
+        tokens_processed: 0,
+        context_stack: context_stack,
+
+        ast_arena: Arena::new(512),
+        ast: Vec::new!<TopLevelExpr>(),
+    })
+}
+
+fn Parser::free(&self) {
+    self.lexer.free()
+    self.context_stack.free()
+    self.ast_arena.free()
+    self.ast.free()
+    heap::free(self)
+}
+
+fn Parser::parse_file(&self): Result<void, &Error> {
+    while !self.current().is_terminal() {
+        let expr = self.parse_top_level_expr()?
+        self.ast.push!(expr)
+    }
+
+    return Ok()
+}
+
+fn Parser::parse_top_level_expr(&self): Result<TopLevelExpr, &Error> {
+    if self.eat(TokenType::Symbol(), "export") != null {
+        let loc = self.prev().loc
+
+        if self.eat(TokenType::Symbol(), "fn") != null {
+            let fn_def = self.parse_fn_def(true, loc)?
+            return Ok(TopLevelExpr::FnDef(fn_def))
+        }
+
+        // TODO: implement proper
+        if false {}
+
+        let unexpected = self.current()
+        let message = String::from_str("Unexpected exportable: ")
+        message.push_str(unexpected.get_value(self.lexer.source))
+
+        return Err(self.error_arena.new!(Error {
+            message: message,
+            loc: unexpected.loc,
+        }))
+    }
+
+    // TODO: implement proper
+    if false {}
+
+    let unexpected = self.current()
+    let message = String::from_str("Unexpected top level token: ")
+    message.push_str(unexpected.get_value(self.lexer.source))
+
+    return Err(self.error_arena.new!(Error {
+        message: message,
+        loc: unexpected.loc,
+    }))
+}
+
+fn Parser::parse_fn_def(&self, exported: bool, loc: Loc): Result<&FnDefExpr, &Error> {
+    let decl = self.parse_fn_decl()?
+    let body = self.parse_code_block()?
+
+    loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(self.ast_arena.new!(FnDefExpr {
+        exported: exported,
+        decl: decl,
+        body: body,
+        loc: loc,
+    }))
+}
+
+fn Parser::parse_fn_decl(&self): Result<&FnDeclExpr, &Error> {
+    let loc = self.prev().loc
+
+    let fn_name = self.parse_ident()?
+
+    let fn_params_trailing_comma = ref!(false)
+    let fn_params = self.parse_fn_params(false, fn_params_trailing_comma)?
+
+    let return_type = null as &TypeExpr
+    if self.eat(TokenType::Operator(), ":") != null {
+        return_type = self.ast_arena.new!(self.parse_type_expr()?)
+    }
+
+    loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(self.ast_arena.new!(FnDeclExpr {
+        fn_name: fn_name,
+        fn_params: fn_params,
+        fn_params_trailing_comma: *fn_params_trailing_comma,
+        return_type: return_type,
+        loc: loc,
+    }))
+}
+
+fn Parser::parse_fn_params(
+    &self,
+    infer_allowed: bool,
+    trailing_comma: &bool,
+): Result<&Vec of FnParam, &Error> {
+    let params = Vec::new!<FnParam>()
+
+    let _ = self.expect(TokenType::Delim(), "(")?
+
+    // TODO: implement proper
+    let _ = self.expect(TokenType::Delim(), ")")?
+
+    return Ok(params)
+}
+
+fn Parser::parse_type_expr(&self): Result<TypeExpr, &Error> {
+    let loc = self.current().loc
+
+    // TODO: implement proper
+    if false {}
+
+    let ident = self.parse_ident()?
+    return Ok(TypeExpr::Named(
+        self.ast_arena.new!(TypeExprNamed { name: ident }),
+    ))
+}
+
+fn Parser::parse_ident(&self): Result<&IdentExpr, &Error> {
+    let ident = IdentExpr {
+        repr: String::from_str(""),
+        parts: Vec::new!<Loc>(),
+        loc: self.current().loc,
+    }
+
+    loop {
+        let ident_part = self.expect_any(TokenType::Symbol())?
+        ident.parts.push!(ident_part.loc)
+        ident.repr.push_str(ident_part.get_value(self.lexer.source))
+
+        if self.eat(TokenType::Operator(), "::") == null {
+            break
+        }
+
+        ident.repr.push_str("::")
+    }
+
+    ident.loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(self.ast_arena.new!(ident))
+}
+
+fn Parser::parse_code_block(&self): Result<&CodeBlock, &Error> {
+    let _ = self.expect(TokenType::Delim(), "{")?
+
+    let code_block = CodeBlock {
+        exprs: Vec::new!<CodeExpr>(),
+        loc: self.prev().loc,
+    }
+
+    while self.eat(TokenType::Delim(), "}") == null {
+        let expr = self.parse_code_expr(0)?
+        code_block.exprs.push!(expr)
+    }
+
+    // closing curly pos
+    code_block.loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(self.ast_arena.new!(code_block))
+}
+
+fn Parser::parse_code_expr(&self, min_bp: u32): Result<CodeExpr, &Error> {
+    let primary = self.parse_code_expr_primary()?
+    let backslash_start_hint = 0
+
+    // TODO: implement proper
+    while false {}
+
+    return Ok(primary)
+}
+
+fn Parser::parse_code_expr_primary(&self): Result<CodeExpr, &Error> {
+    // TODO: implement proper
+    if false {}
+
+    if self.eat_any(TokenType::IntLiteral()) != null {
+        let int_literal = self.prev()
+
+        let tag = null as &str
+        if self.eat(TokenType::Symbol(), "u64") != null {
+            tag = self.ast_arena.new!(self.prev().get_value(self.lexer.source))
+        }
+
+        let repr = int_literal.get_value(self.lexer.source)
+        let value = Lexer::parse_int_literal_value(repr)
+
+        return Ok(CodeExpr::IntLiteral(
+            self.ast_arena.new!(IntLiteralExpr {
+                repr: repr,
+                value: value,
+                tag: tag,
+                loc: int_literal.loc,
+            }),
+        ))
+    }
+
+    if self.eat(TokenType::Symbol(), "return") != null {
+        let loc = self.prev().loc
+
+        let expr = null as &CodeExpr
+        if self.current().loc.end_pos.line == loc.end_pos.line {
+            expr = self.ast_arena.new!(self.parse_code_expr(0)?)
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Return(
+            self.ast_arena.new!(ReturnExpr {
+                expr: expr,
+                loc: loc,
+            }),
+        ))
+    }
+
+    // TODO: implement proper
+    if false {}
+
+    let ident = self.parse_ident()?
+
+    // TODO: implement proper
+    if false {}
+
+    return Ok(CodeExpr::Ident(ident))
+}
+
+fn Parser::expect(&self, type_: TokenType, value: str): Result<&Token, &Error> {
+    let token = self.current()
+    if !token.is(type_, value, self.lexer.source) {
+        let message = String::from_str_in(
+            self.error_arena,
+            "Unexpected token '",
+        )
+        message.push_str(token.get_value(self.lexer.source))
+        message.push_str("', wanted '")
+        message.push_str(value)
+        message.push_str("'")
+
+        return Err(self.error_arena.new!(Error {
+            message: message,
+            loc: token.loc,
+        }))
+    }
+
+    return Ok(self.next())
+}
+
+fn Parser::expect_any(&self, type_: TokenType): Result<&Token, &Error> {
+    let token = self.current()
+    if !token.is_any(type_) {
+        let message = String::from_str_in(
+            self.error_arena,
+            "Unexpected token '",
+        )
+        message.push_str(token.get_value(self.lexer.source))
+        message.push_str("', wanted '")
+        message.push_str(type_.to_str())
+        message.push_str("'")
+
+        return Err(self.error_arena.new!(Error {
+            message: message,
+            loc: token.loc,
+        }))
+    }
+
+    return Ok(self.next())
+}
+
+fn Parser::eat(&self, type_: TokenType, value: str): &Token {
+    if !self.current().is(type_, value, self.lexer.source) {
+        return null
+    }
+
+    return self.next()
+}
+
+fn Parser::eat_any(&self, type_: TokenType): &Token {
+    if !self.current().is_any(type_) {
+        return null
+    }
+
+    return self.next()
+}
+
+// returns current or terminal token
+fn Parser::current(&self): &Token {
+    let index = self.tokens_processed
+    if index >= self.lexer.tokens.size - 1 {
+        index = self.lexer.tokens.size - 1
+    }
+
+    return self.lexer.tokens.at!<Token>(index)
+}
+
+fn Parser::prev(&self): &Token {
+    return self.lexer.tokens.at!<Token>(self.tokens_processed - 1)
+}
+
+fn Parser::next(&self): &Token {
+    let token = self.current()
+    self.tokens_processed += 1
+    return token
 }

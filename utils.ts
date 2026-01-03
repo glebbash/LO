@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import { WASI, type WASIOptions } from "./wasi-shim.mjs";
 
 const COMPILER_PATH = "lo.wasm";
+const SH_COMPILER_SOURCE_PATH = "examples/self-hosted/_bin.lo";
 
 await main();
 
@@ -32,6 +33,17 @@ async function main() {
             args: process.argv.slice(3),
             env: process.env,
             preopens: { ".": "." },
+        });
+    }
+
+    if (process.argv[2] === "sh") {
+        const v1 = await loadLoCompiler(await fs.readFile(COMPILER_PATH));
+        const selfHostedBin = await v1(["compile", SH_COMPILER_SOURCE_PATH]);
+
+        return runWASI(selfHostedBin, {
+            preopens: { ".": "." },
+            args: ["lo", ...process.argv.slice(3)],
+            returnOnExit: false,
         });
     }
 
@@ -118,7 +130,7 @@ async function commandDebugWasi(args: string[]) {
 }
 
 async function commandTest() {
-    const v1Run = await loadCompiler(await fs.readFile(COMPILER_PATH));
+    const v1Run = await loadLoCompiler(await fs.readFile(COMPILER_PATH));
     const v1 = (fileName = "-i") => v1Run(["compile", fileName]);
 
     testVersions("compiles 42.lo", { v1 }, async (compile) => {
@@ -817,9 +829,7 @@ async function commandTest() {
     }
 
     describe("self-hosted", async () => {
-        const sHRun = await loadCompiler(
-            await v1("examples/self-hosted/_bin.lo")
-        );
+        const sHRun = await loadLoCompiler(await v1(SH_COMPILER_SOURCE_PATH));
 
         describe("lexer", async () => {
             const lexV1 = async (fileName = "-i") => {
@@ -1174,61 +1184,61 @@ async function commandTest() {
             test(`${testName} (${compilerName})`, () => testFn(compile));
         }
     }
-
-    async function loadCompiler(compilerWasmBinary: Uint8Array) {
-        const mod = await WebAssembly.compile(compilerWasmBinary);
-
-        return async (
-            args = ["help"],
-            {
-                stdin = new WASI.VirtualFD(),
-                stdout = new WASI.VirtualFD(),
-                stderr = new WASI.VirtualFD(),
-            } = {}
-        ) => {
-            const wasi = new WASI({
-                version: "preview1",
-                stdin,
-                stdout,
-                stderr,
-                args: ["lo", ...args],
-                preopens: { ".": "." },
-                sysCalls: await WASI.NodeSysCalls(),
-            });
-
-            const instance = await WebAssembly.instantiate(mod, {
-                ...wasi.getImportObject(),
-                ...{ console: { ...console } },
-            });
-
-            try {
-                const exitCode = wasi.start(instance);
-
-                if (exitCode ?? 0 !== 0) {
-                    throw new Error(stderr.flushAndReadUtf8());
-                }
-
-                return stdout.flushAndRead();
-            } catch (err) {
-                const errorMessage = stderr.flushAndReadUtf8();
-                if (errorMessage !== "") {
-                    if (
-                        err instanceof WebAssembly.RuntimeError &&
-                        err.message.includes("unreachable")
-                    ) {
-                        err.message = errorMessage;
-                    } else {
-                        throw new Error(errorMessage);
-                    }
-                }
-
-                throw err;
-            }
-        };
-    }
 }
 
 // utils
+
+async function loadLoCompiler(compilerWasmBinary: Uint8Array) {
+    const mod = await WebAssembly.compile(compilerWasmBinary);
+
+    return async (
+        args = ["help"],
+        {
+            stdin = new WASI.VirtualFD(),
+            stdout = new WASI.VirtualFD(),
+            stderr = new WASI.VirtualFD(),
+        } = {}
+    ) => {
+        const wasi = new WASI({
+            version: "preview1",
+            stdin,
+            stdout,
+            stderr,
+            args: ["lo", ...args],
+            preopens: { ".": "." },
+            sysCalls: await WASI.NodeSysCalls(),
+        });
+
+        const instance = await WebAssembly.instantiate(mod, {
+            ...wasi.getImportObject(),
+            ...{ console: { ...console } },
+        });
+
+        try {
+            const exitCode = wasi.start(instance);
+
+            if (exitCode ?? 0 !== 0) {
+                throw new Error(stderr.flushAndReadUtf8());
+            }
+
+            return stdout.flushAndRead();
+        } catch (err) {
+            const errorMessage = stderr.flushAndReadUtf8();
+            if (errorMessage !== "") {
+                if (
+                    err instanceof WebAssembly.RuntimeError &&
+                    err.message.includes("unreachable")
+                ) {
+                    err.message = errorMessage;
+                } else {
+                    throw new Error(errorMessage);
+                }
+            }
+
+            throw err;
+        }
+    };
+}
 
 async function loadWasm(data: Uint8Array, imports?: WebAssembly.Imports) {
     const mod = await WebAssembly.instantiate(data, imports);

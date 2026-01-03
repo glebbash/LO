@@ -35,11 +35,31 @@ fn TokenType::to_str(self): str {
     }
 }
 
+fn Token::get_value(&self, source: str): str {
+    if self.is_terminal() {
+        return "<EOF>"
+    }
+
+    return self.loc.read_span(source)
+}
+
+fn Token::is(&self, type_: TokenType, value: str, source: str): bool {
+    return self.is_any(type_) && self.get_value(source).equals(value)
+}
+
+fn Token::is_any(&self, type_: TokenType): bool {
+    return self.type_ == type_
+}
+
+fn Token::is_terminal(&self): bool {
+    return self.is_any(TokenType::Terminal())
+}
+
 struct Lexer {
     // context
     source: str,
     file_index: u32,
-    a: &Arena,
+    error_arena: &Arena,
 
     // state
     source_pos: Pos,
@@ -53,11 +73,11 @@ struct Lexer {
     double_backslashes: &Vec of Loc,
 }
 
-fn Lexer::new(a: &Arena, source: str, file_index: u32): &Lexer {
+fn Lexer::new(error_arena: &Arena, source: str, file_index: u32): &Lexer {
     return heap::new!(Lexer {
         source: source,
         file_index: file_index,
-        a: a,
+        error_arena: error_arena,
 
         source_pos: Pos { offset: 0, line: 1, col: 1 },
         current_char: read_utf8_codepoint(source, 0),
@@ -72,6 +92,10 @@ fn Lexer::new(a: &Arena, source: str, file_index: u32): &Lexer {
 
 fn Lexer::free(&self) {
     self.tokens.free()
+    self.comments.free()
+    self.backslashes.free()
+    self.double_backslashes.free()
+    heap::free(self)
 }
 
 fn Lexer::lex_file(&self): Result<void, &Error> {
@@ -120,10 +144,10 @@ fn Lexer::lex_token(&self): Result<Token, &Error> {
         return self.lex_operator()
     }
 
-    let message = String::from_str_in(self.a, "Unexpected char: ")
+    let message = String::from_str_in(self.error_arena, "Unexpected char: ")
     message.push(char)
 
-    return Err(self.a.new!(Error {
+    return Err(self.error_arena.new!(Error {
         message: message,
         loc: self.loc(),
     }))
@@ -145,10 +169,13 @@ fn Lexer::lex_char_literal(&self): Result<Token, &Error> {
             || c == '0' || c == '\\' || c == '\''
 
         if !correct_escape {
-            let message = String::from_str_in(self.a, "ParseError: Invalid escape sequence: \\")
+            let message = String::from_str_in(
+                self.error_arena,
+                "ParseError: Invalid escape sequence: \\",
+            )
             message.push(c)
 
-            return Err(self.a.new!(Error {
+            return Err(self.error_arena.new!(Error {
                 message: message,
                 loc: self.loc(),
             }))
@@ -163,11 +190,14 @@ fn Lexer::lex_char_literal(&self): Result<Token, &Error> {
 
     let end_quote = self.current_char()? as u8
     if end_quote != '\'' {
-        let message = String::from_str_in(self.a, "ParseError: Unexpected character `")
+        let message = String::from_str_in(
+            self.error_arena,
+            "ParseError: Unexpected character `",
+        )
         message.push(end_quote)
         message.push_str("`, expected `'`")
 
-        return Err(self.a.new!(Error {
+        return Err(self.error_arena.new!(Error {
             message: message,
             loc: self.loc(),
         }))
@@ -204,10 +234,13 @@ fn Lexer::lex_string_literal(&self): Result<Token, &Error> {
                 || c == '0' || c == '\\' || c == '"'
 
             if !correct_escape {
-                let message = String::from_str_in(self.a, "ParseError: Invalid escape sequence: \\")
+                let message = String::from_str_in(
+                    self.error_arena,
+                    "ParseError: Invalid escape sequence: \\",
+                )
                 message.push(c)
 
-                return Err(self.a.new!(Error {
+                return Err(self.error_arena.new!(Error {
                     message: message,
                     loc: self.loc(),
                 }))
@@ -261,6 +294,29 @@ fn Lexer::lex_int_literal(&self): Result<Token, &Error> {
         type_: TokenType::IntLiteral(),
         loc: loc,
     })
+}
+
+fn Lexer::parse_int_literal_value(int_literal: str): i64 {
+    let radix = 10 as i64
+    if int_literal.starts_with("0x") {
+        int_literal = int_literal.skip_chars(2)
+        radix = 16 as i64
+    }
+
+    let value = 0 as i64
+    for i in 0..int_literal.size {
+        let digit = int_literal.char_at(i)
+        if digit == '_' {
+            continue
+        }
+
+        if digit >= '0' && digit <= '9' {
+            value = value * radix + (digit - '0') as i64
+        } else {
+            value = value * radix + 10 as i64 + (digit - 'A') as i64
+        }
+    }
+    return value
 }
 
 fn Lexer::lex_symbol(&self): Result<Token, &Error> {
@@ -330,11 +386,14 @@ fn Lexer::lex_operator(&self): Result<Token, &Error> {
     }
 
     if !matched_fully {
-        let message = String::from_str_in(self.a, "ParseError: Unexpected char: '")
+        let message = String::from_str_in(
+            self.error_arena,
+            "ParseError: Unexpected char: '",
+        )
         message.push(self.current_char()? as u8)
         message.push_str("'")
 
-        return Err(self.a.new!(Error {
+        return Err(self.error_arena.new!(Error {
             message: message,
             loc: self.loc(),
         }))
@@ -509,8 +568,8 @@ fn Lexer::map_utf8_read_err(&self, utf8_read: Result<u32, UTF8ReadError>): Resul
         if err == UTF8ReadError::EndOfSource() {
             message = "ParseError: Unexpected EOF"
         }
-        return Err(self.a.new!(Error {
-            message: String::from_str_in(self.a, message),
+        return Err(self.error_arena.new!(Error {
+            message: String::from_str_in(self.error_arena, message),
             loc: self.loc(),
         }))
     }
