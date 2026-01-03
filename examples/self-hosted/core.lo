@@ -130,7 +130,7 @@ fn resolve_path(file_path: str, relative_to: str): String {
     let path_items = relative_to.split('/', Vec::new!<str>())
 
     // remove filename
-    let _ = path_items.pop_unchecked()
+    path_items.pop()
 
     let _ = file_path.split('/', path_items)
 
@@ -146,7 +146,7 @@ fn resolve_path(file_path: str, relative_to: str): String {
 
         if item.equals("..") {
             if normalized.size > 0 {
-                let _ = normalized.pop_unchecked()
+                normalized.pop()
             }
             continue
         }

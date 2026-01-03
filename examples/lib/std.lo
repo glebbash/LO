@@ -466,9 +466,8 @@ fn Vec::append(&self, other: &Vec) {
     other.size = 0
 }
 
-fn Vec::pop_unchecked(&self): &void {
+fn Vec::pop(&self) {
     self.size -= 1
-    return self.at_unchecked(self.size)
 }
 
 fn Vec::reverse(&self) {

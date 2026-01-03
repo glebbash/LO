@@ -35,7 +35,7 @@ pub struct Pos {
     pub col: usize,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct Loc {
     pub file_index: usize,
     pub pos: Pos,
@@ -388,10 +388,8 @@ impl FileManager {
             }
         }
 
-        let file_contents = file_read_utf8(&absolute_path).map_err(|message| Error {
-            message,
-            loc: loc.clone(),
-        })?;
+        let file_contents =
+            file_read_utf8(&absolute_path).map_err(|message| Error { message, loc: *loc })?;
 
         let file_index = self.files.len();
         self.files.push(FileInfo {

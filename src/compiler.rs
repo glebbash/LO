@@ -745,7 +745,7 @@ impl Compiler {
                         name: struct_def.struct_name.repr.clone(),
                         collection: ModuleItemCollection::Struct,
                         collection_index: self.struct_defs.len(),
-                        loc: struct_def.struct_name.loc.clone(),
+                        loc: struct_def.struct_name.loc,
                     });
 
                     self.struct_defs.push(StructDef {
@@ -759,7 +759,7 @@ impl Compiler {
                         name: enum_def.enum_name.repr.clone(),
                         collection: ModuleItemCollection::Enum,
                         collection_index: self.enum_defs.len(),
-                        loc: enum_def.enum_name.loc.clone(),
+                        loc: enum_def.enum_name.loc,
                     });
 
                     self.enum_defs.push(EnumDef {
@@ -776,7 +776,7 @@ impl Compiler {
                             name: constructor_name,
                             collection: ModuleItemCollection::EnumConstructor,
                             collection_index: self.enum_ctors.len(),
-                            loc: enum_def.enum_name.loc.clone(),
+                            loc: enum_def.enum_name.loc,
                         });
 
                         self.enum_ctors.push(EnumConstructor {
@@ -790,7 +790,7 @@ impl Compiler {
                         name: type_def.type_name.repr.clone(),
                         collection: ModuleItemCollection::TypeAlias,
                         collection_index: self.type_aliases.len(),
-                        loc: type_def.type_name.loc.clone(),
+                        loc: type_def.type_name.loc,
                     });
 
                     self.type_aliases.push(Type::Never); // placeholder
@@ -800,7 +800,7 @@ impl Compiler {
                         name: fn_def.decl.fn_name.repr.clone(),
                         collection: ModuleItemCollection::Function,
                         collection_index: self.functions.len(),
-                        loc: fn_def.decl.fn_name.loc.clone(),
+                        loc: fn_def.decl.fn_name.loc,
                     });
 
                     let mut ctx = ExprContext::new(module.index, Some(self.functions.len()));
@@ -824,7 +824,7 @@ impl Compiler {
                         },
                         exported_as,
                         wasm_fn_index: u32::MAX, // placeholder
-                        definition_loc: fn_def.decl.fn_name.loc.clone(),
+                        definition_loc: fn_def.decl.fn_name.loc,
                     });
                 }
                 TopLevelExpr::Import(import_expr) => {
@@ -839,7 +839,7 @@ impl Compiler {
                             name: fn_decl.fn_name.repr.clone(),
                             collection: ModuleItemCollection::Function,
                             collection_index: self.functions.len(),
-                            loc: fn_decl.fn_name.loc.clone(),
+                            loc: fn_decl.fn_name.loc,
                         });
 
                         let method_name = fn_decl.fn_name.parts.last().unwrap();
@@ -860,7 +860,7 @@ impl Compiler {
                             },
                             exported_as: Vec::new(),
                             wasm_fn_index: u32::MAX, // not known at this point
-                            definition_loc: fn_decl.fn_name.loc.clone(),
+                            definition_loc: fn_decl.fn_name.loc,
                         });
                     }
                 }
@@ -872,7 +872,7 @@ impl Compiler {
                         name: macro_item_name,
                         collection: ModuleItemCollection::Macro,
                         collection_index: self.macro_defs.len(),
-                        loc: macro_def.macro_name.loc.clone(),
+                        loc: macro_def.macro_name.loc,
                     });
 
                     self.macro_defs.push(macro_def.relax());
@@ -882,7 +882,7 @@ impl Compiler {
                         name: global_def.global_name.repr.clone(),
                         collection: ModuleItemCollection::Global,
                         collection_index: self.globals.len(),
-                        loc: global_def.global_name.loc.clone(),
+                        loc: global_def.global_name.loc,
                     });
 
                     self.globals.push(GlobalDef {
@@ -897,7 +897,7 @@ impl Compiler {
                         name: const_def.const_name.repr.clone(),
                         collection: ModuleItemCollection::Const,
                         collection_index: self.const_defs.len(),
-                        loc: const_def.const_name.loc.clone(),
+                        loc: const_def.const_name.loc,
                     });
 
                     self.const_defs.push(ConstDef {
@@ -906,7 +906,7 @@ impl Compiler {
                             type_: Type::Never, // placeholder
                             instrs: Vec::new(), // placeholder
                         },
-                        loc: const_def.const_name.loc.clone(),
+                        loc: const_def.const_name.loc,
                     });
                 }
                 _ => {} // skip, not interested
@@ -927,7 +927,7 @@ impl Compiler {
                     item.name,
                     existing_item.loc.to_string(&self.fm)
                 ),
-                loc: item.loc.clone(),
+                loc: item.loc,
             });
         }
 
@@ -990,7 +990,7 @@ impl Compiler {
                                         field.field_name.repr,
                                         existing_field.loc.to_string(&self.fm),
                                     ),
-                                    loc: field.field_name.loc.clone(),
+                                    loc: field.field_name.loc,
                                 });
                                 continue 'fields;
                             }
@@ -1019,7 +1019,7 @@ impl Compiler {
                             field_layout,
                             field_index,
                             byte_offset: 0, // will be set during field alignment
-                            loc: field.field_name.loc.clone(),
+                            loc: field.field_name.loc,
                         });
                     }
 
@@ -1065,7 +1065,7 @@ impl Compiler {
                                         variant.variant_name.repr,
                                         existing_variant.loc.to_string(&self.fm),
                                     ),
-                                    loc: variant.variant_name.loc.clone(),
+                                    loc: variant.variant_name.loc,
                                 });
                                 continue 'variants;
                             }
@@ -1086,14 +1086,14 @@ impl Compiler {
                                     "Enum variant is not compatible with {}",
                                     TypeFmt(self, &enum_.variant_type)
                                 ),
-                                loc: variant.variant_name.loc.clone(),
+                                loc: variant.variant_name.loc,
                             });
                         }
 
                         enum_.variants.push(EnumVariant {
                             variant_name: variant.variant_name.repr.clone(),
                             variant_type,
-                            loc: variant.variant_name.loc.clone(),
+                            loc: variant.variant_name.loc,
                         });
                     }
                 }
@@ -1185,7 +1185,7 @@ impl Compiler {
                                         "Duplicate function parameter name: {}",
                                         fn_param.param_name.repr
                                     ),
-                                    loc: fn_param.loc.clone(),
+                                    loc: fn_param.loc,
                                 });
                                 continue 'param_loop;
                             }
@@ -1205,7 +1205,7 @@ impl Compiler {
 
                         self.define_local(
                             ctx,
-                            fn_param.param_name.loc.clone(),
+                            fn_param.param_name.loc,
                             fn_param.param_name.repr.clone(),
                             &param_type,
                         );
@@ -1229,7 +1229,7 @@ impl Compiler {
                     if self.in_inspection_mode {
                         self.print_inspection(&InspectInfo {
                             message: try_export_expr.in_name.repr.clone(),
-                            loc: try_export_expr.loc.clone(),
+                            loc: try_export_expr.loc,
                             linked_loc: Some(fn_info.definition_loc.clone()),
                         });
                     }
@@ -1302,7 +1302,7 @@ impl Compiler {
                                 "Cannot define global with non-primitive type {}",
                                 TypeFmt(self, &value_type)
                             ),
-                            loc: global_def.loc.clone(),
+                            loc: global_def.loc,
                         });
                         continue;
                     }
@@ -1315,7 +1315,7 @@ impl Compiler {
                                 "global {global_name}: {}",
                                 TypeFmt(self, &value_type)
                             ),
-                            loc: global_def.global_name.loc.clone(),
+                            loc: global_def.global_name.loc,
                             linked_loc: None,
                         });
                     }
@@ -1352,7 +1352,7 @@ impl Compiler {
                                 "const {const_name}: {}",
                                 TypeFmt(self, &const_.code_unit.type_)
                             ),
-                            loc: const_def.const_name.loc.clone(),
+                            loc: const_def.const_name.loc,
                             linked_loc: None,
                         });
                     }
@@ -1551,7 +1551,7 @@ impl Compiler {
             if terminates_early {
                 self.report_warning(&Error {
                     message: format!("Unreachable expression"),
-                    loc: expr.loc().clone(),
+                    loc: expr.loc(),
                 });
             }
 
@@ -1568,7 +1568,7 @@ impl Compiler {
                     message: format!(
                         "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
                     ),
-                    loc: expr.loc().clone(),
+                    loc: expr.loc(),
                 });
             }
 
@@ -1598,7 +1598,7 @@ impl Compiler {
                     "Cannot redefine memory, first defined at {}",
                     existing_memory.loc.to_string(&self.fm)
                 ),
-                loc: memory.loc.clone(),
+                loc: memory.loc,
             });
         }
 
@@ -1623,7 +1623,7 @@ impl Compiler {
             if fn_name.parts.len() == 1 {
                 self.report_error(&Error {
                     message: format!("Cannot use self param in non-method function"),
-                    loc: fn_param.loc.clone(),
+                    loc: fn_param.loc,
                 });
                 return Some(Type::Never);
             }
@@ -1643,7 +1643,7 @@ impl Compiler {
             self_type_name += fn_name.parts[i].read_span(fn_source);
         }
 
-        let mut self_type_loc = fn_name.loc.clone();
+        let mut self_type_loc = fn_name.loc;
         self_type_loc.end_pos = self_type_loc.pos;
         self_type_loc.end_pos.offset += self_type_name.len();
         self_type_loc.end_pos.col += self_type_name.len();
@@ -1711,7 +1711,7 @@ impl Compiler {
                                 "Cannot use partially defined struct '{}' here",
                                 struct_def.struct_name
                             ),
-                            loc: loc.clone(),
+                            loc: *loc,
                         });
                     }
                 }
@@ -1811,7 +1811,7 @@ impl Compiler {
                 else {
                     return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
-                        loc: struct_name.loc.clone(),
+                        loc: struct_name.loc,
                     });
                 };
 
@@ -1822,7 +1822,7 @@ impl Compiler {
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
                         self.report_error(&Error {
                             message: format!("Excess field values"),
-                            loc: field_literal.loc.clone(),
+                            loc: field_literal.loc,
                         });
                         break;
                     };
@@ -1833,7 +1833,7 @@ impl Compiler {
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
                             ),
-                            loc: field_literal.loc.clone(),
+                            loc: field_literal.loc,
                         });
                     }
 
@@ -1852,7 +1852,7 @@ impl Compiler {
                                 TypeFmt(self, &struct_field.field_type,),
                                 TypeFmt(self, &field_value_type),
                             ),
-                            loc: field_literal.value.loc().clone(),
+                            loc: field_literal.value.loc(),
                         });
                     }
                 }
@@ -1865,7 +1865,7 @@ impl Compiler {
 
                     self.report_error(&Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
-                        loc: struct_name.loc.clone(),
+                        loc: struct_name.loc,
                     });
                 }
             }
@@ -1890,7 +1890,7 @@ impl Compiler {
                                     TypeFmt(self, &current_item_type),
                                     TypeFmt(self, &item_type),
                                 ),
-                                loc: item.loc().clone(),
+                                loc: item.loc(),
                             });
                         }
 
@@ -1898,7 +1898,7 @@ impl Compiler {
                         let WasmInstr::I32Const { value } = tmp_instrs.pop().unwrap() else {
                             return Err(Error {
                                 message: format!("Unexpected array element value"),
-                                loc: item.loc().clone(),
+                                loc: item.loc(),
                             });
                         };
 
@@ -1916,7 +1916,7 @@ impl Compiler {
                                     TypeFmt(self, &current_item_type),
                                     TypeFmt(self, &item_type),
                                 ),
-                                loc: item.loc().clone(),
+                                loc: item.loc(),
                             });
                         }
 
@@ -1924,13 +1924,13 @@ impl Compiler {
                         let WasmInstr::I32Const { value: len } = tmp_instrs.pop().unwrap() else {
                             return Err(Error {
                                 message: format!("Unexpected array element value"),
-                                loc: item.loc().clone(),
+                                loc: item.loc(),
                             });
                         };
                         let WasmInstr::I32Const { value: ptr } = tmp_instrs.pop().unwrap() else {
                             return Err(Error {
                                 message: format!("Unexpected array element value"),
-                                loc: item.loc().clone(),
+                                loc: item.loc(),
                             });
                         };
 
@@ -1943,7 +1943,7 @@ impl Compiler {
                             "Unsupported array literal element type: {}",
                             TypeFmt(self, &item_type)
                         ),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 }
 
@@ -1978,7 +1978,7 @@ impl Compiler {
                                 TypeFmt(self, &value_type),
                                 TypeFmt(self, &result.ok),
                             ),
-                            loc: loc.clone(),
+                            loc: *loc,
                         });
                     }
 
@@ -1999,7 +1999,7 @@ impl Compiler {
                             TypeFmt(self, &value_type),
                             TypeFmt(self, &result.err),
                         ),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 }
 
@@ -2016,8 +2016,8 @@ impl Compiler {
                                 ident.repr,
                                 TypeFmt(self, &const_def.code_unit.type_)
                             ),
-                            loc: ident.loc.clone(),
-                            linked_loc: Some(const_def.loc.clone()),
+                            loc: ident.loc,
+                            linked_loc: Some(const_def.loc),
                         });
                     }
 
@@ -2053,17 +2053,13 @@ impl Compiler {
                     return Ok(());
                 }
 
-                let local_index = self.define_local(
-                    ctx,
-                    local_name.loc.clone(),
-                    local_name.repr.clone(),
-                    &local_type,
-                );
+                let local_index =
+                    self.define_local(ctx, local_name.loc, local_name.repr.clone(), &local_type);
                 let var = self.var_local(
                     &local_name.repr,
                     local_type,
                     local_index,
-                    local_name.loc.clone(),
+                    local_name.loc,
                     None,
                 );
                 if let Some(inspect_info) = var.inspect_info() {
@@ -2101,7 +2097,7 @@ impl Compiler {
                             TypeFmt(self, &castee_type),
                             TypeFmt(self, &casted_to_type)
                         ),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 }
             }
@@ -2123,7 +2119,7 @@ impl Compiler {
                             message: format!(
                                 "Invalid reference expression. Only struct reference fields allowed.",
                             ),
-                            loc: loc.clone(),
+                            loc: *loc,
                         });
                     };
                     if let Some(inspect_info) = inspect_info {
@@ -2157,7 +2153,7 @@ impl Compiler {
                                 "Cannot apply not operation to expr of type {}",
                                 TypeFmt(self, &operand_type)
                             ),
-                            loc: loc.clone(),
+                            loc: *loc,
                         });
                     }
                     match wasm_components[0] {
@@ -2189,7 +2185,7 @@ impl Compiler {
                                     "Cannot apply not operation to expr of type {}",
                                     TypeFmt(self, &operand_type)
                                 ),
-                                loc: loc.clone(),
+                                loc: *loc,
                             });
                         }
                     }
@@ -2216,7 +2212,7 @@ impl Compiler {
                                 "Cannot negate expr of type {}",
                                 TypeFmt(self, &operand_type)
                             ),
-                            loc: loc.clone(),
+                            loc: *loc,
                         });
                     }
                     match wasm_components[0] {
@@ -2252,7 +2248,7 @@ impl Compiler {
                                     "Cannot negate expr of type {}",
                                     TypeFmt(self, &operand_type)
                                 ),
-                                loc: loc.clone(),
+                                loc: *loc,
                             });
                         }
                     }
@@ -2359,8 +2355,8 @@ impl Compiler {
                         if self.in_inspection_mode {
                             self.print_inspection(&InspectInfo {
                                 message: format!("{} // {}", fn_name.repr, ctor.variant_index),
-                                loc: fn_name.loc.clone(),
-                                linked_loc: Some(variant.loc.clone()),
+                                loc: fn_name.loc,
+                                linked_loc: Some(variant.loc),
                             });
                         }
 
@@ -2375,7 +2371,7 @@ impl Compiler {
                                 message: format!(
                                     "Non-void enum constructors require exactly one argument"
                                 ),
-                                loc: fn_name.loc.clone(),
+                                loc: fn_name.loc,
                             });
                         }
 
@@ -2387,7 +2383,7 @@ impl Compiler {
                                     TypeFmt(self, &expr_type),
                                     TypeFmt(self, &variant.variant_type),
                                 ),
-                                loc: fn_name.loc.clone(),
+                                loc: fn_name.loc,
                             });
                         }
 
@@ -2460,7 +2456,7 @@ impl Compiler {
                     if args.items.len() != 0 || type_args.len() != 0 {
                         return Err(Error {
                             message: format!("@{}() accepts no arguments", fn_name.repr),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
@@ -2472,7 +2468,7 @@ impl Compiler {
                     if args.items.len() != 0 || type_args.len() != 0 {
                         return Err(Error {
                             message: format!("@{}() accepts no arguments", fn_name.repr),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
@@ -2484,7 +2480,7 @@ impl Compiler {
                     if type_args.len() != 0 {
                         return Err(Error {
                             message: format!("@{}() accepts no type arguments", fn_name.repr),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
@@ -2500,7 +2496,7 @@ impl Compiler {
                                 TypeListFmt(self, &arg_types),
                                 fn_name.repr,
                             ),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
@@ -2516,7 +2512,7 @@ impl Compiler {
                     if type_args.len() != 0 {
                         return Err(Error {
                             message: format!("@{}() accepts no type arguments", fn_name.repr),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
@@ -2532,7 +2528,7 @@ impl Compiler {
                                 TypeListFmt(self, &arg_types),
                                 fn_name.repr,
                             ),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
@@ -2548,14 +2544,14 @@ impl Compiler {
                     if args.items.len() != 0 || type_args.len() != 0 {
                         return Err(Error {
                             message: format!("@{}() accepts no arguments", fn_name.repr),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
                     if let Some(_) = ctx.fn_index {
                         return Err(Error {
                             message: format!("@{}() can only be used in globals", fn_name.repr),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
                     }
 
@@ -2601,7 +2597,7 @@ impl Compiler {
                                 "Invalid arguments for @{}(items: const T[])",
                                 fn_name.repr,
                             ),
-                            loc: fn_name.loc.clone(),
+                            loc: fn_name.loc,
                         });
 
                         Ok(())
@@ -2624,7 +2620,7 @@ impl Compiler {
 
                     self.print_inspection(&InspectInfo {
                         message,
-                        loc: fn_name.loc.clone(),
+                        loc: fn_name.loc,
                         linked_loc: None,
                     });
                     return Ok(());
@@ -2632,7 +2628,7 @@ impl Compiler {
 
                 self.report_error(&Error {
                     message: format!("Unknown intrinsic: {}", fn_name.repr),
-                    loc: fn_name.loc.clone(),
+                    loc: fn_name.loc,
                 });
             }
             CodeExpr::Dbg(DbgExpr { message, loc }) => {
@@ -2672,7 +2668,7 @@ impl Compiler {
                 let Some(fn_index) = ctx.fn_index else {
                     return Err(Error {
                         message: format!("Cannot use `return` in const context"),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 };
 
@@ -2691,7 +2687,7 @@ impl Compiler {
                             TypeFmt(self, &return_type),
                             TypeFmt(self, &fn_return_type),
                         ),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 }
 
@@ -2706,6 +2702,19 @@ impl Compiler {
             }) => {
                 match cond {
                     IfCond::Expr(expr) => {
+                        if let Ok(cond_type) = self.get_expr_type(ctx, expr) {
+                            if cond_type != Type::Bool {
+                                self.report_error(&Error {
+                                    message: format!(
+                                        "Unexpected condition type: {}, expected: {}",
+                                        TypeFmt(self, &cond_type),
+                                        TypeFmt(self, &Type::Bool),
+                                    ),
+                                    loc: expr.loc(),
+                                });
+                            }
+                        }
+
                         self.codegen(ctx, instrs, expr)?;
 
                         // `if` condition runs outside of then_branch's scope
@@ -2781,7 +2790,7 @@ impl Compiler {
                         message: format!(
                             "Match's else block must resolve to never, got other type"
                         ),
-                        loc: else_branch.loc.clone(),
+                        loc: else_branch.loc,
                     });
                 }
                 ctx.exit_scope();
@@ -2840,24 +2849,20 @@ impl Compiler {
                             TypeFmt(self, &self.get_expr_type(ctx, end)?),
                             TypeFmt(self, &counter_type),
                         ),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 }
 
                 ctx.enter_scope(ScopeType::ForLoop);
 
                 // define counter and set value to start
-                let local_index = self.define_local(
-                    ctx,
-                    counter.loc.clone(),
-                    counter.repr.clone(),
-                    &counter_type,
-                );
+                let local_index =
+                    self.define_local(ctx, counter.loc, counter.repr.clone(), &counter_type);
                 let counter_var = self.var_local(
                     &counter.repr,
                     counter_type.clone(),
                     local_index,
-                    counter.loc.clone(),
+                    counter.loc,
                     None,
                 );
                 if let Some(inspect_info) = counter_var.inspect_info() {
@@ -2929,7 +2934,7 @@ impl Compiler {
                         ScopeType::Function => {
                             return Err(Error {
                                 message: format!("Cannot break outside of a loop"),
-                                loc: loc.clone(),
+                                loc: *loc,
                             });
                         }
                         ScopeType::Loop => break,
@@ -2954,7 +2959,7 @@ impl Compiler {
                         ScopeType::Function => {
                             return Err(Error {
                                 message: format!("Cannot continue outside of a loop"),
-                                loc: loc.clone(),
+                                loc: *loc,
                             });
                         }
                         ScopeType::Loop => break,
@@ -2990,7 +2995,7 @@ impl Compiler {
                                 TypeFmt(self, &arg_type),
                                 TypeFmt(self, &current_arg_type),
                             ),
-                            loc: arg.loc().clone(),
+                            loc: arg.loc(),
                         });
                         continue;
                     }
@@ -3077,21 +3082,22 @@ impl Compiler {
         let Some(item) = self.modules[ctx.module_index].get_item(&header.variant_name.repr) else {
             return Err(Error {
                 message: format!("Unkown enum constructor: {}", header.variant_name.repr),
-                loc: header.variant_name.loc.clone(),
+                loc: header.variant_name.loc,
             });
         };
         let ModuleItemCollection::EnumConstructor = item.collection else {
             return Err(Error {
                 message: format!("Not an enum constructor: {}", header.variant_name.repr),
-                loc: header.variant_name.loc.clone(),
+                loc: header.variant_name.loc,
             });
         };
 
         let enum_ctor = &self.enum_ctors[item.collection_index];
-        let enum_variant = &self.enum_defs[enum_ctor.enum_index].variants[enum_ctor.variant_index];
+        let enum_def = &self.enum_defs[enum_ctor.enum_index];
+        let enum_variant = &enum_def.variants[enum_ctor.variant_index];
         let local_index = self.define_local(
             ctx,
-            header.variant_bind.loc.clone(),
+            header.variant_bind.loc,
             header.variant_bind.repr.clone(),
             &enum_variant.variant_type,
         );
@@ -3099,12 +3105,29 @@ impl Compiler {
             &header.variant_bind.repr,
             enum_variant.variant_type.clone(),
             local_index,
-            header.variant_bind.loc.clone(),
+            header.variant_bind.loc,
             None,
         );
         if let Some(inspect_info) = local.inspect_info() {
             self.print_inspection(inspect_info);
         }
+
+        if let Ok(expr_to_match_type) = self.get_expr_type(ctx, &header.expr_to_match) {
+            let expected_expr_to_match_type = Type::EnumInstance {
+                enum_index: enum_ctor.enum_index,
+            };
+            if !self.is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type) {
+                self.report_error(&Error {
+                    message: format!(
+                        "Unexpected type to match, expected: {}, got: {}",
+                        TypeFmt(self, &expected_expr_to_match_type),
+                        TypeFmt(self, &expr_to_match_type)
+                    ),
+                    loc: header.expr_to_match.loc(),
+                });
+            }
+        };
+
         self.codegen_var_set_prepare(instrs, &local);
         self.codegen(ctx, instrs, &header.expr_to_match)?;
         self.codegen_var_set(ctx, instrs, &local)?;
@@ -3153,7 +3176,7 @@ impl Compiler {
 
             self.print_inspection(&InspectInfo {
                 message,
-                loc: loc.clone(),
+                loc: *loc,
                 linked_loc: Some(fn_info.definition_loc.clone()),
             });
         }
@@ -3166,7 +3189,7 @@ impl Compiler {
                     TypeListFmt(self, &arg_types),
                     TypeListFmt(self, &fn_info.fn_type.inputs),
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         }
 
@@ -3186,7 +3209,7 @@ impl Compiler {
         let Some(item) = self.modules[ctx.module_index].get_item(fn_name) else {
             return Err(Error {
                 message: format!("Unknown function: {}", fn_name),
-                loc: loc.clone(),
+                loc: *loc,
             });
         };
 
@@ -3197,7 +3220,7 @@ impl Compiler {
                     fn_name,
                     item.loc.to_string(&self.fm)
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         };
 
@@ -3249,7 +3272,7 @@ impl Compiler {
         else {
             return Err(Error {
                 message: format!("Unknown macro: {}", macro_name),
-                loc: loc.clone(),
+                loc: *loc,
             });
         };
 
@@ -3288,7 +3311,7 @@ impl Compiler {
                     macro_def.macro_type_params.len(),
                     type_args.len()
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         }
 
@@ -3306,7 +3329,7 @@ impl Compiler {
                     macro_def.macro_params.len(),
                     all_args.len()
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         }
 
@@ -3319,7 +3342,7 @@ impl Compiler {
             let const_def = ConstDef {
                 const_name: macro_param.param_name.repr.clone(),
                 code_unit: macro_arg,
-                loc: macro_param.loc.clone(),
+                loc: macro_param.loc,
             };
 
             if let FnParamType::Infer { name } = &macro_param.param_type {
@@ -3351,7 +3374,7 @@ impl Compiler {
                     TypeListFmt(self, &macro_types),
                     TypeListFmt(self, &arg_types)
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         }
 
@@ -3383,8 +3406,8 @@ impl Compiler {
 
             self.print_inspection(&InspectInfo {
                 message,
-                loc: loc.clone(),
-                linked_loc: Some(macro_def.macro_name.loc.clone()),
+                loc: *loc,
+                linked_loc: Some(macro_def.macro_name.loc),
             });
         }
 
@@ -3439,7 +3462,7 @@ impl Compiler {
 
         // pop error
         let (error_bind, error_bind_loc) = if let Some(error_bind) = error_bind {
-            (error_bind.repr.clone(), error_bind.loc.clone())
+            (error_bind.repr.clone(), error_bind.loc)
         } else {
             (String::from("<err>"), Loc::internal())
         };
@@ -3462,7 +3485,7 @@ impl Compiler {
 
         // pop ok
         let ok_bind = String::from("<ok>");
-        let ok_local_index = self.define_local(ctx, loc.clone(), ok_bind, &result.ok);
+        let ok_local_index = self.define_local(ctx, *loc, ok_bind, &result.ok);
         self.codegen_local_set(instrs, &result.ok, ok_local_index);
 
         // cond: error != 0
@@ -3482,7 +3505,7 @@ impl Compiler {
             if !terminates_early {
                 self.report_error(&Error {
                     message: format!("Catch expression must resolve to never, got other type"),
-                    loc: loc.clone(),
+                    loc: *loc,
                 });
             }
         } else {
@@ -3700,7 +3723,7 @@ impl Compiler {
         let Some(fn_index) = ctx.fn_index else {
             return Err(Error {
                 message: format!("Cannot create implicitly typed result in const context"),
-                loc: loc.clone(),
+                loc: *loc,
             });
         };
 
@@ -3710,7 +3733,7 @@ impl Compiler {
                 message: format!(
                     "Cannot create implicitly typed result: function does not return result"
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         };
 
@@ -3765,7 +3788,7 @@ impl Compiler {
                 Some(tag) => {
                     return Err(Error {
                         message: format!("Unknown int literal tag: {tag}"),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 }
             },
@@ -3777,7 +3800,7 @@ impl Compiler {
                 let Some(item) = self.modules[ctx.module_index].get_item("str") else {
                     return Err(Error {
                         message: format!("Cannot use strings with no `str` struct defined"),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 };
 
@@ -3794,7 +3817,7 @@ impl Compiler {
                 let Some(item) = self.modules[ctx.module_index].get_item(&struct_name.repr) else {
                     return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
-                        loc: loc.clone(),
+                        loc: *loc,
                     });
                 };
 
@@ -3895,7 +3918,7 @@ impl Compiler {
                                 "Cannot dereference expr of type {}",
                                 TypeFmt(self, &expr_type)
                             ),
-                            loc: loc.clone(),
+                            loc: *loc,
                         });
                     };
                     Ok(*pointee)
@@ -4020,7 +4043,7 @@ impl Compiler {
 
                 Err(Error {
                     message: format!("Unknown intrinsic macro: {}", fn_name.repr),
-                    loc: fn_name.loc.clone(),
+                    loc: fn_name.loc,
                 })
             }
             CodeExpr::MacroMethodCall(MacroMethodCallExpr {
@@ -4144,7 +4167,7 @@ impl Compiler {
                                         type_: enum_variant.variant_type.clone(),
                                         instrs: Vec::new(),
                                     },
-                                    loc: header.variant_bind.loc.clone(),
+                                    loc: header.variant_bind.loc,
                                 });
                             };
                         }
@@ -4212,7 +4235,7 @@ impl Compiler {
                         type_: value_type,
                         instrs: Vec::new(),
                     },
-                    loc: loc.clone(),
+                    loc: *loc,
                 });
 
                 continue;
@@ -4322,7 +4345,7 @@ impl Compiler {
         if self.in_inspection_mode {
             inspect_info = Some(InspectInfo {
                 message: format!("let {}: {}", local_name, TypeFmt(self, &local_type)),
-                loc: loc.clone(),
+                loc: loc,
                 linked_loc,
             })
         };
@@ -4340,7 +4363,7 @@ impl Compiler {
                 &ident.repr,
                 local.local_type.clone(),
                 local.local_index,
-                ident.loc.clone(),
+                ident.loc,
                 Some(local.definition_loc.clone()),
             ));
         };
@@ -4357,8 +4380,8 @@ impl Compiler {
                             ident.repr,
                             TypeFmt(self, &global.global_type)
                         ),
-                        loc: ident.loc.clone(),
-                        linked_loc: Some(item.loc.clone()),
+                        loc: ident.loc,
+                        linked_loc: Some(item.loc),
                     });
                 }
 
@@ -4379,21 +4402,21 @@ impl Compiler {
                         ident.repr,
                         TypeFmt(self, &const_.code_unit.type_)
                     ),
-                    loc: ident.loc.clone(),
-                    linked_loc: Some(const_.loc.clone()),
+                    loc: ident.loc,
+                    linked_loc: Some(const_.loc),
                 })
             }
 
             return Ok(VariableInfo::Const {
                 code_unit: const_.code_unit.relax(),
-                loc: const_.loc.clone(),
+                loc: const_.loc,
                 inspect_info,
             });
         }
 
         return Err(Error {
             message: format!("Unknown variable: {}", ident.repr),
-            loc: ident.loc.clone(),
+            loc: ident.loc,
         });
     }
 
@@ -4415,8 +4438,8 @@ impl Compiler {
                     field.field_name,
                     TypeFmt(self, &field.field_type),
                 ),
-                loc: field_access.field_name.loc.clone(),
-                linked_loc: Some(field.loc.clone()),
+                loc: field_access.field_name.loc,
+                linked_loc: Some(field.loc),
             })
         };
 
@@ -4497,7 +4520,7 @@ impl Compiler {
                             - field.field_index
                             - field_components_count,
                         drops_after: drops_after + field.field_index,
-                        loc: field_access.field_name.loc.clone(),
+                        loc: field_access.field_name.loc,
                         inspect_info,
                     });
                 }
@@ -4512,7 +4535,7 @@ impl Compiler {
             field_type: field.field_type.clone(),
             drops_before: struct_components_count - field.field_index - field_components_count,
             drops_after: field.field_index,
-            loc: field_access.field_name.loc.clone(),
+            loc: field_access.field_name.loc,
             inspect_info,
         });
     }
@@ -4543,7 +4566,7 @@ impl Compiler {
                     field_access.field_name.repr,
                     TypeFmt(self, lhs_type),
                 ),
-                loc: field_access.field_name.loc.clone(),
+                loc: field_access.field_name.loc,
             });
         };
 
@@ -4558,7 +4581,7 @@ impl Compiler {
                     "Unknown field {} in struct {}",
                     field_access.field_name.repr, struct_def.struct_name
                 ),
-                loc: field_access.field_name.loc.clone(),
+                loc: field_access.field_name.loc,
             });
         };
 
@@ -4596,7 +4619,7 @@ impl Compiler {
                 "Cannot dereference expression of type '{}'",
                 TypeFmt(self, &addr_type)
             ),
-            loc: addr_expr.loc().clone(),
+            loc: addr_expr.loc(),
         });
     }
 
@@ -4685,7 +4708,7 @@ impl Compiler {
                 }
 
                 if *drops_after > 0 {
-                    let local_index = self.define_unnamed_local(ctx, loc.clone(), field_type);
+                    let local_index = self.define_unnamed_local(ctx, *loc, field_type);
 
                     let var = VariableInfo::Local {
                         local_index,
@@ -4800,7 +4823,7 @@ impl Compiler {
             } => {
                 return Err(Error {
                     message: format!("Cannot mutate a constant"),
-                    loc: loc.clone(),
+                    loc: *loc,
                 });
             }
         };
@@ -4875,7 +4898,7 @@ impl Compiler {
                     "Cannot catch error from expr of type {}",
                     TypeFmt(self, &expr_type)
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         };
 
@@ -4887,7 +4910,7 @@ impl Compiler {
                     "Invalid Result error type: {}, must lower to i32",
                     TypeFmt(self, &result.err)
                 ),
-                loc: loc.clone(),
+                loc: *loc,
             });
         }
 
@@ -4923,7 +4946,7 @@ impl Compiler {
         if self.memory.is_none() && !self.in_inspection_mode {
             return Err(Error {
                 message: format!("Cannot use strings with no memory defined"),
-                loc: loc.clone(),
+                loc: *loc,
             });
         }
 
@@ -4979,7 +5002,7 @@ impl Compiler {
         else {
             return Err(Error {
                 message: format!("Unknown type: {}", type_name),
-                loc: loc.clone(),
+                loc: *loc,
             });
         };
 
@@ -4988,8 +5011,8 @@ impl Compiler {
                 if self.in_inspection_mode {
                     self.print_inspection(&InspectInfo {
                         message: format!("struct {type_name} {{ ... }}"),
-                        loc: loc.clone(),
-                        linked_loc: Some(item.loc.clone()),
+                        loc: *loc,
+                        linked_loc: Some(item.loc),
                     });
                 }
 
@@ -5001,8 +5024,8 @@ impl Compiler {
                 if self.in_inspection_mode {
                     self.print_inspection(&InspectInfo {
                         message: format!("enum {type_name} {{ ... }}"),
-                        loc: loc.clone(),
-                        linked_loc: Some(item.loc.clone()),
+                        loc: *loc,
+                        linked_loc: Some(item.loc),
                     });
                 }
 
@@ -5017,8 +5040,8 @@ impl Compiler {
                 if self.in_inspection_mode && item.loc.file_index != 0 {
                     self.print_inspection(&InspectInfo {
                         message: format!("type {type_name} = {}", TypeFmt(self, &type_)),
-                        loc: loc.clone(),
-                        linked_loc: Some(item.loc.clone()),
+                        loc: *loc,
+                        linked_loc: Some(item.loc),
                     });
                 }
 
@@ -5030,7 +5053,7 @@ impl Compiler {
             | ModuleItemCollection::Const
             | ModuleItemCollection::EnumConstructor => Err(Error {
                 message: format!("Item is not a type: {}", type_name),
-                loc: loc.clone(),
+                loc: *loc,
             }),
         }
     }

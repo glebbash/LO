@@ -50,7 +50,7 @@ impl Parser {
 
     fn parse_top_level_expr(&self) -> Result<TopLevelExpr, Error> {
         if let Some(_) = self.eat(Symbol, "export") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             if let Some(_) = self.eat(Symbol, "fn") {
                 let fn_def = self.parse_fn_def(true, loc)?;
@@ -68,12 +68,12 @@ impl Parser {
                     "Unexpected exportable: {}",
                     unexpected.get_value(self.lexer.source)
                 ),
-                loc: unexpected.loc.clone(),
+                loc: unexpected.loc,
             });
         }
 
         if let Some(_) = self.eat(Symbol, "try") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             self.expect(Symbol, "export")?;
             let in_name = self.parse_ident()?;
@@ -98,21 +98,21 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "fn") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             let fn_def = self.parse_fn_def(false, loc)?;
             return Ok(TopLevelExpr::FnDef(fn_def));
         }
 
         if let Some(_) = self.eat(Symbol, "memory") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             let memory_def = self.parse_memory_def(false, loc)?;
             return Ok(TopLevelExpr::MemoryDef(memory_def));
         }
 
         if let Some(_) = self.eat(Symbol, "include") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let file_path = self.expect_any(StringLiteral)?.clone();
             let mut alias = None;
@@ -137,7 +137,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "import") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             self.expect(Symbol, "from")?;
             let module_name = self.expect_any(StringLiteral)?.clone();
@@ -160,7 +160,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "global") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let global_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
@@ -177,7 +177,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "struct") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let struct_name = self.parse_ident()?;
 
@@ -185,7 +185,7 @@ impl Parser {
 
             self.expect(Delim, "{")?;
             while let None = self.eat(Delim, "}") {
-                let mut field_loc = self.current().loc.clone();
+                let mut field_loc = self.current().loc;
 
                 let field_name = self.parse_ident()?;
                 self.expect(Operator, ":")?;
@@ -214,7 +214,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "enum") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let enum_name = self.parse_ident()?;
 
@@ -228,7 +228,7 @@ impl Parser {
 
             self.expect(Delim, "{")?;
             while let None = self.eat(Delim, "}") {
-                let mut variant_loc = self.current().loc.clone();
+                let mut variant_loc = self.current().loc;
 
                 let variant_name = self.parse_ident()?;
 
@@ -262,7 +262,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "type") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let type_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
@@ -278,7 +278,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "const") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let const_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
@@ -294,7 +294,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "macro") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let macro_name = self.parse_ident()?;
             self.expect(Operator, "!")?;
@@ -341,7 +341,7 @@ impl Parser {
                 "Unexpected top level token: {}",
                 unexpected.get_value(self.lexer.source)
             ),
-            loc: unexpected.loc.clone(),
+            loc: unexpected.loc,
         });
     }
 
@@ -402,7 +402,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "memory") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
             let memory_def = self.parse_memory_def(false, loc)?;
             return Ok(ImportItem::Memory(memory_def));
         }
@@ -413,12 +413,12 @@ impl Parser {
                 "Unexpected token in importable item: {:?}",
                 unexpected.get_value(self.lexer.source)
             ),
-            loc: unexpected.loc.clone(),
+            loc: unexpected.loc,
         });
     }
 
     fn parse_fn_decl(&self) -> Result<FnDeclExpr, Error> {
-        let mut loc = self.prev().loc.clone();
+        let mut loc = self.prev().loc;
 
         let fn_name = self.parse_ident()?;
         let mut fn_params_trailing_comma = false;
@@ -452,7 +452,7 @@ impl Parser {
         while let None = self.eat(Delim, ")") {
             *trailing_comma = false;
 
-            let mut loc = self.current().loc.clone();
+            let mut loc = self.current().loc;
 
             let mut param_type = FnParamType::Self_;
             if let Some(_) = self.eat(Operator, "&") {
@@ -477,7 +477,7 @@ impl Parser {
                     if !infer_allowed {
                         return Err(Error {
                             message: format!("Cannot use `infer` outside macro parameter list"),
-                            loc: infer.loc.clone(),
+                            loc: infer.loc,
                         });
                     }
 
@@ -510,7 +510,7 @@ impl Parser {
     }
 
     fn parse_type_expr(&self) -> Result<TypeExpr, Error> {
-        let mut loc = self.current().loc.clone();
+        let mut loc = self.current().loc;
         let primary = self.parse_type_expr_primary()?;
 
         if let Some(_) = self.eat(Symbol, "of") {
@@ -528,7 +528,7 @@ impl Parser {
     }
 
     fn parse_type_expr_primary(&self) -> Result<TypeExpr, Error> {
-        let mut loc = self.current().loc.clone();
+        let mut loc = self.current().loc;
 
         if let Some(_) = self.eat(Operator, "&") {
             let pointee = Box::new(self.parse_type_expr()?);
@@ -541,10 +541,7 @@ impl Parser {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::Pointer(TypeExprPointer {
-                pointee: Box::new(TypeExpr::Pointer(TypeExprPointer {
-                    pointee,
-                    loc: loc.clone(),
-                })),
+                pointee: Box::new(TypeExpr::Pointer(TypeExprPointer { pointee, loc })),
                 loc,
             }));
         }
@@ -582,7 +579,7 @@ impl Parser {
 
         let mut code_block = CodeBlock {
             exprs: Vec::new(),
-            loc: self.prev().loc.clone(),
+            loc: self.prev().loc,
         };
 
         while let None = self.eat(Delim, "}") {
@@ -653,19 +650,19 @@ impl Parser {
 
     fn parse_code_expr_primary(&self) -> Result<CodeExpr, Error> {
         if let Some(_) = self.eat(Symbol, "true") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: true, loc }));
         }
 
         if let Some(_) = self.eat(Symbol, "false") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr { value: false, loc }));
         }
 
         if let Some(_) = self.eat(Symbol, "null") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             return Ok(CodeExpr::NullLiteral(NullLiteralExpr { loc }));
         }
@@ -674,7 +671,7 @@ impl Parser {
             return Ok(CodeExpr::CharLiteral(CharLiteralExpr {
                 repr: char.get_value(self.lexer.source).to_string(),
                 value: Lexer::parse_char_literal_value(&char.get_value(self.lexer.source)) as u32,
-                loc: char.loc.clone(),
+                loc: char.loc,
             }));
         };
 
@@ -691,20 +688,20 @@ impl Parser {
                 repr,
                 value,
                 tag,
-                loc: int.loc.clone(),
+                loc: int.loc,
             }));
         };
 
         if let Some(string) = self.eat_any(StringLiteral).cloned() {
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                value: EscapedString(string.loc.clone()).unescape(self.lexer.source),
+                value: EscapedString(string.loc).unescape(self.lexer.source),
                 repr: string.get_value(self.lexer.source).to_string(),
                 loc: string.loc,
             }));
         };
 
         if let Some(_) = self.eat(Delim, "(") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             self.push_ctx(ParsingContext {
                 struct_literal_allowed: true,
@@ -727,7 +724,7 @@ impl Parser {
         };
 
         if let Some(_) = self.eat(Symbol, "let") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let local_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
@@ -743,7 +740,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "return") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let mut expr = None;
             if self.current().loc.end_pos.line == loc.end_pos.line {
@@ -756,7 +753,7 @@ impl Parser {
         };
 
         if let Some(_) = self.eat(Symbol, "if") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             self.push_ctx(ParsingContext {
                 struct_literal_allowed: false,
@@ -795,7 +792,7 @@ impl Parser {
         };
 
         if let Some(_) = self.eat(Symbol, "match") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let match_header = self.parse_match_header()?;
             self.expect(Symbol, "else")?;
@@ -811,7 +808,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "loop") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let body = self.parse_code_block()?;
 
@@ -825,7 +822,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "while") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             self.push_ctx(ParsingContext {
                 struct_literal_allowed: false,
@@ -845,7 +842,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "for") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             self.push_ctx(ParsingContext {
                 struct_literal_allowed: false,
@@ -874,19 +871,19 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "break") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             return Ok(CodeExpr::Break(BreakExpr { loc }));
         }
 
         if let Some(_) = self.eat(Symbol, "continue") {
-            let loc = self.prev().loc.clone();
+            let loc = self.prev().loc;
 
             return Ok(CodeExpr::Continue(ContinueExpr { loc }));
         }
 
         if let Some(_) = self.eat(Symbol, "do") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let body = Box::new(self.parse_code_expr(0)?);
             let with = self.expect(Symbol, "with")?.clone();
@@ -903,7 +900,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Operator, "@") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let fn_name = self.parse_ident()?;
             let type_args = self.parse_macro_type_args()?;
@@ -920,7 +917,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "dbg") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let message = self.expect_any(StringLiteral)?.clone();
 
@@ -931,7 +928,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "defer") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let expr = self.parse_code_expr(0)?;
 
@@ -944,7 +941,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Symbol, "sizeof") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let type_expr = self.parse_type_expr()?;
 
@@ -954,7 +951,7 @@ impl Parser {
         };
 
         if let Some(_) = self.eat(Delim, "[") {
-            let mut loc = self.prev().loc.clone();
+            let mut loc = self.prev().loc;
 
             let item_type = self.parse_type_expr()?;
             self.expect(Delim, "]")?;
@@ -987,7 +984,7 @@ impl Parser {
                     surround it with parens.",
                     self.prev().get_value(self.lexer.source)
                 ),
-                loc: self.prev().loc.clone(),
+                loc: self.prev().loc,
             });
         }
 
@@ -996,7 +993,7 @@ impl Parser {
             if let Some(op) = PrefixOp::parse(op_token.clone(), self.lexer.source) {
                 self.next(); // skip operator
 
-                let mut loc = self.prev().loc.clone();
+                let mut loc = self.prev().loc;
 
                 let min_bp = op.info.get_min_bp_for_next();
 
@@ -1024,7 +1021,7 @@ impl Parser {
         let ident = self.parse_ident()?;
 
         if ident.repr == "Ok" || ident.repr == "Err" {
-            let mut loc = ident.loc.clone();
+            let mut loc = ident.loc;
 
             let mut result_type = None;
             if let Some(_) = self.eat(Operator, ":") {
@@ -1056,13 +1053,13 @@ impl Parser {
 
         let ctx = self.context_stack.last().unwrap();
         if self.current().is(Delim, "{", self.lexer.source) && ctx.struct_literal_allowed {
-            let loc = ident.loc.clone();
+            let loc = ident.loc;
             let struct_literal = self.parse_struct_literal(ident, loc)?;
             return Ok(CodeExpr::StructLiteral(struct_literal));
         }
 
         if self.current().is(Delim, "(", self.lexer.source) {
-            let mut loc = ident.loc.clone();
+            let mut loc = ident.loc;
 
             self.push_ctx(ParsingContext {
                 struct_literal_allowed: true,
@@ -1082,7 +1079,7 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Operator, "!") {
-            let mut loc = ident.loc.clone();
+            let mut loc = ident.loc;
 
             let type_args = self.parse_macro_type_args()?;
             let args = self.parse_fn_args()?;
@@ -1119,12 +1116,12 @@ impl Parser {
         let mut ident = IdentExpr {
             repr: String::new(),
             parts: Vec::new(),
-            loc: self.current().loc.clone(),
+            loc: self.current().loc,
         };
 
         loop {
             let ident_part = self.expect_any(Symbol)?;
-            ident.parts.push(ident_part.loc.clone());
+            ident.parts.push(ident_part.loc);
             ident.repr += ident_part.get_value(self.lexer.source);
 
             if let None = self.eat(Operator, "::") {
@@ -1151,7 +1148,7 @@ impl Parser {
         while let None = self.eat(Delim, "}") {
             has_trailing_comma = false;
 
-            let mut field_loc = self.current().loc.clone();
+            let mut field_loc = self.current().loc;
 
             let field_name = self.expect_any(Symbol)?.clone();
             self.expect(Operator, ":")?;
@@ -1254,7 +1251,7 @@ impl Parser {
                 let lhs = primary;
                 let rhs = self.parse_code_expr(min_bp)?;
 
-                let mut loc = lhs.loc().clone();
+                let mut loc = lhs.loc();
                 loc.end_pos = rhs.loc().end_pos;
 
                 Ok(CodeExpr::InfixOp(InfixOpExpr {
@@ -1266,7 +1263,7 @@ impl Parser {
                 }))
             }
             InfixOpTag::Cast => {
-                let mut loc = primary.loc().clone();
+                let mut loc = primary.loc();
 
                 let casted_to = self.parse_type_expr()?;
 
@@ -1279,7 +1276,7 @@ impl Parser {
                 }))
             }
             InfixOpTag::FieldAccess => {
-                let mut loc = primary.loc().clone();
+                let mut loc = primary.loc();
 
                 let field_name = self.parse_ident()?;
 
@@ -1320,7 +1317,7 @@ impl Parser {
                 }))
             }
             InfixOpTag::Assign => {
-                let mut loc = primary.loc().clone();
+                let mut loc = primary.loc();
 
                 let value = self.parse_code_expr(min_bp)?;
 
@@ -1334,7 +1331,7 @@ impl Parser {
                 }))
             }
             InfixOpTag::Catch => {
-                let mut loc = primary.loc().clone();
+                let mut loc = primary.loc();
 
                 let error_bind = self.parse_ident()?;
                 let catch_body = self.parse_code_block()?;
@@ -1350,7 +1347,7 @@ impl Parser {
                 }))
             }
             InfixOpTag::ErrorPropagation => {
-                let mut loc = primary.loc().clone();
+                let mut loc = primary.loc();
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::PropagateError(PropagateErrorExpr {
@@ -1359,7 +1356,7 @@ impl Parser {
                 }))
             }
             InfixOpTag::ExprPipe => {
-                let mut loc = primary.loc().clone();
+                let mut loc = primary.loc();
 
                 let rhs = self.parse_code_expr(min_bp)?;
 
@@ -1393,7 +1390,7 @@ impl Parser {
                     "Unexpected token '{}', wanted {type_:?}",
                     token.get_value(self.lexer.source)
                 ),
-                loc: token.loc.clone(),
+                loc: token.loc,
             });
         }
 
@@ -1408,7 +1405,7 @@ impl Parser {
                     "Unexpected token '{}', wanted '{value}'",
                     token.get_value(self.lexer.source)
                 ),
-                loc: token.loc.clone(),
+                loc: token.loc,
             });
         }
 

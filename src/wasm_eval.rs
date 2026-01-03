@@ -1345,7 +1345,7 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
         _ => {
             return Err(EvalError {
                 message: format!("Host fn '{fn_name}' is not implemented"),
-            })
+            });
         }
     }
 

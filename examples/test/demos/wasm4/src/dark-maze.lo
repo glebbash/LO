@@ -205,7 +205,7 @@ fn set_draw_colors(c1: u32, c2: u32, c3: u32, c4: u32) {
 }
 
 fn just_pressed(button: u8): bool {
-    if gamepad & button {
+    if gamepad & button != 0 as u8 {
         if !(prev_gamepad & button) {
             return true
         }
