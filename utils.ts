@@ -14,6 +14,18 @@ await main();
 async function main() {
     process.chdir(import.meta.dirname!);
 
+    if (process.argv[2] === "b") {
+        const childProcess = await import("node:child_process");
+        childProcess.spawnSync("bash", ["-c", "./build.sh"], {
+            stdio: "inherit",
+        });
+
+        process.argv.splice(2, 1); // remove `b` arg
+        if (process.argv.length == 2) {
+            return; // stop if this was the only command
+        }
+    }
+
     if (process.argv[2] === "test") {
         return commandTest();
     }
