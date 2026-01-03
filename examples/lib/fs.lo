@@ -5,6 +5,7 @@ include "./print.lo"
 // fs expects host to preopen "." on fd 3
 const fs::CWD_PREOPEN_FD = 3
 
+// @inline fn
 macro fs::read_file!(file_name: str): String {
     fs::read_file(file_name) catch err {
         eprint("Error reading file '")
