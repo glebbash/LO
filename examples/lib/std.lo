@@ -164,11 +164,9 @@ fn stack::free(size: u32) {
 
 // tmp alloc utils (stack + defer free)
 
-// TODO: figure out why using `tmp_alloc!()` inside of here breaks (but only sometimes)
 // @macro because it defers to outside scope
 macro ref!(value: infer T): &T {
-    let value_ref = stack::alloc(sizeof T) as &T
-    defer stack::free(sizeof T)
+    let value_ref = tmp_alloc!<T>()
     *value_ref = value
     value_ref
 }

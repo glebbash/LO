@@ -54,7 +54,7 @@ export fn _start() {
 
             defer a.reset()
 
-            // TODO: figure out why `u32::to_tmp_str!()` overflows stack here
+            // TODO: figure out why `u32::to_tmp_str!()` overflows stack on `dark-maze.lo` example
             do stdout_write(it) with (
                 token.loc.pos.line.to_str_in!(a),
                 ":", \\ token.loc.pos.col.to_str_in!(a),

@@ -841,7 +841,7 @@ async function commandTest() {
     }
 
     describe("self-hosted", async () => {
-        const sHRun = await loadLoCompiler(await v1(SH_COMPILER_SOURCE_PATH));
+        const shRun = await loadLoCompiler(await v1(SH_COMPILER_SOURCE_PATH));
 
         describe("lexer", async () => {
             const lexV1 = async (fileName = "-i") => {
@@ -849,23 +849,45 @@ async function commandTest() {
                 return new TextDecoder().decode(output);
             };
             const lexSH = async (fileName = "-i") => {
-                const output = await sHRun(["lex", fileName]);
+                const output = await shRun(["lex", fileName]);
                 return new TextDecoder().decode(output);
             };
 
-            const filesToLex = await fs
-                .readdir("examples", { recursive: true })
-                .then((files) => files.filter((f) => f.endsWith(".lo")))
-                .then((files) => files.map((f) => `examples/${f}`))
-                // TODO: look into printing performance
-                .then((files) => files.filter((f) => !f.includes("dark-maze")));
+            let files = await fs.readdir("examples", { recursive: true });
+            files = files.filter((f) => f.endsWith(".lo"));
+            files = files.map((f) => `examples/${f}`);
 
-            for (const fileName of filesToLex) {
+            // TODO: look into printing performance
+            files = files.filter((f) => !f.includes("dark-maze"));
+
+            for (const fileName of files) {
                 test(`correctly lexes ${fileName}`, async () => {
                     const v1 = await lexV1(fileName);
                     const sh = await lexSH(fileName);
 
                     assert.equal(sh, v1);
+                });
+            }
+        });
+
+        describe("formatter", () => {
+            const format = async (fileName = "-i") => {
+                const output = await shRun(["format", fileName]);
+                return new TextDecoder().decode(output);
+            };
+
+            // TODO: support all eventually
+            // let files = await fs.readdir("examples", { recursive: true });
+            // files = files.filter((f) => f.endsWith(".lo"));
+            // files = files.map((f) => `examples/${f}`);
+            const files = ["examples/test/42.lo"];
+
+            for (const fileName of files) {
+                test(`formats ${fileName}`, async () => {
+                    const formatted = await format(fileName);
+                    const expected = await fs.readFile(fileName, "utf8");
+
+                    assert.strictEqual(formatted, expected);
                 });
             }
         });
