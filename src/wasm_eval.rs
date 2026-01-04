@@ -707,7 +707,7 @@ impl WasmEval {
     }
 
     fn get_fn_name(&self, fn_index: u32) -> Option<&str> {
-        for fn_info in &self.wasm_module.debug_fn_info {
+        for fn_info in &self.wasm_module.function_names {
             if fn_info.fn_index == fn_index {
                 return Some(&fn_info.fn_name);
             }

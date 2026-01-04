@@ -1361,7 +1361,6 @@ impl Compiler {
         }
     }
 
-    // TODO: add local names to debug info
     pub fn generate(&mut self, wasm_module: &mut WasmModule) {
         let mut fn_imports_count = 0;
         for fn_info in &self.functions {
@@ -1399,7 +1398,7 @@ impl Compiler {
             match &fn_info.fn_source {
                 FnSource::Guest { ctx: _, body: _ } => {
                     wasm_module.functions.push(fn_type_index);
-                    wasm_module.debug_fn_info.push(WasmDebugFnInfo {
+                    wasm_module.function_names.push(WasmFnNameItem {
                         fn_index: wasm_fn_index,
                         fn_name: fn_info.fn_name.clone(),
                     });
@@ -1474,6 +1473,32 @@ impl Compiler {
                 locals: wasm_locals,
                 expr: wasm_expr,
             });
+
+            // emit debug info for local names
+            {
+                let mut local_names_item = WasmLocalNameItem {
+                    fn_index: fn_info.wasm_fn_index,
+                    locals: Vec::new(),
+                };
+
+                for local in &ctx.locals {
+                    let file_index = local.definition_loc.file_index;
+                    if file_index == 0 {
+                        continue;
+                    }
+                    let module = &self.get_module_by_file_index(file_index).unwrap();
+                    let source = module.parser.lexer.source;
+
+                    self.push_name_section_locals(
+                        &mut local_names_item.locals,
+                        local.local_index,
+                        &local.local_type,
+                        local.definition_loc.read_span(source).to_string(),
+                    );
+                }
+
+                wasm_module.local_names.push(local_names_item);
+            }
         }
 
         if let Some(memory) = &self.memory {
@@ -5581,6 +5606,78 @@ impl Compiler {
             | InfixOpTag::Catch
             | InfixOpTag::ErrorPropagation
             | InfixOpTag::ExprPipe => None,
+        }
+    }
+
+    fn push_name_section_locals(
+        &self,
+        output: &mut Vec<WasmLocalInfo>,
+        local_index: u32,
+        local_type: &Type,
+        local_name: String,
+    ) {
+        match local_type {
+            Type::Never
+            | Type::Null
+            | Type::Void
+            | Type::Bool
+            | Type::U8
+            | Type::I8
+            | Type::U16
+            | Type::I16
+            | Type::U32
+            | Type::I32
+            | Type::F32
+            | Type::U64
+            | Type::I64
+            | Type::F64
+            | Type::Pointer { pointee: _ }
+            | Type::SequencePointer { pointee: _ } => output.push(WasmLocalInfo {
+                local_index,
+                local_name,
+            }),
+            Type::StructInstance { struct_index } => {
+                let struct_def = &self.struct_defs[*struct_index];
+                for field in &struct_def.fields {
+                    self.push_name_section_locals(
+                        output,
+                        local_index + field.field_index,
+                        &field.field_type,
+                        alloc::format!("{}.{}", local_name, field.field_name),
+                    );
+                }
+            }
+            Type::EnumInstance { enum_index } => {
+                self.push_name_section_locals(
+                    output,
+                    local_index,
+                    &Type::U32,
+                    alloc::format!("{}#tag", local_name),
+                );
+
+                let enum_def = &self.enum_defs[*enum_index];
+                self.push_name_section_locals(
+                    output,
+                    local_index,
+                    &enum_def.variant_type,
+                    alloc::format!("{}#payload", local_name),
+                );
+            }
+            Type::Result(result_type) => {
+                self.push_name_section_locals(
+                    output,
+                    local_index,
+                    &result_type.ok,
+                    alloc::format!("{}#ok", local_name),
+                );
+
+                self.push_name_section_locals(
+                    output,
+                    local_index,
+                    &&result_type.err,
+                    alloc::format!("{}#err", local_name),
+                );
+            }
         }
     }
 

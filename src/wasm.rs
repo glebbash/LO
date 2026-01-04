@@ -12,7 +12,10 @@ pub struct WasmModule {
     pub exports: Vec<WasmExport>,
     pub codes: Vec<WasmFn>,
     pub datas: Vec<WasmData>,
-    pub debug_fn_info: Vec<WasmDebugFnInfo>,
+
+    // debug info
+    pub function_names: Vec<WasmFnNameItem>,
+    pub local_names: Vec<WasmLocalNameItem>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -316,9 +319,21 @@ pub enum WasmData {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct WasmDebugFnInfo {
+pub struct WasmFnNameItem {
     pub fn_index: u32,
     pub fn_name: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WasmLocalNameItem {
+    pub fn_index: u32,
+    pub locals: Vec<WasmLocalInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WasmLocalInfo {
+    pub local_index: u32,
+    pub local_name: String,
 }
 
 impl WasmModule {
@@ -345,7 +360,7 @@ impl WasmModule {
 
         self.write_data_section(output, section_buffer);
 
-        self.write_custom_section(output, section_buffer);
+        self.write_names_custom_section(output, section_buffer);
     }
 
     fn write_type_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
@@ -507,8 +522,8 @@ impl WasmModule {
         write_section(output, section, 0x0B);
     }
 
-    fn write_custom_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
-        if self.debug_fn_info.len() == 0 {
+    fn write_names_custom_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
+        if self.function_names.len() == 0 || self.local_names.len() == 0 {
             return;
         }
 
@@ -516,16 +531,33 @@ impl WasmModule {
         write_u32(section, section_name.len() as u32);
         write_all(section, section_name.as_bytes());
 
-        /* function names */
+        // function names:
         {
             let mut subsection_buf = Vec::new();
-            write_u32(&mut subsection_buf, self.debug_fn_info.len() as u32);
-            for fn_name in &self.debug_fn_info {
-                write_u32(&mut subsection_buf, fn_name.fn_index);
-                write_u32(&mut subsection_buf, fn_name.fn_name.len() as u32);
-                write_all(&mut subsection_buf, fn_name.fn_name.as_bytes());
+            write_u32(&mut subsection_buf, self.function_names.len() as u32);
+            for fn_info in &self.function_names {
+                write_u32(&mut subsection_buf, fn_info.fn_index);
+                write_u32(&mut subsection_buf, fn_info.fn_name.len() as u32);
+                write_all(&mut subsection_buf, fn_info.fn_name.as_bytes());
             }
             write_section(section, &mut subsection_buf, 1);
+        }
+
+        // local names:
+        {
+            let mut subsection_buf = Vec::new();
+            write_u32(&mut subsection_buf, self.local_names.len() as u32);
+            for fn_info in &self.local_names {
+                write_u32(&mut subsection_buf, fn_info.fn_index);
+
+                write_u32(&mut subsection_buf, fn_info.locals.len() as u32);
+                for local_info in &fn_info.locals {
+                    write_u32(&mut subsection_buf, local_info.local_index);
+                    write_u32(&mut subsection_buf, local_info.local_name.len() as u32);
+                    write_all(&mut subsection_buf, local_info.local_name.as_bytes());
+                }
+            }
+            write_section(section, &mut subsection_buf, 2);
         }
 
         write_section(output, section, 0x00);
