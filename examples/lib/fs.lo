@@ -52,6 +52,8 @@ fn fs::_unlock() {
     if err != wasi::Err::SUCCESS {
         return
     }
+
+    stack::align_for_wasmtime!(8)
     let fdstat = tmp_alloc!<wasi::fdstat>()
     err = wasi::fd_fdstat_get(fs::CWD_PREOPEN_FD, fdstat)
     if err != wasi::Err::SUCCESS {

@@ -126,6 +126,14 @@ global stack::MIN = u32::MAX
 
 global stack::NOW = 0
 
+// @inline fn
+macro stack::align_for_wasmtime!(alignment: u32) {
+    stack::check_init!()
+    let current = stack::NOW
+    let to_align = mem::align_to(current, alignment) - current
+    let _ = tmp_alloc_many!<u8>(to_align)
+}
+
 // @inline @generic fn
 macro stack::alloc!<T>(): &T {
     stack::alloc(sizeof T) as &T

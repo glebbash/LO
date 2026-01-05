@@ -3409,8 +3409,12 @@ impl Compiler {
         if build_code && self.in_inspection_mode {
             let mut message = String::new();
 
-            let lo_type_args = TypeListFmt(self, &lo_type_args);
-            write!(&mut message, "macro {macro_name}!<{lo_type_args}>(").unwrap();
+            write!(&mut message, "macro {macro_name}!").unwrap();
+            if lo_type_args.len() > 0 {
+                let lo_type_args = TypeListFmt(self, &lo_type_args);
+                write!(&mut message, "<{lo_type_args}>").unwrap();
+            }
+            write!(&mut message, "(").unwrap();
 
             let macro_args_len = ctx.current_scope().macro_args.len();
             for i in macro_args_len - macro_def.macro_params.len()..macro_args_len {
