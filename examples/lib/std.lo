@@ -232,6 +232,7 @@ macro heap::alloc_many!<T>(count: u32): *&T {
 // http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
 fn heap::alloc(size: u32): &void {
     size = mem::align(size)
+
     let free_block = heap::find_free_block(size)
     if free_block != null {
         free_block.used = true
@@ -303,16 +304,16 @@ struct Arena::Block {
     next: &Arena::Block,
     size: u32,
     used: u32,
-    base: &void,
+    data: &void,
 }
 
 fn Arena::Block::new(a: Alloc, size: u32): &Arena::Block {
-    let mem = alloc(a, size)
+    let data = alloc(a, size)
     return new!(a, Arena::Block {
         next: null,
         size: size,
         used: 0,
-        base: mem,
+        data: data,
     })
 }
 
@@ -362,7 +363,7 @@ fn Arena::alloc(&self, size: u32): &void {
         block = new_block
     }
 
-    let ptr = (block.base as u32 + block.used) as &void
+    let ptr = (block.data as u32 + block.used) as &void
     block.used += size
     return ptr
 }
@@ -382,7 +383,8 @@ fn Arena::reset(&self) {
 fn Arena::free(&self) {
     let block = self.head
     loop {
-        free(self.alloc, block.base, block.size)
+        free(self.alloc, block.data, block.size)
+
         let next_block = block.next
         free!<Arena::Block>(self.alloc, block)
         if next_block == null {
@@ -519,20 +521,28 @@ fn Vec::reverse_range(&self, start: u32, end: u32) {
 }
 
 fn Vec::_grow_to_size(&self, new_size: u32) {
-    self.size = new_size
-    if self.size <= self.capacity {
+    if new_size <= self.capacity {
+        self.size = new_size
         return
     }
+
     if self.alloc == Alloc::STACK {
         abort(AbortCode::STACK_VECTOR_GROW)
     }
-    let item_size = self.item_size
-    let old_capacity = self.capacity
-    let old_data = self.data
-    defer free(self.alloc, old_data, old_capacity * item_size)
-    self.capacity = old_capacity * 2
-    self.data = alloc(self.alloc, self.capacity * item_size)
-    mem::copy!(old_data, self.data, self.size * item_size)
+
+    let old = *self
+
+    let new_capacity = u32::max!(old.capacity * 2, new_size)
+    let new_data = alloc(old.alloc, new_capacity * old.item_size)
+
+    if old.capacity != 0 {
+        mem::copy!(old.data, new_data, old.size * old.item_size)
+        free(old.alloc, old.data, old.capacity * old.item_size)
+    }
+
+    self.data = new_data
+    self.capacity = new_capacity
+    self.size = new_size
 }
 
 // @inline fn
@@ -805,4 +815,12 @@ macro todo!(): never {
 // @inline @generic fn
 macro array_at!<T>(array: *&T, index: u32): &T {
     (array as u32 + index * sizeof T) as &T
+}
+
+macro u32::max!(a: u32, b: u32): u32 {
+    let max = a
+    if b > a {
+        max = b
+    }
+    max
 }

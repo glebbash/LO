@@ -67,9 +67,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
 fn Printer::print_fn_decl(&self, fn_decl: &FnDeclExpr) {
     stdout_write("fn ")
-    // TODO!: figure out why this is not working
-    // stdout_write(fn_decl.fn_name.repr.as_str())
-    stdout_write(fn_decl.fn_name.loc.read_span(self.parser.lexer.source))
+    stdout_write(fn_decl.fn_name.repr.as_str())
     self.print_fn_params(fn_decl.fn_params, fn_decl.fn_params_trailing_comma)
 
     if fn_decl.return_type != null {
@@ -100,9 +98,7 @@ fn Printer::print_fn_params(&self, params: &Vec of FnParam, is_multiline: bool) 
 
 fn Printer::print_type_expr(&self, expr: TypeExpr) {
     if match TypeExpr::Named(named) = expr {
-        // TODO!: figure out why this is not working
-        // stdout_write(named.name.repr.as_str())
-        stdout_write(named.name.loc.read_span(self.parser.lexer.source))
+        stdout_write(named.name.repr.as_str())
     } else {
         todo!()
     }
