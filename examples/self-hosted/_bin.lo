@@ -39,13 +39,13 @@ export fn _start() {
             wasi::proc_exit(1)
         }
 
-        let a = Arena::new(2048)
-        defer a.free()
-
         let file_info = compiler.fm.get(module.parser.lexer.file_index)
         do stdout_write(it) with (
             "file_path: ", \\ file_info.absolute_path.as_str(), \\ "\n",
         )
+
+        let a = Arena::new(2048)
+        defer a.free()
 
         stdout_enable_buffering()
 
@@ -54,23 +54,22 @@ export fn _start() {
 
             defer a.reset()
 
-            // TODO: figure out why `u32::to_tmp_str!()` overflows stack on `dark-maze.lo` example
             do stdout_write(it) with (
-                token.loc.pos.line.to_str_in!(a),
-                ":", \\ token.loc.pos.col.to_str_in!(a),
+                token.loc.pos.line.to_tmp_str!(),
+                ":", \\ token.loc.pos.col.to_tmp_str!(),
                 "-",
-                token.loc.end_pos.line.to_str_in!(a),
-                ":", \\ token.loc.end_pos.col.to_str_in!(a),
+                token.loc.end_pos.line.to_tmp_str!(),
+                ":", \\ token.loc.end_pos.col.to_tmp_str!(),
 
-                " ", \\ "(", \\ token.loc.pos.offset.to_str_in!(a),
-                "-", \\ token.loc.end_pos.offset.to_str_in!(a), \\ ")",
+                " ", \\ "(", \\ token.loc.pos.offset.to_tmp_str!(),
+                "-", \\ token.loc.end_pos.offset.to_tmp_str!(), \\ ")",
 
                 " ", \\ token.type_.to_str(),
 
                 " ", \\ ">> ",
                 token.loc.read_span(module.parser.lexer.source) \
-                    |> String::from_str_in(a, it).replace("\n", "\\n") \
-                    |> it.as_str(),
+                    |> String::from_str_in(a, it) \
+                    |> it.replace("\n", "\\n").as_str(),
                 " <<",
 
                 "\n",

@@ -14,13 +14,13 @@ await main();
 async function main() {
     process.chdir(import.meta.dirname!);
 
-    if (process.argv[2] === "b") {
+    if (["build", "b"].includes(process.argv[2])) {
         const childProcess = await import("node:child_process");
         childProcess.spawnSync("bash", ["-c", "./build.sh"], {
             stdio: "inherit",
         });
 
-        process.argv.splice(2, 1); // remove `b` arg
+        process.argv.splice(2, 1); // remove build arg
         if (process.argv.length == 2) {
             return; // stop if this was the only command
         }
@@ -856,9 +856,6 @@ async function commandTest() {
             let files = await fs.readdir("examples", { recursive: true });
             files = files.filter((f) => f.endsWith(".lo"));
             files = files.map((f) => `examples/${f}`);
-
-            // TODO: look into printing performance
-            files = files.filter((f) => !f.includes("dark-maze"));
 
             for (const fileName of files) {
                 test(`correctly lexes ${fileName}`, async () => {

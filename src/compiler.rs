@@ -168,7 +168,7 @@ struct Local {
     definition_loc: Loc,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum ScopeType {
     Function,
     Block,
@@ -3025,7 +3025,7 @@ impl Compiler {
                         continue;
                     }
 
-                    ctx.enter_scope(ScopeType::Block);
+                    ctx.enter_scope(ScopeType::Macro);
 
                     self.codegen(ctx, instrs, arg)?;
 
@@ -3065,13 +3065,16 @@ impl Compiler {
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 let code_unit = self.build_code_unit(ctx, expr)?;
 
-                // macros defer into parent scope
-                if let ScopeType::Macro = ctx.current_scope().scope_type {
-                    let parent_scope_index = ctx.scopes.len() - 2;
-                    ctx.scopes[parent_scope_index].deferred.push(code_unit);
-                } else {
-                    ctx.current_scope_mut().deferred.push(code_unit);
+                // find first non-macro scope
+                let mut scope_to_defer = ctx.scopes.relax_mut().last_mut().unwrap();
+                for scope in ctx.scopes.iter_mut().rev() {
+                    if scope.scope_type != ScopeType::Macro {
+                        scope_to_defer = scope;
+                        break;
+                    }
                 }
+
+                scope_to_defer.deferred.push(code_unit);
             }
             CodeExpr::Catch(CatchExpr {
                 lhs,
