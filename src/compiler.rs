@@ -1217,7 +1217,6 @@ impl Compiler {
                         target_module = &self.modules.last().unwrap();
                     }
 
-                    // TODO: same syntax should probably also be able to export named memories
                     let Ok(fn_info) = self.get_fn_info_for_call(
                         &target_module.ctx,
                         &try_export_expr.in_name.repr,
@@ -2371,7 +2370,6 @@ impl Compiler {
                 args,
                 loc: _,
             }) => {
-                // TODO: add inspections
                 if let Some(item) = self.modules[ctx.module_index].get_item(&fn_name.repr) {
                     if let ModuleItemCollection::EnumConstructor = item.collection {
                         let ctor = &self.enum_ctors[item.collection_index];
@@ -5007,7 +5005,6 @@ impl Compiler {
         }
     }
 
-    // TODO!!!: add similar logic for break/continue
     fn emit_deferred_for_return(&self, ctx: &ExprContext, instrs: &mut Vec<WasmInstr>) {
         for scope in ctx.scopes.iter().rev() {
             self.emit_deferred(scope, instrs);
@@ -5335,13 +5332,13 @@ impl Compiler {
                 self.get_type_layout(&Type::U32, layout);
                 self.get_type_layout(&enum_def.variant_type, layout);
 
-                // TODO!!!: figure out the alignment and byte_size
+                // TODO: figure out the alignment and byte_size
             }
             Type::Result(result) => {
                 self.get_type_layout(&result.ok, layout);
                 self.get_type_layout(&result.err, layout);
 
-                // TODO!!!: figure out the alignment and byte_size
+                // TODO: figure out the alignment and byte_size
             }
         }
     }

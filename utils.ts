@@ -1147,11 +1147,11 @@ async function commandTest() {
 
         // aoc
 
-        // TODO: look into performance of part 2
         test("interprets aoc2020 day 1", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/1.lo");
             assert.strictEqual(new TextDecoder().decode(res1), "157059\n");
 
+            // TODO: look into performance here
             const res2 = await interpret(
                 "./examples/test/demos/aoc2020/1-part2.lo"
             );
@@ -1188,11 +1188,11 @@ async function commandTest() {
             assert.strictEqual(new TextDecoder().decode(res2), "224\n");
         });
 
-        // TODO: look into performance of part 2
         test("interprets aoc2020 day 5", async () => {
             const res1 = await interpret("./examples/test/demos/aoc2020/5.lo");
             assert.strictEqual(new TextDecoder().decode(res1), "947\n");
 
+            // TODO: look into performance here
             const res2 = await interpret(
                 "./examples/test/demos/aoc2020/5-part2.lo"
             );

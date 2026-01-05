@@ -105,9 +105,3 @@ fn option_do_with2() {
         \"},",
     )
 }
-
-// TODO: consider support for backtick strings
-//   as printing quotes (both single and double) is much more common than backticks
-//   will make priting json much more pleasant
-//   but making it the only string syntax is probably not the best idea
-//     cause some keyboard layouts are ass for typing backticks
