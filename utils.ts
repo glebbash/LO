@@ -891,7 +891,8 @@ async function commandTest() {
     });
 
     describe("interpreter", () => {
-        const interpret = (fileName = "-i") => v1Run(["eval", fileName]);
+        const interpret = (fileName = "-i", args: string[] = []) =>
+            v1Run(["eval", fileName, ...args]);
 
         test("interprets 42.lo", async () => {
             const res = await interpret("examples/test/42.lo");
@@ -1035,28 +1036,31 @@ async function commandTest() {
         });
 
         test("interprets args.test.lo", async () => {
-            const res = await interpret("./examples/test/args.test.lo");
+            const res = await interpret("./examples/test/args.test.lo", [
+                "1",
+                "2",
+                "3",
+            ]);
             assert.strictEqual(
                 new TextDecoder().decode(res),
                 m`
-                lo
-                eval
                 ./examples/test/args.test.lo
+                1
+                2
+                3
 
                 `
             );
         });
 
-        // TODO: provide a way to pass own args to --eval
         test("interprets cat.lo", async () => {
-            try {
-                await interpret("./examples/test/demos/cat.lo");
-            } catch (err) {
-                assert.strictEqual(
-                    (err as Error).message,
-                    "Usage cat.lo <file>\n"
-                );
-            }
+            const file = "examples/test/42.lo";
+            const res = await interpret("./examples/test/demos/cat.lo", [file]);
+
+            assert.strictEqual(
+                new TextDecoder().decode(res),
+                await fs.readFile(file, "utf-8")
+            );
         });
 
         test("interprets tracing.lo", async () => {

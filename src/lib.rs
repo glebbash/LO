@@ -47,7 +47,7 @@ static USAGE: &str = "Usage:
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() {
     let args = WasiArgs::load().unwrap();
-    if args.len() < 3 {
+    if args.size < 3 {
         stderr_writeln(USAGE);
         proc_exit(1);
     }
@@ -70,7 +70,11 @@ pub extern "C" fn _start() {
             proc_exit(1);
         });
 
-        catch!(WasmEval::eval(wasm_module), err, {
+        let mut eval = WasmEval::new(wasm_module);
+        eval.wasi_args = Some(args);
+        eval.wasi_args_skip = 2;
+
+        catch!(eval.eval(), err, {
             stderr_writeln(err.message);
             proc_exit(1);
         });
@@ -158,7 +162,11 @@ pub extern "C" fn _start() {
     }
 
     if command == "eval" {
-        catch!(WasmEval::eval(wasm_module), err, {
+        let mut eval = WasmEval::new(wasm_module);
+        eval.wasi_args = Some(args);
+        eval.wasi_args_skip = 2;
+
+        catch!(eval.eval(), err, {
             stderr_writeln(err.message);
             proc_exit(1);
         });

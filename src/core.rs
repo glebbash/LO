@@ -78,9 +78,9 @@ impl Loc {
 const CWD_PREOPEN_FD: u32 = 3;
 
 pub struct WasiArgs {
-    size: usize,
-    argv: Vec<*mut u8>,
-    _argv_buf: Vec<u8>,
+    pub size: usize,
+    pub argv: Vec<*mut u8>,
+    pub _argv_buf: Vec<u8>,
 }
 
 impl WasiArgs {
@@ -109,12 +109,8 @@ impl WasiArgs {
         })
     }
 
-    pub fn len(&self) -> usize {
-        return self.size;
-    }
-
     pub fn get(&self, index: usize) -> Option<&str> {
-        if index >= self.len() {
+        if index >= self.size {
             return None;
         }
 

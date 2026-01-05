@@ -19,17 +19,22 @@ pub struct WasmEval {
     memory: LinearMemory,
     host_fns: Vec<String>,
     jump_tables_per_fn_index: Vec<JumpTable>,
+
+    pub wasi_args: Option<WasiArgs>,
+    pub wasi_args_skip: usize,
 }
 
 impl WasmEval {
-    pub fn eval(wasm_module: WasmModule) -> Result<(), EvalError> {
-        let mut eval = WasmEval {
+    pub fn new(wasm_module: WasmModule) -> Self {
+        WasmEval {
             wasm_module,
             ..Default::default()
-        };
+        }
+    }
 
-        eval.init_module()?;
-        eval.eval_main()?;
+    pub fn eval(&mut self) -> Result<(), EvalError> {
+        self.init_module()?;
+        self.eval_main()?;
 
         Ok(())
     }
@@ -1291,52 +1296,56 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             eval.stack.push(WasmValue::I32 { value: err as i32 });
         }
         "wasi_snapshot_preview1::args_sizes_get" => {
-            let argv_buf_size_ptr = eval.pop_i32();
-            let argc_ptr = eval.pop_i32();
+            let argv_buf_size_ptr = eval.pop_i32() as usize;
+            let argc_ptr = eval.pop_i32() as usize;
 
-            let mut argc = 0u32;
-            let mut argv_buf_size = 0u32;
-            let err = unsafe {
-                wasi::args_sizes_get(&mut argc as *mut u32, &mut argv_buf_size as *mut u32)
+            let Some(args) = &eval.wasi_args else {
+                return Err(EvalError {
+                    message: format!("Arguments access not enabled"),
+                });
             };
-            eval.stack.push(WasmValue::I32 { value: err as i32 });
 
-            if err == wasi::ERR_SUCCESS {
-                eval.memory.store_i32(argc_ptr as usize, argc as i32);
-                eval.memory
-                    .store_i32(argv_buf_size_ptr as usize, argv_buf_size as i32);
+            let guest_argc = (args.size - eval.wasi_args_skip) as i32;
+
+            let mut guest_buf_size = args._argv_buf.len() as i32;
+            for i in 0..eval.wasi_args_skip {
+                guest_buf_size -= args.get(i).unwrap().len() as i32 + 1 /* \0 */;
             }
+
+            eval.memory.store_i32(argc_ptr, guest_argc);
+            eval.memory.store_i32(argv_buf_size_ptr, guest_buf_size);
+            eval.stack.push(WasmValue::I32 {
+                value: wasi::ERR_SUCCESS as i32,
+            });
         }
         "wasi_snapshot_preview1::args_get" => {
-            let argv_buf_ptr = eval.pop_i32();
-            let argv_ptr = eval.pop_i32();
+            let argv_buf_ptr = eval.pop_i32() as usize;
+            let argv_ptr = eval.pop_i32() as usize;
 
-            let argv = &mut eval.memory.bytes[argv_ptr as usize] as *mut u8 as *mut *mut u8;
-            let argv_buf = &mut eval.memory.bytes[argv_buf_ptr as usize] as *mut u8;
+            let Some(args) = &eval.wasi_args else {
+                return Err(EvalError {
+                    message: format!("Arguments access not enabled"),
+                });
+            };
 
-            let err = unsafe { wasi::args_get(argv, argv_buf) };
-            eval.stack.push(WasmValue::I32 { value: err as i32 });
+            let mut offset = argv_buf_ptr;
+            for i in 0..args.size - eval.wasi_args_skip {
+                let arg = args.get(eval.wasi_args_skip + i).unwrap();
+                let arg_len = arg.len();
 
-            if err == wasi::ERR_SUCCESS {
-                let mem_base = (&eval.memory.bytes).as_ptr() as usize;
+                eval.memory.bytes[offset..offset + arg_len].copy_from_slice(arg.as_bytes());
+                eval.memory.bytes[offset + arg_len] = b'\0';
 
-                let mut argc = 0u32;
-                let mut argv_buf_size = 0u32;
-                let err = unsafe {
-                    wasi::args_sizes_get(&mut argc as *mut u32, &mut argv_buf_size as *mut u32)
-                };
-                if err != wasi::ERR_SUCCESS {
-                    unreachable!()
-                }
+                let argv_offset = argv_ptr + i * 4;
+                let ptr_bytes = (offset as u32).to_le_bytes();
+                eval.memory.bytes[argv_offset..argv_offset + 4].copy_from_slice(&ptr_bytes);
 
-                // fixing argv pointers to point to guest memory instead of host memory
-                for i in 0..argc {
-                    unsafe {
-                        let argv_i = argv.add(i as usize);
-                        *argv_i = (((*argv_i) as usize) - mem_base) as *mut u8;
-                    }
-                }
+                offset += arg_len + 1 /* \0 */;
             }
+
+            eval.stack.push(WasmValue::I32 {
+                value: wasi::ERR_SUCCESS as i32,
+            });
         }
         "wasi_snapshot_preview1::proc_exit" => {
             let exit_code = eval.pop_i32();
