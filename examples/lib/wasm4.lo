@@ -10,12 +10,15 @@ import from "env" {
 // │ Platform Constants                                                        │
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
+
 const wasm4::SCREEN_SIZE = 160
+
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
 // │ Memory Addresses                                                          │
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
+
 const wasm4::PALETTE = 0x04 as *&u32
 const wasm4::DRAW_COLORS = 0x14 as &u16
 const wasm4::GAMEPAD1 = 0x16 as &u8
@@ -45,6 +48,7 @@ const wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2
 // │ Drawing Functions                                                         │
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
+
 import from "env" {
     // Copies pixels to the framebuffer.
     fn wasm4::blit(
@@ -54,7 +58,7 @@ import from "env" {
         width: u32,
         height: u32,
         flags: u32,
-    )
+    ): void
 
     // Copies a subregion within a larger sprite atlas to the framebuffer.
     fn wasm4::blitSub(
@@ -67,8 +71,7 @@ import from "env" {
         srcY: u32,
         stride: u32,
         flags: u32,
-    )
-
+    ): void
 }
 
 const wasm4::BLIT_2BPP = 1
@@ -94,7 +97,6 @@ import from "env" {
     fn wasm4::rect(x: i32, y: i32, width: u32, height: u32)
 
     // Draws text using the built-in system font.
-    // @param text - const char*
     fn wasm4::text(text: *&u8, x: i32, y: i32)
 }
 
@@ -103,15 +105,10 @@ import from "env" {
 // │ Sound Functions                                                           │
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
+
 import from "env" {
     // Plays a sound tone.
-    fn wasm4::tone(
-        frequency: u32,
-        duration: u32,
-        volume: u32,
-        flags: u32,
-    )
-
+    fn wasm4::tone(frequency: u32, duration: u32, volume: u32, flags: u32)
 }
 
 const wasm4::TONE_PULSE1 = 0
@@ -131,19 +128,19 @@ const wasm4::TONE_NOTE_MODE = 64
 // │ Storage Functions                                                         │
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
+
 import from "env" {
     // Reads up to `size` bytes from persistent storage into the pointer `dest`.
     fn wasm4::diskr(dest: *&void, size: u32): u32
 
     // Writes up to `size` bytes from the pointer `src` into persistent storage.
-    // @param src - const char*
-    fn wasm4::diskw(src: *&void, size: u32): u32
+    fn wasm4::diskw(src: *&u8, size: u32): u32
 
     // Prints a message to the debug console.
-    // @param str - const char*
     fn wasm4::trace(str: *&u8)
 
-    // Prints a message to the debug console. Signature: `void tracef (const char* fmt, ...)`
-    // @param str - const char*
+    // Prints a message to the debug console.
+    // NOTE: Original signature is `void tracef (const char* fmt, ...)`,
+    //   but varargs are not supported.
     fn wasm4::tracef(str: *&u8)
 }

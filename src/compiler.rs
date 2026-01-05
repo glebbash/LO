@@ -184,7 +184,7 @@ struct CodeUnit {
 }
 
 struct ConstSliceLen {
-    slice_offset: u32,
+    slice_ptr: u32,
     slice_len: usize,
 }
 
@@ -629,7 +629,7 @@ impl Compiler {
 
     pub fn include(&mut self, relative_path: &str, loc: &Loc) -> Option<&Module> {
         let file_index = catch!(self.fm.include_file(relative_path, loc), err, {
-            self.report_error(&err);
+            self.bad_args_err(&err);
             return None;
         });
 
@@ -668,14 +668,14 @@ impl Compiler {
 
         let mut lexer = Lexer::new(source, file_index);
         catch!(lexer.lex_file(), err, {
-            self.report_error(&err);
+            self.bad_args_err(&err);
             return None;
         });
 
         let parser = Parser::new(lexer);
         if !self.in_lex_only_mode {
             catch!(parser.parse_file(), err, {
-                self.report_error(&err);
+                self.bad_args_err(&err);
                 return None;
             });
         }
@@ -921,7 +921,7 @@ impl Compiler {
             .be_mut();
 
         if let Some(existing_item) = module.get_own_item(&item.name) {
-            self.report_error(&Error {
+            self.bad_args_err(&Error {
                 message: format!(
                     "Cannot redefine {}, already defined at {}",
                     item.name,
@@ -984,7 +984,7 @@ impl Compiler {
                     'fields: for field in &struct_def.fields {
                         for existing_field in &struct_fields {
                             if existing_field.field_name == field.field_name.repr {
-                                self.report_error(&Error {
+                                self.bad_args_err(&Error {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
                                         field.field_name.repr,
@@ -1004,7 +1004,7 @@ impl Compiler {
                             field.field_type.loc(),
                         );
                         let field_type = catch!(field_type_res, err, {
-                            self.report_error(&err);
+                            self.bad_args_err(&err);
                             continue 'exprs;
                         });
                         let mut field_layout = TypeLayout::new();
@@ -1051,7 +1051,7 @@ impl Compiler {
 
                     if let Some(type_) = &enum_def.variant_type {
                         enum_.variant_type = catch!(self.build_type(&module.ctx, type_), err, {
-                            self.report_error(&err);
+                            self.bad_args_err(&err);
                             return;
                         });
                     }
@@ -1059,7 +1059,7 @@ impl Compiler {
                     'variants: for variant in enum_def.variants.iter() {
                         for existing_variant in &enum_.variants {
                             if existing_variant.variant_name == variant.variant_name.repr {
-                                self.report_error(&Error {
+                                self.bad_args_err(&Error {
                                     message: format!(
                                         "Cannot redefine enum variant '{}', already defined at {}",
                                         variant.variant_name.repr,
@@ -1075,13 +1075,13 @@ impl Compiler {
                         if let Some(variant_type_expr) = &variant.variant_type {
                             variant_type =
                                 catch!(self.build_type(&module.ctx, variant_type_expr), err, {
-                                    self.report_error(&err);
+                                    self.bad_args_err(&err);
                                     continue 'variants;
                                 });
                         }
 
                         if !self.is_type_compatible(&enum_.variant_type, &variant_type) {
-                            self.report_error(&Error {
+                            self.bad_args_err(&Error {
                                 message: format!(
                                     "Enum variant is not compatible with {}",
                                     TypeFmt(self, &enum_.variant_type)
@@ -1100,7 +1100,7 @@ impl Compiler {
                 TopLevelExpr::TypeDef(type_def) => {
                     let type_value = self.build_type(&module.ctx, &type_def.type_value);
                     let type_value = catch!(type_value, err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                         continue;
                     });
 
@@ -1120,7 +1120,7 @@ impl Compiler {
             match expr {
                 TopLevelExpr::MemoryDef(memory_def) => {
                     catch!(self.define_memory(memory_def.relax(), None), err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                         continue;
                     });
                 }
@@ -1134,7 +1134,7 @@ impl Compiler {
 
                         let res = self.define_memory(memory.relax(), Some(module_name.clone()));
                         catch!(res, err, {
-                            self.report_error(&err);
+                            self.bad_args_err(&err);
                         });
                     }
                 }
@@ -1163,7 +1163,7 @@ impl Compiler {
                     fn_info.fn_type.output = match &fn_def.decl.return_type {
                         Some(return_type) => {
                             catch!(self.build_type(&module.ctx, return_type), err, {
-                                self.report_error(&err);
+                                self.bad_args_err(&err);
                                 continue;
                             })
                         }
@@ -1180,7 +1180,7 @@ impl Compiler {
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
                         for var in &ctx.current_scope().locals {
                             if var.local_name == fn_param.param_name.repr {
-                                self.report_error(&Error {
+                                self.bad_args_err(&Error {
                                     message: format!(
                                         "Duplicate function parameter name: {}",
                                         fn_param.param_name.repr
@@ -1193,7 +1193,7 @@ impl Compiler {
 
                         let param_type = self.get_fn_param_type(&module.ctx, &self_type, fn_param);
                         let param_type = catch!(param_type, err, {
-                            self.report_error(&err);
+                            self.bad_args_err(&err);
                             continue 'param_loop;
                         });
                         fn_info.fn_type.inputs.push(param_type.clone());
@@ -1260,7 +1260,7 @@ impl Compiler {
                             let param_type =
                                 self.get_fn_param_type(&module.ctx, &self_type, fn_param);
                             let param_type = catch!(param_type, err, {
-                                self.report_error(&err);
+                                self.bad_args_err(&err);
                                 continue 'items;
                             });
                             fn_info.fn_type.inputs.push(param_type.clone());
@@ -1273,7 +1273,7 @@ impl Compiler {
                         if let Some(return_type) = &fn_decl.return_type {
                             fn_info.fn_type.output =
                                 catch!(self.build_type(&module.ctx, &return_type), err, {
-                                    self.report_error(&err);
+                                    self.bad_args_err(&err);
                                     continue 'items;
                                 });
                         }
@@ -1287,17 +1287,17 @@ impl Compiler {
                     let global = self.globals[item.collection_index].relax_mut();
 
                     catch!(self.ensure_const_expr(&global_def.global_value), err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                     });
 
                     let value_type = self.get_expr_type(&module.ctx, &global_def.global_value);
                     let value_type = catch!(value_type, err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                         continue;
                     });
                     let value_comp_count = self.count_wasm_type_components(&value_type);
                     if value_comp_count != 1 {
-                        self.report_error(&Error {
+                        self.bad_args_err(&Error {
                             message: format!(
                                 "Cannot define global with non-primitive type {}",
                                 TypeFmt(self, &value_type)
@@ -1329,7 +1329,7 @@ impl Compiler {
 
                     let const_type = self.get_expr_type(&module.ctx, &const_def.const_value);
                     let const_type = catch!(const_type, err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                         continue;
                     });
                     const_.code_unit.type_ = const_type;
@@ -1340,7 +1340,7 @@ impl Compiler {
                         &const_def.const_value,
                     );
                     catch!(res, err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                         continue;
                     });
 
@@ -1544,7 +1544,7 @@ impl Compiler {
                 &global.def_expr.global_value,
             );
             catch!(res, err, {
-                self.report_error(&err);
+                self.bad_args_err(&err);
             });
 
             wasm_module.globals.push(WasmGlobal {
@@ -1569,7 +1569,7 @@ impl Compiler {
 
         for expr in &body.exprs {
             let expr_type = catch!(self.get_expr_type(ctx, expr), err, {
-                self.report_error(&err);
+                self.bad_args_err(&err);
                 continue;
             });
 
@@ -1589,7 +1589,7 @@ impl Compiler {
             let mut type_layout = TypeLayout::new();
             self.get_type_layout(&expr_type, &mut type_layout);
             if type_layout.primities_count > 0 && void_only {
-                self.report_error(&Error {
+                self.bad_args_err(&Error {
                     message: format!(
                         "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
                     ),
@@ -1598,7 +1598,7 @@ impl Compiler {
             }
 
             catch!(self.codegen(ctx, instrs, expr), err, {
-                self.report_error(&err);
+                self.bad_args_err(&err);
                 continue;
             });
         }
@@ -1646,7 +1646,7 @@ impl Compiler {
             has_self_param = true;
 
             if fn_name.parts.len() == 1 {
-                self.report_error(&Error {
+                self.bad_args_err(&Error {
                     message: format!("Cannot use self param in non-method function"),
                     loc: fn_param.loc,
                 });
@@ -1677,7 +1677,7 @@ impl Compiler {
             self.get_type_or_err(&self_type_name, &self_type_loc),
             err,
             {
-                self.report_error(&err);
+                self.bad_args_err(&err);
                 return Some(Type::Never);
             }
         );
@@ -1845,7 +1845,7 @@ impl Compiler {
                 for field_index in 0..fields.len() {
                     let field_literal = &fields[field_index];
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
-                        self.report_error(&Error {
+                        self.bad_args_err(&Error {
                             message: format!("Excess field values"),
                             loc: field_literal.loc,
                         });
@@ -1853,7 +1853,7 @@ impl Compiler {
                     };
 
                     if &field_literal.field_name != &struct_field.field_name {
-                        self.report_error(&Error {
+                        self.bad_args_err(&Error {
                             message: format!(
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
@@ -1863,13 +1863,13 @@ impl Compiler {
                     }
 
                     catch!(self.codegen(ctx, instrs, &field_literal.value), err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                         continue;
                     });
 
                     let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
                     if !self.is_type_compatible(&struct_field.field_type, &field_value_type) {
-                        self.report_error(&Error {
+                        self.bad_args_err(&Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_name.repr,
@@ -1888,7 +1888,7 @@ impl Compiler {
                         missing_fields.push(&struct_def.fields[i].field_name)
                     }
 
-                    self.report_error(&Error {
+                    self.bad_args_err(&Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
                         loc: struct_name.loc,
                     });
@@ -1898,6 +1898,7 @@ impl Compiler {
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
                 items,
+                has_trailing_comma: _,
                 loc,
             }) => {
                 let item_type = self.build_type(ctx, item_type)?;
@@ -1976,7 +1977,7 @@ impl Compiler {
                 instrs.push(WasmInstr::I32Const { value: ptr as i32 });
 
                 self.const_slice_lens.be_mut().push(ConstSliceLen {
-                    slice_offset: ptr,
+                    slice_ptr: ptr,
                     slice_len: items.len(),
                 });
 
@@ -2343,7 +2344,7 @@ impl Compiler {
 
                 let rhs_type = self.get_expr_type(ctx, rhs)?;
                 if !self.is_type_compatible(var.get_type(), &rhs_type) {
-                    self.report_error(&Error {
+                    self.bad_args_err(&Error {
                         message: format!(
                             "Cannot assign {} to variable of type {}",
                             TypeFmt(self, &rhs_type),
@@ -2586,27 +2587,69 @@ impl Compiler {
                     return Ok(());
                 }
 
+                if fn_name.repr == "embed_file" {
+                    if args.items.len() != 1 {
+                        return bad_args_err(self, fn_name);
+                    }
+
+                    let CodeExpr::StringLiteral(str_expr) = &args.items[0] else {
+                        return bad_args_err(self, fn_name);
+                    };
+
+                    let absolute_path = self.fm.resolve_path(&str_expr.value, &fn_name.loc);
+                    let bytes = file_read(&absolute_path).map_err(|message| Error {
+                        message,
+                        loc: args.items[0].loc(),
+                    })?;
+
+                    let bytes_len = bytes.len();
+                    let bytes_ptr = self.append_data(bytes);
+
+                    instrs.push(WasmInstr::I32Const {
+                        value: bytes_ptr as i32,
+                    });
+
+                    self.const_slice_lens.be_mut().push(ConstSliceLen {
+                        slice_ptr: bytes_ptr,
+                        slice_len: bytes_len,
+                    });
+
+                    return Ok(());
+
+                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        compiler.bad_args_err(&Error {
+                            message: format!(
+                                "Invalid arguments for @{}(relative_file_path: str)",
+                                fn_name.repr,
+                            ),
+                            loc: fn_name.loc,
+                        });
+
+                        Ok(())
+                    }
+                }
+
                 if fn_name.repr == "const_slice_len" {
                     if args.items.len() != 1 {
-                        return report_error(self, fn_name);
+                        return bad_args_err(self, fn_name);
                     }
 
                     let mut slice_ptr_instrs = Vec::new();
                     if let Err(err) = self.codegen(ctx, &mut slice_ptr_instrs, &args.items[0]) {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                         return Ok(());
                     };
 
                     if slice_ptr_instrs.len() != 1 {
-                        return report_error(self, fn_name);
+                        return bad_args_err(self, fn_name);
                     }
 
                     let WasmInstr::I32Const { value: slice_ptr } = &slice_ptr_instrs[0] else {
-                        return report_error(self, fn_name);
+                        return bad_args_err(self, fn_name);
                     };
 
                     for const_slice_len in &self.const_slice_lens {
-                        if const_slice_len.slice_offset == *slice_ptr as u32 {
+                        if const_slice_len.slice_ptr == *slice_ptr as u32 {
                             instrs.push(WasmInstr::I32Const {
                                 value: const_slice_len.slice_len as i32,
                             });
@@ -2614,10 +2657,10 @@ impl Compiler {
                         }
                     }
 
-                    return report_error(self, fn_name);
+                    return bad_args_err(self, fn_name);
 
-                    fn report_error(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
-                        compiler.report_error(&Error {
+                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        compiler.bad_args_err(&Error {
                             message: format!(
                                 "Invalid arguments for @{}(items: const T[])",
                                 fn_name.repr,
@@ -2651,7 +2694,7 @@ impl Compiler {
                     return Ok(());
                 }
 
-                self.report_error(&Error {
+                self.bad_args_err(&Error {
                     message: format!("Unknown intrinsic: {}", fn_name.repr),
                     loc: fn_name.loc,
                 });
@@ -2729,7 +2772,7 @@ impl Compiler {
                     IfCond::Expr(expr) => {
                         if let Ok(cond_type) = self.get_expr_type(ctx, expr) {
                             if cond_type != Type::Bool {
-                                self.report_error(&Error {
+                                self.bad_args_err(&Error {
                                     message: format!(
                                         "Unexpected condition type: {}, expected: {}",
                                         TypeFmt(self, &cond_type),
@@ -2811,7 +2854,7 @@ impl Compiler {
                 ctx.enter_scope(ScopeType::Block);
                 let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
                 if !terminates_early {
-                    self.report_error(&Error {
+                    self.bad_args_err(&Error {
                         message: format!(
                             "Match's else block must resolve to never, got other type"
                         ),
@@ -2833,7 +2876,7 @@ impl Compiler {
 
                 if let Some(cond) = cond {
                     catch!(self.codegen(ctx, instrs, cond), err, {
-                        self.report_error(&err);
+                        self.bad_args_err(&err);
                     });
 
                     instrs.push(WasmInstr::UnaryOp {
@@ -3002,7 +3045,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let Some(first_arg) = args.items.first() else {
-                    self.report_error(&Error {
+                    self.bad_args_err(&Error {
                         message: format!("do-with expressions must have at least one argument"),
                         loc: with_loc.clone(),
                     });
@@ -3014,7 +3057,7 @@ impl Compiler {
                 for arg in &args.items {
                     let current_arg_type = self.get_expr_type(ctx, arg)?;
                     if current_arg_type != arg_type {
-                        self.report_error(&Error {
+                        self.bad_args_err(&Error {
                             message: format!(
                                 "do-with argument type mismatch. expected: {}, got: {}",
                                 TypeFmt(self, &arg_type),
@@ -3046,7 +3089,7 @@ impl Compiler {
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 catch!(self.codegen(ctx, instrs, lhs), err, {
-                    self.report_error(&err);
+                    self.bad_args_err(&err);
                     return Ok(());
                 });
 
@@ -3057,7 +3100,7 @@ impl Compiler {
 
                 self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
                 catch!(self.codegen(ctx, instrs, rhs), err, {
-                    self.report_error(&err);
+                    self.bad_args_err(&err);
                     return Ok(());
                 });
                 ctx.exit_scope();
@@ -3145,7 +3188,7 @@ impl Compiler {
                 enum_index: enum_ctor.enum_index,
             };
             if !self.is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type) {
-                self.report_error(&Error {
+                self.bad_args_err(&Error {
                     message: format!(
                         "Unexpected type to match, expected: {}, got: {}",
                         TypeFmt(self, &expected_expr_to_match_type),
@@ -3535,7 +3578,7 @@ impl Compiler {
         if let Some(catch_body) = catch_body {
             let terminates_early = self.codegen_code_block(ctx, instrs, catch_body, true);
             if !terminates_early {
-                self.report_error(&Error {
+                self.bad_args_err(&Error {
                     message: format!("Catch expression must resolve to never, got other type"),
                     loc: *loc,
                 });
@@ -3860,6 +3903,7 @@ impl Compiler {
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
                 items: _,
+                has_trailing_comma: _,
                 loc: _,
             }) => {
                 let item_type = self.build_type(ctx, item_type)?;
@@ -4065,6 +4109,12 @@ impl Compiler {
                     return Ok(Type::U32);
                 }
 
+                if fn_name.repr == "embed_file" {
+                    return Ok(Type::SequencePointer {
+                        pointee: Box::new(Type::U8),
+                    });
+                }
+
                 if fn_name.repr == "const_slice_len" {
                     return Ok(Type::U32);
                 }
@@ -4074,7 +4124,7 @@ impl Compiler {
                 }
 
                 Err(Error {
-                    message: format!("Unknown intrinsic macro: {}", fn_name.repr),
+                    message: format!("Unknown intrinsic: {}", fn_name.repr),
                     loc: fn_name.loc,
                 })
             }
@@ -4123,7 +4173,7 @@ impl Compiler {
                 let ctx = ctx.be_mut();
 
                 let lhs_type = catch!(self.get_expr_type(ctx, &lhs), err, {
-                    self.report_error(&err);
+                    self.bad_args_err(&err);
                     return Ok(Type::Never);
                 });
 
@@ -4139,7 +4189,7 @@ impl Compiler {
                 });
 
                 let rhs_type = catch!(self.get_expr_type(ctx, &rhs), err, {
-                    self.report_error(&err);
+                    self.bad_args_err(&err);
                     return Ok(Type::Never);
                 });
 
@@ -4882,7 +4932,7 @@ impl Compiler {
             if local.local_name == local_name && local.defined_in_this_scope {
                 let local_ = &ctx.locals[local.lo_local_index];
 
-                self.report_error(&Error {
+                self.bad_args_err(&Error {
                     message: format!(
                         "Cannot redefine local {}, previously defined at {}",
                         local_name,
@@ -5703,7 +5753,7 @@ impl Compiler {
         None
     }
 
-    fn report_error(&self, err: &Error) {
+    fn bad_args_err(&self, err: &Error) {
         *self.error_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {

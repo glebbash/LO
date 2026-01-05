@@ -378,8 +378,7 @@ impl FileManager {
     }
 
     pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Result<usize, Error> {
-        let parent_path = &self.files[loc.file_index].absolute_path;
-        let absolute_path = resolve_path(relative_path, parent_path);
+        let absolute_path = self.resolve_path(relative_path, loc);
 
         for file in &mut self.files {
             if file.absolute_path == absolute_path {
@@ -401,40 +400,42 @@ impl FileManager {
 
         Ok(file_index)
     }
-}
 
-fn resolve_path(file_path: &str, relative_to: &str) -> String {
-    if !file_path.starts_with('.') {
-        return file_path.into();
+    pub fn resolve_path(&self, file_path: &str, loc: &Loc) -> String {
+        let relative_to = &self.files[loc.file_index].absolute_path;
+
+        if !file_path.starts_with('.') {
+            return file_path.into();
+        }
+
+        let mut path_items = relative_to.split('/').collect::<Vec<_>>();
+        path_items.pop(); // remove `relative_to`'s file name
+
+        path_items.extend(file_path.split('/'));
+
+        let mut i = 0;
+        loop {
+            if i >= path_items.len() {
+                break;
+            }
+
+            if path_items[i] == "." {
+                path_items.remove(i);
+                continue;
+            }
+
+            if path_items[i] == ".." && i > 0 {
+                i -= 1;
+                path_items.remove(i);
+                path_items.remove(i);
+                continue;
+            }
+
+            i += 1;
+        }
+
+        path_items.join("/")
     }
-
-    let mut path_items = relative_to.split('/').collect::<Vec<_>>();
-    path_items.pop(); // remove `relative_to`'s file name
-
-    path_items.extend(file_path.split('/'));
-
-    let mut i = 0;
-    loop {
-        if i >= path_items.len() {
-            break;
-        }
-
-        if path_items[i] == "." {
-            path_items.remove(i);
-            continue;
-        }
-
-        if path_items[i] == ".." && i > 0 {
-            i -= 1;
-            path_items.remove(i);
-            path_items.remove(i);
-            continue;
-        }
-
-        i += 1;
-    }
-
-    path_items.join("/")
 }
 
 macro_rules! catch {

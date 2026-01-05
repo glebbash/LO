@@ -415,6 +415,7 @@ pub struct StructLiteralExpr {
 pub struct ArrayLiteralExpr {
     pub item_type: TypeExpr,
     pub items: Vec<CodeExpr>,
+    pub has_trailing_comma: bool,
     pub loc: Loc,
 }
 

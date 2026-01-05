@@ -956,6 +956,8 @@ impl Parser {
             let item_type = self.parse_type_expr()?;
             self.expect(Delim, "]")?;
 
+            let mut has_trailing_comma = false;
+
             self.expect(Delim, "[")?;
             let mut items = Vec::new();
             while let None = self.eat(Delim, "]") {
@@ -964,6 +966,9 @@ impl Parser {
 
                 if !self.current().is(Delim, "]", self.lexer.source) {
                     self.expect(Delim, ",")?;
+                    has_trailing_comma = true;
+                } else {
+                    has_trailing_comma = false;
                 }
             }
 
@@ -972,6 +977,7 @@ impl Parser {
             return Ok(CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
                 items,
+                has_trailing_comma,
                 loc,
             }));
         }
@@ -1146,8 +1152,6 @@ impl Parser {
 
         self.expect(Delim, "{")?;
         while let None = self.eat(Delim, "}") {
-            has_trailing_comma = false;
-
             let mut field_loc = self.current().loc;
 
             let field_name = self.expect_any(Symbol)?.clone();
@@ -1165,6 +1169,8 @@ impl Parser {
             if !self.current().is(Delim, "}", self.lexer.source) {
                 self.expect(Delim, ",")?;
                 has_trailing_comma = true;
+            } else {
+                has_trailing_comma = false;
             }
         }
 
@@ -1184,13 +1190,13 @@ impl Parser {
 
         self.expect(Delim, "(")?;
         while let None = self.eat(Delim, ")") {
-            has_trailing_comma = false;
-
             items.push(self.parse_code_expr(0)?);
 
             if !self.current().is(Delim, ")", self.lexer.source) {
                 self.expect(Delim, ",")?;
                 has_trailing_comma = true;
+            } else {
+                has_trailing_comma = false;
             }
         }
 

@@ -2,7 +2,7 @@ export fn main(): u32 {
     // auto forward decl
     let a = A {
         // auto forward decl
-        b: B { x: 42, a: 0 as &A },
+        b: B { x: 42, a: null as &A },
     }
     // auto forward decl
     return calc_answer(a)
@@ -21,6 +21,6 @@ struct B {
 
 struct A {
     // NOTE: structs must be defined before their values can be used
-    // TODO?: should this be supported at the cost of extra pass?
+    // TODO?: should this be supported at the cost of extra passes?
     b: B,
 }

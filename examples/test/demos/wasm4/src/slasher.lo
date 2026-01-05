@@ -1,5 +1,5 @@
 include "../../../../lib/std.lo"
-include "./lib/wasm4.lo"
+include "../../../../lib/wasm4.lo"
 
 struct Pos {
     x: i32,
@@ -15,36 +15,37 @@ const Mode::DEFEND = 2
 global time = 0
 
 global mode = Mode::SLASH
-
 global prev_click = false
-
 global boss_health = 5
-
-global trail = 0 as &Trail
-
-global swap_trail = 0 as &Trail
-
-global trails = 0 as &Vec of &Trail
-
-global showing_trails = 0 as &Vec of &Trail
+global trail = null as &Trail
+global swap_trail = null as &Trail
+global trails = null as &Vec of &Trail
+global showing_trails = null as &Vec of &Trail
+global rand_seed = 0
+global scratch = null as &Arena
 
 export fn start() {
     stack::SIZE = 6560
+
     trail = Vec::new!<Pos>()
     swap_trail = Vec::new!<Pos>()
     trails = Vec::new!<&Trail>()
     showing_trails = Vec::new!<&Trail>()
+    scratch = Arena::new(256)
 }
 
 export fn update() {
     time += 1
     process_input()
     render()
+
+    scratch.reset()
 }
 
 fn process_input() {
     let click = (*wasm4::MOUSE_BUTTONS) & wasm4::MOUSE_LEFT == 1 as u8
     defer prev_click = click
+
     // press
     if click && !prev_click {
         if boss_health != 5 {
@@ -52,10 +53,12 @@ fn process_input() {
             trail = Vec::new!<Pos>()
         }
     }
+
     // drag
     if click {
         let x = (*wasm4::MOUSE_X) as i32
         let y = (*wasm4::MOUSE_Y) as i32
+
         if x >= +0 && x <= +159 && y >= +0 && y <= +159 {
             trail.push!(Pos { x: x, y: y })
 
@@ -66,12 +69,14 @@ fn process_input() {
                     trail.size - 1,
                 )
                 swap_trail.size = trail.size - 1
+
                 let tmp = trail
                 trail = swap_trail
                 swap_trail = tmp
             }
         }
     }
+
     // release
     if !click && prev_click {
         if boss_health != 0 {
@@ -80,10 +85,12 @@ fn process_input() {
                 mode = Mode::DEFEND
             }
         }
+
         if boss_health == 0 {
-            let random_i = rand_u32(trails.size - 1)
-            let random_trail = trails.get!<&Trail>(random_i)
+            let random_trail = trails.get!<&Trail>(rand_u32(trails.size - 1))
+
             flip_trail_randomly(random_trail)
+
             if showing_trails.size == 0 {
                 showing_trails.push!(random_trail)
             } else {
@@ -96,15 +103,17 @@ fn process_input() {
 fn render() {
     if mode == Mode::SLASH {
         wasm4::text("Slash!!!\0".data, +10, +10)
-        let health_txt = String::from_str("HP: ")
-        boss_health.write_to(health_txt)
-        health_txt.push(0 as u8)
+
+        let health_txt = String::from_str_in(scratch, "HP: ")
+        health_txt.push_str(boss_health.to_tmp_str!())
+        health_txt.push_str("\0")
         wasm4::text(health_txt.chars.data as *&u8, +110, +10)
-        health_txt.free()
     }
+
     if mode == Mode::DEFEND {
         wasm4::text("Defend!!!\0".data, +10, +10)
     }
+
     render_trail(trail)
     for i in 0..showing_trails.size {
         render_trail(showing_trails.get!<&Trail>(i))
@@ -114,8 +123,10 @@ fn render() {
 fn render_trail(trail: &Trail) {
     if trail.size > 0 {
         let prev_pos = trail.get!<Pos>(0)
+
         for i in 1..trail.size {
             let pos = trail.get!<Pos>(i)
+
             wasm4::line(prev_pos.x, prev_pos.y, pos.x, pos.y)
             prev_pos = pos
         }
@@ -125,6 +136,7 @@ fn render_trail(trail: &Trail) {
 fn flip_trail_randomly(trail: &Trail) {
     let flip_x = rand_u32(1) == 1
     let flip_y = rand_u32(1) == 1
+
     for i in 0..trail.size {
         let pos = trail.at!<Pos>(i)
         if flip_x {
@@ -135,8 +147,6 @@ fn flip_trail_randomly(trail: &Trail) {
         }
     }
 }
-
-global rand_seed = 0
 
 fn rand_u32(max: u32): u32 {
     if rand_seed == 0 {

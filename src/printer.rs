@@ -263,6 +263,7 @@ impl Printer {
                     stdout_write(": ");
                     self.print_type_expr(return_type);
                 }
+                self.last_printed_item_line = body.loc.pos.line;
                 self.print_code_block(body);
                 stdout_write("\n");
             }
@@ -280,6 +281,8 @@ impl Printer {
             stdout_write(": ");
             self.print_type_expr(&return_type);
         }
+
+        self.last_printed_item_line = fn_decl.loc.end_pos.line;
     }
 
     fn print_fn_params(&mut self, fn_params: &Vec<FnParam>, is_multiline: bool) {
@@ -495,6 +498,7 @@ impl Printer {
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
                 item_type,
                 items,
+                has_trailing_comma,
                 loc,
             }) => {
                 stdout_write("[");
@@ -502,7 +506,7 @@ impl Printer {
                 stdout_write("]");
 
                 stdout_write("[");
-                self.print_expr_list(items, true, loc);
+                self.print_expr_list(items, *has_trailing_comma, loc);
                 stdout_write("]");
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {

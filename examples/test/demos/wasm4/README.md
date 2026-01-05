@@ -1,6 +1,6 @@
 # WASM-4 sample games
 
-A collection of example games written in LO for the [WASM-4](https://wasm4.org) fantasy console.
+A collection of example "games" written in LO for the [WASM-4](https://wasm4.org) fantasy console.
 
 ## Running
 
