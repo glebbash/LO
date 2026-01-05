@@ -4,10 +4,10 @@
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:2": {},
 		"ghcr.io/devcontainers/features/node:1": {
-			"version": "20"
+			"version": "24"
 		},
 		"ghcr.io/devcontainers/features/rust:1": {
-			"version": "nightly-2024-12-15"
+			"version": "nightly-2025-12-08"
 		},
 		"ghcr.io/rchaganti/vsc-devcontainer-features/wabt:1": {},
 		"ghcr.io/lee-orr/rusty-dev-containers/wasm32-unknown-unknown:0": {}
