@@ -16,9 +16,12 @@ async function main() {
 
     if (["build", "b"].includes(process.argv[2])) {
         const childProcess = await import("node:child_process");
-        childProcess.spawnSync("bash", ["-c", "./build.sh"], {
+        const result = childProcess.spawnSync("bash", ["-c", "./build.sh"], {
             stdio: "inherit",
         });
+        if (result.status !== 0) {
+            process.exit(result.status ?? 1);
+        }
 
         process.argv.splice(2, 1); // remove build arg
         if (process.argv.length == 2) {

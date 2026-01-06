@@ -19,7 +19,7 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn get_value(&self, source: &'static [u8]) -> &str {
+    pub fn get_value(&self, source: &'static [u8]) -> &'static str {
         if self.type_ == TokenType::Terminal {
             return "<EOF>";
         }

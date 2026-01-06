@@ -139,7 +139,7 @@ pub struct MacroDefExpr {
     pub macro_name: IdentExpr,
     pub macro_params: Vec<FnParam>,
     pub macro_params_trailing_comma: bool,
-    pub macro_type_params: Vec<String>,
+    pub macro_type_params: Vec<&'static str>,
     pub return_type: Option<TypeExpr>,
     pub body: CodeBlock,
     pub loc: Loc,
@@ -268,7 +268,7 @@ pub struct BoolLiteralExpr {
 }
 
 pub struct CharLiteralExpr {
-    pub repr: String,
+    pub repr: &'static str,
     pub value: u32,
     pub loc: Loc,
 }
@@ -285,7 +285,7 @@ pub struct IntLiteralExpr {
 }
 
 pub struct StringLiteralExpr {
-    pub repr: String,
+    pub repr: &'static str,
     pub value: String,
     pub loc: Loc,
 }
@@ -296,7 +296,7 @@ pub struct ReturnExpr {
 }
 
 pub struct IdentExpr {
-    pub repr: String,
+    pub repr: &'static str,
     pub parts: Vec<Loc>,
     pub loc: Loc,
 }
@@ -436,7 +436,7 @@ pub struct ResultTypeExpr {
 }
 
 pub struct CodeExprMapField {
-    pub key: String,
+    pub key: &'static str,
     pub value: CodeExpr,
     pub loc: Loc,
 }

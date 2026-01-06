@@ -247,7 +247,6 @@ impl Printer {
             }) => {
                 stdout_write("macro ");
                 stdout_write(&macro_name.repr);
-                stdout_write("!");
                 if macro_type_params.len() != 0 {
                     stdout_write("<");
                     for (type_param, i) in macro_type_params.iter().zip(0..) {
@@ -763,7 +762,6 @@ impl Printer {
                 loc,
             }) => {
                 stdout_write(&fn_name.repr);
-                stdout_write("!");
                 self.print_type_args(type_args);
                 self.print_args(args, loc);
             }
@@ -789,7 +787,6 @@ impl Printer {
                 self.print_backslashes_before(field_name.loc.pos.offset);
                 stdout_write(".");
                 stdout_write(&field_name.repr);
-                stdout_write("!");
                 self.print_type_args(type_args);
                 self.print_args(args, &field_name.loc);
             }

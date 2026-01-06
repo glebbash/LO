@@ -8,16 +8,6 @@ pub struct Error {
     pub loc: Loc,
 }
 
-#[macro_export]
-macro_rules! lo_todo {
-    ($loc:expr) => {
-        Error {
-            message: format!("Not implemented feature at {}:{}", file!(), line!()),
-            loc: $loc,
-        }
-    };
-}
-
 impl Error {
     pub fn to_string(&self, fm: &FileManager) -> String {
         let mut out = String::new();
@@ -59,7 +49,7 @@ impl Loc {
         }
     }
 
-    pub fn read_span(&self, source: &'static [u8]) -> &str {
+    pub fn read_span(&self, source: &'static [u8]) -> &'static str {
         return unsafe { str::from_utf8_unchecked(&source[self.pos.offset..self.end_pos.offset]) };
     }
 

@@ -1,11 +1,6 @@
-use crate::{ast::*, core::*, lexer::*};
+use crate::{ast::*, compiler::*, core::*, lexer::*};
 use TokenType::*;
-use alloc::{
-    boxed::Box,
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{boxed::Box, format, vec::Vec};
 use core::cell::RefCell;
 
 pub struct ParsingContext {
@@ -15,6 +10,8 @@ pub struct ParsingContext {
 pub struct Parser {
     // context
     pub lexer: Lexer,
+    pub source: &'static [u8],
+    pub compiler: &'static Compiler,
 
     // state
     pub tokens_processed: RefCell<usize>,
@@ -25,14 +22,16 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(lexer: Lexer) -> Self {
+    pub fn new(lexer: Lexer, compiler: &'static Compiler) -> Self {
         let mut context_stack = Vec::new();
         context_stack.push(ParsingContext {
             struct_literal_allowed: true,
         });
 
         Self {
+            source: lexer.source,
             lexer,
+            compiler,
             tokens_processed: RefCell::new(0),
             context_stack,
             ast: Vec::new(),
@@ -66,7 +65,7 @@ impl Parser {
             return Err(Error {
                 message: format!(
                     "Unexpected exportable: {}",
-                    unexpected.get_value(self.lexer.source)
+                    unexpected.get_value(self.source)
                 ),
                 loc: unexpected.loc,
             });
@@ -199,7 +198,7 @@ impl Parser {
                     loc: field_loc,
                 });
 
-                if !self.current().is(Delim, "}", self.lexer.source) {
+                if !self.current().is(Delim, "}", self.source) {
                     self.expect(Delim, ",")?;
                 }
             }
@@ -246,7 +245,7 @@ impl Parser {
                     loc: variant_loc,
                 });
 
-                if !self.current().is(Delim, "}", self.lexer.source) {
+                if !self.current().is(Delim, "}", self.source) {
                     self.expect(Delim, ",")?;
                 }
             }
@@ -296,16 +295,17 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "macro") {
             let mut loc = self.prev().loc;
 
-            let macro_name = self.parse_ident()?;
+            let mut macro_name = self.parse_ident()?;
             self.expect(Operator, "!")?;
+            self.extend_ident(&mut macro_name, self.prev().loc.end_pos);
 
             let mut macro_type_params = Vec::new();
             if let Some(_) = self.eat(Operator, "<") {
                 while let None = self.eat(Operator, ">") {
                     let type_param = self.expect_any(Symbol)?;
-                    macro_type_params.push(type_param.get_value(self.lexer.source).to_string());
+                    macro_type_params.push(type_param.get_value(self.source));
 
-                    if !self.current().is(Operator, ">", self.lexer.source) {
+                    if !self.current().is(Operator, ">", self.source) {
                         self.expect(Delim, ",")?;
                     }
                 }
@@ -339,7 +339,7 @@ impl Parser {
         return Err(Error {
             message: format!(
                 "Unexpected top level token: {}",
-                unexpected.get_value(self.lexer.source)
+                unexpected.get_value(self.source)
             ),
             loc: unexpected.loc,
         });
@@ -386,7 +386,7 @@ impl Parser {
         return Err(Error {
             message: format!(
                 "Unexpected token in importable item: {:?}",
-                unexpected.get_value(self.lexer.source)
+                unexpected.get_value(self.source)
             ),
             loc: unexpected.loc,
         });
@@ -458,7 +458,7 @@ impl Parser {
 
                     let infer_as = self.expect_any(Symbol)?;
                     param_type = FnParamType::Infer {
-                        name: infer_as.get_value(self.lexer.source).relax(),
+                        name: infer_as.get_value(self.source),
                     };
                 } else {
                     param_type = FnParamType::Type {
@@ -469,7 +469,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            if !self.current().is(Delim, ")", self.lexer.source) {
+            if !self.current().is(Delim, ")", self.source) {
                 self.expect(Delim, ",")?;
                 *trailing_comma = true;
             }
@@ -585,7 +585,7 @@ impl Parser {
                 break;
             }
 
-            let Some(op) = InfixOp::parse(op_symbol, self.lexer.source) else {
+            let Some(op) = InfixOp::parse(op_symbol, self.source) else {
                 break;
             };
 
@@ -644,19 +644,21 @@ impl Parser {
 
         if let Some(char) = self.eat_any(CharLiteral).cloned() {
             return Ok(CodeExpr::CharLiteral(CharLiteralExpr {
-                repr: char.get_value(self.lexer.source).to_string(),
-                value: Lexer::parse_char_literal_value(&char.get_value(self.lexer.source)) as u32,
+                repr: char.get_value(self.source),
+                value: Lexer::parse_char_literal_value(&char.get_value(self.source)) as u32,
                 loc: char.loc,
             }));
         };
 
         if let Some(int) = self.eat_any(IntLiteral).cloned() {
             let mut tag = None;
-            if let Some(tag_) = self.eat(Symbol, "u64") {
-                tag = Some(tag_.get_value(self.lexer.source).relax());
+            let tag_token = self.current();
+            if tag_token.is_any(Symbol) && tag_token.loc.pos.offset == int.loc.end_pos.offset {
+                tag = Some(tag_token.get_value(self.source));
+                self.next();
             }
 
-            let repr = int.get_value(self.lexer.source).relax();
+            let repr = int.get_value(self.source);
             let value = Lexer::parse_int_literal_value(repr);
 
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
@@ -669,8 +671,8 @@ impl Parser {
 
         if let Some(string) = self.eat_any(StringLiteral).cloned() {
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                value: EscapedString(string.loc).unescape(self.lexer.source),
-                repr: string.get_value(self.lexer.source).to_string(),
+                value: EscapedString(string.loc).unescape(self.source),
+                repr: string.get_value(self.source),
                 loc: string.loc,
             }));
         };
@@ -747,7 +749,7 @@ impl Parser {
 
             let mut else_block = ElseBlock::None;
             if let Some(_) = self.eat(Symbol, "else") {
-                if self.current().is(Symbol, "if", self.lexer.source) {
+                if self.current().is(Symbol, "if", self.source) {
                     let if_expr = self.parse_code_expr(0)?;
                     else_block = ElseBlock::ElseIf(Box::new(if_expr));
                 } else {
@@ -939,7 +941,7 @@ impl Parser {
                 let item = self.parse_code_expr(0)?;
                 items.push(item);
 
-                if !self.current().is(Delim, "]", self.lexer.source) {
+                if !self.current().is(Delim, "]", self.source) {
                     self.expect(Delim, ",")?;
                     has_trailing_comma = true;
                 } else {
@@ -963,7 +965,7 @@ impl Parser {
                     "Unexpected character '{}'. \
                     If you were trying to create a struct in this context \
                     surround it with parens.",
-                    self.prev().get_value(self.lexer.source)
+                    self.prev().get_value(self.source)
                 ),
                 loc: self.prev().loc,
             });
@@ -971,7 +973,7 @@ impl Parser {
 
         let op_token = self.current();
         if !op_token.is_terminal() {
-            if let Some(op) = PrefixOp::parse(op_token.clone(), self.lexer.source) {
+            if let Some(op) = PrefixOp::parse(op_token.clone(), self.source) {
                 self.next(); // skip operator
 
                 let mut loc = self.prev().loc;
@@ -999,7 +1001,7 @@ impl Parser {
             }
         }
 
-        let ident = self.parse_ident()?;
+        let mut ident = self.parse_ident()?;
 
         if ident.repr == "Ok" || ident.repr == "Err" {
             let mut loc = ident.loc;
@@ -1033,7 +1035,7 @@ impl Parser {
         }
 
         let ctx = self.context_stack.last().unwrap();
-        if self.current().is(Delim, "{", self.lexer.source) && ctx.struct_literal_allowed {
+        if self.current().is(Delim, "{", self.source) && ctx.struct_literal_allowed {
             let mut loc = ident.loc;
             let body = self.parse_code_expr_map()?;
             loc.end_pos = body.loc.end_pos;
@@ -1045,7 +1047,7 @@ impl Parser {
             }));
         }
 
-        if self.current().is(Delim, "(", self.lexer.source) {
+        if self.current().is(Delim, "(", self.source) {
             let mut loc = ident.loc;
 
             self.push_ctx(ParsingContext {
@@ -1066,6 +1068,8 @@ impl Parser {
         }
 
         if let Some(_) = self.eat(Operator, "!") {
+            self.extend_ident(&mut ident, self.prev().loc.end_pos);
+
             let mut loc = ident.loc;
 
             let type_args = self.parse_macro_type_args()?;
@@ -1101,7 +1105,7 @@ impl Parser {
 
     fn parse_ident(&self) -> Result<IdentExpr, Error> {
         let mut ident = IdentExpr {
-            repr: String::new(),
+            repr: "", // stub
             parts: Vec::new(),
             loc: self.current().loc,
         };
@@ -1109,16 +1113,21 @@ impl Parser {
         loop {
             let ident_part = self.expect_any(Symbol)?;
             ident.parts.push(ident_part.loc);
-            ident.repr += ident_part.get_value(self.lexer.source);
 
             if let None = self.eat(Operator, "::") {
                 break;
             }
-
-            ident.repr += "::";
         }
 
         ident.loc.end_pos = self.prev().loc.end_pos;
+
+        ident.repr = ident.loc.read_span(self.source);
+        if ident.repr.contains(" ") {
+            self.compiler.report_error(&Error {
+                message: format!("Unexpected space in identifier"),
+                loc: ident.loc,
+            });
+        }
 
         Ok(ident)
     }
@@ -1139,12 +1148,12 @@ impl Parser {
             field_loc.end_pos = self.prev().loc.end_pos;
 
             fields.push(CodeExprMapField {
-                key: field_name.get_value(self.lexer.source).to_string(),
+                key: field_name.get_value(self.source),
                 value,
                 loc: field_loc,
             });
 
-            if !self.current().is(Delim, "}", self.lexer.source) {
+            if !self.current().is(Delim, "}", self.source) {
                 self.expect(Delim, ",")?;
                 has_trailing_comma = true;
             } else {
@@ -1169,7 +1178,7 @@ impl Parser {
         while let None = self.eat(Delim, ")") {
             items.push(self.parse_code_expr(0)?);
 
-            if !self.current().is(Delim, ")", self.lexer.source) {
+            if !self.current().is(Delim, ")", self.source) {
                 self.expect(Delim, ",")?;
                 has_trailing_comma = true;
             } else {
@@ -1193,7 +1202,7 @@ impl Parser {
         while let None = self.eat(Operator, ">") {
             type_args.push(self.parse_type_expr()?);
 
-            if !self.current().is(Operator, ">", self.lexer.source) {
+            if !self.current().is(Operator, ">", self.source) {
                 self.expect(Delim, ",")?;
             }
         }
@@ -1261,9 +1270,9 @@ impl Parser {
             InfixOpTag::FieldAccess => {
                 let mut loc = primary.loc();
 
-                let field_name = self.parse_ident()?;
+                let mut field_name = self.parse_ident()?;
 
-                if self.current().is(Delim, "(", self.lexer.source) {
+                if self.current().is(Delim, "(", self.source) {
                     let args = self.parse_fn_args()?;
 
                     loc.end_pos = self.prev().loc.end_pos;
@@ -1277,6 +1286,8 @@ impl Parser {
                 }
 
                 if let Some(_) = self.eat(Operator, "!") {
+                    self.extend_ident(&mut field_name, self.prev().loc.end_pos);
+
                     let type_args = self.parse_macro_type_args()?;
                     let args = self.parse_fn_args()?;
 
@@ -1355,6 +1366,11 @@ impl Parser {
         }
     }
 
+    fn extend_ident(&self, ident: &mut IdentExpr, new_end_pos: Pos) {
+        ident.loc.end_pos = new_end_pos;
+        ident.repr = ident.loc.read_span(self.source);
+    }
+
     // utils
 
     fn push_ctx(&self, ctx: ParsingContext) {
@@ -1371,7 +1387,7 @@ impl Parser {
             return Err(Error {
                 message: format!(
                     "Unexpected token '{}', wanted {type_:?}",
-                    token.get_value(self.lexer.source)
+                    token.get_value(self.source)
                 ),
                 loc: token.loc,
             });
@@ -1382,11 +1398,11 @@ impl Parser {
 
     fn expect(&self, type_: TokenType, value: &str) -> Result<&Token, Error> {
         let token = self.current();
-        if !token.is(type_, value, self.lexer.source) {
+        if !token.is(type_, value, self.source) {
             return Err(Error {
                 message: format!(
                     "Unexpected token '{}', wanted '{value}'",
-                    token.get_value(self.lexer.source)
+                    token.get_value(self.source)
                 ),
                 loc: token.loc,
             });
@@ -1404,7 +1420,7 @@ impl Parser {
     }
 
     fn eat(&self, type_: TokenType, value: &str) -> Option<&Token> {
-        if !self.current().is(type_, value, self.lexer.source) {
+        if !self.current().is(type_, value, self.source) {
             return None;
         }
 

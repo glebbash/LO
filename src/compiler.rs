@@ -1,10 +1,5 @@
 use crate::{ast::*, core::*, lexer::*, parser::*, wasm::*};
-use alloc::{
-    boxed::Box,
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::{cell::RefCell, fmt::Write};
 
 #[derive(Clone, PartialEq)]
@@ -108,7 +103,7 @@ impl Type {
 }
 
 struct FnInfo {
-    fn_name: String,
+    fn_name: &'static str,
     fn_type: FnType,
     fn_params: Vec<FnParameter>,
     fn_source: FnSource,
@@ -118,7 +113,7 @@ struct FnInfo {
 }
 
 struct FnParameter {
-    param_name: String,
+    param_name: &'static str,
     param_type: Type,
 }
 
@@ -129,7 +124,7 @@ enum FnSource {
     },
     Host {
         module_name: String,
-        external_fn_name: String,
+        external_fn_name: &'static str,
     },
 }
 
@@ -190,7 +185,7 @@ struct ConstSliceLen {
 
 #[derive(Clone)]
 struct MacroTypeArg {
-    name: String,
+    name: &'static str,
     type_: Type,
 }
 
@@ -205,7 +200,7 @@ struct Scope {
 
 #[derive(Clone)]
 struct ScopedLocal {
-    local_name: String,
+    local_name: &'static str,
     lo_local_index: usize,
     defined_in_this_scope: bool,
 }
@@ -223,7 +218,7 @@ impl ExprContext {
         if let Some(parent_scope) = self.scopes.last() {
             for local in &parent_scope.locals {
                 new_scope.locals.push(ScopedLocal {
-                    local_name: local.local_name.clone(),
+                    local_name: local.local_name,
                     lo_local_index: local.lo_local_index,
                     defined_in_this_scope: false,
                 });
@@ -283,13 +278,13 @@ impl ExprContext {
 }
 
 struct StructDef {
-    struct_name: String,
+    struct_name: &'static str,
     fields: Vec<StructField>,
     fully_defined: bool, // used for self-reference checks
 }
 
 pub struct StructField {
-    field_name: String,
+    field_name: &'static str,
     field_type: Type,
     field_layout: TypeLayout,
     field_index: u32,
@@ -298,13 +293,13 @@ pub struct StructField {
 }
 
 struct EnumDef {
-    enum_name: String,
+    enum_name: &'static str,
     variant_type: Type,
     variants: Vec<EnumVariant>,
 }
 
 pub struct EnumVariant {
-    variant_name: String,
+    variant_name: &'static str,
     variant_type: Type,
     loc: Loc,
 }
@@ -447,7 +442,7 @@ struct InspectInfo {
 
 #[derive(Clone)]
 struct ConstDef {
-    const_name: String,
+    const_name: &'static str,
     code_unit: CodeUnit,
     loc: Loc,
 }
@@ -466,10 +461,11 @@ struct Str {
 
 pub struct Module {
     pub index: usize,
+    pub source: &'static [u8],
     pub parser: Parser,
     includes: Vec<ModuleInclude>,
-    own_items: Vec<ModuleItem>,
-    all_items: Vec<ModuleItem>,
+    own_symbols: Vec<Symbol>,
+    all_symbols: Vec<Symbol>,
     ctx: ExprContext,
 }
 
@@ -479,15 +475,15 @@ pub struct ModuleInclude {
 }
 
 #[derive(Clone)]
-struct ModuleItem {
-    name: String,
-    collection: ModuleItemCollection,
-    collection_index: usize,
+struct Symbol {
+    name: &'static str,
+    type_: SymbolType,
+    index: usize,
     loc: Loc,
 }
 
 #[derive(Clone)]
-enum ModuleItemCollection {
+enum SymbolType {
     TypeAlias,
     Function,
     Macro,
@@ -499,20 +495,20 @@ enum ModuleItemCollection {
 }
 
 impl Module {
-    fn get_item(&self, item_name: &str) -> Option<&ModuleItem> {
-        for item in &self.all_items {
-            if item.name == item_name {
-                return Some(item);
+    fn get_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
+        for symbol in &self.all_symbols {
+            if symbol.name == symbol_name {
+                return Some(symbol);
             }
         }
 
         None
     }
 
-    fn get_own_item(&self, item_name: &str) -> Option<&ModuleItem> {
-        for item in &self.own_items {
-            if item.name == item_name {
-                return Some(item);
+    fn get_own_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
+        for symbol in &self.own_symbols {
+            if symbol.name == symbol_name {
+                return Some(symbol);
             }
         }
 
@@ -538,8 +534,7 @@ pub struct Compiler {
     pub error_count: RefCell<u32>,
     pub warning_count: RefCell<u32>,
 
-    global_items: Vec<ModuleItem>,
-
+    global_symbols: Vec<Symbol>,
     type_aliases: Vec<Type>,
     struct_defs: Vec<StructDef>,
     enum_defs: Vec<EnumDef>,
@@ -549,6 +544,7 @@ pub struct Compiler {
     macro_defs: Vec<&'static MacroDefExpr>,
     functions: Vec<FnInfo>,
     const_slice_lens: Vec<ConstSliceLen>,
+    allocated_strings: Vec<String>,
 
     memory: Option<MemoryInfo>,
     datas: RefCell<Vec<WasmData>>,
@@ -571,7 +567,7 @@ impl Compiler {
             error_count: RefCell::new(0),
             warning_count: RefCell::new(0),
 
-            global_items: Vec::new(),
+            global_symbols: Vec::new(),
 
             type_aliases: Vec::new(),
             struct_defs: Vec::new(),
@@ -582,6 +578,8 @@ impl Compiler {
             macro_defs: Vec::new(),
             functions: Vec::new(),
             const_slice_lens: Vec::new(),
+
+            allocated_strings: Vec::new(),
 
             memory: None,
             datas: RefCell::new(Vec::new()),
@@ -609,12 +607,18 @@ impl Compiler {
         return self_;
     }
 
+    fn alloc_str(&mut self, value: String) -> &'static str {
+        let str_ref = value.as_str().relax();
+        self.allocated_strings.push(value);
+        str_ref
+    }
+
     #[inline]
-    fn add_builtin_type(&mut self, name: &str, type_: Type) {
-        self.global_items.push(ModuleItem {
-            name: String::from(name),
-            collection: ModuleItemCollection::TypeAlias,
-            collection_index: self.type_aliases.len(),
+    fn add_builtin_type(&mut self, name: &'static str, type_: Type) {
+        self.global_symbols.push(Symbol {
+            name,
+            type_: SymbolType::TypeAlias,
+            index: self.type_aliases.len(),
             loc: Loc::internal(),
         });
         self.type_aliases.push(type_);
@@ -680,7 +684,7 @@ impl Compiler {
             return None;
         });
 
-        let parser = Parser::new(lexer);
+        let parser = Parser::new(lexer, self.relax_mut());
         if !self.in_lex_only_mode {
             catch!(parser.parse_file(), err, {
                 self.report_error(&err);
@@ -713,11 +717,12 @@ impl Compiler {
 
         self.modules.push(Module {
             index: module_index,
+            source: parser.source,
             parser,
             ctx,
             includes,
-            own_items: Vec::new(),
-            all_items: Vec::new(),
+            own_symbols: Vec::new(),
+            all_symbols: Vec::new(),
         });
 
         Some(self.modules.last().unwrap())
@@ -725,11 +730,11 @@ impl Compiler {
 
     pub fn run_passes(&mut self) {
         for module in self.modules.relax_mut() {
-            self.pass_collect_own_items(module);
+            self.pass_collect_own_symbols(module);
         }
 
         for module in self.modules.relax_mut() {
-            self.pass_collect_all_items(module);
+            self.pass_collect_all_symbols(module);
         }
 
         for module in self.modules.relax() {
@@ -741,45 +746,47 @@ impl Compiler {
         }
     }
 
-    fn pass_collect_own_items(&mut self, module: &mut Module) {
+    fn pass_collect_own_symbols(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
                 TopLevelExpr::StructDef(struct_def) => {
-                    self.define_item(ModuleItem {
-                        name: struct_def.struct_name.repr.clone(),
-                        collection: ModuleItemCollection::Struct,
-                        collection_index: self.struct_defs.len(),
+                    self.define_symbol(Symbol {
+                        name: struct_def.struct_name.repr,
+                        type_: SymbolType::Struct,
+                        index: self.struct_defs.len(),
                         loc: struct_def.struct_name.loc,
                     });
 
                     self.struct_defs.push(StructDef {
-                        struct_name: struct_def.struct_name.repr.clone(),
+                        struct_name: struct_def.struct_name.repr,
                         fields: Vec::new(),
                         fully_defined: false,
                     });
                 }
                 TopLevelExpr::EnumDef(enum_def) => {
-                    self.define_item(ModuleItem {
-                        name: enum_def.enum_name.repr.clone(),
-                        collection: ModuleItemCollection::Enum,
-                        collection_index: self.enum_defs.len(),
+                    self.define_symbol(Symbol {
+                        name: enum_def.enum_name.repr,
+                        type_: SymbolType::Enum,
+                        index: self.enum_defs.len(),
                         loc: enum_def.enum_name.loc,
                     });
 
                     self.enum_defs.push(EnumDef {
-                        enum_name: enum_def.enum_name.repr.clone(),
+                        enum_name: enum_def.enum_name.repr,
                         variant_type: Type::Void, // placeholder
                         variants: Vec::new(),     // placeholder
                     });
 
                     for (variant, variant_index) in enum_def.variants.iter().zip(0..) {
-                        let constructor_name =
-                            format!("{}::{}", enum_def.enum_name.repr, variant.variant_name.repr);
+                        let constructor_name = self.alloc_str(format!(
+                            "{}::{}",
+                            enum_def.enum_name.repr, variant.variant_name.repr
+                        ));
 
-                        self.define_item(ModuleItem {
+                        self.define_symbol(Symbol {
                             name: constructor_name,
-                            collection: ModuleItemCollection::EnumConstructor,
-                            collection_index: self.enum_ctors.len(),
+                            type_: SymbolType::EnumConstructor,
+                            index: self.enum_ctors.len(),
                             loc: enum_def.enum_name.loc,
                         });
 
@@ -790,20 +797,20 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::TypeDef(type_def) => {
-                    self.define_item(ModuleItem {
-                        name: type_def.type_name.repr.clone(),
-                        collection: ModuleItemCollection::TypeAlias,
-                        collection_index: self.type_aliases.len(),
+                    self.define_symbol(Symbol {
+                        name: type_def.type_name.repr,
+                        type_: SymbolType::TypeAlias,
+                        index: self.type_aliases.len(),
                         loc: type_def.type_name.loc,
                     });
 
                     self.type_aliases.push(Type::Never); // placeholder
                 }
                 TopLevelExpr::FnDef(fn_def) => {
-                    self.define_item(ModuleItem {
-                        name: fn_def.decl.fn_name.repr.clone(),
-                        collection: ModuleItemCollection::Function,
-                        collection_index: self.functions.len(),
+                    self.define_symbol(Symbol {
+                        name: fn_def.decl.fn_name.repr,
+                        type_: SymbolType::Function,
+                        index: self.functions.len(),
                         loc: fn_def.decl.fn_name.loc,
                     });
 
@@ -812,11 +819,11 @@ impl Compiler {
 
                     let mut exported_as = Vec::new();
                     if fn_def.exported {
-                        exported_as.push(fn_def.decl.fn_name.repr.clone());
+                        exported_as.push(String::from(fn_def.decl.fn_name.repr));
                     }
 
                     self.functions.push(FnInfo {
-                        fn_name: fn_def.decl.fn_name.repr.clone(),
+                        fn_name: fn_def.decl.fn_name.repr,
                         fn_type: FnType {
                             inputs: Vec::new(),
                             output: Type::Void,
@@ -832,27 +839,25 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::Import(import_expr) => {
-                    let module_name = import_expr.module_name.unescape(module.parser.lexer.source);
+                    let module_name = import_expr.module_name.unescape(module.source);
 
                     for item in &import_expr.items {
                         let ImportItem::FnDecl(fn_decl) = item else {
                             continue;
                         };
 
-                        self.define_item(ModuleItem {
-                            name: fn_decl.fn_name.repr.clone(),
-                            collection: ModuleItemCollection::Function,
-                            collection_index: self.functions.len(),
+                        self.define_symbol(Symbol {
+                            name: fn_decl.fn_name.repr,
+                            type_: SymbolType::Function,
+                            index: self.functions.len(),
                             loc: fn_decl.fn_name.loc,
                         });
 
                         let method_name = fn_decl.fn_name.parts.last().unwrap();
-                        let external_fn_name = method_name
-                            .read_span(module.parser.lexer.source)
-                            .to_string();
+                        let external_fn_name = method_name.read_span(module.source);
 
                         self.functions.push(FnInfo {
-                            fn_name: fn_decl.fn_name.repr.clone(),
+                            fn_name: fn_decl.fn_name.repr,
                             fn_type: FnType {
                                 inputs: Vec::new(),
                                 output: Type::Void,
@@ -869,23 +874,20 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::MacroDef(macro_def) => {
-                    let mut macro_item_name = macro_def.macro_name.repr.clone();
-                    macro_item_name.push('!');
-
-                    self.define_item(ModuleItem {
-                        name: macro_item_name,
-                        collection: ModuleItemCollection::Macro,
-                        collection_index: self.macro_defs.len(),
+                    self.define_symbol(Symbol {
+                        name: macro_def.macro_name.repr,
+                        type_: SymbolType::Macro,
+                        index: self.macro_defs.len(),
                         loc: macro_def.macro_name.loc,
                     });
 
                     self.macro_defs.push(macro_def.relax());
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
-                    self.define_item(ModuleItem {
-                        name: global_def.global_name.repr.clone(),
-                        collection: ModuleItemCollection::Global,
-                        collection_index: self.globals.len(),
+                    self.define_symbol(Symbol {
+                        name: global_def.global_name.repr,
+                        type_: SymbolType::Global,
+                        index: self.globals.len(),
                         loc: global_def.global_name.loc,
                     });
 
@@ -897,15 +899,15 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
-                    self.define_item(ModuleItem {
-                        name: const_def.const_name.repr.clone(),
-                        collection: ModuleItemCollection::Const,
-                        collection_index: self.const_defs.len(),
+                    self.define_symbol(Symbol {
+                        name: const_def.const_name.repr,
+                        type_: SymbolType::Const,
+                        index: self.const_defs.len(),
                         loc: const_def.const_name.loc,
                     });
 
                     self.const_defs.push(ConstDef {
-                        const_name: const_def.const_name.repr.clone(),
+                        const_name: const_def.const_name.repr,
                         code_unit: CodeUnit {
                             type_: Type::Never, // placeholder
                             instrs: Vec::new(), // placeholder
@@ -918,29 +920,29 @@ impl Compiler {
         }
     }
 
-    fn define_item(&mut self, item: ModuleItem) {
+    fn define_symbol(&mut self, symbol: Symbol) {
         let module = self
-            .get_module_by_file_index(item.loc.file_index)
+            .get_module_by_file_index(symbol.loc.file_index)
             .unwrap()
             .be_mut();
 
-        if let Some(existing_item) = module.get_own_item(&item.name) {
+        if let Some(existing_item) = module.get_own_symbol(&symbol.name) {
             self.report_error(&Error {
                 message: format!(
                     "Cannot redefine {}, already defined at {}",
-                    item.name,
+                    symbol.name,
                     existing_item.loc.to_string(&self.fm)
                 ),
-                loc: item.loc,
+                loc: symbol.loc,
             });
         }
 
-        module.own_items.push(item);
+        module.own_symbols.push(symbol);
     }
 
-    fn pass_collect_all_items(&mut self, module: &mut Module) {
-        for item in &self.global_items {
-            module.all_items.push(item.clone());
+    fn pass_collect_all_symbols(&mut self, module: &mut Module) {
+        for symbol in &self.global_symbols {
+            module.all_symbols.push(symbol.clone());
         }
 
         self.inline_includes(module.relax_mut(), module, &mut String::from(""), true);
@@ -953,10 +955,12 @@ impl Compiler {
         prefix: &mut String,
         force_go_deeper: bool,
     ) {
-        for item in &includee.own_items {
-            includer.all_items.push(ModuleItem {
-                name: format!("{}{}", prefix, item.name),
-                ..item.clone()
+        for symbol in &includee.own_symbols {
+            let name = self.alloc_str(format!("{}{}", prefix, symbol.name));
+
+            includer.all_symbols.push(Symbol {
+                name,
+                ..symbol.clone()
             })
         }
 
@@ -1018,7 +1022,7 @@ impl Compiler {
                         struct_primitives_count += field_layout.primities_count;
 
                         struct_fields.push(StructField {
-                            field_name: field.field_name.repr.clone(),
+                            field_name: field.field_name.repr,
                             field_type: field_type.clone(),
                             field_layout,
                             field_index,
@@ -1037,21 +1041,21 @@ impl Compiler {
                         byte_offset += field.field_layout.byte_size;
                     }
 
-                    let item = module.get_own_item(&struct_def.struct_name.repr).unwrap();
-                    let ModuleItemCollection::Struct = item.collection else {
+                    let symbol = module.get_own_symbol(&struct_def.struct_name.repr).unwrap();
+                    let SymbolType::Struct = symbol.type_ else {
                         continue;
                     };
-                    let struct_ = &mut self.struct_defs[item.collection_index];
+                    let struct_ = &mut self.struct_defs[symbol.index];
 
                     struct_.fields.append(&mut struct_fields);
                     struct_.fully_defined = true;
                 }
                 TopLevelExpr::EnumDef(enum_def) => {
-                    let item = module.get_own_item(&enum_def.enum_name.repr).unwrap();
-                    let ModuleItemCollection::Enum = item.collection else {
+                    let symbol = module.get_own_symbol(&enum_def.enum_name.repr).unwrap();
+                    let SymbolType::Enum = symbol.type_ else {
                         continue;
                     };
-                    let enum_ = self.enum_defs[item.collection_index].relax_mut();
+                    let enum_ = self.enum_defs[symbol.index].relax_mut();
 
                     if let Some(type_) = &enum_def.variant_type {
                         enum_.variant_type = catch!(self.build_type(&module.ctx, type_), err, {
@@ -1095,7 +1099,7 @@ impl Compiler {
                         }
 
                         enum_.variants.push(EnumVariant {
-                            variant_name: variant.variant_name.repr.clone(),
+                            variant_name: variant.variant_name.repr,
                             variant_type,
                             loc: variant.variant_name.loc,
                         });
@@ -1108,11 +1112,11 @@ impl Compiler {
                         continue;
                     });
 
-                    let item = module.get_own_item(&type_def.type_name.repr).unwrap();
-                    let ModuleItemCollection::TypeAlias = item.collection else {
+                    let symbol = module.get_own_symbol(&type_def.type_name.repr).unwrap();
+                    let SymbolType::TypeAlias = symbol.type_ else {
                         continue;
                     };
-                    self.type_aliases[item.collection_index] = type_value;
+                    self.type_aliases[symbol.index] = type_value;
                 }
                 _ => {} // skip, not interested
             }
@@ -1122,9 +1126,9 @@ impl Compiler {
     fn pass_main(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
-                TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_items
-                TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_items
-                TopLevelExpr::MacroDef(_) => {} // skip, processed in pass_collect_all_items
+                TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_symbols
+                TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_symbols
+                TopLevelExpr::MacroDef(_) => {} // skip, processed in pass_collect_all_symbols
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_assemble_complex_types
                 TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
 
@@ -1135,9 +1139,8 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
-                    let item = module.get_own_item(&const_def.const_name.repr).unwrap();
-
-                    let const_ = self.const_defs[item.collection_index].relax_mut();
+                    let symbol = module.get_own_symbol(&const_def.const_name.repr).unwrap();
+                    let const_ = self.const_defs[symbol.index].relax_mut();
 
                     let const_type = self.get_expr_type(&module.ctx, &const_def.const_value);
                     let const_type = catch!(const_type, err, {
@@ -1171,11 +1174,11 @@ impl Compiler {
                 }
 
                 TopLevelExpr::FnDef(fn_def) => {
-                    let item = module.get_own_item(&fn_def.decl.fn_name.repr).unwrap();
-                    let ModuleItemCollection::Function = item.collection else {
+                    let symbol = module.get_own_symbol(&fn_def.decl.fn_name.repr).unwrap();
+                    let SymbolType::Function = symbol.type_ else {
                         continue;
                     };
-                    let fn_info = self.functions[item.collection_index].relax_mut();
+                    let fn_info = self.functions[symbol.index].relax_mut();
 
                     fn_info.fn_type.output = match &fn_def.decl.return_type {
                         Some(return_type) => {
@@ -1216,14 +1219,14 @@ impl Compiler {
                         fn_info.fn_type.inputs.push(param_type.clone());
 
                         fn_info.fn_params.push(FnParameter {
-                            param_name: fn_param.param_name.repr.clone(),
+                            param_name: fn_param.param_name.repr,
                             param_type: param_type.clone(),
                         });
 
                         self.define_local(
                             ctx,
                             fn_param.param_name.loc,
-                            fn_param.param_name.repr.clone(),
+                            fn_param.param_name.repr,
                             &param_type,
                         );
                     }
@@ -1244,15 +1247,13 @@ impl Compiler {
 
                     if self.in_inspection_mode {
                         self.print_inspection(&InspectInfo {
-                            message: try_export_expr.in_name.repr.clone(),
+                            message: String::from(try_export_expr.in_name.repr),
                             loc: try_export_expr.loc,
                             linked_loc: Some(fn_info.definition_loc.clone()),
                         });
                     }
 
-                    let exported_as = try_export_expr
-                        .out_name
-                        .unescape(module.parser.lexer.source);
+                    let exported_as = try_export_expr.out_name.unescape(module.source);
                     fn_info.be_mut().exported_as.push(exported_as);
                 }
                 TopLevelExpr::Import(import_expr) => {
@@ -1260,8 +1261,7 @@ impl Compiler {
                         let fn_decl = match item {
                             ImportItem::FnDecl(fn_decl) => fn_decl,
                             ImportItem::Memory(memory_def) => {
-                                let module_name =
-                                    import_expr.module_name.unescape(module.parser.lexer.source);
+                                let module_name = import_expr.module_name.unescape(module.source);
 
                                 let res = self.define_memory(
                                     module,
@@ -1275,11 +1275,11 @@ impl Compiler {
                             }
                         };
 
-                        let item = module.get_own_item(&fn_decl.fn_name.repr).unwrap();
-                        let ModuleItemCollection::Function = item.collection else {
+                        let symbol = module.get_own_symbol(&fn_decl.fn_name.repr).unwrap();
+                        let SymbolType::Function = symbol.type_ else {
                             continue;
                         };
-                        let fn_info = self.functions[item.collection_index].relax_mut();
+                        let fn_info = self.functions[symbol.index].relax_mut();
 
                         let self_type = self.get_fn_self_type(&fn_decl.fn_name, &fn_decl.fn_params);
 
@@ -1292,7 +1292,7 @@ impl Compiler {
                             });
                             fn_info.fn_type.inputs.push(param_type.clone());
                             fn_info.fn_params.push(FnParameter {
-                                param_name: fn_param.param_name.repr.clone(),
+                                param_name: fn_param.param_name.repr,
                                 param_type: param_type.clone(),
                             });
                         }
@@ -1307,11 +1307,11 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
-                    let item = module.get_own_item(&global_def.global_name.repr).unwrap();
-                    let ModuleItemCollection::Global = item.collection else {
+                    let symbol = module.get_own_symbol(&global_def.global_name.repr).unwrap();
+                    let SymbolType::Global = symbol.type_ else {
                         continue;
                     };
-                    let global = self.globals[item.collection_index].relax_mut();
+                    let global = self.globals[symbol.index].relax_mut();
 
                     catch!(self.ensure_const_expr(&global_def.global_value), err, {
                         self.report_error(&err);
@@ -1392,7 +1392,7 @@ impl Compiler {
                     wasm_module.functions.push(fn_type_index);
                     wasm_module.function_names.push(WasmFnNameItem {
                         fn_index: wasm_fn_index,
-                        fn_name: fn_info.fn_name.clone(),
+                        fn_name: String::from(fn_info.fn_name),
                     });
 
                     fn_info.wasm_fn_index = wasm_fn_index;
@@ -1407,7 +1407,7 @@ impl Compiler {
 
                     wasm_module.imports.push(WasmImport {
                         module_name: module_name.clone(),
-                        item_name: external_fn_name.clone(),
+                        item_name: String::from(*external_fn_name),
                         item_desc: WasmImportDesc::Func {
                             type_index: fn_type_index,
                         },
@@ -1479,13 +1479,13 @@ impl Compiler {
                         continue;
                     }
                     let module = &self.get_module_by_file_index(file_index).unwrap();
-                    let source = module.parser.lexer.source;
+                    let source = module.source;
 
                     self.push_name_section_locals(
                         &mut local_names_item.locals,
                         local.local_index,
                         &local.local_type,
-                        local.definition_loc.read_span(source).to_string(),
+                        String::from(local.definition_loc.read_span(source)),
                     );
                 }
 
@@ -1714,7 +1714,7 @@ impl Compiler {
         let fn_module = self
             .get_module_by_file_index(fn_name.loc.file_index)
             .unwrap();
-        let fn_source = fn_module.parser.lexer.source;
+        let fn_source = fn_module.source;
 
         let mut self_type_name = String::from(fn_name.parts[0].read_span(fn_source));
         for i in 1..fn_name.parts.len() - 1 {
@@ -1858,12 +1858,9 @@ impl Compiler {
             CodeExpr::NullLiteral(NullLiteralExpr { loc: _ }) => {
                 instrs.push(WasmInstr::I32Const { value: 0 });
             }
-            CodeExpr::IntLiteral(IntLiteralExpr {
-                repr: _,
-                value,
-                tag,
-                loc: _,
-            }) => self.codegen_int_const(instrs, *value, tag.as_deref()),
+            CodeExpr::IntLiteral(int_literal) => {
+                self.codegen_int_literal(ctx, instrs, int_literal);
+            }
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
                 value,
@@ -2133,7 +2130,7 @@ impl Compiler {
                 }
 
                 let local_index =
-                    self.define_local(ctx, local_name.loc, local_name.repr.clone(), &local_type);
+                    self.define_local(ctx, local_name.loc, local_name.repr, &local_type);
                 let var = self.var_local(
                     &local_name.repr,
                     local_type,
@@ -2274,11 +2271,12 @@ impl Compiler {
                 }
                 PrefixOpTag::Negative => {
                     if let CodeExpr::IntLiteral(int_literal) = expr.as_ref() {
-                        self.codegen_int_const(
-                            instrs,
-                            -int_literal.value,
-                            int_literal.tag.as_deref(),
-                        );
+                        self.codegen_int_literal(ctx, instrs, int_literal);
+                        match instrs.last_mut().unwrap() {
+                            WasmInstr::I32Const { value } => *value *= -1,
+                            WasmInstr::I64Const { value } => *value *= -1,
+                            _ => unreachable!(),
+                        }
                         return Ok(());
                     };
 
@@ -2424,9 +2422,9 @@ impl Compiler {
                 args,
                 loc: _,
             }) => {
-                if let Some(item) = self.modules[ctx.module_index].get_item(&fn_name.repr) {
-                    if let ModuleItemCollection::EnumConstructor = item.collection {
-                        let ctor = &self.enum_ctors[item.collection_index];
+                if let Some(symbol) = self.modules[ctx.module_index].get_symbol(&fn_name.repr) {
+                    if let SymbolType::EnumConstructor = symbol.type_ {
+                        let ctor = &self.enum_ctors[symbol.index];
                         let enum_ = &self.enum_defs[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
 
@@ -2438,7 +2436,9 @@ impl Compiler {
                             });
                         }
 
-                        self.codegen_int_const(instrs, ctor.variant_index as i64, None);
+                        instrs.push(WasmInstr::I32Const {
+                            value: ctor.variant_index as i32,
+                        });
 
                         if variant.variant_type == Type::Void && args.items.len() == 0 {
                             return Ok(());
@@ -2724,7 +2724,7 @@ impl Compiler {
                     }
                 }
 
-                if fn_name.repr == "inspect_items" {
+                if fn_name.repr == "inspect_symbols" {
                     if !self.in_inspection_mode {
                         return Ok(());
                     }
@@ -2734,8 +2734,8 @@ impl Compiler {
                         .unwrap();
 
                     let mut message = String::new();
-                    for item in &module.all_items {
-                        write!(message, "{}\n", item.name).unwrap();
+                    for symbol in &module.all_symbols {
+                        write!(message, "{}\n", symbol.name).unwrap();
                     }
 
                     self.print_inspection(&InspectInfo {
@@ -2973,11 +2973,16 @@ impl Compiler {
                     });
                 }
 
+                let mut is_64_bit_counter = false;
+                match self.is_64_bit_int_tag(&counter_type, loc) {
+                    Ok(is_64) => is_64_bit_counter = is_64,
+                    Err(err) => self.report_error(&err),
+                }
+
                 ctx.enter_scope(ScopeType::ForLoop);
 
                 // define counter and set value to start
-                let local_index =
-                    self.define_local(ctx, counter.loc, counter.repr.clone(), &counter_type);
+                let local_index = self.define_local(ctx, counter.loc, counter.repr, &counter_type);
                 let counter_var = self.var_local(
                     &counter.repr,
                     counter_type.clone(),
@@ -3024,11 +3029,11 @@ impl Compiler {
                         // increment counter
                         self.codegen_var_get(ctx, instrs, &counter_var)?;
                         self.codegen_var_set_prepare(instrs, &counter_var);
-                        self.codegen_int_const(
-                            instrs,
-                            1,
-                            Some(TypeFmt(self, &counter_type).to_string().as_str()),
-                        );
+                        if is_64_bit_counter {
+                            instrs.push(WasmInstr::I64Const { value: 1 });
+                        } else {
+                            instrs.push(WasmInstr::I32Const { value: 1 });
+                        }
                         self.codegen_binary_op(instrs, &InfixOpTag::Add, &counter_type, op_loc)?;
                         self.codegen_var_set(ctx, instrs, &counter_var)?;
 
@@ -3124,8 +3129,7 @@ impl Compiler {
 
                     self.codegen(ctx, instrs, arg)?;
 
-                    let arg_local_index =
-                        self.define_local(ctx, with_loc.clone(), String::from("it"), &arg_type);
+                    let arg_local_index = self.define_local(ctx, with_loc.clone(), "it", &arg_type);
 
                     self.codegen_local_set(instrs, &arg_type, arg_local_index);
                     self.codegen(ctx, instrs, body)?;
@@ -3147,8 +3151,7 @@ impl Compiler {
 
                 ctx.enter_scope(ScopeType::Block);
 
-                let lhs_local_index =
-                    self.define_local(ctx, op_loc.clone(), String::from("it"), &lhs_type);
+                let lhs_local_index = self.define_local(ctx, op_loc.clone(), "it", &lhs_type);
 
                 self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
                 catch!(self.codegen(ctx, instrs, rhs), err, {
@@ -3202,26 +3205,27 @@ impl Compiler {
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
     ) -> Result<&EnumConstructor, Error> {
-        let Some(item) = self.modules[ctx.module_index].get_item(&header.variant_name.repr) else {
+        let Some(symbol) = self.modules[ctx.module_index].get_symbol(&header.variant_name.repr)
+        else {
             return Err(Error {
                 message: format!("Unkown enum constructor: {}", header.variant_name.repr),
                 loc: header.variant_name.loc,
             });
         };
-        let ModuleItemCollection::EnumConstructor = item.collection else {
+        let SymbolType::EnumConstructor = symbol.type_ else {
             return Err(Error {
                 message: format!("Not an enum constructor: {}", header.variant_name.repr),
                 loc: header.variant_name.loc,
             });
         };
 
-        let enum_ctor = &self.enum_ctors[item.collection_index];
+        let enum_ctor = &self.enum_ctors[symbol.index];
         let enum_def = &self.enum_defs[enum_ctor.enum_index];
         let enum_variant = &enum_def.variants[enum_ctor.variant_index];
         let local_index = self.define_local(
             ctx,
             header.variant_bind.loc,
-            header.variant_bind.repr.clone(),
+            header.variant_bind.repr,
             &enum_variant.variant_type,
         );
         let local = self.var_local(
@@ -3329,25 +3333,25 @@ impl Compiler {
         fn_name: &str,
         loc: &Loc,
     ) -> Result<&FnInfo, Error> {
-        let Some(item) = self.modules[ctx.module_index].get_item(fn_name) else {
+        let Some(symbol) = self.modules[ctx.module_index].get_symbol(fn_name) else {
             return Err(Error {
                 message: format!("Unknown function: {}", fn_name),
                 loc: *loc,
             });
         };
 
-        let ModuleItemCollection::Function = item.collection else {
+        let SymbolType::Function = symbol.type_ else {
             return Err(Error {
                 message: format!(
                     "Trying to call {} which is not a function, defined at: {}",
                     fn_name,
-                    item.loc.to_string(&self.fm)
+                    symbol.loc.to_string(&self.fm)
                 ),
                 loc: *loc,
             });
         };
 
-        Ok(&self.functions[item.collection_index])
+        Ok(&self.functions[symbol.index])
     }
 
     fn get_macro_return_type(
@@ -3390,16 +3394,14 @@ impl Compiler {
         loc: &Loc,
         build_code: bool,
     ) -> Result<&MacroDefExpr, Error> {
-        // TODO: find a way to not allocate
-        let Some(item) = self.modules[ctx.module_index].get_item(&(String::from(macro_name) + "!"))
-        else {
+        let Some(symbol) = self.modules[ctx.module_index].get_symbol(macro_name) else {
             return Err(Error {
                 message: format!("Unknown macro: {}", macro_name),
                 loc: *loc,
             });
         };
 
-        let macro_def = self.macro_defs[item.collection_index];
+        let macro_def = self.macro_defs[symbol.index];
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -3440,7 +3442,7 @@ impl Compiler {
 
         for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(lo_type_args.iter()) {
             ctx.current_scope_mut().macro_type_args.push(MacroTypeArg {
-                name: type_param.clone(),
+                name: type_param,
                 type_: type_arg.clone(),
             });
         }
@@ -3463,14 +3465,14 @@ impl Compiler {
 
         for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
             let const_def = ConstDef {
-                const_name: macro_param.param_name.repr.clone(),
+                const_name: macro_param.param_name.repr,
                 code_unit: macro_arg,
                 loc: macro_param.loc,
             };
 
             if let FnParamType::Infer { name } = &macro_param.param_type {
                 ctx.current_scope_mut().macro_type_args.push(MacroTypeArg {
-                    name: String::from(*name),
+                    name,
                     type_: const_def.code_unit.type_.clone(),
                 });
             }
@@ -3589,12 +3591,12 @@ impl Compiler {
 
         // pop error
         let (error_bind, error_bind_loc) = if let Some(error_bind) = error_bind {
-            (error_bind.repr.clone(), error_bind.loc)
+            (error_bind.repr, error_bind.loc)
         } else {
-            (String::from("<err>"), Loc::internal())
+            ("<err>", Loc::internal())
         };
         let err_local_index =
-            self.define_local(ctx, error_bind_loc.clone(), error_bind.clone(), &result.err);
+            self.define_local(ctx, error_bind_loc.clone(), error_bind, &result.err);
         let err_var = self.var_local(
             &error_bind,
             result.err.as_ref().clone(),
@@ -3611,8 +3613,7 @@ impl Compiler {
         self.codegen_var_set(ctx, instrs, &err_var)?;
 
         // pop ok
-        let ok_bind = String::from("<ok>");
-        let ok_local_index = self.define_local(ctx, *loc, ok_bind, &result.ok);
+        let ok_local_index = self.define_local(ctx, *loc, "<ok>", &result.ok);
         self.codegen_local_set(instrs, &result.ok, ok_local_index);
 
         // cond: error != 0
@@ -3900,31 +3901,27 @@ impl Compiler {
                 value: _,
                 tag,
                 loc,
-            }) => match tag.as_deref() {
-                None => Ok(Type::U32),
-                Some("u8") => Ok(Type::U8),
-                Some("i8") => Ok(Type::I8),
-                Some("u16") => Ok(Type::U16),
-                Some("i16") => Ok(Type::I16),
-                Some("u32") => Ok(Type::U32),
-                Some("i32") => Ok(Type::I32),
-                Some("f32") => Ok(Type::F32),
-                Some("u64") => Ok(Type::U64),
-                Some("i64") => Ok(Type::I64),
-                Some("f64") => Ok(Type::F64),
-                Some(tag) => {
-                    return Err(Error {
-                        message: format!("Unknown int literal tag: {tag}"),
-                        loc: *loc,
-                    });
-                }
-            },
+            }) => {
+                let Some(tag) = tag else { return Ok(Type::U32) };
+
+                let tag_type = catch!(self.get_type_or_err(tag, loc), err, {
+                    self.report_error(&err);
+                    return Ok(Type::U32);
+                });
+
+                catch!(self.is_64_bit_int_tag(&tag_type, loc), err, {
+                    self.report_error(&err);
+                    return Ok(Type::U32);
+                });
+
+                Ok(tag_type)
+            }
             CodeExpr::StringLiteral(StringLiteralExpr {
                 repr: _,
                 value: _,
                 loc,
             }) => {
-                let Some(item) = self.modules[ctx.module_index].get_item("str") else {
+                let Some(symbol) = self.modules[ctx.module_index].get_symbol("str") else {
                     return Err(Error {
                         message: format!("Cannot use strings with no `str` struct defined"),
                         loc: *loc,
@@ -3932,7 +3929,7 @@ impl Compiler {
                 };
 
                 Ok(Type::StructInstance {
-                    struct_index: item.collection_index,
+                    struct_index: symbol.index,
                 })
             }
             CodeExpr::StructLiteral(StructLiteralExpr {
@@ -3940,7 +3937,8 @@ impl Compiler {
                 body: _,
                 loc,
             }) => {
-                let Some(item) = self.modules[ctx.module_index].get_item(&struct_name.repr) else {
+                let Some(symbol) = self.modules[ctx.module_index].get_symbol(&struct_name.repr)
+                else {
                     return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
                         loc: *loc,
@@ -3948,7 +3946,7 @@ impl Compiler {
                 };
 
                 return Ok(Type::StructInstance {
-                    struct_index: item.collection_index,
+                    struct_index: symbol.index,
                 });
             }
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
@@ -4091,9 +4089,9 @@ impl Compiler {
                 args: _,
                 loc: _,
             }) => {
-                if let Some(item) = self.modules[ctx.module_index].get_item(&fn_name.repr) {
-                    if let ModuleItemCollection::EnumConstructor = item.collection {
-                        let ctor = &self.enum_ctors[item.collection_index];
+                if let Some(symbol) = self.modules[ctx.module_index].get_symbol(&fn_name.repr) {
+                    if let SymbolType::EnumConstructor = symbol.type_ {
+                        let ctor = &self.enum_ctors[symbol.index];
 
                         return Ok(Type::EnumInstance {
                             enum_index: ctor.enum_index,
@@ -4231,7 +4229,7 @@ impl Compiler {
                 ctx.enter_scope(ScopeType::Block);
 
                 ctx.current_scope_mut().macro_args.push(ConstDef {
-                    const_name: String::from("it"),
+                    const_name: "it",
                     code_unit: CodeUnit {
                         type_: lhs_type,
                         instrs: Vec::new(),
@@ -4250,9 +4248,9 @@ impl Compiler {
             }
             CodeExpr::Dbg(_) => Ok(Type::StructInstance {
                 struct_index: self.modules[ctx.module_index]
-                    .get_item("str")
+                    .get_symbol("str")
                     .unwrap()
-                    .collection_index,
+                    .index,
             }),
             CodeExpr::Sizeof(_) => Ok(Type::U32),
             CodeExpr::Let(let_) => {
@@ -4284,18 +4282,18 @@ impl Compiler {
                         }
                     }
                     IfCond::Match(header) => {
-                        if let Some(item) =
-                            self.modules[ctx.module_index].get_item(&header.variant_name.repr)
+                        if let Some(symbol) =
+                            self.modules[ctx.module_index].get_symbol(&header.variant_name.repr)
                         {
-                            if let ModuleItemCollection::EnumConstructor = item.collection {
-                                let enum_ctor = &self.enum_ctors[item.collection_index];
+                            if let SymbolType::EnumConstructor = symbol.type_ {
+                                let enum_ctor = &self.enum_ctors[symbol.index];
                                 let enum_variant = &self.enum_defs[enum_ctor.enum_index].variants
                                     [enum_ctor.variant_index];
 
                                 should_exit_match_scope = true;
                                 ctx.be_mut().enter_scope(ScopeType::Block);
                                 ctx.be_mut().current_scope_mut().macro_args.push(ConstDef {
-                                    const_name: header.variant_bind.repr.clone(),
+                                    const_name: header.variant_bind.repr,
                                     code_unit: CodeUnit {
                                         type_: enum_variant.variant_type.clone(),
                                         instrs: Vec::new(),
@@ -4363,7 +4361,7 @@ impl Compiler {
                 diverges = diverges || value_type == Type::Never;
 
                 ctx.current_scope_mut().macro_args.push(ConstDef {
-                    const_name: local_name.repr.clone(),
+                    const_name: local_name.repr,
                     code_unit: CodeUnit {
                         type_: value_type,
                         instrs: Vec::new(),
@@ -4501,9 +4499,9 @@ impl Compiler {
             ));
         };
 
-        if let Some(item) = self.modules[ctx.module_index].get_item(&ident.repr) {
-            if let ModuleItemCollection::Global = item.collection {
-                let global = &self.globals[item.collection_index];
+        if let Some(symbol) = self.modules[ctx.module_index].get_symbol(&ident.repr) {
+            if let SymbolType::Global = symbol.type_ {
+                let global = &self.globals[symbol.index];
 
                 let mut inspect_info = None;
                 if self.in_inspection_mode {
@@ -4514,7 +4512,7 @@ impl Compiler {
                             TypeFmt(self, &global.global_type)
                         ),
                         loc: ident.loc,
-                        linked_loc: Some(item.loc),
+                        linked_loc: Some(symbol.loc),
                     });
                 }
 
@@ -4976,7 +4974,7 @@ impl Compiler {
         &self,
         ctx: &mut ExprContext,
         loc: Loc,
-        local_name: String,
+        local_name: &'static str,
         local_type: &Type,
     ) -> u32 {
         for local in ctx.current_scope().locals.iter() {
@@ -5124,10 +5122,10 @@ impl Compiler {
     }
 
     fn get_type_or_err(&self, type_name: &str, loc: &Loc) -> Result<Type, Error> {
-        let Some(item) = self
+        let Some(symbol) = self
             .get_module_by_file_index(loc.file_index)
             .unwrap()
-            .get_item(type_name)
+            .get_symbol(type_name)
         else {
             return Err(Error {
                 message: format!("Unknown type: {}", type_name),
@@ -5135,65 +5133,65 @@ impl Compiler {
             });
         };
 
-        match item.collection {
-            ModuleItemCollection::Struct => {
+        match symbol.type_ {
+            SymbolType::Struct => {
                 if self.in_inspection_mode {
                     self.print_inspection(&InspectInfo {
                         message: format!("struct {type_name} {{ ... }}"),
                         loc: *loc,
-                        linked_loc: Some(item.loc),
+                        linked_loc: Some(symbol.loc),
                     });
                 }
 
                 Ok(Type::StructInstance {
-                    struct_index: item.collection_index,
+                    struct_index: symbol.index,
                 })
             }
-            ModuleItemCollection::Enum => {
+            SymbolType::Enum => {
                 if self.in_inspection_mode {
                     self.print_inspection(&InspectInfo {
                         message: format!("enum {type_name} {{ ... }}"),
                         loc: *loc,
-                        linked_loc: Some(item.loc),
+                        linked_loc: Some(symbol.loc),
                     });
                 }
 
                 Ok(Type::EnumInstance {
-                    enum_index: item.collection_index,
+                    enum_index: symbol.index,
                 })
             }
-            ModuleItemCollection::TypeAlias => {
-                let type_ = &self.type_aliases[item.collection_index];
+            SymbolType::TypeAlias => {
+                let type_ = &self.type_aliases[symbol.index];
 
                 // don't print inspection for built-ins
-                if self.in_inspection_mode && item.loc.file_index != 0 {
+                if self.in_inspection_mode && symbol.loc.file_index != 0 {
                     self.print_inspection(&InspectInfo {
                         message: format!("type {type_name} = {}", TypeFmt(self, &type_)),
                         loc: *loc,
-                        linked_loc: Some(item.loc),
+                        linked_loc: Some(symbol.loc),
                     });
                 }
 
                 Ok(type_.clone())
             }
-            ModuleItemCollection::Function
-            | ModuleItemCollection::Macro
-            | ModuleItemCollection::Global
-            | ModuleItemCollection::Const
-            | ModuleItemCollection::EnumConstructor => Err(Error {
-                message: format!("Item is not a type: {}", type_name),
+            SymbolType::Function
+            | SymbolType::Macro
+            | SymbolType::Global
+            | SymbolType::Const
+            | SymbolType::EnumConstructor => Err(Error {
+                message: format!("Symbol is not a type: {}", type_name),
                 loc: *loc,
             }),
         }
     }
 
     fn get_const<'a>(&'a self, ctx: &'a ExprContext, const_name: &str) -> Option<&'a ConstDef> {
-        if let Some(item) = self.modules[ctx.module_index].get_item(const_name) {
-            let ModuleItemCollection::Const = item.collection else {
+        if let Some(symbol) = self.modules[ctx.module_index].get_symbol(const_name) {
+            let SymbolType::Const = symbol.type_ else {
                 return None;
             };
 
-            let const_def = &self.const_defs[item.collection_index];
+            let const_def = &self.const_defs[symbol.index];
             return Some(const_def);
         }
 
@@ -5244,13 +5242,47 @@ impl Compiler {
         }
     }
 
-    fn codegen_int_const(&self, instrs: &mut Vec<WasmInstr>, value: i64, tag: Option<&str>) {
-        match tag.as_deref() {
-            Some("u32") | Some("i32") | None => instrs.push(WasmInstr::I32Const {
-                value: value as i32,
+    fn codegen_int_literal(
+        &self,
+        _ctx: &mut ExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        IntLiteralExpr {
+            tag,
+            repr: _,
+            value,
+            loc,
+        }: &IntLiteralExpr,
+    ) {
+        let mut is_64_bit = false;
+        if let Some(tag) = tag {
+            match self
+                .get_type_or_err(tag, loc)
+                .and_then(|tag_type| self.is_64_bit_int_tag(&tag_type, loc))
+            {
+                Ok(is_64) => is_64_bit = is_64,
+                Err(err) => self.report_error(&err),
+            }
+        }
+
+        if is_64_bit {
+            instrs.push(WasmInstr::I64Const {
+                value: *value as i64,
+            });
+        } else {
+            instrs.push(WasmInstr::I32Const {
+                value: *value as i32,
+            });
+        }
+    }
+
+    fn is_64_bit_int_tag(&self, tag_type: &Type, loc: &Loc) -> Result<bool, Error> {
+        match tag_type {
+            Type::U64 | Type::I64 => Ok(true),
+            Type::U8 | Type::I8 | Type::U16 | Type::I16 | Type::U32 | Type::I32 => Ok(false),
+            other => Err(Error {
+                message: format!("{} is not a valid int tag", TypeFmt(self, other)),
+                loc: *loc,
             }),
-            Some("u64") | Some("i64") => instrs.push(WasmInstr::I64Const { value: value }),
-            _ => unreachable!(),
         }
     }
 
@@ -5668,7 +5700,7 @@ impl Compiler {
         return Err(Error {
             message: format!(
                 "Operator `{}` is incompatible with operands of type {}",
-                op_loc.read_span(module.parser.lexer.source),
+                op_loc.read_span(module.source),
                 TypeFmt(self, operand_type)
             ),
             loc: op_loc.clone(),
@@ -5800,7 +5832,7 @@ impl Compiler {
         None
     }
 
-    fn report_error(&self, err: &Error) {
+    pub fn report_error(&self, err: &Error) {
         *self.error_count.borrow_mut() += 1;
 
         if self.in_inspection_mode {
