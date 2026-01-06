@@ -45,7 +45,7 @@ global notes_ticker = 0
 global rand_seed = 0
 
 export fn start() {
-    stack::SIZE = 6560
+    stack::SIZE = wasm4::DATA_START
     light_checked = Vec::new!<u32>()
 
     // Palette (https://lospec.com/palette-list/empty-space-4)

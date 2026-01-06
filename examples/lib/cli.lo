@@ -3,8 +3,6 @@ include "./wasi.lo" with extern
 include "./print.lo" with extern
 
 // 1MB stack + 1MB heap
-export memory {
-    min_pages: 40,
-}
+export memory { min_pages: 40 }
 
 try export main as "_start" from root

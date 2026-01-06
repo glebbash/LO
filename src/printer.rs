@@ -1,5 +1,5 @@
 use crate::{ast::*, core::*, parser::*};
-use alloc::{string::ToString, vec::Vec};
+use alloc::vec::Vec;
 
 pub struct Printer {
     parser: &'static Parser,
@@ -347,29 +347,8 @@ impl Printer {
         if mem.exported {
             stdout_write("export ");
         }
-        if mem.loc.pos.line == mem.loc.end_pos.line {
-            return stdout_write("memory {}");
-        }
-
-        stdout_writeln("memory {");
-        self.last_printed_item_line = mem.loc.end_pos.line;
-
-        self.indent += 1;
-        if let Some(min_pages) = mem.min_pages {
-            self.print_indent();
-            stdout_write("min_pages: ");
-            stdout_write(min_pages.to_string());
-            stdout_writeln(",");
-        }
-        if let Some(data_start) = mem.data_start {
-            self.print_indent();
-            stdout_write("data_start: ");
-            stdout_write(data_start.to_string());
-            stdout_writeln(",");
-        }
-        self.indent -= 1;
-        self.print_indent();
-        stdout_write("}");
+        stdout_write("memory ");
+        self.print_code_expr_map(&mem.params);
     }
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
@@ -698,56 +677,12 @@ impl Printer {
             }
             CodeExpr::StructLiteral(StructLiteralExpr {
                 struct_name,
-                fields,
-                has_trailing_comma,
-                loc,
+                body,
+                loc: _,
             }) => {
                 stdout_write(&struct_name.repr);
-                stdout_write(" {");
-                self.last_printed_item_line = loc.pos.line;
-
-                if *has_trailing_comma {
-                    stdout_write("\n");
-
-                    self.indent += 1;
-
-                    for field in fields {
-                        self.print_comments_before(field.loc.pos);
-                        self.print_indent();
-                        stdout_write(&field.field_name);
-                        stdout_write(": ");
-                        self.print_code_expr(&field.value);
-                        stdout_writeln(",");
-                    }
-
-                    // print the rest of the comments
-                    self.print_comments_before(loc.end_pos);
-
-                    self.indent -= 1;
-                    self.print_indent();
-                    stdout_write("}");
-                    return;
-                }
-
-                if fields.len() == 0 {
-                    stdout_write("}");
-                    return;
-                }
-
                 stdout_write(" ");
-
-                for i in 0..fields.len() {
-                    if i != 0 {
-                        stdout_write(", ");
-                    }
-
-                    let field = &fields[i];
-                    stdout_write(&field.field_name);
-                    stdout_write(": ");
-                    self.print_code_expr(&field.value);
-                }
-
-                stdout_write(" }");
+                self.print_code_expr_map(body);
             }
             CodeExpr::Assign(AssignExpr {
                 op_loc: _,
@@ -869,6 +804,55 @@ impl Printer {
         }
 
         self.last_printed_item_line = expr.loc().end_pos.line
+    }
+
+    fn print_code_expr_map(&mut self, map: &CodeExprMap) {
+        stdout_write("{");
+        self.last_printed_item_line = map.loc.pos.line;
+
+        if map.has_trailing_comma {
+            stdout_write("\n");
+
+            self.indent += 1;
+
+            for field in &map.fields {
+                self.print_comments_before(field.loc.pos);
+                self.print_indent();
+                stdout_write(&field.key);
+                stdout_write(": ");
+                self.print_code_expr(&field.value);
+                stdout_writeln(",");
+            }
+
+            self.print_comments_before(map.loc.end_pos);
+
+            self.indent -= 1;
+            self.print_indent();
+            stdout_write("}");
+
+            return;
+        }
+
+        if map.fields.len() > 0 {
+            stdout_write(" ");
+        }
+
+        for i in 0..map.fields.len() {
+            if i != 0 {
+                stdout_write(", ");
+            }
+
+            let field = &map.fields[i];
+            stdout_write(&field.key);
+            stdout_write(": ");
+            self.print_code_expr(&field.value);
+        }
+
+        if map.fields.len() > 0 {
+            stdout_write(" ");
+        }
+
+        stdout_write("}");
     }
 
     fn print_match_header(&mut self, match_header: &MatchHeader) {

@@ -9,9 +9,7 @@ include "./lexer.lo"
 include "./compiler.lo"
 include "./printer.lo"
 
-export memory {
-    min_pages: 1,
-}
+export memory { min_pages: 1 }
 
 const USAGE = "Usage:
   lo format <input.lo>

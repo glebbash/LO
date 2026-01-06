@@ -1,7 +1,6 @@
 // exports vec api for testing
-export memory {
-    min_pages: 20,
-}
+
+export memory { min_pages: 1 }
 
 include "../lib/std.lo"
 

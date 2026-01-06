@@ -25,7 +25,7 @@ global rand_seed = 0
 global scratch = null as &Arena
 
 export fn start() {
-    stack::SIZE = 6560
+    stack::SIZE = wasm4::DATA_START
 
     trail = Vec::new!<Pos>()
     swap_trail = Vec::new!<Pos>()

@@ -360,37 +360,12 @@ impl Parser {
     }
 
     fn parse_memory_def(&self, exported: bool, mut loc: Loc) -> Result<MemoryDefExpr, Error> {
-        self.expect(Delim, "{")?;
-
-        let mut min_pages = None;
-        if let Some(_) = self.eat(Symbol, "min_pages") {
-            self.expect(Operator, ":")?;
-            let int = self.expect_any(IntLiteral)?;
-            let int_value =
-                Lexer::parse_int_literal_value(&int.get_value(self.lexer.source)) as u32;
-            self.expect(Delim, ",")?;
-
-            min_pages = Some(int_value);
-        }
-
-        let mut data_start = None;
-        if let Some(_) = self.eat(Symbol, "data_start") {
-            self.expect(Operator, ":")?;
-            let int = self.expect_any(IntLiteral)?;
-            let int_value =
-                Lexer::parse_int_literal_value(&int.get_value(self.lexer.source)) as u32;
-            self.eat(Delim, ",");
-
-            data_start = Some(int_value);
-        }
-        self.expect(Delim, "}")?;
-
+        let params = self.parse_code_expr_map()?;
         loc.end_pos = self.prev().loc.end_pos;
 
         Ok(MemoryDefExpr {
             exported,
-            min_pages,
-            data_start,
+            params,
             loc,
         })
     }
@@ -1059,9 +1034,15 @@ impl Parser {
 
         let ctx = self.context_stack.last().unwrap();
         if self.current().is(Delim, "{", self.lexer.source) && ctx.struct_literal_allowed {
-            let loc = ident.loc;
-            let struct_literal = self.parse_struct_literal(ident, loc)?;
-            return Ok(CodeExpr::StructLiteral(struct_literal));
+            let mut loc = ident.loc;
+            let body = self.parse_code_expr_map()?;
+            loc.end_pos = body.loc.end_pos;
+
+            return Ok(CodeExpr::StructLiteral(StructLiteralExpr {
+                struct_name: ident,
+                body,
+                loc,
+            }));
         }
 
         if self.current().is(Delim, "(", self.lexer.source) {
@@ -1142,15 +1123,12 @@ impl Parser {
         Ok(ident)
     }
 
-    fn parse_struct_literal(
-        &self,
-        ident: IdentExpr,
-        mut loc: Loc,
-    ) -> Result<StructLiteralExpr, Error> {
+    fn parse_code_expr_map(&self) -> Result<CodeExprMap, Error> {
         let mut fields = Vec::new();
         let mut has_trailing_comma = false;
 
-        self.expect(Delim, "{")?;
+        let mut loc = self.expect(Delim, "{")?.loc;
+
         while let None = self.eat(Delim, "}") {
             let mut field_loc = self.current().loc;
 
@@ -1160,8 +1138,8 @@ impl Parser {
 
             field_loc.end_pos = self.prev().loc.end_pos;
 
-            fields.push(StructLiteralField {
-                field_name: field_name.get_value(self.lexer.source).to_string(),
+            fields.push(CodeExprMapField {
+                key: field_name.get_value(self.lexer.source).to_string(),
                 value,
                 loc: field_loc,
             });
@@ -1176,12 +1154,11 @@ impl Parser {
 
         loc.end_pos = self.prev().loc.end_pos;
 
-        return Ok(StructLiteralExpr {
-            struct_name: ident,
+        Ok(CodeExprMap {
             fields,
             has_trailing_comma,
             loc,
-        });
+        })
     }
 
     fn parse_fn_args(&self) -> Result<CodeExprList, Error> {

@@ -121,8 +121,7 @@ pub struct ConstDefExpr {
 
 pub struct MemoryDefExpr {
     pub exported: bool,
-    pub min_pages: Option<u32>,
-    pub data_start: Option<u32>,
+    pub params: CodeExprMap,
     pub loc: Loc,
 }
 
@@ -407,7 +406,12 @@ pub struct CastExpr {
 
 pub struct StructLiteralExpr {
     pub struct_name: IdentExpr,
-    pub fields: Vec<StructLiteralField>,
+    pub body: CodeExprMap,
+    pub loc: Loc,
+}
+
+pub struct CodeExprMap {
+    pub fields: Vec<CodeExprMapField>,
     pub has_trailing_comma: bool,
     pub loc: Loc,
 }
@@ -431,8 +435,8 @@ pub struct ResultTypeExpr {
     pub err: TypeExpr,
 }
 
-pub struct StructLiteralField {
-    pub field_name: String,
+pub struct CodeExprMapField {
+    pub key: String,
     pub value: CodeExpr,
     pub loc: Loc,
 }
