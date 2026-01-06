@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import { WASI, type WASIOptions } from "./wasi-shim.mjs";
 
 const COMPILER_PATH = "lo.wasm";
-const SH_COMPILER_SOURCE_PATH = "examples/self-hosted/_bin.lo";
+const SH_COMPILER_SOURCE_PATH = "examples/self-hosted/0-cli.lo";
 
 await main();
 
