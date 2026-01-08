@@ -1542,6 +1542,20 @@ impl Compiler {
             instrs.push(WasmInstr::Unreachable);
         }
 
+        if !naturally_diverges
+            && !terminates_early
+            && self.current_scope(ctx).scope_type == ScopeType::Function
+        {
+            let fn_info = &self.functions[ctx.fn_index.unwrap()];
+            if fn_info.fn_type.output != Type::Void {
+                self.report_error(&Error {
+                    // error message stolen from clang
+                    message: format!("Control reaches end of non-void function"),
+                    loc: fn_info.definition_loc,
+                });
+            }
+        }
+
         terminates_early
     }
 
