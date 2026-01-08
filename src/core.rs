@@ -351,8 +351,8 @@ pub struct FileManager {
     pub files: Vec<FileInfo>,
 }
 
-impl FileManager {
-    pub fn new() -> Self {
+impl Default for FileManager {
+    fn default() -> Self {
         let mut files = Vec::new();
         files.push(FileInfo {
             index: 0,
@@ -362,7 +362,9 @@ impl FileManager {
         });
         Self { files }
     }
+}
 
+impl FileManager {
     pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Result<usize, Error> {
         let absolute_path = self.resolve_path(relative_path, loc);
 

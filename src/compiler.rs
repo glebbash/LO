@@ -25,11 +25,72 @@ pub enum Type {
     Result(ResultType),
 }
 
+#[derive(Clone, PartialEq)]
+pub struct ResultType {
+    ok: Box<Type>,
+    err: Box<Type>,
+}
+
+impl Type {
+    fn to_str(&self) -> Option<&'static str> {
+        Some(match self {
+            Type::Never => "never",
+            Type::Null => "null",
+            Type::Void => "void",
+            Type::Bool => "bool",
+            Type::U8 => "u8",
+            Type::I8 => "i8",
+            Type::U16 => "u16",
+            Type::I16 => "i16",
+            Type::U32 => "u32",
+            Type::I32 => "i32",
+            Type::F32 => "f32",
+            Type::U64 => "u64",
+            Type::I64 => "i64",
+            Type::F64 => "f64",
+            _ => return None,
+        })
+    }
+}
+
 pub struct TypeFmt<'a>(pub &'a Compiler, pub &'a Type);
 
 impl<'a> core::fmt::Display for TypeFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.1.format(f, self.0)
+        match self.1 {
+            Type::Never
+            | Type::Null
+            | Type::Void
+            | Type::Bool
+            | Type::U8
+            | Type::I8
+            | Type::U16
+            | Type::I16
+            | Type::U32
+            | Type::I32
+            | Type::F32
+            | Type::U64
+            | Type::I64
+            | Type::F64 => write!(f, "{}", self.1.to_str().unwrap()),
+            Type::Pointer { pointee } => write!(f, "&{}", TypeFmt(self.0, pointee)),
+            Type::SequencePointer { pointee } => {
+                write!(f, "*&{}", TypeFmt(self.0, pointee))
+            }
+            Type::StructInstance { struct_index } => {
+                f.write_str(&self.0.struct_defs[*struct_index].struct_name)
+            }
+            Type::EnumInstance { enum_index } => {
+                f.write_str(&self.0.enum_defs[*enum_index].enum_name)
+            }
+            Type::Result(result) => {
+                write!(
+                    f,
+                    "Result<{}, {}>",
+                    TypeFmt(self.0, &result.ok),
+                    TypeFmt(self.0, &result.err)
+                )
+            }
+        }
     }
 }
 
@@ -44,51 +105,6 @@ impl<'a> core::fmt::Display for TypeListFmt<'a> {
             write!(f, "{}", TypeFmt(self.0, item))?;
         }
         Ok(())
-    }
-}
-
-#[derive(Clone, PartialEq)]
-pub struct ResultType {
-    ok: Box<Type>,
-    err: Box<Type>,
-}
-
-impl Type {
-    fn format(&self, f: &mut core::fmt::Formatter<'_>, compiler: &Compiler) -> core::fmt::Result {
-        match self {
-            Type::Never => f.write_str("never"),
-            Type::Null => f.write_str("null"),
-            Type::Void => f.write_str("void"),
-            Type::Bool => f.write_str("bool"),
-            Type::U8 => f.write_str("u8"),
-            Type::I8 => f.write_str("i8"),
-            Type::U16 => f.write_str("u16"),
-            Type::I16 => f.write_str("i16"),
-            Type::U32 => f.write_str("u32"),
-            Type::I32 => f.write_str("i32"),
-            Type::F32 => f.write_str("f32"),
-            Type::U64 => f.write_str("u64"),
-            Type::I64 => f.write_str("i64"),
-            Type::F64 => f.write_str("f64"),
-            Type::Pointer { pointee } => write!(f, "&{}", TypeFmt(compiler, pointee)),
-            Type::SequencePointer { pointee } => {
-                write!(f, "*&{}", TypeFmt(compiler, pointee))
-            }
-            Type::StructInstance { struct_index } => {
-                f.write_str(&compiler.struct_defs[*struct_index].struct_name)
-            }
-            Type::EnumInstance { enum_index } => {
-                f.write_str(&compiler.enum_defs[*enum_index].enum_name)
-            }
-            Type::Result(result) => {
-                write!(
-                    f,
-                    "Result<{}, {}>",
-                    TypeFmt(compiler, &result.ok),
-                    TypeFmt(compiler, &result.err)
-                )
-            }
-        }
     }
 }
 
@@ -115,11 +131,13 @@ struct FnInfo {
 struct FnParameter {
     param_name: &'static str,
     param_type: Type,
+    loc: Loc,
 }
 
 enum FnSource {
     Guest {
-        ctx: ExprContext,
+        module_index: usize,
+        lo_fn_index: usize,
         body: &'static CodeBlock,
     },
     Host {
@@ -140,7 +158,6 @@ struct ExprContext {
     locals: Vec<Local>,
     next_local_index: u32,
     addr_local_index: Option<u32>,
-    scopes: Vec<Scope>,
 }
 
 impl ExprContext {
@@ -151,7 +168,6 @@ impl ExprContext {
             locals: Vec::new(),
             next_local_index: 0,
             addr_local_index: None,
-            scopes: Vec::new(),
         }
     }
 }
@@ -165,11 +181,18 @@ struct Local {
 
 #[derive(Clone, PartialEq)]
 enum ScopeType {
+    Global,
     Function,
     Block,
     Loop,
     ForLoop,
     Macro,
+}
+
+impl Default for ScopeType {
+    fn default() -> Self {
+        ScopeType::Block
+    }
 }
 
 #[derive(Clone)]
@@ -183,93 +206,25 @@ struct ConstSliceLen {
     slice_len: usize,
 }
 
-#[derive(Clone)]
-struct MacroTypeArg {
-    name: &'static str,
-    type_: Type,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct Scope {
     scope_type: ScopeType,
-    locals: Vec<ScopedLocal>,
-    deferred: Vec<CodeUnit>,
-    macro_args: Vec<ConstDef>,
-    macro_type_args: Vec<MacroTypeArg>,
+    symbols: Vec<Symbol>,
+    deferred_exprs: Vec<CodeUnit>,
 }
 
-#[derive(Clone)]
-struct ScopedLocal {
-    local_name: &'static str,
-    lo_local_index: usize,
-    defined_in_this_scope: bool,
-}
-
-impl ExprContext {
-    fn enter_scope(&mut self, scope_type: ScopeType) {
-        let mut new_scope = Scope {
+impl Scope {
+    fn new(scope_type: ScopeType) -> Self {
+        Self {
             scope_type,
-            locals: Vec::new(),
-            deferred: Vec::new(),
-            macro_args: Vec::new(),
-            macro_type_args: Vec::new(),
-        };
-
-        if let Some(parent_scope) = self.scopes.last() {
-            for local in &parent_scope.locals {
-                new_scope.locals.push(ScopedLocal {
-                    local_name: local.local_name,
-                    lo_local_index: local.lo_local_index,
-                    defined_in_this_scope: false,
-                });
-            }
-        };
-
-        self.scopes.push(new_scope);
-    }
-
-    fn exit_scope(&mut self) {
-        self.scopes.pop().unwrap();
-    }
-
-    fn current_scope(&self) -> &Scope {
-        self.scopes.last().unwrap()
-    }
-
-    fn current_scope_mut(&mut self) -> &mut Scope {
-        self.scopes.last_mut().unwrap()
-    }
-
-    fn get_local(&self, local_name: &str) -> Option<&Local> {
-        for scope in self.scopes.iter().rev() {
-            for local in &scope.locals {
-                if local.local_name == local_name {
-                    return Some(&self.locals[local.lo_local_index]);
-                }
-            }
+            ..Default::default()
         }
-
-        None
     }
 
-    fn get_macro_type_arg(&self, type_name: &str) -> Option<&Type> {
-        for scope in self.scopes.iter().rev() {
-            for macro_type_arg in &scope.macro_type_args {
-                if macro_type_arg.name == type_name {
-                    return Some(&macro_type_arg.type_);
-                }
-            }
-        }
-
-        None
-    }
-
-    fn get_macro_arg(&self, arg_name: &str) -> Option<&ConstDef> {
-        for scope in self.scopes.iter().rev() {
-            for macro_arg in &scope.macro_args {
-                if macro_arg.const_name == arg_name {
-                    return Some(&macro_arg);
-                }
+    fn get_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
+        for symbol in self.symbols.iter().rev() {
+            if symbol.name == symbol_name {
+                return Some(symbol);
             }
         }
 
@@ -332,104 +287,65 @@ impl TypeLayout {
     }
 }
 
-enum VariableInfo {
-    Local {
-        local_index: u32,
-        local_type: Type,
-        inspect_info: Option<InspectInfo>,
-    },
-    Global {
-        global_index: u32,
-        global_type: Type,
-        inspect_info: Option<InspectInfo>,
-    },
-    Const {
-        code_unit: &'static CodeUnit,
-        loc: Loc,
-        inspect_info: Option<InspectInfo>,
-    },
-    Stored {
-        address: CodeUnit,
-        offset: u32,
-        value_type: Type,
-        inspect_info: Option<InspectInfo>,
-    },
-    StructValueField {
-        struct_value: CodeUnit,
-        field_type: Type,
-        drops_before: u32,
-        drops_after: u32,
-        loc: Loc,
-        inspect_info: Option<InspectInfo>,
-    },
+enum VarInfo {
+    Local(VarInfoLocal),
+    Global(VarInfoGlobal),
+    Const(VarInfoConst),
+    Stored(VarInfoStored),
+    StructValueField(VarInfoStructValueField),
+}
+struct VarInfoLocal {
+    local_index: u32,
+    var_type: Type,
+    inspect_info: Option<InspectInfo>,
 }
 
-impl VariableInfo {
+struct VarInfoGlobal {
+    global_index: u32,
+    var_type: Type,
+    inspect_info: Option<InspectInfo>,
+}
+
+struct VarInfoConst {
+    code_unit: &'static CodeUnit,
+    inspect_info: Option<InspectInfo>,
+    loc: Loc,
+}
+
+struct VarInfoStored {
+    address: CodeUnit,
+    offset: u32,
+    var_type: Type,
+    inspect_info: Option<InspectInfo>,
+}
+
+struct VarInfoStructValueField {
+    struct_value: CodeUnit,
+    drops_before: u32,
+    drops_after: u32,
+    var_type: Type,
+    inspect_info: Option<InspectInfo>,
+    loc: Loc,
+}
+
+impl VarInfo {
     fn get_type(&self) -> &Type {
         match self {
-            VariableInfo::Local {
-                local_index: _,
-                local_type,
-                inspect_info: _,
-            } => local_type,
-            VariableInfo::Global {
-                global_index: _,
-                global_type,
-                inspect_info: _,
-            } => global_type,
-            VariableInfo::Const {
-                code_unit,
-                loc: _,
-                inspect_info: _,
-            } => &code_unit.type_,
-            VariableInfo::Stored {
-                address: _,
-                offset: _,
-                value_type,
-                inspect_info: _,
-            } => value_type,
-            VariableInfo::StructValueField {
-                struct_value: _,
-                field_type,
-                drops_before: _,
-                drops_after: _,
-                loc: _,
-                inspect_info: _,
-            } => field_type,
+            VarInfo::Local(v) => &v.var_type,
+            VarInfo::Global(v) => &v.var_type,
+            VarInfo::Const(v) => &v.code_unit.type_,
+            VarInfo::Stored(v) => &v.var_type,
+            VarInfo::StructValueField(v) => &v.var_type,
         }
     }
 
     fn inspect_info(&self) -> &Option<InspectInfo> {
         match self {
-            VariableInfo::Local {
-                local_index: _,
-                local_type: _,
-                inspect_info,
-            }
-            | VariableInfo::Global {
-                global_index: _,
-                global_type: _,
-                inspect_info,
-            }
-            | VariableInfo::Const {
-                code_unit: _,
-                loc: _,
-                inspect_info,
-            }
-            | VariableInfo::Stored {
-                address: _,
-                offset: _,
-                value_type: _,
-                inspect_info,
-            }
-            | VariableInfo::StructValueField {
-                struct_value: _,
-                field_type: _,
-                drops_before: _,
-                drops_after: _,
-                loc: _,
-                inspect_info,
-            } => inspect_info,
+            VarInfo::Local(v) => &v.inspect_info,
+            VarInfo::Global(v) => &v.inspect_info,
+            VarInfo::Const(v) => &v.inspect_info,
+            VarInfo::Stored(v) => &v.inspect_info,
+            VarInfo::StructValueField(v) => &v.inspect_info,
         }
     }
 }
@@ -464,8 +380,7 @@ pub struct Module {
     pub source: &'static [u8],
     pub parser: Parser,
     includes: Vec<ModuleInclude>,
-    own_symbols: Vec<Symbol>,
-    all_symbols: Vec<Symbol>,
+    scope_stack: Vec<Scope>,
     ctx: ExprContext,
 }
 
@@ -478,42 +393,24 @@ pub struct ModuleInclude {
 struct Symbol {
     name: &'static str,
     type_: SymbolType,
-    index: usize,
+    col_index: usize,
+    defined_in_this_scope: bool,
     loc: Loc,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 enum SymbolType {
     TypeAlias,
-    Function,
-    Macro,
-    Global,
-    Const,
     Struct,
     Enum,
+
+    Local,
+    Global,
+    Const,
+
+    Macro,
+    Function,
     EnumConstructor,
-}
-
-impl Module {
-    fn get_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
-        for symbol in &self.all_symbols {
-            if symbol.name == symbol_name {
-                return Some(symbol);
-            }
-        }
-
-        None
-    }
-
-    fn get_own_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
-        for symbol in &self.own_symbols {
-            if symbol.name == symbol_name {
-                return Some(symbol);
-            }
-        }
-
-        None
-    }
 }
 
 struct MemoryInfo {
@@ -524,6 +421,7 @@ struct MemoryInfo {
     loc: Loc,
 }
 
+#[derive(Default)]
 pub struct Compiler {
     pub in_inspection_mode: bool,
     pub in_single_file_mode: bool,
@@ -534,7 +432,8 @@ pub struct Compiler {
     pub error_count: RefCell<u32>,
     pub warning_count: RefCell<u32>,
 
-    global_symbols: Vec<Symbol>,
+    global_scope: Scope,
+
     type_aliases: Vec<Type>,
     struct_defs: Vec<StructDef>,
     enum_defs: Vec<EnumDef>,
@@ -557,71 +456,25 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn new() -> Self {
-        let mut self_ = Self {
-            in_inspection_mode: false,
-            in_single_file_mode: false,
-            in_lex_only_mode: false,
+        let mut self_ = Self::default();
 
-            fm: FileManager::new(),
-            modules: Vec::new(),
-            error_count: RefCell::new(0),
-            warning_count: RefCell::new(0),
+        self_.global_scope.scope_type = ScopeType::Global;
 
-            global_symbols: Vec::new(),
-
-            type_aliases: Vec::new(),
-            struct_defs: Vec::new(),
-            enum_defs: Vec::new(),
-            enum_ctors: Vec::new(),
-            globals: Vec::new(),
-            const_defs: Vec::new(),
-            macro_defs: Vec::new(),
-            functions: Vec::new(),
-            const_slice_lens: Vec::new(),
-
-            allocated_strings: Vec::new(),
-
-            memory: None,
-            datas: RefCell::new(Vec::new()),
-            data_size: RefCell::new(0),
-            string_pool: RefCell::new(Vec::new()),
-            first_string_usage: None,
-
-            wasm_types: RefCell::new(Vec::new()),
-        };
-
-        self_.add_builtin_type("never", Type::Never);
-        self_.add_builtin_type("void", Type::Void);
-        self_.add_builtin_type("bool", Type::Bool);
-        self_.add_builtin_type("u8", Type::U8);
-        self_.add_builtin_type("i8", Type::I8);
-        self_.add_builtin_type("u16", Type::U16);
-        self_.add_builtin_type("i16", Type::I16);
-        self_.add_builtin_type("u32", Type::U32);
-        self_.add_builtin_type("i32", Type::I32);
-        self_.add_builtin_type("f32", Type::F32);
-        self_.add_builtin_type("u64", Type::U64);
-        self_.add_builtin_type("i64", Type::I64);
-        self_.add_builtin_type("f64", Type::F64);
+        self_.add_builtin_type(Type::Never);
+        self_.add_builtin_type(Type::Void);
+        self_.add_builtin_type(Type::Bool);
+        self_.add_builtin_type(Type::U8);
+        self_.add_builtin_type(Type::I8);
+        self_.add_builtin_type(Type::U16);
+        self_.add_builtin_type(Type::I16);
+        self_.add_builtin_type(Type::U32);
+        self_.add_builtin_type(Type::I32);
+        self_.add_builtin_type(Type::F32);
+        self_.add_builtin_type(Type::U64);
+        self_.add_builtin_type(Type::I64);
+        self_.add_builtin_type(Type::F64);
 
         return self_;
-    }
-
-    fn alloc_str(&mut self, value: String) -> &'static str {
-        let str_ref = value.as_str().relax();
-        self.allocated_strings.push(value);
-        str_ref
-    }
-
-    #[inline]
-    fn add_builtin_type(&mut self, name: &'static str, type_: Type) {
-        self.global_symbols.push(Symbol {
-            name,
-            type_: SymbolType::TypeAlias,
-            index: self.type_aliases.len(),
-            loc: Loc::internal(),
-        });
-        self.type_aliases.push(type_);
     }
 
     pub fn begin_inspection(&mut self) {
@@ -712,17 +565,22 @@ impl Compiler {
             }
         }
 
-        let module_index = self.modules.len();
-        let ctx = ExprContext::new(module_index, None);
+        let ctx = ExprContext::new(self.modules.len(), None);
+
+        let mut scope_stack = Vec::new();
+
+        scope_stack.push(self.global_scope.clone());
+
+        // scope for module's own symbols
+        init_scope_from_parent_and_push(&mut scope_stack, ScopeType::Global);
 
         self.modules.push(Module {
-            index: module_index,
+            index: ctx.module_index,
             source: parser.source,
+            scope_stack,
             parser,
             ctx,
             includes,
-            own_symbols: Vec::new(),
-            all_symbols: Vec::new(),
         });
 
         Some(self.modules.last().unwrap())
@@ -750,12 +608,16 @@ impl Compiler {
         for expr in &module.parser.ast {
             match expr {
                 TopLevelExpr::StructDef(struct_def) => {
-                    self.define_symbol(Symbol {
-                        name: struct_def.struct_name.repr,
-                        type_: SymbolType::Struct,
-                        index: self.struct_defs.len(),
-                        loc: struct_def.struct_name.loc,
-                    });
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: struct_def.struct_name.repr,
+                            type_: SymbolType::Struct,
+                            col_index: self.struct_defs.len(),
+                            defined_in_this_scope: true,
+                            loc: struct_def.struct_name.loc,
+                        },
+                    );
 
                     self.struct_defs.push(StructDef {
                         struct_name: struct_def.struct_name.repr,
@@ -764,12 +626,16 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::EnumDef(enum_def) => {
-                    self.define_symbol(Symbol {
-                        name: enum_def.enum_name.repr,
-                        type_: SymbolType::Enum,
-                        index: self.enum_defs.len(),
-                        loc: enum_def.enum_name.loc,
-                    });
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: enum_def.enum_name.repr,
+                            type_: SymbolType::Enum,
+                            col_index: self.enum_defs.len(),
+                            defined_in_this_scope: true,
+                            loc: enum_def.enum_name.loc,
+                        },
+                    );
 
                     self.enum_defs.push(EnumDef {
                         enum_name: enum_def.enum_name.repr,
@@ -783,12 +649,16 @@ impl Compiler {
                             enum_def.enum_name.repr, variant.variant_name.repr
                         ));
 
-                        self.define_symbol(Symbol {
-                            name: constructor_name,
-                            type_: SymbolType::EnumConstructor,
-                            index: self.enum_ctors.len(),
-                            loc: enum_def.enum_name.loc,
-                        });
+                        let _ = self.define_symbol(
+                            &mut module.ctx,
+                            Symbol {
+                                name: constructor_name,
+                                type_: SymbolType::EnumConstructor,
+                                col_index: self.enum_ctors.len(),
+                                defined_in_this_scope: true,
+                                loc: enum_def.enum_name.loc,
+                            },
+                        );
 
                         self.enum_ctors.push(EnumConstructor {
                             enum_index: self.enum_defs.len() - 1,
@@ -797,25 +667,30 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::TypeDef(type_def) => {
-                    self.define_symbol(Symbol {
-                        name: type_def.type_name.repr,
-                        type_: SymbolType::TypeAlias,
-                        index: self.type_aliases.len(),
-                        loc: type_def.type_name.loc,
-                    });
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: type_def.type_name.repr,
+                            type_: SymbolType::TypeAlias,
+                            col_index: self.type_aliases.len(),
+                            defined_in_this_scope: true,
+                            loc: type_def.type_name.loc,
+                        },
+                    );
 
                     self.type_aliases.push(Type::Never); // placeholder
                 }
                 TopLevelExpr::FnDef(fn_def) => {
-                    self.define_symbol(Symbol {
-                        name: fn_def.decl.fn_name.repr,
-                        type_: SymbolType::Function,
-                        index: self.functions.len(),
-                        loc: fn_def.decl.fn_name.loc,
-                    });
-
-                    let mut ctx = ExprContext::new(module.index, Some(self.functions.len()));
-                    ctx.enter_scope(ScopeType::Function);
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: fn_def.decl.fn_name.repr,
+                            type_: SymbolType::Function,
+                            col_index: self.functions.len(),
+                            defined_in_this_scope: true,
+                            loc: fn_def.decl.fn_name.loc,
+                        },
+                    );
 
                     let mut exported_as = Vec::new();
                     if fn_def.exported {
@@ -830,7 +705,8 @@ impl Compiler {
                         },
                         fn_params: Vec::new(),
                         fn_source: FnSource::Guest {
-                            ctx,
+                            module_index: module.index,
+                            lo_fn_index: self.functions.len(),
                             body: fn_def.body.relax(),
                         },
                         exported_as,
@@ -846,12 +722,16 @@ impl Compiler {
                             continue;
                         };
 
-                        self.define_symbol(Symbol {
-                            name: fn_decl.fn_name.repr,
-                            type_: SymbolType::Function,
-                            index: self.functions.len(),
-                            loc: fn_decl.fn_name.loc,
-                        });
+                        let _ = self.define_symbol(
+                            &mut module.ctx,
+                            Symbol {
+                                name: fn_decl.fn_name.repr,
+                                type_: SymbolType::Function,
+                                col_index: self.functions.len(),
+                                defined_in_this_scope: true,
+                                loc: fn_decl.fn_name.loc,
+                            },
+                        );
 
                         let method_name = fn_decl.fn_name.parts.last().unwrap();
                         let external_fn_name = method_name.read_span(module.source);
@@ -874,22 +754,30 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::MacroDef(macro_def) => {
-                    self.define_symbol(Symbol {
-                        name: macro_def.macro_name.repr,
-                        type_: SymbolType::Macro,
-                        index: self.macro_defs.len(),
-                        loc: macro_def.macro_name.loc,
-                    });
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: macro_def.macro_name.repr,
+                            type_: SymbolType::Macro,
+                            col_index: self.macro_defs.len(),
+                            defined_in_this_scope: true,
+                            loc: macro_def.macro_name.loc,
+                        },
+                    );
 
                     self.macro_defs.push(macro_def.relax());
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
-                    self.define_symbol(Symbol {
-                        name: global_def.global_name.repr,
-                        type_: SymbolType::Global,
-                        index: self.globals.len(),
-                        loc: global_def.global_name.loc,
-                    });
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: global_def.global_name.repr,
+                            type_: SymbolType::Global,
+                            col_index: self.globals.len(),
+                            defined_in_this_scope: true,
+                            loc: global_def.global_name.loc,
+                        },
+                    );
 
                     self.globals.push(GlobalDef {
                         module_ctx: module.ctx.relax(),
@@ -899,12 +787,16 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
-                    self.define_symbol(Symbol {
-                        name: const_def.const_name.repr,
-                        type_: SymbolType::Const,
-                        index: self.const_defs.len(),
-                        loc: const_def.const_name.loc,
-                    });
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: const_def.const_name.repr,
+                            type_: SymbolType::Const,
+                            col_index: self.const_defs.len(),
+                            defined_in_this_scope: true,
+                            loc: const_def.const_name.loc,
+                        },
+                    );
 
                     self.const_defs.push(ConstDef {
                         const_name: const_def.const_name.repr,
@@ -920,30 +812,28 @@ impl Compiler {
         }
     }
 
-    fn define_symbol(&mut self, symbol: Symbol) {
-        let module = self
-            .get_module_by_file_index(symbol.loc.file_index)
-            .unwrap()
-            .be_mut();
-
-        if let Some(existing_item) = module.get_own_symbol(&symbol.name) {
+    fn define_symbol(&mut self, ctx: &ExprContext, symbol: Symbol) -> Result<&Symbol, &Symbol> {
+        if let Some(existing_symbol) = self.relax_mut().current_scope(ctx).get_symbol(&symbol.name)
+            && existing_symbol.defined_in_this_scope
+        {
             self.report_error(&Error {
                 message: format!(
-                    "Cannot redefine {}, already defined at {}",
+                    "Cannot redefine {}, previously defined at {}",
                     symbol.name,
-                    existing_item.loc.to_string(&self.fm)
+                    existing_symbol.loc.to_string(&self.fm)
                 ),
                 loc: symbol.loc,
             });
+            return Err(&existing_symbol);
         }
 
-        module.own_symbols.push(symbol);
+        self.current_scope_mut(ctx).symbols.push(symbol);
+        Ok(&self.current_scope(ctx).symbols.last().unwrap())
     }
 
     fn pass_collect_all_symbols(&mut self, module: &mut Module) {
-        for symbol in &self.global_symbols {
-            module.all_symbols.push(symbol.clone());
-        }
+        // scope for module's imports
+        init_scope_from_parent_and_push(&mut module.scope_stack, ScopeType::Global);
 
         self.inline_includes(module.relax_mut(), module, &mut String::from(""), true);
     }
@@ -955,13 +845,17 @@ impl Compiler {
         prefix: &mut String,
         force_go_deeper: bool,
     ) {
-        for symbol in &includee.own_symbols {
-            let name = self.alloc_str(format!("{}{}", prefix, symbol.name));
+        if includer.index != includee.index {
+            let target_scope = includer.scope_stack.last_mut().unwrap();
 
-            includer.all_symbols.push(Symbol {
-                name,
-                ..symbol.clone()
-            })
+            for symbol in &includee.scope_stack[1].symbols {
+                let name = self.alloc_str(format!("{}{}", prefix, symbol.name));
+                target_scope.symbols.push(Symbol {
+                    name,
+                    defined_in_this_scope: false,
+                    ..symbol.clone()
+                })
+            }
         }
 
         let original_prefix_len = prefix.len();
@@ -1041,21 +935,29 @@ impl Compiler {
                         byte_offset += field.field_layout.byte_size;
                     }
 
-                    let symbol = module.get_own_symbol(&struct_def.struct_name.repr).unwrap();
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&struct_def.struct_name.repr)
+                        .unwrap()
+                        .relax();
                     let SymbolType::Struct = symbol.type_ else {
                         continue;
                     };
-                    let struct_ = &mut self.struct_defs[symbol.index];
+                    let struct_ = &mut self.struct_defs[symbol.col_index];
 
                     struct_.fields.append(&mut struct_fields);
                     struct_.fully_defined = true;
                 }
                 TopLevelExpr::EnumDef(enum_def) => {
-                    let symbol = module.get_own_symbol(&enum_def.enum_name.repr).unwrap();
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&enum_def.enum_name.repr)
+                        .unwrap()
+                        .relax();
                     let SymbolType::Enum = symbol.type_ else {
                         continue;
                     };
-                    let enum_ = self.enum_defs[symbol.index].relax_mut();
+                    let enum_ = self.enum_defs[symbol.col_index].relax_mut();
 
                     if let Some(type_) = &enum_def.variant_type {
                         enum_.variant_type = catch!(self.build_type(&module.ctx, type_), err, {
@@ -1112,11 +1014,15 @@ impl Compiler {
                         continue;
                     });
 
-                    let symbol = module.get_own_symbol(&type_def.type_name.repr).unwrap();
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&type_def.type_name.repr)
+                        .unwrap()
+                        .relax();
                     let SymbolType::TypeAlias = symbol.type_ else {
                         continue;
                     };
-                    self.type_aliases[symbol.index] = type_value;
+                    self.type_aliases[symbol.col_index] = type_value;
                 }
                 _ => {} // skip, not interested
             }
@@ -1139,8 +1045,12 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
-                    let symbol = module.get_own_symbol(&const_def.const_name.repr).unwrap();
-                    let const_ = self.const_defs[symbol.index].relax_mut();
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&const_def.const_name.repr)
+                        .unwrap()
+                        .relax();
+                    let const_ = self.const_defs[symbol.col_index].relax_mut();
 
                     let const_type = self.get_expr_type(&module.ctx, &const_def.const_value);
                     let const_type = catch!(const_type, err, {
@@ -1174,11 +1084,15 @@ impl Compiler {
                 }
 
                 TopLevelExpr::FnDef(fn_def) => {
-                    let symbol = module.get_own_symbol(&fn_def.decl.fn_name.repr).unwrap();
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&fn_def.decl.fn_name.repr)
+                        .unwrap()
+                        .relax();
                     let SymbolType::Function = symbol.type_ else {
                         continue;
                     };
-                    let fn_info = self.functions[symbol.index].relax_mut();
+                    let fn_info = self.functions[symbol.col_index].relax_mut();
 
                     fn_info.fn_type.output = match &fn_def.decl.return_type {
                         Some(return_type) => {
@@ -1190,27 +1104,13 @@ impl Compiler {
                         _ => Type::Void,
                     };
 
-                    let FnSource::Guest { ctx, body: _ } = &mut fn_info.fn_source else {
-                        unreachable!()
-                    };
-
-                    let self_type =
-                        self.get_fn_self_type(&fn_def.decl.fn_name, &fn_def.decl.fn_params);
+                    let self_type = self.get_fn_self_type(
+                        &module.ctx,
+                        &fn_def.decl.fn_name,
+                        &fn_def.decl.fn_params,
+                    );
 
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
-                        for var in &ctx.current_scope().locals {
-                            if var.local_name == fn_param.param_name.repr {
-                                self.report_error(&Error {
-                                    message: format!(
-                                        "Duplicate function parameter name: {}",
-                                        fn_param.param_name.repr
-                                    ),
-                                    loc: fn_param.loc,
-                                });
-                                continue 'param_loop;
-                            }
-                        }
-
                         let param_type = self.get_fn_param_type(&module.ctx, &self_type, fn_param);
                         let param_type = catch!(param_type, err, {
                             self.report_error(&err);
@@ -1221,14 +1121,8 @@ impl Compiler {
                         fn_info.fn_params.push(FnParameter {
                             param_name: fn_param.param_name.repr,
                             param_type: param_type.clone(),
+                            loc: fn_param.param_name.loc,
                         });
-
-                        self.define_local(
-                            ctx,
-                            fn_param.param_name.loc,
-                            fn_param.param_name.repr,
-                            &param_type,
-                        );
                     }
                 }
                 TopLevelExpr::TryExport(try_export_expr) => {
@@ -1275,13 +1169,21 @@ impl Compiler {
                             }
                         };
 
-                        let symbol = module.get_own_symbol(&fn_decl.fn_name.repr).unwrap();
+                        let symbol = self
+                            .current_scope(&module.ctx)
+                            .get_symbol(&fn_decl.fn_name.repr)
+                            .unwrap()
+                            .relax();
                         let SymbolType::Function = symbol.type_ else {
                             continue;
                         };
-                        let fn_info = self.functions[symbol.index].relax_mut();
+                        let fn_info = self.functions[symbol.col_index].relax_mut();
 
-                        let self_type = self.get_fn_self_type(&fn_decl.fn_name, &fn_decl.fn_params);
+                        let self_type = self.get_fn_self_type(
+                            &module.ctx,
+                            &fn_decl.fn_name,
+                            &fn_decl.fn_params,
+                        );
 
                         for fn_param in &fn_decl.fn_params {
                             let param_type =
@@ -1294,6 +1196,7 @@ impl Compiler {
                             fn_info.fn_params.push(FnParameter {
                                 param_name: fn_param.param_name.repr,
                                 param_type: param_type.clone(),
+                                loc: fn_param.param_name.loc,
                             });
                         }
 
@@ -1307,11 +1210,15 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
-                    let symbol = module.get_own_symbol(&global_def.global_name.repr).unwrap();
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&global_def.global_name.repr)
+                        .unwrap()
+                        .relax();
                     let SymbolType::Global = symbol.type_ else {
                         continue;
                     };
-                    let global = self.globals[symbol.index].relax_mut();
+                    let global = self.globals[symbol.col_index].relax_mut();
 
                     catch!(self.ensure_const_expr(&global_def.global_value), err, {
                         self.report_error(&err);
@@ -1388,7 +1295,7 @@ impl Compiler {
             }
 
             match &fn_info.fn_source {
-                FnSource::Guest { ctx: _, body: _ } => {
+                FnSource::Guest { .. } => {
                     wasm_module.functions.push(fn_type_index);
                     wasm_module.function_names.push(WasmFnNameItem {
                         fn_index: wasm_fn_index,
@@ -1426,15 +1333,35 @@ impl Compiler {
         }
 
         // build function codes
-        for fn_info in &self.functions {
-            let FnSource::Guest { ctx, body } = &fn_info.fn_source else {
+        for fn_info in self.functions.relax_mut().iter() {
+            let FnSource::Guest {
+                module_index,
+                lo_fn_index,
+                body,
+            } = &fn_info.fn_source
+            else {
                 continue;
             };
 
-            let mut ctx = ctx.clone();
+            let ctx = &mut ExprContext::new(*module_index, Some(*lo_fn_index));
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
 
-            self.codegen_code_block(&mut ctx, &mut wasm_expr.instrs, body, true);
+            let constants_len = self.const_defs.len();
+            let type_aliases_len = self.type_aliases.len();
+
+            self.enter_scope(ctx, ScopeType::Function);
+
+            for fn_param in &fn_info.fn_params {
+                self.define_local(ctx, fn_param.loc, fn_param.param_name, &fn_param.param_type);
+            }
+
+            self.codegen_code_block(ctx, &mut wasm_expr.instrs, body, true);
+
+            self.exit_scope(ctx);
+
+            // remove any constants/types created by macro calls
+            self.const_defs.truncate(constants_len);
+            self.type_aliases.truncate(type_aliases_len);
 
             let mut wasm_locals_flat = Vec::new();
             for (i, local) in ctx.locals.iter().enumerate() {
@@ -1478,14 +1405,15 @@ impl Compiler {
                     if file_index == 0 {
                         continue;
                     }
+                    // TODO: figure out why this doesn't work
+                    // let module = &self.modules[ctx.module_index];
                     let module = &self.get_module_by_file_index(file_index).unwrap();
-                    let source = module.source;
 
-                    self.push_name_section_locals(
+                    self.push_wasm_dbg_name_section_locals(
                         &mut local_names_item.locals,
                         local.local_index,
                         &local.local_type,
-                        String::from(local.definition_loc.read_span(source)),
+                        String::from(local.definition_loc.read_span(module.source)),
                     );
                 }
 
@@ -1560,7 +1488,7 @@ impl Compiler {
     }
 
     fn codegen_code_block(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         body: &CodeBlock,
@@ -1605,7 +1533,7 @@ impl Compiler {
             });
         }
 
-        self.emit_deferred(ctx.current_scope(), instrs);
+        self.emit_deferred(self.current_scope(ctx), instrs);
 
         if void_only && terminates_early && !naturally_diverges {
             instrs.push(WasmInstr::Unreachable);
@@ -1638,7 +1566,7 @@ impl Compiler {
             loc: memory_def.loc,
         };
 
-        let ctx = &mut module.ctx.clone();
+        let ctx = &mut module.be_mut().ctx;
         let tmp_instrs = &mut Vec::new();
 
         for param in &memory_def.params.fields {
@@ -1690,7 +1618,12 @@ impl Compiler {
         Ok(())
     }
 
-    fn get_fn_self_type(&self, fn_name: &IdentExpr, fn_params: &Vec<FnParam>) -> Option<Type> {
+    fn get_fn_self_type(
+        &self,
+        ctx: &ExprContext,
+        fn_name: &IdentExpr,
+        fn_params: &Vec<FnParam>,
+    ) -> Option<Type> {
         let mut has_self_param = false;
         for fn_param in fn_params {
             let (FnParamType::Self_ | FnParamType::SelfRef) = fn_param.param_type else {
@@ -1711,24 +1644,20 @@ impl Compiler {
             return None;
         }
 
-        let fn_module = self
+        // TODO: figure out why this doesn't work
+        // let source = &self.modules[ctx.module_index].source;
+        let source = &self
             .get_module_by_file_index(fn_name.loc.file_index)
-            .unwrap();
-        let fn_source = fn_module.source;
+            .unwrap()
+            .source;
 
-        let mut self_type_name = String::from(fn_name.parts[0].read_span(fn_source));
-        for i in 1..fn_name.parts.len() - 1 {
-            self_type_name += "::";
-            self_type_name += fn_name.parts[i].read_span(fn_source);
-        }
+        let mut self_type_loc = fn_name.parts[0];
+        self_type_loc.end_pos = fn_name.parts[fn_name.parts.len() - 2].end_pos;
 
-        let mut self_type_loc = fn_name.loc;
-        self_type_loc.end_pos = self_type_loc.pos;
-        self_type_loc.end_pos.offset += self_type_name.len();
-        self_type_loc.end_pos.col += self_type_name.len();
+        let self_type_name = self_type_loc.read_span(source);
 
         let self_type = catch!(
-            self.get_type_or_err(&self_type_name, &self_type_loc),
+            self.get_type_or_err(ctx, &self_type_name, &self_type_loc),
             err,
             {
                 self.report_error(&err);
@@ -1777,11 +1706,7 @@ impl Compiler {
     ) -> Result<Type, Error> {
         match type_expr {
             TypeExpr::Named(TypeExprNamed { name }) => {
-                if let Some(macro_type_arg) = ctx.get_macro_type_arg(&name.repr) {
-                    return Ok(macro_type_arg.clone());
-                }
-
-                let lo_type = self.get_type_or_err(&name.repr, &name.loc)?;
+                let lo_type = self.get_type_or_err(ctx, &name.repr, &name.loc)?;
                 if let Type::StructInstance { struct_index } = &lo_type {
                     let struct_def = &self.struct_defs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
@@ -1833,7 +1758,7 @@ impl Compiler {
 
     // TODO: this should report errors more (case-by-case decision)
     fn codegen(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
@@ -1882,7 +1807,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let Type::StructInstance { struct_index } =
-                    self.get_type_or_err(&struct_name.repr, &struct_name.loc)?
+                    self.get_type_or_err(ctx, &struct_name.repr, &struct_name.loc)?
                 else {
                     return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
@@ -1890,7 +1815,7 @@ impl Compiler {
                     });
                 };
 
-                let struct_def = &self.struct_defs[struct_index];
+                let struct_def = &self.struct_defs[struct_index].relax();
 
                 for field_index in 0..body.fields.len() {
                     let field_literal = &body.fields[field_index];
@@ -2084,25 +2009,6 @@ impl Compiler {
             }
 
             CodeExpr::Ident(ident) => {
-                if let Some(const_def) = self.get_const(ctx, &ident.repr) {
-                    if self.in_inspection_mode {
-                        self.print_inspection(&InspectInfo {
-                            message: format!(
-                                "const {}: {}",
-                                ident.repr,
-                                TypeFmt(self, &const_def.code_unit.type_)
-                            ),
-                            loc: ident.loc,
-                            linked_loc: Some(const_def.loc),
-                        });
-                    }
-
-                    for instr in &const_def.code_unit.instrs {
-                        instrs.push(instr.clone());
-                    }
-                    return Ok(());
-                }
-
                 let var = self.var_from_ident(ctx, ident)?;
                 if let Some(inspect_info) = var.inspect_info() {
                     self.print_inspection(inspect_info);
@@ -2184,12 +2090,12 @@ impl Compiler {
                 loc,
             }) => match op_tag {
                 PrefixOpTag::Reference => {
-                    let Some(VariableInfo::Stored {
+                    let Some(VarInfo::Stored(VarInfoStored {
                         mut address,
                         offset,
-                        value_type: _,
+                        var_type: _,
                         inspect_info,
-                    }) = self.var_from_expr(ctx, expr)?
+                    })) = self.var_from_expr(ctx, expr)?
                     else {
                         return Err(Error {
                             message: format!(
@@ -2366,7 +2272,7 @@ impl Compiler {
                     self.codegen_var_set_prepare(instrs, &var);
                     self.codegen_var_get(ctx, instrs, &var)?;
                     self.codegen(ctx, instrs, rhs)?;
-                    self.codegen_binary_op(instrs, &base_op, &lhs_type, op_loc)?;
+                    self.codegen_binary_op(ctx, instrs, &base_op, &lhs_type, op_loc)?;
 
                     self.codegen_var_set(ctx, instrs, &var)?;
                     return Ok(());
@@ -2374,7 +2280,7 @@ impl Compiler {
 
                 self.codegen(ctx, instrs, lhs)?;
                 self.codegen(ctx, instrs, rhs)?;
-                self.codegen_binary_op(instrs, &op_tag, &lhs_type, op_loc)?;
+                self.codegen_binary_op(ctx, instrs, &op_tag, &lhs_type, op_loc)?;
             }
 
             CodeExpr::Assign(AssignExpr {
@@ -2422,9 +2328,9 @@ impl Compiler {
                 args,
                 loc: _,
             }) => {
-                if let Some(symbol) = self.modules[ctx.module_index].get_symbol(&fn_name.repr) {
+                if let Some(symbol) = self.current_scope(ctx).get_symbol(&fn_name.repr) {
                     if let SymbolType::EnumConstructor = symbol.type_ {
-                        let ctor = &self.enum_ctors[symbol.index];
+                        let ctor = &self.enum_ctors[symbol.col_index];
                         let enum_ = &self.enum_defs[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
 
@@ -2729,13 +2635,9 @@ impl Compiler {
                         return Ok(());
                     }
 
-                    let module = self
-                        .get_module_by_file_index(fn_name.loc.file_index)
-                        .unwrap();
-
                     let mut message = String::new();
-                    for symbol in &module.all_symbols {
-                        write!(message, "{}\n", symbol.name).unwrap();
+                    for symbol in &self.current_scope(ctx).symbols {
+                        write!(message, "{} : {:?}\n", symbol.name, symbol.type_).unwrap();
                     }
 
                     self.print_inspection(&InspectInfo {
@@ -2838,11 +2740,11 @@ impl Compiler {
                         self.codegen(ctx, instrs, expr)?;
 
                         // `if` condition runs outside of then_branch's scope
-                        ctx.enter_scope(ScopeType::Block);
+                        self.enter_scope(ctx, ScopeType::Block);
                     }
                     IfCond::Match(match_header) => {
                         // `if match` condition runs inside of then_branch's scope
-                        ctx.enter_scope(ScopeType::Block);
+                        self.enter_scope(ctx, ScopeType::Block);
 
                         let enum_ctor = self.codegen_match_header(ctx, instrs, match_header)?;
 
@@ -2862,21 +2764,21 @@ impl Compiler {
                 });
 
                 self.codegen_code_block(ctx, instrs, &then_block, true);
-                ctx.exit_scope();
+                self.exit_scope(ctx);
 
                 match else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
-                        ctx.enter_scope(ScopeType::Block);
+                        self.enter_scope(ctx, ScopeType::Block);
                         self.codegen_code_block(ctx, instrs, &code_block_expr, true);
-                        ctx.exit_scope();
+                        self.exit_scope(ctx);
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
-                        ctx.enter_scope(ScopeType::Block);
+                        self.enter_scope(ctx, ScopeType::Block);
                         self.codegen(ctx, instrs, &code_expr)?;
-                        ctx.exit_scope();
+                        self.exit_scope(ctx);
                     }
                 }
 
@@ -2903,7 +2805,7 @@ impl Compiler {
                     block_type: WasmBlockType::NoOut,
                 });
 
-                ctx.enter_scope(ScopeType::Block);
+                self.enter_scope(ctx, ScopeType::Block);
                 let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
                 if !terminates_early {
                     self.report_error(&Error {
@@ -2913,7 +2815,7 @@ impl Compiler {
                         loc: else_branch.loc,
                     });
                 }
-                ctx.exit_scope();
+                self.exit_scope(ctx);
                 instrs.push(WasmInstr::BlockEnd);
             }
             CodeExpr::WhileLoop(WhileLoopExpr { cond, body, loc: _ }) => {
@@ -2943,9 +2845,9 @@ impl Compiler {
                     instrs.push(WasmInstr::BlockEnd);
                 }
 
-                ctx.enter_scope(ScopeType::Loop);
+                self.enter_scope(ctx, ScopeType::Loop);
                 self.codegen_code_block(ctx, instrs, body, true);
-                ctx.exit_scope();
+                self.exit_scope(ctx);
 
                 // implicit continue
                 instrs.push(WasmInstr::Branch { label_index: 0 });
@@ -2979,7 +2881,7 @@ impl Compiler {
                     Err(err) => self.report_error(&err),
                 }
 
-                ctx.enter_scope(ScopeType::ForLoop);
+                self.enter_scope(ctx, ScopeType::ForLoop);
 
                 // define counter and set value to start
                 let local_index = self.define_local(ctx, counter.loc, counter.repr, &counter_type);
@@ -3012,7 +2914,13 @@ impl Compiler {
                         // break if counter is equal to end
                         self.codegen(ctx, instrs, end)?;
                         self.codegen_var_get(ctx, instrs, &counter_var)?;
-                        self.codegen_binary_op(instrs, &InfixOpTag::Equal, &counter_type, op_loc)?;
+                        self.codegen_binary_op(
+                            ctx,
+                            instrs,
+                            &InfixOpTag::Equal,
+                            &counter_type,
+                            op_loc,
+                        )?;
                         instrs.push(WasmInstr::BranchIf { label_index: 1 });
 
                         {
@@ -3034,7 +2942,13 @@ impl Compiler {
                         } else {
                             instrs.push(WasmInstr::I32Const { value: 1 });
                         }
-                        self.codegen_binary_op(instrs, &InfixOpTag::Add, &counter_type, op_loc)?;
+                        self.codegen_binary_op(
+                            ctx,
+                            instrs,
+                            &InfixOpTag::Add,
+                            &counter_type,
+                            op_loc,
+                        )?;
                         self.codegen_var_set(ctx, instrs, &counter_var)?;
 
                         // implicit continue
@@ -3046,12 +2960,12 @@ impl Compiler {
                     instrs.push(WasmInstr::BlockEnd);
                 }
 
-                ctx.exit_scope();
+                self.exit_scope(ctx);
             }
             CodeExpr::Break(BreakExpr { loc }) => {
                 let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
 
-                for scope in ctx.scopes.iter().rev() {
+                for scope in self.modules[ctx.module_index].scope_stack.iter().rev() {
                     match scope.scope_type {
                         ScopeType::Block => {
                             label_index += 1;
@@ -3068,6 +2982,7 @@ impl Compiler {
                             break;
                         }
                         ScopeType::Macro => continue,
+                        ScopeType::Global => unreachable!(),
                     }
                 }
 
@@ -3076,7 +2991,7 @@ impl Compiler {
             CodeExpr::Continue(ContinueExpr { loc }) => {
                 let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
 
-                for scope in ctx.scopes.iter().rev() {
+                for scope in self.modules[ctx.module_index].scope_stack.iter().rev() {
                     match scope.scope_type {
                         ScopeType::Block => {
                             label_index += 1;
@@ -3090,6 +3005,7 @@ impl Compiler {
                         ScopeType::Loop => break,
                         ScopeType::ForLoop => break,
                         ScopeType::Macro => continue,
+                        ScopeType::Global => unreachable!(),
                     }
                 }
 
@@ -3125,7 +3041,7 @@ impl Compiler {
                         continue;
                     }
 
-                    ctx.enter_scope(ScopeType::Macro);
+                    self.enter_scope(ctx, ScopeType::Macro);
 
                     self.codegen(ctx, instrs, arg)?;
 
@@ -3134,7 +3050,7 @@ impl Compiler {
                     self.codegen_local_set(instrs, &arg_type, arg_local_index);
                     self.codegen(ctx, instrs, body)?;
 
-                    ctx.exit_scope();
+                    self.exit_scope(ctx);
                 }
             }
             CodeExpr::ExprPipe(ExprPipeExpr {
@@ -3149,7 +3065,7 @@ impl Compiler {
                     return Ok(());
                 });
 
-                ctx.enter_scope(ScopeType::Block);
+                self.enter_scope(ctx, ScopeType::Block);
 
                 let lhs_local_index = self.define_local(ctx, op_loc.clone(), "it", &lhs_type);
 
@@ -3158,21 +3074,25 @@ impl Compiler {
                     self.report_error(&err);
                     return Ok(());
                 });
-                ctx.exit_scope();
+                self.exit_scope(ctx);
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 let code_unit = self.build_code_unit(ctx, expr)?;
 
                 // find first non-macro scope
-                let mut scope_to_defer = ctx.scopes.relax_mut().last_mut().unwrap();
-                for scope in ctx.scopes.iter_mut().rev() {
+                let mut scope_to_defer = self.modules[ctx.module_index]
+                    .scope_stack
+                    .relax_mut()
+                    .last_mut()
+                    .unwrap();
+                for scope in self.modules[ctx.module_index].scope_stack.iter_mut().rev() {
                     if scope.scope_type != ScopeType::Macro {
                         scope_to_defer = scope;
                         break;
                     }
                 }
 
-                scope_to_defer.deferred.push(code_unit);
+                scope_to_defer.deferred_exprs.push(code_unit);
             }
             CodeExpr::Catch(CatchExpr {
                 lhs,
@@ -3200,12 +3120,14 @@ impl Compiler {
 
     /// defines a local with match bind's name and pushes enum's variant to the stack
     fn codegen_match_header(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
     ) -> Result<&EnumConstructor, Error> {
-        let Some(symbol) = self.modules[ctx.module_index].get_symbol(&header.variant_name.repr)
+        let Some(symbol) = self
+            .current_scope(ctx)
+            .get_symbol(&header.variant_name.repr)
         else {
             return Err(Error {
                 message: format!("Unkown enum constructor: {}", header.variant_name.repr),
@@ -3219,9 +3141,9 @@ impl Compiler {
             });
         };
 
-        let enum_ctor = &self.enum_ctors[symbol.index];
-        let enum_def = &self.enum_defs[enum_ctor.enum_index];
-        let enum_variant = &enum_def.variants[enum_ctor.variant_index];
+        let enum_ctor = &self.enum_ctors[symbol.col_index].relax();
+        let enum_def = &self.enum_defs[enum_ctor.enum_index].relax();
+        let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
         let local_index = self.define_local(
             ctx,
             header.variant_bind.loc,
@@ -3263,7 +3185,7 @@ impl Compiler {
     }
 
     fn codegen_fn_call(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         fn_name: &str,
@@ -3271,7 +3193,7 @@ impl Compiler {
         args: &Vec<CodeExpr>,
         loc: &Loc,
     ) -> Result<(), Error> {
-        let fn_info = self.get_fn_info_for_call(ctx, fn_name, loc)?;
+        let fn_info = self.get_fn_info_for_call(ctx, fn_name, loc)?.relax();
 
         let mut arg_types = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -3333,7 +3255,7 @@ impl Compiler {
         fn_name: &str,
         loc: &Loc,
     ) -> Result<&FnInfo, Error> {
-        let Some(symbol) = self.modules[ctx.module_index].get_symbol(fn_name) else {
+        let Some(symbol) = self.current_scope(ctx).get_symbol(fn_name) else {
             return Err(Error {
                 message: format!("Unknown function: {}", fn_name),
                 loc: *loc,
@@ -3351,7 +3273,7 @@ impl Compiler {
             });
         };
 
-        Ok(&self.functions[symbol.index])
+        Ok(&self.functions[symbol.col_index])
     }
 
     fn get_macro_return_type(
@@ -3363,9 +3285,7 @@ impl Compiler {
         receiver_arg: Option<&CodeExpr>,
         loc: &Loc,
     ) -> Result<Type, Error> {
-        ctx.enter_scope(ScopeType::Macro);
-
-        let macro_def = self.populate_ctx_from_macro_call(
+        let macro_def = self.be_mut().populate_ctx_from_macro_call(
             ctx,
             macro_name,
             type_args,
@@ -3385,7 +3305,7 @@ impl Compiler {
     }
 
     fn populate_ctx_from_macro_call(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         macro_name: &str,
         type_args: &Vec<TypeExpr>,
@@ -3394,14 +3314,14 @@ impl Compiler {
         loc: &Loc,
         build_code: bool,
     ) -> Result<&MacroDefExpr, Error> {
-        let Some(symbol) = self.modules[ctx.module_index].get_symbol(macro_name) else {
+        let Some(symbol) = self.current_scope(ctx).get_symbol(macro_name) else {
             return Err(Error {
                 message: format!("Unknown macro: {}", macro_name),
                 loc: *loc,
             });
         };
 
-        let macro_def = self.macro_defs[symbol.index];
+        let macro_def = self.macro_defs[symbol.col_index];
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -3440,11 +3360,13 @@ impl Compiler {
             });
         }
 
-        for (type_param, type_arg) in macro_def.macro_type_params.iter().zip(lo_type_args.iter()) {
-            ctx.current_scope_mut().macro_type_args.push(MacroTypeArg {
-                name: type_param,
-                type_: type_arg.clone(),
-            });
+        for (i, (type_param, type_arg)) in macro_def
+            .macro_type_params
+            .iter()
+            .zip(lo_type_args.iter())
+            .enumerate()
+        {
+            self.register_block_type(ctx, type_param, type_arg.clone(), *type_args[i].loc());
         }
 
         if all_args.len() != macro_def.macro_params.len() {
@@ -3471,21 +3393,24 @@ impl Compiler {
             };
 
             if let FnParamType::Infer { name } = &macro_param.param_type {
-                ctx.current_scope_mut().macro_type_args.push(MacroTypeArg {
+                self.register_block_type(
+                    ctx,
                     name,
-                    type_: const_def.code_unit.type_.clone(),
-                });
+                    const_def.code_unit.type_.clone(),
+                    macro_param.param_name.loc,
+                );
             }
 
-            ctx.current_scope_mut().macro_args.push(const_def);
+            self.register_block_const(ctx, const_def);
         }
 
-        let self_type = self.get_fn_self_type(&macro_def.macro_name, &macro_def.macro_params);
+        let self_type = self.get_fn_self_type(ctx, &macro_def.macro_name, &macro_def.macro_params);
 
         let mut macro_types = Vec::<Type>::new();
         for macro_param in &macro_def.macro_params {
             let macro_type = if let FnParamType::Infer { name } = &macro_param.param_type {
-                ctx.get_macro_type_arg(name).unwrap().clone()
+                self.get_type_or_err(ctx, name, &macro_param.loc)
+                    .unwrap_or_else(|_| unreachable!())
             } else {
                 self.get_fn_param_type(ctx, &self_type, macro_param)?
             };
@@ -3506,23 +3431,21 @@ impl Compiler {
         if build_code && self.in_inspection_mode {
             let mut message = String::new();
 
-            write!(&mut message, "macro {macro_name}!").unwrap();
+            write!(&mut message, "macro {macro_name}").unwrap();
             if lo_type_args.len() > 0 {
                 let lo_type_args = TypeListFmt(self, &lo_type_args);
                 write!(&mut message, "<{lo_type_args}>").unwrap();
             }
             write!(&mut message, "(").unwrap();
 
-            let macro_args_len = ctx.current_scope().macro_args.len();
-            for i in macro_args_len - macro_def.macro_params.len()..macro_args_len {
+            for i in 0..macro_types.len() {
                 if i != 0 {
                     message.push_str(", ");
                 }
 
-                let macro_arg = &ctx.current_scope().macro_args[i];
-                message.push_str(&macro_arg.const_name);
+                message.push_str(&macro_def.macro_params[i].param_name.repr);
                 message.push_str(": ");
-                let arg_type = TypeFmt(self, &macro_arg.code_unit.type_);
+                let arg_type = TypeFmt(self, &macro_types[i]);
                 write!(&mut message, "{arg_type}",).unwrap();
             }
 
@@ -3544,7 +3467,7 @@ impl Compiler {
     }
 
     fn codegen_macro_call(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         macro_name: &str,
@@ -3553,9 +3476,9 @@ impl Compiler {
         args: &Vec<CodeExpr>,
         loc: &Loc,
     ) -> Result<(), Error> {
-        ctx.enter_scope(ScopeType::Macro);
+        self.enter_scope(ctx, ScopeType::Macro);
 
-        let macro_def = self.populate_ctx_from_macro_call(
+        let macro_def = self.relax_mut().populate_ctx_from_macro_call(
             ctx,
             macro_name,
             type_args,
@@ -3563,17 +3486,21 @@ impl Compiler {
             args,
             loc,
             true,
-        )?;
+        );
+        let macro_def = catch!(macro_def, err, {
+            self.exit_scope(ctx);
+            return Err(err);
+        });
 
         self.codegen_code_block(ctx, instrs, &macro_def.body, false);
 
-        ctx.exit_scope(); // exit macro scope
+        self.exit_scope(ctx);
 
         Ok(())
     }
 
     fn codegen_catch(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
@@ -3584,7 +3511,7 @@ impl Compiler {
         let expr_type = self.get_expr_type(ctx, expr)?;
         let result = self.assert_catchable_type(&expr_type, loc)?;
 
-        ctx.enter_scope(ScopeType::Block); // enter catch scope
+        self.enter_scope(ctx, ScopeType::Block); // enter catch scope
 
         // put result on the stack
         self.codegen(ctx, instrs, expr)?;
@@ -3649,16 +3576,16 @@ impl Compiler {
         instrs.push(WasmInstr::Else);
 
         // no error, push ok value
-        let ok_var = VariableInfo::Local {
+        let ok_var = VarInfo::Local(VarInfoLocal {
             local_index: ok_local_index,
-            local_type: result.ok.as_ref().clone(),
+            var_type: result.ok.as_ref().clone(),
             inspect_info: None,
-        };
+        });
         self.codegen_var_get(ctx, instrs, &ok_var)?;
 
         instrs.push(WasmInstr::BlockEnd);
 
-        ctx.exit_scope(); // exit catch scope
+        self.exit_scope(ctx); // exit catch scope
 
         Ok(())
     }
@@ -3904,7 +3831,7 @@ impl Compiler {
             }) => {
                 let Some(tag) = tag else { return Ok(Type::U32) };
 
-                let tag_type = catch!(self.get_type_or_err(tag, loc), err, {
+                let tag_type = catch!(self.get_type_or_err(ctx, tag, loc), err, {
                     self.report_error(&err);
                     return Ok(Type::U32);
                 });
@@ -3921,7 +3848,7 @@ impl Compiler {
                 value: _,
                 loc,
             }) => {
-                let Some(symbol) = self.modules[ctx.module_index].get_symbol("str") else {
+                let Some(symbol) = self.current_scope(ctx).get_symbol("str") else {
                     return Err(Error {
                         message: format!("Cannot use strings with no `str` struct defined"),
                         loc: *loc,
@@ -3929,7 +3856,7 @@ impl Compiler {
                 };
 
                 Ok(Type::StructInstance {
-                    struct_index: symbol.index,
+                    struct_index: symbol.col_index,
                 })
             }
             CodeExpr::StructLiteral(StructLiteralExpr {
@@ -3937,8 +3864,7 @@ impl Compiler {
                 body: _,
                 loc,
             }) => {
-                let Some(symbol) = self.modules[ctx.module_index].get_symbol(&struct_name.repr)
-                else {
+                let Some(symbol) = self.current_scope(ctx).get_symbol(&struct_name.repr) else {
                     return Err(Error {
                         message: format!("Unknown struct: {}", struct_name.repr),
                         loc: *loc,
@@ -3946,7 +3872,7 @@ impl Compiler {
                 };
 
                 return Ok(Type::StructInstance {
-                    struct_index: symbol.index,
+                    struct_index: symbol.col_index,
                 });
             }
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
@@ -3970,10 +3896,6 @@ impl Compiler {
                 return Ok(Type::Result(result));
             }
             CodeExpr::Ident(ident) => {
-                if let Some(const_expr) = self.get_const(ctx, &ident.repr) {
-                    return Ok(const_expr.code_unit.type_.clone());
-                }
-
                 let var = self.var_from_ident(ctx, ident)?;
                 Ok(var.get_type().clone())
             }
@@ -4089,9 +4011,9 @@ impl Compiler {
                 args: _,
                 loc: _,
             }) => {
-                if let Some(symbol) = self.modules[ctx.module_index].get_symbol(&fn_name.repr) {
+                if let Some(symbol) = self.current_scope(ctx).get_symbol(&fn_name.repr) {
                     if let SymbolType::EnumConstructor = symbol.type_ {
-                        let ctor = &self.enum_ctors[symbol.index];
+                        let ctor = &self.enum_ctors[symbol.col_index];
 
                         return Ok(Type::EnumInstance {
                             enum_index: ctor.enum_index,
@@ -4122,15 +4044,17 @@ impl Compiler {
                 args,
                 loc,
             }) => {
-                let mut ctx = ctx.clone();
-                self.get_macro_return_type(
-                    &mut ctx,
+                self.be_mut().enter_scope(ctx, ScopeType::Macro);
+                let expr_type = self.get_macro_return_type(
+                    ctx.be_mut(),
                     &fn_name.repr,
                     type_args,
                     &args.items,
                     None,
                     loc,
-                )
+                );
+                self.be_mut().exit_scope(ctx);
+                expr_type
             }
             CodeExpr::IntrinsicCall(MacroFnCallExpr {
                 fn_name,
@@ -4187,15 +4111,17 @@ impl Compiler {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let macro_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
 
-                let mut ctx = ctx.clone();
-                self.get_macro_return_type(
-                    &mut ctx,
+                self.be_mut().enter_scope(ctx, ScopeType::Macro);
+                let expr_type = self.get_macro_return_type(
+                    ctx.be_mut(),
                     &macro_name,
                     type_args,
                     &args.items,
                     Some(&lhs),
                     loc,
-                )
+                );
+                self.be_mut().exit_scope(ctx);
+                expr_type
             }
             CodeExpr::Catch(CatchExpr {
                 lhs,
@@ -4226,31 +4152,31 @@ impl Compiler {
                     return Ok(Type::Never);
                 });
 
-                ctx.enter_scope(ScopeType::Block);
+                self.be_mut().enter_scope(ctx, ScopeType::Block);
 
-                ctx.current_scope_mut().macro_args.push(ConstDef {
-                    const_name: "it",
-                    code_unit: CodeUnit {
-                        type_: lhs_type,
-                        instrs: Vec::new(),
+                self.be_mut().register_block_const(
+                    ctx,
+                    ConstDef {
+                        const_name: "it",
+                        code_unit: CodeUnit {
+                            type_: lhs_type,
+                            instrs: Vec::new(),
+                        },
+                        loc: op_loc.clone(),
                     },
-                    loc: op_loc.clone(),
-                });
+                );
 
                 let rhs_type = catch!(self.get_expr_type(ctx, &rhs), err, {
                     self.report_error(&err);
                     return Ok(Type::Never);
                 });
 
-                ctx.exit_scope();
+                self.be_mut().exit_scope(ctx);
 
                 return Ok(rhs_type);
             }
             CodeExpr::Dbg(_) => Ok(Type::StructInstance {
-                struct_index: self.modules[ctx.module_index]
-                    .get_symbol("str")
-                    .unwrap()
-                    .index,
+                struct_index: self.current_scope(ctx).get_symbol("str").unwrap().col_index,
             }),
             CodeExpr::Sizeof(_) => Ok(Type::U32),
             CodeExpr::Let(let_) => {
@@ -4282,24 +4208,28 @@ impl Compiler {
                         }
                     }
                     IfCond::Match(header) => {
-                        if let Some(symbol) =
-                            self.modules[ctx.module_index].get_symbol(&header.variant_name.repr)
+                        if let Some(symbol) = self
+                            .current_scope(ctx)
+                            .get_symbol(&header.variant_name.repr)
                         {
                             if let SymbolType::EnumConstructor = symbol.type_ {
-                                let enum_ctor = &self.enum_ctors[symbol.index];
+                                let enum_ctor = &self.enum_ctors[symbol.col_index];
                                 let enum_variant = &self.enum_defs[enum_ctor.enum_index].variants
                                     [enum_ctor.variant_index];
 
                                 should_exit_match_scope = true;
-                                ctx.be_mut().enter_scope(ScopeType::Block);
-                                ctx.be_mut().current_scope_mut().macro_args.push(ConstDef {
-                                    const_name: header.variant_bind.repr,
-                                    code_unit: CodeUnit {
-                                        type_: enum_variant.variant_type.clone(),
-                                        instrs: Vec::new(),
+                                self.be_mut().enter_scope(ctx, ScopeType::Block);
+                                self.be_mut().register_block_const(
+                                    ctx,
+                                    ConstDef {
+                                        const_name: header.variant_bind.repr,
+                                        code_unit: CodeUnit {
+                                            type_: enum_variant.variant_type.clone(),
+                                            instrs: Vec::new(),
+                                        },
+                                        loc: header.variant_bind.loc,
                                     },
-                                    loc: header.variant_bind.loc,
-                                });
+                                );
                             };
                         }
                     }
@@ -4307,7 +4237,7 @@ impl Compiler {
 
                 let then_type = self.get_code_block_type(ctx, &then_block.exprs);
                 if should_exit_match_scope {
-                    ctx.be_mut().exit_scope();
+                    self.be_mut().exit_scope(ctx);
                 }
                 let then_type = then_type?;
 
@@ -4348,7 +4278,7 @@ impl Compiler {
 
         let mut diverges = false;
 
-        ctx.enter_scope(ScopeType::Block);
+        self.be_mut().enter_scope(ctx, ScopeType::Block);
 
         for expr in exprs {
             if let CodeExpr::Let(LetExpr {
@@ -4360,14 +4290,17 @@ impl Compiler {
                 let value_type = self.get_expr_type(ctx, value)?;
                 diverges = diverges || value_type == Type::Never;
 
-                ctx.current_scope_mut().macro_args.push(ConstDef {
-                    const_name: local_name.repr,
-                    code_unit: CodeUnit {
-                        type_: value_type,
-                        instrs: Vec::new(),
+                self.be_mut().register_block_const(
+                    ctx,
+                    ConstDef {
+                        const_name: local_name.repr,
+                        code_unit: CodeUnit {
+                            type_: value_type,
+                            instrs: Vec::new(),
+                        },
+                        loc: *loc,
                     },
-                    loc: *loc,
-                });
+                );
 
                 continue;
             }
@@ -4375,7 +4308,7 @@ impl Compiler {
             diverges = diverges || self.get_expr_type(ctx, expr)? == Type::Never;
         }
 
-        ctx.exit_scope();
+        self.be_mut().exit_scope(ctx);
 
         if diverges {
             return Ok(Type::Never);
@@ -4437,10 +4370,10 @@ impl Compiler {
     }
 
     fn var_from_expr(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         expr: &CodeExpr,
-    ) -> Result<Option<VariableInfo>, Error> {
+    ) -> Result<Option<VarInfo>, Error> {
         Ok(match expr {
             CodeExpr::Ident(ident) => Some(self.var_from_ident(ctx, ident)?),
             CodeExpr::FieldAccess(field_access) => {
@@ -4471,7 +4404,7 @@ impl Compiler {
         local_index: u32,
         loc: Loc,
         linked_loc: Option<Loc>,
-    ) -> VariableInfo {
+    ) -> VarInfo {
         let mut inspect_info = None;
         if self.in_inspection_mode {
             inspect_info = Some(InspectInfo {
@@ -4481,27 +4414,35 @@ impl Compiler {
             })
         };
 
-        VariableInfo::Local {
+        VarInfo::Local(VarInfoLocal {
             local_index,
-            local_type,
+            var_type: local_type,
             inspect_info,
-        }
+        })
     }
 
-    fn var_from_ident(&self, ctx: &ExprContext, ident: &IdentExpr) -> Result<VariableInfo, Error> {
-        if let Some(local) = ctx.get_local(&ident.repr) {
-            return Ok(self.var_local(
-                &ident.repr,
-                local.local_type.clone(),
-                local.local_index,
-                ident.loc,
-                Some(local.definition_loc.clone()),
-            ));
+    fn var_from_ident(&self, ctx: &ExprContext, ident: &IdentExpr) -> Result<VarInfo, Error> {
+        let Some(symbol) = self.current_scope(ctx).get_symbol(ident.repr) else {
+            return Err(Error {
+                message: format!("Unknown variable: {}", ident.repr),
+                loc: ident.loc,
+            });
         };
 
-        if let Some(symbol) = self.modules[ctx.module_index].get_symbol(&ident.repr) {
-            if let SymbolType::Global = symbol.type_ {
-                let global = &self.globals[symbol.index];
+        match symbol.type_ {
+            SymbolType::Local => {
+                let local = &ctx.locals[symbol.col_index];
+
+                Ok(self.var_local(
+                    &ident.repr,
+                    local.local_type.clone(),
+                    local.local_index,
+                    ident.loc,
+                    Some(local.definition_loc.clone()),
+                ))
+            }
+            SymbolType::Global => {
+                let global = &self.globals[symbol.col_index];
 
                 let mut inspect_info = None;
                 if self.in_inspection_mode {
@@ -4516,49 +4457,59 @@ impl Compiler {
                     });
                 }
 
-                return Ok(VariableInfo::Global {
+                Ok(VarInfo::Global(VarInfoGlobal {
                     global_index: global.global_index,
-                    global_type: global.global_type.clone(),
+                    var_type: global.global_type.clone(),
                     inspect_info,
-                });
+                }))
             }
-        }
+            SymbolType::Const => {
+                let const_def = &self.const_defs[symbol.col_index];
 
-        if let Some(const_) = self.get_const(ctx, &ident.repr) {
-            let mut inspect_info = None;
-            if self.in_inspection_mode {
-                inspect_info = Some(InspectInfo {
-                    message: format!(
-                        "const {}: {}",
-                        ident.repr,
-                        TypeFmt(self, &const_.code_unit.type_)
-                    ),
+                let mut inspect_info = None;
+                if self.in_inspection_mode {
+                    inspect_info = Some(InspectInfo {
+                        message: format!(
+                            "const {}: {}",
+                            ident.repr,
+                            TypeFmt(self, &const_def.code_unit.type_)
+                        ),
+                        loc: ident.loc,
+                        linked_loc: Some(const_def.loc),
+                    })
+                }
+
+                Ok(VarInfo::Const(VarInfoConst {
+                    code_unit: const_def.code_unit.relax(),
+                    inspect_info,
                     loc: ident.loc,
-                    linked_loc: Some(const_.loc),
-                })
+                }))
             }
-
-            return Ok(VariableInfo::Const {
-                code_unit: const_.code_unit.relax(),
-                loc: const_.loc,
-                inspect_info,
-            });
+            SymbolType::TypeAlias
+            | SymbolType::Struct
+            | SymbolType::Enum
+            | SymbolType::Macro
+            | SymbolType::Function
+            | SymbolType::EnumConstructor => Err(Error {
+                message: format!(
+                    "Expected variable, found {:?} '{}'",
+                    symbol.type_, ident.repr
+                ),
+                loc: ident.loc,
+            }),
         }
-
-        return Err(Error {
-            message: format!("Unknown variable: {}", ident.repr),
-            loc: ident.loc,
-        });
     }
 
     fn var_from_field_access(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         field_access: &FieldAccessExpr,
-    ) -> Result<VariableInfo, Error> {
+    ) -> Result<VarInfo, Error> {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref())?;
 
-        let field = self.get_struct_or_struct_ref_field(&lhs_type, field_access)?;
+        let field = self
+            .get_struct_or_struct_ref_field(&lhs_type, field_access)?
+            .relax();
 
         let mut inspect_info = None;
         if self.in_inspection_mode {
@@ -4575,68 +4526,60 @@ impl Compiler {
         };
 
         if let Type::Pointer { pointee: _ } = lhs_type {
-            return Ok(VariableInfo::Stored {
+            return Ok(VarInfo::Stored(VarInfoStored {
                 address: self.build_code_unit(ctx, &field_access.lhs)?,
                 offset: field.byte_offset,
-                value_type: field.field_type.clone(),
+                var_type: field.field_type.clone(),
                 inspect_info,
-            });
+            }));
         }
 
         if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref())? {
             match var {
                 // struct globals are not supported so these are handled the same way as struct values
-                VariableInfo::Global {
-                    global_index: _,
-                    global_type: _,
-                    inspect_info: _,
-                } => {}
+                VarInfo::Global(_) => {}
                 // consts are handled as struct values as well
-                VariableInfo::Const {
-                    code_unit: _,
-                    loc: _,
-                    inspect_info: _,
-                } => {}
-                VariableInfo::Local {
+                VarInfo::Const(_) => {}
+                VarInfo::Local(VarInfoLocal {
                     local_index,
-                    local_type: _,
+                    var_type: _,
                     inspect_info: parent_inspect_info,
-                } => {
+                }) => {
                     if let Some(inspect_info) = parent_inspect_info {
                         self.print_inspection(&inspect_info);
                     }
 
-                    return Ok(VariableInfo::Local {
+                    return Ok(VarInfo::Local(VarInfoLocal {
                         local_index: local_index + field.field_index,
-                        local_type: field.field_type.clone(),
+                        var_type: field.field_type.clone(),
                         inspect_info,
-                    });
+                    }));
                 }
-                VariableInfo::Stored {
+                VarInfo::Stored(VarInfoStored {
                     address,
                     offset,
-                    value_type: _,
+                    var_type: _,
                     inspect_info: parent_inspect_info,
-                } => {
+                }) => {
                     if let Some(inspect_info) = parent_inspect_info {
                         self.print_inspection(&inspect_info);
                     }
 
-                    return Ok(VariableInfo::Stored {
+                    return Ok(VarInfo::Stored(VarInfoStored {
                         address,
                         offset: offset + field.byte_offset,
-                        value_type: field.field_type.clone(),
+                        var_type: field.field_type.clone(),
                         inspect_info,
-                    });
+                    }));
                 }
-                VariableInfo::StructValueField {
+                VarInfo::StructValueField(VarInfoStructValueField {
                     struct_value,
-                    field_type: _,
                     drops_before,
                     drops_after,
-                    loc: _,
+                    var_type: _,
                     inspect_info: parent_inspect_info,
-                } => {
+                    loc: _,
+                }) => {
                     if let Some(inspect_info) = parent_inspect_info {
                         self.print_inspection(&inspect_info);
                     }
@@ -4644,16 +4587,16 @@ impl Compiler {
                     let struct_components_count = self.count_wasm_type_components(&lhs_type);
                     let field_components_count = self.count_wasm_type_components(&field.field_type);
 
-                    return Ok(VariableInfo::StructValueField {
+                    return Ok(VarInfo::StructValueField(VarInfoStructValueField {
                         struct_value,
-                        field_type: field.field_type.clone(),
                         drops_before: drops_before + struct_components_count
                             - field.field_index
                             - field_components_count,
                         drops_after: drops_after + field.field_index,
-                        loc: field_access.field_name.loc,
+                        var_type: field.field_type.clone(),
                         inspect_info,
-                    });
+                        loc: field_access.field_name.loc,
+                    }));
                 }
             };
         };
@@ -4661,14 +4604,14 @@ impl Compiler {
         let struct_components_count = self.count_wasm_type_components(&lhs_type);
         let field_components_count = self.count_wasm_type_components(&field.field_type);
 
-        return Ok(VariableInfo::StructValueField {
+        return Ok(VarInfo::StructValueField(VarInfoStructValueField {
             struct_value: self.build_code_unit(ctx, &field_access.lhs)?,
-            field_type: field.field_type.clone(),
             drops_before: struct_components_count - field.field_index - field_components_count,
             drops_after: field.field_index,
-            loc: field_access.field_name.loc,
+            var_type: field.field_type.clone(),
             inspect_info,
-        });
+            loc: field_access.field_name.loc,
+        }));
     }
 
     fn create_or_get_addr_local(&self, ctx: &mut ExprContext) -> u32 {
@@ -4720,11 +4663,11 @@ impl Compiler {
     }
 
     fn var_from_deref(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         addr_expr: &CodeExpr,
         op_loc: &Loc,
-    ) -> Result<VariableInfo, Error> {
+    ) -> Result<VarInfo, Error> {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let Type::Pointer { pointee } = &addr_type {
@@ -4737,12 +4680,12 @@ impl Compiler {
                 })
             };
 
-            return Ok(VariableInfo::Stored {
+            return Ok(VarInfo::Stored(VarInfoStored {
                 address: self.build_code_unit(ctx, addr_expr)?,
                 offset: 0,
-                value_type: pointee.as_ref().clone(),
+                var_type: pointee.as_ref().clone(),
                 inspect_info,
-            });
+            }));
         };
 
         return Err(Error {
@@ -4758,46 +4701,46 @@ impl Compiler {
         &self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        var: &VariableInfo,
+        var: &VarInfo,
     ) -> Result<(), Error> {
         match var {
-            VariableInfo::Local {
+            VarInfo::Local(VarInfoLocal {
                 local_index,
-                local_type,
+                var_type,
                 inspect_info: _,
-            } => {
-                for i in 0..self.count_wasm_type_components(local_type) {
+            }) => {
+                for i in 0..self.count_wasm_type_components(var_type) {
                     instrs.push(WasmInstr::LocalGet {
                         local_index: local_index + i,
                     });
                 }
             }
-            VariableInfo::Global {
+            VarInfo::Global(VarInfoGlobal {
                 global_index,
-                global_type,
+                var_type,
                 inspect_info: _,
-            } => {
-                for i in 0..self.count_wasm_type_components(global_type) {
+            }) => {
+                for i in 0..self.count_wasm_type_components(var_type) {
                     instrs.push(WasmInstr::GlobalGet {
                         global_index: global_index + i,
                     });
                 }
             }
-            VariableInfo::Const {
+            VarInfo::Const(VarInfoConst {
                 code_unit,
                 loc: _,
                 inspect_info: _,
-            } => {
+            }) => {
                 instrs.extend_from_slice(&code_unit.instrs);
             }
-            VariableInfo::Stored {
+            VarInfo::Stored(VarInfoStored {
                 address,
                 offset,
-                value_type,
+                var_type,
                 inspect_info: _,
-            } => {
+            }) => {
                 let mut loads = Vec::new();
-                self.codegen_load_or_store(&mut loads, &value_type, *offset, false);
+                self.codegen_load_or_store(&mut loads, &var_type, *offset, false);
 
                 if loads.len() == 0 {
                     return Ok(());
@@ -4823,14 +4766,14 @@ impl Compiler {
                     instrs.append(&mut loads);
                 }
             }
-            VariableInfo::StructValueField {
+            VarInfo::StructValueField(VarInfoStructValueField {
                 struct_value,
-                field_type,
                 drops_before,
                 drops_after,
-                loc,
+                var_type,
                 inspect_info: _,
-            } => {
+                loc,
+            }) => {
                 for instr in &struct_value.instrs {
                     instrs.push(instr.clone());
                 }
@@ -4839,13 +4782,13 @@ impl Compiler {
                 }
 
                 if *drops_after > 0 {
-                    let local_index = self.define_unnamed_local(ctx, *loc, field_type);
+                    let local_index = self.define_unnamed_local(ctx, *loc, var_type);
 
-                    let var = VariableInfo::Local {
+                    let var = VarInfo::Local(VarInfoLocal {
                         local_index,
-                        local_type: field_type.clone(),
+                        var_type: var_type.clone(),
                         inspect_info: None,
-                    };
+                    });
                     self.codegen_var_set_prepare(instrs, &var);
                     self.codegen_var_set(ctx, instrs, &var)?;
 
@@ -4862,15 +4805,15 @@ impl Compiler {
     }
 
     // should be called before set's value is pushed to the stack
-    fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &VariableInfo) {
+    fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
         match var {
-            VariableInfo::Stored {
+            VarInfo::Stored(VarInfoStored {
                 address,
                 offset: _,
-                value_type,
+                var_type,
                 inspect_info: _,
-            } => {
-                if self.count_wasm_type_components(value_type) == 0 {
+            }) => {
+                if self.count_wasm_type_components(var_type) == 0 {
                     return;
                 }
 
@@ -4886,40 +4829,40 @@ impl Compiler {
         &self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        var: &VariableInfo,
+        var: &VarInfo,
     ) -> Result<(), Error> {
         match var {
-            VariableInfo::Local {
+            VarInfo::Local(VarInfoLocal {
                 local_index,
-                local_type,
+                var_type,
                 inspect_info: _,
-            } => {
-                self.codegen_local_set(instrs, local_type, *local_index);
+            }) => {
+                self.codegen_local_set(instrs, var_type, *local_index);
             }
-            VariableInfo::Global {
+            VarInfo::Global(VarInfoGlobal {
                 global_index,
-                global_type,
+                var_type,
                 inspect_info: _,
-            } => {
-                for i in (0..self.count_wasm_type_components(global_type)).rev() {
+            }) => {
+                for i in (0..self.count_wasm_type_components(var_type)).rev() {
                     instrs.push(WasmInstr::GlobalSet {
                         global_index: global_index + i,
                     });
                 }
             }
-            VariableInfo::Stored {
+            VarInfo::Stored(VarInfoStored {
                 address: _,
                 offset,
-                value_type,
+                var_type,
                 inspect_info: _,
-            } => {
+            }) => {
                 let mut stores = Vec::new();
-                self.codegen_load_or_store(&mut stores, &value_type, *offset, true);
+                self.codegen_load_or_store(&mut stores, &var_type, *offset, true);
 
                 if stores.len() > 1 {
                     let tmp_value_local_index =
-                        self.define_unnamed_local(ctx, Loc::internal(), value_type);
-                    self.codegen_local_set(instrs, value_type, tmp_value_local_index);
+                        self.define_unnamed_local(ctx, Loc::internal(), var_type);
+                    self.codegen_local_set(instrs, var_type, tmp_value_local_index);
 
                     let addr_local_index = self.create_or_get_addr_local(ctx);
                     instrs.push(WasmInstr::LocalSet {
@@ -4939,19 +4882,8 @@ impl Compiler {
                     instrs.append(&mut stores);
                 }
             }
-            VariableInfo::Const {
-                code_unit: _,
-                loc,
-                inspect_info: _,
-            }
-            | VariableInfo::StructValueField {
-                struct_value: _,
-                field_type: _,
-                drops_before: _,
-                drops_after: _,
-                loc,
-                inspect_info: _,
-            } => {
+            VarInfo::Const(VarInfoConst { loc, .. })
+            | VarInfo::StructValueField(VarInfoStructValueField { loc, .. }) => {
                 return Err(Error {
                     message: format!("Cannot mutate a constant"),
                     loc: *loc,
@@ -4971,38 +4903,30 @@ impl Compiler {
     }
 
     fn define_local(
-        &self,
+        &mut self,
         ctx: &mut ExprContext,
         loc: Loc,
         local_name: &'static str,
         local_type: &Type,
     ) -> u32 {
-        for local in ctx.current_scope().locals.iter() {
-            if local.local_name == local_name && local.defined_in_this_scope {
-                let local_ = &ctx.locals[local.lo_local_index];
+        let res = self.define_symbol(
+            ctx,
+            Symbol {
+                name: local_name,
+                type_: SymbolType::Local,
+                col_index: ctx.locals.len(),
+                defined_in_this_scope: true,
+                loc,
+            },
+        );
 
-                self.report_error(&Error {
-                    message: format!(
-                        "Cannot redefine local {}, previously defined at {}",
-                        local_name,
-                        local_.definition_loc.to_string(&self.fm)
-                    ),
-                    loc,
-                });
-
-                return local_.local_index;
+        if let Err(existing) = res {
+            if existing.type_ == SymbolType::Local {
+                return ctx.locals[existing.col_index].local_index;
             }
         }
 
         let local_index = self.define_unnamed_local(ctx, loc, local_type);
-
-        let lo_local_index = ctx.locals.len() - 1;
-        ctx.current_scope_mut().locals.push(ScopedLocal {
-            local_name,
-            lo_local_index,
-            defined_in_this_scope: true,
-        });
-
         local_index
     }
 
@@ -5016,6 +4940,40 @@ impl Compiler {
         ctx.next_local_index += self.count_wasm_type_components(local_type);
 
         local_index
+    }
+
+    fn register_block_const(&mut self, ctx: &ExprContext, const_def: ConstDef) {
+        let _ = self.define_symbol(
+            ctx,
+            Symbol {
+                name: const_def.const_name,
+                type_: SymbolType::Const,
+                col_index: self.const_defs.len(),
+                defined_in_this_scope: true,
+                loc: const_def.loc,
+            },
+        );
+        self.const_defs.push(const_def);
+    }
+
+    fn register_block_type(
+        &mut self,
+        ctx: &ExprContext,
+        name: &'static str,
+        type_: Type,
+        loc: Loc,
+    ) {
+        let _ = self.define_symbol(
+            ctx,
+            Symbol {
+                name,
+                type_: SymbolType::TypeAlias,
+                col_index: self.type_aliases.len(),
+                defined_in_this_scope: true,
+                loc,
+            },
+        );
+        self.type_aliases.push(type_);
     }
 
     fn assert_catchable_type<'a>(
@@ -5049,7 +5007,7 @@ impl Compiler {
     }
 
     fn emit_deferred(&self, scope: &Scope, instrs: &mut Vec<WasmInstr>) {
-        for expr in scope.deferred.iter().rev() {
+        for expr in scope.deferred_exprs.iter().rev() {
             for instr in &expr.instrs {
                 instrs.push(instr.clone());
             }
@@ -5057,12 +5015,16 @@ impl Compiler {
     }
 
     fn emit_deferred_for_return(&self, ctx: &ExprContext, instrs: &mut Vec<WasmInstr>) {
-        for scope in ctx.scopes.iter().rev() {
+        for scope in self.modules[ctx.module_index].scope_stack.iter().rev() {
             self.emit_deferred(scope, instrs);
         }
     }
 
-    fn build_code_unit(&self, ctx: &mut ExprContext, expr: &CodeExpr) -> Result<CodeUnit, Error> {
+    fn build_code_unit(
+        &mut self,
+        ctx: &mut ExprContext,
+        expr: &CodeExpr,
+    ) -> Result<CodeUnit, Error> {
         let mut code_unit = CodeUnit {
             type_: self.get_expr_type(ctx, expr)?,
             instrs: Vec::new(),
@@ -5121,12 +5083,13 @@ impl Compiler {
         Ok(())
     }
 
-    fn get_type_or_err(&self, type_name: &str, loc: &Loc) -> Result<Type, Error> {
-        let Some(symbol) = self
-            .get_module_by_file_index(loc.file_index)
-            .unwrap()
-            .get_symbol(type_name)
-        else {
+    fn get_type_or_err(
+        &self,
+        ctx: &ExprContext,
+        type_name: &str,
+        loc: &Loc,
+    ) -> Result<Type, Error> {
+        let Some(symbol) = self.current_scope(ctx).get_symbol(type_name) else {
             return Err(Error {
                 message: format!("Unknown type: {}", type_name),
                 loc: *loc,
@@ -5144,7 +5107,7 @@ impl Compiler {
                 }
 
                 Ok(Type::StructInstance {
-                    struct_index: symbol.index,
+                    struct_index: symbol.col_index,
                 })
             }
             SymbolType::Enum => {
@@ -5157,11 +5120,11 @@ impl Compiler {
                 }
 
                 Ok(Type::EnumInstance {
-                    enum_index: symbol.index,
+                    enum_index: symbol.col_index,
                 })
             }
             SymbolType::TypeAlias => {
-                let type_ = &self.type_aliases[symbol.index];
+                let type_ = &self.type_aliases[symbol.col_index];
 
                 // don't print inspection for built-ins
                 if self.in_inspection_mode && symbol.loc.file_index != 0 {
@@ -5174,32 +5137,16 @@ impl Compiler {
 
                 Ok(type_.clone())
             }
-            SymbolType::Function
-            | SymbolType::Macro
+            SymbolType::Local
             | SymbolType::Global
             | SymbolType::Const
+            | SymbolType::Function
+            | SymbolType::Macro
             | SymbolType::EnumConstructor => Err(Error {
                 message: format!("Symbol is not a type: {}", type_name),
                 loc: *loc,
             }),
         }
-    }
-
-    fn get_const<'a>(&'a self, ctx: &'a ExprContext, const_name: &str) -> Option<&'a ConstDef> {
-        if let Some(symbol) = self.modules[ctx.module_index].get_symbol(const_name) {
-            let SymbolType::Const = symbol.type_ else {
-                return None;
-            };
-
-            let const_def = &self.const_defs[symbol.index];
-            return Some(const_def);
-        }
-
-        if let Some(macro_arg) = ctx.get_macro_arg(const_name) {
-            return Some(macro_arg);
-        }
-
-        None
     }
 
     fn codegen_default_value(
@@ -5244,7 +5191,7 @@ impl Compiler {
 
     fn codegen_int_literal(
         &self,
-        _ctx: &mut ExprContext,
+        ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         IntLiteralExpr {
             tag,
@@ -5256,7 +5203,7 @@ impl Compiler {
         let mut is_64_bit = false;
         if let Some(tag) = tag {
             match self
-                .get_type_or_err(tag, loc)
+                .get_type_or_err(ctx, tag, loc)
                 .and_then(|tag_type| self.is_64_bit_int_tag(&tag_type, loc))
             {
                 Ok(is_64) => is_64_bit = is_64,
@@ -5453,18 +5400,20 @@ impl Compiler {
 
     fn codegen_binary_op(
         &self,
+        ctx: &ExprContext,
         instrs: &mut Vec<WasmInstr>,
         op_tag: &InfixOpTag,
         operand_type: &Type,
         op_loc: &Loc,
     ) -> Result<(), Error> {
-        let kind = self.get_binary_op_kind(op_tag, operand_type, op_loc)?;
+        let kind = self.get_binary_op_kind(ctx, op_tag, operand_type, op_loc)?;
         instrs.push(WasmInstr::BinaryOp { kind });
         Ok(())
     }
 
     fn get_binary_op_kind(
         &self,
+        ctx: &ExprContext,
         op_tag: &InfixOpTag,
         operand_type: &Type,
         op_loc: &Loc,
@@ -5696,11 +5645,10 @@ impl Compiler {
             | InfixOpTag::ExprPipe => unreachable!(),
         }
 
-        let module = self.get_module_by_file_index(op_loc.file_index).unwrap();
         return Err(Error {
             message: format!(
                 "Operator `{}` is incompatible with operands of type {}",
-                op_loc.read_span(module.source),
+                op_loc.read_span(&self.modules[ctx.module_index].source),
                 TypeFmt(self, operand_type)
             ),
             loc: op_loc.clone(),
@@ -5745,7 +5693,31 @@ impl Compiler {
         }
     }
 
-    fn push_name_section_locals(
+    fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeType) {
+        let module = &mut self.modules[ctx.module_index];
+
+        init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
+    }
+
+    fn exit_scope(&mut self, ctx: &ExprContext) -> Scope {
+        let module = &mut self.modules[ctx.module_index];
+
+        module.scope_stack.pop().unwrap()
+    }
+
+    fn current_scope(&self, ctx: &ExprContext) -> &Scope {
+        let module = &self.modules[ctx.module_index];
+
+        module.scope_stack.last().unwrap()
+    }
+
+    fn current_scope_mut(&mut self, ctx: &ExprContext) -> &mut Scope {
+        let module = &mut self.modules[ctx.module_index];
+
+        module.scope_stack.last_mut().unwrap()
+    }
+
+    fn push_wasm_dbg_name_section_locals(
         &self,
         output: &mut Vec<WasmLocalInfo>,
         local_index: u32,
@@ -5775,7 +5747,7 @@ impl Compiler {
             Type::StructInstance { struct_index } => {
                 let struct_def = &self.struct_defs[*struct_index];
                 for field in &struct_def.fields {
-                    self.push_name_section_locals(
+                    self.push_wasm_dbg_name_section_locals(
                         output,
                         local_index + field.field_index,
                         &field.field_type,
@@ -5784,7 +5756,7 @@ impl Compiler {
                 }
             }
             Type::EnumInstance { enum_index } => {
-                self.push_name_section_locals(
+                self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &Type::U32,
@@ -5792,7 +5764,7 @@ impl Compiler {
                 );
 
                 let enum_def = &self.enum_defs[*enum_index];
-                self.push_name_section_locals(
+                self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &enum_def.variant_type,
@@ -5800,14 +5772,14 @@ impl Compiler {
                 );
             }
             Type::Result(result_type) => {
-                self.push_name_section_locals(
+                self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &result_type.ok,
                     alloc::format!("{}#ok", local_name),
                 );
 
-                self.push_name_section_locals(
+                self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &&result_type.err,
@@ -5815,6 +5787,25 @@ impl Compiler {
                 );
             }
         }
+    }
+
+    fn alloc_str(&mut self, value: String) -> &'static str {
+        let str_ref = value.as_str().relax();
+        self.allocated_strings.push(value);
+        str_ref
+    }
+
+    #[inline]
+    fn add_builtin_type(&mut self, type_: Type) {
+        let col_index = self.type_aliases.len();
+        self.global_scope.symbols.push(Symbol {
+            name: type_.to_str().unwrap(),
+            type_: SymbolType::TypeAlias,
+            col_index,
+            defined_in_this_scope: true,
+            loc: Loc::internal(),
+        });
+        self.type_aliases.push(type_);
     }
 
     fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
@@ -5899,6 +5890,17 @@ impl Compiler {
                 \"loc\": \"{source_index}/{source_range}\" }},",
         ));
     }
+}
+
+fn init_scope_from_parent_and_push(scope_stack: &mut Vec<Scope>, scope_type: ScopeType) {
+    let mut new_scope = Scope::new(scope_type);
+    if let Some(parent) = scope_stack.last() {
+        new_scope.symbols.extend_from_slice(&parent.symbols);
+        for symbol in &mut new_scope.symbols {
+            symbol.defined_in_this_scope = false;
+        }
+    };
+    scope_stack.push(new_scope);
 }
 
 fn json_str_escape(value: &str) -> String {
