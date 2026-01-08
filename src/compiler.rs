@@ -1405,9 +1405,12 @@ impl Compiler {
                     if file_index == 0 {
                         continue;
                     }
-                    // TODO: figure out why this doesn't work
-                    // let module = &self.modules[ctx.module_index];
-                    let module = &self.get_module_by_file_index(file_index).unwrap();
+
+                    let mut module = &self.modules[ctx.module_index];
+                    if file_index != module.parser.lexer.file_index {
+                        // local defined by macro from another module
+                        module = &self.get_module_by_file_index(file_index).unwrap();
+                    }
 
                     self.push_wasm_dbg_name_section_locals(
                         &mut local_names_item.locals,
@@ -1644,17 +1647,18 @@ impl Compiler {
             return None;
         }
 
-        // TODO: figure out why this doesn't work
-        // let source = &self.modules[ctx.module_index].source;
-        let source = &self
-            .get_module_by_file_index(fn_name.loc.file_index)
-            .unwrap()
-            .source;
+        let mut module = &self.modules[ctx.module_index];
+        if fn_name.loc.file_index != module.parser.lexer.file_index {
+            // fn imported from other module
+            module = &self
+                .get_module_by_file_index(fn_name.loc.file_index)
+                .unwrap();
+        }
 
         let mut self_type_loc = fn_name.parts[0];
         self_type_loc.end_pos = fn_name.parts[fn_name.parts.len() - 2].end_pos;
 
-        let self_type_name = self_type_loc.read_span(source);
+        let self_type_name = self_type_loc.read_span(module.source);
 
         let self_type = catch!(
             self.get_type_or_err(ctx, &self_type_name, &self_type_loc),
