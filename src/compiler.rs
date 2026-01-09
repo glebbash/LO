@@ -3415,7 +3415,7 @@ impl Compiler {
                     ctx,
                     name,
                     const_def.code_unit.type_.clone(),
-                    macro_param.param_name.loc,
+                    macro_param.loc,
                 );
             }
 
