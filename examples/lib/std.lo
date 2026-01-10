@@ -504,11 +504,6 @@ fn Vec::push_all(&self, items: &void, items_len: u32) {
     mem::copy!(items, items_dest, items_len * self.item_size)
 }
 
-fn Vec::append(&self, other: &Vec) {
-    self.push_all(other.data, other.size)
-    other.size = 0
-}
-
 fn Vec::pop(&self) {
     self.size -= 1
 }
