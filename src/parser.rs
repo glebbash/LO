@@ -488,13 +488,23 @@ impl Parser {
         let mut loc = self.current().loc;
         let primary = self.parse_type_expr_primary()?;
 
-        if let Some(_) = self.eat(Symbol, "of") {
-            let container_type = Box::new(primary);
-            let item_type = Box::new(self.parse_type_expr()?);
+        if let Some(_) = self.eat(Delim, "(") {
+            let container = Box::new(primary);
+            let mut items = Vec::new();
+
+            while let None = self.eat(Delim, ")") {
+                items.push(self.parse_type_expr()?);
+
+                if !self.current().is(Delim, ")", self.source) {
+                    self.expect(Delim, ",")?;
+                }
+            }
+
             loc.end_pos = self.prev().loc.end_pos;
-            return Ok(TypeExpr::Of(TypeExprOf {
-                container_type,
-                item_type,
+
+            return Ok(TypeExpr::Container(TypeExprContainer {
+                container,
+                items,
                 loc,
             }));
         }
@@ -526,21 +536,6 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::SequencePointer(TypeExprSequencePointer {
                 pointee,
-                loc,
-            }));
-        }
-
-        if let Some(_) = self.eat(Symbol, "Result") {
-            self.expect(Operator, "<")?;
-            let ok_type = Box::new(self.parse_type_expr()?);
-            self.expect(Delim, ",")?;
-            let err_type = Box::new(self.parse_type_expr()?);
-            self.expect(Operator, ">")?;
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TypeExpr::Result(TypeExprResult {
-                ok_type,
-                err_type,
                 loc,
             }));
         }

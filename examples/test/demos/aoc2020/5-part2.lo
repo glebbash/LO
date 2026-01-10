@@ -25,7 +25,7 @@ fn main() {
     }
 }
 
-fn selection_sort(items: &Vec of u32) {
+fn selection_sort(items: &Vec(u32)) {
     let n = items.size
     for i in 0..n {
         let min_index = i

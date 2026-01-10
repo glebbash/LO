@@ -31,11 +31,11 @@ fn main() {
 }
 
 struct Map {
-    rows: &Vec of &Vec of Tile,
+    rows: &Vec(&Vec(Tile)),
 }
 
 fn Map::parse(input: String): Map {
-    let rows = Vec::new!<&Vec of Tile>()
+    let rows = Vec::new!<&Vec(Tile)>()
     let current_row = Vec::new!<Tile>()
     for i in 0..input.len() {
         let c = input.char_at(i)
@@ -55,13 +55,13 @@ fn Map::parse(input: String): Map {
 }
 
 fn Map::get(self, i: u32, j: u32): Tile {
-    let row = self.rows.get!<&Vec of Tile>(i)
+    let row = self.rows.get!<&Vec(Tile)>(i)
     return *(row.at(j % row.size) as &Tile)
 }
 
 fn Map::free(self) {
     for i in 0..self.rows.size {
-        let row = self.rows.get!<&Vec of Tile>(i)
+        let row = self.rows.get!<&Vec(Tile)>(i)
         row.free()
     }
 

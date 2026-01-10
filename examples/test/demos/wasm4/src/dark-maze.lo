@@ -39,7 +39,7 @@ global gamepad = 0 as u8
 global prev_gamepad = 0 as u8
 global pos_x = +42
 global pos_y = +46
-global light_checked = null as &Vec of u32
+global light_checked = null as &Vec(u32)
 global notes_index = 0
 global notes_ticker = 0
 global rand_seed = 0
@@ -145,7 +145,7 @@ fn end2_screen_update() {
     play_notes(END2_NOTES, @const_slice_len(END2_NOTES), END2_NOTE_DURATION)
 }
 
-fn spread_light(x: i32, y: i32, brightness: u32, checked: &Vec of u32) {
+fn spread_light(x: i32, y: i32, brightness: u32, checked: &Vec(u32)) {
     if is_wall(x, y) || !mark_checked(x, y, checked) {
         return
     }
@@ -160,7 +160,7 @@ fn spread_light(x: i32, y: i32, brightness: u32, checked: &Vec of u32) {
     }
 }
 
-fn mark_checked(x: i32, y: i32, checked: &Vec of u32): bool {
+fn mark_checked(x: i32, y: i32, checked: &Vec(u32)): bool {
     let pos = x as u32 * 88 + y as u32
 
     for i in 0..checked.size {

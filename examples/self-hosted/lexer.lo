@@ -63,14 +63,14 @@ struct Lexer {
 
     // state
     source_pos: Pos,
-    current_char: Result<u32, UTF8ReadError>,
+    current_char: Result(u32, UTF8ReadError),
     was_newline: bool,
 
     // output
-    tokens: &Vec of Token,
-    comments: &Vec of Loc,
-    backslashes: &Vec of Loc,
-    double_backslashes: &Vec of Loc,
+    tokens: &Vec(Token),
+    comments: &Vec(Loc),
+    backslashes: &Vec(Loc),
+    double_backslashes: &Vec(Loc),
 }
 
 fn Lexer::new(error_arena: &Arena, source: str, file_index: u32): &Lexer {
@@ -98,7 +98,7 @@ fn Lexer::free(&self) {
     heap::free(self)
 }
 
-fn Lexer::lex_file(&self): Result<void, &Error> {
+fn Lexer::lex_file(&self): Result(void, &Error) {
     self.skip_space()
 
     while self.source_pos.offset < self.source.size {
@@ -116,7 +116,7 @@ fn Lexer::lex_file(&self): Result<void, &Error> {
     return Ok()
 }
 
-fn Lexer::lex_token(&self): Result<Token, &Error> {
+fn Lexer::lex_token(&self): Result(Token, &Error) {
     let char = self.current_char()? as u8
 
     if char == '\'' {
@@ -153,7 +153,7 @@ fn Lexer::lex_token(&self): Result<Token, &Error> {
     }))
 }
 
-fn Lexer::lex_char_literal(&self): Result<Token, &Error> {
+fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
     let loc = self.loc()
 
     // skip start quote
@@ -214,7 +214,7 @@ fn Lexer::lex_char_literal(&self): Result<Token, &Error> {
     })
 }
 
-fn Lexer::lex_string_literal(&self): Result<Token, &Error> {
+fn Lexer::lex_string_literal(&self): Result(Token, &Error) {
     let loc = self.loc()
 
     // skip start quote
@@ -261,7 +261,7 @@ fn Lexer::lex_string_literal(&self): Result<Token, &Error> {
     })
 }
 
-fn Lexer::lex_int_literal(&self): Result<Token, &Error> {
+fn Lexer::lex_int_literal(&self): Result(Token, &Error) {
     let loc = self.loc()
 
     let hex = false
@@ -319,7 +319,7 @@ fn Lexer::parse_int_literal_value(int_literal: str): i64 {
     return value
 }
 
-fn Lexer::lex_symbol(&self): Result<Token, &Error> {
+fn Lexer::lex_symbol(&self): Result(Token, &Error) {
     let loc = self.loc()
 
     while Lexer::is_symbol_char(self.current_char()? as u8) {
@@ -334,7 +334,7 @@ fn Lexer::lex_symbol(&self): Result<Token, &Error> {
     })
 }
 
-fn Lexer::lex_delim(&self): Result<Token, &Error> {
+fn Lexer::lex_delim(&self): Result(Token, &Error) {
     let loc = self.loc()
 
     self.next_char()
@@ -347,7 +347,7 @@ fn Lexer::lex_delim(&self): Result<Token, &Error> {
     })
 }
 
-fn Lexer::lex_operator(&self): Result<Token, &Error> {
+fn Lexer::lex_operator(&self): Result(Token, &Error) {
     let loc = self.loc()
 
     loop {
@@ -547,11 +547,11 @@ fn Lexer::next_char(&self) {
     self.current_char = read_utf8_codepoint(self.source, self.source_pos.offset)
 }
 
-fn Lexer::current_char(&self): Result<u32, &Error> {
+fn Lexer::current_char(&self): Result(u32, &Error) {
     return self.map_utf8_read_err(self.current_char)
 }
 
-fn Lexer::peek_next_char(&self): Result<u32, &Error> {
+fn Lexer::peek_next_char(&self): Result(u32, &Error) {
     let char = self.current_char catch _ {
         return self.current_char()
     }
@@ -562,7 +562,7 @@ fn Lexer::peek_next_char(&self): Result<u32, &Error> {
     ))
 }
 
-fn Lexer::map_utf8_read_err(&self, utf8_read: Result<u32, UTF8ReadError>): Result<u32, &Error> {
+fn Lexer::map_utf8_read_err(&self, utf8_read: Result(u32, UTF8ReadError)): Result(u32, &Error) {
     let char = utf8_read catch err {
         let message = "ParseError: Invalid UTF-8 sequence"
         if err == UTF8ReadError::EndOfSource() {
@@ -595,7 +595,7 @@ enum UTF8ReadError {
     InvalidUtf8,
 }
 
-fn read_utf8_codepoint(source: str, offset: u32): Result<u32, UTF8ReadError> {
+fn read_utf8_codepoint(source: str, offset: u32): Result(u32, UTF8ReadError) {
     if offset >= source.size {
         return Err(UTF8ReadError::EndOfSource())
     }

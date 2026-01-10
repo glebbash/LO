@@ -24,7 +24,7 @@ struct Compiler {
     in_lex_only_mode: bool,
 
     fm: FileManager,
-    modules: &Vec of &Module,
+    modules: &Vec(&Module),
     error_arena: &Arena,
 }
 
@@ -35,7 +35,7 @@ fn Compiler::new(): &Compiler {
         in_single_file_mode: false,
         in_lex_only_mode: false,
         fm: FileManager::new(error_arena),
-        modules: Vec::new!<Module>(),
+        modules: Vec::new!<&Module>(),
         error_arena: error_arena,
     })
 }
@@ -49,7 +49,7 @@ fn Compiler::free(&self) {
 
 fn Compiler::include(
     &self, \\ file_name: str, \\ loc: &Loc,
-): Result<&Module, &VoidError> {
+): Result(&Module, &VoidError) {
     let file_index = self.fm.include(file_name, loc) catch err {
         self.report_error(err)
         return Err(VoidError::VALUE)

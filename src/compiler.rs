@@ -23,12 +23,19 @@ pub enum Type {
     StructInstance { struct_index: usize },
     EnumInstance { enum_index: usize },
     Result(ResultType),
+    Container(ContainerType),
 }
 
 #[derive(Clone, PartialEq)]
 pub struct ResultType {
     ok: Box<Type>,
     err: Box<Type>,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct ContainerType {
+    container: Box<Type>,
+    items: Vec<Type>,
 }
 
 impl Type {
@@ -89,6 +96,17 @@ impl<'a> core::fmt::Display for TypeFmt<'a> {
                     TypeFmt(self.0, &result.ok),
                     TypeFmt(self.0, &result.err)
                 )
+            }
+            Type::Container(ContainerType { container, items }) => {
+                write!(f, "{}", TypeFmt(self.0, container))?;
+                write!(f, "<")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", TypeFmt(self.0, item))?;
+                }
+                write!(f, ">")
             }
         }
     }
@@ -1749,27 +1767,41 @@ impl Compiler {
 
                 Ok(Type::SequencePointer { pointee })
             }
-            TypeExpr::Result(TypeExprResult {
-                ok_type,
-                err_type,
+            TypeExpr::Container(TypeExprContainer {
+                container,
+                items,
                 loc: _,
             }) => {
-                let ok = Box::new(self.build_type_check_ref(ctx, &ok_type, false, loc)?);
-                let err = Box::new(self.build_type_check_ref(ctx, &err_type, false, loc)?);
+                if let TypeExpr::Named(ident) = &**container
+                    && ident.name.repr == "Result"
+                {
+                    if items.len() != 2 {
+                        return Err(Error {
+                            message: format!(
+                                "Expected exactly 2 type arguments, {} was found",
+                                items.len()
+                            ),
+                            loc: ident.name.loc,
+                        });
+                    }
 
-                Ok(Type::Result(ResultType { ok, err }))
-            }
-            TypeExpr::Of(TypeExprOf {
-                container_type,
-                item_type,
-                loc: _,
-            }) => {
-                let actual_type = self.build_type_check_ref(ctx, container_type, true, loc)?;
+                    let ok = Box::new(self.build_type_check_ref(ctx, &items[0], false, loc)?);
+                    let err = Box::new(self.build_type_check_ref(ctx, &items[1], false, loc)?);
 
-                // used for inspection
-                self.build_type_check_ref(ctx, item_type, true, loc)?;
+                    return Ok(Type::Result(ResultType { ok, err }));
+                }
 
-                Ok(actual_type)
+                let container = self.build_type_check_ref(ctx, container, is_referenced, loc)?;
+
+                let mut type_items = Vec::new();
+                for item in items {
+                    type_items.push(self.build_type_check_ref(ctx, item, true, loc)?);
+                }
+
+                Ok(Type::Container(ContainerType {
+                    container: Box::new(container),
+                    items: type_items,
+                }))
             }
         }
     }
@@ -3438,7 +3470,7 @@ impl Compiler {
         if !self.is_types_compatible(&macro_types, &arg_types) {
             return Err(Error {
                 message: format!(
-                    "Invalid macro args, expected {}, got {}",
+                    "Invalid macro args, expected [{}], got [{}]",
                     TypeListFmt(self, &macro_types),
                     TypeListFmt(self, &arg_types)
                 ),
@@ -3778,6 +3810,12 @@ impl Compiler {
                 self.codegen_load_or_store(instrs, &ok, offset, is_store);
                 self.codegen_load_or_store(instrs, &err, offset + ok_layout.byte_size, is_store);
             }
+            Type::Container(ContainerType {
+                container,
+                items: _,
+            }) => {
+                self.codegen_load_or_store(instrs, container, offset, is_store);
+            }
         }
     }
 
@@ -4011,6 +4049,7 @@ impl Compiler {
                         | Type::StructInstance { struct_index: _ }
                         | Type::EnumInstance { enum_index: _ }
                         | Type::Result(_) => Ok(expr_type),
+                        Type::Container(_) => Ok(expr_type),
                     }
                 }
             },
@@ -4651,7 +4690,17 @@ impl Compiler {
             lhs_type = pointee;
         }
 
-        let Type::StructInstance { struct_index } = lhs_type else {
+        let struct_index: usize;
+        if let Type::StructInstance { struct_index: si } = lhs_type {
+            struct_index = *si;
+        } else if let Type::Container(ContainerType {
+            container,
+            items: _,
+        }) = lhs_type
+            && let Type::StructInstance { struct_index: si } = &**container
+        {
+            struct_index = *si;
+        } else {
             return Err(Error {
                 message: format!(
                     "Cannot get field '{}' on non struct: {}",
@@ -4662,7 +4711,7 @@ impl Compiler {
             });
         };
 
-        let struct_def = &self.struct_defs[*struct_index];
+        let struct_def = &self.struct_defs[struct_index];
         let Some(field) = struct_def
             .fields
             .iter()
@@ -5204,6 +5253,12 @@ impl Compiler {
                 self.codegen_default_value(ctx, instrs, &result.ok);
                 self.codegen_default_value(ctx, instrs, &result.err);
             }
+            Type::Container(ContainerType {
+                container,
+                items: _,
+            }) => {
+                self.codegen_default_value(ctx, instrs, container);
+            }
         }
     }
 
@@ -5280,6 +5335,27 @@ impl Compiler {
                     return true;
                 }
             }
+
+            if let Type::Pointer {
+                pointee: value_pointee,
+            } = value
+            {
+                return self.is_type_compatible(pointee, value_pointee);
+            }
+        }
+
+        if let Type::Container(ContainerType { container, items }) = value {
+            if let Type::Container(ContainerType {
+                container: slot_container,
+                items: slot_items,
+            }) = slot
+            {
+                return self.is_type_compatible(slot_container, container)
+                    && self.is_types_compatible(slot_items, items);
+            }
+
+            // TODO: allow this for self arguments only
+            return self.is_type_compatible(slot, container);
         }
 
         if *value == Type::Never {
@@ -5322,6 +5398,12 @@ impl Compiler {
             Type::Result(result) => {
                 self.lower_type(&result.ok, wasm_types);
                 self.lower_type(&result.err, wasm_types);
+            }
+            Type::Container(ContainerType {
+                container,
+                items: _,
+            }) => {
+                self.lower_type(container, wasm_types);
             }
         }
     }
@@ -5379,13 +5461,21 @@ impl Compiler {
                 self.get_type_layout(&Type::U32, layout);
                 self.get_type_layout(&enum_def.variant_type, layout);
 
-                // TODO: figure out the alignment and byte_size
+                layout.alignment = u32::max(layout.alignment, 1);
+                layout.byte_size = align(layout.byte_size, layout.alignment);
             }
             Type::Result(result) => {
                 self.get_type_layout(&result.ok, layout);
                 self.get_type_layout(&result.err, layout);
 
-                // TODO: figure out the alignment and byte_size
+                layout.alignment = u32::max(layout.alignment, 1);
+                layout.byte_size = align(layout.byte_size, layout.alignment);
+            }
+            Type::Container(ContainerType {
+                container,
+                items: _,
+            }) => {
+                self.get_type_layout(container, layout);
             }
         }
     }
@@ -5804,6 +5894,12 @@ impl Compiler {
                     alloc::format!("{}#err", local_name),
                 );
             }
+            Type::Container(ContainerType {
+                container,
+                items: _,
+            }) => {
+                self.push_wasm_dbg_name_section_locals(output, local_index, container, local_name);
+            }
         }
     }
 
@@ -5827,8 +5923,17 @@ impl Compiler {
     }
 
     fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
-        let receiver_type = TypeFmt(self, receiver_type.deref_rec());
-        format!("{receiver_type}::{method_name}")
+        let receiver_type_base = receiver_type.deref_rec();
+
+        if let Type::Container(ContainerType {
+            container,
+            items: _,
+        }) = receiver_type_base
+        {
+            return format!("{}::{method_name}", TypeFmt(self, container));
+        }
+
+        format!("{}::{method_name}", TypeFmt(self, receiver_type_base))
     }
 
     fn get_module_by_file_index(&self, file_index: usize) -> Option<&Module> {

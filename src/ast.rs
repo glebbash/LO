@@ -172,8 +172,7 @@ pub enum TypeExpr {
     Named(TypeExprNamed),
     Pointer(TypeExprPointer),
     SequencePointer(TypeExprSequencePointer),
-    Result(TypeExprResult),
-    Of(TypeExprOf),
+    Container(TypeExprContainer),
 }
 
 pub struct TypeExprNamed {
@@ -190,15 +189,9 @@ pub struct TypeExprSequencePointer {
     pub loc: Loc,
 }
 
-pub struct TypeExprResult {
-    pub ok_type: Box<TypeExpr>,
-    pub err_type: Box<TypeExpr>,
-    pub loc: Loc,
-}
-
-pub struct TypeExprOf {
-    pub container_type: Box<TypeExpr>,
-    pub item_type: Box<TypeExpr>,
+pub struct TypeExprContainer {
+    pub container: Box<TypeExpr>,
+    pub items: Vec<TypeExpr>,
     pub loc: Loc,
 }
 
@@ -208,8 +201,7 @@ impl TypeExpr {
             TypeExpr::Named(e) => &e.name.loc,
             TypeExpr::Pointer(e) => &e.loc,
             TypeExpr::SequencePointer(e) => &e.loc,
-            TypeExpr::Result(e) => &e.loc,
-            TypeExpr::Of(e) => &e.loc,
+            TypeExpr::Container(e) => &e.loc,
         }
     }
 }

@@ -14,7 +14,7 @@ struct FnDefExpr {
 struct FnDeclExpr {
     fn_name: &IdentExpr,
     // @leak
-    fn_params: &Vec of FnParam,
+    fn_params: &Vec(FnParam),
     fn_params_trailing_comma: bool,
     // @optional
     return_type: &TypeExpr,
@@ -80,13 +80,13 @@ struct IdentExpr {
     // @leak
     repr: String,
     // @leak
-    parts: &Vec of Loc,
+    parts: &Vec(Loc),
     loc: Loc,
 }
 
 struct CodeBlock {
     // @leak
-    exprs: &Vec of CodeExpr,
+    exprs: &Vec(CodeExpr),
     loc: Loc,
 }
 

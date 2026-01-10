@@ -9,7 +9,7 @@ struct Printer {
     comments_printed: u32,
     last_printed_item_line: u32,
     backslashes_printed: u32,
-    backslash_stack: &Vec of bool,
+    backslash_stack: &Vec(bool),
     last_stmt_had_backslash: bool,
     double_backslashes_printed: u32,
 }
@@ -76,7 +76,7 @@ fn Printer::print_fn_decl(&self, fn_decl: &FnDeclExpr) {
     }
 }
 
-fn Printer::print_fn_params(&self, params: &Vec of FnParam, is_multiline: bool) {
+fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
     stdout_write("(")
 
     if is_multiline {

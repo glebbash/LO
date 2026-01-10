@@ -72,7 +72,7 @@ fn FileInfo::free(self) {
 }
 
 struct FileManager {
-    files: &Vec of FileInfo,
+    files: &Vec(FileInfo),
     error_arena: &Arena,
 }
 
@@ -91,7 +91,7 @@ fn FileManager::get(self, file_index: u32): &FileInfo {
     return self.files.at!<FileInfo>(file_index)
 }
 
-fn FileManager::include(self, relative_path: str, loc: &Loc): Result<u32, &Error> {
+fn FileManager::include(self, relative_path: str, loc: &Loc): Result(u32, &Error) {
     let parent_path = self.files.get!<FileInfo>(loc.file_index).absolute_path
     let absolute_path = resolve_path(relative_path, parent_path.as_str())
 

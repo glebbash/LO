@@ -26,7 +26,7 @@ fn main() {
     }
 }
 
-fn parse_numbers(input: String): &Vec of u32 {
+fn parse_numbers(input: String): &Vec(u32) {
     let numbers = Vec::new!<u32>()
     let current_number = 0
 

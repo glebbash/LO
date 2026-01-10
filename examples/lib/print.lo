@@ -19,14 +19,14 @@ fn eprintln(value: str) {
     let _ = fprint(wasi::FD_STDERR, "\n")
 }
 
-fn fprint(fd: u32, value: str): Result<u32, wasi::Err> {
+fn fprint(fd: u32, value: str): Result(u32, wasi::Err) {
     let value_ref = tmp_alloc!<str>()
     *value_ref = value
 
     return fprint_str(fd, value_ref)
 }
 
-fn fprint_str(fd: u32, value: &str): Result<u32, wasi::Err> {
+fn fprint_str(fd: u32, value: &str): Result(u32, wasi::Err) {
     let nwritten = tmp_alloc!<u32>()
     let err = wasi::fd_write(fd, value as *&wasi::IOVec, 1, nwritten)
     if err != wasi::Err::SUCCESS {

@@ -363,25 +363,20 @@ impl Printer {
                 stdout_write("*&");
                 self.print_type_expr(pointee);
             }
-            TypeExpr::Result(TypeExprResult {
-                ok_type,
-                err_type,
+            TypeExpr::Container(TypeExprContainer {
+                container,
+                items,
                 loc: _,
             }) => {
-                stdout_write("Result<");
-                self.print_type_expr(ok_type);
-                stdout_write(", ");
-                self.print_type_expr(err_type);
-                stdout_write(">");
-            }
-            TypeExpr::Of(TypeExprOf {
-                container_type,
-                item_type,
-                loc: _,
-            }) => {
-                self.print_type_expr(container_type);
-                stdout_write(" of ");
-                self.print_type_expr(item_type);
+                self.print_type_expr(container);
+                stdout_write("(");
+                for (i, item) in items.iter().enumerate() {
+                    if i != 0 {
+                        stdout_write(", ");
+                    }
+                    self.print_type_expr(item);
+                }
+                stdout_write(")");
             }
         }
     }

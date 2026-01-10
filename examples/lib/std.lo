@@ -405,7 +405,7 @@ struct Vec {
 }
 
 // @inline @generic fn
-macro Vec::new!<T>(): &Vec of T {
+macro Vec::new!<T>(): &Vec(T) {
     Vec::new(sizeof T)
 }
 
@@ -418,12 +418,17 @@ fn Vec::new_in(a: Alloc, item_size: u32): &Vec {
 }
 
 // @inline @generic fn
-macro Vec::with_capacity!<T>(capacity: u32): &Vec of T {
+macro Vec::with_capacity!<T>(capacity: u32): &Vec(T) {
     Vec::with_capacity(capacity, sizeof T)
 }
 
 fn Vec::with_capacity(capacity: u32, item_size: u32): &Vec {
     return Vec::with_capacity_in(Alloc::HEAP, capacity, item_size)
+}
+
+// @inline @generic fn
+macro Vec::with_capacity_in!<T>(a: Alloc, capacity: u32): &Vec(T) {
+    Vec::with_capacity_in(a, capacity, sizeof T)
 }
 
 fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
@@ -554,7 +559,7 @@ macro Vec::_panic_if_out_of_bounds!(&self, index: u32) {
 
 // string
 struct String {
-    chars: &Vec of u8,
+    chars: &Vec(u8),
 }
 
 fn String::new(capacity: u32): String {
@@ -565,11 +570,11 @@ fn String::new(capacity: u32): String {
 
 fn String::new_in(a: Alloc, capacity: u32): String {
     return String {
-        chars: Vec::with_capacity_in(a, capacity, sizeof u8),
+        chars: Vec::with_capacity_in!<u8>(a, capacity),
     }
 }
 
-fn String::from_chars(chars: &Vec of u8): String {
+fn String::from_chars(chars: &Vec(u8)): String {
     return String { chars: chars }
 }
 
@@ -634,12 +639,12 @@ fn String::replace(self, search: str, replacement: str): String {
     }
 
     self.chars.free()
-    self.chars = replaced as &Vec of u8
+    self.chars = replaced as &Vec(u8)
 
     return self
 }
 
-fn String::join(items: &Vec of str, separator: u8): String {
+fn String::join(items: &Vec(str), separator: u8): String {
     let output = String::new(32)
     for i in 0..items.size {
         output.push_str(items.get!<str>(i))
@@ -684,7 +689,7 @@ fn str::equals(self, other: str): bool {
     return true
 }
 
-fn str::find(self, search: str, start: u32): Result<u32, &void> {
+fn str::find(self, search: str, start: u32): Result(u32, &void) {
     if search.size == 0 {
         return Ok(start)
     }
@@ -729,7 +734,7 @@ fn str::from_cstr(value: *&u8): str {
     return str { data: value, size: len }
 }
 
-fn str::split(self, separator: u8, output: &Vec of str): &Vec of str {
+fn str::split(self, separator: u8, output: &Vec(str)): &Vec(str) {
     let start = 0
 
     for i in 0..self.size {

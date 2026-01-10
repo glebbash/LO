@@ -6,7 +6,7 @@ struct Pos {
     y: i32,
 }
 
-type Trail = Vec of Pos
+type Trail = Vec(Pos)
 type Mode = u32
 
 const Mode::SLASH = 1
@@ -19,8 +19,8 @@ global prev_click = false
 global boss_health = 5
 global trail = null as &Trail
 global swap_trail = null as &Trail
-global trails = null as &Vec of &Trail
-global showing_trails = null as &Vec of &Trail
+global trails = null as &Vec(&Trail)
+global showing_trails = null as &Vec(&Trail)
 global rand_seed = 0
 global scratch = null as &Arena
 
