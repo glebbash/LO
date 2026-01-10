@@ -9,13 +9,13 @@ fn main() {
     defer numbers.free()
 
     for i in 0..numbers.size {
-        let a = numbers.get!<u32>(i)
+        let a = numbers.get!(i)
 
         for j in i + 1..numbers.size {
-            let b = numbers.get!<u32>(j)
+            let b = numbers.get!(j)
 
             for k in j + 1..numbers.size {
-                let c = numbers.get!<u32>(k)
+                let c = numbers.get!(k)
 
                 if a + b + c == 2020 {
                     println((a * b * c).to_tmp_str!())

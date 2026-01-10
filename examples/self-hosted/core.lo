@@ -88,11 +88,11 @@ fn FileManager::new(error_arena: &Arena): FileManager {
 }
 
 fn FileManager::get(self, file_index: u32): &FileInfo {
-    return self.files.at!<FileInfo>(file_index)
+    return self.files.at!(file_index)
 }
 
 fn FileManager::include(self, relative_path: str, loc: &Loc): Result(u32, &Error) {
-    let parent_path = self.files.get!<FileInfo>(loc.file_index).absolute_path
+    let parent_path = self.files.get!(loc.file_index).absolute_path
     let absolute_path = resolve_path(relative_path, parent_path.as_str())
 
     let source = fs::read_file(absolute_path.as_str()) catch err {
@@ -138,7 +138,7 @@ fn resolve_path(file_path: str, relative_to: str): String {
     defer normalized.free()
 
     for i in 0..path_items.size {
-        let item = path_items.get!<str>(i)
+        let item = path_items.get!(i)
 
         if item.equals(".") {
             continue

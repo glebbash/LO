@@ -326,11 +326,11 @@ fn Parser::current(&self): &Token {
         index = self.lexer.tokens.size - 1
     }
 
-    return self.lexer.tokens.at!<Token>(index)
+    return self.lexer.tokens.at!(index)
 }
 
 fn Parser::prev(&self): &Token {
-    return self.lexer.tokens.at!<Token>(self.tokens_processed - 1)
+    return self.lexer.tokens.at!(self.tokens_processed - 1)
 }
 
 fn Parser::next(&self): &Token {

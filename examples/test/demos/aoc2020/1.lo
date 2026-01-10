@@ -9,10 +9,10 @@ fn main() {
     defer numbers.free()
 
     for i in 0..numbers.size {
-        let a = numbers.get!<u32>(i)
+        let a = numbers.get!(i)
 
         for j in 0..numbers.size {
-            let b = numbers.get!<u32>(j)
+            let b = numbers.get!(j)
 
             if a + b == 2020 {
                 println((a * b).to_tmp_str!())

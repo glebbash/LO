@@ -51,7 +51,7 @@ export fn _start() {
         stdout_enable_buffering()
 
         for i in 0..module.parser.lexer.tokens.size {
-            let token = module.parser.lexer.tokens.get!<Token>(i)
+            let token = module.parser.lexer.tokens.get!(i)
 
             defer a.reset()
 

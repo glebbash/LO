@@ -62,13 +62,13 @@ fn Map::count_trees_on_slope(self, slope_i: u32, slope_j: u32): u32 {
 }
 
 fn Map::get(self, i: u32, j: u32): Tile {
-    let row = self.rows.get!<&Vec(Tile)>(i)
+    let row = self.rows.get!(i)
     return *(row.at(j % row.size) as &Tile)
 }
 
 fn Map::free(self) {
     for i in 0..self.rows.size {
-        let row = self.rows.get!<&Vec(Tile)>(i)
+        let row = self.rows.get!(i)
         row.free()
     }
     self.rows.free()

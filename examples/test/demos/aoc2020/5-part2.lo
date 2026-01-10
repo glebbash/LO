@@ -16,7 +16,7 @@ fn main() {
     selection_sort(seat_ids)
     let prev_seat_id = 0
     for i in 0..tickets_count {
-        let seat_id = seat_ids.get!<u32>(i)
+        let seat_id = seat_ids.get!(i)
         if prev_seat_id + 2 == seat_id {
             println((prev_seat_id + 1).to_tmp_str!())
             break
@@ -30,7 +30,7 @@ fn selection_sort(items: &Vec(u32)) {
     for i in 0..n {
         let min_index = i
         for j in (i + 1)..n {
-            if items.get!<u32>(j) < items.get!<u32>(min_index) {
+            if items.get!(j) < items.get!(min_index) {
                 min_index = j
             }
         }

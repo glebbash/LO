@@ -14,10 +14,10 @@ export fn vec_len(vec: &Vec): u32 {
     return vec.size
 }
 
-export fn vec_push_u8(vec: &Vec, item: u8) {
+export fn vec_push_u8(vec: &Vec(u8), item: u8) {
     vec.push!(item)
 }
 
-export fn vec_get_u8(vec: &Vec, index: u32): u8 {
-    return vec.get!<u8>(index)
+export fn vec_get_u8(vec: &Vec(u8), index: u32): u8 {
+    return vec.get!(index)
 }

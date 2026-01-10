@@ -444,7 +444,7 @@ fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
 // @inline @generic fn
 macro Vec::free_deep!<T>(&self) {
     for i in 0..self.size {
-        self.get!<T>(i).free()
+        self.get!(i).free()
     }
     self.free()
 }
@@ -455,18 +455,18 @@ fn Vec::free(&self) {
 }
 
 // @inline @generic fn
-macro Vec::at!<T>(&self, index: u32): &T {
-    self.at(index) as &T
+macro Vec::at!(&self, index: u32): &itemof(typeof(self)) {
+    self.at(index) as &itemof(typeof(self))
 }
 
 // @inline @generic fn
-macro Vec::get!<T>(&self, index: u32): T {
-    *self.at!<T>(index)
+macro Vec::get!(&self, index: u32): itemof(typeof(self)) {
+    *self.at!(index)
 }
 
 // @inline @generic fn
-macro Vec::set!(&self, index: u32, item: infer T) {
-    *self.at!<T>(index) = item
+macro Vec::set!(&self, index: u32, item: itemof(typeof(self))) {
+    *self.at!(index) = item
 }
 
 fn Vec::at(&self, index: u32): &void {
@@ -609,7 +609,7 @@ fn String::push(self, c: u8) {
 }
 
 fn String::char_at(self, index: u32): u8 {
-    return *self.chars.at!<u8>(index)
+    return self.chars.get!(index)
 }
 
 // in-place modification, returns self
@@ -647,7 +647,7 @@ fn String::replace(self, search: str, replacement: str): String {
 fn String::join(items: &Vec(str), separator: u8): String {
     let output = String::new(32)
     for i in 0..items.size {
-        output.push_str(items.get!<str>(i))
+        output.push_str(items.get!(i))
         if i + 1 < items.size {
             output.push(separator)
         }

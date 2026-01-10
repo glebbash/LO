@@ -164,7 +164,7 @@ fn mark_checked(x: i32, y: i32, checked: &Vec(u32)): bool {
     let pos = x as u32 * 88 + y as u32
 
     for i in 0..checked.size {
-        if checked.get!<u32>(i) == pos {
+        if checked.get!(i) == pos {
             return false
         }
     }

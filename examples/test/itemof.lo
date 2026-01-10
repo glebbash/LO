@@ -1,0 +1,21 @@
+memory { min_pages: 1 }
+global MEM_CURRENT = 0
+
+fn main() {
+    let b = Box::new!(1)
+    let v = b.get!()
+}
+
+struct Box {
+    raw: &void,
+}
+
+macro Box::new!(value: infer T): Box(T) {
+    let self = Box { raw: MEM_CURRENT as &void }
+    MEM_CURRENT += sizeof T
+    self
+}
+
+macro Box::get!(self): itemof(typeof(self)) {
+    *(self.raw as &itemof(typeof(self)))
+}

@@ -1791,6 +1791,74 @@ impl Compiler {
                     return Ok(Type::Result(ResultType { ok, err }));
                 }
 
+                if let TypeExpr::Named(named) = &**container
+                    && named.name.repr == "typeof"
+                {
+                    if items.len() != 1 {
+                        return Err(Error {
+                            message: format!(
+                                "Expected exactly 1 type arguments, {} was found",
+                                items.len()
+                            ),
+                            loc: named.name.loc,
+                        });
+                    }
+
+                    let TypeExpr::Named(named) = &items[0] else {
+                        return Err(Error {
+                            message: format!("Symbol expected"),
+                            loc: *items[0].loc(),
+                        });
+                    };
+
+                    let symbol = self.current_scope(ctx).get_symbol(named.name.repr);
+                    let Some(symbol) = symbol else {
+                        return Err(Error {
+                            message: format!("Unknown symbol"),
+                            loc: *items[0].loc(),
+                        });
+                    };
+
+                    let SymbolType::Const = symbol.type_ else {
+                        return Err(Error {
+                            message: format!("Expected const, got {:?}", symbol.type_),
+                            loc: *items[0].loc(),
+                        });
+                    };
+
+                    return Ok(self.const_defs[symbol.col_index].code_unit.type_.clone());
+                }
+
+                if let TypeExpr::Named(named) = &**container
+                    && named.name.repr == "itemof"
+                {
+                    if items.len() != 1 {
+                        return Err(Error {
+                            message: format!(
+                                "Expected exactly 1 type arguments, {} was found",
+                                items.len()
+                            ),
+                            loc: named.name.loc,
+                        });
+                    }
+
+                    let container = self.build_type_check_ref(ctx, &items[0], true, loc)?;
+                    let container = container.deref_rec();
+
+                    let Type::Container(ContainerType {
+                        container: _,
+                        items,
+                    }) = container
+                    else {
+                        return Err(Error {
+                            message: format!("Expected container type"),
+                            loc: *items[0].loc(),
+                        });
+                    };
+
+                    return Ok(items[0].clone());
+                }
+
                 let container = self.build_type_check_ref(ctx, container, is_referenced, loc)?;
 
                 let mut type_items = Vec::new();
@@ -3493,10 +3561,16 @@ impl Compiler {
                     message.push_str(", ");
                 }
 
-                message.push_str(&macro_def.macro_params[i].param_name.repr);
-                message.push_str(": ");
-                let arg_type = TypeFmt(self, &macro_types[i]);
-                write!(&mut message, "{arg_type}",).unwrap();
+                let param = &macro_def.macro_params[i];
+                message.push_str(param.param_name.repr);
+                match param.param_type {
+                    FnParamType::Self_ | FnParamType::SelfRef => {}
+                    _ => {
+                        message.push_str(": ");
+                        let arg_type = TypeFmt(self, &macro_types[i]);
+                        write!(&mut message, "{arg_type}",).unwrap();
+                    }
+                }
             }
 
             let return_type = if let Some(return_type) = &macro_def.return_type {

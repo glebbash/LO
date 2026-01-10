@@ -37,7 +37,7 @@ fn Printer::print_file(&self) {
     stdout_enable_buffering()
 
     for i in 0..self.parser.ast.size {
-        let expr = self.parser.ast.get!<TopLevelExpr>(i)
+        let expr = self.parser.ast.get!(i)
         self.print_top_level_expr(expr)
     }
 
@@ -123,7 +123,7 @@ fn Printer::print_code_block(&self, code_block: &CodeBlock) {
     self.indent += 1
 
     for i in 0..code_block.exprs.size {
-        let expr = code_block.exprs.get!<CodeExpr>(i)
+        let expr = code_block.exprs.get!(i)
 
         let continues = self.print_double_backslashes_before(expr.loc().pos.offset)
         if continues {
@@ -187,7 +187,7 @@ fn Printer::print_indent(&self) {
     }
 
     for i in 0..self.backslash_stack.size {
-        if self.backslash_stack.get!<bool>(i) {
+        if self.backslash_stack.get!(i) {
             stdout_write("    ")
         }
     }
