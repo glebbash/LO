@@ -630,67 +630,69 @@ pub enum InfixOpTag {
 
 pub struct InfixOp {
     pub tag: InfixOpTag,
-    pub info: OpInfo,
-    pub token: Token,
+    pub bp: u32,
+    pub bp_next: u32,
 }
 
 impl InfixOp {
-    pub fn parse(token: Token, source: &'static [u8]) -> Option<Self> {
-        use InfixOpTag::*;
-        use OpAssoc::*;
+    pub fn parse(repr: &'static str) -> Option<Self> {
+        Some(match repr {
+            "catch" => Self::left_assoc(InfixOpTag::Catch, 14),
 
-        fn op(token: Token, tag: InfixOpTag, bp: u32, assoc: OpAssoc) -> Option<InfixOp> {
-            let info = OpInfo { bp, assoc };
-            return Some(InfixOp { tag, info, token });
-        }
+            "." => Self::left_assoc(InfixOpTag::FieldAccess, 13),
 
-        match token.get_value(source) {
-            "catch" => op(token, Catch, 14, Left),
+            "?" => Self::none_assoc(InfixOpTag::ErrorPropagation, 12),
 
-            "." => op(token, FieldAccess, 13, Left),
+            "as" => Self::left_assoc(InfixOpTag::Cast, 11),
 
-            "?" => op(token, ErrorPropagation, 12, None),
+            "%" => Self::left_assoc(InfixOpTag::Mod, 10),
+            "/" => Self::left_assoc(InfixOpTag::Div, 10),
+            "*" => Self::left_assoc(InfixOpTag::Mul, 10),
 
-            "as" => op(token, Cast, 11, Left),
+            "-" => Self::left_assoc(InfixOpTag::Sub, 9),
+            "+" => Self::left_assoc(InfixOpTag::Add, 9),
 
-            "%" => op(token, Mod, 10, Left),
-            "/" => op(token, Div, 10, Left),
-            "*" => op(token, Mul, 10, Left),
+            ">>" => Self::left_assoc(InfixOpTag::ShiftRight, 8),
+            "<<" => Self::left_assoc(InfixOpTag::ShiftLeft, 8),
 
-            "-" => op(token, Sub, 9, Left),
-            "+" => op(token, Add, 9, Left),
+            "&" => Self::left_assoc(InfixOpTag::BitAnd, 7),
 
-            ">>" => op(token, ShiftRight, 8, Left),
-            "<<" => op(token, ShiftLeft, 8, Left),
+            "|" => Self::left_assoc(InfixOpTag::BitOr, 6),
 
-            "&" => op(token, BitAnd, 7, Left),
+            ">=" => Self::left_assoc(InfixOpTag::GreaterEqual, 5),
+            ">" => Self::left_assoc(InfixOpTag::Greater, 5),
+            "<=" => Self::left_assoc(InfixOpTag::LessEqual, 5),
+            "<" => Self::left_assoc(InfixOpTag::Less, 5),
+            "!=" => Self::none_assoc(InfixOpTag::NotEqual, 5),
+            "==" => Self::none_assoc(InfixOpTag::Equal, 5),
 
-            "|" => op(token, BitOr, 6, Left),
+            "&&" => Self::left_assoc(InfixOpTag::And, 4),
+            "||" => Self::left_assoc(InfixOpTag::Or, 3),
 
-            ">=" => op(token, GreaterEqual, 5, Left),
-            ">" => op(token, Greater, 5, Left),
-            "<=" => op(token, LessEqual, 5, Left),
-            "<" => op(token, Less, 5, Left),
-            "!=" => op(token, NotEqual, 5, None),
-            "==" => op(token, Equal, 5, None),
+            "|>" => Self::left_assoc(InfixOpTag::ExprPipe, 2),
 
-            "&&" => op(token, And, 4, Left),
-            "||" => op(token, Or, 3, Left),
+            "=" => Self::none_assoc(InfixOpTag::Assign, 1),
+            "+=" => Self::none_assoc(InfixOpTag::AddAssign, 1),
+            "-=" => Self::none_assoc(InfixOpTag::SubAssign, 1),
+            "*=" => Self::none_assoc(InfixOpTag::MulAssign, 1),
+            "/=" => Self::none_assoc(InfixOpTag::DivAssign, 1),
+            "%=" => Self::none_assoc(InfixOpTag::ModAssign, 1),
+            "&=" => Self::none_assoc(InfixOpTag::BitAndAssign, 1),
+            "|=" => Self::none_assoc(InfixOpTag::BitOrAssign, 1),
+            "<<=" => Self::none_assoc(InfixOpTag::ShiftLeftAssign, 1),
+            ">>=" => Self::none_assoc(InfixOpTag::ShiftRightAssign, 1),
+            _ => return Option::None,
+        })
+    }
 
-            "|>" => op(token, ExprPipe, 2, Left),
+    fn left_assoc(tag: InfixOpTag, bp: u32) -> Self {
+        let bp_next = bp + 1;
+        Self { tag, bp, bp_next }
+    }
 
-            "=" => op(token, Assign, 1, None),
-            "+=" => op(token, AddAssign, 1, None),
-            "-=" => op(token, SubAssign, 1, None),
-            "*=" => op(token, MulAssign, 1, None),
-            "/=" => op(token, DivAssign, 1, None),
-            "%=" => op(token, ModAssign, 1, None),
-            "&=" => op(token, BitAndAssign, 1, None),
-            "|=" => op(token, BitOrAssign, 1, None),
-            "<<=" => op(token, ShiftLeftAssign, 1, None),
-            ">>=" => op(token, ShiftRightAssign, 1, None),
-            _ => Option::None,
-        }
+    fn none_assoc(tag: InfixOpTag, bp: u32) -> Self {
+        let bp_next = bp + 1;
+        Self { tag, bp, bp_next }
     }
 }
 
@@ -704,45 +706,24 @@ pub enum PrefixOpTag {
 
 pub struct PrefixOp {
     pub tag: PrefixOpTag,
-    pub info: OpInfo,
-    pub token: Token,
+    pub bp_next: u32,
 }
 
 impl PrefixOp {
-    pub fn parse(token: Token, source: &'static [u8]) -> Option<Self> {
-        use OpAssoc::*;
-        use PrefixOpTag::*;
-
-        let (tag, info) = match token.get_value(source) {
-            "!" => (Not, OpInfo { bp: 8, assoc: Left }),
-            "&" => (Reference, OpInfo { bp: 8, assoc: Left }),
-            "*" => (Dereference, OpInfo { bp: 8, assoc: Left }),
-            "+" => (Positive, OpInfo { bp: 9, assoc: Left }),
-            "-" => (Negative, OpInfo { bp: 9, assoc: Left }),
+    pub fn parse(repr: &'static str) -> Option<Self> {
+        Some(match repr {
+            "!" => Self::left_assoc(PrefixOpTag::Not, 8),
+            "&" => Self::left_assoc(PrefixOpTag::Reference, 8),
+            "*" => Self::left_assoc(PrefixOpTag::Dereference, 8),
+            "+" => Self::left_assoc(PrefixOpTag::Positive, 9),
+            "-" => Self::left_assoc(PrefixOpTag::Negative, 9),
             _ => return Option::None,
-        };
-        Some(Self { tag, info, token })
+        })
     }
-}
 
-#[derive(PartialEq)]
-pub enum OpAssoc {
-    Left,
-    None,
-}
-
-pub struct OpInfo {
-    pub bp: u32,
-    assoc: OpAssoc,
-}
-
-impl OpInfo {
-    pub fn get_min_bp_for_next(&self) -> u32 {
-        if self.assoc == OpAssoc::Left {
-            self.bp + 1
-        } else {
-            self.bp
-        }
+    fn left_assoc(tag: PrefixOpTag, bp: u32) -> Self {
+        let bp_next = bp + 1;
+        Self { tag, bp_next }
     }
 }
 

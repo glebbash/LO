@@ -435,7 +435,6 @@ impl Parser {
             }
 
             let param_name = self.parse_ident()?;
-
             if param_name.repr != "self" {
                 if let FnParamType::SelfRef = param_type {
                     return Err(Error {
@@ -580,16 +579,16 @@ impl Parser {
                 break;
             }
 
-            let Some(op) = InfixOp::parse(op_symbol, self.source) else {
+            let Some(op) = InfixOp::parse(op_symbol.get_value(self.source)) else {
                 break;
             };
 
-            if op.info.bp < min_bp {
+            if op.bp < min_bp {
                 break;
             }
 
             self.next(); // skip operator
-            primary = self.parse_code_expr_postfix(primary, op)?;
+            primary = self.parse_code_expr_postfix(primary, op, &op_symbol.loc)?;
         }
 
         Ok(primary)
@@ -968,12 +967,10 @@ impl Parser {
 
         let op_token = self.current();
         if !op_token.is_terminal() {
-            if let Some(op) = PrefixOp::parse(op_token.clone(), self.source) {
+            if let Some(op) = PrefixOp::parse(op_token.get_value(self.source)) {
                 self.next(); // skip operator
 
                 let mut loc = self.prev().loc;
-
-                let min_bp = op.info.get_min_bp_for_next();
 
                 match op.tag {
                     PrefixOpTag::Reference
@@ -981,14 +978,14 @@ impl Parser {
                     | PrefixOpTag::Not
                     | PrefixOpTag::Positive
                     | PrefixOpTag::Negative => {
-                        let expr = Box::new(self.parse_code_expr(min_bp)?);
+                        let expr = Box::new(self.parse_code_expr(op.bp_next)?);
 
                         loc.end_pos = self.prev().loc.end_pos;
 
                         return Ok(CodeExpr::PrefixOp(PrefixOpExpr {
                             expr,
                             op_tag: op.tag,
-                            op_loc: op.token.loc,
+                            op_loc: op_token.loc,
                             loc,
                         }));
                     }
@@ -1205,9 +1202,12 @@ impl Parser {
         return Ok(type_args);
     }
 
-    fn parse_code_expr_postfix(&self, primary: CodeExpr, op: InfixOp) -> Result<CodeExpr, Error> {
-        let min_bp = op.info.get_min_bp_for_next();
-
+    fn parse_code_expr_postfix(
+        &self,
+        primary: CodeExpr,
+        op: InfixOp,
+        op_loc: &Loc,
+    ) -> Result<CodeExpr, Error> {
         match op.tag {
             InfixOpTag::Equal
             | InfixOpTag::NotEqual
@@ -1236,14 +1236,14 @@ impl Parser {
             | InfixOpTag::ShiftLeftAssign
             | InfixOpTag::ShiftRightAssign => {
                 let lhs = primary;
-                let rhs = self.parse_code_expr(min_bp)?;
+                let rhs = self.parse_code_expr(op.bp_next)?;
 
                 let mut loc = lhs.loc();
                 loc.end_pos = rhs.loc().end_pos;
 
                 Ok(CodeExpr::InfixOp(InfixOpExpr {
                     op_tag: op.tag,
-                    op_loc: op.token.loc,
+                    op_loc: *op_loc,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
                     loc,
@@ -1308,12 +1308,12 @@ impl Parser {
             InfixOpTag::Assign => {
                 let mut loc = primary.loc();
 
-                let value = self.parse_code_expr(min_bp)?;
+                let value = self.parse_code_expr(op.bp_next)?;
 
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::Assign(AssignExpr {
-                    op_loc: op.token.loc,
+                    op_loc: *op_loc,
                     lhs: Box::new(primary),
                     rhs: Box::new(value),
                     loc,
@@ -1331,7 +1331,7 @@ impl Parser {
                     lhs: Box::new(primary),
                     error_bind,
                     catch_body,
-                    catch_loc: op.token.loc,
+                    catch_loc: *op_loc,
                     loc,
                 }))
             }
@@ -1347,14 +1347,14 @@ impl Parser {
             InfixOpTag::ExprPipe => {
                 let mut loc = primary.loc();
 
-                let rhs = self.parse_code_expr(min_bp)?;
+                let rhs = self.parse_code_expr(op.bp_next)?;
 
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::ExprPipe(ExprPipeExpr {
                     lhs: Box::new(primary),
                     rhs: Box::new(rhs),
-                    op_loc: op.token.loc,
+                    op_loc: *op_loc,
                     loc,
                 }))
             }
