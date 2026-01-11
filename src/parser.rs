@@ -90,7 +90,7 @@ impl Parser {
 
             return Ok(TopLevelExpr::TryExport(TryExportExpr {
                 in_name,
-                out_name: EscapedString(out_name.loc),
+                out_name: QuotedString::new(out_name.loc),
                 from_root,
                 loc,
             }));
@@ -128,7 +128,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::Include(IncludeExpr {
-                file_path: EscapedString(file_path.loc),
+                file_path: QuotedString::new(file_path.loc),
                 alias,
                 with_extern,
                 loc,
@@ -152,7 +152,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::Import(ImportExpr {
-                module_name: EscapedString(module_name.loc),
+                module_name: QuotedString::new(module_name.loc),
                 items,
                 loc,
             }));
@@ -594,29 +594,6 @@ impl Parser {
         Ok(primary)
     }
 
-    fn has_backslashes_between(
-        &self,
-        start_hint: &mut usize,
-        offset_start: usize,
-        offset_end: usize,
-    ) -> bool {
-        let mut i = *start_hint;
-
-        while i < self.lexer.backslashes.len() {
-            let backslash = &self.lexer.backslashes[i];
-            if backslash.pos.offset < offset_start {
-                i += 1;
-                continue;
-            }
-
-            *start_hint = i;
-            return backslash.end_pos.offset <= offset_end;
-        }
-
-        *start_hint = i;
-        false
-    }
-
     fn parse_code_expr_primary(&self) -> Result<CodeExpr, Error> {
         if let Some(_) = self.eat(Symbol, "true") {
             let loc = self.prev().loc;
@@ -665,7 +642,7 @@ impl Parser {
 
         if let Some(string) = self.eat_any(StringLiteral).cloned() {
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                value: EscapedString(string.loc).unescape(self.source),
+                value: QuotedString::new(string.loc).get_value(self.source),
                 repr: string.get_value(self.source),
                 loc: string.loc,
             }));
@@ -894,7 +871,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            let message = EscapedString(message.loc);
+            let message = QuotedString::new(message.loc);
             return Ok(CodeExpr::Dbg(DbgExpr { message, loc }));
         }
 
@@ -1080,128 +1057,6 @@ impl Parser {
         Ok(CodeExpr::Ident(ident))
     }
 
-    fn parse_match_header(&self) -> Result<MatchHeader, Error> {
-        let variant_name = self.parse_ident()?;
-        self.expect(Delim, "(")?;
-        let variant_bind = self.parse_ident()?;
-        self.expect(Delim, ")")?;
-        self.expect(Operator, "=")?;
-        let expr_to_match = self.parse_code_expr(0)?;
-
-        Ok(MatchHeader {
-            variant_name,
-            variant_bind,
-            expr_to_match,
-        })
-    }
-
-    fn parse_ident(&self) -> Result<IdentExpr, Error> {
-        let mut ident = IdentExpr {
-            repr: "", // stub
-            parts: Vec::new(),
-            loc: self.current().loc,
-        };
-
-        loop {
-            let ident_part = self.expect_any(Symbol)?;
-            ident.parts.push(ident_part.loc);
-
-            if let None = self.eat(Operator, "::") {
-                break;
-            }
-        }
-
-        ident.loc.end_pos = self.prev().loc.end_pos;
-
-        ident.repr = ident.loc.read_span(self.source);
-        if ident.repr.contains(" ") {
-            self.compiler.report_error(&Error {
-                message: format!("Unexpected space in identifier"),
-                loc: ident.loc,
-            });
-        }
-
-        Ok(ident)
-    }
-
-    fn parse_code_expr_map(&self) -> Result<CodeExprMap, Error> {
-        let mut fields = Vec::new();
-        let mut has_trailing_comma = false;
-
-        let mut loc = self.expect(Delim, "{")?.loc;
-
-        while let None = self.eat(Delim, "}") {
-            let mut field_loc = self.current().loc;
-
-            let field_name = self.expect_any(Symbol)?.clone();
-            self.expect(Operator, ":")?;
-            let value = self.parse_code_expr(0)?;
-
-            field_loc.end_pos = self.prev().loc.end_pos;
-
-            fields.push(CodeExprMapField {
-                key: field_name.get_value(self.source),
-                value,
-                loc: field_loc,
-            });
-
-            if !self.current().is(Delim, "}", self.source) {
-                self.expect(Delim, ",")?;
-                has_trailing_comma = true;
-            } else {
-                has_trailing_comma = false;
-            }
-        }
-
-        loc.end_pos = self.prev().loc.end_pos;
-
-        Ok(CodeExprMap {
-            fields,
-            has_trailing_comma,
-            loc,
-        })
-    }
-
-    fn parse_fn_args(&self) -> Result<CodeExprList, Error> {
-        let mut has_trailing_comma = false;
-        let mut items = Vec::new();
-
-        self.expect(Delim, "(")?;
-        while let None = self.eat(Delim, ")") {
-            items.push(self.parse_code_expr(0)?);
-
-            if !self.current().is(Delim, ")", self.source) {
-                self.expect(Delim, ",")?;
-                has_trailing_comma = true;
-            } else {
-                has_trailing_comma = false;
-            }
-        }
-
-        return Ok(CodeExprList {
-            items,
-            has_trailing_comma,
-        });
-    }
-
-    fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, Error> {
-        let mut type_args = Vec::new();
-
-        let Some(_) = self.eat(Operator, "<") else {
-            return Ok(type_args);
-        };
-
-        while let None = self.eat(Operator, ">") {
-            type_args.push(self.parse_type_expr()?);
-
-            if !self.current().is(Operator, ">", self.source) {
-                self.expect(Delim, ",")?;
-            }
-        }
-
-        return Ok(type_args);
-    }
-
     fn parse_code_expr_postfix(
         &self,
         primary: CodeExpr,
@@ -1359,6 +1214,151 @@ impl Parser {
                 }))
             }
         }
+    }
+
+    fn has_backslashes_between(
+        &self,
+        start_hint: &mut usize,
+        offset_start: usize,
+        offset_end: usize,
+    ) -> bool {
+        let mut i = *start_hint;
+
+        while i < self.lexer.backslashes.len() {
+            let backslash = &self.lexer.backslashes[i];
+            if backslash.pos.offset < offset_start {
+                i += 1;
+                continue;
+            }
+
+            *start_hint = i;
+            return backslash.end_pos.offset <= offset_end;
+        }
+
+        *start_hint = i;
+        false
+    }
+
+    fn parse_match_header(&self) -> Result<MatchHeader, Error> {
+        let variant_name = self.parse_ident()?;
+        self.expect(Delim, "(")?;
+        let variant_bind = self.parse_ident()?;
+        self.expect(Delim, ")")?;
+        self.expect(Operator, "=")?;
+        let expr_to_match = self.parse_code_expr(0)?;
+
+        Ok(MatchHeader {
+            variant_name,
+            variant_bind,
+            expr_to_match,
+        })
+    }
+
+    fn parse_ident(&self) -> Result<IdentExpr, Error> {
+        let mut ident = IdentExpr {
+            repr: "", // stub
+            parts: Vec::new(),
+            loc: self.current().loc,
+        };
+
+        loop {
+            let ident_part = self.expect_any(Symbol)?;
+            ident.parts.push(ident_part.loc);
+
+            if let None = self.eat(Operator, "::") {
+                break;
+            }
+        }
+
+        ident.loc.end_pos = self.prev().loc.end_pos;
+
+        ident.repr = ident.loc.read_span(self.source);
+        if ident.repr.contains(" ") {
+            self.compiler.report_error(&Error {
+                message: format!("Unexpected space in identifier"),
+                loc: ident.loc,
+            });
+        }
+
+        Ok(ident)
+    }
+
+    fn parse_code_expr_map(&self) -> Result<CodeExprMap, Error> {
+        let mut fields = Vec::new();
+        let mut has_trailing_comma = false;
+
+        let mut loc = self.expect(Delim, "{")?.loc;
+
+        while let None = self.eat(Delim, "}") {
+            let mut field_loc = self.current().loc;
+
+            let field_name = self.expect_any(Symbol)?.clone();
+            self.expect(Operator, ":")?;
+            let value = self.parse_code_expr(0)?;
+
+            field_loc.end_pos = self.prev().loc.end_pos;
+
+            fields.push(CodeExprMapField {
+                key: field_name.get_value(self.source),
+                value,
+                loc: field_loc,
+            });
+
+            if !self.current().is(Delim, "}", self.source) {
+                self.expect(Delim, ",")?;
+                has_trailing_comma = true;
+            } else {
+                has_trailing_comma = false;
+            }
+        }
+
+        loc.end_pos = self.prev().loc.end_pos;
+
+        Ok(CodeExprMap {
+            fields,
+            has_trailing_comma,
+            loc,
+        })
+    }
+
+    fn parse_fn_args(&self) -> Result<CodeExprList, Error> {
+        let mut has_trailing_comma = false;
+        let mut items = Vec::new();
+
+        self.expect(Delim, "(")?;
+        while let None = self.eat(Delim, ")") {
+            items.push(self.parse_code_expr(0)?);
+
+            if !self.current().is(Delim, ")", self.source) {
+                self.expect(Delim, ",")?;
+                has_trailing_comma = true;
+            } else {
+                has_trailing_comma = false;
+            }
+        }
+
+        return Ok(CodeExprList {
+            items,
+            has_trailing_comma,
+        });
+    }
+
+    fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, Error> {
+        let mut type_args = Vec::new();
+
+        let Some(_) = self.eat(Operator, "<") else {
+            return Ok(type_args);
+        };
+
+        while let None = self.eat(Operator, ">") {
+            type_args.push(self.parse_type_expr()?);
+
+            if !self.current().is(Operator, ">", self.source) {
+                self.expect(Delim, ",")?;
+            }
+        }
+
+        return Ok(type_args);
     }
 
     fn extend_ident(&self, ident: &mut IdentExpr, new_end_pos: Pos) {

@@ -50,14 +50,14 @@ pub enum FnParamType {
 ///   but `import` is already a WASM concept and `and expose` is two new keywords for just one flag
 
 pub struct IncludeExpr {
-    pub file_path: EscapedString,
+    pub file_path: QuotedString,
     pub alias: Option<IdentExpr>,
     pub with_extern: bool,
     pub loc: Loc,
 }
 
 pub struct ImportExpr {
-    pub module_name: EscapedString,
+    pub module_name: QuotedString,
     pub items: Vec<ImportItem>,
     pub loc: Loc,
 }
@@ -130,7 +130,7 @@ pub struct MemoryDefExpr {
 
 pub struct TryExportExpr {
     pub in_name: IdentExpr,
-    pub out_name: EscapedString,
+    pub out_name: QuotedString,
     pub from_root: bool,
     pub loc: Loc,
 }
@@ -235,7 +235,6 @@ pub enum CodeExpr {
     IntrinsicCall(MacroFnCallExpr),
 
     // control flow
-    Paren(ParenExpr),
     Return(ReturnExpr),
     If(IfExpr),
     WhileLoop(WhileLoopExpr),
@@ -246,10 +245,10 @@ pub enum CodeExpr {
     Catch(CatchExpr),
     Match(MatchExpr),
 
+    // other
+    Paren(ParenExpr),
     DoWith(DoWithExpr),
     ExprPipe(ExprPipeExpr),
-
-    // TODO?: should these use intrinsic syntax?
     Dbg(DbgExpr),
     Sizeof(SizeofExpr),
 }
@@ -294,10 +293,10 @@ pub struct IdentExpr {
 }
 
 pub struct InfixOpExpr {
-    pub op_tag: InfixOpTag,
-    pub op_loc: Loc,
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
+    pub op_tag: InfixOpTag,
+    pub op_loc: Loc,
     pub loc: Loc,
 }
 
@@ -381,7 +380,7 @@ pub struct ExprPipeExpr {
 }
 
 pub struct DbgExpr {
-    pub message: EscapedString,
+    pub message: QuotedString,
     pub loc: Loc,
 }
 
@@ -450,7 +449,7 @@ pub struct CatchExpr {
     pub lhs: Box<CodeExpr>,
     pub error_bind: IdentExpr,
     pub catch_body: CodeBlock,
-    pub catch_loc: Loc, // on `catch` keyword used to report catch errors
+    pub catch_loc: Loc,
     pub loc: Loc,
 }
 

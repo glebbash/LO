@@ -571,7 +571,7 @@ impl Compiler {
                     continue;
                 };
 
-                let Some(module) = self.include(&include.file_path.unescape(source), &include.loc)
+                let Some(module) = self.include(&include.file_path.get_value(source), &include.loc)
                 else {
                     continue;
                 };
@@ -733,7 +733,7 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::Import(import_expr) => {
-                    let module_name = import_expr.module_name.unescape(module.source);
+                    let module_name = import_expr.module_name.get_value(module.source);
 
                     for item in &import_expr.items {
                         let ImportItem::FnDecl(fn_decl) = item else {
@@ -1001,11 +1001,13 @@ impl Compiler {
 
                         let mut variant_type = Type::Void;
                         if let Some(variant_type_expr) = &variant.variant_type {
-                            variant_type =
-                                catch!(self.build_type(&module.ctx, variant_type_expr), err, {
+                            match self.build_type(&module.ctx, variant_type_expr) {
+                                Ok(t) => variant_type = t,
+                                Err(err) => {
                                     self.report_error(&err);
-                                    continue 'variants;
-                                });
+                                    variant_type = Type::Never
+                                }
+                            }
                         }
 
                         if !self.is_type_compatible(&enum_.variant_type, &variant_type) {
@@ -1165,7 +1167,7 @@ impl Compiler {
                         });
                     }
 
-                    let exported_as = try_export_expr.out_name.unescape(module.source);
+                    let exported_as = try_export_expr.out_name.get_value(module.source);
                     fn_info.be_mut().exported_as.push(exported_as);
                 }
                 TopLevelExpr::Import(import_expr) => {
@@ -1173,7 +1175,7 @@ impl Compiler {
                         let fn_decl = match item {
                             ImportItem::FnDecl(fn_decl) => fn_decl,
                             ImportItem::Memory(memory_def) => {
-                                let module_name = import_expr.module_name.unescape(module.source);
+                                let module_name = import_expr.module_name.get_value(module.source);
 
                                 let res = self.define_memory(
                                     module,
@@ -2775,7 +2777,7 @@ impl Compiler {
                 let debug_message = format!(
                     "{} - {}",
                     loc.to_string(&self.fm),
-                    message.unescape(self.fm.files[loc.file_index].source.as_bytes().relax())
+                    message.get_value(self.fm.files[loc.file_index].source.as_bytes().relax())
                 );
                 let str = self.process_const_string(debug_message, &loc)?;
 

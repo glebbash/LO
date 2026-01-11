@@ -70,7 +70,7 @@ impl Printer {
                 loc: _,
             }) => {
                 stdout_write("include ");
-                stdout_write(file_path.get_raw(self.parser.lexer.source));
+                stdout_write(file_path.get_repr(self.parser.lexer.source));
                 if let Some(alias) = alias {
                     stdout_write(" as ");
                     stdout_write(&alias.repr);
@@ -86,7 +86,7 @@ impl Printer {
                 loc,
             }) => {
                 stdout_write("import from ");
-                stdout_write(module_name.get_raw(self.parser.lexer.source));
+                stdout_write(module_name.get_repr(self.parser.lexer.source));
                 stdout_writeln(" {");
                 self.indent += 1;
 
@@ -230,7 +230,7 @@ impl Printer {
                 stdout_write("try export ");
                 stdout_write(&in_name.repr);
                 stdout_write(" as ");
-                stdout_write(out_name.get_raw(self.parser.lexer.source));
+                stdout_write(out_name.get_repr(self.parser.lexer.source));
                 if *from_root {
                     stdout_write(" from root");
                 }
@@ -284,7 +284,7 @@ impl Printer {
         self.last_printed_item_line = fn_decl.loc.end_pos.line;
     }
 
-    fn print_fn_params(&mut self, fn_params: &Vec<FnParam>, is_multiline: bool) {
+    fn print_fn_params(&mut self, params: &Vec<FnParam>, is_multiline: bool) {
         stdout_write("(");
 
         if is_multiline {
@@ -292,45 +292,45 @@ impl Printer {
             stdout_write("\n");
         }
 
-        for (fn_param, index) in fn_params.iter().zip(0..) {
+        for (param, index) in params.iter().zip(0..) {
             if index != 0 {
                 stdout_write(",");
             }
 
-            let continues = self.print_double_backslashes_before(fn_param.loc.pos.offset);
+            let continues = self.print_double_backslashes_before(param.loc.pos.offset);
 
             if is_multiline && !continues {
                 if index != 0 {
                     stdout_write("\n");
                 }
 
-                self.print_comments_before(fn_param.loc.pos);
+                self.print_comments_before(param.loc.pos);
                 self.print_indent();
             } else if index != 0 {
                 stdout_write(" ");
             }
 
-            match &fn_param.param_type {
+            match &param.param_type {
                 FnParamType::Self_ => {
-                    stdout_write(&fn_param.param_name.repr);
+                    stdout_write(&param.param_name.repr);
                 }
                 FnParamType::SelfRef => {
                     stdout_write("&");
-                    stdout_write(&fn_param.param_name.repr);
+                    stdout_write(&param.param_name.repr);
                 }
                 FnParamType::Type { expr } => {
-                    stdout_write(&fn_param.param_name.repr);
+                    stdout_write(&param.param_name.repr);
                     stdout_write(": ");
                     self.print_type_expr(&expr);
                 }
                 FnParamType::Infer { name } => {
-                    stdout_write(&fn_param.param_name.repr);
+                    stdout_write(&param.param_name.repr);
                     stdout_write(": infer ");
                     stdout_write(name);
                 }
             }
 
-            self.last_printed_item_line = fn_param.loc.pos.line;
+            self.last_printed_item_line = param.loc.pos.line;
         }
 
         if is_multiline {
@@ -529,10 +529,10 @@ impl Printer {
                 }
             }
             CodeExpr::InfixOp(InfixOpExpr {
-                op_tag: _,
-                op_loc,
                 lhs,
                 rhs,
+                op_tag: _,
+                op_loc,
                 loc: _,
             }) => {
                 self.print_code_expr(lhs);
@@ -654,7 +654,7 @@ impl Printer {
             }
             CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
                 stdout_write("dbg ");
-                stdout_write(message.get_raw(self.parser.lexer.source));
+                stdout_write(message.get_repr(self.parser.lexer.source));
             }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 stdout_write("defer ");

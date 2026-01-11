@@ -495,18 +495,24 @@ impl Lexer {
 }
 
 #[derive(Clone)]
-pub struct EscapedString(pub Loc);
+pub struct QuotedString {
+    pub loc: Loc,
+}
 
-impl EscapedString {
-    pub fn get_raw(&self, source: &'static [u8]) -> &str {
-        return self.0.read_span(source);
+impl QuotedString {
+    pub fn new(loc: Loc) -> Self {
+        Self { loc }
     }
 
-    pub fn unescape(&self, source: &'static [u8]) -> String {
-        let escaped = self.get_raw(source);
-        let mut unescaped = String::new();
+    pub fn get_repr(&self, source: &'static [u8]) -> &str {
+        return self.loc.read_span(source);
+    }
 
-        let mut chars = escaped.chars();
+    pub fn get_value(&self, source: &'static [u8]) -> String {
+        let repr = self.get_repr(source);
+        let mut value = String::new();
+
+        let mut chars = repr.chars();
 
         chars.next().unwrap(); // skip start quote
 
@@ -517,22 +523,22 @@ impl EscapedString {
                 '\\' => {
                     let next_char = chars.next().unwrap();
                     match next_char {
-                        'n' => unescaped.push('\n'),
-                        'r' => unescaped.push('\r'),
-                        't' => unescaped.push('\t'),
-                        '0' => unescaped.push('\0'),
-                        '\\' => unescaped.push('\\'),
-                        '"' => unescaped.push('"'),
+                        'n' => value.push('\n'),
+                        'r' => value.push('\r'),
+                        't' => value.push('\t'),
+                        '0' => value.push('\0'),
+                        '\\' => value.push('\\'),
+                        '"' => value.push('"'),
                         _ => unreachable!(),
                     }
                 }
                 _ => {
-                    unescaped.push(char);
+                    value.push(char);
                 }
             }
         }
 
-        unescaped
+        value
     }
 }
 
@@ -691,7 +697,7 @@ impl InfixOp {
     }
 
     fn none_assoc(tag: InfixOpTag, bp: u32) -> Self {
-        let bp_next = bp + 1;
+        let bp_next = bp;
         Self { tag, bp, bp_next }
     }
 }
