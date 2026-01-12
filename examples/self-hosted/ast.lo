@@ -1,19 +1,30 @@
 include "./core.lo"
+include "./lexer.lo"
+
+// TODO: impl proper cleanup for all &Vec fields here
 
 enum TopLevelExpr(&void) {
     FnDef(&FnDefExpr),
+    Include(&IncludeExpr),
+    Import(&ImportExpr),
+    GlobalDef(&GlobalDefExpr),
+    StructDef(&StructDefExpr),
+    EnumDef(&EnumDefExpr),
+    TypeDef(&TypeDefExpr),
+    ConstDef(&ConstDefExpr),
+    MemoryDef(&MemoryDefExpr),
+    TryExport(&TryExportExpr),
+    MacroDef(&MacroDefExpr),
 }
 
-struct FnDefExpr {
-    exported: bool,
-    decl: &FnDeclExpr,
-    body: &CodeBlock,
+struct IdentExpr {
+    repr: str,
+    parts: &Vec(Loc),
     loc: Loc,
 }
 
 struct FnDeclExpr {
-    fn_name: &IdentExpr,
-    // @leak
+    fn_name: IdentExpr,
     fn_params: &Vec(FnParam),
     fn_params_trailing_comma: bool,
     // @optional
@@ -21,14 +32,22 @@ struct FnDeclExpr {
     loc: Loc,
 }
 
+struct FnDefExpr {
+    exported: bool,
+    decl: FnDeclExpr,
+    // NOTE: this is ref only cause CodeBlock isn't defined at this point
+    body: &CodeBlock,
+    loc: Loc,
+}
+
 struct FnParam {
-    param_name: &IdentExpr,
+    param_name: IdentExpr,
     param_type: FnParamType,
     loc: Loc,
 }
 
 enum FnParamType(&void) {
-    Self_(&void),
+    Self(&void),
     SelfRef(&void),
     Type(&FnParamTypeType),
     Infer(&FnParamTypeInfer),
@@ -42,61 +61,264 @@ struct FnParamTypeInfer {
     name: str,
 }
 
-enum TypeExpr(&void) {
-    Named(&TypeExprNamed),
-    Pointer(&TypeExprPointer),
-    SequencePointer(&TypeExprSequencePointer),
-    Result(&TypeExprResult),
-    Of(&TypeExprOf),
-}
+/// DOC: `include "<module path>" [as <alias>] [with extern]` syntax was chosen
+///   because it reuses existing rust keywords and reads nicely (mostly).
+///
+/// Another option was `import "..." [as ...] [and expose]`
+///   but `import` is already a WASM concept and `and expose` is two new keywords for just one flag
 
-struct TypeExprNamed {
-    name: &IdentExpr,
-}
-
-struct TypeExprPointer {
-    pointee: &TypeExpr,
+struct IncludeExpr {
+    file_path: QuotedString,
+    // @optional
+    alias: &IdentExpr,
+    with_extern: bool,
     loc: Loc,
 }
 
-struct TypeExprSequencePointer {
-    pointee: &TypeExpr,
+struct ImportExpr {
+    module_name: QuotedString,
+    items: &Vec(ImportItem),
     loc: Loc,
 }
 
-struct TypeExprResult {
-    ok_type: &TypeExpr,
-    err_type: &TypeExpr,
+enum ImportItem(&void) {
+    FnDecl(&FnDeclExpr),
+    Memory(&MemoryDefExpr),
+}
+
+fn ImportItem::loc(self): Loc {
+    if match ImportItem::FnDecl(e) = self {
+        return e.loc
+    }
+    if match ImportItem::Memory(e) = self {
+        return e.loc
+    }
+    @unreachable()
+}
+
+struct GlobalDefExpr {
+    global_name: IdentExpr,
+    global_value: CodeExpr,
     loc: Loc,
 }
 
-struct TypeExprOf {
-    container_type: &TypeExpr,
-    item_type: &TypeExpr,
+struct StructDefExpr {
+    struct_name: IdentExpr,
+    fields: &Vec(StructDefField),
     loc: Loc,
 }
 
-struct IdentExpr {
-    // @leak
-    repr: String,
-    // @leak
-    parts: &Vec(Loc),
+struct StructDefField {
+    field_name: IdentExpr,
+    field_type: TypeExpr,
+    loc: Loc,
+}
+
+struct EnumDefExpr {
+    enum_name: IdentExpr,
+    // @optional
+    variant_type: &TypeExpr,
+    variants: &Vec(EnumDefVariant),
+    loc: Loc,
+}
+
+struct EnumDefVariant {
+    variant_name: IdentExpr,
+    // @optional
+    variant_type: &TypeExpr,
+    loc: Loc,
+}
+
+struct TypeDefExpr {
+    type_name: IdentExpr,
+    type_value: TypeExpr,
+    loc: Loc,
+}
+
+struct ConstDefExpr {
+    const_name: IdentExpr,
+    const_value: CodeExpr,
+    loc: Loc,
+}
+
+struct CodeExprMap {
+    fields: &Vec(CodeExprMapField),
+    has_trailing_comma: bool,
+    loc: Loc,
+}
+
+struct MemoryDefExpr {
+    exported: bool,
+    params: CodeExprMap,
+    loc: Loc,
+}
+
+/// DOC: `try export <in> as "<out>" [from root]` syntax was chosen
+///   because it reuses existing rust keywords and reads nicely
+
+struct TryExportExpr {
+    in_name: IdentExpr,
+    out_name: QuotedString,
+    from_root: bool,
     loc: Loc,
 }
 
 struct CodeBlock {
-    // @leak
     exprs: &Vec(CodeExpr),
     loc: Loc,
 }
 
-// TODO: port other variants
+struct MacroDefExpr {
+    macro_name: IdentExpr,
+    macro_params: &Vec(FnParam),
+    macro_params_trailing_comma: bool,
+    macro_type_params: &Vec(str),
+    // @optional
+    return_type: &TypeExpr,
+    body: CodeBlock,
+    loc: Loc,
+}
+
+fn TopLevelExpr::loc(self): Loc {
+    if match TopLevelExpr::FnDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::Include(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::Import(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::GlobalDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::StructDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::EnumDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::TypeDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::ConstDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::MemoryDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::TryExport(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::MacroDef(e) = self {
+        return e.loc
+    }
+    @unreachable()
+}
+
+enum TypeExpr(&void) {
+    Named(&TypeExprNamed),
+    Pointer(&TypeExprPointer),
+    SequencePointer(&TypeExprSequencePointer),
+    Container(&TypeExprContainer),
+}
+
+fn TypeExpr::loc(self): Loc {
+    if match TypeExpr::Named(e) = self {
+        return e.name.loc
+    }
+    if match TypeExpr::Pointer(e) = self {
+        return e.loc
+    }
+    if match TypeExpr::SequencePointer(e) = self {
+        return e.loc
+    }
+    if match TypeExpr::Container(e) = self {
+        return e.loc
+    }
+    @unreachable()
+}
+
+struct TypeExprNamed {
+    name: IdentExpr,
+}
+
+struct TypeExprPointer {
+    pointee: TypeExpr,
+    loc: Loc,
+}
+
+struct TypeExprSequencePointer {
+    pointee: TypeExpr,
+    loc: Loc,
+}
+
+struct TypeExprContainer {
+    container: TypeExpr,
+    items: &Vec(TypeExpr),
+    loc: Loc,
+}
+
 enum CodeExpr(&void) {
+    // literals
+    BoolLiteral(&BoolLiteralExpr),
+    CharLiteral(&CharLiteralExpr),
+    NullLiteral(&NullLiteralExpr),
     IntLiteral(&IntLiteralExpr),
+    StringLiteral(&StringLiteralExpr),
+    StructLiteral(&StructLiteralExpr),
+    ArrayLiteral(&ArrayLiteralExpr),
+    ResultLiteral(&ResultLiteralExpr),
 
+    // variables
     Ident(&IdentExpr),
+    Let(&LetExpr),
 
+    // operations
+    InfixOp(&InfixOpExpr),
+    PrefixOp(&PrefixOpExpr),
+    Cast(&CastExpr),
+    Assign(&AssignExpr),
+    FieldAccess(&FieldAccessExpr),
+    PropagateError(&PropagateErrorExpr),
+    FnCall(&FnCallExpr),
+    MethodCall(&MethodCallExpr),
+    MacroFnCall(&MacroFnCallExpr),
+    MacroMethodCall(&MacroMethodCallExpr),
+    IntrinsicCall(&MacroFnCallExpr),
+
+    // control flow
     Return(&ReturnExpr),
+    If(&IfExpr),
+    WhileLoop(&WhileLoopExpr),
+    ForLoop(&ForLoopExpr),
+    Break(&BreakExpr),
+    Continue(&ContinueExpr),
+    Defer(&DeferExpr),
+    Catch(&CatchExpr),
+    Match(&MatchExpr),
+
+    // other
+    Paren(&ParenExpr),
+    DoWith(&DoWithExpr),
+    ExprPipe(&ExprPipeExpr),
+    Dbg(&DbgExpr),
+    Sizeof(&SizeofExpr),
+}
+
+struct BoolLiteralExpr {
+    value: bool,
+    loc: Loc,
+}
+
+struct CharLiteralExpr {
+    repr: str,
+    value: u32,
+    loc: Loc,
+}
+
+struct NullLiteralExpr {
+    loc: Loc,
 }
 
 struct IntLiteralExpr {
@@ -107,20 +329,331 @@ struct IntLiteralExpr {
     loc: Loc,
 }
 
+struct StringLiteralExpr {
+    repr: str,
+    value: String,
+    loc: Loc,
+}
+
 struct ReturnExpr {
     // @optional
     expr: &CodeExpr,
     loc: Loc,
 }
 
+struct InfixOpExpr {
+    op_tag: InfixOpTag,
+    op_loc: Loc,
+    lhs: CodeExpr,
+    rhs: CodeExpr,
+    loc: Loc,
+}
+
+struct PrefixOpExpr {
+    op_tag: PrefixOpTag,
+    expr: CodeExpr,
+    op_loc: Loc,
+    loc: Loc,
+}
+
+struct IfExpr {
+    cond: IfCond,
+    then_block: CodeBlock,
+    else_block: ElseBlock,
+    loc: Loc,
+}
+
+enum IfCond(&void) {
+    Expr(&CodeExpr),
+    Match(&MatchHeader),
+}
+
+struct MatchHeader {
+    variant_name: IdentExpr,
+    variant_bind: IdentExpr,
+    expr_to_match: CodeExpr,
+}
+
+enum ElseBlock(&void) {
+    None(&void),
+    Else(&CodeBlock),
+    ElseIf(&CodeExpr),
+}
+
+struct LetExpr {
+    local_name: IdentExpr,
+    value: CodeExpr,
+    loc: Loc,
+}
+
+struct WhileLoopExpr {
+    // @optional
+    cond: &CodeExpr,
+    body: CodeBlock,
+    loc: Loc,
+}
+
+struct BreakExpr {
+    loc: Loc,
+}
+
+struct ForLoopExpr {
+    counter: IdentExpr,
+    start: CodeExpr,
+    end: CodeExpr,
+    body: CodeBlock,
+    op_loc: Loc,
+    loc: Loc,
+}
+
+struct ContinueExpr {
+    loc: Loc,
+}
+
+struct CodeExprList {
+    items: &Vec(CodeExpr),
+    has_trailing_comma: bool,
+}
+
+struct DoWithExpr {
+    body: CodeExpr,
+    args: CodeExprList,
+    with_loc: Loc,
+    loc: Loc,
+}
+
+struct ExprPipeExpr {
+    lhs: CodeExpr,
+    rhs: CodeExpr,
+    op_loc: Loc,
+    loc: Loc,
+}
+
+struct DbgExpr {
+    message: QuotedString,
+    loc: Loc,
+}
+
+struct DeferExpr {
+    expr: CodeExpr,
+    loc: Loc,
+}
+
+struct CastExpr {
+    expr: CodeExpr,
+    casted_to: TypeExpr,
+    loc: Loc,
+}
+
+struct StructLiteralExpr {
+    struct_name: IdentExpr,
+    body: CodeExprMap,
+    loc: Loc,
+}
+
+struct ArrayLiteralExpr {
+    item_type: TypeExpr,
+    items: &Vec(CodeExpr),
+    has_trailing_comma: bool,
+    loc: Loc,
+}
+
+struct ResultLiteralExpr {
+    is_ok: bool,
+    // @optional
+    result_type: &ResultTypeExpr,
+    // @optional
+    value: &CodeExpr,
+    loc: Loc,
+}
+
+struct ResultTypeExpr {
+    ok: TypeExpr,
+    err: TypeExpr,
+}
+
+struct CodeExprMapField {
+    key: str,
+    value: CodeExpr,
+    loc: Loc,
+}
+
+struct AssignExpr {
+    op_loc: Loc,
+    lhs: CodeExpr,
+    rhs: CodeExpr,
+    loc: Loc,
+}
+
+struct FieldAccessExpr {
+    lhs: CodeExpr,
+    field_name: IdentExpr,
+    loc: Loc,
+}
+
+struct CatchExpr {
+    lhs: CodeExpr,
+    error_bind: IdentExpr,
+    catch_body: CodeBlock,
+    catch_loc: Loc,
+    loc: Loc,
+}
+
+struct MatchExpr {
+    header: MatchHeader,
+    else_branch: CodeBlock,
+    loc: Loc,
+}
+
+struct PropagateErrorExpr {
+    expr: CodeExpr,
+    loc: Loc,
+}
+
+struct ParenExpr {
+    expr: CodeExpr,
+    has_trailing_comma: bool,
+    loc: Loc,
+}
+
+struct FnCallExpr {
+    fn_name: IdentExpr,
+    args: CodeExprList,
+    loc: Loc,
+}
+
+struct MethodCallExpr {
+    lhs: CodeExpr,
+    field_name: IdentExpr,
+    args: CodeExprList,
+    loc: Loc,
+}
+
+struct MacroFnCallExpr {
+    fn_name: IdentExpr,
+    type_args: &Vec(TypeExpr),
+    args: CodeExprList,
+    loc: Loc,
+}
+
+struct MacroMethodCallExpr {
+    lhs: CodeExpr,
+    field_name: IdentExpr,
+    type_args: &Vec(TypeExpr),
+    args: CodeExprList,
+    loc: Loc,
+}
+
+struct SizeofExpr {
+    type_expr: TypeExpr,
+    loc: Loc,
+}
+
 fn CodeExpr::loc(self): Loc {
+    if match CodeExpr::BoolLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::CharLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::NullLiteral(e) = self {
+        return e.loc
+    }
     if match CodeExpr::IntLiteral(e) = self {
         return e.loc
-    } else if match CodeExpr::Ident(e) = self {
-        return e.loc
-    } else if match CodeExpr::Return(e) = self {
-        return e.loc
-    } else {
-        todo!()
     }
+    if match CodeExpr::StringLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::ArrayLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::ResultLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Return(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Ident(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::InfixOp(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::If(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Let(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::WhileLoop(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Break(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::ForLoop(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Continue(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Dbg(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Defer(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Cast(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::StructLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Assign(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::FieldAccess(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Catch(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Match(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Paren(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::FnCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::MethodCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::MacroFnCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::IntrinsicCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::MacroMethodCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Sizeof(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::PropagateError(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::PrefixOp(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::DoWith(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::ExprPipe(e) = self {
+        return e.loc
+    }
+    @unreachable()
 }

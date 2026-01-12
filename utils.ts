@@ -880,7 +880,7 @@ async function commandTest() {
             // let files = await fs.readdir("examples", { recursive: true });
             // files = files.filter((f) => f.endsWith(".lo"));
             // files = files.map((f) => `examples/${f}`);
-            const files = ["examples/test/42.lo"];
+            const files = ["examples/test/42.lo", "examples/test/add.lo"];
 
             for (const fileName of files) {
                 test(`formats ${fileName}`, async () => {

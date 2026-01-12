@@ -10,6 +10,7 @@ struct Parser {
     // context
     error_arena: &Arena,
     lexer: &Lexer,
+    source: str,
 
     // state
     tokens_processed: u32,
@@ -29,6 +30,7 @@ fn Parser::new(lexer: &Lexer): &Parser {
     return heap::new!(Parser {
         error_arena: lexer.error_arena,
         lexer: lexer,
+        source: lexer.source,
         tokens_processed: 0,
         context_stack: context_stack,
 
@@ -103,7 +105,7 @@ fn Parser::parse_fn_def(&self, exported: bool, loc: Loc): Result(&FnDefExpr, &Er
     }))
 }
 
-fn Parser::parse_fn_decl(&self): Result(&FnDeclExpr, &Error) {
+fn Parser::parse_fn_decl(&self): Result(FnDeclExpr, &Error) {
     let loc = self.prev().loc
 
     let fn_name = self.parse_ident()?
@@ -118,13 +120,13 @@ fn Parser::parse_fn_decl(&self): Result(&FnDeclExpr, &Error) {
 
     loc.end_pos = self.prev().loc.end_pos
 
-    return Ok(self.ast_arena.new!(FnDeclExpr {
+    return Ok(FnDeclExpr {
         fn_name: fn_name,
         fn_params: fn_params,
         fn_params_trailing_comma: *fn_params_trailing_comma,
         return_type: return_type,
         loc: loc,
-    }))
+    })
 }
 
 fn Parser::parse_fn_params(
@@ -136,10 +138,68 @@ fn Parser::parse_fn_params(
 
     let _ = self.expect(TokenType::Delim(), "(")?
 
-    // TODO: implement proper
-    let _ = self.expect(TokenType::Delim(), ")")?
+    while self.eat(TokenType::Delim(), ")") == null {
+        *trailing_comma = false
+
+        let loc = self.current().loc
+
+        let param_type = FnParamType::Self(null)
+        if self.eat(TokenType::Operator(), "&") != null {
+            param_type = FnParamType::SelfRef(null)
+        }
+
+        let param_name = self.parse_ident()?
+        if !param_name.repr.equals("self") {
+            if match FnParamType::SelfRef(_) = param_type {
+                return Err(self.error_arena.new!(Error {
+                    message: String::from_str("Only `self` param can be preceded by the reference operator"),
+                    loc: param_name.loc,
+                }))
+            }
+
+            let _ = self.expect(TokenType::Operator(), ":")?
+
+            if self.eat(TokenType::Symbol(), "infer") != null {
+                let infer = self.prev()
+
+                if !infer_allowed {
+                    return Err(self.error_arena.new!(Error {
+                        message: String::from_str("Cannot use `infer` outside macro parameter list"),
+                        loc: infer.loc,
+                    }))
+                }
+
+                let infer_as = self.expect_any(TokenType::Symbol())?
+                param_type = FnParamType::Infer(self.ast_arena.new!(FnParamTypeInfer {
+                    name: infer_as.get_value(self.source),
+                }))
+            } else {
+                param_type = FnParamType::Type(self.ast_arena.new!(FnParamTypeType {
+                    expr: self.parse_type_expr()?,
+                }))
+            }
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        if !self.current().is(TokenType::Delim(), ")", self.source) {
+            let _ = self.expect(TokenType::Delim(), ",")?
+            *trailing_comma = true
+        }
+
+        params.push!(FnParam {
+            param_name: param_name,
+            param_type: param_type,
+            loc: loc,
+        })
+    }
 
     return Ok(params)
+}
+
+struct EnumDbg {
+    tag: u32,
+    ptr: u32,
 }
 
 fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
@@ -154,9 +214,10 @@ fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
     ))
 }
 
-fn Parser::parse_ident(&self): Result(&IdentExpr, &Error) {
+fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     let ident = IdentExpr {
-        repr: String::from_str(""),
+        // stub
+        repr: "",
         parts: Vec::new!<Loc>(),
         loc: self.current().loc,
     }
@@ -164,18 +225,20 @@ fn Parser::parse_ident(&self): Result(&IdentExpr, &Error) {
     loop {
         let ident_part = self.expect_any(TokenType::Symbol())?
         ident.parts.push!(ident_part.loc)
-        ident.repr.push_str(ident_part.get_value(self.lexer.source))
 
         if self.eat(TokenType::Operator(), "::") == null {
             break
         }
-
-        ident.repr.push_str("::")
     }
 
     ident.loc.end_pos = self.prev().loc.end_pos
 
-    return Ok(self.ast_arena.new!(ident))
+    ident.repr = ident.loc.read_span(self.source)
+    if ident.repr.contains(" ") {
+        // TODO: report error
+    }
+
+    return Ok(ident)
 }
 
 fn Parser::parse_code_block(&self): Result(&CodeBlock, &Error) {
@@ -199,10 +262,33 @@ fn Parser::parse_code_block(&self): Result(&CodeBlock, &Error) {
 
 fn Parser::parse_code_expr(&self, min_bp: u32): Result(CodeExpr, &Error) {
     let primary = self.parse_code_expr_primary()?
-    let backslash_start_hint = 0
+    let backslash_start_hint = ref!(0)
 
-    // TODO: implement proper
-    while false {}
+    while !self.current().is_terminal() {
+        let op_symbol = self.current()
+
+        let backslash_between = self.has_backslashes_between(
+            backslash_start_hint,
+            primary.loc().end_pos.offset,
+            op_symbol.loc.pos.offset,
+        )
+
+        if op_symbol.loc.pos.line != primary.loc().end_pos.line && !backslash_between {
+            break
+        }
+
+        let op = InfixOp::parse(op_symbol.get_value(self.source)) catch _ {
+            break
+        }
+
+        if op.bp < min_bp {
+            break
+        }
+
+        // skip operator
+        let _ = self.next()
+        primary = self.parse_code_expr_postfix(primary, op, op_symbol.loc)?
+    }
 
     return Ok(primary)
 }
@@ -258,7 +344,81 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     // TODO: implement proper
     if false {}
 
-    return Ok(CodeExpr::Ident(ident))
+    return Ok(CodeExpr::Ident(self.ast_arena.new!(ident)))
+}
+
+fn Parser::parse_code_expr_postfix(
+    &self,
+    primary: CodeExpr,
+    op: InfixOp,
+    op_loc: Loc,
+): Result(CodeExpr, &Error) {
+    if (op.tag == InfixOpTag::Equal() \
+        || op.tag == InfixOpTag::NotEqual() \
+        || op.tag == InfixOpTag::Less() \
+        || op.tag == InfixOpTag::Greater() \
+        || op.tag == InfixOpTag::LessEqual() \
+        || op.tag == InfixOpTag::GreaterEqual() \
+        || op.tag == InfixOpTag::Add() \
+        || op.tag == InfixOpTag::Sub() \
+        || op.tag == InfixOpTag::Mul() \
+        || op.tag == InfixOpTag::Div() \
+        || op.tag == InfixOpTag::Mod() \
+        || op.tag == InfixOpTag::And() \
+        || op.tag == InfixOpTag::BitAnd() \
+        || op.tag == InfixOpTag::Or() \
+        || op.tag == InfixOpTag::BitOr() \
+        || op.tag == InfixOpTag::ShiftLeft() \
+        || op.tag == InfixOpTag::ShiftRight() \
+        || op.tag == InfixOpTag::AddAssign() \
+        || op.tag == InfixOpTag::SubAssign() \
+        || op.tag == InfixOpTag::MulAssign() \
+        || op.tag == InfixOpTag::DivAssign() \
+        || op.tag == InfixOpTag::ModAssign() \
+        || op.tag == InfixOpTag::BitAndAssign() \
+        || op.tag == InfixOpTag::BitOrAssign() \
+        || op.tag == InfixOpTag::ShiftLeftAssign() \
+        || op.tag == InfixOpTag::ShiftRightAssign())
+    {
+        let lhs = primary
+        let rhs = self.parse_code_expr(op.bp_next)?
+
+        let loc = lhs.loc()
+        loc.end_pos = rhs.loc().end_pos
+
+        return Ok(CodeExpr::InfixOp(self.ast_arena.new!(InfixOpExpr {
+            op_tag: op.tag,
+            op_loc: op_loc,
+            lhs: lhs,
+            rhs: rhs,
+            loc: loc,
+        })))
+    }
+
+    todo!()
+}
+
+fn Parser::has_backslashes_between(
+    &self,
+    start_hint: &u32,
+    offset_start: u32,
+    offset_end: u32,
+): bool {
+    let i = *start_hint
+
+    while i < self.lexer.backslashes.size {
+        let backslash = self.lexer.backslashes.at!(i)
+        if backslash.pos.offset < offset_start {
+            i += 1
+            continue
+        }
+
+        *start_hint = i
+        return backslash.end_pos.offset <= offset_end
+    }
+
+    *start_hint = i
+    return false
 }
 
 fn Parser::expect(&self, type_: TokenType, value: str): Result(&Token, &Error) {

@@ -65,9 +65,9 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     }
 }
 
-fn Printer::print_fn_decl(&self, fn_decl: &FnDeclExpr) {
+fn Printer::print_fn_decl(&self, fn_decl: FnDeclExpr) {
     stdout_write("fn ")
-    stdout_write(fn_decl.fn_name.repr.as_str())
+    stdout_write(fn_decl.fn_name.repr)
     self.print_fn_params(fn_decl.fn_params, fn_decl.fn_params_trailing_comma)
 
     if fn_decl.return_type != null {
@@ -84,8 +84,45 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
         stdout_write("\n")
     }
 
-    // TODO: implement proper
-    for i in 0..0 {}
+    for index in 0..params.size {
+        let param = params.get!(index)
+
+        if index != 0 {
+            stdout_write(",")
+        }
+
+        let continues = self.print_double_backslashes_before(param.loc.pos.offset)
+
+        if is_multiline && !continues {
+            if index != 0 {
+                stdout_write("\n")
+            }
+
+            self.print_comments_before(param.loc.pos)
+            self.print_indent()
+        } else if index != 0 {
+            stdout_write(" ")
+        }
+
+        if match FnParamType::Self(_) = param.param_type {
+            stdout_write(param.param_name.repr)
+        } else if match FnParamType::SelfRef(_) = param.param_type {
+            stdout_write("&")
+            stdout_write(param.param_name.repr)
+        } else if match FnParamType::Type(type_expr) = param.param_type {
+            stdout_write(param.param_name.repr)
+            stdout_write(": ")
+            self.print_type_expr(type_expr.expr)
+        } else if match FnParamType::Infer(infer) = param.param_type {
+            stdout_write(param.param_name.repr)
+            stdout_write(": infer ")
+            stdout_write(infer.name)
+        } else {
+            @unreachable()
+        }
+
+        self.last_printed_item_line = param.loc.pos.line
+    }
 
     if is_multiline {
         stdout_writeln(",")
@@ -98,7 +135,7 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
 
 fn Printer::print_type_expr(&self, expr: TypeExpr) {
     if match TypeExpr::Named(named) = expr {
-        stdout_write(named.name.repr.as_str())
+        stdout_write(named.name.repr)
     } else {
         todo!()
     }
@@ -161,19 +198,44 @@ fn Printer::print_code_expr_(&self, expr: CodeExpr) {
         if int_literal.tag != null {
             stdout_write(*int_literal.tag)
         }
-    } else if match CodeExpr::Return(return_) = expr {
+        return
+    }
+
+    if match CodeExpr::Return(return_) = expr {
         stdout_write("return")
         if return_.expr != null {
             stdout_write(" ")
             self.print_code_expr(*return_.expr)
         }
-    } else {
-        todo!()
+        return
     }
+
+    if match CodeExpr::InfixOp(infix_op) = expr {
+        self.print_code_expr(infix_op.lhs)
+        if !self.print_backslashes_before(infix_op.op_loc.pos.offset) {
+            stdout_write(" ")
+        }
+        stdout_write(infix_op.op_loc.read_span(self.parser.lexer.source))
+        stdout_write(" ")
+        self.print_code_expr(infix_op.rhs)
+        return
+    }
+
+    if match CodeExpr::Ident(ident) = expr {
+        stdout_write(ident.repr)
+        return
+    }
+
+    todo!()
 }
 
 fn Printer::print_comments_before(&self, pos: Pos) {
     // TODO: implement proper
+}
+
+fn Printer::print_backslashes_before(&self, offset: u32): bool {
+    // TODO: implement proper
+    return false
 }
 
 fn Printer::print_double_backslashes_before(&self, offset: u32): bool {

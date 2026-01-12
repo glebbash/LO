@@ -488,8 +488,8 @@ fn Vec::swap(&self, index1: u32, index2: u32) {
 }
 
 // @inline @generic fn
-macro Vec::push!(&self, item: infer T) {
-    *(self.push() as &T) = item
+macro Vec::push!(&self, item: itemof(typeof(self))) {
+    *(self.push() as &itemof(typeof(self))) = item
 }
 
 fn Vec::push(&self): &void {
@@ -679,6 +679,14 @@ fn str::equals(self, other: str): bool {
         if self.char_at(i) != other.char_at(i) {
             return false
         }
+    }
+
+    return true
+}
+
+fn str::contains(self, search: str): bool {
+    let _ = self.find(search, 0) catch _ {
+        return false
     }
 
     return true

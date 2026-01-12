@@ -498,38 +498,6 @@ fn Lexer::is_delim_char(c: u8): bool {
         || c == ',' || c == '\\'
 }
 
-const OPERATORS = [str][
-    "=", \\ "==", \\ "!=",
-    "&&", \\ "||", \\ "!",
-    "<", \\ "<=",
-    ">", \\ ">=",
-    "+", \\ "+=",
-    "-", \\ "-=",
-    "*", \\ "*=",
-    "/", \\ "/=",
-    "%", \\ "%=",
-    "&", \\ "&=",
-    "<<", \\ "<<=",
-    ">>", \\ ">>=",
-    "^", \\ "^=",
-    "|", \\ "|=",
-
-    "*&", \\ "|>", \\ ".", \\ "..",
-    ":", \\ "::", \\ "@", \\ "?",
-]
-
-fn Lexer::is_operator_start_char(c: u8): bool {
-    for i in 0..@const_slice_len(OPERATORS) {
-        let operator = *array_at!<str>(OPERATORS, i)
-
-        if operator.char_at(0) == c {
-            return true
-        }
-    }
-
-    return false
-}
-
 fn Lexer::next_char(&self) {
     let char = self.current_char catch _ {
         return
@@ -588,6 +556,278 @@ fn Lexer::loc(&self): Loc {
         pos: pos,
         end_pos: end_pos,
     }
+}
+
+struct QuotedString {
+    loc: Loc,
+}
+
+fn QuotedString::new(loc: Loc): QuotedString {
+    return QuotedString { loc: loc }
+}
+
+fn QuotedString::get_repr(&self, source: str): str {
+    return self.loc.read_span(source)
+}
+
+fn QuotedString::get_value(&self, source: str): String {
+    let repr = self.get_repr(source)
+    let value = String::new(16)
+
+    // skip start quote
+    let i = 1
+    loop {
+        let char = repr.char_at(i)
+        i += 1
+
+        if char == '"' {
+            break
+        } else if char == '\\' {
+            let next_char = repr.char_at(i)
+            i += 1
+
+            if next_char == 'n' {
+                value.push('\n')
+            } else if next_char == 'r' {
+                value.push('\r')
+            } else if next_char == 't' {
+                value.push('\t')
+            } else if next_char == '0' {
+                value.push('\0')
+            } else if next_char == '\\' {
+                value.push('\\')
+            } else if next_char == '"' {
+                value.push('"')
+            }
+            @unreachable()
+        } else {
+            value.push(char)
+        }
+    }
+
+    return value
+}
+
+const OPERATORS = [str][
+    "=", \\ "==", \\ "!=",
+    "&&", \\ "||", \\ "!",
+    "<", \\ "<=",
+    ">", \\ ">=",
+    "+", \\ "+=",
+    "-", \\ "-=",
+    "*", \\ "*=",
+    "/", \\ "/=",
+    "%", \\ "%=",
+    "&", \\ "&=",
+    "<<", \\ "<<=",
+    ">>", \\ ">>=",
+    "^", \\ "^=",
+    "|", \\ "|=",
+
+    "*&", \\ "|>", \\ ".", \\ "..",
+    ":", \\ "::", \\ "@", \\ "?",
+]
+
+fn Lexer::is_operator_start_char(c: u8): bool {
+    for i in 0..@const_slice_len(OPERATORS) {
+        let operator = *array_at!<str>(OPERATORS, i)
+
+        if operator.char_at(0) == c {
+            return true
+        }
+    }
+
+    return false
+}
+
+enum InfixOpTag {
+    Equal,
+    NotEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
+
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    And,
+    BitAnd,
+    Or,
+    BitOr,
+    ShiftLeft,
+    ShiftRight,
+
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    BitAndAssign,
+    BitOrAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+
+    Cast,
+    FieldAccess,
+    Catch,
+
+    ErrorPropagation,
+
+    ExprPipe,
+}
+
+struct InfixOp {
+    tag: InfixOpTag,
+    bp: u32,
+    bp_next: u32,
+}
+
+fn InfixOp::parse(repr: str): Result(InfixOp, &void) {
+    if repr.equals("catch") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Catch(), 14))
+    }
+    if repr.equals(".") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::FieldAccess(), 13))
+    }
+    if repr.equals("?") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::ErrorPropagation(), 12))
+    }
+    if repr.equals("as") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Cast(), 11))
+    }
+    if repr.equals("%") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Mod(), 10))
+    }
+    if repr.equals("/") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Div(), 10))
+    }
+    if repr.equals("*") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Mul(), 10))
+    }
+    if repr.equals("-") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Sub(), 9))
+    }
+    if repr.equals("+") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Add(), 9))
+    }
+    if repr.equals(">>") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::ShiftRight(), 8))
+    }
+    if repr.equals("<<") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::ShiftLeft(), 8))
+    }
+    if repr.equals("&") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::BitAnd(), 7))
+    }
+    if repr.equals("|") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::BitOr(), 6))
+    }
+    if repr.equals(">=") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::GreaterEqual(), 5))
+    }
+    if repr.equals(">") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Greater(), 5))
+    }
+    if repr.equals("<=") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::LessEqual(), 5))
+    }
+    if repr.equals("<") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Less(), 5))
+    }
+    if repr.equals("!=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::NotEqual(), 5))
+    }
+    if repr.equals("==") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::Equal(), 5))
+    }
+    if repr.equals("&&") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::And(), 4))
+    }
+    if repr.equals("||") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::Or(), 3))
+    }
+    if repr.equals("|>") {
+        return Ok(InfixOp::left_assoc(InfixOpTag::ExprPipe(), 2))
+    }
+    if repr.equals("=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::Assign(), 1))
+    }
+    if repr.equals("+=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::AddAssign(), 1))
+    }
+    if repr.equals("-=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::SubAssign(), 1))
+    }
+    if repr.equals("*=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::MulAssign(), 1))
+    }
+    if repr.equals("/=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::DivAssign(), 1))
+    }
+    if repr.equals("%=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::ModAssign(), 1))
+    }
+    if repr.equals("&=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::BitAndAssign(), 1))
+    }
+    if repr.equals("|=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::BitOrAssign(), 1))
+    }
+    if repr.equals("<<=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::ShiftLeftAssign(), 1))
+    }
+    if repr.equals(">>=") {
+        return Ok(InfixOp::none_assoc(InfixOpTag::ShiftRightAssign(), 1))
+    }
+    return Err(1 as &void)
+}
+
+fn InfixOp::left_assoc(tag: InfixOpTag, bp: u32): InfixOp {
+    return InfixOp { tag: tag, bp: bp, bp_next: bp + 1 }
+}
+
+fn InfixOp::none_assoc(tag: InfixOpTag, bp: u32): InfixOp {
+    return InfixOp { tag: tag, bp: bp, bp_next: bp }
+}
+
+enum PrefixOpTag {
+    Not,
+    Reference,
+    Dereference,
+    Positive,
+    Negative,
+}
+
+struct PrefixOp {
+    tag: PrefixOpTag,
+    bp_next: u32,
+}
+
+fn PrefixOp::parse(repr: str): Result(PrefixOp, &void) {
+    if repr.equals("!") {
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Not(), 8))
+    }
+    if repr.equals("&") {
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Reference(), 8))
+    }
+    if repr.equals("*") {
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Dereference(), 8))
+    }
+    if repr.equals("+") {
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Positive(), 9))
+    }
+    if repr.equals("-") {
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Negative(), 9))
+    }
+    return Err(1 as &void)
+}
+
+fn PrefixOp::left_assoc(tag: PrefixOpTag, bp: u32): PrefixOp {
+    return PrefixOp { tag: tag, bp_next: bp + 1 }
 }
 
 enum UTF8ReadError {
