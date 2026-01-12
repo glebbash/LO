@@ -92,21 +92,21 @@ impl<'a> core::fmt::Display for TypeFmt<'a> {
             Type::Result(result) => {
                 write!(
                     f,
-                    "Result<{}, {}>",
+                    "Result({}, {})",
                     TypeFmt(self.0, &result.ok),
                     TypeFmt(self.0, &result.err)
                 )
             }
             Type::Container(ContainerType { container, items }) => {
                 write!(f, "{}", TypeFmt(self.0, container))?;
-                write!(f, "<")?;
+                write!(f, "(")?;
                 for (i, item) in items.iter().enumerate() {
                     if i != 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}", TypeFmt(self.0, item))?;
                 }
-                write!(f, ">")
+                write!(f, ")")
             }
         }
     }
@@ -444,6 +444,7 @@ pub struct Compiler {
     pub in_inspection_mode: bool,
     pub in_single_file_mode: bool,
     pub in_lex_only_mode: bool,
+    pub should_emit_dbg_local_names: bool,
 
     pub fm: FileManager,
     pub modules: Vec<Module>,
@@ -5908,6 +5909,11 @@ impl Compiler {
         local_type: &Type,
         local_name: String,
     ) {
+        // TODO: fix unnamed locals breaking wasm2wat
+        if !self.should_emit_dbg_local_names {
+            return;
+        }
+
         match local_type {
             Type::Never
             | Type::Null
