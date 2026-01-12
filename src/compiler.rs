@@ -656,10 +656,21 @@ impl Compiler {
                         },
                     );
 
+                    let mut variant_type = Type::Void;
+                    if let Some(type_expr) = &enum_def.variant_type {
+                        match self.build_type(&module.ctx, type_expr) {
+                            Ok(t) => variant_type = t,
+                            Err(err) => {
+                                variant_type = Type::Never;
+                                self.report_error(&err);
+                            }
+                        }
+                    }
+
                     self.enum_defs.push(EnumDef {
                         enum_name: enum_def.enum_name.repr,
-                        variant_type: Type::Void, // placeholder
-                        variants: Vec::new(),     // placeholder
+                        variant_type,
+                        variants: Vec::new(), // placeholder
                     });
 
                     for (variant, variant_index) in enum_def.variants.iter().zip(0..) {
@@ -977,13 +988,6 @@ impl Compiler {
                         continue;
                     };
                     let enum_ = self.enum_defs[symbol.col_index].relax_mut();
-
-                    if let Some(type_) = &enum_def.variant_type {
-                        enum_.variant_type = catch!(self.build_type(&module.ctx, type_), err, {
-                            self.report_error(&err);
-                            return;
-                        });
-                    }
 
                     'variants: for variant in enum_def.variants.iter() {
                         for existing_variant in &enum_.variants {
@@ -3868,24 +3872,20 @@ impl Compiler {
                 let mut tag_layout = TypeLayout::new();
                 self.get_type_layout(&Type::U32, &mut tag_layout);
 
-                // TODO: figure out alignment
-
-                self.codegen_load_or_store(instrs, &Type::U32, offset, is_store);
                 self.codegen_load_or_store(
                     instrs,
                     &enum_def.variant_type,
                     offset + tag_layout.byte_size,
                     is_store,
                 );
+                self.codegen_load_or_store(instrs, &Type::U32, offset, is_store);
             }
             Type::Result(ResultType { ok, err }) => {
                 let mut ok_layout = TypeLayout::new();
                 self.get_type_layout(&ok, &mut ok_layout);
 
-                // TODO: figure out alignment
-
-                self.codegen_load_or_store(instrs, &ok, offset, is_store);
                 self.codegen_load_or_store(instrs, &err, offset + ok_layout.byte_size, is_store);
+                self.codegen_load_or_store(instrs, &ok, offset, is_store);
             }
             Type::Container(ContainerType {
                 container,
@@ -5538,14 +5538,12 @@ impl Compiler {
                 self.get_type_layout(&Type::U32, layout);
                 self.get_type_layout(&enum_def.variant_type, layout);
 
-                layout.alignment = u32::max(layout.alignment, 1);
                 layout.byte_size = align(layout.byte_size, layout.alignment);
             }
             Type::Result(result) => {
                 self.get_type_layout(&result.ok, layout);
                 self.get_type_layout(&result.err, layout);
 
-                layout.alignment = u32::max(layout.alignment, 1);
                 layout.byte_size = align(layout.byte_size, layout.alignment);
             }
             Type::Container(ContainerType {
