@@ -566,11 +566,11 @@ fn QuotedString::new(loc: Loc): QuotedString {
     return QuotedString { loc: loc }
 }
 
-fn QuotedString::get_repr(&self, source: str): str {
+fn QuotedString::get_repr(self, source: str): str {
     return self.loc.read_span(source)
 }
 
-fn QuotedString::get_value(&self, source: str): String {
+fn QuotedString::get_value(self, source: str): String {
     let repr = self.get_repr(source)
     let value = String::new(16)
 

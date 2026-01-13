@@ -1,6 +1,7 @@
 include "./core.lo"
 include "./ast.lo"
 include "./parser.lo"
+include "./lexer.lo"
 
 struct Printer {
     parser: &Parser,
@@ -52,6 +53,8 @@ fn Printer::print_file(&self) {
 }
 
 fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
+    self.print_comments_before(expr.loc().pos)
+
     if match TopLevelExpr::FnDef(fn_def) = expr {
         if fn_def.exported {
             stdout_write("export ")
@@ -60,9 +63,24 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
         self.print_code_block(*fn_def.body)
         stdout_write("\n")
-    } else {
-        todo!()
+        return
     }
+
+    if match TopLevelExpr::Include(include_expr) = expr {
+        stdout_write("include ")
+        stdout_write(include_expr.file_path.get_repr(self.parser.lexer.source))
+        if include_expr.alias != null {
+            stdout_write(" as ")
+            stdout_write(include_expr.alias.repr)
+        }
+        if include_expr.with_extern {
+            stdout_write(" with extern")
+        }
+        stdout_write("\n")
+        return
+    }
+
+    todo!()
 }
 
 fn Printer::print_fn_decl(&self, fn_decl: FnDeclExpr) {
