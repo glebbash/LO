@@ -3267,8 +3267,23 @@ impl Compiler {
         };
 
         let enum_ctor = &self.enum_ctors[symbol.col_index].relax();
+        let enum_index = enum_ctor.enum_index;
         let enum_def = &self.enum_defs[enum_ctor.enum_index].relax();
         let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
+
+        if self.in_inspection_mode {
+            self.print_inspection(&InspectInfo {
+                message: format!(
+                    "{}\n{}({})",
+                    TypeFmt(self, &Type::EnumInstance { enum_index }),
+                    header.variant_name.repr,
+                    TypeFmt(self, &enum_variant.variant_type)
+                ),
+                loc: header.variant_name.loc,
+                linked_loc: Some(enum_variant.loc),
+            });
+        }
+
         let local_index = self.define_local(
             ctx,
             header.variant_bind.loc,
