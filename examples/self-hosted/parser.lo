@@ -78,6 +78,11 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         }))
     }
 
+    if self.eat(TokenType::Symbol(), "fn") != null {
+        let fn_def = self.parse_fn_def(false, self.prev().loc)?
+        return Ok(TopLevelExpr::FnDef(fn_def))
+    }
+
     if self.eat(TokenType::Symbol(), "include") != null {
         let loc = self.prev().loc
 
@@ -343,6 +348,22 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         ))
     }
 
+    if self.eat(TokenType::Symbol(), "let") != null {
+        let loc = self.prev().loc
+
+        let local_name = self.parse_ident()?
+        let _ = self.expect(TokenType::Operator(), "=")?
+        let value = self.parse_code_expr(0)?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Let(self.ast_arena.new!(LetExpr {
+            local_name: local_name,
+            value: value,
+            loc: loc,
+        })))
+    }
+
     if self.eat(TokenType::Symbol(), "if") != null {
         let loc = self.prev().loc
 
@@ -398,6 +419,23 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
                 loc: loc,
             }),
         ))
+    }
+
+    if self.eat(TokenType::Operator(), "@") != null {
+        let loc = self.prev().loc
+
+        let fn_name = self.parse_ident()?
+        let type_args = self.parse_macro_type_args()?
+        let args = self.parse_fn_args()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::IntrinsicCall(self.ast_arena.new!(MacroFnCallExpr {
+            fn_name: fn_name,
+            type_args: type_args,
+            args: args,
+            loc: loc,
+        })))
     }
 
     // TODO: implement proper
@@ -502,6 +540,24 @@ fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
         items: items,
         has_trailing_comma: has_trailing_comma,
     })
+}
+
+fn Parser::parse_macro_type_args(&self): Result(&Vec(TypeExpr), &Error) {
+    let type_args = Vec::new!<TypeExpr>()
+
+    if self.eat(TokenType::Operator(), "<") == null {
+        return Ok(type_args)
+    }
+
+    while self.eat(TokenType::Operator(), ">") == null {
+        type_args.push!(self.parse_type_expr()?)
+
+        if !self.current().is(TokenType::Operator(), ">", self.source) {
+            let _ = self.expect(TokenType::Delim(), ",")?
+        }
+    }
+
+    return Ok(type_args)
 }
 
 fn Parser::parse_match_header(&self): Result(MatchHeader, &Error) {

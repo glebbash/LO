@@ -230,6 +230,14 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
+    if match CodeExpr::Let(let_expr) = expr {
+        stdout_write("let ")
+        stdout_write(let_expr.local_name.repr)
+        stdout_write(" = ")
+        self.print_code_expr(let_expr.value)
+        return
+    }
+
     if match CodeExpr::Return(return_) = expr {
         stdout_write("return")
         if return_.expr != null {
@@ -242,6 +250,14 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
     if match CodeExpr::FnCall(fn_call) = expr {
         stdout_write(fn_call.fn_name.repr)
         self.print_args(fn_call.args, fn_call.loc)
+        return
+    }
+
+    if match CodeExpr::IntrinsicCall(instrinsic) = expr {
+        stdout_write("@")
+        stdout_write(instrinsic.fn_name.repr)
+        self.print_type_args(instrinsic.type_args)
+        self.print_args(instrinsic.args, instrinsic.loc)
         return
     }
 
@@ -330,6 +346,24 @@ fn Printer::print_expr_list(
         self.indent -= 1
         self.print_indent()
     }
+}
+
+fn Printer::print_type_args(&self, type_args: &Vec(TypeExpr)) {
+    if type_args.size == 0 {
+        return
+    }
+
+    stdout_write("<")
+    for index in 0..type_args.size {
+        let type_arg = type_args.get!(index)
+
+        if index != 0 {
+            stdout_write(", ")
+        }
+
+        self.print_type_expr(type_arg)
+    }
+    stdout_write(">")
 }
 
 fn Printer::print_match_header(&self, header: MatchHeader) {

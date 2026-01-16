@@ -146,7 +146,7 @@ async function commandDebugWasi(args: string[]) {
 
 async function commandTest() {
     const v1Run = await loadLoCompiler(await fs.readFile(COMPILER_PATH));
-    const v1 = (fileName = "-i") => v1Run(["compile", fileName]);
+    const v1 = (fileName: string) => v1Run(["compile", fileName]);
 
     itEach("compiles 42.lo", { v1 }, async (compile) => {
         const output = await compile("./examples/test/42.lo");
@@ -199,7 +199,7 @@ async function commandTest() {
     });
 
     itEach("compiles else-if.lo", { v1 }, async (compile) => {
-        const output = await compile("examples/test/else-if.lo");
+        const output = await compile("./examples/test/else-if.lo");
 
         const program = await loadWasm(output);
 
@@ -591,84 +591,6 @@ async function commandTest() {
         );
     });
 
-    itEach(
-        "compiler reports multiple errors in fault-tolerance.lo",
-        { v1 },
-        async (compile) => {
-            try {
-                await compile("./examples/test/fault-tolerance.lo");
-            } catch (err) {
-                assert.strictEqual(
-                    (err as Error).message,
-                    m`
-                    ERROR: examples/test/fault-tolerance.lo:10:4 - Cannot redefine main, previously defined at examples/test/fault-tolerance.lo:2:4
-                    ERROR: examples/test/fault-tolerance.lo:2:17 - Cannot redefine a, previously defined at examples/test/fault-tolerance.lo:2:9
-                    ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:3:9
-                    ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:11:9
-
-                    `
-                );
-            }
-        }
-    );
-
-    itEach(
-        "inspect emits partial diagnostics and multiple errors in fault-tolerance.lo",
-        { v1: v1Run },
-        async (run) => {
-            const stdout = new WASI.VirtualFD();
-            try {
-                await run(["inspect", "./examples/test/fault-tolerance.lo"], {
-                    stdout,
-                });
-            } catch (err) {
-                // stderr is empty
-                assert.strictEqual((err as Error).message, "");
-
-                // stdout contains partial diagnostics and errors in json format
-                assert.strictEqual(
-                    stdout.flushAndReadUtf8(),
-                    m`
-                    [
-                    { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
-                    { "type": "message", "content": "Cannot redefine main, previously defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
-                    { "type": "message", "content": "Cannot redefine a, previously defined at examples/test/fault-tolerance.lo:2:9", "severity": "error", "loc": "1/2:17-2:18" },
-                    { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
-                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
-                    { "type": "info", "hover": "let x: u32", "loc": "1/5:9-5:10" },
-                    { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },
-                    { "type": "info", "link": "1/3:9-3:10", "hover": "let x: u32", "loc": "1/6:13-6:14" },
-                    { "type": "info", "hover": "let x: u32", "loc": "1/11:9-11:10" },
-                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
-                    { "type": "info", "hover": "let x: u32", "loc": "1/13:9-13:10" },
-                    { "type": "info", "hover": "let y: u32", "loc": "1/14:9-14:10" },
-                    { "type": "info", "link": "1/11:9-11:10", "hover": "let x: u32", "loc": "1/14:13-14:14" },
-                    { "type": "end" }
-                    ]
-
-                    `
-                );
-            }
-        }
-    );
-
-    describe("<stdin> input", () => {
-        const v1 = v1Run;
-
-        itEach("compiles 42.lo", { v1 }, async (run) => {
-            const stdin = new WASI.VirtualFD();
-            stdin.write(await fs.readFile("./examples/test/42.lo"));
-            stdin.flush();
-
-            const output = await run(["compile", "-i"], { stdin });
-
-            const program = await loadWasm(output);
-            const result = program.main();
-
-            assert.strictEqual(result, 42);
-        });
-    });
-
     describe("aoc", () => {
         itEach("compiles 2020 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
@@ -804,6 +726,89 @@ async function commandTest() {
                 "./examples/test/demos/wasm4/src/slasher.lo"
             );
             await loadWasm(output, wasm4Imports);
+        });
+    });
+
+    itEach(
+        "compiler reports multiple errors in fault-tolerance.lo",
+        { v1 },
+        async (compile) => {
+            try {
+                await compile("./examples/test/fault-tolerance.lo");
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/fault-tolerance.lo:10:4 - Cannot redefine main, previously defined at examples/test/fault-tolerance.lo:2:4
+                    ERROR: examples/test/fault-tolerance.lo:2:17 - Cannot redefine a, previously defined at examples/test/fault-tolerance.lo:2:9
+                    ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:3:9
+                    ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:11:9
+
+                    `
+                );
+            }
+        }
+    );
+
+    describe("inspect", () => {
+        const v1 = v1Run;
+
+        itEach(
+            "emits partial diagnostics and multiple errors in fault-tolerance.lo",
+            { v1 },
+            async (run) => {
+                const stdout = new WASI.VirtualFD();
+                try {
+                    await run(
+                        ["inspect", "./examples/test/fault-tolerance.lo"],
+                        { stdout }
+                    );
+                } catch (err) {
+                    // stderr is empty
+                    assert.strictEqual((err as Error).message, "");
+
+                    // stdout contains partial diagnostics and errors in json format
+                    assert.strictEqual(
+                        stdout.flushAndReadUtf8(),
+                        m`
+                    [
+                    { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
+                    { "type": "message", "content": "Cannot redefine main, previously defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
+                    { "type": "message", "content": "Cannot redefine a, previously defined at examples/test/fault-tolerance.lo:2:9", "severity": "error", "loc": "1/2:17-2:18" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
+                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/5:9-5:10" },
+                    { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },
+                    { "type": "info", "link": "1/3:9-3:10", "hover": "let x: u32", "loc": "1/6:13-6:14" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/11:9-11:10" },
+                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
+                    { "type": "info", "hover": "let x: u32", "loc": "1/13:9-13:10" },
+                    { "type": "info", "hover": "let y: u32", "loc": "1/14:9-14:10" },
+                    { "type": "info", "link": "1/11:9-11:10", "hover": "let x: u32", "loc": "1/14:13-14:14" },
+                    { "type": "end" }
+                    ]
+
+                    `
+                    );
+                }
+            }
+        );
+    });
+
+    describe("<stdin> input", () => {
+        const v1 = v1Run;
+
+        itEach("compiles 42.lo", { v1 }, async (run) => {
+            const stdin = new WASI.VirtualFD();
+            stdin.write(await fs.readFile("./examples/test/42.lo"));
+            stdin.flush();
+
+            const output = await run(["compile", "-i"], { stdin });
+
+            const program = await loadWasm(output);
+            const result = program.main();
+
+            assert.strictEqual(result, 42);
         });
     });
 
@@ -1197,11 +1202,43 @@ async function commandTest() {
             // files = files.filter((f) => f.endsWith(".lo"));
             // files = files.map((f) => `examples/${f}`);
             const files = [
-                "examples/test/42.lo",
-                "examples/test/add.lo",
-                "examples/test/factorial.lo",
-                "examples/test/include.lo",
-                "examples/test/hex-and-shifts.lo",
+                "./examples/test/42.lo",
+                "./examples/test/add.lo",
+                "./examples/test/factorial.lo",
+                "./examples/test/include.lo",
+                "./examples/test/hex-and-shifts.lo",
+                "./examples/test/locals.lo",
+                "./examples/test/else-if.lo",
+                // "./examples/test/import.lo",
+                // "./examples/test/demos/hello-world-raw.lo",
+                // "./examples/test/globals.lo",
+                // "./examples/test/loop.lo",
+                // "./examples/test/for-loop.lo",
+                // "./examples/test/methods.lo",
+                // "./examples/test/nested-if-break.lo",
+                // "./examples/test/struct.lo",
+                // "./examples/test/auto-forward-decl.lo",
+                // "./examples/test/struct-value-field-access.lo",
+                // "./examples/test/decl-nesting.lo",
+                // "./examples/test/struct-ref.lo",
+                // "./examples/test/macro.lo",
+                // "./examples/lib/wasi.lo",
+                // "./examples/test/string-pooling.lo",
+                // "./examples/test/zst-noop.lo",
+                // "./examples/test/std.test.lo",
+                // "./examples/test/vec.test.lo",
+                // "./examples/test/demos/hello-world.lo",
+                // "./examples/test/demos/echo.lo",
+                // "./examples/test/args.test.lo",
+                // "./examples/test/demos/cat.lo",
+                // "./examples/test/tracing.lo",
+                // "./examples/test/struct-in-struct.lo",
+                // "./examples/test/heap-alloc.lo",
+                // "./examples/test/defer.lo",
+                // "./examples/test/errors.lo",
+                // "./examples/test/do-with.lo",
+                // "./examples/test/enums.lo",
+                // "./examples/test/if-match-chain.lo",
             ];
 
             for (const fileName of files) {
