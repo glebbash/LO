@@ -34,7 +34,7 @@ enum Screen {
 
 const VOLUME = 65
 
-global screen = Screen::Title()
+global screen = Screen::Title
 global gamepad = 0 as u8
 global prev_gamepad = 0 as u8
 global pos_x = +42
@@ -59,13 +59,13 @@ export fn update() {
     prev_gamepad = gamepad
     gamepad = *wasm4::GAMEPAD1
 
-    if screen == Screen::Title() {
+    if screen == Screen::Title {
         title_screen_update()
-    } else if screen == Screen::Game() {
+    } else if screen == Screen::Game {
         game_screen_update()
-    } else if screen == Screen::End1() {
+    } else if screen == Screen::End1 {
         end1_screen_update()
-    } else if screen == Screen::End2() {
+    } else if screen == Screen::End2 {
         end2_screen_update()
     }
 }
@@ -90,7 +90,7 @@ fn title_screen_update() {
     wasm4::text("@glebbash 2025\0".data, +24, +146)
 
     if just_pressed(wasm4::BUTTON_1) {
-        screen = Screen::Game()
+        screen = Screen::Game
     }
 }
 
@@ -125,11 +125,11 @@ fn game_screen_update() {
     }
 
     if pos_x == +02 && pos_y == +04 {
-        screen = Screen::End1()
+        screen = Screen::End1
     }
 
     if pos_x == +84 && pos_y == +82 {
-        screen = Screen::End2()
+        screen = Screen::End2
     }
 }
 

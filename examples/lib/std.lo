@@ -670,7 +670,7 @@ fn str::clone(self): str {
     return str { data: new_data, size: self.size }
 }
 
-fn str::equals(self, other: str): bool {
+fn str::equals(self, other): bool {
     if self.size != other.size {
         return false
     }
@@ -710,7 +710,7 @@ fn str::find(self, search: str, start: u32): Result(u32, &void) {
     return Err(1 as &void)
 }
 
-fn str::starts_with(self, other: str): bool {
+fn str::starts_with(self, other): bool {
     return self.slice(0, other.size).equals(other)
 }
 

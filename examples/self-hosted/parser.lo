@@ -57,10 +57,10 @@ fn Parser::parse_file(&self): Result(void, &Error) {
 }
 
 fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
-    if self.eat(TokenType::Symbol(), "export") != null {
+    if self.eat(TokenType::Symbol, "export") != null {
         let loc = self.prev().loc
 
-        if self.eat(TokenType::Symbol(), "fn") != null {
+        if self.eat(TokenType::Symbol, "fn") != null {
             let fn_def = self.parse_fn_def(true, loc)?
             return Ok(TopLevelExpr::FnDef(fn_def))
         }
@@ -78,23 +78,23 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         }))
     }
 
-    if self.eat(TokenType::Symbol(), "fn") != null {
+    if self.eat(TokenType::Symbol, "fn") != null {
         let fn_def = self.parse_fn_def(false, self.prev().loc)?
         return Ok(TopLevelExpr::FnDef(fn_def))
     }
 
-    if self.eat(TokenType::Symbol(), "include") != null {
+    if self.eat(TokenType::Symbol, "include") != null {
         let loc = self.prev().loc
 
-        let file_path = self.expect_any(TokenType::StringLiteral())?
+        let file_path = self.expect_any(TokenType::StringLiteral)?
         let alias = null as &IdentExpr
-        if self.eat(TokenType::Symbol(), "as") != null {
+        if self.eat(TokenType::Symbol, "as") != null {
             alias = self.ast_arena.new!(self.parse_ident()?)
         }
 
         let with_extern = false
-        if self.eat(TokenType::Symbol(), "with") != null {
-            let _ = self.expect(TokenType::Symbol(), "extern")?
+        if self.eat(TokenType::Symbol, "with") != null {
+            let _ = self.expect(TokenType::Symbol, "extern")?
             with_extern = true
         }
 
@@ -104,6 +104,29 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             file_path: QuotedString::new(file_path.loc),
             alias: alias,
             with_extern: with_extern,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(TokenType::Symbol, "import") != null {
+        let loc = self.prev().loc
+
+        let _ = self.expect(TokenType::Symbol, "from")?
+        let module_name = self.expect_any(TokenType::StringLiteral)?
+
+        let _ = self.expect(TokenType::Delim, "{")?
+
+        let items = Vec::new!<ImportItem>()
+        while self.eat(TokenType::Delim, "}") == null {
+            let item = self.parse_importable()?
+            items.push!(item)
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::Import(self.ast_arena.new!(ImportExpr {
+            module_name: QuotedString::new(module_name.loc),
+            items: items,
             loc: loc,
         })))
     }
@@ -144,7 +167,7 @@ fn Parser::parse_fn_decl(&self): Result(FnDeclExpr, &Error) {
     let fn_params = self.parse_fn_params(false, fn_params_trailing_comma)?
 
     let return_type = null as &TypeExpr
-    if self.eat(TokenType::Operator(), ":") != null {
+    if self.eat(TokenType::Operator, ":") != null {
         return_type = self.ast_arena.new!(self.parse_type_expr()?)
     }
 
@@ -166,15 +189,15 @@ fn Parser::parse_fn_params(
 ): Result(&Vec(FnParam), &Error) {
     let params = Vec::new!<FnParam>()
 
-    let _ = self.expect(TokenType::Delim(), "(")?
+    let _ = self.expect(TokenType::Delim, "(")?
 
-    while self.eat(TokenType::Delim(), ")") == null {
+    while self.eat(TokenType::Delim, ")") == null {
         *trailing_comma = false
 
         let loc = self.current().loc
 
         let param_type = FnParamType::Self(null)
-        if self.eat(TokenType::Operator(), "&") != null {
+        if self.eat(TokenType::Operator, "&") != null {
             param_type = FnParamType::SelfRef(null)
         }
 
@@ -187,9 +210,9 @@ fn Parser::parse_fn_params(
                 }))
             }
 
-            let _ = self.expect(TokenType::Operator(), ":")?
+            let _ = self.expect(TokenType::Operator, ":")?
 
-            if self.eat(TokenType::Symbol(), "infer") != null {
+            if self.eat(TokenType::Symbol, "infer") != null {
                 let infer = self.prev()
 
                 if !infer_allowed {
@@ -199,7 +222,7 @@ fn Parser::parse_fn_params(
                     }))
                 }
 
-                let infer_as = self.expect_any(TokenType::Symbol())?
+                let infer_as = self.expect_any(TokenType::Symbol)?
                 param_type = FnParamType::Infer(self.ast_arena.new!(FnParamTypeInfer {
                     name: infer_as.get_value(self.source),
                 }))
@@ -212,8 +235,8 @@ fn Parser::parse_fn_params(
 
         loc.end_pos = self.prev().loc.end_pos
 
-        if !self.current().is(TokenType::Delim(), ")", self.source) {
-            let _ = self.expect(TokenType::Delim(), ",")?
+        if !self.current().is(TokenType::Delim, ")", self.source) {
+            let _ = self.expect(TokenType::Delim, ",")?
             *trailing_comma = true
         }
 
@@ -227,9 +250,39 @@ fn Parser::parse_fn_params(
     return Ok(params)
 }
 
-struct EnumDbg {
-    tag: u32,
-    ptr: u32,
+fn Parser::parse_memory_def(&self, exported: bool, loc: Loc): Result(MemoryDefExpr, &Error) {
+    let params = self.parse_code_expr_map()?
+    loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(MemoryDefExpr {
+        exported: exported,
+        params: params,
+        loc: loc,
+    })
+}
+
+fn Parser::parse_importable(&self): Result(ImportItem, &Error) {
+    if self.eat(TokenType::Symbol, "fn") != null {
+        let decl = self.parse_fn_decl()?
+        return Ok(ImportItem::FnDecl(self.ast_arena.new!(decl)))
+    }
+
+    if self.eat(TokenType::Symbol, "memory") != null {
+        let loc = self.prev().loc
+        let memory_def = self.parse_memory_def(false, loc)?
+        return Ok(ImportItem::Memory(self.ast_arena.new!(memory_def)))
+    }
+
+    let unexpected = self.current()
+    let message = String::from_str_in(
+        self.error_arena,
+        "Unexpected token in importable item: ",
+    )
+    message.push_str(unexpected.get_value(self.source))
+    return Err(self.error_arena.new!(Error {
+        message: message,
+        loc: unexpected.loc,
+    }))
 }
 
 fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
@@ -253,10 +306,10 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     }
 
     loop {
-        let ident_part = self.expect_any(TokenType::Symbol())?
+        let ident_part = self.expect_any(TokenType::Symbol)?
         ident.parts.push!(ident_part.loc)
 
-        if self.eat(TokenType::Operator(), "::") == null {
+        if self.eat(TokenType::Operator, "::") == null {
             break
         }
     }
@@ -271,15 +324,53 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     return Ok(ident)
 }
 
+fn Parser::parse_code_expr_map(&self): Result(CodeExprMap, &Error) {
+    let fields = Vec::new!<CodeExprMapField>()
+    let has_trailing_comma = false
+
+    let loc = self.expect(TokenType::Delim, "{")?.loc
+
+    while self.eat(TokenType::Delim, "}") == null {
+        let field_loc = self.current().loc
+
+        let field_name = self.expect_any(TokenType::Symbol)?
+        let _ = self.expect(TokenType::Operator, ":")?
+        let value = self.parse_code_expr(0)?
+
+        field_loc.end_pos = self.prev().loc.end_pos
+
+        fields.push!(CodeExprMapField {
+            key: field_name.get_value(self.source),
+            value: value,
+            loc: field_loc,
+        })
+
+        if !self.current().is(TokenType::Delim, "}", self.source) {
+            let _ = self.expect(TokenType::Delim, ",")?
+            has_trailing_comma = true
+        } else {
+            has_trailing_comma = false
+        }
+    }
+
+    loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(CodeExprMap {
+        fields: fields,
+        has_trailing_comma: has_trailing_comma,
+        loc: loc,
+    })
+}
+
 fn Parser::parse_code_block(&self): Result(CodeBlock, &Error) {
-    let _ = self.expect(TokenType::Delim(), "{")?
+    let _ = self.expect(TokenType::Delim, "{")?
 
     let code_block = CodeBlock {
         exprs: Vec::new!<CodeExpr>(),
         loc: self.prev().loc,
     }
 
-    while self.eat(TokenType::Delim(), "}") == null {
+    while self.eat(TokenType::Delim, "}") == null {
         let expr = self.parse_code_expr(0)?
         code_block.exprs.push!(expr)
     }
@@ -327,11 +418,11 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     // TODO: implement proper
     if false {}
 
-    if self.eat_any(TokenType::IntLiteral()) != null {
+    if self.eat_any(TokenType::IntLiteral) != null {
         let int_literal = self.prev()
 
         let tag = null as &str
-        if self.eat(TokenType::Symbol(), "u64") != null {
+        if self.eat(TokenType::Symbol, "u64") != null {
             tag = self.ast_arena.new!(self.prev().get_value(self.lexer.source))
         }
 
@@ -348,11 +439,11 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         ))
     }
 
-    if self.eat(TokenType::Symbol(), "let") != null {
+    if self.eat(TokenType::Symbol, "let") != null {
         let loc = self.prev().loc
 
         let local_name = self.parse_ident()?
-        let _ = self.expect(TokenType::Operator(), "=")?
+        let _ = self.expect(TokenType::Operator, "=")?
         let value = self.parse_code_expr(0)?
 
         loc.end_pos = self.prev().loc.end_pos
@@ -364,7 +455,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol(), "if") != null {
+    if self.eat(TokenType::Symbol, "if") != null {
         let loc = self.prev().loc
 
         self.push_ctx(ParsingContext {
@@ -372,7 +463,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })
 
         let cond = IfCond::Expr(null)
-        if self.eat(TokenType::Symbol(), "match") != null {
+        if self.eat(TokenType::Symbol, "match") != null {
             cond = IfCond::Match(self.ast_arena.new!(self.parse_match_header()?))
         } else {
             cond = IfCond::Expr(self.ast_arena.new!(self.parse_code_expr(0)?))
@@ -383,8 +474,8 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let then_block = self.parse_code_block()?
 
         let else_block = ElseBlock::None(null)
-        if self.eat(TokenType::Symbol(), "else") != null {
-            if self.current().is(TokenType::Symbol(), "if", self.source) {
+        if self.eat(TokenType::Symbol, "else") != null {
+            if self.current().is(TokenType::Symbol, "if", self.source) {
                 let if_expr = self.parse_code_expr(0)?
                 else_block = ElseBlock::ElseIf(self.ast_arena.new!(if_expr))
             } else {
@@ -403,7 +494,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol(), "return") != null {
+    if self.eat(TokenType::Symbol, "return") != null {
         let loc = self.prev().loc
 
         let expr = null as &CodeExpr
@@ -421,7 +512,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         ))
     }
 
-    if self.eat(TokenType::Operator(), "@") != null {
+    if self.eat(TokenType::Operator, "@") != null {
         let loc = self.prev().loc
 
         let fn_name = self.parse_ident()?
@@ -446,7 +537,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     // TODO: implement proper
     if false {}
 
-    if self.current().is(TokenType::Delim(), "(", self.source) {
+    if self.current().is(TokenType::Delim, "(", self.source) {
         let loc = ident.loc
 
         self.push_ctx(ParsingContext {
@@ -475,32 +566,32 @@ fn Parser::parse_code_expr_postfix(
     op: InfixOp,
     op_loc: Loc,
 ): Result(CodeExpr, &Error) {
-    if (op.tag == InfixOpTag::Equal() \
-        || op.tag == InfixOpTag::NotEqual() \
-        || op.tag == InfixOpTag::Less() \
-        || op.tag == InfixOpTag::Greater() \
-        || op.tag == InfixOpTag::LessEqual() \
-        || op.tag == InfixOpTag::GreaterEqual() \
-        || op.tag == InfixOpTag::Add() \
-        || op.tag == InfixOpTag::Sub() \
-        || op.tag == InfixOpTag::Mul() \
-        || op.tag == InfixOpTag::Div() \
-        || op.tag == InfixOpTag::Mod() \
-        || op.tag == InfixOpTag::And() \
-        || op.tag == InfixOpTag::BitAnd() \
-        || op.tag == InfixOpTag::Or() \
-        || op.tag == InfixOpTag::BitOr() \
-        || op.tag == InfixOpTag::ShiftLeft() \
-        || op.tag == InfixOpTag::ShiftRight() \
-        || op.tag == InfixOpTag::AddAssign() \
-        || op.tag == InfixOpTag::SubAssign() \
-        || op.tag == InfixOpTag::MulAssign() \
-        || op.tag == InfixOpTag::DivAssign() \
-        || op.tag == InfixOpTag::ModAssign() \
-        || op.tag == InfixOpTag::BitAndAssign() \
-        || op.tag == InfixOpTag::BitOrAssign() \
-        || op.tag == InfixOpTag::ShiftLeftAssign() \
-        || op.tag == InfixOpTag::ShiftRightAssign())
+    if (op.tag == InfixOpTag::Equal \
+        || op.tag == InfixOpTag::NotEqual \
+        || op.tag == InfixOpTag::Less \
+        || op.tag == InfixOpTag::Greater \
+        || op.tag == InfixOpTag::LessEqual \
+        || op.tag == InfixOpTag::GreaterEqual \
+        || op.tag == InfixOpTag::Add \
+        || op.tag == InfixOpTag::Sub \
+        || op.tag == InfixOpTag::Mul \
+        || op.tag == InfixOpTag::Div \
+        || op.tag == InfixOpTag::Mod \
+        || op.tag == InfixOpTag::And \
+        || op.tag == InfixOpTag::BitAnd \
+        || op.tag == InfixOpTag::Or \
+        || op.tag == InfixOpTag::BitOr \
+        || op.tag == InfixOpTag::ShiftLeft \
+        || op.tag == InfixOpTag::ShiftRight \
+        || op.tag == InfixOpTag::AddAssign \
+        || op.tag == InfixOpTag::SubAssign \
+        || op.tag == InfixOpTag::MulAssign \
+        || op.tag == InfixOpTag::DivAssign \
+        || op.tag == InfixOpTag::ModAssign \
+        || op.tag == InfixOpTag::BitAndAssign \
+        || op.tag == InfixOpTag::BitOrAssign \
+        || op.tag == InfixOpTag::ShiftLeftAssign \
+        || op.tag == InfixOpTag::ShiftRightAssign)
     {
         let lhs = primary
         let rhs = self.parse_code_expr(op.bp_next)?
@@ -524,12 +615,12 @@ fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
     let has_trailing_comma = false
     let items = Vec::new!<CodeExpr>()
 
-    let _ = self.expect(TokenType::Delim(), "(")?
-    while self.eat(TokenType::Delim(), ")") == null {
+    let _ = self.expect(TokenType::Delim, "(")?
+    while self.eat(TokenType::Delim, ")") == null {
         items.push!(self.parse_code_expr(0)?)
 
-        if !self.current().is(TokenType::Delim(), ")", self.source) {
-            let _ = self.expect(TokenType::Delim(), ",")?
+        if !self.current().is(TokenType::Delim, ")", self.source) {
+            let _ = self.expect(TokenType::Delim, ",")?
             has_trailing_comma = true
         } else {
             has_trailing_comma = false
@@ -545,15 +636,15 @@ fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
 fn Parser::parse_macro_type_args(&self): Result(&Vec(TypeExpr), &Error) {
     let type_args = Vec::new!<TypeExpr>()
 
-    if self.eat(TokenType::Operator(), "<") == null {
+    if self.eat(TokenType::Operator, "<") == null {
         return Ok(type_args)
     }
 
-    while self.eat(TokenType::Operator(), ">") == null {
+    while self.eat(TokenType::Operator, ">") == null {
         type_args.push!(self.parse_type_expr()?)
 
-        if !self.current().is(TokenType::Operator(), ">", self.source) {
-            let _ = self.expect(TokenType::Delim(), ",")?
+        if !self.current().is(TokenType::Operator, ">", self.source) {
+            let _ = self.expect(TokenType::Delim, ",")?
         }
     }
 

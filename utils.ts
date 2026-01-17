@@ -1209,7 +1209,7 @@ async function commandTest() {
                 "./examples/test/hex-and-shifts.lo",
                 "./examples/test/locals.lo",
                 "./examples/test/else-if.lo",
-                // "./examples/test/import.lo",
+                "./examples/test/import.lo",
                 // "./examples/test/demos/hello-world-raw.lo",
                 // "./examples/test/globals.lo",
                 // "./examples/test/loop.lo",

@@ -80,6 +80,36 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
+    if match TopLevelExpr::Import(import_expr) = expr {
+        stdout_write("import from ")
+        stdout_write(import_expr.module_name.get_repr(self.parser.lexer.source))
+        stdout_writeln(" {")
+        self.indent += 1
+
+        for i in 0..import_expr.items.size {
+            let item = import_expr.items.get!(i)
+            self.print_comments_before(item.loc().pos)
+            self.print_indent()
+            if match ImportItem::FnDecl(decl) = item {
+                self.print_fn_decl(*decl)
+            } else if match ImportItem::Memory(memory_def) = item {
+                self.print_memory_def(*memory_def)
+            } else {
+                @unreachable()
+            }
+            stdout_write("\n")
+        }
+
+        // print the rest of the comments
+        self.print_comments_before(import_expr.loc.end_pos)
+
+        self.indent -= 1
+        self.print_indent()
+        stdout_write("}")
+        stdout_write("\n")
+        return
+    }
+
     todo!()
 }
 
@@ -102,23 +132,23 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
         stdout_write("\n")
     }
 
-    for index in 0..params.size {
-        let param = params.get!(index)
+    for i in 0..params.size {
+        let param = params.get!(i)
 
-        if index != 0 {
+        if i != 0 {
             stdout_write(",")
         }
 
         let continues = self.print_double_backslashes_before(param.loc.pos.offset)
 
         if is_multiline && !continues {
-            if index != 0 {
+            if i != 0 {
                 stdout_write("\n")
             }
 
             self.print_comments_before(param.loc.pos)
             self.print_indent()
-        } else if index != 0 {
+        } else if i != 0 {
             stdout_write(" ")
         }
 
@@ -149,6 +179,14 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
     }
 
     stdout_write(")")
+}
+
+fn Printer::print_memory_def(&self, mem: MemoryDefExpr) {
+    if mem.exported {
+        stdout_write("export ")
+    }
+    stdout_write("memory ")
+    self.print_code_expr_map(mem.params)
 }
 
 fn Printer::print_type_expr(&self, expr: TypeExpr) {
@@ -294,6 +332,56 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
     todo!()
 }
 
+fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
+    stdout_write("{")
+    self.last_printed_item_line = map.loc.pos.line
+
+    if map.has_trailing_comma {
+        stdout_write("\n")
+
+        self.indent += 1
+
+        for i in 0..map.fields.size {
+            let field = map.fields.get!(i)
+            self.print_comments_before(field.loc.pos)
+            self.print_indent()
+            stdout_write(field.key)
+            stdout_write(": ")
+            self.print_code_expr(field.value)
+            stdout_writeln(",")
+        }
+
+        self.print_comments_before(map.loc.end_pos)
+
+        self.indent -= 1
+        self.print_indent()
+        stdout_write("}")
+
+        return
+    }
+
+    if map.fields.size > 0 {
+        stdout_write(" ")
+    }
+
+    for i in 0..map.fields.size {
+        if i != 0 {
+            stdout_write(", ")
+        }
+
+        let field = map.fields.get!(i)
+        stdout_write(field.key)
+        stdout_write(": ")
+        self.print_code_expr(field.value)
+    }
+
+    if map.fields.size > 0 {
+        stdout_write(" ")
+    }
+
+    stdout_write("}")
+}
+
 fn Printer::print_args(&self, args: CodeExprList, open_paren_loc: Loc) {
     stdout_write("(")
     self.print_expr_list(args.items, args.has_trailing_comma, open_paren_loc)
@@ -314,23 +402,23 @@ fn Printer::print_expr_list(
 
     let prev_backslashes_printed = self.backslashes_printed
 
-    for index in 0..exprs.size {
-        let arg = exprs.get!(index)
+    for i in 0..exprs.size {
+        let arg = exprs.get!(i)
 
-        if index != 0 {
+        if i != 0 {
             stdout_write(",")
         }
 
         let continues = self.print_double_backslashes_before(arg.loc().pos.offset)
 
         if is_multiline && !continues {
-            if index != 0 {
+            if i != 0 {
                 stdout_write("\n")
             }
 
             self.print_comments_before(arg.loc().pos)
             self.print_indent()
-        } else if index != 0 {
+        } else if i != 0 {
             stdout_write(" ")
         }
 
@@ -354,10 +442,10 @@ fn Printer::print_type_args(&self, type_args: &Vec(TypeExpr)) {
     }
 
     stdout_write("<")
-    for index in 0..type_args.size {
-        let type_arg = type_args.get!(index)
+    for i in 0..type_args.size {
+        let type_arg = type_args.get!(i)
 
-        if index != 0 {
+        if i != 0 {
             stdout_write(", ")
         }
 

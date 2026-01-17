@@ -16,19 +16,19 @@ enum TokenType {
 }
 
 fn TokenType::to_str(self): str {
-    if self == TokenType::StringLiteral() {
+    if self == TokenType::StringLiteral {
         return "StringLiteral"
-    } else if self == TokenType::CharLiteral() {
+    } else if self == TokenType::CharLiteral {
         return "CharLiteral"
-    } else if self == TokenType::IntLiteral() {
+    } else if self == TokenType::IntLiteral {
         return "IntLiteral"
-    } else if self == TokenType::Symbol() {
+    } else if self == TokenType::Symbol {
         return "Symbol"
-    } else if self == TokenType::Delim() {
+    } else if self == TokenType::Delim {
         return "Delim"
-    } else if self == TokenType::Operator() {
+    } else if self == TokenType::Operator {
         return "Operator"
-    } else if self == TokenType::Terminal() {
+    } else if self == TokenType::Terminal {
         return "Terminal"
     } else {
         @unreachable()
@@ -52,7 +52,7 @@ fn Token::is_any(&self, type_: TokenType): bool {
 }
 
 fn Token::is_terminal(&self): bool {
-    return self.is_any(TokenType::Terminal())
+    return self.is_any(TokenType::Terminal)
 }
 
 struct Lexer {
@@ -109,7 +109,7 @@ fn Lexer::lex_file(&self): Result(void, &Error) {
     }
 
     self.tokens.push!(Token {
-        type_: TokenType::Terminal(),
+        type_: TokenType::Terminal,
         loc: self.loc(),
     })
 
@@ -209,7 +209,7 @@ fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::CharLiteral(),
+        type_: TokenType::CharLiteral,
         loc: loc,
     })
 }
@@ -256,7 +256,7 @@ fn Lexer::lex_string_literal(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::StringLiteral(),
+        type_: TokenType::StringLiteral,
         loc: loc,
     })
 }
@@ -291,7 +291,7 @@ fn Lexer::lex_int_literal(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::IntLiteral(),
+        type_: TokenType::IntLiteral,
         loc: loc,
     })
 }
@@ -329,7 +329,7 @@ fn Lexer::lex_symbol(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::Symbol(),
+        type_: TokenType::Symbol,
         loc: loc,
     })
 }
@@ -342,7 +342,7 @@ fn Lexer::lex_delim(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::Delim(),
+        type_: TokenType::Delim,
         loc: loc,
     })
 }
@@ -402,7 +402,7 @@ fn Lexer::lex_operator(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::Operator(),
+        type_: TokenType::Operator,
         loc: loc,
     })
 }
@@ -533,7 +533,7 @@ fn Lexer::peek_next_char(&self): Result(u32, &Error) {
 fn Lexer::map_utf8_read_err(&self, utf8_read: Result(u32, UTF8ReadError)): Result(u32, &Error) {
     let char = utf8_read catch err {
         let message = "ParseError: Invalid UTF-8 sequence"
-        if err == UTF8ReadError::EndOfSource() {
+        if err == UTF8ReadError::EndOfSource {
             message = "ParseError: Unexpected EOF"
         }
         return Err(self.error_arena.new!(Error {
@@ -688,100 +688,100 @@ struct InfixOp {
 
 fn InfixOp::parse(repr: str): Result(InfixOp, &void) {
     if repr.equals("catch") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Catch(), 14))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Catch, 14))
     }
     if repr.equals(".") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::FieldAccess(), 13))
+        return Ok(InfixOp::left_assoc(InfixOpTag::FieldAccess, 13))
     }
     if repr.equals("?") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::ErrorPropagation(), 12))
+        return Ok(InfixOp::left_assoc(InfixOpTag::ErrorPropagation, 12))
     }
     if repr.equals("as") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Cast(), 11))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Cast, 11))
     }
     if repr.equals("%") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Mod(), 10))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Mod, 10))
     }
     if repr.equals("/") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Div(), 10))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Div, 10))
     }
     if repr.equals("*") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Mul(), 10))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Mul, 10))
     }
     if repr.equals("-") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Sub(), 9))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Sub, 9))
     }
     if repr.equals("+") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Add(), 9))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Add, 9))
     }
     if repr.equals(">>") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::ShiftRight(), 8))
+        return Ok(InfixOp::left_assoc(InfixOpTag::ShiftRight, 8))
     }
     if repr.equals("<<") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::ShiftLeft(), 8))
+        return Ok(InfixOp::left_assoc(InfixOpTag::ShiftLeft, 8))
     }
     if repr.equals("&") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::BitAnd(), 7))
+        return Ok(InfixOp::left_assoc(InfixOpTag::BitAnd, 7))
     }
     if repr.equals("|") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::BitOr(), 6))
+        return Ok(InfixOp::left_assoc(InfixOpTag::BitOr, 6))
     }
     if repr.equals(">=") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::GreaterEqual(), 5))
+        return Ok(InfixOp::left_assoc(InfixOpTag::GreaterEqual, 5))
     }
     if repr.equals(">") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Greater(), 5))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Greater, 5))
     }
     if repr.equals("<=") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::LessEqual(), 5))
+        return Ok(InfixOp::left_assoc(InfixOpTag::LessEqual, 5))
     }
     if repr.equals("<") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Less(), 5))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Less, 5))
     }
     if repr.equals("!=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::NotEqual(), 5))
+        return Ok(InfixOp::none_assoc(InfixOpTag::NotEqual, 5))
     }
     if repr.equals("==") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::Equal(), 5))
+        return Ok(InfixOp::none_assoc(InfixOpTag::Equal, 5))
     }
     if repr.equals("&&") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::And(), 4))
+        return Ok(InfixOp::left_assoc(InfixOpTag::And, 4))
     }
     if repr.equals("||") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::Or(), 3))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Or, 3))
     }
     if repr.equals("|>") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::ExprPipe(), 2))
+        return Ok(InfixOp::left_assoc(InfixOpTag::ExprPipe, 2))
     }
     if repr.equals("=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::Assign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::Assign, 1))
     }
     if repr.equals("+=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::AddAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::AddAssign, 1))
     }
     if repr.equals("-=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::SubAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::SubAssign, 1))
     }
     if repr.equals("*=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::MulAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::MulAssign, 1))
     }
     if repr.equals("/=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::DivAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::DivAssign, 1))
     }
     if repr.equals("%=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::ModAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::ModAssign, 1))
     }
     if repr.equals("&=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::BitAndAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::BitAndAssign, 1))
     }
     if repr.equals("|=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::BitOrAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::BitOrAssign, 1))
     }
     if repr.equals("<<=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::ShiftLeftAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::ShiftLeftAssign, 1))
     }
     if repr.equals(">>=") {
-        return Ok(InfixOp::none_assoc(InfixOpTag::ShiftRightAssign(), 1))
+        return Ok(InfixOp::none_assoc(InfixOpTag::ShiftRightAssign, 1))
     }
     return Err(1 as &void)
 }
@@ -809,19 +809,19 @@ struct PrefixOp {
 
 fn PrefixOp::parse(repr: str): Result(PrefixOp, &void) {
     if repr.equals("!") {
-        return Ok(PrefixOp::left_assoc(PrefixOpTag::Not(), 8))
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Not, 8))
     }
     if repr.equals("&") {
-        return Ok(PrefixOp::left_assoc(PrefixOpTag::Reference(), 8))
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Reference, 8))
     }
     if repr.equals("*") {
-        return Ok(PrefixOp::left_assoc(PrefixOpTag::Dereference(), 8))
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Dereference, 8))
     }
     if repr.equals("+") {
-        return Ok(PrefixOp::left_assoc(PrefixOpTag::Positive(), 9))
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Positive, 9))
     }
     if repr.equals("-") {
-        return Ok(PrefixOp::left_assoc(PrefixOpTag::Negative(), 9))
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Negative, 9))
     }
     return Err(1 as &void)
 }
@@ -837,7 +837,7 @@ enum UTF8ReadError {
 
 fn read_utf8_codepoint(source: str, offset: u32): Result(u32, UTF8ReadError) {
     if offset >= source.size {
-        return Err(UTF8ReadError::EndOfSource())
+        return Err(UTF8ReadError::EndOfSource)
     }
 
     let first = source.char_at(offset) as u32
@@ -863,25 +863,25 @@ fn read_utf8_codepoint(source: str, offset: u32): Result(u32, UTF8ReadError) {
         min = 0x10000
         code = (first & 0x07) as u32
     } else {
-        return Err(UTF8ReadError::InvalidUtf8())
+        return Err(UTF8ReadError::InvalidUtf8)
     }
 
     if offset + width > source.size {
-        return Err(UTF8ReadError::EndOfSource())
+        return Err(UTF8ReadError::EndOfSource)
     }
 
     // process continuation bytes
     for i in 1..width {
         let b = source.char_at(offset + i) as u32
         if (b & 0xC0) != 0x80 {
-            return Err(UTF8ReadError::InvalidUtf8())
+            return Err(UTF8ReadError::InvalidUtf8)
         }
         code = (code << 6) | ((b & 0x3F) as u32)
     }
 
     // validate code point
     if code < min || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF) {
-        return Err(UTF8ReadError::InvalidUtf8())
+        return Err(UTF8ReadError::InvalidUtf8)
     }
 
     return Ok(code)

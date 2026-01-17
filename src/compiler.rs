@@ -645,7 +645,7 @@ impl Compiler {
                     });
                 }
                 TopLevelExpr::EnumDef(enum_def) => {
-                    let _ = self.define_symbol(
+                    let Ok(_) = self.define_symbol(
                         &mut module.ctx,
                         Symbol {
                             name: enum_def.enum_name.repr,
@@ -654,7 +654,9 @@ impl Compiler {
                             defined_in_this_scope: true,
                             loc: enum_def.enum_name.loc,
                         },
-                    );
+                    ) else {
+                        continue;
+                    };
 
                     let mut variant_type = Type::Void;
                     if let Some(type_expr) = &enum_def.variant_type {
@@ -669,7 +671,7 @@ impl Compiler {
 
                     self.enum_defs.push(EnumDef {
                         enum_name: enum_def.enum_name.repr,
-                        variant_type,
+                        variant_type: variant_type.clone(),
                         variants: Vec::new(), // placeholder
                     });
 
@@ -679,21 +681,52 @@ impl Compiler {
                             enum_def.enum_name.repr, variant.variant_name.repr
                         ));
 
-                        let _ = self.define_symbol(
-                            &mut module.ctx,
-                            Symbol {
-                                name: constructor_name,
-                                type_: SymbolType::EnumConstructor,
-                                col_index: self.enum_ctors.len(),
-                                defined_in_this_scope: true,
-                                loc: enum_def.enum_name.loc,
-                            },
-                        );
+                        let enum_index = self.enum_defs.len() - 1;
 
-                        self.enum_ctors.push(EnumConstructor {
-                            enum_index: self.enum_defs.len() - 1,
-                            variant_index,
-                        });
+                        if variant_type != Type::Void {
+                            let _ = self.define_symbol(
+                                &mut module.ctx,
+                                Symbol {
+                                    name: constructor_name,
+                                    type_: SymbolType::EnumConstructor,
+                                    col_index: self.enum_ctors.len(),
+                                    defined_in_this_scope: true,
+                                    loc: variant.variant_name.loc,
+                                },
+                            );
+
+                            self.enum_ctors.push(EnumConstructor {
+                                enum_index,
+                                variant_index,
+                            });
+                        } else {
+                            let Ok(_) = self.define_symbol(
+                                &mut module.ctx,
+                                Symbol {
+                                    name: constructor_name,
+                                    type_: SymbolType::Const,
+                                    col_index: self.const_defs.len(),
+                                    defined_in_this_scope: true,
+                                    loc: variant.variant_name.loc,
+                                },
+                            ) else {
+                                continue;
+                            };
+
+                            let mut instrs = Vec::new();
+                            instrs.push(WasmInstr::I32Const {
+                                value: variant_index as i32,
+                            });
+
+                            self.const_defs.push(ConstDef {
+                                const_name: constructor_name,
+                                code_unit: CodeUnit {
+                                    type_: Type::EnumInstance { enum_index },
+                                    instrs,
+                                },
+                                loc: variant.variant_name.loc,
+                            })
+                        }
                     }
                 }
                 TopLevelExpr::TypeDef(type_def) => {
@@ -5102,6 +5135,10 @@ impl Compiler {
     }
 
     fn register_block_const(&mut self, ctx: &ExprContext, const_def: ConstDef) {
+        if const_def.const_name == "_" {
+            return;
+        }
+
         let _ = self.define_symbol(
             ctx,
             Symbol {

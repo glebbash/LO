@@ -435,18 +435,7 @@ impl Parser {
             }
 
             let param_name = self.parse_ident()?;
-            if param_name.repr != "self" {
-                if let FnParamType::SelfRef = param_type {
-                    return Err(Error {
-                        message: format!(
-                            "Only `self` param can be preceded by the reference operator"
-                        ),
-                        loc: param_name.loc,
-                    });
-                }
-
-                self.expect(Operator, ":")?;
-
+            if let Some(_) = self.eat(Operator, ":") {
                 if let Some(infer) = self.eat(Symbol, "infer") {
                     if !infer_allowed {
                         return Err(Error {

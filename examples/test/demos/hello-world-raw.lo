@@ -1,6 +1,7 @@
-export memory {
-    min_pages: 1,
-    data_start: 12,
+export memory { min_pages: 1, data_start: 12 }
+
+import from "wasi_snapshot_preview1" {
+    fn fd_write(fd: u32, iovs: &void, iovs_len: u32, nwritten: &u32): u32
 }
 
 struct str {
@@ -8,10 +9,6 @@ struct str {
     size: u32,
 }
 const message = "Hello World!\n"
-
-import from "wasi_snapshot_preview1" {
-    fn fd_write(fd: u32, iovs: &void, iovs_len: u32, nwritten: &u32): u32
-}
 
 export fn _start() {
     let nwritten = 0 as &u32
