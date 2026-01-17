@@ -331,8 +331,7 @@ export class WASI {
         return exitCode;
     }
 
-    /** @returns {WebAssembly.Imports} */
-    getImportObject() {
+    getImportObject(): WebAssembly.Imports {
         const imports = this.#getImportObject();
         if (!this.options.trace) {
             return imports;
