@@ -2987,6 +2987,19 @@ impl Compiler {
                 });
 
                 if let Some(cond) = cond {
+                    if let Ok(cond_type) = self.get_expr_type(ctx, cond) {
+                        if cond_type != Type::Bool {
+                            self.report_error(&Error {
+                                message: format!(
+                                    "Unexpected condition type: {}, expected: {}",
+                                    TypeFmt(self, &cond_type),
+                                    TypeFmt(self, &Type::Bool),
+                                ),
+                                loc: cond.loc(),
+                            });
+                        }
+                    }
+
                     catch!(self.codegen(ctx, instrs, cond), err, {
                         self.report_error(&err);
                     });
@@ -2994,6 +3007,7 @@ impl Compiler {
                     instrs.push(WasmInstr::UnaryOp {
                         kind: WasmUnaryOpKind::I32_EQZ,
                     });
+                    // TODO: figure out why this is commented out
                     // instrs.push(WasmInstr::BranchIf { label_index: 1 });
                     instrs.push(WasmInstr::BlockStart {
                         block_kind: WasmBlockKind::If,
