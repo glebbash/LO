@@ -4,7 +4,7 @@ import process from "node:process";
 import { it, describe } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
-import { WASI, type WASIOptions } from "./wasi-shim.mjs";
+import { WASI, type WASIOptions } from "./wasi-shim.ts";
 
 const COMPILER_PATH = "lo.wasm";
 const SH_COMPILER_SOURCE_PATH = "examples/self-hosted/0-cli.lo";

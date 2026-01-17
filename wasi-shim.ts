@@ -1,39 +1,31 @@
-// @ts-check
+export type WASIOptions = {
+    version: "preview1";
+    stdin?: number | FD;
+    stdout?: number | FD;
+    stderr?: number | FD;
+    args?: string[];
+    env?: Record<string, string | undefined>;
+    preopens?: Record<string, string>;
+    returnOnExit?: boolean;
+    trace?: boolean;
+    sysCalls: WASISysCalls;
+};
 
-/**
- * @typedef {{
- *   version: "preview1",
- *   stdin?: number | FD,
- *   stdout?: number | FD,
- *   stderr?: number | FD,
- *   args?: string[],
- *   env?: Record<string, string | undefined>
- *   preopens?: Record<string, string>,
- *   returnOnExit?: boolean,
- *   trace?: boolean,
- *   sysCalls: WASISysCalls,
- * }} WASIOptions
- */
+export type WASISysCalls = {
+    processExit(exitCode: number): never;
+    pathOpen(path: string, mode: "r" | "w"): number;
+    fdRead(fd: number, buffer: Uint8Array): number;
+    fdWrite(fd: number, buffer: Uint8Array): number;
+    fdClose(fd: number): void;
+};
 
-/**
- * @typedef {{
- *   processExit(exitCode: number): never,
- *   pathOpen(path: string, mode: 'r' | 'w'): number,
- *   fdRead(fd: number, buffer: Uint8Array): number,
- *   fdWrite(fd: number, buffer: Uint8Array): number,
- *   fdClose(fd: number): void,
- * }} WASISysCalls
- */
-
-/**
- * @typedef {{
- *   getPreopenDirName(): string,
- *   openChild(fileName: string, mode: "r" | "w"): [number, FD | undefined],
- *   read(buffer: Uint8Array): [number, number | undefined],
- *   write(buffer: Uint8Array): [number, number | undefined],
- *   close(): [number],
- * }} FD
- */
+export type FD = {
+    getPreopenDirName(): string;
+    openChild(fileName: string, mode: "r" | "w"): { code: number; fd?: FD };
+    read(buffer: Uint8Array): { code: number; nread: number };
+    write(buffer: Uint8Array): { code: number; nwritten: number };
+    close(): number;
+};
 
 const WASI_ERRNO_SUCCESS = 0;
 const WASI_ERRNO_BADF = 8;
@@ -43,21 +35,18 @@ const WASI_ERRNO_INVAL = 28;
 const WASI_FILETYPE_DIRECTORY = 3;
 const WASI_FILETYPE_REGULAR_FILE = 4;
 
-/** @implements {FD} */
-class SysFD {
-    /**
-     * @param {number|null} sysFileFd
-     * @param {string} sysDirName
-     * @param {WASISysCalls} sysCalls
-     */
-    constructor(sysFileFd, sysDirName, sysCalls) {
-        /** @type {number|null} */
+class SysFD implements FD {
+    sysFileFd: number | null;
+    sysDirName: string;
+    sysCalls: WASISysCalls;
+
+    constructor(
+        sysFileFd: number | null,
+        sysDirName: string,
+        sysCalls: WASISysCalls
+    ) {
         this.sysFileFd = sysFileFd;
-
-        /** @type {string} */
         this.sysDirName = sysDirName;
-
-        /** @type {WASISysCalls} */
         this.sysCalls = sysCalls;
     }
 
@@ -65,90 +54,72 @@ class SysFD {
         return this.sysDirName;
     }
 
-    /**
-     * @param {string} fileName
-     * @param {'r' | 'w'} mode
-     * @returns {[number, FD|undefined]}
-     */
-    openChild(fileName, mode) {
+    openChild(fileName: string, mode: "r" | "w") {
         const fullPath = `${this.sysDirName}/${fileName}`;
         try {
             const sysFd = this.sysCalls.pathOpen(fullPath, mode);
             const fd = new SysFD(sysFd, fullPath, this.sysCalls);
 
-            return [WASI_ERRNO_SUCCESS, fd];
+            return { code: WASI_ERRNO_SUCCESS, fd };
         } catch {
-            return [WASI_ERRNO_NOENT, undefined];
+            return { code: WASI_ERRNO_NOENT, fd: undefined };
         }
     }
 
-    /**
-     * @param {Uint8Array} buffer
-     * @returns {[number, number|undefined]}
-     */
-    read(buffer) {
+    read(buffer: Uint8Array) {
         if (this.sysFileFd === null) {
-            return [WASI_ERRNO_INVAL, undefined];
+            return { code: WASI_ERRNO_INVAL, nread: 0 };
         }
 
         try {
             const bytesRead = this.sysCalls.fdRead(this.sysFileFd, buffer);
-            return [WASI_ERRNO_SUCCESS, bytesRead];
+            return { code: WASI_ERRNO_SUCCESS, nread: bytesRead };
         } catch {
-            return [WASI_ERRNO_INVAL, undefined];
+            return { code: WASI_ERRNO_INVAL, nread: 0 };
         }
     }
 
-    /**
-     * @param {Uint8Array} buffer
-     * @returns {[number, number|undefined]}
-     */
-    write(buffer) {
+    write(buffer: Uint8Array) {
         if (this.sysFileFd === null) {
-            return [WASI_ERRNO_INVAL, undefined];
+            return { code: WASI_ERRNO_INVAL, nwritten: 0 };
         }
 
         try {
             const bytesRead = this.sysCalls.fdWrite(this.sysFileFd, buffer);
-            return [WASI_ERRNO_SUCCESS, bytesRead];
+            return { code: WASI_ERRNO_SUCCESS, nwritten: bytesRead };
         } catch {
-            return [WASI_ERRNO_INVAL, undefined];
+            return { code: WASI_ERRNO_INVAL, nwritten: 0 };
         }
     }
 
-    /** @returns {[number]} */
     close() {
-        if (this.sysFileFd !== null && this.sysFileFd >= 3) {
-            try {
-                this.sysCalls.fdClose(this.sysFileFd);
-            } catch {
-                return [WASI_ERRNO_INVAL];
-            }
+        if (this.sysFileFd === null || this.sysFileFd < 3) {
+            return WASI_ERRNO_SUCCESS;
         }
-        return [WASI_ERRNO_SUCCESS];
+
+        try {
+            this.sysCalls.fdClose(this.sysFileFd);
+            return WASI_ERRNO_SUCCESS;
+        } catch {
+            return WASI_ERRNO_INVAL;
+        }
     }
 }
 
-/** @implements {FD} */
-class VirtualFD {
+class VirtualFD implements FD {
+    contents: Uint8Array;
+    readCursor: number;
+    writes: Uint8Array[];
+
     constructor() {
-        /** @type {Uint8Array} */
         this.contents = new Uint8Array();
-
-        /** @type {number} */
         this.readCursor = 0;
-
-        /** @type {Uint8Array[]} */
         this.writes = [];
     }
 
-    /**
-     * @param {Uint8Array} buffer
-     * @returns {[number, number|undefined]}
-     */
-    read(buffer) {
+    read(buffer: Uint8Array) {
         if (this.readCursor >= this.contents.length - 1) {
-            return [WASI_ERRNO_SUCCESS, 0];
+            return { code: WASI_ERRNO_SUCCESS, nread: 0 };
         }
 
         const bytesRead = Math.min(
@@ -161,16 +132,12 @@ class VirtualFD {
 
         this.readCursor += bytesRead;
 
-        return [WASI_ERRNO_SUCCESS, bytesRead];
+        return { code: WASI_ERRNO_SUCCESS, nread: bytesRead };
     }
 
-    /**
-     * @param {Uint8Array} buffer
-     * @returns {[number, number|undefined]}
-     */
-    write(buffer) {
+    write(buffer: Uint8Array) {
         this.writes.push(buffer.slice());
-        return [0, buffer.length];
+        return { code: WASI_ERRNO_SUCCESS, nwritten: buffer.length };
     }
 
     flushAndRead() {
@@ -201,18 +168,15 @@ class VirtualFD {
         this.writes = [];
     }
 
-    /** @returns {[number]} */
     close() {
-        return [WASI_ERRNO_SUCCESS];
+        return WASI_ERRNO_SUCCESS;
     }
 
-    /** @returns {never} */
-    getPreopenDirName() {
+    getPreopenDirName(): never {
         throw new Error("Not supported");
     }
 
-    /** @returns {never} */
-    openChild() {
+    openChild(): never {
         throw new Error("Not supported");
     }
 }
@@ -221,27 +185,22 @@ export class WASI {
     static FD = SysFD;
     static VirtualFD = VirtualFD;
 
-    /** @param {WASIOptions} options */
-    constructor(options) {
-        /** @type {WASIOptions} */
+    options: WASIOptions;
+    args: string[];
+    nextFd: number;
+    memory: WebAssembly.Memory;
+    returnOnExit: boolean;
+    sysCalls: WASISysCalls;
+    fds: FD[];
+    preopenCount: number;
+
+    constructor(options: WASIOptions) {
         this.options = options;
-
-        /** @type {string[]} */
         this.args = this.options.args ?? [];
-
-        /** @type {number} */
         this.nextFd = 3;
-
-        /** @type {WebAssembly.Memory} */
-        this.memory = /** @type {never} */ (void 0);
-
-        /** @type {boolean} */
+        this.memory = void 0 as never;
         this.returnOnExit = this.options.returnOnExit ?? true;
-
-        /** @type {WASISysCalls} */
         this.sysCalls = this.options.sysCalls;
-
-        /** @type {FD[]} */
         this.fds = [];
 
         if (typeof this.options.stdin === "object") {
@@ -272,12 +231,10 @@ export class WASI {
             this.fds.push(new SysFD(null, path, this.sysCalls));
         }
 
-        /** @type {number} */
         this.preopenCount = this.fds.length;
     }
 
-    /** @returns {Promise<WASISysCalls>} */
-    static async NodeSysCalls() {
+    static async NodeSysCalls(): Promise<WASISysCalls> {
         const fs = await import("node:fs");
         const process = await import("node:process");
 
@@ -297,18 +254,16 @@ export class WASI {
         };
     }
 
-    /** @returns {WASISysCalls} */
-    static DenoSysCalls() {
-        /** @type {Map<number, Deno.FsFile>} */
-        const files = new Map();
+    static DenoSysCalls(): WASISysCalls {
+        const files: Map<number, Deno.FsFile> = new Map();
 
-        const getFile = (/** @type {number} */ fd) => {
+        const getFile = (fd: number) => {
             if (fd === 0) {
-                return /** @type {never} */ (Deno.stdin);
+                return Deno.stdin as never;
             } else if (fd === 1) {
-                return /** @type {never} */ (Deno.stdout);
+                return Deno.stdout as never;
             } else if (fd === 2) {
-                return /** @type {never} */ (Deno.stderr);
+                return Deno.stderr as never;
             }
 
             const file = files.get(fd);
@@ -346,14 +301,8 @@ export class WASI {
         };
     }
 
-    /**
-     * @param {WebAssembly.Instance} instance
-     * @returns {number}
-     */
-    start(instance) {
-        this.memory = /** @type {WebAssembly.Memory} */ (
-            instance.exports.memory
-        );
+    start(instance: WebAssembly.Instance): number {
+        this.memory = instance.exports.memory as WebAssembly.Memory;
 
         let exitCode = 0;
 
@@ -392,9 +341,7 @@ export class WASI {
         for (const [fnName, fn] of Object.entries(
             imports.wasi_snapshot_preview1
         )) {
-            imports.wasi_snapshot_preview1[fnName] = (
-                /** @type {unknown[]} */ ...args
-            ) => {
+            imports.wasi_snapshot_preview1[fnName] = (...args: unknown[]) => {
                 console.log(`[WASI] ${fnName}(${args.join(", ")})`);
 
                 // @ts-ignore: fn is a function
@@ -405,21 +352,19 @@ export class WASI {
         return imports;
     }
 
-    /** @returns {WebAssembly.Imports} */
-    #getImportObject() {
+    #getImportObject(): WebAssembly.Imports {
         return {
             wasi_snapshot_preview1: {
-                /** @type {(dirfd: number, dirflags: number, path_ptr: number, path_len: number, oflags: number, fs_rights_base: number, fs_rights_inheriting: number, fdflags: number, fd_ptr: number) => number} */
                 path_open: (
-                    dirfd,
-                    _dirflags,
-                    path_ptr,
-                    path_len,
-                    _oflags,
-                    _fs_rights_base,
-                    _fs_rights_inheriting,
-                    _fdflags,
-                    fd_ptr
+                    dirfd: number,
+                    _dirflags: number,
+                    path_ptr: number,
+                    path_len: number,
+                    _oflags: number,
+                    _fs_rights_base: number,
+                    _fs_rights_inheriting: number,
+                    _fdflags: number,
+                    fd_ptr: number
                 ) => {
                     const dir = this.fds[dirfd];
                     if (dir === undefined) {
@@ -435,7 +380,10 @@ export class WASI {
                         .decode(pathBytes)
                         .replace(/\0/g, "");
 
-                    const [err, childFile] = dir.openChild(path, "r");
+                    const { code: err, fd: childFile } = dir.openChild(
+                        path,
+                        "r"
+                    );
                     if (childFile !== undefined) {
                         this.fds.push(childFile);
 
@@ -446,8 +394,12 @@ export class WASI {
 
                     return err;
                 },
-                /** @type {(fd: number, iovs_ptr: number, iovs_len: number, nread_ptr: number) => number} */
-                fd_read: (fd, iovs_ptr, iovs_len, nread_ptr) => {
+                fd_read: (
+                    fd: number,
+                    iovs_ptr: number,
+                    iovs_len: number,
+                    nread_ptr: number
+                ) => {
                     const file = this.fds[fd];
                     if (file === undefined) {
                         return WASI_ERRNO_BADF;
@@ -468,13 +420,14 @@ export class WASI {
                             bufLen
                         );
 
-                        const [err, bytesRead] = file.read(buffer);
-                        if (bytesRead === undefined) {
-                            return err;
+                        const { code, nread } = file.read(buffer);
+                        if (code != WASI_ERRNO_SUCCESS) {
+                            return code;
                         }
-                        totalBytesRead += bytesRead;
 
-                        if (bytesRead < bufLen) {
+                        totalBytesRead += nread;
+
+                        if (nread < bufLen) {
                             break;
                         }
                     }
@@ -482,8 +435,12 @@ export class WASI {
                     memory.setUint32(nread_ptr, totalBytesRead, true);
                     return WASI_ERRNO_SUCCESS;
                 },
-                /** @type {(fd: number, iovs_ptr: number, iovs_len: number, nwritten_ptr: number) => number} */
-                fd_write: (fd, iovs_ptr, iovs_len, nwritten_ptr) => {
+                fd_write: (
+                    fd: number,
+                    iovs_ptr: number,
+                    iovs_len: number,
+                    nwritten_ptr: number
+                ) => {
                     const file = this.fds[fd];
                     if (file === undefined) {
                         return WASI_ERRNO_BADF;
@@ -504,13 +461,13 @@ export class WASI {
                             bufLen
                         );
 
-                        const [err, bytesWritten] = file.write(buffer);
-                        if (bytesWritten === undefined) {
-                            return err;
+                        const { code, nwritten } = file.write(buffer);
+                        if (code != WASI_ERRNO_SUCCESS) {
+                            return code;
                         }
-                        totalBytesWritten += bytesWritten;
+                        totalBytesWritten += nwritten;
 
-                        if (bytesWritten < bufLen) {
+                        if (nwritten < bufLen) {
                             break;
                         }
                     }
@@ -518,12 +475,10 @@ export class WASI {
                     memory.setUint32(nwritten_ptr, totalBytesWritten, true);
                     return WASI_ERRNO_SUCCESS;
                 },
-                /** @type {(fd: number, offset: number, whence: number, newoffset: number) => number} */
                 fd_seek: () => {
                     throw new Error("Not Implemented");
                 },
-                /** @type {(fd: number) => number} */
-                fd_close: (fd) => {
+                fd_close: (fd: number) => {
                     // don't allow closing preopens
                     if (fd < this.preopenCount) {
                         return WASI_ERRNO_INVAL;
@@ -534,16 +489,18 @@ export class WASI {
                         return WASI_ERRNO_BADF;
                     }
 
-                    const [err] = file.close();
+                    const code = file.close();
 
-                    if (err === WASI_ERRNO_SUCCESS) {
+                    if (code === WASI_ERRNO_SUCCESS) {
                         this.fds.splice(fd, 1);
                     }
 
-                    return err;
+                    return code;
                 },
-                /** @type {(argc_ptr: number, argv_buf_size_ptr: number) => number} */
-                args_sizes_get: (argc_ptr, argv_buf_size_ptr) => {
+                args_sizes_get: (
+                    argc_ptr: number,
+                    argv_buf_size_ptr: number
+                ) => {
                     const memory = new DataView(this.memory.buffer);
 
                     const argc = this.args.length;
@@ -557,8 +514,7 @@ export class WASI {
 
                     return WASI_ERRNO_SUCCESS;
                 },
-                /** @type {(argv_ptr: number, argv_buf_ptr: number) => number} */
-                args_get: (argv_ptr, argv_buf_ptr) => {
+                args_get: (argv_ptr: number, argv_buf_ptr: number) => {
                     const memory = new DataView(this.memory.buffer);
 
                     const encoder = new TextEncoder();
@@ -581,12 +537,10 @@ export class WASI {
 
                     return WASI_ERRNO_SUCCESS;
                 },
-                /** @type {(exit_code: number) => never} */
-                proc_exit: (exit_code) => {
+                proc_exit: (exit_code: number) => {
                     throw new ProcExitError(exit_code);
                 },
-                /** @type {(fd: number, buf_ptr: number) => number} */
-                fd_prestat_get: (fd, buf_ptr) => {
+                fd_prestat_get: (fd: number, buf_ptr: number) => {
                     // don't allow touching non-preopens
                     if (fd >= this.preopenCount) {
                         return WASI_ERRNO_INVAL;
@@ -606,8 +560,11 @@ export class WASI {
 
                     return WASI_ERRNO_SUCCESS;
                 },
-                /** @type {(fd: number, path_ptr: number, path_len: number) => number} */
-                fd_prestat_dir_name: (fd, path_ptr, path_len) => {
+                fd_prestat_dir_name: (
+                    fd: number,
+                    path_ptr: number,
+                    path_len: number
+                ) => {
                     // don't allow touching non-preopens
                     if (fd >= this.preopenCount) {
                         return WASI_ERRNO_INVAL;
@@ -635,8 +592,7 @@ export class WASI {
 
                     return WASI_ERRNO_SUCCESS;
                 },
-                /** @type {(fd: number, buf_ptr: number) => number} */
-                fd_fdstat_get: (fd, buf_ptr) => {
+                fd_fdstat_get: (fd: number, buf_ptr: number) => {
                     const memory = new DataView(this.memory.buffer);
 
                     if (fd === 0 || fd === 1 || fd === 2) {
@@ -664,11 +620,10 @@ export class WASI {
 }
 
 class ProcExitError extends Error {
-    /** @param {number} exitCode */
-    constructor(exitCode) {
-        super();
+    exitCode: number;
 
-        /** @type {number} */
+    constructor(exitCode: number) {
+        super();
         this.exitCode = exitCode;
     }
 }
