@@ -35,7 +35,7 @@ export fn _start() {
 
         let module = compiler.include(
             file_name,
-            ref!(Loc::internal()),
+            Loc::internal(),
         ) catch _ {
             wasi::proc_exit(1)
         }
@@ -87,7 +87,7 @@ export fn _start() {
 
         let module = compiler.include(
             file_name,
-            ref!(Loc::internal()),
+            Loc::internal(),
         ) catch _ {
             wasi::proc_exit(1)
         }

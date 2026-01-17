@@ -91,7 +91,7 @@ fn FileManager::get(self, file_index: u32): &FileInfo {
     return self.files.at!(file_index)
 }
 
-fn FileManager::include(self, relative_path: str, loc: &Loc): Result(u32, &Error) {
+fn FileManager::include(self, relative_path: str, loc: Loc): Result(u32, &Error) {
     let parent_path = self.files.get!(loc.file_index).absolute_path
     let absolute_path = resolve_path(relative_path, parent_path.as_str())
 
@@ -104,7 +104,7 @@ fn FileManager::include(self, relative_path: str, loc: &Loc): Result(u32, &Error
 
         return Err(self.error_arena.new!(Error {
             message: message,
-            loc: Loc::internal(),
+            loc: loc,
         }))
     }
 

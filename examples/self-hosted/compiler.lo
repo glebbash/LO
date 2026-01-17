@@ -48,7 +48,7 @@ fn Compiler::free(&self) {
 }
 
 fn Compiler::include(
-    &self, \\ file_name: str, \\ loc: &Loc,
+    &self, \\ file_name: str, \\ loc: Loc,
 ): Result(&Module, &VoidError) {
     let file_index = self.fm.include(file_name, loc) catch err {
         self.report_error(err)
