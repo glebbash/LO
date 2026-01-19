@@ -1,0 +1,73 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    font-family: sans-serif;
+    user-select: none;
+}
+
+.root {
+    display: grid;
+    grid-template-rows: 7fr 3fr;
+    width: 100%;
+    height: 100svh;
+}
+
+.content {
+    font-family: monospace;
+    font-size: 20px;
+    padding: 8px;
+    overflow-y: auto;
+}
+
+.controls {
+    display: grid;
+    background-color: black;
+}
+
+.keyboard {
+    display: grid;
+    height: 100%;
+    grid-template-rows: repeat(4, 1fr);
+    gap: 4px;
+    padding: 4px 0;
+    box-sizing: border-box;
+}
+.keyboard-row {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(20, 1fr);
+    justify-content: center;
+    gap: 4px;
+    padding: 0 4px;
+    box-sizing: border-box;
+}
+.keyboard-key {
+    font-family: monospace;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background-color: #1e1e1e;
+    font-size: 26px;
+    grid-column: span 2;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.x-keyword {
+    color: #FF7B72
+}
+.x-fn-name {
+    color: #D2A8FF
+}
+.x-delim {
+    color: #79C0FF
+}
