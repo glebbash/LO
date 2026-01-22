@@ -117,10 +117,6 @@ function setShift(shift) {
     }
 }
 
-/**
- * @param {string} html - The HTML string (e.g. `<div></div>`)
- * @returns {HTMLElement} - The newly created element
- */
 function newEl(html) {
     const template = document.createElement("template");
     template.innerHTML = html.trim();

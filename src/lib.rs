@@ -6,6 +6,7 @@ extern crate alloc;
 mod ast;
 mod compiler;
 mod core;
+mod json_printer;
 mod lexer;
 mod lol_alloc;
 mod parser;
@@ -34,13 +35,17 @@ mod wasm_target {
     }
 }
 
-use crate::{compiler::*, core::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
+use crate::{
+    compiler::*, core::*, json_printer::JsonPrinter, printer::*, wasm::*, wasm_eval::*,
+    wasm_parser::*,
+};
 use alloc::{format, string::String, vec::Vec};
 
 static USAGE: &str = "Usage:
   lo compile <input.lo>
   lo inspect <input.lo>
   lo format <input.lo>
+  lo format-json <input.lo> (experimental)
   lo eval <input.lo> (experimental)
   lo wasi <input.lo> (experimental)";
 
@@ -126,6 +131,19 @@ pub extern "C" fn _start() {
         };
 
         let mut printer = Printer::new(&module.parser.relax());
+        printer.print_file();
+
+        return;
+    }
+
+    if command == "format-json" {
+        compiler.in_single_file_mode = true;
+
+        let Some(module) = compiler.include(file_name, &Loc::internal()) else {
+            proc_exit(1);
+        };
+
+        let mut printer = JsonPrinter::new(&module.parser.relax());
         printer.print_file();
 
         return;
