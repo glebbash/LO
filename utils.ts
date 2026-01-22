@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node
 
 import process from "node:process";
-import { it, describe } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { WASI, type WASIOptions } from "./wasi-shim.ts";
@@ -220,7 +220,7 @@ async function commandTest() {
 
     itEach("compiles hello-world-raw.lo", { v1 }, async (compile) => {
         const program = await compile(
-            "./examples/test/demos/hello-world-raw.lo"
+            "./examples/test/demos/hello-world-raw.lo",
         );
 
         const stdout = new WASI.VirtualFD();
@@ -295,7 +295,7 @@ async function commandTest() {
 
     itEach("compiles struct-value-field-access.lo", { v1 }, async (compile) => {
         const output = await compile(
-            "./examples/test/struct-value-field-access.lo"
+            "./examples/test/struct-value-field-access.lo",
         );
 
         const program = await loadWasm(output);
@@ -398,7 +398,7 @@ async function commandTest() {
         function storeData(
             memory: WebAssembly.Memory,
             ptr: number,
-            data: Uint8Array
+            data: Uint8Array,
         ) {
             const region = { ptr, size: data.byteLength };
 
@@ -455,7 +455,7 @@ async function commandTest() {
 
         assert.strictEqual(
             output,
-            await fs.readFile("examples/test/42.lo", "utf-8")
+            await fs.readFile("examples/test/42.lo", "utf-8"),
         );
     });
 
@@ -468,7 +468,7 @@ async function commandTest() {
 
         assert.strictEqual(
             output,
-            "examples/test/tracing.lo:4:13 - hello there\n"
+            "examples/test/tracing.lo:4:13 - hello there\n",
         );
     });
 
@@ -496,7 +496,7 @@ async function commandTest() {
             p2 = 1048600
             p3 = 1048612
 
-            `
+            `,
         );
     });
 
@@ -518,7 +518,7 @@ async function commandTest() {
             defer(main): 2
             defer(main): 1
 
-            `
+            `,
         );
     });
 
@@ -536,7 +536,7 @@ async function commandTest() {
             10 / 3 = 3, remainder = 1
             10 / 0 is undefined
 
-            `
+            `,
         );
     });
 
@@ -554,7 +554,7 @@ async function commandTest() {
             -------------
             { "type": "file", "index": 1, "path": "some_path.lo" },
 
-            `
+            `,
         );
     });
 
@@ -570,7 +570,7 @@ async function commandTest() {
             m`
             +a
 
-            `
+            `,
         );
     });
 
@@ -587,7 +587,7 @@ async function commandTest() {
             going left 5 steps
             going right 3 steps
 
-            `
+            `,
         );
     });
 
@@ -595,13 +595,13 @@ async function commandTest() {
         itEach("compiles 2020 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/1.lo"
+                "./examples/test/demos/aoc2020/1.lo",
             );
             assert.strictEqual(part1, "157059\n");
 
             const part2 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/1-part2.lo"
+                "./examples/test/demos/aoc2020/1-part2.lo",
             );
             assert.strictEqual(part2, "165080960\n");
         });
@@ -609,13 +609,13 @@ async function commandTest() {
         itEach("compiles 2020 day 2", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/2.lo"
+                "./examples/test/demos/aoc2020/2.lo",
             );
             assert.strictEqual(part1, "560\n");
 
             const part2 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/2-part2.lo"
+                "./examples/test/demos/aoc2020/2-part2.lo",
             );
             assert.strictEqual(part2, "303\n");
         });
@@ -623,13 +623,13 @@ async function commandTest() {
         itEach("compiles 2020 day 3", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/3.lo"
+                "./examples/test/demos/aoc2020/3.lo",
             );
             assert.strictEqual(part1, "151\n");
 
             const part2 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/3-part2.lo"
+                "./examples/test/demos/aoc2020/3-part2.lo",
             );
             assert.strictEqual(part2, "7540141059\n");
         });
@@ -637,13 +637,13 @@ async function commandTest() {
         itEach("compiles 2020 day 4", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/4.lo"
+                "./examples/test/demos/aoc2020/4.lo",
             );
             assert.strictEqual(part1, "264\n");
 
             const part2 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/4-part2.lo"
+                "./examples/test/demos/aoc2020/4-part2.lo",
             );
             assert.strictEqual(part2, "224\n");
         });
@@ -651,13 +651,13 @@ async function commandTest() {
         itEach("compiles 2020 day 5", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/5.lo"
+                "./examples/test/demos/aoc2020/5.lo",
             );
             assert.strictEqual(part1, "947\n");
 
             const part2 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2020/5-part2.lo"
+                "./examples/test/demos/aoc2020/5-part2.lo",
             );
             assert.strictEqual(part2, "636\n");
         });
@@ -665,20 +665,20 @@ async function commandTest() {
         itEach("compiles 2023 day 1", { v1 }, async (compile) => {
             const part1 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2023/1.lo"
+                "./examples/test/demos/aoc2023/1.lo",
             );
             assert.strictEqual(part1, "54450\n");
 
             const part2 = await runAoc(
                 compile,
-                "./examples/test/demos/aoc2023/1-part2.lo"
+                "./examples/test/demos/aoc2023/1-part2.lo",
             );
             assert.strictEqual(part2, "54265\n");
         });
 
         async function runAoc(
             compile: (sourcePath: string) => Promise<Uint8Array>,
-            path: string
+            path: string,
         ) {
             const program = await compile(path);
 
@@ -703,27 +703,27 @@ async function commandTest() {
                 {
                     get: (target, prop) =>
                         target[prop as keyof typeof target] ?? (() => void 0),
-                }
+                },
             ),
         };
 
         itEach("compiles blink.lo", { v1 }, async (compile) => {
             const output = await compile(
-                "./examples/test/demos/wasm4/src/blink.lo"
+                "./examples/test/demos/wasm4/src/blink.lo",
             );
             await loadWasm(output, wasm4Imports);
         });
 
         itEach("compiles dark-maze.lo", { v1 }, async (compile) => {
             const output = await compile(
-                "./examples/test/demos/wasm4/src/dark-maze.lo"
+                "./examples/test/demos/wasm4/src/dark-maze.lo",
             );
             await loadWasm(output, wasm4Imports);
         });
 
         itEach("compiles slasher.lo", { v1 }, async (compile) => {
             const output = await compile(
-                "./examples/test/demos/wasm4/src/slasher.lo"
+                "./examples/test/demos/wasm4/src/slasher.lo",
             );
             await loadWasm(output, wasm4Imports);
         });
@@ -744,10 +744,10 @@ async function commandTest() {
                     ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:3:9
                     ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:11:9
 
-                    `
+                    `,
                 );
             }
-        }
+        },
     );
 
     describe("inspect", () => {
@@ -761,7 +761,7 @@ async function commandTest() {
                 try {
                     await run(
                         ["inspect", "./examples/test/fault-tolerance.lo"],
-                        { stdout }
+                        { stdout },
                     );
                 } catch (err) {
                     // stderr is empty
@@ -788,10 +788,10 @@ async function commandTest() {
                     { "type": "end" }
                     ]
 
-                    `
+                    `,
                     );
                 }
-            }
+            },
         );
     });
 
@@ -852,7 +852,7 @@ async function commandTest() {
             const res = await interpret("examples/test/42.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 42\n"
+                "result of `main` is: 42\n",
             );
         });
 
@@ -860,7 +860,7 @@ async function commandTest() {
             const res = await interpret("examples/test/include.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 120\n"
+                "result of `main` is: 120\n",
             );
         });
 
@@ -868,7 +868,7 @@ async function commandTest() {
             const res = await interpret("examples/test/else-if.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 13\n"
+                "result of `main` is: 13\n",
             );
         });
 
@@ -876,7 +876,7 @@ async function commandTest() {
             const res = await interpret("examples/test/globals.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 69\n"
+                "result of `main` is: 69\n",
             );
         });
 
@@ -884,7 +884,7 @@ async function commandTest() {
             const res = await interpret("examples/test/hex-and-shifts.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 31\n"
+                "result of `main` is: 31\n",
             );
         });
 
@@ -892,7 +892,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/loop.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 120\n"
+                "result of `main` is: 120\n",
             );
         });
 
@@ -900,7 +900,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/for-loop.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 138\n"
+                "result of `main` is: 138\n",
             );
         });
 
@@ -908,7 +908,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/methods.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 1\n"
+                "result of `main` is: 1\n",
             );
         });
 
@@ -916,7 +916,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/decl-nesting.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 16\n"
+                "result of `main` is: 16\n",
             );
         });
 
@@ -924,7 +924,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/struct.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 13\n"
+                "result of `main` is: 13\n",
             );
         });
 
@@ -932,7 +932,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/nested-if-break.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 1\n"
+                "result of `main` is: 1\n",
             );
         });
 
@@ -940,7 +940,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/struct-ref.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 3\n"
+                "result of `main` is: 3\n",
             );
         });
 
@@ -948,7 +948,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/macro.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 16\n"
+                "result of `main` is: 16\n",
             );
         });
 
@@ -957,7 +957,7 @@ async function commandTest() {
             // NOTE: can't really see debug output because it's on stderr and that is ignored on exit = 0
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: \n"
+                "result of `main` is: \n",
             );
         });
 
@@ -965,7 +965,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/string-pooling.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "result of `main` is: 13\n"
+                "result of `main` is: 13\n",
             );
         });
 
@@ -973,7 +973,7 @@ async function commandTest() {
 
         it("interprets hello-world-raw.lo", async () => {
             const res = await interpret(
-                "./examples/test/demos/hello-world-raw.lo"
+                "./examples/test/demos/hello-world-raw.lo",
             );
             assert.strictEqual(new TextDecoder().decode(res), "Hello World!\n");
         });
@@ -1003,7 +1003,7 @@ async function commandTest() {
                 2
                 3
 
-                `
+                `,
             );
         });
 
@@ -1013,7 +1013,7 @@ async function commandTest() {
 
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                await fs.readFile(file, "utf-8")
+                await fs.readFile(file, "utf-8"),
             );
         });
 
@@ -1021,7 +1021,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/tracing.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "examples/test/tracing.lo:4:13 - hello there\n"
+                "examples/test/tracing.lo:4:13 - hello there\n",
             );
         });
 
@@ -1029,7 +1029,7 @@ async function commandTest() {
             const res = await interpret("./examples/test/struct-in-struct.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
-                "3\n3\n3\n3\n3\n3\n3\n"
+                "3\n3\n3\n3\n3\n3\n3\n",
             );
         });
 
@@ -1042,7 +1042,7 @@ async function commandTest() {
                 p2 = 1048600
                 p3 = 1048612
 
-                `
+                `,
             );
         });
 
@@ -1059,7 +1059,7 @@ async function commandTest() {
                 defer(main): 2
                 defer(main): 1
 
-                `
+                `,
             );
         });
 
@@ -1072,7 +1072,7 @@ async function commandTest() {
                 10 / 3 = 3, remainder = 1
                 10 / 0 is undefined
 
-                `
+                `,
             );
         });
 
@@ -1083,7 +1083,7 @@ async function commandTest() {
                 m`
                 +a
 
-                `
+                `,
             );
         });
 
@@ -1095,7 +1095,7 @@ async function commandTest() {
                 going left 5 steps
                 going right 3 steps
 
-                `
+                `,
             );
         });
 
@@ -1107,7 +1107,7 @@ async function commandTest() {
 
             // TODO: look into performance here
             const res2 = await interpret(
-                "./examples/test/demos/aoc2020/1-part2.lo"
+                "./examples/test/demos/aoc2020/1-part2.lo",
             );
             assert.strictEqual(new TextDecoder().decode(res2), "165080960\n");
         });
@@ -1117,7 +1117,7 @@ async function commandTest() {
             assert.strictEqual(new TextDecoder().decode(res1), "560\n");
 
             const res2 = await interpret(
-                "./examples/test/demos/aoc2020/2-part2.lo"
+                "./examples/test/demos/aoc2020/2-part2.lo",
             );
             assert.strictEqual(new TextDecoder().decode(res2), "303\n");
         });
@@ -1127,7 +1127,7 @@ async function commandTest() {
             assert.strictEqual(new TextDecoder().decode(res1), "151\n");
 
             const res2 = await interpret(
-                "./examples/test/demos/aoc2020/3-part2.lo"
+                "./examples/test/demos/aoc2020/3-part2.lo",
             );
             assert.strictEqual(new TextDecoder().decode(res2), "7540141059\n");
         });
@@ -1137,7 +1137,7 @@ async function commandTest() {
             assert.strictEqual(new TextDecoder().decode(res1), "264\n");
 
             const res2 = await interpret(
-                "./examples/test/demos/aoc2020/4-part2.lo"
+                "./examples/test/demos/aoc2020/4-part2.lo",
             );
             assert.strictEqual(new TextDecoder().decode(res2), "224\n");
         });
@@ -1148,7 +1148,7 @@ async function commandTest() {
 
             // TODO: look into performance here
             const res2 = await interpret(
-                "./examples/test/demos/aoc2020/5-part2.lo"
+                "./examples/test/demos/aoc2020/5-part2.lo",
             );
             assert.strictEqual(new TextDecoder().decode(res2), "636\n");
         });
@@ -1158,7 +1158,7 @@ async function commandTest() {
             assert.strictEqual(new TextDecoder().decode(res1), "54450\n");
 
             const res2 = await interpret(
-                "./examples/test/demos/aoc2023/1-part2.lo"
+                "./examples/test/demos/aoc2023/1-part2.lo",
             );
             assert.strictEqual(new TextDecoder().decode(res2), "54265\n");
         });
@@ -1255,7 +1255,7 @@ async function commandTest() {
     function itEach<T>(
         testName: string,
         compilers: Record<string, T>,
-        testFn: (compile: T) => Promise<void>
+        testFn: (compile: T) => Promise<void>,
     ) {
         for (const [compilerName, compile] of Object.entries(compilers)) {
             it(`${testName} (${compilerName})`, () => testFn(compile));
@@ -1274,7 +1274,7 @@ async function loadLoCompiler(compilerWasmBinary: Uint8Array) {
             stdin = new WASI.VirtualFD(),
             stdout = new WASI.VirtualFD(),
             stderr = new WASI.VirtualFD(),
-        } = {}
+        } = {},
     ) => {
         const wasi = new WASI({
             version: "preview1",
@@ -1326,7 +1326,7 @@ async function loadWasm(data: Uint8Array, imports?: WebAssembly.Imports) {
 async function runWASI(
     data: Uint8Array,
     wasiOptions?: Omit<WASIOptions, "version" | "sysCalls">,
-    additionalImports = {}
+    additionalImports = {},
 ) {
     const wasi = new WASI({
         version: "preview1",
@@ -1348,7 +1348,7 @@ async function runWASI(
             if (err.message.includes("unreachable")) {
                 const memory = instance.exports.memory as WebAssembly.Memory;
                 const [errorIndicator, errorCode] = new Uint32Array(
-                    memory.buffer.slice(0, 8)
+                    memory.buffer.slice(0, 8),
                 );
 
                 if (errorIndicator === 69420) {
@@ -1370,8 +1370,8 @@ function m(strings: TemplateStringsArray, ...args: unknown[]) {
                 str.replace(/\\\n[ \t]*/g, "").replace(/\\`/g, "`") +
                 String(args[index] ?? "").replace(
                     /\n/g,
-                    `\n${INDENT_PLACEHOLDER}`
-                )
+                    `\n${INDENT_PLACEHOLDER}`,
+                ),
         )
         .join("")
         .split("\n")
@@ -1385,7 +1385,7 @@ function m(strings: TemplateStringsArray, ...args: unknown[]) {
             str
                 .split(INDENT_PLACEHOLDER)
                 .join(" ".repeat(lastLineIndentation))
-                .slice(lastLineIndentation)
+                .slice(lastLineIndentation),
         )
         .join("\n");
 }

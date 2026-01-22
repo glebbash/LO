@@ -504,7 +504,7 @@ impl QuotedString {
         Self { loc }
     }
 
-    pub fn get_repr(&self, source: &'static [u8]) -> &str {
+    pub fn get_repr(&self, source: &'static [u8]) -> &'static str {
         return self.loc.read_span(source);
     }
 

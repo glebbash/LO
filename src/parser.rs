@@ -175,6 +175,22 @@ impl Parser {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "const") {
+            let mut loc = self.prev().loc;
+
+            let const_name = self.parse_ident()?;
+            self.expect(Operator, "=")?;
+            let const_value = self.parse_code_expr(0)?;
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(TopLevelExpr::ConstDef(ConstDefExpr {
+                const_name,
+                const_value,
+                loc,
+            }));
+        }
+
         if let Some(_) = self.eat(Symbol, "struct") {
             let mut loc = self.prev().loc;
 
@@ -272,22 +288,6 @@ impl Parser {
             return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
                 type_name,
                 type_value,
-                loc,
-            }));
-        }
-
-        if let Some(_) = self.eat(Symbol, "const") {
-            let mut loc = self.prev().loc;
-
-            let const_name = self.parse_ident()?;
-            self.expect(Operator, "=")?;
-            let const_value = self.parse_code_expr(0)?;
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::ConstDef(ConstDefExpr {
-                const_name,
-                const_value,
                 loc,
             }));
         }
@@ -629,10 +629,12 @@ impl Parser {
             }));
         };
 
-        if let Some(string) = self.eat_any(StringLiteral).cloned() {
+        if let Some(_) = self.eat_any(StringLiteral) {
+            let string = QuotedString::new(self.prev().loc);
+
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                value: QuotedString::new(string.loc).get_value(self.source),
-                repr: string.get_value(self.source),
+                repr: string.get_repr(self.source),
+                value: string.get_value(self.source),
                 loc: string.loc,
             }));
         };

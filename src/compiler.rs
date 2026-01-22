@@ -2788,6 +2788,90 @@ impl Compiler {
                     }
                 }
 
+                if fn_name.repr == "get_ok" {
+                    if args.items.len() != 1 {
+                        return bad_args_err(self, fn_name);
+                    }
+
+                    let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
+                        self.report_error(&err);
+                        return Ok(());
+                    });
+
+                    let Type::Result(ResultType { ok: _, err }) = arg_type else {
+                        return bad_args_err(self, fn_name);
+                    };
+
+                    self.codegen(ctx, instrs, &args.items[0])?;
+
+                    // drop `err` leaving only `ok` on the stack
+                    for _ in 0..self.count_wasm_type_components(&err) {
+                        instrs.push(WasmInstr::Drop);
+                    }
+
+                    return Ok(());
+
+                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        compiler.report_error(&Error {
+                            message: format!(
+                                "Invalid arguments for @{}(items: Result(T, E)): T",
+                                fn_name.repr,
+                            ),
+                            loc: fn_name.loc,
+                        });
+
+                        Ok(())
+                    }
+                }
+
+                if fn_name.repr == "get_err" {
+                    if args.items.len() != 1 {
+                        return bad_args_err(self, fn_name);
+                    }
+
+                    let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
+                        self.report_error(&err);
+                        return Ok(());
+                    });
+
+                    let Type::Result(ResultType { ok, err }) = arg_type else {
+                        return bad_args_err(self, fn_name);
+                    };
+
+                    self.codegen(ctx, instrs, &args.items[0])?;
+
+                    // push `err` to temp local
+                    let tmp_local_index = self.define_unnamed_local(ctx, Loc::internal(), &err);
+                    let tmp_local = VarInfo::Local(VarInfoLocal {
+                        local_index: tmp_local_index,
+                        var_type: *err.clone(),
+                        inspect_info: None,
+                    });
+                    self.codegen_local_set(instrs, &err, tmp_local_index);
+
+                    // drop `ok`
+                    for _ in 0..self.count_wasm_type_components(&ok) {
+                        instrs.push(WasmInstr::Drop);
+                    }
+
+                    // pop `err` back
+                    self.codegen_var_get(ctx, instrs, &tmp_local)?;
+
+                    return Ok(());
+
+                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        compiler.report_error(&Error {
+                            message: format!(
+                                "Invalid arguments for @{}(items: Result(T, E)): E",
+                                fn_name.repr,
+                            ),
+                            loc: fn_name.loc,
+                        });
+
+                        Ok(())
+                    }
+                }
+
                 if fn_name.repr == "inspect_symbols" {
                     if !self.in_inspection_mode {
                         return Ok(());
@@ -4255,7 +4339,7 @@ impl Compiler {
             CodeExpr::IntrinsicCall(MacroFnCallExpr {
                 fn_name,
                 type_args: _,
-                args: _,
+                args,
                 loc: _,
             }) => {
                 if fn_name.repr == "unreachable" {
@@ -4286,6 +4370,42 @@ impl Compiler {
 
                 if fn_name.repr == "const_slice_len" {
                     return Ok(Type::U32);
+                }
+
+                if fn_name.repr == "get_ok" {
+                    if args.items.len() == 1 {
+                        let arg_type = self.get_expr_type(ctx, &args.items[0])?;
+
+                        if let Type::Result(ResultType { ok, err: _ }) = arg_type {
+                            return Ok(*ok.clone());
+                        };
+                    }
+
+                    return Err(Error {
+                        message: format!(
+                            "Invalid arguments for @{}(items: Result(T, E)): T",
+                            fn_name.repr,
+                        ),
+                        loc: fn_name.loc,
+                    });
+                }
+
+                if fn_name.repr == "get_err" {
+                    if args.items.len() == 1 {
+                        let arg_type = self.get_expr_type(ctx, &args.items[0])?;
+
+                        if let Type::Result(ResultType { ok: _, err }) = arg_type {
+                            return Ok(*err.clone());
+                        };
+                    }
+
+                    return Err(Error {
+                        message: format!(
+                            "Invalid arguments for @{}(items: Result(T, E)): E",
+                            fn_name.repr,
+                        ),
+                        loc: fn_name.loc,
+                    });
                 }
 
                 if fn_name.repr.starts_with("inspect_") {
