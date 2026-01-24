@@ -237,8 +237,8 @@ pub enum CodeExpr {
     // control flow
     Return(ReturnExpr),
     If(IfExpr),
-    WhileLoop(WhileLoopExpr),
-    ForLoop(ForLoopExpr),
+    While(WhileExpr),
+    For(ForExpr),
     Break(BreakExpr),
     Continue(ContinueExpr),
     Defer(DeferExpr),
@@ -337,7 +337,7 @@ pub struct LetExpr {
     pub loc: Loc,
 }
 
-pub struct WhileLoopExpr {
+pub struct WhileExpr {
     pub cond: Option<Box<CodeExpr>>,
     pub body: Box<CodeBlock>,
     pub loc: Loc,
@@ -347,7 +347,7 @@ pub struct BreakExpr {
     pub loc: Loc,
 }
 
-pub struct ForLoopExpr {
+pub struct ForExpr {
     pub counter: IdentExpr,
     pub start: Box<CodeExpr>,
     pub end: Box<CodeExpr>,
@@ -518,9 +518,9 @@ impl CodeExpr {
             CodeExpr::InfixOp(e) => e.loc,
             CodeExpr::If(e) => e.loc,
             CodeExpr::Let(e) => e.loc,
-            CodeExpr::WhileLoop(e) => e.loc,
+            CodeExpr::While(e) => e.loc,
             CodeExpr::Break(e) => e.loc,
-            CodeExpr::ForLoop(e) => e.loc,
+            CodeExpr::For(e) => e.loc,
             CodeExpr::Continue(e) => e.loc,
             CodeExpr::Dbg(e) => e.loc,
             CodeExpr::Defer(e) => e.loc,

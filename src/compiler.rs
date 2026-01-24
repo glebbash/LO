@@ -3060,7 +3060,7 @@ impl Compiler {
                 self.exit_scope(ctx);
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::WhileLoop(WhileLoopExpr { cond, body, loc: _ }) => {
+            CodeExpr::While(WhileExpr { cond, body, loc: _ }) => {
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::Block,
                     block_type: WasmBlockType::NoOut,
@@ -3111,7 +3111,7 @@ impl Compiler {
                 instrs.push(WasmInstr::BlockEnd);
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::ForLoop(ForLoopExpr {
+            CodeExpr::For(ForExpr {
                 counter,
                 start,
                 end,
@@ -4575,8 +4575,8 @@ impl Compiler {
                 Ok(Type::Void)
             }
             CodeExpr::Match(_) => Ok(Type::Void),
-            CodeExpr::WhileLoop(_) => Ok(Type::Void),
-            CodeExpr::ForLoop(_) => Ok(Type::Void),
+            CodeExpr::While(_) => Ok(Type::Void),
+            CodeExpr::For(_) => Ok(Type::Void),
             CodeExpr::Break(_) => Ok(Type::Never),
             CodeExpr::Continue(_) => Ok(Type::Never),
             CodeExpr::DoWith(_) => Ok(Type::Void),
@@ -4655,8 +4655,8 @@ impl Compiler {
             | CodeExpr::If(_)
             | CodeExpr::Dbg(_)
             | CodeExpr::Sizeof(_)
-            | CodeExpr::WhileLoop(_)
-            | CodeExpr::ForLoop(_)
+            | CodeExpr::While(_)
+            | CodeExpr::For(_)
             | CodeExpr::Defer(_)
             | CodeExpr::MacroMethodCall(_) => false,
 

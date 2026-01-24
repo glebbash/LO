@@ -753,7 +753,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::WhileLoop(WhileLoopExpr {
+            return Ok(CodeExpr::While(WhileExpr {
                 cond: None,
                 body: Box::new(body),
                 loc,
@@ -773,7 +773,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::WhileLoop(WhileLoopExpr {
+            return Ok(CodeExpr::While(WhileExpr {
                 cond: Some(Box::new(cond)),
                 body: Box::new(body),
                 loc,
@@ -799,7 +799,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::ForLoop(ForLoopExpr {
+            return Ok(CodeExpr::For(ForExpr {
                 counter,
                 start: Box::new(start),
                 end: Box::new(end),

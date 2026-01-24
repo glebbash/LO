@@ -474,7 +474,7 @@ impl JsonPrinter {
                     self.json_code_block(&e.else_branch)
                 )
             }
-            CodeExpr::WhileLoop(e) => {
+            CodeExpr::While(e) => {
                 let cond_str = if let Some(cond) = &e.cond {
                     self.json_code_expr(cond)
                 } else {
@@ -487,7 +487,7 @@ impl JsonPrinter {
                     self.json_code_block(&e.body)
                 )
             }
-            CodeExpr::ForLoop(e) => {
+            CodeExpr::For(e) => {
                 format!(
                     r#"{{"kind": "ForLoop", "counter": {}, "start": {}, "end": {}, "body": {}}}"#,
                     self.json_string(&e.counter.repr),

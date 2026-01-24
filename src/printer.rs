@@ -33,6 +33,7 @@ impl Printer {
 
         for expr in &self.parser.ast {
             self.print_top_level_expr(expr);
+            self.last_printed_item_line = expr.loc().end_pos.line;
         }
 
         // print the rest of the comments
@@ -61,6 +62,10 @@ impl Printer {
                 self.print_fn_decl(decl);
 
                 self.print_code_block(body);
+                stdout_write("\n");
+            }
+            TopLevelExpr::MemoryDef(memory_def) => {
+                self.print_memory_def(memory_def);
                 stdout_write("\n");
             }
             TopLevelExpr::Include(IncludeExpr {
@@ -217,10 +222,6 @@ impl Printer {
                 self.print_code_expr(const_value);
                 stdout_write("\n");
             }
-            TopLevelExpr::MemoryDef(memory_def) => {
-                self.print_memory_def(memory_def);
-                stdout_write("\n");
-            }
             TopLevelExpr::TryExport(TryExportExpr {
                 in_name,
                 out_name,
@@ -267,8 +268,6 @@ impl Printer {
                 stdout_write("\n");
             }
         }
-
-        self.last_printed_item_line = expr.loc().end_pos.line;
     }
 
     fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
@@ -427,6 +426,7 @@ impl Printer {
         self.backslash_stack.push(false);
 
         self.print_code_expr_(expr);
+        self.last_printed_item_line = expr.loc().end_pos.line;
 
         self.backslash_stack.pop();
     }
@@ -501,6 +501,16 @@ impl Printer {
                     self.print_code_expr(value);
                 }
                 stdout_write(")");
+            }
+
+            CodeExpr::StructLiteral(StructLiteralExpr {
+                struct_name,
+                body,
+                loc: _,
+            }) => {
+                stdout_write(&struct_name.repr);
+                stdout_write(" ");
+                self.print_code_expr_map(body);
             }
 
             CodeExpr::Ident(IdentExpr {
@@ -610,7 +620,7 @@ impl Printer {
                 stdout_write(" else");
                 self.print_code_block(else_branch);
             }
-            CodeExpr::WhileLoop(WhileLoopExpr { cond, body, loc: _ }) => {
+            CodeExpr::While(WhileExpr { cond, body, loc: _ }) => {
                 if let Some(cond) = cond {
                     stdout_write("while ");
                     self.print_code_expr(cond);
@@ -619,7 +629,7 @@ impl Printer {
                 }
                 self.print_code_block(&body);
             }
-            CodeExpr::ForLoop(ForLoopExpr {
+            CodeExpr::For(ForExpr {
                 counter,
                 start,
                 end,
@@ -668,15 +678,6 @@ impl Printer {
                 self.print_code_expr(expr);
                 stdout_write(" as ");
                 self.print_type_expr(casted_to);
-            }
-            CodeExpr::StructLiteral(StructLiteralExpr {
-                struct_name,
-                body,
-                loc: _,
-            }) => {
-                stdout_write(&struct_name.repr);
-                stdout_write(" ");
-                self.print_code_expr_map(body);
             }
             CodeExpr::Assign(AssignExpr {
                 op_loc: _,
@@ -794,8 +795,6 @@ impl Printer {
                 stdout_write("?");
             }
         }
-
-        self.last_printed_item_line = expr.loc().end_pos.line
     }
 
     fn print_code_expr_map(&mut self, map: &CodeExprMap) {
