@@ -314,10 +314,9 @@ impl Parser {
             let mut macro_params_trailing_comma = false;
             let macro_params = self.parse_fn_params(true, &mut macro_params_trailing_comma)?;
 
-            let return_type = if let Some(_) = self.eat(Operator, ":") {
-                Some(self.parse_type_expr()?)
-            } else {
-                None
+            let mut return_type = None;
+            if let Some(_) = self.eat(Operator, ":") {
+                return_type = Some(self.parse_type_expr()?)
             };
 
             let body = self.parse_code_block()?;

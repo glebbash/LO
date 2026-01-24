@@ -118,8 +118,13 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::GlobalDef(e) = expr {
-        todo!(dbg "")
+    if match TopLevelExpr::GlobalDef(global_def) = expr {
+        stdout_write("global ")
+        stdout_write(global_def.global_name.repr)
+        stdout_write(" = ")
+        self.print_code_expr(global_def.global_value)
+        stdout_write("\n")
+        return
     }
 
     if match TopLevelExpr::StructDef(struct_def) = expr {
@@ -158,8 +163,13 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         todo!(dbg "")
     }
 
-    if match TopLevelExpr::TypeDef(e) = expr {
-        todo!(dbg "")
+    if match TopLevelExpr::TypeDef(type_def) = expr {
+        stdout_write("type ")
+        stdout_write(type_def.type_name.repr)
+        stdout_write(" = ")
+        self.print_type_expr(type_def.type_value)
+        stdout_write("\n")
+        return
     }
 
     if match TopLevelExpr::ConstDef(const_def) = expr {
@@ -175,8 +185,29 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         todo!(dbg "")
     }
 
-    if match TopLevelExpr::MacroDef(e) = expr {
-        todo!(dbg "")
+    if match TopLevelExpr::MacroDef(macro_def) = expr {
+        stdout_write("macro ")
+        stdout_write(macro_def.macro_name.repr)
+        if macro_def.macro_type_params.size != 0 {
+            stdout_write("<")
+            for i in 0..macro_def.macro_type_params.size {
+                let type_param = macro_def.macro_type_params.get!(i)
+                stdout_write(type_param)
+                if i != macro_def.macro_type_params.size - 1 {
+                    stdout_write(",")
+                }
+            }
+            stdout_write(">")
+        }
+        self.print_fn_params(macro_def.macro_params, macro_def.macro_params_trailing_comma)
+        if macro_def.return_type != null {
+            stdout_write(": ")
+            self.print_type_expr(*macro_def.return_type)
+        }
+        self.last_printed_item_line = macro_def.body.loc.pos.line
+        self.print_code_block(macro_def.body)
+        stdout_write("\n")
+        return
     }
 
     @unreachable()
@@ -343,8 +374,13 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         self.backslash_stack.pop()
     }
 
-    if match CodeExpr::BoolLiteral(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::BoolLiteral(bool) = expr {
+        if bool.value {
+            stdout_write("true")
+        } else {
+            stdout_write("false")
+        }
+        return
     }
 
     if match CodeExpr::CharLiteral(e) = expr {
@@ -352,7 +388,8 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
     }
 
     if match CodeExpr::NullLiteral(e) = expr {
-        todo!(dbg "")
+        stdout_write("null")
+        return
     }
 
     if match CodeExpr::IntLiteral(int_literal) = expr {
@@ -376,8 +413,11 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         todo!(dbg "")
     }
 
-    if match CodeExpr::StructLiteral(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::StructLiteral(struct_literal) = expr {
+        stdout_write(struct_literal.struct_name.repr)
+        stdout_write(" ")
+        self.print_code_expr_map(struct_literal.body)
+        return
     }
 
     if match CodeExpr::Ident(ident) = expr {
@@ -453,20 +493,36 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         todo!(dbg "")
     }
 
-    if match CodeExpr::While(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::While(while_expr) = expr {
+        if while_expr.cond != null {
+            stdout_write("while ")
+            self.print_code_expr(*while_expr.cond)
+        } else {
+            stdout_write("loop")
+        }
+        self.print_code_block(while_expr.body)
+        return
     }
 
-    if match CodeExpr::For(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::For(for_expr) = expr {
+        stdout_write("for ")
+        stdout_write(for_expr.counter.repr)
+        stdout_write(" in ")
+        self.print_code_expr(for_expr.start)
+        stdout_write("..")
+        self.print_code_expr(for_expr.end)
+        self.print_code_block(for_expr.body)
+        return
     }
 
     if match CodeExpr::Break(e) = expr {
-        todo!(dbg "")
+        stdout_write("break")
+        return
     }
 
     if match CodeExpr::Continue(e) = expr {
-        todo!(dbg "")
+        stdout_write("continue")
+        return
     }
 
     if match CodeExpr::DoWith(e) = expr {
@@ -495,16 +551,38 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::FieldAccess(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::FieldAccess(access) = expr {
+        self.print_code_expr(access.lhs)
+        let _ = self.print_backslashes_before(access.field_name.loc.pos.offset)
+        stdout_write(".")
+        stdout_write(access.field_name.repr)
+        return
     }
 
     if match CodeExpr::Catch(e) = expr {
         todo!(dbg "")
     }
 
-    if match CodeExpr::Paren(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::Paren(paren) = expr {
+        stdout_write("(")
+        self.last_printed_item_line = paren.loc.pos.line
+
+        if paren.has_trailing_comma {
+            stdout_write("\n")
+            self.indent += 1
+            self.print_comments_before(paren.expr.loc().pos)
+            self.print_indent()
+        }
+
+        self.print_code_expr(paren.expr)
+
+        if paren.has_trailing_comma {
+            self.indent -= 1
+            stdout_writeln(",")
+            self.print_indent()
+        }
+        stdout_write(")")
+        return
     }
 
     if match CodeExpr::FnCall(fn_call) = expr {
@@ -513,12 +591,20 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::MethodCall(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::MethodCall(method_call) = expr {
+        self.print_code_expr(method_call.lhs)
+        let _ = self.print_backslashes_before(method_call.field_name.loc.pos.offset)
+        stdout_write(".")
+        stdout_write(method_call.field_name.repr)
+        self.print_args(method_call.args, method_call.field_name.loc)
+        return
     }
 
-    if match CodeExpr::MacroFnCall(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::MacroFnCall(macro_call) = expr {
+        stdout_write(macro_call.fn_name.repr)
+        self.print_type_args(macro_call.type_args)
+        self.print_args(macro_call.args, macro_call.loc)
+        return
     }
 
     if match CodeExpr::IntrinsicCall(instrinsic) = expr {
@@ -533,8 +619,10 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         todo!(dbg "")
     }
 
-    if match CodeExpr::Sizeof(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::Sizeof(sizeof_expr) = expr {
+        stdout_write("sizeof ")
+        self.print_type_expr(sizeof_expr.type_expr)
+        return
     }
 
     if match CodeExpr::PropagateError(e) = expr {

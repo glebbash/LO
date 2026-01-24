@@ -2,6 +2,15 @@ include "./core.lo"
 include "./lexer.lo"
 include "./ast.lo"
 
+// TODO?: support `use TokenType::*`
+const StringLiteral = TokenType::StringLiteral
+const CharLiteral = TokenType::CharLiteral
+const IntLiteral = TokenType::IntLiteral
+const Symbol = TokenType::Symbol
+const Delim = TokenType::Delim
+const Operator = TokenType::Operator
+const Terminal = TokenType::Terminal
+
 struct ParsingContext {
     struct_literal_allowed: bool,
 }
@@ -57,15 +66,15 @@ fn Parser::parse_file(&self): Result(void, &Error) {
 }
 
 fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
-    if self.eat(TokenType::Symbol, "export") != null {
+    if self.eat(Symbol, "export") != null {
         let loc = self.prev().loc
 
-        if self.eat(TokenType::Symbol, "fn") != null {
+        if self.eat(Symbol, "fn") != null {
             let fn_def = self.parse_fn_def(true, loc)?
             return Ok(TopLevelExpr::FnDef(fn_def))
         }
 
-        if self.eat(TokenType::Symbol, "memory") != null {
+        if self.eat(Symbol, "memory") != null {
             let memory_def = self.parse_memory_def(true, loc)?
             return Ok(TopLevelExpr::MemoryDef(self.ast_arena.new!(memory_def)))
         }
@@ -80,28 +89,32 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         }))
     }
 
-    if self.eat(TokenType::Symbol, "fn") != null {
+    if self.eat(Symbol, "try") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Symbol, "fn") != null {
         let fn_def = self.parse_fn_def(false, self.prev().loc)?
         return Ok(TopLevelExpr::FnDef(fn_def))
     }
 
-    if self.eat(TokenType::Symbol, "memory") != null {
+    if self.eat(Symbol, "memory") != null {
         let memory_def = self.parse_memory_def(false, self.prev().loc)?
         return Ok(TopLevelExpr::MemoryDef(self.ast_arena.new!(memory_def)))
     }
 
-    if self.eat(TokenType::Symbol, "include") != null {
+    if self.eat(Symbol, "include") != null {
         let loc = self.prev().loc
 
-        let file_path = self.expect_any(TokenType::StringLiteral)?
+        let file_path = self.expect_any(StringLiteral)?
         let alias = null as &IdentExpr
-        if self.eat(TokenType::Symbol, "as") != null {
+        if self.eat(Symbol, "as") != null {
             alias = self.ast_arena.new!(self.parse_ident()?)
         }
 
         let with_extern = false
-        if self.eat(TokenType::Symbol, "with") != null {
-            let _ = self.expect(TokenType::Symbol, "extern")?
+        if self.eat(Symbol, "with") != null {
+            let _ = self.expect(Symbol, "extern")?
             with_extern = true
         }
 
@@ -115,16 +128,16 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol, "import") != null {
+    if self.eat(Symbol, "import") != null {
         let loc = self.prev().loc
 
-        let _ = self.expect(TokenType::Symbol, "from")?
-        let module_name = self.expect_any(TokenType::StringLiteral)?
+        let _ = self.expect(Symbol, "from")?
+        let module_name = self.expect_any(StringLiteral)?
 
-        let _ = self.expect(TokenType::Delim, "{")?
+        let _ = self.expect(Delim, "{")?
 
         let items = Vec::new!<ImportItem>()
-        while self.eat(TokenType::Delim, "}") == null {
+        while self.eat(Delim, "}") == null {
             let item = self.parse_importable()?
             items.push!(item)
         }
@@ -138,11 +151,27 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol, "const") != null {
+    if self.eat(Symbol, "global") != null {
+        let loc = self.prev().loc
+
+        let global_name = self.parse_ident()?
+        let _ = self.expect(Operator, "=")?
+        let global_value = self.parse_code_expr(0)?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::GlobalDef(self.ast_arena.new!(GlobalDefExpr {
+            global_name: global_name,
+            global_value: global_value,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(Symbol, "const") != null {
         let loc = self.prev().loc
 
         let const_name = self.parse_ident()?
-        let _ = self.expect(TokenType::Operator, "=")?
+        let _ = self.expect(Operator, "=")?
         let const_value = self.parse_code_expr(0)?
 
         loc.end_pos = self.prev().loc.end_pos
@@ -154,19 +183,19 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol, "struct") != null {
+    if self.eat(Symbol, "struct") != null {
         let loc = self.prev().loc
 
         let struct_name = self.parse_ident()?
 
         let fields = Vec::new!<StructDefField>()
 
-        let _ = self.expect(TokenType::Delim, "{")?
-        while self.eat(TokenType::Delim, "}") == null {
+        let _ = self.expect(Delim, "{")?
+        while self.eat(Delim, "}") == null {
             let field_loc = self.current().loc
 
             let field_name = self.parse_ident()?
-            let _ = self.expect(TokenType::Operator, ":")?
+            let _ = self.expect(Operator, ":")?
             let field_type = self.parse_type_expr()?
 
             field_loc.end_pos = self.prev().loc.end_pos
@@ -177,8 +206,8 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
                 loc: field_loc,
             })
 
-            if !self.current().is(TokenType::Delim, "}", self.source) {
-                let _ = self.expect(TokenType::Delim, ",")?
+            if !self.current().is(Delim, "}", self.source) {
+                let _ = self.expect(Delim, ",")?
             }
         }
 
@@ -191,8 +220,71 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    // TODO: implement proper
-    if false {}
+    if self.eat(Symbol, "enum") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Symbol, "type") != null {
+        let loc = self.prev().loc
+
+        let type_name = self.parse_ident()?
+        let _ = self.expect(Operator, "=")?
+        let type_value = self.parse_type_expr()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
+            type_name: type_name,
+            type_value: type_value,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(Symbol, "macro") != null {
+        let loc = self.prev().loc
+
+        let macro_name = self.parse_ident()?
+        let _ = self.expect(Operator, "!")?
+        let excl_end_pos = self.prev().loc.end_pos
+
+        let macro_type_params = Vec::new!<str>()
+        if self.eat(Operator, "<") != null {
+            while self.eat(Operator, ">") == null {
+                let type_param = self.expect_any(Symbol)?
+                macro_type_params.push!(type_param.get_value(self.source))
+
+                if !self.current().is(Operator, ">", self.source) {
+                    let _ = self.expect(Delim, ",")?
+                }
+            }
+        }
+
+        let macro_params_trailing_comma = ref!(false)
+        let macro_params = self.parse_fn_params(true, macro_params_trailing_comma)?
+
+        let return_type = null as &TypeExpr
+        if self.eat(Operator, ":") != null {
+            return_type = self.ast_arena.new!(self.parse_type_expr()?)
+        }
+
+        let body = self.parse_code_block()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        let result = self.ast_arena.new!(MacroDefExpr {
+            macro_name: macro_name,
+            macro_params: macro_params,
+            macro_params_trailing_comma: *macro_params_trailing_comma,
+            macro_type_params: macro_type_params,
+            return_type: return_type,
+            body: body,
+            loc: loc,
+        })
+
+        self.extend_ident(&result.macro_name, excl_end_pos)
+
+        return Ok(TopLevelExpr::MacroDef(result))
+    }
 
     let unexpected = self.current()
     let message = String::from_str("Unexpected top level token: ")
@@ -227,7 +319,7 @@ fn Parser::parse_fn_decl(&self): Result(FnDeclExpr, &Error) {
     let fn_params = self.parse_fn_params(false, fn_params_trailing_comma)?
 
     let return_type = null as &TypeExpr
-    if self.eat(TokenType::Operator, ":") != null {
+    if self.eat(Operator, ":") != null {
         return_type = self.ast_arena.new!(self.parse_type_expr()?)
     }
 
@@ -249,15 +341,15 @@ fn Parser::parse_fn_params(
 ): Result(&Vec(FnParam), &Error) {
     let params = Vec::new!<FnParam>()
 
-    let _ = self.expect(TokenType::Delim, "(")?
+    let _ = self.expect(Delim, "(")?
 
-    while self.eat(TokenType::Delim, ")") == null {
+    while self.eat(Delim, ")") == null {
         *trailing_comma = false
 
         let loc = self.current().loc
 
         let param_type = FnParamType::Self(null)
-        if self.eat(TokenType::Operator, "&") != null {
+        if self.eat(Operator, "&") != null {
             param_type = FnParamType::SelfRef(null)
         }
 
@@ -270,9 +362,9 @@ fn Parser::parse_fn_params(
                 }))
             }
 
-            let _ = self.expect(TokenType::Operator, ":")?
+            let _ = self.expect(Operator, ":")?
 
-            if self.eat(TokenType::Symbol, "infer") != null {
+            if self.eat(Symbol, "infer") != null {
                 let infer = self.prev()
 
                 if !infer_allowed {
@@ -282,7 +374,7 @@ fn Parser::parse_fn_params(
                     }))
                 }
 
-                let infer_as = self.expect_any(TokenType::Symbol)?
+                let infer_as = self.expect_any(Symbol)?
                 param_type = FnParamType::Infer(self.ast_arena.new!(FnParamTypeInfer {
                     name: infer_as.get_value(self.source),
                 }))
@@ -295,8 +387,8 @@ fn Parser::parse_fn_params(
 
         loc.end_pos = self.prev().loc.end_pos
 
-        if !self.current().is(TokenType::Delim, ")", self.source) {
-            let _ = self.expect(TokenType::Delim, ",")?
+        if !self.current().is(Delim, ")", self.source) {
+            let _ = self.expect(Delim, ",")?
             *trailing_comma = true
         }
 
@@ -322,12 +414,12 @@ fn Parser::parse_memory_def(&self, exported: bool, loc: Loc): Result(MemoryDefEx
 }
 
 fn Parser::parse_importable(&self): Result(ImportItem, &Error) {
-    if self.eat(TokenType::Symbol, "fn") != null {
+    if self.eat(Symbol, "fn") != null {
         let decl = self.parse_fn_decl()?
         return Ok(ImportItem::FnDecl(self.ast_arena.new!(decl)))
     }
 
-    if self.eat(TokenType::Symbol, "memory") != null {
+    if self.eat(Symbol, "memory") != null {
         let loc = self.prev().loc
         let memory_def = self.parse_memory_def(false, loc)?
         return Ok(ImportItem::Memory(self.ast_arena.new!(memory_def)))
@@ -349,15 +441,15 @@ fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
     let loc = self.current().loc
     let primary = self.parse_type_expr_primary()?
 
-    if self.eat(TokenType::Delim, "(") != null {
+    if self.eat(Delim, "(") != null {
         let container = primary
         let items = Vec::new!<TypeExpr>()
 
-        while self.eat(TokenType::Delim, ")") == null {
+        while self.eat(Delim, ")") == null {
             items.push!(self.parse_type_expr()?)
 
-            if !self.current().is(TokenType::Delim, ")", self.source) {
-                let _ = self.expect(TokenType::Delim, ",")?
+            if !self.current().is(Delim, ")", self.source) {
+                let _ = self.expect(Delim, ",")?
             }
         }
 
@@ -376,7 +468,7 @@ fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
 fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
     let loc = self.current().loc
 
-    if self.eat(TokenType::Operator, "&") != null {
+    if self.eat(Operator, "&") != null {
         let pointee = self.parse_type_expr()?
         loc.end_pos = self.prev().loc.end_pos
         return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
@@ -386,7 +478,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
     }
 
     // lexer joins two `&` into `&&`
-    if self.eat(TokenType::Operator, "&&") != null {
+    if self.eat(Operator, "&&") != null {
         let pointee = self.parse_type_expr()?
         loc.end_pos = self.prev().loc.end_pos
         return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
@@ -398,7 +490,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Operator, "*&") != null {
+    if self.eat(Operator, "*&") != null {
         let pointee = self.parse_type_expr()?
         loc.end_pos = self.prev().loc.end_pos
         return Ok(TypeExpr::SequencePointer(self.ast_arena.new!(
@@ -424,10 +516,10 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     }
 
     loop {
-        let ident_part = self.expect_any(TokenType::Symbol)?
+        let ident_part = self.expect_any(Symbol)?
         ident.parts.push!(ident_part.loc)
 
-        if self.eat(TokenType::Operator, "::") == null {
+        if self.eat(Operator, "::") == null {
             break
         }
     }
@@ -446,13 +538,13 @@ fn Parser::parse_code_expr_map(&self): Result(CodeExprMap, &Error) {
     let fields = Vec::new!<CodeExprMapField>()
     let has_trailing_comma = false
 
-    let loc = self.expect(TokenType::Delim, "{")?.loc
+    let loc = self.expect(Delim, "{")?.loc
 
-    while self.eat(TokenType::Delim, "}") == null {
+    while self.eat(Delim, "}") == null {
         let field_loc = self.current().loc
 
-        let field_name = self.expect_any(TokenType::Symbol)?
-        let _ = self.expect(TokenType::Operator, ":")?
+        let field_name = self.expect_any(Symbol)?
+        let _ = self.expect(Operator, ":")?
         let value = self.parse_code_expr(0)?
 
         field_loc.end_pos = self.prev().loc.end_pos
@@ -463,8 +555,8 @@ fn Parser::parse_code_expr_map(&self): Result(CodeExprMap, &Error) {
             loc: field_loc,
         })
 
-        if !self.current().is(TokenType::Delim, "}", self.source) {
-            let _ = self.expect(TokenType::Delim, ",")?
+        if !self.current().is(Delim, "}", self.source) {
+            let _ = self.expect(Delim, ",")?
             has_trailing_comma = true
         } else {
             has_trailing_comma = false
@@ -481,14 +573,14 @@ fn Parser::parse_code_expr_map(&self): Result(CodeExprMap, &Error) {
 }
 
 fn Parser::parse_code_block(&self): Result(CodeBlock, &Error) {
-    let _ = self.expect(TokenType::Delim, "{")?
+    let _ = self.expect(Delim, "{")?
 
     let code_block = CodeBlock {
         exprs: Vec::new!<CodeExpr>(),
         loc: self.prev().loc,
     }
 
-    while self.eat(TokenType::Delim, "}") == null {
+    while self.eat(Delim, "}") == null {
         let expr = self.parse_code_expr(0)?
         code_block.exprs.push!(expr)
     }
@@ -533,14 +625,39 @@ fn Parser::parse_code_expr(&self, min_bp: u32): Result(CodeExpr, &Error) {
 }
 
 fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
-    // TODO: implement proper
-    if false {}
+    if self.eat(Symbol, "true") != null {
+        let loc = self.prev().loc
 
-    if self.eat_any(TokenType::IntLiteral) != null {
+        return Ok(CodeExpr::BoolLiteral(self.ast_arena.new!(
+            BoolLiteralExpr { value: true, loc: loc },
+        )))
+    }
+
+    if self.eat(Symbol, "false") != null {
+        let loc = self.prev().loc
+
+        return Ok(CodeExpr::BoolLiteral(self.ast_arena.new!(
+            BoolLiteralExpr { value: false, loc: loc },
+        )))
+    }
+
+    if self.eat(Symbol, "null") != null {
+        let loc = self.prev().loc
+
+        return Ok(CodeExpr::NullLiteral(self.ast_arena.new!(
+            NullLiteralExpr { loc: loc },
+        )))
+    }
+
+    if self.eat_any(CharLiteral) != null {
+        todo!(dbg "")
+    }
+
+    if self.eat_any(IntLiteral) != null {
         let int_literal = self.prev()
 
         let tag = null as &str
-        if self.eat(TokenType::Symbol, "u64") != null {
+        if self.eat(Symbol, "u64") != null {
             tag = self.ast_arena.new!(self.prev().get_value(self.lexer.source))
         }
 
@@ -557,7 +674,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         ))
     }
 
-    if self.eat_any(TokenType::StringLiteral) != null {
+    if self.eat_any(StringLiteral) != null {
         let string = QuotedString::new(self.prev().loc)
 
         return Ok(CodeExpr::StringLiteral(self.ast_arena.new!(StringLiteralExpr {
@@ -567,11 +684,30 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol, "let") != null {
+    if self.eat(Delim, "(") != null {
+        let loc = self.prev().loc
+
+        self.push_ctx(ParsingContext { struct_literal_allowed: true })
+        let expr = self.parse_code_expr(0)?
+        self.pop_ctx()
+
+        let has_trailing_comma = self.eat(Delim, ",") != null
+        let _ = self.expect(Delim, ")")?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Paren(self.ast_arena.new!(ParenExpr {
+            expr: expr,
+            has_trailing_comma: has_trailing_comma,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(Symbol, "let") != null {
         let loc = self.prev().loc
 
         let local_name = self.parse_ident()?
-        let _ = self.expect(TokenType::Operator, "=")?
+        let _ = self.expect(Operator, "=")?
         let value = self.parse_code_expr(0)?
 
         loc.end_pos = self.prev().loc.end_pos
@@ -583,7 +719,25 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol, "if") != null {
+    if self.eat(Symbol, "return") != null {
+        let loc = self.prev().loc
+
+        let expr = null as &CodeExpr
+        if self.current().loc.end_pos.line == loc.end_pos.line {
+            expr = self.ast_arena.new!(self.parse_code_expr(0)?)
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Return(
+            self.ast_arena.new!(ReturnExpr {
+                expr: expr,
+                loc: loc,
+            }),
+        ))
+    }
+
+    if self.eat(Symbol, "if") != null {
         let loc = self.prev().loc
 
         self.push_ctx(ParsingContext {
@@ -591,7 +745,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })
 
         let cond = IfCond::Expr(null)
-        if self.eat(TokenType::Symbol, "match") != null {
+        if self.eat(Symbol, "match") != null {
             cond = IfCond::Match(self.ast_arena.new!(self.parse_match_header()?))
         } else {
             cond = IfCond::Expr(self.ast_arena.new!(self.parse_code_expr(0)?))
@@ -602,8 +756,8 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let then_block = self.parse_code_block()?
 
         let else_block = ElseBlock::None(null)
-        if self.eat(TokenType::Symbol, "else") != null {
-            if self.current().is(TokenType::Symbol, "if", self.source) {
+        if self.eat(Symbol, "else") != null {
+            if self.current().is(Symbol, "if", self.source) {
                 let if_expr = self.parse_code_expr(0)?
                 else_block = ElseBlock::ElseIf(self.ast_arena.new!(if_expr))
             } else {
@@ -622,25 +776,88 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    if self.eat(TokenType::Symbol, "return") != null {
+    if self.eat(Symbol, "match") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Symbol, "loop") != null {
         let loc = self.prev().loc
 
-        let expr = null as &CodeExpr
-        if self.current().loc.end_pos.line == loc.end_pos.line {
-            expr = self.ast_arena.new!(self.parse_code_expr(0)?)
-        }
+        let body = self.parse_code_block()?
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(CodeExpr::Return(
-            self.ast_arena.new!(ReturnExpr {
-                expr: expr,
-                loc: loc,
-            }),
-        ))
+        return Ok(CodeExpr::While(self.ast_arena.new!(WhileExpr {
+            cond: null,
+            body: body,
+            loc: loc,
+        })))
     }
 
-    if self.eat(TokenType::Operator, "@") != null {
+    if self.eat(Symbol, "while") != null {
+        let loc = self.prev().loc
+
+        self.push_ctx(ParsingContext { struct_literal_allowed: false })
+        let cond = self.parse_code_expr(0)?
+        self.pop_ctx()
+
+        let body = self.parse_code_block()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::While(self.ast_arena.new!(WhileExpr {
+            cond: self.ast_arena.new!(cond),
+            body: body,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(Symbol, "for") != null {
+        let loc = self.prev().loc
+
+        self.push_ctx(ParsingContext { struct_literal_allowed: false })
+        let counter = self.parse_ident()?
+        let _ = self.expect(Symbol, "in")?
+        let start = self.parse_code_expr(0)?
+        let op = self.expect(Operator, "..")?
+        let end = self.parse_code_expr(0)?
+        self.pop_ctx()
+
+        let body = self.parse_code_block()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::For(self.ast_arena.new!(ForExpr {
+            counter: counter,
+            start: start,
+            end: end,
+            body: body,
+            op_loc: op.loc,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(Symbol, "break") != null {
+        let loc = self.prev().loc
+
+        return Ok(CodeExpr::Break(self.ast_arena.new!(
+            BreakExpr { loc: loc },
+        )))
+    }
+
+    if self.eat(Symbol, "continue") != null {
+        let loc = self.prev().loc
+
+        return Ok(CodeExpr::Continue(self.ast_arena.new!(
+            ContinueExpr { loc: loc },
+        )))
+    }
+
+    if self.eat(Symbol, "do") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Operator, "@") != null {
         let loc = self.prev().loc
 
         let fn_name = self.parse_ident()?
@@ -657,8 +874,45 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    // TODO: implement proper
-    if false {}
+    if self.eat(Symbol, "dbg") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Symbol, "defer") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Symbol, "sizeof") != null {
+        let loc = self.prev().loc
+
+        let type_expr = self.parse_type_expr()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Sizeof(self.ast_arena.new!(SizeofExpr {
+            type_expr: type_expr,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(Delim, "[") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Symbol, "match") != null {
+        todo!(dbg "")
+    }
+
+    if self.eat(Operator, ":") != null || self.eat(Delim, "{") != null {
+        let message = String::from_str("Unexpected character '")
+        message.push_str(self.prev().get_value(self.source))
+        message.push_str("'.\nIf you were trying to create a struct in this context surround it with parens.")
+
+        return Err(self.error_arena.new!(Error {
+            message: message,
+            loc: self.prev().loc,
+        }))
+    }
 
     let op_token = self.current()
     if !op_token.is_terminal() {
@@ -692,10 +946,24 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
     let ident = self.parse_ident()?
 
-    // TODO: implement proper
-    if false {}
+    if ident.repr.equals("Ok") || ident.repr.equals("Err") {
+        todo!(dbg "")
+    }
 
-    if self.current().is(TokenType::Delim, "(", self.source) {
+    let ctx = self.context_stack.get!(self.context_stack.size - 1)
+    if self.current().is(Delim, "{", self.source) && ctx.struct_literal_allowed {
+        let loc = ident.loc
+        let body = self.parse_code_expr_map()?
+        loc.end_pos = body.loc.end_pos
+
+        return Ok(CodeExpr::StructLiteral(self.ast_arena.new!(StructLiteralExpr {
+            struct_name: ident,
+            body: body,
+            loc: loc,
+        })))
+    }
+
+    if self.current().is(Delim, "(", self.source) {
         let loc = ident.loc
 
         self.push_ctx(ParsingContext {
@@ -713,6 +981,28 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
             args: args,
             loc: loc,
         })))
+    }
+
+    if self.eat(Operator, "!") != null {
+        let excl_end_pos = self.prev().loc.end_pos
+
+        let loc = ident.loc
+
+        let type_args = self.parse_macro_type_args()?
+        let args = self.parse_fn_args()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        let result = self.ast_arena.new!(MacroFnCallExpr {
+            fn_name: ident,
+            type_args: type_args,
+            args: args,
+            loc: loc,
+        })
+
+        self.extend_ident(&result.fn_name, excl_end_pos)
+
+        return Ok(CodeExpr::MacroFnCall(result))
     }
 
     return Ok(CodeExpr::Ident(self.ast_arena.new!(ident)))
@@ -781,7 +1071,51 @@ fn Parser::parse_code_expr_postfix(
     }
 
     if op.tag == InfixOpTag::FieldAccess {
-        todo!(dbg "")
+        let loc = primary.loc()
+
+        let field_name = self.parse_ident()?
+
+        if self.current().is(Delim, "(", self.source) {
+            let args = self.parse_fn_args()?
+
+            loc.end_pos = self.prev().loc.end_pos
+
+            return Ok(CodeExpr::MethodCall(self.ast_arena.new!(MethodCallExpr {
+                lhs: primary,
+                field_name: field_name,
+                args: args,
+                loc: loc,
+            })))
+        }
+
+        if self.eat(Operator, "!") != null {
+            let excl_end_pos = self.prev().loc.end_pos
+
+            let type_args = self.parse_macro_type_args()?
+            let args = self.parse_fn_args()?
+
+            loc.end_pos = self.prev().loc.end_pos
+
+            let result = self.ast_arena.new!(MacroMethodCallExpr {
+                lhs: primary,
+                field_name: field_name,
+                type_args: type_args,
+                args: args,
+                loc: loc,
+            })
+
+            self.extend_ident(&result.field_name, excl_end_pos)
+
+            return Ok(CodeExpr::MacroMethodCall(result))
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::FieldAccess(self.ast_arena.new!(FieldAccessExpr {
+            lhs: primary,
+            field_name: field_name,
+            loc: loc,
+        })))
     }
 
     if op.tag == InfixOpTag::Assign {
@@ -821,12 +1155,12 @@ fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
     let has_trailing_comma = false
     let items = Vec::new!<CodeExpr>()
 
-    let _ = self.expect(TokenType::Delim, "(")?
-    while self.eat(TokenType::Delim, ")") == null {
+    let _ = self.expect(Delim, "(")?
+    while self.eat(Delim, ")") == null {
         items.push!(self.parse_code_expr(0)?)
 
-        if !self.current().is(TokenType::Delim, ")", self.source) {
-            let _ = self.expect(TokenType::Delim, ",")?
+        if !self.current().is(Delim, ")", self.source) {
+            let _ = self.expect(Delim, ",")?
             has_trailing_comma = true
         } else {
             has_trailing_comma = false
@@ -842,15 +1176,15 @@ fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
 fn Parser::parse_macro_type_args(&self): Result(&Vec(TypeExpr), &Error) {
     let type_args = Vec::new!<TypeExpr>()
 
-    if self.eat(TokenType::Operator, "<") == null {
+    if self.eat(Operator, "<") == null {
         return Ok(type_args)
     }
 
-    while self.eat(TokenType::Operator, ">") == null {
+    while self.eat(Operator, ">") == null {
         type_args.push!(self.parse_type_expr()?)
 
-        if !self.current().is(TokenType::Operator, ">", self.source) {
-            let _ = self.expect(TokenType::Delim, ",")?
+        if !self.current().is(Operator, ">", self.source) {
+            let _ = self.expect(Delim, ",")?
         }
     }
 
@@ -882,6 +1216,11 @@ fn Parser::has_backslashes_between(
 
     *start_hint = i
     return false
+}
+
+fn Parser::extend_ident(&self, ident: &IdentExpr, new_end_pos: Pos) {
+    ident.loc.end_pos = new_end_pos
+    ident.repr = ident.loc.read_span(self.source)
 }
 
 // utils
