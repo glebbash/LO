@@ -290,8 +290,8 @@ enum CodeExpr(&void) {
     // control flow
     Return(&ReturnExpr),
     If(&IfExpr),
-    WhileLoop(&WhileLoopExpr),
-    ForLoop(&ForLoopExpr),
+    While(&WhileExpr),
+    For(&ForExpr),
     Break(&BreakExpr),
     Continue(&ContinueExpr),
     Defer(&DeferExpr),
@@ -386,7 +386,7 @@ struct LetExpr {
     loc: Loc,
 }
 
-struct WhileLoopExpr {
+struct WhileExpr {
     // @optional
     cond: &CodeExpr,
     body: CodeBlock,
@@ -397,7 +397,7 @@ struct BreakExpr {
     loc: Loc,
 }
 
-struct ForLoopExpr {
+struct ForExpr {
     counter: IdentExpr,
     start: CodeExpr,
     end: CodeExpr,
@@ -586,13 +586,13 @@ fn CodeExpr::loc(self): Loc {
     if match CodeExpr::Let(e) = self {
         return e.loc
     }
-    if match CodeExpr::WhileLoop(e) = self {
+    if match CodeExpr::While(e) = self {
         return e.loc
     }
     if match CodeExpr::Break(e) = self {
         return e.loc
     }
-    if match CodeExpr::ForLoop(e) = self {
+    if match CodeExpr::For(e) = self {
         return e.loc
     }
     if match CodeExpr::Continue(e) = self {

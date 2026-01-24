@@ -53,6 +53,8 @@ fn Printer::print_file(&self) {
 }
 
 fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
+    defer self.last_printed_item_line = expr.loc().end_pos.line
+
     self.print_comments_before(expr.loc().pos)
 
     if match TopLevelExpr::FnDef(fn_def) = expr {
@@ -62,6 +64,12 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         self.print_fn_decl(fn_def.decl)
 
         self.print_code_block(*fn_def.body)
+        stdout_write("\n")
+        return
+    }
+
+    if match TopLevelExpr::MemoryDef(memory_def) = expr {
+        self.print_memory_def(*memory_def)
         stdout_write("\n")
         return
     }
@@ -110,7 +118,68 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    todo!()
+    if match TopLevelExpr::GlobalDef(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match TopLevelExpr::StructDef(struct_def) = expr {
+        stdout_write("struct ")
+        stdout_write(struct_def.struct_name.repr)
+
+        if struct_def.fields.size == 0 {
+            stdout_write(" {}")
+            stdout_write("\n")
+        } else {
+            stdout_writeln(" {")
+            self.indent += 1
+            for i in 0..struct_def.fields.size {
+                let field = struct_def.fields.get!(i)
+                self.print_comments_before(field.loc.pos)
+                self.print_indent()
+                stdout_write(field.field_name.repr)
+                stdout_write(": ")
+                self.print_type_expr(field.field_type)
+                stdout_writeln(",")
+            }
+
+            // print the rest of the comments
+            self.print_comments_before(struct_def.loc.end_pos)
+
+            self.indent -= 1
+            self.print_indent()
+
+            stdout_write("}")
+            stdout_write("\n")
+        }
+        return
+    }
+
+    if match TopLevelExpr::EnumDef(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match TopLevelExpr::TypeDef(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match TopLevelExpr::ConstDef(const_def) = expr {
+        stdout_write("const ")
+        stdout_write(const_def.const_name.repr)
+        stdout_write(" = ")
+        self.print_code_expr(const_def.const_value)
+        stdout_write("\n")
+        return
+    }
+
+    if match TopLevelExpr::TryExport(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match TopLevelExpr::MacroDef(e) = expr {
+        todo!(dbg "")
+    }
+
+    @unreachable()
 }
 
 fn Printer::print_fn_decl(&self, fn_decl: FnDeclExpr) {
@@ -192,9 +261,36 @@ fn Printer::print_memory_def(&self, mem: MemoryDefExpr) {
 fn Printer::print_type_expr(&self, expr: TypeExpr) {
     if match TypeExpr::Named(named) = expr {
         stdout_write(named.name.repr)
-    } else {
-        todo!()
+        return
     }
+
+    if match TypeExpr::Pointer(pointer) = expr {
+        stdout_write("&")
+        self.print_type_expr(pointer.pointee)
+        return
+    }
+
+    if match TypeExpr::SequencePointer(pointer) = expr {
+        stdout_write("*&")
+        self.print_type_expr(pointer.pointee)
+        return
+    }
+
+    if match TypeExpr::Container(container_expr) = expr {
+        self.print_type_expr(container_expr.container)
+        stdout_write("(")
+        for i in 0..container_expr.items.size {
+            let item = container_expr.items.get!(i)
+            if i != 0 {
+                stdout_write(", ")
+            }
+            self.print_type_expr(item)
+        }
+        stdout_write(")")
+        return
+    }
+
+    @unreachable()
 }
 
 fn Printer::print_code_block(&self, code_block: CodeBlock) {
@@ -242,7 +338,22 @@ fn Printer::print_code_block(&self, code_block: CodeBlock) {
 
 fn Printer::print_code_expr(&self, expr: CodeExpr) {
     self.backslash_stack.push!(false)
-    defer self.backslash_stack.pop()
+    defer if true {
+        self.last_printed_item_line = expr.loc().end_pos.line
+        self.backslash_stack.pop()
+    }
+
+    if match CodeExpr::BoolLiteral(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::CharLiteral(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::NullLiteral(e) = expr {
+        todo!(dbg "")
+    }
 
     if match CodeExpr::IntLiteral(int_literal) = expr {
         stdout_write(int_literal.repr)
@@ -252,19 +363,25 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::Ident(ident) = expr {
-        stdout_write(ident.repr)
+    if match CodeExpr::StringLiteral(string) = expr {
+        stdout_write(string.repr)
         return
     }
 
-    if match CodeExpr::InfixOp(infix_op) = expr {
-        self.print_code_expr(infix_op.lhs)
-        if !self.print_backslashes_before(infix_op.op_loc.pos.offset) {
-            stdout_write(" ")
-        }
-        stdout_write(infix_op.op_loc.read_span(self.parser.lexer.source))
-        stdout_write(" ")
-        self.print_code_expr(infix_op.rhs)
+    if match CodeExpr::ArrayLiteral(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::ResultLiteral(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::StructLiteral(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Ident(ident) = expr {
+        stdout_write(ident.repr)
         return
     }
 
@@ -285,17 +402,20 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::FnCall(fn_call) = expr {
-        stdout_write(fn_call.fn_name.repr)
-        self.print_args(fn_call.args, fn_call.loc)
+    if match CodeExpr::InfixOp(infix_op) = expr {
+        self.print_code_expr(infix_op.lhs)
+        if !self.print_backslashes_before(infix_op.op_loc.pos.offset) {
+            stdout_write(" ")
+        }
+        stdout_write(infix_op.op_loc.read_span(self.parser.lexer.source))
+        stdout_write(" ")
+        self.print_code_expr(infix_op.rhs)
         return
     }
 
-    if match CodeExpr::IntrinsicCall(instrinsic) = expr {
-        stdout_write("@")
-        stdout_write(instrinsic.fn_name.repr)
-        self.print_type_args(instrinsic.type_args)
-        self.print_args(instrinsic.args, instrinsic.loc)
+    if match CodeExpr::PrefixOp(op) = expr {
+        stdout_write(op.op_loc.read_span(self.parser.lexer.source))
+        self.print_code_expr(op.expr)
         return
     }
 
@@ -329,7 +449,99 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    todo!()
+    if match CodeExpr::Match(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::While(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::For(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Break(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Continue(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::DoWith(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Dbg(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Defer(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Cast(cast) = expr {
+        self.print_code_expr(cast.expr)
+        stdout_write(" as ")
+        self.print_type_expr(cast.casted_to)
+        return
+    }
+
+    if match CodeExpr::Assign(assign) = expr {
+        self.print_code_expr(assign.lhs)
+        stdout_write(" = ")
+        self.print_code_expr(assign.rhs)
+        return
+    }
+
+    if match CodeExpr::FieldAccess(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Catch(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Paren(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::FnCall(fn_call) = expr {
+        stdout_write(fn_call.fn_name.repr)
+        self.print_args(fn_call.args, fn_call.loc)
+        return
+    }
+
+    if match CodeExpr::MethodCall(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::MacroFnCall(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::IntrinsicCall(instrinsic) = expr {
+        stdout_write("@")
+        stdout_write(instrinsic.fn_name.repr)
+        self.print_type_args(instrinsic.type_args)
+        self.print_args(instrinsic.args, instrinsic.loc)
+        return
+    }
+
+    if match CodeExpr::MacroMethodCall(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::Sizeof(e) = expr {
+        todo!(dbg "")
+    }
+
+    if match CodeExpr::PropagateError(e) = expr {
+        todo!(dbg "")
+    }
+
+    @unreachable()
 }
 
 fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
@@ -455,7 +667,7 @@ fn Printer::print_type_args(&self, type_args: &Vec(TypeExpr)) {
 }
 
 fn Printer::print_match_header(&self, header: MatchHeader) {
-    todo!()
+    todo!(dbg "")
 }
 
 fn Printer::print_comments_before(&self, pos: Pos) {

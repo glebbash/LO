@@ -1210,7 +1210,7 @@ async function commandTest() {
                 "./examples/test/locals.lo",
                 "./examples/test/else-if.lo",
                 "./examples/test/import.lo",
-                // "./examples/test/demos/hello-world-raw.lo",
+                "./examples/test/demos/hello-world-raw.lo",
                 // "./examples/test/globals.lo",
                 // "./examples/test/loop.lo",
                 // "./examples/test/for-loop.lo",

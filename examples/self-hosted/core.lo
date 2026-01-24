@@ -211,3 +211,9 @@ fn stdout_write(message: str) {
 
     STDOUT_BUFFER.push_all(message.data, message.size)
 }
+
+macro todo!(message: str): never {
+    stderr_write(message)
+    stderr_write("not implemented")
+    @unreachable()
+}

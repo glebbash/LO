@@ -65,8 +65,10 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             return Ok(TopLevelExpr::FnDef(fn_def))
         }
 
-        // TODO: implement proper
-        if false {}
+        if self.eat(TokenType::Symbol, "memory") != null {
+            let memory_def = self.parse_memory_def(true, loc)?
+            return Ok(TopLevelExpr::MemoryDef(self.ast_arena.new!(memory_def)))
+        }
 
         let unexpected = self.current()
         let message = String::from_str("Unexpected exportable: ")
@@ -81,6 +83,11 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     if self.eat(TokenType::Symbol, "fn") != null {
         let fn_def = self.parse_fn_def(false, self.prev().loc)?
         return Ok(TopLevelExpr::FnDef(fn_def))
+    }
+
+    if self.eat(TokenType::Symbol, "memory") != null {
+        let memory_def = self.parse_memory_def(false, self.prev().loc)?
+        return Ok(TopLevelExpr::MemoryDef(self.ast_arena.new!(memory_def)))
     }
 
     if self.eat(TokenType::Symbol, "include") != null {
@@ -127,6 +134,59 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         return Ok(TopLevelExpr::Import(self.ast_arena.new!(ImportExpr {
             module_name: QuotedString::new(module_name.loc),
             items: items,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(TokenType::Symbol, "const") != null {
+        let loc = self.prev().loc
+
+        let const_name = self.parse_ident()?
+        let _ = self.expect(TokenType::Operator, "=")?
+        let const_value = self.parse_code_expr(0)?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::ConstDef(self.ast_arena.new!(ConstDefExpr {
+            const_name: const_name,
+            const_value: const_value,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(TokenType::Symbol, "struct") != null {
+        let loc = self.prev().loc
+
+        let struct_name = self.parse_ident()?
+
+        let fields = Vec::new!<StructDefField>()
+
+        let _ = self.expect(TokenType::Delim, "{")?
+        while self.eat(TokenType::Delim, "}") == null {
+            let field_loc = self.current().loc
+
+            let field_name = self.parse_ident()?
+            let _ = self.expect(TokenType::Operator, ":")?
+            let field_type = self.parse_type_expr()?
+
+            field_loc.end_pos = self.prev().loc.end_pos
+
+            fields.push!(StructDefField {
+                field_name: field_name,
+                field_type: field_type,
+                loc: field_loc,
+            })
+
+            if !self.current().is(TokenType::Delim, "}", self.source) {
+                let _ = self.expect(TokenType::Delim, ",")?
+            }
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::StructDef(self.ast_arena.new!(StructDefExpr {
+            struct_name: struct_name,
+            fields: fields,
             loc: loc,
         })))
     }
@@ -287,14 +347,72 @@ fn Parser::parse_importable(&self): Result(ImportItem, &Error) {
 
 fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
     let loc = self.current().loc
+    let primary = self.parse_type_expr_primary()?
 
-    // TODO: implement proper
-    if false {}
+    if self.eat(TokenType::Delim, "(") != null {
+        let container = primary
+        let items = Vec::new!<TypeExpr>()
+
+        while self.eat(TokenType::Delim, ")") == null {
+            items.push!(self.parse_type_expr()?)
+
+            if !self.current().is(TokenType::Delim, ")", self.source) {
+                let _ = self.expect(TokenType::Delim, ",")?
+            }
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TypeExpr::Container(self.ast_arena.new!(TypeExprContainer {
+            container: container,
+            items: items,
+            loc: loc,
+        })))
+    }
+
+    return Ok(primary)
+}
+
+fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
+    let loc = self.current().loc
+
+    if self.eat(TokenType::Operator, "&") != null {
+        let pointee = self.parse_type_expr()?
+        loc.end_pos = self.prev().loc.end_pos
+        return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
+            pointee: pointee,
+            loc: loc,
+        })))
+    }
+
+    // lexer joins two `&` into `&&`
+    if self.eat(TokenType::Operator, "&&") != null {
+        let pointee = self.parse_type_expr()?
+        loc.end_pos = self.prev().loc.end_pos
+        return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
+            pointee: TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
+                pointee: pointee,
+                loc: loc,
+            })),
+            loc: loc,
+        })))
+    }
+
+    if self.eat(TokenType::Operator, "*&") != null {
+        let pointee = self.parse_type_expr()?
+        loc.end_pos = self.prev().loc.end_pos
+        return Ok(TypeExpr::SequencePointer(self.ast_arena.new!(
+            TypeExprSequencePointer {
+                pointee: pointee,
+                loc: loc,
+            },
+        )))
+    }
 
     let ident = self.parse_ident()?
-    return Ok(TypeExpr::Named(
-        self.ast_arena.new!(TypeExprNamed { name: ident }),
-    ))
+    return Ok(TypeExpr::Named(self.ast_arena.new!(TypeExprNamed {
+        name: ident,
+    })))
 }
 
 fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
@@ -439,6 +557,16 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         ))
     }
 
+    if self.eat_any(TokenType::StringLiteral) != null {
+        let string = QuotedString::new(self.prev().loc)
+
+        return Ok(CodeExpr::StringLiteral(self.ast_arena.new!(StringLiteralExpr {
+            repr: string.get_repr(self.source),
+            value: string.get_value(self.source),
+            loc: string.loc,
+        })))
+    }
+
     if self.eat(TokenType::Symbol, "let") != null {
         let loc = self.prev().loc
 
@@ -532,6 +660,36 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     // TODO: implement proper
     if false {}
 
+    let op_token = self.current()
+    if !op_token.is_terminal() {
+        let maybe_op = PrefixOp::parse(op_token.get_value(self.source))
+        if @get_err(maybe_op) == null {
+            let op = @get_ok(maybe_op)
+            if op.tag != PrefixOpTag::Reference \
+                && op.tag != PrefixOpTag::Dereference \
+                && op.tag != PrefixOpTag::Not \
+                && op.tag != PrefixOpTag::Positive \
+                && op.tag != PrefixOpTag::Negative
+            {
+                @unreachable()
+            }
+
+            // skip operator
+            let loc = self.next().loc
+
+            let expr = self.parse_code_expr(op.bp_next)?
+
+            loc.end_pos = self.prev().loc.end_pos
+
+            return Ok(CodeExpr::PrefixOp(self.ast_arena.new!(PrefixOpExpr {
+                op_tag: op.tag,
+                expr: expr,
+                op_loc: op_token.loc,
+                loc: loc,
+            })))
+        }
+    }
+
     let ident = self.parse_ident()?
 
     // TODO: implement proper
@@ -566,7 +724,7 @@ fn Parser::parse_code_expr_postfix(
     op: InfixOp,
     op_loc: Loc,
 ): Result(CodeExpr, &Error) {
-    if (op.tag == InfixOpTag::Equal \
+    if op.tag == InfixOpTag::Equal \
         || op.tag == InfixOpTag::NotEqual \
         || op.tag == InfixOpTag::Less \
         || op.tag == InfixOpTag::Greater \
@@ -591,7 +749,7 @@ fn Parser::parse_code_expr_postfix(
         || op.tag == InfixOpTag::BitAndAssign \
         || op.tag == InfixOpTag::BitOrAssign \
         || op.tag == InfixOpTag::ShiftLeftAssign \
-        || op.tag == InfixOpTag::ShiftRightAssign)
+        || op.tag == InfixOpTag::ShiftRightAssign
     {
         let lhs = primary
         let rhs = self.parse_code_expr(op.bp_next)?
@@ -608,7 +766,55 @@ fn Parser::parse_code_expr_postfix(
         })))
     }
 
-    todo!()
+    if op.tag == InfixOpTag::Cast {
+        let loc = primary.loc()
+
+        let casted_to = self.parse_type_expr()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Cast(self.ast_arena.new!(CastExpr {
+            expr: primary,
+            casted_to: casted_to,
+            loc: loc,
+        })))
+    }
+
+    if op.tag == InfixOpTag::FieldAccess {
+        todo!(dbg "")
+    }
+
+    if op.tag == InfixOpTag::Assign {
+        let loc = primary.loc()
+
+        let value = self.parse_code_expr(op.bp_next)?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Assign(self.ast_arena.new!(AssignExpr {
+            op_loc: op_loc,
+            lhs: primary,
+            rhs: value,
+            loc: loc,
+        })))
+    }
+
+    if op.tag == InfixOpTag::Catch {
+        todo!(dbg "")
+    }
+
+    if op.tag == InfixOpTag::ErrorPropagation {
+        todo!(dbg "")
+    }
+
+    if op.tag == InfixOpTag::ExprPipe {
+        todo!(dbg "")
+    }
+
+    return Err(self.error_arena.new!(Error {
+        message: String::from_str("TODO"),
+        loc: op_loc,
+    }))
 }
 
 fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
@@ -652,7 +858,7 @@ fn Parser::parse_macro_type_args(&self): Result(&Vec(TypeExpr), &Error) {
 }
 
 fn Parser::parse_match_header(&self): Result(MatchHeader, &Error) {
-    todo!()
+    todo!(dbg "")
 }
 
 fn Parser::has_backslashes_between(

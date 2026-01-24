@@ -782,10 +782,6 @@ fn u64::write_to(self, output: String) {
 
 // utils
 
-macro todo!(): never {
-    @unreachable()
-}
-
 macro array_at!<T>(array: *&T, index: u32): &T {
     (array as u32 + index * sizeof T) as &T
 }
