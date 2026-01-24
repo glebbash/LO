@@ -45,7 +45,6 @@ fn mem::align_to(size: u32, size_multiple: u32): u32 {
     return size + padding
 }
 
-// @inline fn
 macro mem::copy!(src: &void, dest: &void, size: u32) {
     @memory_copy(dest as u32, src as u32, size)
 }
@@ -65,19 +64,16 @@ type Alloc = &void
 const Alloc::STACK = 0 as Alloc
 const Alloc::HEAP = 1 as Alloc
 
-// @inline @generic fn
 macro new!(a: Alloc, value: infer T): &T {
     let ptr = alloc(a, sizeof T) as &T
     *ptr = value
     ptr
 }
 
-// @inline @generic fn
 macro alloc!<T>(a: Alloc): &T {
     alloc(alloc, sizeof T) as &T
 }
 
-// @inline @generic fn
 macro alloc_many!<T>(a: Alloc, count: u32): *&T {
     alloc(alloc, count * sizeof T) as *&T
 }
@@ -94,12 +90,10 @@ fn alloc(a: Alloc, size: u32): &void {
     return (a as &Arena).alloc(size)
 }
 
-// @inline @generic fn
 macro free!<T>(a: Alloc, ptr: &T) {
     free(a, ptr, sizeof T)
 }
 
-// @inline @generic fn
 macro free_many!<T>(a: Alloc, ptr: *&T, count: u32) {
     free(alloc, ptr, count * sizeof T)
 }
@@ -126,7 +120,6 @@ global stack::MIN = u32::MAX
 
 global stack::NOW = 0
 
-// @inline fn
 macro stack::align_for_wasmtime!(alignment: u32) {
     stack::check_init!()
     let current = stack::NOW
@@ -134,7 +127,6 @@ macro stack::align_for_wasmtime!(alignment: u32) {
     let _ = tmp_alloc_many!<u8>(to_align)
 }
 
-// @inline @generic fn
 macro stack::alloc!<T>(): &T {
     stack::alloc(sizeof T) as &T
 }
@@ -149,7 +141,6 @@ fn stack::alloc(size: u32): &void {
     return (stack::NOW - size) as &void
 }
 
-// @inline fn
 macro stack::check_init!() {
     if stack::MIN == u32::MAX {
         stack::MIN = mem::align(STATIC_DATA_SIZE)
@@ -157,7 +148,6 @@ macro stack::check_init!() {
     }
 }
 
-// @inline @generic fn
 macro stack::free!<T>() {
     stack::free(sizeof T)
 }
@@ -172,20 +162,17 @@ fn stack::free(size: u32) {
 
 // tmp alloc utils (stack + defer free)
 
-// @macro because it defers to outside scope
 macro ref!(value: infer T): &T {
     let value_ref = tmp_alloc!<T>()
     *value_ref = value
     value_ref
 }
 
-// @macro because it defers to outside scope
 macro tmp_alloc!<T>(): &T {
     stack::alloc(sizeof T) as &T
     defer stack::free(sizeof T)
 }
 
-// @macro because it defers to outside scope
 macro tmp_alloc_many!<T>(count: u32): *&T {
     stack::alloc(count * sizeof T) as *&T
     defer stack::free(count * sizeof T)
@@ -198,12 +185,10 @@ struct heap::Block {
     used: bool,
 }
 
-// @inline fn
 macro heap::Block::data!(&self): &void {
     (self as u32 + sizeof heap::Block) as &void
 }
 
-// @inline fn
 macro heap::Block::next!(&self): &heap::Block {
     (self.data!() as u32 + self.size) as &heap::Block
 }
@@ -212,19 +197,16 @@ global heap::FIRST_BLOCK = null as &heap::Block
 
 global heap::CURRENT_BLOCK = null as &heap::Block
 
-// @inline @generic fn
 macro heap::new!(value: infer T): &T {
     let ptr = heap::alloc!<T>()
     *ptr = value
     ptr
 }
 
-// @inline @generic fn
 macro heap::alloc!<T>(): &T {
     heap::alloc(sizeof T) as &T
 }
 
-// @inline @generic fn
 macro heap::alloc_many!<T>(count: u32): *&T {
     heap::alloc(count * sizeof T) as *&T
 }
@@ -331,19 +313,16 @@ fn Arena::new_in(a: Alloc, block_size: u32): &Arena {
     })
 }
 
-// @inline @generic fn
 macro Arena::new!(&self, value: infer T): &T {
     let ptr = self.alloc(sizeof T) as &T
     *ptr = value
     ptr
 }
 
-// @inline @generic fn
 macro Arena::alloc!<T>(&self): &T {
     self.alloc(sizeof T) as &T
 }
 
-// @inline @generic fn
 macro Arena::alloc_many!<T>(&self, count: u32): *&T {
     self.alloc(count * sizeof T) as *&T
 }
@@ -404,7 +383,6 @@ struct Vec {
     alloc: Alloc,
 }
 
-// @inline @generic fn
 macro Vec::new!<T>(): &Vec(T) {
     Vec::new(sizeof T)
 }
@@ -417,7 +395,6 @@ fn Vec::new_in(a: Alloc, item_size: u32): &Vec {
     return Vec::with_capacity_in(a, 10, item_size)
 }
 
-// @inline @generic fn
 macro Vec::with_capacity!<T>(capacity: u32): &Vec(T) {
     Vec::with_capacity(capacity, sizeof T)
 }
@@ -426,7 +403,6 @@ fn Vec::with_capacity(capacity: u32, item_size: u32): &Vec {
     return Vec::with_capacity_in(Alloc::HEAP, capacity, item_size)
 }
 
-// @inline @generic fn
 macro Vec::with_capacity_in!<T>(a: Alloc, capacity: u32): &Vec(T) {
     Vec::with_capacity_in(a, capacity, sizeof T)
 }
@@ -441,7 +417,6 @@ fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
     })
 }
 
-// @inline @generic fn
 macro Vec::free_deep!<T>(&self) {
     for i in 0..self.size {
         self.get!(i).free()
@@ -454,17 +429,14 @@ fn Vec::free(&self) {
     free(self.alloc, self.data, self.capacity)
 }
 
-// @inline @generic fn
 macro Vec::at!(&self, index: u32): &itemof(typeof(self)) {
     self.at(index) as &itemof(typeof(self))
 }
 
-// @inline @generic fn
 macro Vec::get!(&self, index: u32): itemof(typeof(self)) {
     *self.at!(index)
 }
 
-// @inline @generic fn
 macro Vec::set!(&self, index: u32, item: itemof(typeof(self))) {
     *self.at!(index) = item
 }
@@ -487,7 +459,6 @@ fn Vec::swap(&self, index1: u32, index2: u32) {
     mem::swap(item_addr1, item_addr2, item_size)
 }
 
-// @inline @generic fn
 macro Vec::push!(&self, item: itemof(typeof(self))) {
     *(self.push() as &itemof(typeof(self))) = item
 }
@@ -545,7 +516,6 @@ fn Vec::_grow_to_size(&self, new_size: u32) {
     self.size = new_size
 }
 
-// @inline fn
 macro Vec::_panic_if_out_of_bounds!(&self, index: u32) {
     if index < 0 || index >= self.size {
         abort(AbortCode::VEC_OUT_OF_BOUNDS)
@@ -754,7 +724,6 @@ fn str::split(self, separator: u8, output: &Vec(str)): &Vec(str) {
 
 // conversions
 
-// @macro because it defers to outside scope
 macro u32::to_tmp_str!(self): str {
     let s = String::new_in(Alloc::STACK, 10)
     defer s.free()
@@ -763,7 +732,6 @@ macro u32::to_tmp_str!(self): str {
     s.as_str()
 }
 
-// @inline fn
 macro u32::to_str_in!(self, a: Alloc): str {
     let s = String::new_in(a, 10)
     self.write_to(s)
@@ -787,7 +755,6 @@ fn u32::write_to(self, output: String) {
     output.chars.reverse_range(start_size, output.len() - 1)
 }
 
-// @macro because it defers to outside scope
 macro u64::to_tmp_str!(self): str {
     let s = String::new_in(Alloc::STACK, 20)
     defer s.free()
@@ -815,12 +782,10 @@ fn u64::write_to(self, output: String) {
 
 // utils
 
-// @inline fn
 macro todo!(): never {
     @unreachable()
 }
 
-// @inline @generic fn
 macro array_at!<T>(array: *&T, index: u32): &T {
     (array as u32 + index * sizeof T) as &T
 }

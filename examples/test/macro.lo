@@ -3,7 +3,6 @@ export fn main(): u32 {
     return ptr as u32
 }
 
-// @inline @generic fn
 macro heap::alloc_many!<T>(count: u32): *&T {
     heap::alloc(count * sizeof T) as *&T
 }
