@@ -80,7 +80,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         }
 
         let unexpected = self.current()
-        let message = String::from_str("Unexpected exportable: ")
+        let message = String::from_str_in(self.error_arena, "Unexpected exportable: ")
         message.push_str(unexpected.get_value(self.lexer.source))
 
         return Err(self.error_arena.new!(Error {
@@ -352,7 +352,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     }
 
     let unexpected = self.current()
-    let message = String::from_str("Unexpected top level token: ")
+    let message = String::from_str_in(self.error_arena, "Unexpected top level token: ")
     message.push_str(unexpected.get_value(self.lexer.source))
 
     return Err(self.error_arena.new!(Error {
@@ -425,7 +425,10 @@ fn Parser::parse_fn_params(
 
                 if !infer_allowed {
                     return Err(self.error_arena.new!(Error {
-                        message: String::from_str("Cannot use `infer` outside macro parameter list"),
+                        message: String::from_str_in(
+                            self.error_arena,
+                            "Cannot use `infer` outside macro parameter list",
+                        ),
                         loc: infer.loc,
                     }))
                 }
@@ -586,7 +589,7 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     if ident.repr.contains(" ") {
         // TODO: report error this error instead of throwing
         return Err(self.error_arena.new!(Error {
-            message: String::from_str("Unexpected space in identifier"),
+            message: String::from_str_in(self.error_arena, "Unexpected space in identifier"),
             loc: ident.loc,
         }))
     }
@@ -1037,7 +1040,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat(Operator, ":") != null || self.eat(Delim, "{") != null {
-        let message = String::from_str("Unexpected character '")
+        let message = String::from_str_in(self.error_arena, "Unexpected character '")
         message.push_str(self.prev().get_value(self.source))
         message.push_str("'.\nIf you were trying to create a struct in this context surround it with parens.")
 
