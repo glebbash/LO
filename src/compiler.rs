@@ -454,23 +454,28 @@ pub struct Compiler {
     global_scope: Scope,
 
     type_aliases: Vec<Type>,
+
     struct_defs: Vec<StructDef>,
+
     enum_defs: Vec<EnumDef>,
     enum_ctors: Vec<EnumConstructor>,
+
     globals: Vec<GlobalDef>,
+
     const_defs: Vec<ConstDef>,
+
     macro_defs: Vec<&'static MacroDefExpr>,
+
     functions: Vec<FnInfo>,
+    wasm_fn_types: RefCell<Vec<WasmFnType>>,
+
     const_slice_lens: Vec<ConstSliceLen>,
     allocated_strings: Vec<String>,
-
     memory: Option<MemoryInfo>,
     datas: RefCell<Vec<WasmData>>,
     data_size: RefCell<u32>,
     string_pool: RefCell<Vec<PooledString>>,
     first_string_usage: Option<Loc>,
-
-    wasm_types: RefCell<Vec<WasmFnType>>,
 }
 
 impl Compiler {
@@ -846,7 +851,7 @@ impl Compiler {
                         module_ctx: module.ctx.relax(),
                         def_expr: global_def.relax(),
                         global_type: Type::Never, // placeholder
-                        global_index: self.globals.len() as u32,
+                        global_index: 0,          // placeholder
                     });
                 }
                 TopLevelExpr::ConstDef(const_def) => {
@@ -1287,17 +1292,7 @@ impl Compiler {
                         self.report_error(&err);
                         continue;
                     });
-                    let value_comp_count = self.count_wasm_type_components(&value_type);
-                    if value_comp_count != 1 {
-                        self.report_error(&Error {
-                            message: format!(
-                                "Cannot define global with non-primitive type {}",
-                                TypeFmt(self, &value_type)
-                            ),
-                            loc: global_def.loc,
-                        });
-                        continue;
-                    }
+                    global.global_type = value_type;
 
                     if self.in_inspection_mode {
                         let global_name = &global_def.global_name.repr;
@@ -1305,14 +1300,12 @@ impl Compiler {
                         self.print_inspection(&InspectInfo {
                             message: format!(
                                 "global {global_name}: {}",
-                                TypeFmt(self, &value_type)
+                                TypeFmt(self, &global.global_type)
                             ),
                             loc: global_def.global_name.loc,
                             linked_loc: None,
                         });
                     }
-
-                    global.global_type = value_type;
                 }
             }
         }
@@ -1341,15 +1334,16 @@ impl Compiler {
             }
             self.lower_type(&fn_info.fn_type.output, &mut wasm_fn_type.outputs);
 
-            let mut fn_type_index = self.wasm_types.borrow().len() as u32;
-            for (existing_fn_type, existing_type_index) in self.wasm_types.borrow().iter().zip(0..)
+            let mut fn_type_index = self.wasm_fn_types.borrow().len() as u32;
+            for (existing_fn_type, existing_type_index) in
+                self.wasm_fn_types.borrow().iter().zip(0..)
             {
                 if wasm_fn_type == *existing_fn_type {
                     fn_type_index = existing_type_index;
                 }
             }
-            if fn_type_index == self.wasm_types.borrow().len() as u32 {
-                self.wasm_types.borrow_mut().push(wasm_fn_type.clone());
+            if fn_type_index == self.wasm_fn_types.borrow().len() as u32 {
+                self.wasm_fn_types.borrow_mut().push(wasm_fn_type.clone());
             }
 
             match &fn_info.fn_source {
@@ -1388,6 +1382,41 @@ impl Compiler {
                     exported_item_index: fn_info.wasm_fn_index,
                 });
             }
+        }
+
+        // build global initializers and update global indices
+        let mut global_index = 0;
+        for global in self.globals.relax_mut() {
+            global.global_index = global_index;
+
+            let mut wasm_types = Vec::new();
+            self.lower_type(&global.global_type, &mut wasm_types);
+
+            let mut instrs = Vec::new();
+            let res = self.codegen(
+                global.module_ctx.be_mut(),
+                &mut instrs,
+                &global.def_expr.global_value,
+            );
+            catch!(res, err, {
+                self.report_error(&err);
+            });
+
+            for i in 0..wasm_types.len() {
+                let wasm_type = &wasm_types[i];
+                let instr = &instrs[i];
+
+                let mut initial_value = WasmExpr { instrs: Vec::new() };
+                initial_value.instrs.push(instr.clone());
+
+                wasm_module.globals.push(WasmGlobal {
+                    mutable: true,
+                    value_type: wasm_type.clone(),
+                    initial_value,
+                });
+            }
+
+            global_index += wasm_types.len() as u32;
         }
 
         // build function codes
@@ -1482,6 +1511,24 @@ impl Compiler {
             }
         }
 
+        // patch @data_size values in globals
+        let data_size_instr = WasmInstr::I32Const {
+            value: *self.data_size.borrow() as i32,
+        };
+        for global in self.globals.relax_mut() {
+            let CodeExpr::IntrinsicCall(intrinsic) = &global.def_expr.global_value else {
+                continue;
+            };
+
+            if intrinsic.fn_name.repr != "data_size" {
+                continue;
+            }
+
+            wasm_module.globals[global.global_index as usize]
+                .initial_value
+                .instrs[0] = data_size_instr.clone()
+        }
+
         if let Some(memory) = &self.memory {
             let limits = WasmLimits {
                 min: memory.min_pages.unwrap_or(0),
@@ -1511,31 +1558,9 @@ impl Compiler {
             wasm_module.datas.push(static_data_store.clone());
         }
 
-        let mut wasm_types_buf = Vec::with_capacity(1);
-        for i in 0..self.globals.len() {
-            let global = &self.globals[i];
-            self.lower_type(&global.global_type, &mut wasm_types_buf);
-            let wasm_value_type = wasm_types_buf.pop().unwrap_or(WasmType::I32);
-
-            let mut initial_value = WasmExpr { instrs: Vec::new() };
-
-            let res = self.codegen(
-                global.module_ctx.be_mut(),
-                &mut initial_value.instrs,
-                &global.def_expr.global_value,
-            );
-            catch!(res, err, {
-                self.report_error(&err);
-            });
-
-            wasm_module.globals.push(WasmGlobal {
-                mutable: true,
-                value_type: wasm_value_type,
-                initial_value,
-            });
-        }
-
-        wasm_module.types.append(&mut self.wasm_types.borrow_mut());
+        wasm_module
+            .types
+            .append(&mut self.wasm_fn_types.borrow_mut());
 
         if let Some(string_usage_loc) = self.first_string_usage
             && self.memory.is_none()
@@ -2697,9 +2722,8 @@ impl Compiler {
                         });
                     }
 
-                    instrs.push(WasmInstr::I32Const {
-                        value: *self.data_size.borrow() as i32,
-                    });
+                    // placeholder, filled in in `generate`
+                    instrs.push(WasmInstr::I32Const { value: 0 });
                     return Ok(());
                 }
 
@@ -4087,14 +4111,14 @@ impl Compiler {
         }
         self.lower_type(output, &mut inout_fn_type.outputs);
 
-        for (fn_type, type_index) in self.wasm_types.borrow().iter().zip(0..) {
+        for (fn_type, type_index) in self.wasm_fn_types.borrow().iter().zip(0..) {
             if *fn_type == inout_fn_type {
                 return type_index;
             }
         }
 
-        self.wasm_types.borrow_mut().push(inout_fn_type);
-        self.wasm_types.borrow().len() as u32 - 1
+        self.wasm_fn_types.borrow_mut().push(inout_fn_type);
+        self.wasm_fn_types.borrow().len() as u32 - 1
     }
 
     fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> Result<Type, Error> {
