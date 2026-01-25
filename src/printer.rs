@@ -322,11 +322,6 @@ impl Printer {
                     stdout_write(": ");
                     self.print_type_expr(&expr);
                 }
-                FnParamType::Infer { name } => {
-                    stdout_write(&param.param_name.repr);
-                    stdout_write(": infer ");
-                    stdout_write(name);
-                }
             }
 
             self.last_printed_item_line = param.loc.pos.line;

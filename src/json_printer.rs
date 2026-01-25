@@ -252,9 +252,6 @@ impl JsonPrinter {
                     self.json_type_expr(expr)
                 )
             }
-            FnParamType::Infer { name } => {
-                format!(r#"{{"kind": "Infer", "name": {}}}"#, self.json_string(name))
-            }
         };
 
         format!(

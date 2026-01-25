@@ -325,7 +325,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         }
 
         let macro_params_trailing_comma = ref!(false)
-        let macro_params = self.parse_fn_params(true, macro_params_trailing_comma)?
+        let macro_params = self.parse_fn_params(macro_params_trailing_comma)?
 
         let return_type = null as &TypeExpr
         if self.eat(Operator, ":") != null {
@@ -381,7 +381,7 @@ fn Parser::parse_fn_decl(&self): Result(FnDeclExpr, &Error) {
     let fn_name = self.parse_ident()?
 
     let fn_params_trailing_comma = ref!(false)
-    let fn_params = self.parse_fn_params(false, fn_params_trailing_comma)?
+    let fn_params = self.parse_fn_params(fn_params_trailing_comma)?
 
     let return_type = null as &TypeExpr
     if self.eat(Operator, ":") != null {
@@ -400,9 +400,7 @@ fn Parser::parse_fn_decl(&self): Result(FnDeclExpr, &Error) {
 }
 
 fn Parser::parse_fn_params(
-    &self,
-    infer_allowed: bool,
-    trailing_comma: &bool,
+    &self, \\ trailing_comma: &bool,
 ): Result(&Vec(FnParam), &Error) {
     let params = Vec::new!<FnParam>()
 
@@ -420,28 +418,9 @@ fn Parser::parse_fn_params(
 
         let param_name = self.parse_ident()?
         if self.eat(Operator, ":") != null {
-            if self.eat(Symbol, "infer") != null {
-                let infer = self.prev()
-
-                if !infer_allowed {
-                    return Err(self.error_arena.new!(Error {
-                        message: String::from_str_in(
-                            self.error_arena,
-                            "Cannot use `infer` outside macro parameter list",
-                        ),
-                        loc: infer.loc,
-                    }))
-                }
-
-                let infer_as = self.expect_any(Symbol)?
-                param_type = FnParamType::Infer(self.ast_arena.new!(FnParamTypeInfer {
-                    name: infer_as.get_value(self.source),
-                }))
-            } else {
-                param_type = FnParamType::Type(self.ast_arena.new!(FnParamTypeType {
-                    expr: self.parse_type_expr()?,
-                }))
-            }
+            param_type = FnParamType::Type(self.ast_arena.new!(FnParamTypeType {
+                expr: self.parse_type_expr()?,
+            }))
         }
 
         loc.end_pos = self.prev().loc.end_pos

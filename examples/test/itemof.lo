@@ -10,7 +10,7 @@ struct Box {
     raw: &void,
 }
 
-macro Box::new!(value: infer T): Box(T) {
+macro Box::new!(value: infer(T)): Box(T) {
     let self = Box { raw: MEM_CURRENT as &void }
     MEM_CURRENT += sizeof T
     self

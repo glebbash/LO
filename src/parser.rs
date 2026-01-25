@@ -312,7 +312,7 @@ impl Parser {
             }
 
             let mut macro_params_trailing_comma = false;
-            let macro_params = self.parse_fn_params(true, &mut macro_params_trailing_comma)?;
+            let macro_params = self.parse_fn_params(&mut macro_params_trailing_comma)?;
 
             let mut return_type = None;
             if let Some(_) = self.eat(Operator, ":") {
@@ -396,7 +396,7 @@ impl Parser {
 
         let fn_name = self.parse_ident()?;
         let mut fn_params_trailing_comma = false;
-        let fn_params = self.parse_fn_params(false, &mut fn_params_trailing_comma)?;
+        let fn_params = self.parse_fn_params(&mut fn_params_trailing_comma)?;
 
         let mut return_type = None;
         if let Some(_) = self.eat(Operator, ":") {
@@ -414,11 +414,7 @@ impl Parser {
         })
     }
 
-    fn parse_fn_params(
-        &self,
-        infer_allowed: bool,
-        trailing_comma: &mut bool,
-    ) -> Result<Vec<FnParam>, Error> {
+    fn parse_fn_params(&self, trailing_comma: &mut bool) -> Result<Vec<FnParam>, Error> {
         let mut params = Vec::<FnParam>::new();
 
         let _ = self.expect(Delim, "(")?;
@@ -435,23 +431,9 @@ impl Parser {
 
             let param_name = self.parse_ident()?;
             if let Some(_) = self.eat(Operator, ":") {
-                if let Some(infer) = self.eat(Symbol, "infer") {
-                    if !infer_allowed {
-                        return Err(Error {
-                            message: format!("Cannot use `infer` outside macro parameter list"),
-                            loc: infer.loc,
-                        });
-                    }
-
-                    let infer_as = self.expect_any(Symbol)?;
-                    param_type = FnParamType::Infer {
-                        name: infer_as.get_value(self.source),
-                    };
-                } else {
-                    param_type = FnParamType::Type {
-                        expr: self.parse_type_expr()?,
-                    };
-                }
+                param_type = FnParamType::Type {
+                    expr: self.parse_type_expr()?,
+                };
             }
 
             loc.end_pos = self.prev().loc.end_pos;

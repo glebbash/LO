@@ -1174,7 +1174,8 @@ impl Compiler {
                     );
 
                     'param_loop: for fn_param in &fn_def.decl.fn_params {
-                        let param_type = self.get_fn_param_type(&module.ctx, &self_type, fn_param);
+                        let param_type =
+                            self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
                         let param_type = catch!(param_type, err, {
                             self.report_error(&err);
                             continue 'param_loop;
@@ -1250,7 +1251,7 @@ impl Compiler {
 
                         for fn_param in &fn_decl.fn_params {
                             let param_type =
-                                self.get_fn_param_type(&module.ctx, &self_type, fn_param);
+                                self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
                             let param_type = catch!(param_type, err, {
                                 self.report_error(&err);
                                 continue 'items;
@@ -1772,8 +1773,9 @@ impl Compiler {
     fn get_fn_param_type(
         &self,
         ctx: &ExprContext,
-        self_type: &Option<Type>,
         fn_param: &FnParam,
+        self_type: &Option<Type>,
+        infer_allowed: bool,
     ) -> Result<Type, Error> {
         match &fn_param.param_type {
             FnParamType::Self_ | FnParamType::SelfRef => {
@@ -1788,8 +1790,20 @@ impl Compiler {
                     pointee: Box::new(self_type),
                 });
             }
-            FnParamType::Type { expr } => self.build_type(ctx, &expr),
-            FnParamType::Infer { name: _ } => unreachable!(),
+            FnParamType::Type { expr } => {
+                if let Some(infer_type_name) = self.get_infer_type_name(fn_param)? {
+                    if !infer_allowed {
+                        return Err(Error {
+                            message: format!("Infer is only allowed in macros"),
+                            loc: fn_param.param_name.loc,
+                        });
+                    }
+
+                    return self.get_type_or_err(ctx, infer_type_name, &fn_param.param_name.loc);
+                }
+
+                self.build_type(ctx, &expr)
+            }
         }
     }
 
@@ -3687,10 +3701,10 @@ impl Compiler {
                 loc: macro_param.loc,
             };
 
-            if let FnParamType::Infer { name } = &macro_param.param_type {
+            if let Some(type_name) = self.get_infer_type_name(macro_param)? {
                 self.register_block_type(
                     ctx,
-                    name,
+                    type_name,
                     const_def.code_unit.type_.clone(),
                     macro_param.loc,
                 );
@@ -3703,12 +3717,7 @@ impl Compiler {
 
         let mut macro_types = Vec::<Type>::new();
         for macro_param in &macro_def.macro_params {
-            let macro_type = if let FnParamType::Infer { name } = &macro_param.param_type {
-                self.get_type_or_err(ctx, name, &macro_param.loc)
-                    .unwrap_or_else(|_| unreachable!())
-            } else {
-                self.get_fn_param_type(ctx, &self_type, macro_param)?
-            };
+            let macro_type = self.get_fn_param_type(ctx, macro_param, &self_type, true)?;
             macro_types.push(macro_type);
         }
 
@@ -3765,6 +3774,39 @@ impl Compiler {
         }
 
         Ok(macro_def)
+    }
+
+    fn get_infer_type_name(&self, fn_param: &FnParam) -> Result<Option<&'static str>, Error> {
+        let FnParamType::Type {
+            expr: TypeExpr::Container(container),
+        } = &fn_param.param_type
+        else {
+            return Ok(None);
+        };
+
+        let TypeExpr::Named(named) = &*container.container else {
+            return Ok(None);
+        };
+
+        if named.name.repr != "infer" {
+            return Ok(None);
+        }
+
+        if container.items.len() != 1 {
+            return Err(Error {
+                message: format!("Invalid `infer` call, expected 1 named type argument"),
+                loc: container.loc,
+            });
+        }
+
+        let TypeExpr::Named(named) = &container.items[0] else {
+            return Err(Error {
+                message: format!("Invalid `infer` call, expected 1 named type argument"),
+                loc: container.loc,
+            });
+        };
+
+        Ok(Some(named.name.repr))
     }
 
     fn codegen_macro_call(

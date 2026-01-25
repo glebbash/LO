@@ -40,7 +40,6 @@ pub enum FnParamType {
     Self_,
     SelfRef,
     Type { expr: TypeExpr },
-    Infer { name: &'static str },
 }
 
 /// DOC: `include "<module path>" [as <alias>] [with extern]` syntax was chosen

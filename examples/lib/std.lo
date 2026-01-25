@@ -64,7 +64,7 @@ type Alloc = &void
 const Alloc::STACK = 0 as Alloc
 const Alloc::HEAP = 1 as Alloc
 
-macro new!(a: Alloc, value: infer T): &T {
+macro new!(a: Alloc, value: infer(T)): &T {
     let ptr = alloc(a, sizeof T) as &T
     *ptr = value
     ptr
@@ -162,7 +162,7 @@ fn stack::free(size: u32) {
 
 // tmp alloc utils (stack + defer free)
 
-macro ref!(value: infer T): &T {
+macro ref!(value: infer(T)): &T {
     let value_ref = tmp_alloc!<T>()
     *value_ref = value
     value_ref
@@ -197,7 +197,7 @@ global heap::FIRST_BLOCK = null as &heap::Block
 
 global heap::CURRENT_BLOCK = null as &heap::Block
 
-macro heap::new!(value: infer T): &T {
+macro heap::new!(value: infer(T)): &T {
     let ptr = heap::alloc!<T>()
     *ptr = value
     ptr
@@ -313,7 +313,7 @@ fn Arena::new_in(a: Alloc, block_size: u32): &Arena {
     })
 }
 
-macro Arena::new!(&self, value: infer T): &T {
+macro Arena::new!(&self, value: infer(T)): &T {
     let ptr = self.alloc(sizeof T) as &T
     *ptr = value
     ptr

@@ -47,33 +47,6 @@
             ]
         },
         {
-            "comment": "macro type metavariables",
-            "name": "meta.macro.metavariable.type.lo",
-            "match": "(\\$)((crate)|([A-Z][A-Za-z0-9_]*))((:)(block|expr|ident|item|lifetime|literal|meta|path?|stmt|tt|ty|vis))?",
-            "captures": {
-                "1": {
-                    "name": "keyword.operator.macro.dollar.lo"
-                },
-                "3": {
-                    "name": "keyword.other.crate.lo"
-                },
-                "4": {
-                    "name": "entity.name.type.metavariable.lo"
-                },
-                "6": {
-                    "name": "keyword.operator.key-value.lo"
-                },
-                "7": {
-                    "name": "variable.other.metavariable.specifier.lo"
-                }
-            },
-            "patterns": [
-                {
-                    "include": "#keywords"
-                }
-            ]
-        },
-        {
             "comment": "macro metavariables",
             "name": "meta.macro.metavariable.lo",
             "match": "(\\$)([a-z][A-Za-z0-9_]*)((:)(block|expr|ident|item|lifetime|literal|meta|path?|stmt|tt|ty|vis))?",
@@ -118,7 +91,7 @@
         },
         {
             "comment": "modules",
-            "match": "(mod)\\s+((?:r#(?!crate|[Ss]elf|super))?[a-z][A-Za-z0-9_]*)",
+            "match": "(mod)\\s+((?:r#(?![Ss]elf))?[a-z][A-Za-z0-9_]*)",
             "captures": {
                 "1": {
                     "name": "storage.type.lo"
@@ -127,39 +100,6 @@
                     "name": "entity.name.module.lo"
                 }
             }
-        },
-        {
-            "comment": "external crate imports",
-            "name": "meta.import.lo",
-            "begin": "\\b(extern)\\s+(crate)",
-            "beginCaptures": {
-                "1": {
-                    "name": "storage.type.lo"
-                },
-                "2": {
-                    "name": "keyword.other.crate.lo"
-                }
-            },
-            "end": ";",
-            "endCaptures": {
-                "0": {
-                    "name": "punctuation.semi.lo"
-                }
-            },
-            "patterns": [
-                {
-                    "include": "#block-comments"
-                },
-                {
-                    "include": "#comments"
-                },
-                {
-                    "include": "#keywords"
-                },
-                {
-                    "include": "#punctuation"
-                }
-            ]
         },
         {
             "comment": "use statements",
@@ -459,7 +399,7 @@
                 {
                     "comment": "function definition",
                     "name": "meta.function.definition.lo",
-                    "begin": "\\b(fn)\\s+((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)((\\()|(<))",
+                    "begin": "\\b(fn)\\s+((?:r#(?![Ss]elf))?[A-Za-z0-9_]+)((\\()|(<))",
                     "beginCaptures": {
                         "1": {
                             "name": "keyword.other.fn.lo"
@@ -525,7 +465,7 @@
                 {
                     "comment": "function/method calls, chaining",
                     "name": "meta.function.call.lo",
-                    "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(\\()",
+                    "begin": "((?:r#(?![Ss]elf))?[A-Za-z0-9_]+)(\\()",
                     "beginCaptures": {
                         "1": {
                             "name": "entity.name.function.lo"
@@ -588,7 +528,7 @@
                 {
                     "comment": "function/method calls with turbofish",
                     "name": "meta.function.call.lo",
-                    "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(?=::<.*>\\()",
+                    "begin": "((?:r#(?![Ss]elf))?[A-Za-z0-9_]+)(?=::<.*>\\()",
                     "beginCaptures": {
                         "1": {
                             "name": "entity.name.function.lo"
@@ -692,22 +632,12 @@
                 {
                     "comment": "other keywords",
                     "name": "keyword.other.lo",
-                    "match": "\\b(as|async|become|box|dyn|move|final|impl|in|override|priv|pub|ref|typeof|union|unsafe|unsized|use|virtual|where|export|import|from|memory|defer|sizeof|include|of|infer)\\b"
+                    "match": "\\b(as|in|typeof|use|export|import|from|memory|defer|sizeof|include)\\b"
                 },
                 {
                     "comment": "fn",
                     "name": "keyword.other.fn.lo",
                     "match": "\\bfn\\b"
-                },
-                {
-                    "comment": "crate",
-                    "name": "keyword.other.crate.lo",
-                    "match": "\\bcrate\\b"
-                },
-                {
-                    "comment": "mut",
-                    "name": "storage.modifier.mut.lo",
-                    "match": "\\bmut\\b"
                 },
                 {
                     "comment": "logical operators",
@@ -1139,7 +1069,7 @@
                 {
                     "comment": "variables",
                     "name": "variable.other.lo",
-                    "match": "\\b(?<!(?<!\\.)\\.)(?:r#(?!(crate|[Ss]elf|super)))?[a-z0-9_]+\\b"
+                    "match": "\\b(?<!(?<!\\.)\\.)(?:r#(?!([Ss]elf)))?[a-z0-9_]+\\b"
                 }
             ]
         }
