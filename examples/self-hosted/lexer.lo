@@ -214,6 +214,22 @@ fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
     })
 }
 
+fn Lexer::parse_char_literal_value(char_literal: str): u8 {
+    if char_literal.equals("'\\n'") {
+        return '\n'
+    } else if char_literal.equals("'\\r'") {
+        return '\r'
+    } else if char_literal.equals("'\\t'") {
+        return '\t'
+    } else if char_literal.equals("'\\0'") {
+        return '\0'
+    } else if char_literal.equals("'\\''") {
+        return '\''
+    } else {
+        return char_literal.char_at(1)
+    }
+}
+
 fn Lexer::lex_string_literal(&self): Result(Token, &Error) {
     let loc = self.loc()
 

@@ -167,14 +167,14 @@ impl Lexer {
         })
     }
 
-    pub fn parse_char_literal_value(char_literal: &str) -> u32 {
+    pub fn parse_char_literal_value(char_literal: &str) -> char {
         match char_literal {
-            "'\\n'" => '\n' as u32,
-            "'\\r'" => '\r' as u32,
-            "'\\t'" => '\t' as u32,
-            "'\\0'" => '\0' as u32,
-            "'\\''" => '\'' as u32,
-            c => c.chars().nth(1).unwrap() as u32,
+            "'\\n'" => '\n',
+            "'\\r'" => '\r',
+            "'\\t'" => '\t',
+            "'\\0'" => '\0',
+            "'\\''" => '\'',
+            c => c.chars().nth(1).unwrap(),
         }
     }
 

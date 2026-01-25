@@ -90,7 +90,28 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     }
 
     if self.eat(Symbol, "try") != null {
-        todo!(dbg "")
+        let loc = self.prev().loc
+
+        let _ = self.expect(Symbol, "export")?
+        let in_name = self.parse_ident()?
+
+        let _ = self.expect(Symbol, "as")?
+        let out_name = self.expect_any(StringLiteral)?
+
+        let from_root = false
+        if self.eat(Symbol, "from") != null {
+            let _ = self.expect(Symbol, "root")?
+            from_root = true
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::TryExport(self.ast_arena.new!(TryExportExpr {
+            in_name: in_name,
+            out_name: QuotedString::new(out_name.loc),
+            from_root: from_root,
+            loc: loc,
+        })))
     }
 
     if self.eat(Symbol, "fn") != null {
@@ -221,7 +242,51 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     }
 
     if self.eat(Symbol, "enum") != null {
-        todo!(dbg "")
+        let loc = self.prev().loc
+
+        let enum_name = self.parse_ident()?
+
+        let variant_type = null as &TypeExpr
+        if self.eat(Delim, "(") != null {
+            variant_type = self.ast_arena.new!(self.parse_type_expr()?)
+            let _ = self.expect(Delim, ")")?
+        }
+
+        let variants = Vec::new!<EnumDefVariant>()
+
+        let _ = self.expect(Delim, "{")?
+        while self.eat(Delim, "}") == null {
+            let variant_loc = self.current().loc
+
+            let variant_name = self.parse_ident()?
+
+            let variant_type = null as &TypeExpr
+            if self.eat(Delim, "(") != null {
+                variant_type = self.ast_arena.new!(self.parse_type_expr()?)
+                let _ = self.expect(Delim, ")")?
+            }
+
+            variant_loc.end_pos = self.prev().loc.end_pos
+
+            variants.push!(EnumDefVariant {
+                variant_name: variant_name,
+                variant_type: variant_type,
+                loc: variant_loc,
+            })
+
+            if !self.current().is(Delim, "}", self.source) {
+                let _ = self.expect(Delim, ",")?
+            }
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::EnumDef(self.ast_arena.new!(EnumDefExpr {
+            enum_name: enum_name,
+            variant_type: variant_type,
+            variants: variants,
+            loc: loc,
+        })))
     }
 
     if self.eat(Symbol, "type") != null {
@@ -354,16 +419,7 @@ fn Parser::parse_fn_params(
         }
 
         let param_name = self.parse_ident()?
-        if !param_name.repr.equals("self") {
-            if match FnParamType::SelfRef(_) = param_type {
-                return Err(self.error_arena.new!(Error {
-                    message: String::from_str("Only `self` param can be preceded by the reference operator"),
-                    loc: param_name.loc,
-                }))
-            }
-
-            let _ = self.expect(Operator, ":")?
-
+        if self.eat(Operator, ":") != null {
             if self.eat(Symbol, "infer") != null {
                 let infer = self.prev()
 
@@ -528,7 +584,11 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
 
     ident.repr = ident.loc.read_span(self.source)
     if ident.repr.contains(" ") {
-        // TODO: report error
+        // TODO: report error this error instead of throwing
+        return Err(self.error_arena.new!(Error {
+            message: String::from_str("Unexpected space in identifier"),
+            loc: ident.loc,
+        }))
     }
 
     return Ok(ident)
@@ -650,7 +710,12 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat_any(CharLiteral) != null {
-        todo!(dbg "")
+        let char = self.prev()
+        return Ok(CodeExpr::CharLiteral(self.ast_arena.new!(CharLiteralExpr {
+            repr: char.get_value(self.source),
+            value: Lexer::parse_char_literal_value(char.get_value(self.source)) as u32,
+            loc: char.loc,
+        })))
     }
 
     if self.eat_any(IntLiteral) != null {
@@ -777,7 +842,19 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat(Symbol, "match") != null {
-        todo!(dbg "")
+        let loc = self.prev().loc
+
+        let match_header = self.parse_match_header()?
+        let _ = self.expect(Symbol, "else")?
+        let else_branch = self.parse_code_block()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Match(self.ast_arena.new!(MatchExpr {
+            header: match_header,
+            else_branch: else_branch,
+            loc: loc,
+        })))
     }
 
     if self.eat(Symbol, "loop") != null {
@@ -854,7 +931,20 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat(Symbol, "do") != null {
-        todo!(dbg "")
+        let loc = self.prev().loc
+
+        let body = self.parse_code_expr(0)?
+        let with_ = self.expect(Symbol, "with")?
+        let args = self.parse_fn_args()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::DoWith(self.ast_arena.new!(DoWithExpr {
+            body: body,
+            args: args,
+            with_loc: with_.loc,
+            loc: loc,
+        })))
     }
 
     if self.eat(Operator, "@") != null {
@@ -875,11 +965,30 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat(Symbol, "dbg") != null {
-        todo!(dbg "")
+        let loc = self.prev().loc
+
+        let message_str = self.expect_any(StringLiteral)?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        let message = QuotedString::new(message_str.loc)
+        return Ok(CodeExpr::Dbg(self.ast_arena.new!(DbgExpr {
+            message: message,
+            loc: loc,
+        })))
     }
 
     if self.eat(Symbol, "defer") != null {
-        todo!(dbg "")
+        let loc = self.prev().loc
+
+        let expr = self.parse_code_expr(0)?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Defer(self.ast_arena.new!(DeferExpr {
+            expr: expr,
+            loc: loc,
+        })))
     }
 
     if self.eat(Symbol, "sizeof") != null {
@@ -896,11 +1005,35 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat(Delim, "[") != null {
-        todo!(dbg "")
-    }
+        let loc = self.prev().loc
 
-    if self.eat(Symbol, "match") != null {
-        todo!(dbg "")
+        let item_type = self.parse_type_expr()?
+        let _ = self.expect(Delim, "]")?
+
+        let has_trailing_comma = false
+
+        let _ = self.expect(Delim, "[")?
+        let items = Vec::new!<CodeExpr>()
+        while self.eat(Delim, "]") == null {
+            let item = self.parse_code_expr(0)?
+            items.push!(item)
+
+            if !self.current().is(Delim, "]", self.source) {
+                let _ = self.expect(Delim, ",")?
+                has_trailing_comma = true
+            } else {
+                has_trailing_comma = false
+            }
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::ArrayLiteral(self.ast_arena.new!(ArrayLiteralExpr {
+            item_type: item_type,
+            items: items,
+            has_trailing_comma: has_trailing_comma,
+            loc: loc,
+        })))
     }
 
     if self.eat(Operator, ":") != null || self.eat(Delim, "{") != null {
@@ -947,7 +1080,34 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     let ident = self.parse_ident()?
 
     if ident.repr.equals("Ok") || ident.repr.equals("Err") {
-        todo!(dbg "")
+        let loc = ident.loc
+
+        let result_type = null as &ResultTypeExpr
+        if self.eat(Operator, ":") != null {
+            let _ = self.expect(Operator, "<")?
+            let ok = self.parse_type_expr()?
+            let _ = self.expect(Delim, ",")?
+            let err = self.parse_type_expr()?
+            let _ = self.expect(Operator, ">")?
+
+            result_type = self.ast_arena.new!(ResultTypeExpr { ok: ok, err: err })
+        }
+
+        let _ = self.expect(Delim, "(")?
+        let value = null as &CodeExpr
+        if self.eat(Delim, ")") == null {
+            value = self.ast_arena.new!(self.parse_code_expr(0)?)
+            let _ = self.expect(Delim, ")")?
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::ResultLiteral(self.ast_arena.new!(ResultLiteralExpr {
+            is_ok: ident.repr.equals("Ok"),
+            result_type: result_type,
+            value: value,
+            loc: loc,
+        })))
     }
 
     let ctx = self.context_stack.get!(self.context_stack.size - 1)
@@ -1134,21 +1294,48 @@ fn Parser::parse_code_expr_postfix(
     }
 
     if op.tag == InfixOpTag::Catch {
-        todo!(dbg "")
+        let loc = primary.loc()
+
+        let error_bind = self.parse_ident()?
+        let catch_body = self.parse_code_block()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::Catch(self.ast_arena.new!(CatchExpr {
+            lhs: primary,
+            error_bind: error_bind,
+            catch_body: catch_body,
+            catch_loc: op_loc,
+            loc: loc,
+        })))
     }
 
     if op.tag == InfixOpTag::ErrorPropagation {
-        todo!(dbg "")
+        let loc = primary.loc()
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::PropagateError(self.ast_arena.new!(PropagateErrorExpr {
+            expr: primary,
+            loc: loc,
+        })))
     }
 
     if op.tag == InfixOpTag::ExprPipe {
-        todo!(dbg "")
+        let loc = primary.loc()
+
+        let rhs = self.parse_code_expr(op.bp_next)?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(CodeExpr::ExprPipe(self.ast_arena.new!(ExprPipeExpr {
+            lhs: primary,
+            rhs: rhs,
+            op_loc: op_loc,
+            loc: loc,
+        })))
     }
 
-    return Err(self.error_arena.new!(Error {
-        message: String::from_str("TODO"),
-        loc: op_loc,
-    }))
+    @unreachable()
 }
 
 fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
@@ -1192,7 +1379,18 @@ fn Parser::parse_macro_type_args(&self): Result(&Vec(TypeExpr), &Error) {
 }
 
 fn Parser::parse_match_header(&self): Result(MatchHeader, &Error) {
-    todo!(dbg "")
+    let variant_name = self.parse_ident()?
+    let _ = self.expect(Delim, "(")?
+    let variant_bind = self.parse_ident()?
+    let _ = self.expect(Delim, ")")?
+    let _ = self.expect(Operator, "=")?
+    let expr_to_match = self.parse_code_expr(0)?
+
+    return Ok(MatchHeader {
+        variant_name: variant_name,
+        variant_bind: variant_bind,
+        expr_to_match: expr_to_match,
+    })
 }
 
 fn Parser::has_backslashes_between(

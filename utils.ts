@@ -1191,55 +1191,15 @@ async function commandTest() {
             }
         });
 
-        describe("formatter", () => {
+        describe("formatter", async () => {
             const format = async (fileName = "-i") => {
                 const output = await shRun(["format", fileName]);
                 return new TextDecoder().decode(output);
             };
 
-            // TODO: support all eventually
-            // let files = await fs.readdir("examples", { recursive: true });
-            // files = files.filter((f) => f.endsWith(".lo"));
-            // files = files.map((f) => `examples/${f}`);
-            const files = [
-                "./examples/test/42.lo",
-                "./examples/test/add.lo",
-                "./examples/test/factorial.lo",
-                "./examples/test/include.lo",
-                "./examples/test/hex-and-shifts.lo",
-                "./examples/test/locals.lo",
-                "./examples/test/else-if.lo",
-                "./examples/test/import.lo",
-                "./examples/test/demos/hello-world-raw.lo",
-                "./examples/test/globals.lo",
-                "./examples/test/loop.lo",
-                "./examples/test/for-loop.lo",
-                "./examples/test/methods.lo",
-                "./examples/test/nested-if-break.lo",
-                "./examples/test/struct.lo",
-                "./examples/test/auto-forward-decl.lo",
-                "./examples/test/struct-value-field-access.lo",
-                "./examples/test/decl-nesting.lo",
-                "./examples/test/struct-ref.lo",
-                "./examples/test/macro.lo",
-                "./examples/lib/wasi.lo",
-                "./examples/test/string-pooling.lo",
-                "./examples/test/zst-noop.lo",
-                "./examples/test/std.test.lo",
-                // "./examples/test/vec.test.lo",
-                // "./examples/test/demos/hello-world.lo",
-                // "./examples/test/demos/echo.lo",
-                // "./examples/test/args.test.lo",
-                // "./examples/test/demos/cat.lo",
-                // "./examples/test/tracing.lo",
-                // "./examples/test/struct-in-struct.lo",
-                // "./examples/test/heap-alloc.lo",
-                // "./examples/test/defer.lo",
-                // "./examples/test/errors.lo",
-                // "./examples/test/do-with.lo",
-                // "./examples/test/enums.lo",
-                // "./examples/test/if-match-chain.lo",
-            ];
+            let files = await fs.readdir("examples", { recursive: true });
+            files = files.filter((f) => f.endsWith(".lo"));
+            files = files.map((f) => `examples/${f}`);
 
             for (const fileName of files) {
                 it(`formats ${fileName}`, async () => {

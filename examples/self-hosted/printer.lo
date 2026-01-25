@@ -159,8 +159,45 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::EnumDef(e) = expr {
-        todo!(dbg "")
+    if match TopLevelExpr::EnumDef(enum_def) = expr {
+        stdout_write("enum ")
+        stdout_write(enum_def.enum_name.repr)
+
+        if enum_def.variant_type != null {
+            stdout_write("(")
+            self.print_type_expr(*enum_def.variant_type)
+            stdout_write(")")
+        }
+
+        if enum_def.variants.size == 0 {
+            stdout_write(" {}")
+            stdout_write("\n")
+        } else {
+            stdout_writeln(" {")
+            self.indent += 1
+            for i in 0..enum_def.variants.size {
+                let variant = enum_def.variants.get!(i)
+                self.print_comments_before(variant.loc.pos)
+                self.print_indent()
+                stdout_write(variant.variant_name.repr)
+                if variant.variant_type != null {
+                    stdout_write("(")
+                    self.print_type_expr(*variant.variant_type)
+                    stdout_write(")")
+                }
+                stdout_writeln(",")
+            }
+
+            // print the rest of the comments
+            self.print_comments_before(enum_def.loc.end_pos)
+
+            self.indent -= 1
+            self.print_indent()
+
+            stdout_write("}")
+            stdout_write("\n")
+        }
+        return
     }
 
     if match TopLevelExpr::TypeDef(type_def) = expr {
@@ -181,8 +218,16 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::TryExport(e) = expr {
-        todo!(dbg "")
+    if match TopLevelExpr::TryExport(try_export) = expr {
+        stdout_write("try export ")
+        stdout_write(try_export.in_name.repr)
+        stdout_write(" as ")
+        stdout_write(try_export.out_name.get_repr(self.parser.lexer.source))
+        if try_export.from_root {
+            stdout_write(" from root")
+        }
+        stdout_write("\n")
+        return
     }
 
     if match TopLevelExpr::MacroDef(macro_def) = expr {
@@ -222,6 +267,8 @@ fn Printer::print_fn_decl(&self, fn_decl: FnDeclExpr) {
         stdout_write(": ")
         self.print_type_expr(*fn_decl.return_type)
     }
+
+    self.last_printed_item_line = fn_decl.loc.end_pos.line
 }
 
 fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
@@ -383,8 +430,9 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::CharLiteral(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::CharLiteral(char) = expr {
+        stdout_write(char.repr)
+        return
     }
 
     if match CodeExpr::NullLiteral(e) = expr {
@@ -405,12 +453,36 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::ArrayLiteral(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::ArrayLiteral(array) = expr {
+        stdout_write("[")
+        self.print_type_expr(array.item_type)
+        stdout_write("]")
+
+        stdout_write("[")
+        self.print_expr_list(array.items, array.has_trailing_comma, array.loc)
+        stdout_write("]")
+        return
     }
 
-    if match CodeExpr::ResultLiteral(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::ResultLiteral(result) = expr {
+        if result.is_ok {
+            stdout_write("Ok")
+        } else {
+            stdout_write("Err")
+        }
+        if result.result_type != null {
+            stdout_write(":<")
+            self.print_type_expr(result.result_type.ok)
+            stdout_write(", ")
+            self.print_type_expr(result.result_type.err)
+            stdout_write(">")
+        }
+        stdout_write("(")
+        if result.value != null {
+            self.print_code_expr(*result.value)
+        }
+        stdout_write(")")
+        return
     }
 
     if match CodeExpr::StructLiteral(struct_literal) = expr {
@@ -453,6 +525,17 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
+    if match CodeExpr::ExprPipe(pipe) = expr {
+        self.print_code_expr(pipe.lhs)
+        if !self.print_backslashes_before(pipe.op_loc.pos.offset) {
+            stdout_write(" ")
+        }
+        stdout_write(pipe.op_loc.read_span(self.parser.lexer.source))
+        stdout_write(" ")
+        self.print_code_expr(pipe.rhs)
+        return
+    }
+
     if match CodeExpr::PrefixOp(op) = expr {
         stdout_write(op.op_loc.read_span(self.parser.lexer.source))
         self.print_code_expr(op.expr)
@@ -489,8 +572,11 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::Match(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::Match(match_expr) = expr {
+        self.print_match_header(match_expr.header)
+        stdout_write(" else")
+        self.print_code_block(match_expr.else_branch)
+        return
     }
 
     if match CodeExpr::While(while_expr) = expr {
@@ -525,16 +611,24 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::DoWith(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::DoWith(do_with) = expr {
+        stdout_write("do ")
+        self.print_code_expr(do_with.body)
+        stdout_write(" with ")
+        self.print_args(do_with.args, do_with.loc)
+        return
     }
 
-    if match CodeExpr::Dbg(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::Dbg(dbg_expr) = expr {
+        stdout_write("dbg ")
+        stdout_write(dbg_expr.message.get_repr(self.parser.lexer.source))
+        return
     }
 
-    if match CodeExpr::Defer(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::Defer(defer_expr) = expr {
+        stdout_write("defer ")
+        self.print_code_expr(defer_expr.expr)
+        return
     }
 
     if match CodeExpr::Cast(cast) = expr {
@@ -559,8 +653,12 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::Catch(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::Catch(catch_expr) = expr {
+        self.print_code_expr(catch_expr.lhs)
+        stdout_write(" catch ")
+        stdout_write(catch_expr.error_bind.repr)
+        self.print_code_block(catch_expr.catch_body)
+        return
     }
 
     if match CodeExpr::Paren(paren) = expr {
@@ -585,18 +683,18 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::FnCall(fn_call) = expr {
-        stdout_write(fn_call.fn_name.repr)
-        self.print_args(fn_call.args, fn_call.loc)
+    if match CodeExpr::FnCall(call) = expr {
+        stdout_write(call.fn_name.repr)
+        self.print_args(call.args, call.loc)
         return
     }
 
-    if match CodeExpr::MethodCall(method_call) = expr {
-        self.print_code_expr(method_call.lhs)
-        let _ = self.print_backslashes_before(method_call.field_name.loc.pos.offset)
+    if match CodeExpr::MethodCall(call) = expr {
+        self.print_code_expr(call.lhs)
+        let _ = self.print_backslashes_before(call.field_name.loc.pos.offset)
         stdout_write(".")
-        stdout_write(method_call.field_name.repr)
-        self.print_args(method_call.args, method_call.field_name.loc)
+        stdout_write(call.field_name.repr)
+        self.print_args(call.args, call.field_name.loc)
         return
     }
 
@@ -615,8 +713,14 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::MacroMethodCall(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::MacroMethodCall(call) = expr {
+        self.print_code_expr(call.lhs)
+        let _ = self.print_backslashes_before(call.field_name.loc.pos.offset)
+        stdout_write(".")
+        stdout_write(call.field_name.repr)
+        self.print_type_args(call.type_args)
+        self.print_args(call.args, call.field_name.loc)
+        return
     }
 
     if match CodeExpr::Sizeof(sizeof_expr) = expr {
@@ -625,8 +729,10 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::PropagateError(e) = expr {
-        todo!(dbg "")
+    if match CodeExpr::PropagateError(prop_err) = expr {
+        self.print_code_expr(prop_err.expr)
+        stdout_write("?")
+        return
     }
 
     @unreachable()
@@ -755,7 +861,12 @@ fn Printer::print_type_args(&self, type_args: &Vec(TypeExpr)) {
 }
 
 fn Printer::print_match_header(&self, header: MatchHeader) {
-    todo!(dbg "")
+    stdout_write("match ")
+    stdout_write(header.variant_name.repr)
+    stdout_write("(")
+    stdout_write(header.variant_bind.repr)
+    stdout_write(") = ")
+    self.print_code_expr(header.expr_to_match)
 }
 
 fn Printer::print_comments_before(&self, pos: Pos) {
@@ -785,13 +896,49 @@ fn Printer::print_blank_line_before(&self, line: u32) {
 }
 
 fn Printer::print_backslashes_before(&self, offset: u32): bool {
-    // TODO: implement proper
-    return false
+    let printed = false
+
+    while self.backslashes_printed < self.parser.lexer.backslashes.size {
+        let backslash = self.parser.lexer.backslashes.get!(self.backslashes_printed)
+        if backslash.end_pos.offset > offset {
+            break
+        }
+
+        self.backslashes_printed += 1
+
+        if !printed {
+            printed = true
+
+            *self.backslash_stack.at!(self.backslash_stack.size - 1) = true
+            self.last_stmt_had_backslash = true
+
+            stdout_writeln(" \\")
+            self.print_indent()
+        }
+    }
+
+    return printed
 }
 
 fn Printer::print_double_backslashes_before(&self, offset: u32): bool {
-    // TODO: implement proper
-    return false
+    let printed = false
+
+    while self.double_backslashes_printed < self.parser.lexer.double_backslashes.size {
+        let dbs = self.parser.lexer.double_backslashes.get!(self.double_backslashes_printed)
+        if dbs.end_pos.offset > offset {
+            break
+        }
+
+        self.double_backslashes_printed += 1
+
+        if !printed {
+            printed = true
+
+            stdout_write(" \\\\")
+        }
+    }
+
+    return printed
 }
 
 fn Printer::print_indent(&self) {

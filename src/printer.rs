@@ -159,14 +159,14 @@ impl Printer {
             }
             TopLevelExpr::EnumDef(EnumDefExpr {
                 enum_name,
-                variant_type: data_type,
+                variant_type,
                 variants,
                 loc,
             }) => {
                 stdout_write("enum ");
                 stdout_write(&enum_name.repr);
 
-                if let Some(data_type) = data_type {
+                if let Some(data_type) = variant_type {
                     stdout_write("(");
                     self.print_type_expr(data_type);
                     stdout_write(")");
@@ -488,7 +488,11 @@ impl Printer {
                 value,
                 loc: _,
             }) => {
-                stdout_write(if *is_ok { "Ok" } else { "Err" });
+                if *is_ok {
+                    stdout_write("Ok")
+                } else {
+                    stdout_write("Err")
+                }
                 if let Some(result_type) = result_type {
                     stdout_write(":<");
                     self.print_type_expr(&result_type.ok);
@@ -846,13 +850,13 @@ impl Printer {
         stdout_write("}");
     }
 
-    fn print_match_header(&mut self, match_header: &MatchHeader) {
+    fn print_match_header(&mut self, header: &MatchHeader) {
         stdout_write("match ");
-        stdout_write(&match_header.variant_name.repr);
+        stdout_write(&header.variant_name.repr);
         stdout_write("(");
-        stdout_write(&match_header.variant_bind.repr);
+        stdout_write(&header.variant_bind.repr);
         stdout_write(") = ");
-        self.print_code_expr(&match_header.expr_to_match);
+        self.print_code_expr(&header.expr_to_match);
     }
 
     fn print_args(&mut self, args: &CodeExprList, open_paren_loc: &Loc) {
