@@ -502,12 +502,6 @@ impl JsonPrinter {
                     self.json_code_expr_list(&e.args)
                 )
             }
-            CodeExpr::Dbg(e) => {
-                format!(
-                    r#"{{"kind": "Dbg", "message": {}}}"#,
-                    self.json_string(e.message.get_repr(self.parser.lexer.source))
-                )
-            }
             CodeExpr::Defer(e) => {
                 format!(
                     r#"{{"kind": "Defer", "expr": {}}}"#,

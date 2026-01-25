@@ -836,17 +836,6 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "dbg") {
-            let mut loc = self.prev().loc;
-
-            let message = self.expect_any(StringLiteral)?.clone();
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            let message = QuotedString::new(message.loc);
-            return Ok(CodeExpr::Dbg(DbgExpr { message, loc }));
-        }
-
         if let Some(_) = self.eat(Symbol, "defer") {
             let mut loc = self.prev().loc;
 

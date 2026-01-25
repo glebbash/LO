@@ -619,12 +619,6 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::Dbg(dbg_expr) = expr {
-        stdout_write("dbg ")
-        stdout_write(dbg_expr.message.get_repr(self.parser.lexer.source))
-        return
-    }
-
     if match CodeExpr::Defer(defer_expr) = expr {
         stdout_write("defer ")
         self.print_code_expr(defer_expr.expr)

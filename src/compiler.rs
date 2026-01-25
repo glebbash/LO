@@ -229,6 +229,7 @@ struct Scope {
     scope_type: ScopeType,
     symbols: Vec<Symbol>,
     deferred_exprs: Vec<CodeUnit>,
+    macro_call_loc: Option<Loc>,
 }
 
 impl Scope {
@@ -1988,7 +1989,7 @@ impl Compiler {
                 value,
                 loc,
             }) => {
-                let str = self.process_const_string(value.clone(), loc)?;
+                let str = self.process_const_string(value.clone(), loc);
 
                 // emit str struct values
                 instrs.push(WasmInstr::I32Const {
@@ -2826,6 +2827,39 @@ impl Compiler {
                     }
                 }
 
+                if fn_name.repr == "macro_call_loc" {
+                    let mut macro_call_loc = None;
+                    // NOTE: not iterating in reverse to get the first macro scope
+                    for scope in &self.modules[ctx.module_index].scope_stack {
+                        if scope.scope_type == ScopeType::Macro {
+                            macro_call_loc = scope.macro_call_loc.clone();
+                        }
+                    }
+
+                    let Some(macro_call_loc) = macro_call_loc else {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Forbidden use of `@{}()` outside of macro",
+                                fn_name.repr
+                            ),
+                            loc: fn_name.loc,
+                        });
+                        return Ok(());
+                    };
+
+                    let loc_str = self
+                        .process_const_string(macro_call_loc.to_string(&self.fm), &macro_call_loc);
+                    // emit str struct values
+                    instrs.push(WasmInstr::I32Const {
+                        value: loc_str.ptr as i32,
+                    });
+                    instrs.push(WasmInstr::I32Const {
+                        value: loc_str.len as i32,
+                    });
+
+                    return Ok(());
+                }
+
                 if fn_name.repr == "get_ok" {
                     if args.items.len() != 1 {
                         return bad_args_err(self, fn_name);
@@ -2931,22 +2965,6 @@ impl Compiler {
                 self.report_error(&Error {
                     message: format!("Unknown intrinsic: {}", fn_name.repr),
                     loc: fn_name.loc,
-                });
-            }
-            CodeExpr::Dbg(DbgExpr { message, loc }) => {
-                let debug_message = format!(
-                    "{} - {}",
-                    loc.to_string(&self.fm),
-                    message.get_value(self.fm.files[loc.file_index].source.as_bytes().relax())
-                );
-                let str = self.process_const_string(debug_message, &loc)?;
-
-                // emit str struct values
-                instrs.push(WasmInstr::I32Const {
-                    value: str.ptr as i32,
-                });
-                instrs.push(WasmInstr::I32Const {
-                    value: str.len as i32,
                 });
             }
             CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
@@ -3820,6 +3838,7 @@ impl Compiler {
         loc: &Loc,
     ) -> Result<(), Error> {
         self.enter_scope(ctx, ScopeType::Macro);
+        self.current_scope_mut(ctx).macro_call_loc = Some(*loc);
 
         let macro_def = self.relax_mut().populate_ctx_from_macro_call(
             ctx,
@@ -4438,6 +4457,12 @@ impl Compiler {
                     return Ok(Type::U32);
                 }
 
+                if fn_name.repr == "macro_call_loc" {
+                    return Ok(Type::StructInstance {
+                        struct_index: self.current_scope(ctx).get_symbol("str").unwrap().col_index,
+                    });
+                }
+
                 if fn_name.repr == "get_ok" {
                     if args.items.len() == 1 {
                         let arg_type = self.get_expr_type(ctx, &args.items[0])?;
@@ -4557,9 +4582,6 @@ impl Compiler {
 
                 return Ok(rhs_type);
             }
-            CodeExpr::Dbg(_) => Ok(Type::StructInstance {
-                struct_index: self.current_scope(ctx).get_symbol("str").unwrap().col_index,
-            }),
             CodeExpr::Sizeof(_) => Ok(Type::U32),
             CodeExpr::Let(let_) => {
                 let value_type = catch!(self.get_expr_type(ctx, &let_.value), _err, {
@@ -4719,7 +4741,6 @@ impl Compiler {
             | CodeExpr::MethodCall(_)
             | CodeExpr::MacroFnCall(_)
             | CodeExpr::If(_)
-            | CodeExpr::Dbg(_)
             | CodeExpr::Sizeof(_)
             | CodeExpr::While(_)
             | CodeExpr::For(_)
@@ -5430,7 +5451,7 @@ impl Compiler {
         Ok(code_unit)
     }
 
-    fn process_const_string(&self, value: String, loc: &Loc) -> Result<Str, Error> {
+    fn process_const_string(&self, value: String, loc: &Loc) -> Str {
         if let None = self.first_string_usage {
             self.be_mut().first_string_usage = Some(*loc);
         }
@@ -5439,10 +5460,10 @@ impl Compiler {
 
         for pooled_str in self.string_pool.borrow().iter() {
             if *pooled_str.value == value {
-                return Ok(Str {
+                return Str {
                     ptr: pooled_str.ptr,
                     len: string_len,
-                });
+                };
             }
         }
 
@@ -5452,10 +5473,10 @@ impl Compiler {
             .borrow_mut()
             .push(PooledString { value, ptr });
 
-        return Ok(Str {
+        return Str {
             ptr,
             len: string_len,
-        });
+        };
     }
 
     fn append_data(&self, bytes: Vec<u8>) -> u32 {

@@ -248,7 +248,6 @@ pub enum CodeExpr {
     Paren(ParenExpr),
     DoWith(DoWithExpr),
     ExprPipe(ExprPipeExpr),
-    Dbg(DbgExpr),
     Sizeof(SizeofExpr),
 }
 
@@ -375,11 +374,6 @@ pub struct ExprPipeExpr {
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
     pub op_loc: Loc,
-    pub loc: Loc,
-}
-
-pub struct DbgExpr {
-    pub message: QuotedString,
     pub loc: Loc,
 }
 
@@ -521,7 +515,6 @@ impl CodeExpr {
             CodeExpr::Break(e) => e.loc,
             CodeExpr::For(e) => e.loc,
             CodeExpr::Continue(e) => e.loc,
-            CodeExpr::Dbg(e) => e.loc,
             CodeExpr::Defer(e) => e.loc,
             CodeExpr::Cast(e) => e.loc,
             CodeExpr::StructLiteral(e) => e.loc,

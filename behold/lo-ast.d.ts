@@ -179,7 +179,6 @@ export type CodeExpr =
     // Other
     | { kind: "Paren"; expr: CodeExpr; has_trailing_comma: boolean }
     | { kind: "DoWith"; body: CodeExpr; args: CodeExprList }
-    | { kind: "Dbg"; message: string }
     | { kind: "StructLiteral"; struct_name: string; body: CodeExprMap };
 
 /** Result type with ok and err variants */

@@ -946,20 +946,6 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    if self.eat(Symbol, "dbg") != null {
-        let loc = self.prev().loc
-
-        let message_str = self.expect_any(StringLiteral)?
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        let message = QuotedString::new(message_str.loc)
-        return Ok(CodeExpr::Dbg(self.ast_arena.new!(DbgExpr {
-            message: message,
-            loc: loc,
-        })))
-    }
-
     if self.eat(Symbol, "defer") != null {
         let loc = self.prev().loc
 

@@ -1,5 +1,11 @@
 include "../lib/cli.lo"
 
 fn main() {
-    println(dbg "hello there")
+    trace!("hello there")
+}
+
+macro trace!(message: str) {
+    print(@macro_call_loc())
+    print(" - ")
+    println(message)
 }

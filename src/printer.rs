@@ -661,10 +661,6 @@ impl Printer {
                 stdout_write(" with ");
                 self.print_args(args, loc);
             }
-            CodeExpr::Dbg(DbgExpr { message, loc: _ }) => {
-                stdout_write("dbg ");
-                stdout_write(message.get_repr(self.parser.lexer.source));
-            }
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 stdout_write("defer ");
                 self.print_code_expr(expr);

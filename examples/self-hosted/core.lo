@@ -213,6 +213,8 @@ fn stdout_write(message: str) {
 }
 
 macro todo!(message: str): never {
+    stderr_write(@macro_call_loc())
+    stderr_write(" - ")
     stderr_write(message)
     stderr_write("not implemented")
     @unreachable()

@@ -302,7 +302,6 @@ enum CodeExpr(&void) {
     Paren(&ParenExpr),
     DoWith(&DoWithExpr),
     ExprPipe(&ExprPipeExpr),
-    Dbg(&DbgExpr),
     Sizeof(&SizeofExpr),
 }
 
@@ -426,11 +425,6 @@ struct ExprPipeExpr {
     lhs: CodeExpr,
     rhs: CodeExpr,
     op_loc: Loc,
-    loc: Loc,
-}
-
-struct DbgExpr {
-    message: QuotedString,
     loc: Loc,
 }
 
@@ -596,9 +590,6 @@ fn CodeExpr::loc(self): Loc {
         return e.loc
     }
     if match CodeExpr::Continue(e) = self {
-        return e.loc
-    }
-    if match CodeExpr::Dbg(e) = self {
         return e.loc
     }
     if match CodeExpr::Defer(e) = self {
