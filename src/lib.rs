@@ -98,7 +98,7 @@ pub extern "C" fn _start() {
             proc_exit(1)
         };
 
-        let file_info = &compiler.fm.files[module.parser.lexer.file_index];
+        let file_info = &compiler.reporter.fm.files[module.parser.lexer.file_index];
         stdout_writeln(format!("file_path: {}", file_info.absolute_path));
 
         stdout_enable_buffering();
@@ -150,7 +150,7 @@ pub extern "C" fn _start() {
     }
 
     if command == "inspect" {
-        compiler.begin_inspection();
+        compiler.reporter.begin_inspection();
     }
 
     compiler.include(file_name, &Loc::internal());
@@ -160,15 +160,15 @@ pub extern "C" fn _start() {
     let mut wasm_module = WasmModule::default();
     compiler.generate(&mut wasm_module);
 
-    if compiler.in_inspection_mode {
-        compiler.end_inspection();
+    if compiler.reporter.in_inspection_mode {
+        compiler.reporter.end_inspection();
 
-        if *compiler.error_count.borrow() == 0 {
+        if compiler.reporter.error_count == 0 {
             return;
         }
     }
 
-    if *compiler.error_count.borrow() > 0 {
+    if compiler.reporter.error_count > 0 {
         proc_exit(1);
     }
 

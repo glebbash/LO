@@ -2,6 +2,115 @@ use crate::wasi;
 use alloc::{format, string::String, vec, vec::Vec};
 use core::{cell::RefCell, ffi::CStr, fmt::Write, str};
 
+pub struct InspectInfo {
+    pub message: String,
+    pub loc: Loc,
+    pub linked_loc: Option<Loc>,
+}
+
+#[derive(Default)]
+pub struct Reporter {
+    pub in_inspection_mode: bool,
+
+    pub error_count: u32,
+    pub warning_count: u32,
+
+    // TODO: find a way to make `Compiler` own this
+    pub fm: FileManager,
+}
+
+impl Reporter {
+    pub fn begin_inspection(&mut self) {
+        self.in_inspection_mode = true;
+        stdout_enable_buffering();
+        stdout_writeln("[");
+    }
+
+    pub fn end_inspection(&mut self) {
+        self.in_inspection_mode = false;
+        // this item is a stub to make json array valid
+        //   as last inspection ended with a comma
+        stdout_writeln("{ \"type\": \"end\" }");
+        stdout_writeln("]");
+        stdout_disable_buffering();
+    }
+
+    pub fn error(&self, err: &Error) {
+        self.be_mut().error_count += 1;
+
+        if self.in_inspection_mode {
+            let source_index = err.loc.file_index;
+            let source_range = RangeFmt(&err.loc);
+            let content = json_str_escape(&err.message);
+            stdout_writeln(format!(
+                "{{ \"type\": \"message\", \
+                    \"content\": \"{content}\", \
+                    \"severity\": \"error\", \
+                    \"loc\": \"{source_index}/{source_range}\" }},",
+            ));
+            return;
+        }
+
+        stderr_write("ERROR: ");
+        stderr_write(err.to_string(&self.fm));
+        stderr_write("\n");
+    }
+
+    pub fn warning(&self, err: &Error) {
+        self.be_mut().warning_count += 1;
+
+        if self.in_inspection_mode {
+            let source_index = err.loc.file_index;
+            let source_range = RangeFmt(&err.loc);
+            let content = json_str_escape(&err.message);
+            stdout_writeln(format!(
+                "{{ \"type\": \"message\", \
+                    \"content\": \"{content}\", \
+                    \"severity\": \"warning\", \
+                    \"loc\": \"{source_index}/{source_range}\" }},",
+            ));
+            return;
+        }
+
+        stderr_write("WARNING: ");
+        stderr_write(err.to_string(&self.fm));
+        stderr_write("\n");
+    }
+
+    pub fn print_inspection(&self, inspect_info: &InspectInfo) {
+        let source_index = inspect_info.loc.file_index;
+        let source_range = RangeFmt(&inspect_info.loc);
+        let message = json_str_escape(&inspect_info.message);
+
+        if let Some(linked_loc) = &inspect_info.linked_loc {
+            if linked_loc.file_index != 0 {
+                let target_index = linked_loc.file_index;
+                let target_range = RangeFmt(&linked_loc);
+                stdout_writeln(format!(
+                    "{{ \"type\": \"info\", \
+                        \"link\": \"{target_index}/{target_range}\", \
+                        \"hover\": \"{message}\", \
+                        \"loc\": \"{source_index}/{source_range}\" }},",
+                ));
+                return;
+            }
+        };
+
+        stdout_writeln(format!(
+            "{{ \"type\": \"info\", \
+                \"hover\": \"{message}\", \
+                \"loc\": \"{source_index}/{source_range}\" }},",
+        ));
+    }
+}
+
+fn json_str_escape(value: &str) -> String {
+    value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+}
+
 #[derive(PartialEq, Clone)]
 pub struct Error {
     pub message: String,

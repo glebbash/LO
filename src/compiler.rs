@@ -369,12 +369,6 @@ impl VarInfo {
     }
 }
 
-struct InspectInfo {
-    message: String,
-    loc: Loc,
-    linked_loc: Option<Loc>,
-}
-
 #[derive(Clone)]
 struct ConstDef {
     const_name: &'static str,
@@ -442,15 +436,13 @@ struct MemoryInfo {
 
 #[derive(Default)]
 pub struct Compiler {
-    pub in_inspection_mode: bool,
     pub in_single_file_mode: bool,
     pub in_lex_only_mode: bool,
     pub should_emit_dbg_local_names: bool,
 
-    pub fm: FileManager,
-    pub modules: Vec<Module>,
-    pub error_count: RefCell<u32>,
-    pub warning_count: RefCell<u32>,
+    pub reporter: Reporter,
+
+    modules: Vec<Module>,
 
     global_scope: Scope,
 
@@ -502,33 +494,18 @@ impl Compiler {
         return self_;
     }
 
-    pub fn begin_inspection(&mut self) {
-        self.in_inspection_mode = true;
-        stdout_enable_buffering();
-        stdout_writeln("[");
-    }
-
-    pub fn end_inspection(&mut self) {
-        self.in_inspection_mode = false;
-        // this item is a stub to make json array valid
-        //   as last inspection ended with a comma
-        stdout_writeln("{ \"type\": \"end\" }");
-        stdout_writeln("]");
-        stdout_disable_buffering();
-    }
-
     pub fn include(&mut self, relative_path: &str, loc: &Loc) -> Option<&Module> {
-        let file_index = catch!(self.fm.include_file(relative_path, loc), err, {
-            self.report_error(&err);
+        let file_index = catch!(self.reporter.fm.include_file(relative_path, loc), err, {
+            self.reporter.error(&err);
             return None;
         });
 
-        let file_is_newly_added = self.fm.files[file_index].included_times == 1;
+        let file_is_newly_added = self.reporter.fm.files[file_index].included_times == 1;
 
-        if self.in_inspection_mode {
+        if self.reporter.in_inspection_mode {
             if file_is_newly_added {
                 let file_index = file_index;
-                let file_path = &self.fm.files[file_index].absolute_path;
+                let file_path = &self.reporter.fm.files[file_index].absolute_path;
                 stdout_writeln(format!(
                     "{{ \"type\": \"file\", \
                         \"index\": {file_index}, \
@@ -554,18 +531,18 @@ impl Compiler {
             return self.get_module_by_file_index(file_index);
         }
 
-        let source = self.fm.files[file_index].source.as_bytes().relax();
+        let source = self.reporter.fm.files[file_index].source.as_bytes().relax();
 
         let mut lexer = Lexer::new(source, file_index);
         catch!(lexer.lex_file(), err, {
-            self.report_error(&err);
+            self.reporter.error(&err);
             return None;
         });
 
-        let parser = Parser::new(lexer, self.relax_mut());
+        let parser = Parser::new(lexer, self.reporter.relax());
         if !self.in_lex_only_mode {
             catch!(parser.parse_file(), err, {
-                self.report_error(&err);
+                self.reporter.error(&err);
                 return None;
             });
         }
@@ -670,7 +647,7 @@ impl Compiler {
                             Ok(t) => variant_type = t,
                             Err(err) => {
                                 variant_type = Type::Never;
-                                self.report_error(&err);
+                                self.reporter.error(&err);
                             }
                         }
                     }
@@ -885,11 +862,11 @@ impl Compiler {
         if let Some(existing_symbol) = self.relax_mut().current_scope(ctx).get_symbol(&symbol.name)
             && existing_symbol.defined_in_this_scope
         {
-            self.report_error(&Error {
+            self.reporter.error(&Error {
                 message: format!(
                     "Cannot redefine {}, previously defined at {}",
                     symbol.name,
-                    existing_symbol.loc.to_string(&self.fm)
+                    existing_symbol.loc.to_string(&self.reporter.fm)
                 ),
                 loc: symbol.loc,
             });
@@ -955,11 +932,11 @@ impl Compiler {
                     'fields: for field in &struct_def.fields {
                         for existing_field in &struct_fields {
                             if existing_field.field_name == field.field_name.repr {
-                                self.report_error(&Error {
+                                self.reporter.error(&Error {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
                                         field.field_name.repr,
-                                        existing_field.loc.to_string(&self.fm),
+                                        existing_field.loc.to_string(&self.reporter.fm),
                                     ),
                                     loc: field.field_name.loc,
                                 });
@@ -975,7 +952,7 @@ impl Compiler {
                             field.field_type.loc(),
                         );
                         let field_type = catch!(field_type_res, err, {
-                            self.report_error(&err);
+                            self.reporter.error(&err);
                             continue 'exprs;
                         });
                         let mut field_layout = TypeLayout::new();
@@ -1031,11 +1008,11 @@ impl Compiler {
                     'variants: for variant in enum_def.variants.iter() {
                         for existing_variant in &enum_.variants {
                             if existing_variant.variant_name == variant.variant_name.repr {
-                                self.report_error(&Error {
+                                self.reporter.error(&Error {
                                     message: format!(
                                         "Cannot redefine enum variant '{}', already defined at {}",
                                         variant.variant_name.repr,
-                                        existing_variant.loc.to_string(&self.fm),
+                                        existing_variant.loc.to_string(&self.reporter.fm),
                                     ),
                                     loc: variant.variant_name.loc,
                                 });
@@ -1048,14 +1025,14 @@ impl Compiler {
                             match self.build_type(&module.ctx, variant_type_expr) {
                                 Ok(t) => variant_type = t,
                                 Err(err) => {
-                                    self.report_error(&err);
+                                    self.reporter.error(&err);
                                     variant_type = Type::Never
                                 }
                             }
                         }
 
                         if !self.is_type_compatible(&enum_.variant_type, &variant_type) {
-                            self.report_error(&Error {
+                            self.reporter.error(&Error {
                                 message: format!(
                                     "Enum variant is not compatible with {}",
                                     TypeFmt(self, &enum_.variant_type)
@@ -1074,7 +1051,7 @@ impl Compiler {
                 TopLevelExpr::TypeDef(type_def) => {
                     let type_value = self.build_type(&module.ctx, &type_def.type_value);
                     let type_value = catch!(type_value, err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         continue;
                     });
 
@@ -1104,7 +1081,7 @@ impl Compiler {
 
                 TopLevelExpr::MemoryDef(memory_def) => {
                     catch!(self.define_memory(module, memory_def, None), err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         continue;
                     });
                 }
@@ -1118,7 +1095,7 @@ impl Compiler {
 
                     let const_type = self.get_expr_type(&module.ctx, &const_def.const_value);
                     let const_type = catch!(const_type, err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         continue;
                     });
                     const_.code_unit.type_ = const_type;
@@ -1129,14 +1106,14 @@ impl Compiler {
                         &const_def.const_value,
                     );
                     catch!(res, err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         continue;
                     });
 
-                    if self.in_inspection_mode {
+                    if self.reporter.in_inspection_mode {
                         let const_name = &const_def.const_name.repr;
 
-                        self.print_inspection(&InspectInfo {
+                        self.reporter.print_inspection(&InspectInfo {
                             message: format!(
                                 "const {const_name}: {}",
                                 TypeFmt(self, &const_.code_unit.type_)
@@ -1161,7 +1138,7 @@ impl Compiler {
                     fn_info.fn_type.output = match &fn_def.decl.return_type {
                         Some(return_type) => {
                             catch!(self.build_type(&module.ctx, return_type), err, {
-                                self.report_error(&err);
+                                self.reporter.error(&err);
                                 continue;
                             })
                         }
@@ -1178,7 +1155,7 @@ impl Compiler {
                         let param_type =
                             self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
                         let param_type = catch!(param_type, err, {
-                            self.report_error(&err);
+                            self.reporter.error(&err);
                             continue 'param_loop;
                         });
                         fn_info.fn_type.inputs.push(param_type.clone());
@@ -1204,8 +1181,8 @@ impl Compiler {
                         return; // ignore if it doesn't exist or is not a function
                     };
 
-                    if self.in_inspection_mode {
-                        self.print_inspection(&InspectInfo {
+                    if self.reporter.in_inspection_mode {
+                        self.reporter.print_inspection(&InspectInfo {
                             message: String::from(try_export_expr.in_name.repr),
                             loc: try_export_expr.loc,
                             linked_loc: Some(fn_info.definition_loc.clone()),
@@ -1228,7 +1205,7 @@ impl Compiler {
                                     Some(module_name.clone()),
                                 );
                                 catch!(res, err, {
-                                    self.report_error(&err);
+                                    self.reporter.error(&err);
                                 });
                                 continue;
                             }
@@ -1254,7 +1231,7 @@ impl Compiler {
                             let param_type =
                                 self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
                             let param_type = catch!(param_type, err, {
-                                self.report_error(&err);
+                                self.reporter.error(&err);
                                 continue 'items;
                             });
                             fn_info.fn_type.inputs.push(param_type.clone());
@@ -1268,7 +1245,7 @@ impl Compiler {
                         if let Some(return_type) = &fn_decl.return_type {
                             fn_info.fn_type.output =
                                 catch!(self.build_type(&module.ctx, &return_type), err, {
-                                    self.report_error(&err);
+                                    self.reporter.error(&err);
                                     continue 'items;
                                 });
                         }
@@ -1286,20 +1263,20 @@ impl Compiler {
                     let global = self.globals[symbol.col_index].relax_mut();
 
                     catch!(self.ensure_const_expr(&global_def.global_value), err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                     });
 
                     let value_type = self.get_expr_type(&module.ctx, &global_def.global_value);
                     let value_type = catch!(value_type, err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         continue;
                     });
                     global.global_type = value_type;
 
-                    if self.in_inspection_mode {
+                    if self.reporter.in_inspection_mode {
                         let global_name = &global_def.global_name.repr;
 
-                        self.print_inspection(&InspectInfo {
+                        self.reporter.print_inspection(&InspectInfo {
                             message: format!(
                                 "global {global_name}: {}",
                                 TypeFmt(self, &global.global_type)
@@ -1401,7 +1378,7 @@ impl Compiler {
                 &global.def_expr.global_value,
             );
             catch!(res, err, {
-                self.report_error(&err);
+                self.reporter.error(&err);
             });
 
             for i in 0..wasm_types.len() {
@@ -1566,9 +1543,9 @@ impl Compiler {
 
         if let Some(string_usage_loc) = self.first_string_usage
             && self.memory.is_none()
-            && !self.in_inspection_mode
+            && !self.reporter.in_inspection_mode
         {
-            self.report_error(&Error {
+            self.reporter.error(&Error {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: string_usage_loc,
             });
@@ -1587,12 +1564,12 @@ impl Compiler {
 
         for expr in &body.exprs {
             let expr_type = catch!(self.get_expr_type(ctx, expr), err, {
-                self.report_error(&err);
+                self.reporter.error(&err);
                 continue;
             });
 
             if terminates_early {
-                self.report_warning(&Error {
+                self.reporter.warning(&Error {
                     message: format!("Unreachable expression"),
                     loc: expr.loc(),
                 });
@@ -1607,7 +1584,7 @@ impl Compiler {
             let mut type_layout = TypeLayout::new();
             self.get_type_layout(&expr_type, &mut type_layout);
             if type_layout.primities_count > 0 && void_only {
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     message: format!(
                         "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
                     ),
@@ -1616,7 +1593,7 @@ impl Compiler {
             }
 
             catch!(self.codegen(ctx, instrs, expr), err, {
-                self.report_error(&err);
+                self.reporter.error(&err);
                 continue;
             });
         }
@@ -1633,7 +1610,7 @@ impl Compiler {
         {
             let fn_info = &self.functions[ctx.fn_index.unwrap()];
             if fn_info.fn_type.output != Type::Void {
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     // error message stolen from clang
                     message: format!("Control reaches end of non-void function"),
                     loc: fn_info.definition_loc,
@@ -1654,7 +1631,7 @@ impl Compiler {
             return Err(Error {
                 message: format!(
                     "Cannot redefine memory, first defined at {}",
-                    existing_memory.loc.to_string(&self.fm)
+                    existing_memory.loc.to_string(&self.reporter.fm)
                 ),
                 loc: memory_def.loc,
             });
@@ -1684,7 +1661,7 @@ impl Compiler {
                     }
                 }
 
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     message: format!("Expected {} constant", TypeFmt(self, &Type::U32)),
                     loc: param.loc,
                 });
@@ -1702,14 +1679,14 @@ impl Compiler {
                     }
                 }
 
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     message: format!("Expected {} constant", TypeFmt(self, &Type::U32)),
                     loc: param.loc,
                 });
                 continue;
             }
 
-            self.report_error(&Error {
+            self.reporter.error(&Error {
                 message: format!("Unexpected memory param"),
                 loc: param.loc,
             });
@@ -1735,7 +1712,7 @@ impl Compiler {
             has_self_param = true;
 
             if fn_name.parts.len() == 1 {
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     message: format!("Cannot use self param in non-method function"),
                     loc: fn_param.loc,
                 });
@@ -1763,7 +1740,7 @@ impl Compiler {
             self.get_type_or_err(ctx, &self_type_name, &self_type_loc),
             err,
             {
-                self.report_error(&err);
+                self.reporter.error(&err);
                 return Some(Type::Never);
             }
         );
@@ -2018,7 +1995,7 @@ impl Compiler {
                 for field_index in 0..body.fields.len() {
                     let field_literal = &body.fields[field_index];
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
-                        self.report_error(&Error {
+                        self.reporter.error(&Error {
                             message: format!("Excess field values"),
                             loc: field_literal.loc,
                         });
@@ -2026,7 +2003,7 @@ impl Compiler {
                     };
 
                     if &field_literal.key != &struct_field.field_name {
-                        self.report_error(&Error {
+                        self.reporter.error(&Error {
                             message: format!(
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
@@ -2036,13 +2013,13 @@ impl Compiler {
                     }
 
                     catch!(self.codegen(ctx, instrs, &field_literal.value), err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         continue;
                     });
 
                     let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
                     if !self.is_type_compatible(&struct_field.field_type, &field_value_type) {
-                        self.report_error(&Error {
+                        self.reporter.error(&Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_name.repr,
@@ -2061,7 +2038,7 @@ impl Compiler {
                         missing_fields.push(&struct_def.fields[i].field_name)
                     }
 
-                    self.report_error(&Error {
+                    self.reporter.error(&Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
                         loc: struct_name.loc,
                     });
@@ -2209,7 +2186,7 @@ impl Compiler {
             CodeExpr::Ident(ident) => {
                 let var = self.var_from_ident(ctx, ident)?;
                 if let Some(inspect_info) = var.inspect_info() {
-                    self.print_inspection(inspect_info);
+                    self.reporter.print_inspection(inspect_info);
                 }
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
@@ -2243,7 +2220,7 @@ impl Compiler {
                     None,
                 );
                 if let Some(inspect_info) = var.inspect_info() {
-                    self.print_inspection(inspect_info);
+                    self.reporter.print_inspection(inspect_info);
                 }
                 self.codegen_var_set_prepare(instrs, &var);
                 self.codegen(ctx, instrs, value)?;
@@ -2303,7 +2280,7 @@ impl Compiler {
                         });
                     };
                     if let Some(inspect_info) = inspect_info {
-                        self.print_inspection(&inspect_info);
+                        self.reporter.print_inspection(&inspect_info);
                     }
 
                     instrs.append(&mut address.instrs);
@@ -2317,7 +2294,7 @@ impl Compiler {
                 PrefixOpTag::Dereference => {
                     let var = self.var_from_deref(ctx, expr, op_loc)?;
                     if let Some(inspect_info) = var.inspect_info() {
-                        self.print_inspection(inspect_info);
+                        self.reporter.print_inspection(inspect_info);
                     }
                     self.codegen_var_get(ctx, instrs, &var)?;
                 }
@@ -2464,7 +2441,7 @@ impl Compiler {
                         });
                     };
                     if let Some(inspect_info) = var.inspect_info() {
-                        self.print_inspection(inspect_info);
+                        self.reporter.print_inspection(inspect_info);
                     }
 
                     self.codegen_var_set_prepare(instrs, &var);
@@ -2494,12 +2471,12 @@ impl Compiler {
                     });
                 };
                 if let Some(inspect_info) = var.inspect_info() {
-                    self.print_inspection(inspect_info);
+                    self.reporter.print_inspection(inspect_info);
                 }
 
                 let rhs_type = self.get_expr_type(ctx, rhs)?;
                 if !self.is_type_compatible(var.get_type(), &rhs_type) {
-                    self.report_error(&Error {
+                    self.reporter.error(&Error {
                         message: format!(
                             "Cannot assign {} to variable of type {}",
                             TypeFmt(self, &rhs_type),
@@ -2516,7 +2493,7 @@ impl Compiler {
             CodeExpr::FieldAccess(field_access) => {
                 let var = self.var_from_field_access(ctx, field_access)?;
                 if let Some(inspect_info) = var.inspect_info() {
-                    self.print_inspection(inspect_info);
+                    self.reporter.print_inspection(inspect_info);
                 }
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
@@ -2532,8 +2509,8 @@ impl Compiler {
                         let enum_ = &self.enum_defs[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
 
-                        if self.in_inspection_mode {
-                            self.print_inspection(&InspectInfo {
+                        if self.reporter.in_inspection_mode {
+                            self.reporter.print_inspection(&InspectInfo {
                                 message: format!("{} // {}", fn_name.repr, ctor.variant_index),
                                 loc: fn_name.loc,
                                 linked_loc: Some(variant.loc),
@@ -2751,7 +2728,8 @@ impl Compiler {
                         return bad_args_err(self, fn_name);
                     };
 
-                    let absolute_path = self.fm.resolve_path(&str_expr.value, &fn_name.loc);
+                    let absolute_path =
+                        self.reporter.fm.resolve_path(&str_expr.value, &fn_name.loc);
                     let bytes = file_read(&absolute_path).map_err(|message| Error {
                         message,
                         loc: args.items[0].loc(),
@@ -2771,8 +2749,8 @@ impl Compiler {
 
                     return Ok(());
 
-                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
-                        compiler.report_error(&Error {
+                    fn bad_args_err(self_: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        self_.reporter.error(&Error {
                             message: format!(
                                 "Invalid arguments for @{}(relative_file_path: str)",
                                 fn_name.repr,
@@ -2791,7 +2769,7 @@ impl Compiler {
 
                     let mut slice_ptr_instrs = Vec::new();
                     if let Err(err) = self.codegen(ctx, &mut slice_ptr_instrs, &args.items[0]) {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         return Ok(());
                     };
 
@@ -2814,8 +2792,8 @@ impl Compiler {
 
                     return bad_args_err(self, fn_name);
 
-                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
-                        compiler.report_error(&Error {
+                    fn bad_args_err(self_: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        self_.reporter.error(&Error {
                             message: format!(
                                 "Invalid arguments for @{}(items: const T[])",
                                 fn_name.repr,
@@ -2837,7 +2815,7 @@ impl Compiler {
                     }
 
                     let Some(macro_call_loc) = macro_call_loc else {
-                        self.report_error(&Error {
+                        self.reporter.error(&Error {
                             message: format!(
                                 "Forbidden use of `@{}()` outside of macro",
                                 fn_name.repr
@@ -2847,8 +2825,10 @@ impl Compiler {
                         return Ok(());
                     };
 
-                    let loc_str = self
-                        .process_const_string(macro_call_loc.to_string(&self.fm), &macro_call_loc);
+                    let loc_str = self.process_const_string(
+                        macro_call_loc.to_string(&self.reporter.fm),
+                        &macro_call_loc,
+                    );
                     // emit str struct values
                     instrs.push(WasmInstr::I32Const {
                         value: loc_str.ptr as i32,
@@ -2866,7 +2846,7 @@ impl Compiler {
                     }
 
                     let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         return Ok(());
                     });
 
@@ -2883,8 +2863,8 @@ impl Compiler {
 
                     return Ok(());
 
-                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
-                        compiler.report_error(&Error {
+                    fn bad_args_err(self_: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        self_.reporter.error(&Error {
                             message: format!(
                                 "Invalid arguments for @{}(items: Result(T, E)): T",
                                 fn_name.repr,
@@ -2902,7 +2882,7 @@ impl Compiler {
                     }
 
                     let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                         return Ok(());
                     });
 
@@ -2931,8 +2911,8 @@ impl Compiler {
 
                     return Ok(());
 
-                    fn bad_args_err(compiler: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
-                        compiler.report_error(&Error {
+                    fn bad_args_err(self_: &Compiler, fn_name: &IdentExpr) -> Result<(), Error> {
+                        self_.reporter.error(&Error {
                             message: format!(
                                 "Invalid arguments for @{}(items: Result(T, E)): E",
                                 fn_name.repr,
@@ -2945,7 +2925,7 @@ impl Compiler {
                 }
 
                 if fn_name.repr == "inspect_symbols" {
-                    if !self.in_inspection_mode {
+                    if !self.reporter.in_inspection_mode {
                         return Ok(());
                     }
 
@@ -2954,7 +2934,7 @@ impl Compiler {
                         write!(message, "{} : {:?}\n", symbol.name, symbol.type_).unwrap();
                     }
 
-                    self.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(&InspectInfo {
                         message,
                         loc: fn_name.loc,
                         linked_loc: None,
@@ -2962,7 +2942,7 @@ impl Compiler {
                     return Ok(());
                 }
 
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     message: format!("Unknown intrinsic: {}", fn_name.repr),
                     loc: fn_name.loc,
                 });
@@ -3024,7 +3004,7 @@ impl Compiler {
                     IfCond::Expr(expr) => {
                         if let Ok(cond_type) = self.get_expr_type(ctx, expr) {
                             if cond_type != Type::Bool {
-                                self.report_error(&Error {
+                                self.reporter.error(&Error {
                                     message: format!(
                                         "Unexpected condition type: {}, expected: {}",
                                         TypeFmt(self, &cond_type),
@@ -3106,7 +3086,7 @@ impl Compiler {
                 self.enter_scope(ctx, ScopeType::Block);
                 let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
                 if !terminates_early {
-                    self.report_error(&Error {
+                    self.reporter.error(&Error {
                         message: format!(
                             "Match's else block must resolve to never, got other type"
                         ),
@@ -3129,7 +3109,7 @@ impl Compiler {
                 if let Some(cond) = cond {
                     if let Ok(cond_type) = self.get_expr_type(ctx, cond) {
                         if cond_type != Type::Bool {
-                            self.report_error(&Error {
+                            self.reporter.error(&Error {
                                 message: format!(
                                     "Unexpected condition type: {}, expected: {}",
                                     TypeFmt(self, &cond_type),
@@ -3141,7 +3121,7 @@ impl Compiler {
                     }
 
                     catch!(self.codegen(ctx, instrs, cond), err, {
-                        self.report_error(&err);
+                        self.reporter.error(&err);
                     });
 
                     instrs.push(WasmInstr::UnaryOp {
@@ -3190,7 +3170,7 @@ impl Compiler {
                 let mut is_64_bit_counter = false;
                 match self.is_64_bit_int_tag(&counter_type, loc) {
                     Ok(is_64) => is_64_bit_counter = is_64,
-                    Err(err) => self.report_error(&err),
+                    Err(err) => self.reporter.error(&err),
                 }
 
                 self.enter_scope(ctx, ScopeType::ForLoop);
@@ -3205,7 +3185,7 @@ impl Compiler {
                     None,
                 );
                 if let Some(inspect_info) = counter_var.inspect_info() {
-                    self.print_inspection(inspect_info);
+                    self.reporter.print_inspection(inspect_info);
                 }
                 self.codegen_var_set_prepare(instrs, &counter_var);
                 self.codegen(ctx, instrs, start)?;
@@ -3330,7 +3310,7 @@ impl Compiler {
                 loc: _,
             }) => {
                 let Some(first_arg) = args.items.first() else {
-                    self.report_error(&Error {
+                    self.reporter.error(&Error {
                         message: format!("do-with expressions must have at least one argument"),
                         loc: with_loc.clone(),
                     });
@@ -3342,7 +3322,7 @@ impl Compiler {
                 for arg in &args.items {
                     let current_arg_type = self.get_expr_type(ctx, arg)?;
                     if current_arg_type != arg_type {
-                        self.report_error(&Error {
+                        self.reporter.error(&Error {
                             message: format!(
                                 "do-with argument type mismatch. expected: {}, got: {}",
                                 TypeFmt(self, &arg_type),
@@ -3373,7 +3353,7 @@ impl Compiler {
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 catch!(self.codegen(ctx, instrs, lhs), err, {
-                    self.report_error(&err);
+                    self.reporter.error(&err);
                     return Ok(());
                 });
 
@@ -3383,7 +3363,7 @@ impl Compiler {
 
                 self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
                 catch!(self.codegen(ctx, instrs, rhs), err, {
-                    self.report_error(&err);
+                    self.reporter.error(&err);
                     return Ok(());
                 });
                 self.exit_scope(ctx);
@@ -3458,8 +3438,8 @@ impl Compiler {
         let enum_def = &self.enum_defs[enum_ctor.enum_index].relax();
         let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
 
-        if self.in_inspection_mode {
-            self.print_inspection(&InspectInfo {
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_inspection(&InspectInfo {
                 message: format!(
                     "{}\n{}({})",
                     TypeFmt(self, &Type::EnumInstance { enum_index }),
@@ -3485,7 +3465,7 @@ impl Compiler {
             None,
         );
         if let Some(inspect_info) = local.inspect_info() {
-            self.print_inspection(inspect_info);
+            self.reporter.print_inspection(inspect_info);
         }
 
         if let Ok(expr_to_match_type) = self.get_expr_type(ctx, &header.expr_to_match) {
@@ -3493,7 +3473,7 @@ impl Compiler {
                 enum_index: enum_ctor.enum_index,
             };
             if !self.is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type) {
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     message: format!(
                         "Unexpected type to match, expected: {}, got: {}",
                         TypeFmt(self, &expected_expr_to_match_type),
@@ -3532,7 +3512,7 @@ impl Compiler {
             self.codegen(ctx, instrs, arg)?;
         }
 
-        if self.in_inspection_mode {
+        if self.reporter.in_inspection_mode {
             let mut message = String::new();
 
             write!(&mut message, "fn {fn_name}(").unwrap();
@@ -3550,7 +3530,7 @@ impl Compiler {
             let return_type = TypeFmt(self, &fn_info.fn_type.output);
             write!(&mut message, "): {}", return_type).unwrap();
 
-            self.print_inspection(&InspectInfo {
+            self.reporter.print_inspection(&InspectInfo {
                 message,
                 loc: *loc,
                 linked_loc: Some(fn_info.definition_loc.clone()),
@@ -3594,7 +3574,7 @@ impl Compiler {
                 message: format!(
                     "Trying to call {} which is not a function, defined at: {}",
                     fn_name,
-                    symbol.loc.to_string(&self.fm)
+                    symbol.loc.to_string(&self.reporter.fm)
                 ),
                 loc: *loc,
             });
@@ -3750,7 +3730,7 @@ impl Compiler {
             });
         }
 
-        if build_code && self.in_inspection_mode {
+        if build_code && self.reporter.in_inspection_mode {
             let mut message = String::new();
 
             write!(&mut message, "macro {macro_name}").unwrap();
@@ -3784,7 +3764,7 @@ impl Compiler {
             };
             write!(&mut message, "): {}", TypeFmt(self, &return_type)).unwrap();
 
-            self.print_inspection(&InspectInfo {
+            self.reporter.print_inspection(&InspectInfo {
                 message,
                 loc: *loc,
                 linked_loc: Some(macro_def.macro_name.loc),
@@ -3895,7 +3875,7 @@ impl Compiler {
         );
         if error_bind_loc.file_index != 0 {
             if let Some(inspect_info) = err_var.inspect_info() {
-                self.print_inspection(inspect_info);
+                self.reporter.print_inspection(inspect_info);
             }
         }
         self.codegen_var_set_prepare(instrs, &err_var);
@@ -3920,7 +3900,7 @@ impl Compiler {
         if let Some(catch_body) = catch_body {
             let terminates_early = self.codegen_code_block(ctx, instrs, catch_body, true);
             if !terminates_early {
-                self.report_error(&Error {
+                self.reporter.error(&Error {
                     message: format!("Catch expression must resolve to never, got other type"),
                     loc: *loc,
                 });
@@ -4196,12 +4176,12 @@ impl Compiler {
                 let Some(tag) = tag else { return Ok(Type::U32) };
 
                 let tag_type = catch!(self.get_type_or_err(ctx, tag, loc), err, {
-                    self.report_error(&err);
+                    self.reporter.error(&err);
                     return Ok(Type::U32);
                 });
 
                 catch!(self.is_64_bit_int_tag(&tag_type, loc), err, {
-                    self.report_error(&err);
+                    self.reporter.error(&err);
                     return Ok(Type::U32);
                 });
 
@@ -4555,7 +4535,7 @@ impl Compiler {
                 let ctx = ctx.be_mut();
 
                 let lhs_type = catch!(self.get_expr_type(ctx, &lhs), err, {
-                    self.report_error(&err);
+                    self.reporter.error(&err);
                     return Ok(Type::Never);
                 });
 
@@ -4574,7 +4554,7 @@ impl Compiler {
                 );
 
                 let rhs_type = catch!(self.get_expr_type(ctx, &rhs), err, {
-                    self.report_error(&err);
+                    self.reporter.error(&err);
                     return Ok(Type::Never);
                 });
 
@@ -4809,7 +4789,7 @@ impl Compiler {
         linked_loc: Option<Loc>,
     ) -> VarInfo {
         let mut inspect_info = None;
-        if self.in_inspection_mode {
+        if self.reporter.in_inspection_mode {
             inspect_info = Some(InspectInfo {
                 message: format!("let {}: {}", local_name, TypeFmt(self, &local_type)),
                 loc: loc,
@@ -4848,7 +4828,7 @@ impl Compiler {
                 let global = &self.globals[symbol.col_index];
 
                 let mut inspect_info = None;
-                if self.in_inspection_mode {
+                if self.reporter.in_inspection_mode {
                     inspect_info = Some(InspectInfo {
                         message: format!(
                             "global {}: {}",
@@ -4870,7 +4850,7 @@ impl Compiler {
                 let const_def = &self.const_defs[symbol.col_index];
 
                 let mut inspect_info = None;
-                if self.in_inspection_mode {
+                if self.reporter.in_inspection_mode {
                     inspect_info = Some(InspectInfo {
                         message: format!(
                             "const {}: {}",
@@ -4915,7 +4895,7 @@ impl Compiler {
             .relax();
 
         let mut inspect_info = None;
-        if self.in_inspection_mode {
+        if self.reporter.in_inspection_mode {
             inspect_info = Some(InspectInfo {
                 message: format!(
                     "{}.{}: {}",
@@ -4949,7 +4929,7 @@ impl Compiler {
                     inspect_info: parent_inspect_info,
                 }) => {
                     if let Some(inspect_info) = parent_inspect_info {
-                        self.print_inspection(&inspect_info);
+                        self.reporter.print_inspection(&inspect_info);
                     }
 
                     return Ok(VarInfo::Local(VarInfoLocal {
@@ -4965,7 +4945,7 @@ impl Compiler {
                     inspect_info: parent_inspect_info,
                 }) => {
                     if let Some(inspect_info) = parent_inspect_info {
-                        self.print_inspection(&inspect_info);
+                        self.reporter.print_inspection(&inspect_info);
                     }
 
                     return Ok(VarInfo::Stored(VarInfoStored {
@@ -4984,7 +4964,7 @@ impl Compiler {
                     loc: _,
                 }) => {
                     if let Some(inspect_info) = parent_inspect_info {
-                        self.print_inspection(&inspect_info);
+                        self.reporter.print_inspection(&inspect_info);
                     }
 
                     let struct_components_count = self.count_wasm_type_components(&lhs_type);
@@ -5085,7 +5065,7 @@ impl Compiler {
 
         if let Type::Pointer { pointee } = &addr_type {
             let mut inspect_info = None;
-            if self.in_inspection_mode {
+            if self.reporter.in_inspection_mode {
                 inspect_info = Some(InspectInfo {
                     message: format!("<deref>: {}", TypeFmt(self, &pointee)),
                     loc: op_loc.clone(),
@@ -5515,8 +5495,8 @@ impl Compiler {
 
         match symbol.type_ {
             SymbolType::Struct => {
-                if self.in_inspection_mode {
-                    self.print_inspection(&InspectInfo {
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
                         message: format!("struct {type_name} {{ ... }}"),
                         loc: *loc,
                         linked_loc: Some(symbol.loc),
@@ -5528,8 +5508,8 @@ impl Compiler {
                 })
             }
             SymbolType::Enum => {
-                if self.in_inspection_mode {
-                    self.print_inspection(&InspectInfo {
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
                         message: format!("enum {type_name} {{ ... }}"),
                         loc: *loc,
                         linked_loc: Some(symbol.loc),
@@ -5544,8 +5524,8 @@ impl Compiler {
                 let type_ = &self.type_aliases[symbol.col_index];
 
                 // don't print inspection for built-ins
-                if self.in_inspection_mode && symbol.loc.file_index != 0 {
-                    self.print_inspection(&InspectInfo {
+                if self.reporter.in_inspection_mode && symbol.loc.file_index != 0 {
+                    self.reporter.print_inspection(&InspectInfo {
                         message: format!("type {type_name} = {}", TypeFmt(self, &type_)),
                         loc: *loc,
                         linked_loc: Some(symbol.loc),
@@ -5630,7 +5610,7 @@ impl Compiler {
                 .and_then(|tag_type| self.is_64_bit_int_tag(&tag_type, loc))
             {
                 Ok(is_64) => is_64_bit = is_64,
-                Err(err) => self.report_error(&err),
+                Err(err) => self.reporter.error(&err),
             }
         }
 
@@ -6215,74 +6195,6 @@ impl Compiler {
 
         None
     }
-
-    pub fn report_error(&self, err: &Error) {
-        *self.error_count.borrow_mut() += 1;
-
-        if self.in_inspection_mode {
-            let source_index = err.loc.file_index;
-            let source_range = RangeFmt(&err.loc);
-            let content = json_str_escape(&err.message);
-            stdout_writeln(format!(
-                "{{ \"type\": \"message\", \
-                    \"content\": \"{content}\", \
-                    \"severity\": \"error\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
-            ));
-            return;
-        }
-
-        stderr_write("ERROR: ");
-        stderr_write(err.to_string(&self.fm));
-        stderr_write("\n");
-    }
-
-    fn report_warning(&self, err: &Error) {
-        *self.warning_count.borrow_mut() += 1;
-
-        if self.in_inspection_mode {
-            let source_index = err.loc.file_index;
-            let source_range = RangeFmt(&err.loc);
-            let content = json_str_escape(&err.message);
-            stdout_writeln(format!(
-                "{{ \"type\": \"message\", \
-                    \"content\": \"{content}\", \
-                    \"severity\": \"warning\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
-            ));
-            return;
-        }
-
-        stderr_write("WARNING: ");
-        stderr_write(err.to_string(&self.fm));
-        stderr_write("\n");
-    }
-
-    fn print_inspection(&self, inspect_info: &InspectInfo) {
-        let source_index = inspect_info.loc.file_index;
-        let source_range = RangeFmt(&inspect_info.loc);
-        let message = json_str_escape(&inspect_info.message);
-
-        if let Some(linked_loc) = &inspect_info.linked_loc {
-            if linked_loc.file_index != 0 {
-                let target_index = linked_loc.file_index;
-                let target_range = RangeFmt(&linked_loc);
-                stdout_writeln(format!(
-                    "{{ \"type\": \"info\", \
-                        \"link\": \"{target_index}/{target_range}\", \
-                        \"hover\": \"{message}\", \
-                        \"loc\": \"{source_index}/{source_range}\" }},",
-                ));
-                return;
-            }
-        };
-
-        stdout_writeln(format!(
-            "{{ \"type\": \"info\", \
-                \"hover\": \"{message}\", \
-                \"loc\": \"{source_index}/{source_range}\" }},",
-        ));
-    }
 }
 
 fn init_scope_from_parent_and_push(scope_stack: &mut Vec<Scope>, scope_type: ScopeType) {
@@ -6294,13 +6206,6 @@ fn init_scope_from_parent_and_push(scope_stack: &mut Vec<Scope>, scope_type: Sco
         }
     };
     scope_stack.push(new_scope);
-}
-
-fn json_str_escape(value: &str) -> String {
-    value
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
 }
 
 fn align(value: u32, alignment: u32) -> u32 {
