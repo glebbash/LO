@@ -5874,241 +5874,158 @@ impl Compiler {
         operand_type: &Type,
         op_loc: &Loc,
     ) -> Result<WasmBinaryOpKind, Error> {
-        match op_tag {
-            InfixOpTag::Equal => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32
-                | Type::Pointer { pointee: _ }
-                | Type::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_EQ),
-                Type::EnumInstance { enum_index }
-                    if self.enum_defs[*enum_index].variant_type == Type::Void =>
-                {
-                    return Ok(WasmBinaryOpKind::I32_EQ);
-                }
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_EQ),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_EQ),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_EQ),
-                _ => {}
-            },
-            InfixOpTag::NotEqual => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32
-                | Type::Pointer { pointee: _ }
-                | Type::SequencePointer { pointee: _ } => return Ok(WasmBinaryOpKind::I32_NE),
-                Type::EnumInstance { enum_index }
-                    if self.enum_defs[*enum_index].variant_type == Type::Void =>
-                {
-                    return Ok(WasmBinaryOpKind::I32_NE);
-                }
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_NE),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_NE),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_NE),
-                _ => {}
-            },
-            InfixOpTag::Less => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_LT_S),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_LT_U);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_LT_S),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_LT_U),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_LT),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_LT),
-                _ => {}
-            },
-            InfixOpTag::Greater => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_GT_S),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_GT_U);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_GT_S),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_GT_U),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_GT),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_GT),
-                _ => {}
-            },
-            InfixOpTag::LessEqual => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_LE_S),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_LE_U);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_LE_S),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_LE_U),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_LE),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_LE),
-                _ => {}
-            },
-            InfixOpTag::GreaterEqual => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_GE_S),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_GE_U);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_GE_S),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_GE_U),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_GE),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_GE),
-                _ => {}
-            },
-            InfixOpTag::Add => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32 => return Ok(WasmBinaryOpKind::I32_ADD),
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_ADD),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_ADD),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_ADD),
-                _ => {}
-            },
-            InfixOpTag::Sub => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32 => return Ok(WasmBinaryOpKind::I32_SUB),
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_SUB),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_SUB),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_SUB),
-                _ => {}
-            },
-            InfixOpTag::Mul => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32 => return Ok(WasmBinaryOpKind::I32_MUL),
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_MUL),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_MUL),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_MUL),
-                _ => {}
-            },
-            InfixOpTag::Div => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_DIV_S),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_DIV_U);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_DIV_S),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_DIV_U),
-                Type::F32 => return Ok(WasmBinaryOpKind::F32_DIV),
-                Type::F64 => return Ok(WasmBinaryOpKind::F64_DIV),
-                _ => {}
-            },
-            InfixOpTag::Mod => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_REM_S),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_REM_U);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_REM_S),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_REM_U),
-                _ => {}
-            },
-            InfixOpTag::ShiftLeft => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_SHL),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_SHL);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_SHL),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_SHL),
-                _ => {}
-            },
-            InfixOpTag::ShiftRight => match operand_type {
-                Type::I8 | Type::I16 | Type::I32 => return Ok(WasmBinaryOpKind::I32_SHR_S),
-                Type::Bool | Type::U8 | Type::U16 | Type::U32 => {
-                    return Ok(WasmBinaryOpKind::I32_SHR_U);
-                }
-                Type::I64 => return Ok(WasmBinaryOpKind::I64_SHR_S),
-                Type::U64 => return Ok(WasmBinaryOpKind::I64_SHR_U),
-                _ => {}
-            },
-            InfixOpTag::And => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32 => return Ok(WasmBinaryOpKind::I32_AND),
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_AND),
-                _ => {}
-            },
-            InfixOpTag::Or => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32 => return Ok(WasmBinaryOpKind::I32_OR),
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_OR),
-                _ => {}
-            },
-            InfixOpTag::BitAnd => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32 => return Ok(WasmBinaryOpKind::I32_AND),
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_AND),
-                _ => {}
-            },
-            InfixOpTag::BitOr => match operand_type {
-                Type::Bool
-                | Type::I8
-                | Type::U8
-                | Type::I16
-                | Type::U16
-                | Type::I32
-                | Type::U32 => return Ok(WasmBinaryOpKind::I32_OR),
-                Type::I64 | Type::U64 => return Ok(WasmBinaryOpKind::I64_OR),
-                _ => {}
-            },
+        let mut signed = false;
+        let mut wasm_op_type = WasmType::I32;
 
-            // handled in get_compound_assignment_base_op
-            InfixOpTag::AddAssign
-            | InfixOpTag::SubAssign
-            | InfixOpTag::MulAssign
-            | InfixOpTag::DivAssign
-            | InfixOpTag::ModAssign
-            | InfixOpTag::BitAndAssign
-            | InfixOpTag::BitOrAssign
-            | InfixOpTag::ShiftLeftAssign
-            | InfixOpTag::ShiftRightAssign => unreachable!(),
+        match operand_type {
+            Type::Null
+            | Type::Bool
+            | Type::U8
+            | Type::U16
+            | Type::U32
+            | Type::Pointer { pointee: _ }
+            | Type::SequencePointer { pointee: _ } => {}
+            Type::EnumInstance { enum_index }
+                if self.enum_defs[*enum_index].variant_type == Type::Void => {}
 
-            // have their own CodeExpr variants
-            InfixOpTag::Cast
-            | InfixOpTag::Assign
-            | InfixOpTag::FieldAccess
-            | InfixOpTag::Catch
-            | InfixOpTag::ErrorPropagation
-            | InfixOpTag::ExprPipe => unreachable!(),
+            Type::I8 | Type::I16 | Type::I32 => signed = true,
+
+            Type::I64 => {
+                wasm_op_type = WasmType::I64;
+                signed = true;
+            }
+            Type::U64 => wasm_op_type = WasmType::I64,
+
+            Type::F32 => wasm_op_type = WasmType::F32,
+            Type::F64 => wasm_op_type = WasmType::F64,
+
+            Type::Never
+            | Type::Void
+            | Type::EnumInstance { enum_index: _ }
+            | Type::StructInstance { struct_index: _ }
+            | Type::Result(_)
+            | Type::Container(_) => {
+                return Err(Error {
+                    message: format!(
+                        "Operator `{}` is incompatible with operands of type {}",
+                        op_loc.read_span(&self.modules[ctx.module_index].source),
+                        TypeFmt(self, operand_type)
+                    ),
+                    loc: op_loc.clone(),
+                });
+            }
         }
 
-        return Err(Error {
-            message: format!(
-                "Operator `{}` is incompatible with operands of type {}",
-                op_loc.read_span(&self.modules[ctx.module_index].source),
-                TypeFmt(self, operand_type)
-            ),
-            loc: op_loc.clone(),
+        use InfixOpTag::*;
+        use WasmBinaryOpKind::*;
+
+        return Ok(match wasm_op_type {
+            WasmType::I32 => match op_tag {
+                Equal => I32_EQ,
+                NotEqual => I32_NE,
+                Less if signed => I32_LT_S,
+                Less => I32_LT_U,
+                Greater if signed => I32_GT_S,
+                Greater => I32_GT_U,
+                LessEqual if signed => I32_LE_S,
+                LessEqual => I32_LE_U,
+                GreaterEqual if signed => I32_GE_S,
+                GreaterEqual => I32_GE_U,
+                Add => I32_ADD,
+                Sub => I32_SUB,
+                Mul => I32_MUL,
+                Div if signed => I32_DIV_S,
+                Div => I32_DIV_U,
+                Mod if signed => I32_REM_S,
+                Mod => I32_REM_U,
+                And => I32_AND,
+                BitAnd => I32_AND,
+                Or => I32_OR,
+                BitOr => I32_OR,
+                ShiftLeft => I32_SHL,
+                ShiftRight if signed => I32_SHR_S,
+                ShiftRight => I32_SHR_U,
+                _ => unreachable!(),
+            },
+            WasmType::I64 => match op_tag {
+                Equal => I64_EQ,
+                NotEqual => I64_NE,
+                Less if signed => I64_LT_S,
+                Less => I64_LT_U,
+                Greater if signed => I64_GT_S,
+                Greater => I64_GT_U,
+                LessEqual if signed => I64_LE_S,
+                LessEqual => I64_LE_U,
+                GreaterEqual if signed => I64_GE_S,
+                GreaterEqual => I64_GE_U,
+                Add => I64_ADD,
+                Sub => I64_SUB,
+                Mul => I64_MUL,
+                Div if signed => I64_DIV_S,
+                Div => I64_DIV_U,
+                Mod if signed => I64_REM_S,
+                Mod => I64_REM_U,
+                And => I64_AND,
+                BitAnd => I64_AND,
+                Or => I64_OR,
+                BitOr => I64_OR,
+                ShiftLeft => I64_SHL,
+                ShiftRight if signed => I64_SHR_S,
+                ShiftRight => I64_SHR_U,
+                _ => unreachable!(),
+            },
+            WasmType::F32 => match op_tag {
+                Equal => F32_EQ,
+                NotEqual => F32_NE,
+                Less => F32_LT,
+                Greater => F32_GT,
+                LessEqual => F32_LE,
+                GreaterEqual => F32_GE,
+                Add => F32_ADD,
+                Sub => F32_SUB,
+                Mul => F32_MUL,
+                Div => F32_DIV,
+                Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
+                    return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+                }
+                _ => unreachable!(),
+            },
+            WasmType::F64 => match op_tag {
+                Equal => F64_EQ,
+                NotEqual => F64_NE,
+                Less => F64_LT,
+                Greater => F64_GT,
+                LessEqual => F64_LE,
+                GreaterEqual => F64_GE,
+                Add => F64_ADD,
+                Sub => F64_SUB,
+                Mul => F64_MUL,
+                Div => F64_DIV,
+                Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
+                    return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+                }
+                _ => unreachable!(),
+            },
+            WasmType::FuncRef => {
+                return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+            }
         });
+
+        fn incompatible_op_err(
+            self_: &Compiler,
+            ctx: &ExprContext,
+            op_type: &Type,
+            op_loc: &Loc,
+        ) -> Error {
+            Error {
+                message: format!(
+                    "Operator `{}` is incompatible with operands of type {}",
+                    op_loc.read_span(&self_.modules[ctx.module_index].source),
+                    TypeFmt(self_, op_type)
+                ),
+                loc: op_loc.clone(),
+            }
+        }
     }
 
     fn get_compound_assignment_base_op(&self, op_tag: &InfixOpTag) -> Option<InfixOpTag> {
