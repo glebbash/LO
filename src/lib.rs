@@ -98,7 +98,7 @@ pub extern "C" fn _start() {
             proc_exit(1)
         };
 
-        let file_info = &compiler.reporter.fm.files[module.parser.lexer.file_index];
+        let file_info = &compiler.fm.files[module.parser.lexer.file_index];
         stdout_writeln(format!("file_path: {}", file_info.absolute_path));
 
         stdout_enable_buffering();

@@ -440,6 +440,7 @@ pub struct Compiler {
     pub in_lex_only_mode: bool,
     pub should_emit_dbg_local_names: bool,
 
+    pub fm: Box<FileManager>,
     pub reporter: Reporter,
 
     modules: Vec<Module>,
@@ -475,6 +476,7 @@ impl Compiler {
     pub fn new() -> Self {
         let mut self_ = Self::default();
 
+        self_.reporter.fm = &*self_.fm;
         self_.global_scope.scope_type = ScopeType::Global;
 
         self_.add_builtin_type(Type::Never);
@@ -495,17 +497,17 @@ impl Compiler {
     }
 
     pub fn include(&mut self, relative_path: &str, loc: &Loc) -> Option<&Module> {
-        let file_index = catch!(self.reporter.fm.include_file(relative_path, loc), err, {
+        let file_index = catch!(self.fm.include_file(relative_path, loc), err, {
             self.reporter.error(&err);
             return None;
         });
 
-        let file_is_newly_added = self.reporter.fm.files[file_index].included_times == 1;
+        let file_is_newly_added = self.fm.files[file_index].included_times == 1;
 
         if self.reporter.in_inspection_mode {
             if file_is_newly_added {
                 let file_index = file_index;
-                let file_path = &self.reporter.fm.files[file_index].absolute_path;
+                let file_path = &self.fm.files[file_index].absolute_path;
                 stdout_writeln(format!(
                     "{{ \"type\": \"file\", \
                         \"index\": {file_index}, \
@@ -531,7 +533,7 @@ impl Compiler {
             return self.get_module_by_file_index(file_index);
         }
 
-        let source = self.reporter.fm.files[file_index].source.as_bytes().relax();
+        let source = self.fm.files[file_index].source.as_bytes().relax();
 
         let mut lexer = Lexer::new(source, file_index);
         catch!(lexer.lex_file(), err, {
@@ -866,7 +868,7 @@ impl Compiler {
                 message: format!(
                     "Cannot redefine {}, previously defined at {}",
                     symbol.name,
-                    existing_symbol.loc.to_string(&self.reporter.fm)
+                    existing_symbol.loc.to_string(&self.fm)
                 ),
                 loc: symbol.loc,
             });
@@ -936,7 +938,7 @@ impl Compiler {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
                                         field.field_name.repr,
-                                        existing_field.loc.to_string(&self.reporter.fm),
+                                        existing_field.loc.to_string(&self.fm),
                                     ),
                                     loc: field.field_name.loc,
                                 });
@@ -1012,7 +1014,7 @@ impl Compiler {
                                     message: format!(
                                         "Cannot redefine enum variant '{}', already defined at {}",
                                         variant.variant_name.repr,
-                                        existing_variant.loc.to_string(&self.reporter.fm),
+                                        existing_variant.loc.to_string(&self.fm),
                                     ),
                                     loc: variant.variant_name.loc,
                                 });
@@ -1631,7 +1633,7 @@ impl Compiler {
             return Err(Error {
                 message: format!(
                     "Cannot redefine memory, first defined at {}",
-                    existing_memory.loc.to_string(&self.reporter.fm)
+                    existing_memory.loc.to_string(&self.fm)
                 ),
                 loc: memory_def.loc,
             });
@@ -2728,8 +2730,7 @@ impl Compiler {
                         return bad_args_err(self, fn_name);
                     };
 
-                    let absolute_path =
-                        self.reporter.fm.resolve_path(&str_expr.value, &fn_name.loc);
+                    let absolute_path = self.fm.resolve_path(&str_expr.value, &fn_name.loc);
                     let bytes = file_read(&absolute_path).map_err(|message| Error {
                         message,
                         loc: args.items[0].loc(),
@@ -2825,10 +2826,8 @@ impl Compiler {
                         return Ok(());
                     };
 
-                    let loc_str = self.process_const_string(
-                        macro_call_loc.to_string(&self.reporter.fm),
-                        &macro_call_loc,
-                    );
+                    let loc_str = self
+                        .process_const_string(macro_call_loc.to_string(&self.fm), &macro_call_loc);
                     // emit str struct values
                     instrs.push(WasmInstr::I32Const {
                         value: loc_str.ptr as i32,
@@ -3574,7 +3573,7 @@ impl Compiler {
                 message: format!(
                     "Trying to call {} which is not a function, defined at: {}",
                     fn_name,
-                    symbol.loc.to_string(&self.reporter.fm)
+                    symbol.loc.to_string(&self.fm)
                 ),
                 loc: *loc,
             });

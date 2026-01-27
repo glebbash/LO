@@ -10,13 +10,12 @@ pub struct InspectInfo {
 
 #[derive(Default)]
 pub struct Reporter {
+    pub fm: *const FileManager,
+
     pub in_inspection_mode: bool,
 
     pub error_count: u32,
     pub warning_count: u32,
-
-    // TODO: find a way to make `Compiler` own this
-    pub fm: FileManager,
 }
 
 impl Reporter {
@@ -52,7 +51,7 @@ impl Reporter {
         }
 
         stderr_write("ERROR: ");
-        stderr_write(err.to_string(&self.fm));
+        stderr_write(err.to_string(unsafe { &*self.fm }));
         stderr_write("\n");
     }
 
@@ -73,7 +72,7 @@ impl Reporter {
         }
 
         stderr_write("WARNING: ");
-        stderr_write(err.to_string(&self.fm));
+        stderr_write(err.to_string(unsafe { &*self.fm }));
         stderr_write("\n");
     }
 
