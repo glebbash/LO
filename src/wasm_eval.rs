@@ -786,7 +786,6 @@ pub enum WasmValue {
     I64 { value: i64 },
     F32 { value: f32 },
     F64 { value: f64 },
-    FuncRef { fn_index: Option<u32> },
 }
 
 impl WasmValue {
@@ -796,7 +795,6 @@ impl WasmValue {
             WasmType::I64 => WasmValue::I64 { value: 0 },
             WasmType::F32 => WasmValue::F32 { value: 0.0 },
             WasmType::F64 => WasmValue::F64 { value: 0.0 },
-            WasmType::FuncRef => WasmValue::FuncRef { fn_index: None },
         }
     }
 
@@ -806,7 +804,6 @@ impl WasmValue {
             WasmValue::I64 { .. } => WasmType::I64,
             WasmValue::F32 { .. } => WasmType::F32,
             WasmValue::F64 { .. } => WasmType::F64,
-            WasmValue::FuncRef { .. } => WasmType::FuncRef,
         }
     }
 }
@@ -818,10 +815,6 @@ impl core::fmt::Display for WasmValue {
             WasmValue::I64 { value } => write!(f, "{value}"),
             WasmValue::F32 { value } => write!(f, "{value}"),
             WasmValue::F64 { value } => write!(f, "{value}"),
-            WasmValue::FuncRef { fn_index } => match fn_index {
-                Some(fn_index) => write!(f, "<ref.func {fn_index}>"),
-                None => write!(f, "<ref.null>"),
-            },
         }
     }
 }

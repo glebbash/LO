@@ -1265,9 +1265,7 @@ impl Compiler {
                     };
                     let global = self.globals[symbol.col_index].relax_mut();
 
-                    catch!(self.ensure_const_expr(&global_def.global_value), err, {
-                        self.reporter.error(&err);
-                    });
+                    // TODO: ensure `global_def.global_value` is a valid const expression
 
                     let value_type = self.get_expr_type(&module.ctx, &global_def.global_value);
                     let value_type = catch!(value_type, err, {
@@ -2339,15 +2337,6 @@ impl Compiler {
                                 kind: WasmBinaryOpKind::F64_EQ,
                             });
                         }
-                        WasmType::FuncRef => {
-                            return Err(Error {
-                                message: format!(
-                                    "Cannot apply not operation to expr of type {}",
-                                    TypeFmt(self, &operand_type)
-                                ),
-                                loc: *loc,
-                            });
-                        }
                     }
                 }
                 PrefixOpTag::Positive => {
@@ -2401,15 +2390,6 @@ impl Compiler {
                             self.codegen(ctx, instrs, expr)?;
                             instrs.push(WasmInstr::UnaryOp {
                                 kind: WasmUnaryOpKind::F64_NEG,
-                            });
-                        }
-                        WasmType::FuncRef => {
-                            return Err(Error {
-                                message: format!(
-                                    "Cannot negate expr of type {}",
-                                    TypeFmt(self, &operand_type)
-                                ),
-                                loc: *loc,
                             });
                         }
                     }
@@ -5475,11 +5455,6 @@ impl Compiler {
         offset
     }
 
-    // TODO: add validation for const expr
-    fn ensure_const_expr(&self, _expr: &CodeExpr) -> Result<(), Error> {
-        Ok(())
-    }
-
     fn get_type_or_err(
         &self,
         ctx: &ExprContext,
@@ -5986,9 +5961,6 @@ impl Compiler {
                 }
                 _ => unreachable!(),
             },
-            WasmType::FuncRef => {
-                return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
-            }
         });
 
         fn incompatible_op_err(

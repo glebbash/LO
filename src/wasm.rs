@@ -279,7 +279,6 @@ pub enum WasmBlockKind {
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum WasmType {
-    FuncRef = 0x70,
     I32 = 0x7F,
     I64 = 0x7E,
     F32 = 0x7D,
