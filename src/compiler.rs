@@ -3107,14 +3107,7 @@ impl Compiler {
                     instrs.push(WasmInstr::UnaryOp {
                         kind: WasmUnaryOpKind::I32_EQZ,
                     });
-                    // TODO: figure out why this is commented out
-                    // instrs.push(WasmInstr::BranchIf { label_index: 1 });
-                    instrs.push(WasmInstr::BlockStart {
-                        block_kind: WasmBlockKind::If,
-                        block_type: WasmBlockType::NoOut,
-                    });
-                    instrs.push(WasmInstr::Branch { label_index: 2 });
-                    instrs.push(WasmInstr::BlockEnd);
+                    instrs.push(WasmInstr::BranchIf { label_index: 1 });
                 }
 
                 self.enter_scope(ctx, ScopeType::Loop);
