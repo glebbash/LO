@@ -523,8 +523,8 @@ impl Compiler {
 
                 stdout_writeln(format!(
                     "{{ \"type\": \"info\", \
-                    \"link\": \"{target_index}/{target_range}\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
+                        \"link\": \"{target_index}/{target_range}\", \
+                        \"loc\": \"{source_index}/{source_range}\" }},",
                 ));
             }
         }
@@ -1095,22 +1095,23 @@ impl Compiler {
                         .relax();
                     let const_ = self.const_defs[symbol.col_index].relax_mut();
 
-                    let const_type = self.get_expr_type(&module.ctx, &const_def.const_value);
-                    let const_type = catch!(const_type, err, {
-                        self.reporter.error(&err);
-                        continue;
-                    });
+                    let const_type = match self.get_expr_type(&module.ctx, &const_def.const_value) {
+                        Ok(x) => x,
+                        Err(err) => {
+                            self.reporter.error(&err);
+                            continue;
+                        }
+                    };
                     const_.code_unit.type_ = const_type;
 
-                    let res = self.codegen(
+                    if let Err(err) = self.codegen(
                         module.ctx.be_mut(),
                         &mut const_.code_unit.instrs,
                         &const_def.const_value,
-                    );
-                    catch!(res, err, {
+                    ) {
                         self.reporter.error(&err);
                         continue;
-                    });
+                    };
 
                     if self.reporter.in_inspection_mode {
                         let const_name = &const_def.const_name.repr;

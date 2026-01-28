@@ -36,8 +36,7 @@ mod wasm_target {
 }
 
 use crate::{
-    compiler::*, core::*, json_printer::JsonPrinter, printer::*, wasm::*, wasm_eval::*,
-    wasm_parser::*,
+    compiler::*, core::*, json_printer::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*,
 };
 use alloc::{format, string::String, vec::Vec};
 
