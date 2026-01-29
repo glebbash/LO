@@ -118,7 +118,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     }
 
     if match TopLevelExpr::GlobalDef(global_def) = expr {
-        stdout_write("global ")
+        stdout_write("let ")
         stdout_write(global_def.global_name.repr)
         stdout_write(" = ")
         self.print_code_expr(global_def.global_value)

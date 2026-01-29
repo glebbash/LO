@@ -164,7 +164,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(Symbol, "global") != null {
+    if self.eat(Symbol, "let") != null {
         let loc = self.prev().loc
 
         let global_name = self.parse_ident()?

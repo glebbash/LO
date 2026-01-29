@@ -1,4 +1,4 @@
-global HEAP_INDEX = 0
+let HEAP_INDEX = 0
 
 export fn main(): u32 {
     let _ = alloc(45)

@@ -12,17 +12,17 @@ type Mode = u32
 const Mode::SLASH = 1
 const Mode::DEFEND = 2
 
-global time = 0
+let time = 0
 
-global mode = Mode::SLASH
-global prev_click = false
-global boss_health = 5
-global trail = null as &Trail
-global swap_trail = null as &Trail
-global trails = null as &Vec(&Trail)
-global showing_trails = null as &Vec(&Trail)
-global rand_seed = 0
-global scratch = null as &Arena
+let mode = Mode::SLASH
+let prev_click = false
+let boss_health = 5
+let trail = null as &Trail
+let swap_trail = null as &Trail
+let trails = null as &Vec(&Trail)
+let showing_trails = null as &Vec(&Trail)
+let rand_seed = 0
+let scratch = null as &Arena
 
 export fn start() {
     stack::SIZE = wasm4::DATA_START

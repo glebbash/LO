@@ -23,7 +23,7 @@ fn fs::read_file(file_name: str): Result(String, wasi::Err) {
     return Ok(String::from_chars(fs::read_fd(fd)?))
 }
 
-global fs::unlocked = false
+let fs::unlocked = false
 
 // https://github.com/microsoft/vscode-wasm/issues/161
 fn fs::_unlock() {

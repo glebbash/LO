@@ -150,7 +150,7 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "global") {
+        if let Some(_) = self.eat(Symbol, "let") {
             let mut loc = self.prev().loc;
 
             let global_name = self.parse_ident()?;

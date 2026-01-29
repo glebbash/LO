@@ -8,7 +8,7 @@ struct str {
 
 const u32::MAX = 4_294_967_295
 
-global STATIC_DATA_SIZE = @data_size()
+let STATIC_DATA_SIZE = @data_size()
 
 // abort
 
@@ -113,12 +113,12 @@ fn free(a: Alloc, ptr: &void, size: u32) {
 // stack allocator
 
 // 1MB, ~20 pages (65_536b)
-global stack::SIZE = 1_048_576
+let stack::SIZE = 1_048_576
 
 // not initialized yet marker
-global stack::MIN = u32::MAX
+let stack::MIN = u32::MAX
 
-global stack::NOW = 0
+let stack::NOW = 0
 
 macro stack::align_for_wasmtime!(alignment: u32) {
     stack::check_init!()
@@ -193,9 +193,9 @@ macro heap::Block::next!(&self): &heap::Block {
     (self.data!() as u32 + self.size) as &heap::Block
 }
 
-global heap::FIRST_BLOCK = null as &heap::Block
+let heap::FIRST_BLOCK = null as &heap::Block
 
-global heap::CURRENT_BLOCK = null as &heap::Block
+let heap::CURRENT_BLOCK = null as &heap::Block
 
 macro heap::new!(value: infer(T)): &T {
     let ptr = heap::alloc!<T>()

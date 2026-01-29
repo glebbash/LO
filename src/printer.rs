@@ -115,7 +115,7 @@ impl Printer {
                 global_value,
                 loc: _,
             }) => {
-                stdout_write("global ");
+                stdout_write("let ");
                 stdout_write(&global_name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(global_value);
