@@ -5,15 +5,13 @@ include "./lexer.lo"
 
 type TopLevelExpr = enum (&void) {
     Let(&LetExpr),
-
     FnDef(&FnDefExpr),
-    InlineFnDef(&InlineFnDefExpr),
 
     StructDef(&StructDefExpr),
     EnumDef(&EnumDefExpr),
     TypeDef(&TypeDefExpr),
 
-    IntrinsicCall(&InlineFnFnCallExpr),
+    IntrinsicCall(&InlineFnCallExpr),
     Include(&IncludeExpr),
     Import(&ImportExpr),
     MemoryDef(&MemoryDefExpr),
@@ -27,8 +25,9 @@ type IdentExpr = struct {
 
 type FnDeclExpr = struct {
     fn_name: IdentExpr,
-    fn_params: &Vec(FnParam),
-    fn_params_trailing_comma: bool,
+    type_params: &Vec(str),
+    params: &Vec(FnParam),
+    params_trailing_comma: bool,
     // @optional
     return_type: &TypeExpr,
     loc: Loc,
@@ -36,6 +35,7 @@ type FnDeclExpr = struct {
 
 type FnDefExpr = struct {
     exported: bool,
+    is_inline: bool,
     decl: FnDeclExpr,
     // NOTE: this is ref only cause CodeBlock isn't defined at this point
     body: &CodeBlock,
@@ -155,17 +155,6 @@ type CodeBlock = struct {
     loc: Loc,
 }
 
-type InlineFnDefExpr = struct {
-    inline_fn_name: IdentExpr,
-    params: &Vec(FnParam),
-    params_trailing_comma: bool,
-    type_params: &Vec(str),
-    // @optional
-    return_type: &TypeExpr,
-    body: CodeBlock,
-    loc: Loc,
-}
-
 fn TopLevelExpr::loc(self): Loc {
     if match TopLevelExpr::FnDef(e) = self {
         return e.loc
@@ -189,9 +178,6 @@ fn TopLevelExpr::loc(self): Loc {
         return e.loc
     }
     if match TopLevelExpr::MemoryDef(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::InlineFnDef(e) = self {
         return e.loc
     }
     if match TopLevelExpr::IntrinsicCall(e) = self {
@@ -267,9 +253,9 @@ type CodeExpr = enum (&void) {
     PropagateError(&PropagateErrorExpr),
     FnCall(&FnCallExpr),
     MethodCall(&MethodCallExpr),
-    InlineFnFnCall(&InlineFnFnCallExpr),
+    InlineFnCall(&InlineFnCallExpr),
     InlineFnMethodCall(&InlineFnMethodCallExpr),
-    IntrinsicCall(&InlineFnFnCallExpr),
+    IntrinsicCall(&InlineFnCallExpr),
 
     // control flow
     Return(&ReturnExpr),
@@ -501,7 +487,7 @@ type MethodCallExpr = struct {
     loc: Loc,
 }
 
-type InlineFnFnCallExpr = struct {
+type InlineFnCallExpr = struct {
     fn_name: IdentExpr,
     type_args: &Vec(TypeExpr),
     args: CodeExprList,
@@ -600,7 +586,7 @@ fn CodeExpr::loc(self): Loc {
     if match CodeExpr::MethodCall(e) = self {
         return e.loc
     }
-    if match CodeExpr::InlineFnFnCall(e) = self {
+    if match CodeExpr::InlineFnCall(e) = self {
         return e.loc
     }
     if match CodeExpr::IntrinsicCall(e) = self {

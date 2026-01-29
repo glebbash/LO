@@ -70,7 +70,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         let loc = self.prev().loc
 
         if self.eat(Symbol, "fn") != null {
-            let fn_def = self.parse_fn_def(true, loc)?
+            let fn_def = self.parse_fn_def(true, false, loc)?
             return Ok(TopLevelExpr::FnDef(fn_def))
         }
 
@@ -98,7 +98,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(TopLevelExpr::IntrinsicCall(self.ast_arena.new!(InlineFnFnCallExpr {
+        return Ok(TopLevelExpr::IntrinsicCall(self.ast_arena.new!(InlineFnCallExpr {
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -107,7 +107,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     }
 
     if self.eat(Symbol, "fn") != null {
-        let fn_def = self.parse_fn_def(false, self.prev().loc)?
+        let fn_def = self.parse_fn_def(false, false, self.prev().loc)?
         return Ok(TopLevelExpr::FnDef(fn_def))
     }
 
@@ -180,47 +180,8 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         }
 
         if self.eat(Symbol, "fn") != null {
-            let inline_fn_name = self.parse_ident()?
-            let _ = self.expect(Operator, "!")?
-            let excl_end_pos = self.prev().loc.end_pos
-
-            let type_params = Vec::new!<str>()
-            if self.eat(Operator, "<") != null {
-                while self.eat(Operator, ">") == null {
-                    let type_param = self.expect_any(Symbol)?
-                    type_params.push!(type_param.get_value(self.source))
-
-                    if !self.current().is(Operator, ">", self.source) {
-                        let _ = self.expect(Delim, ",")?
-                    }
-                }
-            }
-
-            let params_trailing_comma = ref!(false)
-            let params = self.parse_fn_params(params_trailing_comma)?
-
-            let return_type = null as &TypeExpr
-            if self.eat(Operator, ":") != null {
-                return_type = self.ast_arena.new!(self.parse_type_expr()?)
-            }
-
-            let body = self.parse_code_block()?
-
-            loc.end_pos = self.prev().loc.end_pos
-
-            let result = self.ast_arena.new!(InlineFnDefExpr {
-                inline_fn_name: inline_fn_name,
-                params: params,
-                params_trailing_comma: *params_trailing_comma,
-                type_params: type_params,
-                return_type: return_type,
-                body: body,
-                loc: loc,
-            })
-
-            self.extend_ident(&result.inline_fn_name, excl_end_pos)
-
-            return Ok(TopLevelExpr::InlineFnDef(result))
+            let fn_def = self.parse_fn_def(false, true, loc)?
+            return Ok(TopLevelExpr::FnDef(fn_def))
         }
 
         let unexpected = self.current()
@@ -352,27 +313,46 @@ fn Parser::parse_let(&self, is_inline: bool, loc: Loc): Result(LetExpr, &Error) 
     })
 }
 
-fn Parser::parse_fn_def(&self, exported: bool, loc: Loc): Result(&FnDefExpr, &Error) {
-    let decl = self.parse_fn_decl()?
+fn Parser::parse_fn_def(&self, exported: bool, is_inline: bool, loc: Loc): Result(&FnDefExpr, &Error) {
+    let decl = self.parse_fn_decl(is_inline)?
     let body = self.parse_code_block()?
 
     loc.end_pos = self.prev().loc.end_pos
 
     return Ok(self.ast_arena.new!(FnDefExpr {
         exported: exported,
+        is_inline: is_inline,
         decl: decl,
         body: self.ast_arena.new!(body),
         loc: loc,
     }))
 }
 
-fn Parser::parse_fn_decl(&self): Result(FnDeclExpr, &Error) {
+fn Parser::parse_fn_decl(&self, is_inline: bool): Result(FnDeclExpr, &Error) {
     let loc = self.prev().loc
 
-    let fn_name = self.parse_ident()?
+    let fn_name = ref!(self.parse_ident()?)
 
-    let fn_params_trailing_comma = ref!(false)
-    let fn_params = self.parse_fn_params(fn_params_trailing_comma)?
+    let type_params = Vec::new!<str>()
+
+    if is_inline {
+        let _ = self.expect(Operator, "!")?
+        self.extend_ident(fn_name, self.prev().loc.end_pos)
+
+        if self.eat(Operator, "<") != null {
+            while self.eat(Operator, ">") == null {
+                let type_param = self.expect_any(Symbol)?
+                type_params.push!(type_param.get_value(self.source))
+
+                if !self.current().is(Operator, ">", self.source) {
+                    let _ = self.expect(Delim, ",")?
+                }
+            }
+        }
+    }
+
+    let params_trailing_comma = ref!(false)
+    let params = self.parse_fn_params(params_trailing_comma)?
 
     let return_type = null as &TypeExpr
     if self.eat(Operator, ":") != null {
@@ -382,9 +362,10 @@ fn Parser::parse_fn_decl(&self): Result(FnDeclExpr, &Error) {
     loc.end_pos = self.prev().loc.end_pos
 
     return Ok(FnDeclExpr {
-        fn_name: fn_name,
-        fn_params: fn_params,
-        fn_params_trailing_comma: *fn_params_trailing_comma,
+        fn_name: *fn_name,
+        type_params: type_params,
+        params: params,
+        params_trailing_comma: *params_trailing_comma,
         return_type: return_type,
         loc: loc,
     })
@@ -444,7 +425,7 @@ fn Parser::parse_memory_def(&self, exported: bool, loc: Loc): Result(MemoryDefEx
 
 fn Parser::parse_importable(&self): Result(ImportItem, &Error) {
     if self.eat(Symbol, "fn") != null {
-        let decl = self.parse_fn_decl()?
+        let decl = self.parse_fn_decl(false)?
         return Ok(ImportItem::FnDecl(self.ast_arena.new!(decl)))
     }
 
@@ -940,7 +921,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(CodeExpr::IntrinsicCall(self.ast_arena.new!(InlineFnFnCallExpr {
+        return Ok(CodeExpr::IntrinsicCall(self.ast_arena.new!(InlineFnCallExpr {
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -1114,7 +1095,8 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat(Operator, "!") != null {
-        let excl_end_pos = self.prev().loc.end_pos
+        let fn_name = ref!(ident)
+        self.extend_ident(fn_name, self.prev().loc.end_pos)
 
         let loc = ident.loc
 
@@ -1123,16 +1105,12 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
         loc.end_pos = self.prev().loc.end_pos
 
-        let result = self.ast_arena.new!(InlineFnFnCallExpr {
-            fn_name: ident,
+        return Ok(CodeExpr::InlineFnCall(self.ast_arena.new!(InlineFnCallExpr {
+            fn_name: *fn_name,
             type_args: type_args,
             args: args,
             loc: loc,
-        })
-
-        self.extend_ident(&result.fn_name, excl_end_pos)
-
-        return Ok(CodeExpr::InlineFnFnCall(result))
+        })))
     }
 
     return Ok(CodeExpr::Ident(self.ast_arena.new!(ident)))
@@ -1219,24 +1197,21 @@ fn Parser::parse_code_expr_postfix(
         }
 
         if self.eat(Operator, "!") != null {
-            let excl_end_pos = self.prev().loc.end_pos
+            let method_name = ref!(field_name)
+            self.extend_ident(method_name, self.prev().loc.end_pos)
 
             let type_args = self.parse_inline_fn_type_args()?
             let args = self.parse_fn_args()?
 
             loc.end_pos = self.prev().loc.end_pos
 
-            let result = self.ast_arena.new!(InlineFnMethodCallExpr {
+            return Ok(CodeExpr::InlineFnMethodCall(self.ast_arena.new!(InlineFnMethodCallExpr {
                 lhs: primary,
-                field_name: field_name,
+                field_name: *method_name,
                 type_args: type_args,
                 args: args,
                 loc: loc,
-            })
-
-            self.extend_ident(&result.field_name, excl_end_pos)
-
-            return Ok(CodeExpr::InlineFnMethodCall(result))
+            })))
         }
 
         loc.end_pos = self.prev().loc.end_pos

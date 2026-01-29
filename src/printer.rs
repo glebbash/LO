@@ -53,12 +53,16 @@ impl Printer {
         match &expr {
             TopLevelExpr::FnDef(FnDefExpr {
                 exported,
+                is_inline,
                 decl,
                 body,
                 loc: _,
             }) => {
                 if *exported {
                     stdout_write("export ");
+                }
+                if *is_inline {
+                    stdout_write("inline ");
                 }
                 self.print_fn_decl(decl);
 
@@ -210,35 +214,6 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_type_expr(type_value);
             }
-            TopLevelExpr::InlineFnDef(InlineFnDefExpr {
-                inline_fn_name,
-                params: inline_fn_params,
-                type_params: inline_fn_type_params,
-                params_trailing_comma: inline_fn_params_trailing_comma,
-                return_type,
-                body,
-                loc: _,
-            }) => {
-                stdout_write("inline fn ");
-                stdout_write(&inline_fn_name.repr);
-                if inline_fn_type_params.len() != 0 {
-                    stdout_write("<");
-                    for (type_param, i) in inline_fn_type_params.iter().zip(0..) {
-                        stdout_write(type_param);
-                        if i != inline_fn_type_params.len() - 1 {
-                            stdout_write(",");
-                        }
-                    }
-                    stdout_write(">");
-                }
-                self.print_fn_params(inline_fn_params, *inline_fn_params_trailing_comma);
-                if let Some(return_type) = return_type {
-                    stdout_write(": ");
-                    self.print_type_expr(return_type);
-                }
-                self.last_printed_item_line = body.loc.pos.line;
-                self.print_code_block(body);
-            }
             TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,
                 type_args,
@@ -256,7 +231,19 @@ impl Printer {
     fn print_fn_decl(&mut self, fn_decl: &FnDeclExpr) {
         stdout_write("fn ");
         stdout_write(&fn_decl.fn_name.repr);
-        self.print_fn_params(&fn_decl.fn_params, fn_decl.fn_params_trailing_comma);
+
+        if fn_decl.type_params.len() != 0 {
+            stdout_write("<");
+            for (type_param, i) in fn_decl.type_params.iter().zip(0..) {
+                stdout_write(type_param);
+                if i != fn_decl.type_params.len() - 1 {
+                    stdout_write(",");
+                }
+            }
+            stdout_write(">");
+        }
+
+        self.print_fn_params(&fn_decl.params, fn_decl.params_trailing_comma);
 
         if let Some(return_type) = &fn_decl.return_type {
             stdout_write(": ");

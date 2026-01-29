@@ -64,6 +64,9 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         if fn_def.exported {
             stdout_write("export ")
         }
+        if fn_def.is_inline {
+            stdout_write("inline ")
+        }
         self.print_fn_decl(fn_def.decl)
 
         self.print_code_block(*fn_def.body)
@@ -218,37 +221,26 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::InlineFnDef(inline_fn_def) = expr {
-        stdout_write("inline fn ")
-        stdout_write(inline_fn_def.inline_fn_name.repr)
-        if inline_fn_def.type_params.size != 0 {
-            stdout_write("<")
-            for i in 0..inline_fn_def.type_params.size {
-                let type_param = inline_fn_def.type_params.get!(i)
-                stdout_write(type_param)
-                if i != inline_fn_def.type_params.size - 1 {
-                    stdout_write(",")
-                }
-            }
-            stdout_write(">")
-        }
-        self.print_fn_params(inline_fn_def.params, inline_fn_def.params_trailing_comma)
-        if inline_fn_def.return_type != null {
-            stdout_write(": ")
-            self.print_type_expr(*inline_fn_def.return_type)
-        }
-        self.last_printed_item_line = inline_fn_def.body.loc.pos.line
-        self.print_code_block(inline_fn_def.body)
-        return
-    }
-
     @unreachable()
 }
 
 fn Printer::print_fn_decl(&self, fn_decl: FnDeclExpr) {
     stdout_write("fn ")
     stdout_write(fn_decl.fn_name.repr)
-    self.print_fn_params(fn_decl.fn_params, fn_decl.fn_params_trailing_comma)
+
+    if fn_decl.type_params.size != 0 {
+        stdout_write("<")
+        for i in 0..fn_decl.type_params.size {
+            let type_param = fn_decl.type_params.get!(i)
+            stdout_write(type_param)
+            if i != fn_decl.type_params.size - 1 {
+                stdout_write(",")
+            }
+        }
+        stdout_write(">")
+    }
+
+    self.print_fn_params(fn_decl.params, fn_decl.params_trailing_comma)
 
     if fn_decl.return_type != null {
         stdout_write(": ")
@@ -682,7 +674,7 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::InlineFnFnCall(inline_fn_call) = expr {
+    if match CodeExpr::InlineFnCall(inline_fn_call) = expr {
         stdout_write(inline_fn_call.fn_name.repr)
         self.print_type_args(inline_fn_call.type_args)
         self.print_args(inline_fn_call.args, inline_fn_call.loc)

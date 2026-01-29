@@ -4,7 +4,6 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 pub enum TopLevelExpr {
     Let(LetExpr),
     FnDef(FnDefExpr),
-    InlineFnDef(InlineFnDefExpr),
 
     StructDef(StructDefExpr),
     EnumDef(EnumDefExpr),
@@ -19,6 +18,7 @@ pub enum TopLevelExpr {
 
 pub struct FnDefExpr {
     pub exported: bool,
+    pub is_inline: bool,
     pub decl: FnDeclExpr,
     pub body: CodeBlock,
     pub loc: Loc,
@@ -26,8 +26,9 @@ pub struct FnDefExpr {
 
 pub struct FnDeclExpr {
     pub fn_name: IdentExpr,
-    pub fn_params: Vec<FnParam>,
-    pub fn_params_trailing_comma: bool,
+    pub type_params: Vec<&'static str>,
+    pub params: Vec<FnParam>,
+    pub params_trailing_comma: bool,
     pub return_type: Option<TypeExpr>,
     pub loc: Loc,
 }
@@ -121,16 +122,6 @@ pub struct MemoryDefExpr {
     pub loc: Loc,
 }
 
-pub struct InlineFnDefExpr {
-    pub inline_fn_name: IdentExpr,
-    pub type_params: Vec<&'static str>,
-    pub params: Vec<FnParam>,
-    pub params_trailing_comma: bool,
-    pub return_type: Option<TypeExpr>,
-    pub body: CodeBlock,
-    pub loc: Loc,
-}
-
 pub struct CodeBlock {
     pub exprs: Vec<CodeExpr>,
     pub loc: Loc,
@@ -147,7 +138,6 @@ impl TopLevelExpr {
             TopLevelExpr::EnumDef(e) => &e.loc,
             TopLevelExpr::TypeDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
-            TopLevelExpr::InlineFnDef(e) => &e.loc,
             TopLevelExpr::IntrinsicCall(e) => &e.loc,
         }
     }

@@ -52,7 +52,7 @@ impl Parser {
             let loc = self.prev().loc;
 
             if let Some(_) = self.eat(Symbol, "fn") {
-                let fn_def = self.parse_fn_def(true, loc)?;
+                let fn_def = self.parse_fn_def(true, false, loc)?;
                 return Ok(TopLevelExpr::FnDef(fn_def));
             }
 
@@ -91,7 +91,7 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "fn") {
             let loc = self.prev().loc;
 
-            let fn_def = self.parse_fn_def(false, loc)?;
+            let fn_def = self.parse_fn_def(false, false, loc)?;
             return Ok(TopLevelExpr::FnDef(fn_def));
         }
 
@@ -251,7 +251,7 @@ impl Parser {
         }
 
         if self.eat(Symbol, "inline").is_some() {
-            let mut loc = self.prev().loc;
+            let loc = self.prev().loc;
 
             if self.eat(Symbol, "let").is_some() {
                 let let_expr = self.parse_let(true, loc)?;
@@ -259,43 +259,8 @@ impl Parser {
             }
 
             if let Some(_) = self.eat(Symbol, "fn") {
-                let mut inline_fn_name = self.parse_ident()?;
-                self.expect(Operator, "!")?;
-                self.extend_ident(&mut inline_fn_name, self.prev().loc.end_pos);
-
-                let mut type_params = Vec::new();
-                if let Some(_) = self.eat(Operator, "<") {
-                    while let None = self.eat(Operator, ">") {
-                        let type_param = self.expect_any(Symbol)?;
-                        type_params.push(type_param.get_value(self.source));
-
-                        if !self.current().is(Operator, ">", self.source) {
-                            self.expect(Delim, ",")?;
-                        }
-                    }
-                }
-
-                let mut params_trailing_comma = false;
-                let params = self.parse_fn_params(&mut params_trailing_comma)?;
-
-                let mut return_type = None;
-                if let Some(_) = self.eat(Operator, ":") {
-                    return_type = Some(self.parse_type_expr()?)
-                };
-
-                let body = self.parse_code_block()?;
-
-                loc.end_pos = self.prev().loc.end_pos;
-
-                return Ok(TopLevelExpr::InlineFnDef(InlineFnDefExpr {
-                    inline_fn_name,
-                    params,
-                    params_trailing_comma,
-                    type_params,
-                    return_type,
-                    body,
-                    loc,
-                }));
+                let fn_def = self.parse_fn_def(false, true, loc)?;
+                return Ok(TopLevelExpr::FnDef(fn_def));
             }
 
             let unexpected = self.current();
@@ -333,14 +298,20 @@ impl Parser {
         });
     }
 
-    fn parse_fn_def(&self, exported: bool, mut loc: Loc) -> Result<FnDefExpr, Error> {
-        let decl = self.parse_fn_decl()?;
+    fn parse_fn_def(
+        &self,
+        exported: bool,
+        is_inline: bool,
+        mut loc: Loc,
+    ) -> Result<FnDefExpr, Error> {
+        let decl = self.parse_fn_decl(is_inline)?;
         let body = self.parse_code_block()?;
 
         loc.end_pos = self.prev().loc.end_pos;
 
         Ok(FnDefExpr {
             exported,
+            is_inline,
             decl,
             body,
             loc,
@@ -360,7 +331,7 @@ impl Parser {
 
     fn parse_importable(&self) -> Result<ImportItem, Error> {
         if let Some(_) = self.eat(Symbol, "fn") {
-            let decl = self.parse_fn_decl()?;
+            let decl = self.parse_fn_decl(false)?;
             return Ok(ImportItem::FnDecl(decl));
         }
 
@@ -380,12 +351,31 @@ impl Parser {
         });
     }
 
-    fn parse_fn_decl(&self) -> Result<FnDeclExpr, Error> {
+    fn parse_fn_decl(&self, is_inline: bool) -> Result<FnDeclExpr, Error> {
         let mut loc = self.prev().loc;
 
-        let fn_name = self.parse_ident()?;
-        let mut fn_params_trailing_comma = false;
-        let fn_params = self.parse_fn_params(&mut fn_params_trailing_comma)?;
+        let mut fn_name = self.parse_ident()?;
+
+        let mut type_params = Vec::new();
+
+        if is_inline {
+            self.expect(Operator, "!")?;
+            self.extend_ident(&mut fn_name, self.prev().loc.end_pos);
+
+            if let Some(_) = self.eat(Operator, "<") {
+                while let None = self.eat(Operator, ">") {
+                    let type_param = self.expect_any(Symbol)?;
+                    type_params.push(type_param.get_value(self.source));
+
+                    if !self.current().is(Operator, ">", self.source) {
+                        self.expect(Delim, ",")?;
+                    }
+                }
+            }
+        }
+
+        let mut params_trailing_comma = false;
+        let params = self.parse_fn_params(&mut params_trailing_comma)?;
 
         let mut return_type = None;
         if let Some(_) = self.eat(Operator, ":") {
@@ -396,8 +386,9 @@ impl Parser {
 
         Ok(FnDeclExpr {
             fn_name,
-            fn_params,
-            fn_params_trailing_comma,
+            type_params,
+            params,
+            params_trailing_comma,
             return_type,
             loc,
         })

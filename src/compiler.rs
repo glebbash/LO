@@ -458,7 +458,7 @@ pub struct Compiler {
 
     const_defs: Vec<ConstDef>,
 
-    inline_fn_defs: Vec<&'static InlineFnDefExpr>,
+    inline_fn_defs: Vec<&'static FnDefExpr>,
 
     functions: Vec<FnInfo>,
     wasm_fn_types: RefCell<Vec<WasmFnType>>,
@@ -729,6 +729,22 @@ impl Compiler {
                     self.type_aliases.push(Type::Never); // placeholder
                 }
                 TopLevelExpr::FnDef(fn_def) => {
+                    if fn_def.is_inline {
+                        let _ = self.define_symbol(
+                            &mut module.ctx,
+                            Symbol {
+                                name: fn_def.decl.fn_name.repr,
+                                type_: SymbolType::InlineFn,
+                                col_index: self.inline_fn_defs.len(),
+                                defined_in_this_scope: true,
+                                loc: fn_def.decl.fn_name.loc,
+                            },
+                        );
+
+                        self.inline_fn_defs.push(fn_def.relax());
+                        continue;
+                    }
+
                     let _ = self.define_symbol(
                         &mut module.ctx,
                         Symbol {
@@ -800,20 +816,6 @@ impl Compiler {
                             definition_loc: fn_decl.fn_name.loc,
                         });
                     }
-                }
-                TopLevelExpr::InlineFnDef(inline_fn_def) => {
-                    let _ = self.define_symbol(
-                        &mut module.ctx,
-                        Symbol {
-                            name: inline_fn_def.inline_fn_name.repr,
-                            type_: SymbolType::InlineFn,
-                            col_index: self.inline_fn_defs.len(),
-                            defined_in_this_scope: true,
-                            loc: inline_fn_def.inline_fn_name.loc,
-                        },
-                    );
-
-                    self.inline_fn_defs.push(inline_fn_def.relax());
                 }
                 TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
                     let _ = self.define_symbol(
@@ -1077,7 +1079,6 @@ impl Compiler {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_symbols
                 TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_symbols
-                TopLevelExpr::InlineFnDef(_) => {} // skip, processed in pass_collect_all_symbols
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_assemble_complex_types
                 TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
 
@@ -1213,6 +1214,11 @@ impl Compiler {
                 }
 
                 TopLevelExpr::FnDef(fn_def) => {
+                    if fn_def.is_inline {
+                        // skip, processed in pass_collect_all_symbols
+                        continue;
+                    }
+
                     let symbol = self
                         .current_scope(&module.ctx)
                         .get_symbol(&fn_def.decl.fn_name.repr)
@@ -1236,10 +1242,10 @@ impl Compiler {
                     let self_type = self.get_fn_self_type(
                         &module.ctx,
                         &fn_def.decl.fn_name,
-                        &fn_def.decl.fn_params,
+                        &fn_def.decl.params,
                     );
 
-                    'param_loop: for fn_param in &fn_def.decl.fn_params {
+                    'param_loop: for fn_param in &fn_def.decl.params {
                         let param_type =
                             self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
                         let param_type = catch!(param_type, err, {
@@ -1284,13 +1290,10 @@ impl Compiler {
                         };
                         let fn_info = self.functions[symbol.col_index].relax_mut();
 
-                        let self_type = self.get_fn_self_type(
-                            &module.ctx,
-                            &fn_decl.fn_name,
-                            &fn_decl.fn_params,
-                        );
+                        let self_type =
+                            self.get_fn_self_type(&module.ctx, &fn_decl.fn_name, &fn_decl.params);
 
-                        for fn_param in &fn_decl.fn_params {
+                        for fn_param in &fn_decl.params {
                             let param_type =
                                 self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
                             let param_type = catch!(param_type, err, {
@@ -2291,12 +2294,12 @@ impl Compiler {
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
             CodeExpr::Let(LetExpr {
-                is_inline: inline,
+                is_inline,
                 name,
                 value,
                 loc: _,
             }) => {
-                if *inline {
+                if *is_inline {
                     let code_unit = self.build_code_unit(ctx, value)?;
                     self.register_block_const(
                         ctx,
@@ -3683,7 +3686,7 @@ impl Compiler {
             false,
         )?;
 
-        let return_type = if let Some(return_type) = &inline_fn_def.return_type {
+        let return_type = if let Some(return_type) = &inline_fn_def.decl.return_type {
             self.build_type(ctx, return_type)?
         } else {
             Type::Void
@@ -3701,7 +3704,7 @@ impl Compiler {
         args: &Vec<CodeExpr>,
         loc: &Loc,
         build_code: bool,
-    ) -> Result<&InlineFnDefExpr, Error> {
+    ) -> Result<&FnDefExpr, Error> {
         let Some(symbol) = self.current_scope(ctx).get_symbol(inline_fn_name) else {
             return Err(Error {
                 message: format!("Unknown inline fn: {}", inline_fn_name),
@@ -3737,11 +3740,11 @@ impl Compiler {
         for type_arg in type_args {
             lo_type_args.push(self.build_type(ctx, &type_arg)?);
         }
-        if lo_type_args.len() != inline_fn_def.type_params.len() {
+        if lo_type_args.len() != inline_fn_def.decl.type_params.len() {
             return Err(Error {
                 message: format!(
                     "Invalid number of type args, expected {}, got {}",
-                    inline_fn_def.type_params.len(),
+                    inline_fn_def.decl.type_params.len(),
                     type_args.len()
                 ),
                 loc: *loc,
@@ -3749,6 +3752,7 @@ impl Compiler {
         }
 
         for (i, (type_param, type_arg)) in inline_fn_def
+            .decl
             .type_params
             .iter()
             .zip(lo_type_args.iter())
@@ -3757,11 +3761,11 @@ impl Compiler {
             self.register_block_type(ctx, type_param, type_arg.clone(), *type_args[i].loc());
         }
 
-        if all_args.len() != inline_fn_def.params.len() {
+        if all_args.len() != inline_fn_def.decl.params.len() {
             return Err(Error {
                 message: format!(
                     "Invalid number of inline fn args, expected {}, got {}",
-                    inline_fn_def.params.len(),
+                    inline_fn_def.decl.params.len(),
                     all_args.len()
                 ),
                 loc: *loc,
@@ -3774,7 +3778,7 @@ impl Compiler {
         }
 
         for (inline_fn_param, inline_fn_arg) in
-            inline_fn_def.params.iter().zip(all_args.into_iter())
+            inline_fn_def.decl.params.iter().zip(all_args.into_iter())
         {
             let const_def = ConstDef {
                 const_name: inline_fn_param.param_name.repr,
@@ -3795,10 +3799,10 @@ impl Compiler {
         }
 
         let self_type =
-            self.get_fn_self_type(ctx, &inline_fn_def.inline_fn_name, &inline_fn_def.params);
+            self.get_fn_self_type(ctx, &inline_fn_def.decl.fn_name, &inline_fn_def.decl.params);
 
         let mut inline_fn_types = Vec::<Type>::new();
-        for inline_fn_param in &inline_fn_def.params {
+        for inline_fn_param in &inline_fn_def.decl.params {
             let inline_fn_type = self.get_fn_param_type(ctx, inline_fn_param, &self_type, true)?;
             inline_fn_types.push(inline_fn_type);
         }
@@ -3829,7 +3833,7 @@ impl Compiler {
                     message.push_str(", ");
                 }
 
-                let param = &inline_fn_def.params[i];
+                let param = &inline_fn_def.decl.params[i];
                 message.push_str(param.param_name.repr);
                 match param.param_type {
                     FnParamType::Self_ | FnParamType::SelfRef => {}
@@ -3841,7 +3845,7 @@ impl Compiler {
                 }
             }
 
-            let return_type = if let Some(return_type) = &inline_fn_def.return_type {
+            let return_type = if let Some(return_type) = &inline_fn_def.decl.return_type {
                 self.build_type(ctx, return_type)?
             } else {
                 Type::Void
@@ -3851,7 +3855,7 @@ impl Compiler {
             self.reporter.print_inspection(&InspectInfo {
                 message,
                 loc: *loc,
-                linked_loc: Some(inline_fn_def.inline_fn_name.loc),
+                linked_loc: Some(inline_fn_def.decl.fn_name.loc),
             });
         }
 
