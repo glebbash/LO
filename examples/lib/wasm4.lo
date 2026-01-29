@@ -2,7 +2,6 @@ const wasm4::DATA_START = 6560
 
 import from "env" {
     memory { min_pages: 1, data_start: wasm4::DATA_START }
-
 }
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
