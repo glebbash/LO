@@ -303,11 +303,11 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             let _ = self.expect(Operator, "!")?
             let excl_end_pos = self.prev().loc.end_pos
 
-            let inline_fn_type_params = Vec::new!<str>()
+            let type_params = Vec::new!<str>()
             if self.eat(Operator, "<") != null {
                 while self.eat(Operator, ">") == null {
                     let type_param = self.expect_any(Symbol)?
-                    inline_fn_type_params.push!(type_param.get_value(self.source))
+                    type_params.push!(type_param.get_value(self.source))
 
                     if !self.current().is(Operator, ">", self.source) {
                         let _ = self.expect(Delim, ",")?
@@ -315,8 +315,8 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
                 }
             }
 
-            let inline_fn_params_trailing_comma = ref!(false)
-            let inline_fn_params = self.parse_fn_params(inline_fn_params_trailing_comma)?
+            let params_trailing_comma = ref!(false)
+            let params = self.parse_fn_params(params_trailing_comma)?
 
             let return_type = null as &TypeExpr
             if self.eat(Operator, ":") != null {
@@ -329,9 +329,9 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
             let result = self.ast_arena.new!(InlineFnDefExpr {
                 inline_fn_name: inline_fn_name,
-                inline_fn_params: inline_fn_params,
-                inline_fn_params_trailing_comma: *inline_fn_params_trailing_comma,
-                inline_fn_type_params: inline_fn_type_params,
+                params: params,
+                params_trailing_comma: *params_trailing_comma,
+                type_params: type_params,
                 return_type: return_type,
                 body: body,
                 loc: loc,

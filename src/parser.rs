@@ -290,11 +290,11 @@ impl Parser {
                 self.expect(Operator, "!")?;
                 self.extend_ident(&mut inline_fn_name, self.prev().loc.end_pos);
 
-                let mut inline_fn_type_params = Vec::new();
+                let mut type_params = Vec::new();
                 if let Some(_) = self.eat(Operator, "<") {
                     while let None = self.eat(Operator, ">") {
                         let type_param = self.expect_any(Symbol)?;
-                        inline_fn_type_params.push(type_param.get_value(self.source));
+                        type_params.push(type_param.get_value(self.source));
 
                         if !self.current().is(Operator, ">", self.source) {
                             self.expect(Delim, ",")?;
@@ -302,9 +302,8 @@ impl Parser {
                     }
                 }
 
-                let mut inline_fn_params_trailing_comma = false;
-                let inline_fn_params =
-                    self.parse_fn_params(&mut inline_fn_params_trailing_comma)?;
+                let mut params_trailing_comma = false;
+                let params = self.parse_fn_params(&mut params_trailing_comma)?;
 
                 let mut return_type = None;
                 if let Some(_) = self.eat(Operator, ":") {
@@ -317,9 +316,9 @@ impl Parser {
 
                 return Ok(TopLevelExpr::InlineFnDef(InlineFnDefExpr {
                     inline_fn_name,
-                    inline_fn_params,
-                    inline_fn_params_trailing_comma,
-                    inline_fn_type_params,
+                    params,
+                    params_trailing_comma,
+                    type_params,
                     return_type,
                     body,
                     loc,

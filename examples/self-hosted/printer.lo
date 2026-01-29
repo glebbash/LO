@@ -224,18 +224,18 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     if match TopLevelExpr::InlineFnDef(inline_fn_def) = expr {
         stdout_write("inline fn ")
         stdout_write(inline_fn_def.inline_fn_name.repr)
-        if inline_fn_def.inline_fn_type_params.size != 0 {
+        if inline_fn_def.type_params.size != 0 {
             stdout_write("<")
-            for i in 0..inline_fn_def.inline_fn_type_params.size {
-                let type_param = inline_fn_def.inline_fn_type_params.get!(i)
+            for i in 0..inline_fn_def.type_params.size {
+                let type_param = inline_fn_def.type_params.get!(i)
                 stdout_write(type_param)
-                if i != inline_fn_def.inline_fn_type_params.size - 1 {
+                if i != inline_fn_def.type_params.size - 1 {
                     stdout_write(",")
                 }
             }
             stdout_write(">")
         }
-        self.print_fn_params(inline_fn_def.inline_fn_params, inline_fn_def.inline_fn_params_trailing_comma)
+        self.print_fn_params(inline_fn_def.params, inline_fn_def.params_trailing_comma)
         if inline_fn_def.return_type != null {
             stdout_write(": ")
             self.print_type_expr(*inline_fn_def.return_type)

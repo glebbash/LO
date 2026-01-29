@@ -3730,11 +3730,11 @@ impl Compiler {
         for type_arg in type_args {
             lo_type_args.push(self.build_type(ctx, &type_arg)?);
         }
-        if lo_type_args.len() != inline_fn_def.inline_fn_type_params.len() {
+        if lo_type_args.len() != inline_fn_def.type_params.len() {
             return Err(Error {
                 message: format!(
                     "Invalid number of type args, expected {}, got {}",
-                    inline_fn_def.inline_fn_type_params.len(),
+                    inline_fn_def.type_params.len(),
                     type_args.len()
                 ),
                 loc: *loc,
@@ -3742,7 +3742,7 @@ impl Compiler {
         }
 
         for (i, (type_param, type_arg)) in inline_fn_def
-            .inline_fn_type_params
+            .type_params
             .iter()
             .zip(lo_type_args.iter())
             .enumerate()
@@ -3750,11 +3750,11 @@ impl Compiler {
             self.register_block_type(ctx, type_param, type_arg.clone(), *type_args[i].loc());
         }
 
-        if all_args.len() != inline_fn_def.inline_fn_params.len() {
+        if all_args.len() != inline_fn_def.params.len() {
             return Err(Error {
                 message: format!(
                     "Invalid number of inline fn args, expected {}, got {}",
-                    inline_fn_def.inline_fn_params.len(),
+                    inline_fn_def.params.len(),
                     all_args.len()
                 ),
                 loc: *loc,
@@ -3766,10 +3766,8 @@ impl Compiler {
             arg_types.push(arg.type_.clone());
         }
 
-        for (inline_fn_param, inline_fn_arg) in inline_fn_def
-            .inline_fn_params
-            .iter()
-            .zip(all_args.into_iter())
+        for (inline_fn_param, inline_fn_arg) in
+            inline_fn_def.params.iter().zip(all_args.into_iter())
         {
             let const_def = ConstDef {
                 const_name: inline_fn_param.param_name.repr,
@@ -3789,14 +3787,11 @@ impl Compiler {
             self.register_block_const(ctx, const_def);
         }
 
-        let self_type = self.get_fn_self_type(
-            ctx,
-            &inline_fn_def.inline_fn_name,
-            &inline_fn_def.inline_fn_params,
-        );
+        let self_type =
+            self.get_fn_self_type(ctx, &inline_fn_def.inline_fn_name, &inline_fn_def.params);
 
         let mut inline_fn_types = Vec::<Type>::new();
-        for inline_fn_param in &inline_fn_def.inline_fn_params {
+        for inline_fn_param in &inline_fn_def.params {
             let inline_fn_type = self.get_fn_param_type(ctx, inline_fn_param, &self_type, true)?;
             inline_fn_types.push(inline_fn_type);
         }
@@ -3827,7 +3822,7 @@ impl Compiler {
                     message.push_str(", ");
                 }
 
-                let param = &inline_fn_def.inline_fn_params[i];
+                let param = &inline_fn_def.params[i];
                 message.push_str(param.param_name.repr);
                 match param.param_type {
                     FnParamType::Self_ | FnParamType::SelfRef => {}

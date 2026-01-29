@@ -160,9 +160,9 @@ struct CodeBlock {
 
 struct InlineFnDefExpr {
     inline_fn_name: IdentExpr,
-    inline_fn_params: &Vec(FnParam),
-    inline_fn_params_trailing_comma: bool,
-    inline_fn_type_params: &Vec(str),
+    params: &Vec(FnParam),
+    params_trailing_comma: bool,
+    type_params: &Vec(str),
     // @optional
     return_type: &TypeExpr,
     body: CodeBlock,

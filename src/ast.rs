@@ -129,9 +129,9 @@ pub struct MemoryDefExpr {
 
 pub struct InlineFnDefExpr {
     pub inline_fn_name: IdentExpr,
-    pub inline_fn_params: Vec<FnParam>,
-    pub inline_fn_params_trailing_comma: bool,
-    pub inline_fn_type_params: Vec<&'static str>,
+    pub params: Vec<FnParam>,
+    pub params_trailing_comma: bool,
+    pub type_params: Vec<&'static str>,
     pub return_type: Option<TypeExpr>,
     pub body: CodeBlock,
     pub loc: Loc,

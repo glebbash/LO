@@ -216,9 +216,9 @@ impl Printer {
             }
             TopLevelExpr::InlineFnDef(InlineFnDefExpr {
                 inline_fn_name,
-                inline_fn_params,
-                inline_fn_type_params,
-                inline_fn_params_trailing_comma,
+                params: inline_fn_params,
+                type_params: inline_fn_type_params,
+                params_trailing_comma: inline_fn_params_trailing_comma,
                 return_type,
                 body,
                 loc: _,
