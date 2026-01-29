@@ -75,12 +75,12 @@ impl Parser {
             let mut loc = self.prev().loc;
 
             let fn_name = self.parse_ident()?;
-            let type_args = self.parse_macro_type_args()?;
+            let type_args = self.parse_inline_fn_type_args()?;
             let args = self.parse_fn_args()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(TopLevelExpr::IntrinsicCall(MacroFnCallExpr {
+            return Ok(TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,
                 args,
                 type_args,
@@ -163,23 +163,6 @@ impl Parser {
             return Ok(TopLevelExpr::GlobalDef(GlobalDefExpr {
                 global_name,
                 global_value,
-                loc,
-            }));
-        }
-
-        if self.eat(Symbol, "inline").is_some() {
-            let mut loc = self.prev().loc;
-
-            self.expect(Symbol, "let")?;
-            let const_name = self.parse_ident()?;
-            self.expect(Operator, "=")?;
-            let const_value = self.parse_code_expr(0)?;
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::ConstDef(ConstDefExpr {
-                const_name,
-                const_value,
                 loc,
             }));
         }
@@ -285,46 +268,72 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "macro") {
+        if self.eat(Symbol, "inline").is_some() {
             let mut loc = self.prev().loc;
 
-            let mut macro_name = self.parse_ident()?;
-            self.expect(Operator, "!")?;
-            self.extend_ident(&mut macro_name, self.prev().loc.end_pos);
+            if self.eat(Symbol, "let").is_some() {
+                let const_name = self.parse_ident()?;
+                self.expect(Operator, "=")?;
+                let const_value = self.parse_code_expr(0)?;
 
-            let mut macro_type_params = Vec::new();
-            if let Some(_) = self.eat(Operator, "<") {
-                while let None = self.eat(Operator, ">") {
-                    let type_param = self.expect_any(Symbol)?;
-                    macro_type_params.push(type_param.get_value(self.source));
+                loc.end_pos = self.prev().loc.end_pos;
 
-                    if !self.current().is(Operator, ">", self.source) {
-                        self.expect(Delim, ",")?;
-                    }
-                }
+                return Ok(TopLevelExpr::ConstDef(ConstDefExpr {
+                    const_name,
+                    const_value,
+                    loc,
+                }));
             }
 
-            let mut macro_params_trailing_comma = false;
-            let macro_params = self.parse_fn_params(&mut macro_params_trailing_comma)?;
+            if let Some(_) = self.eat(Symbol, "fn") {
+                let mut inline_fn_name = self.parse_ident()?;
+                self.expect(Operator, "!")?;
+                self.extend_ident(&mut inline_fn_name, self.prev().loc.end_pos);
 
-            let mut return_type = None;
-            if let Some(_) = self.eat(Operator, ":") {
-                return_type = Some(self.parse_type_expr()?)
-            };
+                let mut inline_fn_type_params = Vec::new();
+                if let Some(_) = self.eat(Operator, "<") {
+                    while let None = self.eat(Operator, ">") {
+                        let type_param = self.expect_any(Symbol)?;
+                        inline_fn_type_params.push(type_param.get_value(self.source));
 
-            let body = self.parse_code_block()?;
+                        if !self.current().is(Operator, ">", self.source) {
+                            self.expect(Delim, ",")?;
+                        }
+                    }
+                }
 
-            loc.end_pos = self.prev().loc.end_pos;
+                let mut inline_fn_params_trailing_comma = false;
+                let inline_fn_params =
+                    self.parse_fn_params(&mut inline_fn_params_trailing_comma)?;
 
-            return Ok(TopLevelExpr::MacroDef(MacroDefExpr {
-                macro_name,
-                macro_params,
-                macro_params_trailing_comma,
-                macro_type_params,
-                return_type,
-                body,
-                loc,
-            }));
+                let mut return_type = None;
+                if let Some(_) = self.eat(Operator, ":") {
+                    return_type = Some(self.parse_type_expr()?)
+                };
+
+                let body = self.parse_code_block()?;
+
+                loc.end_pos = self.prev().loc.end_pos;
+
+                return Ok(TopLevelExpr::InlineFnDef(InlineFnDefExpr {
+                    inline_fn_name,
+                    inline_fn_params,
+                    inline_fn_params_trailing_comma,
+                    inline_fn_type_params,
+                    return_type,
+                    body,
+                    loc,
+                }));
+            }
+
+            let unexpected = self.current();
+            return Err(Error {
+                message: format!(
+                    "Unexpected inlineable: {}",
+                    unexpected.get_value(self.source)
+                ),
+                loc: unexpected.loc,
+            });
         }
 
         let unexpected = self.current();
@@ -816,12 +825,12 @@ impl Parser {
             let mut loc = self.prev().loc;
 
             let fn_name = self.parse_ident()?;
-            let type_args = self.parse_macro_type_args()?;
+            let type_args = self.parse_inline_fn_type_args()?;
             let args = self.parse_fn_args()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::IntrinsicCall(MacroFnCallExpr {
+            return Ok(CodeExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,
                 args,
                 type_args,
@@ -995,12 +1004,12 @@ impl Parser {
 
             let mut loc = ident.loc;
 
-            let type_args = self.parse_macro_type_args()?;
+            let type_args = self.parse_inline_fn_type_args()?;
             let args = self.parse_fn_args()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(CodeExpr::MacroFnCall(MacroFnCallExpr {
+            return Ok(CodeExpr::InlineFnCall(InlineFnCallExpr {
                 fn_name: ident,
                 args,
                 type_args,
@@ -1092,12 +1101,12 @@ impl Parser {
                 if let Some(_) = self.eat(Operator, "!") {
                     self.extend_ident(&mut field_name, self.prev().loc.end_pos);
 
-                    let type_args = self.parse_macro_type_args()?;
+                    let type_args = self.parse_inline_fn_type_args()?;
                     let args = self.parse_fn_args()?;
 
                     loc.end_pos = self.prev().loc.end_pos;
 
-                    return Ok(CodeExpr::MacroMethodCall(MacroMethodCallExpr {
+                    return Ok(CodeExpr::InlineMethodCall(InlineMethodCallExpr {
                         lhs: Box::new(primary),
                         field_name,
                         args,
@@ -1297,7 +1306,7 @@ impl Parser {
         });
     }
 
-    fn parse_macro_type_args(&self) -> Result<Vec<TypeExpr>, Error> {
+    fn parse_inline_fn_type_args(&self) -> Result<Vec<TypeExpr>, Error> {
         let mut type_args = Vec::new();
 
         let Some(_) = self.eat(Operator, "<") else {

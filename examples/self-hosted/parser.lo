@@ -93,12 +93,12 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         let loc = self.prev().loc
 
         let fn_name = self.parse_ident()?
-        let type_args = self.parse_macro_type_args()?
+        let type_args = self.parse_inline_fn_type_args()?
         let args = self.parse_fn_args()?
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(TopLevelExpr::IntrinsicCall(self.ast_arena.new!(MacroFnCallExpr {
+        return Ok(TopLevelExpr::IntrinsicCall(self.ast_arena.new!(InlineFnFnCallExpr {
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -176,23 +176,6 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         return Ok(TopLevelExpr::GlobalDef(self.ast_arena.new!(GlobalDefExpr {
             global_name: global_name,
             global_value: global_value,
-            loc: loc,
-        })))
-    }
-
-    if self.eat(Symbol, "inline") != null {
-        let loc = self.prev().loc
-
-        let _ = self.expect(Symbol, "let")?
-        let const_name = self.parse_ident()?
-        let _ = self.expect(Operator, "=")?
-        let const_value = self.parse_code_expr(0)?
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(TopLevelExpr::ConstDef(self.ast_arena.new!(ConstDefExpr {
-            const_name: const_name,
-            const_value: const_value,
             loc: loc,
         })))
     }
@@ -298,50 +281,75 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(Symbol, "macro") != null {
+    if self.eat(Symbol, "inline") != null {
         let loc = self.prev().loc
 
-        let macro_name = self.parse_ident()?
-        let _ = self.expect(Operator, "!")?
-        let excl_end_pos = self.prev().loc.end_pos
+        if self.eat(Symbol, "let") != null {
+            let const_name = self.parse_ident()?
+            let _ = self.expect(Operator, "=")?
+            let const_value = self.parse_code_expr(0)?
 
-        let macro_type_params = Vec::new!<str>()
-        if self.eat(Operator, "<") != null {
-            while self.eat(Operator, ">") == null {
-                let type_param = self.expect_any(Symbol)?
-                macro_type_params.push!(type_param.get_value(self.source))
+            loc.end_pos = self.prev().loc.end_pos
 
-                if !self.current().is(Operator, ">", self.source) {
-                    let _ = self.expect(Delim, ",")?
+            return Ok(TopLevelExpr::ConstDef(self.ast_arena.new!(ConstDefExpr {
+                const_name: const_name,
+                const_value: const_value,
+                loc: loc,
+            })))
+        }
+
+        if self.eat(Symbol, "fn") != null {
+            let inline_fn_name = self.parse_ident()?
+            let _ = self.expect(Operator, "!")?
+            let excl_end_pos = self.prev().loc.end_pos
+
+            let inline_fn_type_params = Vec::new!<str>()
+            if self.eat(Operator, "<") != null {
+                while self.eat(Operator, ">") == null {
+                    let type_param = self.expect_any(Symbol)?
+                    inline_fn_type_params.push!(type_param.get_value(self.source))
+
+                    if !self.current().is(Operator, ">", self.source) {
+                        let _ = self.expect(Delim, ",")?
+                    }
                 }
             }
+
+            let inline_fn_params_trailing_comma = ref!(false)
+            let inline_fn_params = self.parse_fn_params(inline_fn_params_trailing_comma)?
+
+            let return_type = null as &TypeExpr
+            if self.eat(Operator, ":") != null {
+                return_type = self.ast_arena.new!(self.parse_type_expr()?)
+            }
+
+            let body = self.parse_code_block()?
+
+            loc.end_pos = self.prev().loc.end_pos
+
+            let result = self.ast_arena.new!(InlineFnDefExpr {
+                inline_fn_name: inline_fn_name,
+                inline_fn_params: inline_fn_params,
+                inline_fn_params_trailing_comma: *inline_fn_params_trailing_comma,
+                inline_fn_type_params: inline_fn_type_params,
+                return_type: return_type,
+                body: body,
+                loc: loc,
+            })
+
+            self.extend_ident(&result.inline_fn_name, excl_end_pos)
+
+            return Ok(TopLevelExpr::InlineFnDef(result))
         }
 
-        let macro_params_trailing_comma = ref!(false)
-        let macro_params = self.parse_fn_params(macro_params_trailing_comma)?
+        let unexpected = self.current()
+        let message = String::from_str_in(self.error_arena, "Unexpected inlineable: ")
+        message.push_str(unexpected.get_value(self.lexer.source))
 
-        let return_type = null as &TypeExpr
-        if self.eat(Operator, ":") != null {
-            return_type = self.ast_arena.new!(self.parse_type_expr()?)
-        }
-
-        let body = self.parse_code_block()?
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        let result = self.ast_arena.new!(MacroDefExpr {
-            macro_name: macro_name,
-            macro_params: macro_params,
-            macro_params_trailing_comma: *macro_params_trailing_comma,
-            macro_type_params: macro_type_params,
-            return_type: return_type,
-            body: body,
-            loc: loc,
-        })
-
-        self.extend_ident(&result.macro_name, excl_end_pos)
-
-        return Ok(TopLevelExpr::MacroDef(result))
+        return Err(self.error_arena.new!(Error {
+            message: message,
+            loc: unexpected.loc,
+        }))
     }
 
     let unexpected = self.current()
@@ -926,12 +934,12 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         let fn_name = self.parse_ident()?
-        let type_args = self.parse_macro_type_args()?
+        let type_args = self.parse_inline_fn_type_args()?
         let args = self.parse_fn_args()?
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(CodeExpr::IntrinsicCall(self.ast_arena.new!(MacroFnCallExpr {
+        return Ok(CodeExpr::IntrinsicCall(self.ast_arena.new!(InlineFnFnCallExpr {
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -1109,12 +1117,12 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
         let loc = ident.loc
 
-        let type_args = self.parse_macro_type_args()?
+        let type_args = self.parse_inline_fn_type_args()?
         let args = self.parse_fn_args()?
 
         loc.end_pos = self.prev().loc.end_pos
 
-        let result = self.ast_arena.new!(MacroFnCallExpr {
+        let result = self.ast_arena.new!(InlineFnFnCallExpr {
             fn_name: ident,
             type_args: type_args,
             args: args,
@@ -1123,7 +1131,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
         self.extend_ident(&result.fn_name, excl_end_pos)
 
-        return Ok(CodeExpr::MacroFnCall(result))
+        return Ok(CodeExpr::InlineFnFnCall(result))
     }
 
     return Ok(CodeExpr::Ident(self.ast_arena.new!(ident)))
@@ -1212,12 +1220,12 @@ fn Parser::parse_code_expr_postfix(
         if self.eat(Operator, "!") != null {
             let excl_end_pos = self.prev().loc.end_pos
 
-            let type_args = self.parse_macro_type_args()?
+            let type_args = self.parse_inline_fn_type_args()?
             let args = self.parse_fn_args()?
 
             loc.end_pos = self.prev().loc.end_pos
 
-            let result = self.ast_arena.new!(MacroMethodCallExpr {
+            let result = self.ast_arena.new!(InlineFnMethodCallExpr {
                 lhs: primary,
                 field_name: field_name,
                 type_args: type_args,
@@ -1227,7 +1235,7 @@ fn Parser::parse_code_expr_postfix(
 
             self.extend_ident(&result.field_name, excl_end_pos)
 
-            return Ok(CodeExpr::MacroMethodCall(result))
+            return Ok(CodeExpr::InlineFnMethodCall(result))
         }
 
         loc.end_pos = self.prev().loc.end_pos
@@ -1321,7 +1329,7 @@ fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
     })
 }
 
-fn Parser::parse_macro_type_args(&self): Result(&Vec(TypeExpr), &Error) {
+fn Parser::parse_inline_fn_type_args(&self): Result(&Vec(TypeExpr), &Error) {
     let type_args = Vec::new!<TypeExpr>()
 
     if self.eat(Operator, "<") == null {

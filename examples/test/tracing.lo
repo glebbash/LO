@@ -4,8 +4,8 @@ fn main() {
     trace!("hello there")
 }
 
-macro trace!(message: str) {
-    print(@macro_call_loc())
+inline fn trace!(message: str) {
+    print(@inline_fn_call_loc())
     print(" - ")
     println(message)
 }

@@ -7,10 +7,10 @@
 // string formatting is too heavy so looking for alternatives
 
 // pro: minimal language changes (except that first arg is a block)
-// con: requires a special compiler implemented macro
-//   which is completely different from user defined macros
+// con: requires a special intrinsic
+//   which is completely different from user defined functions
 // con: hardcoded `@expr`
-fn option_macro() {
+fn option_intrinsic() {
     apply!({ stdout_write(@expr) }, "{",
     " \"type\": \"file\",",
     " \"index\": ", file_index.to_str(), ",",

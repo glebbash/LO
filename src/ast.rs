@@ -5,13 +5,13 @@ pub enum TopLevelExpr {
     GlobalDef(GlobalDefExpr),
     ConstDef(ConstDefExpr),
     FnDef(FnDefExpr),
-    MacroDef(MacroDefExpr),
+    InlineFnDef(InlineFnDefExpr),
 
     StructDef(StructDefExpr),
     EnumDef(EnumDefExpr),
     TypeDef(TypeDefExpr),
 
-    IntrinsicCall(MacroFnCallExpr),
+    IntrinsicCall(InlineFnCallExpr),
 
     Import(ImportExpr),
     Include(IncludeExpr),
@@ -127,11 +127,11 @@ pub struct MemoryDefExpr {
     pub loc: Loc,
 }
 
-pub struct MacroDefExpr {
-    pub macro_name: IdentExpr,
-    pub macro_params: Vec<FnParam>,
-    pub macro_params_trailing_comma: bool,
-    pub macro_type_params: Vec<&'static str>,
+pub struct InlineFnDefExpr {
+    pub inline_fn_name: IdentExpr,
+    pub inline_fn_params: Vec<FnParam>,
+    pub inline_fn_params_trailing_comma: bool,
+    pub inline_fn_type_params: Vec<&'static str>,
     pub return_type: Option<TypeExpr>,
     pub body: CodeBlock,
     pub loc: Loc,
@@ -154,7 +154,7 @@ impl TopLevelExpr {
             TopLevelExpr::TypeDef(e) => &e.loc,
             TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
-            TopLevelExpr::MacroDef(e) => &e.loc,
+            TopLevelExpr::InlineFnDef(e) => &e.loc,
             TopLevelExpr::IntrinsicCall(e) => &e.loc,
         }
     }
@@ -222,9 +222,9 @@ pub enum CodeExpr {
     PropagateError(PropagateErrorExpr),
     FnCall(FnCallExpr),
     MethodCall(MethodCallExpr),
-    MacroFnCall(MacroFnCallExpr),
-    MacroMethodCall(MacroMethodCallExpr),
-    IntrinsicCall(MacroFnCallExpr),
+    InlineFnCall(InlineFnCallExpr),
+    InlineMethodCall(InlineMethodCallExpr),
+    IntrinsicCall(InlineFnCallExpr),
 
     // control flow
     Return(ReturnExpr),
@@ -469,14 +469,14 @@ pub struct MethodCallExpr {
     pub loc: Loc,
 }
 
-pub struct MacroFnCallExpr {
+pub struct InlineFnCallExpr {
     pub fn_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
     pub args: CodeExprList,
     pub loc: Loc,
 }
 
-pub struct MacroMethodCallExpr {
+pub struct InlineMethodCallExpr {
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
@@ -518,9 +518,9 @@ impl CodeExpr {
             CodeExpr::Paren(e) => e.loc,
             CodeExpr::FnCall(e) => e.loc,
             CodeExpr::MethodCall(e) => e.loc,
-            CodeExpr::MacroFnCall(e) => e.loc,
+            CodeExpr::InlineFnCall(e) => e.loc,
             CodeExpr::IntrinsicCall(e) => e.loc,
-            CodeExpr::MacroMethodCall(e) => e.loc,
+            CodeExpr::InlineMethodCall(e) => e.loc,
             CodeExpr::Sizeof(e) => e.loc,
             CodeExpr::PropagateError(e) => e.loc,
             CodeExpr::PrefixOp(e) => e.loc,

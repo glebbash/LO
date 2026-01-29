@@ -322,8 +322,8 @@ async function commandTest() {
         assert.strictEqual(result, 3);
     });
 
-    itEach("compiles macro.lo", { v1 }, async (compile) => {
-        const output = await compile("./examples/test/macro.lo");
+    itEach("compiles inline-fn.lo", { v1 }, async (compile) => {
+        const output = await compile("./examples/test/inline-fn.lo");
 
         const program = await loadWasm(output);
         const result = program.main();
@@ -944,8 +944,8 @@ async function commandTest() {
             );
         });
 
-        it("interprets macro.lo", async () => {
-            const res = await interpret("./examples/test/macro.lo");
+        it("interprets inline-fn.lo", async () => {
+            const res = await interpret("./examples/test/inline-fn.lo");
             assert.strictEqual(
                 new TextDecoder().decode(res),
                 "result of `main` is: 16\n",

@@ -204,7 +204,7 @@ enum ScopeType {
     Block,
     Loop,
     ForLoop,
-    Macro,
+    InlineFn,
 }
 
 impl Default for ScopeType {
@@ -229,7 +229,7 @@ struct Scope {
     scope_type: ScopeType,
     symbols: Vec<Symbol>,
     deferred_exprs: Vec<CodeUnit>,
-    macro_call_loc: Option<Loc>,
+    inline_fn_call_loc: Option<Loc>,
 }
 
 impl Scope {
@@ -421,7 +421,7 @@ enum SymbolType {
     Global,
     Const,
 
-    Macro,
+    InlineFn,
     Function,
     EnumConstructor,
 }
@@ -458,7 +458,7 @@ pub struct Compiler {
 
     const_defs: Vec<ConstDef>,
 
-    macro_defs: Vec<&'static MacroDefExpr>,
+    inline_fn_defs: Vec<&'static InlineFnDefExpr>,
 
     functions: Vec<FnInfo>,
     wasm_fn_types: RefCell<Vec<WasmFnType>>,
@@ -801,19 +801,19 @@ impl Compiler {
                         });
                     }
                 }
-                TopLevelExpr::MacroDef(macro_def) => {
+                TopLevelExpr::InlineFnDef(inline_fn_def) => {
                     let _ = self.define_symbol(
                         &mut module.ctx,
                         Symbol {
-                            name: macro_def.macro_name.repr,
-                            type_: SymbolType::Macro,
-                            col_index: self.macro_defs.len(),
+                            name: inline_fn_def.inline_fn_name.repr,
+                            type_: SymbolType::InlineFn,
+                            col_index: self.inline_fn_defs.len(),
                             defined_in_this_scope: true,
-                            loc: macro_def.macro_name.loc,
+                            loc: inline_fn_def.inline_fn_name.loc,
                         },
                     );
 
-                    self.macro_defs.push(macro_def.relax());
+                    self.inline_fn_defs.push(inline_fn_def.relax());
                 }
                 TopLevelExpr::GlobalDef(global_def) => {
                     let _ = self.define_symbol(
@@ -1077,11 +1077,11 @@ impl Compiler {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_symbols
                 TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_symbols
-                TopLevelExpr::MacroDef(_) => {} // skip, processed in pass_collect_all_symbols
+                TopLevelExpr::InlineFnDef(_) => {} // skip, processed in pass_collect_all_symbols
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_assemble_complex_types
                 TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
 
-                TopLevelExpr::IntrinsicCall(MacroFnCallExpr {
+                TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
                     fn_name,
                     type_args,
                     args,
@@ -1525,7 +1525,7 @@ impl Compiler {
 
             self.exit_scope(ctx);
 
-            // remove any constants/types created by macro calls
+            // remove any constants/types created by inline fn calls
             self.const_defs.truncate(constants_len);
             self.type_aliases.truncate(type_aliases_len);
 
@@ -1574,7 +1574,7 @@ impl Compiler {
 
                     let mut module = &self.modules[ctx.module_index];
                     if file_index != module.parser.lexer.file_index {
-                        // local defined by macro from another module
+                        // local defined by inline fn from another module
                         module = &self.get_module_by_file_index(file_index).unwrap();
                     }
 
@@ -1872,7 +1872,7 @@ impl Compiler {
                 if let Some(infer_type_name) = self.get_infer_type_name(fn_param)? {
                     if !infer_allowed {
                         return Err(Error {
-                            message: format!("Infer is only allowed in macros"),
+                            message: format!("Infer is only allowed in inline fns"),
                             loc: fn_param.param_name.loc,
                         });
                     }
@@ -2652,13 +2652,13 @@ impl Compiler {
                     &field_name.loc,
                 )?;
             }
-            CodeExpr::MacroFnCall(MacroFnCallExpr {
+            CodeExpr::InlineFnCall(InlineFnCallExpr {
                 fn_name,
                 type_args,
                 args,
                 loc: _,
             }) => {
-                self.codegen_macro_call(
+                self.codegen_inline_fn_call(
                     ctx,
                     instrs,
                     &fn_name.repr,
@@ -2668,7 +2668,7 @@ impl Compiler {
                     &fn_name.loc,
                 )?;
             }
-            CodeExpr::MacroMethodCall(MacroMethodCallExpr {
+            CodeExpr::InlineMethodCall(InlineMethodCallExpr {
                 lhs,
                 field_name,
                 type_args,
@@ -2676,18 +2676,18 @@ impl Compiler {
                 loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let macro_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.codegen_macro_call(
+                let inline_fn_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
+                self.codegen_inline_fn_call(
                     ctx,
                     instrs,
-                    &macro_name,
+                    &inline_fn_name,
                     type_args,
                     Some(lhs),
                     &args.items,
                     &field_name.loc,
                 )?;
             }
-            CodeExpr::IntrinsicCall(MacroFnCallExpr {
+            CodeExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,
                 type_args,
                 args,
@@ -2886,19 +2886,19 @@ impl Compiler {
                     }
                 }
 
-                if fn_name.repr == "macro_call_loc" {
-                    let mut macro_call_loc = None;
-                    // NOTE: not iterating in reverse to get the first macro scope
+                if fn_name.repr == "inline_fn_call_loc" {
+                    let mut inline_fn_call_loc = None;
+                    // NOTE: not iterating in reverse to get the first inline scope
                     for scope in &self.modules[ctx.module_index].scope_stack {
-                        if scope.scope_type == ScopeType::Macro {
-                            macro_call_loc = scope.macro_call_loc.clone();
+                        if scope.scope_type == ScopeType::InlineFn {
+                            inline_fn_call_loc = scope.inline_fn_call_loc.clone();
                         }
                     }
 
-                    let Some(macro_call_loc) = macro_call_loc else {
+                    let Some(inline_fn_call_loc) = inline_fn_call_loc else {
                         self.reporter.error(&Error {
                             message: format!(
-                                "Forbidden use of `@{}()` outside of macro",
+                                "Forbidden use of `@{}()` outside of inline fn",
                                 fn_name.repr
                             ),
                             loc: fn_name.loc,
@@ -2906,8 +2906,10 @@ impl Compiler {
                         return Ok(());
                     };
 
-                    let loc_str = self
-                        .process_const_string(macro_call_loc.to_string(&self.fm), &macro_call_loc);
+                    let loc_str = self.process_const_string(
+                        inline_fn_call_loc.to_string(&self.fm),
+                        &inline_fn_call_loc,
+                    );
                     // emit str struct values
                     instrs.push(WasmInstr::I32Const {
                         value: loc_str.ptr as i32,
@@ -3345,7 +3347,7 @@ impl Compiler {
                             label_index += 1;
                             break;
                         }
-                        ScopeType::Macro => continue,
+                        ScopeType::InlineFn => continue,
                         ScopeType::Global => unreachable!(),
                     }
                 }
@@ -3368,7 +3370,7 @@ impl Compiler {
                         }
                         ScopeType::Loop => break,
                         ScopeType::ForLoop => break,
-                        ScopeType::Macro => continue,
+                        ScopeType::InlineFn => continue,
                         ScopeType::Global => unreachable!(),
                     }
                 }
@@ -3405,7 +3407,7 @@ impl Compiler {
                         continue;
                     }
 
-                    self.enter_scope(ctx, ScopeType::Macro);
+                    self.enter_scope(ctx, ScopeType::InlineFn);
 
                     self.codegen(ctx, instrs, arg)?;
 
@@ -3443,14 +3445,14 @@ impl Compiler {
             CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
                 let code_unit = self.build_code_unit(ctx, expr)?;
 
-                // find first non-macro scope
+                // find first non-inline-fn scope
                 let mut scope_to_defer = self.modules[ctx.module_index]
                     .scope_stack
                     .relax_mut()
                     .last_mut()
                     .unwrap();
                 for scope in self.modules[ctx.module_index].scope_stack.iter_mut().rev() {
-                    if scope.scope_type != ScopeType::Macro {
+                    if scope.scope_type != ScopeType::InlineFn {
                         scope_to_defer = scope;
                         break;
                     }
@@ -3655,18 +3657,18 @@ impl Compiler {
         Ok(&self.functions[symbol.col_index])
     }
 
-    fn get_macro_return_type(
+    fn get_inline_fn_return_type(
         &self,
         ctx: &mut ExprContext,
-        macro_name: &str,
+        inline_fn_name: &str,
         type_args: &Vec<TypeExpr>,
         args: &Vec<CodeExpr>,
         receiver_arg: Option<&CodeExpr>,
         loc: &Loc,
     ) -> Result<Type, Error> {
-        let macro_def = self.be_mut().populate_ctx_from_macro_call(
+        let inline_fn_def = self.be_mut().populate_ctx_from_inline_fn_call(
             ctx,
-            macro_name,
+            inline_fn_name,
             type_args,
             receiver_arg,
             args,
@@ -3674,7 +3676,7 @@ impl Compiler {
             false,
         )?;
 
-        let return_type = if let Some(return_type) = &macro_def.return_type {
+        let return_type = if let Some(return_type) = &inline_fn_def.return_type {
             self.build_type(ctx, return_type)?
         } else {
             Type::Void
@@ -3683,24 +3685,24 @@ impl Compiler {
         Ok(return_type)
     }
 
-    fn populate_ctx_from_macro_call(
+    fn populate_ctx_from_inline_fn_call(
         &mut self,
         ctx: &mut ExprContext,
-        macro_name: &str,
+        inline_fn_name: &str,
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
         loc: &Loc,
         build_code: bool,
-    ) -> Result<&MacroDefExpr, Error> {
-        let Some(symbol) = self.current_scope(ctx).get_symbol(macro_name) else {
+    ) -> Result<&InlineFnDefExpr, Error> {
+        let Some(symbol) = self.current_scope(ctx).get_symbol(inline_fn_name) else {
             return Err(Error {
-                message: format!("Unknown macro: {}", macro_name),
+                message: format!("Unknown inline fn: {}", inline_fn_name),
                 loc: *loc,
             });
         };
 
-        let macro_def = self.macro_defs[symbol.col_index];
+        let inline_fn_def = self.inline_fn_defs[symbol.col_index];
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -3728,19 +3730,19 @@ impl Compiler {
         for type_arg in type_args {
             lo_type_args.push(self.build_type(ctx, &type_arg)?);
         }
-        if lo_type_args.len() != macro_def.macro_type_params.len() {
+        if lo_type_args.len() != inline_fn_def.inline_fn_type_params.len() {
             return Err(Error {
                 message: format!(
                     "Invalid number of type args, expected {}, got {}",
-                    macro_def.macro_type_params.len(),
+                    inline_fn_def.inline_fn_type_params.len(),
                     type_args.len()
                 ),
                 loc: *loc,
             });
         }
 
-        for (i, (type_param, type_arg)) in macro_def
-            .macro_type_params
+        for (i, (type_param, type_arg)) in inline_fn_def
+            .inline_fn_type_params
             .iter()
             .zip(lo_type_args.iter())
             .enumerate()
@@ -3748,11 +3750,11 @@ impl Compiler {
             self.register_block_type(ctx, type_param, type_arg.clone(), *type_args[i].loc());
         }
 
-        if all_args.len() != macro_def.macro_params.len() {
+        if all_args.len() != inline_fn_def.inline_fn_params.len() {
             return Err(Error {
                 message: format!(
-                    "Invalid number of macro args, expected {}, got {}",
-                    macro_def.macro_params.len(),
+                    "Invalid number of inline fn args, expected {}, got {}",
+                    inline_fn_def.inline_fn_params.len(),
                     all_args.len()
                 ),
                 loc: *loc,
@@ -3764,38 +3766,46 @@ impl Compiler {
             arg_types.push(arg.type_.clone());
         }
 
-        for (macro_param, macro_arg) in macro_def.macro_params.iter().zip(all_args.into_iter()) {
+        for (inline_fn_param, inline_fn_arg) in inline_fn_def
+            .inline_fn_params
+            .iter()
+            .zip(all_args.into_iter())
+        {
             let const_def = ConstDef {
-                const_name: macro_param.param_name.repr,
-                code_unit: macro_arg,
-                loc: macro_param.loc,
+                const_name: inline_fn_param.param_name.repr,
+                code_unit: inline_fn_arg,
+                loc: inline_fn_param.loc,
             };
 
-            if let Some(type_name) = self.get_infer_type_name(macro_param)? {
+            if let Some(type_name) = self.get_infer_type_name(inline_fn_param)? {
                 self.register_block_type(
                     ctx,
                     type_name,
                     const_def.code_unit.type_.clone(),
-                    macro_param.loc,
+                    inline_fn_param.loc,
                 );
             }
 
             self.register_block_const(ctx, const_def);
         }
 
-        let self_type = self.get_fn_self_type(ctx, &macro_def.macro_name, &macro_def.macro_params);
+        let self_type = self.get_fn_self_type(
+            ctx,
+            &inline_fn_def.inline_fn_name,
+            &inline_fn_def.inline_fn_params,
+        );
 
-        let mut macro_types = Vec::<Type>::new();
-        for macro_param in &macro_def.macro_params {
-            let macro_type = self.get_fn_param_type(ctx, macro_param, &self_type, true)?;
-            macro_types.push(macro_type);
+        let mut inline_fn_types = Vec::<Type>::new();
+        for inline_fn_param in &inline_fn_def.inline_fn_params {
+            let inline_fn_type = self.get_fn_param_type(ctx, inline_fn_param, &self_type, true)?;
+            inline_fn_types.push(inline_fn_type);
         }
 
-        if !self.is_types_compatible(&macro_types, &arg_types) {
+        if !self.is_types_compatible(&inline_fn_types, &arg_types) {
             return Err(Error {
                 message: format!(
-                    "Invalid macro args, expected [{}], got [{}]",
-                    TypeListFmt(self, &macro_types),
+                    "Invalid inline fn args, expected [{}], got [{}]",
+                    TypeListFmt(self, &inline_fn_types),
                     TypeListFmt(self, &arg_types)
                 ),
                 loc: *loc,
@@ -3805,31 +3815,31 @@ impl Compiler {
         if build_code && self.reporter.in_inspection_mode {
             let mut message = String::new();
 
-            write!(&mut message, "macro {macro_name}").unwrap();
+            write!(&mut message, "inline fn {inline_fn_name}").unwrap();
             if lo_type_args.len() > 0 {
                 let lo_type_args = TypeListFmt(self, &lo_type_args);
                 write!(&mut message, "<{lo_type_args}>").unwrap();
             }
             write!(&mut message, "(").unwrap();
 
-            for i in 0..macro_types.len() {
+            for i in 0..inline_fn_types.len() {
                 if i != 0 {
                     message.push_str(", ");
                 }
 
-                let param = &macro_def.macro_params[i];
+                let param = &inline_fn_def.inline_fn_params[i];
                 message.push_str(param.param_name.repr);
                 match param.param_type {
                     FnParamType::Self_ | FnParamType::SelfRef => {}
                     _ => {
                         message.push_str(": ");
-                        let arg_type = TypeFmt(self, &macro_types[i]);
+                        let arg_type = TypeFmt(self, &inline_fn_types[i]);
                         write!(&mut message, "{arg_type}",).unwrap();
                     }
                 }
             }
 
-            let return_type = if let Some(return_type) = &macro_def.return_type {
+            let return_type = if let Some(return_type) = &inline_fn_def.return_type {
                 self.build_type(ctx, return_type)?
             } else {
                 Type::Void
@@ -3839,11 +3849,11 @@ impl Compiler {
             self.reporter.print_inspection(&InspectInfo {
                 message,
                 loc: *loc,
-                linked_loc: Some(macro_def.macro_name.loc),
+                linked_loc: Some(inline_fn_def.inline_fn_name.loc),
             });
         }
 
-        Ok(macro_def)
+        Ok(inline_fn_def)
     }
 
     fn get_infer_type_name(&self, fn_param: &FnParam) -> Result<Option<&'static str>, Error> {
@@ -3879,34 +3889,34 @@ impl Compiler {
         Ok(Some(named.name.repr))
     }
 
-    fn codegen_macro_call(
+    fn codegen_inline_fn_call(
         &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        macro_name: &str,
+        inline_fn_name: &str,
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
         loc: &Loc,
     ) -> Result<(), Error> {
-        self.enter_scope(ctx, ScopeType::Macro);
-        self.current_scope_mut(ctx).macro_call_loc = Some(*loc);
+        self.enter_scope(ctx, ScopeType::InlineFn);
+        self.current_scope_mut(ctx).inline_fn_call_loc = Some(*loc);
 
-        let macro_def = self.relax_mut().populate_ctx_from_macro_call(
+        let inline_fn_def = self.relax_mut().populate_ctx_from_inline_fn_call(
             ctx,
-            macro_name,
+            inline_fn_name,
             type_args,
             receiver_arg,
             args,
             loc,
             true,
         );
-        let macro_def = catch!(macro_def, err, {
+        let inline_fn_def = catch!(inline_fn_def, err, {
             self.exit_scope(ctx);
             return Err(err);
         });
 
-        self.codegen_code_block(ctx, instrs, &macro_def.body, false);
+        self.codegen_code_block(ctx, instrs, &inline_fn_def.body, false);
 
         self.exit_scope(ctx);
 
@@ -4455,14 +4465,14 @@ impl Compiler {
 
                 Ok(fn_info.fn_type.output.clone())
             }
-            CodeExpr::MacroFnCall(MacroFnCallExpr {
+            CodeExpr::InlineFnCall(InlineFnCallExpr {
                 fn_name,
                 type_args,
                 args,
                 loc,
             }) => {
-                self.be_mut().enter_scope(ctx, ScopeType::Macro);
-                let expr_type = self.get_macro_return_type(
+                self.be_mut().enter_scope(ctx, ScopeType::InlineFn);
+                let expr_type = self.get_inline_fn_return_type(
                     ctx.be_mut(),
                     &fn_name.repr,
                     type_args,
@@ -4473,7 +4483,7 @@ impl Compiler {
                 self.be_mut().exit_scope(ctx);
                 expr_type
             }
-            CodeExpr::IntrinsicCall(MacroFnCallExpr {
+            CodeExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,
                 type_args: _,
                 args,
@@ -4509,7 +4519,7 @@ impl Compiler {
                     return Ok(Type::U32);
                 }
 
-                if fn_name.repr == "macro_call_loc" {
+                if fn_name.repr == "inline_fn_call_loc" {
                     return Ok(Type::StructInstance {
                         struct_index: self.current_scope(ctx).get_symbol("str").unwrap().col_index,
                     });
@@ -4560,7 +4570,7 @@ impl Compiler {
                     loc: fn_name.loc,
                 })
             }
-            CodeExpr::MacroMethodCall(MacroMethodCallExpr {
+            CodeExpr::InlineMethodCall(InlineMethodCallExpr {
                 lhs,
                 field_name,
                 type_args,
@@ -4568,12 +4578,12 @@ impl Compiler {
                 loc,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let macro_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
+                let inline_fn_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
 
-                self.be_mut().enter_scope(ctx, ScopeType::Macro);
-                let expr_type = self.get_macro_return_type(
+                self.be_mut().enter_scope(ctx, ScopeType::InlineFn);
+                let expr_type = self.get_inline_fn_return_type(
                     ctx.be_mut(),
-                    &macro_name,
+                    &inline_fn_name,
                     type_args,
                     &args.items,
                     Some(&lhs),
@@ -4791,13 +4801,13 @@ impl Compiler {
             | CodeExpr::PropagateError(_)
             | CodeExpr::FnCall(_)
             | CodeExpr::MethodCall(_)
-            | CodeExpr::MacroFnCall(_)
+            | CodeExpr::InlineFnCall(_)
             | CodeExpr::If(_)
             | CodeExpr::Sizeof(_)
             | CodeExpr::While(_)
             | CodeExpr::For(_)
             | CodeExpr::Defer(_)
-            | CodeExpr::MacroMethodCall(_) => false,
+            | CodeExpr::InlineMethodCall(_) => false,
 
             CodeExpr::Break(_) | CodeExpr::Continue(_) | CodeExpr::Return(_) => true,
 
@@ -4943,7 +4953,7 @@ impl Compiler {
             SymbolType::TypeAlias
             | SymbolType::Struct
             | SymbolType::Enum
-            | SymbolType::Macro
+            | SymbolType::InlineFn
             | SymbolType::Function
             | SymbolType::EnumConstructor => Err(Error {
                 message: format!(
@@ -5605,7 +5615,7 @@ impl Compiler {
             | SymbolType::Global
             | SymbolType::Const
             | SymbolType::Function
-            | SymbolType::Macro
+            | SymbolType::InlineFn
             | SymbolType::EnumConstructor => Err(Error {
                 message: format!("Symbol is not a type: {}", type_name),
                 loc: *loc,

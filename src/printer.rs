@@ -214,28 +214,28 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(const_value);
             }
-            TopLevelExpr::MacroDef(MacroDefExpr {
-                macro_name,
-                macro_params,
-                macro_type_params,
-                macro_params_trailing_comma,
+            TopLevelExpr::InlineFnDef(InlineFnDefExpr {
+                inline_fn_name,
+                inline_fn_params,
+                inline_fn_type_params,
+                inline_fn_params_trailing_comma,
                 return_type,
                 body,
                 loc: _,
             }) => {
-                stdout_write("macro ");
-                stdout_write(&macro_name.repr);
-                if macro_type_params.len() != 0 {
+                stdout_write("inline fn ");
+                stdout_write(&inline_fn_name.repr);
+                if inline_fn_type_params.len() != 0 {
                     stdout_write("<");
-                    for (type_param, i) in macro_type_params.iter().zip(0..) {
+                    for (type_param, i) in inline_fn_type_params.iter().zip(0..) {
                         stdout_write(type_param);
-                        if i != macro_type_params.len() - 1 {
+                        if i != inline_fn_type_params.len() - 1 {
                             stdout_write(",");
                         }
                     }
                     stdout_write(">");
                 }
-                self.print_fn_params(macro_params, *macro_params_trailing_comma);
+                self.print_fn_params(inline_fn_params, *inline_fn_params_trailing_comma);
                 if let Some(return_type) = return_type {
                     stdout_write(": ");
                     self.print_type_expr(return_type);
@@ -243,7 +243,7 @@ impl Printer {
                 self.last_printed_item_line = body.loc.pos.line;
                 self.print_code_block(body);
             }
-            TopLevelExpr::IntrinsicCall(MacroFnCallExpr {
+            TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,
                 type_args,
                 args,
@@ -733,7 +733,7 @@ impl Printer {
                 stdout_write(&field_name.repr);
                 self.print_args(args, &field_name.loc);
             }
-            CodeExpr::MacroFnCall(MacroFnCallExpr {
+            CodeExpr::InlineFnCall(InlineFnCallExpr {
                 fn_name,
                 args,
                 type_args,
@@ -743,7 +743,7 @@ impl Printer {
                 self.print_type_args(type_args);
                 self.print_args(args, loc);
             }
-            CodeExpr::IntrinsicCall(MacroFnCallExpr {
+            CodeExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,
                 args,
                 type_args,
@@ -754,7 +754,7 @@ impl Printer {
                 self.print_type_args(type_args);
                 self.print_args(args, loc);
             }
-            CodeExpr::MacroMethodCall(MacroMethodCallExpr {
+            CodeExpr::InlineMethodCall(InlineMethodCallExpr {
                 lhs,
                 field_name,
                 args,

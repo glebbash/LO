@@ -47,49 +47,6 @@
             ]
         },
         {
-            "comment": "macro metavariables",
-            "name": "meta.macro.metavariable.lo",
-            "match": "(\\$)([a-z][A-Za-z0-9_]*)((:)(block|expr|ident|item|lifetime|literal|meta|path?|stmt|tt|ty|vis))?",
-            "captures": {
-                "1": {
-                    "name": "keyword.operator.macro.dollar.lo"
-                },
-                "2": {
-                    "name": "variable.other.metavariable.name.lo"
-                },
-                "4": {
-                    "name": "keyword.operator.key-value.lo"
-                },
-                "5": {
-                    "name": "variable.other.metavariable.specifier.lo"
-                }
-            },
-            "patterns": [
-                {
-                    "include": "#keywords"
-                }
-            ]
-        },
-        {
-            "comment": "macro rules",
-            "name": "meta.macro.rules.lo",
-            "match": "\\b(macro_rules!)\\s+(([a-z0-9_]+)|([A-Z][a-z0-9_]*))\\s+(\\{)",
-            "captures": {
-                "1": {
-                    "name": "entity.name.function.macro.rules.lo"
-                },
-                "3": {
-                    "name": "entity.name.function.macro.lo"
-                },
-                "4": {
-                    "name": "entity.name.type.macro.lo"
-                },
-                "5": {
-                    "name": "punctuation.brackets.curly.lo"
-                }
-            }
-        },
-        {
             "comment": "modules",
             "match": "(mod)\\s+((?:r#(?![Ss]elf))?[a-z][A-Za-z0-9_]*)",
             "captures": {
@@ -168,7 +125,7 @@
             "include": "#lifetimes"
         },
         {
-            "include": "#macros"
+            "include": "#inline-fns"
         },
         {
             "include": "#punctuation"
@@ -434,7 +391,7 @@
                             "include": "#lifetimes"
                         },
                         {
-                            "include": "#macros"
+                            "include": "#inline-fns"
                         },
                         {
                             "include": "#punctuation"
@@ -497,7 +454,7 @@
                             "include": "#lifetimes"
                         },
                         {
-                            "include": "#macros"
+                            "include": "#inline-fns"
                         },
                         {
                             "include": "#punctuation"
@@ -557,7 +514,7 @@
                             "include": "#lifetimes"
                         },
                         {
-                            "include": "#macros"
+                            "include": "#inline-fns"
                         },
                         {
                             "include": "#punctuation"
@@ -585,7 +542,7 @@
                 {
                     "comment": "storage keywords",
                     "name": "keyword.other.lo storage.type.lo",
-                    "match": "\\b(extern|let|global|macro|mod)\\b"
+                    "match": "\\b(extern|let|mod)\\b"
                 },
                 {
                     "comment": "inline keyword",
@@ -729,12 +686,7 @@
                     "match": "=>"
                 },
                 {
-                    "comment": "dollar macros",
-                    "name": "keyword.operator.macro.dollar.lo",
-                    "match": "\\$"
-                },
-                {
-                    "comment": "question mark operator, questionably sized, macro kleene matcher",
+                    "comment": "question mark operator, questionably sized",
                     "name": "keyword.operator.question.lo",
                     "match": "\\?"
                 }
@@ -784,18 +736,18 @@
                 }
             ]
         },
-        "macros": {
+        "inline-fns": {
             "patterns": [
                 {
-                    "comment": "macros",
-                    "name": "meta.macro.lo",
+                    "comment": "inline fns",
+                    "name": "meta.inline-fn.lo",
                     "match": "(([a-z_][A-Za-z0-9_]*!)|([A-Z_][A-Za-z0-9_]*!))",
                     "captures": {
                         "2": {
-                            "name": "entity.name.function.macro.lo"
+                            "name": "entity.name.function.inline-fn.lo"
                         },
                         "3": {
-                            "name": "entity.name.type.macro.lo"
+                            "name": "entity.name.type.inline-fn.lo"
                         }
                     }
                 }

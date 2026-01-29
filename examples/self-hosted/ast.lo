@@ -13,8 +13,8 @@ enum TopLevelExpr(&void) {
     TypeDef(&TypeDefExpr),
     ConstDef(&ConstDefExpr),
     MemoryDef(&MemoryDefExpr),
-    MacroDef(&MacroDefExpr),
-    IntrinsicCall(&MacroFnCallExpr),
+    InlineFnDef(&InlineFnDefExpr),
+    IntrinsicCall(&InlineFnFnCallExpr),
 }
 
 struct IdentExpr {
@@ -158,11 +158,11 @@ struct CodeBlock {
     loc: Loc,
 }
 
-struct MacroDefExpr {
-    macro_name: IdentExpr,
-    macro_params: &Vec(FnParam),
-    macro_params_trailing_comma: bool,
-    macro_type_params: &Vec(str),
+struct InlineFnDefExpr {
+    inline_fn_name: IdentExpr,
+    inline_fn_params: &Vec(FnParam),
+    inline_fn_params_trailing_comma: bool,
+    inline_fn_type_params: &Vec(str),
     // @optional
     return_type: &TypeExpr,
     body: CodeBlock,
@@ -197,7 +197,7 @@ fn TopLevelExpr::loc(self): Loc {
     if match TopLevelExpr::MemoryDef(e) = self {
         return e.loc
     }
-    if match TopLevelExpr::MacroDef(e) = self {
+    if match TopLevelExpr::InlineFnDef(e) = self {
         return e.loc
     }
     if match TopLevelExpr::IntrinsicCall(e) = self {
@@ -273,9 +273,9 @@ enum CodeExpr(&void) {
     PropagateError(&PropagateErrorExpr),
     FnCall(&FnCallExpr),
     MethodCall(&MethodCallExpr),
-    MacroFnCall(&MacroFnCallExpr),
-    MacroMethodCall(&MacroMethodCallExpr),
-    IntrinsicCall(&MacroFnCallExpr),
+    InlineFnFnCall(&InlineFnFnCallExpr),
+    InlineFnMethodCall(&InlineFnMethodCallExpr),
+    IntrinsicCall(&InlineFnFnCallExpr),
 
     // control flow
     Return(&ReturnExpr),
@@ -513,14 +513,14 @@ struct MethodCallExpr {
     loc: Loc,
 }
 
-struct MacroFnCallExpr {
+struct InlineFnFnCallExpr {
     fn_name: IdentExpr,
     type_args: &Vec(TypeExpr),
     args: CodeExprList,
     loc: Loc,
 }
 
-struct MacroMethodCallExpr {
+struct InlineFnMethodCallExpr {
     lhs: CodeExpr,
     field_name: IdentExpr,
     type_args: &Vec(TypeExpr),
@@ -612,13 +612,13 @@ fn CodeExpr::loc(self): Loc {
     if match CodeExpr::MethodCall(e) = self {
         return e.loc
     }
-    if match CodeExpr::MacroFnCall(e) = self {
+    if match CodeExpr::InlineFnFnCall(e) = self {
         return e.loc
     }
     if match CodeExpr::IntrinsicCall(e) = self {
         return e.loc
     }
-    if match CodeExpr::MacroMethodCall(e) = self {
+    if match CodeExpr::InlineFnMethodCall(e) = self {
         return e.loc
     }
     if match CodeExpr::Sizeof(e) = self {

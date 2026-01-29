@@ -10,12 +10,12 @@ struct Box {
     raw: &void,
 }
 
-macro Box::new!(value: infer(T)): Box(T) {
+inline fn Box::new!(value: infer(T)): Box(T) {
     let self = Box { raw: MEM_CURRENT as &void }
     MEM_CURRENT += sizeof T
     self
 }
 
-macro Box::get!(self): itemof(typeof(self)) {
+inline fn Box::get!(self): itemof(typeof(self)) {
     *(self.raw as &itemof(typeof(self)))
 }

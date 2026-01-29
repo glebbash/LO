@@ -212,8 +212,8 @@ fn stdout_write(message: str) {
     STDOUT_BUFFER.push_all(message.data, message.size)
 }
 
-macro todo!(message: str): never {
-    stderr_write(@macro_call_loc())
+inline fn todo!(message: str): never {
+    stderr_write(@inline_fn_call_loc())
     stderr_write(" - ")
     stderr_write(message)
     stderr_write("not implemented")
