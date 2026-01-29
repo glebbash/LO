@@ -285,7 +285,7 @@ pub struct EnumConstructor {
 
 struct GlobalDef {
     module_ctx: &'static ExprContext,
-    def_expr: &'static GlobalDefExpr,
+    def_expr: &'static LetExpr,
     global_type: Type,
     global_index: u32,
 }
@@ -815,44 +815,44 @@ impl Compiler {
 
                     self.inline_fn_defs.push(inline_fn_def.relax());
                 }
-                TopLevelExpr::GlobalDef(global_def) => {
+                TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
                     let _ = self.define_symbol(
                         &mut module.ctx,
                         Symbol {
-                            name: global_def.global_name.repr,
+                            name: let_expr.name.repr,
                             type_: SymbolType::Global,
                             col_index: self.globals.len(),
                             defined_in_this_scope: true,
-                            loc: global_def.global_name.loc,
+                            loc: let_expr.name.loc,
                         },
                     );
 
                     self.globals.push(GlobalDef {
                         module_ctx: module.ctx.relax(),
-                        def_expr: global_def.relax(),
+                        def_expr: let_expr.relax(),
                         global_type: Type::Never, // placeholder
                         global_index: 0,          // placeholder
                     });
                 }
-                TopLevelExpr::ConstDef(const_def) => {
+                TopLevelExpr::Let(let_expr) => {
                     let _ = self.define_symbol(
                         &mut module.ctx,
                         Symbol {
-                            name: const_def.const_name.repr,
+                            name: let_expr.name.repr,
                             type_: SymbolType::Const,
                             col_index: self.const_defs.len(),
                             defined_in_this_scope: true,
-                            loc: const_def.const_name.loc,
+                            loc: let_expr.name.loc,
                         },
                     );
 
                     self.const_defs.push(ConstDef {
-                        const_name: const_def.const_name.repr,
+                        const_name: let_expr.name.repr,
                         code_unit: CodeUnit {
                             type_: Type::Never, // placeholder
                             instrs: Vec::new(), // placeholder
                         },
-                        loc: const_def.const_name.loc,
+                        loc: let_expr.name.loc,
                     });
                 }
                 _ => {} // skip, not interested
@@ -1211,45 +1211,6 @@ impl Compiler {
                         continue;
                     });
                 }
-                TopLevelExpr::ConstDef(const_def) => {
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&const_def.const_name.repr)
-                        .unwrap()
-                        .relax();
-                    let const_ = self.const_defs[symbol.col_index].relax_mut();
-
-                    let const_type = match self.get_expr_type(&module.ctx, &const_def.const_value) {
-                        Ok(x) => x,
-                        Err(err) => {
-                            self.reporter.error(&err);
-                            continue;
-                        }
-                    };
-                    const_.code_unit.type_ = const_type;
-
-                    if let Err(err) = self.codegen(
-                        module.ctx.be_mut(),
-                        &mut const_.code_unit.instrs,
-                        &const_def.const_value,
-                    ) {
-                        self.reporter.error(&err);
-                        continue;
-                    };
-
-                    if self.reporter.in_inspection_mode {
-                        let const_name = &const_def.const_name.repr;
-
-                        self.reporter.print_inspection(&InspectInfo {
-                            message: format!(
-                                "inline let {const_name}: {}",
-                                TypeFmt(self, &const_.code_unit.type_)
-                            ),
-                            loc: const_def.const_name.loc,
-                            linked_loc: None,
-                        });
-                    }
-                }
 
                 TopLevelExpr::FnDef(fn_def) => {
                     let symbol = self
@@ -1353,10 +1314,10 @@ impl Compiler {
                         }
                     }
                 }
-                TopLevelExpr::GlobalDef(global_def) => {
+                TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
                     let symbol = self
                         .current_scope(&module.ctx)
-                        .get_symbol(&global_def.global_name.repr)
+                        .get_symbol(&let_expr.name.repr)
                         .unwrap()
                         .relax();
                     let SymbolType::Global = symbol.type_ else {
@@ -1366,7 +1327,7 @@ impl Compiler {
 
                     // TODO: ensure `global_def.global_value` is a valid const expression
 
-                    let value_type = self.get_expr_type(&module.ctx, &global_def.global_value);
+                    let value_type = self.get_expr_type(&module.ctx, &let_expr.value);
                     let value_type = catch!(value_type, err, {
                         self.reporter.error(&err);
                         continue;
@@ -1374,14 +1335,53 @@ impl Compiler {
                     global.global_type = value_type;
 
                     if self.reporter.in_inspection_mode {
-                        let global_name = &global_def.global_name.repr;
+                        let global_name = &let_expr.name.repr;
 
                         self.reporter.print_inspection(&InspectInfo {
                             message: format!(
                                 "global {global_name}: {}",
                                 TypeFmt(self, &global.global_type)
                             ),
-                            loc: global_def.global_name.loc,
+                            loc: let_expr.name.loc,
+                            linked_loc: None,
+                        });
+                    }
+                }
+                TopLevelExpr::Let(let_expr) => {
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&let_expr.name.repr)
+                        .unwrap()
+                        .relax();
+                    let const_ = self.const_defs[symbol.col_index].relax_mut();
+
+                    let const_type = match self.get_expr_type(&module.ctx, &let_expr.value) {
+                        Ok(x) => x,
+                        Err(err) => {
+                            self.reporter.error(&err);
+                            continue;
+                        }
+                    };
+                    const_.code_unit.type_ = const_type;
+
+                    if let Err(err) = self.codegen(
+                        module.ctx.be_mut(),
+                        &mut const_.code_unit.instrs,
+                        &let_expr.value,
+                    ) {
+                        self.reporter.error(&err);
+                        continue;
+                    };
+
+                    if self.reporter.in_inspection_mode {
+                        let const_name = &let_expr.name.repr;
+
+                        self.reporter.print_inspection(&InspectInfo {
+                            message: format!(
+                                "inline let {const_name}: {}",
+                                TypeFmt(self, &const_.code_unit.type_)
+                            ),
+                            loc: let_expr.name.loc,
                             linked_loc: None,
                         });
                     }
@@ -1475,7 +1475,7 @@ impl Compiler {
             let res = self.codegen(
                 global.module_ctx.be_mut(),
                 &mut instrs,
-                &global.def_expr.global_value,
+                &global.def_expr.value,
             );
             catch!(res, err, {
                 self.reporter.error(&err);
@@ -1595,7 +1595,7 @@ impl Compiler {
             value: *self.data_size.borrow() as i32,
         };
         for global in self.globals.relax_mut() {
-            let CodeExpr::IntrinsicCall(intrinsic) = &global.def_expr.global_value else {
+            let CodeExpr::IntrinsicCall(intrinsic) = &*global.def_expr.value else {
                 continue;
             };
 
@@ -2291,17 +2291,22 @@ impl Compiler {
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
             CodeExpr::Let(LetExpr {
-                local_name,
+                is_inline: inline,
+                name,
                 value,
                 loc: _,
             }) => {
+                if *inline {
+                    todo!()
+                }
+
                 let mut local_type = Type::Never;
                 // any errors will be reported in `codegen` later
                 if let Ok(t) = self.get_expr_type(ctx, &value) {
                     local_type = t;
                 }
 
-                if local_name.repr == "_" {
+                if name.repr == "_" {
                     self.codegen(ctx, instrs, value)?;
 
                     for _ in 0..self.count_wasm_type_components(&local_type) {
@@ -2310,15 +2315,8 @@ impl Compiler {
                     return Ok(());
                 }
 
-                let local_index =
-                    self.define_local(ctx, local_name.loc, local_name.repr, &local_type);
-                let var = self.var_local(
-                    &local_name.repr,
-                    local_type,
-                    local_index,
-                    local_name.loc,
-                    None,
-                );
+                let local_index = self.define_local(ctx, name.loc, name.repr, &local_type);
+                let var = self.var_local(&name.repr, local_type, local_index, name.loc, None);
                 if let Some(inspect_info) = var.inspect_info() {
                     self.reporter.print_inspection(inspect_info);
                 }
@@ -4743,7 +4741,8 @@ impl Compiler {
 
         for expr in exprs {
             if let CodeExpr::Let(LetExpr {
-                local_name,
+                is_inline: _,
+                name,
                 value,
                 loc,
             }) = expr
@@ -4754,7 +4753,7 @@ impl Compiler {
                 self.be_mut().register_block_const(
                     ctx,
                     ConstDef {
-                        const_name: local_name.repr,
+                        const_name: name.repr,
                         code_unit: CodeUnit {
                             type_: value_type,
                             instrs: Vec::new(),

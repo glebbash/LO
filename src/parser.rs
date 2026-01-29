@@ -150,71 +150,6 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "let") {
-            let mut loc = self.prev().loc;
-
-            let global_name = self.parse_ident()?;
-            self.expect(Operator, "=")?;
-
-            let global_value = self.parse_code_expr(0)?;
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::GlobalDef(GlobalDefExpr {
-                global_name,
-                global_value,
-                loc,
-            }));
-        }
-
-        if let Some(_) = self.eat(Symbol, "enum") {
-            let mut loc = self.prev().loc;
-
-            let enum_name = self.parse_ident()?;
-
-            let mut variant_type = None;
-            if let Some(_) = self.eat(Delim, "(") {
-                variant_type = Some(self.parse_type_expr()?);
-                self.expect(Delim, ")")?;
-            }
-
-            let mut variants = Vec::new();
-
-            self.expect(Delim, "{")?;
-            while let None = self.eat(Delim, "}") {
-                let mut variant_loc = self.current().loc;
-
-                let variant_name = self.parse_ident()?;
-
-                let mut variant_type = None;
-                if let Some(_) = self.eat(Delim, "(") {
-                    variant_type = Some(self.parse_type_expr()?);
-                    self.expect(Delim, ")")?;
-                }
-
-                variant_loc.end_pos = self.prev().loc.end_pos;
-
-                variants.push(EnumDefVariant {
-                    variant_name,
-                    variant_type,
-                    loc: variant_loc,
-                });
-
-                if !self.current().is(Delim, "}", self.source) {
-                    self.expect(Delim, ",")?;
-                }
-            }
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::EnumDef(EnumDefExpr {
-                enum_name,
-                variant_type,
-                variants,
-                loc,
-            }));
-        }
-
         if let Some(_) = self.eat(Symbol, "type") {
             let mut loc = self.prev().loc;
 
@@ -309,21 +244,18 @@ impl Parser {
             }));
         }
 
+        if let Some(_) = self.eat(Symbol, "let") {
+            let loc = self.prev().loc;
+            let let_expr = self.parse_let(false, loc)?;
+            return Ok(TopLevelExpr::Let(let_expr));
+        }
+
         if self.eat(Symbol, "inline").is_some() {
             let mut loc = self.prev().loc;
 
             if self.eat(Symbol, "let").is_some() {
-                let const_name = self.parse_ident()?;
-                self.expect(Operator, "=")?;
-                let const_value = self.parse_code_expr(0)?;
-
-                loc.end_pos = self.prev().loc.end_pos;
-
-                return Ok(TopLevelExpr::ConstDef(ConstDefExpr {
-                    const_name,
-                    const_value,
-                    loc,
-                }));
+                let let_expr = self.parse_let(true, loc)?;
+                return Ok(TopLevelExpr::Let(let_expr));
             }
 
             if let Some(_) = self.eat(Symbol, "fn") {
@@ -383,6 +315,21 @@ impl Parser {
                 unexpected.get_value(self.source)
             ),
             loc: unexpected.loc,
+        });
+    }
+
+    fn parse_let(&self, is_inline: bool, mut loc: Loc) -> Result<LetExpr, Error> {
+        let name = self.parse_ident()?;
+        self.expect(Operator, "=")?;
+        let value = self.parse_code_expr(0)?;
+
+        loc.end_pos = self.prev().loc.end_pos;
+
+        return Ok(LetExpr {
+            is_inline,
+            name,
+            value: Box::new(value),
+            loc,
         });
     }
 
@@ -686,19 +633,10 @@ impl Parser {
         };
 
         if let Some(_) = self.eat(Symbol, "let") {
-            let mut loc = self.prev().loc;
+            let loc = self.prev().loc;
 
-            let local_name = self.parse_ident()?;
-            self.expect(Operator, "=")?;
-            let value = self.parse_code_expr(0)?;
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(CodeExpr::Let(LetExpr {
-                local_name,
-                value: Box::new(value),
-                loc,
-            }));
+            let let_expr = self.parse_let(false, loc)?;
+            return Ok(CodeExpr::Let(let_expr));
         }
 
         if let Some(_) = self.eat(Symbol, "return") {

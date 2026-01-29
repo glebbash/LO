@@ -3,18 +3,20 @@ include "./lexer.lo"
 
 // TODO: impl proper cleanup for all &Vec fields here
 
-type TopLevelExpr = enum(&void) {
+type TopLevelExpr = enum (&void) {
+    Let(&LetExpr),
+
     FnDef(&FnDefExpr),
-    Include(&IncludeExpr),
-    Import(&ImportExpr),
-    GlobalDef(&GlobalDefExpr),
+    InlineFnDef(&InlineFnDefExpr),
+
     StructDef(&StructDefExpr),
     EnumDef(&EnumDefExpr),
     TypeDef(&TypeDefExpr),
-    ConstDef(&ConstDefExpr),
-    MemoryDef(&MemoryDefExpr),
-    InlineFnDef(&InlineFnDefExpr),
+
     IntrinsicCall(&InlineFnFnCallExpr),
+    Include(&IncludeExpr),
+    Import(&ImportExpr),
+    MemoryDef(&MemoryDefExpr),
 }
 
 type IdentExpr = struct {
@@ -46,7 +48,7 @@ type FnParam = struct {
     loc: Loc,
 }
 
-type FnParamType = enum(&void) {
+type FnParamType = enum (&void) {
     Self(&void),
     SelfRef(&void),
     Type(&FnParamTypeType),
@@ -81,7 +83,7 @@ type ImportExpr = struct {
     loc: Loc,
 }
 
-type ImportItem = enum(&void) {
+type ImportItem = enum (&void) {
     FnDecl(&FnDeclExpr),
     Memory(&MemoryDefExpr),
 }
@@ -96,9 +98,10 @@ fn ImportItem::loc(self): Loc {
     @unreachable()
 }
 
-type GlobalDefExpr = struct {
-    global_name: IdentExpr,
-    global_value: CodeExpr,
+type LetExpr = struct {
+    is_inline: bool,
+    name: IdentExpr,
+    value: CodeExpr,
     loc: Loc,
 }
 
@@ -132,12 +135,6 @@ type EnumDefVariant = struct {
 type TypeDefExpr = struct {
     type_name: IdentExpr,
     type_value: TypeExpr,
-    loc: Loc,
-}
-
-type ConstDefExpr = struct {
-    const_name: IdentExpr,
-    const_value: CodeExpr,
     loc: Loc,
 }
 
@@ -179,7 +176,7 @@ fn TopLevelExpr::loc(self): Loc {
     if match TopLevelExpr::Import(e) = self {
         return e.loc
     }
-    if match TopLevelExpr::GlobalDef(e) = self {
+    if match TopLevelExpr::Let(e) = self {
         return e.loc
     }
     if match TopLevelExpr::StructDef(e) = self {
@@ -189,9 +186,6 @@ fn TopLevelExpr::loc(self): Loc {
         return e.loc
     }
     if match TopLevelExpr::TypeDef(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::ConstDef(e) = self {
         return e.loc
     }
     if match TopLevelExpr::MemoryDef(e) = self {
@@ -206,7 +200,7 @@ fn TopLevelExpr::loc(self): Loc {
     @unreachable()
 }
 
-type TypeExpr = enum(&void) {
+type TypeExpr = enum (&void) {
     Named(&TypeExprNamed),
     Pointer(&TypeExprPointer),
     SequencePointer(&TypeExprSequencePointer),
@@ -249,7 +243,7 @@ type TypeExprContainer = struct {
     loc: Loc,
 }
 
-type CodeExpr = enum(&void) {
+type CodeExpr = enum (&void) {
     // literals
     BoolLiteral(&BoolLiteralExpr),
     CharLiteral(&CharLiteralExpr),
@@ -352,7 +346,7 @@ type IfExpr = struct {
     loc: Loc,
 }
 
-type IfCond = enum(&void) {
+type IfCond = enum (&void) {
     Expr(&CodeExpr),
     Match(&MatchHeader),
 }
@@ -363,16 +357,10 @@ type MatchHeader = struct {
     expr_to_match: CodeExpr,
 }
 
-type ElseBlock = enum(&void) {
+type ElseBlock = enum (&void) {
     None(&void),
     Else(&CodeBlock),
     ElseIf(&CodeExpr),
-}
-
-type LetExpr = struct {
-    local_name: IdentExpr,
-    value: CodeExpr,
-    loc: Loc,
 }
 
 type WhileExpr = struct {

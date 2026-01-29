@@ -167,17 +167,70 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     if self.eat(Symbol, "let") != null {
         let loc = self.prev().loc
 
-        let global_name = self.parse_ident()?
-        let _ = self.expect(Operator, "=")?
-        let global_value = self.parse_code_expr(0)?
+        let let_expr = self.parse_let(false, loc)?
+        return Ok(TopLevelExpr::Let(self.ast_arena.new!(let_expr)))
+    }
 
-        loc.end_pos = self.prev().loc.end_pos
+    if self.eat(Symbol, "inline") != null {
+        let loc = self.prev().loc
 
-        return Ok(TopLevelExpr::GlobalDef(self.ast_arena.new!(GlobalDefExpr {
-            global_name: global_name,
-            global_value: global_value,
-            loc: loc,
-        })))
+        if self.eat(Symbol, "let") != null {
+            let let_expr = self.parse_let(true, loc)?
+            return Ok(TopLevelExpr::Let(self.ast_arena.new!(let_expr)))
+        }
+
+        if self.eat(Symbol, "fn") != null {
+            let inline_fn_name = self.parse_ident()?
+            let _ = self.expect(Operator, "!")?
+            let excl_end_pos = self.prev().loc.end_pos
+
+            let type_params = Vec::new!<str>()
+            if self.eat(Operator, "<") != null {
+                while self.eat(Operator, ">") == null {
+                    let type_param = self.expect_any(Symbol)?
+                    type_params.push!(type_param.get_value(self.source))
+
+                    if !self.current().is(Operator, ">", self.source) {
+                        let _ = self.expect(Delim, ",")?
+                    }
+                }
+            }
+
+            let params_trailing_comma = ref!(false)
+            let params = self.parse_fn_params(params_trailing_comma)?
+
+            let return_type = null as &TypeExpr
+            if self.eat(Operator, ":") != null {
+                return_type = self.ast_arena.new!(self.parse_type_expr()?)
+            }
+
+            let body = self.parse_code_block()?
+
+            loc.end_pos = self.prev().loc.end_pos
+
+            let result = self.ast_arena.new!(InlineFnDefExpr {
+                inline_fn_name: inline_fn_name,
+                params: params,
+                params_trailing_comma: *params_trailing_comma,
+                type_params: type_params,
+                return_type: return_type,
+                body: body,
+                loc: loc,
+            })
+
+            self.extend_ident(&result.inline_fn_name, excl_end_pos)
+
+            return Ok(TopLevelExpr::InlineFnDef(result))
+        }
+
+        let unexpected = self.current()
+        let message = String::from_str_in(self.error_arena, "Unexpected inlineable: ")
+        message.push_str(unexpected.get_value(self.lexer.source))
+
+        return Err(self.error_arena.new!(Error {
+            message: message,
+            loc: unexpected.loc,
+        }))
     }
 
     if self.eat(Symbol, "type") != null {
@@ -274,77 +327,6 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(Symbol, "inline") != null {
-        let loc = self.prev().loc
-
-        if self.eat(Symbol, "let") != null {
-            let const_name = self.parse_ident()?
-            let _ = self.expect(Operator, "=")?
-            let const_value = self.parse_code_expr(0)?
-
-            loc.end_pos = self.prev().loc.end_pos
-
-            return Ok(TopLevelExpr::ConstDef(self.ast_arena.new!(ConstDefExpr {
-                const_name: const_name,
-                const_value: const_value,
-                loc: loc,
-            })))
-        }
-
-        if self.eat(Symbol, "fn") != null {
-            let inline_fn_name = self.parse_ident()?
-            let _ = self.expect(Operator, "!")?
-            let excl_end_pos = self.prev().loc.end_pos
-
-            let type_params = Vec::new!<str>()
-            if self.eat(Operator, "<") != null {
-                while self.eat(Operator, ">") == null {
-                    let type_param = self.expect_any(Symbol)?
-                    type_params.push!(type_param.get_value(self.source))
-
-                    if !self.current().is(Operator, ">", self.source) {
-                        let _ = self.expect(Delim, ",")?
-                    }
-                }
-            }
-
-            let params_trailing_comma = ref!(false)
-            let params = self.parse_fn_params(params_trailing_comma)?
-
-            let return_type = null as &TypeExpr
-            if self.eat(Operator, ":") != null {
-                return_type = self.ast_arena.new!(self.parse_type_expr()?)
-            }
-
-            let body = self.parse_code_block()?
-
-            loc.end_pos = self.prev().loc.end_pos
-
-            let result = self.ast_arena.new!(InlineFnDefExpr {
-                inline_fn_name: inline_fn_name,
-                params: params,
-                params_trailing_comma: *params_trailing_comma,
-                type_params: type_params,
-                return_type: return_type,
-                body: body,
-                loc: loc,
-            })
-
-            self.extend_ident(&result.inline_fn_name, excl_end_pos)
-
-            return Ok(TopLevelExpr::InlineFnDef(result))
-        }
-
-        let unexpected = self.current()
-        let message = String::from_str_in(self.error_arena, "Unexpected inlineable: ")
-        message.push_str(unexpected.get_value(self.lexer.source))
-
-        return Err(self.error_arena.new!(Error {
-            message: message,
-            loc: unexpected.loc,
-        }))
-    }
-
     let unexpected = self.current()
     let message = String::from_str_in(self.error_arena, "Unexpected top level token: ")
     message.push_str(unexpected.get_value(self.lexer.source))
@@ -353,6 +335,21 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         message: message,
         loc: unexpected.loc,
     }))
+}
+
+fn Parser::parse_let(&self, is_inline: bool, loc: Loc): Result(LetExpr, &Error) {
+    let name = self.parse_ident()?
+    let _ = self.expect(Operator, "=")?
+    let value = self.parse_code_expr(0)?
+
+    loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(LetExpr {
+        is_inline: is_inline,
+        name: name,
+        value: value,
+        loc: loc,
+    })
 }
 
 fn Parser::parse_fn_def(&self, exported: bool, loc: Loc): Result(&FnDefExpr, &Error) {
@@ -747,17 +744,8 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     if self.eat(Symbol, "let") != null {
         let loc = self.prev().loc
 
-        let local_name = self.parse_ident()?
-        let _ = self.expect(Operator, "=")?
-        let value = self.parse_code_expr(0)?
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(CodeExpr::Let(self.ast_arena.new!(LetExpr {
-            local_name: local_name,
-            value: value,
-            loc: loc,
-        })))
+        let let_expr = self.parse_let(false, loc)?
+        return Ok(CodeExpr::Let(self.ast_arena.new!(let_expr)))
     }
 
     if self.eat(Symbol, "return") != null {

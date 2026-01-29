@@ -110,15 +110,19 @@ impl Printer {
                 self.print_indent();
                 stdout_write("}");
             }
-            TopLevelExpr::GlobalDef(GlobalDefExpr {
-                global_name,
-                global_value,
+            TopLevelExpr::Let(LetExpr {
+                is_inline: inline,
+                name,
+                value,
                 loc: _,
             }) => {
+                if *inline {
+                    stdout_write("inline ");
+                }
                 stdout_write("let ");
-                stdout_write(&global_name.repr);
+                stdout_write(&name.repr);
                 stdout_write(" = ");
-                self.print_code_expr(global_value);
+                self.print_code_expr(value);
             }
             TopLevelExpr::StructDef(StructDefExpr {
                 struct_name,
@@ -164,7 +168,7 @@ impl Printer {
                 stdout_write(" = enum");
 
                 if let Some(data_type) = variant_type {
-                    stdout_write("(");
+                    stdout_write(" (");
                     self.print_type_expr(data_type);
                     stdout_write(")");
                 }
@@ -205,16 +209,6 @@ impl Printer {
                 stdout_write(&type_name.repr);
                 stdout_write(" = ");
                 self.print_type_expr(type_value);
-            }
-            TopLevelExpr::ConstDef(ConstDefExpr {
-                const_name,
-                const_value,
-                loc: _,
-            }) => {
-                stdout_write("inline let ");
-                stdout_write(&const_name.repr);
-                stdout_write(" = ");
-                self.print_code_expr(const_value);
             }
             TopLevelExpr::InlineFnDef(InlineFnDefExpr {
                 inline_fn_name,
@@ -509,12 +503,16 @@ impl Printer {
                 stdout_write(repr);
             }
             CodeExpr::Let(LetExpr {
-                local_name,
+                is_inline: inline,
+                name,
                 value,
                 loc: _,
             }) => {
+                if *inline {
+                    stdout_write("inline ");
+                }
                 stdout_write("let ");
-                stdout_write(&local_name.repr);
+                stdout_write(&name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(&value);
             }

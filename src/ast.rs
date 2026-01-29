@@ -2,8 +2,7 @@ use crate::{core::*, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 pub enum TopLevelExpr {
-    GlobalDef(GlobalDefExpr),
-    ConstDef(ConstDefExpr),
+    Let(LetExpr),
     FnDef(FnDefExpr),
     InlineFnDef(InlineFnDefExpr),
 
@@ -78,9 +77,10 @@ impl ImportItem {
     }
 }
 
-pub struct GlobalDefExpr {
-    pub global_name: IdentExpr,
-    pub global_value: CodeExpr,
+pub struct LetExpr {
+    pub is_inline: bool,
+    pub name: IdentExpr,
+    pub value: Box<CodeExpr>,
     pub loc: Loc,
 }
 
@@ -115,12 +115,6 @@ pub struct TypeDefExpr {
     pub loc: Loc,
 }
 
-pub struct ConstDefExpr {
-    pub const_name: IdentExpr,
-    pub const_value: CodeExpr,
-    pub loc: Loc,
-}
-
 pub struct MemoryDefExpr {
     pub exported: bool,
     pub params: CodeExprMap,
@@ -129,9 +123,9 @@ pub struct MemoryDefExpr {
 
 pub struct InlineFnDefExpr {
     pub inline_fn_name: IdentExpr,
+    pub type_params: Vec<&'static str>,
     pub params: Vec<FnParam>,
     pub params_trailing_comma: bool,
-    pub type_params: Vec<&'static str>,
     pub return_type: Option<TypeExpr>,
     pub body: CodeBlock,
     pub loc: Loc,
@@ -145,14 +139,13 @@ pub struct CodeBlock {
 impl TopLevelExpr {
     pub fn loc(&self) -> &Loc {
         match self {
+            TopLevelExpr::Let(e) => &e.loc,
             TopLevelExpr::FnDef(e) => &e.loc,
             TopLevelExpr::Include(e) => &e.loc,
             TopLevelExpr::Import(e) => &e.loc,
-            TopLevelExpr::GlobalDef(e) => &e.loc,
             TopLevelExpr::StructDef(e) => &e.loc,
             TopLevelExpr::EnumDef(e) => &e.loc,
             TopLevelExpr::TypeDef(e) => &e.loc,
-            TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
             TopLevelExpr::InlineFnDef(e) => &e.loc,
             TopLevelExpr::IntrinsicCall(e) => &e.loc,
@@ -320,12 +313,6 @@ pub enum ElseBlock {
     None,
     Else(Box<CodeBlock>),
     ElseIf(Box<CodeExpr>),
-}
-
-pub struct LetExpr {
-    pub local_name: IdentExpr,
-    pub value: Box<CodeExpr>,
-    pub loc: Loc,
 }
 
 pub struct WhileExpr {

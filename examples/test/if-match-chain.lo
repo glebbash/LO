@@ -1,6 +1,6 @@
 include "../lib/cli.lo"
 
-type Dir = enum(u32) {
+type Dir = enum (u32) {
     Left(u32),
     Right(u32),
 }

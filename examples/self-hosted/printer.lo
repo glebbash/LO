@@ -117,11 +117,14 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::GlobalDef(global_def) = expr {
+    if match TopLevelExpr::Let(let_expr) = expr {
+        if let_expr.is_inline {
+            stdout_write("inline ")
+        }
         stdout_write("let ")
-        stdout_write(global_def.global_name.repr)
+        stdout_write(let_expr.name.repr)
         stdout_write(" = ")
-        self.print_code_expr(global_def.global_value)
+        self.print_code_expr(let_expr.value)
         return
     }
 
@@ -164,7 +167,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         stdout_write(" = enum")
 
         if enum_def.variant_type != null {
-            stdout_write("(")
+            stdout_write(" (")
             self.print_type_expr(*enum_def.variant_type)
             stdout_write(")")
         }
@@ -204,14 +207,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         stdout_write(type_def.type_name.repr)
         stdout_write(" = ")
         self.print_type_expr(type_def.type_value)
-        return
-    }
-
-    if match TopLevelExpr::ConstDef(const_def) = expr {
-        stdout_write("inline let ")
-        stdout_write(const_def.const_name.repr)
-        stdout_write(" = ")
-        self.print_code_expr(const_def.const_value)
         return
     }
 
@@ -490,8 +485,11 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
     }
 
     if match CodeExpr::Let(let_expr) = expr {
+        if let_expr.is_inline {
+            stdout_write("inline ")
+        }
         stdout_write("let ")
-        stdout_write(let_expr.local_name.repr)
+        stdout_write(let_expr.name.repr)
         stdout_write(" = ")
         self.print_code_expr(let_expr.value)
         return
