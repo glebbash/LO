@@ -639,6 +639,24 @@ impl Parser {
             return Ok(CodeExpr::Let(let_expr));
         }
 
+        if let Some(_) = self.eat(Symbol, "inline") {
+            let loc = self.prev().loc;
+
+            if let Some(_) = self.eat(Symbol, "let") {
+                let let_expr = self.parse_let(true, loc)?;
+                return Ok(CodeExpr::Let(let_expr));
+            }
+
+            let unexpected = self.current();
+            return Err(Error {
+                message: format!(
+                    "Unexpected inlineable: {}",
+                    unexpected.get_value(self.source)
+                ),
+                loc: unexpected.loc,
+            });
+        }
+
         if let Some(_) = self.eat(Symbol, "return") {
             let mut loc = self.prev().loc;
 

@@ -748,6 +748,26 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         return Ok(CodeExpr::Let(self.ast_arena.new!(let_expr)))
     }
 
+    if self.eat(Symbol, "inline") != null {
+        let loc = self.prev().loc
+
+        if self.eat(Symbol, "let") != null {
+            let loc = self.prev().loc
+
+            let let_expr = self.parse_let(true, loc)?
+            return Ok(CodeExpr::Let(self.ast_arena.new!(let_expr)))
+        }
+
+        let unexpected = self.current()
+        let message = String::from_str_in(self.error_arena, "Unexpected inlineable: ")
+        message.push_str(unexpected.get_value(self.lexer.source))
+
+        return Err(self.error_arena.new!(Error {
+            message: message,
+            loc: unexpected.loc,
+        }))
+    }
+
     if self.eat(Symbol, "return") != null {
         let loc = self.prev().loc
 

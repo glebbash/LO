@@ -2297,26 +2297,35 @@ impl Compiler {
                 loc: _,
             }) => {
                 if *inline {
-                    todo!()
+                    let code_unit = self.build_code_unit(ctx, value)?;
+                    self.register_block_const(
+                        ctx,
+                        ConstDef {
+                            const_name: name.repr,
+                            code_unit,
+                            loc: name.loc,
+                        },
+                    );
+                    return Ok(());
                 }
 
-                let mut local_type = Type::Never;
-                // any errors will be reported in `codegen` later
+                let mut var_type = Type::Never;
+                // any errors will be reported during value codegen
                 if let Ok(t) = self.get_expr_type(ctx, &value) {
-                    local_type = t;
+                    var_type = t;
                 }
 
                 if name.repr == "_" {
                     self.codegen(ctx, instrs, value)?;
 
-                    for _ in 0..self.count_wasm_type_components(&local_type) {
+                    for _ in 0..self.count_wasm_type_components(&var_type) {
                         instrs.push(WasmInstr::Drop);
                     }
                     return Ok(());
                 }
 
-                let local_index = self.define_local(ctx, name.loc, name.repr, &local_type);
-                let var = self.var_local(&name.repr, local_type, local_index, name.loc, None);
+                let local_index = self.define_local(ctx, name.loc, name.repr, &var_type);
+                let var = self.var_local(&name.repr, var_type, local_index, name.loc, None);
                 if let Some(inspect_info) = var.inspect_info() {
                     self.reporter.print_inspection(inspect_info);
                 }
