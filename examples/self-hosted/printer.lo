@@ -53,7 +53,10 @@ fn Printer::print_file(&self) {
 }
 
 fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
-    defer self.last_printed_item_line = expr.loc().end_pos.line
+    defer if true {
+        stdout_write("\n")
+        self.last_printed_item_line = expr.loc().end_pos.line
+    }
 
     self.print_comments_before(expr.loc().pos)
 
@@ -64,13 +67,11 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         self.print_fn_decl(fn_def.decl)
 
         self.print_code_block(*fn_def.body)
-        stdout_write("\n")
         return
     }
 
     if match TopLevelExpr::MemoryDef(memory_def) = expr {
         self.print_memory_def(*memory_def)
-        stdout_write("\n")
         return
     }
 
@@ -84,7 +85,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         if include_expr.with_extern {
             stdout_write(" with extern")
         }
-        stdout_write("\n")
         return
     }
 
@@ -114,7 +114,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         self.indent -= 1
         self.print_indent()
         stdout_write("}")
-        stdout_write("\n")
         return
     }
 
@@ -123,7 +122,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         stdout_write(global_def.global_name.repr)
         stdout_write(" = ")
         self.print_code_expr(global_def.global_value)
-        stdout_write("\n")
         return
     }
 
@@ -133,29 +131,29 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
         if struct_def.fields.size == 0 {
             stdout_write(" {}")
-            stdout_write("\n")
-        } else {
-            stdout_writeln(" {")
-            self.indent += 1
-            for i in 0..struct_def.fields.size {
-                let field = struct_def.fields.get!(i)
-                self.print_comments_before(field.loc.pos)
-                self.print_indent()
-                stdout_write(field.field_name.repr)
-                stdout_write(": ")
-                self.print_type_expr(field.field_type)
-                stdout_writeln(",")
-            }
-
-            // print the rest of the comments
-            self.print_comments_before(struct_def.loc.end_pos)
-
-            self.indent -= 1
-            self.print_indent()
-
-            stdout_write("}")
-            stdout_write("\n")
+            return
         }
+
+        stdout_writeln(" {")
+        self.indent += 1
+        for i in 0..struct_def.fields.size {
+            let field = struct_def.fields.get!(i)
+            self.print_comments_before(field.loc.pos)
+            self.print_indent()
+            stdout_write(field.field_name.repr)
+            stdout_write(": ")
+            self.print_type_expr(field.field_type)
+            stdout_writeln(",")
+        }
+
+        // print the rest of the comments
+        self.print_comments_before(struct_def.loc.end_pos)
+
+        self.indent -= 1
+        self.print_indent()
+
+        stdout_write("}")
+
         return
     }
 
@@ -171,32 +169,31 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
         if enum_def.variants.size == 0 {
             stdout_write(" {}")
-            stdout_write("\n")
-        } else {
-            stdout_writeln(" {")
-            self.indent += 1
-            for i in 0..enum_def.variants.size {
-                let variant = enum_def.variants.get!(i)
-                self.print_comments_before(variant.loc.pos)
-                self.print_indent()
-                stdout_write(variant.variant_name.repr)
-                if variant.variant_type != null {
-                    stdout_write("(")
-                    self.print_type_expr(*variant.variant_type)
-                    stdout_write(")")
-                }
-                stdout_writeln(",")
-            }
-
-            // print the rest of the comments
-            self.print_comments_before(enum_def.loc.end_pos)
-
-            self.indent -= 1
-            self.print_indent()
-
-            stdout_write("}")
-            stdout_write("\n")
+            return
         }
+
+        stdout_writeln(" {")
+        self.indent += 1
+        for i in 0..enum_def.variants.size {
+            let variant = enum_def.variants.get!(i)
+            self.print_comments_before(variant.loc.pos)
+            self.print_indent()
+            stdout_write(variant.variant_name.repr)
+            if variant.variant_type != null {
+                stdout_write("(")
+                self.print_type_expr(*variant.variant_type)
+                stdout_write(")")
+            }
+            stdout_writeln(",")
+        }
+
+        // print the rest of the comments
+        self.print_comments_before(enum_def.loc.end_pos)
+
+        self.indent -= 1
+        self.print_indent()
+
+        stdout_write("}")
         return
     }
 
@@ -205,7 +202,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         stdout_write(type_def.type_name.repr)
         stdout_write(" = ")
         self.print_type_expr(type_def.type_value)
-        stdout_write("\n")
         return
     }
 
@@ -214,19 +210,14 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         stdout_write(const_def.const_name.repr)
         stdout_write(" = ")
         self.print_code_expr(const_def.const_value)
-        stdout_write("\n")
         return
     }
 
-    if match TopLevelExpr::TryExport(try_export) = expr {
-        stdout_write("try export ")
-        stdout_write(try_export.in_name.repr)
-        stdout_write(" as ")
-        stdout_write(try_export.out_name.get_repr(self.parser.lexer.source))
-        if try_export.from_root {
-            stdout_write(" from root")
-        }
-        stdout_write("\n")
+    if match TopLevelExpr::IntrinsicCall(instrinsic) = expr {
+        stdout_write("@")
+        stdout_write(instrinsic.fn_name.repr)
+        self.print_type_args(instrinsic.type_args)
+        self.print_args(instrinsic.args, instrinsic.loc)
         return
     }
 
@@ -251,7 +242,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         }
         self.last_printed_item_line = macro_def.body.loc.pos.line
         self.print_code_block(macro_def.body)
-        stdout_write("\n")
         return
     }
 

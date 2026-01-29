@@ -4,11 +4,9 @@ export memory { min_pages: 1 }
 
 include "../lib/std.lo"
 
-try export Vec::with_capacity as "vec_new"
-
-try export Vec::swap as "vec_swap"
-
-try export Vec::push_all as "vec_push_all"
+@export_existing(in = "Vec::with_capacity", out = "vec_new")
+@export_existing(in = "Vec::swap", out = "vec_swap")
+@export_existing(in = "Vec::push_all", out = "vec_push_all")
 
 export fn vec_len(vec: &Vec): u32 {
     return vec.size

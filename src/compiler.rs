@@ -1081,6 +1081,130 @@ impl Compiler {
                 TopLevelExpr::StructDef(_) => {} // skip, processed in pass_assemble_complex_types
                 TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
 
+                TopLevelExpr::IntrinsicCall(MacroFnCallExpr {
+                    fn_name,
+                    type_args,
+                    args,
+                    loc: _,
+                }) => {
+                    if fn_name.repr == "export_existing" {
+                        let mut from_root = false;
+                        let mut in_name = None;
+                        let mut out_name = None;
+
+                        if type_args.len() != 0 {
+                            self.reporter.error(&bad_signature(fn_name));
+                        }
+
+                        for arg in &args.items {
+                            let CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) = arg else {
+                                self.reporter.error(&bad_signature(fn_name));
+                                continue;
+                            };
+
+                            let CodeExpr::Ident(key) = &**lhs else {
+                                self.reporter.error(&bad_signature(fn_name));
+                                continue;
+                            };
+
+                            if key.repr == "in" {
+                                let CodeExpr::StringLiteral(value) = &**rhs else {
+                                    self.reporter.error(&bad_signature(fn_name));
+                                    continue;
+                                };
+
+                                in_name = Some(value.relax());
+                                continue;
+                            }
+
+                            if key.repr == "out" {
+                                let CodeExpr::StringLiteral(value) = &**rhs else {
+                                    self.reporter.error(&bad_signature(fn_name));
+                                    continue;
+                                };
+
+                                out_name = Some(value.relax());
+                                continue;
+                            }
+
+                            if key.repr == "from_root" {
+                                let CodeExpr::BoolLiteral(BoolLiteralExpr { value: true, .. }) =
+                                    &**rhs
+                                else {
+                                    self.reporter.error(&bad_signature(fn_name));
+                                    continue;
+                                };
+
+                                from_root = true;
+                                continue;
+                            }
+
+                            self.reporter.error(&bad_signature(fn_name));
+                            continue;
+                        }
+
+                        let Some(in_name) = in_name else {
+                            self.reporter.error(&bad_signature(fn_name));
+                            continue;
+                        };
+
+                        let mut target_module = module as &Module;
+                        if from_root {
+                            target_module = &self.modules.last().unwrap();
+                        }
+
+                        let Ok(fn_info) = self.get_fn_info_for_call(
+                            &target_module.ctx,
+                            &in_name.value,
+                            &in_name.loc,
+                        ) else {
+                            // don't report any errors if function to be exported
+                            //   could be in another module but only one module is inspected
+                            if from_root && self.reporter.in_inspection_mode {
+                                continue;
+                            }
+
+                            self.reporter.error(&Error {
+                                message: format!("Can't export unknown symbol {}", in_name.value),
+                                loc: in_name.loc,
+                            });
+                            continue;
+                        };
+
+                        if self.reporter.in_inspection_mode {
+                            self.reporter.print_inspection(&InspectInfo {
+                                message: in_name.value.clone(),
+                                loc: in_name.loc,
+                                linked_loc: Some(fn_info.definition_loc.clone()),
+                            });
+                        }
+
+                        let mut exported_as = in_name;
+                        if let Some(out_name) = out_name {
+                            exported_as = out_name;
+                        }
+
+                        fn_info.be_mut().exported_as.push(exported_as.value.clone());
+
+                        continue;
+
+                        fn bad_signature(fn_name: &IdentExpr) -> Error {
+                            Error {
+                                message: format!(
+                                    "Invalid call, expected signature: @{}(in = \"...\", [out = \"...\", from_root = true])",
+                                    fn_name.repr
+                                ),
+                                loc: fn_name.loc,
+                            }
+                        }
+                    }
+
+                    self.reporter.error(&Error {
+                        message: format!("Unknown intrinsic: {}", fn_name.repr),
+                        loc: fn_name.loc,
+                    });
+                }
+
                 TopLevelExpr::MemoryDef(memory_def) => {
                     catch!(self.define_memory(module, memory_def, None), err, {
                         self.reporter.error(&err);
@@ -1169,31 +1293,6 @@ impl Compiler {
                             loc: fn_param.param_name.loc,
                         });
                     }
-                }
-                TopLevelExpr::TryExport(try_export_expr) => {
-                    let mut target_module = module as &Module;
-                    if try_export_expr.from_root {
-                        target_module = &self.modules.last().unwrap();
-                    }
-
-                    let Ok(fn_info) = self.get_fn_info_for_call(
-                        &target_module.ctx,
-                        &try_export_expr.in_name.repr,
-                        &try_export_expr.loc,
-                    ) else {
-                        return; // ignore if it doesn't exist or is not a function
-                    };
-
-                    if self.reporter.in_inspection_mode {
-                        self.reporter.print_inspection(&InspectInfo {
-                            message: String::from(try_export_expr.in_name.repr),
-                            loc: try_export_expr.loc,
-                            linked_loc: Some(fn_info.definition_loc.clone()),
-                        });
-                    }
-
-                    let exported_as = try_export_expr.out_name.get_value(module.source);
-                    fn_info.be_mut().exported_as.push(exported_as);
                 }
                 TopLevelExpr::Import(import_expr) => {
                     'items: for item in &import_expr.items {

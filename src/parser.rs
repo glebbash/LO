@@ -71,27 +71,19 @@ impl Parser {
             });
         }
 
-        if let Some(_) = self.eat(Symbol, "try") {
+        if let Some(_) = self.eat(Operator, "@") {
             let mut loc = self.prev().loc;
 
-            self.expect(Symbol, "export")?;
-            let in_name = self.parse_ident()?;
-
-            self.expect(Symbol, "as")?;
-            let out_name = self.expect_any(StringLiteral)?.clone();
-
-            let mut from_root = false;
-            if let Some(_) = self.eat(Symbol, "from") {
-                self.expect(Symbol, "root")?;
-                from_root = true;
-            }
+            let fn_name = self.parse_ident()?;
+            let type_args = self.parse_macro_type_args()?;
+            let args = self.parse_fn_args()?;
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(TopLevelExpr::TryExport(TryExportExpr {
-                in_name,
-                out_name: QuotedString::new(out_name.loc),
-                from_root,
+            return Ok(TopLevelExpr::IntrinsicCall(MacroFnCallExpr {
+                fn_name,
+                args,
+                type_args,
                 loc,
             }));
         }

@@ -2,17 +2,20 @@ use crate::{core::*, lexer::*};
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 pub enum TopLevelExpr {
-    FnDef(FnDefExpr),
-    Include(IncludeExpr),
-    Import(ImportExpr),
     GlobalDef(GlobalDefExpr),
+    ConstDef(ConstDefExpr),
+    FnDef(FnDefExpr),
+    MacroDef(MacroDefExpr),
+
     StructDef(StructDefExpr),
     EnumDef(EnumDefExpr),
     TypeDef(TypeDefExpr),
-    ConstDef(ConstDefExpr),
+
+    IntrinsicCall(MacroFnCallExpr),
+
+    Import(ImportExpr),
+    Include(IncludeExpr),
     MemoryDef(MemoryDefExpr),
-    TryExport(TryExportExpr),
-    MacroDef(MacroDefExpr),
 }
 
 pub struct FnDefExpr {
@@ -124,16 +127,6 @@ pub struct MemoryDefExpr {
     pub loc: Loc,
 }
 
-/// DOC: `try export <in> as "<out>" [from root]` syntax was chosen
-///   because it reuses existing rust keywords and reads nicely
-
-pub struct TryExportExpr {
-    pub in_name: IdentExpr,
-    pub out_name: QuotedString,
-    pub from_root: bool,
-    pub loc: Loc,
-}
-
 pub struct MacroDefExpr {
     pub macro_name: IdentExpr,
     pub macro_params: Vec<FnParam>,
@@ -161,8 +154,8 @@ impl TopLevelExpr {
             TopLevelExpr::TypeDef(e) => &e.loc,
             TopLevelExpr::ConstDef(e) => &e.loc,
             TopLevelExpr::MemoryDef(e) => &e.loc,
-            TopLevelExpr::TryExport(e) => &e.loc,
             TopLevelExpr::MacroDef(e) => &e.loc,
+            TopLevelExpr::IntrinsicCall(e) => &e.loc,
         }
     }
 }

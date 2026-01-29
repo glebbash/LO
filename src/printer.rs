@@ -33,6 +33,7 @@ impl Printer {
 
         for expr in &self.parser.ast {
             self.print_top_level_expr(expr);
+            stdout_write("\n");
             self.last_printed_item_line = expr.loc().end_pos.line;
         }
 
@@ -62,11 +63,9 @@ impl Printer {
                 self.print_fn_decl(decl);
 
                 self.print_code_block(body);
-                stdout_write("\n");
             }
             TopLevelExpr::MemoryDef(memory_def) => {
                 self.print_memory_def(memory_def);
-                stdout_write("\n");
             }
             TopLevelExpr::Include(IncludeExpr {
                 file_path,
@@ -83,7 +82,6 @@ impl Printer {
                 if *with_extern {
                     stdout_write(" with extern");
                 }
-                stdout_write("\n");
             }
             TopLevelExpr::Import(ImportExpr {
                 module_name,
@@ -111,7 +109,6 @@ impl Printer {
                 self.indent -= 1;
                 self.print_indent();
                 stdout_write("}");
-                stdout_write("\n");
             }
             TopLevelExpr::GlobalDef(GlobalDefExpr {
                 global_name,
@@ -122,7 +119,6 @@ impl Printer {
                 stdout_write(&global_name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(global_value);
-                stdout_write("\n");
             }
             TopLevelExpr::StructDef(StructDefExpr {
                 struct_name,
@@ -134,28 +130,27 @@ impl Printer {
 
                 if fields.len() == 0 {
                     stdout_write(" {}");
-                    stdout_write("\n");
-                } else {
-                    stdout_writeln(" {");
-                    self.indent += 1;
-                    for field in fields {
-                        self.print_comments_before(field.loc.pos);
-                        self.print_indent();
-                        stdout_write(&field.field_name.repr);
-                        stdout_write(": ");
-                        self.print_type_expr(&field.field_type);
-                        stdout_writeln(",");
-                    }
-
-                    // print the rest of the comments
-                    self.print_comments_before(loc.end_pos);
-
-                    self.indent -= 1;
-                    self.print_indent();
-
-                    stdout_write("}");
-                    stdout_write("\n");
+                    return;
                 }
+
+                stdout_writeln(" {");
+                self.indent += 1;
+                for field in fields {
+                    self.print_comments_before(field.loc.pos);
+                    self.print_indent();
+                    stdout_write(&field.field_name.repr);
+                    stdout_write(": ");
+                    self.print_type_expr(&field.field_type);
+                    stdout_writeln(",");
+                }
+
+                // print the rest of the comments
+                self.print_comments_before(loc.end_pos);
+
+                self.indent -= 1;
+                self.print_indent();
+
+                stdout_write("}");
             }
             TopLevelExpr::EnumDef(EnumDefExpr {
                 enum_name,
@@ -174,31 +169,30 @@ impl Printer {
 
                 if variants.len() == 0 {
                     stdout_write(" {}");
-                    stdout_write("\n");
-                } else {
-                    stdout_writeln(" {");
-                    self.indent += 1;
-                    for variant in variants {
-                        self.print_comments_before(variant.loc.pos);
-                        self.print_indent();
-                        stdout_write(&variant.variant_name.repr);
-                        if let Some(variant_type) = &variant.variant_type {
-                            stdout_write("(");
-                            self.print_type_expr(variant_type);
-                            stdout_write(")");
-                        }
-                        stdout_writeln(",");
-                    }
-
-                    // print the rest of the comments
-                    self.print_comments_before(loc.end_pos);
-
-                    self.indent -= 1;
-                    self.print_indent();
-
-                    stdout_write("}");
-                    stdout_write("\n");
+                    return;
                 }
+
+                stdout_writeln(" {");
+                self.indent += 1;
+                for variant in variants {
+                    self.print_comments_before(variant.loc.pos);
+                    self.print_indent();
+                    stdout_write(&variant.variant_name.repr);
+                    if let Some(variant_type) = &variant.variant_type {
+                        stdout_write("(");
+                        self.print_type_expr(variant_type);
+                        stdout_write(")");
+                    }
+                    stdout_writeln(",");
+                }
+
+                // print the rest of the comments
+                self.print_comments_before(loc.end_pos);
+
+                self.indent -= 1;
+                self.print_indent();
+
+                stdout_write("}");
             }
             TopLevelExpr::TypeDef(TypeDefExpr {
                 type_name,
@@ -209,7 +203,6 @@ impl Printer {
                 stdout_write(&type_name.repr);
                 stdout_write(" = ");
                 self.print_type_expr(type_value);
-                stdout_write("\n");
             }
             TopLevelExpr::ConstDef(ConstDefExpr {
                 const_name,
@@ -220,22 +213,6 @@ impl Printer {
                 stdout_write(&const_name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(const_value);
-                stdout_write("\n");
-            }
-            TopLevelExpr::TryExport(TryExportExpr {
-                in_name,
-                out_name,
-                from_root,
-                loc: _,
-            }) => {
-                stdout_write("try export ");
-                stdout_write(&in_name.repr);
-                stdout_write(" as ");
-                stdout_write(out_name.get_repr(self.parser.lexer.source));
-                if *from_root {
-                    stdout_write(" from root");
-                }
-                stdout_write("\n");
             }
             TopLevelExpr::MacroDef(MacroDefExpr {
                 macro_name,
@@ -265,7 +242,17 @@ impl Printer {
                 }
                 self.last_printed_item_line = body.loc.pos.line;
                 self.print_code_block(body);
-                stdout_write("\n");
+            }
+            TopLevelExpr::IntrinsicCall(MacroFnCallExpr {
+                fn_name,
+                type_args,
+                args,
+                loc,
+            }) => {
+                stdout_write("@");
+                stdout_write(&fn_name.repr);
+                self.print_type_args(type_args);
+                self.print_args(args, loc);
             }
         }
     }

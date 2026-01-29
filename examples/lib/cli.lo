@@ -5,4 +5,8 @@ include "./print.lo" with extern
 // 1MB stack + 1MB heap
 export memory { min_pages: 40 }
 
-try export main as "_start" from root
+@export_existing(
+    in = "main",
+    out = "_start",
+    from_root = true,
+)

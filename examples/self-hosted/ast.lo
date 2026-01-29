@@ -13,8 +13,8 @@ enum TopLevelExpr(&void) {
     TypeDef(&TypeDefExpr),
     ConstDef(&ConstDefExpr),
     MemoryDef(&MemoryDefExpr),
-    TryExport(&TryExportExpr),
     MacroDef(&MacroDefExpr),
+    IntrinsicCall(&MacroFnCallExpr),
 }
 
 struct IdentExpr {
@@ -153,16 +153,6 @@ struct MemoryDefExpr {
     loc: Loc,
 }
 
-/// DOC: `try export <in> as "<out>" [from root]` syntax was chosen
-///   because it reuses existing rust keywords and reads nicely
-
-struct TryExportExpr {
-    in_name: IdentExpr,
-    out_name: QuotedString,
-    from_root: bool,
-    loc: Loc,
-}
-
 struct CodeBlock {
     exprs: &Vec(CodeExpr),
     loc: Loc,
@@ -207,10 +197,10 @@ fn TopLevelExpr::loc(self): Loc {
     if match TopLevelExpr::MemoryDef(e) = self {
         return e.loc
     }
-    if match TopLevelExpr::TryExport(e) = self {
+    if match TopLevelExpr::MacroDef(e) = self {
         return e.loc
     }
-    if match TopLevelExpr::MacroDef(e) = self {
+    if match TopLevelExpr::IntrinsicCall(e) = self {
         return e.loc
     }
     @unreachable()
