@@ -6,7 +6,7 @@ struct str {
 
 // constants
 
-const u32::MAX = 4_294_967_295
+inline let u32::MAX = 4_294_967_295
 
 let STATIC_DATA_SIZE = @data_size()
 
@@ -14,12 +14,12 @@ let STATIC_DATA_SIZE = @data_size()
 
 type AbortCode = u32
 
-const AbortCode::SHOULD_NOT_HAPPEN = 0
-const AbortCode::OOM = 1
-const AbortCode::STACK_OVERFLOW = 2
-const AbortCode::STACK_UNDERFLOW = 3
-const AbortCode::VEC_OUT_OF_BOUNDS = 4
-const AbortCode::STACK_VECTOR_GROW = 5
+inline let AbortCode::SHOULD_NOT_HAPPEN = 0
+inline let AbortCode::OOM = 1
+inline let AbortCode::STACK_OVERFLOW = 2
+inline let AbortCode::STACK_UNDERFLOW = 3
+inline let AbortCode::VEC_OUT_OF_BOUNDS = 4
+inline let AbortCode::STACK_VECTOR_GROW = 5
 
 fn abort(abort_code: AbortCode): never {
     // error indicator
@@ -30,7 +30,7 @@ fn abort(abort_code: AbortCode): never {
 
 // memory instructions
 
-const mem::PAGE_SIZE = 65_536
+inline let mem::PAGE_SIZE = 65_536
 
 fn mem::align(size: u32): u32 {
     return mem::align_to(size, sizeof &void)
@@ -61,8 +61,8 @@ fn mem::swap(ref1: &void, ref2: &void, size: u32) {
 // allocator interface
 
 type Alloc = &void
-const Alloc::STACK = 0 as Alloc
-const Alloc::HEAP = 1 as Alloc
+inline let Alloc::STACK = 0 as Alloc
+inline let Alloc::HEAP = 1 as Alloc
 
 macro new!(a: Alloc, value: infer(T)): &T {
     let ptr = alloc(a, sizeof T) as &T

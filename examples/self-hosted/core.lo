@@ -4,7 +4,7 @@ include "../lib/wasi.lo"
 include "../lib/print.lo"
 
 type VoidError = u32
-const VoidError::VALUE = 1 as &VoidError
+inline let VoidError::VALUE = 1 as &VoidError
 
 struct Pos {
     offset: u32,
@@ -18,7 +18,7 @@ struct Loc {
     end_pos: Pos,
 }
 
-const Loc::FILE_INDEX_INTERNAL = 0
+inline let Loc::FILE_INDEX_INTERNAL = 0
 
 fn Loc::internal(): Loc {
     return Loc {
@@ -169,7 +169,7 @@ fn stderr_write(message: str) {
 }
 
 let STDOUT_BUFFER = null as &Vec
-const STDOUT_BUFFER_SIZE = 4096
+inline let STDOUT_BUFFER_SIZE = 4096
 
 fn stdout_enable_buffering() {
     STDOUT_BUFFER = Vec::with_capacity(STDOUT_BUFFER_SIZE, sizeof u8)

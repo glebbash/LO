@@ -209,7 +209,7 @@ impl Printer {
                 const_value,
                 loc: _,
             }) => {
-                stdout_write("const ");
+                stdout_write("inline let ");
                 stdout_write(&const_name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(const_value);

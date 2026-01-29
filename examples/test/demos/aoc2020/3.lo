@@ -3,10 +3,10 @@ include "../../../lib/fs.lo"
 
 type Tile = bool
 
-const Tile::TREE = true
-const Tile::EMPTY = false
-const SLOPE_I = 1
-const SLOPE_J = 3
+inline let Tile::TREE = true
+inline let Tile::EMPTY = false
+inline let SLOPE_I = 1
+inline let SLOPE_J = 3
 
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/3.txt")

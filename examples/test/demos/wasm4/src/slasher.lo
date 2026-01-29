@@ -9,8 +9,8 @@ struct Pos {
 type Trail = Vec(Pos)
 type Mode = u32
 
-const Mode::SLASH = 1
-const Mode::DEFEND = 2
+inline let Mode::SLASH = 1
+inline let Mode::DEFEND = 2
 
 let time = 0
 

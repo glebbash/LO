@@ -1,10 +1,10 @@
 type wasi::Err = u32
 
-const wasi::Err::SUCCESS = 0
-const wasi::Err::BADF = 8
-const wasi::FD_STDIN = 0
-const wasi::FD_STDOUT = 1
-const wasi::FD_STDERR = 2
+inline let wasi::Err::SUCCESS = 0
+inline let wasi::Err::BADF = 8
+inline let wasi::FD_STDIN = 0
+inline let wasi::FD_STDOUT = 1
+inline let wasi::FD_STDERR = 2
 
 struct wasi::IOVec {
     base: *&u8,

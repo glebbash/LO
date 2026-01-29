@@ -3,13 +3,13 @@ include "./lexer.lo"
 include "./ast.lo"
 
 // TODO?: support `use TokenType::*`
-const StringLiteral = TokenType::StringLiteral
-const CharLiteral = TokenType::CharLiteral
-const IntLiteral = TokenType::IntLiteral
-const Symbol = TokenType::Symbol
-const Delim = TokenType::Delim
-const Operator = TokenType::Operator
-const Terminal = TokenType::Terminal
+inline let StringLiteral = TokenType::StringLiteral
+inline let CharLiteral = TokenType::CharLiteral
+inline let IntLiteral = TokenType::IntLiteral
+inline let Symbol = TokenType::Symbol
+inline let Delim = TokenType::Delim
+inline let Operator = TokenType::Operator
+inline let Terminal = TokenType::Terminal
 
 struct ParsingContext {
     struct_literal_allowed: bool,
@@ -180,9 +180,10 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(Symbol, "const") != null {
+    if self.eat(Symbol, "inline") != null {
         let loc = self.prev().loc
 
+        let _ = self.expect(Symbol, "let")?
         let const_name = self.parse_ident()?
         let _ = self.expect(Operator, "=")?
         let const_value = self.parse_code_expr(0)?

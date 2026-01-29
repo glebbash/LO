@@ -206,7 +206,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     }
 
     if match TopLevelExpr::ConstDef(const_def) = expr {
-        stdout_write("const ")
+        stdout_write("inline let ")
         stdout_write(const_def.const_name.repr)
         stdout_write(" = ")
         self.print_code_expr(const_def.const_value)

@@ -240,18 +240,6 @@
                     "match": "\\b[A-Z]{2}[A-Z0-9_]*\\b"
                 },
                 {
-                    "comment": "constant declarations",
-                    "match": "\\b(const)\\s+([A-Z][A-Za-z0-9_]*)\\b",
-                    "captures": {
-                        "1": {
-                            "name": "storage.type.lo"
-                        },
-                        "2": {
-                            "name": "constant.other.caps.lo"
-                        }
-                    }
-                },
-                {
                     "comment": "decimal integers and floats",
                     "name": "constant.numeric.decimal.lo",
                     "match": "\\b\\d[\\d_]*(\\.?)[\\d_]*(?:(E|e)([+-]?)([\\d_]+))?(f32|f64|i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
@@ -600,9 +588,9 @@
                     "match": "\\b(extern|let|global|macro|mod)\\b"
                 },
                 {
-                    "comment": "const keyword",
+                    "comment": "inline keyword",
                     "name": "storage.modifier.lo",
-                    "match": "\\b(const)\\b"
+                    "match": "\\b(inline)\\b"
                 },
                 {
                     "comment": "type keyword",

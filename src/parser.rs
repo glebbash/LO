@@ -167,9 +167,10 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "const") {
+        if self.eat(Symbol, "inline").is_some() {
             let mut loc = self.prev().loc;
 
+            self.expect(Symbol, "let")?;
             let const_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
             let const_value = self.parse_code_expr(0)?;

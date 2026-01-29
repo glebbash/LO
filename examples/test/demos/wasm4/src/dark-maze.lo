@@ -2,28 +2,28 @@ include "../../../../lib/std.lo"
 include "../../../../lib/wasm4.lo"
 
 // Maze generator: https://keesiemeijer.github.io/maze-generator/#generate
-const MAZE = @embed_file("../assets/maze.bin")
+inline let MAZE = @embed_file("../assets/maze.bin")
 
-const END1_IMAGE = @embed_file("../assets/end1-image.bin")
-const END2_IMAGE = @embed_file("../assets/end2-image.bin")
+inline let END1_IMAGE = @embed_file("../assets/end1-image.bin")
+inline let END2_IMAGE = @embed_file("../assets/end2-image.bin")
 
-const END1_NOTE_DURATION = 15
-const END1_NOTES = [u8][
+inline let END1_NOTE_DURATION = 15
+inline let END1_NOTES = [u8][
     60 as u8, \\ 64 as u8, \\ 67 as u8, \\ 72 as u8,
     67 as u8, \\ 64 as u8, \\ 60 as u8, \\ 55 as u8,
 ]
 
-const END2_NOTE_DURATION = 60
-const END2_NOTES = [u8][
+inline let END2_NOTE_DURATION = 60
+inline let END2_NOTES = [u8][
     36 as u8, \\ 33 as u8, \\ 31 as u8, \\ 29 as u8,
     28 as u8, \\ 26 as u8, \\ 24 as u8, \\ 21 as u8,
 ]
 
-const Color::TRANSPARENT = 0
-const Color::BLACK = 1
-const Color::RED = 2
-const Color::GRAY = 3
-const Color::WHITE = 4
+inline let Color::TRANSPARENT = 0
+inline let Color::BLACK = 1
+inline let Color::RED = 2
+inline let Color::GRAY = 3
+inline let Color::WHITE = 4
 
 enum Screen {
     Title,
@@ -32,7 +32,7 @@ enum Screen {
     End2,
 }
 
-const VOLUME = 65
+inline let VOLUME = 65
 
 let screen = Screen::Title
 let gamepad = 0 as u8

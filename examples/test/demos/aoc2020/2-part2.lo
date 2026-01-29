@@ -3,10 +3,10 @@ include "../../../lib/fs.lo"
 
 type Step = u32
 
-const Step::READ_START_INDEX = 0
-const Step::READ_END_INDEX = 1
-const Step::READ_CHAR_TO_FIND = 2
-const Step::CHECK_PASSWORD = 3
+inline let Step::READ_START_INDEX = 0
+inline let Step::READ_END_INDEX = 1
+inline let Step::READ_CHAR_TO_FIND = 2
+inline let Step::CHECK_PASSWORD = 3
 
 struct PasswordCheckState {
     step: Step,

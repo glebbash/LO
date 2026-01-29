@@ -1,7 +1,7 @@
 include "../../../../lib/std.lo"
 include "../../../../lib/wasm4.lo"
 
-const SMILEY = [u8][
+inline let SMILEY = [u8][
     0xC3 as u8, \\ 0x81 as u8, \\ 0x24 as u8, \\ 0x24 as u8,
     0x00 as u8, \\ 0x24 as u8, \\ 0x99 as u8, \\ 0xC3 as u8,
 ]

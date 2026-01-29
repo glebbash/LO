@@ -8,7 +8,7 @@ struct str {
     data: u32,
     size: u32,
 }
-const message = "Hello World!\n"
+inline let message = "Hello World!\n"
 
 export fn _start() {
     let nwritten = 0 as &u32

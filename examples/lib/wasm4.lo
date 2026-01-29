@@ -1,4 +1,4 @@
-const wasm4::DATA_START = 6560
+inline let wasm4::DATA_START = 6560
 
 import from "env" {
     memory { min_pages: 1, data_start: wasm4::DATA_START }
@@ -10,7 +10,7 @@ import from "env" {
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-const wasm4::SCREEN_SIZE = 160
+inline let wasm4::SCREEN_SIZE = 160
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
@@ -18,29 +18,29 @@ const wasm4::SCREEN_SIZE = 160
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-const wasm4::PALETTE = 0x04 as *&u32
-const wasm4::DRAW_COLORS = 0x14 as &u16
-const wasm4::GAMEPAD1 = 0x16 as &u8
-const wasm4::GAMEPAD2 = 0x17 as &u8
-const wasm4::GAMEPAD3 = 0x18 as &u8
-const wasm4::GAMEPAD4 = 0x19 as &u8
-const wasm4::MOUSE_X = 0x1A as &i16
-const wasm4::MOUSE_Y = 0x1C as &i16
-const wasm4::MOUSE_BUTTONS = 0x1E as &u8
-const wasm4::SYSTEM_FLAGS = 0x1F as &u8
-const wasm4::NETPLAY = 0x20 as &u8
-const wasm4::FRAMEBUFFER = 0xA0 as &u8
-const wasm4::BUTTON_1 = 1 as u8
-const wasm4::BUTTON_2 = 2 as u8
-const wasm4::BUTTON_LEFT = 16 as u8
-const wasm4::BUTTON_RIGHT = 32 as u8
-const wasm4::BUTTON_UP = 64 as u8
-const wasm4::BUTTON_DOWN = 128 as u8
-const wasm4::MOUSE_LEFT = 1 as u8
-const wasm4::MOUSE_RIGHT = 2 as u8
-const wasm4::MOUSE_MIDDLE = 4 as u8
-const wasm4::SYSTEM_PRESERVE_FRAMEBUFFER = 1
-const wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2
+inline let wasm4::PALETTE = 0x04 as *&u32
+inline let wasm4::DRAW_COLORS = 0x14 as &u16
+inline let wasm4::GAMEPAD1 = 0x16 as &u8
+inline let wasm4::GAMEPAD2 = 0x17 as &u8
+inline let wasm4::GAMEPAD3 = 0x18 as &u8
+inline let wasm4::GAMEPAD4 = 0x19 as &u8
+inline let wasm4::MOUSE_X = 0x1A as &i16
+inline let wasm4::MOUSE_Y = 0x1C as &i16
+inline let wasm4::MOUSE_BUTTONS = 0x1E as &u8
+inline let wasm4::SYSTEM_FLAGS = 0x1F as &u8
+inline let wasm4::NETPLAY = 0x20 as &u8
+inline let wasm4::FRAMEBUFFER = 0xA0 as &u8
+inline let wasm4::BUTTON_1 = 1 as u8
+inline let wasm4::BUTTON_2 = 2 as u8
+inline let wasm4::BUTTON_LEFT = 16 as u8
+inline let wasm4::BUTTON_RIGHT = 32 as u8
+inline let wasm4::BUTTON_UP = 64 as u8
+inline let wasm4::BUTTON_DOWN = 128 as u8
+inline let wasm4::MOUSE_LEFT = 1 as u8
+inline let wasm4::MOUSE_RIGHT = 2 as u8
+inline let wasm4::MOUSE_MIDDLE = 4 as u8
+inline let wasm4::SYSTEM_PRESERVE_FRAMEBUFFER = 1
+inline let wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
@@ -73,11 +73,11 @@ import from "env" {
     ): void
 }
 
-const wasm4::BLIT_2BPP = 1
-const wasm4::BLIT_1BPP = 0
-const wasm4::BLIT_FLIP_X = 2
-const wasm4::BLIT_FLIP_Y = 4
-const wasm4::BLIT_ROTATE = 8
+inline let wasm4::BLIT_2BPP = 1
+inline let wasm4::BLIT_1BPP = 0
+inline let wasm4::BLIT_FLIP_X = 2
+inline let wasm4::BLIT_FLIP_Y = 4
+inline let wasm4::BLIT_ROTATE = 8
 
 import from "env" {
     // Draws a line between two points.
@@ -110,17 +110,17 @@ import from "env" {
     fn wasm4::tone(frequency: u32, duration: u32, volume: u32, flags: u32)
 }
 
-const wasm4::TONE_PULSE1 = 0
-const wasm4::TONE_PULSE2 = 1
-const wasm4::TONE_TRIANGLE = 2
-const wasm4::TONE_NOISE = 3
-const wasm4::TONE_MODE1 = 0
-const wasm4::TONE_MODE2 = 4
-const wasm4::TONE_MODE3 = 8
-const wasm4::TONE_MODE4 = 12
-const wasm4::TONE_PAN_LEFT = 16
-const wasm4::TONE_PAN_RIGHT = 32
-const wasm4::TONE_NOTE_MODE = 64
+inline let wasm4::TONE_PULSE1 = 0
+inline let wasm4::TONE_PULSE2 = 1
+inline let wasm4::TONE_TRIANGLE = 2
+inline let wasm4::TONE_NOISE = 3
+inline let wasm4::TONE_MODE1 = 0
+inline let wasm4::TONE_MODE2 = 4
+inline let wasm4::TONE_MODE3 = 8
+inline let wasm4::TONE_MODE4 = 12
+inline let wasm4::TONE_PAN_LEFT = 16
+inline let wasm4::TONE_PAN_RIGHT = 32
+inline let wasm4::TONE_NOTE_MODE = 64
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │

@@ -1242,7 +1242,7 @@ impl Compiler {
 
                         self.reporter.print_inspection(&InspectInfo {
                             message: format!(
-                                "const {const_name}: {}",
+                                "inline let {const_name}: {}",
                                 TypeFmt(self, &const_.code_unit.type_)
                             ),
                             loc: const_def.const_name.loc,
@@ -4925,7 +4925,7 @@ impl Compiler {
                 if self.reporter.in_inspection_mode {
                     inspect_info = Some(InspectInfo {
                         message: format!(
-                            "const {}: {}",
+                            "inline let {}: {}",
                             ident.repr,
                             TypeFmt(self, &const_def.code_unit.type_)
                         ),

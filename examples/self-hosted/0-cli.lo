@@ -11,7 +11,7 @@ include "./printer.lo"
 
 export memory { min_pages: 1 }
 
-const USAGE = "Usage:
+inline let USAGE = "Usage:
   lo format <input.lo>
   lo lex <input.lo> (debug)"
 
