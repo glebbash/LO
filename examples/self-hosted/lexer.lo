@@ -1,11 +1,11 @@
 include "./core.lo"
 
-struct Token {
+type Token = struct {
     type_: TokenType,
     loc: Loc,
 }
 
-enum TokenType {
+type TokenType = enum {
     StringLiteral,
     CharLiteral,
     IntLiteral,
@@ -55,7 +55,7 @@ fn Token::is_terminal(&self): bool {
     return self.is_any(TokenType::Terminal)
 }
 
-struct Lexer {
+type Lexer = struct {
     // context
     source: str,
     file_index: u32,
@@ -574,7 +574,7 @@ fn Lexer::loc(&self): Loc {
     }
 }
 
-struct QuotedString {
+type QuotedString = struct {
     loc: Loc,
 }
 
@@ -657,7 +657,7 @@ fn Lexer::is_operator_start_char(c: u8): bool {
     return false
 }
 
-enum InfixOpTag {
+type InfixOpTag = enum {
     Equal,
     NotEqual,
     Less,
@@ -697,7 +697,7 @@ enum InfixOpTag {
     ExprPipe,
 }
 
-struct InfixOp {
+type InfixOp = struct {
     tag: InfixOpTag,
     bp: u32,
     bp_next: u32,
@@ -811,7 +811,7 @@ fn InfixOp::none_assoc(tag: InfixOpTag, bp: u32): InfixOp {
     return InfixOp { tag: tag, bp: bp, bp_next: bp }
 }
 
-enum PrefixOpTag {
+type PrefixOpTag = enum {
     Not,
     Reference,
     Dereference,
@@ -819,7 +819,7 @@ enum PrefixOpTag {
     Negative,
 }
 
-struct PrefixOp {
+type PrefixOp = struct {
     tag: PrefixOpTag,
     bp_next: u32,
 }
@@ -847,7 +847,7 @@ fn PrefixOp::left_assoc(tag: PrefixOpTag, bp: u32): PrefixOp {
     return PrefixOp { tag: tag, bp_next: bp + 1 }
 }
 
-enum UTF8ReadError {
+type UTF8ReadError = enum {
     EndOfSource,
     InvalidUtf8,
 }

@@ -1,6 +1,6 @@
 include "./std.lo"
 
-struct StrCutter {
+type StrCutter = struct {
     piece: str,
     rest: str,
 }

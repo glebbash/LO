@@ -1,17 +1,17 @@
 include "../lib/cli.lo"
 
-enum Expr(&void) {
+type Expr = enum(&void) {
     Binary(&ExprBinary),
     Item(&ExprItem),
 }
 
-struct ExprBinary {
+type ExprBinary = struct {
     operator: str,
     lhs: Expr,
     rhs: Expr,
 }
 
-struct ExprItem {
+type ExprItem = struct {
     name: str,
 }
 

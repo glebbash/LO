@@ -2,7 +2,7 @@ memory { min_pages: 1 }
 
 let STATIC_DATA_SIZE = @data_size()
 
-struct str {
+type str = struct {
     data: &void,
     size: u32,
 }

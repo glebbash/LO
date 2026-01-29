@@ -8,7 +8,7 @@ inline let Step::READ_END_INDEX = 1
 inline let Step::READ_CHAR_TO_FIND = 2
 inline let Step::CHECK_PASSWORD = 3
 
-struct PasswordCheckState {
+type PasswordCheckState = struct {
     step: Step,
     start_index: u32,
     end_index: u32,

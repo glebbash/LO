@@ -1,9 +1,9 @@
-struct Point2D {
+type Point2D = struct {
     x: i32,
     y: i32,
 }
 
-struct Point2DPair {
+type Point2DPair = struct {
     p1: Point2D,
     p2: Point2D,
 }

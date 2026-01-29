@@ -8,7 +8,7 @@ inline let Step::READ_MAX_OCCURANCES = 1
 inline let Step::READ_CHAR_TO_COUNT = 2
 inline let Step::COUNT_OCCURANCES = 3
 
-struct PasswordCheckState {
+type PasswordCheckState = struct {
     step: Step,
     min_occurances: u32,
     max_occurances: u32,

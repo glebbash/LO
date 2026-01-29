@@ -3,7 +3,7 @@ include "./lexer.lo"
 
 // TODO: impl proper cleanup for all &Vec fields here
 
-enum TopLevelExpr(&void) {
+type TopLevelExpr = enum(&void) {
     FnDef(&FnDefExpr),
     Include(&IncludeExpr),
     Import(&ImportExpr),
@@ -17,13 +17,13 @@ enum TopLevelExpr(&void) {
     IntrinsicCall(&InlineFnFnCallExpr),
 }
 
-struct IdentExpr {
+type IdentExpr = struct {
     repr: str,
     parts: &Vec(Loc),
     loc: Loc,
 }
 
-struct FnDeclExpr {
+type FnDeclExpr = struct {
     fn_name: IdentExpr,
     fn_params: &Vec(FnParam),
     fn_params_trailing_comma: bool,
@@ -32,7 +32,7 @@ struct FnDeclExpr {
     loc: Loc,
 }
 
-struct FnDefExpr {
+type FnDefExpr = struct {
     exported: bool,
     decl: FnDeclExpr,
     // NOTE: this is ref only cause CodeBlock isn't defined at this point
@@ -40,24 +40,24 @@ struct FnDefExpr {
     loc: Loc,
 }
 
-struct FnParam {
+type FnParam = struct {
     param_name: IdentExpr,
     param_type: FnParamType,
     loc: Loc,
 }
 
-enum FnParamType(&void) {
+type FnParamType = enum(&void) {
     Self(&void),
     SelfRef(&void),
     Type(&FnParamTypeType),
     Infer(&FnParamTypeInfer),
 }
 
-struct FnParamTypeType {
+type FnParamTypeType = struct {
     expr: TypeExpr,
 }
 
-struct FnParamTypeInfer {
+type FnParamTypeInfer = struct {
     name: str,
 }
 
@@ -67,7 +67,7 @@ struct FnParamTypeInfer {
 /// Another option was `import "..." [as ...] [and expose]`
 ///   but `import` is already a WASM concept and `and expose` is two new keywords for just one flag
 
-struct IncludeExpr {
+type IncludeExpr = struct {
     file_path: QuotedString,
     // @optional
     alias: &IdentExpr,
@@ -75,13 +75,13 @@ struct IncludeExpr {
     loc: Loc,
 }
 
-struct ImportExpr {
+type ImportExpr = struct {
     module_name: QuotedString,
     items: &Vec(ImportItem),
     loc: Loc,
 }
 
-enum ImportItem(&void) {
+type ImportItem = enum(&void) {
     FnDecl(&FnDeclExpr),
     Memory(&MemoryDefExpr),
 }
@@ -96,25 +96,25 @@ fn ImportItem::loc(self): Loc {
     @unreachable()
 }
 
-struct GlobalDefExpr {
+type GlobalDefExpr = struct {
     global_name: IdentExpr,
     global_value: CodeExpr,
     loc: Loc,
 }
 
-struct StructDefExpr {
+type StructDefExpr = struct {
     struct_name: IdentExpr,
     fields: &Vec(StructDefField),
     loc: Loc,
 }
 
-struct StructDefField {
+type StructDefField = struct {
     field_name: IdentExpr,
     field_type: TypeExpr,
     loc: Loc,
 }
 
-struct EnumDefExpr {
+type EnumDefExpr = struct {
     enum_name: IdentExpr,
     // @optional
     variant_type: &TypeExpr,
@@ -122,43 +122,43 @@ struct EnumDefExpr {
     loc: Loc,
 }
 
-struct EnumDefVariant {
+type EnumDefVariant = struct {
     variant_name: IdentExpr,
     // @optional
     variant_type: &TypeExpr,
     loc: Loc,
 }
 
-struct TypeDefExpr {
+type TypeDefExpr = struct {
     type_name: IdentExpr,
     type_value: TypeExpr,
     loc: Loc,
 }
 
-struct ConstDefExpr {
+type ConstDefExpr = struct {
     const_name: IdentExpr,
     const_value: CodeExpr,
     loc: Loc,
 }
 
-struct CodeExprMap {
+type CodeExprMap = struct {
     fields: &Vec(CodeExprMapField),
     has_trailing_comma: bool,
     loc: Loc,
 }
 
-struct MemoryDefExpr {
+type MemoryDefExpr = struct {
     exported: bool,
     params: CodeExprMap,
     loc: Loc,
 }
 
-struct CodeBlock {
+type CodeBlock = struct {
     exprs: &Vec(CodeExpr),
     loc: Loc,
 }
 
-struct InlineFnDefExpr {
+type InlineFnDefExpr = struct {
     inline_fn_name: IdentExpr,
     params: &Vec(FnParam),
     params_trailing_comma: bool,
@@ -206,7 +206,7 @@ fn TopLevelExpr::loc(self): Loc {
     @unreachable()
 }
 
-enum TypeExpr(&void) {
+type TypeExpr = enum(&void) {
     Named(&TypeExprNamed),
     Pointer(&TypeExprPointer),
     SequencePointer(&TypeExprSequencePointer),
@@ -229,27 +229,27 @@ fn TypeExpr::loc(self): Loc {
     @unreachable()
 }
 
-struct TypeExprNamed {
+type TypeExprNamed = struct {
     name: IdentExpr,
 }
 
-struct TypeExprPointer {
+type TypeExprPointer = struct {
     pointee: TypeExpr,
     loc: Loc,
 }
 
-struct TypeExprSequencePointer {
+type TypeExprSequencePointer = struct {
     pointee: TypeExpr,
     loc: Loc,
 }
 
-struct TypeExprContainer {
+type TypeExprContainer = struct {
     container: TypeExpr,
     items: &Vec(TypeExpr),
     loc: Loc,
 }
 
-enum CodeExpr(&void) {
+type CodeExpr = enum(&void) {
     // literals
     BoolLiteral(&BoolLiteralExpr),
     CharLiteral(&CharLiteralExpr),
@@ -295,22 +295,22 @@ enum CodeExpr(&void) {
     Sizeof(&SizeofExpr),
 }
 
-struct BoolLiteralExpr {
+type BoolLiteralExpr = struct {
     value: bool,
     loc: Loc,
 }
 
-struct CharLiteralExpr {
+type CharLiteralExpr = struct {
     repr: str,
     value: u32,
     loc: Loc,
 }
 
-struct NullLiteralExpr {
+type NullLiteralExpr = struct {
     loc: Loc,
 }
 
-struct IntLiteralExpr {
+type IntLiteralExpr = struct {
     repr: str,
     value: i64,
     // @optional
@@ -318,19 +318,19 @@ struct IntLiteralExpr {
     loc: Loc,
 }
 
-struct StringLiteralExpr {
+type StringLiteralExpr = struct {
     repr: str,
     value: String,
     loc: Loc,
 }
 
-struct ReturnExpr {
+type ReturnExpr = struct {
     // @optional
     expr: &CodeExpr,
     loc: Loc,
 }
 
-struct InfixOpExpr {
+type InfixOpExpr = struct {
     op_tag: InfixOpTag,
     op_loc: Loc,
     lhs: CodeExpr,
@@ -338,55 +338,55 @@ struct InfixOpExpr {
     loc: Loc,
 }
 
-struct PrefixOpExpr {
+type PrefixOpExpr = struct {
     op_tag: PrefixOpTag,
     expr: CodeExpr,
     op_loc: Loc,
     loc: Loc,
 }
 
-struct IfExpr {
+type IfExpr = struct {
     cond: IfCond,
     then_block: CodeBlock,
     else_block: ElseBlock,
     loc: Loc,
 }
 
-enum IfCond(&void) {
+type IfCond = enum(&void) {
     Expr(&CodeExpr),
     Match(&MatchHeader),
 }
 
-struct MatchHeader {
+type MatchHeader = struct {
     variant_name: IdentExpr,
     variant_bind: IdentExpr,
     expr_to_match: CodeExpr,
 }
 
-enum ElseBlock(&void) {
+type ElseBlock = enum(&void) {
     None(&void),
     Else(&CodeBlock),
     ElseIf(&CodeExpr),
 }
 
-struct LetExpr {
+type LetExpr = struct {
     local_name: IdentExpr,
     value: CodeExpr,
     loc: Loc,
 }
 
-struct WhileExpr {
+type WhileExpr = struct {
     // @optional
     cond: &CodeExpr,
     body: CodeBlock,
     loc: Loc,
 }
 
-struct BreakExpr {
+type BreakExpr = struct {
     loc: Loc,
 }
 
-struct ForExpr {
+type ForExpr = struct {
     counter: IdentExpr,
     start: CodeExpr,
     end: CodeExpr,
@@ -395,54 +395,54 @@ struct ForExpr {
     loc: Loc,
 }
 
-struct ContinueExpr {
+type ContinueExpr = struct {
     loc: Loc,
 }
 
-struct CodeExprList {
+type CodeExprList = struct {
     items: &Vec(CodeExpr),
     has_trailing_comma: bool,
 }
 
-struct DoWithExpr {
+type DoWithExpr = struct {
     body: CodeExpr,
     args: CodeExprList,
     with_loc: Loc,
     loc: Loc,
 }
 
-struct ExprPipeExpr {
+type ExprPipeExpr = struct {
     lhs: CodeExpr,
     rhs: CodeExpr,
     op_loc: Loc,
     loc: Loc,
 }
 
-struct DeferExpr {
+type DeferExpr = struct {
     expr: CodeExpr,
     loc: Loc,
 }
 
-struct CastExpr {
+type CastExpr = struct {
     expr: CodeExpr,
     casted_to: TypeExpr,
     loc: Loc,
 }
 
-struct StructLiteralExpr {
+type StructLiteralExpr = struct {
     struct_name: IdentExpr,
     body: CodeExprMap,
     loc: Loc,
 }
 
-struct ArrayLiteralExpr {
+type ArrayLiteralExpr = struct {
     item_type: TypeExpr,
     items: &Vec(CodeExpr),
     has_trailing_comma: bool,
     loc: Loc,
 }
 
-struct ResultLiteralExpr {
+type ResultLiteralExpr = struct {
     is_ok: bool,
     // @optional
     result_type: &ResultTypeExpr,
@@ -451,31 +451,31 @@ struct ResultLiteralExpr {
     loc: Loc,
 }
 
-struct ResultTypeExpr {
+type ResultTypeExpr = struct {
     ok: TypeExpr,
     err: TypeExpr,
 }
 
-struct CodeExprMapField {
+type CodeExprMapField = struct {
     key: str,
     value: CodeExpr,
     loc: Loc,
 }
 
-struct AssignExpr {
+type AssignExpr = struct {
     op_loc: Loc,
     lhs: CodeExpr,
     rhs: CodeExpr,
     loc: Loc,
 }
 
-struct FieldAccessExpr {
+type FieldAccessExpr = struct {
     lhs: CodeExpr,
     field_name: IdentExpr,
     loc: Loc,
 }
 
-struct CatchExpr {
+type CatchExpr = struct {
     lhs: CodeExpr,
     error_bind: IdentExpr,
     catch_body: CodeBlock,
@@ -483,44 +483,44 @@ struct CatchExpr {
     loc: Loc,
 }
 
-struct MatchExpr {
+type MatchExpr = struct {
     header: MatchHeader,
     else_branch: CodeBlock,
     loc: Loc,
 }
 
-struct PropagateErrorExpr {
+type PropagateErrorExpr = struct {
     expr: CodeExpr,
     loc: Loc,
 }
 
-struct ParenExpr {
+type ParenExpr = struct {
     expr: CodeExpr,
     has_trailing_comma: bool,
     loc: Loc,
 }
 
-struct FnCallExpr {
+type FnCallExpr = struct {
     fn_name: IdentExpr,
     args: CodeExprList,
     loc: Loc,
 }
 
-struct MethodCallExpr {
+type MethodCallExpr = struct {
     lhs: CodeExpr,
     field_name: IdentExpr,
     args: CodeExprList,
     loc: Loc,
 }
 
-struct InlineFnFnCallExpr {
+type InlineFnFnCallExpr = struct {
     fn_name: IdentExpr,
     type_args: &Vec(TypeExpr),
     args: CodeExprList,
     loc: Loc,
 }
 
-struct InlineFnMethodCallExpr {
+type InlineFnMethodCallExpr = struct {
     lhs: CodeExpr,
     field_name: IdentExpr,
     type_args: &Vec(TypeExpr),
@@ -528,7 +528,7 @@ struct InlineFnMethodCallExpr {
     loc: Loc,
 }
 
-struct SizeofExpr {
+type SizeofExpr = struct {
     type_expr: TypeExpr,
     loc: Loc,
 }

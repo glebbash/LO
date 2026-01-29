@@ -1,4 +1,4 @@
-struct S {
+type S = struct {
     zero: void,
 }
 

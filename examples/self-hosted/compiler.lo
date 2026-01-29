@@ -2,7 +2,7 @@ include "./core.lo"
 include "./lexer.lo"
 include "./parser.lo"
 
-struct Module {
+type Module = struct {
     error_arena: &Arena,
     parser: &Parser,
 }
@@ -19,7 +19,7 @@ fn Module::free(&self) {
     self.parser.free()
 }
 
-struct Compiler {
+type Compiler = struct {
     in_single_file_mode: bool,
     in_lex_only_mode: bool,
 

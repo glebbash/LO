@@ -6,7 +6,7 @@ fn main() {
     let v = b.get!()
 }
 
-struct Box {
+type Box = struct {
     raw: &void,
 }
 

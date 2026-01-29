@@ -1,7 +1,7 @@
 include "./std.lo"
 include "./wasi.lo"
 
-struct Args {
+type Args = struct {
     argc: u32,
     argv: *&*&u8,
     argv_buf: *&u8,

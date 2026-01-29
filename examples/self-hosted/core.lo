@@ -6,13 +6,13 @@ include "../lib/print.lo"
 type VoidError = u32
 inline let VoidError::VALUE = 1 as &VoidError
 
-struct Pos {
+type Pos = struct {
     offset: u32,
     line: u32,
     col: u32,
 }
 
-struct Loc {
+type Loc = struct {
     file_index: u32,
     pos: Pos,
     end_pos: Pos,
@@ -46,7 +46,7 @@ fn Loc::read_span(self, source: str): str {
     return source.slice(self.pos.offset, self.end_pos.offset)
 }
 
-struct Error {
+type Error = struct {
     message: String,
     loc: Loc,
 }
@@ -59,7 +59,7 @@ fn Error::to_string_in(&self, a: Alloc, fm: FileManager): String {
     return out
 }
 
-struct FileInfo {
+type FileInfo = struct {
     index: u32,
     included_times: u32,
     absolute_path: String,
@@ -71,7 +71,7 @@ fn FileInfo::free(self) {
     self.source.free()
 }
 
-struct FileManager {
+type FileManager = struct {
     files: &Vec(FileInfo),
     error_arena: &Arena,
 }

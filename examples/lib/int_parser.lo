@@ -1,6 +1,6 @@
 include "./std.lo"
 
-struct ParseIntResult {
+type ParseIntResult = struct {
     value: u32,
     chars_consumed: u32,
 }

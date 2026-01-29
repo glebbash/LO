@@ -1,7 +1,7 @@
 include "../../../../lib/std.lo"
 include "../../../../lib/wasm4.lo"
 
-struct Pos {
+type Pos = struct {
     x: i32,
     y: i32,
 }

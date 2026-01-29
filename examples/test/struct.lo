@@ -12,7 +12,7 @@ export fn main(): u32 {
     return sum.len_squared()
 }
 
-struct Point2D {
+type Point2D = struct {
     x: u32,
     y: u32,
 }

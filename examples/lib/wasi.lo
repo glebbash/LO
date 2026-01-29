@@ -6,17 +6,17 @@ inline let wasi::FD_STDIN = 0
 inline let wasi::FD_STDOUT = 1
 inline let wasi::FD_STDERR = 2
 
-struct wasi::IOVec {
+type wasi::IOVec = struct {
     base: *&u8,
     size: u32,
 }
 
-struct wasi::prestat {
+type wasi::prestat = struct {
     tag: u8,
     pr_name_len: u32,
 }
 
-struct wasi::fdstat {
+type wasi::fdstat = struct {
     fs_filetype: u8,
     fs_flags: u16,
     fs_rights_base: u64,

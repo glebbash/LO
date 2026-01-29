@@ -1,5 +1,5 @@
 // str literal type
-struct str {
+type str = struct {
     data: *&u8,
     size: u32,
 }
@@ -180,7 +180,7 @@ inline fn tmp_alloc_many!<T>(count: u32): *&T {
 
 // heap allocator
 
-struct heap::Block {
+type heap::Block = struct {
     size: u32,
     used: bool,
 }
@@ -275,14 +275,14 @@ fn heap::find_free_block(size: u32): &heap::Block {
 
 // arena allocator
 
-struct Arena {
+type Arena = struct {
     head: &Arena::Block,
     tail: &Arena::Block,
     block_size: u32,
     alloc: Alloc,
 }
 
-struct Arena::Block {
+type Arena::Block = struct {
     next: &Arena::Block,
     size: u32,
     used: u32,
@@ -375,7 +375,7 @@ fn Arena::free(&self) {
 }
 
 // vec
-struct Vec {
+type Vec = struct {
     data: &void,
     size: u32,
     capacity: u32,
@@ -523,7 +523,7 @@ inline fn Vec::_panic_if_out_of_bounds!(&self, index: u32) {
 }
 
 // string
-struct String {
+type String = struct {
     chars: &Vec(u8),
 }
 

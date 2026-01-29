@@ -167,43 +167,6 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "struct") {
-            let mut loc = self.prev().loc;
-
-            let struct_name = self.parse_ident()?;
-
-            let mut fields = Vec::new();
-
-            self.expect(Delim, "{")?;
-            while let None = self.eat(Delim, "}") {
-                let mut field_loc = self.current().loc;
-
-                let field_name = self.parse_ident()?;
-                self.expect(Operator, ":")?;
-                let field_type = self.parse_type_expr()?;
-
-                field_loc.end_pos = self.prev().loc.end_pos;
-
-                fields.push(StructDefField {
-                    field_name,
-                    field_type,
-                    loc: field_loc,
-                });
-
-                if !self.current().is(Delim, "}", self.source) {
-                    self.expect(Delim, ",")?;
-                }
-            }
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::StructDef(StructDefExpr {
-                struct_name,
-                fields,
-                loc,
-            }));
-        }
-
         if let Some(_) = self.eat(Symbol, "enum") {
             let mut loc = self.prev().loc;
 
@@ -257,6 +220,84 @@ impl Parser {
 
             let type_name = self.parse_ident()?;
             self.expect(Operator, "=")?;
+
+            if self.eat(Symbol, "struct").is_some() {
+                let mut fields = Vec::new();
+
+                self.expect(Delim, "{")?;
+                while let None = self.eat(Delim, "}") {
+                    let mut field_loc = self.current().loc;
+
+                    let field_name = self.parse_ident()?;
+                    self.expect(Operator, ":")?;
+                    let field_type = self.parse_type_expr()?;
+
+                    field_loc.end_pos = self.prev().loc.end_pos;
+
+                    fields.push(StructDefField {
+                        field_name,
+                        field_type,
+                        loc: field_loc,
+                    });
+
+                    if !self.current().is(Delim, "}", self.source) {
+                        self.expect(Delim, ",")?;
+                    }
+                }
+
+                loc.end_pos = self.prev().loc.end_pos;
+
+                return Ok(TopLevelExpr::StructDef(StructDefExpr {
+                    struct_name: type_name,
+                    fields,
+                    loc,
+                }));
+            }
+
+            if self.eat(Symbol, "enum").is_some() {
+                let mut variant_type = None;
+                if let Some(_) = self.eat(Delim, "(") {
+                    variant_type = Some(self.parse_type_expr()?);
+                    self.expect(Delim, ")")?;
+                }
+
+                let mut variants = Vec::new();
+
+                self.expect(Delim, "{")?;
+                while let None = self.eat(Delim, "}") {
+                    let mut variant_loc = self.current().loc;
+
+                    let variant_name = self.parse_ident()?;
+
+                    let mut variant_type = None;
+                    if let Some(_) = self.eat(Delim, "(") {
+                        variant_type = Some(self.parse_type_expr()?);
+                        self.expect(Delim, ")")?;
+                    }
+
+                    variant_loc.end_pos = self.prev().loc.end_pos;
+
+                    variants.push(EnumDefVariant {
+                        variant_name,
+                        variant_type,
+                        loc: variant_loc,
+                    });
+
+                    if !self.current().is(Delim, "}", self.source) {
+                        self.expect(Delim, ",")?;
+                    }
+                }
+
+                loc.end_pos = self.prev().loc.end_pos;
+
+                return Ok(TopLevelExpr::EnumDef(EnumDefExpr {
+                    enum_name: type_name,
+                    variant_type,
+                    variants,
+                    loc,
+                }));
+            }
+
             let type_value = self.parse_type_expr()?;
 
             loc.end_pos = self.prev().loc.end_pos;

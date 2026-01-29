@@ -30,7 +30,7 @@ fn main() {
     println(tree_count.to_tmp_str!())
 }
 
-struct Map {
+type Map = struct {
     rows: &Vec(&Vec(Tile)),
 }
 

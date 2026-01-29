@@ -35,7 +35,7 @@ type DivideError = u8
 
 inline let DivideError::DIVIDE_BY_ZERO = 1 as DivideError
 
-struct DivisionResult {
+type DivisionResult = struct {
     full: u32,
     remainder: u32,
 }

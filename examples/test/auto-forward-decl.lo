@@ -13,13 +13,13 @@ fn calc_answer(a: A): u32 {
     return a.b.x
 }
 
-struct B {
+type B = struct {
     x: u32,
     // auto forward decl (allowed for struct pointers)
     a: &A,
 }
 
-struct A {
+type A = struct {
     // NOTE: structs must be defined before their values can be used
     // TODO?: should this be supported at the cost of extra passes?
     b: B,

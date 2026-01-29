@@ -125,8 +125,9 @@ impl Printer {
                 fields,
                 loc,
             }) => {
-                stdout_write("struct ");
+                stdout_write("type ");
                 stdout_write(&struct_name.repr);
+                stdout_write(" = struct");
 
                 if fields.len() == 0 {
                     stdout_write(" {}");
@@ -158,8 +159,9 @@ impl Printer {
                 variants,
                 loc,
             }) => {
-                stdout_write("enum ");
+                stdout_write("type ");
                 stdout_write(&enum_name.repr);
+                stdout_write(" = enum");
 
                 if let Some(data_type) = variant_type {
                     stdout_write("(");

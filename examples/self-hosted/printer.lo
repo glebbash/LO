@@ -3,7 +3,7 @@ include "./ast.lo"
 include "./parser.lo"
 include "./lexer.lo"
 
-struct Printer {
+type Printer = struct {
     parser: &Parser,
 
     indent: u32,
@@ -126,8 +126,9 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     }
 
     if match TopLevelExpr::StructDef(struct_def) = expr {
-        stdout_write("struct ")
+        stdout_write("type ")
         stdout_write(struct_def.struct_name.repr)
+        stdout_write(" = struct")
 
         if struct_def.fields.size == 0 {
             stdout_write(" {}")
@@ -158,8 +159,9 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     }
 
     if match TopLevelExpr::EnumDef(enum_def) = expr {
-        stdout_write("enum ")
+        stdout_write("type ")
         stdout_write(enum_def.enum_name.repr)
+        stdout_write(" = enum")
 
         if enum_def.variant_type != null {
             stdout_write("(")

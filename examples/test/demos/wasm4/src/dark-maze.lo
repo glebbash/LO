@@ -25,7 +25,7 @@ inline let Color::RED = 2
 inline let Color::GRAY = 3
 inline let Color::WHITE = 4
 
-enum Screen {
+type Screen = enum {
     Title,
     Game,
     End1,

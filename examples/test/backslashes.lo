@@ -88,7 +88,7 @@ fn backslash_test() {
         + 1
 }
 
-struct s {
+type s = struct {
     x: u32,
 }
 
@@ -101,7 +101,7 @@ fn f2(x: u32, y: u32): u32 {
         + y
 }
 
-struct InfX {
+type InfX = struct {
     x: &InfX,
 }
 

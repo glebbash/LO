@@ -1,6 +1,6 @@
 memory { min_pages: 1 }
 
-struct Point2D {
+type Point2D = struct {
     x: u32,
     y: u32,
 }

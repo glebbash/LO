@@ -11,11 +11,11 @@ inline let Delim = TokenType::Delim
 inline let Operator = TokenType::Operator
 inline let Terminal = TokenType::Terminal
 
-struct ParsingContext {
+type ParsingContext = struct {
     struct_literal_allowed: bool,
 }
 
-struct Parser {
+type Parser = struct {
     // context
     error_arena: &Arena,
     lexer: &Lexer,
@@ -180,96 +180,89 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(Symbol, "struct") != null {
+    if self.eat(Symbol, "type") != null {
         let loc = self.prev().loc
 
-        let struct_name = self.parse_ident()?
+        let type_name = self.parse_ident()?
+        let _ = self.expect(Operator, "=")?
 
-        let fields = Vec::new!<StructDefField>()
+        if self.eat(Symbol, "struct") != null {
+            let fields = Vec::new!<StructDefField>()
 
-        let _ = self.expect(Delim, "{")?
-        while self.eat(Delim, "}") == null {
-            let field_loc = self.current().loc
+            let _ = self.expect(Delim, "{")?
+            while self.eat(Delim, "}") == null {
+                let field_loc = self.current().loc
 
-            let field_name = self.parse_ident()?
-            let _ = self.expect(Operator, ":")?
-            let field_type = self.parse_type_expr()?
+                let field_name = self.parse_ident()?
+                let _ = self.expect(Operator, ":")?
+                let field_type = self.parse_type_expr()?
 
-            field_loc.end_pos = self.prev().loc.end_pos
+                field_loc.end_pos = self.prev().loc.end_pos
 
-            fields.push!(StructDefField {
-                field_name: field_name,
-                field_type: field_type,
-                loc: field_loc,
-            })
+                fields.push!(StructDefField {
+                    field_name: field_name,
+                    field_type: field_type,
+                    loc: field_loc,
+                })
 
-            if !self.current().is(Delim, "}", self.source) {
-                let _ = self.expect(Delim, ",")?
+                if !self.current().is(Delim, "}", self.source) {
+                    let _ = self.expect(Delim, ",")?
+                }
             }
+
+            loc.end_pos = self.prev().loc.end_pos
+
+            return Ok(TopLevelExpr::StructDef(self.ast_arena.new!(StructDefExpr {
+                struct_name: type_name,
+                fields: fields,
+                loc: loc,
+            })))
         }
 
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(TopLevelExpr::StructDef(self.ast_arena.new!(StructDefExpr {
-            struct_name: struct_name,
-            fields: fields,
-            loc: loc,
-        })))
-    }
-
-    if self.eat(Symbol, "enum") != null {
-        let loc = self.prev().loc
-
-        let enum_name = self.parse_ident()?
-
-        let variant_type = null as &TypeExpr
-        if self.eat(Delim, "(") != null {
-            variant_type = self.ast_arena.new!(self.parse_type_expr()?)
-            let _ = self.expect(Delim, ")")?
-        }
-
-        let variants = Vec::new!<EnumDefVariant>()
-
-        let _ = self.expect(Delim, "{")?
-        while self.eat(Delim, "}") == null {
-            let variant_loc = self.current().loc
-
-            let variant_name = self.parse_ident()?
-
+        if self.eat(Symbol, "enum") != null {
             let variant_type = null as &TypeExpr
             if self.eat(Delim, "(") != null {
                 variant_type = self.ast_arena.new!(self.parse_type_expr()?)
                 let _ = self.expect(Delim, ")")?
             }
 
-            variant_loc.end_pos = self.prev().loc.end_pos
+            let variants = Vec::new!<EnumDefVariant>()
 
-            variants.push!(EnumDefVariant {
-                variant_name: variant_name,
-                variant_type: variant_type,
-                loc: variant_loc,
-            })
+            let _ = self.expect(Delim, "{")?
+            while self.eat(Delim, "}") == null {
+                let variant_loc = self.current().loc
 
-            if !self.current().is(Delim, "}", self.source) {
-                let _ = self.expect(Delim, ",")?
+                let variant_name = self.parse_ident()?
+
+                let variant_type = null as &TypeExpr
+                if self.eat(Delim, "(") != null {
+                    variant_type = self.ast_arena.new!(self.parse_type_expr()?)
+                    let _ = self.expect(Delim, ")")?
+                }
+
+                variant_loc.end_pos = self.prev().loc.end_pos
+
+                variants.push!(EnumDefVariant {
+                    variant_name: variant_name,
+                    variant_type: variant_type,
+                    loc: variant_loc,
+                })
+
+                if !self.current().is(Delim, "}", self.source) {
+                    let _ = self.expect(Delim, ",")?
+                }
             }
+
+            loc.end_pos = self.prev().loc.end_pos
+
+            return Ok(TopLevelExpr::EnumDef(self.ast_arena.new!(EnumDefExpr {
+                enum_name: type_name,
+                variant_type: variant_type,
+                variants: variants,
+                loc: loc,
+            })))
         }
 
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(TopLevelExpr::EnumDef(self.ast_arena.new!(EnumDefExpr {
-            enum_name: enum_name,
-            variant_type: variant_type,
-            variants: variants,
-            loc: loc,
-        })))
-    }
-
-    if self.eat(Symbol, "type") != null {
-        let loc = self.prev().loc
-
-        let type_name = self.parse_ident()?
-        let _ = self.expect(Operator, "=")?
         let type_value = self.parse_type_expr()?
 
         loc.end_pos = self.prev().loc.end_pos

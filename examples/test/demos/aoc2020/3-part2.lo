@@ -23,7 +23,7 @@ fn main() {
     println(result.to_tmp_str!())
 }
 
-struct Map {
+type Map = struct {
     rows: &Vec(&Vec(Tile)),
 }
 
