@@ -1,4 +1,4 @@
-export memory { min_pages: 1, data_start: 12 }
+@use_memory(min_pages = 1, data_start = 12, exported)
 
 import from "wasi_snapshot_preview1" {
     fn fd_write(fd: u32, iovs: &void, iovs_len: u32, nwritten: &u32): u32

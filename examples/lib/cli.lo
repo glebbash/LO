@@ -3,10 +3,6 @@ include "./wasi.lo" with extern
 include "./print.lo" with extern
 
 // 1MB stack + 1MB heap
-export memory { min_pages: 40 }
+@use_memory(min_pages = 40, exported)
 
-@export_existing(
-    in = "main",
-    out = "_start",
-    from_root = true,
-)
+@export_existing(main, from_root, out = "_start")

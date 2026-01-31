@@ -1,4 +1,4 @@
-memory { min_pages: 1 }
+@use_memory(min_pages = 1)
 
 type Point2D = struct {
     x: u32,

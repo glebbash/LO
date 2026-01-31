@@ -13,7 +13,6 @@ pub enum TopLevelExpr {
 
     Import(ImportExpr),
     Include(IncludeExpr),
-    MemoryDef(MemoryDefExpr),
 }
 
 pub struct FnDefExpr {
@@ -66,14 +65,12 @@ pub struct ImportExpr {
 
 pub enum ImportItem {
     FnDecl(FnDeclExpr),
-    Memory(MemoryDefExpr),
 }
 
 impl ImportItem {
     pub fn loc(&self) -> &Loc {
         match self {
             ImportItem::FnDecl(e) => &e.loc,
-            ImportItem::Memory(e) => &e.loc,
         }
     }
 }
@@ -116,12 +113,6 @@ pub struct TypeDefExpr {
     pub loc: Loc,
 }
 
-pub struct MemoryDefExpr {
-    pub exported: bool,
-    pub params: CodeExprMap,
-    pub loc: Loc,
-}
-
 pub struct CodeBlock {
     pub exprs: Vec<CodeExpr>,
     pub loc: Loc,
@@ -137,7 +128,6 @@ impl TopLevelExpr {
             TopLevelExpr::StructDef(e) => &e.loc,
             TopLevelExpr::EnumDef(e) => &e.loc,
             TopLevelExpr::TypeDef(e) => &e.loc,
-            TopLevelExpr::MemoryDef(e) => &e.loc,
             TopLevelExpr::IntrinsicCall(e) => &e.loc,
         }
     }

@@ -14,7 +14,6 @@ type TopLevelExpr = enum (&void) {
     IntrinsicCall(&InlineFnCallExpr),
     Include(&IncludeExpr),
     Import(&ImportExpr),
-    MemoryDef(&MemoryDefExpr),
 }
 
 type IdentExpr = struct {
@@ -85,14 +84,10 @@ type ImportExpr = struct {
 
 type ImportItem = enum (&void) {
     FnDecl(&FnDeclExpr),
-    Memory(&MemoryDefExpr),
 }
 
 fn ImportItem::loc(self): Loc {
     if match ImportItem::FnDecl(e) = self {
-        return e.loc
-    }
-    if match ImportItem::Memory(e) = self {
         return e.loc
     }
     @unreachable()
@@ -144,12 +139,6 @@ type CodeExprMap = struct {
     loc: Loc,
 }
 
-type MemoryDefExpr = struct {
-    exported: bool,
-    params: CodeExprMap,
-    loc: Loc,
-}
-
 type CodeBlock = struct {
     exprs: &Vec(CodeExpr),
     loc: Loc,
@@ -175,9 +164,6 @@ fn TopLevelExpr::loc(self): Loc {
         return e.loc
     }
     if match TopLevelExpr::TypeDef(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::MemoryDef(e) = self {
         return e.loc
     }
     if match TopLevelExpr::IntrinsicCall(e) = self {

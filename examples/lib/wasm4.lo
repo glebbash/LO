@@ -1,8 +1,10 @@
 inline let wasm4::DATA_START = 6560
 
-import from "env" {
-    memory { min_pages: 1, data_start: wasm4::DATA_START }
-}
+@use_memory(
+    min_pages = 1,
+    data_start = wasm4::DATA_START,
+    import_from = "env",
+)
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │

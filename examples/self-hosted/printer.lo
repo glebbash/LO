@@ -73,11 +73,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::MemoryDef(memory_def) = expr {
-        self.print_memory_def(*memory_def)
-        return
-    }
-
     if match TopLevelExpr::Include(include_expr) = expr {
         stdout_write("include ")
         stdout_write(include_expr.file_path.get_repr(self.parser.lexer.source))
@@ -103,8 +98,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
             self.print_indent()
             if match ImportItem::FnDecl(decl) = item {
                 self.print_fn_decl(*decl)
-            } else if match ImportItem::Memory(memory_def) = item {
-                self.print_memory_def(*memory_def)
             } else {
                 @unreachable()
             }
@@ -305,14 +298,6 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
     }
 
     stdout_write(")")
-}
-
-fn Printer::print_memory_def(&self, mem: MemoryDefExpr) {
-    if mem.exported {
-        stdout_write("export ")
-    }
-    stdout_write("memory ")
-    self.print_code_expr_map(mem.params)
 }
 
 fn Printer::print_type_expr(&self, expr: TypeExpr) {

@@ -56,11 +56,6 @@ impl Parser {
                 return Ok(TopLevelExpr::FnDef(fn_def));
             }
 
-            if let Some(_) = self.eat(Symbol, "memory") {
-                let memory_def = self.parse_memory_def(true, loc)?;
-                return Ok(TopLevelExpr::MemoryDef(memory_def));
-            }
-
             let unexpected = self.current();
             return Err(Error {
                 message: format!(
@@ -93,13 +88,6 @@ impl Parser {
 
             let fn_def = self.parse_fn_def(false, false, loc)?;
             return Ok(TopLevelExpr::FnDef(fn_def));
-        }
-
-        if let Some(_) = self.eat(Symbol, "memory") {
-            let loc = self.prev().loc;
-
-            let memory_def = self.parse_memory_def(false, loc)?;
-            return Ok(TopLevelExpr::MemoryDef(memory_def));
         }
 
         if let Some(_) = self.eat(Symbol, "include") {
@@ -318,27 +306,10 @@ impl Parser {
         })
     }
 
-    fn parse_memory_def(&self, exported: bool, mut loc: Loc) -> Result<MemoryDefExpr, Error> {
-        let params = self.parse_code_expr_map()?;
-        loc.end_pos = self.prev().loc.end_pos;
-
-        Ok(MemoryDefExpr {
-            exported,
-            params,
-            loc,
-        })
-    }
-
     fn parse_importable(&self) -> Result<ImportItem, Error> {
         if let Some(_) = self.eat(Symbol, "fn") {
             let decl = self.parse_fn_decl(false)?;
             return Ok(ImportItem::FnDecl(decl));
-        }
-
-        if let Some(_) = self.eat(Symbol, "memory") {
-            let loc = self.prev().loc;
-            let memory_def = self.parse_memory_def(false, loc)?;
-            return Ok(ImportItem::Memory(memory_def));
         }
 
         let unexpected = self.current();

@@ -74,11 +74,6 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             return Ok(TopLevelExpr::FnDef(fn_def))
         }
 
-        if self.eat(Symbol, "memory") != null {
-            let memory_def = self.parse_memory_def(true, loc)?
-            return Ok(TopLevelExpr::MemoryDef(self.ast_arena.new!(memory_def)))
-        }
-
         let unexpected = self.current()
         let message = String::from_str_in(self.error_arena, "Unexpected exportable: ")
         message.push_str(unexpected.get_value(self.lexer.source))
@@ -109,11 +104,6 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     if self.eat(Symbol, "fn") != null {
         let fn_def = self.parse_fn_def(false, false, self.prev().loc)?
         return Ok(TopLevelExpr::FnDef(fn_def))
-    }
-
-    if self.eat(Symbol, "memory") != null {
-        let memory_def = self.parse_memory_def(false, self.prev().loc)?
-        return Ok(TopLevelExpr::MemoryDef(self.ast_arena.new!(memory_def)))
     }
 
     if self.eat(Symbol, "include") != null {
@@ -412,27 +402,10 @@ fn Parser::parse_fn_params(
     return Ok(params)
 }
 
-fn Parser::parse_memory_def(&self, exported: bool, loc: Loc): Result(MemoryDefExpr, &Error) {
-    let params = self.parse_code_expr_map()?
-    loc.end_pos = self.prev().loc.end_pos
-
-    return Ok(MemoryDefExpr {
-        exported: exported,
-        params: params,
-        loc: loc,
-    })
-}
-
 fn Parser::parse_importable(&self): Result(ImportItem, &Error) {
     if self.eat(Symbol, "fn") != null {
         let decl = self.parse_fn_decl(false)?
         return Ok(ImportItem::FnDecl(self.ast_arena.new!(decl)))
-    }
-
-    if self.eat(Symbol, "memory") != null {
-        let loc = self.prev().loc
-        let memory_def = self.parse_memory_def(false, loc)?
-        return Ok(ImportItem::Memory(self.ast_arena.new!(memory_def)))
     }
 
     let unexpected = self.current()

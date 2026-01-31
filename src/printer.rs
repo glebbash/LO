@@ -68,9 +68,6 @@ impl Printer {
 
                 self.print_code_block(body);
             }
-            TopLevelExpr::MemoryDef(memory_def) => {
-                self.print_memory_def(memory_def);
-            }
             TopLevelExpr::Include(IncludeExpr {
                 file_path,
                 alias,
@@ -102,7 +99,6 @@ impl Printer {
                     self.print_indent();
                     match item {
                         ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
-                        ImportItem::Memory(memory_def) => self.print_memory_def(memory_def),
                     }
                     stdout_write("\n");
                 }
@@ -304,14 +300,6 @@ impl Printer {
         }
 
         stdout_write(")");
-    }
-
-    fn print_memory_def(&mut self, mem: &MemoryDefExpr) {
-        if mem.exported {
-            stdout_write("export ");
-        }
-        stdout_write("memory ");
-        self.print_code_expr_map(&mem.params);
     }
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {

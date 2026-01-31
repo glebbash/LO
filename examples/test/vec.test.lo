@@ -1,12 +1,12 @@
 // exports vec api for testing
 
-export memory { min_pages: 1 }
+@use_memory(min_pages = 1, exported)
 
 include "../lib/std.lo"
 
-@export_existing(in = "Vec::with_capacity", out = "vec_new")
-@export_existing(in = "Vec::swap", out = "vec_swap")
-@export_existing(in = "Vec::push_all", out = "vec_push_all")
+@export_existing(Vec::with_capacity, out = "vec_new")
+@export_existing(Vec::swap, out = "vec_swap")
+@export_existing(Vec::push_all, out = "vec_push_all")
 
 export fn vec_len(vec: &Vec): u32 {
     return vec.size

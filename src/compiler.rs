@@ -782,9 +782,7 @@ impl Compiler {
                     let module_name = import_expr.module_name.get_value(module.source);
 
                     for item in &import_expr.items {
-                        let ImportItem::FnDecl(fn_decl) = item else {
-                            continue;
-                        };
+                        let ImportItem::FnDecl(fn_decl) = item;
 
                         let _ = self.define_symbol(
                             &mut module.ctx,
@@ -1083,44 +1081,46 @@ impl Compiler {
                 TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
 
                 TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
-                    fn_name,
+                    fn_name: intrinsic,
                     type_args,
                     args,
                     loc: _,
                 }) => {
-                    if fn_name.repr == "export_existing" {
+                    if intrinsic.repr == "export_existing" {
                         let mut from_root = false;
                         let mut in_name = None;
                         let mut out_name = None;
 
                         if type_args.len() != 0 {
-                            self.reporter.error(&bad_signature(fn_name));
+                            self.reporter.error(&bad_signature(intrinsic));
                         }
 
                         for arg in &args.items {
+                            if let CodeExpr::Ident(ident) = arg
+                                && ident.repr == "from_root"
+                            {
+                                from_root = true;
+                                continue;
+                            }
+
+                            if let CodeExpr::Ident(ident) = arg {
+                                in_name = Some(ident.relax());
+                                continue;
+                            }
+
                             let CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) = arg else {
-                                self.reporter.error(&bad_signature(fn_name));
+                                self.reporter.error(&bad_signature(intrinsic));
                                 continue;
                             };
 
                             let CodeExpr::Ident(key) = &**lhs else {
-                                self.reporter.error(&bad_signature(fn_name));
+                                self.reporter.error(&bad_signature(intrinsic));
                                 continue;
                             };
 
-                            if key.repr == "in" {
-                                let CodeExpr::StringLiteral(value) = &**rhs else {
-                                    self.reporter.error(&bad_signature(fn_name));
-                                    continue;
-                                };
-
-                                in_name = Some(value.relax());
-                                continue;
-                            }
-
                             if key.repr == "out" {
                                 let CodeExpr::StringLiteral(value) = &**rhs else {
-                                    self.reporter.error(&bad_signature(fn_name));
+                                    self.reporter.error(&bad_signature(intrinsic));
                                     continue;
                                 };
 
@@ -1128,24 +1128,12 @@ impl Compiler {
                                 continue;
                             }
 
-                            if key.repr == "from_root" {
-                                let CodeExpr::BoolLiteral(BoolLiteralExpr { value: true, .. }) =
-                                    &**rhs
-                                else {
-                                    self.reporter.error(&bad_signature(fn_name));
-                                    continue;
-                                };
-
-                                from_root = true;
-                                continue;
-                            }
-
-                            self.reporter.error(&bad_signature(fn_name));
+                            self.reporter.error(&bad_signature(intrinsic));
                             continue;
                         }
 
                         let Some(in_name) = in_name else {
-                            self.reporter.error(&bad_signature(fn_name));
+                            self.reporter.error(&bad_signature(intrinsic));
                             continue;
                         };
 
@@ -1156,7 +1144,7 @@ impl Compiler {
 
                         let Ok(fn_info) = self.get_fn_info_for_call(
                             &target_module.ctx,
-                            &in_name.value,
+                            &in_name.repr,
                             &in_name.loc,
                         ) else {
                             // don't report any errors if function to be exported
@@ -1166,7 +1154,7 @@ impl Compiler {
                             }
 
                             self.reporter.error(&Error {
-                                message: format!("Can't export unknown symbol {}", in_name.value),
+                                message: format!("Can't export unknown symbol {}", in_name.repr),
                                 loc: in_name.loc,
                             });
                             continue;
@@ -1174,25 +1162,137 @@ impl Compiler {
 
                         if self.reporter.in_inspection_mode {
                             self.reporter.print_inspection(&InspectInfo {
-                                message: in_name.value.clone(),
+                                message: String::from(in_name.repr),
                                 loc: in_name.loc,
                                 linked_loc: Some(fn_info.definition_loc.clone()),
                             });
                         }
 
-                        let mut exported_as = in_name;
-                        if let Some(out_name) = out_name {
-                            exported_as = out_name;
-                        }
+                        let exported_as = if let Some(out_name) = out_name {
+                            out_name.value.clone()
+                        } else {
+                            String::from(in_name.repr)
+                        };
 
-                        fn_info.be_mut().exported_as.push(exported_as.value.clone());
+                        fn_info.be_mut().exported_as.push(exported_as);
 
                         continue;
 
                         fn bad_signature(fn_name: &IdentExpr) -> Error {
                             Error {
                                 message: format!(
-                                    "Invalid call, expected signature: @{}(in = \"...\", [out = \"...\", from_root = true])",
+                                    "Invalid call, expected signature: @{}(<ident>, [out = <str-literal>, from_root])",
+                                    fn_name.repr
+                                ),
+                                loc: fn_name.loc,
+                            }
+                        }
+                    }
+
+                    if intrinsic.repr == "use_memory" {
+                        if let Some(existing_memory) = &self.memory {
+                            self.reporter.error(&Error {
+                                message: format!(
+                                    "Cannot redefine memory, first defined at {}",
+                                    existing_memory.loc.to_string(&self.fm)
+                                ),
+                                loc: intrinsic.loc,
+                            });
+                            continue;
+                        }
+
+                        if type_args.len() != 0 {
+                            self.reporter.error(&bad_signature(intrinsic));
+                        }
+
+                        let mut memory = MemoryInfo {
+                            min_pages: None,
+                            data_start: None,
+                            exported: false,
+                            imported_from: None,
+                            loc: intrinsic.loc,
+                        };
+
+                        let ctx = &mut module.be_mut().ctx;
+                        let tmp_instrs = &mut Vec::new();
+
+                        for arg in &args.items {
+                            if let CodeExpr::Ident(ident) = arg
+                                && ident.repr == "exported"
+                            {
+                                memory.exported = true;
+                                continue;
+                            }
+
+                            let CodeExpr::Assign(AssignExpr {
+                                lhs, rhs: value, ..
+                            }) = arg
+                            else {
+                                self.reporter.error(&bad_signature(intrinsic));
+                                continue;
+                            };
+
+                            let CodeExpr::Ident(key) = &**lhs else {
+                                self.reporter.error(&bad_signature(intrinsic));
+                                continue;
+                            };
+
+                            if key.repr == "data_start" {
+                                tmp_instrs.clear();
+                                if let Err(err) = self.codegen(ctx, tmp_instrs, &value) {
+                                    self.reporter.error(&err);
+                                };
+
+                                if tmp_instrs.len() == 1 {
+                                    if let WasmInstr::I32Const { value } = &tmp_instrs[0] {
+                                        memory.data_start = Some(*value as u32);
+                                        *self.data_size.borrow_mut() = *value as u32;
+                                        continue;
+                                    }
+                                }
+
+                                self.reporter.error(&bad_signature(intrinsic));
+                                continue;
+                            }
+
+                            if key.repr == "min_pages" {
+                                tmp_instrs.clear();
+                                if let Err(err) = self.codegen(ctx, tmp_instrs, &value) {
+                                    self.reporter.error(&err);
+                                };
+
+                                if tmp_instrs.len() == 1 {
+                                    if let WasmInstr::I32Const { value } = &tmp_instrs[0] {
+                                        memory.min_pages = Some(*value as u32);
+                                        continue;
+                                    }
+                                }
+
+                                self.reporter.error(&bad_signature(intrinsic));
+                                continue;
+                            }
+
+                            if key.repr == "import_from" {
+                                let CodeExpr::StringLiteral(str) = &**value else {
+                                    self.reporter.error(&bad_signature(intrinsic));
+                                    continue;
+                                };
+
+                                memory.imported_from = Some(str.value.clone());
+                                continue;
+                            }
+
+                            self.reporter.error(&bad_signature(intrinsic));
+                        }
+
+                        self.memory = Some(memory);
+
+                        continue;
+
+                        fn bad_signature(fn_name: &IdentExpr) -> Error {
+                            Error {
+                                message: format!(
+                                    "Invalid call, expected signature: @{}([min_pages = <u32>, data_start = <u32>, exported, import_from = <str-literal>])",
                                     fn_name.repr
                                 ),
                                 loc: fn_name.loc,
@@ -1201,15 +1301,8 @@ impl Compiler {
                     }
 
                     self.reporter.error(&Error {
-                        message: format!("Unknown intrinsic: {}", fn_name.repr),
-                        loc: fn_name.loc,
-                    });
-                }
-
-                TopLevelExpr::MemoryDef(memory_def) => {
-                    catch!(self.define_memory(module, memory_def, None), err, {
-                        self.reporter.error(&err);
-                        continue;
+                        message: format!("Unknown intrinsic: {}", intrinsic.repr),
+                        loc: intrinsic.loc,
                     });
                 }
 
@@ -1263,22 +1356,7 @@ impl Compiler {
                 }
                 TopLevelExpr::Import(import_expr) => {
                     'items: for item in &import_expr.items {
-                        let fn_decl = match item {
-                            ImportItem::FnDecl(fn_decl) => fn_decl,
-                            ImportItem::Memory(memory_def) => {
-                                let module_name = import_expr.module_name.get_value(module.source);
-
-                                let res = self.define_memory(
-                                    module,
-                                    memory_def,
-                                    Some(module_name.clone()),
-                                );
-                                catch!(res, err, {
-                                    self.reporter.error(&err);
-                                });
-                                continue;
-                            }
-                        };
+                        let ImportItem::FnDecl(fn_decl) = item;
 
                         let symbol = self
                             .current_scope(&module.ctx)
@@ -1722,82 +1800,6 @@ impl Compiler {
         }
 
         terminates_early
-    }
-
-    fn define_memory(
-        &mut self,
-        module: &Module,
-        memory_def: &MemoryDefExpr,
-        imported_from: Option<String>,
-    ) -> Result<(), Error> {
-        if let Some(existing_memory) = &self.memory {
-            return Err(Error {
-                message: format!(
-                    "Cannot redefine memory, first defined at {}",
-                    existing_memory.loc.to_string(&self.fm)
-                ),
-                loc: memory_def.loc,
-            });
-        }
-
-        let mut memory = MemoryInfo {
-            min_pages: None,
-            data_start: None,
-            exported: memory_def.exported,
-            imported_from,
-            loc: memory_def.loc,
-        };
-
-        let ctx = &mut module.be_mut().ctx;
-        let tmp_instrs = &mut Vec::new();
-
-        for param in &memory_def.params.fields {
-            if param.key == "data_start" {
-                tmp_instrs.clear();
-                self.codegen(ctx, tmp_instrs, &param.value)?;
-
-                if tmp_instrs.len() == 1 {
-                    if let WasmInstr::I32Const { value } = &tmp_instrs[0] {
-                        memory.data_start = Some(*value as u32);
-                        *self.data_size.borrow_mut() = *value as u32;
-                        continue;
-                    }
-                }
-
-                self.reporter.error(&Error {
-                    message: format!("Expected {} constant", TypeFmt(self, &Type::U32)),
-                    loc: param.loc,
-                });
-                continue;
-            }
-
-            if param.key == "min_pages" {
-                tmp_instrs.clear();
-                self.codegen(ctx, tmp_instrs, &param.value)?;
-
-                if tmp_instrs.len() == 1 {
-                    if let WasmInstr::I32Const { value } = &tmp_instrs[0] {
-                        memory.min_pages = Some(*value as u32);
-                        continue;
-                    }
-                }
-
-                self.reporter.error(&Error {
-                    message: format!("Expected {} constant", TypeFmt(self, &Type::U32)),
-                    loc: param.loc,
-                });
-                continue;
-            }
-
-            self.reporter.error(&Error {
-                message: format!("Unexpected memory param"),
-                loc: param.loc,
-            });
-        }
-
-        self.memory = Some(memory);
-
-        Ok(())
     }
 
     fn get_fn_self_type(
