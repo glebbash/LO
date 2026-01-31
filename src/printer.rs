@@ -92,91 +92,86 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(value);
             }
-            TopLevelExpr::StructDef(StructDefExpr {
-                struct_name,
-                fields,
-                loc,
-            }) => {
-                stdout_write("type ");
-                stdout_write(&struct_name.repr);
-                stdout_write(" = struct");
-
-                if fields.len() == 0 {
-                    stdout_write(" {}");
-                    return;
-                }
-
-                stdout_writeln(" {");
-                self.indent += 1;
-                for field in fields {
-                    self.print_comments_before(field.loc.pos);
-                    self.print_indent();
-                    stdout_write(&field.field_name.repr);
-                    stdout_write(": ");
-                    self.print_type_expr(&field.field_type);
-                    stdout_writeln(",");
-                }
-
-                // print the rest of the comments
-                self.print_comments_before(loc.end_pos);
-
-                self.indent -= 1;
-                self.print_indent();
-
-                stdout_write("}");
-            }
-            TopLevelExpr::EnumDef(EnumDefExpr {
-                enum_name,
-                variant_type,
-                variants,
-                loc,
-            }) => {
-                stdout_write("type ");
-                stdout_write(&enum_name.repr);
-                stdout_write(" = enum");
-
-                if let Some(data_type) = variant_type {
-                    stdout_write(" (");
-                    self.print_type_expr(data_type);
-                    stdout_write(")");
-                }
-
-                if variants.len() == 0 {
-                    stdout_write(" {}");
-                    return;
-                }
-
-                stdout_writeln(" {");
-                self.indent += 1;
-                for variant in variants {
-                    self.print_comments_before(variant.loc.pos);
-                    self.print_indent();
-                    stdout_write(&variant.variant_name.repr);
-                    if let Some(variant_type) = &variant.variant_type {
-                        stdout_write("(");
-                        self.print_type_expr(variant_type);
-                        stdout_write(")");
-                    }
-                    stdout_writeln(",");
-                }
-
-                // print the rest of the comments
-                self.print_comments_before(loc.end_pos);
-
-                self.indent -= 1;
-                self.print_indent();
-
-                stdout_write("}");
-            }
             TopLevelExpr::TypeDef(TypeDefExpr {
-                type_name,
-                type_value,
-                loc: _,
+                name: type_name,
+                value: type_value,
+                loc,
             }) => {
                 stdout_write("type ");
                 stdout_write(&type_name.repr);
                 stdout_write(" = ");
-                self.print_type_expr(type_value);
+
+                match type_value {
+                    TypeDefValue::Struct { fields } => {
+                        stdout_write("struct");
+
+                        if fields.len() == 0 {
+                            stdout_write(" {}");
+                            return;
+                        }
+
+                        stdout_writeln(" {");
+                        self.indent += 1;
+                        for field in fields {
+                            self.print_comments_before(field.loc.pos);
+                            self.print_indent();
+                            stdout_write(&field.field_name.repr);
+                            stdout_write(": ");
+                            self.print_type_expr(&field.field_type);
+                            stdout_writeln(",");
+                        }
+
+                        // print the rest of the comments
+                        self.print_comments_before(loc.end_pos);
+
+                        self.indent -= 1;
+                        self.print_indent();
+
+                        stdout_write("}");
+                    }
+                    TypeDefValue::Enum {
+                        variant_type,
+                        variants,
+                    } => {
+                        stdout_write("enum");
+
+                        if let Some(data_type) = variant_type {
+                            stdout_write(" (");
+                            self.print_type_expr(data_type);
+                            stdout_write(")");
+                        }
+
+                        if variants.len() == 0 {
+                            stdout_write(" {}");
+                            return;
+                        }
+
+                        stdout_writeln(" {");
+                        self.indent += 1;
+                        for variant in variants {
+                            self.print_comments_before(variant.loc.pos);
+                            self.print_indent();
+                            stdout_write(&variant.variant_name.repr);
+                            if let Some(variant_type) = &variant.variant_type {
+                                stdout_write("(");
+                                self.print_type_expr(variant_type);
+                                stdout_write(")");
+                            }
+                            stdout_writeln(",");
+                        }
+
+                        // print the rest of the comments
+                        self.print_comments_before(loc.end_pos);
+
+                        self.indent -= 1;
+                        self.print_indent();
+
+                        stdout_write("}");
+                    }
+                    TypeDefValue::Alias(type_expr) => {
+                        self.print_type_expr(type_expr);
+                    }
+                }
             }
             TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
                 fn_name,

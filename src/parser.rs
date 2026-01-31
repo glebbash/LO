@@ -144,7 +144,7 @@ impl Parser {
         if let Some(_) = self.eat(Symbol, "type") {
             let mut loc = self.prev().loc;
 
-            let type_name = self.parse_ident()?;
+            let name = self.parse_ident()?;
             self.expect(Operator, "=")?;
 
             if self.eat(Symbol, "struct").is_some() {
@@ -173,9 +173,9 @@ impl Parser {
 
                 loc.end_pos = self.prev().loc.end_pos;
 
-                return Ok(TopLevelExpr::StructDef(StructDefExpr {
-                    struct_name: type_name,
-                    fields,
+                return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
+                    name,
+                    value: TypeDefValue::Struct { fields },
                     loc,
                 }));
             }
@@ -216,10 +216,12 @@ impl Parser {
 
                 loc.end_pos = self.prev().loc.end_pos;
 
-                return Ok(TopLevelExpr::EnumDef(EnumDefExpr {
-                    enum_name: type_name,
-                    variant_type,
-                    variants,
+                return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
+                    name,
+                    value: TypeDefValue::Enum {
+                        variant_type,
+                        variants,
+                    },
                     loc,
                 }));
             }
@@ -229,8 +231,8 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
-                type_name,
-                type_value,
+                name,
+                value: TypeDefValue::Alias(type_value),
                 loc,
             }));
         }

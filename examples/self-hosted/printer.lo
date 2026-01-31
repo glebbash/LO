@@ -92,86 +92,86 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::StructDef(struct_def) = expr {
-        stdout_write("type ")
-        stdout_write(struct_def.struct_name.repr)
-        stdout_write(" = struct")
-
-        if struct_def.fields.size == 0 {
-            stdout_write(" {}")
-            return
-        }
-
-        stdout_writeln(" {")
-        self.indent += 1
-        for i in 0..struct_def.fields.size {
-            let field = struct_def.fields.get!(i)
-            self.print_comments_before(field.loc.pos)
-            self.print_indent()
-            stdout_write(field.field_name.repr)
-            stdout_write(": ")
-            self.print_type_expr(field.field_type)
-            stdout_writeln(",")
-        }
-
-        // print the rest of the comments
-        self.print_comments_before(struct_def.loc.end_pos)
-
-        self.indent -= 1
-        self.print_indent()
-
-        stdout_write("}")
-
-        return
-    }
-
-    if match TopLevelExpr::EnumDef(enum_def) = expr {
-        stdout_write("type ")
-        stdout_write(enum_def.enum_name.repr)
-        stdout_write(" = enum")
-
-        if enum_def.variant_type != null {
-            stdout_write(" (")
-            self.print_type_expr(*enum_def.variant_type)
-            stdout_write(")")
-        }
-
-        if enum_def.variants.size == 0 {
-            stdout_write(" {}")
-            return
-        }
-
-        stdout_writeln(" {")
-        self.indent += 1
-        for i in 0..enum_def.variants.size {
-            let variant = enum_def.variants.get!(i)
-            self.print_comments_before(variant.loc.pos)
-            self.print_indent()
-            stdout_write(variant.variant_name.repr)
-            if variant.variant_type != null {
-                stdout_write("(")
-                self.print_type_expr(*variant.variant_type)
-                stdout_write(")")
-            }
-            stdout_writeln(",")
-        }
-
-        // print the rest of the comments
-        self.print_comments_before(enum_def.loc.end_pos)
-
-        self.indent -= 1
-        self.print_indent()
-
-        stdout_write("}")
-        return
-    }
-
     if match TopLevelExpr::TypeDef(type_def) = expr {
         stdout_write("type ")
-        stdout_write(type_def.type_name.repr)
+        stdout_write(type_def.name.repr)
         stdout_write(" = ")
-        self.print_type_expr(type_def.type_value)
-        return
+
+        if match TypeDefValue::Alias(type_expr) = type_def.value {
+            self.print_type_expr(*type_expr)
+            return
+        }
+
+        if match TypeDefValue::Struct(struct_value) = type_def.value {
+            stdout_write("struct")
+
+            if struct_value.fields.size == 0 {
+                stdout_write(" {}")
+                return
+            }
+
+            stdout_writeln(" {")
+            self.indent += 1
+            for i in 0..struct_value.fields.size {
+                let field = struct_value.fields.get!(i)
+                self.print_comments_before(field.loc.pos)
+                self.print_indent()
+                stdout_write(field.field_name.repr)
+                stdout_write(": ")
+                self.print_type_expr(field.field_type)
+                stdout_writeln(",")
+            }
+
+            // print the rest of the comments
+            self.print_comments_before(type_def.loc.end_pos)
+
+            self.indent -= 1
+            self.print_indent()
+
+            stdout_write("}")
+            return
+        }
+
+        if match TypeDefValue::Enum(enum_value) = type_def.value {
+            stdout_write("enum")
+
+            if enum_value.variant_type != null {
+                stdout_write(" (")
+                self.print_type_expr(*enum_value.variant_type)
+                stdout_write(")")
+            }
+
+            if enum_value.variants.size == 0 {
+                stdout_write(" {}")
+                return
+            }
+
+            stdout_writeln(" {")
+            self.indent += 1
+            for i in 0..enum_value.variants.size {
+                let variant = enum_value.variants.get!(i)
+                self.print_comments_before(variant.loc.pos)
+                self.print_indent()
+                stdout_write(variant.variant_name.repr)
+                if variant.variant_type != null {
+                    stdout_write("(")
+                    self.print_type_expr(*variant.variant_type)
+                    stdout_write(")")
+                }
+                stdout_writeln(",")
+            }
+
+            // print the rest of the comments
+            self.print_comments_before(type_def.loc.end_pos)
+
+            self.indent -= 1
+            self.print_indent()
+
+            stdout_write("}")
+            return
+        }
+
+        @unreachable()
     }
 
     if match TopLevelExpr::IntrinsicCall(instrinsic) = expr {

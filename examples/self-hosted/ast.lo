@@ -9,8 +9,6 @@ type TopLevelExpr = enum (&void) {
     FnDef(&FnDefExpr),
     FnImport(&FnImportExpr),
 
-    StructDef(&StructDefExpr),
-    EnumDef(&EnumDefExpr),
     TypeDef(&TypeDefExpr),
 
     IntrinsicCall(&InlineFnCallExpr),
@@ -90,10 +88,20 @@ type LetExpr = struct {
     loc: Loc,
 }
 
-type StructDefExpr = struct {
-    struct_name: IdentExpr,
-    fields: &Vec(StructDefField),
+type TypeDefExpr = struct {
+    name: IdentExpr,
+    value: TypeDefValue,
     loc: Loc,
+}
+
+type TypeDefValue = enum (&void) {
+    Struct(&TypeDefValueStruct),
+    Enum(&TypeDefValueEnum),
+    Alias(&TypeExpr),
+}
+
+type TypeDefValueStruct = struct {
+    fields: &Vec(StructDefField),
 }
 
 type StructDefField = struct {
@@ -102,24 +110,16 @@ type StructDefField = struct {
     loc: Loc,
 }
 
-type EnumDefExpr = struct {
-    enum_name: IdentExpr,
+type TypeDefValueEnum = struct {
     // @optional
     variant_type: &TypeExpr,
     variants: &Vec(EnumDefVariant),
-    loc: Loc,
 }
 
 type EnumDefVariant = struct {
     variant_name: IdentExpr,
     // @optional
     variant_type: &TypeExpr,
-    loc: Loc,
-}
-
-type TypeDefExpr = struct {
-    type_name: IdentExpr,
-    type_value: TypeExpr,
     loc: Loc,
 }
 
@@ -142,12 +142,6 @@ fn TopLevelExpr::loc(self): Loc {
         return e.loc
     }
     if match TopLevelExpr::Let(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::StructDef(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::EnumDef(e) = self {
         return e.loc
     }
     if match TopLevelExpr::TypeDef(e) = self {

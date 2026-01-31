@@ -162,7 +162,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     if self.eat(Symbol, "type") != null {
         let loc = self.prev().loc
 
-        let type_name = self.parse_ident()?
+        let name = self.parse_ident()?
         let _ = self.expect(Operator, "=")?
 
         if self.eat(Symbol, "struct") != null {
@@ -191,9 +191,11 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
             loc.end_pos = self.prev().loc.end_pos
 
-            return Ok(TopLevelExpr::StructDef(self.ast_arena.new!(StructDefExpr {
-                struct_name: type_name,
-                fields: fields,
+            return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
+                name: name,
+                value: TypeDefValue::Struct(self.ast_arena.new!(TypeDefValueStruct {
+                    fields: fields,
+                })),
                 loc: loc,
             })))
         }
@@ -234,10 +236,12 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
             loc.end_pos = self.prev().loc.end_pos
 
-            return Ok(TopLevelExpr::EnumDef(self.ast_arena.new!(EnumDefExpr {
-                enum_name: type_name,
-                variant_type: variant_type,
-                variants: variants,
+            return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
+                name: name,
+                value: TypeDefValue::Enum(self.ast_arena.new!(TypeDefValueEnum {
+                    variant_type: variant_type,
+                    variants: variants,
+                })),
                 loc: loc,
             })))
         }
@@ -247,8 +251,8 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
-            type_name: type_name,
-            type_value: type_value,
+            name: name,
+            value: TypeDefValue::Alias(self.ast_arena.new!(type_value)),
             loc: loc,
         })))
     }

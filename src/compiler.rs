@@ -611,40 +611,66 @@ impl Compiler {
     fn pass_collect_own_symbols(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
-                TopLevelExpr::StructDef(struct_def) => {
-                    let _ = self.define_symbol(
-                        &mut module.ctx,
-                        Symbol {
-                            name: struct_def.struct_name.repr,
-                            type_: SymbolType::Struct,
-                            col_index: self.struct_defs.len(),
-                            defined_in_this_scope: true,
-                            loc: struct_def.struct_name.loc,
-                        },
-                    );
+                TopLevelExpr::TypeDef(type_def) => {
+                    if let TypeDefValue::Alias(_) = &type_def.value {
+                        let _ = self.define_symbol(
+                            &mut module.ctx,
+                            Symbol {
+                                name: type_def.name.repr,
+                                type_: SymbolType::TypeAlias,
+                                col_index: self.type_aliases.len(),
+                                defined_in_this_scope: true,
+                                loc: type_def.name.loc,
+                            },
+                        );
 
-                    self.struct_defs.push(StructDef {
-                        struct_name: struct_def.struct_name.repr,
-                        fields: Vec::new(),
-                        fully_defined: false,
-                    });
-                }
-                TopLevelExpr::EnumDef(enum_def) => {
+                        self.type_aliases.push(Type::Never); // placeholder
+                        continue;
+                    }
+
+                    if let TypeDefValue::Struct { .. } = &type_def.value {
+                        let _ = self.define_symbol(
+                            &mut module.ctx,
+                            Symbol {
+                                name: type_def.name.repr,
+                                type_: SymbolType::Struct,
+                                col_index: self.struct_defs.len(),
+                                defined_in_this_scope: true,
+                                loc: type_def.name.loc,
+                            },
+                        );
+
+                        self.struct_defs.push(StructDef {
+                            struct_name: type_def.name.repr,
+                            fields: Vec::new(),
+                            fully_defined: false,
+                        });
+                        continue;
+                    }
+
+                    let TypeDefValue::Enum {
+                        variant_type: variant_type_in_decl,
+                        variants,
+                    } = &type_def.value
+                    else {
+                        unreachable!()
+                    };
+
                     let Ok(_) = self.define_symbol(
                         &mut module.ctx,
                         Symbol {
-                            name: enum_def.enum_name.repr,
+                            name: type_def.name.repr,
                             type_: SymbolType::Enum,
                             col_index: self.enum_defs.len(),
                             defined_in_this_scope: true,
-                            loc: enum_def.enum_name.loc,
+                            loc: type_def.name.loc,
                         },
                     ) else {
                         continue;
                     };
 
                     let mut variant_type = Type::Void;
-                    if let Some(type_expr) = &enum_def.variant_type {
+                    if let Some(type_expr) = &variant_type_in_decl {
                         match self.build_type(&module.ctx, type_expr) {
                             Ok(t) => variant_type = t,
                             Err(err) => {
@@ -655,15 +681,15 @@ impl Compiler {
                     }
 
                     self.enum_defs.push(EnumDef {
-                        enum_name: enum_def.enum_name.repr,
+                        enum_name: type_def.name.repr,
                         variant_type: variant_type.clone(),
                         variants: Vec::new(), // placeholder
                     });
 
-                    for (variant, variant_index) in enum_def.variants.iter().zip(0..) {
+                    for (variant, variant_index) in variants.iter().zip(0..) {
                         let constructor_name = self.alloc_str(format!(
                             "{}::{}",
-                            enum_def.enum_name.repr, variant.variant_name.repr
+                            type_def.name.repr, variant.variant_name.repr
                         ));
 
                         let enum_index = self.enum_defs.len() - 1;
@@ -713,20 +739,6 @@ impl Compiler {
                             })
                         }
                     }
-                }
-                TopLevelExpr::TypeDef(type_def) => {
-                    let _ = self.define_symbol(
-                        &mut module.ctx,
-                        Symbol {
-                            name: type_def.type_name.repr,
-                            type_: SymbolType::TypeAlias,
-                            col_index: self.type_aliases.len(),
-                            defined_in_this_scope: true,
-                            loc: type_def.type_name.loc,
-                        },
-                    );
-
-                    self.type_aliases.push(Type::Never); // placeholder
                 }
                 TopLevelExpr::FnDef(fn_def) => {
                     if fn_def.is_inline {
@@ -922,15 +934,35 @@ impl Compiler {
     fn pass_assemble_complex_types(&mut self, module: &Module) {
         'exprs: for expr in &module.parser.ast {
             match expr {
-                TopLevelExpr::StructDef(struct_def) => {
-                    let mut struct_fields = Vec::<StructField>::new();
-                    let mut struct_primitives_count = 0;
-                    let mut struct_aligment = 1;
+                TopLevelExpr::TypeDef(type_def) => {
+                    if let TypeDefValue::Alias(type_expr) = &type_def.value {
+                        let type_value = self.build_type(&module.ctx, &type_expr);
+                        let type_value = catch!(type_value, err, {
+                            self.reporter.error(&err);
+                            continue;
+                        });
 
-                    'fields: for field in &struct_def.fields {
-                        for existing_field in &struct_fields {
-                            if existing_field.field_name == field.field_name.repr {
-                                self.reporter.error(&Error {
+                        let symbol = self
+                            .current_scope(&module.ctx)
+                            .get_symbol(&type_def.name.repr)
+                            .unwrap()
+                            .relax();
+                        let SymbolType::TypeAlias = symbol.type_ else {
+                            continue;
+                        };
+                        self.type_aliases[symbol.col_index] = type_value;
+                        continue;
+                    }
+
+                    if let TypeDefValue::Struct { fields } = &type_def.value {
+                        let mut struct_fields = Vec::<StructField>::new();
+                        let mut struct_primitives_count = 0;
+                        let mut struct_aligment = 1;
+
+                        'fields: for field in fields {
+                            for existing_field in &struct_fields {
+                                if existing_field.field_name == field.field_name.repr {
+                                    self.reporter.error(&Error {
                                     message: format!(
                                         "Cannot redefine struct field '{}', already defined at {}",
                                         field.field_name.repr,
@@ -938,64 +970,73 @@ impl Compiler {
                                     ),
                                     loc: field.field_name.loc,
                                 });
-                                continue 'fields;
+                                    continue 'fields;
+                                }
                             }
+
+                            let field_index = struct_primitives_count;
+                            let field_type_res = self.build_type_check_ref(
+                                &module.ctx,
+                                &field.field_type,
+                                false,
+                                field.field_type.loc(),
+                            );
+                            let field_type = catch!(field_type_res, err, {
+                                self.reporter.error(&err);
+                                continue 'exprs;
+                            });
+                            let mut field_layout = TypeLayout::new();
+                            self.get_type_layout(&field_type, &mut field_layout);
+
+                            struct_aligment = u32::max(struct_aligment, field_layout.alignment);
+                            struct_primitives_count += field_layout.primities_count;
+
+                            struct_fields.push(StructField {
+                                field_name: field.field_name.repr,
+                                field_type: field_type.clone(),
+                                field_layout,
+                                field_index,
+                                byte_offset: 0, // will be set during field alignment
+                                loc: field.field_name.loc,
+                            });
                         }
 
-                        let field_index = struct_primitives_count;
-                        let field_type_res = self.build_type_check_ref(
-                            &module.ctx,
-                            &field.field_type,
-                            false,
-                            field.field_type.loc(),
-                        );
-                        let field_type = catch!(field_type_res, err, {
-                            self.reporter.error(&err);
-                            continue 'exprs;
-                        });
-                        let mut field_layout = TypeLayout::new();
-                        self.get_type_layout(&field_type, &mut field_layout);
+                        // align fields
+                        let mut byte_offset = 0;
+                        for field in &mut struct_fields {
+                            byte_offset = align(byte_offset, field.field_layout.alignment);
 
-                        struct_aligment = u32::max(struct_aligment, field_layout.alignment);
-                        struct_primitives_count += field_layout.primities_count;
+                            field.byte_offset = byte_offset;
 
-                        struct_fields.push(StructField {
-                            field_name: field.field_name.repr,
-                            field_type: field_type.clone(),
-                            field_layout,
-                            field_index,
-                            byte_offset: 0, // will be set during field alignment
-                            loc: field.field_name.loc,
-                        });
-                    }
+                            byte_offset += field.field_layout.byte_size;
+                        }
 
-                    // align fields
-                    let mut byte_offset = 0;
-                    for field in &mut struct_fields {
-                        byte_offset = align(byte_offset, field.field_layout.alignment);
+                        let symbol = self
+                            .current_scope(&module.ctx)
+                            .get_symbol(&type_def.name.repr)
+                            .unwrap()
+                            .relax();
+                        let SymbolType::Struct = symbol.type_ else {
+                            continue;
+                        };
+                        let struct_ = &mut self.struct_defs[symbol.col_index];
 
-                        field.byte_offset = byte_offset;
-
-                        byte_offset += field.field_layout.byte_size;
-                    }
-
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&struct_def.struct_name.repr)
-                        .unwrap()
-                        .relax();
-                    let SymbolType::Struct = symbol.type_ else {
+                        struct_.fields.append(&mut struct_fields);
+                        struct_.fully_defined = true;
                         continue;
-                    };
-                    let struct_ = &mut self.struct_defs[symbol.col_index];
+                    }
 
-                    struct_.fields.append(&mut struct_fields);
-                    struct_.fully_defined = true;
-                }
-                TopLevelExpr::EnumDef(enum_def) => {
+                    let TypeDefValue::Enum {
+                        variant_type: _,
+                        variants,
+                    } = &type_def.value
+                    else {
+                        unreachable!()
+                    };
+
                     let symbol = self
                         .current_scope(&module.ctx)
-                        .get_symbol(&enum_def.enum_name.repr)
+                        .get_symbol(&type_def.name.repr)
                         .unwrap()
                         .relax();
                     let SymbolType::Enum = symbol.type_ else {
@@ -1003,7 +1044,7 @@ impl Compiler {
                     };
                     let enum_ = self.enum_defs[symbol.col_index].relax_mut();
 
-                    'variants: for variant in enum_def.variants.iter() {
+                    'variants: for variant in variants.iter() {
                         for existing_variant in &enum_.variants {
                             if existing_variant.variant_name == variant.variant_name.repr {
                                 self.reporter.error(&Error {
@@ -1046,23 +1087,6 @@ impl Compiler {
                         });
                     }
                 }
-                TopLevelExpr::TypeDef(type_def) => {
-                    let type_value = self.build_type(&module.ctx, &type_def.type_value);
-                    let type_value = catch!(type_value, err, {
-                        self.reporter.error(&err);
-                        continue;
-                    });
-
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&type_def.type_name.repr)
-                        .unwrap()
-                        .relax();
-                    let SymbolType::TypeAlias = symbol.type_ else {
-                        continue;
-                    };
-                    self.type_aliases[symbol.col_index] = type_value;
-                }
                 _ => {} // skip, not interested
             }
         }
@@ -1073,8 +1097,6 @@ impl Compiler {
             match expr {
                 TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_symbols
                 TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_symbols
-                TopLevelExpr::StructDef(_) => {} // skip, processed in pass_assemble_complex_types
-                TopLevelExpr::EnumDef(_) => {} // skip, processed in pass_assemble_complex_types
 
                 TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
                     fn_name: intrinsic,

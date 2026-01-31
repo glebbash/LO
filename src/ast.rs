@@ -7,8 +7,6 @@ pub enum TopLevelExpr {
     FnDef(FnDefExpr),
     FnImport(FnImportExpr),
 
-    StructDef(StructDefExpr),
-    EnumDef(EnumDefExpr),
     TypeDef(TypeDefExpr),
 
     IntrinsicCall(InlineFnCallExpr),
@@ -70,10 +68,21 @@ pub struct LetExpr {
     pub loc: Loc,
 }
 
-pub struct StructDefExpr {
-    pub struct_name: IdentExpr,
-    pub fields: Vec<StructDefField>,
+pub struct TypeDefExpr {
+    pub name: IdentExpr,
+    pub value: TypeDefValue,
     pub loc: Loc,
+}
+
+pub enum TypeDefValue {
+    Struct {
+        fields: Vec<StructDefField>,
+    },
+    Enum {
+        variant_type: Option<TypeExpr>,
+        variants: Vec<EnumDefVariant>,
+    },
+    Alias(TypeExpr),
 }
 
 pub struct StructDefField {
@@ -82,22 +91,9 @@ pub struct StructDefField {
     pub loc: Loc,
 }
 
-pub struct EnumDefExpr {
-    pub enum_name: IdentExpr,
-    pub variant_type: Option<TypeExpr>,
-    pub variants: Vec<EnumDefVariant>,
-    pub loc: Loc,
-}
-
 pub struct EnumDefVariant {
     pub variant_name: IdentExpr,
     pub variant_type: Option<TypeExpr>,
-    pub loc: Loc,
-}
-
-pub struct TypeDefExpr {
-    pub type_name: IdentExpr,
-    pub type_value: TypeExpr,
     pub loc: Loc,
 }
 
@@ -114,8 +110,6 @@ impl TopLevelExpr {
             TopLevelExpr::FnDef(e) => &e.loc,
             TopLevelExpr::FnImport(e) => &e.loc,
 
-            TopLevelExpr::StructDef(e) => &e.loc,
-            TopLevelExpr::EnumDef(e) => &e.loc,
             TopLevelExpr::TypeDef(e) => &e.loc,
 
             TopLevelExpr::IntrinsicCall(e) => &e.loc,
