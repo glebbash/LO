@@ -14,15 +14,16 @@ pub struct Parser {
     pub reporter: &'static Reporter,
 
     // state
-    pub tokens_processed: RefCell<usize>,
     pub context_stack: Vec<ParsingContext>,
+    pub tokens_processed: RefCell<usize>,
+    pub next_symbol_id: RefCell<usize>,
 
     // output
     pub ast: Vec<TopLevelExpr>,
 }
 
 impl Parser {
-    pub fn new(lexer: Lexer, reporter: &'static Reporter) -> Self {
+    pub fn new(lexer: Lexer, reporter: &'static Reporter, next_symbol_id: usize) -> Self {
         let mut context_stack = Vec::new();
         context_stack.push(ParsingContext {
             struct_literal_allowed: true,
@@ -32,8 +33,9 @@ impl Parser {
             source: lexer.source,
             lexer,
             reporter,
-            tokens_processed: RefCell::new(0),
             context_stack,
+            tokens_processed: RefCell::new(0),
+            next_symbol_id: RefCell::new(next_symbol_id),
             ast: Vec::new(),
         }
     }
@@ -1136,6 +1138,7 @@ impl Parser {
 
     fn parse_ident(&self) -> Result<IdentExpr, Error> {
         let mut ident = IdentExpr {
+            symbol_id: self.next_symbol_id(),
             repr: "", // stub
             parts: Vec::new(),
             loc: self.current().loc,
@@ -1247,6 +1250,12 @@ impl Parser {
     }
 
     // utils
+
+    fn next_symbol_id(&self) -> usize {
+        let symbol_id = *self.next_symbol_id.borrow();
+        *self.next_symbol_id.borrow_mut() = symbol_id + 1;
+        symbol_id
+    }
 
     fn push_ctx(&self, ctx: ParsingContext) {
         self.context_stack.be_mut().push(ctx);

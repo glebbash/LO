@@ -471,6 +471,7 @@ pub struct Compiler {
     data_size: RefCell<u32>,
     string_pool: RefCell<Vec<PooledString>>,
     first_string_usage: Option<Loc>,
+    next_symbol_id: RefCell<usize>,
 }
 
 impl Compiler {
@@ -542,12 +543,13 @@ impl Compiler {
             return None;
         });
 
-        let parser = Parser::new(lexer, self.reporter.relax());
+        let parser = Parser::new(lexer, self.reporter.relax(), *self.next_symbol_id.borrow());
         if !self.in_lex_only_mode {
             catch!(parser.parse_file(), err, {
                 self.reporter.error(&err);
                 return None;
             });
+            *self.next_symbol_id.borrow_mut() = *parser.next_symbol_id.borrow();
         }
 
         let mut includes = Vec::new();
@@ -3052,6 +3054,35 @@ impl Compiler {
                     for symbol in &self.current_scope(ctx).symbols {
                         write!(message, "{} : {:?}\n", symbol.name, symbol.type_).unwrap();
                     }
+
+                    self.reporter.print_inspection(&InspectInfo {
+                        message,
+                        loc: fn_name.loc,
+                        linked_loc: None,
+                    });
+                    return Ok(());
+                }
+
+                if fn_name.repr == "inspect_stats" {
+                    if !self.reporter.in_inspection_mode {
+                        return Ok(());
+                    }
+
+                    let mut lines = 0;
+                    for file in &self.fm.files {
+                        lines += file
+                            .source
+                            .as_bytes()
+                            .iter()
+                            .filter(|&&b| b == b'\n')
+                            .count()
+                    }
+
+                    let mut message = String::new();
+                    message.push_str(format!("LOC: {}\n", lines).as_str());
+                    message.push_str(
+                        format!("symbol count: {}\n", *self.next_symbol_id.borrow()).as_str(),
+                    );
 
                     self.reporter.print_inspection(&InspectInfo {
                         message,

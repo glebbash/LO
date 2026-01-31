@@ -212,6 +212,8 @@ pub struct ReturnExpr {
 }
 
 pub struct IdentExpr {
+    #[allow(dead_code)] // TODO: remove
+    pub symbol_id: usize,
     pub repr: &'static str,
     pub parts: Vec<Loc>,
     pub loc: Loc,
