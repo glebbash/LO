@@ -2,7 +2,7 @@
 @include("./lexer.lo")
 @include("./ast.lo")
 
-// TODO?: support `use TokenType::*`
+// TODO?: support `@use(TokenType::_)`
 inline let StringLiteral = TokenType::StringLiteral
 inline let CharLiteral = TokenType::CharLiteral
 inline let IntLiteral = TokenType::IntLiteral
