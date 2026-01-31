@@ -10,7 +10,6 @@ pub enum TopLevelExpr {
     TypeDef(TypeDefExpr),
 
     IntrinsicCall(InlineFnCallExpr),
-    Include(IncludeExpr),
 }
 
 pub struct FnDefExpr {
@@ -46,19 +45,6 @@ pub enum FnParamType {
     Self_,
     SelfRef,
     Type { expr: TypeExpr },
-}
-
-/// DOC: `include "<module path>" [as <alias>] [with extern]` syntax was chosen
-///   because it reuses existing rust keywords and reads nicely (mostly).
-///
-/// Another option was `import "..." [as ...] [and expose]`
-///   but `import` is already a WASM concept and `and expose` is two new keywords for just one flag
-
-pub struct IncludeExpr {
-    pub file_path: QuotedString,
-    pub alias: Option<IdentExpr>,
-    pub with_extern: bool,
-    pub loc: Loc,
 }
 
 pub struct LetExpr {
@@ -113,7 +99,6 @@ impl TopLevelExpr {
             TopLevelExpr::TypeDef(e) => &e.loc,
 
             TopLevelExpr::IntrinsicCall(e) => &e.loc,
-            TopLevelExpr::Include(e) => &e.loc,
         }
     }
 }

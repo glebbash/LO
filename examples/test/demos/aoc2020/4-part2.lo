@@ -1,7 +1,7 @@
-include "../../../lib/cli.lo"
-include "../../../lib/fs.lo"
-include "../../../lib/str_cutter.lo"
-include "../../../lib/int_parser.lo"
+@include("../../../lib/cli.lo")
+@include("../../../lib/fs.lo")
+@include("../../../lib/str_cutter.lo")
+@include("../../../lib/int_parser.lo")
 
 fn main() {
     let input = fs::read_file!("./examples/test/demos/aoc2020/4.txt")

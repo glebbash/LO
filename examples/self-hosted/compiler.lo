@@ -1,6 +1,6 @@
-include "./core.lo"
-include "./lexer.lo"
-include "./parser.lo"
+@include("./core.lo")
+@include("./lexer.lo")
+@include("./parser.lo")
 
 type Module = struct {
     error_arena: &Arena,

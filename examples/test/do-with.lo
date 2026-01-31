@@ -1,4 +1,4 @@
-include "../lib/cli.lo"
+@include("../lib/cli.lo")
 
 fn main() {
     do print(it.to_tmp_str!()) with (

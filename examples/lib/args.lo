@@ -1,5 +1,5 @@
-include "./std.lo"
-include "./wasi.lo"
+@include("./std.lo")
+@include("./wasi.lo")
 
 type Args = struct {
     argc: u32,

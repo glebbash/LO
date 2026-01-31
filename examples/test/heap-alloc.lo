@@ -1,4 +1,4 @@
-include "../lib/cli.lo"
+@include("../lib/cli.lo")
 
 fn main() {
     let p1 = heap::alloc(1)

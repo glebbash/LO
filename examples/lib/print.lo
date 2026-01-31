@@ -1,5 +1,5 @@
-include "./std.lo"
-include "./wasi.lo"
+@include("./std.lo")
+@include("./wasi.lo")
 
 fn print(value: str) {
     let _ = fprint(wasi::FD_STDOUT, value)

@@ -1,8 +1,8 @@
 // exports vec api for testing
 
-@use_memory(min_pages = 1, exported)
+@include("../lib/std.lo")
 
-include "../lib/std.lo"
+@use_memory(min_pages = 1, exported)
 
 @export_existing(Vec::with_capacity, out = "vec_new")
 @export_existing(Vec::swap, out = "vec_swap")

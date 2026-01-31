@@ -1,5 +1,5 @@
-include "../../../lib/cli.lo"
-include "../../../lib/fs.lo"
+@include("../../../lib/cli.lo")
+@include("../../../lib/fs.lo")
 
 fn main() {
     let input_buf = fs::read_file!("./examples/test/demos/aoc2020/5.txt")

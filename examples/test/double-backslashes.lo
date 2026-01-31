@@ -1,4 +1,4 @@
-include "../lib/print.lo"
+@include("../lib/print.lo")
 
 fn main() {
     let x = 1 \\ let y = 2 \\ let z = 3

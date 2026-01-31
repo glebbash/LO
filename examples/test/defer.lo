@@ -1,4 +1,4 @@
-include "../lib/cli.lo"
+@include("../lib/cli.lo")
 
 fn main() {
     defer println("defer(main): 1")

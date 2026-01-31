@@ -1,7 +1,7 @@
-include "./core.lo"
-include "./ast.lo"
-include "./parser.lo"
-include "./lexer.lo"
+@include("./core.lo")
+@include("./ast.lo")
+@include("./parser.lo")
+@include("./lexer.lo")
 
 type Printer = struct {
     parser: &Parser,
@@ -179,19 +179,6 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         stdout_write(instrinsic.fn_name.repr)
         self.print_type_args(instrinsic.type_args)
         self.print_args(instrinsic.args, instrinsic.loc)
-        return
-    }
-
-    if match TopLevelExpr::Include(include_expr) = expr {
-        stdout_write("include ")
-        stdout_write(include_expr.file_path.get_repr(self.parser.lexer.source))
-        if include_expr.alias != null {
-            stdout_write(" as ")
-            stdout_write(include_expr.alias.repr)
-        }
-        if include_expr.with_extern {
-            stdout_write(" with extern")
-        }
         return
     }
 

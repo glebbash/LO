@@ -1,6 +1,6 @@
-include "../../lib/cli.lo"
-include "../../lib/args.lo"
-include "../../lib/fs.lo"
+@include("../../lib/cli.lo")
+@include("../../lib/args.lo")
+@include("../../lib/fs.lo")
 
 fn main() {
     let args = Args::load()

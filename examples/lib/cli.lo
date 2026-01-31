@@ -1,6 +1,6 @@
-include "./std.lo" with extern
-include "./wasi.lo" with extern
-include "./print.lo" with extern
+@include("./std.lo", with_extern)
+@include("./wasi.lo", with_extern)
+@include("./print.lo", with_extern)
 
 // 1MB stack + 1MB heap
 @use_memory(min_pages = 40, exported)

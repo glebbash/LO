@@ -1,7 +1,7 @@
-include "../lib/std.lo" with extern
-include "../lib/fs.lo" with extern
-include "../lib/wasi.lo"
-include "../lib/print.lo"
+@include("../lib/std.lo", with_extern)
+@include("../lib/fs.lo", with_extern)
+@include("../lib/wasi.lo")
+@include("../lib/print.lo")
 
 type VoidError = u32
 inline let VoidError::VALUE = 1 as &VoidError

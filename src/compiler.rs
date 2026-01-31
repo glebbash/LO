@@ -399,7 +399,8 @@ pub struct Module {
 
 pub struct ModuleInclude {
     module_index: usize,
-    include_expr: &'static IncludeExpr,
+    alias: Option<String>,
+    with_extern: bool,
 }
 
 #[derive(Clone)]
@@ -553,19 +554,73 @@ impl Compiler {
 
         if !self.in_single_file_mode {
             for expr in &parser.ast {
-                let TopLevelExpr::Include(include) = expr else {
-                    continue;
-                };
-
-                let Some(module) = self.include(&include.file_path.get_value(source), &include.loc)
+                let TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
+                    fn_name: instrinsic,
+                    type_args,
+                    args,
+                    loc,
+                }) = expr
                 else {
                     continue;
                 };
+                if instrinsic.repr != "include" {
+                    continue;
+                }
+
+                if type_args.len() != 0 {
+                    self.reporter.error(&bad_signature(instrinsic));
+                    continue;
+                }
+
+                let mut file_path = None;
+                let mut alias = None;
+                let mut with_extern = false;
+
+                for arg in &args.items {
+                    if let CodeExpr::StringLiteral(str) = arg {
+                        file_path = Some(str.value.clone());
+                        continue;
+                    }
+
+                    if let CodeExpr::Ident(ident) = arg
+                        && ident.repr == "with_extern"
+                    {
+                        with_extern = true;
+                    }
+
+                    if let CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) = arg
+                        && let CodeExpr::Ident(IdentExpr { repr: "alias", .. }) = &**lhs
+                        && let CodeExpr::StringLiteral(str) = &**rhs
+                    {
+                        alias = Some(str.value.clone())
+                    }
+                }
+
+                let Some(file_path) = file_path else {
+                    continue;
+                };
+
+                let module_index;
+                match self.include(&file_path, &loc) {
+                    Some(module) => module_index = module.index,
+                    None => continue,
+                }
 
                 includes.push(ModuleInclude {
-                    module_index: module.index,
-                    include_expr: include.relax(),
+                    module_index,
+                    alias,
+                    with_extern,
                 });
+
+                fn bad_signature(fn_name: &IdentExpr) -> Error {
+                    Error {
+                        message: format!(
+                            "Invalid call, expected signature: @{}(<str-literal>, [with_extern, alias = <str-literal>])",
+                            fn_name.repr
+                        ),
+                        loc: fn_name.loc,
+                    }
+                }
             }
         }
 
@@ -611,6 +666,8 @@ impl Compiler {
     fn pass_collect_own_symbols(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
+                TopLevelExpr::IntrinsicCall(_) => {} // skip, not interested
+
                 TopLevelExpr::TypeDef(type_def) => {
                     if let TypeDefValue::Alias(_) = &type_def.value {
                         let _ = self.define_symbol(
@@ -863,7 +920,6 @@ impl Compiler {
                         loc: let_expr.name.loc,
                     });
                 }
-                _ => {} // skip, not interested
             }
         }
     }
@@ -916,12 +972,12 @@ impl Compiler {
 
         let original_prefix_len = prefix.len();
         for include in &includee.includes {
-            if !(include.include_expr.with_extern || force_go_deeper) {
+            if !(include.with_extern || force_go_deeper) {
                 continue;
             }
 
-            if let Some(alias) = &include.include_expr.alias {
-                prefix.push_str(&alias.repr);
+            if let Some(alias) = &include.alias {
+                prefix.push_str(&alias);
                 prefix.push_str("::");
             }
 
@@ -1095,15 +1151,179 @@ impl Compiler {
     fn pass_main(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
-                TopLevelExpr::Include(_) => {} // skip, processed in pass_collect_all_symbols
                 TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_symbols
 
+                TopLevelExpr::FnDef(fn_def) => {
+                    if fn_def.is_inline {
+                        // skip, processed in pass_collect_all_symbols
+                        continue;
+                    }
+
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&fn_def.decl.fn_name.repr)
+                        .unwrap()
+                        .relax();
+                    let SymbolType::Function = symbol.type_ else {
+                        continue;
+                    };
+                    let fn_info = self.functions[symbol.col_index].relax_mut();
+
+                    fn_info.fn_type.output = match &fn_def.decl.return_type {
+                        Some(return_type) => {
+                            catch!(self.build_type(&module.ctx, return_type), err, {
+                                self.reporter.error(&err);
+                                continue;
+                            })
+                        }
+                        _ => Type::Void,
+                    };
+
+                    let self_type = self.get_fn_self_type(
+                        &module.ctx,
+                        &fn_def.decl.fn_name,
+                        &fn_def.decl.params,
+                    );
+
+                    'param_loop: for fn_param in &fn_def.decl.params {
+                        let param_type =
+                            self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
+                        let param_type = catch!(param_type, err, {
+                            self.reporter.error(&err);
+                            continue 'param_loop;
+                        });
+                        fn_info.fn_type.inputs.push(param_type.clone());
+
+                        fn_info.fn_params.push(FnParameter {
+                            param_name: fn_param.param_name.repr,
+                            param_type: param_type.clone(),
+                            loc: fn_param.param_name.loc,
+                        });
+                    }
+                }
+                TopLevelExpr::FnImport(fn_import) => {
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&fn_import.decl.fn_name.repr)
+                        .unwrap()
+                        .relax();
+                    let SymbolType::Function = symbol.type_ else {
+                        continue;
+                    };
+                    let fn_info = self.functions[symbol.col_index].relax_mut();
+
+                    let self_type = self.get_fn_self_type(
+                        &module.ctx,
+                        &fn_import.decl.fn_name,
+                        &fn_import.decl.params,
+                    );
+
+                    for fn_param in &fn_import.decl.params {
+                        let param_type =
+                            self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
+                        let param_type = catch!(param_type, err, {
+                            self.reporter.error(&err);
+                            continue;
+                        });
+                        fn_info.fn_type.inputs.push(param_type.clone());
+                        fn_info.fn_params.push(FnParameter {
+                            param_name: fn_param.param_name.repr,
+                            param_type: param_type.clone(),
+                            loc: fn_param.param_name.loc,
+                        });
+                    }
+
+                    if let Some(return_type) = &fn_import.decl.return_type {
+                        fn_info.fn_type.output =
+                            catch!(self.build_type(&module.ctx, &return_type), err, {
+                                self.reporter.error(&err);
+                                continue;
+                            });
+                    }
+                }
+                TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&let_expr.name.repr)
+                        .unwrap()
+                        .relax();
+                    let SymbolType::Global = symbol.type_ else {
+                        continue;
+                    };
+                    let global = self.globals[symbol.col_index].relax_mut();
+
+                    // TODO: ensure `global_def.global_value` is a valid const expression
+
+                    let value_type = self.get_expr_type(&module.ctx, &let_expr.value);
+                    let value_type = catch!(value_type, err, {
+                        self.reporter.error(&err);
+                        continue;
+                    });
+                    global.global_type = value_type;
+
+                    if self.reporter.in_inspection_mode {
+                        let global_name = &let_expr.name.repr;
+
+                        self.reporter.print_inspection(&InspectInfo {
+                            message: format!(
+                                "global {global_name}: {}",
+                                TypeFmt(self, &global.global_type)
+                            ),
+                            loc: let_expr.name.loc,
+                            linked_loc: None,
+                        });
+                    }
+                }
+                TopLevelExpr::Let(let_expr) => {
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&let_expr.name.repr)
+                        .unwrap()
+                        .relax();
+                    let const_ = self.const_defs[symbol.col_index].relax_mut();
+
+                    let const_type = match self.get_expr_type(&module.ctx, &let_expr.value) {
+                        Ok(x) => x,
+                        Err(err) => {
+                            self.reporter.error(&err);
+                            continue;
+                        }
+                    };
+                    const_.code_unit.type_ = const_type;
+
+                    if let Err(err) = self.codegen(
+                        module.ctx.be_mut(),
+                        &mut const_.code_unit.instrs,
+                        &let_expr.value,
+                    ) {
+                        self.reporter.error(&err);
+                        continue;
+                    };
+
+                    if self.reporter.in_inspection_mode {
+                        let const_name = &let_expr.name.repr;
+
+                        self.reporter.print_inspection(&InspectInfo {
+                            message: format!(
+                                "inline let {const_name}: {}",
+                                TypeFmt(self, &const_.code_unit.type_)
+                            ),
+                            loc: let_expr.name.loc,
+                            linked_loc: None,
+                        });
+                    }
+                }
                 TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
                     fn_name: intrinsic,
                     type_args,
                     args,
                     loc: _,
                 }) => {
+                    if intrinsic.repr == "include" {
+                        // skip, processed in `include`
+                        continue;
+                    }
+
                     if intrinsic.repr == "export_existing" {
                         let mut from_root = false;
                         let mut in_name = None;
@@ -1322,167 +1542,6 @@ impl Compiler {
                         message: format!("Unknown intrinsic: {}", intrinsic.repr),
                         loc: intrinsic.loc,
                     });
-                }
-
-                TopLevelExpr::FnDef(fn_def) => {
-                    if fn_def.is_inline {
-                        // skip, processed in pass_collect_all_symbols
-                        continue;
-                    }
-
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&fn_def.decl.fn_name.repr)
-                        .unwrap()
-                        .relax();
-                    let SymbolType::Function = symbol.type_ else {
-                        continue;
-                    };
-                    let fn_info = self.functions[symbol.col_index].relax_mut();
-
-                    fn_info.fn_type.output = match &fn_def.decl.return_type {
-                        Some(return_type) => {
-                            catch!(self.build_type(&module.ctx, return_type), err, {
-                                self.reporter.error(&err);
-                                continue;
-                            })
-                        }
-                        _ => Type::Void,
-                    };
-
-                    let self_type = self.get_fn_self_type(
-                        &module.ctx,
-                        &fn_def.decl.fn_name,
-                        &fn_def.decl.params,
-                    );
-
-                    'param_loop: for fn_param in &fn_def.decl.params {
-                        let param_type =
-                            self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
-                        let param_type = catch!(param_type, err, {
-                            self.reporter.error(&err);
-                            continue 'param_loop;
-                        });
-                        fn_info.fn_type.inputs.push(param_type.clone());
-
-                        fn_info.fn_params.push(FnParameter {
-                            param_name: fn_param.param_name.repr,
-                            param_type: param_type.clone(),
-                            loc: fn_param.param_name.loc,
-                        });
-                    }
-                }
-                TopLevelExpr::FnImport(fn_import) => {
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&fn_import.decl.fn_name.repr)
-                        .unwrap()
-                        .relax();
-                    let SymbolType::Function = symbol.type_ else {
-                        continue;
-                    };
-                    let fn_info = self.functions[symbol.col_index].relax_mut();
-
-                    let self_type = self.get_fn_self_type(
-                        &module.ctx,
-                        &fn_import.decl.fn_name,
-                        &fn_import.decl.params,
-                    );
-
-                    for fn_param in &fn_import.decl.params {
-                        let param_type =
-                            self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
-                        let param_type = catch!(param_type, err, {
-                            self.reporter.error(&err);
-                            continue;
-                        });
-                        fn_info.fn_type.inputs.push(param_type.clone());
-                        fn_info.fn_params.push(FnParameter {
-                            param_name: fn_param.param_name.repr,
-                            param_type: param_type.clone(),
-                            loc: fn_param.param_name.loc,
-                        });
-                    }
-
-                    if let Some(return_type) = &fn_import.decl.return_type {
-                        fn_info.fn_type.output =
-                            catch!(self.build_type(&module.ctx, &return_type), err, {
-                                self.reporter.error(&err);
-                                continue;
-                            });
-                    }
-                }
-                TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&let_expr.name.repr)
-                        .unwrap()
-                        .relax();
-                    let SymbolType::Global = symbol.type_ else {
-                        continue;
-                    };
-                    let global = self.globals[symbol.col_index].relax_mut();
-
-                    // TODO: ensure `global_def.global_value` is a valid const expression
-
-                    let value_type = self.get_expr_type(&module.ctx, &let_expr.value);
-                    let value_type = catch!(value_type, err, {
-                        self.reporter.error(&err);
-                        continue;
-                    });
-                    global.global_type = value_type;
-
-                    if self.reporter.in_inspection_mode {
-                        let global_name = &let_expr.name.repr;
-
-                        self.reporter.print_inspection(&InspectInfo {
-                            message: format!(
-                                "global {global_name}: {}",
-                                TypeFmt(self, &global.global_type)
-                            ),
-                            loc: let_expr.name.loc,
-                            linked_loc: None,
-                        });
-                    }
-                }
-                TopLevelExpr::Let(let_expr) => {
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&let_expr.name.repr)
-                        .unwrap()
-                        .relax();
-                    let const_ = self.const_defs[symbol.col_index].relax_mut();
-
-                    let const_type = match self.get_expr_type(&module.ctx, &let_expr.value) {
-                        Ok(x) => x,
-                        Err(err) => {
-                            self.reporter.error(&err);
-                            continue;
-                        }
-                    };
-                    const_.code_unit.type_ = const_type;
-
-                    if let Err(err) = self.codegen(
-                        module.ctx.be_mut(),
-                        &mut const_.code_unit.instrs,
-                        &let_expr.value,
-                    ) {
-                        self.reporter.error(&err);
-                        continue;
-                    };
-
-                    if self.reporter.in_inspection_mode {
-                        let const_name = &let_expr.name.repr;
-
-                        self.reporter.print_inspection(&InspectInfo {
-                            message: format!(
-                                "inline let {const_name}: {}",
-                                TypeFmt(self, &const_.code_unit.type_)
-                            ),
-                            loc: let_expr.name.loc,
-                            linked_loc: None,
-                        });
-                    }
                 }
             }
         }

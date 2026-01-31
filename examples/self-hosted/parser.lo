@@ -1,6 +1,6 @@
-include "./core.lo"
-include "./lexer.lo"
-include "./ast.lo"
+@include("./core.lo")
+@include("./lexer.lo")
+@include("./ast.lo")
 
 // TODO?: support `use TokenType::*`
 inline let StringLiteral = TokenType::StringLiteral

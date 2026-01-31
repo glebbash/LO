@@ -1,5 +1,5 @@
-include "./core.lo"
-include "./lexer.lo"
+@include("./core.lo")
+@include("./lexer.lo")
 
 // TODO: impl proper cleanup for all &Vec fields here
 
@@ -12,7 +12,6 @@ type TopLevelExpr = enum (&void) {
     TypeDef(&TypeDefExpr),
 
     IntrinsicCall(&InlineFnCallExpr),
-    Include(&IncludeExpr),
 }
 
 type IdentExpr = struct {
@@ -65,20 +64,6 @@ type FnParamTypeType = struct {
 
 type FnParamTypeInfer = struct {
     name: str,
-}
-
-/// DOC: `include "<module path>" [as <alias>] [with extern]` syntax was chosen
-///   because it reuses existing rust keywords and reads nicely (mostly).
-///
-/// Another option was `import "..." [as ...] [and expose]`
-///   but `import` is already a WASM concept and `and expose` is two new keywords for just one flag
-
-type IncludeExpr = struct {
-    file_path: QuotedString,
-    // @optional
-    alias: &IdentExpr,
-    with_extern: bool,
-    loc: Loc,
 }
 
 type LetExpr = struct {
@@ -148,9 +133,6 @@ fn TopLevelExpr::loc(self): Loc {
         return e.loc
     }
     if match TopLevelExpr::IntrinsicCall(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::Include(e) = self {
         return e.loc
     }
     @unreachable()

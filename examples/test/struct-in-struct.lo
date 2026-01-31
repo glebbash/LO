@@ -1,4 +1,4 @@
-include "../lib/cli.lo"
+@include("../lib/cli.lo")
 
 type Point2D = struct {
     x: u32,

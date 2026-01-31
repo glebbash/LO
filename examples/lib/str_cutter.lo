@@ -1,4 +1,4 @@
-include "./std.lo"
+@include("./std.lo")
 
 type StrCutter = struct {
     piece: str,

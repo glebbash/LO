@@ -1,5 +1,5 @@
-include "../../../../lib/std.lo"
-include "../../../../lib/wasm4.lo"
+@include("../../../../lib/std.lo")
+@include("../../../../lib/wasm4.lo")
 
 type Pos = struct {
     x: i32,

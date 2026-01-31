@@ -1,13 +1,13 @@
 // NOTE: this file is a project entry point. '0-' prefix is used to
 //   force it to the top of `ls` output
 
-include "../lib/args.lo"
-include "../lib/wasi.lo"
+@include("../lib/args.lo")
+@include("../lib/wasi.lo")
 
-include "./core.lo"
-include "./lexer.lo"
-include "./compiler.lo"
-include "./printer.lo"
+@include("./core.lo")
+@include("./lexer.lo")
+@include("./compiler.lo")
+@include("./printer.lo")
 
 @use_memory(min_pages = 1, exported)
 

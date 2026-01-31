@@ -1,4 +1,4 @@
-include "../../lib/cli.lo"
+@include("../../lib/cli.lo")
 
 // https://github.com/microsoft/vscode-wasm/issues/161
 fn main() {

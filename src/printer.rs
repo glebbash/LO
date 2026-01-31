@@ -184,22 +184,6 @@ impl Printer {
                 self.print_type_args(type_args);
                 self.print_args(args, loc);
             }
-            TopLevelExpr::Include(IncludeExpr {
-                file_path,
-                alias,
-                with_extern,
-                loc: _,
-            }) => {
-                stdout_write("include ");
-                stdout_write(file_path.get_repr(self.parser.lexer.source));
-                if let Some(alias) = alias {
-                    stdout_write(" as ");
-                    stdout_write(&alias.repr);
-                }
-                if *with_extern {
-                    stdout_write(" with extern");
-                }
-            }
         }
     }
 

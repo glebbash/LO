@@ -254,31 +254,6 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "include") {
-            let mut loc = self.prev().loc;
-
-            let file_path = self.expect_any(StringLiteral)?.clone();
-            let mut alias = None;
-            if let Some(_) = self.eat(Symbol, "as") {
-                alias = Some(self.parse_ident()?);
-            }
-
-            let mut with_extern = false;
-            if let Some(_) = self.eat(Symbol, "with") {
-                self.expect(Symbol, "extern")?;
-                with_extern = true;
-            }
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::Include(IncludeExpr {
-                file_path: QuotedString::new(file_path.loc),
-                alias,
-                with_extern,
-                loc,
-            }));
-        }
-
         let unexpected = self.current();
         return Err(Error {
             message: format!(
