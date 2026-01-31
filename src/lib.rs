@@ -145,12 +145,12 @@ pub extern "C" fn _start() {
     if compiler.reporter.in_inspection_mode {
         compiler.reporter.end_inspection();
 
-        if compiler.reporter.error_count == 0 {
+        if *compiler.reporter.error_count == 0 {
             return;
         }
     }
 
-    if compiler.reporter.error_count > 0 {
+    if *compiler.reporter.error_count > 0 {
         proc_exit(1);
     }
 

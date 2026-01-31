@@ -1,5 +1,5 @@
 use crate::wasi;
-use alloc::{format, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 use core::{cell::RefCell, ffi::CStr, fmt::Write, str};
 
 pub struct InspectInfo {
@@ -14,8 +14,8 @@ pub struct Reporter {
 
     pub in_inspection_mode: bool,
 
-    pub error_count: u32,
-    pub warning_count: u32,
+    pub error_count: Box<u32>,
+    pub warning_count: Box<u32>,
 }
 
 impl Reporter {
@@ -35,7 +35,7 @@ impl Reporter {
     }
 
     pub fn error(&self, err: &Error) {
-        self.be_mut().error_count += 1;
+        *self.be_mut().error_count += 1;
 
         if self.in_inspection_mode {
             let source_index = err.loc.file_index;
@@ -56,7 +56,7 @@ impl Reporter {
     }
 
     pub fn warning(&self, err: &Error) {
-        self.be_mut().warning_count += 1;
+        *self.be_mut().warning_count += 1;
 
         if self.in_inspection_mode {
             let source_index = err.loc.file_index;
