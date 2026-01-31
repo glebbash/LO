@@ -1,7 +1,6 @@
 // provided by utils.ts
-// useful for debugging when WASI fd_write is not available
-import from "console" {
-    fn debug_u32::log(x: u32)
+// useful for debugging in JS host when WASI fd_write is not available
 
-    fn debug_u32_2::log(x: u32, y: u32)
-}
+fn debug_u32::log(x: u32) = @import_from("console")
+
+fn debug_u32_2::log(x: u32, y: u32) = @import_from("console")

@@ -3,15 +3,15 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 pub enum TopLevelExpr {
     Let(LetExpr),
+
     FnDef(FnDefExpr),
+    FnImport(FnImportExpr),
 
     StructDef(StructDefExpr),
     EnumDef(EnumDefExpr),
     TypeDef(TypeDefExpr),
 
     IntrinsicCall(InlineFnCallExpr),
-
-    Import(ImportExpr),
     Include(IncludeExpr),
 }
 
@@ -20,6 +20,12 @@ pub struct FnDefExpr {
     pub is_inline: bool,
     pub decl: FnDeclExpr,
     pub body: CodeBlock,
+    pub loc: Loc,
+}
+
+pub struct FnImportExpr {
+    pub decl: FnDeclExpr,
+    pub imported_from: QuotedString,
     pub loc: Loc,
 }
 
@@ -55,24 +61,6 @@ pub struct IncludeExpr {
     pub alias: Option<IdentExpr>,
     pub with_extern: bool,
     pub loc: Loc,
-}
-
-pub struct ImportExpr {
-    pub module_name: QuotedString,
-    pub items: Vec<ImportItem>,
-    pub loc: Loc,
-}
-
-pub enum ImportItem {
-    FnDecl(FnDeclExpr),
-}
-
-impl ImportItem {
-    pub fn loc(&self) -> &Loc {
-        match self {
-            ImportItem::FnDecl(e) => &e.loc,
-        }
-    }
 }
 
 pub struct LetExpr {
@@ -122,13 +110,16 @@ impl TopLevelExpr {
     pub fn loc(&self) -> &Loc {
         match self {
             TopLevelExpr::Let(e) => &e.loc,
+
             TopLevelExpr::FnDef(e) => &e.loc,
-            TopLevelExpr::Include(e) => &e.loc,
-            TopLevelExpr::Import(e) => &e.loc,
+            TopLevelExpr::FnImport(e) => &e.loc,
+
             TopLevelExpr::StructDef(e) => &e.loc,
             TopLevelExpr::EnumDef(e) => &e.loc,
             TopLevelExpr::TypeDef(e) => &e.loc,
+
             TopLevelExpr::IntrinsicCall(e) => &e.loc,
+            TopLevelExpr::Include(e) => &e.loc,
         }
     }
 }

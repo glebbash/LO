@@ -778,42 +778,38 @@ impl Compiler {
                         definition_loc: fn_def.decl.fn_name.loc,
                     });
                 }
-                TopLevelExpr::Import(import_expr) => {
-                    let module_name = import_expr.module_name.get_value(module.source);
+                TopLevelExpr::FnImport(fn_import) => {
+                    let module_name = fn_import.imported_from.get_value(module.source);
 
-                    for item in &import_expr.items {
-                        let ImportItem::FnDecl(fn_decl) = item;
+                    let _ = self.define_symbol(
+                        &mut module.ctx,
+                        Symbol {
+                            name: fn_import.decl.fn_name.repr,
+                            type_: SymbolType::Function,
+                            col_index: self.functions.len(),
+                            defined_in_this_scope: true,
+                            loc: fn_import.decl.fn_name.loc,
+                        },
+                    );
 
-                        let _ = self.define_symbol(
-                            &mut module.ctx,
-                            Symbol {
-                                name: fn_decl.fn_name.repr,
-                                type_: SymbolType::Function,
-                                col_index: self.functions.len(),
-                                defined_in_this_scope: true,
-                                loc: fn_decl.fn_name.loc,
-                            },
-                        );
+                    let method_name = fn_import.decl.fn_name.parts.last().unwrap();
+                    let external_fn_name = method_name.read_span(module.source);
 
-                        let method_name = fn_decl.fn_name.parts.last().unwrap();
-                        let external_fn_name = method_name.read_span(module.source);
-
-                        self.functions.push(FnInfo {
-                            fn_name: fn_decl.fn_name.repr,
-                            fn_type: FnType {
-                                inputs: Vec::new(),
-                                output: Type::Void,
-                            },
-                            fn_params: Vec::new(),
-                            fn_source: FnSource::Host {
-                                module_name: module_name.clone(),
-                                external_fn_name,
-                            },
-                            exported_as: Vec::new(),
-                            wasm_fn_index: u32::MAX, // not known at this point
-                            definition_loc: fn_decl.fn_name.loc,
-                        });
-                    }
+                    self.functions.push(FnInfo {
+                        fn_name: fn_import.decl.fn_name.repr,
+                        fn_type: FnType {
+                            inputs: Vec::new(),
+                            output: Type::Void,
+                        },
+                        fn_params: Vec::new(),
+                        fn_source: FnSource::Host {
+                            module_name: module_name.clone(),
+                            external_fn_name,
+                        },
+                        exported_as: Vec::new(),
+                        wasm_fn_index: u32::MAX, // not known at this point
+                        definition_loc: fn_import.decl.fn_name.loc,
+                    });
                 }
                 TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
                     let _ = self.define_symbol(
@@ -1354,45 +1350,44 @@ impl Compiler {
                         });
                     }
                 }
-                TopLevelExpr::Import(import_expr) => {
-                    'items: for item in &import_expr.items {
-                        let ImportItem::FnDecl(fn_decl) = item;
+                TopLevelExpr::FnImport(fn_import) => {
+                    let symbol = self
+                        .current_scope(&module.ctx)
+                        .get_symbol(&fn_import.decl.fn_name.repr)
+                        .unwrap()
+                        .relax();
+                    let SymbolType::Function = symbol.type_ else {
+                        continue;
+                    };
+                    let fn_info = self.functions[symbol.col_index].relax_mut();
 
-                        let symbol = self
-                            .current_scope(&module.ctx)
-                            .get_symbol(&fn_decl.fn_name.repr)
-                            .unwrap()
-                            .relax();
-                        let SymbolType::Function = symbol.type_ else {
+                    let self_type = self.get_fn_self_type(
+                        &module.ctx,
+                        &fn_import.decl.fn_name,
+                        &fn_import.decl.params,
+                    );
+
+                    for fn_param in &fn_import.decl.params {
+                        let param_type =
+                            self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
+                        let param_type = catch!(param_type, err, {
+                            self.reporter.error(&err);
                             continue;
-                        };
-                        let fn_info = self.functions[symbol.col_index].relax_mut();
+                        });
+                        fn_info.fn_type.inputs.push(param_type.clone());
+                        fn_info.fn_params.push(FnParameter {
+                            param_name: fn_param.param_name.repr,
+                            param_type: param_type.clone(),
+                            loc: fn_param.param_name.loc,
+                        });
+                    }
 
-                        let self_type =
-                            self.get_fn_self_type(&module.ctx, &fn_decl.fn_name, &fn_decl.params);
-
-                        for fn_param in &fn_decl.params {
-                            let param_type =
-                                self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
-                            let param_type = catch!(param_type, err, {
+                    if let Some(return_type) = &fn_import.decl.return_type {
+                        fn_info.fn_type.output =
+                            catch!(self.build_type(&module.ctx, &return_type), err, {
                                 self.reporter.error(&err);
-                                continue 'items;
+                                continue;
                             });
-                            fn_info.fn_type.inputs.push(param_type.clone());
-                            fn_info.fn_params.push(FnParameter {
-                                param_name: fn_param.param_name.repr,
-                                param_type: param_type.clone(),
-                                loc: fn_param.param_name.loc,
-                            });
-                        }
-
-                        if let Some(return_type) = &fn_decl.return_type {
-                            fn_info.fn_type.output =
-                                catch!(self.build_type(&module.ctx, &return_type), err, {
-                                    self.reporter.error(&err);
-                                    continue 'items;
-                                });
-                        }
                     }
                 }
                 TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
@@ -4905,6 +4900,14 @@ impl Compiler {
 
         match symbol.type_ {
             SymbolType::Local => {
+                // TODO: fix this
+                if symbol.col_index >= ctx.locals.len() {
+                    return Err(Error {
+                        message: format!("shouldn't happend"),
+                        loc: ident.loc,
+                    });
+                }
+
                 let local = &ctx.locals[symbol.col_index];
 
                 Ok(self.var_local(
@@ -5404,10 +5407,10 @@ impl Compiler {
             },
         );
 
-        if let Err(existing) = res {
-            if existing.type_ == SymbolType::Local {
-                return ctx.locals[existing.col_index].local_index;
-            }
+        if let Err(existing) = res
+            && existing.type_ == SymbolType::Local
+        {
+            return ctx.locals[existing.col_index].local_index;
         }
 
         let local_index = self.define_unnamed_local(ctx, loc, local_type);

@@ -66,12 +66,49 @@ fn Parser::parse_file(&self): Result(void, &Error) {
 }
 
 fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
+    if self.eat(Symbol, "fn") != null {
+        let loc = self.prev().loc
+        let decl = self.parse_fn_decl(false)?
+
+        if self.eat(Operator, "=") != null {
+            let _ = self.expect(Operator, "@")?
+            let _ = self.expect(Symbol, "import_from")?
+            let _ = self.expect(Delim, "(")?
+            let imported_from = self.expect_any(StringLiteral)?
+            let _ = self.expect(Delim, ")")?
+            loc.end_pos = self.prev().loc.end_pos
+            return Ok(TopLevelExpr::FnImport(self.ast_arena.new!(FnImportExpr {
+                decl: decl,
+                imported_from: QuotedString::new(imported_from.loc),
+                loc: loc,
+            })))
+        }
+
+        let body = self.parse_code_block()?
+        loc.end_pos = self.prev().loc.end_pos
+        return Ok(TopLevelExpr::FnDef(self.ast_arena.new!(FnDefExpr {
+            exported: false,
+            is_inline: false,
+            decl: decl,
+            body: self.ast_arena.new!(body),
+            loc: loc,
+        })))
+    }
+
     if self.eat(Symbol, "export") != null {
         let loc = self.prev().loc
 
         if self.eat(Symbol, "fn") != null {
-            let fn_def = self.parse_fn_def(true, false, loc)?
-            return Ok(TopLevelExpr::FnDef(fn_def))
+            let decl = self.parse_fn_decl(false)?
+            let body = self.parse_code_block()?
+            loc.end_pos = self.prev().loc.end_pos
+            return Ok(TopLevelExpr::FnDef(self.ast_arena.new!(FnDefExpr {
+                exported: true,
+                is_inline: false,
+                decl: decl,
+                body: self.ast_arena.new!(body),
+                loc: loc,
+            })))
         }
 
         let unexpected = self.current()
@@ -82,76 +119,6 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             message: message,
             loc: unexpected.loc,
         }))
-    }
-
-    if self.eat(Operator, "@") != null {
-        let loc = self.prev().loc
-
-        let fn_name = self.parse_ident()?
-        let type_args = self.parse_inline_fn_type_args()?
-        let args = self.parse_fn_args()?
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(TopLevelExpr::IntrinsicCall(self.ast_arena.new!(InlineFnCallExpr {
-            fn_name: fn_name,
-            type_args: type_args,
-            args: args,
-            loc: loc,
-        })))
-    }
-
-    if self.eat(Symbol, "fn") != null {
-        let fn_def = self.parse_fn_def(false, false, self.prev().loc)?
-        return Ok(TopLevelExpr::FnDef(fn_def))
-    }
-
-    if self.eat(Symbol, "include") != null {
-        let loc = self.prev().loc
-
-        let file_path = self.expect_any(StringLiteral)?
-        let alias = null as &IdentExpr
-        if self.eat(Symbol, "as") != null {
-            alias = self.ast_arena.new!(self.parse_ident()?)
-        }
-
-        let with_extern = false
-        if self.eat(Symbol, "with") != null {
-            let _ = self.expect(Symbol, "extern")?
-            with_extern = true
-        }
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(TopLevelExpr::Include(self.ast_arena.new!(IncludeExpr {
-            file_path: QuotedString::new(file_path.loc),
-            alias: alias,
-            with_extern: with_extern,
-            loc: loc,
-        })))
-    }
-
-    if self.eat(Symbol, "import") != null {
-        let loc = self.prev().loc
-
-        let _ = self.expect(Symbol, "from")?
-        let module_name = self.expect_any(StringLiteral)?
-
-        let _ = self.expect(Delim, "{")?
-
-        let items = Vec::new!<ImportItem>()
-        while self.eat(Delim, "}") == null {
-            let item = self.parse_importable()?
-            items.push!(item)
-        }
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(TopLevelExpr::Import(self.ast_arena.new!(ImportExpr {
-            module_name: QuotedString::new(module_name.loc),
-            items: items,
-            loc: loc,
-        })))
     }
 
     if self.eat(Symbol, "let") != null {
@@ -170,8 +137,16 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         }
 
         if self.eat(Symbol, "fn") != null {
-            let fn_def = self.parse_fn_def(false, true, loc)?
-            return Ok(TopLevelExpr::FnDef(fn_def))
+            let decl = self.parse_fn_decl(true)?
+            let body = self.parse_code_block()?
+            loc.end_pos = self.prev().loc.end_pos
+            return Ok(TopLevelExpr::FnDef(self.ast_arena.new!(FnDefExpr {
+                exported: false,
+                is_inline: true,
+                decl: decl,
+                body: self.ast_arena.new!(body),
+                loc: loc,
+            })))
         }
 
         let unexpected = self.current()
@@ -278,6 +253,48 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
+    if self.eat(Operator, "@") != null {
+        let loc = self.prev().loc
+
+        let fn_name = self.parse_ident()?
+        let type_args = self.parse_inline_fn_type_args()?
+        let args = self.parse_fn_args()?
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::IntrinsicCall(self.ast_arena.new!(InlineFnCallExpr {
+            fn_name: fn_name,
+            type_args: type_args,
+            args: args,
+            loc: loc,
+        })))
+    }
+
+    if self.eat(Symbol, "include") != null {
+        let loc = self.prev().loc
+
+        let file_path = self.expect_any(StringLiteral)?
+        let alias = null as &IdentExpr
+        if self.eat(Symbol, "as") != null {
+            alias = self.ast_arena.new!(self.parse_ident()?)
+        }
+
+        let with_extern = false
+        if self.eat(Symbol, "with") != null {
+            let _ = self.expect(Symbol, "extern")?
+            with_extern = true
+        }
+
+        loc.end_pos = self.prev().loc.end_pos
+
+        return Ok(TopLevelExpr::Include(self.ast_arena.new!(IncludeExpr {
+            file_path: QuotedString::new(file_path.loc),
+            alias: alias,
+            with_extern: with_extern,
+            loc: loc,
+        })))
+    }
+
     let unexpected = self.current()
     let message = String::from_str_in(self.error_arena, "Unexpected top level token: ")
     message.push_str(unexpected.get_value(self.lexer.source))
@@ -301,21 +318,6 @@ fn Parser::parse_let(&self, is_inline: bool, loc: Loc): Result(LetExpr, &Error) 
         value: value,
         loc: loc,
     })
-}
-
-fn Parser::parse_fn_def(&self, exported: bool, is_inline: bool, loc: Loc): Result(&FnDefExpr, &Error) {
-    let decl = self.parse_fn_decl(is_inline)?
-    let body = self.parse_code_block()?
-
-    loc.end_pos = self.prev().loc.end_pos
-
-    return Ok(self.ast_arena.new!(FnDefExpr {
-        exported: exported,
-        is_inline: is_inline,
-        decl: decl,
-        body: self.ast_arena.new!(body),
-        loc: loc,
-    }))
 }
 
 fn Parser::parse_fn_decl(&self, is_inline: bool): Result(FnDeclExpr, &Error) {
@@ -400,24 +402,6 @@ fn Parser::parse_fn_params(
     }
 
     return Ok(params)
-}
-
-fn Parser::parse_importable(&self): Result(ImportItem, &Error) {
-    if self.eat(Symbol, "fn") != null {
-        let decl = self.parse_fn_decl(false)?
-        return Ok(ImportItem::FnDecl(self.ast_arena.new!(decl)))
-    }
-
-    let unexpected = self.current()
-    let message = String::from_str_in(
-        self.error_arena,
-        "Unexpected token in importable item: ",
-    )
-    message.push_str(unexpected.get_value(self.source))
-    return Err(self.error_arena.new!(Error {
-        message: message,
-        loc: unexpected.loc,
-    }))
 }
 
 fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {

@@ -50,30 +50,28 @@ inline let wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-import from "env" {
-    // Copies pixels to the framebuffer.
-    fn wasm4::blit(
-        data: *&u8,
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
-        flags: u32,
-    ): void
+// Copies pixels to the framebuffer.
+fn wasm4::blit(
+    data: *&u8,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    flags: u32,
+): void = @import_from("env")
 
-    // Copies a subregion within a larger sprite atlas to the framebuffer.
-    fn wasm4::blitSub(
-        data: *&u8,
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
-        srcX: u32,
-        srcY: u32,
-        stride: u32,
-        flags: u32,
-    ): void
-}
+// Copies a subregion within a larger sprite atlas to the framebuffer.
+fn wasm4::blitSub(
+    data: *&u8,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    srcX: u32,
+    srcY: u32,
+    stride: u32,
+    flags: u32,
+): void = @import_from("env")
 
 inline let wasm4::BLIT_2BPP = 1
 inline let wasm4::BLIT_1BPP = 0
@@ -81,25 +79,23 @@ inline let wasm4::BLIT_FLIP_X = 2
 inline let wasm4::BLIT_FLIP_Y = 4
 inline let wasm4::BLIT_ROTATE = 8
 
-import from "env" {
-    // Draws a line between two points.
-    fn wasm4::line(x1: i32, y1: i32, x2: i32, y2: i32)
+// Draws a line between two points.
+fn wasm4::line(x1: i32, y1: i32, x2: i32, y2: i32) = @import_from("env")
 
-    // Draws a horizontal line.
-    fn wasm4::hline(x: i32, y: i32, len: u32)
+// Draws a horizontal line.
+fn wasm4::hline(x: i32, y: i32, len: u32) = @import_from("env")
 
-    // Draws a vertical line.
-    fn wasm4::vline(x: i32, y: i32, len: u32)
+// Draws a vertical line.
+fn wasm4::vline(x: i32, y: i32, len: u32) = @import_from("env")
 
-    // Draws an oval (or circle).
-    fn wasm4::oval(x: i32, y: i32, width: u32, height: u32)
+// Draws an oval (or circle).
+fn wasm4::oval(x: i32, y: i32, width: u32, height: u32) = @import_from("env")
 
-    // Draws a rectangle.
-    fn wasm4::rect(x: i32, y: i32, width: u32, height: u32)
+// Draws a rectangle.
+fn wasm4::rect(x: i32, y: i32, width: u32, height: u32) = @import_from("env")
 
-    // Draws text using the built-in system font.
-    fn wasm4::text(text: *&u8, x: i32, y: i32)
-}
+// Draws text using the built-in system font.
+fn wasm4::text(text: *&u8, x: i32, y: i32) = @import_from("env")
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
@@ -107,10 +103,13 @@ import from "env" {
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-import from "env" {
-    // Plays a sound tone.
-    fn wasm4::tone(frequency: u32, duration: u32, volume: u32, flags: u32)
-}
+// Plays a sound tone.
+fn wasm4::tone(
+    frequency: u32,
+    duration: u32,
+    volume: u32,
+    flags: u32,
+) = @import_from("env")
 
 inline let wasm4::TONE_PULSE1 = 0
 inline let wasm4::TONE_PULSE2 = 1
@@ -130,18 +129,16 @@ inline let wasm4::TONE_NOTE_MODE = 64
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-import from "env" {
-    // Reads up to `size` bytes from persistent storage into the pointer `dest`.
-    fn wasm4::diskr(dest: *&void, size: u32): u32
+// Reads up to `size` bytes from persistent storage into the pointer `dest`.
+fn wasm4::diskr(dest: *&void, size: u32): u32 = @import_from("env")
 
-    // Writes up to `size` bytes from the pointer `src` into persistent storage.
-    fn wasm4::diskw(src: *&u8, size: u32): u32
+// Writes up to `size` bytes from the pointer `src` into persistent storage.
+fn wasm4::diskw(src: *&u8, size: u32): u32 = @import_from("env")
 
-    // Prints a message to the debug console.
-    fn wasm4::trace(str: *&u8)
+// Prints a message to the debug console.
+fn wasm4::trace(str: *&u8) = @import_from("env")
 
-    // Prints a message to the debug console.
-    // NOTE: Original signature is `void tracef (const char* fmt, ...)`,
-    //   but varargs are not supported.
-    fn wasm4::tracef(str: *&u8)
-}
+// Prints a message to the debug console.
+// NOTE: Original signature is `void tracef (const char* fmt, ...)`,
+//   but varargs are not supported.
+fn wasm4::tracef(str: *&u8) = @import_from("env")

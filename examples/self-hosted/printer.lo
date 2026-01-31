@@ -73,43 +73,11 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::Include(include_expr) = expr {
-        stdout_write("include ")
-        stdout_write(include_expr.file_path.get_repr(self.parser.lexer.source))
-        if include_expr.alias != null {
-            stdout_write(" as ")
-            stdout_write(include_expr.alias.repr)
-        }
-        if include_expr.with_extern {
-            stdout_write(" with extern")
-        }
-        return
-    }
-
-    if match TopLevelExpr::Import(import_expr) = expr {
-        stdout_write("import from ")
-        stdout_write(import_expr.module_name.get_repr(self.parser.lexer.source))
-        stdout_writeln(" {")
-        self.indent += 1
-
-        for i in 0..import_expr.items.size {
-            let item = import_expr.items.get!(i)
-            self.print_comments_before(item.loc().pos)
-            self.print_indent()
-            if match ImportItem::FnDecl(decl) = item {
-                self.print_fn_decl(*decl)
-            } else {
-                @unreachable()
-            }
-            stdout_write("\n")
-        }
-
-        // print the rest of the comments
-        self.print_comments_before(import_expr.loc.end_pos)
-
-        self.indent -= 1
-        self.print_indent()
-        stdout_write("}")
+    if match TopLevelExpr::FnImport(fn_import) = expr {
+        self.print_fn_decl(fn_import.decl)
+        stdout_write(" = @import_from(")
+        stdout_write(fn_import.imported_from.get_repr(self.parser.source))
+        stdout_write(")")
         return
     }
 
@@ -211,6 +179,19 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         stdout_write(instrinsic.fn_name.repr)
         self.print_type_args(instrinsic.type_args)
         self.print_args(instrinsic.args, instrinsic.loc)
+        return
+    }
+
+    if match TopLevelExpr::Include(include_expr) = expr {
+        stdout_write("include ")
+        stdout_write(include_expr.file_path.get_repr(self.parser.lexer.source))
+        if include_expr.alias != null {
+            stdout_write(" as ")
+            stdout_write(include_expr.alias.repr)
+        }
+        if include_expr.with_extern {
+            stdout_write(" with extern")
+        }
         return
     }
 

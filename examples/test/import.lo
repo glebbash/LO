@@ -1,6 +1,4 @@
-import from "utils" {
-    fn debug(x: u32)
-}
+fn debug(x: u32) = @import_from("utils")
 
 export fn main() {
     debug(1)

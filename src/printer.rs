@@ -68,47 +68,15 @@ impl Printer {
 
                 self.print_code_block(body);
             }
-            TopLevelExpr::Include(IncludeExpr {
-                file_path,
-                alias,
-                with_extern,
+            TopLevelExpr::FnImport(FnImportExpr {
+                decl,
+                imported_from,
                 loc: _,
             }) => {
-                stdout_write("include ");
-                stdout_write(file_path.get_repr(self.parser.lexer.source));
-                if let Some(alias) = alias {
-                    stdout_write(" as ");
-                    stdout_write(&alias.repr);
-                }
-                if *with_extern {
-                    stdout_write(" with extern");
-                }
-            }
-            TopLevelExpr::Import(ImportExpr {
-                module_name,
-                items,
-                loc,
-            }) => {
-                stdout_write("import from ");
-                stdout_write(module_name.get_repr(self.parser.lexer.source));
-                stdout_writeln(" {");
-                self.indent += 1;
-
-                for item in items {
-                    self.print_comments_before(item.loc().pos);
-                    self.print_indent();
-                    match item {
-                        ImportItem::FnDecl(decl) => self.print_fn_decl(decl),
-                    }
-                    stdout_write("\n");
-                }
-
-                // print the rest of the comments
-                self.print_comments_before(loc.end_pos);
-
-                self.indent -= 1;
-                self.print_indent();
-                stdout_write("}");
+                self.print_fn_decl(decl);
+                stdout_write(" = @import_from(");
+                stdout_write(imported_from.get_repr(self.parser.source));
+                stdout_write(")");
             }
             TopLevelExpr::Let(LetExpr {
                 is_inline: inline,
@@ -220,6 +188,22 @@ impl Printer {
                 stdout_write(&fn_name.repr);
                 self.print_type_args(type_args);
                 self.print_args(args, loc);
+            }
+            TopLevelExpr::Include(IncludeExpr {
+                file_path,
+                alias,
+                with_extern,
+                loc: _,
+            }) => {
+                stdout_write("include ");
+                stdout_write(file_path.get_repr(self.parser.lexer.source));
+                if let Some(alias) = alias {
+                    stdout_write(" as ");
+                    stdout_write(&alias.repr);
+                }
+                if *with_extern {
+                    stdout_write(" with extern");
+                }
             }
         }
     }

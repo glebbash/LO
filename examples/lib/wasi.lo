@@ -23,74 +23,92 @@ type wasi::fdstat = struct {
     fs_rights_inheriting: u64,
 }
 
-import from "wasi_snapshot_preview1" {
-    fn wasi::path_open(
-        // The file descriptor representing the directory that the file is located in.
-        dirfd: u32,
-        // Flags specifying how the path will be resolved.
-        dirflags: u32,
-        // A wasm pointer to a null-terminated string containing the path of the file or directory to open.
-        path: *&u8,
-        // The length of the path string.
-        path_len: u32,
-        // Flags specifying how the file will be opened.
-        oflags: u32,
-        // The rights of the created file descriptor.
-        fs_rights_base: u64,
-        // The rights of file descriptors derived from the created file descriptor.
-        fs_rights_inheriting: u64,
-        // The flags of the file descriptor.
-        fdflags: u32,
-        // A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
-        fd: &u32,
-    ): wasi::Err
+fn wasi::path_open(
+    // The file descriptor representing the directory that the file is located in.
+    dirfd: u32,
+    // Flags specifying how the path will be resolved.
+    dirflags: u32,
+    // A wasm pointer to a null-terminated string containing the path of the file or directory to open.
+    path: *&u8,
+    // The length of the path string.
+    path_len: u32,
+    // Flags specifying how the file will be opened.
+    oflags: u32,
+    // The rights of the created file descriptor.
+    fs_rights_base: u64,
+    // The rights of file descriptors derived from the created file descriptor.
+    fs_rights_inheriting: u64,
+    // The flags of the file descriptor.
+    fdflags: u32,
+    // A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
+    fd: &u32,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    fn wasi::fd_read(
-        // File descriptor
-        fd: u32,
-        // The pointer to the iov array
-        iovs: *&wasi::IOVec,
-        // Amount of wasi::IOVec
-        iovs_len: u32,
-        // Pointer to store the number of bytes read
-        nread: &u32,
-    ): wasi::Err
+fn wasi::fd_read(
+    // File descriptor
+    fd: u32,
+    // The pointer to the iov array
+    iovs: *&wasi::IOVec,
+    // Amount of wasi::IOVec
+    iovs_len: u32,
+    // Pointer to store the number of bytes read
+    nread: &u32,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    fn wasi::fd_write(
-        // File descriptor
-        fd: u32,
-        // The pointer to the iov array
-        iovs: *&wasi::IOVec,
-        // Amount of wasi::IOVec
-        iovs_len: u32,
-        // Pointer to store the number of bytes written
-        nwritten: &u32,
-    ): wasi::Err
+fn wasi::fd_write(
+    // File descriptor
+    fd: u32,
+    // The pointer to the iov array
+    iovs: *&wasi::IOVec,
+    // Amount of wasi::IOVec
+    iovs_len: u32,
+    // Pointer to store the number of bytes written
+    nwritten: &u32,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    // @param fd - file_descriptor
-    fn wasi::fd_close(fd: u32): wasi::Err
+fn wasi::fd_close(
+    // file_descriptor
+    fd: u32,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    // @param argc ---------- Pointer to where the number of arguments will be written.
-    // @param argv_buf_size - Pointer to where the size of the argument string data will be written.
-    fn wasi::args_sizes_get(argc: &u32, argv_buf_size: &u32): wasi::Err
+fn wasi::args_sizes_get(
+    // Pointer to where the number of arguments will be written.
+    argc: &u32,
+    // Pointer to where the size of the argument string data will be written.
+    argv_buf_size: &u32,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    // @param argv ----- Pointer to a buffer where the argument pointers will be written.
-    // @param argv_buf - Pointer to a buffer where the argument string data will be written.
-    fn wasi::args_get(argv: *&*&u8, argv_buf: *&u8): wasi::Err
+fn wasi::args_get(
+    // Pointer to a buffer where the argument pointers will be written.
+    argv: *&*&u8,
+    // Pointer to a buffer where the argument string data will be written.
+    argv_buf: *&u8,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    // @param code - The exit code to return to the operating system.
-    fn wasi::proc_exit(code: u32): never
+fn wasi::proc_exit(
+    // The exit code to return to the operating system.
+    code: u32,
+): never = @import_from("wasi_snapshot_preview1")
 
-    // @param fd -- The preopened file descriptor to query.
-    // @param buf - A pointer to a Prestat structure where the metadata will be written.
-    fn wasi::fd_prestat_get(fd: u32, buf: &wasi::prestat): wasi::Err
+fn wasi::fd_prestat_get(
+    // The preopened file descriptor to query.
+    fd: u32,
+    // A pointer to a Prestat structure where the metadata will be written.
+    buf: &wasi::prestat,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    // @param fd ------- The preopened file descriptor to query.
-    // @param path ----- A pointer to a buffer where the directory name will be written.
-    // @param path_len - The maximum length of the buffer.
-    fn wasi::fd_prestat_dir_name(fd: u32, path: *&u8, path_len: u32): wasi::Err
+fn wasi::fd_prestat_dir_name(
+    // The preopened file descriptor to query.
+    fd: u32,
+    // A pointer to a buffer where the directory name will be written.
+    path: *&u8,
+    // The maximum length of the buffer.
+    path_len: u32,
+): wasi::Err = @import_from("wasi_snapshot_preview1")
 
-    // @param fd -- The file descriptor whose metadata will be accessed.
-    // @param buf - A WebAssembly pointer to a memory location where the metadata will be written.
-    fn wasi::fd_fdstat_get(fd: u32, buf: &wasi::fdstat): wasi::Err
-}
+fn wasi::fd_fdstat_get(
+    // The file descriptor whose metadata will be accessed.
+    fd: u32,
+    // A pointer to a memory location where the metadata will be written.
+    buf: &wasi::fdstat,
+): wasi::Err = @import_from("wasi_snapshot_preview1")

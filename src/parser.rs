@@ -48,12 +48,50 @@ impl Parser {
     }
 
     fn parse_top_level_expr(&self) -> Result<TopLevelExpr, Error> {
+        if let Some(_) = self.eat(Symbol, "fn") {
+            let mut loc = self.prev().loc;
+
+            let decl = self.parse_fn_decl(false)?;
+
+            if let Some(_) = self.eat(Operator, "=") {
+                self.expect(Operator, "@")?;
+                self.expect(Symbol, "import_from")?;
+                self.expect(Delim, "(")?;
+                let imported_from = self.expect_any(StringLiteral)?.clone();
+                self.expect(Delim, ")")?;
+                loc.end_pos = self.prev().loc.end_pos;
+                return Ok(TopLevelExpr::FnImport(FnImportExpr {
+                    decl,
+                    imported_from: QuotedString::new(imported_from.loc),
+                    loc,
+                }));
+            }
+
+            let body = self.parse_code_block()?;
+            loc.end_pos = self.prev().loc.end_pos;
+            return Ok(TopLevelExpr::FnDef(FnDefExpr {
+                exported: false,
+                is_inline: false,
+                decl,
+                body,
+                loc,
+            }));
+        }
+
         if let Some(_) = self.eat(Symbol, "export") {
-            let loc = self.prev().loc;
+            let mut loc = self.prev().loc;
 
             if let Some(_) = self.eat(Symbol, "fn") {
-                let fn_def = self.parse_fn_def(true, false, loc)?;
-                return Ok(TopLevelExpr::FnDef(fn_def));
+                let decl = self.parse_fn_decl(false)?;
+                let body = self.parse_code_block()?;
+                loc.end_pos = self.prev().loc.end_pos;
+                return Ok(TopLevelExpr::FnDef(FnDefExpr {
+                    exported: true,
+                    is_inline: false,
+                    decl,
+                    body,
+                    loc,
+                }));
             }
 
             let unexpected = self.current();
@@ -66,76 +104,41 @@ impl Parser {
             });
         }
 
-        if let Some(_) = self.eat(Operator, "@") {
-            let mut loc = self.prev().loc;
-
-            let fn_name = self.parse_ident()?;
-            let type_args = self.parse_inline_fn_type_args()?;
-            let args = self.parse_fn_args()?;
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
-                fn_name,
-                args,
-                type_args,
-                loc,
-            }));
-        }
-
-        if let Some(_) = self.eat(Symbol, "fn") {
+        if let Some(_) = self.eat(Symbol, "let") {
             let loc = self.prev().loc;
-
-            let fn_def = self.parse_fn_def(false, false, loc)?;
-            return Ok(TopLevelExpr::FnDef(fn_def));
+            let let_expr = self.parse_let(false, loc)?;
+            return Ok(TopLevelExpr::Let(let_expr));
         }
 
-        if let Some(_) = self.eat(Symbol, "include") {
+        if self.eat(Symbol, "inline").is_some() {
             let mut loc = self.prev().loc;
 
-            let file_path = self.expect_any(StringLiteral)?.clone();
-            let mut alias = None;
-            if let Some(_) = self.eat(Symbol, "as") {
-                alias = Some(self.parse_ident()?);
+            if self.eat(Symbol, "let").is_some() {
+                let let_expr = self.parse_let(true, loc)?;
+                return Ok(TopLevelExpr::Let(let_expr));
             }
 
-            let mut with_extern = false;
-            if let Some(_) = self.eat(Symbol, "with") {
-                self.expect(Symbol, "extern")?;
-                with_extern = true;
+            if let Some(_) = self.eat(Symbol, "fn") {
+                let decl = self.parse_fn_decl(true)?;
+                let body = self.parse_code_block()?;
+                loc.end_pos = self.prev().loc.end_pos;
+                return Ok(TopLevelExpr::FnDef(FnDefExpr {
+                    exported: false,
+                    is_inline: true,
+                    decl,
+                    body,
+                    loc,
+                }));
             }
 
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::Include(IncludeExpr {
-                file_path: QuotedString::new(file_path.loc),
-                alias,
-                with_extern,
-                loc,
-            }));
-        }
-
-        if let Some(_) = self.eat(Symbol, "import") {
-            let mut loc = self.prev().loc;
-
-            self.expect(Symbol, "from")?;
-            let module_name = self.expect_any(StringLiteral)?.clone();
-
-            self.expect(Delim, "{")?;
-
-            let mut items = Vec::new();
-            while let None = self.eat(Delim, "}") {
-                let item = self.parse_importable()?;
-                items.push(item);
-            }
-
-            loc.end_pos = self.prev().loc.end_pos;
-
-            return Ok(TopLevelExpr::Import(ImportExpr {
-                module_name: QuotedString::new(module_name.loc),
-                items,
-                loc,
-            }));
+            let unexpected = self.current();
+            return Err(Error {
+                message: format!(
+                    "Unexpected inlineable: {}",
+                    unexpected.get_value(self.source)
+                ),
+                loc: unexpected.loc,
+            });
         }
 
         if let Some(_) = self.eat(Symbol, "type") {
@@ -232,33 +235,46 @@ impl Parser {
             }));
         }
 
-        if let Some(_) = self.eat(Symbol, "let") {
-            let loc = self.prev().loc;
-            let let_expr = self.parse_let(false, loc)?;
-            return Ok(TopLevelExpr::Let(let_expr));
+        if let Some(_) = self.eat(Operator, "@") {
+            let mut loc = self.prev().loc;
+
+            let fn_name = self.parse_ident()?;
+            let type_args = self.parse_inline_fn_type_args()?;
+            let args = self.parse_fn_args()?;
+
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
+                fn_name,
+                args,
+                type_args,
+                loc,
+            }));
         }
 
-        if self.eat(Symbol, "inline").is_some() {
-            let loc = self.prev().loc;
+        if let Some(_) = self.eat(Symbol, "include") {
+            let mut loc = self.prev().loc;
 
-            if self.eat(Symbol, "let").is_some() {
-                let let_expr = self.parse_let(true, loc)?;
-                return Ok(TopLevelExpr::Let(let_expr));
+            let file_path = self.expect_any(StringLiteral)?.clone();
+            let mut alias = None;
+            if let Some(_) = self.eat(Symbol, "as") {
+                alias = Some(self.parse_ident()?);
             }
 
-            if let Some(_) = self.eat(Symbol, "fn") {
-                let fn_def = self.parse_fn_def(false, true, loc)?;
-                return Ok(TopLevelExpr::FnDef(fn_def));
+            let mut with_extern = false;
+            if let Some(_) = self.eat(Symbol, "with") {
+                self.expect(Symbol, "extern")?;
+                with_extern = true;
             }
 
-            let unexpected = self.current();
-            return Err(Error {
-                message: format!(
-                    "Unexpected inlineable: {}",
-                    unexpected.get_value(self.source)
-                ),
-                loc: unexpected.loc,
-            });
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(TopLevelExpr::Include(IncludeExpr {
+                file_path: QuotedString::new(file_path.loc),
+                alias,
+                with_extern,
+                loc,
+            }));
         }
 
         let unexpected = self.current();
@@ -283,42 +299,6 @@ impl Parser {
             name,
             value: Box::new(value),
             loc,
-        });
-    }
-
-    fn parse_fn_def(
-        &self,
-        exported: bool,
-        is_inline: bool,
-        mut loc: Loc,
-    ) -> Result<FnDefExpr, Error> {
-        let decl = self.parse_fn_decl(is_inline)?;
-        let body = self.parse_code_block()?;
-
-        loc.end_pos = self.prev().loc.end_pos;
-
-        Ok(FnDefExpr {
-            exported,
-            is_inline,
-            decl,
-            body,
-            loc,
-        })
-    }
-
-    fn parse_importable(&self) -> Result<ImportItem, Error> {
-        if let Some(_) = self.eat(Symbol, "fn") {
-            let decl = self.parse_fn_decl(false)?;
-            return Ok(ImportItem::FnDecl(decl));
-        }
-
-        let unexpected = self.current();
-        return Err(Error {
-            message: format!(
-                "Unexpected token in importable item: {:?}",
-                unexpected.get_value(self.source)
-            ),
-            loc: unexpected.loc,
         });
     }
 

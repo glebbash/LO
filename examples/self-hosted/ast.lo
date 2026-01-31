@@ -5,7 +5,9 @@ include "./lexer.lo"
 
 type TopLevelExpr = enum (&void) {
     Let(&LetExpr),
+
     FnDef(&FnDefExpr),
+    FnImport(&FnImportExpr),
 
     StructDef(&StructDefExpr),
     EnumDef(&EnumDefExpr),
@@ -13,7 +15,6 @@ type TopLevelExpr = enum (&void) {
 
     IntrinsicCall(&InlineFnCallExpr),
     Include(&IncludeExpr),
-    Import(&ImportExpr),
 }
 
 type IdentExpr = struct {
@@ -38,6 +39,12 @@ type FnDefExpr = struct {
     decl: FnDeclExpr,
     // NOTE: this is ref only cause CodeBlock isn't defined at this point
     body: &CodeBlock,
+    loc: Loc,
+}
+
+type FnImportExpr = struct {
+    decl: FnDeclExpr,
+    imported_from: QuotedString,
     loc: Loc,
 }
 
@@ -74,23 +81,6 @@ type IncludeExpr = struct {
     alias: &IdentExpr,
     with_extern: bool,
     loc: Loc,
-}
-
-type ImportExpr = struct {
-    module_name: QuotedString,
-    items: &Vec(ImportItem),
-    loc: Loc,
-}
-
-type ImportItem = enum (&void) {
-    FnDecl(&FnDeclExpr),
-}
-
-fn ImportItem::loc(self): Loc {
-    if match ImportItem::FnDecl(e) = self {
-        return e.loc
-    }
-    @unreachable()
 }
 
 type LetExpr = struct {
@@ -148,10 +138,7 @@ fn TopLevelExpr::loc(self): Loc {
     if match TopLevelExpr::FnDef(e) = self {
         return e.loc
     }
-    if match TopLevelExpr::Include(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::Import(e) = self {
+    if match TopLevelExpr::FnImport(e) = self {
         return e.loc
     }
     if match TopLevelExpr::Let(e) = self {
@@ -167,6 +154,9 @@ fn TopLevelExpr::loc(self): Loc {
         return e.loc
     }
     if match TopLevelExpr::IntrinsicCall(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::Include(e) = self {
         return e.loc
     }
     @unreachable()
