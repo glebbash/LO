@@ -51,11 +51,11 @@ impl Printer {
         self.print_comments_before(expr.loc().pos);
 
         match &expr {
-            TopLevelExpr::FnDef(FnDefExpr {
+            TopLevelExpr::Fn(FnExpr {
                 exported,
                 is_inline,
                 decl,
-                body,
+                value,
                 loc: _,
             }) => {
                 if *exported {
@@ -66,17 +66,16 @@ impl Printer {
                 }
                 self.print_fn_decl(decl);
 
-                self.print_code_block(body);
-            }
-            TopLevelExpr::FnImport(FnImportExpr {
-                decl,
-                imported_from,
-                loc: _,
-            }) => {
-                self.print_fn_decl(decl);
-                stdout_write(" = @import_from(");
-                stdout_write(imported_from.get_repr(self.parser.source));
-                stdout_write(")");
+                match value {
+                    FnExprValue::Body(body) => {
+                        self.print_code_block(body);
+                    }
+                    FnExprValue::ImportFrom(imported_from) => {
+                        stdout_write(" = @import_from(");
+                        stdout_write(imported_from.get_repr(self.parser.source));
+                        stdout_write(")");
+                    }
+                }
             }
             TopLevelExpr::Let(LetExpr {
                 is_inline: inline,
@@ -92,7 +91,7 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(value);
             }
-            TopLevelExpr::TypeDef(TypeDefExpr {
+            TopLevelExpr::Type(TypeDefExpr {
                 name: type_name,
                 value: type_value,
                 loc,
@@ -173,7 +172,7 @@ impl Printer {
                     }
                 }
             }
-            TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
+            TopLevelExpr::Intrinsic(InlineFnCallExpr {
                 fn_name,
                 type_args,
                 args,

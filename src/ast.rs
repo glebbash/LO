@@ -3,26 +3,16 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 pub enum TopLevelExpr {
     Let(LetExpr),
-
-    FnDef(FnDefExpr),
-    FnImport(FnImportExpr),
-
-    TypeDef(TypeDefExpr),
-
-    IntrinsicCall(InlineFnCallExpr),
+    Fn(FnExpr),
+    Type(TypeDefExpr),
+    Intrinsic(InlineFnCallExpr),
 }
 
-pub struct FnDefExpr {
+pub struct FnExpr {
     pub exported: bool,
     pub is_inline: bool,
     pub decl: FnDeclExpr,
-    pub body: CodeBlock,
-    pub loc: Loc,
-}
-
-pub struct FnImportExpr {
-    pub decl: FnDeclExpr,
-    pub imported_from: QuotedString,
+    pub value: FnExprValue,
     pub loc: Loc,
 }
 
@@ -45,6 +35,11 @@ pub enum FnParamType {
     Self_,
     SelfRef,
     Type { expr: TypeExpr },
+}
+
+pub enum FnExprValue {
+    Body(CodeBlock),
+    ImportFrom(QuotedString),
 }
 
 pub struct LetExpr {
@@ -92,13 +87,9 @@ impl TopLevelExpr {
     pub fn loc(&self) -> &Loc {
         match self {
             TopLevelExpr::Let(e) => &e.loc,
-
-            TopLevelExpr::FnDef(e) => &e.loc,
-            TopLevelExpr::FnImport(e) => &e.loc,
-
-            TopLevelExpr::TypeDef(e) => &e.loc,
-
-            TopLevelExpr::IntrinsicCall(e) => &e.loc,
+            TopLevelExpr::Fn(e) => &e.loc,
+            TopLevelExpr::Type(e) => &e.loc,
+            TopLevelExpr::Intrinsic(e) => &e.loc,
         }
     }
 }

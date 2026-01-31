@@ -57,23 +57,25 @@ impl Parser {
                 self.expect(Operator, "@")?;
                 self.expect(Symbol, "import_from")?;
                 self.expect(Delim, "(")?;
-                let imported_from = self.expect_any(StringLiteral)?.clone();
+                let import_from = self.expect_any(StringLiteral)?.clone();
                 self.expect(Delim, ")")?;
                 loc.end_pos = self.prev().loc.end_pos;
-                return Ok(TopLevelExpr::FnImport(FnImportExpr {
+                return Ok(TopLevelExpr::Fn(FnExpr {
+                    exported: false,
+                    is_inline: false,
                     decl,
-                    imported_from: QuotedString::new(imported_from.loc),
+                    value: FnExprValue::ImportFrom(QuotedString::new(import_from.loc)),
                     loc,
                 }));
             }
 
             let body = self.parse_code_block()?;
             loc.end_pos = self.prev().loc.end_pos;
-            return Ok(TopLevelExpr::FnDef(FnDefExpr {
+            return Ok(TopLevelExpr::Fn(FnExpr {
                 exported: false,
                 is_inline: false,
                 decl,
-                body,
+                value: FnExprValue::Body(body),
                 loc,
             }));
         }
@@ -85,11 +87,11 @@ impl Parser {
                 let decl = self.parse_fn_decl(false)?;
                 let body = self.parse_code_block()?;
                 loc.end_pos = self.prev().loc.end_pos;
-                return Ok(TopLevelExpr::FnDef(FnDefExpr {
+                return Ok(TopLevelExpr::Fn(FnExpr {
                     exported: true,
                     is_inline: false,
                     decl,
-                    body,
+                    value: FnExprValue::Body(body),
                     loc,
                 }));
             }
@@ -122,11 +124,11 @@ impl Parser {
                 let decl = self.parse_fn_decl(true)?;
                 let body = self.parse_code_block()?;
                 loc.end_pos = self.prev().loc.end_pos;
-                return Ok(TopLevelExpr::FnDef(FnDefExpr {
+                return Ok(TopLevelExpr::Fn(FnExpr {
                     exported: false,
                     is_inline: true,
                     decl,
-                    body,
+                    value: FnExprValue::Body(body),
                     loc,
                 }));
             }
@@ -173,7 +175,7 @@ impl Parser {
 
                 loc.end_pos = self.prev().loc.end_pos;
 
-                return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
+                return Ok(TopLevelExpr::Type(TypeDefExpr {
                     name,
                     value: TypeDefValue::Struct { fields },
                     loc,
@@ -216,7 +218,7 @@ impl Parser {
 
                 loc.end_pos = self.prev().loc.end_pos;
 
-                return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
+                return Ok(TopLevelExpr::Type(TypeDefExpr {
                     name,
                     value: TypeDefValue::Enum {
                         variant_type,
@@ -230,7 +232,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
+            return Ok(TopLevelExpr::Type(TypeDefExpr {
                 name,
                 value: TypeDefValue::Alias(type_value),
                 loc,
@@ -246,7 +248,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
+            return Ok(TopLevelExpr::Intrinsic(InlineFnCallExpr {
                 fn_name,
                 args,
                 type_args,

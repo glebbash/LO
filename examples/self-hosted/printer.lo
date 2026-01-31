@@ -60,7 +60,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
     self.print_comments_before(expr.loc().pos)
 
-    if match TopLevelExpr::FnDef(fn_def) = expr {
+    if match TopLevelExpr::Fn(fn_def) = expr {
         if fn_def.exported {
             stdout_write("export ")
         }
@@ -69,15 +69,16 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         }
         self.print_fn_decl(fn_def.decl)
 
-        self.print_code_block(*fn_def.body)
-        return
-    }
+        if match FnExprValue::Body(body) = fn_def.value {
+            self.print_code_block(*body)
+        } else if match FnExprValue::ImportFrom(import_from) = fn_def.value {
+            stdout_write(" = @import_from(")
+            stdout_write((*import_from).get_repr(self.parser.source))
+            stdout_write(")")
+        } else {
+            @unreachable()
+        }
 
-    if match TopLevelExpr::FnImport(fn_import) = expr {
-        self.print_fn_decl(fn_import.decl)
-        stdout_write(" = @import_from(")
-        stdout_write(fn_import.imported_from.get_repr(self.parser.source))
-        stdout_write(")")
         return
     }
 
@@ -92,7 +93,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::TypeDef(type_def) = expr {
+    if match TopLevelExpr::Type(type_def) = expr {
         stdout_write("type ")
         stdout_write(type_def.name.repr)
         stdout_write(" = ")
@@ -174,7 +175,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         @unreachable()
     }
 
-    if match TopLevelExpr::IntrinsicCall(instrinsic) = expr {
+    if match TopLevelExpr::Intrinsic(instrinsic) = expr {
         stdout_write("@")
         stdout_write(instrinsic.fn_name.repr)
         self.print_type_args(instrinsic.type_args)

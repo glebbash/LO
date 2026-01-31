@@ -459,7 +459,7 @@ pub struct Compiler {
 
     const_defs: Vec<ConstDef>,
 
-    inline_fn_defs: Vec<&'static FnDefExpr>,
+    inline_fn_defs: Vec<&'static FnExpr>,
 
     functions: Vec<FnInfo>,
     wasm_fn_types: RefCell<Vec<WasmFnType>>,
@@ -554,7 +554,7 @@ impl Compiler {
 
         if !self.in_single_file_mode {
             for expr in &parser.ast {
-                let TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
+                let TopLevelExpr::Intrinsic(InlineFnCallExpr {
                     fn_name: instrinsic,
                     type_args,
                     args,
@@ -666,9 +666,9 @@ impl Compiler {
     fn pass_collect_own_symbols(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
-                TopLevelExpr::IntrinsicCall(_) => {} // skip, not interested
+                TopLevelExpr::Intrinsic(_) => {} // skip, not interested
 
-                TopLevelExpr::TypeDef(type_def) => {
+                TopLevelExpr::Type(type_def) => {
                     if let TypeDefValue::Alias(_) = &type_def.value {
                         let _ = self.define_symbol(
                             &mut module.ctx,
@@ -797,7 +797,7 @@ impl Compiler {
                         }
                     }
                 }
-                TopLevelExpr::FnDef(fn_def) => {
+                TopLevelExpr::Fn(fn_def) => {
                     if fn_def.is_inline {
                         let _ = self.define_symbol(
                             &mut module.ctx,
@@ -825,60 +825,52 @@ impl Compiler {
                         },
                     );
 
-                    let mut exported_as = Vec::new();
-                    if fn_def.exported {
-                        exported_as.push(String::from(fn_def.decl.fn_name.repr));
+                    match &fn_def.value {
+                        FnExprValue::Body(body) => {
+                            let mut exported_as = Vec::new();
+                            if fn_def.exported {
+                                exported_as.push(String::from(fn_def.decl.fn_name.repr));
+                            }
+
+                            self.functions.push(FnInfo {
+                                fn_name: fn_def.decl.fn_name.repr,
+                                fn_type: FnType {
+                                    inputs: Vec::new(),
+                                    output: Type::Void,
+                                },
+                                fn_params: Vec::new(),
+                                fn_source: FnSource::Guest {
+                                    module_index: module.index,
+                                    lo_fn_index: self.functions.len(),
+                                    body: body.relax(),
+                                },
+                                exported_as,
+                                wasm_fn_index: u32::MAX, // placeholder
+                                definition_loc: fn_def.decl.fn_name.loc,
+                            });
+                        }
+                        FnExprValue::ImportFrom(imported_from) => {
+                            let module_name = imported_from.get_value(module.source);
+                            let method_name = fn_def.decl.fn_name.parts.last().unwrap();
+                            let external_fn_name = method_name.read_span(module.source);
+
+                            self.functions.push(FnInfo {
+                                fn_name: fn_def.decl.fn_name.repr,
+                                fn_type: FnType {
+                                    inputs: Vec::new(),
+                                    output: Type::Void,
+                                },
+                                fn_params: Vec::new(),
+                                fn_source: FnSource::Host {
+                                    module_name: module_name.clone(),
+                                    external_fn_name,
+                                },
+                                exported_as: Vec::new(),
+                                wasm_fn_index: u32::MAX, // not known at this point
+                                definition_loc: fn_def.decl.fn_name.loc,
+                            });
+                        }
                     }
-
-                    self.functions.push(FnInfo {
-                        fn_name: fn_def.decl.fn_name.repr,
-                        fn_type: FnType {
-                            inputs: Vec::new(),
-                            output: Type::Void,
-                        },
-                        fn_params: Vec::new(),
-                        fn_source: FnSource::Guest {
-                            module_index: module.index,
-                            lo_fn_index: self.functions.len(),
-                            body: fn_def.body.relax(),
-                        },
-                        exported_as,
-                        wasm_fn_index: u32::MAX, // placeholder
-                        definition_loc: fn_def.decl.fn_name.loc,
-                    });
-                }
-                TopLevelExpr::FnImport(fn_import) => {
-                    let module_name = fn_import.imported_from.get_value(module.source);
-
-                    let _ = self.define_symbol(
-                        &mut module.ctx,
-                        Symbol {
-                            name: fn_import.decl.fn_name.repr,
-                            type_: SymbolType::Function,
-                            col_index: self.functions.len(),
-                            defined_in_this_scope: true,
-                            loc: fn_import.decl.fn_name.loc,
-                        },
-                    );
-
-                    let method_name = fn_import.decl.fn_name.parts.last().unwrap();
-                    let external_fn_name = method_name.read_span(module.source);
-
-                    self.functions.push(FnInfo {
-                        fn_name: fn_import.decl.fn_name.repr,
-                        fn_type: FnType {
-                            inputs: Vec::new(),
-                            output: Type::Void,
-                        },
-                        fn_params: Vec::new(),
-                        fn_source: FnSource::Host {
-                            module_name: module_name.clone(),
-                            external_fn_name,
-                        },
-                        exported_as: Vec::new(),
-                        wasm_fn_index: u32::MAX, // not known at this point
-                        definition_loc: fn_import.decl.fn_name.loc,
-                    });
                 }
                 TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
                     let _ = self.define_symbol(
@@ -990,7 +982,7 @@ impl Compiler {
     fn pass_assemble_complex_types(&mut self, module: &Module) {
         'exprs: for expr in &module.parser.ast {
             match expr {
-                TopLevelExpr::TypeDef(type_def) => {
+                TopLevelExpr::Type(type_def) => {
                     if let TypeDefValue::Alias(type_expr) = &type_def.value {
                         let type_value = self.build_type(&module.ctx, &type_expr);
                         let type_value = catch!(type_value, err, {
@@ -1151,9 +1143,9 @@ impl Compiler {
     fn pass_main(&mut self, module: &mut Module) {
         for expr in &module.parser.ast {
             match expr {
-                TopLevelExpr::TypeDef(_) => {} // skip, processed in pass_collect_all_symbols
+                TopLevelExpr::Type(_) => {} // skip, processed in pass_collect_all_symbols
 
-                TopLevelExpr::FnDef(fn_def) => {
+                TopLevelExpr::Fn(fn_def) => {
                     if fn_def.is_inline {
                         // skip, processed in pass_collect_all_symbols
                         continue;
@@ -1169,56 +1161,21 @@ impl Compiler {
                     };
                     let fn_info = self.functions[symbol.col_index].relax_mut();
 
-                    fn_info.fn_type.output = match &fn_def.decl.return_type {
-                        Some(return_type) => {
-                            catch!(self.build_type(&module.ctx, return_type), err, {
-                                self.reporter.error(&err);
-                                continue;
-                            })
-                        }
-                        _ => Type::Void,
-                    };
-
                     let self_type = self.get_fn_self_type(
                         &module.ctx,
                         &fn_def.decl.fn_name,
                         &fn_def.decl.params,
                     );
 
-                    'param_loop: for fn_param in &fn_def.decl.params {
-                        let param_type =
-                            self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
-                        let param_type = catch!(param_type, err, {
-                            self.reporter.error(&err);
-                            continue 'param_loop;
-                        });
-                        fn_info.fn_type.inputs.push(param_type.clone());
-
-                        fn_info.fn_params.push(FnParameter {
-                            param_name: fn_param.param_name.repr,
-                            param_type: param_type.clone(),
-                            loc: fn_param.param_name.loc,
-                        });
+                    if let Some(return_type) = &fn_def.decl.return_type {
+                        fn_info.fn_type.output =
+                            catch!(self.build_type(&module.ctx, return_type), err, {
+                                self.reporter.error(&err);
+                                continue;
+                            })
                     }
-                }
-                TopLevelExpr::FnImport(fn_import) => {
-                    let symbol = self
-                        .current_scope(&module.ctx)
-                        .get_symbol(&fn_import.decl.fn_name.repr)
-                        .unwrap()
-                        .relax();
-                    let SymbolType::Function = symbol.type_ else {
-                        continue;
-                    };
-                    let fn_info = self.functions[symbol.col_index].relax_mut();
 
-                    let self_type = self.get_fn_self_type(
-                        &module.ctx,
-                        &fn_import.decl.fn_name,
-                        &fn_import.decl.params,
-                    );
-
-                    for fn_param in &fn_import.decl.params {
+                    for fn_param in &fn_def.decl.params {
                         let param_type =
                             self.get_fn_param_type(&module.ctx, fn_param, &self_type, false);
                         let param_type = catch!(param_type, err, {
@@ -1226,19 +1183,12 @@ impl Compiler {
                             continue;
                         });
                         fn_info.fn_type.inputs.push(param_type.clone());
+
                         fn_info.fn_params.push(FnParameter {
                             param_name: fn_param.param_name.repr,
                             param_type: param_type.clone(),
                             loc: fn_param.param_name.loc,
                         });
-                    }
-
-                    if let Some(return_type) = &fn_import.decl.return_type {
-                        fn_info.fn_type.output =
-                            catch!(self.build_type(&module.ctx, &return_type), err, {
-                                self.reporter.error(&err);
-                                continue;
-                            });
                     }
                 }
                 TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
@@ -1313,7 +1263,7 @@ impl Compiler {
                         });
                     }
                 }
-                TopLevelExpr::IntrinsicCall(InlineFnCallExpr {
+                TopLevelExpr::Intrinsic(InlineFnCallExpr {
                     fn_name: intrinsic,
                     type_args,
                     args,
@@ -3782,7 +3732,7 @@ impl Compiler {
         args: &Vec<CodeExpr>,
         loc: &Loc,
         build_code: bool,
-    ) -> Result<&FnDefExpr, Error> {
+    ) -> Result<&FnExpr, Error> {
         let Some(symbol) = self.current_scope(ctx).get_symbol(inline_fn_name) else {
             return Err(Error {
                 message: format!("Unknown inline fn: {}", inline_fn_name),
@@ -4000,7 +3950,11 @@ impl Compiler {
             return Err(err);
         });
 
-        self.codegen_code_block(ctx, instrs, &inline_fn_def.body, false);
+        let FnExprValue::Body(body) = &inline_fn_def.value else {
+            unreachable!()
+        };
+
+        self.codegen_code_block(ctx, instrs, body, false);
 
         self.exit_scope(ctx);
 

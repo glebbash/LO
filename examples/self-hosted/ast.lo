@@ -5,13 +5,9 @@
 
 type TopLevelExpr = enum (&void) {
     Let(&LetExpr),
-
-    FnDef(&FnDefExpr),
-    FnImport(&FnImportExpr),
-
-    TypeDef(&TypeDefExpr),
-
-    IntrinsicCall(&InlineFnCallExpr),
+    Fn(&FnExpr),
+    Type(&TypeDefExpr),
+    Intrinsic(&InlineFnCallExpr),
 }
 
 type IdentExpr = struct {
@@ -30,19 +26,17 @@ type FnDeclExpr = struct {
     loc: Loc,
 }
 
-type FnDefExpr = struct {
+type FnExpr = struct {
     exported: bool,
     is_inline: bool,
     decl: FnDeclExpr,
-    // NOTE: this is ref only cause CodeBlock isn't defined at this point
-    body: &CodeBlock,
+    value: FnExprValue,
     loc: Loc,
 }
 
-type FnImportExpr = struct {
-    decl: FnDeclExpr,
-    imported_from: QuotedString,
-    loc: Loc,
+type FnExprValue = enum (&void) {
+    Body(&CodeBlock),
+    ImportFrom(&QuotedString),
 }
 
 type FnParam = struct {
@@ -120,19 +114,16 @@ type CodeBlock = struct {
 }
 
 fn TopLevelExpr::loc(self): Loc {
-    if match TopLevelExpr::FnDef(e) = self {
-        return e.loc
-    }
-    if match TopLevelExpr::FnImport(e) = self {
+    if match TopLevelExpr::Fn(e) = self {
         return e.loc
     }
     if match TopLevelExpr::Let(e) = self {
         return e.loc
     }
-    if match TopLevelExpr::TypeDef(e) = self {
+    if match TopLevelExpr::Type(e) = self {
         return e.loc
     }
-    if match TopLevelExpr::IntrinsicCall(e) = self {
+    if match TopLevelExpr::Intrinsic(e) = self {
         return e.loc
     }
     @unreachable()

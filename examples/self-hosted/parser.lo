@@ -77,20 +77,24 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             let imported_from = self.expect_any(StringLiteral)?
             let _ = self.expect(Delim, ")")?
             loc.end_pos = self.prev().loc.end_pos
-            return Ok(TopLevelExpr::FnImport(self.ast_arena.new!(FnImportExpr {
+            return Ok(TopLevelExpr::Fn(self.ast_arena.new!(FnExpr {
+                exported: false,
+                is_inline: false,
                 decl: decl,
-                imported_from: QuotedString::new(imported_from.loc),
+                value: FnExprValue::ImportFrom(self.ast_arena.new!(
+                    QuotedString::new(imported_from.loc),
+                )),
                 loc: loc,
             })))
         }
 
         let body = self.parse_code_block()?
         loc.end_pos = self.prev().loc.end_pos
-        return Ok(TopLevelExpr::FnDef(self.ast_arena.new!(FnDefExpr {
+        return Ok(TopLevelExpr::Fn(self.ast_arena.new!(FnExpr {
             exported: false,
             is_inline: false,
             decl: decl,
-            body: self.ast_arena.new!(body),
+            value: FnExprValue::Body(self.ast_arena.new!(body)),
             loc: loc,
         })))
     }
@@ -102,11 +106,11 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             let decl = self.parse_fn_decl(false)?
             let body = self.parse_code_block()?
             loc.end_pos = self.prev().loc.end_pos
-            return Ok(TopLevelExpr::FnDef(self.ast_arena.new!(FnDefExpr {
+            return Ok(TopLevelExpr::Fn(self.ast_arena.new!(FnExpr {
                 exported: true,
                 is_inline: false,
                 decl: decl,
-                body: self.ast_arena.new!(body),
+                value: FnExprValue::Body(self.ast_arena.new!(body)),
                 loc: loc,
             })))
         }
@@ -140,11 +144,11 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
             let decl = self.parse_fn_decl(true)?
             let body = self.parse_code_block()?
             loc.end_pos = self.prev().loc.end_pos
-            return Ok(TopLevelExpr::FnDef(self.ast_arena.new!(FnDefExpr {
+            return Ok(TopLevelExpr::Fn(self.ast_arena.new!(FnExpr {
                 exported: false,
                 is_inline: true,
                 decl: decl,
-                body: self.ast_arena.new!(body),
+                value: FnExprValue::Body(self.ast_arena.new!(body)),
                 loc: loc,
             })))
         }
@@ -191,7 +195,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
             loc.end_pos = self.prev().loc.end_pos
 
-            return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
+            return Ok(TopLevelExpr::Type(self.ast_arena.new!(TypeDefExpr {
                 name: name,
                 value: TypeDefValue::Struct(self.ast_arena.new!(TypeDefValueStruct {
                     fields: fields,
@@ -236,7 +240,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
             loc.end_pos = self.prev().loc.end_pos
 
-            return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
+            return Ok(TopLevelExpr::Type(self.ast_arena.new!(TypeDefExpr {
                 name: name,
                 value: TypeDefValue::Enum(self.ast_arena.new!(TypeDefValueEnum {
                     variant_type: variant_type,
@@ -250,7 +254,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
+        return Ok(TopLevelExpr::Type(self.ast_arena.new!(TypeDefExpr {
             name: name,
             value: TypeDefValue::Alias(self.ast_arena.new!(type_value)),
             loc: loc,
@@ -266,7 +270,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(TopLevelExpr::IntrinsicCall(self.ast_arena.new!(InlineFnCallExpr {
+        return Ok(TopLevelExpr::Intrinsic(self.ast_arena.new!(InlineFnCallExpr {
             fn_name: fn_name,
             type_args: type_args,
             args: args,
