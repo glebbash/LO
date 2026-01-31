@@ -1,6 +1,6 @@
 use crate::wasi;
 use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
-use core::{cell::RefCell, ffi::CStr, fmt::Write, str};
+use core::{cell::UnsafeCell, ffi::CStr, fmt::Write, str};
 
 pub struct InspectInfo {
     pub message: String,
@@ -342,20 +342,20 @@ fn fd_read_all(fd: u32) -> Result<Vec<u8>, String> {
 }
 
 #[thread_local]
-static STDOUT_BUFFER: RefCell<Option<Vec<u8>>> = RefCell::new(None);
+static STDOUT_BUFFER: UBCell<Option<Vec<u8>>> = UBCell::new(None);
 const STDOUT_BUFFER_SIZE: usize = 4096;
 
 pub fn stdout_enable_buffering() {
-    *STDOUT_BUFFER.borrow_mut() = Some(Vec::with_capacity(STDOUT_BUFFER_SIZE));
+    *STDOUT_BUFFER.be_mut() = Some(Vec::with_capacity(STDOUT_BUFFER_SIZE));
 }
 
 pub fn stdout_disable_buffering() {
-    if let Some(buffer) = &mut *STDOUT_BUFFER.borrow_mut() {
+    if let Some(buffer) = &mut *STDOUT_BUFFER.be_mut() {
         if !buffer.is_empty() {
             fputs(wasi::FD_STDOUT, &buffer);
         }
     }
-    *STDOUT_BUFFER.borrow_mut() = None;
+    *STDOUT_BUFFER.be_mut() = None;
 }
 
 pub fn stdout_writeln(message: impl AsRef<[u8]>) {
@@ -366,7 +366,7 @@ pub fn stdout_writeln(message: impl AsRef<[u8]>) {
 pub fn stdout_write(message: impl AsRef<[u8]>) {
     let message_bytes = message.as_ref();
 
-    let Some(buffer) = &mut *STDOUT_BUFFER.borrow_mut() else {
+    let Some(buffer) = &mut *STDOUT_BUFFER.be_mut() else {
         fputs(wasi::FD_STDOUT, message_bytes);
         return;
     };
@@ -412,11 +412,6 @@ pub fn fputs(fd: u32, message: &[u8]) {
     if err != wasi::ERR_SUCCESS {
         unreachable!()
     };
-}
-
-#[allow(dead_code)]
-pub fn debug(msg: impl AsRef<str>) {
-    stderr_write(format!("{}\n", msg.as_ref()));
 }
 
 pub struct ListFmt<'a, T: core::fmt::Display>(pub &'a [T]);
@@ -552,15 +547,47 @@ pub(crate) trait UnsafeGoodies {
 
 impl<T: ?Sized> UnsafeGoodies for T {
     #[allow(invalid_reference_casting)]
+    #[inline(always)]
     fn be_mut(&self) -> &mut Self {
         unsafe { &mut *(self as *const Self as *mut Self) }
     }
 
+    #[inline(always)]
     fn relax(&self) -> &'static T {
         unsafe { &*(self as *const T) }
     }
 
+    #[inline(always)]
     fn relax_mut(&mut self) -> &'static mut T {
         unsafe { &mut *(self as *mut T) }
+    }
+}
+
+#[derive(Default)]
+pub struct UBCell<T>(UnsafeCell<T>);
+
+impl<T> UBCell<T> {
+    pub const fn new(value: T) -> Self {
+        Self(UnsafeCell::new(value))
+    }
+
+    #[inline(always)]
+    pub fn be_mut(&self) -> &mut T {
+        unsafe { &mut *self.0.get() }
+    }
+}
+
+impl<T> core::ops::Deref for UBCell<T> {
+    type Target = T;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0.get() }
+    }
+}
+
+impl<T> core::ops::DerefMut for UBCell<T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0.get() }
     }
 }

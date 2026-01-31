@@ -1124,7 +1124,7 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
     match &fn_name[..] {
         "utils::debug" => {
             let value = eval.pop_i32() as u32;
-            debug(format!("{value}"));
+            stderr_writeln(format!("{value}"));
         }
         "utils::debug_str" => {
             let message_len = eval.pop_i32() as u32;

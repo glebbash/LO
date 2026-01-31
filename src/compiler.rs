@@ -1,6 +1,6 @@
 use crate::{ast::*, core::*, lexer::*, parser::*, wasm::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
-use core::{cell::RefCell, fmt::Write};
+use core::fmt::Write;
 
 #[derive(Clone, PartialEq)]
 pub enum Type {
@@ -462,16 +462,17 @@ pub struct Compiler {
     inline_fn_defs: Vec<&'static FnExpr>,
 
     functions: Vec<FnInfo>,
-    wasm_fn_types: RefCell<Vec<WasmFnType>>,
+    wasm_fn_types: UBCell<Vec<WasmFnType>>,
 
     const_slice_lens: Vec<ConstSliceLen>,
     allocated_strings: Vec<String>,
     memory: Option<MemoryInfo>,
-    datas: RefCell<Vec<WasmData>>,
-    data_size: RefCell<u32>,
-    string_pool: RefCell<Vec<PooledString>>,
+    datas: UBCell<Vec<WasmData>>,
+    data_size: UBCell<u32>,
+    string_pool: UBCell<Vec<PooledString>>,
     first_string_usage: Option<Loc>,
-    next_symbol_id: RefCell<usize>,
+    next_node_id: UBCell<usize>,
+    next_symbol_id: UBCell<usize>,
 }
 
 impl Compiler {
@@ -543,13 +544,19 @@ impl Compiler {
             return None;
         });
 
-        let parser = Parser::new(lexer, self.reporter.relax(), *self.next_symbol_id.borrow());
+        let parser = Parser::new(
+            lexer,
+            self.reporter.relax(),
+            *self.next_node_id,
+            *self.next_symbol_id,
+        );
         if !self.in_lex_only_mode {
             catch!(parser.parse_file(), err, {
                 self.reporter.error(&err);
                 return None;
             });
-            *self.next_symbol_id.borrow_mut() = *parser.next_symbol_id.borrow();
+            *self.next_node_id = *parser.next_node_id;
+            *self.next_symbol_id = *parser.next_symbol_id;
         }
 
         let mut includes = Vec::new();
@@ -557,6 +564,7 @@ impl Compiler {
         if !self.in_single_file_mode {
             for expr in &parser.ast {
                 let TopLevelExpr::Intrinsic(InlineFnCallExpr {
+                    id: _,
                     fn_name: instrinsic,
                     type_args,
                     args,
@@ -1266,6 +1274,7 @@ impl Compiler {
                     }
                 }
                 TopLevelExpr::Intrinsic(InlineFnCallExpr {
+                    id: _,
                     fn_name: intrinsic,
                     type_args,
                     args,
@@ -1436,7 +1445,7 @@ impl Compiler {
                                 if tmp_instrs.len() == 1 {
                                     if let WasmInstr::I32Const { value } = &tmp_instrs[0] {
                                         memory.data_start = Some(*value as u32);
-                                        *self.data_size.borrow_mut() = *value as u32;
+                                        *self.data_size.be_mut() = *value as u32;
                                         continue;
                                     }
                                 }
@@ -1522,16 +1531,14 @@ impl Compiler {
             }
             self.lower_type(&fn_info.fn_type.output, &mut wasm_fn_type.outputs);
 
-            let mut fn_type_index = self.wasm_fn_types.borrow().len() as u32;
-            for (existing_fn_type, existing_type_index) in
-                self.wasm_fn_types.borrow().iter().zip(0..)
-            {
+            let mut fn_type_index = self.wasm_fn_types.len() as u32;
+            for (existing_fn_type, existing_type_index) in self.wasm_fn_types.iter().zip(0..) {
                 if wasm_fn_type == *existing_fn_type {
                     fn_type_index = existing_type_index;
                 }
             }
-            if fn_type_index == self.wasm_fn_types.borrow().len() as u32 {
-                self.wasm_fn_types.borrow_mut().push(wasm_fn_type.clone());
+            if fn_type_index == self.wasm_fn_types.len() as u32 {
+                self.wasm_fn_types.be_mut().push(wasm_fn_type.clone());
             }
 
             match &fn_info.fn_source {
@@ -1701,7 +1708,7 @@ impl Compiler {
 
         // patch @data_size values in globals
         let data_size_instr = WasmInstr::I32Const {
-            value: *self.data_size.borrow() as i32,
+            value: *self.data_size as i32,
         };
         for global in self.globals.relax_mut() {
             let CodeExpr::IntrinsicCall(intrinsic) = &*global.def_expr.value else {
@@ -1742,13 +1749,11 @@ impl Compiler {
             }
         }
 
-        for static_data_store in self.datas.borrow().iter() {
+        for static_data_store in self.datas.iter() {
             wasm_module.datas.push(static_data_store.clone());
         }
 
-        wasm_module
-            .types
-            .append(&mut self.wasm_fn_types.borrow_mut());
+        wasm_module.types.append(self.wasm_fn_types.be_mut());
 
         if let Some(string_usage_loc) = self.first_string_usage
             && self.memory.is_none()
@@ -2072,7 +2077,11 @@ impl Compiler {
         expr: &CodeExpr,
     ) -> Result<(), Error> {
         match expr {
-            CodeExpr::BoolLiteral(BoolLiteralExpr { value, loc: _ }) => {
+            CodeExpr::BoolLiteral(BoolLiteralExpr {
+                id: _,
+                value,
+                loc: _,
+            }) => {
                 if *value {
                     instrs.push(WasmInstr::I32Const { value: 1 });
                 } else {
@@ -2080,6 +2089,7 @@ impl Compiler {
                 }
             }
             CodeExpr::CharLiteral(CharLiteralExpr {
+                id: _,
                 repr: _,
                 value,
                 loc: _,
@@ -2088,13 +2098,14 @@ impl Compiler {
                     value: *value as i32,
                 });
             }
-            CodeExpr::NullLiteral(NullLiteralExpr { loc: _ }) => {
+            CodeExpr::NullLiteral(NullLiteralExpr { id: _, loc: _ }) => {
                 instrs.push(WasmInstr::I32Const { value: 0 });
             }
             CodeExpr::IntLiteral(int_literal) => {
                 self.codegen_int_literal(ctx, instrs, int_literal);
             }
             CodeExpr::StringLiteral(StringLiteralExpr {
+                id: _,
                 repr: _,
                 value,
                 loc,
@@ -2110,6 +2121,7 @@ impl Compiler {
                 });
             }
             CodeExpr::StructLiteral(StructLiteralExpr {
+                id: _,
                 struct_name,
                 body,
                 loc: _,
@@ -2179,6 +2191,7 @@ impl Compiler {
             }
             // TODO?: support sequences of any type
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
+                id: _,
                 item_type,
                 items,
                 has_trailing_comma: _,
@@ -2267,6 +2280,7 @@ impl Compiler {
                 return Ok(());
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
+                id: _,
                 is_ok,
                 result_type,
                 value,
@@ -2324,6 +2338,7 @@ impl Compiler {
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
             CodeExpr::Let(LetExpr {
+                id: _,
                 is_inline,
                 name,
                 value,
@@ -2367,6 +2382,7 @@ impl Compiler {
                 self.codegen_var_set(ctx, instrs, &var)?;
             }
             CodeExpr::Cast(CastExpr {
+                id: _,
                 expr,
                 casted_to,
                 loc,
@@ -2399,6 +2415,7 @@ impl Compiler {
                 }
             }
             CodeExpr::PrefixOp(PrefixOpExpr {
+                id: _,
                 op_tag,
                 expr,
                 op_loc,
@@ -2535,6 +2552,7 @@ impl Compiler {
                 }
             },
             CodeExpr::InfixOp(InfixOpExpr {
+                id: _,
                 op_tag,
                 op_loc,
                 lhs,
@@ -2581,6 +2599,7 @@ impl Compiler {
             }
 
             CodeExpr::Assign(AssignExpr {
+                id: _,
                 op_loc,
                 lhs,
                 rhs,
@@ -2621,6 +2640,7 @@ impl Compiler {
             }
 
             CodeExpr::FnCall(FnCallExpr {
+                id: _,
                 fn_name,
                 args,
                 loc: _,
@@ -2676,6 +2696,7 @@ impl Compiler {
                 self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, &args.items, &fn_name.loc)?;
             }
             CodeExpr::MethodCall(MethodCallExpr {
+                id: _,
                 lhs,
                 field_name,
                 args,
@@ -2693,6 +2714,7 @@ impl Compiler {
                 )?;
             }
             CodeExpr::InlineFnCall(InlineFnCallExpr {
+                id: _,
                 fn_name,
                 type_args,
                 args,
@@ -2709,6 +2731,7 @@ impl Compiler {
                 )?;
             }
             CodeExpr::InlineMethodCall(InlineMethodCallExpr {
+                id: _,
                 lhs,
                 field_name,
                 type_args,
@@ -2728,6 +2751,7 @@ impl Compiler {
                 )?;
             }
             CodeExpr::IntrinsicCall(InlineFnCallExpr {
+                id: _,
                 fn_name,
                 type_args,
                 args,
@@ -3080,9 +3104,8 @@ impl Compiler {
 
                     let mut message = String::new();
                     message.push_str(format!("LOC: {}\n", lines).as_str());
-                    message.push_str(
-                        format!("symbol count: {}\n", *self.next_symbol_id.borrow()).as_str(),
-                    );
+                    message.push_str(format!("symbol count: {}\n", *self.next_symbol_id).as_str());
+                    message.push_str(format!("node count: {}\n", *self.next_node_id).as_str());
 
                     self.reporter.print_inspection(&InspectInfo {
                         message,
@@ -3097,7 +3120,11 @@ impl Compiler {
                     loc: fn_name.loc,
                 });
             }
-            CodeExpr::Sizeof(SizeofExpr { type_expr, loc: _ }) => {
+            CodeExpr::Sizeof(SizeofExpr {
+                id: _,
+                type_expr,
+                loc: _,
+            }) => {
                 let lo_type = self.build_type(ctx, type_expr)?;
                 let mut type_layout = TypeLayout::new();
                 self.get_type_layout(&lo_type, &mut type_layout);
@@ -3108,13 +3135,14 @@ impl Compiler {
             }
 
             CodeExpr::Paren(ParenExpr {
+                id: _,
                 expr,
                 has_trailing_comma: _,
                 loc: _,
             }) => {
                 self.codegen(ctx, instrs, expr)?;
             }
-            CodeExpr::Return(ReturnExpr { expr, loc }) => {
+            CodeExpr::Return(ReturnExpr { id: _, expr, loc }) => {
                 let Some(fn_index) = ctx.fn_index else {
                     return Err(Error {
                         message: format!("Cannot use `return` in const context"),
@@ -3145,6 +3173,7 @@ impl Compiler {
                 instrs.push(WasmInstr::Return);
             }
             CodeExpr::If(IfExpr {
+                id: _,
                 cond,
                 then_block,
                 else_block,
@@ -3213,6 +3242,7 @@ impl Compiler {
                 instrs.push(WasmInstr::BlockEnd);
             }
             CodeExpr::Match(MatchExpr {
+                id: _,
                 header,
                 else_branch,
                 loc: _,
@@ -3246,7 +3276,12 @@ impl Compiler {
                 self.exit_scope(ctx);
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::While(WhileExpr { cond, body, loc: _ }) => {
+            CodeExpr::While(WhileExpr {
+                id: _,
+                cond,
+                body,
+                loc: _,
+            }) => {
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::Block,
                     block_type: WasmBlockType::NoOut,
@@ -3291,6 +3326,7 @@ impl Compiler {
                 instrs.push(WasmInstr::BlockEnd);
             }
             CodeExpr::For(ForExpr {
+                id: _,
                 counter,
                 start,
                 end,
@@ -3397,7 +3433,7 @@ impl Compiler {
 
                 self.exit_scope(ctx);
             }
-            CodeExpr::Break(BreakExpr { loc }) => {
+            CodeExpr::Break(BreakExpr { id: _, loc }) => {
                 let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
 
                 for scope in self.modules[ctx.module_index].scope_stack.iter().rev() {
@@ -3423,7 +3459,7 @@ impl Compiler {
 
                 instrs.push(WasmInstr::Branch { label_index });
             }
-            CodeExpr::Continue(ContinueExpr { loc }) => {
+            CodeExpr::Continue(ContinueExpr { id: _, loc }) => {
                 let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
 
                 for scope in self.modules[ctx.module_index].scope_stack.iter().rev() {
@@ -3447,6 +3483,7 @@ impl Compiler {
                 instrs.push(WasmInstr::Branch { label_index });
             }
             CodeExpr::DoWith(DoWithExpr {
+                id: _,
                 args,
                 body,
                 with_loc,
@@ -3489,6 +3526,7 @@ impl Compiler {
                 }
             }
             CodeExpr::ExprPipe(ExprPipeExpr {
+                id: _,
                 lhs,
                 rhs,
                 op_loc,
@@ -3511,7 +3549,11 @@ impl Compiler {
                 });
                 self.exit_scope(ctx);
             }
-            CodeExpr::Defer(DeferExpr { expr, loc: _ }) => {
+            CodeExpr::Defer(DeferExpr {
+                id: _,
+                expr,
+                loc: _,
+            }) => {
                 let code_unit = self.build_code_unit(ctx, expr)?;
 
                 // find first non-inline-fn scope
@@ -3530,6 +3572,7 @@ impl Compiler {
                 scope_to_defer.deferred_exprs.push(code_unit);
             }
             CodeExpr::Catch(CatchExpr {
+                id: _,
                 lhs,
                 error_bind,
                 catch_body,
@@ -3545,7 +3588,7 @@ impl Compiler {
                     catch_loc,
                 )?;
             }
-            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
+            CodeExpr::PropagateError(PropagateErrorExpr { id: _, expr, loc }) => {
                 self.codegen_catch(ctx, instrs, expr, None, None, loc)?;
             }
         };
@@ -4303,14 +4346,14 @@ impl Compiler {
         }
         self.lower_type(output, &mut inout_fn_type.outputs);
 
-        for (fn_type, type_index) in self.wasm_fn_types.borrow().iter().zip(0..) {
+        for (fn_type, type_index) in self.wasm_fn_types.iter().zip(0..) {
             if *fn_type == inout_fn_type {
                 return type_index;
             }
         }
 
-        self.wasm_fn_types.borrow_mut().push(inout_fn_type);
-        self.wasm_fn_types.borrow().len() as u32 - 1
+        self.wasm_fn_types.be_mut().push(inout_fn_type);
+        self.wasm_fn_types.len() as u32 - 1
     }
 
     fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> Result<Type, Error> {
@@ -4319,6 +4362,7 @@ impl Compiler {
             CodeExpr::CharLiteral(_) => Ok(Type::U8),
             CodeExpr::NullLiteral(_) => Ok(Type::Null),
             CodeExpr::IntLiteral(IntLiteralExpr {
+                id: _,
                 repr: _,
                 value: _,
                 tag,
@@ -4339,6 +4383,7 @@ impl Compiler {
                 Ok(tag_type)
             }
             CodeExpr::StringLiteral(StringLiteralExpr {
+                id: _,
                 repr: _,
                 value: _,
                 loc,
@@ -4355,6 +4400,7 @@ impl Compiler {
                 })
             }
             CodeExpr::StructLiteral(StructLiteralExpr {
+                id: _,
                 struct_name,
                 body: _,
                 loc,
@@ -4371,6 +4417,7 @@ impl Compiler {
                 });
             }
             CodeExpr::ArrayLiteral(ArrayLiteralExpr {
+                id: _,
                 item_type,
                 items: _,
                 has_trailing_comma: _,
@@ -4382,6 +4429,7 @@ impl Compiler {
                 });
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
+                id: _,
                 is_ok: _,
                 result_type,
                 value: _,
@@ -4395,6 +4443,7 @@ impl Compiler {
                 Ok(var.get_type().clone())
             }
             CodeExpr::InfixOp(InfixOpExpr {
+                id: _,
                 op_tag,
                 op_loc: _,
                 lhs,
@@ -4439,6 +4488,7 @@ impl Compiler {
                 | InfixOpTag::ExprPipe => unreachable!(),
             },
             CodeExpr::PrefixOp(PrefixOpExpr {
+                id: _,
                 op_tag,
                 expr,
                 op_loc: _,
@@ -4493,6 +4543,7 @@ impl Compiler {
                 }
             },
             CodeExpr::Cast(CastExpr {
+                id: _,
                 expr: _,
                 casted_to,
                 loc: _,
@@ -4503,6 +4554,7 @@ impl Compiler {
                 Ok(field.field_type.clone())
             }
             CodeExpr::FnCall(FnCallExpr {
+                id: _,
                 fn_name,
                 args: _,
                 loc: _,
@@ -4522,6 +4574,7 @@ impl Compiler {
                 Ok(fn_info.fn_type.output.clone())
             }
             CodeExpr::MethodCall(MethodCallExpr {
+                id: _,
                 lhs,
                 field_name,
                 args: _,
@@ -4535,6 +4588,7 @@ impl Compiler {
                 Ok(fn_info.fn_type.output.clone())
             }
             CodeExpr::InlineFnCall(InlineFnCallExpr {
+                id: _,
                 fn_name,
                 type_args,
                 args,
@@ -4553,6 +4607,7 @@ impl Compiler {
                 expr_type
             }
             CodeExpr::IntrinsicCall(InlineFnCallExpr {
+                id: _,
                 fn_name,
                 type_args: _,
                 args,
@@ -4640,6 +4695,7 @@ impl Compiler {
                 })
             }
             CodeExpr::InlineMethodCall(InlineMethodCallExpr {
+                id: _,
                 lhs,
                 field_name,
                 type_args,
@@ -4662,6 +4718,7 @@ impl Compiler {
                 expr_type
             }
             CodeExpr::Catch(CatchExpr {
+                id: _,
                 lhs,
                 error_bind: _,
                 catch_body: _,
@@ -4672,12 +4729,13 @@ impl Compiler {
                 let result = self.assert_catchable_type(&expr_type, catch_loc)?;
                 Ok(result.ok.as_ref().clone())
             }
-            CodeExpr::PropagateError(PropagateErrorExpr { expr, loc }) => {
+            CodeExpr::PropagateError(PropagateErrorExpr { id: _, expr, loc }) => {
                 let expr_type = self.get_expr_type(ctx, expr)?;
                 let result = self.assert_catchable_type(&expr_type, loc)?;
                 Ok(result.ok.as_ref().clone())
             }
             CodeExpr::ExprPipe(ExprPipeExpr {
+                id: _,
                 lhs,
                 rhs,
                 op_loc,
@@ -4729,6 +4787,7 @@ impl Compiler {
             CodeExpr::Assign(_) => Ok(Type::Void),
             CodeExpr::Defer(_) => Ok(Type::Void),
             CodeExpr::If(IfExpr {
+                id: _,
                 cond,
                 then_block,
                 else_block,
@@ -4801,6 +4860,7 @@ impl Compiler {
             CodeExpr::DoWith(_) => Ok(Type::Void),
             CodeExpr::Return(_) => Ok(Type::Never),
             CodeExpr::Paren(ParenExpr {
+                id: _,
                 expr,
                 has_trailing_comma: _,
                 loc: _,
@@ -4824,6 +4884,7 @@ impl Compiler {
 
         for expr in exprs {
             if let CodeExpr::Let(LetExpr {
+                id: _,
                 is_inline: _,
                 name,
                 value,
@@ -4920,11 +4981,13 @@ impl Compiler {
                 Some(self.var_from_field_access(ctx, field_access)?)
             }
             CodeExpr::Paren(ParenExpr {
+                id: _,
                 expr,
                 has_trailing_comma: _,
                 loc: _,
             }) => self.var_from_expr(ctx, expr)?,
             CodeExpr::PrefixOp(PrefixOpExpr {
+                id: _,
                 op_tag,
                 expr,
                 op_loc,
@@ -5595,7 +5658,7 @@ impl Compiler {
 
         let string_len = value.as_bytes().len() as u32;
 
-        for pooled_str in self.string_pool.borrow().iter() {
+        for pooled_str in self.string_pool.iter() {
             if *pooled_str.value == value {
                 return Str {
                     ptr: pooled_str.ptr,
@@ -5606,9 +5669,7 @@ impl Compiler {
 
         let ptr = self.append_data(value.clone().into_bytes());
 
-        self.string_pool
-            .borrow_mut()
-            .push(PooledString { value, ptr });
+        self.string_pool.be_mut().push(PooledString { value, ptr });
 
         return Str {
             ptr,
@@ -5617,14 +5678,14 @@ impl Compiler {
     }
 
     fn append_data(&self, bytes: Vec<u8>) -> u32 {
-        let offset = *self.data_size.borrow();
+        let offset = *self.data_size;
         let mut instrs = Vec::new();
         instrs.push(WasmInstr::I32Const {
             value: offset as i32,
         });
 
-        *self.data_size.borrow_mut() += bytes.len() as u32;
-        self.datas.borrow_mut().push(WasmData::Active {
+        *self.data_size.be_mut() += bytes.len() as u32;
+        self.datas.be_mut().push(WasmData::Active {
             offset: WasmExpr { instrs },
             bytes,
         });
@@ -5749,6 +5810,7 @@ impl Compiler {
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         IntLiteralExpr {
+            id: _,
             tag,
             repr: _,
             value,
