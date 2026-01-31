@@ -558,7 +558,7 @@ impl Compiler {
                     fn_name: instrinsic,
                     type_args,
                     args,
-                    loc,
+                    loc: _,
                 }) = expr
                 else {
                     continue;
@@ -578,7 +578,7 @@ impl Compiler {
 
                 for arg in &args.items {
                     if let CodeExpr::StringLiteral(str) = arg {
-                        file_path = Some(str.value.clone());
+                        file_path = Some(str.relax());
                         continue;
                     }
 
@@ -601,7 +601,7 @@ impl Compiler {
                 };
 
                 let module_index;
-                match self.include(&file_path, &loc) {
+                match self.include(&file_path.value, &file_path.loc) {
                     Some(module) => module_index = module.index,
                     None => continue,
                 }
