@@ -274,31 +274,6 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         })))
     }
 
-    if self.eat(Symbol, "include") != null {
-        let loc = self.prev().loc
-
-        let file_path = self.expect_any(StringLiteral)?
-        let alias = null as &IdentExpr
-        if self.eat(Symbol, "as") != null {
-            alias = self.ast_arena.new!(self.parse_ident()?)
-        }
-
-        let with_extern = false
-        if self.eat(Symbol, "with") != null {
-            let _ = self.expect(Symbol, "extern")?
-            with_extern = true
-        }
-
-        loc.end_pos = self.prev().loc.end_pos
-
-        return Ok(TopLevelExpr::Include(self.ast_arena.new!(IncludeExpr {
-            file_path: QuotedString::new(file_path.loc),
-            alias: alias,
-            with_extern: with_extern,
-            loc: loc,
-        })))
-    }
-
     let unexpected = self.current()
     let message = String::from_str_in(self.error_arena, "Unexpected top level token: ")
     message.push_str(unexpected.get_value(self.lexer.source))

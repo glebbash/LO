@@ -4824,11 +4824,18 @@ impl Compiler {
     }
 
     fn get_code_block_type(&self, ctx: &ExprContext, exprs: &Vec<CodeExpr>) -> Result<Type, Error> {
-        let ctx = ctx.be_mut();
-
-        let mut diverges = false;
-
         self.be_mut().enter_scope(ctx, ScopeType::Block);
+        let res = self.get_code_block_type_(ctx, exprs);
+        self.be_mut().exit_scope(ctx);
+        res
+    }
+
+    fn get_code_block_type_(
+        &self,
+        ctx: &ExprContext,
+        exprs: &Vec<CodeExpr>,
+    ) -> Result<Type, Error> {
+        let mut diverges = false;
 
         for expr in exprs {
             if let CodeExpr::Let(LetExpr {
@@ -4858,8 +4865,6 @@ impl Compiler {
 
             diverges = diverges || self.get_expr_type(ctx, expr)? == Type::Never;
         }
-
-        self.be_mut().exit_scope(ctx);
 
         if diverges {
             return Ok(Type::Never);
@@ -4981,14 +4986,6 @@ impl Compiler {
 
         match symbol.type_ {
             SymbolType::Local => {
-                // TODO: fix this
-                if symbol.col_index >= ctx.locals.len() {
-                    return Err(Error {
-                        message: format!("shouldn't happend"),
-                        loc: ident.loc,
-                    });
-                }
-
                 let local = &ctx.locals[symbol.col_index];
 
                 Ok(self.var_local(
