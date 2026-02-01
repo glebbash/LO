@@ -35,11 +35,11 @@ impl TypeChecker {
         }
 
         for module in self.registry.modules.relax() {
-            self.pass_assemble_complex_types(module);
+            self.pass_build_type_def_values(module);
         }
 
         for module in self.registry.modules.relax_mut() {
-            self.pass_main(module);
+            self.pass_type_check_top_level_exprs(module);
         }
     }
 
@@ -231,23 +231,7 @@ impl TypeChecker {
                         }
                     }
                 }
-                TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
-                    let _ = self.registry.be_mut().define_symbol(
-                        &mut module.ctx,
-                        let_expr.name.repr,
-                        SymbolType::Global,
-                        self.registry.globals.len(),
-                        let_expr.name.loc,
-                    );
-
-                    self.registry.globals.push(GlobalDef {
-                        module_ctx: module.ctx.relax(),
-                        def_expr: let_expr.relax(),
-                        global_type: Type::Never, // placeholder
-                        global_index: 0,          // placeholder
-                    });
-                }
-                TopLevelExpr::Let(let_expr) => {
+                TopLevelExpr::Let(let_expr) if let_expr.is_inline => {
                     let _ = self.registry.be_mut().define_symbol(
                         &mut module.ctx,
                         let_expr.name.repr,
@@ -263,6 +247,22 @@ impl TypeChecker {
                             instrs: Vec::new(), // placeholder
                         },
                         loc: let_expr.name.loc,
+                    });
+                }
+                TopLevelExpr::Let(let_expr) => {
+                    let _ = self.registry.be_mut().define_symbol(
+                        &mut module.ctx,
+                        let_expr.name.repr,
+                        SymbolType::Global,
+                        self.registry.globals.len(),
+                        let_expr.name.loc,
+                    );
+
+                    self.registry.globals.push(GlobalDef {
+                        module_ctx: module.ctx.relax(),
+                        def_expr: let_expr.relax(),
+                        global_type: Type::Never, // placeholder
+                        global_index: 0,          // placeholder
                     });
                 }
             }
@@ -311,7 +311,7 @@ impl TypeChecker {
         }
     }
 
-    fn pass_assemble_complex_types(&mut self, module: &Module) {
+    fn pass_build_type_def_values(&mut self, module: &Module) {
         'exprs: for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Type(type_def) => {
@@ -479,10 +479,10 @@ impl TypeChecker {
         }
     }
 
-    fn pass_main(&mut self, module: &mut Module) {
+    fn pass_type_check_top_level_exprs(&mut self, module: &mut Module) {
         for expr in &*module.parser.ast {
             match expr {
-                TopLevelExpr::Type(_) => {} // skip, processed in pass_collect_all_symbols
+                TopLevelExpr::Type(_) => {} // skip, processed in previous passes
 
                 TopLevelExpr::Fn(fn_def) => {
                     if fn_def.is_inline {
@@ -535,13 +535,29 @@ impl TypeChecker {
                         });
                     }
                 }
-                TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
+                TopLevelExpr::Let(let_expr) => {
                     let symbol = self
                         .registry
                         .current_scope(&module.ctx)
                         .get_symbol(&let_expr.name.repr)
                         .unwrap()
                         .relax();
+
+                    if let_expr.is_inline {
+                        let const_ = self.registry.constants[symbol.col_index].relax_mut();
+
+                        let const_type =
+                            match self.registry.get_expr_type(&module.ctx, &let_expr.value) {
+                                Ok(x) => x,
+                                Err(err) => {
+                                    self.reporter.error(&err);
+                                    continue;
+                                }
+                            };
+                        const_.code_unit.type_ = const_type;
+                        continue;
+                    }
+
                     let SymbolType::Global = symbol.type_ else {
                         continue;
                     };
@@ -569,48 +585,27 @@ impl TypeChecker {
                         });
                     }
                 }
-                TopLevelExpr::Let(let_expr) => {
-                    let symbol = self
-                        .registry
-                        .current_scope(&module.ctx)
-                        .get_symbol(&let_expr.name.repr)
-                        .unwrap()
-                        .relax();
-                    let const_ = self.registry.constants[symbol.col_index].relax_mut();
-
-                    let const_type = match self.registry.get_expr_type(&module.ctx, &let_expr.value)
-                    {
-                        Ok(x) => x,
-                        Err(err) => {
-                            self.reporter.error(&err);
-                            continue;
-                        }
-                    };
-                    const_.code_unit.type_ = const_type;
-                    continue;
-                }
-                TopLevelExpr::Intrinsic(InlineFnCallExpr {
-                    id: _,
-                    fn_name: intrinsic,
-                    type_args,
-                    args,
-                    loc: _,
-                }) => {
-                    if intrinsic.repr == "include" {
+                TopLevelExpr::Intrinsic(intrinsic) => {
+                    if intrinsic.fn_name.repr == "include" {
                         // skip, was processed in `Compiler.include`
                         continue;
                     }
 
-                    if intrinsic.repr == "export_existing" {
+                    if intrinsic.fn_name.repr == "use_memory" {
+                        // skip, will be processed in `Compiler.codegen`
+                        continue;
+                    }
+
+                    if intrinsic.fn_name.repr == "export_existing" {
                         let mut from_root = false;
                         let mut in_name = None;
                         let mut out_name = None;
 
-                        if type_args.len() != 0 {
-                            self.reporter.error(&bad_signature(intrinsic));
+                        if intrinsic.type_args.len() != 0 {
+                            self.reporter.error(&bad_signature(&intrinsic.fn_name));
                         }
 
-                        for arg in &args.items {
+                        for arg in &intrinsic.args.items {
                             if let CodeExpr::Ident(ident) = arg
                                 && ident.repr == "from_root"
                             {
@@ -624,18 +619,18 @@ impl TypeChecker {
                             }
 
                             let CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) = arg else {
-                                self.reporter.error(&bad_signature(intrinsic));
+                                self.reporter.error(&bad_signature(&intrinsic.fn_name));
                                 continue;
                             };
 
                             let CodeExpr::Ident(key) = &**lhs else {
-                                self.reporter.error(&bad_signature(intrinsic));
+                                self.reporter.error(&bad_signature(&intrinsic.fn_name));
                                 continue;
                             };
 
                             if key.repr == "out" {
                                 let CodeExpr::StringLiteral(value) = &**rhs else {
-                                    self.reporter.error(&bad_signature(intrinsic));
+                                    self.reporter.error(&bad_signature(&intrinsic.fn_name));
                                     continue;
                                 };
 
@@ -643,12 +638,12 @@ impl TypeChecker {
                                 continue;
                             }
 
-                            self.reporter.error(&bad_signature(intrinsic));
+                            self.reporter.error(&bad_signature(&intrinsic.fn_name));
                             continue;
                         }
 
                         let Some(in_name) = in_name else {
-                            self.reporter.error(&bad_signature(intrinsic));
+                            self.reporter.error(&bad_signature(&intrinsic.fn_name));
                             continue;
                         };
 
@@ -704,13 +699,8 @@ impl TypeChecker {
                         }
                     }
 
-                    if intrinsic.repr == "use_memory" {
-                        // skip, will be processed in `Compiler.codegen`
-                        continue;
-                    }
-
                     self.reporter.error(&Error {
-                        message: format!("Unknown intrinsic: {}", intrinsic.repr),
+                        message: format!("Unknown intrinsic: {}", intrinsic.fn_name.repr),
                         loc: intrinsic.loc,
                     });
                 }
