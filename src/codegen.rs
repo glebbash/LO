@@ -1,6 +1,4 @@
-use crate::{ast::*, core::*, lexer::*, registry::*, wasm::*};
-use alloc::{boxed::Box, format, string::String, vec::Vec};
-use core::fmt::Write;
+use crate::{ast::*, common::*, lexer::*, registry::*, wasm::*};
 
 pub struct CodeGenerator {
     // context
@@ -1357,7 +1355,7 @@ impl CodeGenerator {
 
                     let absolute_path =
                         self.reporter.fm.resolve_path(&str_expr.value, &fn_name.loc);
-                    let bytes = file_read(&absolute_path).map_err(|message| Error {
+                    let bytes = fs::file_read(&absolute_path).map_err(|message| Error {
                         message,
                         loc: args.items[0].loc(),
                     })?;

@@ -1,5 +1,4 @@
-use crate::{core::*, wasi, wasm::*};
-use alloc::{format, str, string::String, vec, vec::Vec};
+use crate::{common::*, wasi, wasm::*};
 
 const PAGE_SIZE: usize = 65_536;
 
@@ -12,7 +11,6 @@ pub struct EvalError {
 pub struct WasmEval {
     wasm_module: UBRef<WasmModule>,
     fn_imports_len: usize,
-    tables: Vec<WasmFnTable>,
     globals: Vec<WasmValue>,
     stack: Vec<WasmValue>,
     call_stack: Vec<CallFrame>,
@@ -47,25 +45,6 @@ impl WasmEval {
             )?;
             let initial_value = self.stack.pop().unwrap();
             self.globals.push(initial_value);
-        }
-
-        for table in &self.wasm_module.tables {
-            self.tables.push(WasmFnTable {
-                fns: vec![None; table.limits.min as usize],
-            });
-        }
-
-        for element in self.wasm_module.elements.relax() {
-            match element {
-                WasmElement::Passive { expr, fn_idx } => {
-                    self.eval_expr(expr, &JumpTable::for_expr(expr))?;
-                    let start_index = self.pop_i32() as usize;
-
-                    for (fn_index, i) in fn_idx.iter().zip(0..) {
-                        self.tables[0].fns[start_index + i] = Some(*fn_index);
-                    }
-                }
-            }
         }
 
         if let Some(memory) = self.wasm_module.memories.first() {
@@ -211,50 +190,12 @@ impl WasmEval {
                         continue;
                     }
                 }
-                WasmInstr::BranchIndirect { .. } => {
-                    let jump = jump_table.get_indirect_jumps(loc);
-
-                    let jump_index = self.pop_i32();
-                    if let Some(jump_loc) = jump.tos.get(jump_index as usize) {
-                        loc = *jump_loc;
-                    } else {
-                        loc = jump.to_default;
-                    }
-                }
                 WasmInstr::BlockEnd => {}
 
                 WasmInstr::Return => {
                     break;
                 }
                 WasmInstr::Call { fn_index } => {
-                    self.call_fn(*fn_index)?;
-                }
-                WasmInstr::CallIndirect {
-                    type_index,
-                    table_index,
-                } => {
-                    let fn_index_in_table = self.pop_i32();
-
-                    let Some(table) = self.tables.get(*table_index as usize) else {
-                        return Err(
-                            self.err_with_stack(format!("Invalid table index: {table_index}"))
-                        );
-                    };
-
-                    let Some(func_ref) = table.fns.get(fn_index_in_table as usize) else {
-                        return Err(self.err_with_stack(format!(
-                            "Function index out of table bounds: {fn_index_in_table}, table id: {table_index}, table size: {}",
-                            table.fns.len()
-                        )));
-                    };
-
-                    let Some(fn_index) = func_ref else {
-                        return Err(self.err_with_stack("Trying to call indirect on <ref.null>"));
-                    };
-
-                    // TODO: type check indirect function calls
-                    let _ = type_index;
-
                     self.call_fn(*fn_index)?;
                 }
 
@@ -284,11 +225,6 @@ impl WasmEval {
                     let value = self.stack.pop().unwrap();
                     let frame = self.call_stack.last_mut().unwrap();
                     frame.locals[*local_index as usize] = value;
-                }
-                WasmInstr::LocalTee { local_index } => {
-                    let value = self.stack.last().unwrap();
-                    let frame = self.call_stack.last_mut().unwrap();
-                    frame.locals[*local_index as usize] = value.clone();
                 }
                 WasmInstr::GlobalGet { global_index } => {
                     let value = self.globals[*global_index as usize].clone();
@@ -347,31 +283,8 @@ impl WasmEval {
                         let full_addr = addr as usize + *offset as usize;
                         self.memory.store_i64(full_addr, value);
                     }
-                    WasmStoreKind::I64_8 => {
-                        let value = self.pop_i64();
-                        let addr = self.pop_i32();
-                        let full_addr = addr as usize + *offset as usize;
-                        self.memory.bytes[full_addr] = value as u8;
-                    }
-                    WasmStoreKind::I64_32 => {
-                        let value = self.pop_i64();
-                        let addr = self.pop_i32();
-                        let full_addr = addr as usize + *offset as usize;
-                        self.memory.store_i32(full_addr, value as i32);
-                    }
                     _ => todo!("store {kind:?}"),
                 },
-                WasmInstr::Select => {
-                    let cond = self.pop_i32();
-                    let rhs = self.stack.pop().unwrap();
-                    let lhs = self.stack.pop().unwrap();
-
-                    if cond == 0 {
-                        self.stack.push(lhs);
-                    } else {
-                        self.stack.push(rhs);
-                    }
-                }
 
                 WasmInstr::Drop => {
                     let _ = self.stack.pop().unwrap();
@@ -393,17 +306,6 @@ impl WasmEval {
                         destination as usize,
                     );
                 }
-                WasmInstr::MemoryFill => {
-                    let num_bytes = self.pop_i32();
-                    let value = self.pop_i32();
-                    let destination = self.pop_i32();
-
-                    self.memory
-                        .bytes
-                        .get_mut(destination as usize..destination as usize + num_bytes as usize)
-                        .unwrap()
-                        .fill_with(|| value as u8);
-                }
                 WasmInstr::MemoryGrow => todo!("{instr:?}"),
 
                 WasmInstr::I64ExtendI32u => {
@@ -422,18 +324,6 @@ impl WasmEval {
                     let value = self.pop_i64();
                     self.stack.push(WasmValue::I32 {
                         value: value as i32,
-                    })
-                }
-                WasmInstr::I64ReinterpretF64 => {
-                    let value = self.pop_f64();
-                    self.stack.push(WasmValue::I64 {
-                        value: value as i64,
-                    })
-                }
-                WasmInstr::F64ReinterpretI64 => {
-                    let value = self.pop_i64();
-                    self.stack.push(WasmValue::F64 {
-                        value: value as f64,
                     })
                 }
                 WasmInstr::UnaryOp { kind } => match kind {
@@ -487,12 +377,6 @@ impl WasmEval {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
                         let value = lhs | rhs;
-                        self.stack.push(WasmValue::I32 { value })
-                    }
-                    WasmBinaryOpKind::I32_XOR => {
-                        let rhs = self.pop_i32();
-                        let lhs = self.pop_i32();
-                        let value = lhs ^ rhs;
                         self.stack.push(WasmValue::I32 { value })
                     }
                     WasmBinaryOpKind::I32_DIV_U => {
@@ -903,26 +787,6 @@ impl JumpTable {
                         to: block_index,
                     });
                 }
-                WasmInstr::BranchIndirect {
-                    label_idx,
-                    default_label_index,
-                } => {
-                    let mut tos = Vec::new();
-                    for label_index in label_idx {
-                        let block_index =
-                            block_stack[block_stack.len() - 1 - *label_index as usize];
-                        tos.push(block_index);
-                    }
-
-                    let block_index =
-                        block_stack[block_stack.len() - 1 - *default_label_index as usize];
-
-                    jump_table.indirect_jumps.push(IndirectJump {
-                        from: loc,
-                        tos,
-                        to_default: block_index,
-                    });
-                }
                 WasmInstr::Else => {
                     let block_index = *block_stack.last().unwrap();
                     jump_table.jumps.push(Jump {
@@ -965,15 +829,6 @@ impl JumpTable {
 
         self.jumps[jump_index].to
     }
-
-    fn get_indirect_jumps(&self, from_loc: usize) -> &IndirectJump {
-        let jump_index = self
-            .indirect_jumps
-            .binary_search_by_key(&from_loc, |jump| jump.from)
-            .unwrap();
-
-        &self.indirect_jumps[jump_index]
-    }
 }
 
 #[derive(Default)]
@@ -1013,10 +868,6 @@ impl BlockMap {
 
         return target_block.end_loc;
     }
-}
-
-struct WasmFnTable {
-    fns: Vec<Option<u32>>,
 }
 
 // host fns

@@ -6,7 +6,6 @@ pub struct WasmModule {
     pub imports: Vec<WasmImport>,
     pub functions: Vec<u32>,
     pub tables: Vec<WasmTable>,
-    pub elements: Vec<WasmElement>,
     pub memories: Vec<WasmLimits>,
     pub globals: Vec<WasmGlobal>,
     pub exports: Vec<WasmExport>,
@@ -40,11 +39,6 @@ pub enum WasmImportDesc {
 #[derive(Clone, Debug, PartialEq)]
 pub struct WasmTable {
     pub limits: WasmLimits,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum WasmElement {
-    Passive { expr: WasmExpr, fn_idx: Vec<u32> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -123,7 +117,6 @@ pub enum WasmBinaryOpKind {
     I32_REM_U = 0x70,
     I32_AND = 0x71,
     I32_OR = 0x72,
-    I32_XOR = 0x73,
     I32_SHL = 0x74,
     I32_SHR_S = 0x75,
     I32_SHR_U = 0x76,
@@ -174,14 +167,11 @@ pub enum WasmStoreKind {
     F64 = 0x39,
     I32_8 = 0x3A,
     I32_16 = 0x3B,
-    I64_8 = 0x3C,
-    I64_32 = 0x3E,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum WasmBlockType {
     NoOut,
-    SingleOut { wasm_type: WasmType },
     InOut { type_index: u32 },
 }
 
@@ -189,7 +179,6 @@ pub enum WasmBlockType {
 pub enum WasmInstr {
     Unreachable,
     Drop,
-    Select,
     UnaryOp {
         kind: WasmUnaryOpKind,
     },
@@ -199,7 +188,6 @@ pub enum WasmInstr {
     MemorySize,
     MemoryGrow,
     MemoryCopy,
-    MemoryFill,
     I32Const {
         value: i32,
     },
@@ -215,15 +203,10 @@ pub enum WasmInstr {
     I32WrapI64,
     I64ExtendI32s,
     I64ExtendI32u,
-    I64ReinterpretF64,
-    F64ReinterpretI64,
     LocalGet {
         local_index: u32,
     },
     LocalSet {
-        local_index: u32,
-    },
-    LocalTee {
         local_index: u32,
     },
     GlobalGet {
@@ -252,19 +235,11 @@ pub enum WasmInstr {
     Branch {
         label_index: u32,
     },
-    BranchIndirect {
-        label_idx: Vec<u32>,
-        default_label_index: u32,
-    },
     BranchIf {
         label_index: u32,
     },
     Call {
         fn_index: u32,
-    },
-    CallIndirect {
-        type_index: u32,
-        table_index: u32,
     },
 }
 
@@ -599,9 +574,6 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
                 WasmBlockType::NoOut => {
                     write_u8(out, 0x40); // no value
                 }
-                WasmBlockType::SingleOut { wasm_type } => {
-                    write_u8(out, wasm_type.clone() as u8);
-                }
                 WasmBlockType::InOut { type_index } => {
                     write_i32(out, *type_index as i32);
                 }
@@ -621,17 +593,6 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x0D);
             write_u32(out, *label_index);
         }
-        WasmInstr::BranchIndirect {
-            label_idx,
-            default_label_index,
-        } => {
-            write_u8(out, 0x0E);
-            write_u32(out, label_idx.len() as u32);
-            for label_index in label_idx {
-                write_u32(out, *label_index);
-            }
-            write_u32(out, *default_label_index);
-        }
         WasmInstr::Return => {
             write_u8(out, 0x0F);
         }
@@ -639,19 +600,8 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             write_u8(out, 0x10);
             write_u32(out, *fn_index);
         }
-        WasmInstr::CallIndirect {
-            type_index,
-            table_index,
-        } => {
-            write_u8(out, 0x11);
-            write_u32(out, *type_index);
-            write_u32(out, *table_index);
-        }
         WasmInstr::Drop => {
             write_u8(out, 0x1A);
-        }
-        WasmInstr::Select => {
-            write_u8(out, 0x1B);
         }
         WasmInstr::LocalGet { local_index } => {
             write_u8(out, 0x20);
@@ -659,10 +609,6 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         }
         WasmInstr::LocalSet { local_index } => {
             write_u8(out, 0x21);
-            write_u32(out, *local_index);
-        }
-        WasmInstr::LocalTee { local_index } => {
-            write_u8(out, 0x22);
             write_u32(out, *local_index);
         }
         WasmInstr::GlobalGet { global_index } => {
@@ -730,21 +676,10 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
         WasmInstr::I64ExtendI32u => {
             write_u8(out, 0xAD);
         }
-        WasmInstr::I64ReinterpretF64 => {
-            write_u8(out, 0xBD);
-        }
-        WasmInstr::F64ReinterpretI64 => {
-            write_u8(out, 0xBF);
-        }
         WasmInstr::MemoryCopy => {
             write_u8(out, 0xFC);
             write_u32(out, 10);
             write_u8(out, 0x00);
-            write_u8(out, 0x00);
-        }
-        WasmInstr::MemoryFill => {
-            write_u8(out, 0xFC);
-            write_u32(out, 11);
             write_u8(out, 0x00);
         }
     }

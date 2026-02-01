@@ -1,7 +1,6 @@
 #![allow(dead_code)] // TODO: remove
 
-use crate::{ast::*, core::*, registry::*, wasm::*};
-use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
+use crate::{ast::*, common::*, registry::*, wasm::*};
 
 pub struct CodeBlockContext {
     pub exprs: &'static [CodeExpr],

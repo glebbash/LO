@@ -1,7 +1,4 @@
-#![allow(dead_code)] // TODO: remove
-
-use crate::{ast::*, core::*, lexer::*, parser::*, wasm::*};
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use crate::{ast::*, common::*, lexer::*, parser::*, wasm::*};
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Type {
@@ -372,6 +369,7 @@ impl VarInfo {
     }
 }
 
+#[allow(dead_code)] // TODO: remove
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
