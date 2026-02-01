@@ -10,6 +10,7 @@ mod lexer;
 mod lol_alloc;
 mod parser;
 mod printer;
+mod type_checker;
 mod wasi;
 mod wasm;
 mod wasm_eval;

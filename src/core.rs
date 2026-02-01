@@ -1,5 +1,5 @@
 use crate::wasi;
-use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 use core::{cell::UnsafeCell, ffi::CStr, fmt::Write, str};
 
 pub struct InspectInfo {
@@ -10,12 +10,12 @@ pub struct InspectInfo {
 
 #[derive(Default)]
 pub struct Reporter {
-    pub fm: *const FileManager,
+    pub fm: UBRef<FileManager>,
 
     pub in_inspection_mode: bool,
 
-    pub error_count: Box<u32>,
-    pub warning_count: Box<u32>,
+    pub error_count: UBCell<u32>,
+    pub warning_count: UBCell<u32>,
 }
 
 impl Reporter {
@@ -35,7 +35,7 @@ impl Reporter {
     }
 
     pub fn error(&self, err: &Error) {
-        *self.be_mut().error_count += 1;
+        *self.error_count.be_mut() += 1;
 
         if self.in_inspection_mode {
             let source_index = err.loc.file_index;
@@ -51,12 +51,12 @@ impl Reporter {
         }
 
         stderr_write("ERROR: ");
-        stderr_write(err.to_string(unsafe { &*self.fm }));
+        stderr_write(err.to_string(&*self.fm));
         stderr_write("\n");
     }
 
     pub fn warning(&self, err: &Error) {
-        *self.be_mut().warning_count += 1;
+        *self.warning_count.be_mut() += 1;
 
         if self.in_inspection_mode {
             let source_index = err.loc.file_index;
@@ -72,7 +72,7 @@ impl Reporter {
         }
 
         stderr_write("WARNING: ");
-        stderr_write(err.to_string(unsafe { &*self.fm }));
+        stderr_write(err.to_string(&self.fm));
         stderr_write("\n");
     }
 
@@ -546,10 +546,12 @@ pub(crate) trait UnsafeGoodies {
 }
 
 impl<T: ?Sized> UnsafeGoodies for T {
-    #[allow(invalid_reference_casting)]
     #[inline(always)]
     fn be_mut(&self) -> &mut Self {
-        unsafe { &mut *(self as *const Self as *mut Self) }
+        unsafe {
+            #[allow(invalid_reference_casting)]
+            &mut *(self as *const Self as *mut Self)
+        }
     }
 
     #[inline(always)]
@@ -589,5 +591,29 @@ impl<T> core::ops::DerefMut for UBCell<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.0.get() }
+    }
+}
+
+#[derive(Default)]
+pub struct UBRef<T>(*mut T);
+
+impl<T> UBRef<T> {
+    pub const fn new(value: *mut T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> core::ops::Deref for UBRef<T> {
+    type Target = T;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T> core::ops::DerefMut for UBRef<T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
     }
 }

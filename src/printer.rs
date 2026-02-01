@@ -31,7 +31,7 @@ impl Printer {
     pub fn print_file(&mut self) {
         stdout_enable_buffering();
 
-        for expr in &self.parser.ast {
+        for expr in &*self.parser.ast {
             self.print_top_level_expr(expr);
             stdout_write("\n");
             self.last_printed_item_line = expr.loc().end_pos.line;

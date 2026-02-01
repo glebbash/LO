@@ -13,13 +13,13 @@ pub struct Parser {
     pub reporter: &'static Reporter,
 
     // state
-    pub context_stack: Vec<ParsingContext>,
+    pub context_stack: UBCell<Vec<ParsingContext>>,
     pub tokens_processed: UBCell<usize>,
     pub next_node_id: UBCell<usize>,
     pub next_symbol_id: UBCell<usize>,
 
     // output
-    pub ast: Vec<TopLevelExpr>,
+    pub ast: UBCell<Vec<TopLevelExpr>>,
 }
 
 impl Parser {
@@ -38,11 +38,11 @@ impl Parser {
             source: lexer.source,
             lexer,
             reporter,
-            context_stack,
+            context_stack: UBCell::new(context_stack),
             tokens_processed: UBCell::new(0),
             next_node_id: UBCell::new(next_node_id),
             next_symbol_id: UBCell::new(next_symbol_id),
-            ast: Vec::new(),
+            ast: UBCell::new(Vec::new()),
         }
     }
 

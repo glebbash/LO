@@ -1,310 +1,6 @@
-use crate::{ast::*, core::*, lexer::*, parser::*, wasm::*};
+use crate::{ast::*, core::*, lexer::*, parser::*, type_checker::*, wasm::*};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::fmt::Write;
-
-#[derive(Clone, PartialEq)]
-pub enum Type {
-    Never,
-    Null,
-    Void,
-    Bool,
-    U8,
-    I8,
-    U16,
-    I16,
-    U32,
-    I32,
-    F32,
-    U64,
-    I64,
-    F64,
-    Pointer { pointee: Box<Type> },
-    SequencePointer { pointee: Box<Type> },
-    StructInstance { struct_index: usize },
-    EnumInstance { enum_index: usize },
-    Result(ResultType),
-    Container(ContainerType),
-}
-
-#[derive(Clone, PartialEq)]
-pub struct ResultType {
-    ok: Box<Type>,
-    err: Box<Type>,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct ContainerType {
-    container: Box<Type>,
-    items: Vec<Type>,
-}
-
-impl Type {
-    fn to_str(&self) -> Option<&'static str> {
-        Some(match self {
-            Type::Never => "never",
-            Type::Null => "null",
-            Type::Void => "void",
-            Type::Bool => "bool",
-            Type::U8 => "u8",
-            Type::I8 => "i8",
-            Type::U16 => "u16",
-            Type::I16 => "i16",
-            Type::U32 => "u32",
-            Type::I32 => "i32",
-            Type::F32 => "f32",
-            Type::U64 => "u64",
-            Type::I64 => "i64",
-            Type::F64 => "f64",
-            _ => return None,
-        })
-    }
-}
-
-pub struct TypeFmt<'a>(pub &'a Compiler, pub &'a Type);
-
-impl<'a> core::fmt::Display for TypeFmt<'a> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self.1 {
-            Type::Never
-            | Type::Null
-            | Type::Void
-            | Type::Bool
-            | Type::U8
-            | Type::I8
-            | Type::U16
-            | Type::I16
-            | Type::U32
-            | Type::I32
-            | Type::F32
-            | Type::U64
-            | Type::I64
-            | Type::F64 => write!(f, "{}", self.1.to_str().unwrap()),
-            Type::Pointer { pointee } => write!(f, "&{}", TypeFmt(self.0, pointee)),
-            Type::SequencePointer { pointee } => {
-                write!(f, "*&{}", TypeFmt(self.0, pointee))
-            }
-            Type::StructInstance { struct_index } => {
-                f.write_str(&self.0.struct_defs[*struct_index].struct_name)
-            }
-            Type::EnumInstance { enum_index } => {
-                f.write_str(&self.0.enum_defs[*enum_index].enum_name)
-            }
-            Type::Result(result) => {
-                write!(
-                    f,
-                    "Result({}, {})",
-                    TypeFmt(self.0, &result.ok),
-                    TypeFmt(self.0, &result.err)
-                )
-            }
-            Type::Container(ContainerType { container, items }) => {
-                write!(f, "{}", TypeFmt(self.0, container))?;
-                write!(f, "(")?;
-                for (i, item) in items.iter().enumerate() {
-                    if i != 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", TypeFmt(self.0, item))?;
-                }
-                write!(f, ")")
-            }
-        }
-    }
-}
-
-pub struct TypeListFmt<'a>(pub &'a Compiler, pub &'a [Type]);
-
-impl<'a> core::fmt::Display for TypeListFmt<'a> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for (item, i) in self.1.iter().zip(0..) {
-            if i != 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", TypeFmt(self.0, item))?;
-        }
-        Ok(())
-    }
-}
-
-impl Type {
-    fn deref_rec(&self) -> &Type {
-        match self {
-            Type::Pointer { pointee } => pointee.deref_rec(),
-            Type::SequencePointer { pointee } => pointee.deref_rec(),
-            other => other,
-        }
-    }
-}
-
-struct FnInfo {
-    fn_name: &'static str,
-    fn_type: FnType,
-    fn_params: Vec<FnParameter>,
-    fn_source: FnSource,
-    exported_as: Vec<String>,
-    wasm_fn_index: u32,
-    definition_loc: Loc,
-}
-
-struct FnParameter {
-    param_name: &'static str,
-    param_type: Type,
-    loc: Loc,
-}
-
-enum FnSource {
-    Guest {
-        module_index: usize,
-        lo_fn_index: usize,
-        body: &'static CodeBlock,
-    },
-    Host {
-        module_name: String,
-        external_fn_name: &'static str,
-    },
-}
-
-struct FnType {
-    inputs: Vec<Type>,
-    output: Type,
-}
-
-#[derive(Clone)]
-struct ExprContext {
-    module_index: usize,
-    fn_index: Option<usize>,
-    locals: Vec<Local>,
-    next_local_index: u32,
-    addr_local_index: Option<u32>,
-}
-
-impl ExprContext {
-    fn new(module_index: usize, fn_index: Option<usize>) -> Self {
-        Self {
-            module_index,
-            fn_index,
-            locals: Vec::new(),
-            next_local_index: 0,
-            addr_local_index: None,
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Local {
-    local_index: u32,
-    local_type: Type,
-    definition_loc: Loc,
-}
-
-#[derive(Clone, PartialEq)]
-enum ScopeType {
-    Global,
-    Function,
-    Block,
-    Loop,
-    ForLoop,
-    InlineFn,
-}
-
-impl Default for ScopeType {
-    fn default() -> Self {
-        ScopeType::Block
-    }
-}
-
-#[derive(Clone)]
-struct CodeUnit {
-    type_: Type,
-    instrs: Vec<WasmInstr>,
-}
-
-struct ConstSliceLen {
-    slice_ptr: u32,
-    slice_len: usize,
-}
-
-#[derive(Clone, Default)]
-struct Scope {
-    scope_type: ScopeType,
-    symbols: Vec<Symbol>,
-    deferred_exprs: Vec<CodeUnit>,
-    inline_fn_call_loc: Option<Loc>,
-}
-
-impl Scope {
-    fn new(scope_type: ScopeType) -> Self {
-        Self {
-            scope_type,
-            ..Default::default()
-        }
-    }
-
-    fn get_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
-        for symbol in self.symbols.iter().rev() {
-            if symbol.name == symbol_name {
-                return Some(symbol);
-            }
-        }
-
-        None
-    }
-}
-
-struct StructDef {
-    struct_name: &'static str,
-    fields: Vec<StructField>,
-    fully_defined: bool, // used for self-reference checks
-}
-
-pub struct StructField {
-    field_name: &'static str,
-    field_type: Type,
-    field_layout: TypeLayout,
-    field_index: u32,
-    byte_offset: u32,
-    loc: Loc,
-}
-
-struct EnumDef {
-    enum_name: &'static str,
-    variant_type: Type,
-    variants: Vec<EnumVariant>,
-}
-
-pub struct EnumVariant {
-    variant_name: &'static str,
-    variant_type: Type,
-    loc: Loc,
-}
-
-pub struct EnumConstructor {
-    enum_index: usize,
-    variant_index: usize,
-}
-
-struct GlobalDef {
-    module_ctx: &'static ExprContext,
-    def_expr: &'static LetExpr,
-    global_type: Type,
-    global_index: u32,
-}
-
-struct TypeLayout {
-    primities_count: u32,
-    byte_size: u32,
-    alignment: u32,
-}
-
-impl TypeLayout {
-    pub fn new() -> Self {
-        Self {
-            primities_count: 0,
-            byte_size: 0,
-            alignment: 0,
-        }
-    }
-}
 
 enum VarInfo {
     Local(VarInfoLocal),
@@ -370,13 +66,6 @@ impl VarInfo {
 }
 
 #[derive(Clone)]
-struct ConstDef {
-    const_name: &'static str,
-    code_unit: CodeUnit,
-    loc: Loc,
-}
-
-#[derive(Clone)]
 struct PooledString {
     value: String,
     ptr: u32,
@@ -403,30 +92,6 @@ pub struct ModuleInclude {
     with_extern: bool,
 }
 
-#[derive(Clone)]
-struct Symbol {
-    name: &'static str,
-    type_: SymbolType,
-    col_index: usize,
-    defined_in_this_scope: bool,
-    loc: Loc,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum SymbolType {
-    TypeAlias,
-    Struct,
-    Enum,
-
-    Local,
-    Global,
-    Const,
-
-    InlineFn,
-    Function,
-    EnumConstructor,
-}
-
 struct MemoryInfo {
     min_pages: Option<u32>,
     data_start: Option<u32>,
@@ -448,20 +113,8 @@ pub struct Compiler {
 
     global_scope: Scope,
 
-    type_aliases: Vec<Type>,
+    registry: UBCell<Registry>,
 
-    struct_defs: Vec<StructDef>,
-
-    enum_defs: Vec<EnumDef>,
-    enum_ctors: Vec<EnumConstructor>,
-
-    globals: Vec<GlobalDef>,
-
-    const_defs: Vec<ConstDef>,
-
-    inline_fn_defs: Vec<&'static FnExpr>,
-
-    functions: Vec<FnInfo>,
     wasm_fn_types: UBCell<Vec<WasmFnType>>,
 
     const_slice_lens: Vec<ConstSliceLen>,
@@ -470,16 +123,18 @@ pub struct Compiler {
     datas: UBCell<Vec<WasmData>>,
     data_size: UBCell<u32>,
     string_pool: UBCell<Vec<PooledString>>,
-    first_string_usage: Option<Loc>,
+    first_string_usage: UBCell<Option<Loc>>,
+
     next_node_id: UBCell<usize>,
     next_symbol_id: UBCell<usize>,
+    next_scope_id: UBCell<usize>,
 }
 
 impl Compiler {
     pub fn new() -> Self {
         let mut self_ = Self::default();
 
-        self_.reporter.fm = &*self_.fm;
+        self_.reporter.fm = UBRef::new(&mut *self_.fm);
         self_.global_scope.scope_type = ScopeType::Global;
 
         self_.add_builtin_type(Type::Never);
@@ -562,7 +217,7 @@ impl Compiler {
         let mut includes = Vec::new();
 
         if !self.in_single_file_mode {
-            for expr in &parser.ast {
+            for expr in &*parser.ast {
                 let TopLevelExpr::Intrinsic(InlineFnCallExpr {
                     id: _,
                     fn_name: instrinsic,
@@ -641,7 +296,7 @@ impl Compiler {
         scope_stack.push(self.global_scope.clone());
 
         // scope for module's own symbols
-        init_scope_from_parent_and_push(&mut scope_stack, ScopeType::Global);
+        self.init_scope_from_parent_and_push(&mut scope_stack, ScopeType::Global);
 
         self.modules.push(Module {
             index: ctx.module_index,
@@ -674,7 +329,7 @@ impl Compiler {
     }
 
     fn pass_collect_own_symbols(&mut self, module: &mut Module) {
-        for expr in &module.parser.ast {
+        for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Intrinsic(_) => {} // skip, not interested
 
@@ -682,32 +337,26 @@ impl Compiler {
                     if let TypeDefValue::Alias(_) = &type_def.value {
                         let _ = self.define_symbol(
                             &mut module.ctx,
-                            Symbol {
-                                name: type_def.name.repr,
-                                type_: SymbolType::TypeAlias,
-                                col_index: self.type_aliases.len(),
-                                defined_in_this_scope: true,
-                                loc: type_def.name.loc,
-                            },
+                            type_def.name.repr,
+                            SymbolType::TypeAlias,
+                            self.registry.type_aliases.len(),
+                            type_def.name.loc,
                         );
 
-                        self.type_aliases.push(Type::Never); // placeholder
+                        self.registry.type_aliases.push(Type::Never); // placeholder
                         continue;
                     }
 
                     if let TypeDefValue::Struct { .. } = &type_def.value {
                         let _ = self.define_symbol(
                             &mut module.ctx,
-                            Symbol {
-                                name: type_def.name.repr,
-                                type_: SymbolType::Struct,
-                                col_index: self.struct_defs.len(),
-                                defined_in_this_scope: true,
-                                loc: type_def.name.loc,
-                            },
+                            type_def.name.repr,
+                            SymbolType::Struct,
+                            self.registry.structs.len(),
+                            type_def.name.loc,
                         );
 
-                        self.struct_defs.push(StructDef {
+                        self.registry.structs.push(StructDef {
                             struct_name: type_def.name.repr,
                             fields: Vec::new(),
                             fully_defined: false,
@@ -725,13 +374,10 @@ impl Compiler {
 
                     let Ok(_) = self.define_symbol(
                         &mut module.ctx,
-                        Symbol {
-                            name: type_def.name.repr,
-                            type_: SymbolType::Enum,
-                            col_index: self.enum_defs.len(),
-                            defined_in_this_scope: true,
-                            loc: type_def.name.loc,
-                        },
+                        type_def.name.repr,
+                        SymbolType::Enum,
+                        self.registry.enums.len(),
+                        type_def.name.loc,
                     ) else {
                         continue;
                     };
@@ -747,7 +393,7 @@ impl Compiler {
                         }
                     }
 
-                    self.enum_defs.push(EnumDef {
+                    self.registry.enums.push(EnumDef {
                         enum_name: type_def.name.repr,
                         variant_type: variant_type.clone(),
                         variants: Vec::new(), // placeholder
@@ -759,34 +405,28 @@ impl Compiler {
                             type_def.name.repr, variant.variant_name.repr
                         ));
 
-                        let enum_index = self.enum_defs.len() - 1;
+                        let enum_index = self.registry.enums.len() - 1;
 
                         if variant_type != Type::Void {
                             let _ = self.define_symbol(
                                 &mut module.ctx,
-                                Symbol {
-                                    name: constructor_name,
-                                    type_: SymbolType::EnumConstructor,
-                                    col_index: self.enum_ctors.len(),
-                                    defined_in_this_scope: true,
-                                    loc: variant.variant_name.loc,
-                                },
+                                constructor_name,
+                                SymbolType::EnumConstructor,
+                                self.registry.enum_ctors.len(),
+                                variant.variant_name.loc,
                             );
 
-                            self.enum_ctors.push(EnumConstructor {
+                            self.registry.enum_ctors.push(EnumConstructor {
                                 enum_index,
                                 variant_index,
                             });
                         } else {
                             let Ok(_) = self.define_symbol(
                                 &mut module.ctx,
-                                Symbol {
-                                    name: constructor_name,
-                                    type_: SymbolType::Const,
-                                    col_index: self.const_defs.len(),
-                                    defined_in_this_scope: true,
-                                    loc: variant.variant_name.loc,
-                                },
+                                constructor_name,
+                                SymbolType::Const,
+                                self.registry.constants.len(),
+                                variant.variant_name.loc,
                             ) else {
                                 continue;
                             };
@@ -796,7 +436,7 @@ impl Compiler {
                                 value: variant_index as i32,
                             });
 
-                            self.const_defs.push(ConstDef {
+                            self.registry.constants.push(ConstDef {
                                 const_name: constructor_name,
                                 code_unit: CodeUnit {
                                     type_: Type::EnumInstance { enum_index },
@@ -811,28 +451,22 @@ impl Compiler {
                     if fn_def.is_inline {
                         let _ = self.define_symbol(
                             &mut module.ctx,
-                            Symbol {
-                                name: fn_def.decl.fn_name.repr,
-                                type_: SymbolType::InlineFn,
-                                col_index: self.inline_fn_defs.len(),
-                                defined_in_this_scope: true,
-                                loc: fn_def.decl.fn_name.loc,
-                            },
+                            fn_def.decl.fn_name.repr,
+                            SymbolType::InlineFn,
+                            self.registry.inline_fns.len(),
+                            fn_def.decl.fn_name.loc,
                         );
 
-                        self.inline_fn_defs.push(fn_def.relax());
+                        self.registry.inline_fns.push(fn_def.relax());
                         continue;
                     }
 
                     let _ = self.define_symbol(
                         &mut module.ctx,
-                        Symbol {
-                            name: fn_def.decl.fn_name.repr,
-                            type_: SymbolType::Function,
-                            col_index: self.functions.len(),
-                            defined_in_this_scope: true,
-                            loc: fn_def.decl.fn_name.loc,
-                        },
+                        fn_def.decl.fn_name.repr,
+                        SymbolType::Function,
+                        self.registry.functions.len(),
+                        fn_def.decl.fn_name.loc,
                     );
 
                     match &fn_def.value {
@@ -842,7 +476,7 @@ impl Compiler {
                                 exported_as.push(String::from(fn_def.decl.fn_name.repr));
                             }
 
-                            self.functions.push(FnInfo {
+                            self.registry.relax_mut().functions.push(FnInfo {
                                 fn_name: fn_def.decl.fn_name.repr,
                                 fn_type: FnType {
                                     inputs: Vec::new(),
@@ -851,7 +485,7 @@ impl Compiler {
                                 fn_params: Vec::new(),
                                 fn_source: FnSource::Guest {
                                     module_index: module.index,
-                                    lo_fn_index: self.functions.len(),
+                                    lo_fn_index: self.registry.functions.len(),
                                     body: body.relax(),
                                 },
                                 exported_as,
@@ -864,7 +498,7 @@ impl Compiler {
                             let method_name = fn_def.decl.fn_name.parts.last().unwrap();
                             let external_fn_name = method_name.read_span(module.source);
 
-                            self.functions.push(FnInfo {
+                            self.registry.functions.push(FnInfo {
                                 fn_name: fn_def.decl.fn_name.repr,
                                 fn_type: FnType {
                                     inputs: Vec::new(),
@@ -885,16 +519,13 @@ impl Compiler {
                 TopLevelExpr::Let(let_expr) if !let_expr.is_inline => {
                     let _ = self.define_symbol(
                         &mut module.ctx,
-                        Symbol {
-                            name: let_expr.name.repr,
-                            type_: SymbolType::Global,
-                            col_index: self.globals.len(),
-                            defined_in_this_scope: true,
-                            loc: let_expr.name.loc,
-                        },
+                        let_expr.name.repr,
+                        SymbolType::Global,
+                        self.registry.globals.len(),
+                        let_expr.name.loc,
                     );
 
-                    self.globals.push(GlobalDef {
+                    self.registry.globals.push(GlobalDef {
                         module_ctx: module.ctx.relax(),
                         def_expr: let_expr.relax(),
                         global_type: Type::Never, // placeholder
@@ -904,16 +535,13 @@ impl Compiler {
                 TopLevelExpr::Let(let_expr) => {
                     let _ = self.define_symbol(
                         &mut module.ctx,
-                        Symbol {
-                            name: let_expr.name.repr,
-                            type_: SymbolType::Const,
-                            col_index: self.const_defs.len(),
-                            defined_in_this_scope: true,
-                            loc: let_expr.name.loc,
-                        },
+                        let_expr.name.repr,
+                        SymbolType::Const,
+                        self.registry.constants.len(),
+                        let_expr.name.loc,
                     );
 
-                    self.const_defs.push(ConstDef {
+                    self.registry.constants.push(ConstDef {
                         const_name: let_expr.name.repr,
                         code_unit: CodeUnit {
                             type_: Type::Never, // placeholder
@@ -926,28 +554,43 @@ impl Compiler {
         }
     }
 
-    fn define_symbol(&mut self, ctx: &ExprContext, symbol: Symbol) -> Result<&Symbol, &Symbol> {
-        if let Some(existing_symbol) = self.relax_mut().current_scope(ctx).get_symbol(&symbol.name)
-            && existing_symbol.defined_in_this_scope
+    fn define_symbol(
+        &mut self,
+        ctx: &ExprContext,
+        symbol_name: &'static str,
+        symbol_type: SymbolType,
+        symbol_col_index: usize,
+        symbol_loc: Loc,
+    ) -> Result<&Symbol, &Symbol> {
+        let current_scope = self.relax_mut().current_scope_mut(ctx);
+
+        if let Some(existing_symbol) = current_scope.relax().get_symbol(symbol_name)
+            && existing_symbol.scope_id == current_scope.scope_id
         {
             self.reporter.error(&Error {
                 message: format!(
                     "Cannot redefine {}, previously defined at {}",
-                    symbol.name,
+                    symbol_name,
                     existing_symbol.loc.to_string(&self.fm)
                 ),
-                loc: symbol.loc,
+                loc: symbol_loc,
             });
             return Err(&existing_symbol);
         }
 
-        self.current_scope_mut(ctx).symbols.push(symbol);
-        Ok(&self.current_scope(ctx).symbols.last().unwrap())
+        current_scope.symbols.push(Symbol {
+            scope_id: current_scope.scope_id,
+            name: symbol_name,
+            type_: symbol_type,
+            col_index: symbol_col_index,
+            loc: symbol_loc,
+        });
+        Ok(&current_scope.symbols.last().unwrap())
     }
 
     fn pass_collect_all_symbols(&mut self, module: &mut Module) {
         // scope for module's imports
-        init_scope_from_parent_and_push(&mut module.scope_stack, ScopeType::Global);
+        self.init_scope_from_parent_and_push(&mut module.scope_stack, ScopeType::Global);
 
         self.inline_includes(module.relax_mut(), module, &mut String::from(""), true);
     }
@@ -963,12 +606,9 @@ impl Compiler {
             let target_scope = includer.scope_stack.last_mut().unwrap();
 
             for symbol in &includee.scope_stack[1].symbols {
-                let name = self.alloc_str(format!("{}{}", prefix, symbol.name));
-                target_scope.symbols.push(Symbol {
-                    name,
-                    defined_in_this_scope: false,
-                    ..symbol.clone()
-                })
+                let mut included_symbol = symbol.clone();
+                included_symbol.name = self.alloc_str(format!("{}{}", prefix, symbol.name));
+                target_scope.symbols.push(included_symbol)
             }
         }
 
@@ -990,7 +630,7 @@ impl Compiler {
     }
 
     fn pass_assemble_complex_types(&mut self, module: &Module) {
-        'exprs: for expr in &module.parser.ast {
+        'exprs: for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Type(type_def) => {
                     if let TypeDefValue::Alias(type_expr) = &type_def.value {
@@ -1008,7 +648,7 @@ impl Compiler {
                         let SymbolType::TypeAlias = symbol.type_ else {
                             continue;
                         };
-                        self.type_aliases[symbol.col_index] = type_value;
+                        self.registry.type_aliases[symbol.col_index] = type_value;
                         continue;
                     }
 
@@ -1077,7 +717,7 @@ impl Compiler {
                         let SymbolType::Struct = symbol.type_ else {
                             continue;
                         };
-                        let struct_ = &mut self.struct_defs[symbol.col_index];
+                        let struct_ = &mut self.registry.structs[symbol.col_index];
 
                         struct_.fields.append(&mut struct_fields);
                         struct_.fully_defined = true;
@@ -1100,7 +740,7 @@ impl Compiler {
                     let SymbolType::Enum = symbol.type_ else {
                         continue;
                     };
-                    let enum_ = self.enum_defs[symbol.col_index].relax_mut();
+                    let enum_ = self.registry.enums[symbol.col_index].relax_mut();
 
                     'variants: for variant in variants.iter() {
                         for existing_variant in &enum_.variants {
@@ -1132,7 +772,7 @@ impl Compiler {
                             self.reporter.error(&Error {
                                 message: format!(
                                     "Enum variant is not compatible with {}",
-                                    TypeFmt(self, &enum_.variant_type)
+                                    TypeFmt(&*self.registry, &enum_.variant_type)
                                 ),
                                 loc: variant.variant_name.loc,
                             });
@@ -1151,7 +791,7 @@ impl Compiler {
     }
 
     fn pass_main(&mut self, module: &mut Module) {
-        for expr in &module.parser.ast {
+        for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Type(_) => {} // skip, processed in pass_collect_all_symbols
 
@@ -1169,7 +809,7 @@ impl Compiler {
                     let SymbolType::Function = symbol.type_ else {
                         continue;
                     };
-                    let fn_info = self.functions[symbol.col_index].relax_mut();
+                    let fn_info = self.registry.functions[symbol.col_index].relax_mut();
 
                     let self_type = self.get_fn_self_type(
                         &module.ctx,
@@ -1210,7 +850,7 @@ impl Compiler {
                     let SymbolType::Global = symbol.type_ else {
                         continue;
                     };
-                    let global = self.globals[symbol.col_index].relax_mut();
+                    let global = self.registry.globals[symbol.col_index].relax_mut();
 
                     // TODO: ensure `global_def.global_value` is a valid const expression
 
@@ -1227,7 +867,7 @@ impl Compiler {
                         self.reporter.print_inspection(&InspectInfo {
                             message: format!(
                                 "global {global_name}: {}",
-                                TypeFmt(self, &global.global_type)
+                                TypeFmt(&*self.registry, &global.global_type)
                             ),
                             loc: let_expr.name.loc,
                             linked_loc: None,
@@ -1240,7 +880,7 @@ impl Compiler {
                         .get_symbol(&let_expr.name.repr)
                         .unwrap()
                         .relax();
-                    let const_ = self.const_defs[symbol.col_index].relax_mut();
+                    let const_ = self.registry.constants[symbol.col_index].relax_mut();
 
                     let const_type = match self.get_expr_type(&module.ctx, &let_expr.value) {
                         Ok(x) => x,
@@ -1266,7 +906,7 @@ impl Compiler {
                         self.reporter.print_inspection(&InspectInfo {
                             message: format!(
                                 "inline let {const_name}: {}",
-                                TypeFmt(self, &const_.code_unit.type_)
+                                TypeFmt(&*self.registry, &const_.code_unit.type_)
                             ),
                             loc: let_expr.name.loc,
                             linked_loc: None,
@@ -1510,7 +1150,7 @@ impl Compiler {
 
     pub fn generate(&mut self, wasm_module: &mut WasmModule) {
         let mut fn_imports_count = 0;
-        for fn_info in &self.functions {
+        for fn_info in &self.registry.functions {
             if let FnSource::Host { .. } = fn_info.fn_source {
                 fn_imports_count += 1;
             }
@@ -1519,8 +1159,8 @@ impl Compiler {
         // resolve wasm fn indicies and populate type, import and export sections
         let mut wasm_import_fn_index = 0;
         let mut wasm_fn_index = fn_imports_count;
-        for fn_index in 0..self.functions.len() {
-            let fn_info = self.functions[fn_index].relax_mut();
+        for fn_index in 0..self.registry.functions.len() {
+            let fn_info = self.registry.functions[fn_index].relax_mut();
 
             let mut wasm_fn_type = WasmFnType {
                 inputs: Vec::new(),
@@ -1581,7 +1221,7 @@ impl Compiler {
 
         // build global initializers and update global indices
         let mut global_index = 0;
-        for global in self.globals.relax_mut() {
+        for global in self.registry.globals.relax_mut() {
             global.global_index = global_index;
 
             let mut wasm_types = Vec::new();
@@ -1615,7 +1255,7 @@ impl Compiler {
         }
 
         // build function codes
-        for fn_info in self.functions.relax_mut().iter() {
+        for fn_info in self.registry.functions.relax_mut().iter() {
             let FnSource::Guest {
                 module_index,
                 lo_fn_index,
@@ -1628,8 +1268,8 @@ impl Compiler {
             let ctx = &mut ExprContext::new(*module_index, Some(*lo_fn_index));
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
 
-            let constants_len = self.const_defs.len();
-            let type_aliases_len = self.type_aliases.len();
+            let constants_len = self.registry.constants.len();
+            let type_aliases_len = self.registry.type_aliases.len();
 
             self.enter_scope(ctx, ScopeType::Function);
 
@@ -1642,8 +1282,8 @@ impl Compiler {
             self.exit_scope(ctx);
 
             // remove any constants/types created by inline fn calls
-            self.const_defs.truncate(constants_len);
-            self.type_aliases.truncate(type_aliases_len);
+            self.registry.constants.truncate(constants_len);
+            self.registry.type_aliases.truncate(type_aliases_len);
 
             let mut wasm_locals_flat = Vec::new();
             for (i, local) in ctx.locals.iter().enumerate() {
@@ -1710,7 +1350,7 @@ impl Compiler {
         let data_size_instr = WasmInstr::I32Const {
             value: *self.data_size as i32,
         };
-        for global in self.globals.relax_mut() {
+        for global in self.registry.globals.relax_mut() {
             let CodeExpr::IntrinsicCall(intrinsic) = &*global.def_expr.value else {
                 continue;
             };
@@ -1755,7 +1395,7 @@ impl Compiler {
 
         wasm_module.types.append(self.wasm_fn_types.be_mut());
 
-        if let Some(string_usage_loc) = self.first_string_usage
+        if let Some(string_usage_loc) = *self.first_string_usage
             && self.memory.is_none()
             && !self.reporter.in_inspection_mode
         {
@@ -1822,7 +1462,7 @@ impl Compiler {
             && !terminates_early
             && self.current_scope(ctx).scope_type == ScopeType::Function
         {
-            let fn_info = &self.functions[ctx.fn_index.unwrap()];
+            let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.fn_type.output != Type::Void {
                 self.reporter.error(&Error {
                     // error message stolen from clang
@@ -1939,7 +1579,7 @@ impl Compiler {
             TypeExpr::Named(TypeExprNamed { name }) => {
                 let lo_type = self.get_type_or_err(ctx, &name.repr, &name.loc)?;
                 if let Type::StructInstance { struct_index } = &lo_type {
-                    let struct_def = &self.struct_defs[*struct_index];
+                    let struct_def = &self.registry.structs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
                         return Err(Error {
                             message: format!(
@@ -2021,7 +1661,10 @@ impl Compiler {
                         });
                     };
 
-                    return Ok(self.const_defs[symbol.col_index].code_unit.type_.clone());
+                    return Ok(self.registry.constants[symbol.col_index]
+                        .code_unit
+                        .type_
+                        .clone());
                 }
 
                 if let TypeExpr::Named(named) = &**container
@@ -2135,7 +1778,7 @@ impl Compiler {
                     });
                 };
 
-                let struct_def = &self.struct_defs[struct_index].relax();
+                let struct_def = &self.registry.structs[struct_index].relax();
 
                 for field_index in 0..body.fields.len() {
                     let field_literal = &body.fields[field_index];
@@ -2169,8 +1812,8 @@ impl Compiler {
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_name.repr,
                                 struct_field.field_name,
-                                TypeFmt(self, &struct_field.field_type,),
-                                TypeFmt(self, &field_value_type),
+                                TypeFmt(&*self.registry, &struct_field.field_type,),
+                                TypeFmt(&*self.registry, &field_value_type),
                             ),
                             loc: field_literal.value.loc(),
                         });
@@ -2209,8 +1852,8 @@ impl Compiler {
                             return Err(Error {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
-                                    TypeFmt(self, &current_item_type),
-                                    TypeFmt(self, &item_type),
+                                    TypeFmt(&*self.registry, &current_item_type),
+                                    TypeFmt(&*self.registry, &item_type),
                                 ),
                                 loc: item.loc(),
                             });
@@ -2227,7 +1870,7 @@ impl Compiler {
                         bytes.push(value as u8);
                     }
                 } else if let Type::StructInstance { struct_index } = &item_type
-                    && self.struct_defs[*struct_index].struct_name == "str"
+                    && self.registry.structs[*struct_index].struct_name == "str"
                 {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item)?;
@@ -2235,8 +1878,8 @@ impl Compiler {
                             return Err(Error {
                                 message: format!(
                                     "Unexpected array element type: {}, expected: {}",
-                                    TypeFmt(self, &current_item_type),
-                                    TypeFmt(self, &item_type),
+                                    TypeFmt(&*self.registry, &current_item_type),
+                                    TypeFmt(&*self.registry, &item_type),
                                 ),
                                 loc: item.loc(),
                             });
@@ -2263,7 +1906,7 @@ impl Compiler {
                     return Err(Error {
                         message: format!(
                             "Unsupported array literal element type: {}",
-                            TypeFmt(self, &item_type)
+                            TypeFmt(&*self.registry, &item_type)
                         ),
                         loc: *loc,
                     });
@@ -2298,8 +1941,8 @@ impl Compiler {
                         return Err(Error {
                             message: format!(
                                 "Cannot create result, Ok type mismatch. Got {}, expected: {}",
-                                TypeFmt(self, &value_type),
-                                TypeFmt(self, &result.ok),
+                                TypeFmt(&*self.registry, &value_type),
+                                TypeFmt(&*self.registry, &result.ok),
                             ),
                             loc: *loc,
                         });
@@ -2319,8 +1962,8 @@ impl Compiler {
                     return Err(Error {
                         message: format!(
                             "Cannot create result, Err type mismatch. Got {}, expected: {}",
-                            TypeFmt(self, &value_type),
-                            TypeFmt(self, &result.err),
+                            TypeFmt(&*self.registry, &value_type),
+                            TypeFmt(&*self.registry, &result.err),
                         ),
                         loc: *loc,
                     });
@@ -2407,8 +2050,8 @@ impl Compiler {
                     return Err(Error {
                         message: format!(
                             "Cannot cast from {} to {}",
-                            TypeFmt(self, &castee_type),
-                            TypeFmt(self, &casted_to_type)
+                            TypeFmt(&*self.registry, &castee_type),
+                            TypeFmt(&*self.registry, &casted_to_type)
                         ),
                         loc: *loc,
                     });
@@ -2465,7 +2108,7 @@ impl Compiler {
                         return Err(Error {
                             message: format!(
                                 "Cannot apply not operation to expr of type {}",
-                                TypeFmt(self, &operand_type)
+                                TypeFmt(&*self.registry, &operand_type)
                             ),
                             loc: *loc,
                         });
@@ -2516,7 +2159,7 @@ impl Compiler {
                         return Err(Error {
                             message: format!(
                                 "Cannot negate expr of type {}",
-                                TypeFmt(self, &operand_type)
+                                TypeFmt(&*self.registry, &operand_type)
                             ),
                             loc: *loc,
                         });
@@ -2566,8 +2209,8 @@ impl Compiler {
                     return Err(Error {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
-                            TypeFmt(self, &lhs_type),
-                            TypeFmt(self, &rhs_type),
+                            TypeFmt(&*self.registry, &lhs_type),
+                            TypeFmt(&*self.registry, &rhs_type),
                         ),
                         loc: op_loc.clone(),
                     });
@@ -2620,8 +2263,8 @@ impl Compiler {
                     self.reporter.error(&Error {
                         message: format!(
                             "Cannot assign {} to variable of type {}",
-                            TypeFmt(self, &rhs_type),
-                            TypeFmt(self, var.get_type())
+                            TypeFmt(&*self.registry, &rhs_type),
+                            TypeFmt(&*self.registry, var.get_type())
                         ),
                         loc: op_loc.clone(),
                     });
@@ -2647,8 +2290,8 @@ impl Compiler {
             }) => {
                 if let Some(symbol) = self.current_scope(ctx).get_symbol(&fn_name.repr) {
                     if let SymbolType::EnumConstructor = symbol.type_ {
-                        let ctor = &self.enum_ctors[symbol.col_index];
-                        let enum_ = &self.enum_defs[ctor.enum_index];
+                        let ctor = &self.registry.enum_ctors[symbol.col_index];
+                        let enum_ = &self.registry.enums[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
 
                         if self.reporter.in_inspection_mode {
@@ -2681,8 +2324,8 @@ impl Compiler {
                             return Err(Error {
                                 message: format!(
                                     "Invalid enum payload: {}, expected: {}",
-                                    TypeFmt(self, &expr_type),
-                                    TypeFmt(self, &variant.variant_type),
+                                    TypeFmt(&*self.registry, &expr_type),
+                                    TypeFmt(&*self.registry, &variant.variant_type),
                                 ),
                                 loc: fn_name.loc,
                             });
@@ -2798,7 +2441,7 @@ impl Compiler {
                         return Err(Error {
                             message: format!(
                                 "Unexpected arguments [{}] for @{}(num_pages: u32): i32",
-                                TypeListFmt(self, &arg_types),
+                                TypeListFmt(&*self.registry, &arg_types),
                                 fn_name.repr,
                             ),
                             loc: fn_name.loc,
@@ -2830,7 +2473,7 @@ impl Compiler {
                         return Err(Error {
                             message: format!(
                                 "Unexpected arguments [{}] for @{}(dest: u32, source: u32: num_bytes: u32)",
-                                TypeListFmt(self, &arg_types),
+                                TypeListFmt(&*self.registry, &arg_types),
                                 fn_name.repr,
                             ),
                             loc: fn_name.loc,
@@ -3157,13 +2800,13 @@ impl Compiler {
                     return_type = self.get_expr_type(ctx, &return_expr)?;
                 };
 
-                let fn_return_type = &self.functions[fn_index].fn_type.output;
+                let fn_return_type = &self.registry.functions[fn_index].fn_type.output;
                 if !self.is_type_compatible(fn_return_type, &return_type) {
                     return Err(Error {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
-                            TypeFmt(self, &return_type),
-                            TypeFmt(self, &fn_return_type),
+                            TypeFmt(&*self.registry, &return_type),
+                            TypeFmt(&*self.registry, &fn_return_type),
                         ),
                         loc: *loc,
                     });
@@ -3186,8 +2829,8 @@ impl Compiler {
                                 self.reporter.error(&Error {
                                     message: format!(
                                         "Unexpected condition type: {}, expected: {}",
-                                        TypeFmt(self, &cond_type),
-                                        TypeFmt(self, &Type::Bool),
+                                        TypeFmt(&*self.registry, &cond_type),
+                                        TypeFmt(&*self.registry, &Type::Bool),
                                     ),
                                     loc: expr.loc(),
                                 });
@@ -3297,8 +2940,8 @@ impl Compiler {
                             self.reporter.error(&Error {
                                 message: format!(
                                     "Unexpected condition type: {}, expected: {}",
-                                    TypeFmt(self, &cond_type),
-                                    TypeFmt(self, &Type::Bool),
+                                    TypeFmt(&*self.registry, &cond_type),
+                                    TypeFmt(&*self.registry, &Type::Bool),
                                 ),
                                 loc: cond.loc(),
                             });
@@ -3339,8 +2982,8 @@ impl Compiler {
                     return Err(Error {
                         message: format!(
                             "Invalid range end type: {}, expected: {}",
-                            TypeFmt(self, &self.get_expr_type(ctx, end)?),
-                            TypeFmt(self, &counter_type),
+                            TypeFmt(&*self.registry, &self.get_expr_type(ctx, end)?),
+                            TypeFmt(&*self.registry, &counter_type),
                         ),
                         loc: *loc,
                     });
@@ -3505,8 +3148,8 @@ impl Compiler {
                         self.reporter.error(&Error {
                             message: format!(
                                 "do-with argument type mismatch. expected: {}, got: {}",
-                                TypeFmt(self, &arg_type),
-                                TypeFmt(self, &current_arg_type),
+                                TypeFmt(&*self.registry, &arg_type),
+                                TypeFmt(&*self.registry, &current_arg_type),
                             ),
                             loc: arg.loc(),
                         });
@@ -3619,18 +3262,18 @@ impl Compiler {
             });
         };
 
-        let enum_ctor = &self.enum_ctors[symbol.col_index].relax();
+        let enum_ctor = &self.registry.enum_ctors[symbol.col_index].relax();
         let enum_index = enum_ctor.enum_index;
-        let enum_def = &self.enum_defs[enum_ctor.enum_index].relax();
+        let enum_def = &self.registry.enums[enum_ctor.enum_index].relax();
         let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
 
         if self.reporter.in_inspection_mode {
             self.reporter.print_inspection(&InspectInfo {
                 message: format!(
                     "{}\n{}({})",
-                    TypeFmt(self, &Type::EnumInstance { enum_index }),
+                    TypeFmt(&*self.registry, &Type::EnumInstance { enum_index }),
                     header.variant_name.repr,
-                    TypeFmt(self, &enum_variant.variant_type)
+                    TypeFmt(&*self.registry, &enum_variant.variant_type)
                 ),
                 loc: header.variant_name.loc,
                 linked_loc: Some(enum_variant.loc),
@@ -3662,8 +3305,8 @@ impl Compiler {
                 self.reporter.error(&Error {
                     message: format!(
                         "Unexpected type to match, expected: {}, got: {}",
-                        TypeFmt(self, &expected_expr_to_match_type),
-                        TypeFmt(self, &expr_to_match_type)
+                        TypeFmt(&*self.registry, &expected_expr_to_match_type),
+                        TypeFmt(&*self.registry, &expr_to_match_type)
                     ),
                     loc: header.expr_to_match.loc(),
                 });
@@ -3710,10 +3353,15 @@ impl Compiler {
 
                 message.push_str(&param.param_name);
                 message.push_str(": ");
-                write!(&mut message, "{}", TypeFmt(self, &param.param_type)).unwrap();
+                write!(
+                    &mut message,
+                    "{}",
+                    TypeFmt(&*self.registry, &param.param_type)
+                )
+                .unwrap();
             }
 
-            let return_type = TypeFmt(self, &fn_info.fn_type.output);
+            let return_type = TypeFmt(&*self.registry, &fn_info.fn_type.output);
             write!(&mut message, "): {}", return_type).unwrap();
 
             self.reporter.print_inspection(&InspectInfo {
@@ -3728,8 +3376,8 @@ impl Compiler {
                 message: format!(
                     "Invalid function arguments for function {}: [{}], expected [{}]",
                     fn_info.fn_name,
-                    TypeListFmt(self, &arg_types),
-                    TypeListFmt(self, &fn_info.fn_type.inputs),
+                    TypeListFmt(&*self.registry, &arg_types),
+                    TypeListFmt(&*self.registry, &fn_info.fn_type.inputs),
                 ),
                 loc: *loc,
             });
@@ -3766,7 +3414,7 @@ impl Compiler {
             });
         };
 
-        Ok(&self.functions[symbol.col_index])
+        Ok(&self.registry.functions[symbol.col_index])
     }
 
     fn get_inline_fn_return_type(
@@ -3814,7 +3462,7 @@ impl Compiler {
             });
         };
 
-        let inline_fn_def = self.inline_fn_defs[symbol.col_index];
+        let inline_fn_def = self.registry.inline_fns[symbol.col_index];
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -3913,8 +3561,8 @@ impl Compiler {
             return Err(Error {
                 message: format!(
                     "Invalid inline fn args, expected [{}], got [{}]",
-                    TypeListFmt(self, &inline_fn_types),
-                    TypeListFmt(self, &arg_types)
+                    TypeListFmt(&*self.registry, &inline_fn_types),
+                    TypeListFmt(&*self.registry, &arg_types)
                 ),
                 loc: *loc,
             });
@@ -3925,7 +3573,7 @@ impl Compiler {
 
             write!(&mut message, "inline fn {inline_fn_name}").unwrap();
             if lo_type_args.len() > 0 {
-                let lo_type_args = TypeListFmt(self, &lo_type_args);
+                let lo_type_args = TypeListFmt(&*self.registry, &lo_type_args);
                 write!(&mut message, "<{lo_type_args}>").unwrap();
             }
             write!(&mut message, "(").unwrap();
@@ -3941,7 +3589,7 @@ impl Compiler {
                     FnParamType::Self_ | FnParamType::SelfRef => {}
                     _ => {
                         message.push_str(": ");
-                        let arg_type = TypeFmt(self, &inline_fn_types[i]);
+                        let arg_type = TypeFmt(&*self.registry, &inline_fn_types[i]);
                         write!(&mut message, "{arg_type}",).unwrap();
                     }
                 }
@@ -3952,7 +3600,12 @@ impl Compiler {
             } else {
                 Type::Void
             };
-            write!(&mut message, "): {}", TypeFmt(self, &return_type)).unwrap();
+            write!(
+                &mut message,
+                "): {}",
+                TypeFmt(&*self.registry, &return_type)
+            )
+            .unwrap();
 
             self.reporter.print_inspection(&InspectInfo {
                 message,
@@ -4260,7 +3913,7 @@ impl Compiler {
                 }
             }
             Type::StructInstance { struct_index } => {
-                let struct_def = &self.struct_defs[*struct_index];
+                let struct_def = &self.registry.structs[*struct_index];
 
                 for struct_field in struct_def.fields.iter().rev() {
                     self.codegen_load_or_store(
@@ -4272,7 +3925,7 @@ impl Compiler {
                 }
             }
             Type::EnumInstance { enum_index } => {
-                let enum_def = &self.enum_defs[*enum_index];
+                let enum_def = &self.registry.enums[*enum_index];
 
                 let mut tag_layout = TypeLayout::new();
                 self.get_type_layout(&Type::U32, &mut tag_layout);
@@ -4320,7 +3973,7 @@ impl Compiler {
             });
         };
 
-        let fn_info = &self.functions[fn_index];
+        let fn_info = &self.registry.functions[fn_index];
         let Type::Result(result) = &fn_info.fn_type.output else {
             return Err(Error {
                 message: format!(
@@ -4508,7 +4161,7 @@ impl Compiler {
                         return Err(Error {
                             message: format!(
                                 "Cannot dereference expr of type {}",
-                                TypeFmt(self, &expr_type)
+                                TypeFmt(&*self.registry, &expr_type)
                             ),
                             loc: *loc,
                         });
@@ -4561,7 +4214,7 @@ impl Compiler {
             }) => {
                 if let Some(symbol) = self.current_scope(ctx).get_symbol(&fn_name.repr) {
                     if let SymbolType::EnumConstructor = symbol.type_ {
-                        let ctor = &self.enum_ctors[symbol.col_index];
+                        let ctor = &self.registry.enum_ctors[symbol.col_index];
 
                         return Ok(Type::EnumInstance {
                             enum_index: ctor.enum_index,
@@ -4807,9 +4460,9 @@ impl Compiler {
                             .get_symbol(&header.variant_name.repr)
                         {
                             if let SymbolType::EnumConstructor = symbol.type_ {
-                                let enum_ctor = &self.enum_ctors[symbol.col_index];
-                                let enum_variant = &self.enum_defs[enum_ctor.enum_index].variants
-                                    [enum_ctor.variant_index];
+                                let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
+                                let enum_variant = &self.registry.enums[enum_ctor.enum_index]
+                                    .variants[enum_ctor.variant_index];
 
                                 should_exit_match_scope = true;
                                 self.be_mut().enter_scope(ctx, ScopeType::Block);
@@ -5011,7 +4664,11 @@ impl Compiler {
         let mut inspect_info = None;
         if self.reporter.in_inspection_mode {
             inspect_info = Some(InspectInfo {
-                message: format!("let {}: {}", local_name, TypeFmt(self, &local_type)),
+                message: format!(
+                    "let {}: {}",
+                    local_name,
+                    TypeFmt(&*self.registry, &local_type)
+                ),
                 loc: loc,
                 linked_loc,
             })
@@ -5045,7 +4702,7 @@ impl Compiler {
                 ))
             }
             SymbolType::Global => {
-                let global = &self.globals[symbol.col_index];
+                let global = &self.registry.globals[symbol.col_index];
 
                 let mut inspect_info = None;
                 if self.reporter.in_inspection_mode {
@@ -5053,7 +4710,7 @@ impl Compiler {
                         message: format!(
                             "global {}: {}",
                             ident.repr,
-                            TypeFmt(self, &global.global_type)
+                            TypeFmt(&*self.registry, &global.global_type)
                         ),
                         loc: ident.loc,
                         linked_loc: Some(symbol.loc),
@@ -5067,7 +4724,7 @@ impl Compiler {
                 }))
             }
             SymbolType::Const => {
-                let const_def = &self.const_defs[symbol.col_index];
+                let const_def = &self.registry.constants[symbol.col_index];
 
                 let mut inspect_info = None;
                 if self.reporter.in_inspection_mode {
@@ -5075,7 +4732,7 @@ impl Compiler {
                         message: format!(
                             "inline let {}: {}",
                             ident.repr,
-                            TypeFmt(self, &const_def.code_unit.type_)
+                            TypeFmt(&*self.registry, &const_def.code_unit.type_)
                         ),
                         loc: ident.loc,
                         linked_loc: Some(const_def.loc),
@@ -5119,9 +4776,9 @@ impl Compiler {
             inspect_info = Some(InspectInfo {
                 message: format!(
                     "{}.{}: {}",
-                    TypeFmt(self, &lhs_type),
+                    TypeFmt(&*self.registry, &lhs_type),
                     field.field_name,
-                    TypeFmt(self, &field.field_type),
+                    TypeFmt(&*self.registry, &field.field_type),
                 ),
                 loc: field_access.field_name.loc,
                 linked_loc: Some(field.loc),
@@ -5251,13 +4908,13 @@ impl Compiler {
                 message: format!(
                     "Cannot get field '{}' on non struct: {}",
                     field_access.field_name.repr,
-                    TypeFmt(self, lhs_type),
+                    TypeFmt(&*self.registry, lhs_type),
                 ),
                 loc: field_access.field_name.loc,
             });
         };
 
-        let struct_def = &self.struct_defs[struct_index];
+        let struct_def = &self.registry.structs[struct_index];
         let Some(field) = struct_def
             .fields
             .iter()
@@ -5287,7 +4944,7 @@ impl Compiler {
             let mut inspect_info = None;
             if self.reporter.in_inspection_mode {
                 inspect_info = Some(InspectInfo {
-                    message: format!("<deref>: {}", TypeFmt(self, &pointee)),
+                    message: format!("<deref>: {}", TypeFmt(&*self.registry, &pointee)),
                     loc: op_loc.clone(),
                     linked_loc: None,
                 })
@@ -5304,7 +4961,7 @@ impl Compiler {
         return Err(Error {
             message: format!(
                 "Cannot dereference expression of type '{}'",
-                TypeFmt(self, &addr_type)
+                TypeFmt(&*self.registry, &addr_type)
             ),
             loc: addr_expr.loc(),
         });
@@ -5522,16 +5179,7 @@ impl Compiler {
         local_name: &'static str,
         local_type: &Type,
     ) -> u32 {
-        let res = self.define_symbol(
-            ctx,
-            Symbol {
-                name: local_name,
-                type_: SymbolType::Local,
-                col_index: ctx.locals.len(),
-                defined_in_this_scope: true,
-                loc,
-            },
-        );
+        let res = self.define_symbol(ctx, local_name, SymbolType::Local, ctx.locals.len(), loc);
 
         if let Err(existing) = res
             && existing.type_ == SymbolType::Local
@@ -5562,15 +5210,12 @@ impl Compiler {
 
         let _ = self.define_symbol(
             ctx,
-            Symbol {
-                name: const_def.const_name,
-                type_: SymbolType::Const,
-                col_index: self.const_defs.len(),
-                defined_in_this_scope: true,
-                loc: const_def.loc,
-            },
+            const_def.const_name,
+            SymbolType::Const,
+            self.registry.constants.len(),
+            const_def.loc,
         );
-        self.const_defs.push(const_def);
+        self.registry.constants.push(const_def);
     }
 
     fn register_block_type(
@@ -5582,15 +5227,12 @@ impl Compiler {
     ) {
         let _ = self.define_symbol(
             ctx,
-            Symbol {
-                name,
-                type_: SymbolType::TypeAlias,
-                col_index: self.type_aliases.len(),
-                defined_in_this_scope: true,
-                loc,
-            },
+            name,
+            SymbolType::TypeAlias,
+            self.registry.type_aliases.len(),
+            loc,
         );
-        self.type_aliases.push(type_);
+        self.registry.type_aliases.push(type_);
     }
 
     fn assert_catchable_type<'a>(
@@ -5602,7 +5244,7 @@ impl Compiler {
             return Err(Error {
                 message: format!(
                     "Cannot catch error from expr of type {}",
-                    TypeFmt(self, &expr_type)
+                    TypeFmt(&*self.registry, &expr_type)
                 ),
                 loc: *loc,
             });
@@ -5614,7 +5256,7 @@ impl Compiler {
             return Err(Error {
                 message: format!(
                     "Invalid Result error type: {}, must lower to i32",
-                    TypeFmt(self, &result.err)
+                    TypeFmt(&*self.registry, &result.err)
                 ),
                 loc: *loc,
             });
@@ -5652,8 +5294,8 @@ impl Compiler {
     }
 
     fn process_const_string(&self, value: String, loc: &Loc) -> Str {
-        if let None = self.first_string_usage {
-            self.be_mut().first_string_usage = Some(*loc);
+        if let None = *self.first_string_usage {
+            *self.first_string_usage.be_mut() = Some(*loc);
         }
 
         let string_len = value.as_bytes().len() as u32;
@@ -5734,12 +5376,12 @@ impl Compiler {
                 })
             }
             SymbolType::TypeAlias => {
-                let type_ = &self.type_aliases[symbol.col_index];
+                let type_ = &self.registry.type_aliases[symbol.col_index];
 
                 // don't print inspection for built-ins
                 if self.reporter.in_inspection_mode && symbol.loc.file_index != 0 {
                     self.reporter.print_inspection(&InspectInfo {
-                        message: format!("type {type_name} = {}", TypeFmt(self, &type_)),
+                        message: format!("type {type_name} = {}", TypeFmt(&*self.registry, &type_)),
                         loc: *loc,
                         linked_loc: Some(symbol.loc),
                     });
@@ -5781,13 +5423,13 @@ impl Compiler {
             Type::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
             Type::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
             Type::StructInstance { struct_index } => {
-                let struct_ref = &self.struct_defs[*struct_index];
+                let struct_ref = &self.registry.structs[*struct_index];
                 for field in &struct_ref.fields {
                     self.codegen_default_value(ctx, instrs, &field.field_type);
                 }
             }
             Type::EnumInstance { enum_index } => {
-                let enum_def = &self.enum_defs[*enum_index];
+                let enum_def = &self.registry.enums[*enum_index];
 
                 self.codegen_default_value(ctx, instrs, &Type::U32);
                 self.codegen_default_value(ctx, instrs, &enum_def.variant_type);
@@ -5844,7 +5486,7 @@ impl Compiler {
             Type::U64 | Type::I64 => Ok(true),
             Type::U8 | Type::I8 | Type::U16 | Type::I16 | Type::U32 | Type::I32 => Ok(false),
             other => Err(Error {
-                message: format!("{} is not a valid int tag", TypeFmt(self, other)),
+                message: format!("{} is not a valid int tag", TypeFmt(&*self.registry, other)),
                 loc: *loc,
             }),
         }
@@ -5927,14 +5569,14 @@ impl Compiler {
             Type::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
             Type::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
             Type::StructInstance { struct_index } => {
-                let struct_def = &self.struct_defs[*struct_index];
+                let struct_def = &self.registry.structs[*struct_index];
 
                 for field in &struct_def.fields {
                     self.lower_type(&field.field_type, wasm_types);
                 }
             }
             Type::EnumInstance { enum_index } => {
-                let enum_def = &self.enum_defs[*enum_index];
+                let enum_def = &self.registry.enums[*enum_index];
 
                 self.lower_type(&Type::U32, wasm_types);
                 self.lower_type(&enum_def.variant_type, wasm_types);
@@ -5989,7 +5631,7 @@ impl Compiler {
                 layout.byte_size = align(layout.byte_size, 8) + 8;
             }
             Type::StructInstance { struct_index } => {
-                let struct_def = &self.struct_defs[*struct_index];
+                let struct_def = &self.registry.structs[*struct_index];
 
                 // append each field's layout to total struct layout
                 for field in &struct_def.fields {
@@ -6000,7 +5642,7 @@ impl Compiler {
                 layout.byte_size = align(layout.byte_size, layout.alignment);
             }
             Type::EnumInstance { enum_index } => {
-                let enum_def = &self.enum_defs[*enum_index];
+                let enum_def = &self.registry.enums[*enum_index];
 
                 self.get_type_layout(&Type::U32, layout);
                 self.get_type_layout(&enum_def.variant_type, layout);
@@ -6080,7 +5722,7 @@ impl Compiler {
             | Type::Pointer { pointee: _ }
             | Type::SequencePointer { pointee: _ } => {}
             Type::EnumInstance { enum_index }
-                if self.enum_defs[*enum_index].variant_type == Type::Void => {}
+                if self.registry.enums[*enum_index].variant_type == Type::Void => {}
 
             Type::I8 | Type::I16 | Type::I32 => signed = true,
 
@@ -6103,7 +5745,7 @@ impl Compiler {
                     message: format!(
                         "Operator `{}` is incompatible with operands of type {}",
                         op_loc.read_span(&self.modules[ctx.module_index].source),
-                        TypeFmt(self, operand_type)
+                        TypeFmt(&*self.registry, operand_type)
                     ),
                     loc: op_loc.clone(),
                 });
@@ -6212,7 +5854,7 @@ impl Compiler {
                 message: format!(
                     "Operator `{}` is incompatible with operands of type {}",
                     op_loc.read_span(&self_.modules[ctx.module_index].source),
-                    TypeFmt(self_, op_type)
+                    TypeFmt(&*self_.registry, op_type)
                 ),
                 loc: op_loc.clone(),
             }
@@ -6258,9 +5900,9 @@ impl Compiler {
     }
 
     fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeType) {
-        let module = &mut self.modules[ctx.module_index];
+        let module = &mut self.relax_mut().modules[ctx.module_index];
 
-        init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
+        self.init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
     }
 
     fn exit_scope(&mut self, ctx: &ExprContext) -> Scope {
@@ -6314,7 +5956,7 @@ impl Compiler {
                 local_name,
             }),
             Type::StructInstance { struct_index } => {
-                let struct_def = &self.struct_defs[*struct_index];
+                let struct_def = &self.registry.structs[*struct_index];
                 for field in &struct_def.fields {
                     self.push_wasm_dbg_name_section_locals(
                         output,
@@ -6332,7 +5974,7 @@ impl Compiler {
                     alloc::format!("{}#tag", local_name),
                 );
 
-                let enum_def = &self.enum_defs[*enum_index];
+                let enum_def = &self.registry.enums[*enum_index];
                 self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
@@ -6372,15 +6014,15 @@ impl Compiler {
 
     #[inline]
     fn add_builtin_type(&mut self, type_: Type) {
-        let col_index = self.type_aliases.len();
+        let col_index = self.registry.type_aliases.len();
         self.global_scope.symbols.push(Symbol {
+            scope_id: self.global_scope.scope_id,
             name: type_.to_str().unwrap(),
             type_: SymbolType::TypeAlias,
             col_index,
-            defined_in_this_scope: true,
             loc: Loc::internal(),
         });
-        self.type_aliases.push(type_);
+        self.registry.type_aliases.push(type_);
     }
 
     fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
@@ -6391,10 +6033,13 @@ impl Compiler {
             items: _,
         }) = receiver_type_base
         {
-            return format!("{}::{method_name}", TypeFmt(self, container));
+            return format!("{}::{method_name}", TypeFmt(&*self.registry, container));
         }
 
-        format!("{}::{method_name}", TypeFmt(self, receiver_type_base))
+        format!(
+            "{}::{method_name}",
+            TypeFmt(&*self.registry, receiver_type_base)
+        )
     }
 
     fn get_module_by_file_index(&self, file_index: usize) -> Option<&Module> {
@@ -6406,17 +6051,17 @@ impl Compiler {
 
         None
     }
-}
 
-fn init_scope_from_parent_and_push(scope_stack: &mut Vec<Scope>, scope_type: ScopeType) {
-    let mut new_scope = Scope::new(scope_type);
-    if let Some(parent) = scope_stack.last() {
-        new_scope.symbols.extend_from_slice(&parent.symbols);
-        for symbol in &mut new_scope.symbols {
-            symbol.defined_in_this_scope = false;
-        }
-    };
-    scope_stack.push(new_scope);
+    fn init_scope_from_parent_and_push(&self, scope_stack: &mut Vec<Scope>, scope_type: ScopeType) {
+        let scope_id = *self.next_scope_id;
+        *self.next_scope_id.be_mut() += 1;
+
+        let mut new_scope = Scope::new(scope_id, scope_type);
+        if let Some(parent) = scope_stack.last() {
+            new_scope.symbols.extend_from_slice(&parent.symbols);
+        };
+        scope_stack.push(new_scope);
+    }
 }
 
 fn align(value: u32, alignment: u32) -> u32 {
