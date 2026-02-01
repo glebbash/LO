@@ -4,12 +4,13 @@
 extern crate alloc;
 
 mod ast;
-mod compiler;
+mod codegen;
 mod core;
 mod lexer;
 mod lol_alloc;
 mod parser;
 mod printer;
+mod registry;
 mod type_checker;
 mod wasi;
 mod wasm;
@@ -35,7 +36,9 @@ mod wasm_target {
     }
 }
 
-use crate::{compiler::*, core::*, printer::*, wasm::*, wasm_eval::*, wasm_parser::*};
+use crate::{
+    codegen::*, core::*, printer::*, registry::*, type_checker::*, wasm_eval::*, wasm_parser::*,
+};
 use alloc::{format, string::String, vec::Vec};
 
 static USAGE: &str = "Usage:
@@ -66,12 +69,12 @@ pub extern "C" fn _start() {
         });
 
         let wasm_module = WasmParser::parse(String::from(file_name), module_bytes);
-        let wasm_module = catch!(wasm_module, err, {
+        let mut wasm_module = catch!(wasm_module, err, {
             stderr_writeln(err);
             proc_exit(1);
         });
 
-        let mut eval = WasmEval::new(wasm_module);
+        let mut eval = WasmEval::new(&mut wasm_module);
         eval.wasi_args = Some(args);
         eval.wasi_args_skip = 2;
 
@@ -83,18 +86,21 @@ pub extern "C" fn _start() {
         return;
     }
 
-    let mut compiler = Compiler::new();
+    let mut registry = Registry::new();
 
     // for debug purposes only, not public api
     if command == "lex" {
-        compiler.in_single_file_mode = true;
-        compiler.in_lex_only_mode = true;
+        registry.in_single_file_mode = true;
+        registry.in_lex_only_mode = true;
 
-        let Some(module) = compiler.relax_mut().include(file_name, &Loc::internal()) else {
+        let Some(module) = registry
+            .relax_mut()
+            .include_file(file_name, &Loc::internal())
+        else {
             proc_exit(1)
         };
 
-        let file_info = &compiler.fm.files[module.parser.lexer.file_index];
+        let file_info = &registry.fm.files[module.parser.lexer.file_index];
         stdout_writeln(format!("file_path: {}", file_info.absolute_path));
 
         stdout_enable_buffering();
@@ -120,9 +126,9 @@ pub extern "C" fn _start() {
     }
 
     if command == "format" {
-        compiler.in_single_file_mode = true;
+        registry.in_single_file_mode = true;
 
-        let Some(module) = compiler.include(file_name, &Loc::internal()) else {
+        let Some(module) = registry.include_file(file_name, &Loc::internal()) else {
             proc_exit(1);
         };
 
@@ -133,37 +139,38 @@ pub extern "C" fn _start() {
     }
 
     if command == "inspect" {
-        compiler.reporter.begin_inspection();
+        registry.reporter.begin_inspection();
     }
 
-    compiler.include(file_name, &Loc::internal());
+    registry.include_file(file_name, &Loc::internal());
 
-    compiler.run_passes();
+    let mut type_checker = TypeChecker::new(&mut registry);
+    type_checker.check_all();
 
-    let mut wasm_module = WasmModule::default();
-    compiler.generate(&mut wasm_module);
+    let mut codegen = CodeGenerator::new(&mut registry);
+    codegen.codegen_all();
 
-    if compiler.reporter.in_inspection_mode {
-        compiler.reporter.end_inspection();
+    if registry.reporter.in_inspection_mode {
+        registry.reporter.end_inspection();
 
-        if *compiler.reporter.error_count == 0 {
+        if *registry.reporter.error_count == 0 {
             return;
         }
     }
 
-    if *compiler.reporter.error_count > 0 {
+    if *registry.reporter.error_count > 0 {
         proc_exit(1);
     }
 
     if command == "compile" {
         let mut binary = Vec::new();
-        wasm_module.dump(&mut binary);
+        codegen.wasm_module.dump(&mut binary);
         stdout_write(binary.as_slice());
         return;
     }
 
     if command == "eval" {
-        let mut eval = WasmEval::new(wasm_module);
+        let mut eval = WasmEval::new(&mut codegen.wasm_module);
         eval.wasi_args = Some(args);
         eval.wasi_args_skip = 2;
 

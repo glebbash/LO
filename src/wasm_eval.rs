@@ -10,7 +10,7 @@ pub struct EvalError {
 
 #[derive(Default)]
 pub struct WasmEval {
-    wasm_module: WasmModule,
+    wasm_module: UBRef<WasmModule>,
     fn_imports_len: usize,
     tables: Vec<WasmFnTable>,
     globals: Vec<WasmValue>,
@@ -25,9 +25,9 @@ pub struct WasmEval {
 }
 
 impl WasmEval {
-    pub fn new(wasm_module: WasmModule) -> Self {
+    pub fn new(wasm_module: &mut WasmModule) -> Self {
         WasmEval {
-            wasm_module,
+            wasm_module: UBRef::new(&mut *wasm_module),
             ..Default::default()
         }
     }
