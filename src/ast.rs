@@ -1,5 +1,7 @@
 use crate::{common::*, lexer::*};
 
+pub type ExprId = usize;
+
 pub enum TopLevelExpr {
     Let(LetExpr),
     Fn(FnExpr),
@@ -8,7 +10,6 @@ pub enum TopLevelExpr {
 }
 
 pub struct FnExpr {
-    pub id: usize,
     pub exported: bool,
     pub is_inline: bool,
     pub decl: FnDeclExpr,
@@ -43,7 +44,7 @@ pub enum FnExprValue {
 }
 
 pub struct LetExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub is_inline: bool,
     pub name: IdentExpr,
     pub value: Box<CodeExpr>,
@@ -51,7 +52,6 @@ pub struct LetExpr {
 }
 
 pub struct TypeDefExpr {
-    pub id: usize,
     pub name: IdentExpr,
     pub value: TypeDefValue,
     pub loc: Loc,
@@ -86,16 +86,6 @@ pub struct CodeBlock {
 }
 
 impl TopLevelExpr {
-    #[allow(dead_code)] // TODO: remove
-    pub fn id(&self) -> usize {
-        match self {
-            TopLevelExpr::Let(e) => e.id,
-            TopLevelExpr::Fn(e) => e.id,
-            TopLevelExpr::Type(e) => e.id,
-            TopLevelExpr::Intrinsic(e) => e.id,
-        }
-    }
-
     pub fn loc(&self) -> Loc {
         match self {
             TopLevelExpr::Let(e) => e.loc,
@@ -186,30 +176,30 @@ pub enum CodeExpr {
     // other
     Paren(ParenExpr),
     DoWith(DoWithExpr),
-    ExprPipe(ExprPipeExpr),
+    Pipe(PipeExpr),
     Sizeof(SizeofExpr),
 }
 
 pub struct BoolLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub value: bool,
     pub loc: Loc,
 }
 
 pub struct CharLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub repr: &'static str,
     pub value: u32,
     pub loc: Loc,
 }
 
 pub struct NullLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub loc: Loc,
 }
 
 pub struct IntLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub repr: &'static str,
     pub value: i64,
     pub tag: Option<&'static str>,
@@ -217,20 +207,20 @@ pub struct IntLiteralExpr {
 }
 
 pub struct StringLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub repr: &'static str,
     pub value: String,
     pub loc: Loc,
 }
 
 pub struct ReturnExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub expr: Option<Box<CodeExpr>>,
     pub loc: Loc,
 }
 
 pub struct IdentExpr {
-    pub id: usize,
+    pub id: ExprId,
     #[allow(dead_code)] // TODO: remove
     pub symbol_id: usize,
     pub repr: &'static str,
@@ -239,7 +229,7 @@ pub struct IdentExpr {
 }
 
 pub struct InfixOpExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
     pub op_tag: InfixOpTag,
@@ -248,7 +238,7 @@ pub struct InfixOpExpr {
 }
 
 pub struct PrefixOpExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub op_tag: PrefixOpTag,
     pub expr: Box<CodeExpr>,
     pub op_loc: Loc,
@@ -256,7 +246,7 @@ pub struct PrefixOpExpr {
 }
 
 pub struct IfExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub cond: IfCond,
     pub then_block: Box<CodeBlock>,
     pub else_block: ElseBlock,
@@ -281,19 +271,19 @@ pub enum ElseBlock {
 }
 
 pub struct WhileExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub cond: Option<Box<CodeExpr>>,
     pub body: Box<CodeBlock>,
     pub loc: Loc,
 }
 
 pub struct BreakExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub loc: Loc,
 }
 
 pub struct ForExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub counter: IdentExpr,
     pub start: Box<CodeExpr>,
     pub end: Box<CodeExpr>,
@@ -303,7 +293,7 @@ pub struct ForExpr {
 }
 
 pub struct ContinueExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub loc: Loc,
 }
 
@@ -313,15 +303,15 @@ pub struct CodeExprList {
 }
 
 pub struct DoWithExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub body: Box<CodeExpr>,
     pub args: CodeExprList,
     pub with_loc: Loc,
     pub loc: Loc,
 }
 
-pub struct ExprPipeExpr {
-    pub id: usize,
+pub struct PipeExpr {
+    pub id: ExprId,
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
     pub op_loc: Loc,
@@ -329,20 +319,20 @@ pub struct ExprPipeExpr {
 }
 
 pub struct DeferExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub expr: Box<CodeExpr>,
     pub loc: Loc,
 }
 
 pub struct CastExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub expr: Box<CodeExpr>,
     pub casted_to: TypeExpr,
     pub loc: Loc,
 }
 
 pub struct StructLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub struct_name: IdentExpr,
     pub body: CodeExprMap,
     pub loc: Loc,
@@ -355,7 +345,7 @@ pub struct CodeExprMap {
 }
 
 pub struct ArrayLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub item_type: TypeExpr,
     pub items: Vec<CodeExpr>,
     pub has_trailing_comma: bool,
@@ -363,7 +353,7 @@ pub struct ArrayLiteralExpr {
 }
 
 pub struct ResultLiteralExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub is_ok: bool,
     pub result_type: Option<ResultTypeExpr>,
     pub value: Option<Box<CodeExpr>>,
@@ -382,7 +372,7 @@ pub struct CodeExprMapField {
 }
 
 pub struct AssignExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub op_loc: Loc,
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
@@ -390,14 +380,14 @@ pub struct AssignExpr {
 }
 
 pub struct FieldAccessExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
     pub loc: Loc,
 }
 
 pub struct CatchExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub lhs: Box<CodeExpr>,
     pub error_bind: IdentExpr,
     pub catch_body: CodeBlock,
@@ -406,34 +396,34 @@ pub struct CatchExpr {
 }
 
 pub struct MatchExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub header: Box<MatchHeader>,
     pub else_branch: CodeBlock,
     pub loc: Loc,
 }
 
 pub struct PropagateErrorExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub expr: Box<CodeExpr>,
     pub loc: Loc,
 }
 
 pub struct ParenExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub expr: Box<CodeExpr>,
     pub has_trailing_comma: bool,
     pub loc: Loc,
 }
 
 pub struct FnCallExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub fn_name: IdentExpr,
     pub args: CodeExprList,
     pub loc: Loc,
 }
 
 pub struct MethodCallExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
     pub args: CodeExprList,
@@ -441,7 +431,7 @@ pub struct MethodCallExpr {
 }
 
 pub struct InlineFnCallExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub fn_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
     pub args: CodeExprList,
@@ -449,7 +439,7 @@ pub struct InlineFnCallExpr {
 }
 
 pub struct InlineMethodCallExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub lhs: Box<CodeExpr>,
     pub field_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
@@ -458,7 +448,7 @@ pub struct InlineMethodCallExpr {
 }
 
 pub struct SizeofExpr {
-    pub id: usize,
+    pub id: ExprId,
     pub type_expr: TypeExpr,
     pub loc: Loc,
 }
@@ -500,7 +490,7 @@ impl CodeExpr {
             CodeExpr::PropagateError(e) => e.id,
             CodeExpr::PrefixOp(e) => e.id,
             CodeExpr::DoWith(e) => e.id,
-            CodeExpr::ExprPipe(e) => e.id,
+            CodeExpr::Pipe(e) => e.id,
         }
     }
 
@@ -539,7 +529,7 @@ impl CodeExpr {
             CodeExpr::PropagateError(e) => e.loc,
             CodeExpr::PrefixOp(e) => e.loc,
             CodeExpr::DoWith(e) => e.loc,
-            CodeExpr::ExprPipe(e) => e.loc,
+            CodeExpr::Pipe(e) => e.loc,
         }
     }
 }

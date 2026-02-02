@@ -2,36 +2,85 @@
 
 use crate::{ast::*, common::*, registry::*, wasm::*};
 
-pub struct CodeBlockContext {
-    pub exprs: &'static [CodeExpr],
-    pub node_id_offset: usize,
+pub struct TypingContext {
+    pub expr_id_offset: usize,
     pub symbol_id_offset: usize,
 }
 
-pub struct TypeChecker {
+pub struct Typer {
     pub reporter: UBRef<Reporter>,
     pub registry: UBRef<Registry>,
 
-    pub type_lookup: BTreeMap<Type, TypeId>,
+    pub type_lookup: UBCell<BTreeMap<Type, TypeId>>,
+    pub global_scope: Scope,
 }
 
-impl TypeChecker {
+impl Typer {
     pub fn new(registry: &mut Registry) -> Self {
-        Self {
+        let mut it = Self {
             registry: UBRef::new(&mut *registry),
             reporter: UBRef::new(&mut *registry.reporter),
 
             type_lookup: Default::default(),
-        }
+            global_scope: Scope::new(0, ScopeType::Global),
+        };
+        it.init();
+        it
     }
 
-    pub fn check_all(&mut self) {
+    pub fn init(&mut self) {
+        // ensure that TypeId 0 is invalid
+        self.registry.types.push(Type::Never);
+
+        // prefill all expression types to invalid TypeId
+        self.registry
+            .be_mut()
+            .expr_types
+            .resize(self.registry.next_expr_id, 0);
+
+        // reserve enough info for symbols
+        self.registry
+            .be_mut()
+            .symbols
+            .reserve(self.registry.next_symbol_id);
+
+        self.add_builtin_type(Type::Never);
+        self.add_builtin_type(Type::Void);
+        self.add_builtin_type(Type::Bool);
+        self.add_builtin_type(Type::U8);
+        self.add_builtin_type(Type::I8);
+        self.add_builtin_type(Type::U16);
+        self.add_builtin_type(Type::I16);
+        self.add_builtin_type(Type::U32);
+        self.add_builtin_type(Type::I32);
+        self.add_builtin_type(Type::F32);
+        self.add_builtin_type(Type::U64);
+        self.add_builtin_type(Type::I64);
+        self.add_builtin_type(Type::F64);
+    }
+
+    #[inline]
+    fn add_builtin_type(&mut self, type_: Type) {
+        self.build_type_id(&type_);
+
+        let col_index = self.registry.type_aliases.len();
+        self.global_scope.be_mut().symbols.push(Symbol {
+            scope_id: self.global_scope.scope_id,
+            name: type_.to_str().unwrap(),
+            type_: SymbolType::TypeAlias,
+            col_index,
+            loc: Loc::internal(),
+        });
+        self.registry.type_aliases.push(type_);
+    }
+
+    pub fn type_all(&mut self) {
         for module in self.registry.modules.relax_mut() {
             self.pass_collect_own_symbols(module);
         }
 
         for module in self.registry.modules.relax_mut() {
-            self.pass_collect_all_symbols(module);
+            self.pass_collect_included_symbols(module);
         }
 
         for module in self.registry.modules.relax() {
@@ -39,11 +88,20 @@ impl TypeChecker {
         }
 
         for module in self.registry.modules.relax_mut() {
-            self.pass_type_check_top_level_exprs(module);
+            self.pass_type_top_level_exprs(module);
+        }
+
+        for module in self.registry.modules.relax_mut() {
+            self.pass_type_fns(module);
         }
     }
 
     fn pass_collect_own_symbols(&mut self, module: &mut Module) {
+        module.scope_stack.push(self.global_scope.clone());
+
+        // scope for module's own symbols
+        self.registry.enter_scope(&module.ctx, ScopeType::Global);
+
         for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Intrinsic(_) => {} // skip, not interested
@@ -269,7 +327,7 @@ impl TypeChecker {
         }
     }
 
-    fn pass_collect_all_symbols(&mut self, module: &mut Module) {
+    fn pass_collect_included_symbols(&mut self, module: &mut Module) {
         // scope for module's imports
         self.registry
             .init_scope_from_parent_and_push(&mut module.scope_stack, ScopeType::Global);
@@ -479,7 +537,7 @@ impl TypeChecker {
         }
     }
 
-    fn pass_type_check_top_level_exprs(&mut self, module: &mut Module) {
+    fn pass_type_top_level_exprs(&mut self, module: &mut Module) {
         for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Type(_) => {} // skip, processed in previous passes
@@ -699,6 +757,11 @@ impl TypeChecker {
                         }
                     }
 
+                    if intrinsic.fn_name.repr.starts_with("inspect_") {
+                        // skip, processed elsewhere
+                        continue;
+                    }
+
                     self.reporter.error(&Error {
                         message: format!("Unknown intrinsic: {}", intrinsic.fn_name.repr),
                         loc: intrinsic.loc,
@@ -708,18 +771,261 @@ impl TypeChecker {
         }
     }
 
-    pub fn build_type_id(&mut self, type_: Type) -> TypeId {
-        if let Some(&id) = self.type_lookup.get(&type_) {
+    fn pass_type_fns(&mut self, module: &mut Module) {
+        for expr in &*module.parser.ast {
+            let TopLevelExpr::Fn(FnExpr {
+                is_inline: false,
+                value: FnExprValue::Body(body),
+                ..
+            }) = expr
+            else {
+                continue;
+            };
+
+            let ctx = TypingContext {
+                expr_id_offset: 0,
+                symbol_id_offset: 0,
+            };
+
+            self.type_code_block(&ctx, body);
+        }
+    }
+
+    pub fn type_code_block(&mut self, ctx: &TypingContext, block: &CodeBlock) {
+        for expr in &block.exprs {
+            self.type_code_expr(ctx, expr);
+        }
+    }
+
+    pub fn type_code_expr(&mut self, ctx: &TypingContext, expr: &CodeExpr) {
+        match expr {
+            CodeExpr::BoolLiteral(bool_literal) => {
+                self.store_type_id(ctx, bool_literal.id, &Type::Bool)
+            }
+            CodeExpr::CharLiteral(char_literal) => {
+                self.store_type_id(ctx, char_literal.id, &Type::U8)
+            }
+            CodeExpr::NullLiteral(null_literal) => {
+                self.store_type_id(ctx, null_literal.id, &Type::Null)
+            }
+            CodeExpr::IntLiteral(_int_literal_expr) => {
+                // TODO: implement
+            }
+            CodeExpr::StringLiteral(_string_literal) => {
+                // TODO: implement
+            }
+            CodeExpr::StructLiteral(_struct_literal) => {
+                // TODO: implement
+            }
+            CodeExpr::ArrayLiteral(_array_literal) => {
+                // TODO: implement
+            }
+            CodeExpr::ResultLiteral(_result_literal) => {
+                // TODO: implement
+            }
+            CodeExpr::Ident(_ident) => {
+                // TODO: implement
+            }
+            CodeExpr::Let(let_expr) => {
+                self.type_code_expr(ctx, &let_expr.value);
+
+                if let Some(Type::Never) = self.get_stored_expr_type_id(ctx, let_expr.value.id()) {
+                    self.store_type_id(ctx, let_expr.id, &Type::Never);
+                } else {
+                    self.store_type_id(ctx, let_expr.id, &Type::Void);
+                }
+            }
+            CodeExpr::InfixOp(infix_op) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &infix_op.lhs);
+                self.type_code_expr(ctx, &infix_op.rhs);
+            }
+            CodeExpr::PrefixOp(prefix_op) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &prefix_op.expr);
+            }
+            CodeExpr::Cast(cast) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &cast.expr);
+            }
+            CodeExpr::Assign(assign) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &assign.lhs);
+                self.type_code_expr(ctx, &assign.rhs);
+            }
+            CodeExpr::FieldAccess(field_access) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &field_access.lhs);
+            }
+            CodeExpr::PropagateError(prop_error) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &prop_error.expr);
+            }
+            CodeExpr::FnCall(call) => {
+                // TODO: implement
+
+                for arg in &call.args.items {
+                    self.type_code_expr(ctx, arg);
+                }
+            }
+            CodeExpr::MethodCall(call) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &call.lhs);
+
+                for arg in &call.args.items {
+                    self.type_code_expr(ctx, arg);
+                }
+            }
+            CodeExpr::InlineFnCall(call) => {
+                // TODO: implement
+
+                for arg in &call.args.items {
+                    self.type_code_expr(ctx, arg);
+                }
+            }
+            CodeExpr::InlineMethodCall(call) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &call.lhs);
+
+                for arg in &call.args.items {
+                    self.type_code_expr(ctx, arg);
+                }
+            }
+            CodeExpr::IntrinsicCall(_call) => {
+                // TODO: implement
+            }
+            CodeExpr::Return(return_expr) => {
+                self.store_type_id(ctx, return_expr.id, &Type::Never);
+
+                if let Some(return_value) = &return_expr.expr {
+                    self.type_code_expr(ctx, &return_value);
+                }
+            }
+            CodeExpr::If(if_expr) => {
+                // TODO: implement
+
+                match &if_expr.cond {
+                    IfCond::Expr(code_expr) => {
+                        self.type_code_expr(ctx, code_expr);
+                    }
+                    IfCond::Match(match_header) => {
+                        self.type_code_expr(ctx, &match_header.expr_to_match);
+                    }
+                }
+
+                self.type_code_block(ctx, &if_expr.then_block);
+
+                match &if_expr.else_block {
+                    ElseBlock::None => {}
+                    ElseBlock::Else(code_block) => {
+                        self.type_code_block(ctx, code_block);
+                    }
+                    ElseBlock::ElseIf(code_expr) => {
+                        self.type_code_expr(ctx, code_expr);
+                    }
+                }
+            }
+            CodeExpr::While(while_expr) => {
+                // TODO: implement
+
+                if let Some(cond) = &while_expr.cond {
+                    self.type_code_expr(ctx, cond);
+                }
+
+                self.type_code_block(ctx, &while_expr.body);
+            }
+            CodeExpr::For(for_expr) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &for_expr.start);
+                self.type_code_expr(ctx, &for_expr.end);
+                self.type_code_block(ctx, &for_expr.body);
+            }
+            CodeExpr::Break(_break_expr) => {
+                // TODO: implement
+            }
+            CodeExpr::Continue(_continue_expr) => {
+                // TODO: implement
+            }
+            CodeExpr::Defer(defer) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &defer.expr);
+            }
+            CodeExpr::Catch(catch) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &catch.lhs);
+                self.type_code_block(ctx, &catch.catch_body);
+            }
+            CodeExpr::Match(match_expr) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &match_expr.header.expr_to_match);
+                self.type_code_block(ctx, &match_expr.else_branch);
+            }
+            CodeExpr::Paren(ParenExpr { id, expr, .. }) => {
+                self.type_code_expr(ctx, expr);
+
+                if let Some(expr_type) = self.get_stored_expr_type_id(ctx, expr.id()) {
+                    self.store_type_id(ctx, *id, expr_type);
+                }
+            }
+            CodeExpr::DoWith(do_with) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &do_with.body);
+
+                for arg in &do_with.args.items {
+                    self.type_code_expr(ctx, arg);
+                }
+            }
+            CodeExpr::Pipe(pipe) => {
+                // TODO: implement
+
+                self.type_code_expr(ctx, &pipe.lhs);
+                self.type_code_expr(ctx, &pipe.rhs);
+            }
+            CodeExpr::Sizeof(_sizeof) => {
+                // TODO: implement
+            }
+        }
+    }
+
+    fn get_stored_expr_type_id(&self, ctx: &TypingContext, expr_id: ExprId) -> Option<&Type> {
+        let type_id = self.registry.expr_types[ctx.expr_id_offset + expr_id];
+        if type_id == 0 {
+            return None;
+        }
+
+        return Some(&self.registry.types[type_id]);
+    }
+
+    fn store_type_id(&self, ctx: &TypingContext, expr_id: ExprId, type_: &Type) {
+        let type_id = self.build_type_id(type_);
+        self.registry.be_mut().expr_types[ctx.expr_id_offset + expr_id] = type_id;
+    }
+
+    fn build_type_id(&self, type_: &Type) -> TypeId {
+        if let Some(&id) = self.type_lookup.get(type_) {
             return id;
         }
 
         let id = self.registry.types.len();
-        self.type_lookup.insert(type_.clone(), id);
-        self.registry.types.push(type_);
+        self.type_lookup.be_mut().insert(type_.clone(), id);
+        self.registry.be_mut().types.push(type_.clone());
         id
     }
 
-    pub fn alloc_str(&mut self, value: String) -> &'static str {
+    fn alloc_str(&mut self, value: String) -> &'static str {
         let str_ref = value.as_str().relax();
         self.registry.allocated_strings.push(value);
         str_ref

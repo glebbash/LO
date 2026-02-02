@@ -369,7 +369,6 @@ impl VarInfo {
     }
 }
 
-#[allow(dead_code)] // TODO: remove
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
@@ -400,52 +399,23 @@ pub struct Registry {
     pub string_pool: UBCell<Vec<PooledString>>,
     pub first_string_usage: UBCell<Option<Loc>>,
 
-    pub global_scope: Scope,
+    // TODO: remove this Typer is fully implemented
+    pub get_expr_type_hits: UBCell<usize>,
+    pub get_expr_type_cache_hits: UBCell<usize>,
 
-    pub next_node_id: usize,
+    pub next_expr_id: usize,
     pub next_symbol_id: usize,
     pub next_scope_id: usize,
 }
 
 impl Registry {
     pub fn new() -> Self {
-        let mut self_ = Self::default();
-        self_.init();
-        self_
-    }
-
-    pub fn init(&mut self) {
-        self.reporter.fm = UBRef::new(&mut *self.fm);
-
-        self.global_scope.scope_type = ScopeType::Global;
-        self.next_scope_id += 1;
-
-        self.add_builtin_type(Type::Never);
-        self.add_builtin_type(Type::Void);
-        self.add_builtin_type(Type::Bool);
-        self.add_builtin_type(Type::U8);
-        self.add_builtin_type(Type::I8);
-        self.add_builtin_type(Type::U16);
-        self.add_builtin_type(Type::I16);
-        self.add_builtin_type(Type::U32);
-        self.add_builtin_type(Type::I32);
-        self.add_builtin_type(Type::F32);
-        self.add_builtin_type(Type::U64);
-        self.add_builtin_type(Type::I64);
-        self.add_builtin_type(Type::F64);
-    }
-
-    #[inline]
-    fn add_builtin_type(&mut self, type_: Type) {
-        let col_index = self.type_aliases.len();
-        self.global_scope.symbols.push(Symbol {
-            scope_id: self.global_scope.scope_id,
-            name: type_.to_str().unwrap(),
-            type_: SymbolType::TypeAlias,
-            col_index,
-            loc: Loc::internal(),
-        });
-        self.type_aliases.push(type_);
+        let mut it = Self {
+            next_scope_id: 1, // global scope id is 0
+            ..Default::default()
+        };
+        it.reporter.fm = UBRef::new(&mut *it.fm);
+        it
     }
 
     pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<&Module> {
@@ -495,8 +465,8 @@ impl Registry {
 
         let parser = Parser::new(
             lexer,
-            self.reporter.relax(),
-            self.next_node_id,
+            &mut self.reporter,
+            self.next_expr_id,
             self.next_symbol_id,
         );
         if !self.in_lex_only_mode {
@@ -504,7 +474,7 @@ impl Registry {
                 self.reporter.error(&err);
                 return None;
             });
-            self.next_node_id = *parser.next_node_id;
+            self.next_expr_id = *parser.next_expr_id;
             self.next_symbol_id = *parser.next_symbol_id;
         }
 
@@ -514,7 +484,7 @@ impl Registry {
             for expr in &*parser.ast {
                 let TopLevelExpr::Intrinsic(InlineFnCallExpr {
                     id: _,
-                    fn_name: instrinsic,
+                    fn_name: intrinsic,
                     type_args,
                     args,
                     loc: _,
@@ -522,12 +492,12 @@ impl Registry {
                 else {
                     continue;
                 };
-                if instrinsic.repr != "include" {
+                if intrinsic.repr != "include" {
                     continue;
                 }
 
                 if type_args.len() != 0 {
-                    self.reporter.error(&bad_signature(instrinsic));
+                    self.reporter.error(&bad_signature(intrinsic));
                     continue;
                 }
 
@@ -594,12 +564,55 @@ impl Registry {
 
         let module = self.modules.relax_mut().last_mut().unwrap();
 
-        module.scope_stack.push(self.global_scope.clone());
-
-        // scope for module's own symbols
-        self.be_mut().enter_scope(&module.ctx, ScopeType::Global);
-
         Some(module)
+    }
+
+    pub fn process_deferred_intrinsics(&mut self) {
+        for module in &self.modules {
+            for expr in &*module.parser.ast {
+                if let TopLevelExpr::Intrinsic(intrinsic) = expr
+                    && intrinsic.fn_name.repr == "inspect_stats"
+                {
+                    if !self.reporter.in_inspection_mode {
+                        return;
+                    }
+
+                    let mut lines = 0;
+                    for file in &self.reporter.fm.files {
+                        lines += file
+                            .source
+                            .as_bytes()
+                            .iter()
+                            .filter(|&&b| b == b'\n')
+                            .count()
+                    }
+
+                    let mut msg = String::new();
+                    write!(&mut msg, "LOC: {}\n", lines).unwrap();
+                    write!(&mut msg, "symbol count: {}\n", self.next_symbol_id).unwrap();
+                    write!(&mut msg, "expr count: {}\n", self.next_expr_id).unwrap();
+                    write!(
+                        &mut msg,
+                        "get_expr_type_hits: {}\n",
+                        *self.get_expr_type_hits
+                    )
+                    .unwrap();
+                    write!(
+                        &mut msg,
+                        "get_expr_type_cache_hits: {}\n",
+                        *self.get_expr_type_cache_hits
+                    )
+                    .unwrap();
+                    write!(&mut msg, "types: {}\n", TypeListFmt(self, &self.types)).unwrap();
+
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: msg,
+                        loc: intrinsic.fn_name.loc,
+                        linked_loc: None,
+                    });
+                }
+            }
+        }
     }
 
     pub fn define_symbol(
@@ -1245,6 +1258,15 @@ impl Registry {
     }
 
     pub fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> Result<Type, Error> {
+        *self.get_expr_type_hits.be_mut() += 1;
+
+        let expr_type_id = self.expr_types[expr.id()];
+        if expr_type_id != 0 {
+            *self.get_expr_type_cache_hits.be_mut() += 1;
+
+            return Ok(self.types[expr_type_id].clone());
+        }
+
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(Type::Bool),
             CodeExpr::CharLiteral(_) => Ok(Type::U8),
@@ -1407,7 +1429,7 @@ impl Registry {
                 | InfixOpTag::FieldAccess
                 | InfixOpTag::Catch
                 | InfixOpTag::ErrorPropagation
-                | InfixOpTag::ExprPipe => unreachable!(),
+                | InfixOpTag::Pipe => unreachable!(),
             },
             CodeExpr::PrefixOp(PrefixOpExpr {
                 id: _,
@@ -1656,7 +1678,7 @@ impl Registry {
                 let result = self.assert_catchable_type(&expr_type, loc)?;
                 Ok(result.ok.as_ref().clone())
             }
-            CodeExpr::ExprPipe(ExprPipeExpr {
+            CodeExpr::Pipe(PipeExpr {
                 id: _,
                 lhs,
                 rhs,

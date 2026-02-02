@@ -10,12 +10,12 @@ pub struct Parser {
     // context
     pub lexer: Lexer,
     pub source: &'static [u8],
-    pub reporter: &'static Reporter,
+    pub reporter: UBRef<Reporter>,
 
     // state
     pub context_stack: UBCell<Vec<ParsingContext>>,
     pub tokens_processed: UBCell<usize>,
-    pub next_node_id: UBCell<usize>,
+    pub next_expr_id: UBCell<usize>,
     pub next_symbol_id: UBCell<usize>,
 
     // output
@@ -25,8 +25,8 @@ pub struct Parser {
 impl Parser {
     pub fn new(
         lexer: Lexer,
-        reporter: &'static Reporter,
-        next_node_id: usize,
+        reporter: &mut Reporter,
+        next_expr_id: usize,
         next_symbol_id: usize,
     ) -> Self {
         let mut context_stack = Vec::new();
@@ -37,10 +37,10 @@ impl Parser {
         Self {
             source: lexer.source,
             lexer,
-            reporter,
+            reporter: UBRef::new(reporter),
             context_stack: UBCell::new(context_stack),
             tokens_processed: UBCell::new(0),
-            next_node_id: UBCell::new(next_node_id),
+            next_expr_id: UBCell::new(next_expr_id),
             next_symbol_id: UBCell::new(next_symbol_id),
             ast: UBCell::new(Vec::new()),
         }
@@ -69,7 +69,6 @@ impl Parser {
                 self.expect(Delim, ")")?;
                 loc.end_pos = self.prev().loc.end_pos;
                 return Ok(TopLevelExpr::Fn(FnExpr {
-                    id: self.next_node_id(),
                     exported: false,
                     is_inline: false,
                     decl,
@@ -81,7 +80,6 @@ impl Parser {
             let body = self.parse_code_block()?;
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TopLevelExpr::Fn(FnExpr {
-                id: self.next_node_id(),
                 exported: false,
                 is_inline: false,
                 decl,
@@ -98,7 +96,6 @@ impl Parser {
                 let body = self.parse_code_block()?;
                 loc.end_pos = self.prev().loc.end_pos;
                 return Ok(TopLevelExpr::Fn(FnExpr {
-                    id: self.next_node_id(),
                     exported: true,
                     is_inline: false,
                     decl,
@@ -136,7 +133,6 @@ impl Parser {
                 let body = self.parse_code_block()?;
                 loc.end_pos = self.prev().loc.end_pos;
                 return Ok(TopLevelExpr::Fn(FnExpr {
-                    id: self.next_node_id(),
                     exported: false,
                     is_inline: true,
                     decl,
@@ -188,7 +184,6 @@ impl Parser {
                 loc.end_pos = self.prev().loc.end_pos;
 
                 return Ok(TopLevelExpr::Type(TypeDefExpr {
-                    id: self.next_node_id(),
                     name,
                     value: TypeDefValue::Struct { fields },
                     loc,
@@ -232,7 +227,6 @@ impl Parser {
                 loc.end_pos = self.prev().loc.end_pos;
 
                 return Ok(TopLevelExpr::Type(TypeDefExpr {
-                    id: self.next_node_id(),
                     name,
                     value: TypeDefValue::Enum {
                         variant_type,
@@ -247,7 +241,6 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::Type(TypeDefExpr {
-                id: self.next_node_id(),
                 name,
                 value: TypeDefValue::Alias(type_value),
                 loc,
@@ -264,7 +257,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TopLevelExpr::Intrinsic(InlineFnCallExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 fn_name,
                 args,
                 type_args,
@@ -290,7 +283,7 @@ impl Parser {
         loc.end_pos = self.prev().loc.end_pos;
 
         return Ok(LetExpr {
-            id: self.next_node_id(),
+            id: self.next_expr_id(),
             is_inline,
             name,
             value: Box::new(value),
@@ -496,7 +489,7 @@ impl Parser {
             let loc = self.prev().loc;
 
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 value: true,
                 loc,
             }));
@@ -506,7 +499,7 @@ impl Parser {
             let loc = self.prev().loc;
 
             return Ok(CodeExpr::BoolLiteral(BoolLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 value: false,
                 loc,
             }));
@@ -516,14 +509,14 @@ impl Parser {
             let loc = self.prev().loc;
 
             return Ok(CodeExpr::NullLiteral(NullLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 loc,
             }));
         }
 
         if let Some(char) = self.eat_any(CharLiteral).cloned() {
             return Ok(CodeExpr::CharLiteral(CharLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 repr: char.get_value(self.source),
                 value: Lexer::parse_char_literal_value(&char.get_value(self.source)) as u32,
                 loc: char.loc,
@@ -542,7 +535,7 @@ impl Parser {
             let value = Lexer::parse_int_literal_value(repr);
 
             return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 repr,
                 value,
                 tag,
@@ -554,7 +547,7 @@ impl Parser {
             let string = QuotedString::new(self.prev().loc);
 
             return Ok(CodeExpr::StringLiteral(StringLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 repr: string.get_repr(self.source),
                 value: string.get_value(self.source),
                 loc: string.loc,
@@ -578,7 +571,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Paren(ParenExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 expr,
                 has_trailing_comma,
                 loc,
@@ -621,7 +614,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Return(ReturnExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 expr,
                 loc,
             }));
@@ -659,7 +652,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::If(IfExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 cond,
                 then_block,
                 else_block,
@@ -677,7 +670,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Match(MatchExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 header: Box::new(match_header),
                 else_branch,
                 loc,
@@ -692,7 +685,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::While(WhileExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 cond: None,
                 body: Box::new(body),
                 loc,
@@ -713,7 +706,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::While(WhileExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 cond: Some(Box::new(cond)),
                 body: Box::new(body),
                 loc,
@@ -740,7 +733,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::For(ForExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 counter,
                 start: Box::new(start),
                 end: Box::new(end),
@@ -754,7 +747,7 @@ impl Parser {
             let loc = self.prev().loc;
 
             return Ok(CodeExpr::Break(BreakExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 loc,
             }));
         }
@@ -763,7 +756,7 @@ impl Parser {
             let loc = self.prev().loc;
 
             return Ok(CodeExpr::Continue(ContinueExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 loc,
             }));
         }
@@ -778,7 +771,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::DoWith(DoWithExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 body,
                 args,
                 with_loc: with.loc,
@@ -796,7 +789,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::IntrinsicCall(InlineFnCallExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 fn_name,
                 args,
                 type_args,
@@ -812,7 +805,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Defer(DeferExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 expr: Box::new(expr),
                 loc,
             }));
@@ -826,7 +819,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::Sizeof(SizeofExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 type_expr,
                 loc,
             }));
@@ -857,7 +850,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::ArrayLiteral(ArrayLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 item_type,
                 items,
                 has_trailing_comma,
@@ -895,7 +888,7 @@ impl Parser {
                         loc.end_pos = self.prev().loc.end_pos;
 
                         return Ok(CodeExpr::PrefixOp(PrefixOpExpr {
-                            id: self.next_node_id(),
+                            id: self.next_expr_id(),
                             expr,
                             op_tag: op.tag,
                             op_loc: op_token.loc,
@@ -932,7 +925,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::ResultLiteral(ResultLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 is_ok: ident.repr == "Ok",
                 result_type,
                 value,
@@ -947,7 +940,7 @@ impl Parser {
             loc.end_pos = body.loc.end_pos;
 
             return Ok(CodeExpr::StructLiteral(StructLiteralExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 struct_name: ident,
                 body,
                 loc,
@@ -968,7 +961,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::FnCall(FnCallExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 fn_name: ident,
                 args,
                 loc,
@@ -986,7 +979,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(CodeExpr::InlineFnCall(InlineFnCallExpr {
-                id: self.next_node_id(),
+                id: self.next_expr_id(),
                 fn_name: ident,
                 args,
                 type_args,
@@ -1037,7 +1030,7 @@ impl Parser {
                 loc.end_pos = rhs.loc().end_pos;
 
                 Ok(CodeExpr::InfixOp(InfixOpExpr {
-                    id: self.next_node_id(),
+                    id: self.next_expr_id(),
                     op_tag: op.tag,
                     op_loc: *op_loc,
                     lhs: Box::new(lhs),
@@ -1053,7 +1046,7 @@ impl Parser {
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::Cast(CastExpr {
-                    id: self.next_node_id(),
+                    id: self.next_expr_id(),
                     expr: Box::new(primary),
                     casted_to,
                     loc,
@@ -1070,7 +1063,7 @@ impl Parser {
                     loc.end_pos = self.prev().loc.end_pos;
 
                     return Ok(CodeExpr::MethodCall(MethodCallExpr {
-                        id: self.next_node_id(),
+                        id: self.next_expr_id(),
                         lhs: Box::new(primary),
                         field_name,
                         args,
@@ -1087,7 +1080,7 @@ impl Parser {
                     loc.end_pos = self.prev().loc.end_pos;
 
                     return Ok(CodeExpr::InlineMethodCall(InlineMethodCallExpr {
-                        id: self.next_node_id(),
+                        id: self.next_expr_id(),
                         lhs: Box::new(primary),
                         field_name,
                         args,
@@ -1099,7 +1092,7 @@ impl Parser {
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::FieldAccess(FieldAccessExpr {
-                    id: self.next_node_id(),
+                    id: self.next_expr_id(),
                     lhs: Box::new(primary),
                     field_name,
                     loc,
@@ -1113,7 +1106,7 @@ impl Parser {
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::Assign(AssignExpr {
-                    id: self.next_node_id(),
+                    id: self.next_expr_id(),
                     op_loc: *op_loc,
                     lhs: Box::new(primary),
                     rhs: Box::new(value),
@@ -1129,7 +1122,7 @@ impl Parser {
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::Catch(CatchExpr {
-                    id: self.next_node_id(),
+                    id: self.next_expr_id(),
                     lhs: Box::new(primary),
                     error_bind,
                     catch_body,
@@ -1142,20 +1135,20 @@ impl Parser {
                 loc.end_pos = self.prev().loc.end_pos;
 
                 Ok(CodeExpr::PropagateError(PropagateErrorExpr {
-                    id: self.next_node_id(),
+                    id: self.next_expr_id(),
                     expr: Box::new(primary),
                     loc,
                 }))
             }
-            InfixOpTag::ExprPipe => {
+            InfixOpTag::Pipe => {
                 let mut loc = primary.loc();
 
                 let rhs = self.parse_code_expr(op.bp_next)?;
 
                 loc.end_pos = self.prev().loc.end_pos;
 
-                Ok(CodeExpr::ExprPipe(ExprPipeExpr {
-                    id: self.next_node_id(),
+                Ok(CodeExpr::Pipe(PipeExpr {
+                    id: self.next_expr_id(),
                     lhs: Box::new(primary),
                     rhs: Box::new(rhs),
                     op_loc: *op_loc,
@@ -1205,7 +1198,7 @@ impl Parser {
 
     fn parse_ident(&self) -> Result<IdentExpr, Error> {
         let mut ident = IdentExpr {
-            id: self.next_node_id(),
+            id: self.next_expr_id(),
             symbol_id: self.next_symbol_id(),
             repr: "", // stub
             parts: Vec::new(),
@@ -1319,10 +1312,10 @@ impl Parser {
 
     // utils
 
-    fn next_node_id(&self) -> usize {
-        let node_id = *self.next_node_id;
-        *self.next_node_id.be_mut() = node_id + 1;
-        node_id
+    fn next_expr_id(&self) -> usize {
+        let expr_id = *self.next_expr_id;
+        *self.next_expr_id.be_mut() = expr_id + 1;
+        expr_id
     }
 
     fn next_symbol_id(&self) -> usize {

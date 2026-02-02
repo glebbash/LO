@@ -630,7 +630,7 @@ pub enum InfixOpTag {
 
     ErrorPropagation,
 
-    ExprPipe,
+    Pipe,
 }
 
 pub struct InfixOp {
@@ -674,7 +674,7 @@ impl InfixOp {
             "&&" => Self::left_assoc(InfixOpTag::And, 4),
             "||" => Self::left_assoc(InfixOpTag::Or, 3),
 
-            "|>" => Self::left_assoc(InfixOpTag::ExprPipe, 2),
+            "|>" => Self::left_assoc(InfixOpTag::Pipe, 2),
 
             "=" => Self::none_assoc(InfixOpTag::Assign, 1),
             "+=" => Self::none_assoc(InfixOpTag::AddAssign, 1),

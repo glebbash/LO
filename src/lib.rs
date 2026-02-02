@@ -10,11 +10,11 @@ mod lexer;
 mod parser;
 mod printer;
 mod registry;
-mod type_checker;
+mod typing;
 mod wasm;
 mod wasm_eval;
 
-use crate::{codegen::*, common::*, printer::*, registry::*, type_checker::*, wasm_eval::*};
+use crate::{codegen::*, common::*, printer::*, registry::*, typing::*, wasm_eval::*};
 
 static USAGE: &str = "Usage:
   lo compile <input.lo>
@@ -82,7 +82,7 @@ pub extern "C" fn _start() {
             proc_exit(1);
         };
 
-        let mut printer = Printer::new(&module.parser.relax());
+        let mut printer = Printer::new(module.parser.be_mut());
         printer.print_file();
 
         return;
@@ -94,11 +94,13 @@ pub extern "C" fn _start() {
 
     registry.include_file(file_name, &Loc::internal());
 
-    let mut type_checker = TypeChecker::new(&mut registry);
-    type_checker.check_all();
+    let mut typer = Typer::new(&mut registry);
+    typer.type_all();
 
     let mut codegen = CodeGenerator::new(&mut registry);
     codegen.codegen_all();
+
+    registry.process_deferred_intrinsics();
 
     if registry.reporter.in_inspection_mode {
         registry.reporter.end_inspection();

@@ -1,7 +1,7 @@
 use crate::{ast::*, common::*, parser::*};
 
 pub struct Printer {
-    parser: &'static Parser,
+    parser: UBRef<Parser>,
 
     indent: usize,
     comments_printed: usize,
@@ -13,9 +13,9 @@ pub struct Printer {
 }
 
 impl Printer {
-    pub fn new(parser: &'static Parser) -> Self {
+    pub fn new(parser: &mut Parser) -> Self {
         Printer {
-            parser,
+            parser: UBRef::new(parser),
 
             indent: 0,
             comments_printed: 0,
@@ -30,7 +30,7 @@ impl Printer {
     pub fn print_file(&mut self) {
         stdout_enable_buffering();
 
-        for expr in &*self.parser.ast {
+        for expr in &*self.parser.relax().ast {
             self.print_top_level_expr(expr);
             stdout_write("\n");
             self.last_printed_item_line = expr.loc().end_pos.line;
@@ -51,7 +51,6 @@ impl Printer {
 
         match &expr {
             TopLevelExpr::Fn(FnExpr {
-                id: _,
                 exported,
                 is_inline,
                 decl,
@@ -93,7 +92,6 @@ impl Printer {
                 self.print_code_expr(value);
             }
             TopLevelExpr::Type(TypeDefExpr {
-                id: _,
                 name: type_name,
                 value: type_value,
                 loc,
@@ -497,7 +495,7 @@ impl Printer {
                 stdout_write(" ");
                 self.print_code_expr(rhs);
             }
-            CodeExpr::ExprPipe(ExprPipeExpr {
+            CodeExpr::Pipe(PipeExpr {
                 id: _,
                 lhs,
                 rhs,

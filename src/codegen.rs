@@ -1581,37 +1581,6 @@ impl CodeGenerator {
                     return Ok(());
                 }
 
-                if fn_name.repr == "inspect_stats" {
-                    if !self.reporter.in_inspection_mode {
-                        return Ok(());
-                    }
-
-                    let mut lines = 0;
-                    for file in &self.reporter.fm.files {
-                        lines += file
-                            .source
-                            .as_bytes()
-                            .iter()
-                            .filter(|&&b| b == b'\n')
-                            .count()
-                    }
-
-                    let mut message = String::new();
-                    message.push_str(format!("LOC: {}\n", lines).as_str());
-                    message.push_str(
-                        format!("symbol count: {}\n", self.registry.next_symbol_id).as_str(),
-                    );
-                    message
-                        .push_str(format!("node count: {}\n", self.registry.next_node_id).as_str());
-
-                    self.reporter.print_inspection(&InspectInfo {
-                        message,
-                        loc: fn_name.loc,
-                        linked_loc: None,
-                    });
-                    return Ok(());
-                }
-
                 self.reporter.error(&Error {
                     message: format!("Unknown intrinsic: {}", fn_name.repr),
                     loc: fn_name.loc,
@@ -2037,7 +2006,7 @@ impl CodeGenerator {
                     self.registry.be_mut().exit_scope(ctx);
                 }
             }
-            CodeExpr::ExprPipe(ExprPipeExpr {
+            CodeExpr::Pipe(PipeExpr {
                 id: _,
                 lhs,
                 rhs,
@@ -2806,8 +2775,8 @@ impl CodeGenerator {
             }
             CodeExpr::PrefixOp(prefix) => self.is_naturally_divergent(&prefix.expr),
             CodeExpr::Match(match_) => self.is_naturally_divergent(&match_.header.expr_to_match),
-            CodeExpr::ExprPipe(pipe_) => {
-                self.is_naturally_divergent(&pipe_.lhs) || self.is_naturally_divergent(&pipe_.rhs)
+            CodeExpr::Pipe(pipe) => {
+                self.is_naturally_divergent(&pipe.lhs) || self.is_naturally_divergent(&pipe.rhs)
             }
 
             CodeExpr::DoWith(do_with_) => {
@@ -3680,7 +3649,7 @@ impl CodeGenerator {
             | InfixOpTag::FieldAccess
             | InfixOpTag::Catch
             | InfixOpTag::ErrorPropagation
-            | InfixOpTag::ExprPipe => None,
+            | InfixOpTag::Pipe => None,
         }
     }
 
