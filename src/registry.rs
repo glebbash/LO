@@ -1,4 +1,4 @@
-use crate::{ast::*, common::*, lexer::*, parser::*, wasm::*};
+use crate::{ast::*, common::*, lexer::*, parser::*, typing::*, wasm::*};
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Type {
@@ -70,13 +70,13 @@ impl Type {
 pub struct Symbol {
     pub scope_id: usize,
     pub name: &'static str,
-    pub type_: SymbolType,
+    pub kind: SymbolKind,
     pub col_index: usize,
     pub loc: Loc,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum SymbolType {
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub enum SymbolKind {
     TypeAlias,
     Struct,
     Enum,
@@ -152,7 +152,7 @@ pub struct Local {
 }
 
 #[derive(Clone, PartialEq)]
-pub enum ScopeType {
+pub enum ScopeKind {
     Global,
     Function,
     Block,
@@ -161,9 +161,9 @@ pub enum ScopeType {
     InlineFn,
 }
 
-impl Default for ScopeType {
+impl Default for ScopeKind {
     fn default() -> Self {
-        ScopeType::Block
+        ScopeKind::Block
     }
 }
 
@@ -180,18 +180,18 @@ pub struct ConstSliceLen {
 
 #[derive(Clone, Default)]
 pub struct Scope {
-    pub scope_id: usize,
-    pub scope_type: ScopeType,
+    pub id: usize,
+    pub kind: ScopeKind,
     pub symbols: Vec<Symbol>,
     pub deferred_exprs: Vec<CodeUnit>,
     pub inline_fn_call_loc: Option<Loc>,
 }
 
 impl Scope {
-    pub fn new(scope_id: usize, scope_type: ScopeType) -> Self {
+    pub fn new(scope_id: usize, scope_type: ScopeKind) -> Self {
         Self {
-            scope_id,
-            scope_type,
+            id: scope_id,
+            kind: scope_type,
             ..Default::default()
         }
     }
@@ -272,7 +272,7 @@ impl TypeLayout {
 pub type TypeId = usize;
 
 pub struct Module {
-    pub index: usize,
+    pub id: usize,
     pub source: &'static [u8],
     pub parser: Parser,
     pub includes: Vec<ModuleInclude>,
@@ -381,15 +381,15 @@ pub struct Registry {
     pub modules: Vec<Module>,             // indexed by `module_index`
     pub types: Vec<Type>,                 // indexed by `TypeId`
     pub expr_types: Vec<TypeId>,          // indexed by `expr.id()`
-    pub symbols: Vec<Symbol>,             // indexed by `IdentExpr.symbol_id`
-    pub globals: Vec<GlobalDef>,          // indexed by `col_index` when `type_ = Global`
-    pub constants: Vec<ConstDef>,         // indexed by `col_index` when `type_ = Const`
-    pub functions: Vec<FnInfo>,           // indexed by `col_index` when `type_ = Function`
-    pub inline_fns: Vec<&'static FnExpr>, // indexed by `col_index` when `type_ = InlineFn`
-    pub type_aliases: Vec<Type>,          // indexed by `col_index` when `type_ = TypeAlias`
-    pub structs: Vec<StructDef>,          // indexed by `col_index` when `type_ = Struct`
-    pub enums: Vec<EnumDef>,              // indexed by `col_index` when `type_ = Enum`
-    pub enum_ctors: Vec<EnumConstructor>, // indexed by `col_index` when `type_ = EnumConstructor`
+    pub symbols: Vec<TySymbol>,           // indexed by `IdentExpr.symbol_id`
+    pub globals: Vec<GlobalDef>,          // indexed by `col_index` when `kind = Global`
+    pub constants: Vec<ConstDef>,         // indexed by `col_index` when `kind = Const`
+    pub functions: Vec<FnInfo>,           // indexed by `col_index` when `kind = Function`
+    pub inline_fns: Vec<&'static FnExpr>, // indexed by `col_index` when `kind = InlineFn`
+    pub type_aliases: Vec<Type>,          // indexed by `col_index` when `kind = TypeAlias`
+    pub structs: Vec<StructDef>,          // indexed by `col_index` when `kind = Struct`
+    pub enums: Vec<EnumDef>,              // indexed by `col_index` when `kind = Enum`
+    pub enum_ctors: Vec<EnumConstructor>, // indexed by `col_index` when `kind = EnumConstructor`
 
     pub const_slice_lens: Vec<ConstSliceLen>,
     pub allocated_strings: Vec<String>,
@@ -531,7 +531,7 @@ impl Registry {
 
                 let module_index;
                 match self.include_file(&file_path.value, &file_path.loc) {
-                    Some(module) => module_index = module.index,
+                    Some(module) => module_index = module.id,
                     None => continue,
                 }
 
@@ -554,7 +554,7 @@ impl Registry {
         }
 
         self.modules.push(Module {
-            index: self.modules.len(),
+            id: self.modules.len(),
             source: parser.source,
             scope_stack: Vec::new(),
             parser,
@@ -619,14 +619,25 @@ impl Registry {
         &mut self,
         ctx: &ExprContext,
         symbol_name: &'static str,
-        symbol_type: SymbolType,
-        symbol_col_index: usize,
+        symbol_kind: SymbolKind,
         symbol_loc: Loc,
-    ) -> Result<&Symbol, &Symbol> {
+    ) -> Result<(), &Symbol> {
+        let symbol_col_index = match symbol_kind {
+            SymbolKind::TypeAlias => self.type_aliases.len(),
+            SymbolKind::Struct => self.structs.len(),
+            SymbolKind::Enum => self.enums.len(),
+            SymbolKind::Local => ctx.locals.len(),
+            SymbolKind::Global => self.globals.len(),
+            SymbolKind::Const => self.constants.len(),
+            SymbolKind::InlineFn => self.inline_fns.len(),
+            SymbolKind::Function => self.functions.len(),
+            SymbolKind::EnumConstructor => self.enum_ctors.len(),
+        };
+
         let current_scope = self.relax_mut().current_scope_mut(ctx);
 
         if let Some(existing_symbol) = current_scope.relax().get_symbol(symbol_name)
-            && existing_symbol.scope_id == current_scope.scope_id
+            && existing_symbol.scope_id == current_scope.id
         {
             self.reporter.error(&Error {
                 message: format!(
@@ -640,16 +651,16 @@ impl Registry {
         }
 
         current_scope.symbols.push(Symbol {
-            scope_id: current_scope.scope_id,
+            scope_id: current_scope.id,
             name: symbol_name,
-            type_: symbol_type,
+            kind: symbol_kind,
             col_index: symbol_col_index,
             loc: symbol_loc,
         });
-        Ok(&current_scope.symbols.last().unwrap())
+        Ok(())
     }
 
-    pub fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeType) {
+    pub fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeKind) {
         let module = &mut self.relax_mut().modules[ctx.module_index];
 
         self.init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
@@ -676,7 +687,7 @@ impl Registry {
     pub fn init_scope_from_parent_and_push(
         &mut self,
         scope_stack: &mut Vec<Scope>,
-        scope_type: ScopeType,
+        scope_type: ScopeKind,
     ) {
         let scope_id = self.next_scope_id;
         self.next_scope_id += 1;
@@ -988,9 +999,9 @@ impl Registry {
                         });
                     };
 
-                    let SymbolType::Const = symbol.type_ else {
+                    let SymbolKind::Const = symbol.kind else {
                         return Err(Error {
-                            message: format!("Expected const, got {:?}", symbol.type_),
+                            message: format!("Expected const, got {:?}", symbol.kind),
                             loc: *items[0].loc(),
                         });
                     };
@@ -1056,8 +1067,8 @@ impl Registry {
             });
         };
 
-        match symbol.type_ {
-            SymbolType::Struct => {
+        match symbol.kind {
+            SymbolKind::Struct => {
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(&InspectInfo {
                         message: format!("struct {type_name} {{ ... }}"),
@@ -1070,7 +1081,7 @@ impl Registry {
                     struct_index: symbol.col_index,
                 })
             }
-            SymbolType::Enum => {
+            SymbolKind::Enum => {
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(&InspectInfo {
                         message: format!("enum {type_name} {{ ... }}"),
@@ -1083,7 +1094,7 @@ impl Registry {
                     enum_index: symbol.col_index,
                 })
             }
-            SymbolType::TypeAlias => {
+            SymbolKind::TypeAlias => {
                 let type_ = &self.type_aliases[symbol.col_index];
 
                 // don't print inspection for built-ins
@@ -1097,12 +1108,12 @@ impl Registry {
 
                 Ok(type_.clone())
             }
-            SymbolType::Local
-            | SymbolType::Global
-            | SymbolType::Const
-            | SymbolType::Function
-            | SymbolType::InlineFn
-            | SymbolType::EnumConstructor => Err(Error {
+            SymbolKind::Local
+            | SymbolKind::Global
+            | SymbolKind::Const
+            | SymbolKind::Function
+            | SymbolKind::InlineFn
+            | SymbolKind::EnumConstructor => Err(Error {
                 message: format!("Symbol is not a type: {}", type_name),
                 loc: *loc,
             }),
@@ -1122,7 +1133,7 @@ impl Registry {
             });
         };
 
-        let SymbolType::Function = symbol.type_ else {
+        let SymbolKind::Function = symbol.kind else {
             return Err(Error {
                 message: format!(
                     "Trying to call {} which is not a function, defined at: {}",
@@ -1356,31 +1367,31 @@ impl Registry {
                     });
                 };
 
-                match symbol.type_ {
-                    SymbolType::Local => {
+                match symbol.kind {
+                    SymbolKind::Local => {
                         let local = &ctx.locals[symbol.col_index];
 
                         Ok(local.local_type.clone())
                     }
-                    SymbolType::Global => {
+                    SymbolKind::Global => {
                         let global = &self.globals[symbol.col_index];
 
                         Ok(global.global_type.clone())
                     }
-                    SymbolType::Const => {
+                    SymbolKind::Const => {
                         let const_def = &self.constants[symbol.col_index];
 
                         Ok(const_def.code_unit.type_.clone())
                     }
-                    SymbolType::TypeAlias
-                    | SymbolType::Struct
-                    | SymbolType::Enum
-                    | SymbolType::InlineFn
-                    | SymbolType::Function
-                    | SymbolType::EnumConstructor => Err(Error {
+                    SymbolKind::TypeAlias
+                    | SymbolKind::Struct
+                    | SymbolKind::Enum
+                    | SymbolKind::InlineFn
+                    | SymbolKind::Function
+                    | SymbolKind::EnumConstructor => Err(Error {
                         message: format!(
                             "Expected variable, found {:?} '{}'",
-                            symbol.type_, ident.repr
+                            symbol.kind, ident.repr
                         ),
                         loc: ident.loc,
                     }),
@@ -1504,7 +1515,7 @@ impl Registry {
                 loc: _,
             }) => {
                 if let Some(symbol) = self.current_scope(ctx).get_symbol(&fn_name.repr) {
-                    if let SymbolType::EnumConstructor = symbol.type_ {
+                    if let SymbolKind::EnumConstructor = symbol.kind {
                         let ctor = &self.enum_ctors[symbol.col_index];
 
                         return Ok(Type::EnumInstance {
@@ -1538,7 +1549,7 @@ impl Registry {
                 args,
                 loc,
             }) => {
-                self.be_mut().enter_scope(ctx, ScopeType::InlineFn);
+                self.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
                 let expr_type = self.get_inline_fn_return_type(
                     ctx.be_mut(),
                     &fn_name.repr,
@@ -1649,7 +1660,7 @@ impl Registry {
                 let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let inline_fn_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
 
-                self.be_mut().enter_scope(ctx, ScopeType::InlineFn);
+                self.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
                 let expr_type = self.get_inline_fn_return_type(
                     ctx.be_mut(),
                     &inline_fn_name,
@@ -1692,7 +1703,7 @@ impl Registry {
                     return Ok(Type::Never);
                 });
 
-                self.be_mut().enter_scope(ctx, ScopeType::Block);
+                self.be_mut().enter_scope(ctx, ScopeKind::Block);
 
                 self.be_mut().register_block_const(
                     ctx,
@@ -1750,13 +1761,13 @@ impl Registry {
                             .current_scope(ctx)
                             .get_symbol(&header.variant_name.repr)
                         {
-                            if let SymbolType::EnumConstructor = symbol.type_ {
+                            if let SymbolKind::EnumConstructor = symbol.kind {
                                 let enum_ctor = &self.enum_ctors[symbol.col_index];
                                 let enum_variant = &self.enums[enum_ctor.enum_index].variants
                                     [enum_ctor.variant_index];
 
                                 should_exit_match_scope = true;
-                                self.be_mut().enter_scope(ctx, ScopeType::Block);
+                                self.be_mut().enter_scope(ctx, ScopeKind::Block);
                                 self.be_mut().register_block_const(
                                     ctx,
                                     ConstDef {
@@ -1817,7 +1828,7 @@ impl Registry {
         ctx: &ExprContext,
         exprs: &Vec<CodeExpr>,
     ) -> Result<Type, Error> {
-        self.be_mut().enter_scope(ctx, ScopeType::Block);
+        self.be_mut().enter_scope(ctx, ScopeKind::Block);
         let res = self.get_code_block_type_(ctx, exprs);
         self.be_mut().exit_scope(ctx);
         res
@@ -2125,10 +2136,10 @@ impl Registry {
         local_name: &'static str,
         local_type: &Type,
     ) -> u32 {
-        let res = self.define_symbol(ctx, local_name, SymbolType::Local, ctx.locals.len(), loc);
+        let res = self.define_symbol(ctx, local_name, SymbolKind::Local, loc);
 
         if let Err(existing) = res
-            && existing.type_ == SymbolType::Local
+            && existing.kind == SymbolKind::Local
         {
             return ctx.locals[existing.col_index].local_index;
         }
@@ -2184,13 +2195,7 @@ impl Registry {
             return;
         }
 
-        let _ = self.define_symbol(
-            ctx,
-            const_def.const_name,
-            SymbolType::Const,
-            self.constants.len(),
-            const_def.loc,
-        );
+        let _ = self.define_symbol(ctx, const_def.const_name, SymbolKind::Const, const_def.loc);
         self.constants.push(const_def);
     }
 
@@ -2201,13 +2206,7 @@ impl Registry {
         type_: Type,
         loc: Loc,
     ) {
-        let _ = self.define_symbol(
-            ctx,
-            name,
-            SymbolType::TypeAlias,
-            self.type_aliases.len(),
-            loc,
-        );
+        let _ = self.define_symbol(ctx, name, SymbolKind::TypeAlias, loc);
         self.type_aliases.push(type_);
     }
 

@@ -269,11 +269,11 @@ impl<T> core::ops::DerefMut for UBCell<T> {
     }
 }
 
-#[derive(Default)]
-pub struct UBRef<T>(*mut T);
+#[derive(Clone, Default)]
+pub struct UBRef<T>(pub *const T);
 
 impl<T> UBRef<T> {
-    pub const fn new(value: *mut T) -> Self {
+    pub const fn new(value: *const T) -> Self {
         Self(value)
     }
 }
@@ -289,6 +289,6 @@ impl<T> core::ops::Deref for UBRef<T> {
 impl<T> core::ops::DerefMut for UBRef<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.0 }
+        unsafe { &mut *(self.0 as *mut T) }
     }
 }

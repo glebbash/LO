@@ -364,7 +364,7 @@ impl WasmEval {
                     WasmBinaryOpKind::I32_MUL => {
                         let rhs = self.pop_i32();
                         let lhs = self.pop_i32();
-                        let value = lhs * rhs;
+                        let value = lhs.wrapping_mul(rhs);
                         self.stack.push(WasmValue::I32 { value });
                     }
                     WasmBinaryOpKind::I32_AND => {

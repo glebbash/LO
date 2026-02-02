@@ -150,7 +150,7 @@ impl CodeGenerator {
             let constants_len = self.registry.constants.len();
             let type_aliases_len = self.registry.type_aliases.len();
 
-            self.registry.be_mut().enter_scope(ctx, ScopeType::Function);
+            self.registry.be_mut().enter_scope(ctx, ScopeKind::Function);
 
             for fn_param in &fn_info.fn_params {
                 self.registry.define_local(
@@ -513,7 +513,7 @@ impl CodeGenerator {
 
         if !naturally_diverges
             && !terminates_early
-            && self.registry.current_scope(ctx).scope_type == ScopeType::Function
+            && self.registry.current_scope(ctx).kind == ScopeKind::Function
         {
             let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.fn_type.output != Type::Void {
@@ -1118,7 +1118,7 @@ impl CodeGenerator {
                 loc: _,
             }) => {
                 if let Some(symbol) = self.registry.current_scope(ctx).get_symbol(&fn_name.repr) {
-                    if let SymbolType::EnumConstructor = symbol.type_ {
+                    if let SymbolKind::EnumConstructor = symbol.kind {
                         let ctor = &self.registry.enum_ctors[symbol.col_index];
                         let enum_ = &self.registry.enums[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
@@ -1440,7 +1440,7 @@ impl CodeGenerator {
                     let mut inline_fn_call_loc = None;
                     // NOTE: not iterating in reverse to get the first inline scope
                     for scope in &self.registry.modules[ctx.module_index].scope_stack {
-                        if scope.scope_type == ScopeType::InlineFn {
+                        if scope.kind == ScopeKind::InlineFn {
                             inline_fn_call_loc = scope.inline_fn_call_loc.clone();
                         }
                     }
@@ -1570,7 +1570,7 @@ impl CodeGenerator {
 
                     let mut message = String::new();
                     for symbol in &self.registry.current_scope(ctx).symbols {
-                        write!(message, "{} : {:?}\n", symbol.name, symbol.type_).unwrap();
+                        write!(message, "{} : {:?}\n", symbol.name, symbol.kind).unwrap();
                     }
 
                     self.reporter.print_inspection(&InspectInfo {
@@ -1666,11 +1666,11 @@ impl CodeGenerator {
                         self.codegen(ctx, instrs, expr)?;
 
                         // `if` condition runs outside of then_branch's scope
-                        self.registry.be_mut().enter_scope(ctx, ScopeType::Block);
+                        self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
                     }
                     IfCond::Match(match_header) => {
                         // `if match` condition runs inside of then_branch's scope
-                        self.registry.be_mut().enter_scope(ctx, ScopeType::Block);
+                        self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
 
                         let enum_ctor = self.codegen_match_header(ctx, instrs, match_header)?;
 
@@ -1696,13 +1696,13 @@ impl CodeGenerator {
                     ElseBlock::None => {}
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
-                        self.registry.be_mut().enter_scope(ctx, ScopeType::Block);
+                        self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
                         self.codegen_code_block(ctx, instrs, &code_block_expr, true);
                         self.registry.be_mut().exit_scope(ctx);
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
-                        self.registry.be_mut().enter_scope(ctx, ScopeType::Block);
+                        self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
                         self.codegen(ctx, instrs, &code_expr)?;
                         self.registry.be_mut().exit_scope(ctx);
                     }
@@ -1732,7 +1732,7 @@ impl CodeGenerator {
                     block_type: WasmBlockType::NoOut,
                 });
 
-                self.registry.be_mut().enter_scope(ctx, ScopeType::Block);
+                self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
                 let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
                 if !terminates_early {
                     self.reporter.error(&Error {
@@ -1784,7 +1784,7 @@ impl CodeGenerator {
                     instrs.push(WasmInstr::BranchIf { label_index: 1 });
                 }
 
-                self.registry.be_mut().enter_scope(ctx, ScopeType::Loop);
+                self.registry.be_mut().enter_scope(ctx, ScopeKind::Loop);
                 self.codegen_code_block(ctx, instrs, body, true);
                 self.registry.be_mut().exit_scope(ctx);
 
@@ -1821,7 +1821,7 @@ impl CodeGenerator {
                     Err(err) => self.reporter.error(&err),
                 }
 
-                self.registry.be_mut().enter_scope(ctx, ScopeType::ForLoop);
+                self.registry.be_mut().enter_scope(ctx, ScopeKind::ForLoop);
 
                 // define counter and set value to start
                 let local_index =
@@ -1912,23 +1912,23 @@ impl CodeGenerator {
                     .iter()
                     .rev()
                 {
-                    match scope.scope_type {
-                        ScopeType::Block => {
+                    match scope.kind {
+                        ScopeKind::Block => {
                             label_index += 1;
                         }
-                        ScopeType::Function => {
+                        ScopeKind::Function => {
                             return Err(Error {
                                 message: format!("Cannot break outside of a loop"),
                                 loc: *loc,
                             });
                         }
-                        ScopeType::Loop => break,
-                        ScopeType::ForLoop => {
+                        ScopeKind::Loop => break,
+                        ScopeKind::ForLoop => {
                             label_index += 1;
                             break;
                         }
-                        ScopeType::InlineFn => continue,
-                        ScopeType::Global => unreachable!(),
+                        ScopeKind::InlineFn => continue,
+                        ScopeKind::Global => unreachable!(),
                     }
                 }
 
@@ -1942,20 +1942,20 @@ impl CodeGenerator {
                     .iter()
                     .rev()
                 {
-                    match scope.scope_type {
-                        ScopeType::Block => {
+                    match scope.kind {
+                        ScopeKind::Block => {
                             label_index += 1;
                         }
-                        ScopeType::Function => {
+                        ScopeKind::Function => {
                             return Err(Error {
                                 message: format!("Cannot continue outside of a loop"),
                                 loc: *loc,
                             });
                         }
-                        ScopeType::Loop => break,
-                        ScopeType::ForLoop => break,
-                        ScopeType::InlineFn => continue,
-                        ScopeType::Global => unreachable!(),
+                        ScopeKind::Loop => break,
+                        ScopeKind::ForLoop => break,
+                        ScopeKind::InlineFn => continue,
+                        ScopeKind::Global => unreachable!(),
                     }
                 }
 
@@ -1992,7 +1992,7 @@ impl CodeGenerator {
                         continue;
                     }
 
-                    self.registry.be_mut().enter_scope(ctx, ScopeType::InlineFn);
+                    self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
 
                     self.codegen(ctx, instrs, arg)?;
 
@@ -2019,7 +2019,7 @@ impl CodeGenerator {
                     return Ok(());
                 });
 
-                self.registry.be_mut().enter_scope(ctx, ScopeType::Block);
+                self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
 
                 let lhs_local_index =
                     self.registry
@@ -2050,7 +2050,7 @@ impl CodeGenerator {
                     .iter_mut()
                     .rev()
                 {
-                    if scope.scope_type != ScopeType::InlineFn {
+                    if scope.kind != ScopeKind::InlineFn {
                         scope_to_defer = scope;
                         break;
                     }
@@ -2100,7 +2100,7 @@ impl CodeGenerator {
                 loc: header.variant_name.loc,
             });
         };
-        let SymbolType::EnumConstructor = symbol.type_ else {
+        let SymbolKind::EnumConstructor = symbol.kind else {
             return Err(Error {
                 message: format!("Not an enum constructor: {}", header.variant_name.repr),
                 loc: header.variant_name.loc,
@@ -2424,7 +2424,7 @@ impl CodeGenerator {
         args: &Vec<CodeExpr>,
         loc: &Loc,
     ) -> Result<(), Error> {
-        self.registry.be_mut().enter_scope(ctx, ScopeType::InlineFn);
+        self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
         self.registry.current_scope_mut(ctx).inline_fn_call_loc = Some(*loc);
 
         let inline_fn_def = self.relax_mut().populate_ctx_from_inline_fn_call(
@@ -2463,7 +2463,7 @@ impl CodeGenerator {
         let expr_type = self.registry.get_expr_type(ctx, expr)?;
         let result = self.registry.assert_catchable_type(&expr_type, loc)?;
 
-        self.registry.be_mut().enter_scope(ctx, ScopeType::Block); // enter catch scope
+        self.registry.be_mut().enter_scope(ctx, ScopeKind::Block); // enter catch scope
 
         // put result on the stack
         self.codegen(ctx, instrs, expr)?;
@@ -3079,8 +3079,8 @@ impl CodeGenerator {
             });
         };
 
-        match symbol.type_ {
-            SymbolType::Local => {
+        match symbol.kind {
+            SymbolKind::Local => {
                 let local = &ctx.locals[symbol.col_index];
 
                 Ok(self.var_local(
@@ -3091,7 +3091,7 @@ impl CodeGenerator {
                     Some(local.definition_loc.clone()),
                 ))
             }
-            SymbolType::Global => {
+            SymbolKind::Global => {
                 let global = &self.registry.globals[symbol.col_index];
 
                 let mut inspect_info = None;
@@ -3113,7 +3113,7 @@ impl CodeGenerator {
                     inspect_info,
                 }))
             }
-            SymbolType::Const => {
+            SymbolKind::Const => {
                 let const_def = &self.registry.constants[symbol.col_index];
 
                 let mut inspect_info = None;
@@ -3135,15 +3135,15 @@ impl CodeGenerator {
                     loc: ident.loc,
                 }))
             }
-            SymbolType::TypeAlias
-            | SymbolType::Struct
-            | SymbolType::Enum
-            | SymbolType::InlineFn
-            | SymbolType::Function
-            | SymbolType::EnumConstructor => Err(Error {
+            SymbolKind::TypeAlias
+            | SymbolKind::Struct
+            | SymbolKind::Enum
+            | SymbolKind::InlineFn
+            | SymbolKind::Function
+            | SymbolKind::EnumConstructor => Err(Error {
                 message: format!(
                     "Expected variable, found {:?} '{}'",
-                    symbol.type_, ident.repr
+                    symbol.kind, ident.repr
                 ),
                 loc: ident.loc,
             }),
