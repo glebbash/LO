@@ -445,7 +445,6 @@ impl Printer {
 
             CodeExpr::Ident(IdentExpr {
                 id: _,
-                symbol_id: _,
                 repr,
                 parts: _,
                 loc: _,

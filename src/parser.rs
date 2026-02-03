@@ -15,20 +15,14 @@ pub struct Parser {
     // state
     pub context_stack: UBCell<Vec<ParsingContext>>,
     pub tokens_processed: UBCell<usize>,
-    pub next_expr_id: UBCell<usize>,
-    pub next_symbol_id: UBCell<usize>,
+    pub expr_count: UBCell<usize>,
 
     // output
     pub ast: UBCell<Vec<TopLevelExpr>>,
 }
 
 impl Parser {
-    pub fn new(
-        lexer: Lexer,
-        reporter: &mut Reporter,
-        next_expr_id: usize,
-        next_symbol_id: usize,
-    ) -> Self {
+    pub fn new(lexer: Lexer, reporter: &mut Reporter) -> Self {
         let mut context_stack = Vec::new();
         context_stack.push(ParsingContext {
             struct_literal_allowed: true,
@@ -40,8 +34,7 @@ impl Parser {
             reporter: UBRef::new(reporter),
             context_stack: UBCell::new(context_stack),
             tokens_processed: UBCell::new(0),
-            next_expr_id: UBCell::new(next_expr_id),
-            next_symbol_id: UBCell::new(next_symbol_id),
+            expr_count: UBCell::new(0),
             ast: UBCell::new(Vec::new()),
         }
     }
@@ -438,6 +431,8 @@ impl Parser {
 
         let mut code_block = CodeBlock {
             exprs: Vec::new(),
+            expr_id_start: *self.expr_count,
+            expr_id_end: 0, // placeholder
             loc: self.prev().loc,
         };
 
@@ -445,6 +440,8 @@ impl Parser {
             let expr = self.parse_code_expr(0)?;
             code_block.exprs.push(expr);
         }
+
+        code_block.expr_id_end = *self.expr_count;
 
         // closing curly pos
         code_block.loc.end_pos = self.prev().loc.end_pos;
@@ -1199,7 +1196,6 @@ impl Parser {
     fn parse_ident(&self) -> Result<IdentExpr, Error> {
         let mut ident = IdentExpr {
             id: self.next_expr_id(),
-            symbol_id: self.next_symbol_id(),
             repr: "", // stub
             parts: Vec::new(),
             loc: self.current().loc,
@@ -1313,15 +1309,9 @@ impl Parser {
     // utils
 
     fn next_expr_id(&self) -> usize {
-        let expr_id = *self.next_expr_id;
-        *self.next_expr_id.be_mut() = expr_id + 1;
+        let expr_id = *self.expr_count;
+        *self.expr_count.be_mut() = expr_id + 1;
         expr_id
-    }
-
-    fn next_symbol_id(&self) -> usize {
-        let symbol_id = *self.next_symbol_id;
-        *self.next_symbol_id.be_mut() = symbol_id + 1;
-        symbol_id
     }
 
     fn push_ctx(&self, ctx: ParsingContext) {

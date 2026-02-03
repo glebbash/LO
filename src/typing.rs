@@ -2,7 +2,10 @@
 
 use core::usize;
 
-use crate::{ast::*, common::*, lexer::*, registry::*, wasm::*};
+use crate::{ast::*, common::*, lexer::*, registry::*};
+
+pub type ExprInfoId = usize;
+pub const EXPR_INFO_ID_EMPTY: ExprInfoId = usize::MAX;
 
 type TyScopeId = usize;
 
@@ -10,7 +13,6 @@ pub struct TyContext {
     pub module_id: usize,
     pub scope_id: TyScopeId,
     pub expr_id_offset: usize,
-    pub symbol_id_offset: usize,
 }
 
 #[derive(Clone)]
@@ -83,27 +85,6 @@ impl Typer {
     }
 
     pub fn init(&mut self) {
-        // ensure that TypeId 0 is invalid
-        self.registry.types.push(Type::Never);
-
-        // prefill all expression types to invalid TypeId
-        self.registry
-            .be_mut()
-            .expr_types
-            .resize(self.registry.next_expr_id, 0);
-
-        // prefill all symbols to invalid Symbol placeholder
-        self.registry.be_mut().symbols.resize(
-            self.registry.next_symbol_id,
-            TySymbol {
-                scope_id: usize::MAX,
-                name: "<invalid>",
-                kind: SymbolKind::Const,
-                col_index: usize::MAX,
-                loc: Loc::internal(),
-            },
-        );
-
         let global_scope_id = self.new_scope(TyScopeKind::Global, None);
 
         self.module_info.reserve(self.registry.modules.len());
@@ -114,10 +95,11 @@ impl Typer {
                     module_id: module.id,
                     scope_id: self.new_scope(TyScopeKind::Global, Some(global_scope_id)),
                     expr_id_offset: 0,
-                    symbol_id_offset: 0,
                 },
             });
         }
+
+        self.extend_expr_info_storage(self.registry.expr_count);
 
         self.add_builtin_type(Type::Never);
         self.add_builtin_type(Type::Void);
@@ -132,6 +114,13 @@ impl Typer {
         self.add_builtin_type(Type::U64);
         self.add_builtin_type(Type::I64);
         self.add_builtin_type(Type::F64);
+    }
+
+    fn extend_expr_info_storage(&self, expr_count: usize) {
+        self.registry.be_mut().expr_info.resize(
+            self.registry.expr_info.len() + expr_count,
+            EXPR_INFO_ID_EMPTY,
+        );
     }
 
     #[inline]
@@ -162,8 +151,8 @@ impl Typer {
             self.pass_collect_own_symbols(&module.ctx);
         }
 
-        for module in self.registry.modules.relax_mut() {
-            self.pass_collect_included_symbols(module);
+        for module in self.module_info.be_mut().relax_mut() {
+            self.pass_collect_included_symbols(&module.ctx);
         }
 
         for module in self.registry.modules.relax() {
@@ -262,42 +251,18 @@ impl Typer {
 
                         let enum_index = self.registry.enums.len() - 1;
 
-                        if variant_type != Type::Void {
-                            let _ = self.define_symbol_compat(
-                                ctx,
-                                constructor_name,
-                                SymbolKind::EnumConstructor,
-                                variant.variant_name.loc,
-                            );
+                        let _ = self.define_symbol_compat(
+                            ctx,
+                            constructor_name,
+                            SymbolKind::EnumConstructor,
+                            variant.variant_name.loc,
+                        );
 
-                            self.registry.enum_ctors.push(EnumConstructor {
-                                enum_index,
-                                variant_index,
-                            });
-                        } else {
-                            let Ok(_) = self.define_symbol_compat(
-                                ctx,
-                                constructor_name,
-                                SymbolKind::Const,
-                                variant.variant_name.loc,
-                            ) else {
-                                continue;
-                            };
-
-                            let mut instrs = Vec::new();
-                            instrs.push(WasmInstr::I32Const {
-                                value: variant_index as i32,
-                            });
-
-                            self.registry.constants.push(ConstDef {
-                                const_name: constructor_name,
-                                code_unit: CodeUnit {
-                                    type_: Type::EnumInstance { enum_index },
-                                    instrs,
-                                },
-                                loc: variant.variant_name.loc,
-                            })
-                        }
+                        self.registry.enum_ctors.push(EnumConstructor {
+                            enum_index,
+                            variant_index,
+                            loc: variant.variant_name.loc,
+                        });
                     }
                 }
                 TopLevelExpr::Fn(fn_def) => {
@@ -403,15 +368,59 @@ impl Typer {
         }
     }
 
-    fn pass_collect_included_symbols(&mut self, module: &mut Module) {
-        // scope for module's imports
-        self.registry
-            .init_scope_from_parent_and_push(&mut module.scope_stack, ScopeKind::Global);
+    fn pass_collect_included_symbols(&mut self, ctx: &TyContext) {
+        self.inline_includes(ctx, ctx, &mut String::from(""), true);
 
-        self.inline_includes(module.relax_mut(), module, &mut String::from(""), true);
+        // TODO: remove when migrated
+        {
+            let module = self.registry.modules[ctx.module_id].relax_mut();
+
+            // scope for module's imports
+            self.registry
+                .init_scope_from_parent_and_push(&mut module.scope_stack, ScopeKind::Global);
+
+            self.inline_includes_old(module.relax_mut(), module, &mut String::from(""), true);
+        }
     }
 
+    // TODO: old version was using an interlayer scope to store includes in
+    //   but this version is using module's scope to store inclues in
+    //   check if this is fine and fix if it isn't
     fn inline_includes(
+        &mut self,
+        includer: &TyContext,
+        includee: &TyContext,
+        prefix: &mut String,
+        force_go_deeper: bool,
+    ) {
+        if includer.module_id != includee.module_id {
+            let target_scope = self.scopes[includer.scope_id].relax_mut();
+
+            for symbol in self.scopes[includee.scope_id].symbols.relax() {
+                let mut included_symbol = symbol.clone();
+                included_symbol.name = self.alloc_str(format!("{}{}", prefix, symbol.name));
+                target_scope.symbols.push(included_symbol)
+            }
+        }
+
+        let original_prefix_len = prefix.len();
+        for include in self.registry.modules[includee.module_id].includes.relax() {
+            if !(include.with_extern || force_go_deeper) {
+                continue;
+            }
+
+            if let Some(alias) = &include.alias {
+                prefix.push_str(&alias);
+                prefix.push_str("::");
+            }
+
+            let sub_includee = self.module_info[include.module_index].relax();
+            self.inline_includes(includer, &sub_includee.ctx, prefix, false);
+            prefix.truncate(original_prefix_len);
+        }
+    }
+
+    fn inline_includes_old(
         &mut self,
         includer: &mut Module,
         includee: &Module,
@@ -440,7 +449,7 @@ impl Typer {
             }
 
             let included_module = self.registry.modules[include.module_index].relax();
-            self.inline_includes(includer, included_module, prefix, false);
+            self.inline_includes_old(includer, included_module, prefix, false);
             prefix.truncate(original_prefix_len);
         }
     }
@@ -880,30 +889,62 @@ impl Typer {
     fn type_code_expr(&mut self, ctx: &TyContext, expr: &CodeExpr) {
         match expr {
             CodeExpr::BoolLiteral(bool_literal) => {
-                self.store_type(ctx, bool_literal.id, &Type::Bool)
+                self.store_type(ctx, bool_literal.id, &Type::Bool);
             }
-            CodeExpr::CharLiteral(char_literal) => self.store_type(ctx, char_literal.id, &Type::U8),
+            CodeExpr::CharLiteral(char_literal) => {
+                self.store_type(ctx, char_literal.id, &Type::U8);
+            }
             CodeExpr::NullLiteral(null_literal) => {
-                self.store_type(ctx, null_literal.id, &Type::Null)
+                self.store_type(ctx, null_literal.id, &Type::Null);
             }
             CodeExpr::IntLiteral(int_literal) => {
-                // TODO: implement
+                let Some(_tag) = int_literal.tag else {
+                    return self.store_type(ctx, int_literal.id, &Type::U32);
+                };
 
-                match &int_literal.tag {
-                    Some("u8") => self.store_type(ctx, int_literal.id, &Type::U8),
-                    Some(_) => {}
-                    None => self.store_type(ctx, int_literal.id, &Type::U32),
-                }
+                // TODO: enable when symbols are properly stored
+                // let tag_type = catch!(self.get_type_or_err(ctx, tag, &int_literal.loc), err, {
+                //     self.reporter.error(&err);
+                //     return self.store_type(ctx, int_literal.id, &Type::U32);
+                // });
+
+                // catch!(self.is_64_bit_int_tag(&tag_type, &int_literal.loc), err, {
+                //     self.reporter.error(&err);
+                //     return self.store_type(ctx, int_literal.id, &Type::U32);
+                // });
             }
-            CodeExpr::StringLiteral(_string_literal) => {
-                // TODO: implement
+            CodeExpr::StringLiteral(_str_literal) => {
+                // TODO: enable when symbols are properly stored
+                // let Some(symbol) = self.get_symbol(ctx.scope_id, "str") else {
+                //     return self.reporter.error(&Error {
+                //         message: format!("Cannot use strings with no `str` struct defined"),
+                //         loc: str_literal.loc,
+                //     });
+                // };
+
+                // let str_type = Type::StructInstance {
+                //     struct_index: symbol.col_index,
+                // };
+                // self.store_type(ctx, str_literal.id, &str_type)
             }
             CodeExpr::StructLiteral(struct_literal) => {
-                // TODO: implement
-
                 for field in &struct_literal.body.fields {
                     self.type_code_expr(ctx, &field.value);
                 }
+
+                // TODO: enable when symbols are properly stored
+                // let Some(symbol) = self.get_symbol(ctx.scope_id, &struct_literal.struct_name.repr)
+                // else {
+                //     return self.reporter.error(&Error {
+                //         message: format!("Unknown struct: {}", struct_literal.struct_name.repr),
+                //         loc: struct_literal.loc,
+                //     });
+                // };
+
+                // let struct_type = Type::StructInstance {
+                //     struct_index: symbol.col_index,
+                // };
+                // return self.store_type(ctx, struct_literal.id, &struct_type);
             }
             CodeExpr::ArrayLiteral(_array_literal) => {
                 // TODO: implement
@@ -934,6 +975,10 @@ impl Typer {
 
                 if self.registry.types[value_type_id] == Type::Never {
                     self.store_type(ctx, let_expr.id, &Type::Never);
+                }
+
+                if let_expr.name.repr == "_" {
+                    return;
                 }
 
                 let _ = self.define_symbol(
@@ -1044,11 +1089,28 @@ impl Typer {
                 }
             }
             CodeExpr::InlineFnCall(call) => {
-                // TODO: implement
-
                 for arg in &call.args.items {
                     self.type_code_expr(ctx, arg);
                 }
+
+                let Some(symbol) = self.get_symbol(ctx.scope_id, call.fn_name.repr) else {
+                    return self.reporter.error(&Error {
+                        message: format!("Unknown inline fn: {}", call.fn_name.repr),
+                        loc: call.fn_name.loc,
+                    });
+                };
+
+                let inline_fn_def = self.registry.inline_fns[symbol.col_index];
+
+                let FnExprValue::Body(body) = &inline_fn_def.value else {
+                    unreachable!()
+                };
+
+                let mut inline_fn_ctx = self.child_ctx(ctx, TyScopeKind::InlineFn);
+                inline_fn_ctx.expr_id_offset = self.registry.expr_info.len() - body.expr_id_start;
+                self.extend_expr_info_storage(body.expr_id_end - body.expr_id_start);
+
+                self.type_code_block(&inline_fn_ctx, body);
             }
             CodeExpr::InlineMethodCall(call) => {
                 // TODO: implement
@@ -1162,6 +1224,80 @@ impl Typer {
         }
     }
 
+    // TODO: check if there is a better place to print inspections from here
+    fn get_type_or_err(&self, ctx: &TyContext, type_name: &str, loc: &Loc) -> Result<Type, Error> {
+        let Some(symbol) = self.get_symbol(ctx.scope_id, type_name) else {
+            return Err(Error {
+                message: format!("Unknown type: {}", type_name),
+                loc: *loc,
+            });
+        };
+
+        match symbol.kind {
+            SymbolKind::Struct => {
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: format!("struct {type_name} {{ ... }}"),
+                        loc: *loc,
+                        linked_loc: Some(symbol.loc),
+                    });
+                }
+
+                Ok(Type::StructInstance {
+                    struct_index: symbol.col_index,
+                })
+            }
+            SymbolKind::Enum => {
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: format!("enum {type_name} {{ ... }}"),
+                        loc: *loc,
+                        linked_loc: Some(symbol.loc),
+                    });
+                }
+
+                Ok(Type::EnumInstance {
+                    enum_index: symbol.col_index,
+                })
+            }
+            SymbolKind::TypeAlias => {
+                let type_id = self.type_aliases[symbol.col_index];
+                let type_ = &self.registry.types[type_id];
+
+                // don't print inspection for built-ins
+                if self.reporter.in_inspection_mode && symbol.loc.file_index != 0 {
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: format!("type {type_name} = {}", TypeFmt(&*self.registry, &type_)),
+                        loc: *loc,
+                        linked_loc: Some(symbol.loc),
+                    });
+                }
+
+                Ok(type_.clone())
+            }
+            SymbolKind::Local
+            | SymbolKind::Global
+            | SymbolKind::Const
+            | SymbolKind::Function
+            | SymbolKind::InlineFn
+            | SymbolKind::EnumConstructor => Err(Error {
+                message: format!("Symbol is not a type: {}", type_name),
+                loc: *loc,
+            }),
+        }
+    }
+
+    fn is_64_bit_int_tag(&self, tag_type: &Type, loc: &Loc) -> Result<bool, Error> {
+        match tag_type {
+            Type::U64 | Type::I64 => Ok(true),
+            Type::U8 | Type::I8 | Type::U16 | Type::I16 | Type::U32 | Type::I32 => Ok(false),
+            other => Err(Error {
+                message: format!("{} is not a valid int tag", TypeFmt(&*self.registry, other)),
+                loc: *loc,
+            }),
+        }
+    }
+
     // TODO: remove this once migrated
     fn define_symbol_compat(
         &self,
@@ -1244,7 +1380,6 @@ impl Typer {
             module_id: parent.module_id,
             scope_id: self.new_scope(scope_kind, Some(parent.scope_id)),
             expr_id_offset: 0,
-            symbol_id_offset: 0,
         }
     }
 
@@ -1260,12 +1395,12 @@ impl Typer {
     }
 
     fn load_type_id(&self, ctx: &TyContext, expr_id: ExprId) -> Option<TypeId> {
-        let type_id = self.registry.expr_types[ctx.expr_id_offset + expr_id];
-        if type_id == 0 {
+        let info_id = self.registry.expr_info[ctx.expr_id_offset + expr_id];
+        if info_id == EXPR_INFO_ID_EMPTY {
             return None;
         }
 
-        return Some(type_id);
+        return Some(info_id);
     }
 
     fn store_type(&self, ctx: &TyContext, expr_id: ExprId, type_: &Type) {
@@ -1274,7 +1409,7 @@ impl Typer {
     }
 
     fn store_type_id(&self, ctx: &TyContext, expr_id: ExprId, type_id: TypeId) {
-        self.registry.be_mut().expr_types[ctx.expr_id_offset + expr_id] = type_id;
+        self.registry.be_mut().expr_info[ctx.expr_id_offset + expr_id] = type_id;
     }
 
     fn build_type_id(&self, type_: &Type) -> TypeId {

@@ -237,6 +237,7 @@ pub struct EnumVariant {
 pub struct EnumConstructor {
     pub enum_index: usize,
     pub variant_index: usize,
+    pub loc: Loc,
 }
 
 pub struct GlobalDef {
@@ -310,6 +311,7 @@ pub enum VarInfo {
     Local(VarInfoLocal),
     Global(VarInfoGlobal),
     Const(VarInfoConst),
+    VoidEnumValue(VarInfoVoidEnumValue),
     Stored(VarInfoStored),
     StructValueField(VarInfoStructValueField),
 }
@@ -328,6 +330,13 @@ pub struct VarInfoGlobal {
 pub struct VarInfoConst {
     pub code_unit: &'static CodeUnit,
     pub inspect_info: Option<InspectInfo>,
+    pub loc: Loc,
+}
+
+pub struct VarInfoVoidEnumValue {
+    pub variant_index: usize,
+    pub inspect_info: Option<InspectInfo>,
+    pub var_type: Type,
     pub loc: Loc,
 }
 
@@ -353,6 +362,7 @@ impl VarInfo {
             VarInfo::Local(v) => &v.var_type,
             VarInfo::Global(v) => &v.var_type,
             VarInfo::Const(v) => &v.code_unit.type_,
+            VarInfo::VoidEnumValue(v) => &v.var_type,
             VarInfo::Stored(v) => &v.var_type,
             VarInfo::StructValueField(v) => &v.var_type,
         }
@@ -363,6 +373,7 @@ impl VarInfo {
             VarInfo::Local(v) => &v.inspect_info,
             VarInfo::Global(v) => &v.inspect_info,
             VarInfo::Const(v) => &v.inspect_info,
+            VarInfo::VoidEnumValue(v) => &v.inspect_info,
             VarInfo::Stored(v) => &v.inspect_info,
             VarInfo::StructValueField(v) => &v.inspect_info,
         }
@@ -380,8 +391,7 @@ pub struct Registry {
 
     pub modules: Vec<Module>,             // indexed by `module_index`
     pub types: Vec<Type>,                 // indexed by `TypeId`
-    pub expr_types: Vec<TypeId>,          // indexed by `expr.id()`
-    pub symbols: Vec<TySymbol>,           // indexed by `IdentExpr.symbol_id`
+    pub expr_info: Vec<ExprInfoId>,       // indexed by `expr.id()`
     pub globals: Vec<GlobalDef>,          // indexed by `col_index` when `kind = Global`
     pub constants: Vec<ConstDef>,         // indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,           // indexed by `col_index` when `kind = Function`
@@ -403,15 +413,14 @@ pub struct Registry {
     pub get_expr_type_hits: UBCell<usize>,
     pub get_expr_type_cache_hits: UBCell<usize>,
 
-    pub next_expr_id: usize,
-    pub next_symbol_id: usize,
-    pub next_scope_id: usize,
+    pub expr_count: usize,
+    pub scope_count: usize,
 }
 
 impl Registry {
     pub fn new() -> Self {
         let mut it = Self {
-            next_scope_id: 1, // global scope id is 0
+            scope_count: 1, // global scope id is 0
             ..Default::default()
         };
         it.reporter.fm = UBRef::new(&mut *it.fm);
@@ -463,19 +472,16 @@ impl Registry {
             return None;
         });
 
-        let parser = Parser::new(
-            lexer,
-            &mut self.reporter,
-            self.next_expr_id,
-            self.next_symbol_id,
-        );
+        let parser = Parser::new(lexer, &mut self.reporter);
         if !self.in_lex_only_mode {
+            *parser.expr_count.be_mut() = self.expr_count;
+
             catch!(parser.parse_file(), err, {
                 self.reporter.error(&err);
                 return None;
             });
-            self.next_expr_id = *parser.next_expr_id;
-            self.next_symbol_id = *parser.next_symbol_id;
+
+            self.expr_count = *parser.expr_count;
         }
 
         let mut includes = Vec::new();
@@ -589,8 +595,7 @@ impl Registry {
 
                     let mut msg = String::new();
                     write!(&mut msg, "LOC: {}\n", lines).unwrap();
-                    write!(&mut msg, "symbol count: {}\n", self.next_symbol_id).unwrap();
-                    write!(&mut msg, "expr count: {}\n", self.next_expr_id).unwrap();
+                    write!(&mut msg, "expr count: {}\n", self.expr_count).unwrap();
                     write!(
                         &mut msg,
                         "get_expr_type_hits: {}\n",
@@ -689,8 +694,8 @@ impl Registry {
         scope_stack: &mut Vec<Scope>,
         scope_type: ScopeKind,
     ) {
-        let scope_id = self.next_scope_id;
-        self.next_scope_id += 1;
+        let scope_id = self.scope_count;
+        self.scope_count += 1;
 
         let mut new_scope = Scope::new(scope_id, scope_type);
         if let Some(parent) = scope_stack.last() {
@@ -1271,11 +1276,15 @@ impl Registry {
     pub fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> Result<Type, Error> {
         *self.get_expr_type_hits.be_mut() += 1;
 
-        let expr_type_id = self.expr_types[expr.id()];
-        if expr_type_id != 0 {
-            *self.get_expr_type_cache_hits.be_mut() += 1;
-
-            return Ok(self.types[expr_type_id].clone());
+        if let Some(expr_info_id) = self.get_expr_info_id(ctx, expr) {
+            match expr {
+                CodeExpr::InlineFnCall(_) => {}     // TODO: implement
+                CodeExpr::InlineMethodCall(_) => {} // TODO: implement
+                _ => {
+                    *self.get_expr_type_cache_hits.be_mut() += 1;
+                    return Ok(self.types[expr_info_id].clone());
+                }
+            }
         }
 
         match expr {
@@ -1383,12 +1392,18 @@ impl Registry {
 
                         Ok(const_def.code_unit.type_.clone())
                     }
+                    SymbolKind::EnumConstructor => {
+                        let enum_ctor = &self.enum_ctors[symbol.col_index];
+
+                        Ok(Type::EnumInstance {
+                            enum_index: enum_ctor.enum_index,
+                        })
+                    }
                     SymbolKind::TypeAlias
                     | SymbolKind::Struct
                     | SymbolKind::Enum
                     | SymbolKind::InlineFn
-                    | SymbolKind::Function
-                    | SymbolKind::EnumConstructor => Err(Error {
+                    | SymbolKind::Function => Err(Error {
                         message: format!(
                             "Expected variable, found {:?} '{}'",
                             symbol.kind, ident.repr
@@ -1821,6 +1836,15 @@ impl Registry {
                 loc: _,
             }) => self.get_expr_type(ctx, expr),
         }
+    }
+
+    fn get_expr_info_id(&self, _ctx: &ExprContext, expr: &CodeExpr) -> Option<ExprInfoId> {
+        let expr_info_id = self.expr_info[expr.id()];
+        if expr_info_id == EXPR_INFO_ID_EMPTY {
+            return None;
+        }
+
+        Some(expr_info_id)
     }
 
     pub fn get_code_block_type(

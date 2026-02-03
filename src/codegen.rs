@@ -2825,6 +2825,11 @@ impl CodeGenerator {
             }) => {
                 instrs.extend_from_slice(&code_unit.instrs);
             }
+            VarInfo::VoidEnumValue(VarInfoVoidEnumValue { variant_index, .. }) => {
+                instrs.push(WasmInstr::I32Const {
+                    value: *variant_index as i32,
+                })
+            }
             VarInfo::Stored(VarInfoStored {
                 address,
                 offset,
@@ -2976,6 +2981,7 @@ impl CodeGenerator {
                 }
             }
             VarInfo::Const(VarInfoConst { loc, .. })
+            | VarInfo::VoidEnumValue(VarInfoVoidEnumValue { loc, .. })
             | VarInfo::StructValueField(VarInfoStructValueField { loc, .. }) => {
                 return Err(Error {
                     message: format!("Cannot mutate a constant"),
@@ -3135,12 +3141,38 @@ impl CodeGenerator {
                     loc: ident.loc,
                 }))
             }
+            SymbolKind::EnumConstructor => {
+                let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
+
+                let var_type = Type::EnumInstance {
+                    enum_index: enum_ctor.enum_index,
+                };
+
+                let mut inspect_info = None;
+                if self.reporter.in_inspection_mode {
+                    inspect_info = Some(InspectInfo {
+                        message: format!(
+                            "inline let {}: {}",
+                            ident.repr,
+                            TypeFmt(&*self.registry, &var_type)
+                        ),
+                        loc: ident.loc,
+                        linked_loc: Some(enum_ctor.loc),
+                    })
+                }
+
+                Ok(VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
+                    variant_index: enum_ctor.variant_index,
+                    inspect_info,
+                    var_type,
+                    loc: ident.loc,
+                }))
+            }
             SymbolKind::TypeAlias
             | SymbolKind::Struct
             | SymbolKind::Enum
             | SymbolKind::InlineFn
-            | SymbolKind::Function
-            | SymbolKind::EnumConstructor => Err(Error {
+            | SymbolKind::Function => Err(Error {
                 message: format!(
                     "Expected variable, found {:?} '{}'",
                     symbol.kind, ident.repr
@@ -3189,10 +3221,13 @@ impl CodeGenerator {
 
         if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref())? {
             match var {
+                // TODO: update this since struct globals are now supported
                 // struct globals are not supported so these are handled the same way as struct values
                 VarInfo::Global(_) => {}
                 // consts are handled as struct values as well
                 VarInfo::Const(_) => {}
+                // void enums are handled as struct values as well
+                VarInfo::VoidEnumValue(_) => {}
                 VarInfo::Local(VarInfoLocal {
                     local_index,
                     var_type: _,

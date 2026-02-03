@@ -82,6 +82,8 @@ pub struct EnumDefVariant {
 
 pub struct CodeBlock {
     pub exprs: Vec<CodeExpr>,
+    pub expr_id_start: usize,
+    pub expr_id_end: usize,
     pub loc: Loc,
 }
 
@@ -221,8 +223,6 @@ pub struct ReturnExpr {
 
 pub struct IdentExpr {
     pub id: ExprId,
-    #[allow(dead_code)] // TODO: remove
-    pub symbol_id: usize,
     pub repr: &'static str,
     pub parts: Vec<Loc>,
     pub loc: Loc,
