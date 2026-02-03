@@ -10,11 +10,11 @@ mod lexer;
 mod parser;
 mod printer;
 mod registry;
-mod typing;
+mod typer;
 mod wasm;
 mod wasm_eval;
 
-use crate::{codegen::*, common::*, printer::*, registry::*, typing::*, wasm_eval::*};
+use crate::{codegen::*, common::*, printer::*, registry::*, typer::*, wasm_eval::*};
 
 static USAGE: &str = "Usage:
   lo compile <input.lo>

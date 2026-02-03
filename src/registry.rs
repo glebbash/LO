@@ -1,4 +1,4 @@
-use crate::{ast::*, common::*, lexer::*, parser::*, typing::*, wasm::*};
+use crate::{ast::*, common::*, lexer::*, parser::*, typer::*, wasm::*};
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Type {
