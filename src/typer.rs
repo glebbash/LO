@@ -155,12 +155,12 @@ impl Typer {
             self.pass_collect_included_symbols(&module.ctx);
         }
 
-        for module in self.registry.modules.relax() {
-            self.pass_build_type_def_values(module);
+        for module in self.module_info.be_mut().relax_mut() {
+            self.pass_build_type_def_values(&module.ctx);
         }
 
-        for module in self.registry.modules.relax_mut() {
-            self.pass_process_top_level_exprs(module);
+        for module in self.module_info.be_mut().relax_mut() {
+            self.pass_process_top_level_exprs(&module.ctx);
         }
 
         for module in self.module_info.be_mut().relax_mut() {
@@ -201,6 +201,11 @@ impl Typer {
                             type_def.name.loc,
                         );
 
+                        self.structs.push(StructDef {
+                            struct_name: type_def.name.repr,
+                            fields: Vec::new(),
+                            fully_defined: false,
+                        });
                         self.registry.structs.push(StructDef {
                             struct_name: type_def.name.repr,
                             fields: Vec::new(),
@@ -454,7 +459,9 @@ impl Typer {
         }
     }
 
-    fn pass_build_type_def_values(&mut self, module: &Module) {
+    fn pass_build_type_def_values(&mut self, ctx: &TyContext) {
+        let module = self.registry.modules[ctx.module_id].relax_mut();
+
         'exprs: for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Type(type_def) => {
@@ -537,18 +544,25 @@ impl Typer {
                         }
 
                         let symbol = self
-                            .registry
-                            .current_scope(&module.ctx)
-                            .get_symbol(&type_def.name.repr)
+                            .get_symbol(ctx.scope_id, type_def.name.repr)
                             .unwrap()
                             .relax();
+
                         let SymbolKind::Struct = symbol.kind else {
                             continue;
                         };
-                        let struct_ = &mut self.registry.structs[symbol.col_index];
 
-                        struct_.fields.append(&mut struct_fields);
-                        struct_.fully_defined = true;
+                        // TODO: remove when migrated
+                        {
+                            let struct_def = &mut self.registry.structs[symbol.col_index];
+                            struct_def.fields.extend(struct_fields.clone());
+                            struct_def.fully_defined = true;
+                        }
+
+                        let struct_def = &mut self.structs[symbol.col_index];
+                        struct_def.fields.append(&mut struct_fields);
+                        struct_def.fully_defined = true;
+
                         continue;
                     }
 
@@ -622,7 +636,9 @@ impl Typer {
         }
     }
 
-    fn pass_process_top_level_exprs(&mut self, module: &mut Module) {
+    fn pass_process_top_level_exprs(&mut self, ctx: &TyContext) {
+        let module = self.registry.modules[ctx.module_id].relax_mut();
+
         for expr in &*module.parser.ast {
             match expr {
                 TopLevelExpr::Type(_) => {} // skip, processed in previous passes
@@ -913,38 +929,37 @@ impl Typer {
                 //     return self.store_type(ctx, int_literal.id, &Type::U32);
                 // });
             }
-            CodeExpr::StringLiteral(_str_literal) => {
-                // TODO: enable when symbols are properly stored
-                // let Some(symbol) = self.get_symbol(ctx.scope_id, "str") else {
-                //     return self.reporter.error(&Error {
-                //         message: format!("Cannot use strings with no `str` struct defined"),
-                //         loc: str_literal.loc,
-                //     });
-                // };
+            CodeExpr::StringLiteral(str_literal) => {
+                let Some(symbol) = self.get_symbol(ctx.scope_id, "str") else {
+                    return self.reporter.error(&Error {
+                        message: format!("Cannot use strings with no `str` struct defined"),
+                        loc: str_literal.loc,
+                    });
+                };
 
-                // let str_type = Type::StructInstance {
-                //     struct_index: symbol.col_index,
-                // };
-                // self.store_type(ctx, str_literal.id, &str_type)
+                let str_type = Type::StructInstance {
+                    struct_index: symbol.col_index,
+                };
+                self.store_type(ctx, str_literal.id, &str_type)
             }
             CodeExpr::StructLiteral(struct_literal) => {
+                // TODO: check that fields match struct definition
                 for field in &struct_literal.body.fields {
                     self.type_code_expr(ctx, &field.value);
                 }
 
-                // TODO: enable when symbols are properly stored
-                // let Some(symbol) = self.get_symbol(ctx.scope_id, &struct_literal.struct_name.repr)
-                // else {
-                //     return self.reporter.error(&Error {
-                //         message: format!("Unknown struct: {}", struct_literal.struct_name.repr),
-                //         loc: struct_literal.loc,
-                //     });
-                // };
+                let Some(symbol) = self.get_symbol(ctx.scope_id, &struct_literal.struct_name.repr)
+                else {
+                    return self.reporter.error(&Error {
+                        message: format!("Unknown struct: {}", struct_literal.struct_name.repr),
+                        loc: struct_literal.loc,
+                    });
+                };
 
-                // let struct_type = Type::StructInstance {
-                //     struct_index: symbol.col_index,
-                // };
-                // return self.store_type(ctx, struct_literal.id, &struct_type);
+                let struct_type = Type::StructInstance {
+                    struct_index: symbol.col_index,
+                };
+                return self.store_type(ctx, struct_literal.id, &struct_type);
             }
             CodeExpr::ArrayLiteral(_array_literal) => {
                 // TODO: implement

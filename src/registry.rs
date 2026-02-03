@@ -213,6 +213,7 @@ pub struct StructDef {
     pub fully_defined: bool, // used for self-reference checks
 }
 
+#[derive(Clone)]
 pub struct StructField {
     pub field_name: &'static str,
     pub field_type: Type,
@@ -254,6 +255,7 @@ pub struct ConstDef {
     pub loc: Loc,
 }
 
+#[derive(Clone)]
 pub struct TypeLayout {
     pub primities_count: u32,
     pub byte_size: u32,
