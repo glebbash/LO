@@ -1,4 +1,4 @@
-use crate::{ast::*, common::*, lexer::*, registry::*, wasm::*};
+use crate::{ast::*, common::*, lexer::*, registry::*, typer::*, wasm::*};
 
 pub struct CodeGenerator {
     // context
@@ -113,7 +113,7 @@ impl CodeGenerator {
                 &global.def_expr.value,
             );
             catch!(res, err, {
-                self.reporter.error(&err);
+                self.report_error(&err);
             });
 
             for i in 0..wasm_types.len() {
@@ -136,7 +136,7 @@ impl CodeGenerator {
         // build function codes
         for fn_info in self.registry.functions.relax_mut().iter() {
             let FnSource::Guest {
-                module_index,
+                module_id,
                 lo_fn_index,
                 body,
             } = &fn_info.fn_source
@@ -144,7 +144,7 @@ impl CodeGenerator {
                 continue;
             };
 
-            let ctx = &mut ExprContext::new(*module_index, Some(*lo_fn_index));
+            let ctx = &mut ExprContext::new(*module_id, Some(*lo_fn_index));
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
 
             let constants_len = self.registry.constants.len();
@@ -213,7 +213,7 @@ impl CodeGenerator {
                         continue;
                     }
 
-                    let mut module = &self.registry.modules[ctx.module_index];
+                    let mut module = &self.registry.modules[ctx.module_id];
                     if file_index != module.parser.lexer.file_index {
                         // local defined by inline fn from another module
                         module = &self.registry.get_module_by_file_index(file_index).unwrap();
@@ -284,7 +284,7 @@ impl CodeGenerator {
             && self.registry.memory.is_none()
             && !self.reporter.in_inspection_mode
         {
-            self.reporter.error(&Error {
+            self.report_error(&Error {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: string_usage_loc,
             });
@@ -309,7 +309,7 @@ impl CodeGenerator {
                             match self.registry.get_expr_type(&module.ctx, &let_expr.value) {
                                 Ok(x) => x,
                                 Err(err) => {
-                                    self.reporter.error(&err);
+                                    self.report_error(&err);
                                     continue;
                                 }
                             };
@@ -320,7 +320,7 @@ impl CodeGenerator {
                             &mut const_.code_unit.instrs,
                             &let_expr.value,
                         ) {
-                            self.reporter.error(&err);
+                            self.report_error(&err);
                             continue;
                         };
 
@@ -345,7 +345,7 @@ impl CodeGenerator {
                         loc,
                     }) if intrinsic.repr == "use_memory" => {
                         if let Some(existing_memory) = &self.registry.memory {
-                            self.reporter.error(&Error {
+                            self.report_error(&Error {
                                 message: format!(
                                     "Cannot redefine memory, first defined at {}",
                                     existing_memory.loc.to_string(&self.reporter.fm)
@@ -356,7 +356,7 @@ impl CodeGenerator {
                         }
 
                         if type_args.len() != 0 {
-                            self.reporter.error(&bad_signature(intrinsic));
+                            self.report_error(&bad_signature(intrinsic));
                         }
 
                         let mut memory = MemoryInfo {
@@ -382,19 +382,19 @@ impl CodeGenerator {
                                 lhs, rhs: value, ..
                             }) = arg
                             else {
-                                self.reporter.error(&bad_signature(intrinsic));
+                                self.report_error(&bad_signature(intrinsic));
                                 continue;
                             };
 
                             let CodeExpr::Ident(key) = &**lhs else {
-                                self.reporter.error(&bad_signature(intrinsic));
+                                self.report_error(&bad_signature(intrinsic));
                                 continue;
                             };
 
                             if key.repr == "data_start" {
                                 tmp_instrs.clear();
                                 if let Err(err) = self.codegen(ctx, tmp_instrs, &value) {
-                                    self.reporter.error(&err);
+                                    self.report_error(&err);
                                 };
 
                                 if tmp_instrs.len() == 1 {
@@ -405,14 +405,14 @@ impl CodeGenerator {
                                     }
                                 }
 
-                                self.reporter.error(&bad_signature(intrinsic));
+                                self.report_error(&bad_signature(intrinsic));
                                 continue;
                             }
 
                             if key.repr == "min_pages" {
                                 tmp_instrs.clear();
                                 if let Err(err) = self.codegen(ctx, tmp_instrs, &value) {
-                                    self.reporter.error(&err);
+                                    self.report_error(&err);
                                 };
 
                                 if tmp_instrs.len() == 1 {
@@ -422,13 +422,13 @@ impl CodeGenerator {
                                     }
                                 }
 
-                                self.reporter.error(&bad_signature(intrinsic));
+                                self.report_error(&bad_signature(intrinsic));
                                 continue;
                             }
 
                             if key.repr == "import_from" {
                                 let CodeExpr::StringLiteral(str) = &**value else {
-                                    self.reporter.error(&bad_signature(intrinsic));
+                                    self.report_error(&bad_signature(intrinsic));
                                     continue;
                                 };
 
@@ -436,7 +436,7 @@ impl CodeGenerator {
                                 continue;
                             }
 
-                            self.reporter.error(&bad_signature(intrinsic));
+                            self.report_error(&bad_signature(intrinsic));
                         }
 
                         self.registry.memory = Some(memory);
@@ -471,7 +471,7 @@ impl CodeGenerator {
 
         for expr in &body.exprs {
             let expr_type = catch!(self.registry.get_expr_type(ctx, expr), err, {
-                self.reporter.error(&err);
+                self.report_error(&err);
                 continue;
             });
 
@@ -491,7 +491,7 @@ impl CodeGenerator {
             let mut type_layout = TypeLayout::new();
             self.registry.get_type_layout(&expr_type, &mut type_layout);
             if type_layout.primities_count > 0 && void_only {
-                self.reporter.error(&Error {
+                self.report_error(&Error {
                     message: format!(
                         "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
                     ),
@@ -500,7 +500,7 @@ impl CodeGenerator {
             }
 
             catch!(self.codegen(ctx, instrs, expr), err, {
-                self.reporter.error(&err);
+                self.report_error(&err);
                 continue;
             });
         }
@@ -511,13 +511,14 @@ impl CodeGenerator {
             instrs.push(WasmInstr::Unreachable);
         }
 
+        // TODO: move this check to typer
         if !naturally_diverges
             && !terminates_early
             && self.registry.current_scope(ctx).kind == ScopeKind::Function
         {
             let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.fn_type.output != Type::Void {
-                self.reporter.error(&Error {
+                self.report_error(&Error {
                     // error message stolen from clang
                     message: format!("Control reaches end of non-void function"),
                     loc: fn_info.definition_loc,
@@ -600,7 +601,7 @@ impl CodeGenerator {
                 for field_index in 0..body.fields.len() {
                     let field_literal = &body.fields[field_index];
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
-                        self.reporter.error(&Error {
+                        self.report_error(&Error {
                             message: format!("Excess field values"),
                             loc: field_literal.loc,
                         });
@@ -608,7 +609,7 @@ impl CodeGenerator {
                     };
 
                     if &field_literal.key != &struct_field.field_name {
-                        self.reporter.error(&Error {
+                        self.report_error(&Error {
                             message: format!(
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
@@ -618,17 +619,14 @@ impl CodeGenerator {
                     }
 
                     catch!(self.codegen(ctx, instrs, &field_literal.value), err, {
-                        self.reporter.error(&err);
+                        self.report_error(&err);
                         continue;
                     });
 
                     let field_value_type =
                         self.registry.get_expr_type(ctx, &field_literal.value)?;
-                    if !self
-                        .registry
-                        .is_type_compatible(&struct_field.field_type, &field_value_type)
-                    {
-                        self.reporter.error(&Error {
+                    if !is_type_compatible(&struct_field.field_type, &field_value_type) {
+                        self.report_error(&Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_name.repr,
@@ -647,7 +645,7 @@ impl CodeGenerator {
                         missing_fields.push(&struct_def.fields[i].field_name)
                     }
 
-                    self.reporter.error(&Error {
+                    self.report_error(&Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
                         loc: struct_name.loc,
                     });
@@ -760,7 +758,7 @@ impl CodeGenerator {
                 }
 
                 if *is_ok {
-                    if !self.registry.is_type_compatible(&result.ok, &value_type) {
+                    if !is_type_compatible(&result.ok, &value_type) {
                         return Err(Error {
                             message: format!(
                                 "Cannot create result, Ok type mismatch. Got {}, expected: {}",
@@ -781,7 +779,7 @@ impl CodeGenerator {
                     return Ok(());
                 }
 
-                if !self.registry.is_type_compatible(&result.err, &value_type) {
+                if !is_type_compatible(&result.err, &value_type) {
                     return Err(Error {
                         message: format!(
                             "Cannot create result, Err type mismatch. Got {}, expected: {}",
@@ -1034,7 +1032,7 @@ impl CodeGenerator {
                 let lhs_type = self.registry.get_expr_type(ctx, lhs)?;
                 let rhs_type = self.registry.get_expr_type(ctx, rhs)?;
 
-                if !self.registry.is_type_compatible(&lhs_type, &rhs_type) {
+                if !is_type_compatible(&lhs_type, &rhs_type) {
                     return Err(Error {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
@@ -1088,8 +1086,8 @@ impl CodeGenerator {
                 }
 
                 let rhs_type = self.registry.get_expr_type(ctx, rhs)?;
-                if !self.registry.is_type_compatible(var.get_type(), &rhs_type) {
-                    self.reporter.error(&Error {
+                if !is_type_compatible(var.get_type(), &rhs_type) {
+                    self.report_error(&Error {
                         message: format!(
                             "Cannot assign {} to variable of type {}",
                             TypeFmt(&*self.registry, &rhs_type),
@@ -1149,10 +1147,7 @@ impl CodeGenerator {
                         }
 
                         let expr_type = self.registry.get_expr_type(ctx, &args.items[0])?;
-                        if !self
-                            .registry
-                            .is_type_compatible(&variant.variant_type, &expr_type)
-                        {
+                        if !is_type_compatible(&variant.variant_type, &expr_type) {
                             return Err(Error {
                                 message: format!(
                                     "Invalid enum payload: {}, expected: {}",
@@ -1204,6 +1199,7 @@ impl CodeGenerator {
                     type_args,
                     None,
                     &args.items,
+                    expr,
                     &fn_name.loc,
                 )?;
             }
@@ -1226,6 +1222,7 @@ impl CodeGenerator {
                     type_args,
                     Some(lhs),
                     &args.items,
+                    expr,
                     &field_name.loc,
                 )?;
             }
@@ -1397,7 +1394,7 @@ impl CodeGenerator {
 
                     let mut slice_ptr_instrs = Vec::new();
                     if let Err(err) = self.codegen(ctx, &mut slice_ptr_instrs, &args.items[0]) {
-                        self.reporter.error(&err);
+                        self.report_error(&err);
                         return Ok(());
                     };
 
@@ -1439,14 +1436,14 @@ impl CodeGenerator {
                 if fn_name.repr == "inline_fn_call_loc" {
                     let mut inline_fn_call_loc = None;
                     // NOTE: not iterating in reverse to get the first inline scope
-                    for scope in &self.registry.modules[ctx.module_index].scope_stack {
+                    for scope in &self.registry.modules[ctx.module_id].scope_stack {
                         if scope.kind == ScopeKind::InlineFn {
                             inline_fn_call_loc = scope.inline_fn_call_loc.clone();
                         }
                     }
 
                     let Some(inline_fn_call_loc) = inline_fn_call_loc else {
-                        self.reporter.error(&Error {
+                        self.report_error(&Error {
                             message: format!(
                                 "Forbidden use of `@{}()` outside of inline fn",
                                 fn_name.repr
@@ -1477,7 +1474,7 @@ impl CodeGenerator {
                     }
 
                     let arg_type = catch!(self.registry.get_expr_type(ctx, &args.items[0]), err, {
-                        self.reporter.error(&err);
+                        self.report_error(&err);
                         return Ok(());
                     });
 
@@ -1516,7 +1513,7 @@ impl CodeGenerator {
                     }
 
                     let arg_type = catch!(self.registry.get_expr_type(ctx, &args.items[0]), err, {
-                        self.reporter.error(&err);
+                        self.report_error(&err);
                         return Ok(());
                     });
 
@@ -1581,7 +1578,7 @@ impl CodeGenerator {
                     return Ok(());
                 }
 
-                self.reporter.error(&Error {
+                self.report_error(&Error {
                     message: format!("Unknown intrinsic: {}", fn_name.repr),
                     loc: fn_name.loc,
                 });
@@ -1624,10 +1621,7 @@ impl CodeGenerator {
                 };
 
                 let fn_return_type = &self.registry.functions[fn_index].fn_type.output;
-                if !self
-                    .registry
-                    .is_type_compatible(fn_return_type, &return_type)
-                {
+                if !is_type_compatible(fn_return_type, &return_type) {
                     return Err(Error {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
@@ -1652,7 +1646,7 @@ impl CodeGenerator {
                     IfCond::Expr(expr) => {
                         if let Ok(cond_type) = self.registry.get_expr_type(ctx, expr) {
                             if cond_type != Type::Bool {
-                                self.reporter.error(&Error {
+                                self.report_error(&Error {
                                     message: format!(
                                         "Unexpected condition type: {}, expected: {}",
                                         TypeFmt(&*self.registry, &cond_type),
@@ -1735,7 +1729,7 @@ impl CodeGenerator {
                 self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
                 let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
                 if !terminates_early {
-                    self.reporter.error(&Error {
+                    self.report_error(&Error {
                         message: format!(
                             "Match's else block must resolve to never, got other type"
                         ),
@@ -1763,7 +1757,7 @@ impl CodeGenerator {
                 if let Some(cond) = cond {
                     if let Ok(cond_type) = self.registry.get_expr_type(ctx, cond) {
                         if cond_type != Type::Bool {
-                            self.reporter.error(&Error {
+                            self.report_error(&Error {
                                 message: format!(
                                     "Unexpected condition type: {}, expected: {}",
                                     TypeFmt(&*self.registry, &cond_type),
@@ -1775,7 +1769,7 @@ impl CodeGenerator {
                     }
 
                     catch!(self.codegen(ctx, instrs, cond), err, {
-                        self.reporter.error(&err);
+                        self.report_error(&err);
                     });
 
                     instrs.push(WasmInstr::UnaryOp {
@@ -1818,7 +1812,7 @@ impl CodeGenerator {
                 let mut is_64_bit_counter = false;
                 match self.registry.is_64_bit_int_tag(&counter_type, loc) {
                     Ok(is_64) => is_64_bit_counter = is_64,
-                    Err(err) => self.reporter.error(&err),
+                    Err(err) => self.report_error(&err),
                 }
 
                 self.registry.be_mut().enter_scope(ctx, ScopeKind::ForLoop);
@@ -1907,7 +1901,7 @@ impl CodeGenerator {
             CodeExpr::Break(BreakExpr { id: _, loc }) => {
                 let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
 
-                for scope in self.registry.modules[ctx.module_index]
+                for scope in self.registry.modules[ctx.module_id]
                     .scope_stack
                     .iter()
                     .rev()
@@ -1937,7 +1931,7 @@ impl CodeGenerator {
             CodeExpr::Continue(ContinueExpr { id: _, loc }) => {
                 let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
 
-                for scope in self.registry.modules[ctx.module_index]
+                for scope in self.registry.modules[ctx.module_id]
                     .scope_stack
                     .iter()
                     .rev()
@@ -1969,7 +1963,7 @@ impl CodeGenerator {
                 loc: _,
             }) => {
                 let Some(first_arg) = args.items.first() else {
-                    self.reporter.error(&Error {
+                    self.report_error(&Error {
                         message: format!("do-with expressions must have at least one argument"),
                         loc: with_loc.clone(),
                     });
@@ -1981,7 +1975,7 @@ impl CodeGenerator {
                 for arg in &args.items {
                     let current_arg_type = self.registry.get_expr_type(ctx, arg)?;
                     if current_arg_type != arg_type {
-                        self.reporter.error(&Error {
+                        self.report_error(&Error {
                             message: format!(
                                 "do-with argument type mismatch. expected: {}, got: {}",
                                 TypeFmt(&*self.registry, &arg_type),
@@ -2015,7 +2009,7 @@ impl CodeGenerator {
             }) => {
                 let lhs_type = self.registry.get_expr_type(ctx, lhs)?;
                 catch!(self.codegen(ctx, instrs, lhs), err, {
-                    self.reporter.error(&err);
+                    self.report_error(&err);
                     return Ok(());
                 });
 
@@ -2027,7 +2021,7 @@ impl CodeGenerator {
 
                 self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
                 catch!(self.codegen(ctx, instrs, rhs), err, {
-                    self.reporter.error(&err);
+                    self.report_error(&err);
                     return Ok(());
                 });
                 self.registry.be_mut().exit_scope(ctx);
@@ -2040,12 +2034,12 @@ impl CodeGenerator {
                 let code_unit = self.build_code_unit(ctx, expr)?;
 
                 // find first non-inline-fn scope
-                let mut scope_to_defer = self.registry.modules[ctx.module_index]
+                let mut scope_to_defer = self.registry.modules[ctx.module_id]
                     .scope_stack
                     .relax_mut()
                     .last_mut()
                     .unwrap();
-                for scope in self.registry.modules[ctx.module_index]
+                for scope in self.registry.modules[ctx.module_id]
                     .scope_stack
                     .iter_mut()
                     .rev()
@@ -2146,11 +2140,8 @@ impl CodeGenerator {
             let expected_expr_to_match_type = Type::EnumInstance {
                 enum_index: enum_ctor.enum_index,
             };
-            if !self
-                .registry
-                .is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type)
-            {
-                self.reporter.error(&Error {
+            if !is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type) {
+                self.report_error(&Error {
                     message: format!(
                         "Unexpected type to match, expected: {}, got: {}",
                         TypeFmt(&*self.registry, &expected_expr_to_match_type),
@@ -2222,10 +2213,7 @@ impl CodeGenerator {
             });
         }
 
-        if !self
-            .registry
-            .is_types_compatible(&fn_info.fn_type.inputs, &arg_types)
-        {
+        if !is_types_compatible(&fn_info.fn_type.inputs, &arg_types) {
             return Err(Error {
                 message: format!(
                     "Invalid function arguments for function {}: [{}], expected [{}]",
@@ -2325,7 +2313,7 @@ impl CodeGenerator {
                 loc: inline_fn_param.loc,
             };
 
-            if let Some(type_name) = self.registry.get_infer_type_name(inline_fn_param)? {
+            if let Some(type_name) = get_infer_type_name(inline_fn_param)? {
                 self.registry.register_block_type(
                     ctx,
                     type_name,
@@ -2351,10 +2339,7 @@ impl CodeGenerator {
             inline_fn_types.push(inline_fn_type);
         }
 
-        if !self
-            .registry
-            .is_types_compatible(&inline_fn_types, &arg_types)
-        {
+        if !is_types_compatible(&inline_fn_types, &arg_types) {
             return Err(Error {
                 message: format!(
                     "Invalid inline fn args, expected [{}], got [{}]",
@@ -2362,52 +2347,6 @@ impl CodeGenerator {
                     TypeListFmt(&*self.registry, &arg_types)
                 ),
                 loc: *loc,
-            });
-        }
-
-        if self.reporter.in_inspection_mode {
-            let mut message = String::new();
-
-            write!(&mut message, "inline fn {inline_fn_name}").unwrap();
-            if lo_type_args.len() > 0 {
-                let lo_type_args = TypeListFmt(&*self.registry, &lo_type_args);
-                write!(&mut message, "<{lo_type_args}>").unwrap();
-            }
-            write!(&mut message, "(").unwrap();
-
-            for i in 0..inline_fn_types.len() {
-                if i != 0 {
-                    message.push_str(", ");
-                }
-
-                let param = &inline_fn_def.decl.params[i];
-                message.push_str(param.param_name.repr);
-                match param.param_type {
-                    FnParamType::Self_ | FnParamType::SelfRef => {}
-                    _ => {
-                        message.push_str(": ");
-                        let arg_type = TypeFmt(&*self.registry, &inline_fn_types[i]);
-                        write!(&mut message, "{arg_type}",).unwrap();
-                    }
-                }
-            }
-
-            let return_type = if let Some(return_type) = &inline_fn_def.decl.return_type {
-                self.registry.build_type(ctx, return_type)?
-            } else {
-                Type::Void
-            };
-            write!(
-                &mut message,
-                "): {}",
-                TypeFmt(&*self.registry, &return_type)
-            )
-            .unwrap();
-
-            self.reporter.print_inspection(&InspectInfo {
-                message,
-                loc: *loc,
-                linked_loc: Some(inline_fn_def.decl.fn_name.loc),
             });
         }
 
@@ -2422,10 +2361,11 @@ impl CodeGenerator {
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
+        call_expr: &CodeExpr,
         loc: &Loc,
     ) -> Result<(), Error> {
         self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
-        self.registry.current_scope_mut(ctx).inline_fn_call_loc = Some(*loc);
+        self.registry.current_scope(ctx).be_mut().inline_fn_call_loc = Some(*loc);
 
         let inline_fn_def = self.relax_mut().populate_ctx_from_inline_fn_call(
             ctx,
@@ -2443,6 +2383,14 @@ impl CodeGenerator {
         let FnExprValue::Body(body) = &inline_fn_def.value else {
             unreachable!()
         };
+
+        if let Some(expr_info_id) = self.registry.get_expr_info_id(ctx, call_expr) {
+            let call_info = &self.registry.inline_fn_call_info[expr_info_id];
+            // TODO: remove if no longer needed for debugging
+            // stderr_writeln(format!("got_offset({})", call_info.inner_expr_offset));
+            self.registry.current_scope(ctx).be_mut().expr_info_offset =
+                call_info.inner_expr_offset;
+        }
 
         self.codegen_code_block(ctx, instrs, body, false);
 
@@ -2511,7 +2459,7 @@ impl CodeGenerator {
         if let Some(catch_body) = catch_body {
             let terminates_early = self.codegen_code_block(ctx, instrs, catch_body, true);
             if !terminates_early {
-                self.reporter.error(&Error {
+                self.report_error(&Error {
                     message: format!("Catch expression must resolve to never, got other type"),
                     loc: *loc,
                 });
@@ -3010,7 +2958,7 @@ impl CodeGenerator {
     }
 
     fn emit_deferred_for_return(&self, ctx: &ExprContext, instrs: &mut Vec<WasmInstr>) {
-        for scope in self.registry.modules[ctx.module_index]
+        for scope in self.registry.modules[ctx.module_id]
             .scope_stack
             .iter()
             .rev()
@@ -3464,7 +3412,7 @@ impl CodeGenerator {
                 .and_then(|tag_type| self.registry.is_64_bit_int_tag(&tag_type, loc))
             {
                 Ok(is_64) => is_64_bit = is_64,
-                Err(err) => self.reporter.error(&err),
+                Err(err) => self.report_error(&err),
             }
         }
 
@@ -3533,7 +3481,7 @@ impl CodeGenerator {
                 return Err(Error {
                     message: format!(
                         "Operator `{}` is incompatible with operands of type {}",
-                        op_loc.read_span(&self.registry.modules[ctx.module_index].source),
+                        op_loc.read_span(&self.registry.modules[ctx.module_id].source),
                         TypeFmt(&*self.registry, operand_type)
                     ),
                     loc: op_loc.clone(),
@@ -3642,7 +3590,7 @@ impl CodeGenerator {
             Error {
                 message: format!(
                     "Operator `{}` is incompatible with operands of type {}",
-                    op_loc.read_span(&self_.registry.modules[ctx.module_index].source),
+                    op_loc.read_span(&self_.registry.modules[ctx.module_id].source),
                     TypeFmt(&*self_.registry, op_type)
                 ),
                 loc: op_loc.clone(),
@@ -3769,5 +3717,14 @@ impl CodeGenerator {
                 self.push_wasm_dbg_name_section_locals(output, local_index, container, local_name);
             }
         }
+    }
+
+    // TODO: remove tag after migration
+    fn report_error(&self, err: &Error) {
+        let marked_error = Error {
+            message: format!("(codegen) {}", err.message),
+            loc: err.loc.clone(),
+        };
+        self.reporter.error(&marked_error);
     }
 }

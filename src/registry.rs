@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove
+
 use crate::{ast::*, common::*, lexer::*, parser::*, typer::*, wasm::*};
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
@@ -108,7 +110,7 @@ pub struct FnParameter {
 
 pub enum FnSource {
     Guest {
-        module_index: usize,
+        module_id: usize,
         lo_fn_index: usize,
         body: &'static CodeBlock,
     },
@@ -125,7 +127,7 @@ pub struct FnType {
 
 #[derive(Clone)]
 pub struct ExprContext {
-    pub module_index: usize,
+    pub module_id: usize,
     pub fn_index: Option<usize>,
     pub locals: Vec<Local>,
     pub next_local_index: u32,
@@ -133,9 +135,9 @@ pub struct ExprContext {
 }
 
 impl ExprContext {
-    pub fn new(module_index: usize, fn_index: Option<usize>) -> Self {
+    pub fn new(module_id: usize, fn_index: Option<usize>) -> Self {
         Self {
-            module_index,
+            module_id,
             fn_index,
             locals: Vec::new(),
             next_local_index: 0,
@@ -185,6 +187,8 @@ pub struct Scope {
     pub symbols: Vec<Symbol>,
     pub deferred_exprs: Vec<CodeUnit>,
     pub inline_fn_call_loc: Option<Loc>,
+
+    pub expr_info_offset: usize,
 }
 
 impl Scope {
@@ -273,6 +277,7 @@ impl TypeLayout {
 }
 
 pub type TypeId = usize;
+pub const TYPE_ID_INVALID: TypeId = usize::MAX;
 
 pub struct Module {
     pub id: usize,
@@ -284,7 +289,7 @@ pub struct Module {
 }
 
 pub struct ModuleInclude {
-    pub module_index: usize,
+    pub module_id: usize,
     pub alias: Option<String>,
     pub with_extern: bool,
 }
@@ -391,17 +396,18 @@ pub struct Registry {
     pub fm: Box<FileManager>,
     pub reporter: Box<Reporter>,
 
-    pub modules: Vec<Module>,             // indexed by `module_index`
-    pub types: Vec<Type>,                 // indexed by `TypeId`
-    pub expr_info: Vec<ExprInfoId>,       // indexed by `expr.id()`
-    pub globals: Vec<GlobalDef>,          // indexed by `col_index` when `kind = Global`
-    pub constants: Vec<ConstDef>,         // indexed by `col_index` when `kind = Const`
-    pub functions: Vec<FnInfo>,           // indexed by `col_index` when `kind = Function`
-    pub inline_fns: Vec<&'static FnExpr>, // indexed by `col_index` when `kind = InlineFn`
-    pub type_aliases: Vec<Type>,          // indexed by `col_index` when `kind = TypeAlias`
-    pub structs: Vec<StructDef>,          // indexed by `col_index` when `kind = Struct`
-    pub enums: Vec<EnumDef>,              // indexed by `col_index` when `kind = Enum`
-    pub enum_ctors: Vec<EnumConstructor>, // indexed by `col_index` when `kind = EnumConstructor`
+    pub modules: Vec<Module>,                // indexed by `module_id`
+    pub expr_info: Vec<ExprInfoId>,          // indexed by `expr.id()`
+    pub types: Vec<Type>,                    // indexed by `ExprInfoId` for most of the expressions
+    pub inline_fn_call_info: Vec<ICallInfo>, // indexed by `ExprInfoId` for `::InlineFnCall` and `::InlineMethodCall`
+    pub globals: Vec<GlobalDef>,             // indexed by `col_index` when `kind = Global`
+    pub constants: Vec<ConstDef>,            // indexed by `col_index` when `kind = Const`
+    pub functions: Vec<FnInfo>,              // indexed by `col_index` when `kind = Function`
+    pub inline_fns: Vec<&'static FnExpr>,    // indexed by `col_index` when `kind = InlineFn`
+    pub type_aliases: Vec<Type>,             // indexed by `col_index` when `kind = TypeAlias`
+    pub structs: Vec<StructDef>,             // indexed by `col_index` when `kind = Struct`
+    pub enums: Vec<EnumDef>,                 // indexed by `col_index` when `kind = Enum`
+    pub enum_ctors: Vec<EnumConstructor>,    // indexed by `col_index` when `kind = EnumConstructor`
 
     pub const_slice_lens: Vec<ConstSliceLen>,
     pub allocated_strings: Vec<String>,
@@ -431,7 +437,7 @@ impl Registry {
 
     pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<&Module> {
         let file_index = catch!(self.fm.include_file(relative_path, loc), err, {
-            self.reporter.error(&err);
+            self.report_error(&err);
             return None;
         });
 
@@ -470,7 +476,7 @@ impl Registry {
 
         let mut lexer = Lexer::new(source, file_index);
         catch!(lexer.lex_file(), err, {
-            self.reporter.error(&err);
+            self.report_error(&err);
             return None;
         });
 
@@ -479,7 +485,7 @@ impl Registry {
             *parser.expr_count.be_mut() = self.expr_count;
 
             catch!(parser.parse_file(), err, {
-                self.reporter.error(&err);
+                self.report_error(&err);
                 return None;
             });
 
@@ -505,7 +511,7 @@ impl Registry {
                 }
 
                 if type_args.len() != 0 {
-                    self.reporter.error(&bad_signature(intrinsic));
+                    self.report_error(&bad_signature(intrinsic));
                     continue;
                 }
 
@@ -537,14 +543,14 @@ impl Registry {
                     continue;
                 };
 
-                let module_index;
+                let module_id;
                 match self.include_file(&file_path.value, &file_path.loc) {
-                    Some(module) => module_index = module.id,
+                    Some(module) => module_id = module.id,
                     None => continue,
                 }
 
                 includes.push(ModuleInclude {
-                    module_index,
+                    module_id,
                     alias,
                     with_extern,
                 });
@@ -641,12 +647,12 @@ impl Registry {
             SymbolKind::EnumConstructor => self.enum_ctors.len(),
         };
 
-        let current_scope = self.relax_mut().current_scope_mut(ctx);
+        let current_scope = self.current_scope(ctx).relax().be_mut();
 
         if let Some(existing_symbol) = current_scope.relax().get_symbol(symbol_name)
             && existing_symbol.scope_id == current_scope.id
         {
-            self.reporter.error(&Error {
+            self.report_error(&Error {
                 message: format!(
                     "Cannot redefine {}, previously defined at {}",
                     symbol_name,
@@ -668,27 +674,21 @@ impl Registry {
     }
 
     pub fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeKind) {
-        let module = &mut self.relax_mut().modules[ctx.module_index];
+        let module = &mut self.relax_mut().modules[ctx.module_id];
 
         self.init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
     }
 
     pub fn exit_scope(&mut self, ctx: &ExprContext) -> Scope {
-        let module = &mut self.modules[ctx.module_index];
+        let module = &mut self.modules[ctx.module_id];
 
         module.scope_stack.pop().unwrap()
     }
 
     pub fn current_scope(&self, ctx: &ExprContext) -> &Scope {
-        let module = &self.modules[ctx.module_index];
+        let module = &self.modules[ctx.module_id];
 
         module.scope_stack.last().unwrap()
-    }
-
-    pub fn current_scope_mut(&mut self, ctx: &ExprContext) -> &mut Scope {
-        let module = &mut self.modules[ctx.module_index];
-
-        module.scope_stack.last_mut().unwrap()
     }
 
     pub fn init_scope_from_parent_and_push(
@@ -702,6 +702,7 @@ impl Registry {
         let mut new_scope = Scope::new(scope_id, scope_type);
         if let Some(parent) = scope_stack.last() {
             new_scope.symbols.extend_from_slice(&parent.symbols);
+            new_scope.expr_info_offset = parent.expr_info_offset;
         };
         scope_stack.push(new_scope);
     }
@@ -715,65 +716,6 @@ impl Registry {
                 loc: *loc,
             }),
         }
-    }
-
-    pub fn is_types_compatible(&self, slots: &Vec<Type>, values: &Vec<Type>) -> bool {
-        if slots.len() != values.len() {
-            return false;
-        }
-
-        for i in 0..slots.len() {
-            if !self.is_type_compatible(&slots[i], &values[i]) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    pub fn is_type_compatible(&self, slot: &Type, value: &Type) -> bool {
-        if let Type::Pointer { pointee } = slot {
-            if *value == Type::Null {
-                return true;
-            }
-
-            if **pointee == Type::Void {
-                if let Type::Pointer { pointee: _ } = value {
-                    return true;
-                }
-
-                if let Type::SequencePointer { pointee: _ } = value {
-                    return true;
-                }
-            }
-
-            if let Type::Pointer {
-                pointee: value_pointee,
-            } = value
-            {
-                return self.is_type_compatible(pointee, value_pointee);
-            }
-        }
-
-        if let Type::Container(ContainerType { container, items }) = value {
-            if let Type::Container(ContainerType {
-                container: slot_container,
-                items: slot_items,
-            }) = slot
-            {
-                return self.is_type_compatible(slot_container, container)
-                    && self.is_types_compatible(slot_items, items);
-            }
-
-            // TODO: allow this for self arguments only
-            return self.is_type_compatible(slot, container);
-        }
-
-        if *value == Type::Never {
-            return true;
-        }
-
-        slot == value
     }
 
     pub fn lower_type(&self, lo_type: &Type, wasm_types: &mut Vec<WasmType>) {
@@ -1169,7 +1111,7 @@ impl Registry {
             has_self_param = true;
 
             if fn_name.parts.len() == 1 {
-                self.reporter.error(&Error {
+                self.report_error(&Error {
                     message: format!("Cannot use self param in non-method function"),
                     loc: fn_param.loc,
                 });
@@ -1180,7 +1122,7 @@ impl Registry {
             return None;
         }
 
-        let mut module = &self.modules[ctx.module_index];
+        let mut module = &self.modules[ctx.module_id];
         if fn_name.loc.file_index != module.parser.lexer.file_index {
             // fn imported from other module
             module = &self
@@ -1197,7 +1139,7 @@ impl Registry {
             self.get_type_or_err(ctx, &self_type_name, &self_type_loc),
             err,
             {
-                self.reporter.error(&err);
+                self.report_error(&err);
                 return Some(Type::Never);
             }
         );
@@ -1226,7 +1168,7 @@ impl Registry {
                 });
             }
             FnParamType::Type { expr } => {
-                if let Some(infer_type_name) = self.get_infer_type_name(fn_param)? {
+                if let Some(infer_type_name) = get_infer_type_name(fn_param)? {
                     if !infer_allowed {
                         return Err(Error {
                             message: format!("Infer is only allowed in inline fns"),
@@ -1242,53 +1184,29 @@ impl Registry {
         }
     }
 
-    pub fn get_infer_type_name(&self, fn_param: &FnParam) -> Result<Option<&'static str>, Error> {
-        let FnParamType::Type {
-            expr: TypeExpr::Container(container),
-        } = &fn_param.param_type
-        else {
-            return Ok(None);
-        };
-
-        let TypeExpr::Named(named) = &*container.container else {
-            return Ok(None);
-        };
-
-        if named.name.repr != "infer" {
-            return Ok(None);
-        }
-
-        if container.items.len() != 1 {
-            return Err(Error {
-                message: format!("Invalid `infer` call, expected 1 named type argument"),
-                loc: container.loc,
-            });
-        }
-
-        let TypeExpr::Named(named) = &container.items[0] else {
-            return Err(Error {
-                message: format!("Invalid `infer` call, expected 1 named type argument"),
-                loc: container.loc,
-            });
-        };
-
-        Ok(Some(named.name.repr))
-    }
-
     pub fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> Result<Type, Error> {
         *self.get_expr_type_hits.be_mut() += 1;
 
         if let Some(expr_info_id) = self.get_expr_info_id(ctx, expr) {
+            *self.get_expr_type_cache_hits.be_mut() += 1;
+
             match expr {
-                CodeExpr::InlineFnCall(_) => {}     // TODO: implement
-                CodeExpr::InlineMethodCall(_) => {} // TODO: implement
+                CodeExpr::InlineFnCall(_) | CodeExpr::InlineMethodCall(_) => {
+                    let call_info = &self.inline_fn_call_info[expr_info_id];
+                    return Ok(self.types[call_info.return_type_id].clone());
+                }
                 _ => {
-                    *self.get_expr_type_cache_hits.be_mut() += 1;
                     return Ok(self.types[expr_info_id].clone());
                 }
             }
         }
 
+        return Err(Error {
+            message: format!("IDFK what type this is"),
+            loc: expr.loc(),
+        });
+
+        #[allow(unreachable_code)] // TODO: remove
         match expr {
             CodeExpr::BoolLiteral(_) => Ok(Type::Bool),
             CodeExpr::CharLiteral(_) => Ok(Type::U8),
@@ -1303,12 +1221,12 @@ impl Registry {
                 let Some(tag) = tag else { return Ok(Type::U32) };
 
                 let tag_type = catch!(self.get_type_or_err(ctx, tag, loc), err, {
-                    self.reporter.error(&err);
+                    self.report_error(&err);
                     return Ok(Type::U32);
                 });
 
                 catch!(self.is_64_bit_int_tag(&tag_type, loc), err, {
-                    self.reporter.error(&err);
+                    self.report_error(&err);
                     return Ok(Type::U32);
                 });
 
@@ -1564,7 +1482,7 @@ impl Registry {
                 fn_name,
                 type_args,
                 args,
-                loc,
+                loc: _,
             }) => {
                 self.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
                 let expr_type = self.get_inline_fn_return_type(
@@ -1573,7 +1491,30 @@ impl Registry {
                     type_args,
                     &args.items,
                     None,
-                    loc,
+                    &fn_name.loc,
+                );
+                self.be_mut().exit_scope(ctx);
+                expr_type
+            }
+            CodeExpr::InlineMethodCall(InlineMethodCallExpr {
+                id: _,
+                lhs,
+                field_name,
+                type_args,
+                args,
+                loc: _,
+            }) => {
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
+                let inline_fn_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
+
+                self.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
+                let expr_type = self.get_inline_fn_return_type(
+                    ctx.be_mut(),
+                    &inline_fn_name,
+                    type_args,
+                    &args.items,
+                    Some(&lhs),
+                    &field_name.loc,
                 );
                 self.be_mut().exit_scope(ctx);
                 expr_type
@@ -1666,29 +1607,6 @@ impl Registry {
                     loc: fn_name.loc,
                 })
             }
-            CodeExpr::InlineMethodCall(InlineMethodCallExpr {
-                id: _,
-                lhs,
-                field_name,
-                type_args,
-                args,
-                loc,
-            }) => {
-                let lhs_type = self.get_expr_type(ctx, lhs)?;
-                let inline_fn_name = self.get_fn_name_from_method(&lhs_type, &field_name.repr);
-
-                self.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
-                let expr_type = self.get_inline_fn_return_type(
-                    ctx.be_mut(),
-                    &inline_fn_name,
-                    type_args,
-                    &args.items,
-                    Some(&lhs),
-                    loc,
-                );
-                self.be_mut().exit_scope(ctx);
-                expr_type
-            }
             CodeExpr::Catch(CatchExpr {
                 id: _,
                 lhs,
@@ -1716,7 +1634,7 @@ impl Registry {
                 let ctx = ctx.be_mut();
 
                 let lhs_type = catch!(self.get_expr_type(ctx, &lhs), err, {
-                    self.reporter.error(&err);
+                    self.report_error(&err);
                     return Ok(Type::Never);
                 });
 
@@ -1735,7 +1653,7 @@ impl Registry {
                 );
 
                 let rhs_type = catch!(self.get_expr_type(ctx, &rhs), err, {
-                    self.reporter.error(&err);
+                    self.report_error(&err);
                     return Ok(Type::Never);
                 });
 
@@ -1840,9 +1758,24 @@ impl Registry {
         }
     }
 
-    fn get_expr_info_id(&self, _ctx: &ExprContext, expr: &CodeExpr) -> Option<ExprInfoId> {
-        let expr_info_id = self.expr_info[expr.id()];
-        if expr_info_id == EXPR_INFO_ID_EMPTY {
+    pub fn get_expr_info_id(&self, ctx: &ExprContext, expr: &CodeExpr) -> Option<ExprInfoId> {
+        let scope = self.current_scope(ctx);
+
+        let expr_info_id = self.expr_info[scope.expr_info_offset + expr.id()];
+        // TODO: remove if no longer needed for debugging
+        // stderr_writeln(format!(
+        //     "{}load({} + {}, {}) // {}",
+        //     if scope.expr_info_offset == 0 {
+        //         ""
+        //     } else {
+        //         "  "
+        //     },
+        //     scope.expr_info_offset,
+        //     expr.id(),
+        //     expr.loc().to_string(&self.reporter.fm),
+        //     expr_info_id
+        // ));
+        if expr_info_id == EXPR_INFO_ID_INVALID {
             return None;
         }
 
@@ -1946,22 +1879,7 @@ impl Registry {
                 loc: *loc,
             });
         };
-
         let inline_fn_def = self.inline_fns[symbol.col_index];
-
-        let mut all_args = Vec::new();
-        if let Some(receiver_arg) = receiver_arg {
-            all_args.push(CodeUnit {
-                type_: self.get_expr_type(ctx, receiver_arg)?,
-                instrs: Vec::new(),
-            });
-        }
-        for arg in args {
-            all_args.push(CodeUnit {
-                type_: self.get_expr_type(ctx, arg)?,
-                instrs: Vec::new(),
-            });
-        }
 
         let mut lo_type_args = Vec::new();
         for type_arg in type_args {
@@ -1977,7 +1895,6 @@ impl Registry {
                 loc: *loc,
             });
         }
-
         for (i, (type_param, type_arg)) in inline_fn_def
             .decl
             .type_params
@@ -1988,32 +1905,36 @@ impl Registry {
             self.register_block_type(ctx, type_param, type_arg.clone(), *type_args[i].loc());
         }
 
-        if all_args.len() != inline_fn_def.decl.params.len() {
+        let mut arg_types = Vec::<Type>::new();
+        if let Some(receiver_arg) = receiver_arg {
+            arg_types.push(self.get_expr_type(ctx, receiver_arg)?);
+        }
+        for arg in args {
+            arg_types.push(self.get_expr_type(ctx, arg)?);
+        }
+        if arg_types.len() != inline_fn_def.decl.params.len() {
             return Err(Error {
                 message: format!(
                     "Invalid number of inline fn args, expected {}, got {}",
                     inline_fn_def.decl.params.len(),
-                    all_args.len()
+                    arg_types.len()
                 ),
                 loc: *loc,
             });
         }
-
-        let mut arg_types = Vec::<Type>::new();
-        for arg in &all_args {
-            arg_types.push(arg.type_.clone());
-        }
-
         for (inline_fn_param, inline_fn_arg) in
-            inline_fn_def.decl.params.iter().zip(all_args.into_iter())
+            inline_fn_def.decl.params.iter().zip(arg_types.iter())
         {
             let const_def = ConstDef {
                 const_name: inline_fn_param.param_name.repr,
-                code_unit: inline_fn_arg,
+                code_unit: CodeUnit {
+                    type_: inline_fn_arg.clone(),
+                    instrs: Default::default(),
+                },
                 loc: inline_fn_param.loc,
             };
 
-            if let Some(type_name) = self.get_infer_type_name(inline_fn_param)? {
+            if let Some(type_name) = get_infer_type_name(inline_fn_param)? {
                 self.register_block_type(
                     ctx,
                     type_name,
@@ -2034,7 +1955,7 @@ impl Registry {
             inline_fn_types.push(inline_fn_type);
         }
 
-        if !self.is_types_compatible(&inline_fn_types, &arg_types) {
+        if !is_types_compatible(&inline_fn_types, &arg_types) {
             return Err(Error {
                 message: format!(
                     "Invalid inline fn args, expected [{}], got [{}]",
@@ -2244,6 +2165,15 @@ impl Registry {
         }
 
         None
+    }
+
+    // TODO: remove tag after migration
+    fn report_error(&self, err: &Error) {
+        let marked_error = Error {
+            message: format!("(reg) {}", err.message),
+            loc: err.loc.clone(),
+        };
+        self.reporter.error(&marked_error);
     }
 }
 
