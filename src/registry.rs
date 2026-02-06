@@ -323,24 +323,20 @@ pub enum VarInfo {
 pub struct VarInfoLocal {
     pub local_index: u32,
     pub var_type: Type,
-    pub inspect_info: Option<InspectInfo>,
 }
 
 pub struct VarInfoGlobal {
     pub global_index: u32,
     pub var_type: Type,
-    pub inspect_info: Option<InspectInfo>,
 }
 
 pub struct VarInfoConst {
     pub code_unit: &'static CodeUnit,
-    pub inspect_info: Option<InspectInfo>,
     pub loc: Loc,
 }
 
 pub struct VarInfoVoidEnumValue {
     pub variant_index: usize,
-    pub inspect_info: Option<InspectInfo>,
     pub var_type: Type,
     pub loc: Loc,
 }
@@ -349,7 +345,6 @@ pub struct VarInfoStored {
     pub address: CodeUnit,
     pub offset: u32,
     pub var_type: Type,
-    pub inspect_info: Option<InspectInfo>,
 }
 
 pub struct VarInfoStructValueField {
@@ -357,7 +352,6 @@ pub struct VarInfoStructValueField {
     pub drops_before: u32,
     pub drops_after: u32,
     pub var_type: Type,
-    pub inspect_info: Option<InspectInfo>,
     pub loc: Loc,
 }
 
@@ -370,17 +364,6 @@ impl VarInfo {
             VarInfo::VoidEnumValue(v) => &v.var_type,
             VarInfo::Stored(v) => &v.var_type,
             VarInfo::StructValueField(v) => &v.var_type,
-        }
-    }
-
-    pub fn inspect_info(&self) -> &Option<InspectInfo> {
-        match self {
-            VarInfo::Local(v) => &v.inspect_info,
-            VarInfo::Global(v) => &v.inspect_info,
-            VarInfo::Const(v) => &v.inspect_info,
-            VarInfo::VoidEnumValue(v) => &v.inspect_info,
-            VarInfo::Stored(v) => &v.inspect_info,
-            VarInfo::StructValueField(v) => &v.inspect_info,
         }
     }
 }

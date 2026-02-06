@@ -40,6 +40,10 @@ pub struct TyLocal {
     pub type_id: TypeId,
 }
 
+pub struct TyGlobal {
+    pub type_id: TypeId,
+}
+
 pub struct TyConst {
     pub type_id: TypeId,
     pub expr: UBRef<CodeExpr>,
@@ -61,7 +65,7 @@ pub struct Typer {
     pub type_lookup: UBCell<BTreeMap<Type, TypeId>>,
     pub type_aliases: UBCell<Vec<TypeId>>, // indexed by `col_index` when `kind = TypeAlias`
     pub locals: Vec<TyLocal>,              // indexed by `col_index` when `kind = Local`
-    pub globals: Vec<GlobalDef>,           // indexed by `col_index` when `kind = Global`
+    pub globals: Vec<TyGlobal>,            // indexed by `col_index` when `kind = Global`
     pub constants: Vec<TyConst>,           // indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,            // indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>,  // indexed by `col_index` when `kind = InlineFn`
@@ -469,11 +473,8 @@ impl Typer {
                         });
                     }
 
-                    self.globals.push(GlobalDef {
-                        module_ctx: module.ctx.relax(),
-                        def_expr: let_expr.relax(),
-                        global_type: Type::Never, // placeholder
-                        global_index: 0,          // placeholder
+                    self.globals.push(TyGlobal {
+                        type_id: TYPE_ID_INVALID, // placeholder
                     });
                 }
             }
@@ -893,7 +894,7 @@ impl Typer {
                     }
 
                     let global = self.globals[symbol.col_index].relax_mut();
-                    global.global_type = value_type;
+                    global.type_id = self.build_type_id(&value_type);
 
                     if self.reporter.in_inspection_mode {
                         let global_name = &let_expr.name.repr;
@@ -901,7 +902,7 @@ impl Typer {
                         self.reporter.print_inspection(&InspectInfo {
                             message: format!(
                                 "let {global_name}: {}",
-                                TypeFmt(&*self.registry, &global.global_type)
+                                TypeFmt(&*self.registry, &value_type)
                             ),
                             loc: let_expr.name.loc,
                             linked_loc: None,
@@ -1160,31 +1161,7 @@ impl Typer {
                 }
             }
 
-            CodeExpr::Let(_)
-            | CodeExpr::InfixOp(_)
-            | CodeExpr::PrefixOp(_)
-            | CodeExpr::Cast(_)
-            | CodeExpr::Assign(_)
-            | CodeExpr::FieldAccess(_)
-            | CodeExpr::PropagateError(_)
-            | CodeExpr::FnCall(_)
-            | CodeExpr::MethodCall(_)
-            | CodeExpr::InlineFnCall(_)
-            | CodeExpr::InlineMethodCall(_)
-            | CodeExpr::IntrinsicCall(_)
-            | CodeExpr::Return(_)
-            | CodeExpr::If(_)
-            | CodeExpr::While(_)
-            | CodeExpr::For(_)
-            | CodeExpr::Break(_)
-            | CodeExpr::Continue(_)
-            | CodeExpr::Defer(_)
-            | CodeExpr::Catch(_)
-            | CodeExpr::Match(_)
-            | CodeExpr::Paren(_)
-            | CodeExpr::DoWith(_)
-            | CodeExpr::Pipe(_)
-            | CodeExpr::Sizeof(_) => { /* fallthrough */ }
+            _ => { /* fallthrough */ }
         }
 
         self.report_error(&Error {
@@ -1494,6 +1471,15 @@ impl Typer {
                                 loc: prefix_op.loc,
                             });
                         };
+
+                        if self.reporter.in_inspection_mode {
+                            self.reporter.print_inspection(&InspectInfo {
+                                message: format!("<deref>: {}", TypeFmt(&*self.registry, &pointee)),
+                                loc: prefix_op.op_loc,
+                                linked_loc: None,
+                            });
+                        };
+
                         self.store_type(ctx, prefix_op.id, pointee);
                         return Ok(());
                     }
@@ -1567,6 +1553,14 @@ impl Typer {
                 if let Some(symbol) = self.get_symbol(ctx.scope_id, &call.fn_name.repr) {
                     if let SymbolKind::EnumConstructor = symbol.kind {
                         let ctor = &self.enum_ctors[symbol.col_index];
+
+                        if self.reporter.in_inspection_mode {
+                            self.reporter.print_inspection(&InspectInfo {
+                                message: format!("{} // {}", call.fn_name.repr, ctor.variant_index),
+                                loc: call.fn_name.loc,
+                                linked_loc: Some(ctor.loc),
+                            });
+                        }
 
                         // TODO: validate arg with enum expectation
                         for arg in &call.args.items {
@@ -1689,6 +1683,19 @@ impl Typer {
                 }
 
                 if call.fn_name.repr == "inline_fn_call_loc" {
+                    // TODO: impl by walking up the scope
+                    let inside_of_inline_fn = true;
+
+                    if !inside_of_inline_fn {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Forbidden use of `@{}()` outside of inline fn",
+                                call.fn_name.repr
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    };
+
                     self.store_type(
                         ctx,
                         call.id,
@@ -1738,7 +1745,20 @@ impl Typer {
                     });
                 }
 
-                if call.fn_name.repr.starts_with("inspect_") {
+                if call.fn_name.repr.starts_with("inspect_symbols") {
+                    if self.reporter.in_inspection_mode {
+                        let mut message = String::new();
+                        for symbol in &self.scopes[ctx.scope_id].symbols {
+                            write!(message, "{} : {:?}\n", symbol.name, symbol.kind).unwrap();
+                        }
+
+                        self.reporter.print_inspection(&InspectInfo {
+                            message,
+                            loc: call.fn_name.loc,
+                            linked_loc: None,
+                        });
+                    }
+
                     self.store_type(ctx, call.id, &Type::Void);
                     return Ok(());
                 }
@@ -2081,13 +2101,55 @@ impl Typer {
 
         match symbol.kind {
             SymbolKind::Local => {
-                return Ok(self.locals[symbol.col_index].type_id);
+                let local = &self.locals[symbol.col_index];
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: format!(
+                            "let {}: {}",
+                            var_name.repr,
+                            TypeFmt(&*self.registry, &self.registry.types[local.type_id])
+                        ),
+                        loc: var_name.loc,
+                        linked_loc: Some(symbol.loc),
+                    })
+                };
+
+                return Ok(local.type_id);
             }
             SymbolKind::Global => {
-                return Ok(self.build_type_id(&self.globals[symbol.col_index].global_type));
+                let global = &self.globals[symbol.col_index];
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: format!(
+                            "let {}: {}",
+                            var_name.repr,
+                            TypeFmt(&*self.registry, &self.registry.types[global.type_id])
+                        ),
+                        loc: var_name.loc,
+                        linked_loc: Some(symbol.loc),
+                    });
+                }
+
+                return Ok(global.type_id);
             }
             SymbolKind::Const => {
-                return Ok(self.constants[symbol.col_index].type_id);
+                let const_def = &self.constants[symbol.col_index];
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: format!(
+                            "inline let {}: {}",
+                            var_name.repr,
+                            TypeFmt(&*self.registry, &self.registry.types[const_def.type_id])
+                        ),
+                        loc: var_name.loc,
+                        linked_loc: Some(symbol.loc),
+                    })
+                }
+
+                return Ok(const_def.type_id);
             }
             SymbolKind::EnumConstructor => {
                 let enum_ctor = &self.enum_ctors[symbol.col_index];
@@ -2106,9 +2168,23 @@ impl Typer {
                     });
                 };
 
-                return Ok(self.build_type_id(&Type::EnumInstance {
+                let var_type = &Type::EnumInstance {
                     enum_index: enum_ctor.enum_index,
-                }));
+                };
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: format!(
+                            "inline let {}: {}",
+                            var_name.repr,
+                            TypeFmt(&*self.registry, &var_type)
+                        ),
+                        loc: var_name.loc,
+                        linked_loc: Some(enum_ctor.loc),
+                    })
+                }
+
+                return Ok(self.build_type_id(var_type));
             }
             _ => {
                 return Err(Error {
@@ -2238,6 +2314,19 @@ impl Typer {
                 ),
                 loc: field_access.field_name.loc,
             });
+        };
+
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_inspection(&InspectInfo {
+                message: format!(
+                    "{}.{}: {}",
+                    TypeFmt(&*self.registry, &lhs_type),
+                    field.field_name,
+                    TypeFmt(&*self.registry, &field.field_type),
+                ),
+                loc: field_access.field_name.loc,
+                linked_loc: Some(field.loc),
+            })
         };
 
         Ok(field)

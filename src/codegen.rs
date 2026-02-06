@@ -645,9 +645,6 @@ impl CodeGenerator {
 
             CodeExpr::Ident(ident) => {
                 let var = self.var_from_ident(ctx, ident)?;
-                if let Some(inspect_info) = var.inspect_info() {
-                    self.reporter.print_inspection(inspect_info);
-                }
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
             CodeExpr::Let(LetExpr {
@@ -688,10 +685,10 @@ impl CodeGenerator {
                 let local_index = self
                     .registry
                     .define_local(ctx, name.loc, name.repr, &var_type);
-                let var = self.var_local(&name.repr, var_type, local_index, name.loc, None);
-                if let Some(inspect_info) = var.inspect_info() {
-                    self.reporter.print_inspection(inspect_info);
-                }
+                let var = VarInfo::Local(VarInfoLocal {
+                    local_index,
+                    var_type,
+                });
                 self.codegen_var_set_prepare(instrs, &var);
                 self.codegen(ctx, instrs, value)?;
                 self.codegen_var_set(ctx, instrs, &var)?;
@@ -735,7 +732,7 @@ impl CodeGenerator {
                 id: _,
                 op_tag,
                 expr,
-                op_loc,
+                op_loc: _,
                 loc,
             }) => match op_tag {
                 PrefixOpTag::Reference => {
@@ -743,7 +740,6 @@ impl CodeGenerator {
                         mut address,
                         offset,
                         var_type: _,
-                        inspect_info,
                     })) = self.var_from_expr(ctx, expr)?
                     else {
                         return Err(Error {
@@ -753,9 +749,6 @@ impl CodeGenerator {
                             loc: *loc,
                         });
                     };
-                    if let Some(inspect_info) = inspect_info {
-                        self.reporter.print_inspection(&inspect_info);
-                    }
 
                     instrs.append(&mut address.instrs);
                     instrs.push(WasmInstr::I32Const {
@@ -766,10 +759,7 @@ impl CodeGenerator {
                     });
                 }
                 PrefixOpTag::Dereference => {
-                    let var = self.var_from_deref(ctx, expr, op_loc)?;
-                    if let Some(inspect_info) = var.inspect_info() {
-                        self.reporter.print_inspection(inspect_info);
-                    }
+                    let var = self.var_from_deref(ctx, expr)?;
                     self.codegen_var_get(ctx, instrs, &var)?;
                 }
                 PrefixOpTag::Not => {
@@ -899,9 +889,6 @@ impl CodeGenerator {
                             loc: op_loc.clone(),
                         });
                     };
-                    if let Some(inspect_info) = var.inspect_info() {
-                        self.reporter.print_inspection(inspect_info);
-                    }
 
                     self.codegen_var_set_prepare(instrs, &var);
                     self.codegen_var_get(ctx, instrs, &var)?;
@@ -930,9 +917,6 @@ impl CodeGenerator {
                         loc: op_loc.clone(),
                     });
                 };
-                if let Some(inspect_info) = var.inspect_info() {
-                    self.reporter.print_inspection(inspect_info);
-                }
 
                 let rhs_type = self.get_expr_type(ctx, rhs)?;
                 if !is_type_compatible(var.get_type(), &rhs_type) {
@@ -952,9 +936,6 @@ impl CodeGenerator {
             }
             CodeExpr::FieldAccess(field_access) => {
                 let var = self.var_from_field_access(ctx, field_access)?;
-                if let Some(inspect_info) = var.inspect_info() {
-                    self.reporter.print_inspection(inspect_info);
-                }
                 self.codegen_var_get(ctx, instrs, &var)?;
             }
 
@@ -969,14 +950,6 @@ impl CodeGenerator {
                         let ctor = &self.registry.enum_ctors[symbol.col_index];
                         let enum_ = &self.registry.enums[ctor.enum_index];
                         let variant = &enum_.variants[ctor.variant_index];
-
-                        if self.reporter.in_inspection_mode {
-                            self.reporter.print_inspection(&InspectInfo {
-                                message: format!("{} // {}", fn_name.repr, ctor.variant_index),
-                                loc: fn_name.loc,
-                                linked_loc: Some(variant.loc),
-                            });
-                        }
 
                         instrs.push(WasmInstr::I32Const {
                             value: ctor.variant_index as i32,
@@ -1082,6 +1055,11 @@ impl CodeGenerator {
                 args,
                 loc: _,
             }) => {
+                if fn_name.repr == "inspect_symbols" {
+                    // processed in Typer
+                    return Ok(());
+                }
+
                 if fn_name.repr == "unreachable" {
                     if args.items.len() != 0 || type_args.len() != 0 {
                         return Err(Error {
@@ -1291,19 +1269,9 @@ impl CodeGenerator {
                         }
                     }
 
-                    let Some(inline_fn_call_loc) = inline_fn_call_loc else {
-                        self.report_error(&Error {
-                            message: format!(
-                                "Forbidden use of `@{}()` outside of inline fn",
-                                fn_name.repr
-                            ),
-                            loc: fn_name.loc,
-                        });
-                        return Ok(());
-                    };
-
-                    let loc_str =
-                        self.process_const_string(inline_fn_call_loc.to_string(&self.reporter.fm));
+                    let loc_str = self.process_const_string(
+                        inline_fn_call_loc.unwrap().to_string(&self.reporter.fm),
+                    );
                     // emit str struct values
                     instrs.push(WasmInstr::I32Const {
                         value: loc_str.ptr as i32,
@@ -1316,17 +1284,13 @@ impl CodeGenerator {
                 }
 
                 if fn_name.repr == "get_ok" {
-                    if args.items.len() != 1 {
-                        return bad_args_err(self, fn_name);
-                    }
-
                     let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
                         self.report_error(&err);
                         return Ok(());
                     });
 
                     let Type::Result(ResultType { ok: _, err }) = arg_type else {
-                        return bad_args_err(self, fn_name);
+                        unreachable!()
                     };
 
                     self.codegen(ctx, instrs, &args.items[0])?;
@@ -1337,35 +1301,16 @@ impl CodeGenerator {
                     }
 
                     return Ok(());
-
-                    fn bad_args_err(
-                        self_: &CodeGenerator,
-                        fn_name: &IdentExpr,
-                    ) -> Result<(), Error> {
-                        self_.reporter.error(&Error {
-                            message: format!(
-                                "Invalid arguments for @{}(items: Result(T, E)): T",
-                                fn_name.repr,
-                            ),
-                            loc: fn_name.loc,
-                        });
-
-                        Ok(())
-                    }
                 }
 
                 if fn_name.repr == "get_err" {
-                    if args.items.len() != 1 {
-                        return bad_args_err(self, fn_name);
-                    }
-
                     let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
                         self.report_error(&err);
                         return Ok(());
                     });
 
                     let Type::Result(ResultType { ok, err }) = arg_type else {
-                        return bad_args_err(self, fn_name);
+                        unreachable!()
                     };
 
                     self.codegen(ctx, instrs, &args.items[0])?;
@@ -1377,7 +1322,6 @@ impl CodeGenerator {
                     let tmp_local = VarInfo::Local(VarInfoLocal {
                         local_index: tmp_local_index,
                         var_type: *err.clone(),
-                        inspect_info: None,
                     });
                     self.codegen_local_set(instrs, &err, tmp_local_index);
 
@@ -1389,39 +1333,6 @@ impl CodeGenerator {
                     // pop `err` back
                     self.codegen_var_get(ctx, instrs, &tmp_local)?;
 
-                    return Ok(());
-
-                    fn bad_args_err(
-                        self_: &CodeGenerator,
-                        fn_name: &IdentExpr,
-                    ) -> Result<(), Error> {
-                        self_.reporter.error(&Error {
-                            message: format!(
-                                "Invalid arguments for @{}(items: Result(T, E)): E",
-                                fn_name.repr,
-                            ),
-                            loc: fn_name.loc,
-                        });
-
-                        Ok(())
-                    }
-                }
-
-                if fn_name.repr == "inspect_symbols" {
-                    if !self.reporter.in_inspection_mode {
-                        return Ok(());
-                    }
-
-                    let mut message = String::new();
-                    for symbol in &self.registry.current_scope(ctx).symbols {
-                        write!(message, "{} : {:?}\n", symbol.name, symbol.kind).unwrap();
-                    }
-
-                    self.reporter.print_inspection(&InspectInfo {
-                        message,
-                        loc: fn_name.loc,
-                        linked_loc: None,
-                    });
                     return Ok(());
                 }
 
@@ -1662,16 +1573,10 @@ impl CodeGenerator {
                 let local_index =
                     self.registry
                         .define_local(ctx, counter.loc, counter.repr, &counter_type);
-                let counter_var = self.var_local(
-                    &counter.repr,
-                    counter_type.clone(),
+                let counter_var = VarInfo::Local(VarInfoLocal {
                     local_index,
-                    counter.loc,
-                    None,
-                );
-                if let Some(inspect_info) = counter_var.inspect_info() {
-                    self.reporter.print_inspection(inspect_info);
-                }
+                    var_type: counter_type.clone(),
+                });
                 self.codegen_var_set_prepare(instrs, &counter_var);
                 self.codegen(ctx, instrs, start)?;
                 self.codegen_var_set(ctx, instrs, &counter_var)?;
@@ -1966,16 +1871,10 @@ impl CodeGenerator {
             header.variant_bind.repr,
             &enum_variant.variant_type,
         );
-        let local = self.var_local(
-            &header.variant_bind.repr,
-            enum_variant.variant_type.clone(),
+        let local = VarInfo::Local(VarInfoLocal {
             local_index,
-            header.variant_bind.loc,
-            None,
-        );
-        if let Some(inspect_info) = local.inspect_info() {
-            self.reporter.print_inspection(inspect_info);
-        }
+            var_type: enum_variant.variant_type.clone(),
+        });
 
         if let Ok(expr_to_match_type) = self.get_expr_type(ctx, &header.expr_to_match) {
             let expected_expr_to_match_type = Type::EnumInstance {
@@ -2266,18 +2165,10 @@ impl CodeGenerator {
         let err_local_index =
             self.registry
                 .define_local(ctx, error_bind_loc.clone(), error_bind, &result.err);
-        let err_var = self.var_local(
-            &error_bind,
-            result.err.as_ref().clone(),
-            err_local_index,
-            error_bind_loc.clone(),
-            None,
-        );
-        if error_bind_loc.file_index != 0 {
-            if let Some(inspect_info) = err_var.inspect_info() {
-                self.reporter.print_inspection(inspect_info);
-            }
-        }
+        let err_var = VarInfo::Local(VarInfoLocal {
+            local_index: err_local_index,
+            var_type: result.err.as_ref().clone(),
+        });
         self.codegen_var_set_prepare(instrs, &err_var);
         self.codegen_var_set(ctx, instrs, &err_var)?;
 
@@ -2321,7 +2212,6 @@ impl CodeGenerator {
         let ok_var = VarInfo::Local(VarInfoLocal {
             local_index: ok_local_index,
             var_type: result.ok.as_ref().clone(),
-            inspect_info: None,
         });
         self.codegen_var_get(ctx, instrs, &ok_var)?;
 
@@ -2588,7 +2478,6 @@ impl CodeGenerator {
             VarInfo::Local(VarInfoLocal {
                 local_index,
                 var_type,
-                inspect_info: _,
             }) => {
                 for i in 0..self.registry.count_wasm_type_components(var_type) {
                     instrs.push(WasmInstr::LocalGet {
@@ -2599,7 +2488,6 @@ impl CodeGenerator {
             VarInfo::Global(VarInfoGlobal {
                 global_index,
                 var_type,
-                inspect_info: _,
             }) => {
                 for i in 0..self.registry.count_wasm_type_components(var_type) {
                     instrs.push(WasmInstr::GlobalGet {
@@ -2607,11 +2495,7 @@ impl CodeGenerator {
                     });
                 }
             }
-            VarInfo::Const(VarInfoConst {
-                code_unit,
-                loc: _,
-                inspect_info: _,
-            }) => {
+            VarInfo::Const(VarInfoConst { code_unit, loc: _ }) => {
                 instrs.extend_from_slice(&code_unit.instrs);
             }
             VarInfo::VoidEnumValue(VarInfoVoidEnumValue { variant_index, .. }) => {
@@ -2623,7 +2507,6 @@ impl CodeGenerator {
                 address,
                 offset,
                 var_type,
-                inspect_info: _,
             }) => {
                 let mut loads = Vec::new();
                 self.codegen_load_or_store(&mut loads, &var_type, *offset, false);
@@ -2657,7 +2540,6 @@ impl CodeGenerator {
                 drops_before,
                 drops_after,
                 var_type,
-                inspect_info: _,
                 loc,
             }) => {
                 for instr in &struct_value.instrs {
@@ -2673,7 +2555,6 @@ impl CodeGenerator {
                     let var = VarInfo::Local(VarInfoLocal {
                         local_index,
                         var_type: var_type.clone(),
-                        inspect_info: None,
                     });
                     self.codegen_var_set_prepare(instrs, &var);
                     self.codegen_var_set(ctx, instrs, &var)?;
@@ -2697,7 +2578,6 @@ impl CodeGenerator {
                 address,
                 offset: _,
                 var_type,
-                inspect_info: _,
             }) => {
                 if self.registry.count_wasm_type_components(var_type) == 0 {
                     return;
@@ -2721,14 +2601,12 @@ impl CodeGenerator {
             VarInfo::Local(VarInfoLocal {
                 local_index,
                 var_type,
-                inspect_info: _,
             }) => {
                 self.codegen_local_set(instrs, var_type, *local_index);
             }
             VarInfo::Global(VarInfoGlobal {
                 global_index,
                 var_type,
-                inspect_info: _,
             }) => {
                 for i in (0..self.registry.count_wasm_type_components(var_type)).rev() {
                     instrs.push(WasmInstr::GlobalSet {
@@ -2740,7 +2618,6 @@ impl CodeGenerator {
                 address: _,
                 offset,
                 var_type,
-                inspect_info: _,
             }) => {
                 let mut stores = Vec::new();
                 self.codegen_load_or_store(&mut stores, &var_type, *offset, true);
@@ -2828,49 +2705,21 @@ impl CodeGenerator {
                 id: _,
                 op_tag,
                 expr,
-                op_loc,
+                op_loc: _,
                 loc: _,
             }) => match op_tag {
-                PrefixOpTag::Dereference => Some(self.var_from_deref(ctx, expr, op_loc)?),
+                PrefixOpTag::Dereference => Some(self.var_from_deref(ctx, expr)?),
                 _ => None,
             },
             _ => None,
         })
     }
 
-    fn var_local(
-        &self,
-        local_name: &str,
-        local_type: Type,
-        local_index: u32,
-        loc: Loc,
-        linked_loc: Option<Loc>,
-    ) -> VarInfo {
-        let mut inspect_info = None;
-        if self.reporter.in_inspection_mode {
-            inspect_info = Some(InspectInfo {
-                message: format!(
-                    "let {}: {}",
-                    local_name,
-                    TypeFmt(&*self.registry, &local_type)
-                ),
-                loc: loc,
-                linked_loc,
-            })
-        };
-
-        VarInfo::Local(VarInfoLocal {
-            local_index,
-            var_type: local_type,
-            inspect_info,
-        })
-    }
-
-    fn var_from_ident(&self, ctx: &ExprContext, ident: &IdentExpr) -> Result<VarInfo, Error> {
-        let Some(symbol) = self.registry.current_scope(ctx).get_symbol(ident.repr) else {
+    fn var_from_ident(&self, ctx: &ExprContext, var_name: &IdentExpr) -> Result<VarInfo, Error> {
+        let Some(symbol) = self.registry.current_scope(ctx).get_symbol(var_name.repr) else {
             return Err(Error {
-                message: format!("Unknown variable: {}", ident.repr),
-                loc: ident.loc,
+                message: format!("Unknown variable: {}", var_name.repr),
+                loc: var_name.loc,
             });
         };
 
@@ -2878,56 +2727,25 @@ impl CodeGenerator {
             SymbolKind::Local => {
                 let local = &ctx.locals[symbol.col_index];
 
-                Ok(self.var_local(
-                    &ident.repr,
-                    local.local_type.clone(),
-                    local.local_index,
-                    ident.loc,
-                    Some(local.definition_loc.clone()),
-                ))
+                Ok(VarInfo::Local(VarInfoLocal {
+                    local_index: local.local_index,
+                    var_type: local.local_type.clone(),
+                }))
             }
             SymbolKind::Global => {
                 let global = &self.registry.globals[symbol.col_index];
 
-                let mut inspect_info = None;
-                if self.reporter.in_inspection_mode {
-                    inspect_info = Some(InspectInfo {
-                        message: format!(
-                            "let {}: {}",
-                            ident.repr,
-                            TypeFmt(&*self.registry, &global.global_type)
-                        ),
-                        loc: ident.loc,
-                        linked_loc: Some(symbol.loc),
-                    });
-                }
-
                 Ok(VarInfo::Global(VarInfoGlobal {
                     global_index: global.global_index,
                     var_type: global.global_type.clone(),
-                    inspect_info,
                 }))
             }
             SymbolKind::Const => {
                 let const_def = &self.registry.constants[symbol.col_index];
 
-                let mut inspect_info = None;
-                if self.reporter.in_inspection_mode {
-                    inspect_info = Some(InspectInfo {
-                        message: format!(
-                            "inline let {}: {}",
-                            ident.repr,
-                            TypeFmt(&*self.registry, &const_def.code_unit.type_)
-                        ),
-                        loc: ident.loc,
-                        linked_loc: Some(const_def.loc),
-                    })
-                }
-
                 Ok(VarInfo::Const(VarInfoConst {
                     code_unit: const_def.code_unit.relax(),
-                    inspect_info,
-                    loc: ident.loc,
+                    loc: var_name.loc,
                 }))
             }
             SymbolKind::EnumConstructor => {
@@ -2937,24 +2755,10 @@ impl CodeGenerator {
                     enum_index: enum_ctor.enum_index,
                 };
 
-                let mut inspect_info = None;
-                if self.reporter.in_inspection_mode {
-                    inspect_info = Some(InspectInfo {
-                        message: format!(
-                            "inline let {}: {}",
-                            ident.repr,
-                            TypeFmt(&*self.registry, &var_type)
-                        ),
-                        loc: ident.loc,
-                        linked_loc: Some(enum_ctor.loc),
-                    })
-                }
-
                 Ok(VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
                     variant_index: enum_ctor.variant_index,
-                    inspect_info,
                     var_type,
-                    loc: ident.loc,
+                    loc: var_name.loc,
                 }))
             }
             SymbolKind::TypeAlias
@@ -2964,9 +2768,9 @@ impl CodeGenerator {
             | SymbolKind::Function => Err(Error {
                 message: format!(
                     "Expected variable, found {:?} '{}'",
-                    symbol.kind, ident.repr
+                    symbol.kind, var_name.repr
                 ),
-                loc: ident.loc,
+                loc: var_name.loc,
             }),
         }
     }
@@ -2983,26 +2787,11 @@ impl CodeGenerator {
             .get_struct_or_struct_ref_field(&lhs_type, field_access)?
             .relax();
 
-        let mut inspect_info = None;
-        if self.reporter.in_inspection_mode {
-            inspect_info = Some(InspectInfo {
-                message: format!(
-                    "{}.{}: {}",
-                    TypeFmt(&*self.registry, &lhs_type),
-                    field.field_name,
-                    TypeFmt(&*self.registry, &field.field_type),
-                ),
-                loc: field_access.field_name.loc,
-                linked_loc: Some(field.loc),
-            })
-        };
-
         if let Type::Pointer { pointee: _ } = lhs_type {
             return Ok(VarInfo::Stored(VarInfoStored {
                 address: self.build_code_unit(ctx, &field_access.lhs)?,
                 offset: field.byte_offset,
                 var_type: field.field_type.clone(),
-                inspect_info,
             }));
         }
 
@@ -3018,33 +2807,21 @@ impl CodeGenerator {
                 VarInfo::Local(VarInfoLocal {
                     local_index,
                     var_type: _,
-                    inspect_info: parent_inspect_info,
                 }) => {
-                    if let Some(inspect_info) = parent_inspect_info {
-                        self.reporter.print_inspection(&inspect_info);
-                    }
-
                     return Ok(VarInfo::Local(VarInfoLocal {
                         local_index: local_index + field.field_index,
                         var_type: field.field_type.clone(),
-                        inspect_info,
                     }));
                 }
                 VarInfo::Stored(VarInfoStored {
                     address,
                     offset,
                     var_type: _,
-                    inspect_info: parent_inspect_info,
                 }) => {
-                    if let Some(inspect_info) = parent_inspect_info {
-                        self.reporter.print_inspection(&inspect_info);
-                    }
-
                     return Ok(VarInfo::Stored(VarInfoStored {
                         address,
                         offset: offset + field.byte_offset,
                         var_type: field.field_type.clone(),
-                        inspect_info,
                     }));
                 }
                 VarInfo::StructValueField(VarInfoStructValueField {
@@ -3052,13 +2829,8 @@ impl CodeGenerator {
                     drops_before,
                     drops_after,
                     var_type: _,
-                    inspect_info: parent_inspect_info,
                     loc: _,
                 }) => {
-                    if let Some(inspect_info) = parent_inspect_info {
-                        self.reporter.print_inspection(&inspect_info);
-                    }
-
                     let struct_components_count =
                         self.registry.count_wasm_type_components(&lhs_type);
                     let field_components_count =
@@ -3071,7 +2843,6 @@ impl CodeGenerator {
                             - field_components_count,
                         drops_after: drops_after + field.field_index,
                         var_type: field.field_type.clone(),
-                        inspect_info,
                         loc: field_access.field_name.loc,
                     }));
                 }
@@ -3086,7 +2857,6 @@ impl CodeGenerator {
             drops_before: struct_components_count - field.field_index - field_components_count,
             drops_after: field.field_index,
             var_type: field.field_type.clone(),
-            inspect_info,
             loc: field_access.field_name.loc,
         }));
     }
@@ -3095,25 +2865,14 @@ impl CodeGenerator {
         &mut self,
         ctx: &mut ExprContext,
         addr_expr: &CodeExpr,
-        op_loc: &Loc,
     ) -> Result<VarInfo, Error> {
         let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let Type::Pointer { pointee } = &addr_type {
-            let mut inspect_info = None;
-            if self.reporter.in_inspection_mode {
-                inspect_info = Some(InspectInfo {
-                    message: format!("<deref>: {}", TypeFmt(&*self.registry, &pointee)),
-                    loc: op_loc.clone(),
-                    linked_loc: None,
-                })
-            };
-
             return Ok(VarInfo::Stored(VarInfoStored {
                 address: self.build_code_unit(ctx, addr_expr)?,
                 offset: 0,
                 var_type: pointee.as_ref().clone(),
-                inspect_info,
             }));
         };
 
