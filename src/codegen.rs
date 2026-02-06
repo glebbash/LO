@@ -305,14 +305,13 @@ impl CodeGenerator {
                             .relax();
                         let const_ = self.registry.constants[symbol.col_index].relax_mut();
 
-                        let const_type =
-                            match self.registry.get_expr_type(&module.ctx, &let_expr.value) {
-                                Ok(x) => x,
-                                Err(err) => {
-                                    self.report_error(&err);
-                                    continue;
-                                }
-                            };
+                        let const_type = match self.get_expr_type(&module.ctx, &let_expr.value) {
+                            Ok(x) => x,
+                            Err(err) => {
+                                self.report_error(&err);
+                                continue;
+                            }
+                        };
                         const_.code_unit.type_ = const_type;
 
                         if let Err(err) = self.codegen(
@@ -470,7 +469,7 @@ impl CodeGenerator {
         let mut terminates_early = false;
 
         for expr in &body.exprs {
-            let expr_type = catch!(self.registry.get_expr_type(ctx, expr), err, {
+            let expr_type = catch!(self.get_expr_type(ctx, expr), err, {
                 self.report_error(&err);
                 continue;
             });
@@ -623,8 +622,7 @@ impl CodeGenerator {
                         continue;
                     });
 
-                    let field_value_type =
-                        self.registry.get_expr_type(ctx, &field_literal.value)?;
+                    let field_value_type = self.get_expr_type(ctx, &field_literal.value)?;
                     if !is_type_compatible(&struct_field.field_type, &field_value_type) {
                         self.report_error(&Error {
                             message: format!(
@@ -666,7 +664,7 @@ impl CodeGenerator {
 
                 if let Type::U8 = &item_type {
                     for item in items {
-                        let current_item_type = self.registry.get_expr_type(ctx, item)?;
+                        let current_item_type = self.get_expr_type(ctx, item)?;
                         if current_item_type != item_type {
                             return Err(Error {
                                 message: format!(
@@ -692,7 +690,7 @@ impl CodeGenerator {
                     && self.registry.structs[*struct_index].struct_name == "str"
                 {
                     for item in items {
-                        let current_item_type = self.registry.get_expr_type(ctx, item)?;
+                        let current_item_type = self.get_expr_type(ctx, item)?;
                         if current_item_type != item_type {
                             return Err(Error {
                                 message: format!(
@@ -754,7 +752,7 @@ impl CodeGenerator {
 
                 let mut value_type = Type::Void;
                 if let Some(value) = value {
-                    value_type = self.registry.get_expr_type(ctx, value)?;
+                    value_type = self.get_expr_type(ctx, value)?;
                 }
 
                 if *is_ok {
@@ -823,7 +821,7 @@ impl CodeGenerator {
 
                 let mut var_type = Type::Never;
                 // any errors will be reported during value codegen
-                if let Ok(t) = self.registry.get_expr_type(ctx, &value) {
+                if let Ok(t) = self.get_expr_type(ctx, &value) {
                     var_type = t;
                 }
 
@@ -855,7 +853,7 @@ impl CodeGenerator {
             }) => {
                 self.codegen(ctx, instrs, expr)?;
 
-                let castee_type = self.registry.get_expr_type(ctx, expr)?;
+                let castee_type = self.get_expr_type(ctx, expr)?;
                 let casted_to_type = self.registry.build_type(ctx, casted_to)?;
 
                 if let Some(cast_op) = self.registry.get_cast_instr(&castee_type, &casted_to_type) {
@@ -926,7 +924,7 @@ impl CodeGenerator {
                 PrefixOpTag::Not => {
                     self.codegen(ctx, instrs, expr)?;
 
-                    let operand_type = self.registry.get_expr_type(ctx, expr)?;
+                    let operand_type = self.get_expr_type(ctx, expr)?;
                     let mut wasm_components = Vec::new();
                     self.registry
                         .lower_type(&operand_type, &mut wasm_components);
@@ -978,7 +976,7 @@ impl CodeGenerator {
                         return Ok(());
                     };
 
-                    let operand_type = self.registry.get_expr_type(ctx, expr)?;
+                    let operand_type = self.get_expr_type(ctx, expr)?;
                     let mut wasm_components = Vec::new();
                     self.registry
                         .lower_type(&operand_type, &mut wasm_components);
@@ -1029,8 +1027,8 @@ impl CodeGenerator {
                 rhs,
                 loc: _,
             }) => {
-                let lhs_type = self.registry.get_expr_type(ctx, lhs)?;
-                let rhs_type = self.registry.get_expr_type(ctx, rhs)?;
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
+                let rhs_type = self.get_expr_type(ctx, rhs)?;
 
                 if !is_type_compatible(&lhs_type, &rhs_type) {
                     return Err(Error {
@@ -1085,7 +1083,7 @@ impl CodeGenerator {
                     self.reporter.print_inspection(inspect_info);
                 }
 
-                let rhs_type = self.registry.get_expr_type(ctx, rhs)?;
+                let rhs_type = self.get_expr_type(ctx, rhs)?;
                 if !is_type_compatible(var.get_type(), &rhs_type) {
                     self.report_error(&Error {
                         message: format!(
@@ -1146,7 +1144,7 @@ impl CodeGenerator {
                             });
                         }
 
-                        let expr_type = self.registry.get_expr_type(ctx, &args.items[0])?;
+                        let expr_type = self.get_expr_type(ctx, &args.items[0])?;
                         if !is_type_compatible(&variant.variant_type, &expr_type) {
                             return Err(Error {
                                 message: format!(
@@ -1172,7 +1170,7 @@ impl CodeGenerator {
                 args,
                 loc: _,
             }) => {
-                let lhs_type = self.registry.get_expr_type(ctx, lhs)?;
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let fn_name = self
                     .registry
                     .get_fn_name_from_method(&lhs_type, &field_name.repr);
@@ -1186,7 +1184,7 @@ impl CodeGenerator {
                 )?;
             }
             CodeExpr::InlineFnCall(InlineFnCallExpr {
-                id: _,
+                id,
                 fn_name,
                 type_args,
                 args,
@@ -1199,19 +1197,19 @@ impl CodeGenerator {
                     type_args,
                     None,
                     &args.items,
-                    expr,
+                    *id,
                     &fn_name.loc,
                 )?;
             }
             CodeExpr::InlineMethodCall(InlineMethodCallExpr {
-                id: _,
+                id,
                 lhs,
                 field_name,
                 type_args,
                 args,
                 loc: _,
             }) => {
-                let lhs_type = self.registry.get_expr_type(ctx, lhs)?;
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
                 let inline_fn_name = self
                     .registry
                     .get_fn_name_from_method(&lhs_type, &field_name.repr);
@@ -1222,7 +1220,7 @@ impl CodeGenerator {
                     type_args,
                     Some(lhs),
                     &args.items,
-                    expr,
+                    *id,
                     &field_name.loc,
                 )?;
             }
@@ -1267,7 +1265,7 @@ impl CodeGenerator {
 
                     let mut arg_types = Vec::new();
                     for arg in &args.items {
-                        arg_types.push(self.registry.get_expr_type(ctx, arg)?);
+                        arg_types.push(self.get_expr_type(ctx, arg)?);
                     }
                     let param_types = &[Type::U32];
                     if arg_types != param_types {
@@ -1299,7 +1297,7 @@ impl CodeGenerator {
 
                     let mut arg_types = Vec::new();
                     for arg in &args.items {
-                        arg_types.push(self.registry.get_expr_type(ctx, arg)?);
+                        arg_types.push(self.get_expr_type(ctx, arg)?);
                     }
                     let param_types = &[Type::U32, Type::U32, Type::U32];
                     if arg_types != param_types {
@@ -1473,7 +1471,7 @@ impl CodeGenerator {
                         return bad_args_err(self, fn_name);
                     }
 
-                    let arg_type = catch!(self.registry.get_expr_type(ctx, &args.items[0]), err, {
+                    let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
                         self.report_error(&err);
                         return Ok(());
                     });
@@ -1512,7 +1510,7 @@ impl CodeGenerator {
                         return bad_args_err(self, fn_name);
                     }
 
-                    let arg_type = catch!(self.registry.get_expr_type(ctx, &args.items[0]), err, {
+                    let arg_type = catch!(self.get_expr_type(ctx, &args.items[0]), err, {
                         self.report_error(&err);
                         return Ok(());
                     });
@@ -1617,7 +1615,7 @@ impl CodeGenerator {
 
                 if let Some(return_expr) = expr {
                     self.codegen(ctx, instrs, return_expr)?;
-                    return_type = self.registry.get_expr_type(ctx, &return_expr)?;
+                    return_type = self.get_expr_type(ctx, &return_expr)?;
                 };
 
                 let fn_return_type = &self.registry.functions[fn_index].fn_type.output;
@@ -1644,7 +1642,7 @@ impl CodeGenerator {
             }) => {
                 match cond {
                     IfCond::Expr(expr) => {
-                        if let Ok(cond_type) = self.registry.get_expr_type(ctx, expr) {
+                        if let Ok(cond_type) = self.get_expr_type(ctx, expr) {
                             if cond_type != Type::Bool {
                                 self.report_error(&Error {
                                     message: format!(
@@ -1755,7 +1753,7 @@ impl CodeGenerator {
                 });
 
                 if let Some(cond) = cond {
-                    if let Ok(cond_type) = self.registry.get_expr_type(ctx, cond) {
+                    if let Ok(cond_type) = self.get_expr_type(ctx, cond) {
                         if cond_type != Type::Bool {
                             self.report_error(&Error {
                                 message: format!(
@@ -1797,22 +1795,16 @@ impl CodeGenerator {
                 op_loc,
                 loc,
             }) => {
-                let counter_type = self.registry.get_expr_type(ctx, start)?;
-                if self.registry.get_expr_type(ctx, end)? != counter_type {
+                let counter_type = self.get_expr_type(ctx, start)?;
+                if self.get_expr_type(ctx, end)? != counter_type {
                     return Err(Error {
                         message: format!(
                             "Invalid range end type: {}, expected: {}",
-                            TypeFmt(&*self.registry, &self.registry.get_expr_type(ctx, end)?),
+                            TypeFmt(&*self.registry, &self.get_expr_type(ctx, end)?),
                             TypeFmt(&*self.registry, &counter_type),
                         ),
                         loc: *loc,
                     });
-                }
-
-                let mut is_64_bit_counter = false;
-                match self.registry.is_64_bit_int_tag(&counter_type, loc) {
-                    Ok(is_64) => is_64_bit_counter = is_64,
-                    Err(err) => self.report_error(&err),
                 }
 
                 self.registry.be_mut().enter_scope(ctx, ScopeKind::ForLoop);
@@ -1873,7 +1865,7 @@ impl CodeGenerator {
                         // increment counter
                         self.codegen_var_get(ctx, instrs, &counter_var)?;
                         self.codegen_var_set_prepare(instrs, &counter_var);
-                        if is_64_bit_counter {
+                        if unwrap(is_64_bit_int_tag(&self.registry, &counter_type, loc)) {
                             instrs.push(WasmInstr::I64Const { value: 1 });
                         } else {
                             instrs.push(WasmInstr::I32Const { value: 1 });
@@ -1970,10 +1962,10 @@ impl CodeGenerator {
                     return Ok(());
                 };
 
-                let arg_type = self.registry.get_expr_type(ctx, first_arg)?;
+                let arg_type = self.get_expr_type(ctx, first_arg)?;
 
                 for arg in &args.items {
-                    let current_arg_type = self.registry.get_expr_type(ctx, arg)?;
+                    let current_arg_type = self.get_expr_type(ctx, arg)?;
                     if current_arg_type != arg_type {
                         self.report_error(&Error {
                             message: format!(
@@ -2007,7 +1999,7 @@ impl CodeGenerator {
                 op_loc,
                 loc: _,
             }) => {
-                let lhs_type = self.registry.get_expr_type(ctx, lhs)?;
+                let lhs_type = self.get_expr_type(ctx, lhs)?;
                 catch!(self.codegen(ctx, instrs, lhs), err, {
                     self.report_error(&err);
                     return Ok(());
@@ -2136,7 +2128,7 @@ impl CodeGenerator {
             self.reporter.print_inspection(inspect_info);
         }
 
-        if let Ok(expr_to_match_type) = self.registry.get_expr_type(ctx, &header.expr_to_match) {
+        if let Ok(expr_to_match_type) = self.get_expr_type(ctx, &header.expr_to_match) {
             let expected_expr_to_match_type = Type::EnumInstance {
                 enum_index: enum_ctor.enum_index,
             };
@@ -2175,11 +2167,11 @@ impl CodeGenerator {
 
         let mut arg_types = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
-            arg_types.push(self.registry.get_expr_type(ctx, receiver_arg)?);
+            arg_types.push(self.get_expr_type(ctx, receiver_arg)?);
             self.codegen(ctx, instrs, receiver_arg)?;
         }
         for arg in args {
-            arg_types.push(self.registry.get_expr_type(ctx, arg)?);
+            arg_types.push(self.get_expr_type(ctx, arg)?);
             self.codegen(ctx, instrs, arg)?;
         }
 
@@ -2361,7 +2353,7 @@ impl CodeGenerator {
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
-        call_expr: &CodeExpr,
+        call_expr_id: ExprId,
         loc: &Loc,
     ) -> Result<(), Error> {
         self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
@@ -2384,7 +2376,7 @@ impl CodeGenerator {
             unreachable!()
         };
 
-        if let Some(expr_info_id) = self.registry.get_expr_info_id(ctx, call_expr) {
+        if let Some(expr_info_id) = self.get_expr_info(ctx, call_expr_id) {
             let call_info = &self.registry.inline_fn_call_info[expr_info_id];
             // TODO: remove if no longer needed for debugging
             // stderr_writeln(format!("got_offset({})", call_info.inner_expr_offset));
@@ -2408,7 +2400,7 @@ impl CodeGenerator {
         catch_body: Option<&CodeBlock>,
         loc: &Loc,
     ) -> Result<(), Error> {
-        let expr_type = self.registry.get_expr_type(ctx, expr)?;
+        let expr_type = self.get_expr_type(ctx, expr)?;
         let result = self.registry.assert_catchable_type(&expr_type, loc)?;
 
         self.registry.be_mut().enter_scope(ctx, ScopeKind::Block); // enter catch scope
@@ -3135,9 +3127,7 @@ impl CodeGenerator {
         ctx: &mut ExprContext,
         field_access: &FieldAccessExpr,
     ) -> Result<VarInfo, Error> {
-        let lhs_type = self
-            .registry
-            .get_expr_type(ctx, field_access.lhs.as_ref())?;
+        let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref())?;
 
         let field = self
             .registry
@@ -3258,7 +3248,7 @@ impl CodeGenerator {
         addr_expr: &CodeExpr,
         op_loc: &Loc,
     ) -> Result<VarInfo, Error> {
-        let addr_type = self.registry.get_expr_type(ctx, addr_expr)?;
+        let addr_type = self.get_expr_type(ctx, addr_expr)?;
 
         if let Type::Pointer { pointee } = &addr_type {
             let mut inspect_info = None;
@@ -3293,7 +3283,7 @@ impl CodeGenerator {
         expr: &CodeExpr,
     ) -> Result<CodeUnit, Error> {
         let mut code_unit = CodeUnit {
-            type_: self.registry.get_expr_type(ctx, expr)?,
+            type_: self.get_expr_type(ctx, expr)?,
             instrs: Vec::new(),
         };
         self.codegen(ctx, &mut code_unit.instrs, expr)?;
@@ -3396,20 +3386,27 @@ impl CodeGenerator {
         &self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        IntLiteralExpr {
-            id: _,
-            tag,
-            repr: _,
-            value,
-            loc,
-        }: &IntLiteralExpr,
+        int_literal: &IntLiteralExpr,
     ) {
+        // self.report_error(&Error {
+        //     message: format!("here?"),
+        //     loc: int_literal.loc,
+        // });
+
+        // TODO: change to this
+        // let int_type = self.get_expr_type2(ctx, int_literal.id);
+        // let is_64_bit = unwrap(is_64_bit_int_tag(
+        //     &self.registry,
+        //     int_type,
+        //     &Loc::internal(),
+        // ));
+
         let mut is_64_bit = false;
-        if let Some(tag) = tag {
+        if let Some(tag) = &int_literal.tag {
             match self
                 .registry
-                .get_type_or_err(ctx, tag, loc)
-                .and_then(|tag_type| self.registry.is_64_bit_int_tag(&tag_type, loc))
+                .get_type_or_err(ctx, tag, &int_literal.loc)
+                .and_then(|tag_type| is_64_bit_int_tag(&self.registry, &tag_type, &int_literal.loc))
             {
                 Ok(is_64) => is_64_bit = is_64,
                 Err(err) => self.report_error(&err),
@@ -3418,11 +3415,11 @@ impl CodeGenerator {
 
         if is_64_bit {
             instrs.push(WasmInstr::I64Const {
-                value: *value as i64,
+                value: int_literal.value as i64,
             });
         } else {
             instrs.push(WasmInstr::I32Const {
-                value: *value as i32,
+                value: int_literal.value as i32,
             });
         }
     }
@@ -3719,6 +3716,45 @@ impl CodeGenerator {
         }
     }
 
+    fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> Result<Type, Error> {
+        let Some(expr_info_id) = self.get_expr_info(ctx, expr.id()) else {
+            return Err(Error {
+                message: format!("IDFK what type this is"),
+                loc: expr.loc(),
+            });
+        };
+
+        match expr {
+            CodeExpr::InlineFnCall(_) | CodeExpr::InlineMethodCall(_) => {
+                let call_info = &self.registry.inline_fn_call_info[expr_info_id];
+                return Ok(self.registry.types[call_info.return_type_id].clone());
+            }
+            _ => {
+                return Ok(self.registry.types[expr_info_id].clone());
+            }
+        }
+    }
+
+    #[allow(dead_code)] // TODO: remove `#[allow(dead_code)]`
+    fn get_expr_type2(&self, ctx: &ExprContext, expr_id: ExprId) -> &Type {
+        let Some(expr_info_id) = self.get_expr_info(ctx, expr_id) else {
+            unreachable!()
+        };
+
+        &self.registry.types[expr_info_id]
+    }
+
+    fn get_expr_info(&self, ctx: &ExprContext, expr_id: ExprId) -> Option<ExprInfo> {
+        let scope = self.registry.current_scope(ctx);
+
+        let expr_info = self.registry.expr_info[scope.expr_info_offset + expr_id];
+        if expr_info == EXPR_INFO_INVALID {
+            return None;
+        }
+
+        Some(expr_info)
+    }
+
     // TODO: remove tag after migration
     fn report_error(&self, err: &Error) {
         let marked_error = Error {
@@ -3727,4 +3763,12 @@ impl CodeGenerator {
         };
         self.reporter.error(&marked_error);
     }
+}
+
+fn unwrap<T, E>(expr: Result<T, E>) -> T {
+    let Ok(value) = expr else {
+        unreachable!();
+    };
+
+    value
 }

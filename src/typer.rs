@@ -1,11 +1,9 @@
-#![allow(dead_code)] // TODO: remove
-
 use core::usize;
 
 use crate::{ast::*, common::*, lexer::*, registry::*, wasm::WasmType};
 
-pub type ExprInfoId = usize;
-pub const EXPR_INFO_ID_INVALID: ExprInfoId = usize::MAX;
+pub type ExprInfo = usize;
+pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
 
 type TyScopeId = usize;
 
@@ -16,6 +14,7 @@ pub struct TyContext {
     pub expr_info_offset: usize,
 }
 
+#[allow(dead_code)] // TODO: remove `#[allow(dead_code)]`
 #[derive(Clone)]
 pub struct TyScope {
     pub parent_id: Option<TyScopeId>,
@@ -34,7 +33,6 @@ pub struct TySymbol {
 }
 
 pub struct ModuleInfo {
-    module_id: usize,
     ctx: TyContext,
 }
 
@@ -86,7 +84,6 @@ impl Typer {
         self.module_info.reserve(self.registry.modules.len());
         for module in &self.registry.modules {
             self.module_info.be_mut().push(ModuleInfo {
-                module_id: module.id,
                 ctx: TyContext {
                     module_id: module.id,
                     scope_id: self.new_scope(ScopeKind::Global, Some(global_scope_id)),
@@ -116,7 +113,7 @@ impl Typer {
     fn extend_expr_info_storage(&self, expr_count: usize) {
         self.registry.be_mut().expr_info.resize(
             self.registry.expr_info.len() + expr_count,
-            EXPR_INFO_ID_INVALID,
+            EXPR_INFO_INVALID,
         );
     }
 
@@ -886,7 +883,8 @@ impl Typer {
                     }
 
                     if intrinsic.fn_name.repr == "use_memory" {
-                        // skip, will be processed in `Compiler.codegen`
+                        // TODO: use inline let unwrapping to get int literal value
+                        // skip, will be processed in `Compiler.codegen_top_level_leftover`
                         continue;
                     }
 
@@ -1113,11 +1111,11 @@ impl Typer {
                     return Ok(());
                 });
 
-                catch!(self.is_64_bit_int_tag(&tag_type, &int_literal.loc), err, {
+                if let Err(err) = is_64_bit_int_tag(&self.registry, &tag_type, &int_literal.loc) {
                     self.report_error(&err);
                     self.store_type(ctx, int_literal.id, &Type::U32);
                     return Ok(());
-                });
+                }
 
                 self.store_type(ctx, int_literal.id, &tag_type);
 
@@ -2588,17 +2586,6 @@ impl Typer {
         }
     }
 
-    fn is_64_bit_int_tag(&self, tag_type: &Type, loc: &Loc) -> Result<bool, Error> {
-        match tag_type {
-            Type::U64 | Type::I64 => Ok(true),
-            Type::U8 | Type::I8 | Type::U16 | Type::I16 | Type::U32 | Type::I32 => Ok(false),
-            other => Err(Error {
-                message: format!("{} is not a valid int tag", TypeFmt(&*self.registry, other)),
-                loc: *loc,
-            }),
-        }
-    }
-
     // TODO: remove this once migrated
     fn define_symbol_compat(
         &self,
@@ -2697,7 +2684,7 @@ impl Typer {
 
     fn load_type_id(&self, ctx: &TyContext, expr: &CodeExpr) -> Option<TypeId> {
         let info_id = self.registry.expr_info[ctx.expr_info_offset + expr.id()];
-        if info_id == EXPR_INFO_ID_INVALID {
+        if info_id == EXPR_INFO_INVALID {
             return None;
         }
 
@@ -2713,7 +2700,7 @@ impl Typer {
         self.store_expr_info(ctx, expr_id, type_id)
     }
 
-    fn store_expr_info(&self, ctx: &TyContext, expr_id: ExprId, expr_info_id: ExprInfoId) {
+    fn store_expr_info(&self, ctx: &TyContext, expr_id: ExprId, expr_info_id: ExprInfo) {
         let absolute_expr_id = ctx.expr_info_offset + expr_id;
         // TODO: remove if no longer needed for debugging
         // stderr_writeln(format!(
@@ -2756,6 +2743,17 @@ impl Typer {
             loc: err.loc.clone(),
         };
         self.reporter.error(&marked_error);
+    }
+}
+
+pub fn is_64_bit_int_tag(registry: &Registry, tag_type: &Type, loc: &Loc) -> Result<bool, Error> {
+    match tag_type {
+        Type::U64 | Type::I64 => Ok(true),
+        Type::U8 | Type::I8 | Type::U16 | Type::I16 | Type::U32 | Type::I32 => Ok(false),
+        other => Err(Error {
+            message: format!("{} is not a valid int tag", TypeFmt(&registry, other)),
+            loc: *loc,
+        }),
     }
 }
 

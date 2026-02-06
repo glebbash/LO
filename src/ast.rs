@@ -454,7 +454,6 @@ pub struct SizeofExpr {
 }
 
 impl CodeExpr {
-    #[allow(dead_code)] // TODO: remove
     pub fn id(&self) -> usize {
         match self {
             CodeExpr::BoolLiteral(e) => e.id,

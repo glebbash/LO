@@ -97,9 +97,6 @@ pub extern "C" fn _start() {
     let mut typer = Typer::new(&mut registry);
     typer.type_all();
 
-    let mut codegen = CodeGenerator::new(&mut registry);
-    codegen.codegen_all();
-
     registry.process_deferred_intrinsics();
 
     if registry.reporter.in_inspection_mode {
@@ -113,6 +110,9 @@ pub extern "C" fn _start() {
     if *registry.reporter.error_count > 0 {
         proc_exit(1);
     }
+
+    let mut codegen = CodeGenerator::new(&mut registry);
+    codegen.codegen_all();
 
     if command == "compile" {
         let mut binary = Vec::new();
