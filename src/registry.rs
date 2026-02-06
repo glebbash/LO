@@ -802,32 +802,6 @@ impl Registry {
         }
     }
 
-    pub fn get_cast_instr(&self, casted_from: &Type, casted_to: &Type) -> Option<WasmInstr> {
-        if *casted_to == Type::I64 || *casted_to == Type::U64 {
-            if *casted_from == Type::I8 || *casted_from == Type::I16 || *casted_from == Type::I32 {
-                return Some(WasmInstr::I64ExtendI32s);
-            }
-
-            if *casted_from == Type::U8 || *casted_from == Type::U16 || *casted_from == Type::U32 {
-                return Some(WasmInstr::I64ExtendI32u);
-            }
-        }
-
-        if *casted_to == Type::I8
-            || *casted_to == Type::U8
-            || *casted_to == Type::I16
-            || *casted_to == Type::U16
-            || *casted_to == Type::I32
-            || *casted_to == Type::U32
-        {
-            if *casted_from == Type::I64 || *casted_from == Type::U64 {
-                return Some(WasmInstr::I32WrapI64);
-            }
-        }
-
-        None
-    }
-
     pub fn build_type(&self, ctx: &ExprContext, type_expr: &TypeExpr) -> Result<Type, Error> {
         return self.build_type_check_ref(ctx, type_expr, true, &Loc::internal());
     }

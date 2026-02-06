@@ -23,7 +23,7 @@ impl CodeGenerator {
     }
 
     pub fn codegen_all(&mut self) {
-        self.codegen_top_level_leftover();
+        self.codegen_const_values();
 
         let mut fn_imports_count = 0;
         for fn_info in &self.registry.functions {
@@ -291,8 +291,8 @@ impl CodeGenerator {
         }
     }
 
-    // TODO: cleanup
-    fn codegen_top_level_leftover(&mut self) {
+    // TODO: process inline lets similarly to inline fn calls
+    fn codegen_const_values(&mut self) {
         for module in self.registry.modules.relax() {
             for expr in &*module.parser.ast {
                 match expr {
@@ -305,152 +305,13 @@ impl CodeGenerator {
                             .relax();
                         let const_ = self.registry.constants[symbol.col_index].relax_mut();
 
-                        let const_type = match self.get_expr_type(&module.ctx, &let_expr.value) {
-                            Ok(x) => x,
-                            Err(err) => {
-                                self.report_error(&err);
-                                continue;
-                            }
-                        };
-                        const_.code_unit.type_ = const_type;
-
-                        if let Err(err) = self.codegen(
+                        let Ok(()) = self.codegen(
                             module.ctx.be_mut(),
                             &mut const_.code_unit.instrs,
                             &let_expr.value,
-                        ) {
-                            self.report_error(&err);
-                            continue;
+                        ) else {
+                            unreachable!()
                         };
-
-                        if self.reporter.in_inspection_mode {
-                            let const_name = &let_expr.name.repr;
-
-                            self.reporter.print_inspection(&InspectInfo {
-                                message: format!(
-                                    "inline let {const_name}: {}",
-                                    TypeFmt(&*self.registry, &const_.code_unit.type_)
-                                ),
-                                loc: let_expr.name.loc,
-                                linked_loc: None,
-                            });
-                        }
-                    }
-                    TopLevelExpr::Intrinsic(InlineFnCallExpr {
-                        id,
-                        fn_name: intrinsic,
-                        type_args,
-                        args,
-                        loc,
-                    }) if intrinsic.repr == "use_memory" => {
-                        if let Some(existing_memory) = &self.registry.memory {
-                            self.report_error(&Error {
-                                message: format!(
-                                    "Cannot redefine memory, first defined at {}",
-                                    existing_memory.loc.to_string(&self.reporter.fm)
-                                ),
-                                loc: intrinsic.loc,
-                            });
-                            continue;
-                        }
-
-                        if type_args.len() != 0 {
-                            self.report_error(&bad_signature(intrinsic));
-                        }
-
-                        let mut memory = MemoryInfo {
-                            min_pages: None,
-                            data_start: None,
-                            exported: false,
-                            imported_from: None,
-                            loc: intrinsic.loc,
-                        };
-
-                        let ctx = &mut module.be_mut().ctx;
-                        let tmp_instrs = &mut Vec::new();
-
-                        for arg in &args.items {
-                            if let CodeExpr::Ident(ident) = arg
-                                && ident.repr == "exported"
-                            {
-                                memory.exported = true;
-                                continue;
-                            }
-
-                            let CodeExpr::Assign(AssignExpr {
-                                lhs, rhs: value, ..
-                            }) = arg
-                            else {
-                                self.report_error(&bad_signature(intrinsic));
-                                continue;
-                            };
-
-                            let CodeExpr::Ident(key) = &**lhs else {
-                                self.report_error(&bad_signature(intrinsic));
-                                continue;
-                            };
-
-                            if key.repr == "data_start" {
-                                tmp_instrs.clear();
-                                if let Err(err) = self.codegen(ctx, tmp_instrs, &value) {
-                                    self.report_error(&err);
-                                };
-
-                                if tmp_instrs.len() == 1 {
-                                    if let WasmInstr::I32Const { value } = &tmp_instrs[0] {
-                                        memory.data_start = Some(*value as u32);
-                                        *self.registry.data_size.be_mut() = *value as u32;
-                                        continue;
-                                    }
-                                }
-
-                                self.report_error(&bad_signature(intrinsic));
-                                continue;
-                            }
-
-                            if key.repr == "min_pages" {
-                                tmp_instrs.clear();
-                                if let Err(err) = self.codegen(ctx, tmp_instrs, &value) {
-                                    self.report_error(&err);
-                                };
-
-                                if tmp_instrs.len() == 1 {
-                                    if let WasmInstr::I32Const { value } = &tmp_instrs[0] {
-                                        memory.min_pages = Some(*value as u32);
-                                        continue;
-                                    }
-                                }
-
-                                self.report_error(&bad_signature(intrinsic));
-                                continue;
-                            }
-
-                            if key.repr == "import_from" {
-                                let CodeExpr::StringLiteral(str) = &**value else {
-                                    self.report_error(&bad_signature(intrinsic));
-                                    continue;
-                                };
-
-                                memory.imported_from = Some(str.value.clone());
-                                continue;
-                            }
-
-                            self.report_error(&bad_signature(intrinsic));
-                        }
-
-                        self.registry.memory = Some(memory);
-
-                        continue;
-
-                        fn bad_signature(fn_name: &IdentExpr) -> Error {
-                            Error {
-                                message: format!(
-                                    "Invalid call, expected signature: @{}([min_pages = <u32>, data_start = <u32>, exported, import_from = <str-literal>])",
-                                    fn_name.repr
-                                ),
-                                loc: fn_name.loc,
-                            }
-                        }
                     }
                     _ => {} // skip, not interested
                 }
@@ -856,7 +717,7 @@ impl CodeGenerator {
                 let castee_type = self.get_expr_type(ctx, expr)?;
                 let casted_to_type = self.registry.build_type(ctx, casted_to)?;
 
-                if let Some(cast_op) = self.registry.get_cast_instr(&castee_type, &casted_to_type) {
+                if let Some(cast_op) = get_cast_instr(&castee_type, &casted_to_type) {
                     instrs.push(cast_op);
                     return Ok(());
                 }
@@ -3763,6 +3624,32 @@ impl CodeGenerator {
         };
         self.reporter.error(&marked_error);
     }
+}
+
+fn get_cast_instr(casted_from: &Type, casted_to: &Type) -> Option<WasmInstr> {
+    if *casted_to == Type::I64 || *casted_to == Type::U64 {
+        if *casted_from == Type::I8 || *casted_from == Type::I16 || *casted_from == Type::I32 {
+            return Some(WasmInstr::I64ExtendI32s);
+        }
+
+        if *casted_from == Type::U8 || *casted_from == Type::U16 || *casted_from == Type::U32 {
+            return Some(WasmInstr::I64ExtendI32u);
+        }
+    }
+
+    if *casted_to == Type::I8
+        || *casted_to == Type::U8
+        || *casted_to == Type::I16
+        || *casted_to == Type::U16
+        || *casted_to == Type::I32
+        || *casted_to == Type::U32
+    {
+        if *casted_from == Type::I64 || *casted_from == Type::U64 {
+            return Some(WasmInstr::I32WrapI64);
+        }
+    }
+
+    None
 }
 
 fn unwrap<T, E>(expr: Result<T, E>) -> T {

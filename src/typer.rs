@@ -36,9 +36,13 @@ pub struct ModuleInfo {
     ctx: TyContext,
 }
 
-#[derive(Clone)]
 pub struct TyLocal {
     pub type_id: TypeId,
+}
+
+pub struct TyConst {
+    pub type_id: TypeId,
+    pub expr: UBRef<CodeExpr>,
 }
 
 pub struct ICallInfo {
@@ -58,7 +62,7 @@ pub struct Typer {
     pub type_aliases: UBCell<Vec<TypeId>>, // indexed by `col_index` when `kind = TypeAlias`
     pub locals: Vec<TyLocal>,              // indexed by `col_index` when `kind = Local`
     pub globals: Vec<GlobalDef>,           // indexed by `col_index` when `kind = Global`
-    pub constants: Vec<ConstDef>,          // indexed by `col_index` when `kind = Const`
+    pub constants: Vec<TyConst>,           // indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,            // indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>,  // indexed by `col_index` when `kind = InlineFn`
     pub structs: Vec<StructDef>,           // indexed by `col_index` when `kind = Struct`
@@ -421,13 +425,9 @@ impl Typer {
                             });
                         }
 
-                        self.constants.push(ConstDef {
-                            const_name: let_expr.name.repr,
-                            code_unit: CodeUnit {
-                                type_: Type::Never, // placeholder
-                                instrs: Vec::new(), // placeholder
-                            },
-                            loc: let_expr.name.loc,
+                        self.constants.push(TyConst {
+                            type_id: TYPE_ID_INVALID, // placeholder
+                            expr: UBRef::new(&*let_expr.value),
                         });
                         continue;
                     }
@@ -845,8 +845,20 @@ impl Typer {
                         }
 
                         let const_ = self.constants[symbol.col_index].relax_mut();
+                        const_.type_id = self.build_type_id(&value_type);
 
-                        const_.code_unit.type_ = value_type;
+                        if self.reporter.in_inspection_mode {
+                            self.reporter.print_inspection(&InspectInfo {
+                                message: format!(
+                                    "inline let {}: {}",
+                                    &let_expr.name.repr,
+                                    TypeFmt(&*self.registry, &value_type)
+                                ),
+                                loc: let_expr.name.loc,
+                                linked_loc: None,
+                            });
+                        }
+
                         continue;
                     }
 
@@ -883,9 +895,108 @@ impl Typer {
                     }
 
                     if intrinsic.fn_name.repr == "use_memory" {
-                        // TODO: use inline let unwrapping to get int literal value
-                        // skip, will be processed in `Compiler.codegen_top_level_leftover`
+                        if let Some(existing_memory) = &self.registry.memory {
+                            self.report_error(&Error {
+                                message: format!(
+                                    "Cannot redefine memory, first defined at {}",
+                                    existing_memory.loc.to_string(&self.reporter.fm)
+                                ),
+                                loc: intrinsic.loc,
+                            });
+                            continue;
+                        }
+
+                        if intrinsic.type_args.len() != 0 {
+                            self.report_error(&bad_signature(&intrinsic.fn_name));
+                        }
+
+                        let mut memory = MemoryInfo {
+                            min_pages: None,
+                            data_start: None,
+                            exported: false,
+                            imported_from: None,
+                            loc: intrinsic.loc,
+                        };
+
+                        for arg in &intrinsic.args.items {
+                            if let CodeExpr::Ident(ident) = arg
+                                && ident.repr == "exported"
+                            {
+                                memory.exported = true;
+                                continue;
+                            }
+
+                            let CodeExpr::Assign(AssignExpr {
+                                lhs, rhs: value, ..
+                            }) = arg
+                            else {
+                                self.report_error(&bad_signature(&intrinsic.fn_name));
+                                continue;
+                            };
+
+                            let CodeExpr::Ident(key) = &**lhs else {
+                                self.report_error(&bad_signature(&intrinsic.fn_name));
+                                continue;
+                            };
+
+                            if key.repr == "data_start" {
+                                let Some(CodeExpr::IntLiteral(IntLiteralExpr {
+                                    value,
+                                    tag: None,
+                                    ..
+                                })) = self.get_const_value(ctx, value)
+                                else {
+                                    self.report_error(&bad_signature(&intrinsic.fn_name));
+                                    continue;
+                                };
+
+                                memory.data_start = Some(*value as u32);
+                                *self.registry.data_size.be_mut() = *value as u32;
+
+                                continue;
+                            }
+
+                            if key.repr == "min_pages" {
+                                let Some(CodeExpr::IntLiteral(IntLiteralExpr {
+                                    value,
+                                    tag: None,
+                                    ..
+                                })) = self.get_const_value(ctx, value)
+                                else {
+                                    self.report_error(&bad_signature(&intrinsic.fn_name));
+                                    continue;
+                                };
+
+                                memory.min_pages = Some(*value as u32);
+                                continue;
+                            }
+
+                            if key.repr == "import_from" {
+                                let CodeExpr::StringLiteral(str) = &**value else {
+                                    self.report_error(&bad_signature(&intrinsic.fn_name));
+                                    continue;
+                                };
+
+                                memory.imported_from = Some(str.value.clone());
+                                continue;
+                            }
+
+                            self.report_error(&bad_signature(&intrinsic.fn_name));
+                        }
+
+                        self.registry.memory = Some(memory);
+
                         continue;
+
+                        fn bad_signature(fn_name: &IdentExpr) -> Error {
+                            Error {
+                                message: format!(
+                                    "Invalid call, expected signature: @{}([min_pages = <u32>, data_start = <u32>, exported, import_from = <str-literal>])",
+                                    fn_name.repr
+                                ),
+                                loc: fn_name.loc,
+                            }
+                        }
                     }
 
                     if intrinsic.fn_name.repr == "export_existing" {
@@ -1003,6 +1114,64 @@ impl Typer {
                 }
             }
         }
+    }
+
+    fn get_const_value(&self, ctx: &TyContext, expr: &CodeExpr) -> Option<&CodeExpr> {
+        match expr {
+            CodeExpr::BoolLiteral(_)
+            | CodeExpr::CharLiteral(_)
+            | CodeExpr::NullLiteral(_)
+            | CodeExpr::IntLiteral(_)
+            | CodeExpr::StringLiteral(_)
+            | CodeExpr::StructLiteral(_)
+            | CodeExpr::ArrayLiteral(_)
+            | CodeExpr::ResultLiteral(_) => {
+                // all literals are valid const values
+                return Some(expr.relax());
+            }
+
+            CodeExpr::Ident(ident_expr) => {
+                let Some(symbol) = self.get_symbol(ctx.scope_id, ident_expr.repr) else {
+                    return None;
+                };
+
+                if let SymbolKind::Const = symbol.kind {
+                    return Some(&self.constants[symbol.col_index].expr);
+                }
+            }
+
+            CodeExpr::Let(_)
+            | CodeExpr::InfixOp(_)
+            | CodeExpr::PrefixOp(_)
+            | CodeExpr::Cast(_)
+            | CodeExpr::Assign(_)
+            | CodeExpr::FieldAccess(_)
+            | CodeExpr::PropagateError(_)
+            | CodeExpr::FnCall(_)
+            | CodeExpr::MethodCall(_)
+            | CodeExpr::InlineFnCall(_)
+            | CodeExpr::InlineMethodCall(_)
+            | CodeExpr::IntrinsicCall(_)
+            | CodeExpr::Return(_)
+            | CodeExpr::If(_)
+            | CodeExpr::While(_)
+            | CodeExpr::For(_)
+            | CodeExpr::Break(_)
+            | CodeExpr::Continue(_)
+            | CodeExpr::Defer(_)
+            | CodeExpr::Catch(_)
+            | CodeExpr::Match(_)
+            | CodeExpr::Paren(_)
+            | CodeExpr::DoWith(_)
+            | CodeExpr::Pipe(_)
+            | CodeExpr::Sizeof(_) => { /* fallthrough */ }
+        }
+
+        self.report_error(&Error {
+            message: format!("Expression not allowed in const context"),
+            loc: expr.loc(),
+        });
+        None
     }
 
     fn pass_type_fns(&mut self, ctx: &TyContext) {
@@ -1345,6 +1514,8 @@ impl Typer {
                 }
             }
             CodeExpr::Cast(cast) => {
+                // TODO: check if expr is castable to `casted_to`
+
                 self.report_if_err(self.type_code_expr(ctx, &cast.expr));
 
                 let casted_to = self.build_type(ctx, &cast.casted_to)?;
@@ -1583,17 +1754,18 @@ impl Typer {
                                     [enum_ctor.variant_index];
 
                                 let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
-                                self.register_block_const(
-                                    &then_ctx,
-                                    ConstDef {
-                                        const_name: match_header.variant_bind.repr,
-                                        code_unit: CodeUnit {
-                                            type_: enum_variant.variant_type.clone(),
-                                            instrs: Vec::new(),
-                                        },
-                                        loc: match_header.variant_bind.loc,
-                                    },
-                                );
+                                if match_header.variant_bind.repr != "_" {
+                                    if let Ok(()) = self.define_symbol(
+                                        &then_ctx,
+                                        match_header.variant_bind.repr,
+                                        SymbolKind::Local,
+                                        match_header.variant_bind.loc,
+                                    ) {
+                                        self.locals.be_mut().push(TyLocal {
+                                            type_id: self.build_type_id(&enum_variant.variant_type),
+                                        })
+                                    };
+                                }
                                 updated_then_ctx = Some(then_ctx);
                             } else {
                                 // TODO: update error message
@@ -1891,7 +2063,7 @@ impl Typer {
                 return Ok(self.build_type_id(&self.globals[symbol.col_index].global_type));
             }
             SymbolKind::Const => {
-                return Ok(self.build_type_id(&self.constants[symbol.col_index].code_unit.type_));
+                return Ok(self.constants[symbol.col_index].type_id);
             }
             SymbolKind::EnumConstructor => {
                 let enum_ctor = &self.enum_ctors[symbol.col_index];
@@ -2369,15 +2541,6 @@ impl Typer {
         self.type_aliases.be_mut().push(type_id);
     }
 
-    fn register_block_const(&self, ctx: &TyContext, const_def: ConstDef) {
-        if const_def.const_name == "_" {
-            return;
-        }
-
-        let _ = self.define_symbol(ctx, const_def.const_name, SymbolKind::Const, const_def.loc);
-        self.constants.be_mut().push(const_def);
-    }
-
     fn type_code_expr_and_load(&self, ctx: &TyContext, expr: &CodeExpr) -> Result<&Type, Error> {
         self.type_code_expr(ctx, expr)?;
         let Some(type_id) = self.load_type_id(ctx, expr) else {
@@ -2648,6 +2811,7 @@ impl Typer {
         Ok(())
     }
 
+    // TODO: accept ctx instead?
     fn get_symbol(&self, scope_id: TyScopeId, symbol_name: &str) -> Option<&TySymbol> {
         for symbol in self.scopes[scope_id].symbols.iter().rev() {
             if symbol.name == symbol_name {
