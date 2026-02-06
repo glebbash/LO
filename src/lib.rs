@@ -97,8 +97,6 @@ pub extern "C" fn _start() {
     let mut typer = Typer::new(&mut registry);
     typer.type_all();
 
-    registry.process_deferred_intrinsics();
-
     // TODO: call this only if typer didn't find any errors
     //   (after all error reporting and inspections are moved out of codegen)
     let mut codegen = CodeGenerator::new(&mut registry);

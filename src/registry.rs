@@ -413,7 +413,6 @@ pub struct Registry {
     pub datas: UBCell<Vec<WasmData>>,
     pub data_size: UBCell<u32>,
     pub string_pool: UBCell<Vec<PooledString>>,
-    pub first_string_usage: UBCell<Option<Loc>>,
 
     pub expr_count: usize,
     pub scope_count: usize,
@@ -573,41 +572,6 @@ impl Registry {
         let module = self.modules.relax_mut().last_mut().unwrap();
 
         Some(module)
-    }
-
-    pub fn process_deferred_intrinsics(&mut self) {
-        for module in &self.modules {
-            for expr in &*module.parser.ast {
-                if let TopLevelExpr::Intrinsic(intrinsic) = expr
-                    && intrinsic.fn_name.repr == "inspect_stats"
-                {
-                    if !self.reporter.in_inspection_mode {
-                        return;
-                    }
-
-                    let mut lines = 0;
-                    for file in &self.reporter.fm.files {
-                        lines += file
-                            .source
-                            .as_bytes()
-                            .iter()
-                            .filter(|&&b| b == b'\n')
-                            .count()
-                    }
-
-                    let mut msg = String::new();
-                    write!(&mut msg, "LOC: {}\n", lines).unwrap();
-                    write!(&mut msg, "expr count: {}\n", self.expr_count).unwrap();
-                    write!(&mut msg, "types: {}\n", TypeListFmt(self, &self.types)).unwrap();
-
-                    self.reporter.print_inspection(&InspectInfo {
-                        message: msg,
-                        loc: intrinsic.fn_name.loc,
-                        linked_loc: None,
-                    });
-                }
-            }
-        }
     }
 
     pub fn define_symbol(

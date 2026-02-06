@@ -69,6 +69,8 @@ pub struct Typer {
     pub enums: Vec<EnumDef>,               // indexed by `col_index` when `kind = Enum`
     pub enum_ctors: Vec<EnumConstructor>,  // indexed by `col_index` when `kind = EnumConstructor`
 
+    pub first_string_usage: UBCell<Option<Loc>>,
+
     pub global_scope: Scope,
 }
 
@@ -114,39 +116,6 @@ impl Typer {
         self.add_builtin_type(Type::F64);
     }
 
-    fn extend_expr_info_storage(&self, expr_count: usize) {
-        self.registry.be_mut().expr_info.resize(
-            self.registry.expr_info.len() + expr_count,
-            EXPR_INFO_INVALID,
-        );
-    }
-
-    #[inline]
-    fn add_builtin_type(&mut self, type_: Type) {
-        self.scopes.be_mut()[0].symbols.push(TySymbol {
-            scope_id: 0,
-            name: type_.to_str().unwrap(),
-            kind: SymbolKind::TypeAlias,
-            col_index: self.type_aliases.len(),
-            loc: Loc::internal(),
-        });
-
-        let type_id = self.build_type_id(&type_);
-        self.type_aliases.push(type_id);
-
-        // TODO: remove after migration
-        {
-            self.global_scope.be_mut().symbols.push(Symbol {
-                scope_id: self.global_scope.id,
-                name: type_.to_str().unwrap(),
-                kind: SymbolKind::TypeAlias,
-                col_index: self.type_aliases.len() - 1,
-                loc: Loc::internal(),
-            });
-            self.registry.type_aliases.push(type_.clone());
-        }
-    }
-
     pub fn type_all(&mut self) {
         for module in self.module_info.be_mut().relax_mut() {
             self.pass_collect_own_symbols(&module.ctx);
@@ -166,6 +135,57 @@ impl Typer {
 
         for module in self.module_info.be_mut().relax_mut() {
             self.pass_type_fns(&module.ctx);
+        }
+
+        self.run_delayed_actions();
+    }
+
+    fn run_delayed_actions(&self) {
+        for module in &self.registry.modules {
+            for expr in &*module.parser.ast {
+                if let TopLevelExpr::Intrinsic(intrinsic) = expr
+                    && intrinsic.fn_name.repr == "inspect_stats"
+                {
+                    if !self.reporter.in_inspection_mode {
+                        return;
+                    }
+
+                    let mut lines = 0;
+                    for file in &self.reporter.fm.files {
+                        lines += file
+                            .source
+                            .as_bytes()
+                            .iter()
+                            .filter(|&&b| b == b'\n')
+                            .count()
+                    }
+
+                    let mut msg = String::new();
+                    write!(&mut msg, "LOC: {}\n", lines).unwrap();
+                    write!(&mut msg, "expr count: {}\n", self.registry.expr_count).unwrap();
+                    write!(
+                        &mut msg,
+                        "types: {}\n",
+                        TypeListFmt(&*self.registry, &self.registry.types)
+                    )
+                    .unwrap();
+
+                    self.reporter.print_inspection(&InspectInfo {
+                        message: msg,
+                        loc: intrinsic.fn_name.loc,
+                        linked_loc: None,
+                    });
+                }
+            }
+        }
+
+        if let Some(string_usage_loc) = *self.first_string_usage
+            && self.registry.memory.is_none()
+        {
+            self.report_error(&Error {
+                message: format!("Cannot use strings with no memory defined"),
+                loc: string_usage_loc,
+            });
         }
     }
 
@@ -880,7 +900,7 @@ impl Typer {
 
                         self.reporter.print_inspection(&InspectInfo {
                             message: format!(
-                                "global {global_name}: {}",
+                                "let {global_name}: {}",
                                 TypeFmt(&*self.registry, &global.global_type)
                             ),
                             loc: let_expr.name.loc,
@@ -1102,8 +1122,8 @@ impl Typer {
                         }
                     }
 
-                    if intrinsic.fn_name.repr.starts_with("inspect_") {
-                        // skip, processed elsewhere
+                    if intrinsic.fn_name.repr == "inspect_stats" {
+                        // skip, will be processed in `run_delayed_actions`
                         continue;
                     }
 
@@ -1297,6 +1317,10 @@ impl Typer {
                         loc: str_literal.loc,
                     });
                 };
+
+                if let None = *self.first_string_usage {
+                    *self.first_string_usage.be_mut() = Some(*&str_literal.loc);
+                }
 
                 let str_type = Type::StructInstance {
                     struct_index: symbol.col_index,
@@ -2746,6 +2770,39 @@ impl Typer {
                 message: format!("Symbol is not a type: {}", type_name),
                 loc: *loc,
             }),
+        }
+    }
+
+    fn extend_expr_info_storage(&self, expr_count: usize) {
+        self.registry.be_mut().expr_info.resize(
+            self.registry.expr_info.len() + expr_count,
+            EXPR_INFO_INVALID,
+        );
+    }
+
+    #[inline]
+    fn add_builtin_type(&mut self, type_: Type) {
+        self.scopes.be_mut()[0].symbols.push(TySymbol {
+            scope_id: 0,
+            name: type_.to_str().unwrap(),
+            kind: SymbolKind::TypeAlias,
+            col_index: self.type_aliases.len(),
+            loc: Loc::internal(),
+        });
+
+        let type_id = self.build_type_id(&type_);
+        self.type_aliases.push(type_id);
+
+        // TODO: remove after migration
+        {
+            self.global_scope.be_mut().symbols.push(Symbol {
+                scope_id: self.global_scope.id,
+                name: type_.to_str().unwrap(),
+                kind: SymbolKind::TypeAlias,
+                col_index: self.type_aliases.len() - 1,
+                loc: Loc::internal(),
+            });
+            self.registry.type_aliases.push(type_.clone());
         }
     }
 

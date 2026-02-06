@@ -279,16 +279,6 @@ impl CodeGenerator {
         }
 
         self.wasm_module.types.append(self.wasm_fn_types.be_mut());
-
-        if let Some(string_usage_loc) = *self.registry.first_string_usage
-            && self.registry.memory.is_none()
-            && !self.reporter.in_inspection_mode
-        {
-            self.report_error(&Error {
-                message: format!("Cannot use strings with no memory defined"),
-                loc: string_usage_loc,
-            });
-        }
     }
 
     // TODO: process inline lets similarly to inline fn calls
@@ -428,9 +418,9 @@ impl CodeGenerator {
                 id: _,
                 repr: _,
                 value,
-                loc,
+                loc: _,
             }) => {
-                let str = self.process_const_string(value.clone(), loc);
+                let str = self.process_const_string(value.clone());
 
                 // emit str struct values
                 instrs.push(WasmInstr::I32Const {
@@ -1312,10 +1302,8 @@ impl CodeGenerator {
                         return Ok(());
                     };
 
-                    let loc_str = self.process_const_string(
-                        inline_fn_call_loc.to_string(&self.reporter.fm),
-                        &inline_fn_call_loc,
-                    );
+                    let loc_str =
+                        self.process_const_string(inline_fn_call_loc.to_string(&self.reporter.fm));
                     // emit str struct values
                     instrs.push(WasmInstr::I32Const {
                         value: loc_str.ptr as i32,
@@ -2905,7 +2893,7 @@ impl CodeGenerator {
                 if self.reporter.in_inspection_mode {
                     inspect_info = Some(InspectInfo {
                         message: format!(
-                            "global {}: {}",
+                            "let {}: {}",
                             ident.repr,
                             TypeFmt(&*self.registry, &global.global_type)
                         ),
@@ -3152,11 +3140,7 @@ impl CodeGenerator {
         Ok(code_unit)
     }
 
-    fn process_const_string(&self, value: String, loc: &Loc) -> Str {
-        if let None = *self.registry.first_string_usage {
-            *self.registry.first_string_usage.be_mut() = Some(*loc);
-        }
-
+    fn process_const_string(&self, value: String) -> Str {
         let string_len = value.as_bytes().len() as u32;
 
         for pooled_str in self.registry.string_pool.iter() {
