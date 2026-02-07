@@ -6,27 +6,21 @@ pub type ExprInfo = usize;
 pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
 
 type TyScopeId = usize;
+type TyContextRef = UBRef<TyContext>;
 
 pub struct TyContext {
     pub module_id: usize,
-    pub scope_id: TyScopeId,
+    pub id: TyScopeId,
+    pub parent: Option<TyContextRef>,
+    pub kind: ScopeKind,
     pub fn_index: Option<usize>,
     pub expr_info_offset: usize,
-}
-
-// TODO: join TyScope and TyContext into one struct
-#[derive(Clone)]
-pub struct TyScope {
-    pub parent_id: Option<TyScopeId>,
-    #[allow(dead_code)] // TODO: remove `#[allow(dead_code)]`
-    pub id: usize,
-    pub kind: ScopeKind,
     pub symbols: Vec<TySymbol>,
 }
 
 #[derive(Clone)]
 pub struct TySymbol {
-    pub scope_id: usize,
+    pub ctx_id: usize,
     pub name: &'static str,
     pub kind: SymbolKind,
     pub col_index: usize,
@@ -34,7 +28,7 @@ pub struct TySymbol {
 }
 
 pub struct ModuleInfo {
-    ctx: TyContext,
+    ctx: TyContextRef,
 }
 
 pub struct TyLocal {
@@ -61,22 +55,22 @@ pub struct Typer {
     pub reporter: UBRef<Reporter>,
     pub registry: UBRef<Registry>,
 
-    pub scopes: UBCell<Vec<TyScope>>,
-    pub module_info: UBCell<Vec<ModuleInfo>>,
-    pub type_lookup: UBCell<BTreeMap<Type, TypeId>>,
-    pub type_aliases: UBCell<Vec<TypeId>>, // indexed by `col_index` when `kind = TypeAlias`
-    pub locals: Vec<TyLocal>,              // indexed by `col_index` when `kind = Local`
-    pub globals: Vec<TyGlobal>,            // indexed by `col_index` when `kind = Global`
-    pub constants: Vec<TyConst>,           // indexed by `col_index` when `kind = Const`
-    pub functions: Vec<FnInfo>,            // indexed by `col_index` when `kind = Function`
-    pub inline_fns: Vec<&'static FnExpr>,  // indexed by `col_index` when `kind = InlineFn`
-    pub structs: Vec<StructDef>,           // indexed by `col_index` when `kind = Struct`
-    pub enums: Vec<EnumDef>,               // indexed by `col_index` when `kind = Enum`
-    pub enum_ctors: Vec<EnumConstructor>,  // indexed by `col_index` when `kind = EnumConstructor`
+    contexts: UBCell<StableVec<TyContext>>,
+    module_info: UBCell<Vec<ModuleInfo>>,
+    type_lookup: UBCell<BTreeMap<Type, TypeId>>,
+    type_aliases: UBCell<Vec<TypeId>>, // indexed by `col_index` when `kind = TypeAlias`
+    locals: Vec<TyLocal>,              // indexed by `col_index` when `kind = Local`
+    globals: Vec<TyGlobal>,            // indexed by `col_index` when `kind = Global`
+    constants: Vec<TyConst>,           // indexed by `col_index` when `kind = Const`
+    functions: Vec<FnInfo>,            // indexed by `col_index` when `kind = Function`
+    inline_fns: Vec<&'static FnExpr>,  // indexed by `col_index` when `kind = InlineFn`
+    structs: Vec<StructDef>,           // indexed by `col_index` when `kind = Struct`
+    enums: Vec<EnumDef>,               // indexed by `col_index` when `kind = Enum`
+    enum_ctors: Vec<EnumConstructor>,  // indexed by `col_index` when `kind = EnumConstructor`
 
-    pub first_string_usage: UBCell<Option<Loc>>,
+    first_string_usage: UBCell<Option<Loc>>,
 
-    pub global_scope: Scope,
+    global_scope: Scope,
 }
 
 impl Typer {
@@ -90,57 +84,61 @@ impl Typer {
     }
 
     pub fn init(&mut self) {
-        let global_scope_id = self.new_scope(ScopeKind::Global, None);
+        let mut global_ctx = self.contexts.push(TyContext {
+            id: 0,
+            parent: None,
+            module_id: usize::MAX, // global scope has no module
+            fn_index: None,
+            expr_info_offset: 0,
+            kind: ScopeKind::Global,
+            symbols: Vec::new(),
+        });
 
         self.module_info.reserve(self.registry.modules.len());
         for module in &self.registry.modules {
-            self.module_info.be_mut().push(ModuleInfo {
-                ctx: TyContext {
-                    module_id: module.id,
-                    scope_id: self.new_scope(ScopeKind::Global, Some(global_scope_id)),
-                    fn_index: None,
-                    expr_info_offset: 0,
-                },
-            });
+            let mut module_ctx = self.child_ctx(global_ctx, ScopeKind::Global);
+            module_ctx.module_id = module.id;
+
+            self.module_info
+                .be_mut()
+                .push(ModuleInfo { ctx: module_ctx });
         }
 
         self.extend_expr_info_storage(self.registry.expr_count);
 
-        self.add_builtin_type(Type::Never);
-        self.add_builtin_type(Type::Void);
-        self.add_builtin_type(Type::Bool);
-        self.add_builtin_type(Type::U8);
-        self.add_builtin_type(Type::I8);
-        self.add_builtin_type(Type::U16);
-        self.add_builtin_type(Type::I16);
-        self.add_builtin_type(Type::U32);
-        self.add_builtin_type(Type::I32);
-        self.add_builtin_type(Type::F32);
-        self.add_builtin_type(Type::U64);
-        self.add_builtin_type(Type::I64);
-        self.add_builtin_type(Type::F64);
+        self.add_builtin_type(&mut global_ctx, Type::Never);
+        self.add_builtin_type(&mut global_ctx, Type::Void);
+        self.add_builtin_type(&mut global_ctx, Type::Bool);
+        self.add_builtin_type(&mut global_ctx, Type::U8);
+        self.add_builtin_type(&mut global_ctx, Type::I8);
+        self.add_builtin_type(&mut global_ctx, Type::U16);
+        self.add_builtin_type(&mut global_ctx, Type::I16);
+        self.add_builtin_type(&mut global_ctx, Type::U32);
+        self.add_builtin_type(&mut global_ctx, Type::I32);
+        self.add_builtin_type(&mut global_ctx, Type::F32);
+        self.add_builtin_type(&mut global_ctx, Type::U64);
+        self.add_builtin_type(&mut global_ctx, Type::I64);
+        self.add_builtin_type(&mut global_ctx, Type::F64);
     }
 
     pub fn type_all(&mut self) {
         for module in self.module_info.be_mut().relax_mut() {
-            self.pass_collect_own_symbols(&module.ctx);
+            self.pass_collect_own_symbols(module.ctx);
         }
 
         for module in self.module_info.be_mut().relax_mut() {
-            self.pass_collect_included_symbols(&module.ctx);
+            self.pass_collect_included_symbols(module.ctx);
         }
 
         for module in self.module_info.be_mut().relax_mut() {
-            self.pass_build_type_def_values(&module.ctx);
+            self.pass_build_type_def_values(module.ctx);
         }
 
         for module in self.module_info.be_mut().relax_mut() {
-            self.pass_process_top_level_exprs(&module.ctx);
+            self.pass_process_top_level_exprs(module.ctx);
         }
 
-        for module in self.module_info.be_mut().relax_mut() {
-            self.pass_type_fns(&module.ctx);
-        }
+        self.pass_type_fns();
 
         self.run_delayed_actions();
     }
@@ -194,7 +192,7 @@ impl Typer {
         }
     }
 
-    fn pass_collect_own_symbols(&mut self, ctx: &TyContext) {
+    fn pass_collect_own_symbols(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
 
         module.scope_stack.push(self.global_scope.clone());
@@ -482,7 +480,7 @@ impl Typer {
         }
     }
 
-    fn pass_collect_included_symbols(&mut self, ctx: &TyContext) {
+    fn pass_collect_included_symbols(&mut self, ctx: TyContextRef) {
         self.inline_includes(ctx, ctx, &mut String::from(""), true);
 
         // TODO: remove when migrated
@@ -502,18 +500,16 @@ impl Typer {
     //   check if this is fine and fix if it isn't
     fn inline_includes(
         &mut self,
-        includer: &TyContext,
-        includee: &TyContext,
+        includer: TyContextRef,
+        includee: TyContextRef,
         prefix: &mut String,
         force_go_deeper: bool,
     ) {
         if includer.module_id != includee.module_id {
-            let target_scope = self.scopes[includer.scope_id].relax_mut();
-
-            for symbol in self.scopes[includee.scope_id].symbols.relax() {
+            for symbol in includee.symbols.relax() {
                 let mut included_symbol = symbol.clone();
                 included_symbol.name = self.alloc_str(format!("{}{}", prefix, symbol.name));
-                target_scope.symbols.push(included_symbol)
+                includer.be_mut().symbols.push(included_symbol)
             }
         }
 
@@ -529,7 +525,7 @@ impl Typer {
             }
 
             let sub_includee = self.module_info[include.module_id].relax();
-            self.inline_includes(includer, &sub_includee.ctx, prefix, false);
+            self.inline_includes(includer, sub_includee.ctx, prefix, false);
             prefix.truncate(original_prefix_len);
         }
     }
@@ -568,7 +564,7 @@ impl Typer {
         }
     }
 
-    fn pass_build_type_def_values(&mut self, ctx: &TyContext) {
+    fn pass_build_type_def_values(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
 
         'exprs: for expr in &*module.parser.ast {
@@ -633,10 +629,7 @@ impl Typer {
                                 byte_offset += field.field_layout.byte_size;
                             }
 
-                            let symbol = self
-                                .get_symbol(ctx.scope_id, type_def.name.repr)
-                                .unwrap()
-                                .relax();
+                            let symbol = self.get_symbol(ctx, type_def.name.repr).unwrap().relax();
 
                             let SymbolKind::Struct = symbol.kind else {
                                 continue;
@@ -753,7 +746,7 @@ impl Typer {
         }
     }
 
-    fn pass_process_top_level_exprs(&mut self, ctx: &TyContext) {
+    fn pass_process_top_level_exprs(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
 
         for expr in &*module.parser.ast {
@@ -1138,7 +1131,7 @@ impl Typer {
         }
     }
 
-    fn get_const_value(&self, ctx: &TyContext, expr: &CodeExpr) -> Option<&CodeExpr> {
+    fn get_const_value(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<&CodeExpr> {
         match expr {
             CodeExpr::BoolLiteral(_)
             | CodeExpr::CharLiteral(_)
@@ -1153,7 +1146,7 @@ impl Typer {
             }
 
             CodeExpr::Ident(ident_expr) => {
-                let Some(symbol) = self.get_symbol(ctx.scope_id, ident_expr.repr) else {
+                let Some(symbol) = self.get_symbol(ctx, ident_expr.repr) else {
                     return None;
                 };
 
@@ -1172,64 +1165,98 @@ impl Typer {
         None
     }
 
-    fn pass_type_fns(&mut self, ctx: &TyContext) {
-        for expr in self.registry.modules[ctx.module_id]
-            .parser
-            .ast
-            .be_mut()
-            .relax_mut()
-        {
-            let TopLevelExpr::Fn(FnExpr {
-                is_inline: false,
-                decl,
-                value: FnExprValue::Body(body),
-                ..
-            }) = expr
-            else {
-                continue;
-            };
-
-            let Some(symbol) = self.get_symbol(ctx.scope_id, decl.fn_name.repr) else {
-                // TODO: what's the proper way to handle this
-                //   maybe need to iterate on self.functions instead of ast
-                continue;
-            };
-
-            let ctx = &self.child_ctx(&ctx, ScopeKind::Function);
-            ctx.be_mut().fn_index = Some(symbol.col_index);
-
-            let self_type = self.get_fn_self_type(ctx, &decl.fn_name, &decl.params);
-
-            for param in &decl.params {
-                if let Err(_) = self.define_symbol(
-                    ctx,
-                    &param.param_name.repr,
-                    SymbolKind::Local,
-                    param.param_name.loc,
-                ) {
+    fn pass_type_fns(&mut self) {
+        for module in self.module_info.be_mut().relax_mut() {
+            let ctx = module.ctx;
+            for expr in self.registry.modules[ctx.module_id]
+                .parser
+                .ast
+                .be_mut()
+                .relax_mut()
+            {
+                let TopLevelExpr::Fn(FnExpr {
+                    is_inline: false,
+                    decl,
+                    value: FnExprValue::Body(body),
+                    ..
+                }) = expr
+                else {
                     continue;
                 };
 
-                let param_type = catch!(
-                    self.get_fn_param_type(ctx, param, &self_type, false),
-                    err,
-                    {
-                        self.report_error(&err);
+                let Some(symbol) = self.get_symbol(ctx, decl.fn_name.repr) else {
+                    // TODO: what's the proper way to handle this
+                    //   maybe need to iterate on self.functions instead of ast
+                    continue;
+                };
+
+                let ctx = self.child_ctx(ctx, ScopeKind::Function);
+                ctx.be_mut().fn_index = Some(symbol.col_index);
+
+                let self_type = self.get_fn_self_type(ctx, &decl.fn_name, &decl.params);
+
+                for param in &decl.params {
+                    if let Err(_) = self.define_symbol(
+                        ctx,
+                        &param.param_name.repr,
+                        SymbolKind::Local,
+                        param.param_name.loc,
+                    ) {
                         continue;
-                    }
-                );
+                    };
 
-                self.locals.push(TyLocal {
-                    type_id: self.build_type_id(&param_type),
-                });
+                    let param_type = catch!(
+                        self.get_fn_param_type(ctx, param, &self_type, false),
+                        err,
+                        {
+                            self.report_error(&err);
+                            continue;
+                        }
+                    );
+
+                    self.locals.push(TyLocal {
+                        type_id: self.build_type_id(&param_type),
+                    });
+                }
+
+                self.type_code_block(ctx, &body, true);
             }
-
-            self.type_code_block(ctx, body, true);
         }
+
+        // TODO: switch to this
+        // for fn_def in &self.functions {
+        //     let FnSource::Guest {
+        //         module_id,
+        //         lo_fn_index,
+        //         body,
+        //     } = fn_def.fn_source
+        //     else {
+        //         continue;
+        //     };
+
+        //     let module_ctx = self.module_info[module_id].ctx;
+
+        //     let ctx = self.child_ctx(module_ctx, ScopeKind::Function);
+        //     ctx.be_mut().fn_index = Some(lo_fn_index);
+
+        //     for param in &fn_def.fn_params {
+        //         if let Err(_) =
+        //             self.define_symbol(ctx, &param.param_name, SymbolKind::Local, param.loc)
+        //         {
+        //             continue;
+        //         };
+
+        //         self.locals.push(TyLocal {
+        //             type_id: self.build_type_id(&param.param_type),
+        //         });
+        //     }
+
+        //     self.type_code_block(ctx, &body, true);
+        // }
     }
 
-    fn type_code_block(&self, ctx: &TyContext, block: &CodeBlock, void_only: bool) -> Type {
-        let ctx = &self.child_ctx(ctx, ScopeKind::Block);
+    fn type_code_block(&self, ctx: TyContextRef, block: &CodeBlock, void_only: bool) -> Type {
+        let ctx = self.child_ctx(ctx, ScopeKind::Block);
 
         let mut diverges = false;
         let mut diverges_naturally = false;
@@ -1265,8 +1292,7 @@ impl Typer {
             }
         }
 
-        if !diverges_naturally && !diverges && self.scopes[ctx.scope_id].kind == ScopeKind::Function
-        {
+        if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
             let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.fn_type.output != Type::Void {
                 self.report_error(&Error {
@@ -1285,7 +1311,7 @@ impl Typer {
         Type::Void
     }
 
-    fn type_code_expr(&self, ctx: &TyContext, expr: &CodeExpr) -> Result<(), Error> {
+    fn type_code_expr(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<(), Error> {
         match expr {
             CodeExpr::BoolLiteral(bool_literal) => {
                 self.store_type(ctx, bool_literal.id, &Type::Bool);
@@ -1322,7 +1348,7 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::StringLiteral(str_literal) => {
-                let Some(symbol) = self.get_symbol(ctx.scope_id, "str") else {
+                let Some(symbol) = self.get_symbol(ctx, "str") else {
                     return Err(Error {
                         message: format!("Cannot use strings with no `str` struct defined"),
                         loc: str_literal.loc,
@@ -1345,8 +1371,7 @@ impl Typer {
                     self.report_if_err(self.type_code_expr(ctx, &field.value));
                 }
 
-                let Some(symbol) = self.get_symbol(ctx.scope_id, &struct_literal.struct_name.repr)
-                else {
+                let Some(symbol) = self.get_symbol(ctx, &struct_literal.struct_name.repr) else {
                     return Err(Error {
                         message: format!("Unknown struct: {}", struct_literal.struct_name.repr),
                         loc: struct_literal.loc,
@@ -1584,7 +1609,7 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::FnCall(call) => {
-                if let Some(symbol) = self.get_symbol(ctx.scope_id, &call.fn_name.repr) {
+                if let Some(symbol) = self.get_symbol(ctx, &call.fn_name.repr) {
                     if let SymbolKind::EnumConstructor = symbol.kind {
                         let ctor = &self.enum_ctors[symbol.col_index];
 
@@ -1734,7 +1759,7 @@ impl Typer {
                         ctx,
                         call.id,
                         &Type::StructInstance {
-                            struct_index: self.get_symbol(ctx.scope_id, "str").unwrap().col_index,
+                            struct_index: self.get_symbol(ctx, "str").unwrap().col_index,
                         },
                     );
                     return Ok(());
@@ -1782,7 +1807,7 @@ impl Typer {
                 if call.fn_name.repr.starts_with("inspect_symbols") {
                     if self.reporter.in_inspection_mode {
                         let mut message = String::new();
-                        for symbol in &self.scopes[ctx.scope_id].symbols {
+                        for symbol in &ctx.symbols {
                             write!(message, "{} : {:?}\n", symbol.name, symbol.kind).unwrap();
                         }
 
@@ -1829,7 +1854,7 @@ impl Typer {
                                 let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
                                 if match_header.variant_bind.repr != "_" {
                                     if let Ok(()) = self.define_symbol(
-                                        &then_ctx,
+                                        then_ctx,
                                         match_header.variant_bind.repr,
                                         SymbolKind::Local,
                                         match_header.variant_bind.loc,
@@ -1847,7 +1872,7 @@ impl Typer {
 
                 let then_type;
                 if let Some(updated_then_ctx) = updated_then_ctx {
-                    then_type = self.type_code_block(&updated_then_ctx, &if_expr.then_block, true);
+                    then_type = self.type_code_block(updated_then_ctx, &if_expr.then_block, true);
                 } else {
                     then_type = self.type_code_block(ctx, &if_expr.then_block, true);
                 }
@@ -1894,7 +1919,7 @@ impl Typer {
                 self.report_if_err(self.type_code_expr(ctx, &for_expr.start));
                 self.report_if_err(self.type_code_expr(ctx, &for_expr.end));
 
-                let ctx = &self.child_ctx(ctx, ScopeKind::ForLoop);
+                let ctx = self.child_ctx(ctx, ScopeKind::ForLoop);
 
                 let Ok(_) = self.define_symbol(
                     ctx,
@@ -1937,7 +1962,7 @@ impl Typer {
                 let expr_type = self.type_code_expr_and_load(ctx, &catch.lhs)?;
                 let result = self.assert_catchable_type(&expr_type, &catch.catch_loc)?;
 
-                let ctx = &self.child_ctx(ctx, ScopeKind::Block);
+                let ctx = self.child_ctx(ctx, ScopeKind::Block);
 
                 let Ok(_) = self.define_symbol(
                     ctx,
@@ -1951,7 +1976,7 @@ impl Typer {
                     type_id: self.build_type_id(&result.err),
                 });
 
-                let catch_type = self.type_code_block(&ctx, &catch.catch_body, true);
+                let catch_type = self.type_code_block(ctx, &catch.catch_body, true);
                 if catch_type != Type::Never {
                     self.report_error(&Error {
                         message: format!("Catch expression must resolve to never, got other type"),
@@ -1972,7 +1997,7 @@ impl Typer {
             CodeExpr::Match(match_expr) => {
                 self.report_if_err(self.type_code_expr(ctx, &match_expr.header.expr_to_match));
 
-                let else_ctx = &self.child_ctx(ctx, ScopeKind::Block);
+                let else_ctx = self.child_ctx(ctx, ScopeKind::Block);
                 let else_type = self.type_code_block(else_ctx, &match_expr.else_branch, true);
                 if else_type != Type::Never {
                     self.report_error(&Error {
@@ -2018,7 +2043,7 @@ impl Typer {
                     self.report_if_err(self.type_code_expr(ctx, arg));
                 }
 
-                let ctx = &self.child_ctx(ctx, ScopeKind::Block);
+                let ctx = self.child_ctx(ctx, ScopeKind::Block);
 
                 if let Some(it_type_id) = self.load_type_id(ctx, &do_with.args.items[0]) {
                     let Ok(_) = self.define_symbol(ctx, "it", SymbolKind::Local, do_with.with_loc)
@@ -2040,7 +2065,7 @@ impl Typer {
                 self.report_if_err(self.type_code_expr(ctx, &pipe.lhs));
 
                 // TODO: check scope kind
-                let ctx = &self.child_ctx(ctx, ScopeKind::InlineFn);
+                let ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
                 if let Some(it_type_id) = self.load_type_id(ctx, &pipe.lhs) {
                     let Ok(_) = self.define_symbol(ctx, "it", SymbolKind::Local, pipe.op_loc)
                     else {
@@ -2071,7 +2096,7 @@ impl Typer {
 
     fn get_result_literal_type(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         explicit_type: &Option<ResultTypeExpr>,
         loc: &Loc,
     ) -> Result<ResultType, Error> {
@@ -2104,8 +2129,12 @@ impl Typer {
         })
     }
 
-    fn get_variable_type_id(&self, ctx: &TyContext, var_name: &IdentExpr) -> Result<TypeId, Error> {
-        let Some(symbol) = self.get_symbol(ctx.scope_id, var_name.repr) else {
+    fn get_variable_type_id(
+        &self,
+        ctx: TyContextRef,
+        var_name: &IdentExpr,
+    ) -> Result<TypeId, Error> {
+        let Some(symbol) = self.get_symbol(ctx, var_name.repr) else {
             return Err(Error {
                 message: format!("Unknown variable: {}", var_name.repr),
                 loc: var_name.loc,
@@ -2213,10 +2242,10 @@ impl Typer {
 
     fn get_matched_variant(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         match_header: &MatchHeader,
     ) -> Result<&EnumVariant, Error> {
-        let Some(symbol) = self.get_symbol(ctx.scope_id, &match_header.variant_name.repr) else {
+        let Some(symbol) = self.get_symbol(ctx, &match_header.variant_name.repr) else {
             return Err(Error {
                 message: format!("Unknown symbol"),
                 loc: match_header.variant_name.loc,
@@ -2391,7 +2420,7 @@ impl Typer {
 
     fn type_fn_call(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         fn_name: &str,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
@@ -2405,7 +2434,7 @@ impl Typer {
             self.report_if_err(self.type_code_expr(ctx, &arg));
         }
 
-        let Some(symbol) = self.get_symbol(ctx.scope_id, fn_name) else {
+        let Some(symbol) = self.get_symbol(ctx, fn_name) else {
             return Err(Error {
                 message: format!("Unknown function: {}", fn_name),
                 loc: *loc,
@@ -2461,7 +2490,7 @@ impl Typer {
 
     fn type_inline_fn_call(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         inline_fn_name: &str,
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
@@ -2469,7 +2498,7 @@ impl Typer {
         call_expr_id: usize,
         loc: &Loc,
     ) -> Result<(), Error> {
-        let Some(symbol) = self.get_symbol(ctx.scope_id, inline_fn_name) else {
+        let Some(symbol) = self.get_symbol(ctx, inline_fn_name) else {
             return Err(Error {
                 message: format!("Unknown inline fn: {}", inline_fn_name),
                 loc: *loc,
@@ -2482,7 +2511,7 @@ impl Typer {
         };
 
         let parent_ctx = ctx;
-        let ctx = &mut self.child_ctx(ctx, ScopeKind::InlineFn);
+        let mut ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
         ctx.expr_info_offset = self.registry.expr_info.len() - body.expr_id_start;
         self.extend_expr_info_storage(body.expr_id_end - body.expr_id_start);
 
@@ -2646,7 +2675,7 @@ impl Typer {
 
     fn get_fn_param_type(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         fn_param: &FnParam,
         self_type: &Option<Type>,
         infer_allowed: bool,
@@ -2683,7 +2712,7 @@ impl Typer {
 
     fn get_fn_self_type(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         fn_name: &IdentExpr,
         fn_params: &Vec<FnParam>,
     ) -> Option<Type> {
@@ -2733,13 +2762,13 @@ impl Typer {
         Some(self_type)
     }
 
-    fn register_block_type(&self, ctx: &TyContext, name: &'static str, type_: Type, loc: Loc) {
+    fn register_block_type(&self, ctx: TyContextRef, name: &'static str, type_: Type, loc: Loc) {
         let _ = self.define_symbol(ctx, name, SymbolKind::TypeAlias, loc);
         let type_id = self.build_type_id(&type_);
         self.type_aliases.be_mut().push(type_id);
     }
 
-    fn type_code_expr_and_load(&self, ctx: &TyContext, expr: &CodeExpr) -> Result<&Type, Error> {
+    fn type_code_expr_and_load(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<&Type, Error> {
         self.type_code_expr(ctx, expr)?;
         let Some(type_id) = self.load_type_id(ctx, expr) else {
             return Err(Error {
@@ -2752,14 +2781,14 @@ impl Typer {
         Ok(&self.registry.types[type_id])
     }
 
-    fn build_type(&self, ctx: &TyContext, type_expr: &TypeExpr) -> Result<Type, Error> {
+    fn build_type(&self, ctx: TyContextRef, type_expr: &TypeExpr) -> Result<Type, Error> {
         return self.build_type_check_ref(ctx, type_expr, true, &Loc::internal());
     }
 
     // builds a type, asserting that it doesn't have infinite size
     fn build_type_check_ref(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         type_expr: &TypeExpr,
         is_referenced: bool,
         loc: &Loc,
@@ -2885,8 +2914,13 @@ impl Typer {
     }
 
     // TODO: check if there is a better place to print inspections from here
-    fn get_type_or_err(&self, ctx: &TyContext, type_name: &str, loc: &Loc) -> Result<Type, Error> {
-        let Some(symbol) = self.get_symbol(ctx.scope_id, type_name) else {
+    fn get_type_or_err(
+        &self,
+        ctx: TyContextRef,
+        type_name: &str,
+        loc: &Loc,
+    ) -> Result<Type, Error> {
+        let Some(symbol) = self.get_symbol(ctx, type_name) else {
             return Err(Error {
                 message: format!("Unknown type: {}", type_name),
                 loc: *loc,
@@ -2955,9 +2989,9 @@ impl Typer {
     }
 
     #[inline]
-    fn add_builtin_type(&mut self, type_: Type) {
-        self.scopes.be_mut()[0].symbols.push(TySymbol {
-            scope_id: 0,
+    fn add_builtin_type(&mut self, ctx: &mut TyContext, type_: Type) {
+        ctx.symbols.push(TySymbol {
+            ctx_id: 0,
             name: type_.to_str().unwrap(),
             kind: SymbolKind::TypeAlias,
             col_index: self.type_aliases.len(),
@@ -2981,13 +3015,13 @@ impl Typer {
     }
 
     // TODO: remove this once migrated
-    fn define_symbol_compat(
+    fn define_symbol_compat<'a>(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         symbol_name: &'static str,
         symbol_kind: SymbolKind,
         symbol_loc: Loc,
-    ) -> Result<(), &TySymbol> {
+    ) -> Result<(), &'a TySymbol> {
         let _ = self.registry.be_mut().define_symbol(
             &self.registry.modules[ctx.module_id].ctx,
             symbol_name,
@@ -2998,13 +3032,13 @@ impl Typer {
         self.define_symbol(ctx, symbol_name, symbol_kind, symbol_loc)
     }
 
-    fn define_symbol(
+    fn define_symbol<'a>(
         &self,
-        ctx: &TyContext,
+        ctx: TyContextRef,
         symbol_name: &'static str,
         symbol_kind: SymbolKind,
         symbol_loc: Loc,
-    ) -> Result<(), &TySymbol> {
+    ) -> Result<(), &'a TySymbol> {
         let symbol_col_index = match &symbol_kind {
             SymbolKind::TypeAlias => self.type_aliases.len(),
             SymbolKind::Struct => self.structs.len(),
@@ -3017,8 +3051,8 @@ impl Typer {
             SymbolKind::EnumConstructor => self.enum_ctors.len(),
         };
 
-        if let Some(existing_symbol) = self.get_symbol(ctx.scope_id, symbol_name)
-            && existing_symbol.scope_id == ctx.scope_id
+        if let Some(existing_symbol) = self.get_symbol(ctx, symbol_name)
+            && existing_symbol.ctx_id == ctx.id
         {
             self.report_error(&Error {
                 message: format!(
@@ -3031,8 +3065,8 @@ impl Typer {
             return Err(&existing_symbol);
         }
 
-        self.scopes[ctx.scope_id].symbols.be_mut().push(TySymbol {
-            scope_id: ctx.scope_id,
+        ctx.symbols.be_mut().push(TySymbol {
+            ctx_id: ctx.id,
             name: symbol_name,
             kind: symbol_kind,
             col_index: symbol_col_index,
@@ -3042,42 +3076,33 @@ impl Typer {
         Ok(())
     }
 
-    // TODO: accept ctx instead?
-    fn get_symbol(&self, scope_id: TyScopeId, symbol_name: &str) -> Option<&TySymbol> {
-        for symbol in self.scopes[scope_id].symbols.iter().rev() {
+    fn get_symbol(&self, ctx: TyContextRef, symbol_name: &str) -> Option<&'static TySymbol> {
+        for symbol in ctx.symbols.iter().rev() {
             if symbol.name == symbol_name {
-                return Some(symbol);
+                return Some(symbol.relax());
             }
         }
 
-        if let Some(parent_id) = &self.scopes[scope_id].parent_id {
-            return self.get_symbol(*parent_id, symbol_name);
+        if let Some(parent) = ctx.parent {
+            return self.get_symbol(parent, symbol_name);
         }
 
         None
     }
 
-    fn child_ctx(&self, parent: &TyContext, scope_kind: ScopeKind) -> TyContext {
-        TyContext {
+    fn child_ctx(&self, parent: TyContextRef, scope_kind: ScopeKind) -> TyContextRef {
+        self.contexts.be_mut().push(TyContext {
+            id: self.contexts.len(),
+            parent: Some(parent),
+            kind: scope_kind,
             module_id: parent.module_id,
-            scope_id: self.new_scope(scope_kind, Some(parent.scope_id)),
             fn_index: parent.fn_index,
             expr_info_offset: parent.expr_info_offset,
-        }
-    }
-
-    fn new_scope(&self, kind: ScopeKind, parent_id: Option<TyScopeId>) -> usize {
-        self.scopes.be_mut().push(TyScope {
-            parent_id,
-            id: self.scopes.len(),
-            kind,
             symbols: Vec::new(),
-        });
-
-        self.scopes.len() - 1
+        })
     }
 
-    fn load_type_id(&self, ctx: &TyContext, expr: &CodeExpr) -> Option<TypeId> {
+    fn load_type_id(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<TypeId> {
         let info_id = self.registry.expr_info[ctx.expr_info_offset + expr.id()];
         if info_id == EXPR_INFO_INVALID {
             return None;
@@ -3090,14 +3115,14 @@ impl Typer {
         return Some(info_id);
     }
 
-    fn store_type(&self, ctx: &TyContext, expr_id: ExprId, type_: &Type) {
+    fn store_type(&self, ctx: TyContextRef, expr_id: ExprId, type_: &Type) {
         let type_id = self.build_type_id(type_);
         self.store_expr_info(ctx, expr_id, type_id)
     }
 
-    fn store_expr_info(&self, ctx: &TyContext, expr_id: ExprId, expr_info_id: ExprInfo) {
+    fn store_expr_info(&self, ctx: TyContextRef, expr_id: ExprId, expr_info: ExprInfo) {
         let absolute_expr_id = ctx.expr_info_offset + expr_id;
-        self.registry.be_mut().expr_info[absolute_expr_id] = expr_info_id;
+        self.registry.be_mut().expr_info[absolute_expr_id] = expr_info;
     }
 
     fn build_type_id(&self, type_: &Type) -> TypeId {
@@ -3284,5 +3309,40 @@ pub fn is_naturally_divergent(expr: &CodeExpr) -> bool {
             }
             divergent
         }
+    }
+}
+
+struct StableVec<T> {
+    chunks: Vec<Vec<T>>,
+    chunk_size: usize,
+}
+
+impl<T> Default for StableVec<T> {
+    fn default() -> Self {
+        Self {
+            chunks: Default::default(),
+            chunk_size: 8,
+        }
+    }
+}
+
+impl<T> StableVec<T> {
+    fn push(&mut self, value: T) -> UBRef<T> {
+        if self.chunks.len() == 0 || self.chunks.last().unwrap().len() == self.chunk_size {
+            self.chunks.push(Vec::with_capacity(self.chunk_size))
+        }
+
+        let last_chunk = self.chunks.last_mut().unwrap();
+        last_chunk.push(value);
+        UBRef::new(last_chunk.last_mut().unwrap())
+    }
+
+    fn len(&self) -> usize {
+        let chunks_len = self.chunks.len();
+        if chunks_len == 0 {
+            return 0;
+        }
+
+        (chunks_len - 1) * self.chunk_size + self.chunks[chunks_len - 1].len()
     }
 }

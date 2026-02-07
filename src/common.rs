@@ -269,12 +269,21 @@ impl<T> core::ops::DerefMut for UBCell<T> {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct UBRef<T>(pub *const T);
 
 impl<T> UBRef<T> {
     pub const fn new(value: *const T) -> Self {
         Self(value)
+    }
+}
+
+impl<T> Copy for UBRef<T> {}
+
+impl<T> Clone for UBRef<T> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        *self
     }
 }
 
