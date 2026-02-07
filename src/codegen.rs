@@ -315,9 +315,9 @@ impl CodeGenerator {
         instrs: &mut Vec<WasmInstr>,
         body: &CodeBlock,
         void_only: bool,
-    ) -> bool {
-        let mut naturally_diverges = false;
-        let mut terminates_early = false;
+    ) {
+        let mut diverges = false;
+        let mut diverges_naturally = false;
 
         for expr in &body.exprs {
             let expr_type = catch!(self.get_expr_type(ctx, expr), err, {
@@ -325,28 +325,9 @@ impl CodeGenerator {
                 continue;
             });
 
-            if terminates_early {
-                self.reporter.warning(&Error {
-                    message: format!("Unreachable expression"),
-                    loc: expr.loc(),
-                });
-            }
-
             if expr_type == Type::Never {
-                terminates_early = true;
-
-                naturally_diverges = naturally_diverges || self.is_naturally_divergent(expr);
-            }
-
-            let mut type_layout = TypeLayout::new();
-            self.registry.get_type_layout(&expr_type, &mut type_layout);
-            if type_layout.primities_count > 0 && void_only {
-                self.report_error(&Error {
-                    message: format!(
-                        "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
-                    ),
-                    loc: expr.loc(),
-                });
+                diverges = true;
+                diverges_naturally = diverges_naturally || is_naturally_divergent(expr);
             }
 
             catch!(self.codegen(ctx, instrs, expr), err, {
@@ -357,26 +338,10 @@ impl CodeGenerator {
 
         self.emit_deferred(self.registry.current_scope(ctx), instrs);
 
-        if void_only && terminates_early && !naturally_diverges {
+        // TODO: move the decision to Typer, only emit if needed here
+        if void_only && diverges && !diverges_naturally {
             instrs.push(WasmInstr::Unreachable);
         }
-
-        // TODO: move this check to typer
-        if !naturally_diverges
-            && !terminates_early
-            && self.registry.current_scope(ctx).kind == ScopeKind::Function
-        {
-            let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
-            if fn_info.fn_type.output != Type::Void {
-                self.report_error(&Error {
-                    // error message stolen from clang
-                    message: format!("Control reaches end of non-void function"),
-                    loc: fn_info.definition_loc,
-                });
-            }
-        }
-
-        terminates_early
     }
 
     // TODO: this should report errors more (case-by-case decision)
@@ -1485,15 +1450,7 @@ impl CodeGenerator {
                 });
 
                 self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
-                let terminates_early = self.codegen_code_block(ctx, instrs, &else_branch, true);
-                if !terminates_early {
-                    self.report_error(&Error {
-                        message: format!(
-                            "Match's else block must resolve to never, got other type"
-                        ),
-                        loc: else_branch.loc,
-                    });
-                }
+                self.codegen_code_block(ctx, instrs, &else_branch, true);
                 self.registry.be_mut().exit_scope(ctx);
                 instrs.push(WasmInstr::BlockEnd);
             }
@@ -1848,22 +1805,8 @@ impl CodeGenerator {
         };
 
         let enum_ctor = &self.registry.enum_ctors[symbol.col_index].relax();
-        let enum_index = enum_ctor.enum_index;
         let enum_def = &self.registry.enums[enum_ctor.enum_index].relax();
         let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
-
-        if self.reporter.in_inspection_mode {
-            self.reporter.print_inspection(&InspectInfo {
-                message: format!(
-                    "{}\n{}({})",
-                    TypeFmt(&*self.registry, &Type::EnumInstance { enum_index }),
-                    header.variant_name.repr,
-                    TypeFmt(&*self.registry, &enum_variant.variant_type)
-                ),
-                loc: header.variant_name.loc,
-                linked_loc: Some(enum_variant.loc),
-            });
-        }
 
         let local_index = self.registry.define_local(
             ctx,
@@ -1921,36 +1864,6 @@ impl CodeGenerator {
         for arg in args {
             arg_types.push(self.get_expr_type(ctx, arg)?);
             self.codegen(ctx, instrs, arg)?;
-        }
-
-        if self.reporter.in_inspection_mode {
-            let mut message = String::new();
-
-            write!(&mut message, "fn {fn_name}(").unwrap();
-
-            for (param, i) in fn_info.fn_params.iter().zip(0..) {
-                if i != 0 {
-                    message.push_str(", ");
-                }
-
-                message.push_str(&param.param_name);
-                message.push_str(": ");
-                write!(
-                    &mut message,
-                    "{}",
-                    TypeFmt(&*self.registry, &param.param_type)
-                )
-                .unwrap();
-            }
-
-            let return_type = TypeFmt(&*self.registry, &fn_info.fn_type.output);
-            write!(&mut message, "): {}", return_type).unwrap();
-
-            self.reporter.print_inspection(&InspectInfo {
-                message,
-                loc: *loc,
-                linked_loc: Some(fn_info.definition_loc.clone()),
-            });
         }
 
         if !is_types_compatible(&fn_info.fn_type.inputs, &arg_types) {
@@ -2126,8 +2039,6 @@ impl CodeGenerator {
 
         if let Some(expr_info_id) = self.get_expr_info(ctx, call_expr_id) {
             let call_info = &self.registry.inline_fn_call_info[expr_info_id];
-            // TODO: remove if no longer needed for debugging
-            // stderr_writeln(format!("got_offset({})", call_info.inner_expr_offset));
             self.registry.current_scope(ctx).be_mut().expr_info_offset =
                 call_info.inner_expr_offset;
         }
@@ -2189,13 +2100,7 @@ impl CodeGenerator {
 
         // catch error
         if let Some(catch_body) = catch_body {
-            let terminates_early = self.codegen_code_block(ctx, instrs, catch_body, true);
-            if !terminates_early {
-                self.report_error(&Error {
-                    message: format!("Catch expression must resolve to never, got other type"),
-                    loc: *loc,
-                });
-            }
+            self.codegen_code_block(ctx, instrs, catch_body, true);
         } else {
             // return ok_type of function's result + caught error
             let fn_result = self.registry.get_result_literal_type(ctx, &None, loc)?;
@@ -2415,57 +2320,6 @@ impl CodeGenerator {
 
         self.wasm_fn_types.be_mut().push(inout_fn_type);
         self.wasm_fn_types.len() as u32 - 1
-    }
-
-    fn is_naturally_divergent(&self, expr: &CodeExpr) -> bool {
-        match expr {
-            CodeExpr::BoolLiteral(_)
-            | CodeExpr::CharLiteral(_)
-            | CodeExpr::NullLiteral(_)
-            | CodeExpr::IntLiteral(_)
-            | CodeExpr::StringLiteral(_)
-            | CodeExpr::StructLiteral(_)
-            | CodeExpr::ArrayLiteral(_)
-            | CodeExpr::ResultLiteral(_)
-            | CodeExpr::Ident(_)
-            | CodeExpr::Let(_)
-            | CodeExpr::Cast(_)
-            | CodeExpr::Assign(_)
-            | CodeExpr::FieldAccess(_)
-            | CodeExpr::PropagateError(_)
-            | CodeExpr::FnCall(_)
-            | CodeExpr::MethodCall(_)
-            | CodeExpr::InlineFnCall(_)
-            | CodeExpr::If(_)
-            | CodeExpr::Sizeof(_)
-            | CodeExpr::While(_)
-            | CodeExpr::For(_)
-            | CodeExpr::Defer(_)
-            | CodeExpr::InlineMethodCall(_) => false,
-
-            CodeExpr::Break(_) | CodeExpr::Continue(_) | CodeExpr::Return(_) => true,
-
-            CodeExpr::Paren(paren_expr) => self.is_naturally_divergent(&paren_expr.expr),
-            CodeExpr::IntrinsicCall(intrinsic) => intrinsic.fn_name.repr == "unreachable",
-
-            CodeExpr::Catch(catch_) => self.is_naturally_divergent(&catch_.lhs),
-            CodeExpr::InfixOp(infix) => {
-                self.is_naturally_divergent(&infix.lhs) || self.is_naturally_divergent(&infix.rhs)
-            }
-            CodeExpr::PrefixOp(prefix) => self.is_naturally_divergent(&prefix.expr),
-            CodeExpr::Match(match_) => self.is_naturally_divergent(&match_.header.expr_to_match),
-            CodeExpr::Pipe(pipe) => {
-                self.is_naturally_divergent(&pipe.lhs) || self.is_naturally_divergent(&pipe.rhs)
-            }
-
-            CodeExpr::DoWith(do_with_) => {
-                let mut divergent = self.is_naturally_divergent(&do_with_.body);
-                for expr in &do_with_.args.items {
-                    divergent = divergent || self.is_naturally_divergent(expr);
-                }
-                divergent
-            }
-        }
     }
 
     fn codegen_var_get(

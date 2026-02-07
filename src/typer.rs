@@ -14,10 +14,11 @@ pub struct TyContext {
     pub expr_info_offset: usize,
 }
 
-#[allow(dead_code)] // TODO: remove `#[allow(dead_code)]`
+// TODO: join TyScope and TyContext into one struct
 #[derive(Clone)]
 pub struct TyScope {
     pub parent_id: Option<TyScopeId>,
+    #[allow(dead_code)] // TODO: remove `#[allow(dead_code)]`
     pub id: usize,
     pub kind: ScopeKind,
     pub symbols: Vec<TySymbol>,
@@ -1223,24 +1224,57 @@ impl Typer {
                 });
             }
 
-            self.type_code_block(ctx, body);
+            self.type_code_block(ctx, body, true);
         }
     }
 
-    fn type_code_block(&self, ctx: &TyContext, block: &CodeBlock) -> Type {
+    fn type_code_block(&self, ctx: &TyContext, block: &CodeBlock, void_only: bool) -> Type {
         let ctx = &self.child_ctx(ctx, ScopeKind::Block);
 
         let mut diverges = false;
-
-        // TODO: cache this
-        let never_type_id = self.build_type_id(&Type::Never);
+        let mut diverges_naturally = false;
 
         for expr in &block.exprs {
+            if diverges {
+                self.reporter.warning(&Error {
+                    message: format!("Unreachable expression"),
+                    loc: expr.loc(),
+                });
+            }
+
             self.report_if_err(self.type_code_expr(ctx, expr));
             let Some(type_id) = self.load_type_id(ctx, expr) else {
                 continue;
             };
-            diverges = diverges || type_id == never_type_id;
+
+            let expr_type = &self.registry.types[type_id];
+
+            // TODO: make this check target independent
+            if self.registry.count_wasm_type_components(expr_type) > 0 && void_only {
+                self.report_error(&Error {
+                    message: format!(
+                        "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
+                    ),
+                    loc: expr.loc(),
+                });
+            }
+
+            if *expr_type == Type::Never {
+                diverges = true;
+                diverges_naturally = diverges_naturally || is_naturally_divergent(expr);
+            }
+        }
+
+        if !diverges_naturally && !diverges && self.scopes[ctx.scope_id].kind == ScopeKind::Function
+        {
+            let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
+            if fn_info.fn_type.output != Type::Void {
+                self.report_error(&Error {
+                    // error message stolen from clang
+                    message: format!("Control reaches end of non-void function"),
+                    loc: fn_info.definition_loc,
+                });
+            }
         }
 
         if diverges {
@@ -1789,14 +1823,9 @@ impl Typer {
                     IfCond::Match(match_header) => {
                         self.report_if_err(self.type_code_expr(ctx, &match_header.expr_to_match));
 
-                        if let Some(symbol) =
-                            self.get_symbol(ctx.scope_id, &match_header.variant_name.repr)
-                        {
-                            if let SymbolKind::EnumConstructor = symbol.kind {
-                                let enum_ctor = &self.enum_ctors[symbol.col_index];
-                                let enum_variant = &self.enums[enum_ctor.enum_index].variants
-                                    [enum_ctor.variant_index];
-
+                        match self.get_matched_variant(ctx, match_header) {
+                            Err(err) => self.report_error(&err),
+                            Ok(enum_variant) => {
                                 let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
                                 if match_header.variant_bind.repr != "_" {
                                     if let Ok(()) = self.define_symbol(
@@ -1811,35 +1840,23 @@ impl Typer {
                                     };
                                 }
                                 updated_then_ctx = Some(then_ctx);
-                            } else {
-                                // TODO: update error message
-                                self.report_error(&Error {
-                                    message: format!("error 1"),
-                                    loc: match_header.variant_name.loc,
-                                });
-                            };
-                        } else {
-                            // TODO: update error message
-                            self.report_error(&Error {
-                                message: format!("error 2"),
-                                loc: match_header.variant_name.loc,
-                            });
+                            }
                         }
                     }
                 }
 
                 let then_type;
                 if let Some(updated_then_ctx) = updated_then_ctx {
-                    then_type = self.type_code_block(&updated_then_ctx, &if_expr.then_block);
+                    then_type = self.type_code_block(&updated_then_ctx, &if_expr.then_block, true);
                 } else {
-                    then_type = self.type_code_block(ctx, &if_expr.then_block);
+                    then_type = self.type_code_block(ctx, &if_expr.then_block, true);
                 }
 
                 let mut else_type = Type::Void;
                 match &if_expr.else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(code_block) => {
-                        else_type = self.type_code_block(ctx, code_block);
+                        else_type = self.type_code_block(ctx, code_block, true);
                     }
                     ElseBlock::ElseIf(code_expr) => {
                         self.report_if_err(self.type_code_expr(ctx, &code_expr));
@@ -1865,7 +1882,7 @@ impl Typer {
                     self.report_if_err(self.type_code_expr(ctx, &cond));
                 }
 
-                self.type_code_block(ctx, &while_expr.body);
+                self.type_code_block(ctx, &while_expr.body, true);
 
                 self.store_type(ctx, while_expr.id, &Type::Void);
 
@@ -1894,7 +1911,7 @@ impl Typer {
                     });
                 }
 
-                self.type_code_block(ctx, &for_expr.body);
+                self.type_code_block(ctx, &for_expr.body, true);
 
                 self.store_type(ctx, for_expr.id, &Type::Void);
 
@@ -1934,7 +1951,13 @@ impl Typer {
                     type_id: self.build_type_id(&result.err),
                 });
 
-                self.type_code_block(&ctx, &catch.catch_body);
+                let catch_type = self.type_code_block(&ctx, &catch.catch_body, true);
+                if catch_type != Type::Never {
+                    self.report_error(&Error {
+                        message: format!("Catch expression must resolve to never, got other type"),
+                        loc: catch.catch_loc,
+                    });
+                }
 
                 self.store_type(ctx, catch.id, &result.ok);
                 return Ok(());
@@ -1950,17 +1973,19 @@ impl Typer {
                 self.report_if_err(self.type_code_expr(ctx, &match_expr.header.expr_to_match));
 
                 let else_ctx = &self.child_ctx(ctx, ScopeKind::Block);
-                // TODO: assert diverges
-                self.type_code_block(else_ctx, &match_expr.else_branch);
+                let else_type = self.type_code_block(else_ctx, &match_expr.else_branch, true);
+                if else_type != Type::Never {
+                    self.report_error(&Error {
+                        message: format!(
+                            "Match's else block must resolve to never, got other type"
+                        ),
+                        loc: match_expr.else_branch.loc,
+                    });
+                }
 
-                if let Some(symbol) =
-                    self.get_symbol(ctx.scope_id, &match_expr.header.variant_name.repr)
-                {
-                    if let SymbolKind::EnumConstructor = symbol.kind {
-                        let enum_ctor = &self.enum_ctors[symbol.col_index];
-                        let enum_variant =
-                            &self.enums[enum_ctor.enum_index].variants[enum_ctor.variant_index];
-
+                match self.get_matched_variant(ctx, &match_expr.header) {
+                    Err(err) => self.report_error(&err),
+                    Ok(enum_variant) => {
                         if let Ok(()) = self.define_symbol(
                             ctx,
                             match_expr.header.variant_bind.repr,
@@ -1971,19 +1996,7 @@ impl Typer {
                                 type_id: self.build_type_id(&enum_variant.variant_type),
                             });
                         };
-                    } else {
-                        // TODO: update error message
-                        self.report_error(&Error {
-                            message: format!("error 1"),
-                            loc: match_expr.header.variant_name.loc,
-                        });
-                    };
-                } else {
-                    // TODO: update error message
-                    self.report_error(&Error {
-                        message: format!("error 2"),
-                        loc: match_expr.header.variant_name.loc,
-                    });
+                    }
                 }
 
                 self.store_type(ctx, match_expr.id, &Type::Void);
@@ -2198,6 +2211,49 @@ impl Typer {
         }
     }
 
+    fn get_matched_variant(
+        &self,
+        ctx: &TyContext,
+        match_header: &MatchHeader,
+    ) -> Result<&EnumVariant, Error> {
+        let Some(symbol) = self.get_symbol(ctx.scope_id, &match_header.variant_name.repr) else {
+            return Err(Error {
+                message: format!("Unknown symbol"),
+                loc: match_header.variant_name.loc,
+            });
+        };
+
+        let SymbolKind::EnumConstructor = symbol.kind else {
+            return Err(Error {
+                message: format!("Not an enum variant"),
+                loc: match_header.variant_name.loc,
+            });
+        };
+
+        let enum_ctor = &self.enum_ctors[symbol.col_index];
+        let enum_variant = &self.enums[enum_ctor.enum_index].variants[enum_ctor.variant_index];
+
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_inspection(&InspectInfo {
+                message: format!(
+                    "{}\n{}({})",
+                    TypeFmt(
+                        &*self.registry,
+                        &Type::EnumInstance {
+                            enum_index: enum_ctor.enum_index
+                        }
+                    ),
+                    match_header.variant_name.repr,
+                    TypeFmt(&*self.registry, &enum_variant.variant_type)
+                ),
+                loc: match_header.variant_name.loc,
+                linked_loc: Some(enum_variant.loc),
+            });
+        }
+
+        return Ok(enum_variant);
+    }
+
     fn assert_catchable_type<'a>(
         &self,
         expr_type: &'a Type,
@@ -2228,6 +2284,7 @@ impl Typer {
         Ok(result)
     }
 
+    // TODO: make this not depend on wasm types
     fn lower_type(&self, lo_type: &Type, wasm_types: &mut Vec<WasmType>) {
         match lo_type {
             Type::Never | Type::Void => {}
@@ -2368,6 +2425,36 @@ impl Typer {
 
         let fn_def = &self.functions[symbol.col_index];
         self.store_type(ctx, call_expr_id, &fn_def.fn_type.output);
+
+        if self.reporter.in_inspection_mode {
+            let mut message = String::new();
+
+            write!(&mut message, "fn {fn_name}(").unwrap();
+
+            for (param, i) in fn_def.fn_params.iter().zip(0..) {
+                if i != 0 {
+                    message.push_str(", ");
+                }
+
+                message.push_str(&param.param_name);
+                message.push_str(": ");
+                write!(
+                    &mut message,
+                    "{}",
+                    TypeFmt(&*self.registry, &param.param_type)
+                )
+                .unwrap();
+            }
+
+            let return_type = TypeFmt(&*self.registry, &fn_def.fn_type.output);
+            write!(&mut message, "): {}", return_type).unwrap();
+
+            self.reporter.print_inspection(&InspectInfo {
+                message,
+                loc: *loc,
+                linked_loc: Some(fn_def.definition_loc.clone()),
+            });
+        }
 
         return Ok(());
     }
@@ -2542,9 +2629,7 @@ impl Typer {
             });
         }
 
-        // TODO: remove if no longer needed for debugging
-        // stderr_writeln(format!("set_offset({})", ctx.expr_info_offset));
-        self.type_code_block(ctx, body);
+        self.type_code_block(ctx, body, false);
 
         self.store_expr_info(
             parent_ctx,
@@ -3012,14 +3097,6 @@ impl Typer {
 
     fn store_expr_info(&self, ctx: &TyContext, expr_id: ExprId, expr_info_id: ExprInfo) {
         let absolute_expr_id = ctx.expr_info_offset + expr_id;
-        // TODO: remove if no longer needed for debugging
-        // stderr_writeln(format!(
-        //     "{}store({} + {}, {})",
-        //     if ctx.expr_info_offset == 0 { "" } else { "  " },
-        //     ctx.expr_info_offset,
-        //     expr_id,
-        //     expr_info_id
-        // ));
         self.registry.be_mut().expr_info[absolute_expr_id] = expr_info_id;
     }
 
@@ -3157,4 +3234,55 @@ pub fn is_type_compatible(slot: &Type, value: &Type) -> bool {
     }
 
     slot == value
+}
+
+pub fn is_naturally_divergent(expr: &CodeExpr) -> bool {
+    match expr {
+        CodeExpr::BoolLiteral(_)
+        | CodeExpr::CharLiteral(_)
+        | CodeExpr::NullLiteral(_)
+        | CodeExpr::IntLiteral(_)
+        | CodeExpr::StringLiteral(_)
+        | CodeExpr::StructLiteral(_)
+        | CodeExpr::ArrayLiteral(_)
+        | CodeExpr::ResultLiteral(_)
+        | CodeExpr::Ident(_)
+        | CodeExpr::Let(_)
+        | CodeExpr::Cast(_)
+        | CodeExpr::Assign(_)
+        | CodeExpr::FieldAccess(_)
+        | CodeExpr::PropagateError(_)
+        | CodeExpr::FnCall(_)
+        | CodeExpr::MethodCall(_)
+        | CodeExpr::InlineFnCall(_)
+        | CodeExpr::If(_)
+        | CodeExpr::Sizeof(_)
+        | CodeExpr::While(_)
+        | CodeExpr::For(_)
+        | CodeExpr::Defer(_)
+        | CodeExpr::InlineMethodCall(_) => false,
+
+        CodeExpr::Break(_) | CodeExpr::Continue(_) | CodeExpr::Return(_) => true,
+
+        CodeExpr::Paren(paren_expr) => is_naturally_divergent(&paren_expr.expr),
+        CodeExpr::IntrinsicCall(intrinsic) => intrinsic.fn_name.repr == "unreachable",
+
+        CodeExpr::Catch(catch_) => is_naturally_divergent(&catch_.lhs),
+        CodeExpr::InfixOp(infix) => {
+            is_naturally_divergent(&infix.lhs) || is_naturally_divergent(&infix.rhs)
+        }
+        CodeExpr::PrefixOp(prefix) => is_naturally_divergent(&prefix.expr),
+        CodeExpr::Match(match_) => is_naturally_divergent(&match_.header.expr_to_match),
+        CodeExpr::Pipe(pipe) => {
+            is_naturally_divergent(&pipe.lhs) || is_naturally_divergent(&pipe.rhs)
+        }
+
+        CodeExpr::DoWith(do_with_) => {
+            let mut divergent = is_naturally_divergent(&do_with_.body);
+            for expr in &do_with_.args.items {
+                divergent = divergent || is_naturally_divergent(expr);
+            }
+            divergent
+        }
+    }
 }
