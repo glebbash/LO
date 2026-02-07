@@ -377,7 +377,7 @@ impl Typer {
                                 fn_params: Vec::new(),
                                 fn_source: FnSource::Guest {
                                     module_id: module.id,
-                                    lo_fn_index: self.registry.functions.len(),
+                                    lo_fn_index: self.functions.len(),
                                     body: body.relax(),
                                 },
                                 exported_as,
@@ -1166,93 +1166,35 @@ impl Typer {
     }
 
     fn pass_type_fns(&mut self) {
-        for module in self.module_info.be_mut().relax_mut() {
-            let ctx = module.ctx;
-            for expr in self.registry.modules[ctx.module_id]
-                .parser
-                .ast
-                .be_mut()
-                .relax_mut()
-            {
-                let TopLevelExpr::Fn(FnExpr {
-                    is_inline: false,
-                    decl,
-                    value: FnExprValue::Body(body),
-                    ..
-                }) = expr
-                else {
+        for fn_def in &self.functions {
+            let FnSource::Guest {
+                module_id,
+                lo_fn_index,
+                body,
+            } = fn_def.fn_source
+            else {
+                continue;
+            };
+
+            let module_ctx = self.module_info[module_id].ctx;
+
+            let ctx = self.child_ctx(module_ctx, ScopeKind::Function);
+            ctx.be_mut().fn_index = Some(lo_fn_index);
+
+            for param in &fn_def.fn_params {
+                if let Err(_) =
+                    self.define_symbol(ctx, &param.param_name, SymbolKind::Local, param.loc)
+                {
                     continue;
                 };
 
-                let Some(symbol) = self.get_symbol(ctx, decl.fn_name.repr) else {
-                    // TODO: what's the proper way to handle this
-                    //   maybe need to iterate on self.functions instead of ast
-                    continue;
-                };
-
-                let ctx = self.child_ctx(ctx, ScopeKind::Function);
-                ctx.be_mut().fn_index = Some(symbol.col_index);
-
-                let self_type = self.get_fn_self_type(ctx, &decl.fn_name, &decl.params);
-
-                for param in &decl.params {
-                    if let Err(_) = self.define_symbol(
-                        ctx,
-                        &param.param_name.repr,
-                        SymbolKind::Local,
-                        param.param_name.loc,
-                    ) {
-                        continue;
-                    };
-
-                    let param_type = catch!(
-                        self.get_fn_param_type(ctx, param, &self_type, false),
-                        err,
-                        {
-                            self.report_error(&err);
-                            continue;
-                        }
-                    );
-
-                    self.locals.push(TyLocal {
-                        type_id: self.build_type_id(&param_type),
-                    });
-                }
-
-                self.type_code_block(ctx, &body, true);
+                self.locals.push(TyLocal {
+                    type_id: self.build_type_id(&param.param_type),
+                });
             }
+
+            self.type_code_block(ctx, &body, true);
         }
-
-        // TODO: switch to this
-        // for fn_def in &self.functions {
-        //     let FnSource::Guest {
-        //         module_id,
-        //         lo_fn_index,
-        //         body,
-        //     } = fn_def.fn_source
-        //     else {
-        //         continue;
-        //     };
-
-        //     let module_ctx = self.module_info[module_id].ctx;
-
-        //     let ctx = self.child_ctx(module_ctx, ScopeKind::Function);
-        //     ctx.be_mut().fn_index = Some(lo_fn_index);
-
-        //     for param in &fn_def.fn_params {
-        //         if let Err(_) =
-        //             self.define_symbol(ctx, &param.param_name, SymbolKind::Local, param.loc)
-        //         {
-        //             continue;
-        //         };
-
-        //         self.locals.push(TyLocal {
-        //             type_id: self.build_type_id(&param.param_type),
-        //         });
-        //     }
-
-        //     self.type_code_block(ctx, &body, true);
-        // }
     }
 
     fn type_code_block(&self, ctx: TyContextRef, block: &CodeBlock, void_only: bool) -> Type {
