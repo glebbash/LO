@@ -416,28 +416,8 @@ impl Registry {
         let file_is_newly_added = self.fm.files[file_index].included_times == 1;
 
         if self.reporter.in_inspection_mode {
-            if file_is_newly_added {
-                let file_index = file_index;
-                let file_path = &self.fm.files[file_index].absolute_path;
-                stdout_writeln(format!(
-                    "{{ \"type\": \"file\", \
-                        \"index\": {file_index}, \
-                        \"path\": \"{file_path}\" }},",
-                ));
-            }
-
-            if loc.file_index != 0 {
-                let source_index = loc.file_index;
-                let source_range = RangeFmt(loc);
-                let target_index = file_index;
-                let target_range = "1:1-1:1";
-
-                stdout_writeln(format!(
-                    "{{ \"type\": \"info\", \
-                        \"link\": \"{target_index}/{target_range}\", \
-                        \"loc\": \"{source_index}/{source_range}\" }},",
-                ));
-            }
+            self.reporter
+                .print_include_info(file_is_newly_added, file_index, loc);
         }
 
         if !file_is_newly_added {
@@ -1208,36 +1188,6 @@ impl Registry {
         ctx.next_local_index += self.count_wasm_type_components(local_type);
 
         local_index
-    }
-
-    pub fn assert_catchable_type<'a>(
-        &self,
-        expr_type: &'a Type,
-        loc: &Loc,
-    ) -> Result<&'a ResultType, Error> {
-        let Type::Result(result) = expr_type else {
-            return Err(Error {
-                message: format!(
-                    "Cannot catch error from expr of type {}",
-                    TypeFmt(self, &expr_type)
-                ),
-                loc: *loc,
-            });
-        };
-
-        let mut err_type_components = Vec::new();
-        self.lower_type(&result.err, &mut err_type_components);
-        if err_type_components != [WasmType::I32] {
-            return Err(Error {
-                message: format!(
-                    "Invalid Result error type: {}, must lower to i32",
-                    TypeFmt(self, &result.err)
-                ),
-                loc: *loc,
-            });
-        }
-
-        Ok(result)
     }
 
     pub fn register_block_const(&mut self, ctx: &ExprContext, const_def: ConstDef) {

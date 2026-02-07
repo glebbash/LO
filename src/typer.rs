@@ -842,30 +842,28 @@ impl Typer {
                         .relax();
 
                     // TODO: check for valid const expression (in case of global)
-                    let value_type = match self.type_code_expr_and_load(ctx, &let_expr.value) {
-                        Ok(x) => x.clone(),
-                        Err(err) => {
+                    let value_type_id =
+                        catch!(self.type_code_expr_and_load(ctx, &let_expr.value), err, {
                             self.report_error(&err);
                             continue;
-                        }
-                    };
+                        });
 
                     if let_expr.is_inline {
                         // TODO: remove after migration
                         {
                             let const_ = self.registry.constants[symbol.col_index].relax_mut();
-                            const_.code_unit.type_ = value_type.clone();
+                            const_.code_unit.type_ = self.registry.types[value_type_id].clone();
                         }
 
                         let const_ = self.constants[symbol.col_index].relax_mut();
-                        const_.type_id = self.build_type_id(&value_type);
+                        const_.type_id = value_type_id;
 
                         if self.reporter.in_inspection_mode {
                             self.reporter.print_inspection(&InspectInfo {
                                 message: format!(
                                     "inline let {}: {}",
                                     &let_expr.name.repr,
-                                    TypeFmt(&*self.registry, &value_type)
+                                    TypeFmt(&*self.registry, &self.registry.types[value_type_id])
                                 ),
                                 loc: let_expr.name.loc,
                                 linked_loc: None,
@@ -882,11 +880,11 @@ impl Typer {
                     // TODO: remove after migration
                     {
                         let global = self.registry.globals[symbol.col_index].relax_mut();
-                        global.global_type = value_type.clone();
+                        global.global_type = self.registry.types[value_type_id].clone();
                     }
 
                     let global = self.globals[symbol.col_index].relax_mut();
-                    global.type_id = self.build_type_id(&value_type);
+                    global.type_id = value_type_id;
 
                     if self.reporter.in_inspection_mode {
                         let global_name = &let_expr.name.repr;
@@ -894,7 +892,7 @@ impl Typer {
                         self.reporter.print_inspection(&InspectInfo {
                             message: format!(
                                 "let {global_name}: {}",
-                                TypeFmt(&*self.registry, &value_type)
+                                TypeFmt(&*self.registry, &self.registry.types[value_type_id])
                             ),
                             loc: let_expr.name.loc,
                             linked_loc: None,
@@ -1444,7 +1442,7 @@ impl Typer {
                 }
             }
             CodeExpr::PrefixOp(prefix_op) => {
-                let expr_type = self.type_code_expr_and_load(ctx, &prefix_op.expr)?;
+                let expr_type_id = self.type_code_expr_and_load(ctx, &prefix_op.expr)?;
 
                 match &prefix_op.op_tag {
                     PrefixOpTag::Not => {
@@ -1453,19 +1451,19 @@ impl Typer {
                     }
                     PrefixOpTag::Reference => {
                         let type_ = Type::Pointer {
-                            pointee: Box::new(expr_type.clone()),
+                            pointee: Box::new(self.registry.types[expr_type_id].clone()),
                         };
                         self.store_type(ctx, prefix_op.id, &type_);
                         return Ok(());
                     }
                     PrefixOpTag::Dereference => {
                         let (Type::Pointer { pointee } | Type::SequencePointer { pointee }) =
-                            expr_type
+                            &self.registry.types[expr_type_id]
                         else {
                             return Err(Error {
                                 message: format!(
                                     "Cannot dereference expr of type {}",
-                                    TypeFmt(&*self.registry, &expr_type)
+                                    TypeFmt(&*self.registry, &self.registry.types[expr_type_id])
                                 ),
                                 loc: prefix_op.loc,
                             });
@@ -1482,44 +1480,46 @@ impl Typer {
                         self.store_type(ctx, prefix_op.id, pointee);
                         return Ok(());
                     }
-                    PrefixOpTag::Positive | PrefixOpTag::Negative => match expr_type {
-                        Type::U8 => {
-                            self.store_type(ctx, prefix_op.id, &Type::I8);
-                            return Ok(());
+                    PrefixOpTag::Positive | PrefixOpTag::Negative => {
+                        match self.registry.types[expr_type_id] {
+                            Type::U8 => {
+                                self.store_type(ctx, prefix_op.id, &Type::I8);
+                                return Ok(());
+                            }
+                            Type::U16 => {
+                                self.store_type(ctx, prefix_op.id, &Type::I16);
+                                return Ok(());
+                            }
+                            Type::U32 => {
+                                self.store_type(ctx, prefix_op.id, &Type::I32);
+                                return Ok(());
+                            }
+                            Type::U64 => {
+                                self.store_type(ctx, prefix_op.id, &Type::I64);
+                                return Ok(());
+                            }
+                            Type::Never
+                            | Type::Null
+                            | Type::Void
+                            | Type::Bool
+                            | Type::I8
+                            | Type::I16
+                            | Type::I32
+                            | Type::F32
+                            | Type::I64
+                            | Type::F64
+                            | Type::Pointer { pointee: _ }
+                            | Type::SequencePointer { pointee: _ }
+                            | Type::StructInstance { struct_index: _ }
+                            | Type::EnumInstance { enum_index: _ }
+                            | Type::Result(_)
+                            | Type::Container(_) => {
+                                // TODO: report error if negating unsupported type
+                                self.store_expr_info(ctx, prefix_op.id, expr_type_id);
+                                return Ok(());
+                            }
                         }
-                        Type::U16 => {
-                            self.store_type(ctx, prefix_op.id, &Type::I16);
-                            return Ok(());
-                        }
-                        Type::U32 => {
-                            self.store_type(ctx, prefix_op.id, &Type::I32);
-                            return Ok(());
-                        }
-                        Type::U64 => {
-                            self.store_type(ctx, prefix_op.id, &Type::I64);
-                            return Ok(());
-                        }
-                        Type::Never
-                        | Type::Null
-                        | Type::Void
-                        | Type::Bool
-                        | Type::I8
-                        | Type::I16
-                        | Type::I32
-                        | Type::F32
-                        | Type::I64
-                        | Type::F64
-                        | Type::Pointer { pointee: _ }
-                        | Type::SequencePointer { pointee: _ }
-                        | Type::StructInstance { struct_index: _ }
-                        | Type::EnumInstance { enum_index: _ }
-                        | Type::Result(_)
-                        | Type::Container(_) => {
-                            // TODO: report error if negating unsupported type
-                            self.store_type(ctx, prefix_op.id, expr_type);
-                            return Ok(());
-                        }
-                    },
+                    }
                 }
             }
             CodeExpr::Cast(cast) => {
@@ -1541,10 +1541,11 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::FieldAccess(field_access) => {
-                // TODO: implement
-
-                let lhs_type = self.type_code_expr_and_load(ctx, &field_access.lhs)?;
-                let field = self.get_struct_or_struct_ref_field(&lhs_type, field_access)?;
+                let lhs_type_id = self.type_code_expr_and_load(ctx, &field_access.lhs)?;
+                let field = self.get_struct_or_struct_ref_field(
+                    &self.registry.types[lhs_type_id],
+                    field_access,
+                )?;
                 self.store_type(ctx, field_access.id, &field.field_type);
                 return Ok(());
             }
@@ -1589,10 +1590,11 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::MethodCall(call) => {
-                let lhs_type = self.type_code_expr_and_load(ctx, &call.lhs)?;
-                let fn_name = self
-                    .registry
-                    .get_fn_name_from_method(&lhs_type, &call.field_name.repr);
+                let lhs_type_id = self.type_code_expr_and_load(ctx, &call.lhs)?;
+                let fn_name = self.registry.get_fn_name_from_method(
+                    &self.registry.types[lhs_type_id],
+                    &call.field_name.repr,
+                );
 
                 self.type_fn_call(
                     ctx,
@@ -1617,10 +1619,11 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::InlineMethodCall(call) => {
-                let lhs_type = self.type_code_expr_and_load(ctx, &call.lhs)?;
-                let inline_fn_name = self
-                    .registry
-                    .get_fn_name_from_method(&lhs_type, &call.field_name.repr);
+                let lhs_type_id = self.type_code_expr_and_load(ctx, &call.lhs)?;
+                let inline_fn_name = self.registry.get_fn_name_from_method(
+                    &self.registry.types[lhs_type_id],
+                    &call.field_name.repr,
+                );
 
                 self.type_inline_fn_call(
                     ctx,
@@ -1709,7 +1712,7 @@ impl Typer {
                     if call.args.items.len() == 1 {
                         let arg_type = self.type_code_expr_and_load(ctx, &call.args.items[0])?;
 
-                        if let Type::Result(result) = arg_type.relax() {
+                        if let Type::Result(result) = &self.registry.types[arg_type] {
                             self.store_type(ctx, call.id, &result.ok);
                         };
                         return Ok(());
@@ -1728,7 +1731,7 @@ impl Typer {
                     if call.args.items.len() == 1 {
                         let arg_type = self.type_code_expr_and_load(ctx, &call.args.items[0])?;
 
-                        if let Type::Result(result) = arg_type.relax() {
+                        if let Type::Result(result) = &self.registry.types[arg_type] {
                             self.store_type(ctx, call.id, &result.err);
                         };
 
@@ -1782,8 +1785,20 @@ impl Typer {
                 let mut updated_then_ctx = None;
 
                 match &if_expr.cond {
-                    IfCond::Expr(code_expr) => {
-                        self.report_if_err(self.type_code_expr(ctx, &code_expr));
+                    IfCond::Expr(cond_expr) => {
+                        if let Some(cond_type_id) =
+                            self.report_if_err(self.type_code_expr_and_load(ctx, &cond_expr))
+                            && self.registry.types[cond_type_id] != Type::Bool
+                        {
+                            self.report_error(&Error {
+                                message: format!(
+                                    "Invalid condition type: {}, expected: {}",
+                                    TypeFmt(&*self.registry, &self.registry.types[cond_type_id]),
+                                    TypeFmt(&*self.registry, &Type::Bool),
+                                ),
+                                loc: cond_expr.loc(),
+                            });
+                        };
                     }
                     IfCond::Match(match_header) => {
                         self.report_if_err(self.type_code_expr(ctx, &match_header.expr_to_match));
@@ -1844,7 +1859,19 @@ impl Typer {
                 // TODO: implement
 
                 if let Some(cond) = &while_expr.cond {
-                    self.report_if_err(self.type_code_expr(ctx, &cond));
+                    if let Some(cond_type) =
+                        self.report_if_err(self.type_code_expr_and_load(ctx, &cond))
+                        && self.registry.types[cond_type] != Type::Bool
+                    {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Invalid condition type: {}, expected: {}",
+                                TypeFmt(&*self.registry, &self.registry.types[cond_type]),
+                                TypeFmt(&*self.registry, &Type::Bool),
+                            ),
+                            loc: cond.loc(),
+                        });
+                    };
                 }
 
                 self.type_code_block(ctx, &while_expr.body, true);
@@ -1856,8 +1883,24 @@ impl Typer {
             CodeExpr::For(for_expr) => {
                 // TODO: implement
 
-                self.report_if_err(self.type_code_expr(ctx, &for_expr.start));
-                self.report_if_err(self.type_code_expr(ctx, &for_expr.end));
+                let maybe_start_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &for_expr.start));
+                let maybe_end_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &for_expr.end));
+
+                if let Some(start_type_id) = maybe_start_type_id
+                    && let Some(end_type_id) = maybe_end_type_id
+                    && start_type_id != end_type_id
+                {
+                    self.report_error(&Error {
+                        message: format!(
+                            "Invalid range end type: {}, expected: {}",
+                            TypeFmt(&*self.registry, &self.registry.types[end_type_id]),
+                            TypeFmt(&*self.registry, &self.registry.types[start_type_id]),
+                        ),
+                        loc: for_expr.end.loc(),
+                    });
+                }
 
                 let ctx = self.child_ctx(ctx, ScopeKind::ForLoop);
 
@@ -1899,8 +1942,9 @@ impl Typer {
             }
             CodeExpr::Catch(catch) => {
                 // TODO: improve error tolerance
-                let expr_type = self.type_code_expr_and_load(ctx, &catch.lhs)?;
-                let result = self.assert_catchable_type(&expr_type, &catch.catch_loc)?;
+                let expr_type_id = self.type_code_expr_and_load(ctx, &catch.lhs)?;
+                let result = self
+                    .assert_catchable_type(&self.registry.types[expr_type_id], &catch.catch_loc)?;
 
                 let ctx = self.child_ctx(ctx, ScopeKind::Block);
 
@@ -1930,7 +1974,8 @@ impl Typer {
             CodeExpr::PropagateError(prop_error) => {
                 // TODO: improve error tolerance?
                 let expr_type = self.type_code_expr_and_load(ctx, &prop_error.expr)?;
-                let result = self.assert_catchable_type(&expr_type, &prop_error.loc)?;
+                let result =
+                    self.assert_catchable_type(&self.registry.types[expr_type], &prop_error.loc)?;
                 self.store_type(ctx, prop_error.id, &result.ok);
                 return Ok(());
             }
@@ -1977,34 +2022,54 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::DoWith(do_with) => {
-                // TODO: implement
+                self.store_type(ctx, do_with.id, &Type::Void);
+
+                if do_with.args.items.len() == 0 {
+                    self.report_error(&Error {
+                        message: format!("do-with expressions must have at least one argument"),
+                        loc: do_with.with_loc.clone(),
+                    });
+                    return Ok(());
+                };
 
                 for arg in &do_with.args.items {
                     self.report_if_err(self.type_code_expr(ctx, arg));
                 }
 
-                let ctx = self.child_ctx(ctx, ScopeKind::Block);
+                let Some(it_type_id) = self.load_type_id(ctx, &do_with.args.items[0]) else {
+                    return Ok(());
+                };
 
-                if let Some(it_type_id) = self.load_type_id(ctx, &do_with.args.items[0]) {
-                    let Ok(_) = self.define_symbol(ctx, "it", SymbolKind::Local, do_with.with_loc)
-                    else {
-                        unreachable!()
-                    };
-                    self.locals.be_mut().push(TyLocal {
-                        type_id: it_type_id,
-                    });
+                let ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
+                self.define_symbol(ctx, "it", SymbolKind::Local, do_with.with_loc)
+                    .ok()
+                    .unwrap();
+                self.locals.be_mut().push(TyLocal {
+                    type_id: it_type_id,
+                });
+
+                for arg in do_with.args.items.iter().skip(1) {
+                    if let Some(arg_type_id) = self.load_type_id(ctx, arg)
+                        && arg_type_id != it_type_id
+                    {
+                        self.report_error(&Error {
+                            message: format!(
+                                "do-with argument type mismatch. expected: {}, got: {}",
+                                TypeFmt(&*self.registry, &self.registry.types[it_type_id]),
+                                TypeFmt(&*self.registry, &self.registry.types[arg_type_id]),
+                            ),
+                            loc: arg.loc(),
+                        });
+                    }
                 }
 
                 self.report_if_err(self.type_code_expr(ctx, &do_with.body));
 
-                self.store_type(ctx, do_with.id, &Type::Void);
                 return Ok(());
             }
             CodeExpr::Pipe(pipe) => {
-                // TODO: typecheck
                 self.report_if_err(self.type_code_expr(ctx, &pipe.lhs));
 
-                // TODO: check scope kind
                 let ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
                 if let Some(it_type_id) = self.load_type_id(ctx, &pipe.lhs) {
                     let Ok(_) = self.define_symbol(ctx, "it", SymbolKind::Local, pipe.op_loc)
@@ -2481,13 +2546,12 @@ impl Typer {
 
         let mut arg_types = Vec::<Type>::new();
         if let Some(receiver_arg) = receiver_arg {
-            arg_types.push(
-                self.type_code_expr_and_load(parent_ctx, receiver_arg)?
-                    .clone(),
-            );
+            let type_id = self.type_code_expr_and_load(parent_ctx, receiver_arg)?;
+            arg_types.push(self.registry.types[type_id].clone());
         }
         for arg in args {
-            arg_types.push(self.type_code_expr_and_load(parent_ctx, arg)?.clone());
+            let type_id = self.type_code_expr_and_load(parent_ctx, arg)?;
+            arg_types.push(self.registry.types[type_id].clone());
         }
         if arg_types.len() != inline_fn_def.decl.params.len() {
             return Err(Error {
@@ -2696,17 +2760,17 @@ impl Typer {
         self.type_aliases.be_mut().push(type_id);
     }
 
-    fn type_code_expr_and_load(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<&Type, Error> {
+    fn type_code_expr_and_load(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<TypeId, Error> {
         self.type_code_expr(ctx, expr)?;
+
         let Some(type_id) = self.load_type_id(ctx, expr) else {
-            return Err(Error {
-                message: format!(
-                    "Compiler bug. Expression should only return ok if it stored a type."
-                ),
-                loc: expr.loc(),
-            });
+            self.reporter.abort_due_to_compiler_bug(
+                "Expression should only return ok if it stored a type",
+                expr.loc(),
+            );
         };
-        Ok(&self.registry.types[type_id])
+
+        Ok(type_id)
     }
 
     fn build_type(&self, ctx: TyContextRef, type_expr: &TypeExpr) -> Result<Type, Error> {
@@ -3070,9 +3134,13 @@ impl Typer {
         str_ref
     }
 
-    fn report_if_err(&self, res: Result<(), Error>) {
-        if let Err(err) = res {
-            self.report_error(&err);
+    fn report_if_err<T>(&self, res: Result<T, Error>) -> Option<T> {
+        match res {
+            Ok(value) => Some(value),
+            Err(err) => {
+                self.report_error(&err);
+                None
+            }
         }
     }
 

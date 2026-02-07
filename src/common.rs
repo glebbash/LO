@@ -84,14 +84,14 @@ pub struct Reporter {
 }
 
 impl Reporter {
-    pub fn begin_inspection(&mut self) {
-        self.in_inspection_mode = true;
+    pub fn begin_inspection(&self) {
+        self.be_mut().in_inspection_mode = true;
         stdout_enable_buffering();
         stdout_writeln("[");
     }
 
-    pub fn end_inspection(&mut self) {
-        self.in_inspection_mode = false;
+    pub fn end_inspection(&self) {
+        self.be_mut().in_inspection_mode = false;
         // this item is a stub to make json array valid
         //   as last inspection ended with a comma
         stdout_writeln("{ \"type\": \"end\" }");
@@ -165,6 +165,40 @@ impl Reporter {
                 \"hover\": \"{message}\", \
                 \"loc\": \"{source_index}/{source_range}\" }},",
         ));
+    }
+
+    pub fn print_include_info(&self, file_is_newly_added: bool, file_index: usize, loc: &Loc) {
+        if file_is_newly_added {
+            let file_index = file_index;
+            let file_path = &self.fm.files[file_index].absolute_path;
+            stdout_writeln(format!(
+                "{{ \"type\": \"file\", \
+                    \"index\": {file_index}, \
+                    \"path\": \"{file_path}\" }},",
+            ));
+        }
+
+        if loc.file_index != 0 {
+            let source_index = loc.file_index;
+            let source_range = RangeFmt(loc);
+            let target_index = file_index;
+            let target_range = "1:1-1:1";
+
+            stdout_writeln(format!(
+                "{{ \"type\": \"info\", \
+                    \"link\": \"{target_index}/{target_range}\", \
+                    \"loc\": \"{source_index}/{source_range}\" }},",
+            ));
+        }
+    }
+
+    pub fn abort_due_to_compiler_bug(&self, message: &str, loc: Loc) -> ! {
+        self.error(&Error {
+            message: format!("Compiler bug: {message}"),
+            loc,
+        });
+        self.end_inspection();
+        proc_exit(1)
     }
 }
 
