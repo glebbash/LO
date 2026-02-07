@@ -7,6 +7,9 @@ pub struct CodeGenerator {
 
     // state
     wasm_fn_types: UBCell<Vec<WasmFnType>>,
+    datas: UBCell<Vec<WasmData>>,
+    string_pool: UBCell<Vec<PooledString>>,
+    const_slice_lens: Vec<ConstSliceLen>,
 
     // output
     pub wasm_module: UBCell<WasmModule>,
@@ -18,6 +21,9 @@ impl CodeGenerator {
             registry: UBRef::new(&mut *registry),
             reporter: UBRef::new(&mut *registry.reporter),
             wasm_fn_types: Default::default(),
+            datas: Default::default(),
+            string_pool: Default::default(),
+            const_slice_lens: Default::default(),
             wasm_module: Default::default(),
         }
     }
@@ -274,7 +280,7 @@ impl CodeGenerator {
             }
         }
 
-        for static_data_store in self.registry.datas.iter() {
+        for static_data_store in &*self.datas {
             self.wasm_module.datas.push(static_data_store.clone());
         }
 
@@ -548,7 +554,7 @@ impl CodeGenerator {
                 let ptr = self.append_data(bytes);
                 instrs.push(WasmInstr::I32Const { value: ptr as i32 });
 
-                self.registry.const_slice_lens.be_mut().push(ConstSliceLen {
+                self.const_slice_lens.be_mut().push(ConstSliceLen {
                     slice_ptr: ptr,
                     slice_len: items.len(),
                 });
@@ -1156,7 +1162,7 @@ impl CodeGenerator {
                         value: bytes_ptr as i32,
                     });
 
-                    self.registry.const_slice_lens.be_mut().push(ConstSliceLen {
+                    self.const_slice_lens.be_mut().push(ConstSliceLen {
                         slice_ptr: bytes_ptr,
                         slice_len: bytes_len,
                     });
@@ -1198,7 +1204,7 @@ impl CodeGenerator {
                         return bad_args_err(self, fn_name);
                     };
 
-                    for const_slice_len in &self.registry.const_slice_lens {
+                    for const_slice_len in &self.const_slice_lens {
                         if const_slice_len.slice_ptr == *slice_ptr as u32 {
                             instrs.push(WasmInstr::I32Const {
                                 value: const_slice_len.slice_len as i32,
@@ -2756,7 +2762,7 @@ impl CodeGenerator {
     fn process_const_string(&self, value: String) -> Str {
         let string_len = value.as_bytes().len() as u32;
 
-        for pooled_str in self.registry.string_pool.iter() {
+        for pooled_str in self.string_pool.iter() {
             if *pooled_str.value == value {
                 return Str {
                     ptr: pooled_str.ptr,
@@ -2767,10 +2773,7 @@ impl CodeGenerator {
 
         let ptr = self.append_data(value.clone().into_bytes());
 
-        self.registry
-            .string_pool
-            .be_mut()
-            .push(PooledString { value, ptr });
+        self.string_pool.be_mut().push(PooledString { value, ptr });
 
         return Str {
             ptr,
@@ -2786,7 +2789,7 @@ impl CodeGenerator {
         });
 
         *self.registry.data_size.be_mut() += bytes.len() as u32;
-        self.registry.datas.be_mut().push(WasmData::Active {
+        self.datas.be_mut().push(WasmData::Active {
             offset: WasmExpr { instrs },
             bytes,
         });

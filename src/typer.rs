@@ -1,16 +1,13 @@
-use core::usize;
-
 use crate::{ast::*, common::*, lexer::*, registry::*, wasm::WasmType};
 
 pub type ExprInfo = usize;
 pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
 
-type TyScopeId = usize;
 type TyContextRef = UBRef<TyContext>;
 
 pub struct TyContext {
     pub module_id: usize,
-    pub id: TyScopeId,
+    pub id: usize,
     pub parent: Option<TyContextRef>,
     pub kind: ScopeKind,
     pub fn_index: Option<usize>,
@@ -69,6 +66,7 @@ pub struct Typer {
     enum_ctors: Vec<EnumConstructor>,  // indexed by `col_index` when `kind = EnumConstructor`
 
     first_string_usage: UBCell<Option<Loc>>,
+    allocated_strings: Vec<String>, // storage for all rust `String` objects
 
     global_scope: Scope,
 }
@@ -244,7 +242,7 @@ impl Typer {
 
                             let mut variant_type = Type::Void;
                             if let Some(type_expr) = &variant_type_in_decl {
-                                match self.registry.build_type(&module.ctx, type_expr) {
+                                match self.build_type(ctx, type_expr) {
                                     Ok(t) => variant_type = t,
                                     Err(err) => {
                                         variant_type = Type::Never;
@@ -592,8 +590,8 @@ impl Typer {
                                 }
 
                                 let field_index = struct_primitives_count;
-                                let field_type_res = self.registry.build_type_check_ref(
-                                    &module.ctx,
+                                let field_type_res = self.build_type_check_ref(
+                                    ctx,
                                     &field.field_type,
                                     false,
                                     field.field_type.loc(),
@@ -678,7 +676,7 @@ impl Typer {
 
                                 let mut variant_type = Type::Void;
                                 if let Some(variant_type_expr) = &variant.variant_type {
-                                    match self.registry.build_type(&module.ctx, variant_type_expr) {
+                                    match self.build_type(ctx, variant_type_expr) {
                                         Ok(t) => variant_type = t,
                                         Err(err) => {
                                             self.report_error(&err);
@@ -716,7 +714,7 @@ impl Typer {
                             }
                         }
                         TypeDefValue::Alias(type_expr) => {
-                            let type_value = self.registry.build_type(&module.ctx, &type_expr);
+                            let type_value = self.build_type(ctx, &type_expr);
                             let type_value = catch!(type_value, err, {
                                 self.report_error(&err);
                                 continue;
@@ -781,7 +779,7 @@ impl Typer {
 
                         if let Some(return_type) = &fn_def.decl.return_type {
                             fn_info.fn_type.output =
-                                catch!(self.registry.build_type(&module.ctx, return_type), err, {
+                                catch!(self.build_type(ctx, return_type), err, {
                                     self.report_error(&err);
                                     continue;
                                 })
@@ -2504,29 +2502,17 @@ impl Typer {
         for (inline_fn_param, inline_fn_arg) in
             inline_fn_def.decl.params.iter().zip(arg_types.iter())
         {
-            let const_def = ConstDef {
-                const_name: inline_fn_param.param_name.repr,
-                code_unit: CodeUnit {
-                    type_: inline_fn_arg.clone(),
-                    instrs: Default::default(),
-                },
-                loc: inline_fn_param.param_name.loc,
-            };
+            let type_name = inline_fn_param.param_name.repr;
+            let type_value = inline_fn_arg;
+            let type_loc = inline_fn_param.param_name.loc;
 
             if let Some(type_name) = get_infer_type_name(inline_fn_param)? {
-                self.register_block_type(
-                    ctx,
-                    type_name,
-                    const_def.code_unit.type_.clone(),
-                    inline_fn_param.loc,
-                );
+                self.register_block_type(ctx, type_name, type_value.clone(), inline_fn_param.loc);
             }
 
-            // self.register_block_const(ctx, const_def);
-
-            let _ = self.define_symbol(ctx, const_def.const_name, SymbolKind::Local, const_def.loc);
+            let _ = self.define_symbol(ctx, type_name, SymbolKind::Local, type_loc);
             self.locals.be_mut().push(TyLocal {
-                type_id: self.build_type_id(&const_def.code_unit.type_),
+                type_id: self.build_type_id(type_value),
             });
         }
 
@@ -3080,7 +3066,7 @@ impl Typer {
 
     fn alloc_str(&mut self, value: String) -> &'static str {
         let str_ref = value.as_str().relax();
-        self.registry.allocated_strings.push(value);
+        self.allocated_strings.push(value);
         str_ref
     }
 

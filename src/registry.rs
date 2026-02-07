@@ -390,12 +390,8 @@ pub struct Registry {
     pub enums: Vec<EnumDef>,                 // indexed by `col_index` when `kind = Enum`
     pub enum_ctors: Vec<EnumConstructor>,    // indexed by `col_index` when `kind = EnumConstructor`
 
-    pub const_slice_lens: Vec<ConstSliceLen>,
-    pub allocated_strings: Vec<String>,
     pub memory: Option<MemoryInfo>,
-    pub datas: UBCell<Vec<WasmData>>,
     pub data_size: UBCell<u32>,
-    pub string_pool: UBCell<Vec<PooledString>>,
 
     pub expr_count: usize,
     pub scope_count: usize,
@@ -754,7 +750,7 @@ impl Registry {
     }
 
     // builds a type, asserting that it doesn't have infinite size
-    pub fn build_type_check_ref(
+    fn build_type_check_ref(
         &self,
         ctx: &ExprContext,
         type_expr: &TypeExpr,
