@@ -29,7 +29,7 @@ pub struct Pos {
 
 #[derive(PartialEq, Clone, Copy)]
 pub struct Loc {
-    pub file_index: usize,
+    pub file_id: usize,
     pub pos: Pos,
     pub end_pos: Pos,
 }
@@ -37,7 +37,7 @@ pub struct Loc {
 impl Loc {
     pub fn internal() -> Self {
         Loc {
-            file_index: 0, // internal
+            file_id: 0, // internal
             pos: Pos {
                 offset: 0,
                 line: 1,
@@ -56,7 +56,7 @@ impl Loc {
     }
 
     pub fn format(&self, out: &mut String, fm: &FileManager) {
-        let file_path = &fm.files[self.file_index].absolute_path;
+        let file_path = &fm.files[self.file_id].absolute_path;
         write!(out, "{}:{}:{}", file_path, self.pos.line, self.pos.col).unwrap();
     }
 
@@ -103,7 +103,7 @@ impl Reporter {
         *self.error_count.be_mut() += 1;
 
         if self.in_inspection_mode {
-            let source_index = err.loc.file_index;
+            let source_index = err.loc.file_id;
             let source_range = RangeFmt(&err.loc);
             let content = json_str_escape(&err.message);
             stdout_writeln(format!(
@@ -124,7 +124,7 @@ impl Reporter {
         *self.warning_count.be_mut() += 1;
 
         if self.in_inspection_mode {
-            let source_index = err.loc.file_index;
+            let source_index = err.loc.file_id;
             let source_range = RangeFmt(&err.loc);
             let content = json_str_escape(&err.message);
             stdout_writeln(format!(
@@ -142,13 +142,13 @@ impl Reporter {
     }
 
     pub fn print_inspection(&self, inspect_info: &InspectInfo) {
-        let source_index = inspect_info.loc.file_index;
+        let source_index = inspect_info.loc.file_id;
         let source_range = RangeFmt(&inspect_info.loc);
         let message = json_str_escape(&inspect_info.message);
 
         if let Some(linked_loc) = &inspect_info.linked_loc {
-            if linked_loc.file_index != 0 {
-                let target_index = linked_loc.file_index;
+            if linked_loc.file_id != 0 {
+                let target_index = linked_loc.file_id;
                 let target_range = RangeFmt(&linked_loc);
                 stdout_writeln(format!(
                     "{{ \"type\": \"info\", \
@@ -167,21 +167,21 @@ impl Reporter {
         ));
     }
 
-    pub fn print_include_info(&self, file_is_newly_added: bool, file_index: usize, loc: &Loc) {
+    pub fn print_include_info(&self, file_is_newly_added: bool, file_id: usize, loc: &Loc) {
         if file_is_newly_added {
-            let file_index = file_index;
-            let file_path = &self.fm.files[file_index].absolute_path;
+            let file_id = file_id;
+            let file_path = &self.fm.files[file_id].absolute_path;
             stdout_writeln(format!(
                 "{{ \"type\": \"file\", \
-                    \"index\": {file_index}, \
+                    \"index\": {file_id}, \
                     \"path\": \"{file_path}\" }},",
             ));
         }
 
-        if loc.file_index != 0 {
-            let source_index = loc.file_index;
+        if loc.file_id != 0 {
+            let source_index = loc.file_id;
             let source_range = RangeFmt(loc);
-            let target_index = file_index;
+            let target_index = file_id;
             let target_range = "1:1-1:1";
 
             stdout_writeln(format!(
@@ -304,9 +304,9 @@ impl<T> core::ops::DerefMut for UBCell<T> {
 }
 
 #[derive(Default)]
-pub struct UBRef<T>(pub *const T);
+pub struct UBRef<T: ?Sized>(pub *const T);
 
-impl<T> UBRef<T> {
+impl<T: ?Sized> UBRef<T> {
     pub const fn new(value: *const T) -> Self {
         Self(value)
     }

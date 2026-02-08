@@ -1,71 +1,5 @@
 use crate::{ast::*, common::*, lexer::*, parser::*, typer::*, wasm::*};
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
-pub enum Type {
-    Never,
-    Null,
-    Void,
-    Bool,
-    U8,
-    I8,
-    U16,
-    I16,
-    U32,
-    I32,
-    F32,
-    U64,
-    I64,
-    F64,
-    Pointer { pointee: Box<Type> },
-    SequencePointer { pointee: Box<Type> },
-    StructInstance { struct_index: usize },
-    EnumInstance { enum_index: usize },
-    Result(ResultType),
-    Container(ContainerType),
-}
-
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
-pub struct ResultType {
-    pub ok: Box<Type>,
-    pub err: Box<Type>,
-}
-
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
-pub struct ContainerType {
-    pub container: Box<Type>,
-    pub items: Vec<Type>,
-}
-
-impl Type {
-    pub fn to_str(&self) -> Option<&'static str> {
-        Some(match self {
-            Type::Never => "never",
-            Type::Null => "null",
-            Type::Void => "void",
-            Type::Bool => "bool",
-            Type::U8 => "u8",
-            Type::I8 => "i8",
-            Type::U16 => "u16",
-            Type::I16 => "i16",
-            Type::U32 => "u32",
-            Type::I32 => "i32",
-            Type::F32 => "f32",
-            Type::U64 => "u64",
-            Type::I64 => "i64",
-            Type::F64 => "f64",
-            _ => return None,
-        })
-    }
-
-    pub fn deref_rec(&self) -> &Type {
-        match self {
-            Type::Pointer { pointee } => pointee.deref_rec(),
-            Type::SequencePointer { pointee } => pointee.deref_rec(),
-            other => other,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Symbol {
     pub scope_id: usize,
@@ -257,37 +191,21 @@ pub struct ConstDef {
     pub loc: Loc,
 }
 
-#[derive(Clone)]
-pub struct TypeLayout {
-    pub primities_count: u32,
-    pub byte_size: u32,
-    pub alignment: u32,
-}
-
-impl TypeLayout {
-    pub fn new() -> Self {
-        Self {
-            primities_count: 0,
-            byte_size: 0,
-            alignment: 0,
-        }
-    }
-}
-
-pub type TypeId = usize;
-pub const TYPE_ID_INVALID: TypeId = usize::MAX;
-
 pub struct Module {
     pub id: usize,
     pub source: &'static [u8],
     pub parser: Parser,
     pub includes: Vec<ModuleInclude>,
     pub scope_stack: Vec<Scope>,
+
+    // TODO: remove after migration
     pub ctx: ExprContext,
 }
 
+type ModuleId = usize;
+
 pub struct ModuleInclude {
-    pub module_id: usize,
+    pub module_id: ModuleId,
     pub alias: Option<String>,
     pub with_extern: bool,
 }
@@ -298,74 +216,6 @@ pub struct MemoryInfo {
     pub exported: bool,
     pub imported_from: Option<String>,
     pub loc: Loc,
-}
-
-#[derive(Clone)]
-pub struct PooledString {
-    pub value: String,
-    pub ptr: u32,
-}
-
-#[derive(Clone)]
-pub struct Str {
-    pub ptr: u32,
-    pub len: u32,
-}
-
-pub enum VarInfo {
-    Local(VarInfoLocal),
-    Global(VarInfoGlobal),
-    Const(VarInfoConst),
-    VoidEnumValue(VarInfoVoidEnumValue),
-    Stored(VarInfoStored),
-    StructValueField(VarInfoStructValueField),
-}
-pub struct VarInfoLocal {
-    pub local_index: u32,
-    pub var_type: Type,
-}
-
-pub struct VarInfoGlobal {
-    pub global_index: u32,
-    pub var_type: Type,
-}
-
-pub struct VarInfoConst {
-    pub code_unit: &'static CodeUnit,
-    pub loc: Loc,
-}
-
-pub struct VarInfoVoidEnumValue {
-    pub variant_index: usize,
-    pub var_type: Type,
-    pub loc: Loc,
-}
-
-pub struct VarInfoStored {
-    pub address: CodeUnit,
-    pub offset: u32,
-    pub var_type: Type,
-}
-
-pub struct VarInfoStructValueField {
-    pub struct_value: CodeUnit,
-    pub drops_before: u32,
-    pub drops_after: u32,
-    pub var_type: Type,
-    pub loc: Loc,
-}
-
-impl VarInfo {
-    pub fn get_type(&self) -> &Type {
-        match self {
-            VarInfo::Local(v) => &v.var_type,
-            VarInfo::Global(v) => &v.var_type,
-            VarInfo::Const(v) => &v.code_unit.type_,
-            VarInfo::VoidEnumValue(v) => &v.var_type,
-            VarInfo::Stored(v) => &v.var_type,
-            VarInfo::StructValueField(v) => &v.var_type,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -399,34 +249,35 @@ pub struct Registry {
 
 impl Registry {
     pub fn new() -> Self {
-        let mut it = Self {
-            scope_count: 1, // global scope id is 0
-            ..Default::default()
-        };
+        let mut it = Self::default();
         it.reporter.fm = UBRef::new(&mut *it.fm);
+
+        // TODO: remove this when symbols will become resolved through typer
+        it.scope_count = 1; // global scope id is 0
+
         it
     }
 
-    pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<&Module> {
-        let file_index = catch!(self.fm.include_file(relative_path, loc), err, {
+    pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<ModuleId> {
+        let file_id = catch!(self.fm.include_file(relative_path, loc), err, {
             self.report_error(&err);
             return None;
         });
 
-        let file_is_newly_added = self.fm.files[file_index].included_times == 1;
+        let file_is_newly_added = self.fm.files[file_id].included_times == 1;
 
         if self.reporter.in_inspection_mode {
             self.reporter
-                .print_include_info(file_is_newly_added, file_index, loc);
+                .print_include_info(file_is_newly_added, file_id, loc);
         }
 
         if !file_is_newly_added {
-            return self.get_module_by_file_index(file_index);
+            return Some(self.get_module_id_by_file_id(file_id));
         }
 
-        let source = self.fm.files[file_index].source.as_bytes().relax();
+        let source = self.fm.files[file_id].source.as_bytes().relax();
 
-        let mut lexer = Lexer::new(source, file_index);
+        let mut lexer = Lexer::new(source, file_id);
         catch!(lexer.lex_file(), err, {
             self.report_error(&err);
             return None;
@@ -448,79 +299,31 @@ impl Registry {
 
         if !self.in_single_file_mode {
             for expr in &*parser.ast {
-                let TopLevelExpr::Intrinsic(InlineFnCallExpr {
-                    id: _,
-                    fn_name: intrinsic,
-                    type_args,
-                    args,
-                    loc: _,
-                }) = expr
+                let Some(include_info) = catch!(get_include_info(expr), err, {
+                    self.report_error(&err);
+                    continue;
+                }) else {
+                    continue;
+                };
+
+                let Some(module_id) =
+                    self.include_file(&include_info.file_path.value, &include_info.file_path.loc)
                 else {
                     continue;
                 };
-                if intrinsic.repr != "include" {
-                    continue;
-                }
-
-                if type_args.len() != 0 {
-                    self.report_error(&bad_signature(intrinsic));
-                    continue;
-                }
-
-                let mut file_path = None;
-                let mut alias = None;
-                let mut with_extern = false;
-
-                for arg in &args.items {
-                    if let CodeExpr::StringLiteral(str) = arg {
-                        file_path = Some(str.relax());
-                        continue;
-                    }
-
-                    if let CodeExpr::Ident(ident) = arg
-                        && ident.repr == "with_extern"
-                    {
-                        with_extern = true;
-                    }
-
-                    if let CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) = arg
-                        && let CodeExpr::Ident(IdentExpr { repr: "alias", .. }) = &**lhs
-                        && let CodeExpr::StringLiteral(str) = &**rhs
-                    {
-                        alias = Some(str.value.clone())
-                    }
-                }
-
-                let Some(file_path) = file_path else {
-                    continue;
-                };
-
-                let module_id;
-                match self.include_file(&file_path.value, &file_path.loc) {
-                    Some(module) => module_id = module.id,
-                    None => continue,
-                }
 
                 includes.push(ModuleInclude {
                     module_id,
-                    alias,
-                    with_extern,
+                    alias: include_info.alias,
+                    with_extern: include_info.with_extern,
                 });
-
-                fn bad_signature(fn_name: &IdentExpr) -> Error {
-                    Error {
-                        message: format!(
-                            "Invalid call, expected signature: @{}(<str-literal>, [with_extern, alias = <str-literal>])",
-                            fn_name.repr
-                        ),
-                        loc: fn_name.loc,
-                    }
-                }
             }
         }
 
+        let module_id = self.modules.len();
+
         self.modules.push(Module {
-            id: self.modules.len(),
+            id: module_id,
             source: parser.source,
             scope_stack: Vec::new(),
             parser,
@@ -528,11 +331,10 @@ impl Registry {
             includes,
         });
 
-        let module = self.modules.relax_mut().last_mut().unwrap();
-
-        Some(module)
+        Some(module_id)
     }
 
+    // TODO: move to codegen
     pub fn define_symbol(
         &mut self,
         ctx: &ExprContext,
@@ -578,24 +380,28 @@ impl Registry {
         Ok(())
     }
 
+    // TODO: move to codegen
     pub fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeKind) {
         let module = &mut self.relax_mut().modules[ctx.module_id];
 
         self.init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
     }
 
+    // TODO: move to codegen
     pub fn exit_scope(&mut self, ctx: &ExprContext) -> Scope {
         let module = &mut self.modules[ctx.module_id];
 
         module.scope_stack.pop().unwrap()
     }
 
+    // TODO: move to codegen
     pub fn current_scope(&self, ctx: &ExprContext) -> &Scope {
         let module = &self.modules[ctx.module_id];
 
         module.scope_stack.last().unwrap()
     }
 
+    // TODO: move to codegen
     pub fn init_scope_from_parent_and_push(
         &mut self,
         scope_stack: &mut Vec<Scope>,
@@ -610,119 +416,6 @@ impl Registry {
             new_scope.expr_info_offset = parent.expr_info_offset;
         };
         scope_stack.push(new_scope);
-    }
-
-    pub fn lower_type(&self, lo_type: &Type, wasm_types: &mut Vec<WasmType>) {
-        match lo_type {
-            Type::Never | Type::Void => {}
-            Type::Null
-            | Type::Bool
-            | Type::U8
-            | Type::I8
-            | Type::U16
-            | Type::I16
-            | Type::U32
-            | Type::I32 => wasm_types.push(WasmType::I32),
-            Type::F32 => wasm_types.push(WasmType::F32),
-            Type::U64 => wasm_types.push(WasmType::I64),
-            Type::I64 => wasm_types.push(WasmType::I64),
-            Type::F64 => wasm_types.push(WasmType::F64),
-            Type::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            Type::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            Type::StructInstance { struct_index } => {
-                let struct_def = &self.structs[*struct_index];
-
-                for field in &struct_def.fields {
-                    self.lower_type(&field.field_type, wasm_types);
-                }
-            }
-            Type::EnumInstance { enum_index } => {
-                let enum_def = &self.enums[*enum_index];
-
-                self.lower_type(&Type::U32, wasm_types);
-                self.lower_type(&enum_def.variant_type, wasm_types);
-            }
-            Type::Result(result) => {
-                self.lower_type(&result.ok, wasm_types);
-                self.lower_type(&result.err, wasm_types);
-            }
-            Type::Container(ContainerType {
-                container,
-                items: _,
-            }) => {
-                self.lower_type(container, wasm_types);
-            }
-        }
-    }
-
-    pub fn count_wasm_type_components(&self, lo_type: &Type) -> u32 {
-        let layout = &mut TypeLayout::new();
-        self.get_type_layout(lo_type, layout);
-        layout.primities_count
-    }
-
-    pub fn get_type_layout(&self, lo_type: &Type, layout: &mut TypeLayout) {
-        match lo_type {
-            Type::Never | Type::Void => {
-                layout.alignment = u32::max(layout.alignment, 1);
-            }
-            Type::Bool | Type::U8 | Type::I8 => {
-                layout.primities_count += 1;
-                layout.alignment = u32::max(layout.alignment, 1);
-                layout.byte_size = align(layout.byte_size, 1) + 1;
-            }
-            Type::U16 | Type::I16 => {
-                layout.primities_count += 1;
-                layout.alignment = u32::max(layout.alignment, 2);
-                layout.byte_size = align(layout.byte_size, 2) + 2;
-            }
-            Type::U32
-            | Type::I32
-            | Type::F32
-            | Type::Null
-            | Type::Pointer { pointee: _ }
-            | Type::SequencePointer { pointee: _ } => {
-                layout.primities_count += 1;
-                layout.alignment = u32::max(layout.alignment, 4);
-                layout.byte_size = align(layout.byte_size, 4) + 4;
-            }
-            Type::U64 | Type::I64 | Type::F64 => {
-                layout.primities_count += 1;
-                layout.alignment = u32::max(layout.alignment, 8);
-                layout.byte_size = align(layout.byte_size, 8) + 8;
-            }
-            Type::StructInstance { struct_index } => {
-                let struct_def = &self.structs[*struct_index];
-
-                // append each field's layout to total struct layout
-                for field in &struct_def.fields {
-                    self.get_type_layout(&field.field_type, layout);
-                }
-
-                layout.alignment = u32::max(layout.alignment, 1);
-                layout.byte_size = align(layout.byte_size, layout.alignment);
-            }
-            Type::EnumInstance { enum_index } => {
-                let enum_def = &self.enums[*enum_index];
-
-                self.get_type_layout(&Type::U32, layout);
-                self.get_type_layout(&enum_def.variant_type, layout);
-
-                layout.byte_size = align(layout.byte_size, layout.alignment);
-            }
-            Type::Result(result) => {
-                self.get_type_layout(&result.ok, layout);
-                self.get_type_layout(&result.err, layout);
-
-                layout.byte_size = align(layout.byte_size, layout.alignment);
-            }
-            Type::Container(ContainerType {
-                container,
-                items: _,
-            }) => {
-                self.get_type_layout(container, layout);
-            }
-        }
     }
 
     // TODO: move to typer
@@ -916,7 +609,7 @@ impl Registry {
                 let type_ = &self.type_aliases[symbol.col_index];
 
                 // don't print inspection for built-ins
-                if self.reporter.in_inspection_mode && symbol.loc.file_index != 0 {
+                if self.reporter.in_inspection_mode && symbol.loc.file_id != 0 {
                     self.reporter.print_inspection(&InspectInfo {
                         message: format!("type {type_name} = {}", TypeFmt(self, &type_)),
                         loc: *loc,
@@ -938,129 +631,6 @@ impl Registry {
         }
     }
 
-    pub fn get_fn_self_type(
-        &self,
-        ctx: &ExprContext,
-        fn_name: &IdentExpr,
-        fn_params: &Vec<FnParam>,
-    ) -> Option<Type> {
-        let mut has_self_param = false;
-        for fn_param in fn_params {
-            let (FnParamType::Self_ | FnParamType::SelfRef) = fn_param.param_type else {
-                continue;
-            };
-
-            has_self_param = true;
-
-            if fn_name.parts.len() == 1 {
-                self.report_error(&Error {
-                    message: format!("Cannot use self param in non-method function"),
-                    loc: fn_param.loc,
-                });
-                return Some(Type::Never);
-            }
-        }
-        if !has_self_param {
-            return None;
-        }
-
-        let mut module = &self.modules[ctx.module_id];
-        if fn_name.loc.file_index != module.parser.lexer.file_index {
-            // fn imported from other module
-            module = &self
-                .get_module_by_file_index(fn_name.loc.file_index)
-                .unwrap();
-        }
-
-        let mut self_type_loc = fn_name.parts[0];
-        self_type_loc.end_pos = fn_name.parts[fn_name.parts.len() - 2].end_pos;
-
-        let self_type_name = self_type_loc.read_span(module.source);
-
-        let self_type = catch!(
-            self.get_type_or_err(ctx, &self_type_name, &self_type_loc),
-            err,
-            {
-                self.report_error(&err);
-                return Some(Type::Never);
-            }
-        );
-
-        Some(self_type)
-    }
-
-    pub fn get_fn_param_type(
-        &self,
-        ctx: &ExprContext,
-        fn_param: &FnParam,
-        self_type: &Option<Type>,
-        infer_allowed: bool,
-    ) -> Result<Type, Error> {
-        match &fn_param.param_type {
-            FnParamType::Self_ | FnParamType::SelfRef => {
-                // SAFETY: `get_fn_self_type` does the check
-                let self_type = self_type.clone().unwrap();
-
-                if let FnParamType::Self_ = fn_param.param_type {
-                    return Ok(self_type);
-                }
-
-                return Ok(Type::Pointer {
-                    pointee: Box::new(self_type),
-                });
-            }
-            FnParamType::Type { expr } => {
-                if let Some(infer_type_name) = get_infer_type_name(fn_param)? {
-                    if !infer_allowed {
-                        return Err(Error {
-                            message: format!("Infer is only allowed in inline fns"),
-                            loc: fn_param.param_name.loc,
-                        });
-                    }
-
-                    return self.get_type_or_err(ctx, infer_type_name, &fn_param.param_name.loc);
-                }
-
-                self.build_type(ctx, &expr)
-            }
-        }
-    }
-
-    pub fn get_struct_or_struct_ref_field(
-        &self,
-        mut lhs_type: &Type,
-        field_access: &FieldAccessExpr,
-    ) -> &StructField {
-        if let Type::Pointer { pointee } = &lhs_type {
-            lhs_type = pointee;
-        }
-
-        let struct_index: usize;
-        if let Type::StructInstance { struct_index: si } = lhs_type {
-            struct_index = *si;
-        } else if let Type::Container(ContainerType {
-            container,
-            items: _,
-        }) = lhs_type
-            && let Type::StructInstance { struct_index: si } = &**container
-        {
-            struct_index = *si;
-        } else {
-            unreachable!()
-        };
-
-        let struct_def = &self.structs[struct_index];
-        let Some(field) = struct_def
-            .fields
-            .iter()
-            .find(|f| &f.field_name == &field_access.field_name.repr)
-        else {
-            unreachable!()
-        };
-
-        field
-    }
-
     pub fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
         let receiver_type_base = receiver_type.deref_rec();
 
@@ -1075,75 +645,14 @@ impl Registry {
         format!("{}::{method_name}", TypeFmt(self, receiver_type_base))
     }
 
-    pub fn create_or_get_addr_local(&self, ctx: &mut ExprContext) -> u32 {
-        if let Some(addr_local_index) = ctx.addr_local_index {
-            return addr_local_index;
-        }
-
-        let addr_local_index = self.define_unnamed_local(ctx, Loc::internal(), &Type::U32);
-
-        return addr_local_index;
-    }
-
-    pub fn define_local(
-        &mut self,
-        ctx: &mut ExprContext,
-        loc: Loc,
-        local_name: &'static str,
-        local_type: &Type,
-    ) -> u32 {
-        let res = self.define_symbol(ctx, local_name, SymbolKind::Local, loc);
-
-        if let Err(existing) = res
-            && existing.kind == SymbolKind::Local
-        {
-            return ctx.locals[existing.col_index].local_index;
-        }
-
-        let local_index = self.define_unnamed_local(ctx, loc, local_type);
-        local_index
-    }
-
-    pub fn define_unnamed_local(&self, ctx: &mut ExprContext, loc: Loc, local_type: &Type) -> u32 {
-        let local_index = ctx.next_local_index;
-        ctx.locals.push(Local {
-            local_index,
-            local_type: local_type.clone(),
-            definition_loc: loc,
-        });
-        ctx.next_local_index += self.count_wasm_type_components(local_type);
-
-        local_index
-    }
-
-    pub fn register_block_const(&mut self, ctx: &ExprContext, const_def: ConstDef) {
-        if const_def.const_name == "_" {
-            return;
-        }
-
-        let _ = self.define_symbol(ctx, const_def.const_name, SymbolKind::Const, const_def.loc);
-        self.constants.push(const_def);
-    }
-
-    pub fn register_block_type(
-        &mut self,
-        ctx: &ExprContext,
-        name: &'static str,
-        type_: Type,
-        loc: Loc,
-    ) {
-        let _ = self.define_symbol(ctx, name, SymbolKind::TypeAlias, loc);
-        self.type_aliases.push(type_);
-    }
-
-    pub fn get_module_by_file_index(&self, file_index: usize) -> Option<&Module> {
+    pub fn get_module_id_by_file_id(&self, file_id: usize) -> ModuleId {
         for module in &self.modules {
-            if module.parser.lexer.file_index == file_index {
-                return Some(module);
+            if module.parser.lexer.file_id == file_id {
+                return module.id;
             }
         }
 
-        None
+        unreachable!()
     }
 
     // TODO: remove tag after migration

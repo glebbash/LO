@@ -38,19 +38,19 @@ impl FileManager {
         let file_contents =
             fs::file_read_utf8(&absolute_path).map_err(|message| Error { message, loc: *loc })?;
 
-        let file_index = self.files.len();
+        let file_id = self.files.len();
         self.files.push(FileInfo {
-            index: file_index,
+            index: file_id,
             included_times: 1,
             absolute_path: absolute_path.into(),
             source: file_contents,
         });
 
-        Ok(file_index)
+        Ok(file_id)
     }
 
     pub fn resolve_path(&self, file_path: &str, loc: &Loc) -> String {
-        let relative_to = &self.files[loc.file_index].absolute_path;
+        let relative_to = &self.files[loc.file_id].absolute_path;
 
         if !file_path.starts_with('.') {
             return file_path.into();

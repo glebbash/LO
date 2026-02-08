@@ -1,4 +1,90 @@
-use crate::{ast::*, common::*, lexer::*, registry::*, wasm::WasmType};
+use crate::{ast::*, common::*, lexer::*, registry::*};
+
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub enum Type {
+    Never,
+    Null,
+    Void,
+    Bool,
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    F32,
+    U64,
+    I64,
+    F64,
+    Pointer { pointee: Box<Type> },
+    SequencePointer { pointee: Box<Type> },
+    StructInstance { struct_index: usize },
+    EnumInstance { enum_index: usize },
+    Result(ResultType),
+    Container(ContainerType),
+}
+
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct ResultType {
+    pub ok: Box<Type>,
+    pub err: Box<Type>,
+}
+
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct ContainerType {
+    pub container: Box<Type>,
+    pub items: Vec<Type>,
+}
+
+impl Type {
+    pub fn to_str(&self) -> Option<&'static str> {
+        Some(match self {
+            Type::Never => "never",
+            Type::Null => "null",
+            Type::Void => "void",
+            Type::Bool => "bool",
+            Type::U8 => "u8",
+            Type::I8 => "i8",
+            Type::U16 => "u16",
+            Type::I16 => "i16",
+            Type::U32 => "u32",
+            Type::I32 => "i32",
+            Type::F32 => "f32",
+            Type::U64 => "u64",
+            Type::I64 => "i64",
+            Type::F64 => "f64",
+            _ => return None,
+        })
+    }
+
+    pub fn deref_rec(&self) -> &Type {
+        match self {
+            Type::Pointer { pointee } => pointee.deref_rec(),
+            Type::SequencePointer { pointee } => pointee.deref_rec(),
+            other => other,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct TypeLayout {
+    pub primitives_count: u32,
+    pub byte_size: u32,
+    pub alignment: u32,
+}
+
+impl TypeLayout {
+    pub fn new() -> Self {
+        Self {
+            primitives_count: 0,
+            byte_size: 0,
+            alignment: 0,
+        }
+    }
+}
+
+pub type TypeId = usize;
+pub const TYPE_ID_INVALID: TypeId = usize::MAX;
 
 pub type ExprInfo = usize;
 pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
@@ -603,11 +689,10 @@ impl Typer {
                                     continue 'exprs;
                                 });
                                 let mut field_layout = TypeLayout::new();
-                                self.registry
-                                    .get_type_layout(&field_type, &mut field_layout);
+                                get_type_layout(&self.registry, &field_type, &mut field_layout);
 
                                 struct_aligment = u32::max(struct_aligment, field_layout.alignment);
-                                struct_primitives_count += field_layout.primities_count;
+                                struct_primitives_count += field_layout.primitives_count;
 
                                 struct_fields.push(StructField {
                                     field_name: field.field_name.repr,
@@ -769,45 +854,10 @@ impl Typer {
                         continue;
                     };
 
-                    // TODO: remove after migration
-                    {
-                        let fn_info = self.registry.functions[symbol.col_index].relax_mut();
-
-                        let self_type = self.registry.get_fn_self_type(
-                            &module.ctx,
-                            &fn_def.decl.fn_name,
-                            &fn_def.decl.params,
-                        );
-
-                        if let Some(return_type) = &fn_def.decl.return_type {
-                            fn_info.type_.output = catch!(self.build_type(ctx, return_type), err, {
-                                self.report_error(&err);
-                                continue;
-                            })
-                        }
-
-                        for fn_param in &fn_def.decl.params {
-                            let param_type = self.registry.get_fn_param_type(
-                                &module.ctx,
-                                fn_param,
-                                &self_type,
-                                false,
-                            );
-                            let param_type = catch!(param_type, err, {
-                                self.report_error(&err);
-                                continue;
-                            });
-                            fn_info.type_.inputs.push(param_type.clone());
-
-                            fn_info.params.push(FnParameter {
-                                param_name: fn_param.param_name.repr,
-                                param_type: param_type.clone(),
-                                loc: fn_param.param_name.loc,
-                            });
-                        }
-                    }
-
                     let fn_info = self.functions[symbol.col_index].relax_mut();
+
+                    // TODO: remove after migration
+                    let fn_info_compat = self.registry.functions[symbol.col_index].relax_mut();
 
                     let self_type =
                         self.get_fn_self_type(ctx, &fn_def.decl.fn_name, &fn_def.decl.params);
@@ -816,7 +866,12 @@ impl Typer {
                         fn_info.type_.output = catch!(self.build_type(ctx, return_type), err, {
                             self.report_error(&err);
                             continue;
-                        })
+                        });
+                        fn_info_compat.type_.output =
+                            catch!(self.build_type(ctx, return_type), err, {
+                                self.report_error(&err);
+                                continue;
+                            });
                     }
 
                     for fn_param in &fn_def.decl.params {
@@ -828,6 +883,14 @@ impl Typer {
                         fn_info.type_.inputs.push(param_type.clone());
 
                         fn_info.params.push(FnParameter {
+                            param_name: fn_param.param_name.repr,
+                            param_type: param_type.clone(),
+                            loc: fn_param.param_name.loc,
+                        });
+
+                        fn_info_compat.type_.inputs.push(param_type.clone());
+
+                        fn_info_compat.params.push(FnParameter {
                             param_name: fn_param.param_name.repr,
                             param_type: param_type.clone(),
                             loc: fn_param.param_name.loc,
@@ -1194,8 +1257,7 @@ impl Typer {
 
             let expr_type = &self.registry.types[type_id];
 
-            // TODO: make this check target independent
-            if self.registry.count_wasm_type_components(expr_type) > 0 && void_only {
+            if count_primitive_components(&self.registry, expr_type) > 0 && void_only {
                 self.report_error(&Error {
                     message: format!(
                         "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
@@ -1255,7 +1317,7 @@ impl Typer {
                     return Ok(());
                 });
 
-                if let Err(err) = is_64_bit_int_tag(&self.registry, &tag_type, &int_literal.loc) {
+                if let Err(err) = is_wide_int_tag(&self.registry, &tag_type, &int_literal.loc) {
                     self.report_error(&err);
                     self.store_type(ctx, int_literal.id, &Type::U32);
                     return Ok(());
@@ -1467,10 +1529,10 @@ impl Typer {
 
                 match &prefix_op.op_tag {
                     PrefixOpTag::Not => {
-                        if self
-                            .registry
-                            .count_wasm_type_components(&self.registry.types[expr_type_id])
-                            != 1
+                        if count_primitive_components(
+                            &self.registry,
+                            &self.registry.types[expr_type_id],
+                        ) != 1
                         {
                             return Err(Error {
                                 message: format!(
@@ -1561,31 +1623,29 @@ impl Typer {
                 }
             }
             CodeExpr::Cast(cast) => {
-                // TODO: check if expr is castable to `casted_to`
-
                 let castee_type_id =
                     self.report_if_err(self.type_code_expr_and_load(ctx, &cast.expr));
 
                 let casted_to_type = self.build_type(ctx, &cast.casted_to)?;
 
-                if let Some(castee_type_id) = castee_type_id
-                    // TODO: find better way to do this
-                    && let None = crate::codegen::get_cast_instr(
-                        &self.registry.types[castee_type_id],
-                        &casted_to_type,
-                    )
-                {
+                if let Some(castee_type_id) = castee_type_id {
                     let castee_type = &self.registry.types[castee_type_id];
 
                     let mut castee_type_components = Vec::new();
-                    self.registry
-                        .lower_type(castee_type, &mut castee_type_components);
+                    self.get_primitives(castee_type, &mut castee_type_components);
 
                     let mut casted_to_type_components = Vec::new();
-                    self.registry
-                        .lower_type(&casted_to_type, &mut casted_to_type_components);
+                    self.get_primitives(&casted_to_type, &mut casted_to_type_components);
 
-                    if castee_type_components != casted_to_type_components {
+                    let noop_local_cast =
+                        is_noop_cast(&castee_type_components, &casted_to_type_components);
+
+                    let single_int_cast = castee_type_components.len() == 1
+                        && casted_to_type_components.len() == 1
+                        && is_wide_int(&castee_type_components[0]).is_some()
+                        && is_wide_int(&casted_to_type_components[0]).is_some();
+
+                    if !(single_int_cast || noop_local_cast) {
                         return Err(Error {
                             message: format!(
                                 "Cannot cast from {} to {}",
@@ -2146,8 +2206,6 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::For(for_expr) => {
-                // TODO: implement
-
                 let maybe_start_type_id =
                     self.report_if_err(self.type_code_expr_and_load(ctx, &for_expr.start));
                 let maybe_end_type_id =
@@ -2179,6 +2237,13 @@ impl Typer {
                 };
 
                 if let Some(counter_type_id) = self.load_type_id(ctx, &for_expr.start) {
+                    if is_wide_int(&self.registry.types[counter_type_id]).is_none() {
+                        self.report_error(&Error {
+                            message: format!("Invalid counter type must be a number"),
+                            loc: for_expr.start.loc(),
+                        });
+                    }
+
                     self.locals.be_mut().push(TyLocal {
                         type_id: counter_type_id,
                     });
@@ -2586,11 +2651,11 @@ impl Typer {
         };
 
         let mut err_type_components = Vec::new();
-        self.lower_type(&result.err, &mut err_type_components);
-        if err_type_components != [WasmType::I32] {
+        self.get_primitives(&result.err, &mut err_type_components);
+        if err_type_components.len() != 1 || !is_noop_cast(&err_type_components, &[Type::U32]) {
             return Err(Error {
                 message: format!(
-                    "Invalid Result error type: {}, must lower to i32",
+                    "Invalid Result error type: {}, must fit into U32 local",
                     TypeFmt(&*self.registry, &result.err)
                 ),
                 loc: *loc,
@@ -2600,46 +2665,46 @@ impl Typer {
         Ok(result)
     }
 
-    // TODO: make this not depend on wasm types
-    fn lower_type(&self, lo_type: &Type, wasm_types: &mut Vec<WasmType>) {
+    // emits a sequence of `Bool | I* | U* | F*` primitive types
+    fn get_primitives(&self, lo_type: &Type, wasm_types: &mut Vec<Type>) {
         match lo_type {
             Type::Never | Type::Void => {}
-            Type::Null
-            | Type::Bool
+            Type::Bool
             | Type::U8
             | Type::I8
             | Type::U16
             | Type::I16
             | Type::U32
-            | Type::I32 => wasm_types.push(WasmType::I32),
-            Type::F32 => wasm_types.push(WasmType::F32),
-            Type::U64 => wasm_types.push(WasmType::I64),
-            Type::I64 => wasm_types.push(WasmType::I64),
-            Type::F64 => wasm_types.push(WasmType::F64),
-            Type::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            Type::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
+            | Type::I32
+            | Type::U64
+            | Type::I64
+            | Type::F32
+            | Type::F64 => wasm_types.push(lo_type.clone()),
+            Type::Null | Type::Pointer { pointee: _ } | Type::SequencePointer { pointee: _ } => {
+                wasm_types.push(Type::U32)
+            }
             Type::StructInstance { struct_index } => {
                 let struct_def = &self.structs[*struct_index];
 
                 for field in &struct_def.fields {
-                    self.lower_type(&field.field_type, wasm_types);
+                    self.get_primitives(&field.field_type, wasm_types);
                 }
             }
             Type::EnumInstance { enum_index } => {
                 let enum_def = &self.enums[*enum_index];
 
-                self.lower_type(&Type::U32, wasm_types);
-                self.lower_type(&enum_def.variant_type, wasm_types);
+                self.get_primitives(&Type::U32, wasm_types);
+                self.get_primitives(&enum_def.variant_type, wasm_types);
             }
             Type::Result(result) => {
-                self.lower_type(&result.ok, wasm_types);
-                self.lower_type(&result.err, wasm_types);
+                self.get_primitives(&result.ok, wasm_types);
+                self.get_primitives(&result.err, wasm_types);
             }
             Type::Container(ContainerType {
                 container,
                 items: _,
             }) => {
-                self.lower_type(container, wasm_types);
+                self.get_primitives(container, wasm_types);
             }
         }
     }
@@ -3043,19 +3108,18 @@ impl Typer {
             return None;
         }
 
-        let mut module = &self.registry.modules[ctx.module_id];
-        if fn_name.loc.file_index != module.parser.lexer.file_index {
-            // fn imported from other module
-            module = &self
-                .registry
-                .get_module_by_file_index(fn_name.loc.file_index)
-                .unwrap();
+        let mut fn_module = &self.registry.modules[ctx.module_id];
+
+        // fn imported from other module
+        if fn_name.loc.file_id != fn_module.parser.lexer.file_id {
+            let module_id = self.registry.get_module_id_by_file_id(fn_name.loc.file_id);
+            fn_module = &self.registry.modules[module_id];
         }
 
         let mut self_type_loc = fn_name.parts[0];
         self_type_loc.end_pos = fn_name.parts[fn_name.parts.len() - 2].end_pos;
 
-        let self_type_name = self_type_loc.read_span(module.source);
+        let self_type_name = self_type_loc.read_span(fn_module.source);
 
         let self_type = catch!(
             self.get_type_or_err(ctx, &self_type_name, &self_type_loc),
@@ -3266,7 +3330,7 @@ impl Typer {
                 let type_ = &self.registry.types[type_id];
 
                 // don't print inspection for built-ins
-                if self.reporter.in_inspection_mode && symbol.loc.file_index != 0 {
+                if self.reporter.in_inspection_mode && symbol.loc.file_id != 0 {
                     self.reporter.print_inspection(&InspectInfo {
                         message: format!("type {type_name} = {}", TypeFmt(&*self.registry, &type_)),
                         loc: *loc,
@@ -3503,14 +3567,188 @@ impl Typer {
     }
 }
 
-pub fn is_64_bit_int_tag(registry: &Registry, tag_type: &Type, loc: &Loc) -> Result<bool, Error> {
-    match tag_type {
-        Type::U64 | Type::I64 => Ok(true),
-        Type::U8 | Type::I8 | Type::U16 | Type::I16 | Type::U32 | Type::I32 => Ok(false),
-        other => Err(Error {
-            message: format!("{} is not a valid int tag", TypeFmt(&registry, other)),
+pub struct IncludeInfo {
+    pub file_path: UBRef<StringLiteralExpr>,
+    pub alias: Option<String>,
+    pub with_extern: bool,
+}
+pub fn get_include_info(expr: &TopLevelExpr) -> Result<Option<IncludeInfo>, Error> {
+    let TopLevelExpr::Intrinsic(InlineFnCallExpr {
+        id: _,
+        fn_name: intrinsic,
+        type_args,
+        args,
+        loc: _,
+    }) = expr
+    else {
+        return Ok(None);
+    };
+    if intrinsic.repr != "include" {
+        return Ok(None);
+    }
+
+    if type_args.len() != 0 {
+        return Err(bad_signature(intrinsic));
+    }
+
+    let mut file_path = None;
+    let mut alias = None;
+    let mut with_extern = false;
+
+    for arg in &args.items {
+        if let CodeExpr::StringLiteral(str) = arg {
+            file_path = Some(str.relax());
+            continue;
+        }
+
+        if let CodeExpr::Ident(ident) = arg
+            && ident.repr == "with_extern"
+        {
+            with_extern = true;
+            continue;
+        }
+
+        if let CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) = arg
+            && let CodeExpr::Ident(IdentExpr { repr: "alias", .. }) = &**lhs
+            && let CodeExpr::StringLiteral(str) = &**rhs
+        {
+            alias = Some(str.value.clone());
+            continue;
+        }
+    }
+
+    let Some(file_path) = file_path else {
+        return Err(bad_signature(intrinsic));
+    };
+
+    return Ok(Some(IncludeInfo {
+        file_path: UBRef::new(file_path),
+        alias,
+        with_extern,
+    }));
+
+    fn bad_signature(fn_name: &IdentExpr) -> Error {
+        Error {
+            message: format!(
+                "Invalid call, expected signature: @{}(<str-literal>, [with_extern, alias = <str-literal>])",
+                fn_name.repr
+            ),
+            loc: fn_name.loc,
+        }
+    }
+}
+
+pub fn is_noop_cast(primitives1: &[Type], primitives2: &[Type]) -> bool {
+    if primitives1.len() != primitives2.len() {
+        return false;
+    }
+
+    for (p1, p2) in primitives1.iter().zip(primitives2) {
+        if let Some(p1_wide) = is_wide_int(p1)
+            && let Some(p2_wide) = is_wide_int(p2)
+            && p1_wide == p2_wide
+        {
+        } else {
+            return false;
+        }
+    }
+
+    true
+}
+
+pub fn count_primitive_components(registry: &Registry, lo_type: &Type) -> u32 {
+    let layout = &mut TypeLayout::new();
+    get_type_layout(registry, lo_type, layout);
+    layout.primitives_count
+}
+
+pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLayout) {
+    match lo_type {
+        Type::Never | Type::Void => {
+            layout.alignment = u32::max(layout.alignment, 1);
+        }
+        Type::Bool | Type::U8 | Type::I8 => {
+            layout.primitives_count += 1;
+            layout.alignment = u32::max(layout.alignment, 1);
+            layout.byte_size = align(layout.byte_size, 1) + 1;
+        }
+        Type::U16 | Type::I16 => {
+            layout.primitives_count += 1;
+            layout.alignment = u32::max(layout.alignment, 2);
+            layout.byte_size = align(layout.byte_size, 2) + 2;
+        }
+        Type::U32
+        | Type::I32
+        | Type::F32
+        | Type::Null
+        | Type::Pointer { pointee: _ }
+        | Type::SequencePointer { pointee: _ } => {
+            layout.primitives_count += 1;
+            layout.alignment = u32::max(layout.alignment, 4);
+            layout.byte_size = align(layout.byte_size, 4) + 4;
+        }
+        Type::U64 | Type::I64 | Type::F64 => {
+            layout.primitives_count += 1;
+            layout.alignment = u32::max(layout.alignment, 8);
+            layout.byte_size = align(layout.byte_size, 8) + 8;
+        }
+        Type::StructInstance { struct_index } => {
+            let struct_def = &registry.structs[*struct_index];
+
+            for field in &struct_def.fields {
+                get_type_layout(registry, &field.field_type, layout);
+            }
+
+            layout.alignment = u32::max(layout.alignment, 1);
+            layout.byte_size = align(layout.byte_size, layout.alignment);
+        }
+        Type::EnumInstance { enum_index } => {
+            let enum_def = &registry.enums[*enum_index];
+
+            get_type_layout(registry, &Type::U32, layout);
+            get_type_layout(registry, &enum_def.variant_type, layout);
+
+            layout.byte_size = align(layout.byte_size, layout.alignment);
+        }
+        Type::Result(result) => {
+            get_type_layout(registry, &result.ok, layout);
+            get_type_layout(registry, &result.err, layout);
+
+            layout.byte_size = align(layout.byte_size, layout.alignment);
+        }
+        Type::Container(ContainerType {
+            container,
+            items: _,
+        }) => {
+            get_type_layout(registry, container, layout);
+        }
+    }
+}
+
+fn is_wide_int_tag(registry: &Registry, tag_type: &Type, loc: &Loc) -> Result<bool, Error> {
+    let Some(wide) = is_wide_int(tag_type) else {
+        return Err(Error {
+            message: format!("{} is not a valid int tag", TypeFmt(&registry, tag_type)),
             loc: *loc,
-        }),
+        });
+    };
+    return Ok(wide);
+}
+
+pub fn is_wide_int(type_: &Type) -> Option<bool> {
+    match type_ {
+        Type::U64 | Type::I64 => Some(true),
+        Type::Bool
+        | Type::U8
+        | Type::I8
+        | Type::U16
+        | Type::I16
+        | Type::U32
+        | Type::I32
+        | Type::Null
+        | Type::Pointer { pointee: _ }
+        | Type::SequencePointer { pointee: _ } => Some(false),
+        _ => None,
     }
 }
 

@@ -41,7 +41,7 @@ impl Token {
 
 pub struct Lexer {
     // context
-    pub file_index: usize,
+    pub file_id: usize,
     pub source: &'static [u8],
 
     // state
@@ -56,9 +56,9 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(source: &'static [u8], file_index: usize) -> Self {
+    pub fn new(source: &'static [u8], file_id: usize) -> Self {
         Self {
-            file_index,
+            file_id,
             source,
 
             source_pos: Pos {
@@ -486,7 +486,7 @@ impl Lexer {
         end_pos.col += 1;
 
         Loc {
-            file_index: self.file_index,
+            file_id: self.file_id,
             pos,
             end_pos,
         }
