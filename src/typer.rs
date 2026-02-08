@@ -83,11 +83,18 @@ impl TypeLayout {
     }
 }
 
-pub type TypeId = usize;
-pub const TYPE_ID_INVALID: TypeId = usize::MAX;
-
+/// Encodes different info based on expression type
+/// For most of the expressions it stores
+///   [TypeId] which is used to index [Registry::types].
+///
+/// Exceptions:
+/// - for [CodeExpr::InlineFnCall] and [CodeExpr::InlineMethodCall] it stores
+///     [usize] which is used to index [Registry::inline_fn_call_info]
 pub type ExprInfo = usize;
 pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
+
+pub type TypeId = usize;
+pub const TYPE_ID_INVALID: TypeId = usize::MAX;
 
 type TyContextRef = UBRef<TyContext>;
 
@@ -1207,7 +1214,6 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::StructLiteral(struct_literal) => {
-                // TODO: check that fields match struct definition
                 for field in &struct_literal.body.fields {
                     self.report_if_err(self.type_code_expr(ctx, &field.value));
                 }
@@ -1218,11 +1224,68 @@ impl Typer {
                         loc: struct_literal.loc,
                     });
                 };
+                let struct_index = symbol.col_index;
 
-                let struct_type = Type::StructInstance {
-                    struct_index: symbol.col_index,
-                };
+                let struct_type = Type::StructInstance { struct_index };
                 self.store_type(ctx, struct_literal.id, &struct_type);
+
+                {
+                    let struct_def = &self.registry.structs[struct_index].relax();
+
+                    for field_index in 0..struct_literal.body.fields.len() {
+                        let field_literal = &struct_literal.body.fields[field_index];
+                        let Some(struct_field) = struct_def.fields.get(field_index) else {
+                            self.report_error(&Error {
+                                message: format!("Excess field values"),
+                                loc: field_literal.loc,
+                            });
+                            continue;
+                        };
+
+                        if &field_literal.key != &struct_field.field_name {
+                            self.report_error(&Error {
+                                message: format!(
+                                    "Unexpected struct field name, expecting: `{}`",
+                                    struct_field.field_name
+                                ),
+                                loc: field_literal.loc,
+                            });
+                        }
+
+                        let Some(field_value_type_id) =
+                            self.load_type_id(ctx, &field_literal.value)
+                        else {
+                            continue;
+                        };
+                        let field_value_type = &self.registry.types[field_value_type_id];
+
+                        if !is_type_compatible(&struct_field.field_type, &field_value_type) {
+                            self.report_error(&Error {
+                                message: format!(
+                                    "Invalid type for struct field {}.{}, expected: {}, got: {}",
+                                    struct_literal.struct_name.repr,
+                                    struct_field.field_name,
+                                    TypeFmt(&*self.registry, &struct_field.field_type,),
+                                    TypeFmt(&*self.registry, &field_value_type),
+                                ),
+                                loc: field_literal.value.loc(),
+                            });
+                        }
+                    }
+
+                    if struct_literal.body.fields.len() < struct_def.fields.len() {
+                        let mut missing_fields = Vec::new();
+                        for i in struct_literal.body.fields.len()..struct_def.fields.len() {
+                            missing_fields.push(&struct_def.fields[i].field_name)
+                        }
+
+                        self.report_error(&Error {
+                            message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
+                            loc: struct_literal.struct_name.loc,
+                        });
+                    }
+                }
+
                 return Ok(());
             }
             CodeExpr::ArrayLiteral(array_literal) => {
@@ -1514,9 +1577,30 @@ impl Typer {
             CodeExpr::Assign(assign) => {
                 // TODO: assert that lhs is writable
 
+                let lhs_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &assign.lhs));
+                let rhs_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &assign.rhs));
+
+                if let Some(lhs_type_id) = lhs_type_id
+                    && let Some(rhs_type_id) = rhs_type_id
+                    && !is_type_compatible(
+                        &self.registry.types[lhs_type_id],
+                        &self.registry.types[rhs_type_id],
+                    )
+                {
+                    self.report_error(&Error {
+                        message: format!(
+                            "Cannot assign {} to variable of type {}",
+                            TypeFmt(&*self.registry, &self.registry.types[rhs_type_id]),
+                            TypeFmt(&*self.registry, &self.registry.types[lhs_type_id]),
+                        ),
+                        loc: assign.op_loc.clone(),
+                    });
+                }
+
                 self.store_type(ctx, assign.id, &Type::Void);
-                self.report_if_err(self.type_code_expr(ctx, &assign.lhs));
-                self.report_if_err(self.type_code_expr(ctx, &assign.rhs));
+
                 return Ok(());
             }
             CodeExpr::FieldAccess(field_access) => {

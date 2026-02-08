@@ -155,6 +155,7 @@ pub enum CodeExpr {
     InfixOp(InfixOpExpr),
     PrefixOp(PrefixOpExpr),
     Cast(CastExpr),
+    /// TODO?: merge into [InfixOp]
     Assign(AssignExpr),
     FieldAccess(FieldAccessExpr),
     PropagateError(PropagateErrorExpr),

@@ -229,11 +229,11 @@ pub struct Registry {
     pub modules: Vec<Module>,                // indexed by `module_id`
     pub expr_info: Vec<ExprInfo>,            // indexed by `expr.id()`
     pub types: Vec<Type>,                    // indexed by `ExprInfoId` for most of the expressions
-    pub inline_fn_call_info: Vec<ICallInfo>, // indexed by `ExprInfoId` for `::InlineFnCall` and `::InlineMethodCall`
     pub globals: Vec<GlobalDef>,             // indexed by `col_index` when `kind = Global`
     pub constants: Vec<ConstDef>,            // indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,              // indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>,    // indexed by `col_index` when `kind = InlineFn`
+    pub inline_fn_call_info: Vec<ICallInfo>, // indexed by `ExprInfoId` for `::InlineFnCall` and `::InlineMethodCall`
     pub type_aliases: Vec<Type>,             // indexed by `col_index` when `kind = TypeAlias`
     pub structs: Vec<StructDef>,             // indexed by `col_index` when `kind = Struct`
     pub enums: Vec<EnumDef>,                 // indexed by `col_index` when `kind = Enum`
@@ -417,6 +417,7 @@ impl Registry {
     }
 
     // TODO: move to typer
+    // TODO: load TypeExpr type from it's id the same as CodeExpr
     pub fn build_type(&self, ctx: &ExprContext, type_expr: &TypeExpr) -> Result<Type, Error> {
         return self.build_type_check_ref(ctx, type_expr, true, &Loc::internal());
     }

@@ -35,7 +35,6 @@ struct VarInfoConst {
 
 struct VarInfoVoidEnumValue {
     variant_index: usize,
-    var_type: Type,
     loc: Loc,
 }
 
@@ -51,19 +50,6 @@ struct VarInfoStructValueField {
     drops_after: u32,
     var_type: Type,
     loc: Loc,
-}
-
-impl VarInfo {
-    fn get_type(&self) -> &Type {
-        match self {
-            VarInfo::Local(v) => &v.var_type,
-            VarInfo::Global(v) => &v.var_type,
-            VarInfo::Const(v) => &v.code_unit.type_,
-            VarInfo::VoidEnumValue(v) => &v.var_type,
-            VarInfo::Stored(v) => &v.var_type,
-            VarInfo::StructValueField(v) => &v.var_type,
-        }
-    }
 }
 
 pub struct CodeGenerator {
@@ -444,68 +430,9 @@ impl CodeGenerator {
                     value: str.len as i32,
                 });
             }
-            CodeExpr::StructLiteral(StructLiteralExpr {
-                id: _,
-                struct_name,
-                body,
-                loc: _,
-            }) => {
-                let Type::StructInstance { struct_index } = self.unwrap(
-                    self.registry
-                        .get_type_or_err(ctx, &struct_name.repr, &struct_name.loc),
-                ) else {
-                    unreachable!()
-                };
-
-                let struct_def = &self.registry.structs[struct_index].relax();
-
-                for field_index in 0..body.fields.len() {
-                    let field_literal = &body.fields[field_index];
-                    let Some(struct_field) = struct_def.fields.get(field_index) else {
-                        self.report_error(&Error {
-                            message: format!("Excess field values"),
-                            loc: field_literal.loc,
-                        });
-                        break;
-                    };
-
-                    if &field_literal.key != &struct_field.field_name {
-                        self.report_error(&Error {
-                            message: format!(
-                                "Unexpected struct field name, expecting: `{}`",
-                                struct_field.field_name
-                            ),
-                            loc: field_literal.loc,
-                        });
-                    }
-
-                    self.codegen(ctx, instrs, &field_literal.value);
-
-                    let field_value_type = self.get_expr_type(ctx, &field_literal.value);
-                    if !is_type_compatible(&struct_field.field_type, &field_value_type) {
-                        self.report_error(&Error {
-                            message: format!(
-                                "Invalid type for struct field {}.{}, expected: {}, got: {}",
-                                struct_name.repr,
-                                struct_field.field_name,
-                                TypeFmt(&*self.registry, &struct_field.field_type,),
-                                TypeFmt(&*self.registry, &field_value_type),
-                            ),
-                            loc: field_literal.value.loc(),
-                        });
-                    }
-                }
-
-                if body.fields.len() < struct_def.fields.len() {
-                    let mut missing_fields = Vec::new();
-                    for i in body.fields.len()..struct_def.fields.len() {
-                        missing_fields.push(&struct_def.fields[i].field_name)
-                    }
-
-                    self.report_error(&Error {
-                        message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
-                        loc: struct_name.loc,
-                    });
+            CodeExpr::StructLiteral(struct_literal) => {
+                for field in &struct_literal.body.fields {
+                    self.codegen(ctx, instrs, &field.value);
                 }
             }
             // TODO?: support sequences of any type
@@ -701,7 +628,7 @@ impl CodeGenerator {
                         var_type: _,
                     })) = self.var_from_expr(ctx, expr)
                     else {
-                        // TODO: port to typer
+                        // TODO!: move to typer
                         self.reporter.abort_due_to_compiler_bug(
                             &format!(
                                 "Invalid reference expression. Only struct reference fields allowed.",
@@ -817,7 +744,7 @@ impl CodeGenerator {
 
                 if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
                     let Some(var) = self.var_from_expr(ctx, &lhs) else {
-                        // TODO!: port to typer
+                        // TODO!: move to typer
                         self.reporter.abort_due_to_compiler_bug(
                             &format!("Cannot perform compound assignment: invalid lhs"),
                             *op_loc,
@@ -852,18 +779,6 @@ impl CodeGenerator {
                         *op_loc,
                     );
                 };
-
-                let rhs_type = self.get_expr_type(ctx, rhs);
-                if !is_type_compatible(var.get_type(), &rhs_type) {
-                    self.report_error(&Error {
-                        message: format!(
-                            "Cannot assign {} to variable of type {}",
-                            TypeFmt(&*self.registry, &rhs_type),
-                            TypeFmt(&*self.registry, var.get_type())
-                        ),
-                        loc: op_loc.clone(),
-                    });
-                }
 
                 self.codegen_var_set_prepare(instrs, &var);
                 self.codegen(ctx, instrs, rhs);
@@ -1121,10 +1036,10 @@ impl CodeGenerator {
                     return;
                 }
 
-                self.report_error(&Error {
-                    message: format!("Unknown intrinsic: {}", call.fn_name.repr),
-                    loc: call.fn_name.loc,
-                });
+                self.reporter.abort_due_to_compiler_bug(
+                    &format!("Unknown intrinsic: {}", call.fn_name.repr),
+                    call.fn_name.loc,
+                );
             }
             CodeExpr::Sizeof(SizeofExpr {
                 id: _,
@@ -2283,13 +2198,8 @@ impl CodeGenerator {
             SymbolKind::EnumConstructor => {
                 let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
 
-                let var_type = Type::EnumInstance {
-                    enum_index: enum_ctor.enum_index,
-                };
-
                 VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
                     variant_index: enum_ctor.variant_index,
-                    var_type,
                     loc: var_name.loc,
                 })
             }
@@ -2322,13 +2232,17 @@ impl CodeGenerator {
 
         if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref()) {
             match var {
-                // TODO: update this since struct globals are now supported
-                // struct globals are not supported so these are handled the same way as struct values
-                VarInfo::Global(_) => {}
-                // consts are handled as struct values as well
-                VarInfo::Const(_) => {}
-                // void enums are handled as struct values as well
-                VarInfo::VoidEnumValue(_) => {}
+                // these are handled as struct values
+                VarInfo::Const(_) | VarInfo::VoidEnumValue(_) => {}
+                VarInfo::Global(VarInfoGlobal {
+                    global_index,
+                    var_type: _,
+                }) => {
+                    return VarInfo::Global(VarInfoGlobal {
+                        global_index: global_index + field.field_index,
+                        var_type: field.field_type.clone(),
+                    });
+                }
                 VarInfo::Local(VarInfoLocal {
                     local_index,
                     var_type: _,
@@ -2902,15 +2816,6 @@ impl CodeGenerator {
                 .reporter
                 .abort_due_to_compiler_bug(&err.message, err.loc),
         }
-    }
-
-    // TODO: remove tag after migration
-    fn report_error(&self, err: &Error) {
-        let marked_error = Error {
-            message: format!("(codegen) {}", err.message),
-            loc: err.loc.clone(),
-        };
-        self.reporter.error(&marked_error);
     }
 }
 
