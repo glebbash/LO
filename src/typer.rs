@@ -118,10 +118,6 @@ pub struct TyLocal {
     pub type_id: TypeId,
 }
 
-pub struct TyGlobal {
-    pub type_id: TypeId,
-}
-
 pub struct TyConst {
     pub type_id: TypeId,
     pub expr: UBRef<CodeExpr>,
@@ -132,7 +128,6 @@ pub struct ICallInfo {
     pub inner_expr_offset: usize,
 }
 
-// TODO: optimize types copied from registry
 #[derive(Default)]
 pub struct Typer {
     pub reporter: UBRef<Reporter>,
@@ -141,15 +136,10 @@ pub struct Typer {
     contexts: UBCell<StableVec<TyContext>>,
     module_info: UBCell<Vec<ModuleInfo>>,
     type_lookup: UBCell<BTreeMap<Type, TypeId>>,
+
     type_aliases: UBCell<Vec<TypeId>>, // indexed by `col_index` when `kind = TypeAlias`
     locals: Vec<TyLocal>,              // indexed by `col_index` when `kind = Local`
-    globals: Vec<TyGlobal>,            // indexed by `col_index` when `kind = Global`
     constants: Vec<TyConst>,           // indexed by `col_index` when `kind = Const`
-    functions: Vec<FnInfo>,            // indexed by `col_index` when `kind = Function`
-    inline_fns: Vec<&'static FnExpr>,  // indexed by `col_index` when `kind = InlineFn`
-    structs: Vec<StructDef>,           // indexed by `col_index` when `kind = Struct`
-    enums: Vec<EnumDef>,               // indexed by `col_index` when `kind = Enum`
-    enum_ctors: Vec<EnumConstructor>,  // indexed by `col_index` when `kind = EnumConstructor`
 
     first_string_usage: UBCell<Option<Loc>>,
     allocated_strings: Vec<String>, // storage for all rust `String` objects
@@ -300,20 +290,11 @@ impl Typer {
                                 type_def.name.loc,
                             );
 
-                            self.structs.push(StructDef {
+                            self.registry.structs.push(StructDef {
                                 struct_name: type_def.name.repr,
                                 fields: Vec::new(),
                                 fully_defined: false,
                             });
-
-                            // TODO: remove after migration
-                            {
-                                self.registry.structs.push(StructDef {
-                                    struct_name: type_def.name.repr,
-                                    fields: Vec::new(),
-                                    fully_defined: false,
-                                });
-                            }
                         }
                         TypeDefValue::Enum {
                             variant_type: variant_type_in_decl,
@@ -339,20 +320,11 @@ impl Typer {
                                 }
                             }
 
-                            self.enums.push(EnumDef {
+                            self.registry.enums.push(EnumDef {
                                 enum_name: type_def.name.repr,
                                 variant_type: variant_type.clone(),
                                 variants: Vec::new(), // placeholder
                             });
-
-                            // TODO: remove after migration
-                            {
-                                self.registry.enums.push(EnumDef {
-                                    enum_name: type_def.name.repr,
-                                    variant_type: variant_type.clone(),
-                                    variants: Vec::new(), // placeholder
-                                });
-                            }
 
                             for (variant, variant_index) in variants.iter().zip(0..) {
                                 let constructor_name = self.alloc_str(format!(
@@ -360,7 +332,7 @@ impl Typer {
                                     type_def.name.repr, variant.variant_name.repr
                                 ));
 
-                                let enum_index = self.enums.len() - 1;
+                                let enum_index = self.registry.enums.len() - 1;
 
                                 let _ = self.define_symbol_compat(
                                     ctx,
@@ -369,20 +341,11 @@ impl Typer {
                                     variant.variant_name.loc,
                                 );
 
-                                self.enum_ctors.push(EnumConstructor {
+                                self.registry.enum_ctors.push(EnumConstructor {
                                     enum_index,
                                     variant_index,
                                     loc: variant.variant_name.loc,
                                 });
-
-                                // TODO: remove after migration
-                                {
-                                    self.registry.enum_ctors.push(EnumConstructor {
-                                        enum_index,
-                                        variant_index,
-                                        loc: variant.variant_name.loc,
-                                    });
-                                }
                             }
                         }
                         TypeDefValue::Alias(_) => {
@@ -411,12 +374,7 @@ impl Typer {
                             fn_def.decl.fn_name.loc,
                         );
 
-                        self.inline_fns.push(fn_def.relax());
-
-                        // TODO: remove after migration
-                        {
-                            self.registry.inline_fns.push(fn_def.relax());
-                        }
+                        self.registry.inline_fns.push(fn_def.relax());
                         continue;
                     }
 
@@ -434,27 +392,7 @@ impl Typer {
                                 exported_as.push(String::from(fn_def.decl.fn_name.repr));
                             }
 
-                            // TODO: remove after migration
-                            {
-                                self.registry.be_mut().functions.push(FnInfo {
-                                    name: fn_def.decl.fn_name.repr,
-                                    type_: FnType {
-                                        inputs: Vec::new(),
-                                        output: Type::Void,
-                                    },
-                                    params: Vec::new(),
-                                    source: FnSource::Guest {
-                                        module_id: module.id,
-                                        lo_fn_index: self.registry.functions.len(),
-                                        body: body.relax(),
-                                    },
-                                    exported_as: exported_as.clone(),
-                                    wasm_fn_index: u32::MAX, // placeholder
-                                    definition_loc: fn_def.decl.fn_name.loc,
-                                });
-                            }
-
-                            self.functions.push(FnInfo {
+                            self.registry.be_mut().functions.push(FnInfo {
                                 name: fn_def.decl.fn_name.repr,
                                 type_: FnType {
                                     inputs: Vec::new(),
@@ -463,7 +401,7 @@ impl Typer {
                                 params: Vec::new(),
                                 source: FnSource::Guest {
                                     module_id: module.id,
-                                    lo_fn_index: self.functions.len(),
+                                    lo_fn_index: self.registry.functions.len(),
                                     body: body.relax(),
                                 },
                                 exported_as,
@@ -476,26 +414,7 @@ impl Typer {
                             let method_name = fn_def.decl.fn_name.parts.last().unwrap();
                             let external_fn_name = method_name.read_span(module.source);
 
-                            // TODO: remove after migration
-                            {
-                                self.registry.functions.push(FnInfo {
-                                    name: fn_def.decl.fn_name.repr,
-                                    type_: FnType {
-                                        inputs: Vec::new(),
-                                        output: Type::Void,
-                                    },
-                                    params: Vec::new(),
-                                    source: FnSource::Host {
-                                        module_name: module_name.clone(),
-                                        external_fn_name,
-                                    },
-                                    exported_as: Vec::new(),
-                                    wasm_fn_index: u32::MAX, // not known at this point
-                                    definition_loc: fn_def.decl.fn_name.loc,
-                                });
-                            }
-
-                            self.functions.push(FnInfo {
+                            self.registry.functions.push(FnInfo {
                                 name: fn_def.decl.fn_name.repr,
                                 type_: FnType {
                                     inputs: Vec::new(),
@@ -507,7 +426,7 @@ impl Typer {
                                     external_fn_name,
                                 },
                                 exported_as: Vec::new(),
-                                wasm_fn_index: u32::MAX, // not known at this point
+                                wasm_fn_index: u32::MAX, // placeholder
                                 definition_loc: fn_def.decl.fn_name.loc,
                             });
                         }
@@ -548,18 +467,11 @@ impl Typer {
                         let_expr.name.loc,
                     );
 
-                    // TODO: remove after migration
-                    {
-                        self.registry.globals.push(GlobalDef {
-                            module_ctx: module.ctx.relax(),
-                            def_expr: let_expr.relax(),
-                            global_type: Type::Never, // placeholder
-                            global_index: 0,          // placeholder
-                        });
-                    }
-
-                    self.globals.push(TyGlobal {
+                    self.registry.globals.push(GlobalDef {
+                        module_id: module.id,
+                        value: let_expr.value.relax(),
                         type_id: TYPE_ID_INVALID, // placeholder
+                        wasm_global_index: 0,     // placeholder
                     });
                 }
             }
@@ -720,14 +632,7 @@ impl Typer {
                                 continue;
                             };
 
-                            // TODO: remove when migrated
-                            {
-                                let struct_def = &mut self.registry.structs[symbol.col_index];
-                                struct_def.fields.extend(struct_fields.clone());
-                                struct_def.fully_defined = true;
-                            }
-
-                            let struct_def = &mut self.structs[symbol.col_index];
+                            let struct_def = &mut self.registry.structs[symbol.col_index];
                             struct_def.fields.append(&mut struct_fields);
                             struct_def.fully_defined = true;
                         }
@@ -744,10 +649,10 @@ impl Typer {
                             let SymbolKind::Enum = symbol.kind else {
                                 continue;
                             };
-                            let enum_ = self.enums[symbol.col_index].relax_mut();
+                            let enum_def = self.registry.enums[symbol.col_index].relax_mut();
 
                             'variants: for variant in variants.iter() {
-                                for existing_variant in &enum_.variants {
+                                for existing_variant in &enum_def.variants {
                                     if existing_variant.variant_name == variant.variant_name.repr {
                                         self.report_error(&Error {
                                             message: format!(
@@ -772,32 +677,19 @@ impl Typer {
                                     }
                                 }
 
-                                if !is_type_compatible(&enum_.variant_type, &variant_type) {
+                                if !is_type_compatible(&enum_def.variant_type, &variant_type) {
                                     self.report_error(&Error {
                                         message: format!(
                                             "Enum variant is not compatible with {}",
-                                            TypeFmt(&*self.registry, &enum_.variant_type)
+                                            TypeFmt(&*self.registry, &enum_def.variant_type)
                                         ),
                                         loc: variant.variant_name.loc,
                                     });
                                 }
 
-                                let variant_type_id = self.intern_type(&variant_type);
-
-                                // TODO: remove after migration
-                                {
-                                    self.registry.enums[symbol.col_index].variants.push(
-                                        EnumVariant {
-                                            variant_name: variant.variant_name.repr,
-                                            variant_type_id,
-                                            loc: variant.variant_name.loc,
-                                        },
-                                    );
-                                }
-
-                                enum_.variants.push(EnumVariant {
+                                enum_def.variants.push(EnumVariant {
                                     variant_name: variant.variant_name.repr,
-                                    variant_type_id,
+                                    variant_type_id: self.intern_type(&variant_type),
                                     loc: variant.variant_name.loc,
                                 });
                             }
@@ -856,10 +748,7 @@ impl Typer {
                         continue;
                     };
 
-                    let fn_info = self.functions[symbol.col_index].relax_mut();
-
-                    // TODO: remove after migration
-                    let fn_info_compat = self.registry.functions[symbol.col_index].relax_mut();
+                    let fn_info = self.registry.functions[symbol.col_index].relax_mut();
 
                     let self_type =
                         self.get_fn_self_type(ctx, &fn_def.decl.fn_name, &fn_def.decl.params);
@@ -869,11 +758,6 @@ impl Typer {
                             self.report_error(&err);
                             continue;
                         });
-                        fn_info_compat.type_.output =
-                            catch!(self.build_type(ctx, return_type), err, {
-                                self.report_error(&err);
-                                continue;
-                            });
                     }
 
                     for fn_param in &fn_def.decl.params {
@@ -893,15 +777,7 @@ impl Typer {
 
                         fn_info.params.push(FnParameter {
                             param_name: fn_param.param_name.repr,
-                            param_type: param_type.clone(),
-                            loc: fn_param.param_name.loc,
-                        });
-
-                        fn_info_compat.type_.inputs.push(param_type.clone());
-
-                        fn_info_compat.params.push(FnParameter {
-                            param_name: fn_param.param_name.repr,
-                            param_type: param_type.clone(),
+                            param_type: param_type,
                             loc: fn_param.param_name.loc,
                         });
                     }
@@ -950,13 +826,7 @@ impl Typer {
                         continue;
                     };
 
-                    // TODO: remove after migration
-                    {
-                        let global = self.registry.globals[symbol.col_index].relax_mut();
-                        global.global_type = self.registry.types[value_type_id].clone();
-                    }
-
-                    let global = self.globals[symbol.col_index].relax_mut();
+                    let global = self.registry.globals[symbol.col_index].relax_mut();
                     global.type_id = value_type_id;
 
                     if self.reporter.in_inspection_mode {
@@ -1169,21 +1039,6 @@ impl Typer {
                             String::from(in_name.repr)
                         };
 
-                        // TODO: remove after migration
-                        {
-                            let FnSource::Guest {
-                                module_id: _,
-                                lo_fn_index,
-                                body: _,
-                            } = fn_info.source
-                            else {
-                                unreachable!();
-                            };
-                            self.registry.be_mut().functions[lo_fn_index]
-                                .exported_as
-                                .push(exported_as.clone());
-                        }
-
                         fn_info.be_mut().exported_as.push(exported_as);
 
                         continue;
@@ -1214,7 +1069,7 @@ impl Typer {
     }
 
     fn pass_type_fns(&mut self) {
-        for fn_def in &self.functions {
+        for fn_def in &self.registry.functions {
             let FnSource::Guest {
                 module_id,
                 lo_fn_index,
@@ -1279,7 +1134,7 @@ impl Typer {
         }
 
         if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
-            let fn_info = &self.functions[ctx.fn_index.unwrap()];
+            let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.type_.output != Type::Void {
                 self.report_error(&Error {
                     // error message stolen from clang
@@ -1676,15 +1531,18 @@ impl Typer {
             CodeExpr::FnCall(call) => {
                 if let Some(symbol) = self.get_symbol(ctx, &call.fn_name.repr) {
                     if let SymbolKind::EnumConstructor = symbol.kind {
-                        let ctor = &self.enum_ctors[symbol.col_index];
-                        let enum_ = &self.enums[ctor.enum_index];
-                        let variant = &enum_.variants[ctor.variant_index];
+                        let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
+                        let enum_def = &self.registry.enums[enum_ctor.enum_index];
+                        let variant = &enum_def.variants[enum_ctor.variant_index];
 
                         if self.reporter.in_inspection_mode {
                             self.reporter.print_inspection(&InspectInfo {
-                                message: format!("{} // {}", call.fn_name.repr, ctor.variant_index),
+                                message: format!(
+                                    "{} // {}",
+                                    call.fn_name.repr, enum_ctor.variant_index
+                                ),
                                 loc: call.fn_name.loc,
-                                linked_loc: Some(ctor.loc),
+                                linked_loc: Some(enum_ctor.loc),
                             });
                         }
 
@@ -1724,7 +1582,7 @@ impl Typer {
                             ctx,
                             call.id,
                             &Type::EnumInstance {
-                                enum_index: ctor.enum_index,
+                                enum_index: enum_ctor.enum_index,
                             },
                         );
 
@@ -2090,7 +1948,7 @@ impl Typer {
                     return_type = &self.registry.types[return_type_id];
                 }
 
-                let fn_return_type = &self.functions[ctx.fn_index.unwrap()].type_.output;
+                let fn_return_type = &self.registry.functions[ctx.fn_index.unwrap()].type_.output;
                 if !is_type_compatible(fn_return_type, return_type) {
                     self.reporter.error(&Error {
                         message: format!(
@@ -2415,7 +2273,7 @@ impl Typer {
             });
         };
 
-        let fn_info = &self.functions[fn_index];
+        let fn_info = &self.registry.functions[fn_index];
         let Type::Result(result) = &fn_info.type_.output else {
             return Err(Error {
                 message: format!(
@@ -2462,7 +2320,7 @@ impl Typer {
                 return Ok(local.type_id);
             }
             SymbolKind::Global => {
-                let global = &self.globals[symbol.col_index];
+                let global = &self.registry.globals[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(&InspectInfo {
@@ -2496,8 +2354,8 @@ impl Typer {
                 return Ok(const_def.type_id);
             }
             SymbolKind::EnumConstructor => {
-                let enum_ctor = &self.enum_ctors[symbol.col_index];
-                let enum_def = &self.enums[enum_ctor.enum_index];
+                let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
+                let enum_def = &self.registry.enums[enum_ctor.enum_index];
                 let enum_variant = &enum_def.variants[enum_ctor.variant_index];
 
                 let Type::Void = enum_def.variant_type else {
@@ -2563,8 +2421,9 @@ impl Typer {
             });
         };
 
-        let enum_ctor = &self.enum_ctors[symbol.col_index];
-        let enum_variant = &self.enums[enum_ctor.enum_index].variants[enum_ctor.variant_index];
+        let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
+        let enum_variant =
+            &self.registry.enums[enum_ctor.enum_index].variants[enum_ctor.variant_index];
 
         let expr_to_match_type_id =
             self.report_if_err(self.type_code_expr_and_load(ctx, &match_header.expr_to_match));
@@ -2658,14 +2517,14 @@ impl Typer {
                 wasm_types.push(Type::U32)
             }
             Type::StructInstance { struct_index } => {
-                let struct_def = &self.structs[*struct_index];
+                let struct_def = &self.registry.structs[*struct_index];
 
                 for field in &struct_def.fields {
                     self.get_primitives(&field.field_type, wasm_types);
                 }
             }
             Type::EnumInstance { enum_index } => {
-                let enum_def = &self.enums[*enum_index];
+                let enum_def = &self.registry.enums[*enum_index];
 
                 self.get_primitives(&Type::U32, wasm_types);
                 self.get_primitives(&enum_def.variant_type, wasm_types);
@@ -2713,7 +2572,7 @@ impl Typer {
             });
         };
 
-        let struct_def = &self.structs[struct_index];
+        let struct_def = &self.registry.structs[struct_index];
         let Some(field) = struct_def
             .fields
             .iter()
@@ -2844,7 +2703,7 @@ impl Typer {
             });
         };
 
-        Ok(&self.functions[symbol.col_index])
+        Ok(&self.registry.functions[symbol.col_index])
     }
 
     fn type_inline_fn_call(
@@ -2863,7 +2722,7 @@ impl Typer {
                 loc: *loc,
             });
         };
-        let inline_fn_def = self.inline_fns[symbol.col_index];
+        let inline_fn_def = self.registry.inline_fns[symbol.col_index];
 
         let FnExprValue::Body(body) = &inline_fn_def.value else {
             unreachable!()
@@ -3157,7 +3016,7 @@ impl Typer {
             TypeExpr::Named(TypeExprNamed { name }) => {
                 let lo_type = self.get_type_or_err(ctx, &name.repr, &name.loc)?;
                 if let Type::StructInstance { struct_index } = &lo_type {
-                    let struct_def = &self.structs[*struct_index];
+                    let struct_def = &self.registry.structs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
                         return Err(Error {
                             message: format!(
@@ -3438,15 +3297,17 @@ impl Typer {
         symbol_loc: Loc,
     ) -> bool {
         let symbol_col_index = match &symbol_kind {
-            SymbolKind::TypeAlias => self.type_aliases.len(),
-            SymbolKind::Struct => self.structs.len(),
-            SymbolKind::Enum => self.enums.len(),
             SymbolKind::Local => self.locals.len(),
-            SymbolKind::Global => self.globals.len(),
+            SymbolKind::Global => self.registry.globals.len(),
             SymbolKind::Const => self.constants.len(),
-            SymbolKind::InlineFn => self.inline_fns.len(),
-            SymbolKind::Function => self.functions.len(),
-            SymbolKind::EnumConstructor => self.enum_ctors.len(),
+
+            SymbolKind::InlineFn => self.registry.inline_fns.len(),
+            SymbolKind::Function => self.registry.functions.len(),
+
+            SymbolKind::TypeAlias => self.type_aliases.len(),
+            SymbolKind::Struct => self.registry.structs.len(),
+            SymbolKind::Enum => self.registry.enums.len(),
+            SymbolKind::EnumConstructor => self.registry.enum_ctors.len(),
         };
 
         if let Some(existing_symbol) = self.get_symbol(ctx, symbol_name)

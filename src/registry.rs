@@ -178,10 +178,10 @@ pub struct EnumConstructor {
 }
 
 pub struct GlobalDef {
-    pub module_ctx: &'static ExprContext,
-    pub def_expr: &'static LetExpr,
-    pub global_type: Type,
-    pub global_index: u32,
+    pub module_id: ModuleId,
+    pub value: &'static CodeExpr,
+    pub type_id: TypeId,
+    pub wasm_global_index: u32,
 }
 
 #[derive(Clone)]

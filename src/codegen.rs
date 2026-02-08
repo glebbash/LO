@@ -168,18 +168,18 @@ impl CodeGenerator {
         }
 
         // build global initializers and update global indices
-        let mut global_index = 0;
+        let mut wasm_global_index = 0;
         for global in self.registry.globals.relax_mut() {
-            global.global_index = global_index;
+            global.wasm_global_index = wasm_global_index;
 
             let mut wasm_types = Vec::new();
-            self.lower_type(&global.global_type, &mut wasm_types);
+            self.lower_type(&self.registry.types[global.type_id], &mut wasm_types);
 
             let mut instrs = Vec::new();
-            self.codegen(
-                global.module_ctx.be_mut(),
+            self.relax_mut().codegen(
+                &mut self.registry.modules[global.module_id].ctx,
                 &mut instrs,
-                &global.def_expr.value,
+                &global.value,
             );
 
             for i in 0..wasm_types.len() {
@@ -196,7 +196,7 @@ impl CodeGenerator {
                 });
             }
 
-            global_index += wasm_types.len() as u32;
+            wasm_global_index += wasm_types.len() as u32;
         }
 
         // build function codes
@@ -298,7 +298,7 @@ impl CodeGenerator {
             value: *self.registry.data_size as i32,
         };
         for global in self.registry.globals.relax_mut() {
-            let CodeExpr::IntrinsicCall(intrinsic) = &*global.def_expr.value else {
+            let CodeExpr::IntrinsicCall(intrinsic) = &*global.value else {
                 continue;
             };
 
@@ -306,7 +306,7 @@ impl CodeGenerator {
                 continue;
             }
 
-            self.wasm_module.globals[global.global_index as usize]
+            self.wasm_module.globals[global.wasm_global_index as usize]
                 .initial_value
                 .instrs[0] = data_size_instr.clone()
         }
@@ -2268,8 +2268,8 @@ impl CodeGenerator {
                 let global = &self.registry.globals[symbol.col_index];
 
                 VarInfo::Global(VarInfoGlobal {
-                    global_index: global.global_index,
-                    var_type: global.global_type.clone(),
+                    global_index: global.wasm_global_index,
+                    var_type: self.registry.types[global.type_id].clone(),
                 })
             }
             SymbolKind::Const => {
