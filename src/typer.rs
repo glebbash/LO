@@ -319,12 +319,12 @@ impl Typer {
                             variant_type: variant_type_in_decl,
                             variants,
                         } => {
-                            let Ok(_) = self.define_symbol_compat(
+                            if !self.define_symbol_compat(
                                 ctx,
                                 type_def.name.repr,
                                 SymbolKind::Enum,
                                 type_def.name.loc,
-                            ) else {
+                            ) {
                                 continue;
                             };
 
@@ -782,12 +782,14 @@ impl Typer {
                                     });
                                 }
 
+                                let variant_type_id = self.intern_type(&variant_type);
+
                                 // TODO: remove after migration
                                 {
                                     self.registry.enums[symbol.col_index].variants.push(
                                         EnumVariant {
                                             variant_name: variant.variant_name.repr,
-                                            variant_type: variant_type.clone(),
+                                            variant_type_id,
                                             loc: variant.variant_name.loc,
                                         },
                                     );
@@ -795,7 +797,7 @@ impl Typer {
 
                                 enum_.variants.push(EnumVariant {
                                     variant_name: variant.variant_name.repr,
-                                    variant_type,
+                                    variant_type_id,
                                     loc: variant.variant_name.loc,
                                 });
                             }
@@ -817,7 +819,7 @@ impl Typer {
                                 continue;
                             };
 
-                            self.type_aliases[symbol.col_index] = self.build_type_id(&type_value);
+                            self.type_aliases[symbol.col_index] = self.intern_type(&type_value);
 
                             // TODO: remove after migration
                             {
@@ -875,6 +877,13 @@ impl Typer {
                     }
 
                     for fn_param in &fn_def.decl.params {
+                        if fn_param.param_name.repr == "" {
+                            self.report_error(&Error {
+                                message: format!("Invalid fn param name `_` is not allowed here"),
+                                loc: fn_param.param_name.loc,
+                            });
+                        }
+
                         let param_type = self.get_fn_param_type(ctx, fn_param, &self_type, false);
                         let param_type = catch!(param_type, err, {
                             self.report_error(&err);
@@ -1221,15 +1230,12 @@ impl Typer {
             ctx.be_mut().fn_index = Some(lo_fn_index);
 
             for param in &fn_def.params {
-                if let Err(_) =
-                    self.define_symbol(ctx, &param.param_name, SymbolKind::Local, param.loc)
-                {
-                    continue;
-                };
-
-                self.locals.push(TyLocal {
-                    type_id: self.build_type_id(&param.param_type),
-                });
+                self.define_local(
+                    ctx,
+                    &param.param_name,
+                    self.intern_type(&param.param_type),
+                    param.loc,
+                );
             }
 
             self.type_code_block(ctx, &body, true);
@@ -1438,19 +1444,8 @@ impl Typer {
                     self.store_type(ctx, let_expr.id, &Type::Void);
                 }
 
-                if let_expr.name.repr == "_" {
-                    return Ok(());
-                }
+                self.define_local(ctx, let_expr.name.repr, value_type_id, let_expr.name.loc);
 
-                let _ = self.define_symbol(
-                    ctx,
-                    let_expr.name.repr,
-                    SymbolKind::Local,
-                    let_expr.name.loc,
-                );
-                self.locals.be_mut().push(TyLocal {
-                    type_id: value_type_id,
-                });
                 return Ok(());
             }
             CodeExpr::InfixOp(infix_op) => {
@@ -1708,7 +1703,7 @@ impl Typer {
 
                         if let Some(expr_type_id) = self.load_type_id(ctx, &call.args.items[0])
                             && !is_type_compatible(
-                                &variant.variant_type,
+                                &self.registry.types[variant.variant_type_id],
                                 &self.registry.types[expr_type_id],
                             )
                         {
@@ -1716,7 +1711,10 @@ impl Typer {
                                 message: format!(
                                     "Invalid enum payload: {}, expected: {}",
                                     TypeFmt(&*self.registry, &self.registry.types[expr_type_id]),
-                                    TypeFmt(&*self.registry, &variant.variant_type),
+                                    TypeFmt(
+                                        &*self.registry,
+                                        &self.registry.types[variant.variant_type_id]
+                                    ),
                                 ),
                                 loc: call.fn_name.loc,
                             });
@@ -2132,18 +2130,12 @@ impl Typer {
                             Err(err) => self.report_error(&err),
                             Ok(enum_variant) => {
                                 let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
-                                if match_header.variant_bind.repr != "_" {
-                                    if let Ok(()) = self.define_symbol(
-                                        then_ctx,
-                                        match_header.variant_bind.repr,
-                                        SymbolKind::Local,
-                                        match_header.variant_bind.loc,
-                                    ) {
-                                        self.locals.be_mut().push(TyLocal {
-                                            type_id: self.build_type_id(&enum_variant.variant_type),
-                                        })
-                                    };
-                                }
+                                self.define_local(
+                                    then_ctx,
+                                    match_header.variant_bind.repr,
+                                    enum_variant.variant_type_id,
+                                    match_header.variant_bind.loc,
+                                );
                                 updated_then_ctx = Some(then_ctx);
                             }
                         }
@@ -2227,26 +2219,23 @@ impl Typer {
 
                 let ctx = self.child_ctx(ctx, ScopeKind::ForLoop);
 
-                let Ok(_) = self.define_symbol(
-                    ctx,
-                    for_expr.counter.repr,
-                    SymbolKind::Local,
-                    for_expr.counter.loc,
-                ) else {
-                    unreachable!()
-                };
-
                 if let Some(counter_type_id) = self.load_type_id(ctx, &for_expr.start) {
+                    self.define_local(
+                        ctx,
+                        for_expr.counter.repr,
+                        counter_type_id,
+                        for_expr.counter.loc,
+                    );
+
                     if is_wide_int(&self.registry.types[counter_type_id]).is_none() {
                         self.report_error(&Error {
-                            message: format!("Invalid counter type must be a number"),
+                            message: format!(
+                                "Invalid counter. Type must be a number, got {} instead",
+                                TypeFmt(&self.registry, &self.registry.types[counter_type_id])
+                            ),
                             loc: for_expr.start.loc(),
                         });
                     }
-
-                    self.locals.be_mut().push(TyLocal {
-                        type_id: counter_type_id,
-                    });
                 }
 
                 self.type_code_block(ctx, &for_expr.body, true);
@@ -2278,17 +2267,12 @@ impl Typer {
 
                 let ctx = self.child_ctx(ctx, ScopeKind::Block);
 
-                let Ok(_) = self.define_symbol(
+                self.define_local(
                     ctx,
                     catch.error_bind.repr,
-                    SymbolKind::Local,
+                    self.intern_type(&result.err),
                     catch.error_bind.loc,
-                ) else {
-                    unreachable!()
-                };
-                self.locals.be_mut().push(TyLocal {
-                    type_id: self.build_type_id(&result.err),
-                });
+                );
 
                 let catch_type = self.type_code_block(ctx, &catch.catch_body, true);
                 if catch_type != Type::Never {
@@ -2324,16 +2308,12 @@ impl Typer {
                 match self.get_matched_variant(ctx, &match_expr.header) {
                     Err(err) => self.report_error(&err),
                     Ok(enum_variant) => {
-                        if let Ok(()) = self.define_symbol(
+                        self.define_local(
                             ctx,
                             match_expr.header.variant_bind.repr,
-                            SymbolKind::Local,
+                            enum_variant.variant_type_id,
                             match_expr.header.variant_bind.loc,
-                        ) {
-                            self.locals.be_mut().push(TyLocal {
-                                type_id: self.build_type_id(&enum_variant.variant_type),
-                            });
-                        };
+                        );
                     }
                 }
 
@@ -2369,12 +2349,7 @@ impl Typer {
                 };
 
                 let ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
-                self.define_symbol(ctx, "it", SymbolKind::Local, do_with.with_loc)
-                    .ok()
-                    .unwrap();
-                self.locals.be_mut().push(TyLocal {
-                    type_id: it_type_id,
-                });
+                self.define_local(ctx, "it", it_type_id, do_with.with_loc);
 
                 for arg in do_with.args.items.iter().skip(1) {
                     if let Some(arg_type_id) = self.load_type_id(ctx, arg)
@@ -2400,13 +2375,7 @@ impl Typer {
 
                 let ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
                 if let Some(it_type_id) = self.load_type_id(ctx, &pipe.lhs) {
-                    let Ok(_) = self.define_symbol(ctx, "it", SymbolKind::Local, pipe.op_loc)
-                    else {
-                        unreachable!()
-                    };
-                    self.locals.be_mut().push(TyLocal {
-                        type_id: it_type_id,
-                    });
+                    self.define_local(ctx, "it", it_type_id, pipe.op_loc);
                 }
 
                 self.report_if_err(self.type_code_expr(ctx, &pipe.rhs));
@@ -2529,6 +2498,8 @@ impl Typer {
             SymbolKind::EnumConstructor => {
                 let enum_ctor = &self.enum_ctors[symbol.col_index];
                 let enum_def = &self.enums[enum_ctor.enum_index];
+                let enum_variant = &enum_def.variants[enum_ctor.variant_index];
+
                 let Type::Void = enum_def.variant_type else {
                     return Err(Error {
                         message: format!(
@@ -2536,7 +2507,7 @@ impl Typer {
                             var_name.repr,
                             TypeFmt(
                                 &*self.registry,
-                                &enum_def.variants[enum_ctor.variant_index].variant_type
+                                &self.registry.types[enum_variant.variant_type_id]
                             )
                         ),
                         loc: var_name.loc,
@@ -2559,7 +2530,7 @@ impl Typer {
                     })
                 }
 
-                return Ok(self.build_type_id(var_type));
+                return Ok(self.intern_type(var_type));
             }
             _ => {
                 return Err(Error {
@@ -2625,7 +2596,10 @@ impl Typer {
                         }
                     ),
                     match_header.variant_name.repr,
-                    TypeFmt(&*self.registry, &enum_variant.variant_type)
+                    TypeFmt(
+                        &*self.registry,
+                        &self.registry.types[enum_variant.variant_type_id]
+                    )
                 ),
                 loc: match_header.variant_name.loc,
                 linked_loc: Some(enum_variant.loc),
@@ -2921,7 +2895,7 @@ impl Typer {
             .zip(lo_type_args.iter())
             .enumerate()
         {
-            self.register_block_type(ctx, type_param, type_arg.clone(), *type_args[i].loc());
+            self.define_type(ctx, type_param, type_arg.clone(), *type_args[i].loc());
         }
 
         let mut arg_types = Vec::<Type>::new();
@@ -2951,13 +2925,10 @@ impl Typer {
             let type_loc = inline_fn_param.param_name.loc;
 
             if let Some(type_name) = get_infer_type_name(inline_fn_param)? {
-                self.register_block_type(ctx, type_name, type_value.clone(), inline_fn_param.loc);
+                self.define_type(ctx, type_name, type_value.clone(), inline_fn_param.loc);
             }
 
-            let _ = self.define_symbol(ctx, type_name, SymbolKind::Local, type_loc);
-            self.locals.be_mut().push(TyLocal {
-                type_id: self.build_type_id(type_value),
-            });
+            self.define_local(ctx, type_name, self.intern_type(type_value), type_loc);
         }
 
         let self_type = self.get_fn_self_type(
@@ -3038,7 +3009,7 @@ impl Typer {
             self.registry.inline_fn_call_info.len(),
         );
         self.registry.inline_fn_call_info.be_mut().push(ICallInfo {
-            return_type_id: self.build_type_id(&return_type),
+            return_type_id: self.intern_type(&return_type),
             inner_expr_offset: ctx.expr_info_offset,
         });
 
@@ -3133,10 +3104,28 @@ impl Typer {
         Some(self_type)
     }
 
-    fn register_block_type(&self, ctx: TyContextRef, name: &'static str, type_: Type, loc: Loc) {
+    fn define_type(&self, ctx: TyContextRef, name: &'static str, type_: Type, loc: Loc) {
         let _ = self.define_symbol(ctx, name, SymbolKind::TypeAlias, loc);
-        let type_id = self.build_type_id(&type_);
+        let type_id = self.intern_type(&type_);
         self.type_aliases.be_mut().push(type_id);
+    }
+
+    fn define_local(&self, ctx: TyContextRef, name: &'static str, type_id: TypeId, loc: Loc) {
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_inspection(&InspectInfo {
+                message: format!(
+                    "let {}: {}",
+                    name,
+                    TypeFmt(&*self.registry, &self.registry.types[type_id])
+                ),
+                loc: loc,
+                linked_loc: None,
+            })
+        };
+
+        if name != "_" && self.define_symbol(ctx, name, SymbolKind::Local, loc) {
+            self.locals.be_mut().push(TyLocal { type_id });
+        }
     }
 
     fn type_code_expr_and_load(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<TypeId, Error> {
@@ -3403,7 +3392,7 @@ impl Typer {
             loc: Loc::internal(),
         });
 
-        let type_id = self.build_type_id(&type_);
+        let type_id = self.intern_type(&type_);
         self.type_aliases.push(type_id);
 
         // TODO: remove after migration
@@ -3426,15 +3415,19 @@ impl Typer {
         symbol_name: &'static str,
         symbol_kind: SymbolKind,
         symbol_loc: Loc,
-    ) -> Result<(), &'a TySymbol> {
-        let _ = self.registry.be_mut().define_symbol(
-            &self.registry.modules[ctx.module_id].ctx,
-            symbol_name,
-            symbol_kind,
-            symbol_loc,
-        );
+    ) -> bool {
+        let ok = self.define_symbol(ctx, symbol_name, symbol_kind, symbol_loc);
 
-        self.define_symbol(ctx, symbol_name, symbol_kind, symbol_loc)
+        if ok {
+            let _ = self.registry.be_mut().define_symbol(
+                &self.registry.modules[ctx.module_id].ctx,
+                symbol_name,
+                symbol_kind,
+                symbol_loc,
+            );
+        }
+
+        ok
     }
 
     fn define_symbol<'a>(
@@ -3443,7 +3436,7 @@ impl Typer {
         symbol_name: &'static str,
         symbol_kind: SymbolKind,
         symbol_loc: Loc,
-    ) -> Result<(), &'a TySymbol> {
+    ) -> bool {
         let symbol_col_index = match &symbol_kind {
             SymbolKind::TypeAlias => self.type_aliases.len(),
             SymbolKind::Struct => self.structs.len(),
@@ -3467,7 +3460,7 @@ impl Typer {
                 ),
                 loc: symbol_loc,
             });
-            return Err(&existing_symbol);
+            return false;
         }
 
         ctx.symbols.be_mut().push(TySymbol {
@@ -3478,7 +3471,7 @@ impl Typer {
             loc: symbol_loc,
         });
 
-        Ok(())
+        true
     }
 
     fn get_symbol(&self, ctx: TyContextRef, symbol_name: &str) -> Option<&'static TySymbol> {
@@ -3521,7 +3514,7 @@ impl Typer {
     }
 
     fn store_type(&self, ctx: TyContextRef, expr_id: ExprId, type_: &Type) {
-        let type_id = self.build_type_id(type_);
+        let type_id = self.intern_type(type_);
         self.store_expr_info(ctx, expr_id, type_id)
     }
 
@@ -3530,7 +3523,7 @@ impl Typer {
         self.registry.be_mut().expr_info[absolute_expr_id] = expr_info;
     }
 
-    fn build_type_id(&self, type_: &Type) -> TypeId {
+    fn intern_type(&self, type_: &Type) -> TypeId {
         if let Some(&id) = self.type_lookup.get(type_) {
             return id;
         }
@@ -3557,13 +3550,8 @@ impl Typer {
         }
     }
 
-    // TODO: remove tag after migration
     fn report_error(&self, err: &Error) {
-        let marked_error = Error {
-            message: format!("(ty) {}", err.message),
-            loc: err.loc.clone(),
-        };
-        self.reporter.error(&marked_error);
+        self.reporter.error(&err);
     }
 }
 

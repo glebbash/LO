@@ -38,44 +38,6 @@ pub extern "C" fn _start() {
 
     let mut registry = Registry::new();
 
-    // for debug purposes only, not public api
-    if command == "lex" {
-        registry.in_single_file_mode = true;
-        registry.in_lex_only_mode = true;
-
-        let Some(module_id) = registry
-            .relax_mut()
-            .include_file(file_name, &Loc::internal())
-        else {
-            proc_exit(1)
-        };
-
-        let module = &registry.modules[module_id];
-        let file_info = &registry.fm.files[module.parser.lexer.file_id];
-        stdout_writeln(format!("file_path: {}", file_info.absolute_path));
-
-        stdout_enable_buffering();
-
-        let source = module.parser.lexer.source;
-        for token in &module.parser.lexer.tokens {
-            stdout_writeln(format!(
-                "{}:{}-{}:{} ({}-{}) {:?} >> {} <<",
-                token.loc.pos.line,
-                token.loc.pos.col,
-                token.loc.end_pos.line,
-                token.loc.end_pos.col,
-                token.loc.pos.offset,
-                token.loc.end_pos.offset,
-                token.type_,
-                token.loc.read_span(source).replace("\n", "\\n"),
-            ));
-        }
-
-        stdout_disable_buffering();
-
-        return;
-    }
-
     if command == "format" {
         registry.in_single_file_mode = true;
 

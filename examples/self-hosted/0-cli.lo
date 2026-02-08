@@ -12,8 +12,7 @@
 @use_memory(min_pages = 1, exported)
 
 inline let USAGE = "Usage:
-  lo format <input.lo>
-  lo lex <input.lo> (debug)"
+  lo format <input.lo>"
 
 export fn _start() {
     let args = Args::load()
@@ -28,59 +27,6 @@ export fn _start() {
 
     let compiler = Compiler::new()
     defer compiler.free()
-
-    if args.get(1).equals("lex") {
-        compiler.in_single_file_mode = true
-        compiler.in_lex_only_mode = true
-
-        let module = compiler.include(
-            file_name,
-            Loc::internal(),
-        ) catch _ {
-            wasi::proc_exit(1)
-        }
-
-        let file_info = compiler.fm.get(module.parser.lexer.file_index)
-        do stdout_write(it) with (
-            "file_path: ", \\ file_info.absolute_path.as_str(), \\ "\n",
-        )
-
-        let a = Arena::new(2048)
-        defer a.free()
-
-        stdout_enable_buffering()
-
-        for i in 0..module.parser.lexer.tokens.size {
-            let token = module.parser.lexer.tokens.get!(i)
-
-            defer a.reset()
-
-            do stdout_write(it) with (
-                token.loc.pos.line.to_tmp_str!(),
-                ":", \\ token.loc.pos.col.to_tmp_str!(),
-                "-",
-                token.loc.end_pos.line.to_tmp_str!(),
-                ":", \\ token.loc.end_pos.col.to_tmp_str!(),
-
-                " ", \\ "(", \\ token.loc.pos.offset.to_tmp_str!(),
-                "-", \\ token.loc.end_pos.offset.to_tmp_str!(), \\ ")",
-
-                " ", \\ token.type_.to_str(),
-
-                " ", \\ ">> ",
-                token.loc.read_span(module.parser.lexer.source) \
-                    |> String::from_str_in(a, it) \
-                    |> it.replace("\n", "\\n").as_str(),
-                " <<",
-
-                "\n",
-            )
-        }
-
-        stdout_disable_buffering()
-
-        return
-    }
 
     if args.get(1).equals("format") {
         compiler.in_single_file_mode = true

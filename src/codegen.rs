@@ -890,7 +890,9 @@ impl CodeGenerator {
                             value: ctor.variant_index as i32,
                         });
 
-                        if variant.variant_type == Type::Void && args.items.len() == 0 {
+                        if self.registry.types[variant.variant_type_id] == Type::Void
+                            && args.items.len() == 0
+                        {
                             return;
                         }
 
@@ -1535,11 +1537,11 @@ impl CodeGenerator {
             ctx,
             header.variant_bind.loc,
             header.variant_bind.repr,
-            &enum_variant.variant_type,
+            &self.registry.types[enum_variant.variant_type_id],
         );
         let local = VarInfo::Local(VarInfoLocal {
             local_index,
-            var_type: enum_variant.variant_type.clone(),
+            var_type: self.registry.types[enum_variant.variant_type_id].clone(),
         });
 
         self.codegen_var_set_prepare(instrs, &local);
@@ -2126,7 +2128,7 @@ impl CodeGenerator {
     }
 
     fn define_local(
-        &mut self,
+        &self,
         ctx: &mut ExprContext,
         loc: Loc,
         local_name: &'static str,
@@ -2134,6 +2136,7 @@ impl CodeGenerator {
     ) -> u32 {
         let res = self
             .registry
+            .be_mut()
             .define_symbol(ctx, local_name, SymbolKind::Local, loc);
 
         if let Err(existing) = res

@@ -21,7 +21,6 @@ fn Module::free(&self) {
 
 type Compiler = struct {
     in_single_file_mode: bool,
-    in_lex_only_mode: bool,
 
     fm: FileManager,
     modules: &Vec(&Module),
@@ -33,7 +32,6 @@ fn Compiler::new(): &Compiler {
 
     return heap::new!(Compiler {
         in_single_file_mode: false,
-        in_lex_only_mode: false,
         fm: FileManager::new(error_arena),
         modules: Vec::new!<&Module>(),
         error_arena: error_arena,
@@ -64,11 +62,9 @@ fn Compiler::include(
     }
 
     let parser = Parser::new(lexer)
-    if !self.in_lex_only_mode {
-        parser.parse_file() catch err {
-            self.report_error(err)
-            return Err(VoidError::VALUE)
-        }
+    parser.parse_file() catch err {
+        self.report_error(err)
+        return Err(VoidError::VALUE)
     }
 
     let module = Module::new(parser)

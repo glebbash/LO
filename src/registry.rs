@@ -167,7 +167,7 @@ pub struct EnumDef {
 
 pub struct EnumVariant {
     pub variant_name: &'static str,
-    pub variant_type: Type,
+    pub variant_type_id: TypeId,
     pub loc: Loc,
 }
 
@@ -221,7 +221,6 @@ pub struct MemoryInfo {
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
-    pub in_lex_only_mode: bool,
     pub should_emit_dbg_local_names: bool,
 
     pub fm: Box<FileManager>,
@@ -284,16 +283,15 @@ impl Registry {
         });
 
         let parser = Parser::new(lexer, &mut self.reporter);
-        if !self.in_lex_only_mode {
-            *parser.expr_count.be_mut() = self.expr_count;
 
-            catch!(parser.parse_file(), err, {
-                self.report_error(&err);
-                return None;
-            });
+        *parser.expr_count.be_mut() = self.expr_count;
 
-            self.expr_count = *parser.expr_count;
-        }
+        catch!(parser.parse_file(), err, {
+            self.report_error(&err);
+            return None;
+        });
+
+        self.expr_count = *parser.expr_count;
 
         let mut includes = Vec::new();
 
