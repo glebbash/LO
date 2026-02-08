@@ -270,8 +270,8 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
 }
 
 fn Printer::print_type_expr(&self, expr: TypeExpr) {
-    if match TypeExpr::Named(named) = expr {
-        stdout_write(named.name.repr)
+    if match TypeExpr::Named(ident) = expr {
+        stdout_write(ident.repr)
         return
     }
 

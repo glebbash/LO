@@ -267,8 +267,8 @@ impl Printer {
 
     fn print_type_expr(&mut self, type_expr: &TypeExpr) {
         match type_expr {
-            TypeExpr::Named(TypeExprNamed { name }) => {
-                stdout_write(&name.repr);
+            TypeExpr::Named(ident) => {
+                stdout_write(&ident.repr);
             }
             TypeExpr::Pointer(TypeExprPointer { pointee, loc: _ }) => {
                 stdout_write("&");

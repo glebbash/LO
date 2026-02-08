@@ -423,7 +423,7 @@ impl Parser {
         }
 
         let ident = self.parse_ident()?;
-        return Ok(TypeExpr::Named(TypeExprNamed { name: ident }));
+        return Ok(TypeExpr::Named(ident));
     }
 
     fn parse_code_block(&self) -> Result<CodeBlock, Error> {

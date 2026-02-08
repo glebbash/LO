@@ -431,8 +431,8 @@ impl Registry {
         loc: &Loc,
     ) -> Result<Type, Error> {
         match type_expr {
-            TypeExpr::Named(TypeExprNamed { name }) => {
-                let lo_type = self.get_type_or_err(ctx, &name.repr, &name.loc)?;
+            TypeExpr::Named(ident) => {
+                let lo_type = self.get_type_or_err(ctx, &ident.repr, &ident.loc)?;
                 if let Type::StructInstance { struct_index } = &lo_type {
                     let struct_def = &self.structs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
@@ -463,7 +463,7 @@ impl Registry {
                 loc: _,
             }) => {
                 if let TypeExpr::Named(ident) = &**container
-                    && ident.name.repr == "Result"
+                    && ident.repr == "Result"
                 {
                     if items.len() != 2 {
                         return Err(Error {
@@ -471,7 +471,7 @@ impl Registry {
                                 "Expected exactly 2 type arguments, {} was found",
                                 items.len()
                             ),
-                            loc: ident.name.loc,
+                            loc: ident.loc,
                         });
                     }
 
@@ -481,8 +481,8 @@ impl Registry {
                     return Ok(Type::Result(ResultType { ok, err }));
                 }
 
-                if let TypeExpr::Named(named) = &**container
-                    && named.name.repr == "typeof"
+                if let TypeExpr::Named(ident) = &**container
+                    && ident.repr == "typeof"
                 {
                     if items.len() != 1 {
                         return Err(Error {
@@ -490,18 +490,18 @@ impl Registry {
                                 "Expected exactly 1 type arguments, {} was found",
                                 items.len()
                             ),
-                            loc: named.name.loc,
+                            loc: ident.loc,
                         });
                     }
 
-                    let TypeExpr::Named(named) = &items[0] else {
+                    let TypeExpr::Named(ident) = &items[0] else {
                         return Err(Error {
                             message: format!("Symbol expected"),
                             loc: *items[0].loc(),
                         });
                     };
 
-                    let symbol = self.current_scope(ctx).get_symbol(named.name.repr);
+                    let symbol = self.current_scope(ctx).get_symbol(ident.repr);
                     let Some(symbol) = symbol else {
                         return Err(Error {
                             message: format!("Unknown symbol"),
@@ -519,8 +519,8 @@ impl Registry {
                     return Ok(self.constants[symbol.col_index].code_unit.type_.clone());
                 }
 
-                if let TypeExpr::Named(named) = &**container
-                    && named.name.repr == "itemof"
+                if let TypeExpr::Named(ident) = &**container
+                    && ident.repr == "itemof"
                 {
                     if items.len() != 1 {
                         return Err(Error {
@@ -528,7 +528,7 @@ impl Registry {
                                 "Expected exactly 1 type arguments, {} was found",
                                 items.len()
                             ),
-                            loc: named.name.loc,
+                            loc: ident.loc,
                         });
                     }
 

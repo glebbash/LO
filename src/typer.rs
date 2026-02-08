@@ -3097,8 +3097,8 @@ impl Typer {
         loc: &Loc,
     ) -> Result<Type, Error> {
         match type_expr {
-            TypeExpr::Named(TypeExprNamed { name }) => {
-                let lo_type = self.get_type_or_err(ctx, &name.repr, &name.loc)?;
+            TypeExpr::Named(ident) => {
+                let lo_type = self.get_type_or_err(ctx, &ident.repr, &ident.loc)?;
                 if let Type::StructInstance { struct_index } = &lo_type {
                     let struct_def = &self.registry.structs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
@@ -3129,7 +3129,7 @@ impl Typer {
                 loc: _,
             }) => {
                 if let TypeExpr::Named(ident) = &**container
-                    && ident.name.repr == "Result"
+                    && ident.repr == "Result"
                 {
                     if items.len() != 2 {
                         return Err(Error {
@@ -3137,7 +3137,7 @@ impl Typer {
                                 "Expected exactly 2 type arguments, {} was found",
                                 items.len()
                             ),
-                            loc: ident.name.loc,
+                            loc: ident.loc,
                         });
                     }
 
@@ -3147,8 +3147,8 @@ impl Typer {
                     return Ok(Type::Result(ResultType { ok, err }));
                 }
 
-                if let TypeExpr::Named(named) = &**container
-                    && named.name.repr == "typeof"
+                if let TypeExpr::Named(ident) = &**container
+                    && ident.repr == "typeof"
                 {
                     if items.len() != 1 {
                         return Err(Error {
@@ -3156,23 +3156,23 @@ impl Typer {
                                 "Expected exactly 1 type arguments, {} was found",
                                 items.len()
                             ),
-                            loc: named.name.loc,
+                            loc: ident.loc,
                         });
                     }
 
-                    let TypeExpr::Named(named) = &items[0] else {
+                    let TypeExpr::Named(ident) = &items[0] else {
                         return Err(Error {
                             message: format!("Symbol expected"),
                             loc: *items[0].loc(),
                         });
                     };
 
-                    let var_type = self.get_variable_type_id(ctx, &named.name)?;
+                    let var_type = self.get_variable_type_id(ctx, &ident)?;
                     return Ok(self.registry.types[var_type].clone());
                 }
 
-                if let TypeExpr::Named(named) = &**container
-                    && named.name.repr == "itemof"
+                if let TypeExpr::Named(ident) = &**container
+                    && ident.repr == "itemof"
                 {
                     if items.len() != 1 {
                         return Err(Error {
@@ -3180,7 +3180,7 @@ impl Typer {
                                 "Expected exactly 1 type arguments, {} was found",
                                 items.len()
                             ),
-                            loc: named.name.loc,
+                            loc: ident.loc,
                         });
                     }
 
@@ -3693,11 +3693,11 @@ pub fn get_infer_type_name(fn_param: &FnParam) -> Result<Option<&'static str>, E
         return Ok(None);
     };
 
-    let TypeExpr::Named(named) = &*container.container else {
+    let TypeExpr::Named(ident) = &*container.container else {
         return Ok(None);
     };
 
-    if named.name.repr != "infer" {
+    if ident.repr != "infer" {
         return Ok(None);
     }
 
@@ -3708,14 +3708,14 @@ pub fn get_infer_type_name(fn_param: &FnParam) -> Result<Option<&'static str>, E
         });
     }
 
-    let TypeExpr::Named(named) = &container.items[0] else {
+    let TypeExpr::Named(ident) = &container.items[0] else {
         return Err(Error {
             message: format!("Invalid `infer` call, expected 1 named type argument"),
             loc: container.loc,
         });
     };
 
-    Ok(Some(named.name.repr))
+    Ok(Some(ident.repr))
 }
 
 pub fn is_types_compatible(slots: &Vec<Type>, values: &Vec<Type>) -> bool {

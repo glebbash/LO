@@ -452,9 +452,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
     }
 
     let ident = self.parse_ident()?
-    return Ok(TypeExpr::Named(self.ast_arena.new!(TypeExprNamed {
-        name: ident,
-    })))
+    return Ok(TypeExpr::Named(self.ast_arena.new!(ident)))
 }
 
 fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {

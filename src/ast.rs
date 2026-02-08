@@ -99,14 +99,10 @@ impl TopLevelExpr {
 }
 
 pub enum TypeExpr {
-    Named(TypeExprNamed),
+    Named(IdentExpr),
     Pointer(TypeExprPointer),
     SequencePointer(TypeExprSequencePointer),
     Container(TypeExprContainer),
-}
-
-pub struct TypeExprNamed {
-    pub name: IdentExpr,
 }
 
 pub struct TypeExprPointer {
@@ -128,7 +124,7 @@ pub struct TypeExprContainer {
 impl TypeExpr {
     pub fn loc(&self) -> &Loc {
         match self {
-            TypeExpr::Named(e) => &e.name.loc,
+            TypeExpr::Named(e) => &e.loc,
             TypeExpr::Pointer(e) => &e.loc,
             TypeExpr::SequencePointer(e) => &e.loc,
             TypeExpr::Container(e) => &e.loc,
@@ -155,7 +151,6 @@ pub enum CodeExpr {
     InfixOp(InfixOpExpr),
     PrefixOp(PrefixOpExpr),
     Cast(CastExpr),
-    /// TODO?: merge into [InfixOp]
     Assign(AssignExpr),
     FieldAccess(FieldAccessExpr),
     PropagateError(PropagateErrorExpr),
