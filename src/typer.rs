@@ -182,6 +182,8 @@ impl Typer {
 
         if let Some(string_usage_loc) = *self.first_string_usage
             && self.registry.memory.is_none()
+            // TODO: find a way to also report this in inspection mode
+            && !self.reporter.in_inspection_mode
         {
             self.report_error(&Error {
                 message: format!("Cannot use strings with no memory defined"),
@@ -349,13 +351,13 @@ impl Typer {
                             // TODO: remove after migration
                             {
                                 self.registry.be_mut().functions.push(FnInfo {
-                                    fn_name: fn_def.decl.fn_name.repr,
-                                    fn_type: FnType {
+                                    name: fn_def.decl.fn_name.repr,
+                                    type_: FnType {
                                         inputs: Vec::new(),
                                         output: Type::Void,
                                     },
-                                    fn_params: Vec::new(),
-                                    fn_source: FnSource::Guest {
+                                    params: Vec::new(),
+                                    source: FnSource::Guest {
                                         module_id: module.id,
                                         lo_fn_index: self.registry.functions.len(),
                                         body: body.relax(),
@@ -367,13 +369,13 @@ impl Typer {
                             }
 
                             self.functions.push(FnInfo {
-                                fn_name: fn_def.decl.fn_name.repr,
-                                fn_type: FnType {
+                                name: fn_def.decl.fn_name.repr,
+                                type_: FnType {
                                     inputs: Vec::new(),
                                     output: Type::Void,
                                 },
-                                fn_params: Vec::new(),
-                                fn_source: FnSource::Guest {
+                                params: Vec::new(),
+                                source: FnSource::Guest {
                                     module_id: module.id,
                                     lo_fn_index: self.functions.len(),
                                     body: body.relax(),
@@ -391,13 +393,13 @@ impl Typer {
                             // TODO: remove after migration
                             {
                                 self.registry.functions.push(FnInfo {
-                                    fn_name: fn_def.decl.fn_name.repr,
-                                    fn_type: FnType {
+                                    name: fn_def.decl.fn_name.repr,
+                                    type_: FnType {
                                         inputs: Vec::new(),
                                         output: Type::Void,
                                     },
-                                    fn_params: Vec::new(),
-                                    fn_source: FnSource::Host {
+                                    params: Vec::new(),
+                                    source: FnSource::Host {
                                         module_name: module_name.clone(),
                                         external_fn_name,
                                     },
@@ -408,13 +410,13 @@ impl Typer {
                             }
 
                             self.functions.push(FnInfo {
-                                fn_name: fn_def.decl.fn_name.repr,
-                                fn_type: FnType {
+                                name: fn_def.decl.fn_name.repr,
+                                type_: FnType {
                                     inputs: Vec::new(),
                                     output: Type::Void,
                                 },
-                                fn_params: Vec::new(),
-                                fn_source: FnSource::Host {
+                                params: Vec::new(),
+                                source: FnSource::Host {
                                     module_name: module_name.clone(),
                                     external_fn_name,
                                 },
@@ -778,11 +780,10 @@ impl Typer {
                         );
 
                         if let Some(return_type) = &fn_def.decl.return_type {
-                            fn_info.fn_type.output =
-                                catch!(self.build_type(ctx, return_type), err, {
-                                    self.report_error(&err);
-                                    continue;
-                                })
+                            fn_info.type_.output = catch!(self.build_type(ctx, return_type), err, {
+                                self.report_error(&err);
+                                continue;
+                            })
                         }
 
                         for fn_param in &fn_def.decl.params {
@@ -796,9 +797,9 @@ impl Typer {
                                 self.report_error(&err);
                                 continue;
                             });
-                            fn_info.fn_type.inputs.push(param_type.clone());
+                            fn_info.type_.inputs.push(param_type.clone());
 
-                            fn_info.fn_params.push(FnParameter {
+                            fn_info.params.push(FnParameter {
                                 param_name: fn_param.param_name.repr,
                                 param_type: param_type.clone(),
                                 loc: fn_param.param_name.loc,
@@ -812,7 +813,7 @@ impl Typer {
                         self.get_fn_self_type(ctx, &fn_def.decl.fn_name, &fn_def.decl.params);
 
                     if let Some(return_type) = &fn_def.decl.return_type {
-                        fn_info.fn_type.output = catch!(self.build_type(ctx, return_type), err, {
+                        fn_info.type_.output = catch!(self.build_type(ctx, return_type), err, {
                             self.report_error(&err);
                             continue;
                         })
@@ -824,9 +825,9 @@ impl Typer {
                             self.report_error(&err);
                             continue;
                         });
-                        fn_info.fn_type.inputs.push(param_type.clone());
+                        fn_info.type_.inputs.push(param_type.clone());
 
-                        fn_info.fn_params.push(FnParameter {
+                        fn_info.params.push(FnParameter {
                             param_name: fn_param.param_name.repr,
                             param_type: param_type.clone(),
                             loc: fn_param.param_name.loc,
@@ -1061,16 +1062,14 @@ impl Typer {
                             continue;
                         };
 
-                        let mut target_module = module as &Module;
+                        let mut target_ctx = ctx;
                         if from_root {
-                            target_module = &self.registry.modules.last().unwrap();
+                            target_ctx = self.module_info.last().unwrap().ctx;
                         }
 
-                        let Ok(fn_info) = self.registry.get_fn_info_for_call(
-                            &target_module.ctx,
-                            &in_name.repr,
-                            &in_name.loc,
-                        ) else {
+                        let Ok(fn_info) =
+                            self.get_fn_info_for_call(target_ctx, &in_name.repr, &in_name.loc)
+                        else {
                             // don't report any errors if function to be exported
                             //   could be in another module but only one module is inspected
                             if from_root && self.reporter.in_inspection_mode {
@@ -1097,6 +1096,21 @@ impl Typer {
                         } else {
                             String::from(in_name.repr)
                         };
+
+                        // TODO: remove after migration
+                        {
+                            let FnSource::Guest {
+                                module_id: _,
+                                lo_fn_index,
+                                body: _,
+                            } = fn_info.source
+                            else {
+                                unreachable!();
+                            };
+                            self.registry.be_mut().functions[lo_fn_index]
+                                .exported_as
+                                .push(exported_as.clone());
+                        }
 
                         fn_info.be_mut().exported_as.push(exported_as);
 
@@ -1127,47 +1141,13 @@ impl Typer {
         }
     }
 
-    fn get_const_value(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<&CodeExpr> {
-        match expr {
-            CodeExpr::BoolLiteral(_)
-            | CodeExpr::CharLiteral(_)
-            | CodeExpr::NullLiteral(_)
-            | CodeExpr::IntLiteral(_)
-            | CodeExpr::StringLiteral(_)
-            | CodeExpr::StructLiteral(_)
-            | CodeExpr::ArrayLiteral(_)
-            | CodeExpr::ResultLiteral(_) => {
-                // all literals are valid const values
-                return Some(expr.relax());
-            }
-
-            CodeExpr::Ident(ident_expr) => {
-                let Some(symbol) = self.get_symbol(ctx, ident_expr.repr) else {
-                    return None;
-                };
-
-                if let SymbolKind::Const = symbol.kind {
-                    return Some(&self.constants[symbol.col_index].expr);
-                }
-            }
-
-            _ => { /* fallthrough */ }
-        }
-
-        self.report_error(&Error {
-            message: format!("Expression not allowed in const context"),
-            loc: expr.loc(),
-        });
-        None
-    }
-
     fn pass_type_fns(&mut self) {
         for fn_def in &self.functions {
             let FnSource::Guest {
                 module_id,
                 lo_fn_index,
                 body,
-            } = fn_def.fn_source
+            } = fn_def.source
             else {
                 continue;
             };
@@ -1177,7 +1157,7 @@ impl Typer {
             let ctx = self.child_ctx(module_ctx, ScopeKind::Function);
             ctx.be_mut().fn_index = Some(lo_fn_index);
 
-            for param in &fn_def.fn_params {
+            for param in &fn_def.params {
                 if let Err(_) =
                     self.define_symbol(ctx, &param.param_name, SymbolKind::Local, param.loc)
                 {
@@ -1231,8 +1211,8 @@ impl Typer {
         }
 
         if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
-            let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
-            if fn_info.fn_type.output != Type::Void {
+            let fn_info = &self.functions[ctx.fn_index.unwrap()];
+            if fn_info.type_.output != Type::Void {
                 self.report_error(&Error {
                     // error message stolen from clang
                     message: format!("Control reaches end of non-void function"),
@@ -1337,9 +1317,12 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::ResultLiteral(result_literal) => {
-                // TODO: check this matches expected result type
-                if let Some(value) = &result_literal.value {
-                    self.report_if_err(self.type_code_expr(ctx, &value));
+                let mut value_type = &Type::Void;
+                if let Some(value) = &result_literal.value
+                    && let Some(value_type_id) =
+                        self.report_if_err(self.type_code_expr_and_load(ctx, &value))
+                {
+                    value_type = &self.registry.types[value_type_id];
                 }
 
                 let result = self.get_result_literal_type(
@@ -1347,6 +1330,29 @@ impl Typer {
                     &result_literal.result_type,
                     &result_literal.loc,
                 )?;
+
+                if result_literal.is_ok && !is_type_compatible(&result.ok, value_type) {
+                    self.report_error(&Error {
+                        message: format!(
+                            "Cannot create result, Ok type mismatch. Got {}, expected: {}",
+                            TypeFmt(&*self.registry, value_type),
+                            TypeFmt(&*self.registry, &result.ok),
+                        ),
+                        loc: result_literal.loc,
+                    });
+                }
+
+                if !result_literal.is_ok && !is_type_compatible(&result.err, value_type) {
+                    return Err(Error {
+                        message: format!(
+                            "Cannot create result, Err type mismatch. Got {}, expected: {}",
+                            TypeFmt(&*self.registry, value_type),
+                            TypeFmt(&*self.registry, &result.err),
+                        ),
+                        loc: result_literal.loc,
+                    });
+                }
+
                 self.store_type(ctx, result_literal.id, &Type::Result(result));
 
                 return Ok(());
@@ -1386,10 +1392,27 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::InfixOp(infix_op) => {
-                // TODO: implement
+                let lhs_type_id_res = self.type_code_expr_and_load(ctx, &infix_op.lhs);
 
-                self.report_if_err(self.type_code_expr(ctx, &infix_op.lhs));
-                self.report_if_err(self.type_code_expr(ctx, &infix_op.rhs));
+                let maybe_rhs_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &infix_op.rhs));
+
+                if let Ok(lhs_type_id) = lhs_type_id_res
+                    && let Some(rhs_type_id) = maybe_rhs_type_id
+                    && !is_type_compatible(
+                        &self.registry.types[lhs_type_id],
+                        &self.registry.types[rhs_type_id],
+                    )
+                {
+                    self.report_error(&Error {
+                        message: format!(
+                            "Operands are not of the same type: lhs = {}, rhs = {}",
+                            TypeFmt(&*self.registry, &self.registry.types[lhs_type_id]),
+                            TypeFmt(&*self.registry, &self.registry.types[rhs_type_id]),
+                        ),
+                        loc: infix_op.op_loc.clone(),
+                    });
+                }
 
                 match infix_op.op_tag {
                     InfixOpTag::Equal
@@ -1413,9 +1436,7 @@ impl Typer {
                     | InfixOpTag::BitOr
                     | InfixOpTag::ShiftLeft
                     | InfixOpTag::ShiftRight => {
-                        if let Some(type_id) = self.load_type_id(ctx, &infix_op.lhs) {
-                            self.store_expr_info(ctx, infix_op.id, type_id);
-                        }
+                        self.store_expr_info(ctx, infix_op.id, lhs_type_id_res?);
                         return Ok(());
                     }
 
@@ -1446,6 +1467,20 @@ impl Typer {
 
                 match &prefix_op.op_tag {
                     PrefixOpTag::Not => {
+                        if self
+                            .registry
+                            .count_wasm_type_components(&self.registry.types[expr_type_id])
+                            != 1
+                        {
+                            return Err(Error {
+                                message: format!(
+                                    "Cannot apply not operation to expr of type {}",
+                                    TypeFmt(&*self.registry, &self.registry.types[expr_type_id])
+                                ),
+                                loc: prefix_op.op_loc,
+                            });
+                        }
+
                         self.store_type(ctx, prefix_op.id, &Type::Bool);
                         return Ok(());
                     }
@@ -1482,19 +1517,19 @@ impl Typer {
                     }
                     PrefixOpTag::Positive | PrefixOpTag::Negative => {
                         match self.registry.types[expr_type_id] {
-                            Type::U8 => {
+                            Type::U8 | Type::I8 => {
                                 self.store_type(ctx, prefix_op.id, &Type::I8);
                                 return Ok(());
                             }
-                            Type::U16 => {
+                            Type::U16 | Type::I16 => {
                                 self.store_type(ctx, prefix_op.id, &Type::I16);
                                 return Ok(());
                             }
-                            Type::U32 => {
+                            Type::U32 | Type::I32 => {
                                 self.store_type(ctx, prefix_op.id, &Type::I32);
                                 return Ok(());
                             }
-                            Type::U64 => {
+                            Type::U64 | Type::I64 => {
                                 self.store_type(ctx, prefix_op.id, &Type::I64);
                                 return Ok(());
                             }
@@ -1502,11 +1537,7 @@ impl Typer {
                             | Type::Null
                             | Type::Void
                             | Type::Bool
-                            | Type::I8
-                            | Type::I16
-                            | Type::I32
                             | Type::F32
-                            | Type::I64
                             | Type::F64
                             | Type::Pointer { pointee: _ }
                             | Type::SequencePointer { pointee: _ }
@@ -1514,9 +1545,16 @@ impl Typer {
                             | Type::EnumInstance { enum_index: _ }
                             | Type::Result(_)
                             | Type::Container(_) => {
-                                // TODO: report error if negating unsupported type
-                                self.store_expr_info(ctx, prefix_op.id, expr_type_id);
-                                return Ok(());
+                                return Err(Error {
+                                    message: format!(
+                                        "Integer expected. Got {}",
+                                        TypeFmt(
+                                            &*self.registry,
+                                            &self.registry.types[expr_type_id]
+                                        )
+                                    ),
+                                    loc: prefix_op.op_loc,
+                                });
                             }
                         }
                     }
@@ -1525,15 +1563,46 @@ impl Typer {
             CodeExpr::Cast(cast) => {
                 // TODO: check if expr is castable to `casted_to`
 
-                self.report_if_err(self.type_code_expr(ctx, &cast.expr));
+                let castee_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &cast.expr));
 
-                let casted_to = self.build_type(ctx, &cast.casted_to)?;
-                self.store_type(ctx, cast.id, &casted_to);
+                let casted_to_type = self.build_type(ctx, &cast.casted_to)?;
+
+                if let Some(castee_type_id) = castee_type_id
+                    // TODO: find better way to do this
+                    && let None = crate::codegen::get_cast_instr(
+                        &self.registry.types[castee_type_id],
+                        &casted_to_type,
+                    )
+                {
+                    let castee_type = &self.registry.types[castee_type_id];
+
+                    let mut castee_type_components = Vec::new();
+                    self.registry
+                        .lower_type(castee_type, &mut castee_type_components);
+
+                    let mut casted_to_type_components = Vec::new();
+                    self.registry
+                        .lower_type(&casted_to_type, &mut casted_to_type_components);
+
+                    if castee_type_components != casted_to_type_components {
+                        return Err(Error {
+                            message: format!(
+                                "Cannot cast from {} to {}",
+                                TypeFmt(&*self.registry, castee_type),
+                                TypeFmt(&*self.registry, &casted_to_type)
+                            ),
+                            loc: cast.expr.loc(),
+                        });
+                    }
+                }
+
+                self.store_type(ctx, cast.id, &casted_to_type);
 
                 return Ok(());
             }
             CodeExpr::Assign(assign) => {
-                // TODO: implement
+                // TODO: assert that lhs is writable
 
                 self.store_type(ctx, assign.id, &Type::Void);
                 self.report_if_err(self.type_code_expr(ctx, &assign.lhs));
@@ -1553,6 +1622,8 @@ impl Typer {
                 if let Some(symbol) = self.get_symbol(ctx, &call.fn_name.repr) {
                     if let SymbolKind::EnumConstructor = symbol.kind {
                         let ctor = &self.enum_ctors[symbol.col_index];
+                        let enum_ = &self.enums[ctor.enum_index];
+                        let variant = &enum_.variants[ctor.variant_index];
 
                         if self.reporter.in_inspection_mode {
                             self.reporter.print_inspection(&InspectInfo {
@@ -1562,9 +1633,33 @@ impl Typer {
                             });
                         }
 
-                        // TODO: validate arg with enum expectation
                         for arg in &call.args.items {
                             self.report_if_err(self.type_code_expr(ctx, arg));
+                        }
+
+                        if call.args.items.len() != 1 {
+                            return Err(Error {
+                                message: format!(
+                                    "Non-void enum constructors require exactly one argument"
+                                ),
+                                loc: call.fn_name.loc,
+                            });
+                        }
+
+                        if let Some(expr_type_id) = self.load_type_id(ctx, &call.args.items[0])
+                            && !is_type_compatible(
+                                &variant.variant_type,
+                                &self.registry.types[expr_type_id],
+                            )
+                        {
+                            return Err(Error {
+                                message: format!(
+                                    "Invalid enum payload: {}, expected: {}",
+                                    TypeFmt(&*self.registry, &self.registry.types[expr_type_id]),
+                                    TypeFmt(&*self.registry, &variant.variant_type),
+                                ),
+                                loc: call.fn_name.loc,
+                            });
                         }
 
                         self.store_type(
@@ -1638,33 +1733,129 @@ impl Typer {
             }
             // TODO: check arguments
             CodeExpr::IntrinsicCall(call) => {
-                // TODO: is this always needed?
-                for arg in &call.args.items {
-                    self.report_if_err(self.type_code_expr(ctx, arg));
-                }
-
                 if call.fn_name.repr == "unreachable" {
                     self.store_type(ctx, call.id, &Type::Never);
+
+                    if call.args.items.len() != 0 || call.type_args.len() != 0 {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(): never`",
+                                call.fn_name.repr
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
+
                     return Ok(());
                 }
 
                 if call.fn_name.repr == "memory_size" {
                     self.store_type(ctx, call.id, &Type::I32);
+
+                    if call.args.items.len() != 0 || call.type_args.len() != 0 {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(): i32`",
+                                call.fn_name.repr
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
+
                     return Ok(());
                 }
 
                 if call.fn_name.repr == "memory_grow" {
                     self.store_type(ctx, call.id, &Type::I32);
+
+                    for arg in &call.args.items {
+                        self.report_if_err(self.type_code_expr(ctx, arg));
+                    }
+
+                    if call.type_args.len() != 0 || call.args.items.len() != 1 {
+                        report_bad_args(self, call);
+                    }
+
+                    if call.args.items.len() > 0
+                        && let Some(type_id) = self.load_type_id(ctx, &call.args.items[0])
+                        && self.registry.types[type_id] != Type::U32
+                    {
+                        report_bad_args(self, call);
+                    }
+
                     return Ok(());
+
+                    fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
+                        self_.report_error(&Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(num_pages: u32): i32`",
+                                call.fn_name.repr
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
                 }
 
                 if call.fn_name.repr == "memory_copy" {
                     self.store_type(ctx, call.id, &Type::Void);
+
+                    if call.type_args.len() != 0 {
+                        report_bad_args(self, call);
+                    }
+
+                    let mut all_good = true;
+                    let mut arg_types = Vec::new();
+                    for arg in &call.args.items {
+                        let Some(arg_type_id) =
+                            self.report_if_err(self.type_code_expr_and_load(ctx, arg))
+                        else {
+                            all_good = false;
+                            continue;
+                        };
+
+                        arg_types.push(&self.registry.types[arg_type_id]);
+                    }
+
+                    if all_good && arg_types != &[&Type::U32, &Type::U32, &Type::U32] {
+                        report_bad_args(self, call);
+                    }
+
                     return Ok(());
+
+                    fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
+                        self_.report_error(&Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(dest: u32, source: u32: num_bytes: u32)`",
+                                call.fn_name.repr
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
                 }
 
                 if call.fn_name.repr == "data_size" {
                     self.store_type(ctx, call.id, &Type::U32);
+
+                    if call.type_args.len() != 0 || call.args.items.len() != 0 {
+                        self.reporter.error(&Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(): u32`",
+                                call.fn_name.repr
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
+
+                    if let Some(_) = ctx.fn_index {
+                        self.reporter.error(&Error {
+                            message: format!(
+                                "`@{}(): u32` can only be used in globals",
+                                call.fn_name.repr
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
+
                     return Ok(());
                 }
 
@@ -1676,17 +1867,71 @@ impl Typer {
                             pointee: Box::new(Type::U8),
                         },
                     );
+
+                    if call.type_args.len() != 0 && call.args.items.len() != 1 {
+                        report_bad_args(self, call);
+                    }
+
+                    if let CodeExpr::StringLiteral(_) = &call.args.items[0] {
+                    } else {
+                        report_bad_args(self, call);
+                    };
+
+                    fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
+                        self_.reporter.error(&Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(relative_file_path: str): &*u8`",
+                                call.fn_name.repr,
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
+
                     return Ok(());
                 }
 
                 if call.fn_name.repr == "const_slice_len" {
                     self.store_type(ctx, call.id, &Type::U32);
+
+                    if call.type_args.len() != 0 && call.args.items.len() != 1 {
+                        report_bad_args(self, call);
+                    }
+
+                    if let Some(const_value) = self.get_const_value(ctx, &call.args.items[0])
+                        && let CodeExpr::ArrayLiteral(_) = const_value
+                    {
+                    } else {
+                        report_bad_args(self, call);
+                    };
+
                     return Ok(());
+
+                    fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
+                        self_.reporter.error(&Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(items: const T[]): u32`",
+                                call.fn_name.repr,
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
                 }
 
                 if call.fn_name.repr == "inline_fn_call_loc" {
-                    // TODO: impl by walking up the scope
-                    let inside_of_inline_fn = true;
+                    let mut inside_of_inline_fn = false;
+                    let mut currrent_ctx = ctx;
+                    loop {
+                        if currrent_ctx.kind == ScopeKind::InlineFn {
+                            inside_of_inline_fn = true;
+                            break;
+                        }
+
+                        if let Some(parent) = currrent_ctx.parent {
+                            currrent_ctx = parent;
+                        } else {
+                            break;
+                        }
+                    }
 
                     if !inside_of_inline_fn {
                         self.report_error(&Error {
@@ -1774,9 +2019,31 @@ impl Typer {
             CodeExpr::Return(return_expr) => {
                 self.store_type(ctx, return_expr.id, &Type::Never);
 
+                if let None = ctx.fn_index {
+                    self.reporter.error(&Error {
+                        message: format!("Cannot use `return` in const context"),
+                        loc: return_expr.loc,
+                    });
+                };
+
+                let mut return_type = &Type::Void;
                 if let Some(return_value) = &return_expr.expr {
-                    self.report_if_err(self.type_code_expr(ctx, &return_value));
+                    let return_type_id = self.type_code_expr_and_load(ctx, &return_value)?;
+                    return_type = &self.registry.types[return_type_id];
                 }
+
+                let fn_return_type = &self.functions[ctx.fn_index.unwrap()].type_.output;
+                if !is_type_compatible(fn_return_type, return_type) {
+                    self.reporter.error(&Error {
+                        message: format!(
+                            "Invalid return type: {}, expected: {}",
+                            TypeFmt(&*self.registry, &return_type),
+                            TypeFmt(&*self.registry, &fn_return_type),
+                        ),
+                        loc: return_expr.loc,
+                    });
+                }
+
                 return Ok(());
             }
             CodeExpr::If(if_expr) => {
@@ -1801,8 +2068,6 @@ impl Typer {
                         };
                     }
                     IfCond::Match(match_header) => {
-                        self.report_if_err(self.type_code_expr(ctx, &match_header.expr_to_match));
-
                         match self.get_matched_variant(ctx, match_header) {
                             Err(err) => self.report_error(&err),
                             Ok(enum_variant) => {
@@ -1980,8 +2245,6 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Match(match_expr) => {
-                self.report_if_err(self.type_code_expr(ctx, &match_expr.header.expr_to_match));
-
                 let else_ctx = self.child_ctx(ctx, ScopeKind::Block);
                 let else_type = self.type_code_block(else_ctx, &match_expr.else_branch, true);
                 if else_type != Type::Never {
@@ -2119,7 +2382,7 @@ impl Typer {
         };
 
         let fn_info = &self.functions[fn_index];
-        let Type::Result(result) = &fn_info.fn_type.output else {
+        let Type::Result(result) = &fn_info.type_.output else {
             return Err(Error {
                 message: format!(
                     "Cannot create implicitly typed result: function does not return result"
@@ -2266,6 +2529,25 @@ impl Typer {
 
         let enum_ctor = &self.enum_ctors[symbol.col_index];
         let enum_variant = &self.enums[enum_ctor.enum_index].variants[enum_ctor.variant_index];
+
+        let expr_to_match_type_id =
+            self.report_if_err(self.type_code_expr_and_load(ctx, &match_header.expr_to_match));
+        if let Some(expr_to_match_type_id) = expr_to_match_type_id {
+            let expr_to_match_type = &self.registry.types[expr_to_match_type_id];
+            let expected_expr_to_match_type = Type::EnumInstance {
+                enum_index: enum_ctor.enum_index,
+            };
+            if !is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type) {
+                self.report_error(&Error {
+                    message: format!(
+                        "Unexpected type to match, expected: {}, got: {}",
+                        TypeFmt(&*self.registry, &expected_expr_to_match_type),
+                        TypeFmt(&*self.registry, &expr_to_match_type)
+                    ),
+                    loc: match_header.expr_to_match.loc(),
+                });
+            }
+        };
 
         if self.reporter.in_inspection_mode {
             self.reporter.print_inspection(&InspectInfo {
@@ -2432,13 +2714,79 @@ impl Typer {
         call_expr_id: usize,
         loc: &Loc,
     ) -> Result<(), Error> {
+        let mut all_good = true;
+        let mut arg_types = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
-            self.report_if_err(self.type_code_expr(ctx, receiver_arg));
+            if let Some(type_id) =
+                self.report_if_err(self.type_code_expr_and_load(ctx, receiver_arg))
+            {
+                arg_types.push(self.registry.types[type_id].clone())
+            } else {
+                all_good = false;
+            };
         }
         for arg in args {
-            self.report_if_err(self.type_code_expr(ctx, &arg));
+            if let Some(type_id) = self.report_if_err(self.type_code_expr_and_load(ctx, arg)) {
+                arg_types.push(self.registry.types[type_id].clone())
+            } else {
+                all_good = false;
+            };
         }
 
+        let fn_info = self.get_fn_info_for_call(ctx, fn_name, loc)?;
+        self.store_type(ctx, call_expr_id, &fn_info.type_.output);
+
+        if all_good && !is_types_compatible(&fn_info.type_.inputs, &arg_types) {
+            return Err(Error {
+                message: format!(
+                    "Invalid function arguments for function {}: [{}], expected [{}]",
+                    fn_info.name,
+                    TypeListFmt(&*self.registry, &arg_types),
+                    TypeListFmt(&*self.registry, &fn_info.type_.inputs),
+                ),
+                loc: *loc,
+            });
+        }
+
+        if self.reporter.in_inspection_mode {
+            let mut message = String::new();
+
+            write!(&mut message, "fn {fn_name}(").unwrap();
+
+            for (param, i) in fn_info.params.iter().zip(0..) {
+                if i != 0 {
+                    message.push_str(", ");
+                }
+
+                message.push_str(&param.param_name);
+                message.push_str(": ");
+                write!(
+                    &mut message,
+                    "{}",
+                    TypeFmt(&*self.registry, &param.param_type)
+                )
+                .unwrap();
+            }
+
+            let return_type = TypeFmt(&*self.registry, &fn_info.type_.output);
+            write!(&mut message, "): {}", return_type).unwrap();
+
+            self.reporter.print_inspection(&InspectInfo {
+                message,
+                loc: *loc,
+                linked_loc: Some(fn_info.definition_loc.clone()),
+            });
+        }
+
+        return Ok(());
+    }
+
+    fn get_fn_info_for_call(
+        &self,
+        ctx: TyContextRef,
+        fn_name: &str,
+        loc: &Loc,
+    ) -> Result<&FnInfo, Error> {
         let Some(symbol) = self.get_symbol(ctx, fn_name) else {
             return Err(Error {
                 message: format!("Unknown function: {}", fn_name),
@@ -2457,40 +2805,7 @@ impl Typer {
             });
         };
 
-        let fn_def = &self.functions[symbol.col_index];
-        self.store_type(ctx, call_expr_id, &fn_def.fn_type.output);
-
-        if self.reporter.in_inspection_mode {
-            let mut message = String::new();
-
-            write!(&mut message, "fn {fn_name}(").unwrap();
-
-            for (param, i) in fn_def.fn_params.iter().zip(0..) {
-                if i != 0 {
-                    message.push_str(", ");
-                }
-
-                message.push_str(&param.param_name);
-                message.push_str(": ");
-                write!(
-                    &mut message,
-                    "{}",
-                    TypeFmt(&*self.registry, &param.param_type)
-                )
-                .unwrap();
-            }
-
-            let return_type = TypeFmt(&*self.registry, &fn_def.fn_type.output);
-            write!(&mut message, "): {}", return_type).unwrap();
-
-            self.reporter.print_inspection(&InspectInfo {
-                message,
-                loc: *loc,
-                linked_loc: Some(fn_def.definition_loc.clone()),
-            });
-        }
-
-        return Ok(());
+        Ok(&self.functions[symbol.col_index])
     }
 
     fn type_inline_fn_call(
@@ -2971,6 +3286,40 @@ impl Typer {
                 loc: *loc,
             }),
         }
+    }
+
+    fn get_const_value(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<&CodeExpr> {
+        match expr {
+            CodeExpr::BoolLiteral(_)
+            | CodeExpr::CharLiteral(_)
+            | CodeExpr::NullLiteral(_)
+            | CodeExpr::IntLiteral(_)
+            | CodeExpr::StringLiteral(_)
+            | CodeExpr::StructLiteral(_)
+            | CodeExpr::ArrayLiteral(_)
+            | CodeExpr::ResultLiteral(_) => {
+                // all literals are valid const values
+                return Some(expr.relax());
+            }
+
+            CodeExpr::Ident(ident_expr) => {
+                let Some(symbol) = self.get_symbol(ctx, ident_expr.repr) else {
+                    return None;
+                };
+
+                if let SymbolKind::Const = symbol.kind {
+                    return Some(&self.constants[symbol.col_index].expr);
+                }
+            }
+
+            _ => { /* fallthrough */ }
+        }
+
+        self.report_error(&Error {
+            message: format!("Expression not allowed in const context"),
+            loc: expr.loc(),
+        });
+        None
     }
 
     fn extend_expr_info_storage(&self, expr_count: usize) {

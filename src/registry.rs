@@ -91,10 +91,10 @@ pub enum SymbolKind {
 }
 
 pub struct FnInfo {
-    pub fn_name: &'static str,
-    pub fn_type: FnType,
-    pub fn_params: Vec<FnParameter>,
-    pub fn_source: FnSource,
+    pub name: &'static str,
+    pub type_: FnType,
+    pub params: Vec<FnParameter>,
+    pub source: FnSource,
     pub exported_as: Vec<String>,
     pub wasm_fn_index: u32,
     pub definition_loc: Loc,
@@ -725,6 +725,7 @@ impl Registry {
         }
     }
 
+    // TODO: move to typer
     pub fn build_type(&self, ctx: &ExprContext, type_expr: &TypeExpr) -> Result<Type, Error> {
         return self.build_type_check_ref(ctx, type_expr, true, &Loc::internal());
     }
@@ -937,33 +938,6 @@ impl Registry {
         }
     }
 
-    pub fn get_fn_info_for_call(
-        &self,
-        ctx: &ExprContext,
-        fn_name: &str,
-        loc: &Loc,
-    ) -> Result<&FnInfo, Error> {
-        let Some(symbol) = self.current_scope(ctx).get_symbol(fn_name) else {
-            return Err(Error {
-                message: format!("Unknown function: {}", fn_name),
-                loc: *loc,
-            });
-        };
-
-        let SymbolKind::Function = symbol.kind else {
-            return Err(Error {
-                message: format!(
-                    "Trying to call {} which is not a function, defined at: {}",
-                    fn_name,
-                    symbol.loc.to_string(&self.reporter.fm)
-                ),
-                loc: *loc,
-            });
-        };
-
-        Ok(&self.functions[symbol.col_index])
-    }
-
     pub fn get_fn_self_type(
         &self,
         ctx: &ExprContext,
@@ -1052,46 +1026,11 @@ impl Registry {
         }
     }
 
-    pub fn get_result_literal_type(
-        &self,
-        ctx: &ExprContext,
-        explicit_type: &Option<ResultTypeExpr>,
-        loc: &Loc,
-    ) -> Result<ResultType, Error> {
-        if let Some(result_type) = explicit_type {
-            let ok = Box::new(self.build_type(ctx, &result_type.ok)?);
-            let err = Box::new(self.build_type(ctx, &result_type.err)?);
-            return Ok(ResultType { ok, err });
-        }
-
-        let Some(fn_index) = ctx.fn_index else {
-            return Err(Error {
-                message: format!("Cannot create implicitly typed result in const context"),
-                loc: *loc,
-            });
-        };
-
-        let fn_info = &self.functions[fn_index];
-        let Type::Result(result) = &fn_info.fn_type.output else {
-            return Err(Error {
-                message: format!(
-                    "Cannot create implicitly typed result: function does not return result"
-                ),
-                loc: *loc,
-            });
-        };
-
-        Ok(ResultType {
-            ok: result.ok.clone(),
-            err: result.err.clone(),
-        })
-    }
-
     pub fn get_struct_or_struct_ref_field(
         &self,
         mut lhs_type: &Type,
         field_access: &FieldAccessExpr,
-    ) -> Result<&StructField, Error> {
+    ) -> &StructField {
         if let Type::Pointer { pointee } = &lhs_type {
             lhs_type = pointee;
         }
@@ -1107,14 +1046,7 @@ impl Registry {
         {
             struct_index = *si;
         } else {
-            return Err(Error {
-                message: format!(
-                    "Cannot get field '{}' on non struct: {}",
-                    field_access.field_name.repr,
-                    TypeFmt(self, lhs_type),
-                ),
-                loc: field_access.field_name.loc,
-            });
+            unreachable!()
         };
 
         let struct_def = &self.structs[struct_index];
@@ -1123,16 +1055,10 @@ impl Registry {
             .iter()
             .find(|f| &f.field_name == &field_access.field_name.repr)
         else {
-            return Err(Error {
-                message: format!(
-                    "Unknown field {} in struct {}",
-                    field_access.field_name.repr, struct_def.struct_name
-                ),
-                loc: field_access.field_name.loc,
-            });
+            unreachable!()
         };
 
-        Ok(field)
+        field
     }
 
     pub fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {

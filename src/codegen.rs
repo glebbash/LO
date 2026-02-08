@@ -33,7 +33,7 @@ impl CodeGenerator {
 
         let mut fn_imports_count = 0;
         for fn_info in &self.registry.functions {
-            if let FnSource::Host { .. } = fn_info.fn_source {
+            if let FnSource::Host { .. } = fn_info.source {
                 fn_imports_count += 1;
             }
         }
@@ -48,12 +48,12 @@ impl CodeGenerator {
                 inputs: Vec::new(),
                 outputs: Vec::new(),
             };
-            for lo_input_type in &fn_info.fn_type.inputs {
+            for lo_input_type in &fn_info.type_.inputs {
                 self.registry
                     .lower_type(lo_input_type, &mut wasm_fn_type.inputs);
             }
             self.registry
-                .lower_type(&fn_info.fn_type.output, &mut wasm_fn_type.outputs);
+                .lower_type(&fn_info.type_.output, &mut wasm_fn_type.outputs);
 
             let mut fn_type_index = self.wasm_fn_types.len() as u32;
             for (existing_fn_type, existing_type_index) in self.wasm_fn_types.iter().zip(0..) {
@@ -65,12 +65,12 @@ impl CodeGenerator {
                 self.wasm_fn_types.be_mut().push(wasm_fn_type.clone());
             }
 
-            match &fn_info.fn_source {
+            match &fn_info.source {
                 FnSource::Guest { .. } => {
                     self.wasm_module.functions.push(fn_type_index);
                     self.wasm_module.function_names.push(WasmFnNameItem {
                         fn_index: wasm_fn_index,
-                        fn_name: String::from(fn_info.fn_name),
+                        fn_name: String::from(fn_info.name),
                     });
 
                     fn_info.wasm_fn_index = wasm_fn_index;
@@ -113,14 +113,11 @@ impl CodeGenerator {
                 .lower_type(&global.global_type, &mut wasm_types);
 
             let mut instrs = Vec::new();
-            let res = self.codegen(
+            self.codegen(
                 global.module_ctx.be_mut(),
                 &mut instrs,
                 &global.def_expr.value,
             );
-            catch!(res, err, {
-                self.report_error(&err);
-            });
 
             for i in 0..wasm_types.len() {
                 let wasm_type = &wasm_types[i];
@@ -145,7 +142,7 @@ impl CodeGenerator {
                 module_id,
                 lo_fn_index,
                 body,
-            } = &fn_info.fn_source
+            } = &fn_info.source
             else {
                 continue;
             };
@@ -158,7 +155,7 @@ impl CodeGenerator {
 
             self.registry.be_mut().enter_scope(ctx, ScopeKind::Function);
 
-            for fn_param in &fn_info.fn_params {
+            for fn_param in &fn_info.params {
                 self.registry.define_local(
                     ctx,
                     fn_param.loc,
@@ -177,7 +174,7 @@ impl CodeGenerator {
 
             let mut wasm_locals_flat = Vec::new();
             for (i, local) in ctx.locals.iter().enumerate() {
-                let is_fn_param = i < fn_info.fn_params.len();
+                let is_fn_param = i < fn_info.params.len();
                 if is_fn_param {
                     continue;
                 }
@@ -301,13 +298,11 @@ impl CodeGenerator {
                             .relax();
                         let const_ = self.registry.constants[symbol.col_index].relax_mut();
 
-                        let Ok(()) = self.codegen(
+                        self.codegen(
                             module.ctx.be_mut(),
                             &mut const_.code_unit.instrs,
                             &let_expr.value,
-                        ) else {
-                            unreachable!()
-                        };
+                        );
                     }
                     _ => {} // skip, not interested
                 }
@@ -331,10 +326,7 @@ impl CodeGenerator {
                 diverges_naturally = diverges_naturally || is_naturally_divergent(expr);
             }
 
-            catch!(self.codegen(ctx, instrs, expr), err, {
-                self.report_error(&err);
-                continue;
-            });
+            self.codegen(ctx, instrs, expr);
         }
 
         self.emit_deferred(self.registry.current_scope(ctx), instrs);
@@ -345,12 +337,7 @@ impl CodeGenerator {
         }
     }
 
-    fn codegen(
-        &mut self,
-        ctx: &mut ExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        expr: &CodeExpr,
-    ) -> Result<(), Error> {
+    fn codegen(&mut self, ctx: &mut ExprContext, instrs: &mut Vec<WasmInstr>, expr: &CodeExpr) {
         match expr {
             CodeExpr::BoolLiteral(BoolLiteralExpr {
                 id: _,
@@ -405,14 +392,11 @@ impl CodeGenerator {
                 body,
                 loc: _,
             }) => {
-                let Type::StructInstance { struct_index } =
+                let Type::StructInstance { struct_index } = self.unwrap(
                     self.registry
-                        .get_type_or_err(ctx, &struct_name.repr, &struct_name.loc)?
-                else {
-                    return Err(Error {
-                        message: format!("Unknown struct: {}", struct_name.repr),
-                        loc: struct_name.loc,
-                    });
+                        .get_type_or_err(ctx, &struct_name.repr, &struct_name.loc),
+                ) else {
+                    unreachable!()
                 };
 
                 let struct_def = &self.registry.structs[struct_index].relax();
@@ -437,10 +421,7 @@ impl CodeGenerator {
                         });
                     }
 
-                    catch!(self.codegen(ctx, instrs, &field_literal.value), err, {
-                        self.report_error(&err);
-                        continue;
-                    });
+                    self.codegen(ctx, instrs, &field_literal.value);
 
                     let field_value_type = self.get_expr_type(ctx, &field_literal.value);
                     if !is_type_compatible(&struct_field.field_type, &field_value_type) {
@@ -477,7 +458,7 @@ impl CodeGenerator {
                 has_trailing_comma: _,
                 loc,
             }) => {
-                let item_type = self.registry.build_type(ctx, item_type)?;
+                let item_type = self.unwrap(self.registry.build_type(ctx, item_type));
 
                 let mut bytes = Vec::new();
                 let mut tmp_instrs = Vec::new();
@@ -486,22 +467,24 @@ impl CodeGenerator {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item);
                         if *current_item_type != item_type {
-                            return Err(Error {
-                                message: format!(
+                            // TODO!: move to typer
+                            self.reporter.abort_due_to_compiler_bug(
+                                &format!(
                                     "Unexpected array element type: {}, expected: {}",
                                     TypeFmt(&*self.registry, &current_item_type),
                                     TypeFmt(&*self.registry, &item_type),
                                 ),
-                                loc: item.loc(),
-                            });
+                                item.loc(),
+                            );
                         }
 
-                        self.codegen(ctx, &mut tmp_instrs, item)?;
+                        self.codegen(ctx, &mut tmp_instrs, item);
                         let WasmInstr::I32Const { value } = tmp_instrs.pop().unwrap() else {
-                            return Err(Error {
-                                message: format!("Unexpected array element value"),
-                                loc: item.loc(),
-                            });
+                            // TODO!: move to typer
+                            self.reporter.abort_due_to_compiler_bug(
+                                &format!("Unexpected array element value"),
+                                item.loc(),
+                            );
                         };
 
                         bytes.push(value as u8);
@@ -512,41 +495,45 @@ impl CodeGenerator {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item);
                         if *current_item_type != item_type {
-                            return Err(Error {
-                                message: format!(
+                            // TODO!: move to typer
+                            self.reporter.abort_due_to_compiler_bug(
+                                &format!(
                                     "Unexpected array element type: {}, expected: {}",
                                     TypeFmt(&*self.registry, &current_item_type),
                                     TypeFmt(&*self.registry, &item_type),
                                 ),
-                                loc: item.loc(),
-                            });
+                                item.loc(),
+                            );
                         }
 
-                        self.codegen(ctx, &mut tmp_instrs, item)?;
+                        self.codegen(ctx, &mut tmp_instrs, item);
                         let WasmInstr::I32Const { value: len } = tmp_instrs.pop().unwrap() else {
-                            return Err(Error {
-                                message: format!("Unexpected array element value"),
-                                loc: item.loc(),
-                            });
+                            // TODO!: move to typer
+                            self.reporter.abort_due_to_compiler_bug(
+                                &format!("Unexpected array element value"),
+                                item.loc(),
+                            );
                         };
                         let WasmInstr::I32Const { value: ptr } = tmp_instrs.pop().unwrap() else {
-                            return Err(Error {
-                                message: format!("Unexpected array element value"),
-                                loc: item.loc(),
-                            });
+                            // TODO!: move to typer
+                            self.reporter.abort_due_to_compiler_bug(
+                                &format!("Unexpected array element value"),
+                                item.loc(),
+                            );
                         };
 
                         bytes.extend_from_slice(&ptr.to_le_bytes());
                         bytes.extend_from_slice(&len.to_le_bytes());
                     }
                 } else {
-                    return Err(Error {
-                        message: format!(
+                    // TODO!: move to typer
+                    self.reporter.abort_due_to_compiler_bug(
+                        &format!(
                             "Unsupported array literal element type: {}",
                             TypeFmt(&*self.registry, &item_type)
                         ),
-                        loc: *loc,
-                    });
+                        *loc,
+                    );
                 }
 
                 let ptr = self.append_data(bytes);
@@ -556,65 +543,36 @@ impl CodeGenerator {
                     slice_ptr: ptr,
                     slice_len: items.len(),
                 });
-
-                return Ok(());
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
                 id: _,
                 is_ok,
-                result_type,
+                result_type: _,
                 value,
-                loc,
+                loc: _,
             }) => {
-                let result = self
-                    .registry
-                    .get_result_literal_type(ctx, result_type, loc)?;
-
-                let mut value_type = &Type::Void;
-                if let Some(value) = value {
-                    value_type = self.get_expr_type(ctx, value);
-                }
+                let Type::Result(result) = self.get_expr_type(ctx, expr) else {
+                    unreachable!()
+                };
 
                 if *is_ok {
-                    if !is_type_compatible(&result.ok, value_type) {
-                        return Err(Error {
-                            message: format!(
-                                "Cannot create result, Ok type mismatch. Got {}, expected: {}",
-                                TypeFmt(&*self.registry, value_type),
-                                TypeFmt(&*self.registry, &result.ok),
-                            ),
-                            loc: *loc,
-                        });
-                    }
-
                     if let Some(ok_value) = value {
-                        self.codegen(ctx, instrs, ok_value)?;
+                        self.codegen(ctx, instrs, ok_value);
                     }
 
                     // error value
                     instrs.push(WasmInstr::I32Const { value: 0 });
 
-                    return Ok(());
-                }
-
-                if !is_type_compatible(&result.err, value_type) {
-                    return Err(Error {
-                        message: format!(
-                            "Cannot create result, Err type mismatch. Got {}, expected: {}",
-                            TypeFmt(&*self.registry, value_type),
-                            TypeFmt(&*self.registry, &result.err),
-                        ),
-                        loc: *loc,
-                    });
+                    return;
                 }
 
                 self.codegen_default_value(ctx, instrs, &result.ok);
-                self.codegen(ctx, instrs, value.as_ref().unwrap())?;
+                self.codegen(ctx, instrs, value.as_ref().unwrap());
             }
 
             CodeExpr::Ident(ident) => {
-                let var = self.var_from_ident(ctx, ident)?;
-                self.codegen_var_get(ctx, instrs, &var)?;
+                let var = self.var_from_ident(ctx, ident);
+                self.codegen_var_get(ctx, instrs, &var);
             }
             CodeExpr::Let(LetExpr {
                 id: _,
@@ -624,7 +582,7 @@ impl CodeGenerator {
                 loc: _,
             }) => {
                 if *is_inline {
-                    let code_unit = self.build_code_unit(ctx, value)?;
+                    let code_unit = self.build_code_unit(ctx, value);
                     self.registry.register_block_const(
                         ctx,
                         ConstDef {
@@ -633,18 +591,18 @@ impl CodeGenerator {
                             loc: name.loc,
                         },
                     );
-                    return Ok(());
+                    return;
                 }
 
                 let var_type = self.get_expr_type(ctx, &value).clone();
 
                 if name.repr == "_" {
-                    self.codegen(ctx, instrs, value)?;
+                    self.codegen(ctx, instrs, value);
 
                     for _ in 0..self.registry.count_wasm_type_components(&var_type) {
                         instrs.push(WasmInstr::Drop);
                     }
-                    return Ok(());
+                    return;
                 }
 
                 let local_index = self
@@ -655,42 +613,22 @@ impl CodeGenerator {
                     var_type,
                 });
                 self.codegen_var_set_prepare(instrs, &var);
-                self.codegen(ctx, instrs, value)?;
-                self.codegen_var_set(ctx, instrs, &var)?;
+                self.codegen(ctx, instrs, value);
+                self.codegen_var_set(ctx, instrs, &var);
             }
             CodeExpr::Cast(CastExpr {
                 id: _,
                 expr,
                 casted_to,
-                loc,
+                loc: _,
             }) => {
-                self.codegen(ctx, instrs, expr)?;
+                self.codegen(ctx, instrs, expr);
 
                 let castee_type = self.get_expr_type(ctx, expr);
-                let casted_to_type = self.registry.build_type(ctx, casted_to)?;
+                let casted_to_type = self.unwrap(self.registry.build_type(ctx, casted_to));
 
                 if let Some(cast_op) = get_cast_instr(castee_type, &casted_to_type) {
                     instrs.push(cast_op);
-                    return Ok(());
-                }
-
-                let mut castee_type_components = Vec::new();
-                self.registry
-                    .lower_type(castee_type, &mut castee_type_components);
-
-                let mut casted_to_type_components = Vec::new();
-                self.registry
-                    .lower_type(&casted_to_type, &mut casted_to_type_components);
-
-                if castee_type_components != casted_to_type_components {
-                    return Err(Error {
-                        message: format!(
-                            "Cannot cast from {} to {}",
-                            TypeFmt(&*self.registry, castee_type),
-                            TypeFmt(&*self.registry, &casted_to_type)
-                        ),
-                        loc: *loc,
-                    });
                 }
             }
             CodeExpr::PrefixOp(PrefixOpExpr {
@@ -705,14 +643,15 @@ impl CodeGenerator {
                         mut address,
                         offset,
                         var_type: _,
-                    })) = self.var_from_expr(ctx, expr)?
+                    })) = self.var_from_expr(ctx, expr)
                     else {
-                        return Err(Error {
-                            message: format!(
+                        // TODO: port to typer
+                        self.reporter.abort_due_to_compiler_bug(
+                            &format!(
                                 "Invalid reference expression. Only struct reference fields allowed.",
                             ),
-                            loc: *loc,
-                        });
+                            *loc,
+                        );
                     };
 
                     instrs.append(&mut address.instrs);
@@ -724,25 +663,17 @@ impl CodeGenerator {
                     });
                 }
                 PrefixOpTag::Dereference => {
-                    let var = self.var_from_deref(ctx, expr)?;
-                    self.codegen_var_get(ctx, instrs, &var)?;
+                    let var = self.var_from_deref(ctx, expr);
+                    self.codegen_var_get(ctx, instrs, &var);
                 }
                 PrefixOpTag::Not => {
-                    self.codegen(ctx, instrs, expr)?;
+                    self.codegen(ctx, instrs, expr);
 
                     let operand_type = self.get_expr_type(ctx, expr);
                     let mut wasm_components = Vec::new();
                     self.registry
                         .lower_type(&operand_type, &mut wasm_components);
-                    if wasm_components.len() != 1 {
-                        return Err(Error {
-                            message: format!(
-                                "Cannot apply not operation to expr of type {}",
-                                TypeFmt(&*self.registry, &operand_type)
-                            ),
-                            loc: *loc,
-                        });
-                    }
+
                     match wasm_components[0] {
                         WasmType::I32 => {
                             instrs.push(WasmInstr::UnaryOp {
@@ -769,7 +700,7 @@ impl CodeGenerator {
                     }
                 }
                 PrefixOpTag::Positive => {
-                    self.codegen(ctx, instrs, expr)?;
+                    self.codegen(ctx, instrs, expr);
                 }
                 PrefixOpTag::Negative => {
                     if let CodeExpr::IntLiteral(int) = expr.as_ref() {
@@ -788,45 +719,36 @@ impl CodeGenerator {
                                 value: -(int.value as i32),
                             });
                         }
-                        return Ok(());
+                        return;
                     };
 
                     let operand_type = self.get_expr_type(ctx, expr);
                     let mut wasm_components = Vec::new();
                     self.registry
                         .lower_type(&operand_type, &mut wasm_components);
-                    if wasm_components.len() != 1 {
-                        return Err(Error {
-                            message: format!(
-                                "Cannot negate expr of type {}",
-                                TypeFmt(&*self.registry, &operand_type)
-                            ),
-                            loc: *loc,
-                        });
-                    }
                     match wasm_components[0] {
                         WasmType::I32 => {
                             instrs.push(WasmInstr::I32Const { value: 0 });
-                            self.codegen(ctx, instrs, expr)?;
+                            self.codegen(ctx, instrs, expr);
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I32_SUB,
                             });
                         }
                         WasmType::I64 => {
                             instrs.push(WasmInstr::I64Const { value: 0 });
-                            self.codegen(ctx, instrs, expr)?;
+                            self.codegen(ctx, instrs, expr);
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I64_SUB,
                             });
                         }
                         WasmType::F32 => {
-                            self.codegen(ctx, instrs, expr)?;
+                            self.codegen(ctx, instrs, expr);
                             instrs.push(WasmInstr::UnaryOp {
                                 kind: WasmUnaryOpKind::F32_NEG,
                             });
                         }
                         WasmType::F64 => {
-                            self.codegen(ctx, instrs, expr)?;
+                            self.codegen(ctx, instrs, expr);
                             instrs.push(WasmInstr::UnaryOp {
                                 kind: WasmUnaryOpKind::F64_NEG,
                             });
@@ -842,40 +764,29 @@ impl CodeGenerator {
                 rhs,
                 loc: _,
             }) => {
-                let lhs_type = self.get_expr_type(ctx, lhs);
-                let rhs_type = self.get_expr_type(ctx, rhs);
-
-                if !is_type_compatible(&lhs_type, &rhs_type) {
-                    return Err(Error {
-                        message: format!(
-                            "Operands are not of the same type: lhs = {}, rhs = {}",
-                            TypeFmt(&*self.registry, &lhs_type),
-                            TypeFmt(&*self.registry, &rhs_type),
-                        ),
-                        loc: op_loc.clone(),
-                    });
-                }
+                let operand_type = self.get_expr_type(ctx, lhs);
 
                 if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
-                    let Some(var) = self.var_from_expr(ctx, &lhs)? else {
-                        return Err(Error {
-                            message: format!("Cannot perform compound assignment: invalid lhs"),
-                            loc: op_loc.clone(),
-                        });
+                    let Some(var) = self.var_from_expr(ctx, &lhs) else {
+                        // TODO!: port to typer
+                        self.reporter.abort_due_to_compiler_bug(
+                            &format!("Cannot perform compound assignment: invalid lhs"),
+                            *op_loc,
+                        );
                     };
 
                     self.codegen_var_set_prepare(instrs, &var);
-                    self.codegen_var_get(ctx, instrs, &var)?;
-                    self.codegen(ctx, instrs, rhs)?;
-                    self.codegen_binary_op(ctx, instrs, &base_op, &lhs_type, op_loc)?;
+                    self.codegen_var_get(ctx, instrs, &var);
+                    self.codegen(ctx, instrs, rhs);
+                    self.codegen_binary_op(ctx, instrs, &base_op, &operand_type, op_loc);
 
-                    self.codegen_var_set(ctx, instrs, &var)?;
-                    return Ok(());
+                    self.codegen_var_set(ctx, instrs, &var);
+                    return;
                 }
 
-                self.codegen(ctx, instrs, lhs)?;
-                self.codegen(ctx, instrs, rhs)?;
-                self.codegen_binary_op(ctx, instrs, &op_tag, &lhs_type, op_loc)?;
+                self.codegen(ctx, instrs, lhs);
+                self.codegen(ctx, instrs, rhs);
+                self.codegen_binary_op(ctx, instrs, &op_tag, &operand_type, op_loc);
             }
 
             CodeExpr::Assign(AssignExpr {
@@ -885,11 +796,12 @@ impl CodeGenerator {
                 rhs,
                 loc: _,
             }) => {
-                let Some(var) = self.var_from_expr(ctx, lhs)? else {
-                    return Err(Error {
-                        message: format!("Cannot perform assignment: invalid lhs"),
-                        loc: op_loc.clone(),
-                    });
+                let Some(var) = self.var_from_expr(ctx, lhs) else {
+                    // TODO!: move to typer
+                    self.reporter.abort_due_to_compiler_bug(
+                        &format!("Cannot perform assignment: invalid lhs"),
+                        *op_loc,
+                    );
                 };
 
                 let rhs_type = self.get_expr_type(ctx, rhs);
@@ -905,12 +817,12 @@ impl CodeGenerator {
                 }
 
                 self.codegen_var_set_prepare(instrs, &var);
-                self.codegen(ctx, instrs, rhs)?;
-                self.codegen_var_set(ctx, instrs, &var)?;
+                self.codegen(ctx, instrs, rhs);
+                self.codegen_var_set(ctx, instrs, &var);
             }
             CodeExpr::FieldAccess(field_access) => {
-                let var = self.var_from_field_access(ctx, field_access)?;
-                self.codegen_var_get(ctx, instrs, &var)?;
+                let var = self.var_from_field_access(ctx, field_access);
+                self.codegen_var_get(ctx, instrs, &var);
             }
 
             CodeExpr::FnCall(FnCallExpr {
@@ -930,36 +842,15 @@ impl CodeGenerator {
                         });
 
                         if variant.variant_type == Type::Void && args.items.len() == 0 {
-                            return Ok(());
+                            return;
                         }
 
-                        if args.items.len() != 1 {
-                            return Err(Error {
-                                message: format!(
-                                    "Non-void enum constructors require exactly one argument"
-                                ),
-                                loc: fn_name.loc,
-                            });
-                        }
-
-                        let expr_type = self.get_expr_type(ctx, &args.items[0]);
-                        if !is_type_compatible(&variant.variant_type, &expr_type) {
-                            return Err(Error {
-                                message: format!(
-                                    "Invalid enum payload: {}, expected: {}",
-                                    TypeFmt(&*self.registry, &expr_type),
-                                    TypeFmt(&*self.registry, &variant.variant_type),
-                                ),
-                                loc: fn_name.loc,
-                            });
-                        }
-
-                        self.codegen(ctx, instrs, &args.items[0])?;
-                        return Ok(());
+                        self.codegen(ctx, instrs, &args.items[0]);
+                        return;
                     }
                 }
 
-                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, &args.items, &fn_name.loc)?;
+                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, &args.items);
             }
             CodeExpr::MethodCall(MethodCallExpr {
                 id: _,
@@ -972,14 +863,7 @@ impl CodeGenerator {
                 let fn_name = self
                     .registry
                     .get_fn_name_from_method(&lhs_type, &field_name.repr);
-                self.codegen_fn_call(
-                    ctx,
-                    instrs,
-                    &fn_name,
-                    Some(lhs),
-                    &args.items,
-                    &field_name.loc,
-                )?;
+                self.codegen_fn_call(ctx, instrs, &fn_name, Some(lhs), &args.items);
             }
             CodeExpr::InlineFnCall(InlineFnCallExpr {
                 id,
@@ -997,7 +881,7 @@ impl CodeGenerator {
                     &args.items,
                     *id,
                     &fn_name.loc,
-                )?;
+                );
             }
             CodeExpr::InlineMethodCall(InlineMethodCallExpr {
                 id,
@@ -1020,143 +904,69 @@ impl CodeGenerator {
                     &args.items,
                     *id,
                     &field_name.loc,
-                )?;
+                );
             }
-            CodeExpr::IntrinsicCall(InlineFnCallExpr {
-                id: _,
-                fn_name,
-                type_args,
-                args,
-                loc: _,
-            }) => {
-                if fn_name.repr == "inspect_symbols" {
+            CodeExpr::IntrinsicCall(call) => {
+                if call.fn_name.repr == "inspect_symbols" {
                     // processed in Typer
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "unreachable" {
-                    if args.items.len() != 0 || type_args.len() != 0 {
-                        return Err(Error {
-                            message: format!("@{}() accepts no arguments", fn_name.repr),
-                            loc: fn_name.loc,
-                        });
-                    }
-
+                if call.fn_name.repr == "unreachable" {
                     instrs.push(WasmInstr::Unreachable);
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "memory_size" {
-                    if args.items.len() != 0 || type_args.len() != 0 {
-                        return Err(Error {
-                            message: format!("@{}() accepts no arguments", fn_name.repr),
-                            loc: fn_name.loc,
-                        });
-                    }
-
+                if call.fn_name.repr == "memory_size" {
                     instrs.push(WasmInstr::MemorySize);
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "memory_grow" {
-                    if type_args.len() != 0 {
-                        return Err(Error {
-                            message: format!("@{}() accepts no type arguments", fn_name.repr),
-                            loc: fn_name.loc,
-                        });
-                    }
-
+                if call.fn_name.repr == "memory_grow" {
                     let mut arg_types = Vec::new();
-                    for arg in &args.items {
+                    for arg in &call.args.items {
                         arg_types.push(self.get_expr_type(ctx, arg).clone());
                     }
-                    let param_types = &[Type::U32];
-                    if arg_types != param_types {
-                        return Err(Error {
-                            message: format!(
-                                "Unexpected arguments [{}] for @{}(num_pages: u32): i32",
-                                TypeListFmt(&*self.registry, &arg_types),
-                                fn_name.repr,
-                            ),
-                            loc: fn_name.loc,
-                        });
-                    }
 
-                    for arg in &args.items {
-                        self.codegen(ctx, instrs, arg)?;
+                    for arg in &call.args.items {
+                        self.codegen(ctx, instrs, arg);
                     }
 
                     instrs.push(WasmInstr::MemoryGrow);
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "memory_copy" {
-                    if type_args.len() != 0 {
-                        return Err(Error {
-                            message: format!("@{}() accepts no type arguments", fn_name.repr),
-                            loc: fn_name.loc,
-                        });
-                    }
-
-                    let mut arg_types = Vec::new();
-                    for arg in &args.items {
-                        arg_types.push(self.get_expr_type(ctx, arg).clone());
-                    }
-                    let param_types = &[Type::U32, Type::U32, Type::U32];
-                    if arg_types != param_types {
-                        return Err(Error {
-                            message: format!(
-                                "Unexpected arguments [{}] for @{}(dest: u32, source: u32: num_bytes: u32)",
-                                TypeListFmt(&*self.registry, &arg_types),
-                                fn_name.repr,
-                            ),
-                            loc: fn_name.loc,
-                        });
-                    }
-
-                    for arg in &args.items {
-                        self.codegen(ctx, instrs, arg)?;
+                if call.fn_name.repr == "memory_copy" {
+                    for arg in &call.args.items {
+                        self.codegen(ctx, instrs, arg);
                     }
 
                     instrs.push(WasmInstr::MemoryCopy);
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "data_size" {
-                    if args.items.len() != 0 || type_args.len() != 0 {
-                        return Err(Error {
-                            message: format!("@{}() accepts no arguments", fn_name.repr),
-                            loc: fn_name.loc,
-                        });
-                    }
-
-                    if let Some(_) = ctx.fn_index {
-                        return Err(Error {
-                            message: format!("@{}() can only be used in globals", fn_name.repr),
-                            loc: fn_name.loc,
-                        });
-                    }
-
+                if call.fn_name.repr == "data_size" {
                     // placeholder, filled in in `generate`
                     instrs.push(WasmInstr::I32Const { value: 0 });
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "embed_file" {
-                    if args.items.len() != 1 {
-                        return bad_args_err(self, fn_name);
-                    }
-
-                    let CodeExpr::StringLiteral(str_expr) = &args.items[0] else {
-                        return bad_args_err(self, fn_name);
+                if call.fn_name.repr == "embed_file" {
+                    let CodeExpr::StringLiteral(str_expr) = &call.args.items[0] else {
+                        unreachable!()
                     };
 
-                    let absolute_path =
-                        self.reporter.fm.resolve_path(&str_expr.value, &fn_name.loc);
-                    let bytes = fs::file_read(&absolute_path).map_err(|message| Error {
-                        message,
-                        loc: args.items[0].loc(),
-                    })?;
+                    let absolute_path = self
+                        .reporter
+                        .fm
+                        .resolve_path(&str_expr.value, &call.fn_name.loc);
+                    let bytes = match fs::file_read(&absolute_path) {
+                        Ok(value) => value,
+                        // TODO!: move to typer?
+                        Err(err_message) => self
+                            .reporter
+                            .abort_due_to_compiler_bug(&err_message, call.args.items[0].loc()),
+                    };
 
                     let bytes_len = bytes.len();
                     let bytes_ptr = self.append_data(bytes);
@@ -1170,41 +980,15 @@ impl CodeGenerator {
                         slice_len: bytes_len,
                     });
 
-                    return Ok(());
-
-                    fn bad_args_err(
-                        self_: &CodeGenerator,
-                        fn_name: &IdentExpr,
-                    ) -> Result<(), Error> {
-                        self_.reporter.error(&Error {
-                            message: format!(
-                                "Invalid arguments for @{}(relative_file_path: str)",
-                                fn_name.repr,
-                            ),
-                            loc: fn_name.loc,
-                        });
-
-                        Ok(())
-                    }
+                    return;
                 }
 
-                if fn_name.repr == "const_slice_len" {
-                    if args.items.len() != 1 {
-                        return bad_args_err(self, fn_name);
-                    }
-
+                // TODO: move the len extraction into typer?
+                if call.fn_name.repr == "const_slice_len" {
                     let mut slice_ptr_instrs = Vec::new();
-                    if let Err(err) = self.codegen(ctx, &mut slice_ptr_instrs, &args.items[0]) {
-                        self.report_error(&err);
-                        return Ok(());
-                    };
-
-                    if slice_ptr_instrs.len() != 1 {
-                        return bad_args_err(self, fn_name);
-                    }
-
+                    self.codegen(ctx, &mut slice_ptr_instrs, &call.args.items[0]);
                     let WasmInstr::I32Const { value: slice_ptr } = &slice_ptr_instrs[0] else {
-                        return bad_args_err(self, fn_name);
+                        unreachable!()
                     };
 
                     for const_slice_len in &self.const_slice_lens {
@@ -1212,31 +996,15 @@ impl CodeGenerator {
                             instrs.push(WasmInstr::I32Const {
                                 value: const_slice_len.slice_len as i32,
                             });
-                            return Ok(());
+                            return;
                         }
                     }
-
-                    return bad_args_err(self, fn_name);
-
-                    fn bad_args_err(
-                        self_: &CodeGenerator,
-                        fn_name: &IdentExpr,
-                    ) -> Result<(), Error> {
-                        self_.reporter.error(&Error {
-                            message: format!(
-                                "Invalid arguments for @{}(items: const T[])",
-                                fn_name.repr,
-                            ),
-                            loc: fn_name.loc,
-                        });
-
-                        Ok(())
-                    }
+                    unreachable!();
                 }
 
-                if fn_name.repr == "inline_fn_call_loc" {
+                if call.fn_name.repr == "inline_fn_call_loc" {
                     let mut inline_fn_call_loc = None;
-                    // NOTE: not iterating in reverse to get the first inline scope
+                    // NOTE: iterating in not-reverse to get the first inline scope
                     for scope in &self.registry.modules[ctx.module_id].scope_stack {
                         if scope.kind == ScopeKind::InlineFn {
                             inline_fn_call_loc = scope.inline_fn_call_loc.clone();
@@ -1254,34 +1022,34 @@ impl CodeGenerator {
                         value: loc_str.len as i32,
                     });
 
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "get_ok" {
-                    let arg_type = self.get_expr_type(ctx, &args.items[0]);
+                if call.fn_name.repr == "get_ok" {
+                    let arg_type = self.get_expr_type(ctx, &call.args.items[0]);
 
                     let Type::Result(ResultType { ok: _, err }) = arg_type else {
                         unreachable!()
                     };
 
-                    self.codegen(ctx, instrs, &args.items[0])?;
+                    self.codegen(ctx, instrs, &call.args.items[0]);
 
                     // drop `err` leaving only `ok` on the stack
                     for _ in 0..self.registry.count_wasm_type_components(&err) {
                         instrs.push(WasmInstr::Drop);
                     }
 
-                    return Ok(());
+                    return;
                 }
 
-                if fn_name.repr == "get_err" {
-                    let arg_type = self.get_expr_type(ctx, &args.items[0]);
+                if call.fn_name.repr == "get_err" {
+                    let arg_type = self.get_expr_type(ctx, &call.args.items[0]);
 
                     let Type::Result(ResultType { ok, err }) = arg_type else {
                         unreachable!()
                     };
 
-                    self.codegen(ctx, instrs, &args.items[0])?;
+                    self.codegen(ctx, instrs, &call.args.items[0]);
 
                     // push `err` to temp local
                     let tmp_local_index =
@@ -1299,14 +1067,14 @@ impl CodeGenerator {
                     }
 
                     // pop `err` back
-                    self.codegen_var_get(ctx, instrs, &tmp_local)?;
+                    self.codegen_var_get(ctx, instrs, &tmp_local);
 
-                    return Ok(());
+                    return;
                 }
 
                 self.report_error(&Error {
-                    message: format!("Unknown intrinsic: {}", fn_name.repr),
-                    loc: fn_name.loc,
+                    message: format!("Unknown intrinsic: {}", call.fn_name.repr),
+                    loc: call.fn_name.loc,
                 });
             }
             CodeExpr::Sizeof(SizeofExpr {
@@ -1314,7 +1082,7 @@ impl CodeGenerator {
                 type_expr,
                 loc: _,
             }) => {
-                let lo_type = self.registry.build_type(ctx, type_expr)?;
+                let lo_type = self.unwrap(self.registry.build_type(ctx, type_expr));
                 let mut type_layout = TypeLayout::new();
                 self.registry.get_type_layout(&lo_type, &mut type_layout);
 
@@ -1329,34 +1097,16 @@ impl CodeGenerator {
                 has_trailing_comma: _,
                 loc: _,
             }) => {
-                self.codegen(ctx, instrs, expr)?;
+                self.codegen(ctx, instrs, expr);
             }
-            CodeExpr::Return(ReturnExpr { id: _, expr, loc }) => {
-                let Some(fn_index) = ctx.fn_index else {
-                    return Err(Error {
-                        message: format!("Cannot use `return` in const context"),
-                        loc: *loc,
-                    });
-                };
-
-                let mut return_type = &Type::Void;
-
+            CodeExpr::Return(ReturnExpr {
+                id: _,
+                expr,
+                loc: _,
+            }) => {
                 if let Some(return_expr) = expr {
-                    self.codegen(ctx, instrs, return_expr)?;
-                    return_type = self.get_expr_type(ctx, &return_expr);
+                    self.codegen(ctx, instrs, return_expr);
                 };
-
-                let fn_return_type = &self.registry.functions[fn_index].fn_type.output;
-                if !is_type_compatible(fn_return_type, &return_type) {
-                    return Err(Error {
-                        message: format!(
-                            "Invalid return type: {}, expected: {}",
-                            TypeFmt(&*self.registry, &return_type),
-                            TypeFmt(&*self.registry, &fn_return_type),
-                        ),
-                        loc: *loc,
-                    });
-                }
 
                 self.emit_deferred_for_return(ctx, instrs);
                 instrs.push(WasmInstr::Return);
@@ -1370,7 +1120,7 @@ impl CodeGenerator {
             }) => {
                 match cond {
                     IfCond::Expr(expr) => {
-                        self.codegen(ctx, instrs, expr)?;
+                        self.codegen(ctx, instrs, expr);
 
                         // `if` condition runs outside of then_branch's scope
                         self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
@@ -1379,7 +1129,7 @@ impl CodeGenerator {
                         // `if match` condition runs inside of then_branch's scope
                         self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
 
-                        let enum_ctor = self.codegen_match_header(ctx, instrs, match_header)?;
+                        let enum_ctor = self.codegen_match_header(ctx, instrs, match_header);
 
                         // pop enum's variant from the stack and compare it to the expected variant
                         instrs.push(WasmInstr::I32Const {
@@ -1410,7 +1160,7 @@ impl CodeGenerator {
                     ElseBlock::ElseIf(code_expr) => {
                         instrs.push(WasmInstr::Else);
                         self.registry.be_mut().enter_scope(ctx, ScopeKind::Block);
-                        self.codegen(ctx, instrs, &code_expr)?;
+                        self.codegen(ctx, instrs, &code_expr);
                         self.registry.be_mut().exit_scope(ctx);
                     }
                 }
@@ -1423,7 +1173,7 @@ impl CodeGenerator {
                 else_branch,
                 loc: _,
             }) => {
-                let enum_ctor = self.codegen_match_header(ctx, instrs, header)?;
+                let enum_ctor = self.codegen_match_header(ctx, instrs, header);
 
                 // pop enum's variant from the stack and compare it to the expected variant
                 // if it's not equal then `else_branch`` must run
@@ -1460,9 +1210,7 @@ impl CodeGenerator {
                 });
 
                 if let Some(cond) = cond {
-                    catch!(self.codegen(ctx, instrs, cond), err, {
-                        self.report_error(&err);
-                    });
+                    self.codegen(ctx, instrs, cond);
 
                     instrs.push(WasmInstr::UnaryOp {
                         kind: WasmUnaryOpKind::I32_EQZ,
@@ -1502,8 +1250,8 @@ impl CodeGenerator {
                     var_type: counter_type.clone(),
                 });
                 self.codegen_var_set_prepare(instrs, &counter_var);
-                self.codegen(ctx, instrs, start)?;
-                self.codegen_var_set(ctx, instrs, &counter_var)?;
+                self.codegen(ctx, instrs, start);
+                self.codegen_var_set(ctx, instrs, &counter_var);
 
                 {
                     instrs.push(WasmInstr::BlockStart {
@@ -1518,15 +1266,15 @@ impl CodeGenerator {
                         });
 
                         // break if counter is equal to end
-                        self.codegen(ctx, instrs, end)?;
-                        self.codegen_var_get(ctx, instrs, &counter_var)?;
+                        self.codegen(ctx, instrs, end);
+                        self.codegen_var_get(ctx, instrs, &counter_var);
                         self.codegen_binary_op(
                             ctx,
                             instrs,
                             &InfixOpTag::Equal,
                             &counter_type,
                             op_loc,
-                        )?;
+                        );
                         instrs.push(WasmInstr::BranchIf { label_index: 1 });
 
                         {
@@ -1541,7 +1289,7 @@ impl CodeGenerator {
                         }
 
                         // increment counter
-                        self.codegen_var_get(ctx, instrs, &counter_var)?;
+                        self.codegen_var_get(ctx, instrs, &counter_var);
                         self.codegen_var_set_prepare(instrs, &counter_var);
                         if self.unwrap(is_64_bit_int_tag(&self.registry, &counter_type, loc)) {
                             instrs.push(WasmInstr::I64Const { value: 1 });
@@ -1554,8 +1302,8 @@ impl CodeGenerator {
                             &InfixOpTag::Add,
                             &counter_type,
                             op_loc,
-                        )?;
-                        self.codegen_var_set(ctx, instrs, &counter_var)?;
+                        );
+                        self.codegen_var_set(ctx, instrs, &counter_var);
 
                         // implicit continue
                         instrs.push(WasmInstr::Branch { label_index: 0 });
@@ -1581,10 +1329,11 @@ impl CodeGenerator {
                             label_index += 1;
                         }
                         ScopeKind::Function => {
-                            return Err(Error {
-                                message: format!("Cannot break outside of a loop"),
-                                loc: *loc,
-                            });
+                            // TODO!: move to typer
+                            self.reporter.abort_due_to_compiler_bug(
+                                &format!("Cannot break outside of a loop"),
+                                *loc,
+                            );
                         }
                         ScopeKind::Loop => break,
                         ScopeKind::ForLoop => {
@@ -1611,10 +1360,11 @@ impl CodeGenerator {
                             label_index += 1;
                         }
                         ScopeKind::Function => {
-                            return Err(Error {
-                                message: format!("Cannot continue outside of a loop"),
-                                loc: *loc,
-                            });
+                            // TODO!: move to typer
+                            self.reporter.abort_due_to_compiler_bug(
+                                &format!("Cannot continue outside of a loop"),
+                                *loc,
+                            );
                         }
                         ScopeKind::Loop => break,
                         ScopeKind::ForLoop => break,
@@ -1637,14 +1387,14 @@ impl CodeGenerator {
                 for arg in &args.items {
                     self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
 
-                    self.codegen(ctx, instrs, arg)?;
+                    self.codegen(ctx, instrs, arg);
 
                     let arg_local_index =
                         self.registry
                             .define_local(ctx, with_loc.clone(), "it", &arg_type);
 
                     self.codegen_local_set(instrs, &arg_type, arg_local_index);
-                    self.codegen(ctx, instrs, body)?;
+                    self.codegen(ctx, instrs, body);
 
                     self.registry.be_mut().exit_scope(ctx);
                 }
@@ -1657,10 +1407,7 @@ impl CodeGenerator {
                 loc: _,
             }) => {
                 let lhs_type = self.get_expr_type(ctx, lhs);
-                catch!(self.codegen(ctx, instrs, lhs), err, {
-                    self.report_error(&err);
-                    return Ok(());
-                });
+                self.codegen(ctx, instrs, lhs);
 
                 self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
 
@@ -1669,10 +1416,7 @@ impl CodeGenerator {
                         .define_local(ctx, op_loc.clone(), "it", &lhs_type);
 
                 self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
-                catch!(self.codegen(ctx, instrs, rhs), err, {
-                    self.report_error(&err);
-                    return Ok(());
-                });
+                self.codegen(ctx, instrs, rhs);
                 self.registry.be_mut().exit_scope(ctx);
             }
             CodeExpr::Defer(DeferExpr {
@@ -1680,7 +1424,7 @@ impl CodeGenerator {
                 expr,
                 loc: _,
             }) => {
-                let code_unit = self.build_code_unit(ctx, expr)?;
+                let code_unit = self.build_code_unit(ctx, expr);
 
                 // find first non-inline-fn scope
                 let mut scope_to_defer = self.registry.modules[ctx.module_id]
@@ -1716,14 +1460,12 @@ impl CodeGenerator {
                     Some(&error_bind),
                     Some(catch_body),
                     catch_loc,
-                )?;
+                );
             }
             CodeExpr::PropagateError(PropagateErrorExpr { id: _, expr, loc }) => {
-                self.codegen_catch(ctx, instrs, expr, None, None, loc)?;
+                self.codegen_catch(ctx, instrs, expr, None, None, loc);
             }
         };
-
-        Ok(())
     }
 
     /// defines a local with match bind's name and pushes enum's variant to the stack
@@ -1732,22 +1474,16 @@ impl CodeGenerator {
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
-    ) -> Result<&EnumConstructor, Error> {
+    ) -> &EnumConstructor {
         let Some(symbol) = self
             .registry
             .current_scope(ctx)
             .get_symbol(&header.variant_name.repr)
         else {
-            return Err(Error {
-                message: format!("Unkown enum constructor: {}", header.variant_name.repr),
-                loc: header.variant_name.loc,
-            });
+            unreachable!()
         };
         let SymbolKind::EnumConstructor = symbol.kind else {
-            return Err(Error {
-                message: format!("Not an enum constructor: {}", header.variant_name.repr),
-                loc: header.variant_name.loc,
-            });
+            unreachable!()
         };
 
         let enum_ctor = &self.registry.enum_ctors[symbol.col_index].relax();
@@ -1765,26 +1501,11 @@ impl CodeGenerator {
             var_type: enum_variant.variant_type.clone(),
         });
 
-        let expr_to_match_type = self.get_expr_type(ctx, &header.expr_to_match);
-        let expected_expr_to_match_type = Type::EnumInstance {
-            enum_index: enum_ctor.enum_index,
-        };
-        if !is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type) {
-            self.report_error(&Error {
-                message: format!(
-                    "Unexpected type to match, expected: {}, got: {}",
-                    TypeFmt(&*self.registry, &expected_expr_to_match_type),
-                    TypeFmt(&*self.registry, &expr_to_match_type)
-                ),
-                loc: header.expr_to_match.loc(),
-            });
-        }
-
         self.codegen_var_set_prepare(instrs, &local);
-        self.codegen(ctx, instrs, &header.expr_to_match)?;
-        self.codegen_var_set(ctx, instrs, &local)?;
+        self.codegen(ctx, instrs, &header.expr_to_match);
+        self.codegen_var_set(ctx, instrs, &local);
 
-        Ok(enum_ctor)
+        enum_ctor
     }
 
     fn codegen_fn_call(
@@ -1794,40 +1515,28 @@ impl CodeGenerator {
         fn_name: &str,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
-        loc: &Loc,
-    ) -> Result<(), Error> {
-        let fn_info = self
-            .registry
-            .get_fn_info_for_call(ctx, fn_name, loc)?
-            .relax();
+    ) {
+        let Some(symbol) = self.registry.current_scope(ctx).get_symbol(fn_name) else {
+            unreachable!()
+        };
+        let SymbolKind::Function = symbol.kind else {
+            unreachable!()
+        };
+        let fn_info = self.registry.functions[symbol.col_index].relax();
 
         let mut arg_types = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
             arg_types.push(self.get_expr_type(ctx, receiver_arg).clone());
-            self.codegen(ctx, instrs, receiver_arg)?;
+            self.codegen(ctx, instrs, receiver_arg);
         }
         for arg in args {
             arg_types.push(self.get_expr_type(ctx, arg).clone());
-            self.codegen(ctx, instrs, arg)?;
-        }
-
-        if !is_types_compatible(&fn_info.fn_type.inputs, &arg_types) {
-            return Err(Error {
-                message: format!(
-                    "Invalid function arguments for function {}: [{}], expected [{}]",
-                    fn_info.fn_name,
-                    TypeListFmt(&*self.registry, &arg_types),
-                    TypeListFmt(&*self.registry, &fn_info.fn_type.inputs),
-                ),
-                loc: *loc,
-            });
+            self.codegen(ctx, instrs, arg);
         }
 
         instrs.push(WasmInstr::Call {
             fn_index: fn_info.wasm_fn_index,
         });
-
-        Ok(())
     }
 
     fn populate_ctx_from_inline_fn_call(
@@ -1837,38 +1546,24 @@ impl CodeGenerator {
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
-        loc: &Loc,
-    ) -> Result<&FnExpr, Error> {
+    ) -> &FnExpr {
         let Some(symbol) = self.registry.current_scope(ctx).get_symbol(inline_fn_name) else {
-            return Err(Error {
-                message: format!("Unknown inline fn: {}", inline_fn_name),
-                loc: *loc,
-            });
+            unreachable!();
         };
 
         let inline_fn_def = self.registry.inline_fns[symbol.col_index];
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
-            all_args.push(self.build_code_unit(ctx, receiver_arg)?);
+            all_args.push(self.build_code_unit(ctx, receiver_arg));
         }
         for arg in args {
-            all_args.push(self.build_code_unit(ctx, arg)?);
+            all_args.push(self.build_code_unit(ctx, arg));
         }
 
         let mut lo_type_args = Vec::new();
         for type_arg in type_args {
-            lo_type_args.push(self.registry.build_type(ctx, &type_arg)?);
-        }
-        if lo_type_args.len() != inline_fn_def.decl.type_params.len() {
-            return Err(Error {
-                message: format!(
-                    "Invalid number of type args, expected {}, got {}",
-                    inline_fn_def.decl.type_params.len(),
-                    type_args.len()
-                ),
-                loc: *loc,
-            });
+            lo_type_args.push(self.unwrap(self.registry.build_type(ctx, &type_arg)));
         }
 
         for (i, (type_param, type_arg)) in inline_fn_def
@@ -1886,22 +1581,6 @@ impl CodeGenerator {
             );
         }
 
-        if all_args.len() != inline_fn_def.decl.params.len() {
-            return Err(Error {
-                message: format!(
-                    "Invalid number of inline fn args, expected {}, got {}",
-                    inline_fn_def.decl.params.len(),
-                    all_args.len()
-                ),
-                loc: *loc,
-            });
-        }
-
-        let mut arg_types = Vec::<Type>::new();
-        for arg in &all_args {
-            arg_types.push(arg.type_.clone());
-        }
-
         for (inline_fn_param, inline_fn_arg) in
             inline_fn_def.decl.params.iter().zip(all_args.into_iter())
         {
@@ -1911,7 +1590,7 @@ impl CodeGenerator {
                 loc: inline_fn_param.loc,
             };
 
-            if let Some(type_name) = get_infer_type_name(inline_fn_param)? {
+            if let Some(type_name) = self.unwrap(get_infer_type_name(inline_fn_param)) {
                 self.registry.register_block_type(
                     ctx,
                     type_name,
@@ -1923,32 +1602,7 @@ impl CodeGenerator {
             self.registry.register_block_const(ctx, const_def);
         }
 
-        let self_type = self.registry.get_fn_self_type(
-            ctx,
-            &inline_fn_def.decl.fn_name,
-            &inline_fn_def.decl.params,
-        );
-
-        let mut inline_fn_types = Vec::<Type>::new();
-        for inline_fn_param in &inline_fn_def.decl.params {
-            let inline_fn_type =
-                self.registry
-                    .get_fn_param_type(ctx, inline_fn_param, &self_type, true)?;
-            inline_fn_types.push(inline_fn_type);
-        }
-
-        if !is_types_compatible(&inline_fn_types, &arg_types) {
-            return Err(Error {
-                message: format!(
-                    "Invalid inline fn args, expected [{}], got [{}]",
-                    TypeListFmt(&*self.registry, &inline_fn_types),
-                    TypeListFmt(&*self.registry, &arg_types)
-                ),
-                loc: *loc,
-            });
-        }
-
-        Ok(inline_fn_def)
+        inline_fn_def
     }
 
     fn codegen_inline_fn_call(
@@ -1961,7 +1615,7 @@ impl CodeGenerator {
         args: &Vec<CodeExpr>,
         call_expr_id: ExprId,
         loc: &Loc,
-    ) -> Result<(), Error> {
+    ) {
         self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
         self.registry.current_scope(ctx).be_mut().inline_fn_call_loc = Some(*loc);
 
@@ -1971,12 +1625,7 @@ impl CodeGenerator {
             type_args,
             receiver_arg,
             args,
-            loc,
         );
-        let inline_fn_def = catch!(inline_fn_def, err, {
-            self.registry.be_mut().exit_scope(ctx);
-            return Err(err);
-        });
 
         let FnExprValue::Body(body) = &inline_fn_def.value else {
             unreachable!()
@@ -1991,8 +1640,6 @@ impl CodeGenerator {
         self.codegen_code_block(ctx, instrs, body, false);
 
         self.registry.be_mut().exit_scope(ctx);
-
-        Ok(())
     }
 
     fn codegen_catch(
@@ -2003,7 +1650,7 @@ impl CodeGenerator {
         error_bind: Option<&IdentExpr>,
         catch_body: Option<&CodeBlock>,
         loc: &Loc,
-    ) -> Result<(), Error> {
+    ) {
         let expr_type = self.get_expr_type(ctx, expr);
         let Type::Result(result) = expr_type else {
             unreachable!()
@@ -2012,7 +1659,7 @@ impl CodeGenerator {
         self.registry.be_mut().enter_scope(ctx, ScopeKind::Block); // enter catch scope
 
         // put result on the stack
-        self.codegen(ctx, instrs, expr)?;
+        self.codegen(ctx, instrs, expr);
 
         // pop error
         let (error_bind, error_bind_loc) = if let Some(error_bind) = error_bind {
@@ -2028,14 +1675,14 @@ impl CodeGenerator {
             var_type: result.err.as_ref().clone(),
         });
         self.codegen_var_set_prepare(instrs, &err_var);
-        self.codegen_var_set(ctx, instrs, &err_var)?;
+        self.codegen_var_set(ctx, instrs, &err_var);
 
         // pop ok
         let ok_local_index = self.registry.define_local(ctx, *loc, "<ok>", &result.ok);
         self.codegen_local_set(instrs, &result.ok, ok_local_index);
 
         // cond: error != 0
-        self.codegen_var_get(ctx, instrs, &err_var)?;
+        self.codegen_var_get(ctx, instrs, &err_var);
 
         let in_out_type_index = self.get_block_inout_type(&[], &result.ok);
         instrs.push(WasmInstr::BlockStart {
@@ -2049,10 +1696,13 @@ impl CodeGenerator {
         if let Some(catch_body) = catch_body {
             self.codegen_code_block(ctx, instrs, catch_body, true);
         } else {
-            // return ok_type of function's result + caught error
-            let fn_result = self.registry.get_result_literal_type(ctx, &None, loc)?;
+            // return default ok_type of function's result and caught error
+            let fn_def = &self.registry.functions[ctx.fn_index.unwrap()];
+            let Type::Result(fn_result) = &fn_def.type_.output else {
+                unreachable!()
+            };
             self.codegen_default_value(ctx, instrs, &fn_result.ok);
-            self.codegen_var_get(ctx, instrs, &err_var)?;
+            self.codegen_var_get(ctx, instrs, &err_var);
 
             self.emit_deferred_for_return(ctx, instrs);
             instrs.push(WasmInstr::Return);
@@ -2065,13 +1715,11 @@ impl CodeGenerator {
             local_index: ok_local_index,
             var_type: result.ok.as_ref().clone(),
         });
-        self.codegen_var_get(ctx, instrs, &ok_var)?;
+        self.codegen_var_get(ctx, instrs, &ok_var);
 
         instrs.push(WasmInstr::BlockEnd);
 
         self.registry.be_mut().exit_scope(ctx); // exit catch scope
-
-        Ok(())
     }
 
     fn codegen_load_or_store(
@@ -2269,12 +1917,7 @@ impl CodeGenerator {
         self.wasm_fn_types.len() as u32 - 1
     }
 
-    fn codegen_var_get(
-        &self,
-        ctx: &mut ExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        var: &VarInfo,
-    ) -> Result<(), Error> {
+    fn codegen_var_get(&self, ctx: &mut ExprContext, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
         match var {
             VarInfo::Local(VarInfoLocal {
                 local_index,
@@ -2313,7 +1956,7 @@ impl CodeGenerator {
                 self.codegen_load_or_store(&mut loads, &var_type, *offset, false);
 
                 if loads.len() == 0 {
-                    return Ok(());
+                    return;
                 }
 
                 for instr in &address.instrs {
@@ -2358,18 +2001,16 @@ impl CodeGenerator {
                         var_type: var_type.clone(),
                     });
                     self.codegen_var_set_prepare(instrs, &var);
-                    self.codegen_var_set(ctx, instrs, &var)?;
+                    self.codegen_var_set(ctx, instrs, &var);
 
                     for _ in 0..*drops_after {
                         instrs.push(WasmInstr::Drop);
                     }
 
-                    self.codegen_var_get(ctx, instrs, &var)?;
+                    self.codegen_var_get(ctx, instrs, &var);
                 }
             }
         }
-
-        Ok(())
     }
 
     // should be called before set's value is pushed to the stack
@@ -2392,12 +2033,7 @@ impl CodeGenerator {
         };
     }
 
-    fn codegen_var_set(
-        &self,
-        ctx: &mut ExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        var: &VarInfo,
-    ) -> Result<(), Error> {
+    fn codegen_var_set(&self, ctx: &mut ExprContext, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
         match var {
             VarInfo::Local(VarInfoLocal {
                 local_index,
@@ -2450,14 +2086,11 @@ impl CodeGenerator {
             VarInfo::Const(VarInfoConst { loc, .. })
             | VarInfo::VoidEnumValue(VarInfoVoidEnumValue { loc, .. })
             | VarInfo::StructValueField(VarInfoStructValueField { loc, .. }) => {
-                return Err(Error {
-                    message: format!("Cannot mutate a constant"),
-                    loc: *loc,
-                });
+                // TODO!: move to typer
+                self.reporter
+                    .abort_due_to_compiler_bug(&format!("Cannot mutate a constant"), *loc);
             }
         };
-
-        Ok(())
     }
 
     fn codegen_local_set(&self, instrs: &mut Vec<WasmInstr>, local_type: &Type, local_index: u32) {
@@ -2486,22 +2119,18 @@ impl CodeGenerator {
         }
     }
 
-    fn var_from_expr(
-        &mut self,
-        ctx: &mut ExprContext,
-        expr: &CodeExpr,
-    ) -> Result<Option<VarInfo>, Error> {
-        Ok(match expr {
-            CodeExpr::Ident(ident) => Some(self.var_from_ident(ctx, ident)?),
+    fn var_from_expr(&mut self, ctx: &mut ExprContext, expr: &CodeExpr) -> Option<VarInfo> {
+        match expr {
+            CodeExpr::Ident(ident) => Some(self.var_from_ident(ctx, ident)),
             CodeExpr::FieldAccess(field_access) => {
-                Some(self.var_from_field_access(ctx, field_access)?)
+                Some(self.var_from_field_access(ctx, field_access))
             }
             CodeExpr::Paren(ParenExpr {
                 id: _,
                 expr,
                 has_trailing_comma: _,
                 loc: _,
-            }) => self.var_from_expr(ctx, expr)?,
+            }) => self.var_from_expr(ctx, expr),
             CodeExpr::PrefixOp(PrefixOpExpr {
                 id: _,
                 op_tag,
@@ -2509,45 +2138,42 @@ impl CodeGenerator {
                 op_loc: _,
                 loc: _,
             }) => match op_tag {
-                PrefixOpTag::Dereference => Some(self.var_from_deref(ctx, expr)?),
+                PrefixOpTag::Dereference => Some(self.var_from_deref(ctx, expr)),
                 _ => None,
             },
             _ => None,
-        })
+        }
     }
 
-    fn var_from_ident(&self, ctx: &ExprContext, var_name: &IdentExpr) -> Result<VarInfo, Error> {
+    fn var_from_ident(&self, ctx: &ExprContext, var_name: &IdentExpr) -> VarInfo {
         let Some(symbol) = self.registry.current_scope(ctx).get_symbol(var_name.repr) else {
-            return Err(Error {
-                message: format!("Unknown variable: {}", var_name.repr),
-                loc: var_name.loc,
-            });
+            unreachable!()
         };
 
         match symbol.kind {
             SymbolKind::Local => {
                 let local = &ctx.locals[symbol.col_index];
 
-                Ok(VarInfo::Local(VarInfoLocal {
+                VarInfo::Local(VarInfoLocal {
                     local_index: local.local_index,
                     var_type: local.local_type.clone(),
-                }))
+                })
             }
             SymbolKind::Global => {
                 let global = &self.registry.globals[symbol.col_index];
 
-                Ok(VarInfo::Global(VarInfoGlobal {
+                VarInfo::Global(VarInfoGlobal {
                     global_index: global.global_index,
                     var_type: global.global_type.clone(),
-                }))
+                })
             }
             SymbolKind::Const => {
                 let const_def = &self.registry.constants[symbol.col_index];
 
-                Ok(VarInfo::Const(VarInfoConst {
+                VarInfo::Const(VarInfoConst {
                     code_unit: const_def.code_unit.relax(),
                     loc: var_name.loc,
-                }))
+                })
             }
             SymbolKind::EnumConstructor => {
                 let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
@@ -2556,23 +2182,17 @@ impl CodeGenerator {
                     enum_index: enum_ctor.enum_index,
                 };
 
-                Ok(VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
+                VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
                     variant_index: enum_ctor.variant_index,
                     var_type,
                     loc: var_name.loc,
-                }))
+                })
             }
             SymbolKind::TypeAlias
             | SymbolKind::Struct
             | SymbolKind::Enum
             | SymbolKind::InlineFn
-            | SymbolKind::Function => Err(Error {
-                message: format!(
-                    "Expected variable, found {:?} '{}'",
-                    symbol.kind, var_name.repr
-                ),
-                loc: var_name.loc,
-            }),
+            | SymbolKind::Function => unreachable!(),
         }
     }
 
@@ -2580,23 +2200,23 @@ impl CodeGenerator {
         &mut self,
         ctx: &mut ExprContext,
         field_access: &FieldAccessExpr,
-    ) -> Result<VarInfo, Error> {
+    ) -> VarInfo {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref());
 
         let field = self
             .registry
-            .get_struct_or_struct_ref_field(&lhs_type, field_access)?
+            .get_struct_or_struct_ref_field(&lhs_type, field_access)
             .relax();
 
         if let Type::Pointer { pointee: _ } = lhs_type {
-            return Ok(VarInfo::Stored(VarInfoStored {
-                address: self.build_code_unit(ctx, &field_access.lhs)?,
+            return VarInfo::Stored(VarInfoStored {
+                address: self.build_code_unit(ctx, &field_access.lhs),
                 offset: field.byte_offset,
                 var_type: field.field_type.clone(),
-            }));
+            });
         }
 
-        if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref())? {
+        if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref()) {
             match var {
                 // TODO: update this since struct globals are now supported
                 // struct globals are not supported so these are handled the same way as struct values
@@ -2609,21 +2229,21 @@ impl CodeGenerator {
                     local_index,
                     var_type: _,
                 }) => {
-                    return Ok(VarInfo::Local(VarInfoLocal {
+                    return VarInfo::Local(VarInfoLocal {
                         local_index: local_index + field.field_index,
                         var_type: field.field_type.clone(),
-                    }));
+                    });
                 }
                 VarInfo::Stored(VarInfoStored {
                     address,
                     offset,
                     var_type: _,
                 }) => {
-                    return Ok(VarInfo::Stored(VarInfoStored {
+                    return VarInfo::Stored(VarInfoStored {
                         address,
                         offset: offset + field.byte_offset,
                         var_type: field.field_type.clone(),
-                    }));
+                    });
                 }
                 VarInfo::StructValueField(VarInfoStructValueField {
                     struct_value,
@@ -2637,7 +2257,7 @@ impl CodeGenerator {
                     let field_components_count =
                         self.registry.count_wasm_type_components(&field.field_type);
 
-                    return Ok(VarInfo::StructValueField(VarInfoStructValueField {
+                    return VarInfo::StructValueField(VarInfoStructValueField {
                         struct_value,
                         drops_before: drops_before + struct_components_count
                             - field.field_index
@@ -2645,7 +2265,7 @@ impl CodeGenerator {
                         drops_after: drops_after + field.field_index,
                         var_type: field.field_type.clone(),
                         loc: field_access.field_name.loc,
-                    }));
+                    });
                 }
             };
         };
@@ -2653,51 +2273,36 @@ impl CodeGenerator {
         let struct_components_count = self.registry.count_wasm_type_components(&lhs_type);
         let field_components_count = self.registry.count_wasm_type_components(&field.field_type);
 
-        return Ok(VarInfo::StructValueField(VarInfoStructValueField {
-            struct_value: self.build_code_unit(ctx, &field_access.lhs)?,
+        return VarInfo::StructValueField(VarInfoStructValueField {
+            struct_value: self.build_code_unit(ctx, &field_access.lhs),
             drops_before: struct_components_count - field.field_index - field_components_count,
             drops_after: field.field_index,
             var_type: field.field_type.clone(),
             loc: field_access.field_name.loc,
-        }));
-    }
-
-    fn var_from_deref(
-        &mut self,
-        ctx: &mut ExprContext,
-        addr_expr: &CodeExpr,
-    ) -> Result<VarInfo, Error> {
-        let addr_type = self.get_expr_type(ctx, addr_expr);
-
-        if let Type::Pointer { pointee } = &addr_type {
-            return Ok(VarInfo::Stored(VarInfoStored {
-                address: self.build_code_unit(ctx, addr_expr)?,
-                offset: 0,
-                var_type: pointee.as_ref().clone(),
-            }));
-        };
-
-        return Err(Error {
-            message: format!(
-                "Cannot dereference expression of type '{}'",
-                TypeFmt(&*self.registry, &addr_type)
-            ),
-            loc: addr_expr.loc(),
         });
     }
 
-    fn build_code_unit(
-        &mut self,
-        ctx: &mut ExprContext,
-        expr: &CodeExpr,
-    ) -> Result<CodeUnit, Error> {
+    fn var_from_deref(&mut self, ctx: &mut ExprContext, addr_expr: &CodeExpr) -> VarInfo {
+        let addr_type = self.get_expr_type(ctx, addr_expr);
+
+        let Type::Pointer { pointee } = &addr_type else {
+            unreachable!()
+        };
+
+        return VarInfo::Stored(VarInfoStored {
+            address: self.build_code_unit(ctx, addr_expr),
+            offset: 0,
+            var_type: pointee.as_ref().clone(),
+        });
+    }
+
+    fn build_code_unit(&mut self, ctx: &mut ExprContext, expr: &CodeExpr) -> CodeUnit {
         let mut code_unit = CodeUnit {
             type_: self.get_expr_type(ctx, expr).clone(),
             instrs: Vec::new(),
         };
-        self.codegen(ctx, &mut code_unit.instrs, expr)?;
-
-        Ok(code_unit)
+        self.codegen(ctx, &mut code_unit.instrs, expr);
+        code_unit
     }
 
     fn process_const_string(&self, value: &str) -> Str {
@@ -2794,10 +2399,9 @@ impl CodeGenerator {
         op_tag: &InfixOpTag,
         operand_type: &Type,
         op_loc: &Loc,
-    ) -> Result<(), Error> {
-        let kind = self.get_binary_op_kind(ctx, op_tag, operand_type, op_loc)?;
+    ) {
+        let kind = self.get_binary_op_kind(ctx, op_tag, operand_type, op_loc);
         instrs.push(WasmInstr::BinaryOp { kind });
-        Ok(())
     }
 
     fn get_binary_op_kind(
@@ -2806,7 +2410,7 @@ impl CodeGenerator {
         op_tag: &InfixOpTag,
         operand_type: &Type,
         op_loc: &Loc,
-    ) -> Result<WasmBinaryOpKind, Error> {
+    ) -> WasmBinaryOpKind {
         let mut signed = false;
         let mut wasm_op_type = WasmType::I32;
 
@@ -2838,21 +2442,22 @@ impl CodeGenerator {
             | Type::StructInstance { struct_index: _ }
             | Type::Result(_)
             | Type::Container(_) => {
-                return Err(Error {
-                    message: format!(
+                // TODO!: move to typer
+                self.reporter.abort_due_to_compiler_bug(
+                    &format!(
                         "Operator `{}` is incompatible with operands of type {}",
                         op_loc.read_span(&self.registry.modules[ctx.module_id].source),
                         TypeFmt(&*self.registry, operand_type)
                     ),
-                    loc: op_loc.clone(),
-                });
+                    op_loc.clone(),
+                );
             }
         }
 
         use InfixOpTag::*;
         use WasmBinaryOpKind::*;
 
-        return Ok(match wasm_op_type {
+        return match wasm_op_type {
             WasmType::I32 => match op_tag {
                 Equal => I32_EQ,
                 NotEqual => I32_NE,
@@ -2919,7 +2524,7 @@ impl CodeGenerator {
                 Mul => F32_MUL,
                 Div => F32_DIV,
                 Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
-                    return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+                    incompatible_op_err(self, ctx, operand_type, op_loc);
                 }
                 _ => unreachable!(),
             },
@@ -2935,26 +2540,27 @@ impl CodeGenerator {
                 Mul => F64_MUL,
                 Div => F64_DIV,
                 Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
-                    return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+                    incompatible_op_err(self, ctx, operand_type, op_loc);
                 }
                 _ => unreachable!(),
             },
-        });
+        };
 
         fn incompatible_op_err(
             self_: &CodeGenerator,
             ctx: &ExprContext,
             op_type: &Type,
             op_loc: &Loc,
-        ) -> Error {
-            Error {
-                message: format!(
+        ) -> ! {
+            // TODO!: move to typer
+            self_.reporter.abort_due_to_compiler_bug(
+                &format!(
                     "Operator `{}` is incompatible with operands of type {}",
                     op_loc.read_span(&self_.registry.modules[ctx.module_id].source),
                     TypeFmt(&*self_.registry, op_type)
                 ),
-                loc: op_loc.clone(),
-            }
+                op_loc.clone(),
+            );
         }
     }
 
@@ -3137,7 +2743,7 @@ impl CodeGenerator {
     }
 }
 
-fn get_cast_instr(casted_from: &Type, casted_to: &Type) -> Option<WasmInstr> {
+pub fn get_cast_instr(casted_from: &Type, casted_to: &Type) -> Option<WasmInstr> {
     if *casted_to == Type::I64 || *casted_to == Type::U64 {
         if *casted_from == Type::I8 || *casted_from == Type::I16 || *casted_from == Type::I32 {
             return Some(WasmInstr::I64ExtendI32s);
