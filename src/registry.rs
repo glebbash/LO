@@ -53,7 +53,7 @@ pub enum FnSource {
 }
 
 pub struct FnType {
-    pub inputs: Vec<Type>,
+    pub inputs: Vec<TypeId>,
     pub output: Type,
 }
 
@@ -242,7 +242,7 @@ pub struct Registry {
     pub memory: Option<MemoryInfo>,
     pub data_size: UBCell<u32>,
 
-    pub expr_count: usize,
+    pub expr_id_count: usize,
     pub scope_count: usize,
 }
 
@@ -284,14 +284,14 @@ impl Registry {
 
         let parser = Parser::new(lexer, &mut self.reporter);
 
-        *parser.expr_count.be_mut() = self.expr_count;
+        *parser.expr_id_count.be_mut() = self.expr_id_count;
 
         catch!(parser.parse_file(), err, {
             self.report_error(&err);
             return None;
         });
 
-        self.expr_count = *parser.expr_count;
+        self.expr_id_count = *parser.expr_id_count;
 
         let mut includes = Vec::new();
 
@@ -416,232 +416,18 @@ impl Registry {
         scope_stack.push(new_scope);
     }
 
-    // TODO: move to typer
-    // TODO: load TypeExpr type from it's id the same as CodeExpr
-    pub fn build_type(&self, ctx: &ExprContext, type_expr: &TypeExpr) -> Result<Type, Error> {
-        return self.build_type_check_ref(ctx, type_expr, true, &Loc::internal());
-    }
-
-    // builds a type, asserting that it doesn't have infinite size
-    fn build_type_check_ref(
-        &self,
-        ctx: &ExprContext,
-        type_expr: &TypeExpr,
-        is_referenced: bool,
-        loc: &Loc,
-    ) -> Result<Type, Error> {
-        match type_expr {
-            TypeExpr::Named(ident) => {
-                let lo_type = self.get_type_or_err(ctx, &ident.repr, &ident.loc)?;
-                if let Type::StructInstance { struct_index } = &lo_type {
-                    let struct_def = &self.structs[*struct_index];
-                    if !is_referenced && !struct_def.fully_defined {
-                        return Err(Error {
-                            message: format!(
-                                "Cannot use partially defined struct '{}' here",
-                                struct_def.struct_name
-                            ),
-                            loc: *loc,
-                        });
-                    }
-                }
-                Ok(lo_type)
-            }
-            TypeExpr::Pointer(TypeExprPointer { pointee, loc: _ }) => {
-                let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
-
-                Ok(Type::Pointer { pointee })
-            }
-            TypeExpr::SequencePointer(TypeExprSequencePointer { pointee, loc: _ }) => {
-                let pointee = Box::new(self.build_type_check_ref(ctx, &pointee, true, loc)?);
-
-                Ok(Type::SequencePointer { pointee })
-            }
-            TypeExpr::Container(TypeExprContainer {
-                container,
-                items,
-                loc: _,
-            }) => {
-                if let TypeExpr::Named(ident) = &**container
-                    && ident.repr == "Result"
-                {
-                    if items.len() != 2 {
-                        return Err(Error {
-                            message: format!(
-                                "Expected exactly 2 type arguments, {} was found",
-                                items.len()
-                            ),
-                            loc: ident.loc,
-                        });
-                    }
-
-                    let ok = Box::new(self.build_type_check_ref(ctx, &items[0], false, loc)?);
-                    let err = Box::new(self.build_type_check_ref(ctx, &items[1], false, loc)?);
-
-                    return Ok(Type::Result(ResultType { ok, err }));
-                }
-
-                if let TypeExpr::Named(ident) = &**container
-                    && ident.repr == "typeof"
-                {
-                    if items.len() != 1 {
-                        return Err(Error {
-                            message: format!(
-                                "Expected exactly 1 type arguments, {} was found",
-                                items.len()
-                            ),
-                            loc: ident.loc,
-                        });
-                    }
-
-                    let TypeExpr::Named(ident) = &items[0] else {
-                        return Err(Error {
-                            message: format!("Symbol expected"),
-                            loc: *items[0].loc(),
-                        });
-                    };
-
-                    let symbol = self.current_scope(ctx).get_symbol(ident.repr);
-                    let Some(symbol) = symbol else {
-                        return Err(Error {
-                            message: format!("Unknown symbol"),
-                            loc: *items[0].loc(),
-                        });
-                    };
-
-                    let SymbolKind::Const = symbol.kind else {
-                        return Err(Error {
-                            message: format!("Expected const, got {:?}", symbol.kind),
-                            loc: *items[0].loc(),
-                        });
-                    };
-
-                    return Ok(self.constants[symbol.col_index].code_unit.type_.clone());
-                }
-
-                if let TypeExpr::Named(ident) = &**container
-                    && ident.repr == "itemof"
-                {
-                    if items.len() != 1 {
-                        return Err(Error {
-                            message: format!(
-                                "Expected exactly 1 type arguments, {} was found",
-                                items.len()
-                            ),
-                            loc: ident.loc,
-                        });
-                    }
-
-                    let container = self.build_type_check_ref(ctx, &items[0], true, loc)?;
-                    let container = container.deref_rec();
-
-                    let Type::Container(ContainerType {
-                        container: _,
-                        items,
-                    }) = container
-                    else {
-                        return Err(Error {
-                            message: format!("Expected container type"),
-                            loc: *items[0].loc(),
-                        });
-                    };
-
-                    return Ok(items[0].clone());
-                }
-
-                let container = self.build_type_check_ref(ctx, container, is_referenced, loc)?;
-
-                let mut type_items = Vec::new();
-                for item in items {
-                    type_items.push(self.build_type_check_ref(ctx, item, true, loc)?);
-                }
-
-                Ok(Type::Container(ContainerType {
-                    container: Box::new(container),
-                    items: type_items,
-                }))
-            }
-        }
-    }
-
-    pub fn get_type_or_err(
-        &self,
-        ctx: &ExprContext,
-        type_name: &str,
-        loc: &Loc,
-    ) -> Result<Type, Error> {
-        let Some(symbol) = self.current_scope(ctx).get_symbol(type_name) else {
-            return Err(Error {
-                message: format!("Unknown type: {}", type_name),
-                loc: *loc,
-            });
-        };
-
-        match symbol.kind {
-            SymbolKind::Struct => {
-                if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
-                        message: format!("struct {type_name} {{ ... }}"),
-                        loc: *loc,
-                        linked_loc: Some(symbol.loc),
-                    });
-                }
-
-                Ok(Type::StructInstance {
-                    struct_index: symbol.col_index,
-                })
-            }
-            SymbolKind::Enum => {
-                if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
-                        message: format!("enum {type_name} {{ ... }}"),
-                        loc: *loc,
-                        linked_loc: Some(symbol.loc),
-                    });
-                }
-
-                Ok(Type::EnumInstance {
-                    enum_index: symbol.col_index,
-                })
-            }
-            SymbolKind::TypeAlias => {
-                let type_ = &self.type_aliases[symbol.col_index];
-
-                // don't print inspection for built-ins
-                if self.reporter.in_inspection_mode && symbol.loc.file_id != 0 {
-                    self.reporter.print_inspection(&InspectInfo {
-                        message: format!("type {type_name} = {}", TypeFmt(self, &type_)),
-                        loc: *loc,
-                        linked_loc: Some(symbol.loc),
-                    });
-                }
-
-                Ok(type_.clone())
-            }
-            SymbolKind::Local
-            | SymbolKind::Global
-            | SymbolKind::Const
-            | SymbolKind::Function
-            | SymbolKind::InlineFn
-            | SymbolKind::EnumConstructor => Err(Error {
-                message: format!("Symbol is not a type: {}", type_name),
-                loc: *loc,
-            }),
-        }
-    }
-
     pub fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
-        let receiver_type_base = receiver_type.deref_rec();
+        let receiver_type_base = deref_rec(self, receiver_type);
 
         if let Type::Container(ContainerType {
             container,
             items: _,
         }) = receiver_type_base
         {
-            return format!("{}::{method_name}", TypeFmt(self, container));
+            return format!("{}::{method_name}", self.fmt(self.get_type(*container)));
         }
 
-        format!("{}::{method_name}", TypeFmt(self, receiver_type_base))
+        format!("{}::{method_name}", self.fmt(receiver_type_base))
     }
 
     pub fn get_module_id_by_file_id(&self, file_id: usize) -> ModuleId {
@@ -654,6 +440,24 @@ impl Registry {
         unreachable!()
     }
 
+    pub fn get_type(&self, type_id: TypeId) -> &'static Type {
+        self.types[type_id].relax()
+    }
+
+    pub fn fmt<'a>(&'a self, type_: &'a Type) -> TypeFmt<'a> {
+        TypeFmt {
+            registry: self,
+            type_,
+        }
+    }
+
+    pub fn fmt_many<'a>(&'a self, type_ids: &'a [TypeId]) -> TypeListFmt<'a> {
+        TypeListFmt {
+            registry: self,
+            type_ids,
+        }
+    }
+
     // TODO: remove tag after migration
     fn report_error(&self, err: &Error) {
         let marked_error = Error {
@@ -664,11 +468,14 @@ impl Registry {
     }
 }
 
-pub struct TypeFmt<'a>(pub &'a Registry, pub &'a Type);
+pub struct TypeFmt<'a> {
+    registry: &'a Registry,
+    type_: &'a Type,
+}
 
 impl<'a> core::fmt::Display for TypeFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self.1 {
+        match self.type_ {
             Type::Never
             | Type::Null
             | Type::Void
@@ -682,31 +489,45 @@ impl<'a> core::fmt::Display for TypeFmt<'a> {
             | Type::F32
             | Type::U64
             | Type::I64
-            | Type::F64 => write!(f, "{}", self.1.to_str().unwrap()),
-            Type::Pointer { pointee } => write!(f, "&{}", TypeFmt(self.0, pointee)),
+            | Type::F64 => write!(f, "{}", self.type_.to_str().unwrap()),
+            Type::Pointer { pointee } => write!(
+                f,
+                "&{}",
+                self.registry.fmt(self.registry.get_type(*pointee))
+            ),
             Type::SequencePointer { pointee } => {
-                write!(f, "*&{}", TypeFmt(self.0, pointee))
+                write!(
+                    f,
+                    "*&{}",
+                    self.registry.fmt(self.registry.get_type(*pointee))
+                )
             }
             Type::StructInstance { struct_index } => {
-                f.write_str(&self.0.structs[*struct_index].struct_name)
+                f.write_str(&self.registry.structs[*struct_index].struct_name)
             }
-            Type::EnumInstance { enum_index } => f.write_str(&self.0.enums[*enum_index].enum_name),
+            Type::EnumInstance { enum_index } => {
+                f.write_str(&self.registry.enums[*enum_index].enum_name)
+            }
             Type::Result(result) => {
                 write!(
                     f,
                     "Result({}, {})",
-                    TypeFmt(self.0, &result.ok),
-                    TypeFmt(self.0, &result.err)
+                    self.registry.fmt(self.registry.get_type(result.ok)),
+                    self.registry.fmt(self.registry.get_type(result.err))
                 )
             }
-            Type::Container(ContainerType { container, items }) => {
-                write!(f, "{}", TypeFmt(self.0, container))?;
+            Type::Container(ctr) => {
+                write!(
+                    f,
+                    "{}",
+                    self.registry.fmt(self.registry.get_type(ctr.container))
+                )?;
                 write!(f, "(")?;
-                for (i, item) in items.iter().enumerate() {
+                for (i, item) in ctr.items.iter().enumerate() {
                     if i != 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", TypeFmt(self.0, item))?;
+                    write!(f, "{}", self.registry.fmt(self.registry.get_type(*item)))?;
                 }
                 write!(f, ")")
             }
@@ -714,15 +535,18 @@ impl<'a> core::fmt::Display for TypeFmt<'a> {
     }
 }
 
-pub struct TypeListFmt<'a>(pub &'a Registry, pub &'a [Type]);
+pub struct TypeListFmt<'a> {
+    registry: &'a Registry,
+    type_ids: &'a [TypeId],
+}
 
 impl<'a> core::fmt::Display for TypeListFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for (item, i) in self.1.iter().zip(0..) {
+        for (i, item) in self.type_ids.iter().enumerate() {
             if i != 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", TypeFmt(self.0, item))?;
+            write!(f, "{}", self.registry.fmt(self.registry.get_type(*item)))?;
         }
         Ok(())
     }

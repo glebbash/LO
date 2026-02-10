@@ -270,22 +270,18 @@ impl Printer {
             TypeExpr::Named(ident) => {
                 stdout_write(&ident.repr);
             }
-            TypeExpr::Pointer(TypeExprPointer { pointee, loc: _ }) => {
+            TypeExpr::Pointer(ptr) => {
                 stdout_write("&");
-                self.print_type_expr(pointee);
+                self.print_type_expr(&ptr.pointee);
             }
-            TypeExpr::SequencePointer(TypeExprSequencePointer { pointee, loc: _ }) => {
+            TypeExpr::SequencePointer(ptr) => {
                 stdout_write("*&");
-                self.print_type_expr(pointee);
+                self.print_type_expr(&ptr.pointee);
             }
-            TypeExpr::Container(TypeExprContainer {
-                container,
-                items,
-                loc: _,
-            }) => {
-                self.print_type_expr(container);
+            TypeExpr::Container(container) => {
+                self.print_type_expr(&container.container);
                 stdout_write("(");
-                for (i, item) in items.iter().enumerate() {
+                for (i, item) in container.items.iter().enumerate() {
                     if i != 0 {
                         stdout_write(", ");
                     }

@@ -83,7 +83,7 @@ pub struct EnumDefVariant {
 pub struct CodeBlock {
     pub exprs: Vec<CodeExpr>,
     pub expr_id_start: usize,
-    pub expr_id_end: usize,
+    pub expr_id_count: usize,
     pub loc: Loc,
 }
 
@@ -106,28 +106,40 @@ pub enum TypeExpr {
 }
 
 pub struct TypeExprPointer {
+    pub id: ExprId,
     pub pointee: Box<TypeExpr>,
     pub loc: Loc,
 }
 
 pub struct TypeExprSequencePointer {
+    pub id: ExprId,
     pub pointee: Box<TypeExpr>,
     pub loc: Loc,
 }
 
 pub struct TypeExprContainer {
+    pub id: ExprId,
     pub container: Box<TypeExpr>,
     pub items: Vec<TypeExpr>,
     pub loc: Loc,
 }
 
 impl TypeExpr {
-    pub fn loc(&self) -> &Loc {
+    pub fn id(&self) -> ExprId {
         match self {
-            TypeExpr::Named(e) => &e.loc,
-            TypeExpr::Pointer(e) => &e.loc,
-            TypeExpr::SequencePointer(e) => &e.loc,
-            TypeExpr::Container(e) => &e.loc,
+            TypeExpr::Named(e) => e.id,
+            TypeExpr::Pointer(e) => e.id,
+            TypeExpr::SequencePointer(e) => e.id,
+            TypeExpr::Container(e) => e.id,
+        }
+    }
+
+    pub fn loc(&self) -> Loc {
+        match self {
+            TypeExpr::Named(e) => e.loc,
+            TypeExpr::Pointer(e) => e.loc,
+            TypeExpr::SequencePointer(e) => e.loc,
+            TypeExpr::Container(e) => e.loc,
         }
     }
 }

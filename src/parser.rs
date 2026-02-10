@@ -15,7 +15,7 @@ pub struct Parser {
     // state
     pub context_stack: UBCell<Vec<ParsingContext>>,
     pub tokens_processed: UBCell<usize>,
-    pub expr_count: UBCell<usize>,
+    pub expr_id_count: UBCell<usize>,
 
     // output
     pub ast: UBCell<Vec<TopLevelExpr>>,
@@ -34,7 +34,7 @@ impl Parser {
             reporter: UBRef::new(reporter),
             context_stack: UBCell::new(context_stack),
             tokens_processed: UBCell::new(0),
-            expr_count: UBCell::new(0),
+            expr_id_count: UBCell::new(0),
             ast: UBCell::new(Vec::new()),
         }
     }
@@ -385,6 +385,7 @@ impl Parser {
             loc.end_pos = self.prev().loc.end_pos;
 
             return Ok(TypeExpr::Container(TypeExprContainer {
+                id: self.next_expr_id(),
                 container,
                 items,
                 loc,
@@ -400,7 +401,11 @@ impl Parser {
         if let Some(_) = self.eat(Operator, "&") {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
-            return Ok(TypeExpr::Pointer(TypeExprPointer { pointee, loc }));
+            return Ok(TypeExpr::Pointer(TypeExprPointer {
+                id: self.next_expr_id(),
+                pointee,
+                loc,
+            }));
         }
 
         // lexer joins two `&` into `&&`
@@ -408,7 +413,12 @@ impl Parser {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::Pointer(TypeExprPointer {
-                pointee: Box::new(TypeExpr::Pointer(TypeExprPointer { pointee, loc })),
+                id: self.next_expr_id(),
+                pointee: Box::new(TypeExpr::Pointer(TypeExprPointer {
+                    id: self.next_expr_id(),
+                    pointee,
+                    loc,
+                })),
                 loc,
             }));
         }
@@ -417,6 +427,7 @@ impl Parser {
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TypeExpr::SequencePointer(TypeExprSequencePointer {
+                id: self.next_expr_id(),
                 pointee,
                 loc,
             }));
@@ -431,8 +442,8 @@ impl Parser {
 
         let mut code_block = CodeBlock {
             exprs: Vec::new(),
-            expr_id_start: *self.expr_count,
-            expr_id_end: 0, // placeholder
+            expr_id_start: *self.expr_id_count,
+            expr_id_count: 0, // placeholder
             loc: self.prev().loc,
         };
 
@@ -441,7 +452,7 @@ impl Parser {
             code_block.exprs.push(expr);
         }
 
-        code_block.expr_id_end = *self.expr_count;
+        code_block.expr_id_count = *self.expr_id_count - code_block.expr_id_start;
 
         // closing curly pos
         code_block.loc.end_pos = self.prev().loc.end_pos;
@@ -1309,8 +1320,8 @@ impl Parser {
     // utils
 
     fn next_expr_id(&self) -> usize {
-        let expr_id = *self.expr_count;
-        *self.expr_count.be_mut() = expr_id + 1;
+        let expr_id = *self.expr_id_count;
+        *self.expr_id_count.be_mut() = expr_id + 1;
         expr_id
     }
 
