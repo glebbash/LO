@@ -86,7 +86,6 @@ pub type ExprInfo = usize;
 pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
 
 pub type TypeId = usize;
-pub const TYPE_ID_INVALID: TypeId = usize::MAX;
 
 type TyContextRef = UBRef<TyContext>;
 
@@ -350,7 +349,9 @@ impl Typer {
                                 type_def.name.loc,
                             );
 
-                            self.type_aliases.push(TYPE_ID_INVALID); // placeholder
+                            self.relax_mut()
+                                .type_aliases
+                                .push(self.intern_type(&Type::Never)); // placeholder
 
                             // TODO: remove after migration
                             {
@@ -448,7 +449,7 @@ impl Typer {
                         }
 
                         self.constants.push(TyConst {
-                            type_id: TYPE_ID_INVALID, // placeholder
+                            type_id: self.intern_type(&Type::Never), // placeholder
                             expr: UBRef::new(&*let_expr.value),
                         });
                         continue;
@@ -461,11 +462,11 @@ impl Typer {
                         let_expr.name.loc,
                     );
 
-                    self.registry.globals.push(GlobalDef {
+                    self.relax_mut().registry.globals.push(GlobalDef {
                         module_id: module.id,
                         value: let_expr.value.relax(),
-                        type_id: TYPE_ID_INVALID, // placeholder
-                        wasm_global_index: 0,     // placeholder
+                        type_id: self.intern_type(&Type::Never), // placeholder
+                        wasm_global_index: 0,                    // placeholder
                     });
                 }
             }
