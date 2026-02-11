@@ -120,7 +120,7 @@ pub struct Scope {
     pub deferred_exprs: Vec<CodeUnit>,
     pub inline_fn_call_loc: Option<Loc>,
 
-    pub expr_info_offset: usize,
+    pub expr_id_offset: usize,
 }
 
 impl Scope {
@@ -218,6 +218,22 @@ pub struct MemoryInfo {
     pub loc: Loc,
 }
 
+pub enum CallInfoValue {
+    FnCall(/* fn_index */ usize),
+    EnumCtor(/* variant_index */ i32),
+}
+
+pub struct CallInfo {
+    pub value: CallInfoValue,
+    pub return_type_id: TypeId,
+}
+
+pub struct InlineCallInfo {
+    pub inline_fn_index: usize,
+    pub inner_expr_id_offset: usize,
+    pub return_type_id: TypeId,
+}
+
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
@@ -226,18 +242,19 @@ pub struct Registry {
     pub fm: Box<FileManager>,
     pub reporter: Box<Reporter>,
 
-    pub modules: Vec<Module>,                // indexed by `module_id`
-    pub expr_info: Vec<ExprInfo>,            // indexed by `expr.id()`
-    pub types: Vec<Type>,                    // indexed by `ExprInfoId` for most of the expressions
-    pub globals: Vec<GlobalDef>,             // indexed by `col_index` when `kind = Global`
-    pub constants: Vec<ConstDef>,            // indexed by `col_index` when `kind = Const`
-    pub functions: Vec<FnInfo>,              // indexed by `col_index` when `kind = Function`
-    pub inline_fns: Vec<&'static FnExpr>,    // indexed by `col_index` when `kind = InlineFn`
-    pub inline_fn_call_info: Vec<ICallInfo>, // indexed by `ExprInfoId` for `::InlineFnCall` and `::InlineMethodCall`
-    pub type_aliases: Vec<Type>,             // indexed by `col_index` when `kind = TypeAlias`
-    pub structs: Vec<StructDef>,             // indexed by `col_index` when `kind = Struct`
-    pub enums: Vec<EnumDef>,                 // indexed by `col_index` when `kind = Enum`
-    pub enum_ctors: Vec<EnumConstructor>,    // indexed by `col_index` when `kind = EnumConstructor`
+    pub modules: Vec<Module>,                  // indexed by `module_id`
+    pub expr_info: Vec<ExprInfo>,              // indexed by `CodeExpr.id()` and `TypeExpr.id()`
+    pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
+    pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
+    pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
+    pub globals: Vec<GlobalDef>,  //              indexed by `col_index` when `kind = Global`
+    pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
+    pub functions: Vec<FnInfo>,   //              indexed by `col_index` when `kind = Function`
+    pub inline_fns: Vec<&'static FnExpr>, //      indexed by `col_index` when `kind = InlineFn`
+    pub type_aliases: Vec<Type>,  //              indexed by `col_index` when `kind = TypeAlias`
+    pub structs: Vec<StructDef>,  //              indexed by `col_index` when `kind = Struct`
+    pub enums: Vec<EnumDef>,      //              indexed by `col_index` when `kind = Enum`
+    pub enum_ctors: Vec<EnumConstructor>, //      indexed by `col_index` when `kind = EnumConstructor`
 
     pub memory: Option<MemoryInfo>,
     pub data_size: UBCell<u32>,
@@ -411,7 +428,7 @@ impl Registry {
         let mut new_scope = Scope::new(scope_id, scope_type);
         if let Some(parent) = scope_stack.last() {
             new_scope.symbols.extend_from_slice(&parent.symbols);
-            new_scope.expr_info_offset = parent.expr_info_offset;
+            new_scope.expr_id_offset = parent.expr_id_offset;
         };
         scope_stack.push(new_scope);
     }
@@ -438,6 +455,32 @@ impl Registry {
         }
 
         unreachable!()
+    }
+
+    pub fn get_expr_type(&self, expr_id_offset: usize, expr: &CodeExpr) -> Option<TypeId> {
+        let Some(expr_info) = self.get_expr_info(expr_id_offset, expr.id()) else {
+            return None;
+        };
+
+        Some(match expr {
+            CodeExpr::FnCall(_) | CodeExpr::MethodCall(_) => {
+                let call_info = &self.call_info[expr_info];
+                call_info.return_type_id
+            }
+            CodeExpr::InlineFnCall(_) | CodeExpr::InlineMethodCall(_) => {
+                let call_info = &self.inline_call_info[expr_info];
+                call_info.return_type_id
+            }
+            _ => expr_info,
+        })
+    }
+
+    pub fn get_expr_info(&self, expr_id_offset: usize, expr_id: usize) -> Option<ExprInfo> {
+        let expr_info = self.expr_info[expr_id_offset + expr_id];
+        if expr_info == EXPR_INFO_INVALID {
+            return None;
+        }
+        Some(expr_info)
     }
 
     pub fn get_type(&self, type_id: TypeId) -> &'static Type {

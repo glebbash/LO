@@ -790,53 +790,43 @@ impl CodeGenerator {
             }
 
             CodeExpr::FnCall(FnCallExpr {
-                id: _,
-                fn_name,
+                id: call_expr_id,
+                fn_name: _,
                 args,
-                loc: _,
+                loc,
             }) => {
-                if let Some(symbol) = self.registry.current_scope(ctx).get_symbol(&fn_name.repr) {
-                    if let SymbolKind::EnumConstructor = symbol.kind {
-                        let ctor = &self.registry.enum_ctors[symbol.col_index];
-                        let enum_ = &self.registry.enums[ctor.enum_index];
-                        let variant = &enum_.variants[ctor.variant_index];
+                let call_info_id = self.get_expr_info(ctx, *call_expr_id, *loc);
+                let call_info = &self.registry.call_info[call_info_id];
 
+                match call_info.value {
+                    CallInfoValue::EnumCtor(variant_index) => {
                         instrs.push(WasmInstr::I32Const {
-                            value: ctor.variant_index as i32,
+                            value: variant_index,
                         });
 
-                        if let Type::Void = self.get_type(variant.variant_type_id)
-                            && args.items.len() == 0
-                        {
-                            return;
-                        }
-
                         self.codegen(ctx, instrs, &args.items[0]);
-                        return;
+                    }
+                    CallInfoValue::FnCall(fn_index) => {
+                        self.codegen_fn_call(ctx, instrs, fn_index, None, &args.items);
                     }
                 }
-
-                self.codegen_fn_call(ctx, instrs, &fn_name.repr, None, &args.items, &fn_name.loc);
             }
             CodeExpr::MethodCall(MethodCallExpr {
-                id: _,
+                id: call_expr_id,
                 lhs,
-                field_name,
+                field_name: _,
                 args,
-                loc: _,
+                loc,
             }) => {
-                let lhs_type = self.get_expr_type(ctx, lhs);
-                let fn_name = self
-                    .registry
-                    .get_fn_name_from_method(lhs_type, &field_name.repr);
-                self.codegen_fn_call(
-                    ctx,
-                    instrs,
-                    &fn_name,
-                    Some(lhs),
-                    &args.items,
-                    &field_name.loc,
-                );
+                let call_info_id = self.get_expr_info(ctx, *call_expr_id, *loc);
+                let call_info = &self.registry.call_info[call_info_id];
+
+                match call_info.value {
+                    CallInfoValue::EnumCtor(_) => unreachable!(),
+                    CallInfoValue::FnCall(fn_index) => {
+                        self.codegen_fn_call(ctx, instrs, fn_index, Some(lhs), &args.items);
+                    }
+                }
             }
             CodeExpr::InlineFnCall(InlineFnCallExpr {
                 id,
@@ -848,7 +838,6 @@ impl CodeGenerator {
                 self.codegen_inline_fn_call(
                     ctx,
                     instrs,
-                    &fn_name.repr,
                     type_args,
                     None,
                     &args.items,
@@ -864,14 +853,9 @@ impl CodeGenerator {
                 args,
                 loc: _,
             }) => {
-                let lhs_type = self.get_expr_type(ctx, lhs);
-                let inline_fn_name = self
-                    .registry
-                    .get_fn_name_from_method(&lhs_type, &field_name.repr);
                 self.codegen_inline_fn_call(
                     ctx,
                     instrs,
-                    &inline_fn_name,
                     type_args,
                     Some(lhs),
                     &args.items,
@@ -1479,20 +1463,11 @@ impl CodeGenerator {
         &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        fn_name: &str,
+        fn_index: usize,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
-        loc: &Loc,
     ) {
-        // TODO: extract fn_index from call_info that's to be stored by typer
-        let Some(symbol) = self.registry.current_scope(ctx).get_symbol(fn_name) else {
-            self.reporter
-                .abort_due_to_compiler_bug(&format!("Unknown function {fn_name}"), *loc)
-        };
-        let SymbolKind::Function = symbol.kind else {
-            unreachable!()
-        };
-        let fn_info = self.registry.functions[symbol.col_index].relax();
+        let fn_info = self.registry.functions[fn_index].relax();
 
         if let Some(receiver_arg) = receiver_arg {
             self.codegen(ctx, instrs, receiver_arg);
@@ -1509,16 +1484,12 @@ impl CodeGenerator {
     fn populate_ctx_from_inline_fn_call(
         &mut self,
         ctx: &mut ExprContext,
-        inline_fn_name: &str,
+        inline_fn_index: usize,
         type_arg_exprs: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         arg_exprs: &Vec<CodeExpr>,
     ) -> &FnExpr {
-        let Some(symbol) = self.registry.current_scope(ctx).get_symbol(inline_fn_name) else {
-            unreachable!();
-        };
-
-        let inline_fn_def = self.registry.inline_fns[symbol.col_index];
+        let inline_fn_def = self.registry.inline_fns[inline_fn_index];
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -1576,19 +1547,21 @@ impl CodeGenerator {
         &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        inline_fn_name: &str,
         type_args: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         args: &Vec<CodeExpr>,
         call_expr_id: ExprId,
         loc: &Loc,
     ) {
+        let call_info_id = self.get_expr_info(ctx, call_expr_id, *loc);
+        let call_info = self.registry.inline_call_info[call_info_id].relax();
+
         self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
         self.registry.current_scope(ctx).be_mut().inline_fn_call_loc = Some(*loc);
 
         let inline_fn_def = self.relax_mut().populate_ctx_from_inline_fn_call(
             ctx,
-            inline_fn_name,
+            call_info.inline_fn_index,
             type_args,
             receiver_arg,
             args,
@@ -1598,11 +1571,7 @@ impl CodeGenerator {
             unreachable!()
         };
 
-        if let Some(expr_info) = self.get_expr_info(ctx, call_expr_id) {
-            let call_info = &self.registry.inline_fn_call_info[expr_info];
-            self.registry.current_scope(ctx).be_mut().expr_info_offset =
-                call_info.inner_expr_id_offset;
-        }
+        self.registry.current_scope(ctx).be_mut().expr_id_offset = call_info.inner_expr_id_offset;
 
         self.codegen_code_block(ctx, instrs, body, false);
 
@@ -2795,40 +2764,26 @@ impl CodeGenerator {
     }
 
     fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> &'static Type {
-        let Some(expr_info) = self.get_expr_info(ctx, expr.id()) else {
+        let scope = self.registry.current_scope(ctx);
+        let Some(type_id) = self.registry.get_expr_type(scope.expr_id_offset, expr) else {
             self.reporter
                 .abort_due_to_compiler_bug("Untyped code expression", expr.loc());
         };
-
-        match expr {
-            CodeExpr::InlineFnCall(_) | CodeExpr::InlineMethodCall(_) => {
-                let call_info = &self.registry.inline_fn_call_info[expr_info];
-                return self.get_type(call_info.return_type_id);
-            }
-            _ => {
-                return self.get_type(expr_info);
-            }
-        }
+        self.get_type(type_id)
     }
 
     fn get_type_expr_value(&self, ctx: &ExprContext, expr: &TypeExpr) -> &'static Type {
-        let Some(type_id) = self.get_expr_info(ctx, expr.id()) else {
-            self.reporter
-                .abort_due_to_compiler_bug("Untyped type expression", expr.loc());
-        };
-
-        return self.get_type(type_id);
+        let type_id = self.get_expr_info(ctx, expr.id(), expr.loc());
+        self.get_type(type_id)
     }
 
-    fn get_expr_info(&self, ctx: &ExprContext, expr_id: ExprId) -> Option<ExprInfo> {
+    fn get_expr_info(&self, ctx: &ExprContext, expr_id: ExprId, expr_loc: Loc) -> ExprInfo {
         let scope = self.registry.current_scope(ctx);
-
-        let expr_info = self.registry.expr_info[scope.expr_info_offset + expr_id];
-        if expr_info == EXPR_INFO_INVALID {
-            return None;
-        }
-
-        Some(expr_info)
+        let Some(expr_info) = self.registry.get_expr_info(scope.expr_id_offset, expr_id) else {
+            self.reporter
+                .abort_due_to_compiler_bug("Untyped expression", expr_loc);
+        };
+        expr_info
     }
 
     fn get_type(&self, type_id: TypeId) -> &'static Type {

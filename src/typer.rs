@@ -75,13 +75,6 @@ impl TypeLayout {
     }
 }
 
-/// Encodes different info based on expression type
-/// For most of the expressions it stores
-///   [TypeId] which is used to index [Registry::types].
-///
-/// Exceptions:
-/// - for [CodeExpr::InlineFnCall] and [CodeExpr::InlineMethodCall] it stores
-///     [usize] which is used to index [Registry::inline_fn_call_info]
 pub type ExprInfo = usize;
 pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
 
@@ -119,11 +112,6 @@ pub struct TyLocal {
 pub struct TyConst {
     pub type_id: TypeId,
     pub expr: UBRef<CodeExpr>,
-}
-
-pub struct ICallInfo {
-    pub return_type_id: TypeId,
-    pub inner_expr_id_offset: usize,
 }
 
 #[derive(Default)]
@@ -636,12 +624,7 @@ impl Typer {
                             variant_type: _,
                             variants,
                         } => {
-                            let symbol = self
-                                .registry
-                                .current_scope(&module.ctx)
-                                .get_symbol(&type_def.name.repr)
-                                .unwrap()
-                                .relax();
+                            let symbol = self.get_symbol(ctx, &type_def.name.repr).unwrap().relax();
                             let SymbolKind::Enum = symbol.kind else {
                                 continue;
                             };
@@ -703,12 +686,7 @@ impl Typer {
                                 continue;
                             });
 
-                            let symbol = self
-                                .registry
-                                .current_scope(&module.ctx)
-                                .get_symbol(&type_def.name.repr)
-                                .unwrap()
-                                .relax();
+                            let symbol = self.get_symbol(ctx, &type_def.name.repr).unwrap().relax();
                             let SymbolKind::TypeAlias = symbol.kind else {
                                 continue;
                             };
@@ -742,9 +720,7 @@ impl Typer {
                     }
 
                     let symbol = self
-                        .registry
-                        .current_scope(&module.ctx)
-                        .get_symbol(&fn_def.decl.fn_name.repr)
+                        .get_symbol(ctx, &fn_def.decl.fn_name.repr)
                         .unwrap()
                         .relax();
                     let SymbolKind::Function = symbol.kind else {
@@ -789,12 +765,7 @@ impl Typer {
                     }
                 }
                 TopLevelExpr::Let(let_expr) => {
-                    let symbol = self
-                        .registry
-                        .current_scope(&module.ctx)
-                        .get_symbol(&let_expr.name.repr)
-                        .unwrap()
-                        .relax();
+                    let symbol = self.get_symbol(ctx, &let_expr.name.repr).unwrap().relax();
 
                     // TODO: check for valid const expression (in case of global)
                     let value_type_id =
@@ -1015,8 +986,8 @@ impl Typer {
                             target_ctx = self.module_info.last().unwrap().ctx;
                         }
 
-                        let Ok(fn_info) =
-                            self.get_fn_info_for_call(target_ctx, &in_name.repr, &in_name.loc)
+                        let Ok(fn_index) =
+                            self.get_fn_index_for_call(target_ctx, &in_name.repr, &in_name.loc)
                         else {
                             // don't report any errors if function to be exported
                             //   could be in another module but only one module is inspected
@@ -1030,6 +1001,7 @@ impl Typer {
                             });
                             continue;
                         };
+                        let fn_info = &self.registry.functions[fn_index];
 
                         if self.reporter.in_inspection_mode {
                             self.reporter.print_inspection(&InspectInfo {
@@ -1617,63 +1589,63 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::FnCall(call) => {
-                if let Some(symbol) = self.get_symbol(ctx, &call.fn_name.repr) {
-                    if let SymbolKind::EnumConstructor = symbol.kind {
-                        let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
-                        let enum_def = &self.registry.enums[enum_ctor.enum_index];
-                        let variant = &enum_def.variants[enum_ctor.variant_index];
+                if let Some(symbol) = self.get_symbol(ctx, &call.fn_name.repr)
+                    && let SymbolKind::EnumConstructor = symbol.kind
+                {
+                    let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
+                    let enum_def = &self.registry.enums[enum_ctor.enum_index];
+                    let variant = &enum_def.variants[enum_ctor.variant_index];
 
-                        if self.reporter.in_inspection_mode {
-                            self.reporter.print_inspection(&InspectInfo {
-                                message: format!(
-                                    "{} // {}",
-                                    call.fn_name.repr, enum_ctor.variant_index
-                                ),
-                                loc: call.fn_name.loc,
-                                linked_loc: Some(enum_ctor.loc),
-                            });
-                        }
-
-                        for arg in &call.args.items {
-                            self.report_if_err(self.type_code_expr(ctx, arg));
-                        }
-
-                        if call.args.items.len() != 1 {
-                            return Err(Error {
-                                message: format!(
-                                    "Non-void enum constructors require exactly one argument"
-                                ),
-                                loc: call.fn_name.loc,
-                            });
-                        }
-
-                        if let Some(expr_type_id) = self.load_type(ctx, &call.args.items[0])
-                            && !is_type_compatible(
-                                &self.registry,
-                                self.get_type(variant.variant_type_id),
-                                self.get_type(expr_type_id),
-                            )
-                        {
-                            return Err(Error {
-                                message: format!(
-                                    "Invalid enum payload: {}, expected: {}",
-                                    self.registry.fmt(self.get_type(expr_type_id)),
-                                    self.registry.fmt(self.get_type(variant.variant_type_id)),
-                                ),
-                                loc: call.fn_name.loc,
-                            });
-                        }
-
-                        self.store_type(
-                            ctx,
-                            call.id,
-                            &Type::EnumInstance {
-                                enum_index: enum_ctor.enum_index,
-                            },
-                        );
-
-                        return Ok(());
+                    if self.reporter.in_inspection_mode {
+                        self.reporter.print_inspection(&InspectInfo {
+                            message: format!(
+                                "{} // {}",
+                                call.fn_name.repr, enum_ctor.variant_index
+                            ),
+                            loc: call.fn_name.loc,
+                            linked_loc: Some(enum_ctor.loc),
+                        });
                     }
+
+                    for arg in &call.args.items {
+                        self.report_if_err(self.type_code_expr(ctx, arg));
+                    }
+
+                    if call.args.items.len() != 1 {
+                        return Err(Error {
+                            message: format!(
+                                "Non-void enum constructors require exactly one argument"
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
+
+                    if let Some(expr_type_id) = self.load_type(ctx, &call.args.items[0])
+                        && !is_type_compatible(
+                            &self.registry,
+                            self.get_type(variant.variant_type_id),
+                            self.get_type(expr_type_id),
+                        )
+                    {
+                        return Err(Error {
+                            message: format!(
+                                "Invalid enum payload: {}, expected: {}",
+                                self.registry.fmt(self.get_type(expr_type_id)),
+                                self.registry.fmt(self.get_type(variant.variant_type_id)),
+                            ),
+                            loc: call.fn_name.loc,
+                        });
+                    }
+
+                    self.store_expr_info(ctx, call.id, self.registry.call_info.len());
+                    self.registry.be_mut().call_info.push(CallInfo {
+                        value: CallInfoValue::EnumCtor(enum_ctor.variant_index as i32),
+                        return_type_id: self.intern_type(&Type::EnumInstance {
+                            enum_index: enum_ctor.enum_index,
+                        }),
+                    });
+
+                    return Ok(());
                 }
 
                 self.type_fn_call(
@@ -2696,8 +2668,14 @@ impl Typer {
             };
         }
 
-        let fn_info = self.get_fn_info_for_call(ctx, fn_name, loc)?;
-        self.store_type(ctx, call_expr_id, &fn_info.type_.output);
+        let fn_index = self.get_fn_index_for_call(ctx, fn_name, loc)?;
+        let fn_info = &self.registry.functions[fn_index];
+
+        self.store_expr_info(ctx, call_expr_id, self.registry.call_info.len());
+        self.registry.be_mut().call_info.push(CallInfo {
+            value: CallInfoValue::FnCall(fn_index),
+            return_type_id: self.intern_type(&fn_info.type_.output),
+        });
 
         if all_good && !is_types_compatible(&self.registry, &fn_info.type_.inputs, &arg_types) {
             return Err(Error {
@@ -2739,12 +2717,12 @@ impl Typer {
         return Ok(());
     }
 
-    fn get_fn_info_for_call(
+    fn get_fn_index_for_call(
         &self,
         ctx: TyContextRef,
         fn_name: &str,
         loc: &Loc,
-    ) -> Result<&FnInfo, Error> {
+    ) -> Result<usize, Error> {
         let Some(symbol) = self.get_symbol(ctx, fn_name) else {
             return Err(Error {
                 message: format!("Unknown function: {}", fn_name),
@@ -2763,7 +2741,7 @@ impl Typer {
             });
         };
 
-        Ok(&self.registry.functions[symbol.col_index])
+        Ok(symbol.col_index)
     }
 
     fn type_inline_fn_call(
@@ -2891,12 +2869,16 @@ impl Typer {
         self.store_expr_info(
             parent_ctx,
             call_expr_id,
-            self.registry.inline_fn_call_info.len(),
+            self.registry.inline_call_info.len(),
         );
-        self.registry.inline_fn_call_info.be_mut().push(ICallInfo {
-            return_type_id: self.intern_type(&return_type),
-            inner_expr_id_offset,
-        });
+        self.registry
+            .inline_call_info
+            .be_mut()
+            .push(InlineCallInfo {
+                inline_fn_index: symbol.col_index,
+                inner_expr_id_offset,
+                return_type_id: self.intern_type(&return_type),
+            });
 
         if self.reporter.in_inspection_mode {
             let mut message = String::new();
@@ -3074,7 +3056,7 @@ impl Typer {
     ) -> Result<TypeId, Error> {
         self.type_type_expr(ctx, expr, is_referenced, loc)?;
 
-        let Some(type_id) = self.load_expr_info(ctx, expr.id()) else {
+        let Some(type_id) = self.registry.get_expr_info(ctx.expr_id_offset, expr.id()) else {
             self.reporter.abort_due_to_compiler_bug(
                 "Type expression should only return ok if it stored a type",
                 expr.loc(),
@@ -3451,24 +3433,7 @@ impl Typer {
     }
 
     fn load_type(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<TypeId> {
-        let Some(info) = self.load_expr_info(ctx, expr.id()) else {
-            return None;
-        };
-
-        if let CodeExpr::InlineFnCall(_) | CodeExpr::InlineMethodCall(_) = expr {
-            return Some(self.registry.inline_fn_call_info[info].return_type_id);
-        }
-
-        return Some(info);
-    }
-
-    fn load_expr_info(&self, ctx: TyContextRef, expr_id: ExprId) -> Option<ExprInfo> {
-        let info = self.registry.expr_info[ctx.expr_id_offset + expr_id];
-        if info == EXPR_INFO_INVALID {
-            return None;
-        }
-
-        return Some(info);
+        self.registry.get_expr_type(ctx.expr_id_offset, expr)
     }
 
     fn store_type(&self, ctx: TyContextRef, expr_id: ExprId, type_: &Type) {
