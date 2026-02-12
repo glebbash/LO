@@ -100,41 +100,6 @@ pub struct ConstSliceLen {
     pub slice_len: usize,
 }
 
-#[derive(Clone)]
-pub struct Symbol {
-    pub name: &'static str,
-    pub col_index: usize,
-}
-
-#[derive(Clone, Default)]
-pub struct Scope {
-    pub kind: ScopeKind,
-    pub symbols: Vec<Symbol>,
-    pub deferred_exprs: Vec<CodeUnit>,
-    pub inline_fn_call_loc: Option<Loc>,
-
-    pub expr_id_offset: usize,
-}
-
-impl Scope {
-    pub fn new(scope_type: ScopeKind) -> Self {
-        Self {
-            kind: scope_type,
-            ..Default::default()
-        }
-    }
-
-    pub fn get_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
-        for symbol in self.symbols.iter().rev() {
-            if symbol.name == symbol_name {
-                return Some(symbol);
-            }
-        }
-
-        None
-    }
-}
-
 pub struct StructDef {
     pub struct_name: &'static str,
     pub fields: Vec<StructField>,
@@ -188,8 +153,6 @@ pub struct Module {
     pub source: &'static [u8],
     pub parser: Parser,
     pub includes: Vec<ModuleInclude>,
-    pub scope_stack: Vec<Scope>,
-    pub ctx: ExprContext,
 }
 
 type ModuleId = usize;
@@ -237,7 +200,7 @@ pub struct Registry {
     pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
-    pub value_info: Vec<ValueInfo>, //      indexed by `ExprInfo` for `::IdentExpr`
+    pub value_info: Vec<ValueInfo>, //            indexed by `ExprInfo` for `::IdentExpr`
     pub globals: Vec<GlobalDef>,  //              indexed by `col_index` when `kind = Global`
     pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,   //              indexed by `col_index` when `kind = Function`
@@ -331,9 +294,7 @@ impl Registry {
         self.modules.push(Module {
             id: module_id,
             source: parser.source,
-            scope_stack: Vec::new(),
             parser,
-            ctx: ExprContext::new(self.modules.len(), None),
             includes,
         });
 

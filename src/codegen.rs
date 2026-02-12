@@ -52,11 +52,53 @@ struct VarInfoStructValueField {
     loc: Loc,
 }
 
+#[derive(Clone)]
+struct Symbol {
+    name: &'static str,
+    col_index: usize,
+}
+
+#[derive(Clone, Default)]
+struct Scope {
+    kind: ScopeKind,
+    symbols: Vec<Symbol>,
+    deferred_exprs: Vec<CodeUnit>,
+    inline_fn_call_loc: Option<Loc>,
+
+    expr_id_offset: usize,
+}
+
+impl Scope {
+    fn new(scope_type: ScopeKind) -> Self {
+        Self {
+            kind: scope_type,
+            ..Default::default()
+        }
+    }
+
+    fn get_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
+        for symbol in self.symbols.iter().rev() {
+            if symbol.name == symbol_name {
+                return Some(symbol);
+            }
+        }
+
+        None
+    }
+}
+
+struct CodegenModuleInfo {
+    scope_stack: Vec<Scope>,
+    ctx: ExprContext,
+}
+
+#[derive(Default)]
 pub struct CodeGenerator {
     // context
     pub registry: UBRef<Registry>,
 
     // state
+    module_info: Vec<CodegenModuleInfo>,
     wasm_fn_types: UBCell<Vec<WasmFnType>>,
     datas: UBCell<Vec<WasmData>>,
     string_pool: UBCell<Vec<PooledString>>,
@@ -67,20 +109,18 @@ pub struct CodeGenerator {
 }
 
 impl CodeGenerator {
-    pub fn new(registry: &mut Registry) -> Self {
-        Self {
-            registry: UBRef::new(&mut *registry),
-            wasm_fn_types: Default::default(),
-            datas: Default::default(),
-            string_pool: Default::default(),
-            const_slice_lens: Default::default(),
-            wasm_module: Default::default(),
-        }
+    pub fn new(registry: &Registry) -> Self {
+        let mut it = Self::default();
+        it.registry = UBRef::new(&*registry);
+        it
     }
 
     pub fn codegen_all(&mut self) {
         for module in &mut self.registry.modules {
-            module.scope_stack.push(Scope::new(ScopeKind::Global));
+            self.module_info.push(CodegenModuleInfo {
+                scope_stack: vec![Scope::new(ScopeKind::Global)],
+                ctx: ExprContext::new(module.id, None),
+            });
         }
 
         let mut fn_imports_count = 0;
@@ -163,7 +203,7 @@ impl CodeGenerator {
 
             let mut instrs = Vec::new();
             self.relax_mut().codegen(
-                &mut self.registry.modules[global.module_id].ctx,
+                &mut self.module_info[global.module_id].ctx,
                 &mut instrs,
                 &global.value,
             );
@@ -897,7 +937,7 @@ impl CodeGenerator {
                 if call.fn_name.repr == "inline_fn_call_loc" {
                     let mut inline_fn_call_loc = None;
                     // NOTE: iterating in not-reverse to get the first inline scope
-                    for scope in &self.registry.modules[ctx.module_id].scope_stack {
+                    for scope in &self.module_info[ctx.module_id].scope_stack {
                         if scope.kind == ScopeKind::InlineFn {
                             inline_fn_call_loc = scope.inline_fn_call_loc.clone();
                         }
@@ -1209,11 +1249,7 @@ impl CodeGenerator {
             CodeExpr::Break(BreakExpr { id: _, loc }) => {
                 let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
 
-                for scope in self.registry.modules[ctx.module_id]
-                    .scope_stack
-                    .iter()
-                    .rev()
-                {
+                for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
                     match scope.kind {
                         ScopeKind::Block => {
                             label_index += 1;
@@ -1240,11 +1276,7 @@ impl CodeGenerator {
             CodeExpr::Continue(ContinueExpr { id: _, loc }) => {
                 let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
 
-                for scope in self.registry.modules[ctx.module_id]
-                    .scope_stack
-                    .iter()
-                    .rev()
-                {
+                for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
                     match scope.kind {
                         ScopeKind::Block => {
                             label_index += 1;
@@ -1313,16 +1345,12 @@ impl CodeGenerator {
                 let code_unit = self.build_code_unit(ctx, expr);
 
                 // find first non-inline-fn scope
-                let mut scope_to_defer = self.registry.modules[ctx.module_id]
+                let mut scope_to_defer = self.module_info[ctx.module_id]
                     .scope_stack
                     .relax_mut()
                     .last_mut()
                     .unwrap();
-                for scope in self.registry.modules[ctx.module_id]
-                    .scope_stack
-                    .iter_mut()
-                    .rev()
-                {
+                for scope in self.module_info[ctx.module_id].scope_stack.iter_mut().rev() {
                     if scope.kind != ScopeKind::InlineFn {
                         scope_to_defer = scope;
                         break;
@@ -1949,11 +1977,7 @@ impl CodeGenerator {
     }
 
     fn emit_deferred_for_return(&self, ctx: &ExprContext, instrs: &mut Vec<WasmInstr>) {
-        for scope in self.registry.modules[ctx.module_id]
-            .scope_stack
-            .iter()
-            .rev()
-        {
+        for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
             self.emit_deferred(scope, instrs);
         }
     }
@@ -2506,19 +2530,19 @@ impl CodeGenerator {
     }
 
     fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeKind) {
-        let module = &mut self.relax_mut().registry.modules[ctx.module_id];
+        let module = &mut self.relax_mut().module_info[ctx.module_id];
 
         self.init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
     }
 
     fn exit_scope(&mut self, ctx: &ExprContext) -> Scope {
-        let module = &mut self.registry.modules[ctx.module_id];
+        let module = &mut self.module_info[ctx.module_id];
 
         module.scope_stack.pop().unwrap()
     }
 
     fn current_scope(&self, ctx: &ExprContext) -> &Scope {
-        let module = &self.registry.modules[ctx.module_id];
+        let module = &self.module_info[ctx.module_id];
 
         module.scope_stack.last().unwrap()
     }
