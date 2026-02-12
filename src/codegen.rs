@@ -566,14 +566,7 @@ impl CodeGenerator {
             }) => {
                 if *is_inline {
                     let code_unit = self.build_code_unit(ctx, value);
-                    self.register_block_const(
-                        ctx,
-                        ConstDef {
-                            const_name: name.repr,
-                            code_unit,
-                            loc: name.loc,
-                        },
-                    );
+                    self.register_block_const(ctx, name.repr, code_unit, name.loc);
                     return;
                 }
 
@@ -1424,18 +1417,9 @@ impl CodeGenerator {
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
     ) -> &EnumConstructor {
-        let Some(symbol) = self
-            .registry
-            .current_scope(ctx)
-            .get_symbol(&header.variant_name.repr)
-        else {
-            unreachable!()
-        };
-        let SymbolKind::EnumConstructor = symbol.kind else {
-            unreachable!()
-        };
-
-        let enum_ctor = &self.registry.enum_ctors[symbol.col_index].relax();
+        let expr_info = self.get_expr_info(ctx, header.variant_bind.id, header.variant_bind.loc);
+        let var_symbol = &self.registry.symbols[expr_info];
+        let enum_ctor = &self.registry.enum_ctors[var_symbol.col_index].relax();
         let enum_def = &self.registry.enums[enum_ctor.enum_index].relax();
         let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
 
@@ -1512,13 +1496,12 @@ impl CodeGenerator {
         for (inline_fn_param, inline_fn_arg) in
             inline_fn_def.decl.params.iter().zip(all_args.into_iter())
         {
-            let const_def = ConstDef {
-                const_name: inline_fn_param.param_name.repr,
-                code_unit: inline_fn_arg,
-                loc: inline_fn_param.loc,
-            };
-
-            self.register_block_const(ctx, const_def);
+            self.register_block_const(
+                ctx,
+                inline_fn_param.param_name.repr,
+                inline_fn_arg,
+                inline_fn_param.loc,
+            );
         }
 
         let FnExprValue::Body(body) = &inline_fn_def.value else {
@@ -2016,18 +1999,27 @@ impl CodeGenerator {
         local_index
     }
 
-    fn register_block_const(&mut self, ctx: &ExprContext, const_def: ConstDef) {
-        if const_def.const_name == "_" {
+    // TODO: remove, use global symbols
+    fn register_block_const(
+        &mut self,
+        ctx: &ExprContext,
+        const_name: &'static str,
+        code_unit: CodeUnit,
+        loc: Loc,
+    ) {
+        if const_name == "_" {
             return;
         }
 
-        let _ = self.registry.define_symbol(
-            ctx,
-            const_def.const_name,
-            SymbolKind::Const,
-            const_def.loc,
-        );
-        self.registry.constants.push(const_def);
+        let _ = self
+            .registry
+            .define_symbol(ctx, const_name, SymbolKind::Const, loc);
+
+        self.registry.constants.push(ConstDef {
+            type_id: usize::MAX,            // stub
+            expr: UBRef(core::ptr::null()), // stub
+            code_unit,
+        });
     }
 
     fn create_or_get_addr_local(&self, ctx: &mut ExprContext) -> u32 {

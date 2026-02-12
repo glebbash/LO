@@ -193,9 +193,11 @@ pub struct GlobalDef {
 
 #[derive(Clone)]
 pub struct ConstDef {
-    pub const_name: &'static str,
+    pub type_id: TypeId,
+    pub expr: UBRef<CodeExpr>,
+
+    // TODO: remove this field
     pub code_unit: CodeUnit,
-    pub loc: Loc,
 }
 
 pub struct Module {

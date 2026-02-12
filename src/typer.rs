@@ -109,11 +109,6 @@ pub struct TyLocal {
     pub type_id: TypeId,
 }
 
-pub struct TyConst {
-    pub type_id: TypeId,
-    pub expr: UBRef<CodeExpr>,
-}
-
 #[derive(Default)]
 pub struct Typer {
     pub reporter: UBRef<Reporter>,
@@ -125,7 +120,6 @@ pub struct Typer {
 
     type_aliases: UBCell<Vec<TypeId>>, // indexed by `col_index` when `kind = TypeAlias`
     locals: Vec<TyLocal>,              // indexed by `col_index` when `kind = Local`
-    constants: Vec<TyConst>,           // indexed by `col_index` when `kind = Const`
 
     first_string_usage: UBCell<Option<Loc>>,
     allocated_strings: Vec<String>, // storage for all rust `String` objects
@@ -315,8 +309,7 @@ impl Typer {
 
                                 let enum_index = self.registry.enums.len() - 1;
 
-                                // TODO: remove this
-                                let _ = self.define_symbol_compat(
+                                let _ = self.define_symbol(
                                     ctx,
                                     constructor_name,
                                     SymbolKind::EnumConstructor,
@@ -420,21 +413,13 @@ impl Typer {
                             let_expr.name.loc,
                         );
 
-                        // TODO: remove after migration
-                        {
-                            self.registry.constants.push(ConstDef {
-                                const_name: let_expr.name.repr,
-                                code_unit: CodeUnit {
-                                    type_: Type::Never, // placeholder
-                                    instrs: Vec::new(), // placeholder
-                                },
-                                loc: let_expr.name.loc,
-                            });
-                        }
-
-                        self.constants.push(TyConst {
+                        self.registry.constants.be_mut().push(ConstDef {
                             type_id: self.intern_type(&Type::Never), // placeholder
                             expr: UBRef::new(&*let_expr.value),
+                            code_unit: CodeUnit {
+                                type_: Type::Never, // placeholder
+                                instrs: Vec::new(), // placeholder
+                            },
                         });
                         continue;
                     }
@@ -771,7 +756,7 @@ impl Typer {
                             const_.code_unit.type_ = self.get_type(value_type_id).clone();
                         }
 
-                        let const_ = self.constants[symbol.col_index].relax_mut();
+                        let const_ = self.registry.constants[symbol.col_index].relax_mut();
                         const_.type_id = value_type_id;
 
                         if self.reporter.in_inspection_mode {
@@ -2029,19 +2014,11 @@ impl Typer {
                         };
                     }
                     IfCond::Match(match_header) => {
-                        match self.get_matched_variant(ctx, match_header) {
-                            Err(err) => self.report_error(&err),
-                            Ok(enum_variant) => {
-                                let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
-                                self.define_local(
-                                    then_ctx,
-                                    match_header.variant_bind.repr,
-                                    enum_variant.variant_type_id,
-                                    match_header.variant_bind.loc,
-                                );
-                                updated_then_ctx = Some(then_ctx);
-                            }
+                        let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
+                        if let Err(err) = self.type_match_header(then_ctx, match_header) {
+                            self.report_error(&err)
                         }
+                        updated_then_ctx = Some(then_ctx);
                     }
                 }
 
@@ -2203,16 +2180,8 @@ impl Typer {
                     });
                 }
 
-                match self.get_matched_variant(ctx, &match_expr.header) {
-                    Err(err) => self.report_error(&err),
-                    Ok(enum_variant) => {
-                        self.define_local(
-                            ctx,
-                            match_expr.header.variant_bind.repr,
-                            enum_variant.variant_type_id,
-                            match_expr.header.variant_bind.loc,
-                        );
-                    }
+                if let Err(err) = self.type_match_header(ctx, &match_expr.header) {
+                    self.report_error(&err)
                 }
 
                 self.store_type(ctx, match_expr.id, &Type::Void);
@@ -2385,7 +2354,7 @@ impl Typer {
                 });
             }
             SymbolKind::Const => {
-                let const_def = &self.constants[symbol.col_index];
+                let const_def = &self.registry.constants[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(&InspectInfo {
@@ -2473,11 +2442,11 @@ impl Typer {
         format!("{}::{method_name}", self.registry.fmt(receiver_type_base))
     }
 
-    fn get_matched_variant(
+    fn type_match_header(
         &self,
         ctx: TyContextRef,
         match_header: &MatchHeader,
-    ) -> Result<&EnumVariant, Error> {
+    ) -> Result<(), Error> {
         let Some(symbol) = self.get_symbol(ctx, &match_header.variant_name.repr) else {
             return Err(Error {
                 message: format!("Unknown symbol"),
@@ -2535,7 +2504,25 @@ impl Typer {
             });
         }
 
-        return Ok(enum_variant);
+        self.define_local(
+            ctx,
+            match_header.variant_bind.repr,
+            enum_variant.variant_type_id,
+            match_header.variant_bind.loc,
+        );
+
+        self.store_expr_info(
+            ctx,
+            match_header.variant_bind.id,
+            self.registry.symbols.len(),
+        );
+        self.registry.symbols.be_mut().push(Symbol2 {
+            kind: SymbolKind::EnumConstructor,
+            col_index: symbol.col_index,
+            type_id: match_header.variant_bind.id,
+        });
+
+        Ok(())
     }
 
     fn assert_catchable_type<'a>(
@@ -3312,7 +3299,7 @@ impl Typer {
                 };
 
                 if let SymbolKind::Const = symbol.kind {
-                    return Some(&self.constants[symbol.col_index].expr);
+                    return Some(&self.registry.constants[symbol.col_index].expr);
                 }
             }
 
@@ -3385,7 +3372,7 @@ impl Typer {
         let symbol_col_index = match &symbol_kind {
             SymbolKind::Local => self.locals.len(),
             SymbolKind::Global => self.registry.globals.len(),
-            SymbolKind::Const => self.constants.len(),
+            SymbolKind::Const => self.registry.constants.len(),
 
             SymbolKind::InlineFn => self.registry.inline_fns.len(),
             SymbolKind::Function => self.registry.functions.len(),
