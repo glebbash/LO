@@ -1,29 +1,14 @@
 use crate::{ast::*, common::*, lexer::*, parser::*, typer::*, wasm::*};
 
-#[derive(Clone, Debug, PartialEq, Copy)]
-pub enum SymbolKind {
-    TypeAlias,
-    Struct,
-    Enum,
-
-    Local,
-    Global,
-    Const,
-
-    InlineFn,
-    Function,
-    EnumConstructor,
-}
-
-pub enum VariableKind {
+pub enum ValueKind {
     Local,
     Global,
     Const,
     EnumConstructor,
 }
 
-pub struct VariableInfo {
-    pub kind: VariableKind,
+pub struct ValueInfo {
+    pub kind: ValueKind,
     pub col_index: usize,
     pub type_id: TypeId,
 }
@@ -244,15 +229,15 @@ pub struct Registry {
     pub in_single_file_mode: bool,
     pub should_emit_dbg_local_names: bool,
 
-    pub fm: Box<FileManager>,
     pub reporter: Box<Reporter>,
 
-    pub modules: Vec<Module>,                  // indexed by `module_id`
+    pub files: Vec<FileInfo>,                  // indexed by `Loc::file_id`
+    pub modules: Vec<Module>,                  // indexed by `*::module_id`
     pub expr_info: Vec<ExprInfo>,              // indexed by `CodeExpr.id()` and `TypeExpr.id()`
     pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
-    pub variable_info: Vec<VariableInfo>, //      indexed by `ExprInfo` for `::IdentExpr`
+    pub value_info: Vec<ValueInfo>, //      indexed by `ExprInfo` for `::IdentExpr`
     pub globals: Vec<GlobalDef>,  //              indexed by `col_index` when `kind = Global`
     pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,   //              indexed by `col_index` when `kind = Function`
@@ -268,19 +253,25 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn new() -> Self {
-        let mut it = Self::default();
-        it.reporter.fm = UBRef::new(&mut *it.fm);
+    pub fn new() -> Box<Self> {
+        let mut it = Box::new(Self::default());
+        it.reporter.registry = UBRef::new(&*it);
+        it.files.push(FileInfo {
+            index: 0,
+            included_times: 0,
+            absolute_path: String::from("<internal>"),
+            source: String::from(""),
+        });
         it
     }
 
     pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<ModuleId> {
-        let file_id = catch!(self.fm.include_file(relative_path, loc), err, {
+        let file_id = catch!(self.include_file_contents(relative_path, loc), err, {
             self.reporter.error(&err);
             return None;
         });
 
-        let file_is_newly_added = self.fm.files[file_id].included_times == 1;
+        let file_is_newly_added = self.files[file_id].included_times == 1;
 
         if self.reporter.in_inspection_mode {
             self.reporter
@@ -291,7 +282,7 @@ impl Registry {
             return Some(self.get_module_id_by_file_id(file_id));
         }
 
-        let source = self.fm.files[file_id].source.as_bytes().relax();
+        let source = self.files[file_id].source.as_bytes().relax();
 
         let mut lexer = Lexer::new(source, file_id);
         catch!(lexer.lex_file(), err, {
@@ -349,6 +340,66 @@ impl Registry {
         Some(module_id)
     }
 
+    fn include_file_contents(&mut self, relative_path: &str, loc: &Loc) -> Result<usize, Error> {
+        let absolute_path = self.resolve_path(relative_path, loc);
+
+        for file in &mut self.files {
+            if file.absolute_path == absolute_path {
+                file.included_times += 1;
+                return Ok(file.index);
+            }
+        }
+
+        let file_contents =
+            fs::file_read_utf8(&absolute_path).map_err(|message| Error { message, loc: *loc })?;
+
+        let file_id = self.files.len();
+        self.files.push(FileInfo {
+            index: file_id,
+            included_times: 1,
+            absolute_path: absolute_path.into(),
+            source: file_contents,
+        });
+
+        Ok(file_id)
+    }
+
+    pub fn resolve_path(&self, file_path: &str, loc: &Loc) -> String {
+        let relative_to = &self.files[loc.file_id].absolute_path;
+
+        if !file_path.starts_with('.') {
+            return file_path.into();
+        }
+
+        let mut path_items = relative_to.split('/').collect::<Vec<_>>();
+        path_items.pop(); // remove `relative_to`'s file name
+
+        path_items.extend(file_path.split('/'));
+
+        let mut i = 0;
+        loop {
+            if i >= path_items.len() {
+                break;
+            }
+
+            if path_items[i] == "." {
+                path_items.remove(i);
+                continue;
+            }
+
+            if path_items[i] == ".." && i > 0 {
+                i -= 1;
+                path_items.remove(i);
+                path_items.remove(i);
+                continue;
+            }
+
+            i += 1;
+        }
+
+        path_items.join("/")
+    }
+
     pub fn get_module_id_by_file_id(&self, file_id: usize) -> ModuleId {
         for module in &self.modules {
             if module.parser.lexer.file_id == file_id {
@@ -366,7 +417,7 @@ impl Registry {
 
         Some(match expr {
             CodeExpr::Ident(_) => {
-                let symbol = &self.variable_info[expr_info];
+                let symbol = &self.value_info[expr_info];
                 symbol.type_id
             }
             CodeExpr::FnCall(_) | CodeExpr::MethodCall(_) => {

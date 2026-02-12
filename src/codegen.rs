@@ -55,7 +55,6 @@ struct VarInfoStructValueField {
 pub struct CodeGenerator {
     // context
     pub registry: UBRef<Registry>,
-    pub reporter: UBRef<Reporter>,
 
     // state
     wasm_fn_types: UBCell<Vec<WasmFnType>>,
@@ -71,7 +70,6 @@ impl CodeGenerator {
     pub fn new(registry: &mut Registry) -> Self {
         Self {
             registry: UBRef::new(&mut *registry),
-            reporter: UBRef::new(&mut *registry.reporter),
             wasm_fn_types: Default::default(),
             datas: Default::default(),
             string_pool: Default::default(),
@@ -427,7 +425,7 @@ impl CodeGenerator {
                         let current_item_type = self.get_expr_type(ctx, item);
                         if current_item_type != item_type {
                             // TODO!: move to typer
-                            self.reporter.abort_due_to_compiler_bug(
+                            self.registry.reporter.abort_due_to_compiler_bug(
                                 &format!(
                                     "Unexpected array element type: {}, expected: {}",
                                     self.registry.fmt(current_item_type),
@@ -440,7 +438,7 @@ impl CodeGenerator {
                         self.codegen(ctx, &mut tmp_instrs, item);
                         let WasmInstr::I32Const { value } = tmp_instrs.pop().unwrap() else {
                             // TODO!: move to typer
-                            self.reporter.abort_due_to_compiler_bug(
+                            self.registry.reporter.abort_due_to_compiler_bug(
                                 &format!("Unexpected array element value"),
                                 item.loc(),
                             );
@@ -455,7 +453,7 @@ impl CodeGenerator {
                         let current_item_type = self.get_expr_type(ctx, item);
                         if current_item_type != item_type {
                             // TODO!: move to typer
-                            self.reporter.abort_due_to_compiler_bug(
+                            self.registry.reporter.abort_due_to_compiler_bug(
                                 &format!(
                                     "Unexpected array element type: {}, expected: {}",
                                     self.registry.fmt(current_item_type),
@@ -468,14 +466,14 @@ impl CodeGenerator {
                         self.codegen(ctx, &mut tmp_instrs, item);
                         let WasmInstr::I32Const { value: len } = tmp_instrs.pop().unwrap() else {
                             // TODO!: move to typer
-                            self.reporter.abort_due_to_compiler_bug(
+                            self.registry.reporter.abort_due_to_compiler_bug(
                                 &format!("Unexpected array element value"),
                                 item.loc(),
                             );
                         };
                         let WasmInstr::I32Const { value: ptr } = tmp_instrs.pop().unwrap() else {
                             // TODO!: move to typer
-                            self.reporter.abort_due_to_compiler_bug(
+                            self.registry.reporter.abort_due_to_compiler_bug(
                                 &format!("Unexpected array element value"),
                                 item.loc(),
                             );
@@ -486,7 +484,7 @@ impl CodeGenerator {
                     }
                 } else {
                     // TODO!: move to typer
-                    self.reporter.abort_due_to_compiler_bug(
+                    self.registry.reporter.abort_due_to_compiler_bug(
                         &format!(
                             "Unsupported array literal element type: {}",
                             self.registry.fmt(item_type)
@@ -595,7 +593,7 @@ impl CodeGenerator {
                     })) = self.var_from_expr(ctx, expr)
                     else {
                         // TODO!: move to typer
-                        self.reporter.abort_due_to_compiler_bug(
+                        self.registry.reporter.abort_due_to_compiler_bug(
                             &format!(
                                 "Invalid reference expression. Only struct reference fields allowed.",
                             ),
@@ -711,7 +709,7 @@ impl CodeGenerator {
                 if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
                     let Some(var) = self.var_from_expr(ctx, &lhs) else {
                         // TODO!: move to typer
-                        self.reporter.abort_due_to_compiler_bug(
+                        self.registry.reporter.abort_due_to_compiler_bug(
                             &format!("Cannot perform compound assignment: invalid lhs"),
                             *op_loc,
                         );
@@ -740,7 +738,7 @@ impl CodeGenerator {
             }) => {
                 let Some(var) = self.var_from_expr(ctx, lhs) else {
                     // TODO!: move to typer
-                    self.reporter.abort_due_to_compiler_bug(
+                    self.registry.reporter.abort_due_to_compiler_bug(
                         &format!("Cannot perform assignment: invalid lhs"),
                         *op_loc,
                     );
@@ -851,13 +849,13 @@ impl CodeGenerator {
                     };
 
                     let absolute_path = self
-                        .reporter
-                        .fm
+                        .registry
                         .resolve_path(&str_expr.value, &call.fn_name.loc);
                     let bytes = match fs::file_read(&absolute_path) {
                         Ok(value) => value,
                         // TODO!: move to typer?
                         Err(err_message) => self
+                            .registry
                             .reporter
                             .abort_due_to_compiler_bug(&err_message, call.args.items[0].loc()),
                     };
@@ -877,7 +875,7 @@ impl CodeGenerator {
                     return;
                 }
 
-                // TODO: move the len extraction into typer?
+                // TODO: move the len extraction to typer?
                 if call.fn_name.repr == "const_slice_len" {
                     let mut slice_ptr_instrs = Vec::new();
                     self.codegen(ctx, &mut slice_ptr_instrs, &call.args.items[0]);
@@ -906,7 +904,7 @@ impl CodeGenerator {
                     }
 
                     let loc_str = self.process_const_string(
-                        &inline_fn_call_loc.unwrap().to_string(&self.reporter.fm),
+                        &inline_fn_call_loc.unwrap().to_string(&self.registry),
                     );
                     // emit str struct values
                     instrs.push(WasmInstr::I32Const {
@@ -966,7 +964,7 @@ impl CodeGenerator {
                     return;
                 }
 
-                self.reporter.abort_due_to_compiler_bug(
+                self.registry.reporter.abort_due_to_compiler_bug(
                     &format!("Unknown intrinsic: {}", call.fn_name.repr),
                     call.fn_name.loc,
                 );
@@ -1222,7 +1220,7 @@ impl CodeGenerator {
                         }
                         ScopeKind::Function => {
                             // TODO!: move to typer
-                            self.reporter.abort_due_to_compiler_bug(
+                            self.registry.reporter.abort_due_to_compiler_bug(
                                 &format!("Cannot break outside of a loop"),
                                 *loc,
                             );
@@ -1253,7 +1251,7 @@ impl CodeGenerator {
                         }
                         ScopeKind::Function => {
                             // TODO!: move to typer
-                            self.reporter.abort_due_to_compiler_bug(
+                            self.registry.reporter.abort_due_to_compiler_bug(
                                 &format!("Cannot continue outside of a loop"),
                                 *loc,
                             );
@@ -1364,8 +1362,8 @@ impl CodeGenerator {
         header: &Box<MatchHeader>,
     ) -> &EnumConstructor {
         let expr_info = self.get_expr_info(ctx, header.variant_bind.id, header.variant_bind.loc);
-        let var_info = &self.registry.variable_info[expr_info];
-        let enum_ctor = &self.registry.enum_ctors[var_info.col_index].relax();
+        let value_info = &self.registry.value_info[expr_info];
+        let enum_ctor = &self.registry.enum_ctors[value_info.col_index].relax();
         let enum_def = &self.registry.enums[enum_ctor.enum_index].relax();
         let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
 
@@ -1887,7 +1885,8 @@ impl CodeGenerator {
             | VarInfo::VoidEnumValue(VarInfoVoidEnumValue { loc, .. })
             | VarInfo::StructValueField(VarInfoStructValueField { loc, .. }) => {
                 // TODO!: move to typer
-                self.reporter
+                self.registry
+                    .reporter
                     .abort_due_to_compiler_bug(&format!("Cannot mutate a constant"), *loc);
             }
         };
@@ -1987,33 +1986,33 @@ impl CodeGenerator {
 
     fn var_from_ident(&self, ctx: &ExprContext, var_name: &IdentExpr) -> VarInfo {
         let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc);
-        let var_info = &self.registry.variable_info[expr_info];
-        match var_info.kind {
-            VariableKind::Global => {
-                let global = &self.registry.globals[var_info.col_index];
+        let value_info = &self.registry.value_info[expr_info];
+        match value_info.kind {
+            ValueKind::Global => {
+                let global = &self.registry.globals[value_info.col_index];
 
                 return VarInfo::Global(VarInfoGlobal {
                     global_index: global.wasm_global_index,
                     var_type: self.get_type(global.type_id).clone(),
                 });
             }
-            VariableKind::Const => {
-                let const_def = &self.registry.constants[var_info.col_index];
+            ValueKind::Const => {
+                let const_def = &self.registry.constants[value_info.col_index];
 
                 return VarInfo::Const(VarInfoConst {
                     const_def: const_def.relax(),
                     loc: var_name.loc,
                 });
             }
-            VariableKind::EnumConstructor => {
-                let enum_ctor = &self.registry.enum_ctors[var_info.col_index];
+            ValueKind::EnumConstructor => {
+                let enum_ctor = &self.registry.enum_ctors[value_info.col_index];
 
                 return VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
                     variant_index: enum_ctor.variant_index,
                     loc: var_name.loc,
                 });
             }
-            VariableKind::Local => { /* processed separately */ }
+            ValueKind::Local => { /* processed separately */ }
         }
 
         let Some(symbol) = self.current_scope(ctx).get_symbol(var_name.repr) else {
@@ -2307,7 +2306,7 @@ impl CodeGenerator {
             | Type::Result(_)
             | Type::Container(_) => {
                 // TODO!: move to typer
-                self.reporter.abort_due_to_compiler_bug(
+                self.registry.reporter.abort_due_to_compiler_bug(
                     &format!(
                         "Operator `{}` is incompatible with operands of type {}",
                         op_loc.read_span(&self.registry.modules[ctx.module_id].source),
@@ -2417,7 +2416,7 @@ impl CodeGenerator {
             op_loc: &Loc,
         ) -> ! {
             // TODO!: move to typer
-            self_.reporter.abort_due_to_compiler_bug(
+            self_.registry.reporter.abort_due_to_compiler_bug(
                 &format!(
                     "Operator `{}` is incompatible with operands of type {}",
                     op_loc.read_span(&self_.registry.modules[ctx.module_id].source),
@@ -2625,7 +2624,8 @@ impl CodeGenerator {
     fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> &'static Type {
         let scope = self.current_scope(ctx);
         let Some(type_id) = self.registry.get_expr_type(scope.expr_id_offset, expr) else {
-            self.reporter
+            self.registry
+                .reporter
                 .abort_due_to_compiler_bug("Untyped code expression", expr.loc());
         };
         self.get_type(type_id)
@@ -2639,7 +2639,8 @@ impl CodeGenerator {
     fn get_expr_info(&self, ctx: &ExprContext, expr_id: ExprId, expr_loc: Loc) -> ExprInfo {
         let scope = self.current_scope(ctx);
         let Some(expr_info) = self.registry.get_expr_info(scope.expr_id_offset, expr_id) else {
-            self.reporter
+            self.registry
+                .reporter
                 .abort_due_to_compiler_bug("Untyped expression", expr_loc);
         };
         expr_info

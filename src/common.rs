@@ -1,4 +1,5 @@
 pub(crate) use crate::io::*;
+use crate::registry::Registry;
 pub(crate) use alloc::{
     boxed::Box, collections::BTreeMap, fmt::Write, format, string::String, vec, vec::Vec,
 };
@@ -11,9 +12,9 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn to_string(&self, fm: &FileManager) -> String {
+    pub fn to_string(&self, registry: &Registry) -> String {
         let mut out = String::new();
-        self.loc.format(&mut out, fm);
+        self.loc.format(&mut out, registry);
         out.push_str(" - ");
         out.push_str(&self.message);
         out
@@ -55,14 +56,14 @@ impl Loc {
         return unsafe { str::from_utf8_unchecked(&source[self.pos.offset..self.end_pos.offset]) };
     }
 
-    pub fn format(&self, out: &mut String, fm: &FileManager) {
-        let file_path = &fm.files[self.file_id].absolute_path;
+    pub fn format(&self, out: &mut String, registry: &Registry) {
+        let file_path = &registry.files[self.file_id].absolute_path;
         write!(out, "{}:{}:{}", file_path, self.pos.line, self.pos.col).unwrap();
     }
 
-    pub fn to_string(&self, fm: &FileManager) -> String {
+    pub fn to_string(&self, registry: &Registry) -> String {
         let mut out = String::new();
-        self.format(&mut out, fm);
+        self.format(&mut out, registry);
         out
     }
 }
@@ -75,7 +76,7 @@ pub struct InspectInfo {
 
 #[derive(Default)]
 pub struct Reporter {
-    pub fm: UBRef<FileManager>,
+    pub registry: UBRef<Registry>,
 
     pub in_inspection_mode: bool,
 
@@ -116,7 +117,7 @@ impl Reporter {
         }
 
         stderr_write("ERROR: ");
-        stderr_write(err.to_string(&*self.fm));
+        stderr_write(err.to_string(&*self.registry));
         stderr_write("\n");
     }
 
@@ -137,7 +138,7 @@ impl Reporter {
         }
 
         stderr_write("WARNING: ");
-        stderr_write(err.to_string(&self.fm));
+        stderr_write(err.to_string(&self.registry));
         stderr_write("\n");
     }
 
@@ -170,7 +171,7 @@ impl Reporter {
     pub fn print_include_info(&self, file_is_newly_added: bool, file_id: usize, loc: &Loc) {
         if file_is_newly_added {
             let file_id = file_id;
-            let file_path = &self.fm.files[file_id].absolute_path;
+            let file_path = &self.registry.files[file_id].absolute_path;
             stdout_writeln(format!(
                 "{{ \"type\": \"file\", \
                     \"index\": {file_id}, \

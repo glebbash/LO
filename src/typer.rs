@@ -82,33 +82,48 @@ pub type TypeId = usize;
 
 type TyContextRef = UBRef<TyContext>;
 
-pub struct TyContext {
-    pub module_id: usize,
-    pub id: usize,
-    pub parent: Option<TyContextRef>,
-    pub kind: ScopeKind,
-    pub fn_index: Option<usize>,
-    pub expr_id_offset: usize,
-    pub symbols: Vec<TySymbol>,
+struct TyContext {
+    module_id: usize,
+    id: usize,
+    parent: Option<TyContextRef>,
+    kind: ScopeKind,
+    fn_index: Option<usize>,
+    expr_id_offset: usize,
+    symbols: Vec<TySymbol>,
+}
+
+#[derive(Clone, Debug, PartialEq, Copy)]
+enum TySymbolKind {
+    TypeAlias,
+    Struct,
+    Enum,
+
+    Local,
+    Global,
+    Const,
+
+    InlineFn,
+    Function,
+    EnumConstructor,
 }
 
 #[derive(Clone)]
-pub struct TySymbol {
-    pub ctx_id: usize,
-    pub name: &'static str,
-    pub kind: SymbolKind,
-    pub col_index: usize,
-    pub loc: Loc,
+struct TySymbol {
+    ctx_id: usize,
+    name: &'static str,
+    kind: TySymbolKind,
+    col_index: usize,
+    loc: Loc,
 }
 
-pub struct TyModuleInfo {
+struct TyModuleInfo {
     ctx: TyContextRef,
 }
 
 #[derive(Default)]
 pub struct Typer {
-    pub reporter: UBRef<Reporter>,
     pub registry: UBRef<Registry>,
+    pub reporter: UBRef<Reporter>,
 
     contexts: UBCell<StableVec<TyContext>>,
     module_info: UBCell<Vec<TyModuleInfo>>,
@@ -118,7 +133,7 @@ pub struct Typer {
     locals_types: Vec<TypeId>,         // indexed by `TySymbol::col_index` when `kind = Local`
 
     first_string_usage: UBCell<Option<Loc>>,
-    allocated_strings: Vec<String>, // storage for all rust `String` objects
+    allocated_strings: Vec<String>, // storage for all allocated `String` objects
 }
 
 impl Typer {
@@ -201,7 +216,7 @@ impl Typer {
                     }
 
                     let mut lines = 0;
-                    for file in &self.reporter.fm.files {
+                    for file in &self.registry.files {
                         lines += file
                             .source
                             .as_bytes()
@@ -249,7 +264,7 @@ impl Typer {
                             let _ = self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
-                                SymbolKind::Struct,
+                                TySymbolKind::Struct,
                                 type_def.name.loc,
                             );
 
@@ -266,7 +281,7 @@ impl Typer {
                             if !self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
-                                SymbolKind::Enum,
+                                TySymbolKind::Enum,
                                 type_def.name.loc,
                             ) {
                                 continue;
@@ -300,7 +315,7 @@ impl Typer {
                                 let _ = self.define_symbol(
                                     ctx,
                                     constructor_name,
-                                    SymbolKind::EnumConstructor,
+                                    TySymbolKind::EnumConstructor,
                                     variant.variant_name.loc,
                                 );
 
@@ -315,7 +330,7 @@ impl Typer {
                             let _ = self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
-                                SymbolKind::TypeAlias,
+                                TySymbolKind::TypeAlias,
                                 type_def.name.loc,
                             );
 
@@ -330,7 +345,7 @@ impl Typer {
                         let _ = self.define_symbol(
                             ctx,
                             fn_def.decl.fn_name.repr,
-                            SymbolKind::InlineFn,
+                            TySymbolKind::InlineFn,
                             fn_def.decl.fn_name.loc,
                         );
 
@@ -341,7 +356,7 @@ impl Typer {
                     let _ = self.define_symbol(
                         ctx,
                         fn_def.decl.fn_name.repr,
-                        SymbolKind::Function,
+                        TySymbolKind::Function,
                         fn_def.decl.fn_name.loc,
                     );
 
@@ -397,7 +412,7 @@ impl Typer {
                         let _ = self.define_symbol(
                             ctx,
                             let_expr.name.repr,
-                            SymbolKind::Const,
+                            TySymbolKind::Const,
                             let_expr.name.loc,
                         );
 
@@ -412,7 +427,7 @@ impl Typer {
                     let _ = self.define_symbol(
                         ctx,
                         let_expr.name.repr,
-                        SymbolKind::Global,
+                        TySymbolKind::Global,
                         let_expr.name.loc,
                     );
 
@@ -485,7 +500,7 @@ impl Typer {
                                         message: format!(
                                             "Cannot redefine struct field '{}', previously defined at {}",
                                             field.field_name.repr,
-                                            existing_field.loc.to_string(&self.reporter.fm),
+                                            existing_field.loc.to_string(&self.registry),
                                         ),
                                         loc: field.field_name.loc,
                                     });
@@ -533,7 +548,7 @@ impl Typer {
 
                             let symbol = self.get_symbol(ctx, type_def.name.repr).unwrap().relax();
 
-                            let SymbolKind::Struct = symbol.kind else {
+                            let TySymbolKind::Struct = symbol.kind else {
                                 continue;
                             };
 
@@ -546,7 +561,7 @@ impl Typer {
                             variants,
                         } => {
                             let symbol = self.get_symbol(ctx, &type_def.name.repr).unwrap().relax();
-                            let SymbolKind::Enum = symbol.kind else {
+                            let TySymbolKind::Enum = symbol.kind else {
                                 continue;
                             };
                             let enum_def = self.registry.enums[symbol.col_index].relax_mut();
@@ -558,7 +573,7 @@ impl Typer {
                                             message: format!(
                                                 "Cannot redefine enum variant '{}', previously defined at {}",
                                                 variant.variant_name.repr,
-                                                existing_variant.loc.to_string(&self.reporter.fm),
+                                                existing_variant.loc.to_string(&self.registry),
                                             ),
                                             loc: variant.variant_name.loc,
                                         });
@@ -608,7 +623,7 @@ impl Typer {
                             });
 
                             let symbol = self.get_symbol(ctx, &type_def.name.repr).unwrap().relax();
-                            let SymbolKind::TypeAlias = symbol.kind else {
+                            let TySymbolKind::TypeAlias = symbol.kind else {
                                 continue;
                             };
 
@@ -638,7 +653,7 @@ impl Typer {
                         .get_symbol(ctx, &fn_def.decl.fn_name.repr)
                         .unwrap()
                         .relax();
-                    let SymbolKind::Function = symbol.kind else {
+                    let TySymbolKind::Function = symbol.kind else {
                         continue;
                     };
 
@@ -708,7 +723,7 @@ impl Typer {
                         continue;
                     }
 
-                    let SymbolKind::Global = symbol.kind else {
+                    let TySymbolKind::Global = symbol.kind else {
                         continue;
                     };
 
@@ -739,7 +754,7 @@ impl Typer {
                             self.report_error(&Error {
                                 message: format!(
                                     "Cannot redefine memory, first defined at {}",
-                                    existing_memory.loc.to_string(&self.reporter.fm)
+                                    existing_memory.loc.to_string(&self.registry)
                                 ),
                                 loc: intrinsic.loc,
                             });
@@ -1231,9 +1246,9 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Ident(ident) => {
-                let var_symbol = self.get_variable_info(ctx, &ident)?;
-                self.store_expr_info(ctx, ident.id, self.registry.variable_info.len());
-                self.registry.be_mut().variable_info.push(var_symbol);
+                let var_symbol = self.get_value_info(ctx, &ident)?;
+                self.store_expr_info(ctx, ident.id, self.registry.value_info.len());
+                self.registry.be_mut().value_info.push(var_symbol);
                 return Ok(());
             }
             CodeExpr::Let(let_expr) => {
@@ -1500,7 +1515,7 @@ impl Typer {
             }
             CodeExpr::FnCall(call) => {
                 if let Some(symbol) = self.get_symbol(ctx, &call.fn_name.repr)
-                    && let SymbolKind::EnumConstructor = symbol.kind
+                    && let TySymbolKind::EnumConstructor = symbol.kind
                 {
                     let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
                     let enum_def = &self.registry.enums[enum_ctor.enum_index];
@@ -2227,11 +2242,7 @@ impl Typer {
         })
     }
 
-    fn get_variable_info(
-        &self,
-        ctx: TyContextRef,
-        var_name: &IdentExpr,
-    ) -> Result<VariableInfo, Error> {
+    fn get_value_info(&self, ctx: TyContextRef, var_name: &IdentExpr) -> Result<ValueInfo, Error> {
         let Some(symbol) = self.get_symbol(ctx, var_name.repr) else {
             return Err(Error {
                 message: format!("Unknown variable: {}", var_name.repr),
@@ -2240,7 +2251,7 @@ impl Typer {
         };
 
         match symbol.kind {
-            SymbolKind::Local => {
+            TySymbolKind::Local => {
                 let local_type_id = self.locals_types[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
@@ -2255,13 +2266,13 @@ impl Typer {
                     })
                 };
 
-                return Ok(VariableInfo {
-                    kind: VariableKind::Local,
+                return Ok(ValueInfo {
+                    kind: ValueKind::Local,
                     col_index: self.locals_types.len(),
                     type_id: local_type_id,
                 });
             }
-            SymbolKind::Global => {
+            TySymbolKind::Global => {
                 let global = &self.registry.globals[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
@@ -2276,13 +2287,13 @@ impl Typer {
                     });
                 }
 
-                return Ok(VariableInfo {
-                    kind: VariableKind::Global,
+                return Ok(ValueInfo {
+                    kind: ValueKind::Global,
                     col_index: symbol.col_index,
                     type_id: global.type_id,
                 });
             }
-            SymbolKind::Const => {
+            TySymbolKind::Const => {
                 let const_def = &self.registry.constants[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
@@ -2297,13 +2308,13 @@ impl Typer {
                     })
                 }
 
-                return Ok(VariableInfo {
-                    kind: VariableKind::Const,
+                return Ok(ValueInfo {
+                    kind: ValueKind::Const,
                     col_index: symbol.col_index,
                     type_id: const_def.type_id,
                 });
             }
-            SymbolKind::EnumConstructor => {
+            TySymbolKind::EnumConstructor => {
                 let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
                 let enum_def = &self.registry.enums[enum_ctor.enum_index];
                 let enum_variant = &enum_def.variants[enum_ctor.variant_index];
@@ -2336,8 +2347,8 @@ impl Typer {
                     })
                 }
 
-                return Ok(VariableInfo {
-                    kind: VariableKind::EnumConstructor,
+                return Ok(ValueInfo {
+                    kind: ValueKind::EnumConstructor,
                     col_index: symbol.col_index,
                     type_id: self.intern_type(var_type),
                 });
@@ -2383,7 +2394,7 @@ impl Typer {
             });
         };
 
-        let SymbolKind::EnumConstructor = symbol.kind else {
+        let TySymbolKind::EnumConstructor = symbol.kind else {
             return Err(Error {
                 message: format!("Not an enum variant"),
                 loc: match_header.variant_name.loc,
@@ -2443,10 +2454,10 @@ impl Typer {
         self.store_expr_info(
             ctx,
             match_header.variant_bind.id,
-            self.registry.variable_info.len(),
+            self.registry.value_info.len(),
         );
-        self.registry.variable_info.be_mut().push(VariableInfo {
-            kind: VariableKind::EnumConstructor,
+        self.registry.value_info.be_mut().push(ValueInfo {
+            kind: ValueKind::EnumConstructor,
             col_index: symbol.col_index,
             type_id: match_header.variant_bind.id,
         });
@@ -2673,12 +2684,12 @@ impl Typer {
             });
         };
 
-        let SymbolKind::Function = symbol.kind else {
+        let TySymbolKind::Function = symbol.kind else {
             return Err(Error {
                 message: format!(
                     "Trying to call {} which is not a function, defined at: {}",
                     fn_name,
-                    symbol.loc.to_string(&self.reporter.fm)
+                    symbol.loc.to_string(&self.registry)
                 ),
                 loc: *loc,
             });
@@ -2711,13 +2722,6 @@ impl Typer {
         let parent_ctx = ctx;
         let mut ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
 
-        // TODO!: figure out why this is needed
-        ctx.expr_id_offset = 0;
-
-        // TODO!: figure out why this has to be done here and not near `type_code_block` call
-        let inner_expr_id_offset = self.registry.expr_info.len() - body.expr_id_start;
-        self.extend_expr_info_storage(body.expr_id_count);
-
         let mut type_args = Vec::new();
         for type_arg in type_arg_exprs {
             type_args.push(self.build_type(parent_ctx, type_arg)?.clone());
@@ -2746,6 +2750,10 @@ impl Typer {
                 type_arg_exprs[i].loc(),
             );
         }
+
+        // TODO!: figure out why this has to be done here and not near `type_code_block` call
+        let inner_expr_id_offset = self.registry.expr_info.len() - body.expr_id_start;
+        self.extend_expr_info_storage(body.expr_id_count);
 
         let mut has_receiver = false;
         let mut arg_type_ids = Vec::new();
@@ -2782,7 +2790,7 @@ impl Typer {
 
             let param_name = inline_fn_param.param_name.repr;
             let param_loc = inline_fn_param.param_name.loc;
-            self.define_symbol(ctx, param_name, SymbolKind::Const, param_loc);
+            self.define_symbol(ctx, param_name, TySymbolKind::Const, param_loc);
             self.registry.constants.be_mut().push(ConstDef {
                 type_id: *type_id,
                 expr: UBRef::new(arg_expr),
@@ -2795,6 +2803,9 @@ impl Typer {
             &inline_fn_def.decl.fn_name,
             &inline_fn_def.decl.params,
         );
+
+        // TODO!: figure out why this is needed
+        ctx.expr_id_offset = 0;
 
         let mut inline_fn_param_types = Vec::new();
         for inline_fn_param in &inline_fn_def.decl.params {
@@ -2964,7 +2975,7 @@ impl Typer {
     }
 
     fn define_type(&self, ctx: TyContextRef, name: &'static str, type_: &Type, loc: Loc) {
-        let _ = self.define_symbol(ctx, name, SymbolKind::TypeAlias, loc);
+        let _ = self.define_symbol(ctx, name, TySymbolKind::TypeAlias, loc);
         let type_id = self.intern_type(type_);
         self.type_aliases.be_mut().push(type_id);
     }
@@ -2982,7 +2993,7 @@ impl Typer {
             })
         };
 
-        if name != "_" && self.define_symbol(ctx, name, SymbolKind::Local, loc) {
+        if name != "_" && self.define_symbol(ctx, name, TySymbolKind::Local, loc) {
             self.locals_types.be_mut().push(type_id);
         }
     }
@@ -3028,7 +3039,6 @@ impl Typer {
         &self,
         ctx: TyContextRef,
         expr: &TypeExpr,
-        // TODO: join `is_referenced` and `loc` into Option<Loc>
         is_referenced: bool,
         loc: &Loc,
     ) -> Result<(), Error> {
@@ -3103,7 +3113,7 @@ impl Typer {
                         });
                     };
 
-                    let var_symbol = self.get_variable_info(ctx, &ident)?;
+                    let var_symbol = self.get_value_info(ctx, &ident)?;
                     self.store_expr_info(ctx, ctr.id, var_symbol.type_id);
                     return Ok(());
                 }
@@ -3152,7 +3162,6 @@ impl Typer {
         }
     }
 
-    // TODO: check if there is a better place to print inspections from here
     fn get_type_id_or_err(
         &self,
         ctx: TyContextRef,
@@ -3167,7 +3176,7 @@ impl Typer {
         };
 
         match symbol.kind {
-            SymbolKind::Struct => {
+            TySymbolKind::Struct => {
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(&InspectInfo {
                         message: format!("struct {type_name} {{ ... }}"),
@@ -3180,7 +3189,7 @@ impl Typer {
                     struct_index: symbol.col_index,
                 }))
             }
-            SymbolKind::Enum => {
+            TySymbolKind::Enum => {
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(&InspectInfo {
                         message: format!("enum {type_name} {{ ... }}"),
@@ -3193,7 +3202,7 @@ impl Typer {
                     enum_index: symbol.col_index,
                 }))
             }
-            SymbolKind::TypeAlias => {
+            TySymbolKind::TypeAlias => {
                 let type_id = self.type_aliases[symbol.col_index];
 
                 // don't print inspection for built-ins
@@ -3210,12 +3219,12 @@ impl Typer {
 
                 Ok(type_id)
             }
-            SymbolKind::Local
-            | SymbolKind::Global
-            | SymbolKind::Const
-            | SymbolKind::Function
-            | SymbolKind::InlineFn
-            | SymbolKind::EnumConstructor => Err(Error {
+            TySymbolKind::Local
+            | TySymbolKind::Global
+            | TySymbolKind::Const
+            | TySymbolKind::Function
+            | TySymbolKind::InlineFn
+            | TySymbolKind::EnumConstructor => Err(Error {
                 message: format!("Symbol is not a type: {}", type_name),
                 loc: *loc,
             }),
@@ -3241,7 +3250,7 @@ impl Typer {
                     return None;
                 };
 
-                if let SymbolKind::Const = symbol.kind {
+                if let TySymbolKind::Const = symbol.kind {
                     return Some(&self.registry.constants[symbol.col_index].expr);
                 }
             }
@@ -3274,7 +3283,7 @@ impl Typer {
         ctx.symbols.push(TySymbol {
             ctx_id: 0,
             name: type_.to_str().unwrap(),
-            kind: SymbolKind::TypeAlias,
+            kind: TySymbolKind::TypeAlias,
             col_index: self.type_aliases.len(),
             loc: Loc::internal(),
         });
@@ -3287,21 +3296,21 @@ impl Typer {
         &self,
         ctx: TyContextRef,
         symbol_name: &'static str,
-        symbol_kind: SymbolKind,
+        symbol_kind: TySymbolKind,
         symbol_loc: Loc,
     ) -> bool {
         let symbol_col_index = match &symbol_kind {
-            SymbolKind::Local => self.locals_types.len(),
-            SymbolKind::Global => self.registry.globals.len(),
-            SymbolKind::Const => self.registry.constants.len(),
+            TySymbolKind::Local => self.locals_types.len(),
+            TySymbolKind::Global => self.registry.globals.len(),
+            TySymbolKind::Const => self.registry.constants.len(),
 
-            SymbolKind::InlineFn => self.registry.inline_fns.len(),
-            SymbolKind::Function => self.registry.functions.len(),
+            TySymbolKind::InlineFn => self.registry.inline_fns.len(),
+            TySymbolKind::Function => self.registry.functions.len(),
 
-            SymbolKind::TypeAlias => self.type_aliases.len(),
-            SymbolKind::Struct => self.registry.structs.len(),
-            SymbolKind::Enum => self.registry.enums.len(),
-            SymbolKind::EnumConstructor => self.registry.enum_ctors.len(),
+            TySymbolKind::TypeAlias => self.type_aliases.len(),
+            TySymbolKind::Struct => self.registry.structs.len(),
+            TySymbolKind::Enum => self.registry.enums.len(),
+            TySymbolKind::EnumConstructor => self.registry.enum_ctors.len(),
         };
 
         if let Some(existing_symbol) = self.get_symbol(ctx, symbol_name)
@@ -3311,7 +3320,7 @@ impl Typer {
                 message: format!(
                     "Cannot redefine {}, previously defined at {}",
                     symbol_name,
-                    existing_symbol.loc.to_string(&self.reporter.fm)
+                    existing_symbol.loc.to_string(&self.registry)
                 ),
                 loc: symbol_loc,
             });
