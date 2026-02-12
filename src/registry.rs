@@ -24,6 +24,13 @@ pub enum SymbolKind {
     EnumConstructor,
 }
 
+// TODO: remove the original Symbol?
+pub struct Symbol2 {
+    pub kind: SymbolKind,
+    pub col_index: usize,
+    pub type_id: TypeId,
+}
+
 pub struct FnInfo {
     pub name: &'static str,
     pub type_: FnType,
@@ -247,11 +254,11 @@ pub struct Registry {
     pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
+    pub symbols: Vec<Symbol2>,    //              indexed by `ExprInfo` for `::IdentExpr`
     pub globals: Vec<GlobalDef>,  //              indexed by `col_index` when `kind = Global`
     pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,   //              indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>, //      indexed by `col_index` when `kind = InlineFn`
-    pub type_aliases: Vec<Type>,  //              indexed by `col_index` when `kind = TypeAlias`
     pub structs: Vec<StructDef>,  //              indexed by `col_index` when `kind = Struct`
     pub enums: Vec<EnumDef>,      //              indexed by `col_index` when `kind = Enum`
     pub enum_ctors: Vec<EnumConstructor>, //      indexed by `col_index` when `kind = EnumConstructor`
@@ -358,7 +365,7 @@ impl Registry {
         symbol_loc: Loc,
     ) -> Result<(), &Symbol> {
         let symbol_col_index = match symbol_kind {
-            SymbolKind::TypeAlias => self.type_aliases.len(),
+            SymbolKind::TypeAlias => unreachable!(),
             SymbolKind::Struct => self.structs.len(),
             SymbolKind::Enum => self.enums.len(),
             SymbolKind::Local => ctx.locals.len(),
@@ -433,20 +440,6 @@ impl Registry {
         scope_stack.push(new_scope);
     }
 
-    pub fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
-        let receiver_type_base = deref_rec(self, receiver_type);
-
-        if let Type::Container(ContainerType {
-            container,
-            items: _,
-        }) = receiver_type_base
-        {
-            return format!("{}::{method_name}", self.fmt(self.get_type(*container)));
-        }
-
-        format!("{}::{method_name}", self.fmt(receiver_type_base))
-    }
-
     pub fn get_module_id_by_file_id(&self, file_id: usize) -> ModuleId {
         for module in &self.modules {
             if module.parser.lexer.file_id == file_id {
@@ -463,6 +456,10 @@ impl Registry {
         };
 
         Some(match expr {
+            CodeExpr::Ident(_) => {
+                let symbol = &self.symbols[expr_info];
+                symbol.type_id
+            }
             CodeExpr::FnCall(_) | CodeExpr::MethodCall(_) => {
                 let call_info = &self.call_info[expr_info];
                 call_info.return_type_id

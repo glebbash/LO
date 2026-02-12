@@ -264,7 +264,7 @@ impl Typer {
                 TopLevelExpr::Type(type_def) => {
                     match &type_def.value {
                         TypeDefValue::Struct { .. } => {
-                            let _ = self.define_symbol_compat(
+                            let _ = self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
                                 SymbolKind::Struct,
@@ -281,7 +281,7 @@ impl Typer {
                             variant_type: variant_type_in_decl,
                             variants,
                         } => {
-                            if !self.define_symbol_compat(
+                            if !self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
                                 SymbolKind::Enum,
@@ -315,6 +315,7 @@ impl Typer {
 
                                 let enum_index = self.registry.enums.len() - 1;
 
+                                // TODO: remove this
                                 let _ = self.define_symbol_compat(
                                     ctx,
                                     constructor_name,
@@ -330,7 +331,7 @@ impl Typer {
                             }
                         }
                         TypeDefValue::Alias(_) => {
-                            let _ = self.define_symbol_compat(
+                            let _ = self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
                                 SymbolKind::TypeAlias,
@@ -340,17 +341,12 @@ impl Typer {
                             self.relax_mut()
                                 .type_aliases
                                 .push(self.intern_type(&Type::Never)); // placeholder
-
-                            // TODO: remove after migration
-                            {
-                                self.registry.type_aliases.push(Type::Never); // placeholder
-                            }
                         }
                     }
                 }
                 TopLevelExpr::Fn(fn_def) => {
                     if fn_def.is_inline {
-                        let _ = self.define_symbol_compat(
+                        let _ = self.define_symbol(
                             ctx,
                             fn_def.decl.fn_name.repr,
                             SymbolKind::InlineFn,
@@ -361,7 +357,7 @@ impl Typer {
                         continue;
                     }
 
-                    let _ = self.define_symbol_compat(
+                    let _ = self.define_symbol(
                         ctx,
                         fn_def.decl.fn_name.repr,
                         SymbolKind::Function,
@@ -443,7 +439,7 @@ impl Typer {
                         continue;
                     }
 
-                    let _ = self.define_symbol_compat(
+                    let _ = self.define_symbol(
                         ctx,
                         let_expr.name.repr,
                         SymbolKind::Global,
@@ -692,12 +688,6 @@ impl Typer {
                             };
 
                             self.type_aliases[symbol.col_index] = type_id;
-
-                            // TODO: remove after migration
-                            {
-                                self.registry.type_aliases[symbol.col_index] =
-                                    self.get_type(type_id).clone();
-                            }
                         }
                     }
                 }
@@ -1322,8 +1312,9 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Ident(ident) => {
-                let var_type_id = self.get_variable_type(ctx, ident)?;
-                self.store_expr_info(ctx, ident.id, var_type_id);
+                let var_symbol = self.get_variable_symbol(ctx, &ident)?;
+                self.store_expr_info(ctx, ident.id, self.registry.symbols.len());
+                self.registry.be_mut().symbols.push(var_symbol);
                 return Ok(());
             }
             CodeExpr::Let(let_expr) => {
@@ -1660,9 +1651,8 @@ impl Typer {
             }
             CodeExpr::MethodCall(call) => {
                 let lhs_type_id = self.type_code_expr_and_load(ctx, &call.lhs)?;
-                let fn_name = self
-                    .registry
-                    .get_fn_name_from_method(self.get_type(lhs_type_id), &call.field_name.repr);
+                let fn_name =
+                    self.get_fn_name_from_method(self.get_type(lhs_type_id), &call.field_name.repr);
 
                 self.type_fn_call(
                     ctx,
@@ -1688,9 +1678,7 @@ impl Typer {
             }
             CodeExpr::InlineMethodCall(call) => {
                 let lhs_type = self.get_type(self.type_code_expr_and_load(ctx, &call.lhs)?);
-                let inline_fn_name = self
-                    .registry
-                    .get_fn_name_from_method(lhs_type, &call.field_name.repr);
+                let inline_fn_name = self.get_fn_name_from_method(lhs_type, &call.field_name.repr);
 
                 self.type_inline_fn_call(
                     ctx,
@@ -1868,6 +1856,8 @@ impl Typer {
                     if call.type_args.len() != 0 && call.args.items.len() != 1 {
                         report_bad_args(self, call);
                     }
+
+                    self.type_code_expr(ctx, &call.args.items[0])?;
 
                     if let Some(const_value) = self.get_const_value(ctx, &call.args.items[0])
                         && let CodeExpr::ArrayLiteral(_) = const_value
@@ -2339,7 +2329,11 @@ impl Typer {
         })
     }
 
-    fn get_variable_type(&self, ctx: TyContextRef, var_name: &IdentExpr) -> Result<TypeId, Error> {
+    fn get_variable_symbol(
+        &self,
+        ctx: TyContextRef,
+        var_name: &IdentExpr,
+    ) -> Result<Symbol2, Error> {
         let Some(symbol) = self.get_symbol(ctx, var_name.repr) else {
             return Err(Error {
                 message: format!("Unknown variable: {}", var_name.repr),
@@ -2363,7 +2357,11 @@ impl Typer {
                     })
                 };
 
-                return Ok(local.type_id);
+                return Ok(Symbol2 {
+                    kind: SymbolKind::Local,
+                    col_index: self.locals.len(),
+                    type_id: local.type_id,
+                });
             }
             SymbolKind::Global => {
                 let global = &self.registry.globals[symbol.col_index];
@@ -2380,7 +2378,11 @@ impl Typer {
                     });
                 }
 
-                return Ok(global.type_id);
+                return Ok(Symbol2 {
+                    kind: SymbolKind::Global,
+                    col_index: symbol.col_index,
+                    type_id: global.type_id,
+                });
             }
             SymbolKind::Const => {
                 let const_def = &self.constants[symbol.col_index];
@@ -2397,7 +2399,11 @@ impl Typer {
                     })
                 }
 
-                return Ok(const_def.type_id);
+                return Ok(Symbol2 {
+                    kind: SymbolKind::Const,
+                    col_index: symbol.col_index,
+                    type_id: const_def.type_id,
+                });
             }
             SymbolKind::EnumConstructor => {
                 let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
@@ -2432,7 +2438,11 @@ impl Typer {
                     })
                 }
 
-                return Ok(self.intern_type(var_type));
+                return Ok(Symbol2 {
+                    kind: SymbolKind::EnumConstructor,
+                    col_index: symbol.col_index,
+                    type_id: self.intern_type(var_type),
+                });
             }
             _ => {
                 return Err(Error {
@@ -2444,6 +2454,23 @@ impl Typer {
                 });
             }
         }
+    }
+
+    fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
+        let receiver_type_base = deref_rec(&self.registry, receiver_type);
+
+        if let Type::Container(ContainerType {
+            container,
+            items: _,
+        }) = receiver_type_base
+        {
+            return format!(
+                "{}::{method_name}",
+                self.registry.fmt(self.get_type(*container))
+            );
+        }
+
+        format!("{}::{method_name}", self.registry.fmt(receiver_type_base))
     }
 
     fn get_matched_variant(
@@ -3146,8 +3173,8 @@ impl Typer {
                         });
                     };
 
-                    let var_type_id = self.get_variable_type(ctx, &ident)?;
-                    self.store_expr_info(ctx, ctr.id, var_type_id);
+                    let var_symbol = self.get_variable_symbol(ctx, &ident)?;
+                    self.store_expr_info(ctx, ctr.id, var_symbol.type_id);
                     return Ok(());
                 }
 
@@ -3324,18 +3351,6 @@ impl Typer {
 
         let type_id = self.intern_type(&type_);
         self.type_aliases.push(type_id);
-
-        // TODO: remove after migration
-        {
-            self.global_scope.be_mut().symbols.push(Symbol {
-                scope_id: self.global_scope.id,
-                name: type_.to_str().unwrap(),
-                kind: SymbolKind::TypeAlias,
-                col_index: self.type_aliases.len() - 1,
-                loc: Loc::internal(),
-            });
-            self.registry.type_aliases.push(type_.clone());
-        }
     }
 
     // TODO: remove this once migrated

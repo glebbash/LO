@@ -200,7 +200,6 @@ impl CodeGenerator {
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
 
             let constants_len = self.registry.constants.len();
-            let type_aliases_len = self.registry.type_aliases.len();
 
             self.registry.be_mut().enter_scope(ctx, ScopeKind::Function);
 
@@ -214,7 +213,6 @@ impl CodeGenerator {
 
             // remove any constants/types created by inline fn calls
             self.registry.constants.truncate(constants_len);
-            self.registry.type_aliases.truncate(type_aliases_len);
 
             let mut wasm_locals_flat = Vec::new();
             for (i, local) in ctx.locals.iter().enumerate() {
@@ -1481,15 +1479,22 @@ impl CodeGenerator {
         });
     }
 
-    fn populate_ctx_from_inline_fn_call(
+    fn codegen_inline_fn_call(
         &mut self,
         ctx: &mut ExprContext,
-        inline_fn_index: usize,
+        instrs: &mut Vec<WasmInstr>,
         type_arg_exprs: &Vec<TypeExpr>,
         receiver_arg: Option<&CodeExpr>,
         arg_exprs: &Vec<CodeExpr>,
-    ) -> &FnExpr {
-        let inline_fn_def = self.registry.inline_fns[inline_fn_index];
+        call_expr_id: ExprId,
+        loc: &Loc,
+    ) {
+        let call_info_id = self.get_expr_info(ctx, call_expr_id, *loc);
+        let call_info = self.registry.inline_call_info[call_info_id].relax();
+        let inline_fn_def = self.registry.inline_fns[call_info.inline_fn_index];
+
+        self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
+        self.registry.current_scope(ctx).be_mut().inline_fn_call_loc = Some(*loc);
 
         let mut all_args = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -1504,21 +1509,6 @@ impl CodeGenerator {
             type_args.push(self.get_type_expr_value(ctx, type_arg));
         }
 
-        for (i, (type_param, type_arg)) in inline_fn_def
-            .decl
-            .type_params
-            .iter()
-            .zip(type_args.iter())
-            .enumerate()
-        {
-            self.register_block_type(
-                ctx,
-                type_param,
-                (*type_arg).clone(),
-                type_arg_exprs[i].loc(),
-            );
-        }
-
         for (inline_fn_param, inline_fn_arg) in
             inline_fn_def.decl.params.iter().zip(all_args.into_iter())
         {
@@ -1528,44 +1518,8 @@ impl CodeGenerator {
                 loc: inline_fn_param.loc,
             };
 
-            if let Some(type_name) = self.unwrap(get_infer_type_name(inline_fn_param)) {
-                self.register_block_type(
-                    ctx,
-                    type_name,
-                    const_def.code_unit.type_.clone(),
-                    inline_fn_param.loc,
-                );
-            }
-
             self.register_block_const(ctx, const_def);
         }
-
-        inline_fn_def
-    }
-
-    fn codegen_inline_fn_call(
-        &mut self,
-        ctx: &mut ExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        type_args: &Vec<TypeExpr>,
-        receiver_arg: Option<&CodeExpr>,
-        args: &Vec<CodeExpr>,
-        call_expr_id: ExprId,
-        loc: &Loc,
-    ) {
-        let call_info_id = self.get_expr_info(ctx, call_expr_id, *loc);
-        let call_info = self.registry.inline_call_info[call_info_id].relax();
-
-        self.registry.be_mut().enter_scope(ctx, ScopeKind::InlineFn);
-        self.registry.current_scope(ctx).be_mut().inline_fn_call_loc = Some(*loc);
-
-        let inline_fn_def = self.relax_mut().populate_ctx_from_inline_fn_call(
-            ctx,
-            call_info.inline_fn_index,
-            type_args,
-            receiver_arg,
-            args,
-        );
 
         let FnExprValue::Body(body) = &inline_fn_def.value else {
             unreachable!()
@@ -2076,19 +2030,6 @@ impl CodeGenerator {
         self.registry.constants.push(const_def);
     }
 
-    fn register_block_type(
-        &mut self,
-        ctx: &ExprContext,
-        name: &'static str,
-        type_: Type,
-        loc: Loc,
-    ) {
-        let _ = self
-            .registry
-            .define_symbol(ctx, name, SymbolKind::TypeAlias, loc);
-        self.registry.type_aliases.push(type_);
-    }
-
     fn create_or_get_addr_local(&self, ctx: &mut ExprContext) -> u32 {
         if let Some(addr_local_index) = ctx.addr_local_index {
             return addr_local_index;
@@ -2152,25 +2093,49 @@ impl CodeGenerator {
     }
 
     fn var_from_ident(&self, ctx: &ExprContext, var_name: &IdentExpr) -> VarInfo {
+        let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc);
+        let var_symbol = &self.registry.symbols[expr_info];
+        match var_symbol.kind {
+            SymbolKind::Global => {
+                let global = &self.registry.globals[var_symbol.col_index];
+
+                return VarInfo::Global(VarInfoGlobal {
+                    global_index: global.wasm_global_index,
+                    var_type: self.get_type(global.type_id).clone(),
+                });
+            }
+            SymbolKind::EnumConstructor => {
+                let enum_ctor = &self.registry.enum_ctors[var_symbol.col_index];
+
+                return VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
+                    variant_index: enum_ctor.variant_index,
+                    loc: var_name.loc,
+                });
+            }
+
+            SymbolKind::TypeAlias
+            | SymbolKind::Struct
+            | SymbolKind::Enum
+            | SymbolKind::Local
+            | SymbolKind::Const
+            | SymbolKind::InlineFn
+            | SymbolKind::Function => { /* processed separately */ }
+        }
+
         let Some(symbol) = self.registry.current_scope(ctx).get_symbol(var_name.repr) else {
             unreachable!()
         };
 
         match symbol.kind {
+            // already processed
+            SymbolKind::Global | SymbolKind::EnumConstructor => unreachable!(),
+
             SymbolKind::Local => {
                 let local = &ctx.locals[symbol.col_index];
 
                 VarInfo::Local(VarInfoLocal {
                     local_index: local.local_index,
                     var_type: local.local_type.clone(),
-                })
-            }
-            SymbolKind::Global => {
-                let global = &self.registry.globals[symbol.col_index];
-
-                VarInfo::Global(VarInfoGlobal {
-                    global_index: global.wasm_global_index,
-                    var_type: self.get_type(global.type_id).clone(),
                 })
             }
             SymbolKind::Const => {
@@ -2181,14 +2146,7 @@ impl CodeGenerator {
                     loc: var_name.loc,
                 })
             }
-            SymbolKind::EnumConstructor => {
-                let enum_ctor = &self.registry.enum_ctors[symbol.col_index];
 
-                VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
-                    variant_index: enum_ctor.variant_index,
-                    loc: var_name.loc,
-                })
-            }
             SymbolKind::TypeAlias
             | SymbolKind::Struct
             | SymbolKind::Enum
@@ -2788,15 +2746,6 @@ impl CodeGenerator {
 
     fn get_type(&self, type_id: TypeId) -> &'static Type {
         self.registry.get_type(type_id)
-    }
-
-    fn unwrap<T>(&self, result: Result<T, Error>) -> T {
-        match result {
-            Ok(value) => value,
-            Err(err) => self
-                .reporter
-                .abort_due_to_compiler_bug(&err.message, err.loc),
-        }
     }
 }
 
