@@ -1,14 +1,5 @@
 use crate::{ast::*, common::*, lexer::*, parser::*, typer::*, wasm::*};
 
-#[derive(Clone)]
-pub struct Symbol {
-    pub scope_id: usize,
-    pub name: &'static str,
-    pub kind: SymbolKind,
-    pub col_index: usize,
-    pub loc: Loc,
-}
-
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub enum SymbolKind {
     TypeAlias,
@@ -24,9 +15,15 @@ pub enum SymbolKind {
     EnumConstructor,
 }
 
-// TODO: remove the original Symbol?
-pub struct Symbol2 {
-    pub kind: SymbolKind,
+pub enum VariableKind {
+    Local,
+    Global,
+    Const,
+    EnumConstructor,
+}
+
+pub struct VariableInfo {
+    pub kind: VariableKind,
     pub col_index: usize,
     pub type_id: TypeId,
 }
@@ -110,7 +107,6 @@ impl Default for ScopeKind {
 
 #[derive(Clone)]
 pub struct CodeUnit {
-    pub type_: Type,
     pub instrs: Vec<WasmInstr>,
 }
 
@@ -119,9 +115,14 @@ pub struct ConstSliceLen {
     pub slice_len: usize,
 }
 
+#[derive(Clone)]
+pub struct Symbol {
+    pub name: &'static str,
+    pub col_index: usize,
+}
+
 #[derive(Clone, Default)]
 pub struct Scope {
-    pub id: usize,
     pub kind: ScopeKind,
     pub symbols: Vec<Symbol>,
     pub deferred_exprs: Vec<CodeUnit>,
@@ -131,9 +132,8 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn new(scope_id: usize, scope_type: ScopeKind) -> Self {
+    pub fn new(scope_type: ScopeKind) -> Self {
         Self {
-            id: scope_id,
             kind: scope_type,
             ..Default::default()
         }
@@ -195,9 +195,7 @@ pub struct GlobalDef {
 pub struct ConstDef {
     pub type_id: TypeId,
     pub expr: UBRef<CodeExpr>,
-
-    // TODO: remove this field
-    pub code_unit: CodeUnit,
+    pub inner_expr_id_offset: usize,
 }
 
 pub struct Module {
@@ -206,8 +204,6 @@ pub struct Module {
     pub parser: Parser,
     pub includes: Vec<ModuleInclude>,
     pub scope_stack: Vec<Scope>,
-
-    // TODO: remove after migration
     pub ctx: ExprContext,
 }
 
@@ -256,7 +252,7 @@ pub struct Registry {
     pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
-    pub symbols: Vec<Symbol2>,    //              indexed by `ExprInfo` for `::IdentExpr`
+    pub variable_info: Vec<VariableInfo>, //      indexed by `ExprInfo` for `::IdentExpr`
     pub globals: Vec<GlobalDef>,  //              indexed by `col_index` when `kind = Global`
     pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>,   //              indexed by `col_index` when `kind = Function`
@@ -269,23 +265,18 @@ pub struct Registry {
     pub data_size: UBCell<u32>,
 
     pub expr_id_count: usize,
-    pub scope_count: usize,
 }
 
 impl Registry {
     pub fn new() -> Self {
         let mut it = Self::default();
         it.reporter.fm = UBRef::new(&mut *it.fm);
-
-        // TODO: remove this when symbols will become resolved through typer
-        it.scope_count = 1; // global scope id is 0
-
         it
     }
 
     pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<ModuleId> {
         let file_id = catch!(self.fm.include_file(relative_path, loc), err, {
-            self.report_error(&err);
+            self.reporter.error(&err);
             return None;
         });
 
@@ -304,7 +295,7 @@ impl Registry {
 
         let mut lexer = Lexer::new(source, file_id);
         catch!(lexer.lex_file(), err, {
-            self.report_error(&err);
+            self.reporter.error(&err);
             return None;
         });
 
@@ -313,7 +304,7 @@ impl Registry {
         *parser.expr_id_count.be_mut() = self.expr_id_count;
 
         catch!(parser.parse_file(), err, {
-            self.report_error(&err);
+            self.reporter.error(&err);
             return None;
         });
 
@@ -324,7 +315,7 @@ impl Registry {
         if !self.in_single_file_mode {
             for expr in &*parser.ast {
                 let Some(include_info) = catch!(get_include_info(expr), err, {
-                    self.report_error(&err);
+                    self.reporter.error(&err);
                     continue;
                 }) else {
                     continue;
@@ -358,90 +349,6 @@ impl Registry {
         Some(module_id)
     }
 
-    // TODO: move to codegen
-    pub fn define_symbol(
-        &mut self,
-        ctx: &ExprContext,
-        symbol_name: &'static str,
-        symbol_kind: SymbolKind,
-        symbol_loc: Loc,
-    ) -> Result<(), &Symbol> {
-        let symbol_col_index = match symbol_kind {
-            SymbolKind::TypeAlias => unreachable!(),
-            SymbolKind::Struct => self.structs.len(),
-            SymbolKind::Enum => self.enums.len(),
-            SymbolKind::Local => ctx.locals.len(),
-            SymbolKind::Global => self.globals.len(),
-            SymbolKind::Const => self.constants.len(),
-            SymbolKind::InlineFn => self.inline_fns.len(),
-            SymbolKind::Function => self.functions.len(),
-            SymbolKind::EnumConstructor => self.enum_ctors.len(),
-        };
-
-        let current_scope = self.current_scope(ctx).relax().be_mut();
-
-        if let Some(existing_symbol) = current_scope.relax().get_symbol(symbol_name)
-            && existing_symbol.scope_id == current_scope.id
-        {
-            self.report_error(&Error {
-                message: format!(
-                    "Cannot redefine {}, previously defined at {}",
-                    symbol_name,
-                    existing_symbol.loc.to_string(&self.reporter.fm)
-                ),
-                loc: symbol_loc,
-            });
-            return Err(&existing_symbol);
-        }
-
-        current_scope.symbols.push(Symbol {
-            scope_id: current_scope.id,
-            name: symbol_name,
-            kind: symbol_kind,
-            col_index: symbol_col_index,
-            loc: symbol_loc,
-        });
-        Ok(())
-    }
-
-    // TODO: move to codegen
-    pub fn enter_scope(&mut self, ctx: &ExprContext, scope_type: ScopeKind) {
-        let module = &mut self.relax_mut().modules[ctx.module_id];
-
-        self.init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
-    }
-
-    // TODO: move to codegen
-    pub fn exit_scope(&mut self, ctx: &ExprContext) -> Scope {
-        let module = &mut self.modules[ctx.module_id];
-
-        module.scope_stack.pop().unwrap()
-    }
-
-    // TODO: move to codegen
-    pub fn current_scope(&self, ctx: &ExprContext) -> &Scope {
-        let module = &self.modules[ctx.module_id];
-
-        module.scope_stack.last().unwrap()
-    }
-
-    // TODO: move to codegen
-    pub fn init_scope_from_parent_and_push(
-        &mut self,
-        scope_stack: &mut Vec<Scope>,
-        scope_type: ScopeKind,
-    ) {
-        let scope_id = self.scope_count;
-        self.scope_count += 1;
-
-        let mut new_scope = Scope::new(scope_id, scope_type);
-        if let Some(parent) = scope_stack.last() {
-            new_scope.symbols.extend_from_slice(&parent.symbols);
-            new_scope.expr_id_offset = parent.expr_id_offset;
-        };
-        scope_stack.push(new_scope);
-    }
-
     pub fn get_module_id_by_file_id(&self, file_id: usize) -> ModuleId {
         for module in &self.modules {
             if module.parser.lexer.file_id == file_id {
@@ -459,7 +366,7 @@ impl Registry {
 
         Some(match expr {
             CodeExpr::Ident(_) => {
-                let symbol = &self.symbols[expr_info];
+                let symbol = &self.variable_info[expr_info];
                 symbol.type_id
             }
             CodeExpr::FnCall(_) | CodeExpr::MethodCall(_) => {
@@ -498,15 +405,6 @@ impl Registry {
             registry: self,
             type_ids,
         }
-    }
-
-    // TODO: remove tag after migration
-    fn report_error(&self, err: &Error) {
-        let marked_error = Error {
-            message: format!("(reg) {}", err.message),
-            loc: err.loc.clone(),
-        };
-        self.reporter.error(&marked_error);
     }
 }
 

@@ -101,12 +101,8 @@ pub struct TySymbol {
     pub loc: Loc,
 }
 
-pub struct ModuleInfo {
+pub struct TyModuleInfo {
     ctx: TyContextRef,
-}
-
-pub struct TyLocal {
-    pub type_id: TypeId,
 }
 
 #[derive(Default)]
@@ -115,16 +111,14 @@ pub struct Typer {
     pub registry: UBRef<Registry>,
 
     contexts: UBCell<StableVec<TyContext>>,
-    module_info: UBCell<Vec<ModuleInfo>>,
+    module_info: UBCell<Vec<TyModuleInfo>>,
     type_lookup: UBCell<BTreeMap<Type, TypeId>>,
 
-    type_aliases: UBCell<Vec<TypeId>>, // indexed by `col_index` when `kind = TypeAlias`
-    locals: Vec<TyLocal>,              // indexed by `col_index` when `kind = Local`
+    type_aliases: UBCell<Vec<TypeId>>, // indexed by `TySymbol::col_index` when `kind = TypeAlias`
+    locals_types: Vec<TypeId>,         // indexed by `TySymbol::col_index` when `kind = Local`
 
     first_string_usage: UBCell<Option<Loc>>,
     allocated_strings: Vec<String>, // storage for all rust `String` objects
-
-    global_scope: Scope,
 }
 
 impl Typer {
@@ -132,7 +126,6 @@ impl Typer {
         let mut it = Self::default();
         it.registry = UBRef::new(&mut *registry);
         it.reporter = UBRef::new(&mut *registry.reporter);
-        it.global_scope.kind = ScopeKind::Global;
         it.init();
         it
     }
@@ -155,7 +148,7 @@ impl Typer {
 
             self.module_info
                 .be_mut()
-                .push(ModuleInfo { ctx: module_ctx });
+                .push(TyModuleInfo { ctx: module_ctx });
         }
 
         self.extend_expr_info_storage(self.registry.expr_id_count);
@@ -245,11 +238,6 @@ impl Typer {
 
     fn pass_collect_own_symbols(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
-
-        module.scope_stack.push(self.global_scope.clone());
-
-        // scope for module's own symbols
-        self.registry.enter_scope(&module.ctx, ScopeKind::Global);
 
         for expr in &*module.parser.ast {
             match expr {
@@ -406,7 +394,7 @@ impl Typer {
                 }
                 TopLevelExpr::Let(let_expr) => {
                     if let_expr.is_inline {
-                        let _ = self.define_symbol_compat(
+                        let _ = self.define_symbol(
                             ctx,
                             let_expr.name.repr,
                             SymbolKind::Const,
@@ -416,10 +404,7 @@ impl Typer {
                         self.registry.constants.be_mut().push(ConstDef {
                             type_id: self.intern_type(&Type::Never), // placeholder
                             expr: UBRef::new(&*let_expr.value),
-                            code_unit: CodeUnit {
-                                type_: Type::Never, // placeholder
-                                instrs: Vec::new(), // placeholder
-                            },
+                            inner_expr_id_offset: ctx.expr_id_offset,
                         });
                         continue;
                     }
@@ -444,20 +429,9 @@ impl Typer {
 
     fn pass_collect_included_symbols(&mut self, ctx: TyContextRef) {
         self.inline_includes(ctx, ctx, &mut String::from(""), true);
-
-        // TODO: remove when migrated
-        {
-            let module = self.registry.modules[ctx.module_id].relax_mut();
-
-            // scope for module's imports
-            self.registry
-                .init_scope_from_parent_and_push(&mut module.scope_stack, ScopeKind::Global);
-
-            self.inline_includes_old(module.relax_mut(), module, &mut String::from(""), true);
-        }
     }
 
-    // TODO: old version was using an interlayer scope to store includes in
+    // TODO: old version was using an intermediate scope to store includes in
     //   but this version is using module's scope to store inclues in
     //   check if this is fine and fix if it isn't
     fn inline_includes(
@@ -488,40 +462,6 @@ impl Typer {
 
             let sub_includee = self.module_info[include.module_id].relax();
             self.inline_includes(includer, sub_includee.ctx, prefix, false);
-            prefix.truncate(original_prefix_len);
-        }
-    }
-
-    fn inline_includes_old(
-        &mut self,
-        includer: &mut Module,
-        includee: &Module,
-        prefix: &mut String,
-        force_go_deeper: bool,
-    ) {
-        if includer.id != includee.id {
-            let target_scope = includer.scope_stack.last_mut().unwrap();
-
-            for symbol in &includee.scope_stack[1].symbols {
-                let mut included_symbol = symbol.clone();
-                included_symbol.name = self.alloc_str(format!("{}{}", prefix, symbol.name));
-                target_scope.symbols.push(included_symbol)
-            }
-        }
-
-        let original_prefix_len = prefix.len();
-        for include in &includee.includes {
-            if !(include.with_extern || force_go_deeper) {
-                continue;
-            }
-
-            if let Some(alias) = &include.alias {
-                prefix.push_str(&alias);
-                prefix.push_str("::");
-            }
-
-            let included_module = self.registry.modules[include.module_id].relax();
-            self.inline_includes_old(includer, included_module, prefix, false);
             prefix.truncate(original_prefix_len);
         }
     }
@@ -750,12 +690,6 @@ impl Typer {
                         });
 
                     if let_expr.is_inline {
-                        // TODO: remove after migration
-                        {
-                            let const_ = self.registry.constants[symbol.col_index].relax_mut();
-                            const_.code_unit.type_ = self.get_type(value_type_id).clone();
-                        }
-
                         let const_ = self.registry.constants[symbol.col_index].relax_mut();
                         const_.type_id = value_type_id;
 
@@ -1297,9 +1231,9 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Ident(ident) => {
-                let var_symbol = self.get_variable_symbol(ctx, &ident)?;
-                self.store_expr_info(ctx, ident.id, self.registry.symbols.len());
-                self.registry.be_mut().symbols.push(var_symbol);
+                let var_symbol = self.get_variable_info(ctx, &ident)?;
+                self.store_expr_info(ctx, ident.id, self.registry.variable_info.len());
+                self.registry.be_mut().variable_info.push(var_symbol);
                 return Ok(());
             }
             CodeExpr::Let(let_expr) => {
@@ -1676,7 +1610,6 @@ impl Typer {
                 )?;
                 return Ok(());
             }
-            // TODO: check arguments
             CodeExpr::IntrinsicCall(call) => {
                 if call.fn_name.repr == "unreachable" {
                     self.store_type(ctx, call.id, &Type::Never);
@@ -1993,8 +1926,6 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::If(if_expr) => {
-                // TODO: implement
-
                 let mut updated_then_ctx = None;
 
                 match &if_expr.cond {
@@ -2043,7 +1974,6 @@ impl Typer {
                     }
                 }
 
-                // TODO: perform this check on type ids
                 if then_type == Type::Never && else_type == Type::Never {
                     self.store_type(ctx, if_expr.id, &Type::Never);
                 } else {
@@ -2161,7 +2091,6 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::PropagateError(prop_error) => {
-                // TODO: improve error tolerance?
                 let expr_type = self.type_code_expr_and_load(ctx, &prop_error.expr)?;
                 let result =
                     self.assert_catchable_type(self.get_type(expr_type), &prop_error.loc)?;
@@ -2298,11 +2227,11 @@ impl Typer {
         })
     }
 
-    fn get_variable_symbol(
+    fn get_variable_info(
         &self,
         ctx: TyContextRef,
         var_name: &IdentExpr,
-    ) -> Result<Symbol2, Error> {
+    ) -> Result<VariableInfo, Error> {
         let Some(symbol) = self.get_symbol(ctx, var_name.repr) else {
             return Err(Error {
                 message: format!("Unknown variable: {}", var_name.repr),
@@ -2312,24 +2241,24 @@ impl Typer {
 
         match symbol.kind {
             SymbolKind::Local => {
-                let local = &self.locals[symbol.col_index];
+                let local_type_id = self.locals_types[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(&InspectInfo {
                         message: format!(
                             "let {}: {}",
                             var_name.repr,
-                            self.registry.fmt(self.get_type(local.type_id))
+                            self.registry.fmt(self.get_type(local_type_id))
                         ),
                         loc: var_name.loc,
                         linked_loc: Some(symbol.loc),
                     })
                 };
 
-                return Ok(Symbol2 {
-                    kind: SymbolKind::Local,
-                    col_index: self.locals.len(),
-                    type_id: local.type_id,
+                return Ok(VariableInfo {
+                    kind: VariableKind::Local,
+                    col_index: self.locals_types.len(),
+                    type_id: local_type_id,
                 });
             }
             SymbolKind::Global => {
@@ -2347,8 +2276,8 @@ impl Typer {
                     });
                 }
 
-                return Ok(Symbol2 {
-                    kind: SymbolKind::Global,
+                return Ok(VariableInfo {
+                    kind: VariableKind::Global,
                     col_index: symbol.col_index,
                     type_id: global.type_id,
                 });
@@ -2368,8 +2297,8 @@ impl Typer {
                     })
                 }
 
-                return Ok(Symbol2 {
-                    kind: SymbolKind::Const,
+                return Ok(VariableInfo {
+                    kind: VariableKind::Const,
                     col_index: symbol.col_index,
                     type_id: const_def.type_id,
                 });
@@ -2407,8 +2336,8 @@ impl Typer {
                     })
                 }
 
-                return Ok(Symbol2 {
-                    kind: SymbolKind::EnumConstructor,
+                return Ok(VariableInfo {
+                    kind: VariableKind::EnumConstructor,
                     col_index: symbol.col_index,
                     type_id: self.intern_type(var_type),
                 });
@@ -2514,10 +2443,10 @@ impl Typer {
         self.store_expr_info(
             ctx,
             match_header.variant_bind.id,
-            self.registry.symbols.len(),
+            self.registry.variable_info.len(),
         );
-        self.registry.symbols.be_mut().push(Symbol2 {
-            kind: SymbolKind::EnumConstructor,
+        self.registry.variable_info.be_mut().push(VariableInfo {
+            kind: VariableKind::EnumConstructor,
             col_index: symbol.col_index,
             type_id: match_header.variant_bind.id,
         });
@@ -2818,8 +2747,10 @@ impl Typer {
             );
         }
 
+        let mut has_receiver = false;
         let mut arg_type_ids = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
+            has_receiver = true;
             arg_type_ids.push(self.type_code_expr_and_load(parent_ctx, receiver_arg)?);
         }
         for arg in arg_exprs {
@@ -2835,16 +2766,28 @@ impl Typer {
                 loc: *loc,
             });
         }
-        for (inline_fn_param, type_id) in inline_fn_def.decl.params.iter().zip(arg_type_ids.iter())
-        {
-            let type_name = inline_fn_param.param_name.repr;
-            let type_loc = inline_fn_param.param_name.loc;
+        for i in 0..arg_type_ids.len() {
+            let inline_fn_param = &inline_fn_def.decl.params[i];
+            let type_id = &arg_type_ids[i];
 
             if let Some(type_name) = get_infer_type_name(inline_fn_param)? {
                 self.define_type(ctx, type_name, self.get_type(*type_id), inline_fn_param.loc);
             }
 
-            self.define_local(ctx, type_name, *type_id, type_loc);
+            let arg_expr = if has_receiver && i == 0 {
+                receiver_arg.unwrap()
+            } else {
+                &arg_exprs[if has_receiver { i - 1 } else { i }]
+            };
+
+            let param_name = inline_fn_param.param_name.repr;
+            let param_loc = inline_fn_param.param_name.loc;
+            self.define_symbol(ctx, param_name, SymbolKind::Const, param_loc);
+            self.registry.constants.be_mut().push(ConstDef {
+                type_id: *type_id,
+                expr: UBRef::new(arg_expr),
+                inner_expr_id_offset: parent_ctx.expr_id_offset,
+            });
         }
 
         let self_type = self.get_fn_self_type(
@@ -3040,7 +2983,7 @@ impl Typer {
         };
 
         if name != "_" && self.define_symbol(ctx, name, SymbolKind::Local, loc) {
-            self.locals.be_mut().push(TyLocal { type_id });
+            self.locals_types.be_mut().push(type_id);
         }
     }
 
@@ -3160,7 +3103,7 @@ impl Typer {
                         });
                     };
 
-                    let var_symbol = self.get_variable_symbol(ctx, &ident)?;
+                    let var_symbol = self.get_variable_info(ctx, &ident)?;
                     self.store_expr_info(ctx, ctr.id, var_symbol.type_id);
                     return Ok(());
                 }
@@ -3340,28 +3283,6 @@ impl Typer {
         self.type_aliases.push(type_id);
     }
 
-    // TODO: remove this once migrated
-    fn define_symbol_compat<'a>(
-        &self,
-        ctx: TyContextRef,
-        symbol_name: &'static str,
-        symbol_kind: SymbolKind,
-        symbol_loc: Loc,
-    ) -> bool {
-        let ok = self.define_symbol(ctx, symbol_name, symbol_kind, symbol_loc);
-
-        if ok {
-            let _ = self.registry.be_mut().define_symbol(
-                &self.registry.modules[ctx.module_id].ctx,
-                symbol_name,
-                symbol_kind,
-                symbol_loc,
-            );
-        }
-
-        ok
-    }
-
     fn define_symbol<'a>(
         &self,
         ctx: TyContextRef,
@@ -3370,7 +3291,7 @@ impl Typer {
         symbol_loc: Loc,
     ) -> bool {
         let symbol_col_index = match &symbol_kind {
-            SymbolKind::Local => self.locals.len(),
+            SymbolKind::Local => self.locals_types.len(),
             SymbolKind::Global => self.registry.globals.len(),
             SymbolKind::Const => self.registry.constants.len(),
 

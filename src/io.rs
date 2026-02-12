@@ -7,6 +7,7 @@ pub struct FileInfo {
     pub source: String,
 }
 
+// TODO: move into Registry
 pub struct FileManager {
     pub files: Vec<FileInfo>,
 }
