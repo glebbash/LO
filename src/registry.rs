@@ -442,17 +442,16 @@ impl<'a> core::fmt::Display for TypeFmt<'a> {
             | Type::U64
             | Type::I64
             | Type::F64 => write!(f, "{}", self.type_.to_str().unwrap()),
-            Type::Pointer { pointee } => write!(
-                f,
-                "&{}",
-                self.registry.fmt(self.registry.get_type(*pointee))
-            ),
-            Type::SequencePointer { pointee } => {
-                write!(
-                    f,
-                    "*&{}",
-                    self.registry.fmt(self.registry.get_type(*pointee))
-                )
+            Type::Pointer {
+                pointee,
+                is_sequence,
+            } => {
+                if *is_sequence {
+                    write!(f, "&[]")?;
+                } else {
+                    write!(f, "&")?;
+                }
+                write!(f, "{}", self.registry.fmt(self.registry.get_type(*pointee)))
             }
             Type::StructInstance { struct_index } => {
                 f.write_str(&self.registry.structs[*struct_index].struct_name)

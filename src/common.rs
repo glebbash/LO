@@ -142,7 +142,7 @@ impl Reporter {
         stderr_write("\n");
     }
 
-    pub fn print_inspection(&self, inspect_info: &InspectInfo) {
+    pub fn print_inspection(&self, inspect_info: InspectInfo) {
         let source_index = inspect_info.loc.file_id;
         let source_range = RangeFmt(&inspect_info.loc);
         let message = json_str_escape(&inspect_info.message);

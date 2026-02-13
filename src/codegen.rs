@@ -1608,11 +1608,7 @@ impl CodeGenerator {
                     })
                 }
             }
-            Type::U32
-            | Type::I32
-            | Type::Null
-            | Type::Pointer { pointee: _ }
-            | Type::SequencePointer { pointee: _ } => {
+            Type::U32 | Type::I32 | Type::Null | Type::Pointer { .. } => {
                 if is_store {
                     instrs.push(WasmInstr::Store {
                         kind: WasmStoreKind::I32,
@@ -2062,7 +2058,11 @@ impl CodeGenerator {
             .get_struct_or_struct_ref_field(&lhs_type, field_access)
             .relax();
 
-        if let Type::Pointer { pointee: _ } = lhs_type {
+        if let Type::Pointer {
+            pointee: _,
+            is_sequence: false,
+        } = lhs_type
+        {
             return VarInfo::Stored(VarInfoStored {
                 address: self.build_code_unit(ctx, &field_access.lhs),
                 offset: field.byte_offset,
@@ -2145,7 +2145,11 @@ impl CodeGenerator {
         mut lhs_type: &Type,
         field_access: &FieldAccessExpr,
     ) -> &StructField {
-        if let Type::Pointer { pointee } = &lhs_type {
+        if let Type::Pointer {
+            pointee,
+            is_sequence: false,
+        } = &lhs_type
+        {
             lhs_type = self.get_type(*pointee);
         }
 
@@ -2178,7 +2182,11 @@ impl CodeGenerator {
     fn var_from_deref(&mut self, ctx: &mut ExprContext, addr_expr: &CodeExpr) -> VarInfo {
         let addr_type = self.get_expr_type(ctx, addr_expr);
 
-        let Type::Pointer { pointee } = &addr_type else {
+        let Type::Pointer {
+            pointee,
+            is_sequence: false,
+        } = &addr_type
+        else {
             unreachable!()
         };
 
@@ -2252,8 +2260,7 @@ impl CodeGenerator {
             | Type::U32
             | Type::I32
             | Type::Null
-            | Type::Pointer { pointee: _ }
-            | Type::SequencePointer { pointee: _ } => instrs.push(WasmInstr::I32Const { value: 0 }),
+            | Type::Pointer { .. } => instrs.push(WasmInstr::I32Const { value: 0 }),
             Type::U64 | Type::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
             Type::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
             Type::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
@@ -2302,13 +2309,7 @@ impl CodeGenerator {
         let mut wasm_op_type = WasmType::I32;
 
         match operand_type {
-            Type::Null
-            | Type::Bool
-            | Type::U8
-            | Type::U16
-            | Type::U32
-            | Type::Pointer { pointee: _ }
-            | Type::SequencePointer { pointee: _ } => {}
+            Type::Null | Type::Bool | Type::U8 | Type::U16 | Type::U32 | Type::Pointer { .. } => {}
             Type::EnumInstance { enum_index }
                 if self.registry.enums[*enum_index].variant_type == Type::Void => {}
 
@@ -2504,8 +2505,7 @@ impl CodeGenerator {
             Type::U64 => wasm_types.push(WasmType::I64),
             Type::I64 => wasm_types.push(WasmType::I64),
             Type::F64 => wasm_types.push(WasmType::F64),
-            Type::Pointer { pointee: _ } => wasm_types.push(WasmType::I32),
-            Type::SequencePointer { pointee: _ } => wasm_types.push(WasmType::I32),
+            Type::Pointer { .. } => wasm_types.push(WasmType::I32),
             Type::StructInstance { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
 
@@ -2587,8 +2587,7 @@ impl CodeGenerator {
             | Type::U64
             | Type::I64
             | Type::F64
-            | Type::Pointer { pointee: _ }
-            | Type::SequencePointer { pointee: _ } => output.push(WasmLocalInfo {
+            | Type::Pointer { .. } => output.push(WasmLocalInfo {
                 local_index,
                 local_name,
             }),

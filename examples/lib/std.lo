@@ -1,6 +1,6 @@
 // str literal type
 type str = struct {
-    data: *&u8,
+    data: &[]u8,
     size: u32,
 }
 
@@ -74,8 +74,8 @@ inline fn alloc!<T>(a: Alloc): &T {
     alloc(alloc, sizeof T) as &T
 }
 
-inline fn alloc_many!<T>(a: Alloc, count: u32): *&T {
-    alloc(alloc, count * sizeof T) as *&T
+inline fn alloc_many!<T>(a: Alloc, count: u32): &[]T {
+    alloc(alloc, count * sizeof T) as &[]T
 }
 
 fn alloc(a: Alloc, size: u32): &void {
@@ -94,7 +94,7 @@ inline fn free!<T>(a: Alloc, ptr: &T) {
     free(a, ptr, sizeof T)
 }
 
-inline fn free_many!<T>(a: Alloc, ptr: *&T, count: u32) {
+inline fn free_many!<T>(a: Alloc, ptr: &[]T, count: u32) {
     free(alloc, ptr, count * sizeof T)
 }
 
@@ -173,8 +173,8 @@ inline fn tmp_alloc!<T>(): &T {
     defer stack::free(sizeof T)
 }
 
-inline fn tmp_alloc_many!<T>(count: u32): *&T {
-    stack::alloc(count * sizeof T) as *&T
+inline fn tmp_alloc_many!<T>(count: u32): &[]T {
+    stack::alloc(count * sizeof T) as &[]T
     defer stack::free(count * sizeof T)
 }
 
@@ -207,8 +207,8 @@ inline fn heap::alloc!<T>(): &T {
     heap::alloc(sizeof T) as &T
 }
 
-inline fn heap::alloc_many!<T>(count: u32): *&T {
-    heap::alloc(count * sizeof T) as *&T
+inline fn heap::alloc_many!<T>(count: u32): &[]T {
+    heap::alloc(count * sizeof T) as &[]T
 }
 
 // http://dmitrysoshnikov.com/compilers/writing-a-memory-allocator/#mutator-allocator-collector
@@ -323,8 +323,8 @@ inline fn Arena::alloc!<T>(&self): &T {
     self.alloc(sizeof T) as &T
 }
 
-inline fn Arena::alloc_many!<T>(&self, count: u32): *&T {
-    self.alloc(count * sizeof T) as *&T
+inline fn Arena::alloc_many!<T>(&self, count: u32): &[]T {
+    self.alloc(count * sizeof T) as &[]T
 }
 
 fn Arena::alloc(&self, size: u32): &void {
@@ -622,7 +622,7 @@ fn String::join(items: &Vec(str), separator: u8): String {
 
 fn String::as_str(self): str {
     return str {
-        data: self.chars.data as *&u8,
+        data: self.chars.data as &[]u8,
         size: self.chars.size,
     }
 }
@@ -694,12 +694,12 @@ fn str::slice(self, start: u32, end: u32): str {
     }
 
     return str {
-        data: (self.data as u32 + start) as *&u8,
+        data: (self.data as u32 + start) as &[]u8,
         size: end - start,
     }
 }
 
-fn str::from_cstr(value: *&u8): str {
+fn str::from_cstr(value: &[]u8): str {
     let len = 0
     while *array_at!<u8>(value, len) != '\0' {
         len += 1
@@ -782,7 +782,7 @@ fn u64::write_to(self, output: String) {
 
 // utils
 
-inline fn array_at!<T>(array: *&T, index: u32): &T {
+inline fn array_at!<T>(array: &[]T, index: u32): &T {
     (array as u32 + index * sizeof T) as &T
 }
 

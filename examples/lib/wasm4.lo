@@ -20,7 +20,7 @@ inline let wasm4::SCREEN_SIZE = 160
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-inline let wasm4::PALETTE = 0x04 as *&u32
+inline let wasm4::PALETTE = 0x04 as &[]u32
 inline let wasm4::DRAW_COLORS = 0x14 as &u16
 inline let wasm4::GAMEPAD1 = 0x16 as &u8
 inline let wasm4::GAMEPAD2 = 0x17 as &u8
@@ -52,7 +52,7 @@ inline let wasm4::SYSTEM_HIDE_GAMEPAD_OVERLAY = 2
 
 // Copies pixels to the framebuffer.
 fn wasm4::blit(
-    data: *&u8,
+    data: &[]u8,
     x: i32,
     y: i32,
     width: u32,
@@ -62,7 +62,7 @@ fn wasm4::blit(
 
 // Copies a subregion within a larger sprite atlas to the framebuffer.
 fn wasm4::blitSub(
-    data: *&u8,
+    data: &[]u8,
     x: i32,
     y: i32,
     width: u32,
@@ -95,7 +95,7 @@ fn wasm4::oval(x: i32, y: i32, width: u32, height: u32) = @import_from("env")
 fn wasm4::rect(x: i32, y: i32, width: u32, height: u32) = @import_from("env")
 
 // Draws text using the built-in system font.
-fn wasm4::text(text: *&u8, x: i32, y: i32) = @import_from("env")
+fn wasm4::text(text: &[]u8, x: i32, y: i32) = @import_from("env")
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
@@ -130,15 +130,15 @@ inline let wasm4::TONE_NOTE_MODE = 64
 // └───────────────────────────────────────────────────────────────────────────┘
 
 // Reads up to `size` bytes from persistent storage into the pointer `dest`.
-fn wasm4::diskr(dest: *&void, size: u32): u32 = @import_from("env")
+fn wasm4::diskr(dest: &[]void, size: u32): u32 = @import_from("env")
 
 // Writes up to `size` bytes from the pointer `src` into persistent storage.
-fn wasm4::diskw(src: *&u8, size: u32): u32 = @import_from("env")
+fn wasm4::diskw(src: &[]u8, size: u32): u32 = @import_from("env")
 
 // Prints a message to the debug console.
-fn wasm4::trace(str: *&u8) = @import_from("env")
+fn wasm4::trace(str: &[]u8) = @import_from("env")
 
 // Prints a message to the debug console.
 // NOTE: Original signature is `void tracef (const char* fmt, ...)`,
 //   but varargs are not supported.
-fn wasm4::tracef(str: *&u8) = @import_from("env")
+fn wasm4::tracef(str: &[]u8) = @import_from("env")

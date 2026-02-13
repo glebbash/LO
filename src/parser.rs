@@ -398,39 +398,36 @@ impl Parser {
     fn parse_type_expr_primary(&self) -> Result<TypeExpr, Error> {
         let mut loc = self.current().loc;
 
-        if let Some(_) = self.eat(Operator, "&") {
-            let pointee = Box::new(self.parse_type_expr()?);
-            loc.end_pos = self.prev().loc.end_pos;
-            return Ok(TypeExpr::Pointer(TypeExprPointer {
-                id: self.next_expr_id(),
-                pointee,
-                loc,
-            }));
-        }
-
         // lexer joins two `&` into `&&`
-        if let Some(_) = self.eat(Operator, "&&") {
-            let pointee = Box::new(self.parse_type_expr()?);
-            loc.end_pos = self.prev().loc.end_pos;
-            return Ok(TypeExpr::Pointer(TypeExprPointer {
-                id: self.next_expr_id(),
-                pointee: Box::new(TypeExpr::Pointer(TypeExprPointer {
-                    id: self.next_expr_id(),
-                    pointee,
-                    loc,
-                })),
-                loc,
-            }));
-        }
+        if self.eat(Operator, "&").is_some() || self.eat(Operator, "&&").is_some() {
+            let is_ptr_ptr = self.current().is(Operator, "&&", self.source);
 
-        if let Some(_) = self.eat(Operator, "*&") {
+            let mut is_sequence = false;
+            if self.eat(Delim, "[").is_some() {
+                self.expect(Delim, "]")?;
+                is_sequence = true;
+            }
+
             let pointee = Box::new(self.parse_type_expr()?);
             loc.end_pos = self.prev().loc.end_pos;
-            return Ok(TypeExpr::SequencePointer(TypeExprSequencePointer {
+
+            let result = TypeExpr::Pointer(TypeExprPointer {
                 id: self.next_expr_id(),
                 pointee,
+                is_sequence,
                 loc,
-            }));
+            });
+
+            if is_ptr_ptr {
+                return Ok(TypeExpr::Pointer(TypeExprPointer {
+                    id: self.next_expr_id(),
+                    pointee: Box::new(result),
+                    is_sequence: false,
+                    loc,
+                }));
+            }
+
+            return Ok(result);
         }
 
         let ident = self.parse_ident()?;

@@ -101,19 +101,13 @@ impl TopLevelExpr {
 pub enum TypeExpr {
     Named(IdentExpr),
     Pointer(TypeExprPointer),
-    SequencePointer(TypeExprSequencePointer),
     Container(TypeExprContainer),
 }
 
 pub struct TypeExprPointer {
     pub id: ExprId,
     pub pointee: Box<TypeExpr>,
-    pub loc: Loc,
-}
-
-pub struct TypeExprSequencePointer {
-    pub id: ExprId,
-    pub pointee: Box<TypeExpr>,
+    pub is_sequence: bool,
     pub loc: Loc,
 }
 
@@ -129,7 +123,6 @@ impl TypeExpr {
         match self {
             TypeExpr::Named(e) => e.id,
             TypeExpr::Pointer(e) => e.id,
-            TypeExpr::SequencePointer(e) => e.id,
             TypeExpr::Container(e) => e.id,
         }
     }
@@ -138,7 +131,6 @@ impl TypeExpr {
         match self {
             TypeExpr::Named(e) => e.loc,
             TypeExpr::Pointer(e) => e.loc,
-            TypeExpr::SequencePointer(e) => e.loc,
             TypeExpr::Container(e) => e.loc,
         }
     }

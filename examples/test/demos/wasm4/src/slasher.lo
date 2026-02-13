@@ -107,7 +107,7 @@ fn render() {
         let health_txt = String::from_str_in(scratch, "HP: ")
         health_txt.push_str(boss_health.to_tmp_str!())
         health_txt.push_str("\0")
-        wasm4::text(health_txt.chars.data as *&u8, +110, +10)
+        wasm4::text(health_txt.chars.data as &[]u8, +110, +10)
     }
 
     if mode == Mode::DEFEND {

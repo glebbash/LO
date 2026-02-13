@@ -7,7 +7,7 @@ inline let wasi::FD_STDOUT = 1
 inline let wasi::FD_STDERR = 2
 
 type wasi::IOVec = struct {
-    base: *&u8,
+    base: &[]u8,
     size: u32,
 }
 
@@ -29,7 +29,7 @@ fn wasi::path_open(
     // Flags specifying how the path will be resolved.
     dirflags: u32,
     // A wasm pointer to a null-terminated string containing the path of the file or directory to open.
-    path: *&u8,
+    path: &[]u8,
     // The length of the path string.
     path_len: u32,
     // Flags specifying how the file will be opened.
@@ -48,7 +48,7 @@ fn wasi::fd_read(
     // File descriptor
     fd: u32,
     // The pointer to the iov array
-    iovs: *&wasi::IOVec,
+    iovs: &[]wasi::IOVec,
     // Amount of wasi::IOVec
     iovs_len: u32,
     // Pointer to store the number of bytes read
@@ -59,7 +59,7 @@ fn wasi::fd_write(
     // File descriptor
     fd: u32,
     // The pointer to the iov array
-    iovs: *&wasi::IOVec,
+    iovs: &[]wasi::IOVec,
     // Amount of wasi::IOVec
     iovs_len: u32,
     // Pointer to store the number of bytes written
@@ -80,9 +80,9 @@ fn wasi::args_sizes_get(
 
 fn wasi::args_get(
     // Pointer to a buffer where the argument pointers will be written.
-    argv: *&*&u8,
+    argv: &[]&[]u8,
     // Pointer to a buffer where the argument string data will be written.
-    argv_buf: *&u8,
+    argv_buf: &[]u8,
 ): wasi::Err = @import_from("wasi_snapshot_preview1")
 
 fn wasi::proc_exit(
@@ -101,7 +101,7 @@ fn wasi::fd_prestat_dir_name(
     // The preopened file descriptor to query.
     fd: u32,
     // A pointer to a buffer where the directory name will be written.
-    path: *&u8,
+    path: &[]u8,
     // The maximum length of the buffer.
     path_len: u32,
 ): wasi::Err = @import_from("wasi_snapshot_preview1")

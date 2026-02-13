@@ -3,8 +3,8 @@
 
 type Args = struct {
     argc: u32,
-    argv: *&*&u8,
-    argv_buf: *&u8,
+    argv: &[]&[]u8,
+    argv_buf: &[]u8,
 }
 
 fn Args::load(): Args {
@@ -12,7 +12,7 @@ fn Args::load(): Args {
     let argv_buf_size = tmp_alloc!<u32>()
     let _ = wasi::args_sizes_get(argc, argv_buf_size)
 
-    let argv = heap::alloc_many!<*&u8>(*argc)
+    let argv = heap::alloc_many!<&[]u8>(*argc)
     let argv_buf = heap::alloc_many!<u8>(*argv_buf_size)
     let _ = wasi::args_get(argv, argv_buf)
 
@@ -23,7 +23,7 @@ fn Args::get(self, i: u32): str {
     if i >= self.argc {
         abort(AbortCode::VEC_OUT_OF_BOUNDS)
     }
-    let arg = *array_at!<*&u8>(self.argv, i)
+    let arg = *array_at!<&[]u8>(self.argv, i)
     return str::from_cstr(arg)
 }
 

@@ -16,8 +16,7 @@ pub enum Type {
     U64,
     I64,
     F64,
-    Pointer { pointee: TypeId },
-    SequencePointer { pointee: TypeId },
+    Pointer { pointee: TypeId, is_sequence: bool },
     StructInstance { struct_index: usize },
     EnumInstance { enum_index: usize },
     Result(ResultType),
@@ -230,7 +229,7 @@ impl Typer {
                     write!(&mut msg, "expr count: {}\n", self.registry.expr_id_count).unwrap();
                     write!(&mut msg, "unique types: {}\n", self.registry.types.len()).unwrap();
 
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: msg,
                         loc: intrinsic.fn_name.loc,
                         linked_loc: None,
@@ -709,7 +708,7 @@ impl Typer {
                         const_.type_id = value_type_id;
 
                         if self.reporter.in_inspection_mode {
-                            self.reporter.print_inspection(&InspectInfo {
+                            self.reporter.print_inspection(InspectInfo {
                                 message: format!(
                                     "inline let {}: {}",
                                     &let_expr.name.repr,
@@ -733,7 +732,7 @@ impl Typer {
                     if self.reporter.in_inspection_mode {
                         let global_name = &let_expr.name.repr;
 
-                        self.reporter.print_inspection(&InspectInfo {
+                        self.reporter.print_inspection(InspectInfo {
                             message: format!(
                                 "let {global_name}: {}",
                                 self.registry.fmt(self.get_type(value_type_id))
@@ -928,7 +927,7 @@ impl Typer {
                         let fn_info = &self.registry.functions[fn_index];
 
                         if self.reporter.in_inspection_mode {
-                            self.reporter.print_inspection(&InspectInfo {
+                            self.reporter.print_inspection(InspectInfo {
                                 message: String::from(in_name.repr),
                                 loc: in_name.loc,
                                 linked_loc: Some(fn_info.definition_loc.clone()),
@@ -1121,69 +1120,84 @@ impl Typer {
                         loc: struct_literal.loc,
                     });
                 };
+                let TySymbolKind::Struct = symbol.kind else {
+                    return Err(Error {
+                        message: format!(
+                            "Struct name expected, got: {:?} for symbol {}",
+                            symbol.kind, struct_literal.struct_name.repr
+                        ),
+                        loc: struct_literal.loc,
+                    });
+                };
                 let struct_index = symbol.col_index;
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(InspectInfo {
+                        message: format!("struct {{ ... }}"),
+                        loc: struct_literal.struct_name.loc,
+                        linked_loc: Some(symbol.loc),
+                    });
+                }
 
                 let struct_type = Type::StructInstance { struct_index };
                 self.store_type(ctx, struct_literal.id, &struct_type);
 
-                {
-                    let struct_def = &self.registry.structs[struct_index].relax();
+                let struct_def = &self.registry.structs[struct_index].relax();
 
-                    for field_index in 0..struct_literal.body.fields.len() {
-                        let field_literal = &struct_literal.body.fields[field_index];
-                        let Some(struct_field) = struct_def.fields.get(field_index) else {
-                            self.report_error(&Error {
-                                message: format!("Excess field values"),
-                                loc: field_literal.loc,
-                            });
-                            continue;
-                        };
-
-                        if &field_literal.key != &struct_field.field_name {
-                            self.report_error(&Error {
-                                message: format!(
-                                    "Unexpected struct field name, expecting: `{}`",
-                                    struct_field.field_name
-                                ),
-                                loc: field_literal.loc,
-                            });
-                        }
-
-                        let Some(field_value_type_id) = self.load_type(ctx, &field_literal.value)
-                        else {
-                            continue;
-                        };
-                        let field_value_type = self.get_type(field_value_type_id);
-
-                        if !is_type_compatible(
-                            &self.registry,
-                            &struct_field.field_type,
-                            &field_value_type,
-                        ) {
-                            self.report_error(&Error {
-                                message: format!(
-                                    "Invalid type for struct field {}.{}, expected: {}, got: {}",
-                                    struct_literal.struct_name.repr,
-                                    struct_field.field_name,
-                                    self.registry.fmt(&struct_field.field_type,),
-                                    self.registry.fmt(&field_value_type),
-                                ),
-                                loc: field_literal.value.loc(),
-                            });
-                        }
-                    }
-
-                    if struct_literal.body.fields.len() < struct_def.fields.len() {
-                        let mut missing_fields = Vec::new();
-                        for i in struct_literal.body.fields.len()..struct_def.fields.len() {
-                            missing_fields.push(&struct_def.fields[i].field_name)
-                        }
-
+                for field_index in 0..struct_literal.body.fields.len() {
+                    let field_literal = &struct_literal.body.fields[field_index];
+                    let Some(struct_field) = struct_def.fields.get(field_index) else {
                         self.report_error(&Error {
-                            message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
-                            loc: struct_literal.struct_name.loc,
+                            message: format!("Excess field values"),
+                            loc: field_literal.loc,
+                        });
+                        continue;
+                    };
+
+                    if &field_literal.key != &struct_field.field_name {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Unexpected struct field name, expecting: `{}`",
+                                struct_field.field_name
+                            ),
+                            loc: field_literal.loc,
                         });
                     }
+
+                    let Some(field_value_type_id) = self.load_type(ctx, &field_literal.value)
+                    else {
+                        continue;
+                    };
+                    let field_value_type = self.get_type(field_value_type_id);
+
+                    if !is_type_compatible(
+                        &self.registry,
+                        &struct_field.field_type,
+                        &field_value_type,
+                    ) {
+                        self.report_error(&Error {
+                            message: format!(
+                                "Invalid type for struct field {}.{}, expected: {}, got: {}",
+                                struct_literal.struct_name.repr,
+                                struct_field.field_name,
+                                self.registry.fmt(&struct_field.field_type,),
+                                self.registry.fmt(&field_value_type),
+                            ),
+                            loc: field_literal.value.loc(),
+                        });
+                    }
+                }
+
+                if struct_literal.body.fields.len() < struct_def.fields.len() {
+                    let mut missing_fields = Vec::new();
+                    for i in struct_literal.body.fields.len()..struct_def.fields.len() {
+                        missing_fields.push(&struct_def.fields[i].field_name)
+                    }
+
+                    self.report_error(&Error {
+                        message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
+                        loc: struct_literal.struct_name.loc,
+                    });
                 }
 
                 return Ok(());
@@ -1196,8 +1210,9 @@ impl Typer {
 
                 let item_type_id = self.build_type(ctx, &array_literal.item_type)?;
 
-                let array_type = Type::SequencePointer {
+                let array_type = Type::Pointer {
                     pointee: item_type_id,
+                    is_sequence: true,
                 };
                 self.store_type(ctx, array_literal.id, &array_type);
                 return Ok(());
@@ -1364,14 +1379,13 @@ impl Typer {
                     PrefixOpTag::Reference => {
                         let type_ = Type::Pointer {
                             pointee: expr_type_id,
+                            is_sequence: false,
                         };
                         self.store_type(ctx, prefix_op.id, &type_);
                         return Ok(());
                     }
                     PrefixOpTag::Dereference => {
-                        let (Type::Pointer { pointee } | Type::SequencePointer { pointee }) =
-                            self.get_type(expr_type_id)
-                        else {
+                        let Type::Pointer { pointee, .. } = self.get_type(expr_type_id) else {
                             return Err(Error {
                                 message: format!(
                                     "Cannot dereference expr of type {}",
@@ -1382,7 +1396,7 @@ impl Typer {
                         };
 
                         if self.reporter.in_inspection_mode {
-                            self.reporter.print_inspection(&InspectInfo {
+                            self.reporter.print_inspection(InspectInfo {
                                 message: format!(
                                     "<deref>: {}",
                                     self.registry.fmt(self.get_type(*pointee))
@@ -1419,8 +1433,7 @@ impl Typer {
                             | Type::Bool
                             | Type::F32
                             | Type::F64
-                            | Type::Pointer { pointee: _ }
-                            | Type::SequencePointer { pointee: _ }
+                            | Type::Pointer { .. }
                             | Type::StructInstance { struct_index: _ }
                             | Type::EnumInstance { enum_index: _ }
                             | Type::Result(_)
@@ -1522,7 +1535,7 @@ impl Typer {
                     let variant = &enum_def.variants[enum_ctor.variant_index];
 
                     if self.reporter.in_inspection_mode {
-                        self.reporter.print_inspection(&InspectInfo {
+                        self.reporter.print_inspection(InspectInfo {
                             message: format!(
                                 "{} // {}",
                                 call.fn_name.repr, enum_ctor.variant_index
@@ -1756,8 +1769,9 @@ impl Typer {
                     self.store_type(
                         ctx,
                         call.id,
-                        &Type::SequencePointer {
+                        &Type::Pointer {
                             pointee: self.intern_type(&Type::U8),
+                            is_sequence: true,
                         },
                     );
 
@@ -1893,7 +1907,7 @@ impl Typer {
                             write!(message, "{} : {:?}\n", symbol.name, symbol.kind).unwrap();
                         }
 
-                        self.reporter.print_inspection(&InspectInfo {
+                        self.reporter.print_inspection(InspectInfo {
                             message,
                             loc: call.fn_name.loc,
                             linked_loc: None,
@@ -2255,7 +2269,7 @@ impl Typer {
                 let local_type_id = self.locals_types[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "let {}: {}",
                             var_name.repr,
@@ -2276,7 +2290,7 @@ impl Typer {
                 let global = &self.registry.globals[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "let {}: {}",
                             var_name.repr,
@@ -2297,7 +2311,7 @@ impl Typer {
                 let const_def = &self.registry.constants[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "inline let {}: {}",
                             var_name.repr,
@@ -2336,7 +2350,7 @@ impl Typer {
                 };
 
                 if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "inline let {}: {}",
                             var_name.repr,
@@ -2429,7 +2443,7 @@ impl Typer {
         };
 
         if self.reporter.in_inspection_mode {
-            self.reporter.print_inspection(&InspectInfo {
+            self.reporter.print_inspection(InspectInfo {
                 message: format!(
                     "{}\n{}({})",
                     self.registry.fmt(&Type::EnumInstance {
@@ -2510,9 +2524,7 @@ impl Typer {
             | Type::I64
             | Type::F32
             | Type::F64 => primitives.push(type_.clone()),
-            Type::Null | Type::Pointer { pointee: _ } | Type::SequencePointer { pointee: _ } => {
-                primitives.push(Type::U32)
-            }
+            Type::Null | Type::Pointer { .. } => primitives.push(Type::U32),
             Type::StructInstance { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
 
@@ -2541,7 +2553,11 @@ impl Typer {
         mut lhs_type: &Type,
         field_access: &FieldAccessExpr,
     ) -> Result<&StructField, Error> {
-        if let Type::Pointer { pointee } = &lhs_type {
+        if let Type::Pointer {
+            pointee,
+            is_sequence: false,
+        } = &lhs_type
+        {
             lhs_type = self.get_type(*pointee);
         }
 
@@ -2579,7 +2595,7 @@ impl Typer {
         };
 
         if self.reporter.in_inspection_mode {
-            self.reporter.print_inspection(&InspectInfo {
+            self.reporter.print_inspection(InspectInfo {
                 message: format!(
                     "{}.{}: {}",
                     self.registry.fmt(&lhs_type),
@@ -2661,7 +2677,7 @@ impl Typer {
             let return_type = self.registry.fmt(&fn_info.type_.output);
             write!(&mut message, "): {}", return_type).unwrap();
 
-            self.reporter.print_inspection(&InspectInfo {
+            self.reporter.print_inspection(InspectInfo {
                 message,
                 loc: *loc,
                 linked_loc: Some(fn_info.definition_loc.clone()),
@@ -2876,7 +2892,7 @@ impl Typer {
 
             write!(&mut message, "): {}", self.registry.fmt(&return_type)).unwrap();
 
-            self.reporter.print_inspection(&InspectInfo {
+            self.reporter.print_inspection(InspectInfo {
                 message,
                 loc: *loc,
                 linked_loc: Some(inline_fn_def.decl.fn_name.loc),
@@ -2904,6 +2920,7 @@ impl Typer {
 
                 return Ok(self.intern_type(&Type::Pointer {
                     pointee: self_type_id,
+                    is_sequence: false,
                 }));
             }
             FnParamType::Type { expr } => {
@@ -2982,7 +2999,7 @@ impl Typer {
 
     fn define_local(&self, ctx: TyContextRef, name: &'static str, type_id: TypeId, loc: Loc) {
         if self.reporter.in_inspection_mode {
-            self.reporter.print_inspection(&InspectInfo {
+            self.reporter.print_inspection(InspectInfo {
                 message: format!(
                     "let {}: {}",
                     name,
@@ -3063,13 +3080,14 @@ impl Typer {
             TypeExpr::Pointer(ptr) => {
                 let pointee = self.build_type_(ctx, &ptr.pointee, true, loc)?;
 
-                self.store_type(ctx, ptr.id, &Type::Pointer { pointee });
-                Ok(())
-            }
-            TypeExpr::SequencePointer(ptr) => {
-                let pointee = self.build_type_(ctx, &ptr.pointee, true, loc)?;
-
-                self.store_type(ctx, ptr.id, &Type::SequencePointer { pointee });
+                self.store_type(
+                    ctx,
+                    ptr.id,
+                    &Type::Pointer {
+                        pointee,
+                        is_sequence: ptr.is_sequence,
+                    },
+                );
                 Ok(())
             }
             TypeExpr::Container(ctr) => {
@@ -3178,7 +3196,7 @@ impl Typer {
         match symbol.kind {
             TySymbolKind::Struct => {
                 if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: format!("struct {type_name} {{ ... }}"),
                         loc: *loc,
                         linked_loc: Some(symbol.loc),
@@ -3191,7 +3209,7 @@ impl Typer {
             }
             TySymbolKind::Enum => {
                 if self.reporter.in_inspection_mode {
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: format!("enum {type_name} {{ ... }}"),
                         loc: *loc,
                         linked_loc: Some(symbol.loc),
@@ -3207,7 +3225,7 @@ impl Typer {
 
                 // don't print inspection for built-ins
                 if self.reporter.in_inspection_mode && symbol.loc.file_id != 0 {
-                    self.reporter.print_inspection(&InspectInfo {
+                    self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "type {type_name} = {}",
                             self.registry.fmt(self.get_type(type_id))
@@ -3518,12 +3536,7 @@ pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLay
             layout.alignment = u32::max(layout.alignment, 2);
             layout.byte_size = align(layout.byte_size, 2) + 2;
         }
-        Type::U32
-        | Type::I32
-        | Type::F32
-        | Type::Null
-        | Type::Pointer { pointee: _ }
-        | Type::SequencePointer { pointee: _ } => {
+        Type::U32 | Type::I32 | Type::F32 | Type::Null | Type::Pointer { .. } => {
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 4);
             layout.byte_size = align(layout.byte_size, 4) + 4;
@@ -3565,8 +3578,7 @@ pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLay
 
 pub fn deref_rec<'a>(registry: &'a Registry, type_: &'a Type) -> &'a Type {
     match type_ {
-        Type::Pointer { pointee } => deref_rec(registry, registry.get_type(*pointee)),
-        Type::SequencePointer { pointee } => deref_rec(registry, registry.get_type(*pointee)),
+        Type::Pointer { pointee, .. } => deref_rec(registry, registry.get_type(*pointee)),
         _ => type_,
     }
 }
@@ -3592,8 +3604,7 @@ pub fn is_wide_int(type_: &Type) -> Option<bool> {
         | Type::U32
         | Type::I32
         | Type::Null
-        | Type::Pointer { pointee: _ }
-        | Type::SequencePointer { pointee: _ } => Some(false),
+        | Type::Pointer { .. } => Some(false),
         _ => None,
     }
 }
@@ -3650,23 +3661,24 @@ pub fn is_types_compatible(registry: &Registry, slots: &[TypeId], values: &[Type
 }
 
 pub fn is_type_compatible(registry: &Registry, slot: &Type, value: &Type) -> bool {
-    if let Type::Pointer { pointee } = slot {
+    if let Type::Pointer {
+        pointee,
+        is_sequence: false,
+    } = slot
+    {
         if *value == Type::Null {
             return true;
         }
 
         if let Type::Void = registry.get_type(*pointee) {
-            if let Type::Pointer { pointee: _ } = value {
-                return true;
-            }
-
-            if let Type::SequencePointer { pointee: _ } = value {
+            if let Type::Pointer { pointee: _, .. } = value {
                 return true;
             }
         }
 
         if let Type::Pointer {
             pointee: value_pointee,
+            is_sequence: false,
         } = value
         {
             return is_type_compatible(

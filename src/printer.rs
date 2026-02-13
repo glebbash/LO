@@ -272,10 +272,9 @@ impl Printer {
             }
             TypeExpr::Pointer(ptr) => {
                 stdout_write("&");
-                self.print_type_expr(&ptr.pointee);
-            }
-            TypeExpr::SequencePointer(ptr) => {
-                stdout_write("*&");
+                if ptr.is_sequence {
+                    stdout_write("[]");
+                }
                 self.print_type_expr(&ptr.pointee);
             }
             TypeExpr::Container(container) => {

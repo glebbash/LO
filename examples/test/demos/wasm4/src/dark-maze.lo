@@ -198,7 +198,7 @@ fn light_block(block_x: i32, block_y: i32, brightness: u32) {
     }
 }
 
-fn play_notes(notes: *&u8, notes_len: u32, note_duration: u32) {
+fn play_notes(notes: &[]u8, notes_len: u32, note_duration: u32) {
     if notes_ticker >= note_duration {
         let note = (*array_at!<u8>(notes, notes_index)) as u32
         wasm4::tone(

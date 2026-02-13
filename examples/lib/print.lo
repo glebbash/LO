@@ -28,7 +28,7 @@ fn fprint(fd: u32, value: str): Result(u32, wasi::Err) {
 
 fn fprint_str(fd: u32, value: &str): Result(u32, wasi::Err) {
     let nwritten = tmp_alloc!<u32>()
-    let err = wasi::fd_write(fd, value as *&wasi::IOVec, 1, nwritten)
+    let err = wasi::fd_write(fd, value as &[]wasi::IOVec, 1, nwritten)
     if err != wasi::Err::SUCCESS {
         return Err(err)
     }

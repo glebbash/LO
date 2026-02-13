@@ -132,7 +132,6 @@ fn TopLevelExpr::loc(self): Loc {
 type TypeExpr = enum (&void) {
     Named(&IdentExpr),
     Pointer(&TypeExprPointer),
-    SequencePointer(&TypeExprSequencePointer),
     Container(&TypeExprContainer),
 }
 
@@ -143,9 +142,6 @@ fn TypeExpr::loc(self): Loc {
     if match TypeExpr::Pointer(e) = self {
         return e.loc
     }
-    if match TypeExpr::SequencePointer(e) = self {
-        return e.loc
-    }
     if match TypeExpr::Container(e) = self {
         return e.loc
     }
@@ -154,11 +150,7 @@ fn TypeExpr::loc(self): Loc {
 
 type TypeExprPointer = struct {
     pointee: TypeExpr,
-    loc: Loc,
-}
-
-type TypeExprSequencePointer = struct {
-    pointee: TypeExpr,
+    is_sequence: bool,
     loc: Loc,
 }
 

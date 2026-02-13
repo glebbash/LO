@@ -418,37 +418,34 @@ fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
 fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
     let loc = self.current().loc
 
-    if self.eat(Operator, "&") != null {
-        let pointee = self.parse_type_expr()?
-        loc.end_pos = self.prev().loc.end_pos
-        return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
-            pointee: pointee,
-            loc: loc,
-        })))
-    }
-
     // lexer joins two `&` into `&&`
-    if self.eat(Operator, "&&") != null {
-        let pointee = self.parse_type_expr()?
-        loc.end_pos = self.prev().loc.end_pos
-        return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
-            pointee: TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
-                pointee: pointee,
-                loc: loc,
-            })),
-            loc: loc,
-        })))
-    }
+    if self.eat(Operator, "&") != null || self.eat(Operator, "&&") != null {
+        let is_ptr_ptr = self.current().is(Operator, "&&", self.source)
 
-    if self.eat(Operator, "*&") != null {
+        let is_sequence = false
+        if self.eat(Delim, "[") != null {
+            let _ = self.expect(Delim, "]")?
+            is_sequence = true
+        }
+
         let pointee = self.parse_type_expr()?
         loc.end_pos = self.prev().loc.end_pos
-        return Ok(TypeExpr::SequencePointer(self.ast_arena.new!(
-            TypeExprSequencePointer {
-                pointee: pointee,
+
+        let result = TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
+            pointee: pointee,
+            is_sequence: is_sequence,
+            loc: loc,
+        }))
+
+        if is_ptr_ptr {
+            return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
+                pointee: result,
+                is_sequence: false,
                 loc: loc,
-            },
-        )))
+            })))
+        }
+
+        return Ok(result)
     }
 
     let ident = self.parse_ident()?
