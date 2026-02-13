@@ -402,6 +402,8 @@ impl Parser {
         if self.eat(Operator, "&").is_some() || self.eat(Operator, "&&").is_some() {
             let is_ptr_ptr = self.current().is(Operator, "&&", self.source);
 
+            let is_nullable = self.eat(Operator, "?").is_some();
+
             let mut is_sequence = false;
             if self.eat(Delim, "[").is_some() {
                 self.expect(Delim, "]")?;
@@ -415,6 +417,7 @@ impl Parser {
                 id: self.next_expr_id(),
                 pointee,
                 is_sequence,
+                is_nullable,
                 loc,
             });
 
@@ -423,6 +426,7 @@ impl Parser {
                     id: self.next_expr_id(),
                     pointee: Box::new(result),
                     is_sequence: false,
+                    is_nullable: false,
                     loc,
                 }));
             }

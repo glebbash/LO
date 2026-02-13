@@ -275,12 +275,15 @@ fn Printer::print_type_expr(&self, expr: TypeExpr) {
         return
     }
 
-    if match TypeExpr::Pointer(pointer) = expr {
+    if match TypeExpr::Pointer(ptr) = expr {
         stdout_write("&")
-        if pointer.is_sequence {
+        if ptr.is_nullable {
+            stdout_write("?")
+        }
+        if ptr.is_sequence {
             stdout_write("[]")
         }
-        self.print_type_expr(pointer.pointee)
+        self.print_type_expr(ptr.pointee)
         return
     }
 

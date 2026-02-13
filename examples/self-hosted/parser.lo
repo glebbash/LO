@@ -422,6 +422,8 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
     if self.eat(Operator, "&") != null || self.eat(Operator, "&&") != null {
         let is_ptr_ptr = self.current().is(Operator, "&&", self.source)
 
+        let is_nullable = self.eat(Operator, "?") != null
+
         let is_sequence = false
         if self.eat(Delim, "[") != null {
             let _ = self.expect(Delim, "]")?
@@ -434,6 +436,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
         let result = TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
             pointee: pointee,
             is_sequence: is_sequence,
+            is_nullable: is_nullable,
             loc: loc,
         }))
 
@@ -441,6 +444,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
             return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
                 pointee: result,
                 is_sequence: false,
+                is_nullable: false,
                 loc: loc,
             })))
         }
@@ -1353,7 +1357,7 @@ fn Parser::expect_any(&self, type_: TokenType): Result(&Token, &Error) {
     return Ok(self.next())
 }
 
-fn Parser::eat(&self, type_: TokenType, value: str): &Token {
+fn Parser::eat(&self, type_: TokenType, value: str): &?Token {
     if !self.current().is(type_, value, self.lexer.source) {
         return null
     }
@@ -1361,7 +1365,7 @@ fn Parser::eat(&self, type_: TokenType, value: str): &Token {
     return self.next()
 }
 
-fn Parser::eat_any(&self, type_: TokenType): &Token {
+fn Parser::eat_any(&self, type_: TokenType): &?Token {
     if !self.current().is_any(type_) {
         return null
     }

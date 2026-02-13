@@ -21,8 +21,7 @@ type FnDeclExpr = struct {
     type_params: &Vec(str),
     params: &Vec(FnParam),
     params_trailing_comma: bool,
-    // @optional
-    return_type: &TypeExpr,
+    return_type: &?TypeExpr,
     loc: Loc,
 }
 
@@ -90,15 +89,13 @@ type StructDefField = struct {
 }
 
 type TypeDefValueEnum = struct {
-    // @optional
-    variant_type: &TypeExpr,
+    variant_type: &?TypeExpr,
     variants: &Vec(EnumDefVariant),
 }
 
 type EnumDefVariant = struct {
     variant_name: IdentExpr,
-    // @optional
-    variant_type: &TypeExpr,
+    variant_type: &?TypeExpr,
     loc: Loc,
 }
 
@@ -151,6 +148,7 @@ fn TypeExpr::loc(self): Loc {
 type TypeExprPointer = struct {
     pointee: TypeExpr,
     is_sequence: bool,
+    is_nullable: bool,
     loc: Loc,
 }
 
@@ -224,8 +222,7 @@ type NullLiteralExpr = struct {
 type IntLiteralExpr = struct {
     repr: str,
     value: i64,
-    // @optional
-    tag: &str,
+    tag: &?str,
     loc: Loc,
 }
 
@@ -236,8 +233,7 @@ type StringLiteralExpr = struct {
 }
 
 type ReturnExpr = struct {
-    // @optional
-    expr: &CodeExpr,
+    expr: &?CodeExpr,
     loc: Loc,
 }
 
@@ -281,8 +277,7 @@ type ElseBlock = enum (&void) {
 }
 
 type WhileExpr = struct {
-    // @optional
-    cond: &CodeExpr,
+    cond: &?CodeExpr,
     body: CodeBlock,
     loc: Loc,
 }
@@ -349,10 +344,8 @@ type ArrayLiteralExpr = struct {
 
 type ResultLiteralExpr = struct {
     is_ok: bool,
-    // @optional
-    result_type: &ResultTypeExpr,
-    // @optional
-    value: &CodeExpr,
+    result_type: &?ResultTypeExpr,
+    value: &?CodeExpr,
     loc: Loc,
 }
 

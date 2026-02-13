@@ -272,6 +272,9 @@ impl Printer {
             }
             TypeExpr::Pointer(ptr) => {
                 stdout_write("&");
+                if ptr.is_nullable {
+                    stdout_write("?");
+                }
                 if ptr.is_sequence {
                     stdout_write("[]");
                 }

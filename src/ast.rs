@@ -108,6 +108,7 @@ pub struct TypeExprPointer {
     pub id: ExprId,
     pub pointee: Box<TypeExpr>,
     pub is_sequence: bool,
+    pub is_nullable: bool,
     pub loc: Loc,
 }
 
