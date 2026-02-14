@@ -16,11 +16,18 @@ pub enum Type {
     U64,
     I64,
     F64,
-    Pointer { pointee: TypeId, is_sequence: bool },
-    StructInstance { struct_index: usize },
-    EnumInstance { enum_index: usize },
+    Pointer(PointerType),
+    Struct { struct_index: usize },
+    Enum { enum_index: usize },
     Result(ResultType),
     Container(ContainerType),
+}
+
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct PointerType {
+    pub pointee: TypeId,
+    pub is_sequence: bool,
+    pub is_nullable: bool,
 }
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
@@ -1130,7 +1137,7 @@ impl Typer {
                     *self.first_string_usage.be_mut() = Some(*&str_literal.loc);
                 }
 
-                let str_type = Type::StructInstance {
+                let str_type = Type::Struct {
                     struct_index: symbol.col_index,
                 };
                 self.store_type(ctx, str_literal.id, &str_type);
@@ -1166,7 +1173,7 @@ impl Typer {
                     });
                 }
 
-                let struct_type = Type::StructInstance { struct_index };
+                let struct_type = Type::Struct { struct_index };
                 self.store_type(ctx, struct_literal.id, &struct_type);
 
                 let struct_def = &self.registry.structs[struct_index].relax();
@@ -1237,10 +1244,11 @@ impl Typer {
 
                 let item_type_id = self.build_type(ctx, &array_literal.item_type)?;
 
-                let array_type = Type::Pointer {
+                let array_type = Type::Pointer(PointerType {
                     pointee: item_type_id,
                     is_sequence: true,
-                };
+                    is_nullable: false,
+                });
                 self.store_type(ctx, array_literal.id, &array_type);
                 return Ok(());
             }
@@ -1404,15 +1412,16 @@ impl Typer {
                         return Ok(());
                     }
                     PrefixOpTag::Reference => {
-                        let type_ = Type::Pointer {
+                        let type_ = Type::Pointer(PointerType {
                             pointee: expr_type_id,
                             is_sequence: false,
-                        };
+                            is_nullable: false,
+                        });
                         self.store_type(ctx, prefix_op.id, &type_);
                         return Ok(());
                     }
                     PrefixOpTag::Dereference => {
-                        let Type::Pointer { pointee, .. } = self.get_type(expr_type_id) else {
+                        let Type::Pointer(ptr) = self.get_type(expr_type_id) else {
                             return Err(Error {
                                 message: format!(
                                     "Cannot dereference expr of type {}",
@@ -1426,14 +1435,14 @@ impl Typer {
                             self.reporter.print_inspection(InspectInfo {
                                 message: format!(
                                     "<deref>: {}",
-                                    self.registry.fmt(self.get_type(*pointee))
+                                    self.registry.fmt(self.get_type(ptr.pointee))
                                 ),
                                 loc: prefix_op.op_loc,
                                 linked_loc: None,
                             });
                         };
 
-                        self.store_expr_info(ctx, prefix_op.id, *pointee);
+                        self.store_expr_info(ctx, prefix_op.id, ptr.pointee);
                         return Ok(());
                     }
                     PrefixOpTag::Positive | PrefixOpTag::Negative => {
@@ -1461,8 +1470,8 @@ impl Typer {
                             | Type::F32
                             | Type::F64
                             | Type::Pointer { .. }
-                            | Type::StructInstance { struct_index: _ }
-                            | Type::EnumInstance { enum_index: _ }
+                            | Type::Struct { struct_index: _ }
+                            | Type::Enum { enum_index: _ }
                             | Type::Result(_)
                             | Type::Container(_) => {
                                 return Err(Error {
@@ -1605,7 +1614,7 @@ impl Typer {
                     self.store_expr_info(ctx, call.id, self.registry.call_info.len());
                     self.registry.be_mut().call_info.push(CallInfo {
                         value: CallInfoValue::EnumCtor(enum_ctor.variant_index as i32),
-                        return_type_id: self.intern_type(&Type::EnumInstance {
+                        return_type_id: self.intern_type(&Type::Enum {
                             enum_index: enum_ctor.enum_index,
                         }),
                     });
@@ -1796,10 +1805,11 @@ impl Typer {
                     self.store_type(
                         ctx,
                         call.id,
-                        &Type::Pointer {
+                        &Type::Pointer(PointerType {
                             pointee: self.intern_type(&Type::U8),
                             is_sequence: true,
-                        },
+                            is_nullable: false,
+                        }),
                     );
 
                     if call.type_args.len() != 0 && call.args.items.len() != 1 {
@@ -1882,7 +1892,7 @@ impl Typer {
                     self.store_type(
                         ctx,
                         call.id,
-                        &Type::StructInstance {
+                        &Type::Struct {
                             struct_index: self.get_symbol(ctx, "str").unwrap().col_index,
                         },
                     );
@@ -2372,7 +2382,7 @@ impl Typer {
                     });
                 };
 
-                let var_type = &Type::EnumInstance {
+                let var_type = &Type::Enum {
                     enum_index: enum_ctor.enum_index,
                 };
 
@@ -2450,7 +2460,7 @@ impl Typer {
             self.report_if_err(self.type_code_expr_and_load(ctx, &match_header.expr_to_match));
         if let Some(expr_to_match_type_id) = expr_to_match_type_id {
             let expr_to_match_type = self.get_type(expr_to_match_type_id);
-            let expected_expr_to_match_type = Type::EnumInstance {
+            let expected_expr_to_match_type = Type::Enum {
                 enum_index: enum_ctor.enum_index,
             };
             if !is_type_compatible(
@@ -2473,7 +2483,7 @@ impl Typer {
             self.reporter.print_inspection(InspectInfo {
                 message: format!(
                     "{}\n{}({})",
-                    self.registry.fmt(&Type::EnumInstance {
+                    self.registry.fmt(&Type::Enum {
                         enum_index: enum_ctor.enum_index
                     }),
                     match_header.variant_name.repr,
@@ -2552,14 +2562,14 @@ impl Typer {
             | Type::F32
             | Type::F64 => primitives.push(type_.clone()),
             Type::Null | Type::Pointer { .. } => primitives.push(Type::U32),
-            Type::StructInstance { struct_index } => {
+            Type::Struct { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
 
                 for field in &struct_def.fields {
                     self.get_primitives(&field.field_type, primitives);
                 }
             }
-            Type::EnumInstance { enum_index } => {
+            Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
                 self.get_primitives(&Type::U32, primitives);
@@ -2580,19 +2590,17 @@ impl Typer {
         mut lhs_type: &Type,
         field_access: &FieldAccessExpr,
     ) -> Result<&StructField, Error> {
-        if let Type::Pointer {
-            pointee,
-            is_sequence: false,
-        } = &lhs_type
+        if let Type::Pointer(ptr) = &lhs_type
+            && !ptr.is_sequence
         {
-            lhs_type = self.get_type(*pointee);
+            lhs_type = self.get_type(ptr.pointee);
         }
 
         let struct_index: usize;
-        if let Type::StructInstance { struct_index: si } = lhs_type {
+        if let Type::Struct { struct_index: si } = lhs_type {
             struct_index = *si;
         } else if let Type::Container(ctr) = lhs_type
-            && let Type::StructInstance { struct_index: si } = self.get_type(ctr.container)
+            && let Type::Struct { struct_index: si } = self.get_type(ctr.container)
         {
             struct_index = *si;
         } else {
@@ -2945,10 +2953,11 @@ impl Typer {
                     return Ok(self_type_id);
                 }
 
-                return Ok(self.intern_type(&Type::Pointer {
+                return Ok(self.intern_type(&Type::Pointer(PointerType {
                     pointee: self_type_id,
                     is_sequence: false,
-                }));
+                    is_nullable: false,
+                })));
             }
             FnParamType::Type { expr } => {
                 if let Some(infer_type_name) = get_infer_type_name(fn_param)? {
@@ -3089,7 +3098,7 @@ impl Typer {
         match expr {
             TypeExpr::Named(ident) => {
                 let type_id = self.get_type_id_or_err(ctx, &ident.repr, &ident.loc)?;
-                if let Type::StructInstance { struct_index } = self.get_type(type_id) {
+                if let Type::Struct { struct_index } = self.get_type(type_id) {
                     let struct_def = &self.registry.structs[*struct_index];
                     if !is_referenced && !struct_def.fully_defined {
                         return Err(Error {
@@ -3110,10 +3119,11 @@ impl Typer {
                 self.store_type(
                     ctx,
                     ptr.id,
-                    &Type::Pointer {
+                    &Type::Pointer(PointerType {
                         pointee,
                         is_sequence: ptr.is_sequence,
-                    },
+                        is_nullable: ptr.is_nullable,
+                    }),
                 );
                 Ok(())
             }
@@ -3230,7 +3240,7 @@ impl Typer {
                     });
                 }
 
-                Ok(self.intern_type(&Type::StructInstance {
+                Ok(self.intern_type(&Type::Struct {
                     struct_index: symbol.col_index,
                 }))
             }
@@ -3243,7 +3253,7 @@ impl Typer {
                     });
                 }
 
-                Ok(self.intern_type(&Type::EnumInstance {
+                Ok(self.intern_type(&Type::Enum {
                     enum_index: symbol.col_index,
                 }))
             }
@@ -3573,7 +3583,7 @@ pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLay
             layout.alignment = u32::max(layout.alignment, 8);
             layout.byte_size = align(layout.byte_size, 8) + 8;
         }
-        Type::StructInstance { struct_index } => {
+        Type::Struct { struct_index } => {
             let struct_def = &registry.structs[*struct_index];
 
             for field in &struct_def.fields {
@@ -3583,7 +3593,7 @@ pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLay
             layout.alignment = u32::max(layout.alignment, 1);
             layout.byte_size = align(layout.byte_size, layout.alignment);
         }
-        Type::EnumInstance { enum_index } => {
+        Type::Enum { enum_index } => {
             let enum_def = &registry.enums[*enum_index];
 
             get_type_layout(registry, &Type::U32, layout);
@@ -3605,7 +3615,7 @@ pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLay
 
 pub fn deref_rec<'a>(registry: &'a Registry, type_: &'a Type) -> &'a Type {
     match type_ {
-        Type::Pointer { pointee, .. } => deref_rec(registry, registry.get_type(*pointee)),
+        Type::Pointer(ptr) => deref_rec(registry, registry.get_type(ptr.pointee)),
         _ => type_,
     }
 }
@@ -3688,30 +3698,24 @@ pub fn is_types_compatible(registry: &Registry, slots: &[TypeId], values: &[Type
 }
 
 pub fn is_type_compatible(registry: &Registry, slot: &Type, value: &Type) -> bool {
-    if let Type::Pointer {
-        pointee,
-        is_sequence: false,
-    } = slot
+    if let Type::Pointer(ptr) = slot
+        && !ptr.is_sequence
     {
         if *value == Type::Null {
             return true;
         }
 
-        if let Type::Void = registry.get_type(*pointee) {
-            if let Type::Pointer { pointee: _, .. } = value {
+        if let Type::Void = registry.get_type(ptr.pointee) {
+            if let Type::Pointer(_) = value {
                 return true;
             }
         }
 
-        if let Type::Pointer {
-            pointee: value_pointee,
-            is_sequence: false,
-        } = value
-        {
+        if let Type::Pointer(value_ptr) = value {
             return is_type_compatible(
                 registry,
-                registry.get_type(*pointee),
-                registry.get_type(*value_pointee),
+                registry.get_type(ptr.pointee),
+                registry.get_type(value_ptr.pointee),
             );
         }
     }
@@ -3784,6 +3788,90 @@ pub fn is_naturally_divergent(expr: &CodeExpr) -> bool {
             }
             divergent
         }
+    }
+}
+
+pub struct TypeFmt<'a> {
+    pub registry: &'a Registry,
+    pub type_: &'a Type,
+}
+
+impl<'a> core::fmt::Display for TypeFmt<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.type_ {
+            Type::Never
+            | Type::Null
+            | Type::Void
+            | Type::Bool
+            | Type::U8
+            | Type::I8
+            | Type::U16
+            | Type::I16
+            | Type::U32
+            | Type::I32
+            | Type::F32
+            | Type::U64
+            | Type::I64
+            | Type::F64 => write!(f, "{}", self.type_.to_str().unwrap()),
+            Type::Pointer(ptr) => {
+                write!(f, "&")?;
+                if ptr.is_nullable {
+                    write!(f, "?")?;
+                }
+                if ptr.is_sequence {
+                    write!(f, "[]")?;
+                }
+                write!(
+                    f,
+                    "{}",
+                    self.registry.fmt(self.registry.get_type(ptr.pointee))
+                )
+            }
+            Type::Struct { struct_index } => {
+                f.write_str(&self.registry.structs[*struct_index].struct_name)
+            }
+            Type::Enum { enum_index } => f.write_str(&self.registry.enums[*enum_index].enum_name),
+            Type::Result(result) => {
+                write!(
+                    f,
+                    "Result({}, {})",
+                    self.registry.fmt(self.registry.get_type(result.ok)),
+                    self.registry.fmt(self.registry.get_type(result.err))
+                )
+            }
+            Type::Container(ctr) => {
+                write!(
+                    f,
+                    "{}",
+                    self.registry.fmt(self.registry.get_type(ctr.container))
+                )?;
+                write!(f, "(")?;
+                for (i, item) in ctr.items.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", self.registry.fmt(self.registry.get_type(*item)))?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
+pub struct TypeListFmt<'a> {
+    pub registry: &'a Registry,
+    pub type_ids: &'a [TypeId],
+}
+
+impl<'a> core::fmt::Display for TypeListFmt<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        for (i, item) in self.type_ids.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", self.registry.fmt(self.registry.get_type(*item)))?;
+        }
+        Ok(())
     }
 }
 

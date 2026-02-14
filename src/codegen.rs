@@ -486,7 +486,7 @@ impl CodeGenerator {
 
                         bytes.push(value as u8);
                     }
-                } else if let Type::StructInstance { struct_index } = item_type
+                } else if let Type::Struct { struct_index } = item_type
                     && self.registry.structs[*struct_index].struct_name == "str"
                 {
                     for item in items {
@@ -1668,7 +1668,7 @@ impl CodeGenerator {
                     })
                 }
             }
-            Type::StructInstance { struct_index } => {
+            Type::Struct { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
 
                 for struct_field in struct_def.fields.iter().rev() {
@@ -1680,7 +1680,7 @@ impl CodeGenerator {
                     );
                 }
             }
-            Type::EnumInstance { enum_index } => {
+            Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
                 let mut tag_layout = TypeLayout::new();
@@ -2058,10 +2058,8 @@ impl CodeGenerator {
             .get_struct_or_struct_ref_field(&lhs_type, field_access)
             .relax();
 
-        if let Type::Pointer {
-            pointee: _,
-            is_sequence: false,
-        } = lhs_type
+        if let Type::Pointer(ptr) = lhs_type
+            && !ptr.is_sequence
         {
             return VarInfo::Stored(VarInfoStored {
                 address: self.build_code_unit(ctx, &field_access.lhs),
@@ -2145,22 +2143,20 @@ impl CodeGenerator {
         mut lhs_type: &Type,
         field_access: &FieldAccessExpr,
     ) -> &StructField {
-        if let Type::Pointer {
-            pointee,
-            is_sequence: false,
-        } = &lhs_type
+        if let Type::Pointer(ptr) = &lhs_type
+            && !ptr.is_sequence
         {
-            lhs_type = self.get_type(*pointee);
+            lhs_type = self.get_type(ptr.pointee);
         }
 
         let struct_index: usize;
-        if let Type::StructInstance { struct_index: si } = lhs_type {
+        if let Type::Struct { struct_index: si } = lhs_type {
             struct_index = *si;
         } else if let Type::Container(ContainerType {
             container,
             items: _,
         }) = lhs_type
-            && let Type::StructInstance { struct_index: si } = self.get_type(*container)
+            && let Type::Struct { struct_index: si } = self.get_type(*container)
         {
             struct_index = *si;
         } else {
@@ -2182,10 +2178,11 @@ impl CodeGenerator {
     fn var_from_deref(&mut self, ctx: &mut ExprContext, addr_expr: &CodeExpr) -> VarInfo {
         let addr_type = self.get_expr_type(ctx, addr_expr);
 
-        let Type::Pointer {
+        let Type::Pointer(PointerType {
             pointee,
             is_sequence: false,
-        } = &addr_type
+            is_nullable: _,
+        }) = &addr_type
         else {
             unreachable!()
         };
@@ -2264,13 +2261,13 @@ impl CodeGenerator {
             Type::U64 | Type::I64 => instrs.push(WasmInstr::I64Const { value: 0 }),
             Type::F32 => instrs.push(WasmInstr::F32Const { value: 0.0 }),
             Type::F64 => instrs.push(WasmInstr::F64Const { value: 0.0 }),
-            Type::StructInstance { struct_index } => {
+            Type::Struct { struct_index } => {
                 let struct_ref = &self.registry.structs[*struct_index];
                 for field in &struct_ref.fields {
                     self.codegen_default_value(ctx, instrs, &field.field_type);
                 }
             }
-            Type::EnumInstance { enum_index } => {
+            Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
                 self.codegen_default_value(ctx, instrs, &Type::U32);
@@ -2310,7 +2307,7 @@ impl CodeGenerator {
 
         match operand_type {
             Type::Null | Type::Bool | Type::U8 | Type::U16 | Type::U32 | Type::Pointer { .. } => {}
-            Type::EnumInstance { enum_index }
+            Type::Enum { enum_index }
                 if self.registry.enums[*enum_index].variant_type == Type::Void => {}
 
             Type::I8 | Type::I16 | Type::I32 => signed = true,
@@ -2326,8 +2323,8 @@ impl CodeGenerator {
 
             Type::Never
             | Type::Void
-            | Type::EnumInstance { enum_index: _ }
-            | Type::StructInstance { struct_index: _ }
+            | Type::Enum { enum_index: _ }
+            | Type::Struct { struct_index: _ }
             | Type::Result(_)
             | Type::Container(_) => {
                 // TODO!: move to typer
@@ -2506,14 +2503,14 @@ impl CodeGenerator {
             Type::I64 => wasm_types.push(WasmType::I64),
             Type::F64 => wasm_types.push(WasmType::F64),
             Type::Pointer { .. } => wasm_types.push(WasmType::I32),
-            Type::StructInstance { struct_index } => {
+            Type::Struct { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
 
                 for field in &struct_def.fields {
                     self.lower_type(&field.field_type, wasm_types);
                 }
             }
-            Type::EnumInstance { enum_index } => {
+            Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
                 self.lower_type(&Type::U32, wasm_types);
@@ -2591,7 +2588,7 @@ impl CodeGenerator {
                 local_index,
                 local_name,
             }),
-            Type::StructInstance { struct_index } => {
+            Type::Struct { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
                 for field in &struct_def.fields {
                     self.push_wasm_dbg_name_section_locals(
@@ -2602,7 +2599,7 @@ impl CodeGenerator {
                     );
                 }
             }
-            Type::EnumInstance { enum_index } => {
+            Type::Enum { enum_index } => {
                 self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
