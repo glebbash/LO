@@ -226,7 +226,18 @@ impl Typer {
 
                     let mut msg = String::new();
                     write!(&mut msg, "LOC: {}\n", lines).unwrap();
-                    write!(&mut msg, "expr count: {}\n", self.registry.expr_id_count).unwrap();
+                    write!(
+                        &mut msg,
+                        "expr count (original): {}\n",
+                        self.registry.expr_id_count
+                    )
+                    .unwrap();
+                    write!(
+                        &mut msg,
+                        "expr count (after expansion): {}\n",
+                        self.registry.expr_info.len()
+                    )
+                    .unwrap();
                     write!(&mut msg, "unique types: {}\n", self.registry.types.len()).unwrap();
 
                     self.reporter.print_inspection(InspectInfo {

@@ -39,7 +39,7 @@ impl Printer {
         // print the rest of the comments
         self.print_comments_before(Pos {
             offset: usize::MAX,
-            line: self.last_printed_item_line,
+            line: usize::MAX,
             col: usize::MAX,
         });
 
@@ -904,8 +904,10 @@ impl Printer {
             self.comments_printed += 1;
         }
 
-        self.print_blank_line_before(pos.line);
-        self.last_printed_item_line = pos.line;
+        if pos.line != usize::MAX {
+            self.print_blank_line_before(pos.line);
+            self.last_printed_item_line = pos.line;
+        }
     }
 
     fn print_blank_line_before(&mut self, line: usize) {
