@@ -1321,18 +1321,14 @@ impl Typer {
             }
             CodeExpr::InfixOp(infix_op) => {
                 let lhs_type_id_res = self.type_code_expr_and_load(ctx, &infix_op.lhs);
+                let rhs_type_id = self.type_code_expr_and_load(ctx, &infix_op.rhs)?;
+                let lhs_type_id = lhs_type_id_res?;
 
-                let maybe_rhs_type_id =
-                    self.report_if_err(self.type_code_expr_and_load(ctx, &infix_op.rhs));
-
-                if let Ok(lhs_type_id) = lhs_type_id_res
-                    && let Some(rhs_type_id) = maybe_rhs_type_id
-                    && !is_type_compatible(
-                        &self.registry,
-                        self.get_type(lhs_type_id),
-                        self.get_type(rhs_type_id),
-                    )
-                {
+                if !is_type_compatible(
+                    &self.registry,
+                    self.get_type(lhs_type_id),
+                    self.get_type(rhs_type_id),
+                ) {
                     self.report_error(Error {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
@@ -1365,7 +1361,7 @@ impl Typer {
                     | InfixOpTag::BitOr
                     | InfixOpTag::ShiftLeft
                     | InfixOpTag::ShiftRight => {
-                        self.store_expr_info(ctx, infix_op.id, lhs_type_id_res?);
+                        self.store_expr_info(ctx, infix_op.id, lhs_type_id);
                         return Ok(());
                     }
 
@@ -2049,13 +2045,12 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::While(while_expr) => {
-                // TODO: implement
+                self.type_code_block(ctx, &while_expr.body, true);
 
                 if let Some(cond) = &while_expr.cond {
-                    if let Some(cond_type) =
-                        self.report_if_err(self.type_code_expr_and_load(ctx, &cond))
-                        && *self.get_type(cond_type) != Type::Bool
-                    {
+                    let cond_type = self.type_code_expr_and_load(ctx, &cond)?;
+
+                    if *self.get_type(cond_type) != Type::Bool {
                         self.report_error(Error {
                             message: format!(
                                 "Invalid condition type: {}, expected: {}",
@@ -2066,8 +2061,6 @@ impl Typer {
                         });
                     };
                 }
-
-                self.type_code_block(ctx, &while_expr.body, true);
 
                 self.store_type(ctx, while_expr.id, &Type::Void);
 
