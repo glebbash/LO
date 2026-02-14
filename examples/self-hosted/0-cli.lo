@@ -23,12 +23,13 @@ export fn _start() {
         wasi::proc_exit(1)
     }
 
+    let command = args.get(1)
     let file_name = args.get(2)
 
     let compiler = Compiler::new()
     defer compiler.free()
 
-    if args.get(1).equals("format") {
+    if command.equals("format") {
         compiler.in_single_file_mode = true
 
         let module = compiler.include(

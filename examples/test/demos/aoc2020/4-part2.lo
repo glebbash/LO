@@ -10,7 +10,7 @@ fn main() {
     let valid_passwords = 0
 
     let passwords = StrCutter::new(input.as_str())
-    while passwords.rest.size != 0 {
+    while passwords.rest.len != 0 {
         passwords = passwords.cut_at("\n\n")
 
         let byr_is_valid = false
@@ -22,11 +22,11 @@ fn main() {
         let pid_is_valid = false
 
         let lines = StrCutter::new(passwords.piece)
-        while lines.rest.size != 0 {
+        while lines.rest.len != 0 {
             lines = lines.cut_at("\n")
 
             let fields = StrCutter::new(lines.piece)
-            while fields.rest.size != 0 {
+            while fields.rest.len != 0 {
                 fields = fields.cut_at(" ")
 
                 let field_parts = StrCutter::new(fields.piece).cut_at(":")
@@ -35,21 +35,21 @@ fn main() {
 
                 if field_name.equals("byr") {
                     let parse_res = parse_u32(field_value)
-                    byr_is_valid = field_value.size == 4 \
+                    byr_is_valid = field_value.len == 4 \
                         && parse_res.chars_consumed == 4 \
                         && parse_res.value >= 1920 \
                         && parse_res.value <= 2002
                 }
                 if field_name.equals("iyr") {
                     let parse_res = parse_u32(field_value)
-                    iyr_is_valid = field_value.size == 4 \
+                    iyr_is_valid = field_value.len == 4 \
                         && parse_res.chars_consumed == 4 \
                         && parse_res.value >= 2010 \
                         && parse_res.value <= 2020
                 }
                 if field_name.equals("eyr") {
                     let parse_res = parse_u32(field_value)
-                    eyr_is_valid = field_value.size == 4 \
+                    eyr_is_valid = field_value.len == 4 \
                         && parse_res.chars_consumed == 4 \
                         && parse_res.value >= 2020 \
                         && parse_res.value <= 2030
@@ -57,13 +57,13 @@ fn main() {
                 if field_name.equals("hgt") {
                     let parse_res = parse_u32(field_value)
                     hgt_is_valid = (
-                        field_value.size == 5 \
+                        field_value.len == 5 \
                             && parse_res.chars_consumed == 3 \
                             && parse_res.value >= 150 \
                             && parse_res.value <= 193 \
                             && field_value.skip_chars(3).equals("cm"),
                     ) || (
-                        field_value.size == 4 \
+                        field_value.len == 4 \
                             && parse_res.chars_consumed == 2 \
                             && parse_res.value >= 59 \
                             && parse_res.value <= 76 \
@@ -73,7 +73,7 @@ fn main() {
                 if field_name.equals("hcl") {
                     let parse_res = parse_u32_hex(field_value.skip_chars(1))
                     hcl_is_valid = field_value.char_at(0) == '#' \
-                        && field_value.size == 7 \
+                        && field_value.len == 7 \
                         && parse_res.chars_consumed == 6
                 }
                 if field_name.equals("ecl") {
@@ -87,7 +87,7 @@ fn main() {
                 }
                 if field_name.equals("pid") {
                     let parse_res = parse_u32(field_value)
-                    pid_is_valid = field_value.size == 9 \
+                    pid_is_valid = field_value.len == 9 \
                         && parse_res.chars_consumed == 9
                 }
             }

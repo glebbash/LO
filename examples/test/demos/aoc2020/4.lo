@@ -9,7 +9,7 @@ fn main() {
     let valid_passwords = 0
 
     let passwords = StrCutter::new(input.as_str())
-    while passwords.rest.size != 0 {
+    while passwords.rest.len != 0 {
         passwords = passwords.cut_at("\n\n")
 
         let has_byr = false
@@ -21,11 +21,11 @@ fn main() {
         let has_pid = false
 
         let lines = StrCutter::new(passwords.piece)
-        while lines.rest.size != 0 {
+        while lines.rest.len != 0 {
             lines = lines.cut_at("\n")
 
             let fields = StrCutter::new(lines.piece)
-            while fields.rest.size != 0 {
+            while fields.rest.len != 0 {
                 fields = fields.cut_at(" ")
 
                 let field_parts = StrCutter::new(fields.piece).cut_at(":")

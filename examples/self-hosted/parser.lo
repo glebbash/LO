@@ -1000,7 +1000,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         })))
     }
 
-    let ctx = self.context_stack.get!(self.context_stack.size - 1)
+    let ctx = self.context_stack.get!(self.context_stack.len - 1)
     if self.current().is(Delim, "{", self.source) && ctx.struct_literal_allowed {
         let loc = ident.loc
         let body = self.parse_code_expr_map()?
@@ -1285,7 +1285,7 @@ fn Parser::has_backslashes_between(
 ): bool {
     let i = *start_hint
 
-    while i < self.lexer.backslashes.size {
+    while i < self.lexer.backslashes.len {
         let backslash = self.lexer.backslashes.at!(i)
         if backslash.pos.offset < offset_start {
             i += 1
@@ -1376,8 +1376,8 @@ fn Parser::eat_any(&self, type_: TokenType): &?Token {
 // returns current or terminal token
 fn Parser::current(&self): &Token {
     let index = self.tokens_processed
-    if index >= self.lexer.tokens.size - 1 {
-        index = self.lexer.tokens.size - 1
+    if index >= self.lexer.tokens.len - 1 {
+        index = self.lexer.tokens.len - 1
     }
 
     return self.lexer.tokens.at!(index)

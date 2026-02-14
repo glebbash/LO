@@ -72,22 +72,22 @@ export fn update() {
 
 fn title_screen_update() {
     set_draw_color(Color::WHITE)
-    wasm4::text("Dark     \0".data, +46, +60)
+    wasm4::text("Dark     \0".ptr, +46, +60)
 
     light_block(+1, -1, 1024)
     light_block(+2, -1, 1024)
 
     set_draw_color(Color::RED)
-    wasm4::text("     Maze\0".data, +46, +60)
+    wasm4::text("     Maze\0".ptr, +46, +60)
 
     set_draw_color(Color::WHITE)
-    wasm4::text("Press X to start\0".data, +16, +116)
+    wasm4::text("Press X to start\0".ptr, +16, +116)
 
     set_draw_color(Color::RED)
-    wasm4::text("      X\0".data, +16, +116)
+    wasm4::text("      X\0".ptr, +16, +116)
 
     set_draw_color(Color::GRAY)
-    wasm4::text("@glebbash 2025\0".data, +24, +146)
+    wasm4::text("@glebbash 2025\0".ptr, +24, +146)
 
     if just_pressed(wasm4::BUTTON_1) {
         screen = Screen::Game
@@ -95,7 +95,7 @@ fn title_screen_update() {
 }
 
 fn game_screen_update() {
-    light_checked.size = 0
+    light_checked.len = 0
     spread_light(pos_x, pos_y, 1, light_checked)
 
     let player_size = 4
@@ -163,7 +163,7 @@ fn spread_light(x: i32, y: i32, brightness: u32, checked: &Vec(u32)) {
 fn mark_checked(x: i32, y: i32, checked: &Vec(u32)): bool {
     let pos = x as u32 * 88 + y as u32
 
-    for i in 0..checked.size {
+    for i in 0..checked.len {
         if checked.get!(i) == pos {
             return false
         }

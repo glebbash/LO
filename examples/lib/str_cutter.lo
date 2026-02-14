@@ -13,7 +13,7 @@ fn StrCutter::cut_at(self, delim: str): StrCutter {
     let cut_start = 0
     let cut_width = 0
     loop {
-        if cut_start == self.rest.size {
+        if cut_start == self.rest.len {
             cut_start -= 1
             break
         }
@@ -22,19 +22,13 @@ fn StrCutter::cut_at(self, delim: str): StrCutter {
         } else {
             cut_width = 0
         }
-        if cut_width == delim.size {
+        if cut_width == delim.len {
             break
         }
         cut_start += 1
     }
     return StrCutter {
-        piece: str {
-            data: self.rest.data,
-            size: cut_start - cut_width + 1,
-        },
-        rest: str {
-            data: (self.rest.data as u32 + cut_start + 1) as &[]u8,
-            size: self.rest.size - cut_start - 1,
-        },
+        piece: self.rest.slice(0, cut_start + 1 - cut_width),
+        rest: self.rest.slice(cut_start + 1, self.rest.len),
     }
 }

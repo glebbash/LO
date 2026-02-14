@@ -101,7 +101,7 @@ fn Lexer::free(&self) {
 fn Lexer::lex_file(&self): Result(void, &Error) {
     self.skip_space()
 
-    while self.source_pos.offset < self.source.size {
+    while self.source_pos.offset < self.source.len {
         let token = self.lex_token()?
         self.tokens.push!(token)
 
@@ -320,7 +320,7 @@ fn Lexer::parse_int_literal_value(int_literal: str): i64 {
     }
 
     let value = 0 as i64
-    for i in 0..int_literal.size {
+    for i in 0..int_literal.len {
         let digit = int_literal.char_at(i)
         if digit == '_' {
             continue
@@ -853,7 +853,7 @@ type UTF8ReadError = enum {
 }
 
 fn read_utf8_codepoint(source: str, offset: u32): Result(u32, UTF8ReadError) {
-    if offset >= source.size {
+    if offset >= source.len {
         return Err(UTF8ReadError::EndOfSource)
     }
 
@@ -883,7 +883,7 @@ fn read_utf8_codepoint(source: str, offset: u32): Result(u32, UTF8ReadError) {
         return Err(UTF8ReadError::InvalidUtf8)
     }
 
-    if offset + width > source.size {
+    if offset + width > source.len {
         return Err(UTF8ReadError::EndOfSource)
     }
 

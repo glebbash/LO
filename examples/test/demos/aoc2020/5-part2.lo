@@ -7,7 +7,7 @@ fn main() {
     let input = input_buf.as_str()
 
     // 10 chars seat + newline
-    let tickets_count = input.size / 11
+    let tickets_count = input.len / 11
     let seat_ids = Vec::with_capacity!<u32>(tickets_count)
     for i in 0..tickets_count {
         let seat_id = parse_seat_id(input.skip_chars(i * 11))
@@ -26,7 +26,7 @@ fn main() {
 }
 
 fn selection_sort(items: &Vec(u32)) {
-    let n = items.size
+    let n = items.len
     for i in 0..n {
         let min_index = i
         for j in (i + 1)..n {

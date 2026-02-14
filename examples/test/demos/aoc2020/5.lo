@@ -7,7 +7,7 @@ fn main() {
     let input = input_buf.as_str()
 
     // 10 chars seat + newline
-    let tickets_count = input.size / 11
+    let tickets_count = input.len / 11
     let max_seat_id = 0
     for i in 0..tickets_count {
         let seat_id = parse_seat_id(input.skip_chars(i * 11))

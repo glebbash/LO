@@ -109,13 +109,13 @@ fn FileManager::include(self, relative_path: str, loc: Loc): Result(u32, &Error)
     }
 
     self.files.push!(FileInfo {
-        index: self.files.size - 1,
+        index: self.files.len - 1,
         included_times: 1,
         absolute_path: absolute_path,
         source: source,
     })
 
-    return Ok(self.files.size - 1)
+    return Ok(self.files.len - 1)
 }
 
 fn FileManager::free(self) {
@@ -137,7 +137,7 @@ fn resolve_path(file_path: str, relative_to: str): String {
     let normalized = Vec::new!<str>()
     defer normalized.free()
 
-    for i in 0..path_items.size {
+    for i in 0..path_items.len {
         let item = path_items.get!(i)
 
         if item.equals(".") {
@@ -145,7 +145,7 @@ fn resolve_path(file_path: str, relative_to: str): String {
         }
 
         if item.equals("..") {
-            if normalized.size > 0 {
+            if normalized.len > 0 {
                 normalized.pop()
             }
             continue
@@ -177,7 +177,7 @@ fn stdout_enable_buffering() {
 
 fn stdout_disable_buffering() {
     if STDOUT_BUFFER != null {
-        if STDOUT_BUFFER.size != 0 {
+        if STDOUT_BUFFER.len != 0 {
             let _ = fprint_str(wasi::FD_STDOUT, STDOUT_BUFFER as &str)
         }
     }
@@ -197,19 +197,19 @@ fn stdout_write(message: str) {
         return
     }
 
-    if STDOUT_BUFFER.size + message.size > STDOUT_BUFFER_SIZE {
-        if STDOUT_BUFFER.size != 0 {
+    if STDOUT_BUFFER.len + message.len > STDOUT_BUFFER_SIZE {
+        if STDOUT_BUFFER.len != 0 {
             let _ = fprint_str(wasi::FD_STDOUT, STDOUT_BUFFER as &str)
-            STDOUT_BUFFER.size = 0
+            STDOUT_BUFFER.len = 0
         }
     }
 
-    if message.size >= STDOUT_BUFFER_SIZE {
+    if message.len >= STDOUT_BUFFER_SIZE {
         print(message)
         return
     }
 
-    STDOUT_BUFFER.push_all(message.data, message.size)
+    STDOUT_BUFFER.push_all(message.ptr, message.len)
 }
 
 inline fn todo!(message: str): never {

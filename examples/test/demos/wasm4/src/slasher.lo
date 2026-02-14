@@ -62,13 +62,13 @@ fn process_input() {
         if x >= +0 && x <= +159 && y >= +0 && y <= +159 {
             trail.push!(Pos { x: x, y: y })
 
-            if trail.size == 6 {
-                swap_trail.size = 0
+            if trail.len == 6 {
+                swap_trail.len = 0
                 swap_trail.push_all(
-                    (trail.data as u32 + sizeof Pos) as &void,
-                    trail.size - 1,
+                    (trail.ptr as u32 + sizeof Pos) as &void,
+                    trail.len - 1,
                 )
-                swap_trail.size = trail.size - 1
+                swap_trail.len = trail.len - 1
 
                 let tmp = trail
                 trail = swap_trail
@@ -87,11 +87,11 @@ fn process_input() {
         }
 
         if boss_health == 0 {
-            let random_trail = trails.get!(rand_u32(trails.size - 1))
+            let random_trail = trails.get!(rand_u32(trails.len - 1))
 
             flip_trail_randomly(random_trail)
 
-            if showing_trails.size == 0 {
+            if showing_trails.len == 0 {
                 showing_trails.push!(random_trail)
             } else {
                 showing_trails.set!(0, random_trail)
@@ -102,29 +102,29 @@ fn process_input() {
 
 fn render() {
     if mode == Mode::SLASH {
-        wasm4::text("Slash!!!\0".data, +10, +10)
+        wasm4::text("Slash!!!\0".ptr, +10, +10)
 
         let health_txt = String::from_str_in(scratch, "HP: ")
         health_txt.push_str(boss_health.to_tmp_str!())
         health_txt.push_str("\0")
-        wasm4::text(health_txt.chars.data as &[]u8, +110, +10)
+        wasm4::text(health_txt.chars.ptr as &[]u8, +110, +10)
     }
 
     if mode == Mode::DEFEND {
-        wasm4::text("Defend!!!\0".data, +10, +10)
+        wasm4::text("Defend!!!\0".ptr, +10, +10)
     }
 
     render_trail(trail)
-    for i in 0..showing_trails.size {
+    for i in 0..showing_trails.len {
         render_trail(showing_trails.get!(i))
     }
 }
 
 fn render_trail(trail: &Trail) {
-    if trail.size > 0 {
+    if trail.len > 0 {
         let prev_pos = trail.get!(0)
 
-        for i in 1..trail.size {
+        for i in 1..trail.len {
             let pos = trail.get!(i)
 
             wasm4::line(prev_pos.x, prev_pos.y, pos.x, pos.y)
@@ -137,7 +137,7 @@ fn flip_trail_randomly(trail: &Trail) {
     let flip_x = rand_u32(1) == 1
     let flip_y = rand_u32(1) == 1
 
-    for i in 0..trail.size {
+    for i in 0..trail.len {
         let pos = trail.at!(i)
         if flip_x {
             pos.x = +159 - pos.x

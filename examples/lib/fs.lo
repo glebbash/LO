@@ -68,8 +68,8 @@ fn fs::open(file_path: str): Result(u32, wasi::Err) {
     let err = wasi::path_open(
         fs::CWD_PREOPEN_FD,
         1,
-        file_path.data,
-        file_path.size,
+        file_path.ptr,
+        file_path.len,
         0,
         264_240_830u64,
         268_435_455u64,

@@ -1,7 +1,7 @@
 // str literal type
 type str = struct {
-    data: &[]u8,
-    size: u32,
+    ptr: &[]u8,
+    len: u32,
 }
 
 // constants
@@ -376,8 +376,8 @@ fn Arena::free(&self) {
 
 // vec
 type Vec = struct {
-    data: &void,
-    size: u32,
+    ptr: &void,
+    len: u32,
     capacity: u32,
     item_size: u32,
     alloc: Alloc,
@@ -409,8 +409,8 @@ inline fn Vec::with_capacity_in!<T>(a: Alloc, capacity: u32): &Vec(T) {
 
 fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
     return new!(a, Vec {
-        data: alloc(a, capacity * item_size),
-        size: 0,
+        ptr: alloc(a, capacity * item_size),
+        len: 0,
         capacity: capacity,
         item_size: item_size,
         alloc: a,
@@ -418,7 +418,7 @@ fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
 }
 
 inline fn Vec::free_deep!<T>(&self) {
-    for i in 0..self.size {
+    for i in 0..self.len {
         self.get!(i).free()
     }
     self.free()
@@ -426,7 +426,7 @@ inline fn Vec::free_deep!<T>(&self) {
 
 fn Vec::free(&self) {
     free!<Vec>(self.alloc, self)
-    free(self.alloc, self.data, self.capacity)
+    free(self.alloc, self.ptr, self.capacity)
 }
 
 inline fn Vec::at!(&self, index: u32): &itemof(typeof(self)) {
@@ -443,19 +443,19 @@ inline fn Vec::set!(&self, index: u32, item: itemof(typeof(self))) {
 
 fn Vec::at(&self, index: u32): &void {
     self._panic_if_out_of_bounds!(index)
-    return (self.data as u32 + index * self.item_size) as &void
+    return (self.ptr as u32 + index * self.item_size) as &void
 }
 
 fn Vec::at_unchecked(&self, index: u32): &void {
-    return (self.data as u32 + index * self.item_size) as &void
+    return (self.ptr as u32 + index * self.item_size) as &void
 }
 
 fn Vec::swap(&self, index1: u32, index2: u32) {
     self._panic_if_out_of_bounds!(index1)
     self._panic_if_out_of_bounds!(index2)
     let item_size = self.item_size
-    let item_addr1 = (self.data as u32 + index1 * item_size) as &void
-    let item_addr2 = (self.data as u32 + index2 * item_size) as &void
+    let item_addr1 = (self.ptr as u32 + index1 * item_size) as &void
+    let item_addr2 = (self.ptr as u32 + index2 * item_size) as &void
     mem::swap(item_addr1, item_addr2, item_size)
 }
 
@@ -464,23 +464,23 @@ inline fn Vec::push!(&self, item: itemof(typeof(self))) {
 }
 
 fn Vec::push(&self): &void {
-    self._grow_to_size(self.size + 1)
-    return self.at_unchecked(self.size - 1)
+    self._grow_to_len(self.len + 1)
+    return self.at_unchecked(self.len - 1)
 }
 
 fn Vec::push_all(&self, items: &void, items_len: u32) {
-    let prev_len = self.size
-    self._grow_to_size(prev_len + items_len)
-    let items_dest = (self.data as u32 + prev_len * self.item_size) as &void
+    let prev_len = self.len
+    self._grow_to_len(prev_len + items_len)
+    let items_dest = (self.ptr as u32 + prev_len * self.item_size) as &void
     mem::copy!(items, items_dest, items_len * self.item_size)
 }
 
 fn Vec::pop(&self) {
-    self.size -= 1
+    self.len -= 1
 }
 
 fn Vec::reverse(&self) {
-    self.reverse_range(0, self.size - 1)
+    self.reverse_range(0, self.len - 1)
 }
 
 fn Vec::reverse_range(&self, start: u32, end: u32) {
@@ -491,9 +491,9 @@ fn Vec::reverse_range(&self, start: u32, end: u32) {
     }
 }
 
-fn Vec::_grow_to_size(&self, new_size: u32) {
-    if new_size <= self.capacity {
-        self.size = new_size
+fn Vec::_grow_to_len(&self, new_len: u32) {
+    if new_len <= self.capacity {
+        self.len = new_len
         return
     }
 
@@ -503,21 +503,21 @@ fn Vec::_grow_to_size(&self, new_size: u32) {
 
     let old = *self
 
-    let new_capacity = u32::max!(old.capacity * 2, new_size)
-    let new_data = alloc(old.alloc, new_capacity * old.item_size)
+    let new_capacity = u32::max!(old.capacity * 2, new_len)
+    let new_ptr = alloc(old.alloc, new_capacity * old.item_size)
 
     if old.capacity != 0 {
-        mem::copy!(old.data, new_data, old.size * old.item_size)
-        free(old.alloc, old.data, old.capacity * old.item_size)
+        mem::copy!(old.ptr, new_ptr, old.len * old.item_size)
+        free(old.alloc, old.ptr, old.capacity * old.item_size)
     }
 
-    self.data = new_data
+    self.ptr = new_ptr
     self.capacity = new_capacity
-    self.size = new_size
+    self.len = new_len
 }
 
 inline fn Vec::_panic_if_out_of_bounds!(&self, index: u32) {
-    if index < 0 || index >= self.size {
+    if index < 0 || index >= self.len {
         abort(AbortCode::VEC_OUT_OF_BOUNDS)
     }
 }
@@ -548,8 +548,8 @@ fn String::from_str(value: str): String {
 }
 
 fn String::from_str_in(a: Alloc, value: str): String {
-    let string = String::new_in(a, value.size)
-    string.chars.push_all(value.data, value.size)
+    let string = String::new_in(a, value.len)
+    string.chars.push_all(value.ptr, value.len)
     return string
 }
 
@@ -562,11 +562,11 @@ fn String::clone(self): String {
 }
 
 fn String::len(self): u32 {
-    return self.chars.size
+    return self.chars.len
 }
 
 fn String::push_str(self, value: str) {
-    self.chars.push_all(value.data, value.size)
+    self.chars.push_all(value.ptr, value.len)
 }
 
 fn String::push(self, c: u8) {
@@ -579,7 +579,7 @@ fn String::char_at(self, index: u32): u8 {
 
 // in-place modification, returns self
 fn String::replace(self, search: str, replacement: str): String {
-    if search.size == 0 {
+    if search.len == 0 {
         return self
     }
 
@@ -593,14 +593,14 @@ fn String::replace(self, search: str, replacement: str): String {
     let pos = 0
     loop {
         let index = original.find(search, pos) catch _ {
-            replaced.push_str(original.slice(pos, original.size))
+            replaced.push_str(original.slice(pos, original.len))
             break
         }
 
         replaced.push_str(original.slice(pos, index))
         replaced.push_str(replacement)
 
-        pos = index + search.size
+        pos = index + search.len
     }
 
     self.chars.free()
@@ -611,9 +611,9 @@ fn String::replace(self, search: str, replacement: str): String {
 
 fn String::join(items: &Vec(str), separator: u8): String {
     let output = String::new(32)
-    for i in 0..items.size {
+    for i in 0..items.len {
         output.push_str(items.get!(i))
-        if i + 1 < items.size {
+        if i + 1 < items.len {
             output.push(separator)
         }
     }
@@ -622,30 +622,30 @@ fn String::join(items: &Vec(str), separator: u8): String {
 
 fn String::as_str(self): str {
     return str {
-        data: self.chars.data as &[]u8,
-        size: self.chars.size,
+        ptr: self.chars.ptr as &[]u8,
+        len: self.chars.len,
     }
 }
 
 // str utils
 
 fn str::char_at(self, index: u32): u8 {
-    return *array_at!<u8>(self.data, index)
+    return *array_at!<u8>(self.ptr, index)
 }
 
 fn str::clone(self): str {
-    let new_data = heap::alloc_many!<u8>(self.size)
-    mem::copy!(self.data, new_data, self.size)
+    let new_ptr = heap::alloc_many!<u8>(self.len)
+    mem::copy!(self.ptr, new_ptr, self.len)
 
-    return str { data: new_data, size: self.size }
+    return str { ptr: new_ptr, len: self.len }
 }
 
 fn str::equals(self, other): bool {
-    if self.size != other.size {
+    if self.len != other.len {
         return false
     }
 
-    for i in 0..self.size {
+    for i in 0..self.len {
         if self.char_at(i) != other.char_at(i) {
             return false
         }
@@ -663,16 +663,16 @@ fn str::contains(self, search: str): bool {
 }
 
 fn str::find(self, search: str, start: u32): Result(u32, &void) {
-    if search.size == 0 {
+    if search.len == 0 {
         return Ok(start)
     }
 
-    if search.size > self.size {
+    if search.len > self.len {
         return Err(1 as &void)
     }
 
-    for i in start..(self.size - search.size + 1) {
-        if self.slice(i, i + search.size).equals(search) {
+    for i in start..(self.len - search.len + 1) {
+        if self.slice(i, i + search.len).equals(search) {
             return Ok(i)
         }
     }
@@ -681,21 +681,21 @@ fn str::find(self, search: str, start: u32): Result(u32, &void) {
 }
 
 fn str::starts_with(self, other): bool {
-    return self.slice(0, other.size).equals(other)
+    return self.slice(0, other.len).equals(other)
 }
 
 fn str::skip_chars(self, char_count: u32): str {
-    return self.slice(char_count, self.size)
+    return self.slice(char_count, self.len)
 }
 
 fn str::slice(self, start: u32, end: u32): str {
-    if start >= self.size || end > self.size || start > end {
+    if start >= self.len || end > self.len || start > end {
         return ""
     }
 
     return str {
-        data: (self.data as u32 + start) as &[]u8,
-        size: end - start,
+        ptr: (self.ptr as u32 + start) as &[]u8,
+        len: end - start,
     }
 }
 
@@ -704,20 +704,20 @@ fn str::from_cstr(value: &[]u8): str {
     while *array_at!<u8>(value, len) != '\0' {
         len += 1
     }
-    return str { data: value, size: len }
+    return str { ptr: value, len: len }
 }
 
 fn str::split(self, separator: u8, output: &Vec(str)): &Vec(str) {
     let start = 0
 
-    for i in 0..self.size {
+    for i in 0..self.len {
         if self.char_at(i) == separator {
             output.push!(self.slice(start, i))
             start = i + 1
         }
     }
 
-    output.push!(self.slice(start, self.size))
+    output.push!(self.slice(start, self.len))
 
     return output
 }
@@ -739,7 +739,7 @@ inline fn u32::to_str_in!(self, a: Alloc): str {
 }
 
 fn u32::write_to(self, output: String) {
-    let start_size = output.len()
+    let start_len = output.len()
     if self == 0 {
         output.push('0')
         return
@@ -752,7 +752,7 @@ fn u32::write_to(self, output: String) {
             break
         }
     }
-    output.chars.reverse_range(start_size, output.len() - 1)
+    output.chars.reverse_range(start_len, output.len() - 1)
 }
 
 inline fn u64::to_tmp_str!(self): str {
@@ -764,7 +764,7 @@ inline fn u64::to_tmp_str!(self): str {
 }
 
 fn u64::write_to(self, output: String) {
-    let start_size = output.len()
+    let start_len = output.len()
     if self == 0u64 {
         output.push('0')
         return
@@ -777,7 +777,7 @@ fn u64::write_to(self, output: String) {
             break
         }
     }
-    output.chars.reverse_range(start_size, output.len() - 1)
+    output.chars.reverse_range(start_len, output.len() - 1)
 }
 
 // utils

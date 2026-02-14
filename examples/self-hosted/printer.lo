@@ -37,7 +37,7 @@ fn Printer::free(&self) {
 fn Printer::print_file(&self) {
     stdout_enable_buffering()
 
-    for i in 0..self.parser.ast.size {
+    for i in 0..self.parser.ast.len {
         let expr = self.parser.ast.get!(i)
         self.print_top_level_expr(expr)
     }
@@ -106,14 +106,14 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         if match TypeDefValue::Struct(struct_value) = type_def.value {
             stdout_write("struct")
 
-            if struct_value.fields.size == 0 {
+            if struct_value.fields.len == 0 {
                 stdout_write(" {}")
                 return
             }
 
             stdout_writeln(" {")
             self.indent += 1
-            for i in 0..struct_value.fields.size {
+            for i in 0..struct_value.fields.len {
                 let field = struct_value.fields.get!(i)
                 self.print_comments_before(field.loc.pos)
                 self.print_indent()
@@ -142,14 +142,14 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
                 stdout_write(")")
             }
 
-            if enum_value.variants.size == 0 {
+            if enum_value.variants.len == 0 {
                 stdout_write(" {}")
                 return
             }
 
             stdout_writeln(" {")
             self.indent += 1
-            for i in 0..enum_value.variants.size {
+            for i in 0..enum_value.variants.len {
                 let variant = enum_value.variants.get!(i)
                 self.print_comments_before(variant.loc.pos)
                 self.print_indent()
@@ -190,12 +190,12 @@ fn Printer::print_fn_decl(&self, fn_decl: FnDeclExpr) {
     stdout_write("fn ")
     stdout_write(fn_decl.fn_name.repr)
 
-    if fn_decl.type_params.size != 0 {
+    if fn_decl.type_params.len != 0 {
         stdout_write("<")
-        for i in 0..fn_decl.type_params.size {
+        for i in 0..fn_decl.type_params.len {
             let type_param = fn_decl.type_params.get!(i)
             stdout_write(type_param)
-            if i != fn_decl.type_params.size - 1 {
+            if i != fn_decl.type_params.len - 1 {
                 stdout_write(",")
             }
         }
@@ -220,7 +220,7 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
         stdout_write("\n")
     }
 
-    for i in 0..params.size {
+    for i in 0..params.len {
         let param = params.get!(i)
 
         if i != 0 {
@@ -290,7 +290,7 @@ fn Printer::print_type_expr(&self, expr: TypeExpr) {
     if match TypeExpr::Container(container_expr) = expr {
         self.print_type_expr(container_expr.container)
         stdout_write("(")
-        for i in 0..container_expr.items.size {
+        for i in 0..container_expr.items.len {
             let item = container_expr.items.get!(i)
             if i != 0 {
                 stdout_write(", ")
@@ -322,7 +322,7 @@ fn Printer::print_code_block(&self, code_block: CodeBlock) {
 
     self.indent += 1
 
-    for i in 0..code_block.exprs.size {
+    for i in 0..code_block.exprs.len {
         let expr = code_block.exprs.get!(i)
 
         let continues = self.print_double_backslashes_before(expr.loc().pos.offset)
@@ -677,7 +677,7 @@ fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
 
         self.indent += 1
 
-        for i in 0..map.fields.size {
+        for i in 0..map.fields.len {
             let field = map.fields.get!(i)
             self.print_comments_before(field.loc.pos)
             self.print_indent()
@@ -696,11 +696,11 @@ fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
         return
     }
 
-    if map.fields.size > 0 {
+    if map.fields.len > 0 {
         stdout_write(" ")
     }
 
-    for i in 0..map.fields.size {
+    for i in 0..map.fields.len {
         if i != 0 {
             stdout_write(", ")
         }
@@ -711,7 +711,7 @@ fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
         self.print_code_expr(field.value)
     }
 
-    if map.fields.size > 0 {
+    if map.fields.len > 0 {
         stdout_write(" ")
     }
 
@@ -738,7 +738,7 @@ fn Printer::print_expr_list(
 
     let prev_backslashes_printed = self.backslashes_printed
 
-    for i in 0..exprs.size {
+    for i in 0..exprs.len {
         let arg = exprs.get!(i)
 
         if i != 0 {
@@ -773,12 +773,12 @@ fn Printer::print_expr_list(
 }
 
 fn Printer::print_type_args(&self, type_args: &Vec(TypeExpr)) {
-    if type_args.size == 0 {
+    if type_args.len == 0 {
         return
     }
 
     stdout_write("<")
-    for i in 0..type_args.size {
+    for i in 0..type_args.len {
         let type_arg = type_args.get!(i)
 
         if i != 0 {
@@ -800,7 +800,7 @@ fn Printer::print_match_header(&self, header: MatchHeader) {
 }
 
 fn Printer::print_comments_before(&self, pos: Pos) {
-    while self.comments_printed < self.parser.lexer.comments.size {
+    while self.comments_printed < self.parser.lexer.comments.len {
         let comment = self.parser.lexer.comments.get!(self.comments_printed)
         if comment.end_pos.offset > pos.offset {
             break
@@ -828,7 +828,7 @@ fn Printer::print_blank_line_before(&self, line: u32) {
 fn Printer::print_backslashes_before(&self, offset: u32): bool {
     let printed = false
 
-    while self.backslashes_printed < self.parser.lexer.backslashes.size {
+    while self.backslashes_printed < self.parser.lexer.backslashes.len {
         let backslash = self.parser.lexer.backslashes.get!(self.backslashes_printed)
         if backslash.end_pos.offset > offset {
             break
@@ -839,7 +839,7 @@ fn Printer::print_backslashes_before(&self, offset: u32): bool {
         if !printed {
             printed = true
 
-            *self.backslash_stack.at!(self.backslash_stack.size - 1) = true
+            *self.backslash_stack.at!(self.backslash_stack.len - 1) = true
             self.last_stmt_had_backslash = true
 
             stdout_writeln(" \\")
@@ -853,7 +853,7 @@ fn Printer::print_backslashes_before(&self, offset: u32): bool {
 fn Printer::print_double_backslashes_before(&self, offset: u32): bool {
     let printed = false
 
-    while self.double_backslashes_printed < self.parser.lexer.double_backslashes.size {
+    while self.double_backslashes_printed < self.parser.lexer.double_backslashes.len {
         let dbs = self.parser.lexer.double_backslashes.get!(self.double_backslashes_printed)
         if dbs.end_pos.offset > offset {
             break
@@ -876,7 +876,7 @@ fn Printer::print_indent(&self) {
         stdout_write("    ")
     }
 
-    for i in 0..self.backslash_stack.size {
+    for i in 0..self.backslash_stack.len {
         if self.backslash_stack.get!(i) {
             stdout_write("    ")
         }

@@ -8,13 +8,13 @@ fn main() {
     let numbers = parse_numbers(input)
     defer numbers.free()
 
-    for i in 0..numbers.size {
+    for i in 0..numbers.len {
         let a = numbers.get!(i)
 
-        for j in i + 1..numbers.size {
+        for j in i + 1..numbers.len {
             let b = numbers.get!(j)
 
-            for k in j + 1..numbers.size {
+            for k in j + 1..numbers.len {
                 let c = numbers.get!(k)
 
                 if a + b + c == 2020 {

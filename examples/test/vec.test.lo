@@ -9,7 +9,7 @@
 @export_existing(Vec::push_all, out = "vec_push_all")
 
 export fn vec_len(vec: &Vec): u32 {
-    return vec.size
+    return vec.len
 }
 
 export fn vec_push_u8(vec: &Vec(u8), item: u8) {
