@@ -100,7 +100,7 @@ impl Reporter {
         stdout_disable_buffering();
     }
 
-    pub fn error(&self, err: &Error) {
+    pub fn error(&self, err: Error) {
         *self.error_count.be_mut() += 1;
 
         if self.in_inspection_mode {
@@ -194,7 +194,7 @@ impl Reporter {
     }
 
     pub fn abort_due_to_compiler_bug(&self, message: &str, loc: Loc) -> ! {
-        self.error(&Error {
+        self.error(Error {
             message: format!("Compiler bug: {message}"),
             loc,
         });

@@ -1226,7 +1226,7 @@ impl Parser {
 
         ident.repr = ident.loc.read_span(self.source);
         if ident.repr.contains(" ") {
-            self.reporter.error(&Error {
+            self.reporter.error(Error {
                 message: format!("Unexpected space in identifier"),
                 loc: ident.loc,
             });

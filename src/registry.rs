@@ -230,7 +230,7 @@ impl Registry {
 
     pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<ModuleId> {
         let file_id = catch!(self.include_file_contents(relative_path, loc), err, {
-            self.reporter.error(&err);
+            self.reporter.error(err);
             return None;
         });
 
@@ -249,7 +249,7 @@ impl Registry {
 
         let mut lexer = Lexer::new(source, file_id);
         catch!(lexer.lex_file(), err, {
-            self.reporter.error(&err);
+            self.reporter.error(err);
             return None;
         });
 
@@ -258,7 +258,7 @@ impl Registry {
         *parser.expr_id_count.be_mut() = self.expr_id_count;
 
         catch!(parser.parse_file(), err, {
-            self.reporter.error(&err);
+            self.reporter.error(err);
             return None;
         });
 
@@ -269,7 +269,7 @@ impl Registry {
         if !self.in_single_file_mode {
             for expr in &*parser.ast {
                 let Some(include_info) = catch!(get_include_info(expr), err, {
-                    self.reporter.error(&err);
+                    self.reporter.error(err);
                     continue;
                 }) else {
                     continue;

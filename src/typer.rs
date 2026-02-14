@@ -243,7 +243,7 @@ impl Typer {
             // TODO: find a way to also report this in inspection mode
             && !self.reporter.in_inspection_mode
         {
-            self.report_error(&Error {
+            self.report_error(Error {
                 message: format!("Cannot use strings with no memory defined"),
                 loc: string_usage_loc,
             });
@@ -292,7 +292,7 @@ impl Typer {
                                     Ok(type_id) => variant_type = self.get_type(type_id).relax(),
                                     Err(err) => {
                                         variant_type = &Type::Never;
-                                        self.report_error(&err);
+                                        self.report_error(err);
                                     }
                                 }
                             }
@@ -442,13 +442,10 @@ impl Typer {
     }
 
     fn pass_collect_included_symbols(&mut self, ctx: TyContextRef) {
-        self.inline_includes(ctx, ctx, &mut String::from(""), true);
+        self.collect_included_symbols(ctx, ctx, &mut String::from(""), true);
     }
 
-    // TODO: old version was using an intermediate scope to store includes in
-    //   but this version is using module's scope to store inclues in
-    //   check if this is fine and fix if it isn't
-    fn inline_includes(
+    fn collect_included_symbols(
         &mut self,
         includer: TyContextRef,
         includee: TyContextRef,
@@ -458,7 +455,26 @@ impl Typer {
         if includer.module_id != includee.module_id {
             for symbol in includee.symbols.relax() {
                 let mut included_symbol = symbol.clone();
-                included_symbol.name = self.alloc_str(format!("{}{}", prefix, symbol.name));
+                if prefix.len() != 0 {
+                    included_symbol.name = self.alloc_str(format!("{}{}", prefix, symbol.name));
+                }
+
+                // TODO: optimize this
+                for existing_symbol in &includer.symbols {
+                    if existing_symbol.ctx_id != included_symbol.ctx_id
+                        && existing_symbol.name == included_symbol.name
+                    {
+                        self.report_error(Error {
+                            message: format!(
+                                "Cannot redefine {}, already defined at {}",
+                                existing_symbol.name,
+                                included_symbol.loc.to_string(&self.registry)
+                            ),
+                            loc: existing_symbol.loc,
+                        });
+                    }
+                }
+
                 includer.be_mut().symbols.push(included_symbol)
             }
         }
@@ -475,7 +491,7 @@ impl Typer {
             }
 
             let sub_includee = self.module_info[include.module_id].relax();
-            self.inline_includes(includer, sub_includee.ctx, prefix, false);
+            self.collect_included_symbols(includer, sub_includee.ctx, prefix, false);
             prefix.truncate(original_prefix_len);
         }
     }
@@ -495,7 +511,7 @@ impl Typer {
                             'fields: for field in fields {
                                 for existing_field in &struct_fields {
                                     if existing_field.field_name == field.field_name.repr {
-                                        self.report_error(&Error {
+                                        self.report_error(Error {
                                         message: format!(
                                             "Cannot redefine struct field '{}', previously defined at {}",
                                             field.field_name.repr,
@@ -515,7 +531,7 @@ impl Typer {
                                     &field.field_type.loc(),
                                 );
                                 let field_type_id = catch!(field_type_id, err, {
-                                    self.report_error(&err);
+                                    self.report_error(err);
                                     continue 'exprs;
                                 });
                                 let field_type = self.get_type(field_type_id);
@@ -568,7 +584,7 @@ impl Typer {
                             'variants: for variant in variants.iter() {
                                 for existing_variant in &enum_def.variants {
                                     if existing_variant.variant_name == variant.variant_name.repr {
-                                        self.report_error(&Error {
+                                        self.report_error(Error {
                                             message: format!(
                                                 "Cannot redefine enum variant '{}', previously defined at {}",
                                                 variant.variant_name.repr,
@@ -585,7 +601,7 @@ impl Typer {
                                     match self.build_type(ctx, variant_type_expr) {
                                         Ok(t) => variant_type_id = t,
                                         Err(err) => {
-                                            self.report_error(&err);
+                                            self.report_error(err);
                                             variant_type_id = self.intern_type(&Type::Never);
                                         }
                                     }
@@ -598,7 +614,7 @@ impl Typer {
                                     &enum_def.variant_type,
                                     self.get_type(variant_type_id),
                                 ) {
-                                    self.report_error(&Error {
+                                    self.report_error(Error {
                                         message: format!(
                                             "Enum variant is not compatible with {}",
                                             self.registry.fmt(&enum_def.variant_type)
@@ -617,7 +633,7 @@ impl Typer {
                         TypeDefValue::Alias(type_expr) => {
                             let type_id = self.build_type(ctx, &type_expr);
                             let type_id = catch!(type_id, err, {
-                                self.report_error(&err);
+                                self.report_error(err);
                                 continue;
                             });
 
@@ -663,7 +679,7 @@ impl Typer {
 
                     if let Some(return_type) = &fn_def.decl.return_type {
                         let type_id = catch!(self.build_type(ctx, return_type), err, {
-                            self.report_error(&err);
+                            self.report_error(err);
                             continue;
                         });
                         fn_info.type_.output = self.get_type(type_id).clone();
@@ -671,7 +687,7 @@ impl Typer {
 
                     for fn_param in &fn_def.decl.params {
                         if fn_param.param_name.repr == "" {
-                            self.report_error(&Error {
+                            self.report_error(Error {
                                 message: format!("Invalid fn param name `_` is not allowed here"),
                                 loc: fn_param.param_name.loc,
                             });
@@ -680,7 +696,7 @@ impl Typer {
                         let param_type_id =
                             self.get_fn_param_type(ctx, fn_param, self_type_id, false);
                         let param_type_id = catch!(param_type_id, err, {
-                            self.report_error(&err);
+                            self.report_error(err);
                             continue;
                         });
 
@@ -699,7 +715,7 @@ impl Typer {
                     // TODO: check for valid const expression (in case of global)
                     let value_type_id =
                         catch!(self.type_code_expr_and_load(ctx, &let_expr.value), err, {
-                            self.report_error(&err);
+                            self.report_error(err);
                             continue;
                         });
 
@@ -750,7 +766,7 @@ impl Typer {
 
                     if intrinsic.fn_name.repr == "use_memory" {
                         if let Some(existing_memory) = &self.registry.memory {
-                            self.report_error(&Error {
+                            self.report_error(Error {
                                 message: format!(
                                     "Cannot redefine memory, first defined at {}",
                                     existing_memory.loc.to_string(&self.registry)
@@ -761,7 +777,7 @@ impl Typer {
                         }
 
                         if intrinsic.type_args.len() != 0 {
-                            self.report_error(&bad_signature(&intrinsic.fn_name));
+                            self.report_error(bad_signature(&intrinsic.fn_name));
                         }
 
                         let mut memory = MemoryInfo {
@@ -784,12 +800,12 @@ impl Typer {
                                 lhs, rhs: value, ..
                             }) = arg
                             else {
-                                self.report_error(&bad_signature(&intrinsic.fn_name));
+                                self.report_error(bad_signature(&intrinsic.fn_name));
                                 continue;
                             };
 
                             let CodeExpr::Ident(key) = &**lhs else {
-                                self.report_error(&bad_signature(&intrinsic.fn_name));
+                                self.report_error(bad_signature(&intrinsic.fn_name));
                                 continue;
                             };
 
@@ -800,7 +816,7 @@ impl Typer {
                                     ..
                                 })) = self.get_const_value(ctx, value)
                                 else {
-                                    self.report_error(&bad_signature(&intrinsic.fn_name));
+                                    self.report_error(bad_signature(&intrinsic.fn_name));
                                     continue;
                                 };
 
@@ -817,7 +833,7 @@ impl Typer {
                                     ..
                                 })) = self.get_const_value(ctx, value)
                                 else {
-                                    self.report_error(&bad_signature(&intrinsic.fn_name));
+                                    self.report_error(bad_signature(&intrinsic.fn_name));
                                     continue;
                                 };
 
@@ -827,7 +843,7 @@ impl Typer {
 
                             if key.repr == "import_from" {
                                 let CodeExpr::StringLiteral(str) = &**value else {
-                                    self.report_error(&bad_signature(&intrinsic.fn_name));
+                                    self.report_error(bad_signature(&intrinsic.fn_name));
                                     continue;
                                 };
 
@@ -835,7 +851,7 @@ impl Typer {
                                 continue;
                             }
 
-                            self.report_error(&bad_signature(&intrinsic.fn_name));
+                            self.report_error(bad_signature(&intrinsic.fn_name));
                         }
 
                         self.registry.memory = Some(memory);
@@ -859,7 +875,7 @@ impl Typer {
                         let mut out_name = None;
 
                         if intrinsic.type_args.len() != 0 {
-                            self.report_error(&bad_signature(&intrinsic.fn_name));
+                            self.report_error(bad_signature(&intrinsic.fn_name));
                         }
 
                         for arg in &intrinsic.args.items {
@@ -876,18 +892,18 @@ impl Typer {
                             }
 
                             let CodeExpr::Assign(AssignExpr { lhs, rhs, .. }) = arg else {
-                                self.report_error(&bad_signature(&intrinsic.fn_name));
+                                self.report_error(bad_signature(&intrinsic.fn_name));
                                 continue;
                             };
 
                             let CodeExpr::Ident(key) = &**lhs else {
-                                self.report_error(&bad_signature(&intrinsic.fn_name));
+                                self.report_error(bad_signature(&intrinsic.fn_name));
                                 continue;
                             };
 
                             if key.repr == "out" {
                                 let CodeExpr::StringLiteral(value) = &**rhs else {
-                                    self.report_error(&bad_signature(&intrinsic.fn_name));
+                                    self.report_error(bad_signature(&intrinsic.fn_name));
                                     continue;
                                 };
 
@@ -895,12 +911,12 @@ impl Typer {
                                 continue;
                             }
 
-                            self.report_error(&bad_signature(&intrinsic.fn_name));
+                            self.report_error(bad_signature(&intrinsic.fn_name));
                             continue;
                         }
 
                         let Some(in_name) = in_name else {
-                            self.report_error(&bad_signature(&intrinsic.fn_name));
+                            self.report_error(bad_signature(&intrinsic.fn_name));
                             continue;
                         };
 
@@ -918,7 +934,7 @@ impl Typer {
                                 continue;
                             }
 
-                            self.report_error(&Error {
+                            self.report_error(Error {
                                 message: format!("Can't export unknown symbol {}", in_name.repr),
                                 loc: in_name.loc,
                             });
@@ -960,7 +976,7 @@ impl Typer {
                         continue;
                     }
 
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!("Unknown intrinsic: {}", intrinsic.fn_name.repr),
                         loc: intrinsic.loc,
                     });
@@ -1020,7 +1036,7 @@ impl Typer {
             let expr_type = self.get_type(type_id);
 
             if count_primitive_components(&self.registry, expr_type) > 0 && void_only {
-                self.report_error(&Error {
+                self.report_error(Error {
                     message: format!(
                         "Non void expression in block. Use `let _ = <expr>` to ignore expression result."
                     ),
@@ -1037,7 +1053,7 @@ impl Typer {
         if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
             let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.type_.output != Type::Void {
-                self.report_error(&Error {
+                self.report_error(Error {
                     // error message stolen from clang
                     message: format!("Control reaches end of non-void function"),
                     loc: fn_info.definition_loc,
@@ -1075,14 +1091,14 @@ impl Typer {
 
                 let tag_type_id =
                     catch!(self.get_type_id_or_err(ctx, tag, &int_literal.loc), err, {
-                        self.report_error(&err);
+                        self.report_error(err);
                         self.store_type(ctx, int_literal.id, &Type::U32);
                         return Ok(());
                     });
 
                 let tag_type = self.get_type(tag_type_id);
                 if let Err(err) = is_wide_int_tag(&self.registry, tag_type, &int_literal.loc) {
-                    self.report_error(&err);
+                    self.report_error(err);
                     self.store_type(ctx, int_literal.id, &Type::U32);
                     return Ok(());
                 }
@@ -1147,7 +1163,7 @@ impl Typer {
                 for field_index in 0..struct_literal.body.fields.len() {
                     let field_literal = &struct_literal.body.fields[field_index];
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!("Excess field values"),
                             loc: field_literal.loc,
                         });
@@ -1155,7 +1171,7 @@ impl Typer {
                     };
 
                     if &field_literal.key != &struct_field.field_name {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
@@ -1175,7 +1191,7 @@ impl Typer {
                         &struct_field.field_type,
                         &field_value_type,
                     ) {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_literal.struct_name.repr,
@@ -1194,7 +1210,7 @@ impl Typer {
                         missing_fields.push(&struct_def.fields[i].field_name)
                     }
 
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!("Missing struct fields: {}", ListFmt(&missing_fields)),
                         loc: struct_literal.struct_name.loc,
                     });
@@ -1235,7 +1251,7 @@ impl Typer {
                 let err = self.get_type(result.err);
 
                 if result_literal.is_ok && !is_type_compatible(&self.registry, ok, value_type) {
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!(
                             "Cannot create result, Ok type mismatch. Got {}, expected: {}",
                             self.registry.fmt(value_type),
@@ -1298,7 +1314,7 @@ impl Typer {
                         self.get_type(rhs_type_id),
                     )
                 {
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
                             self.registry.fmt(self.get_type(lhs_type_id)),
@@ -1505,7 +1521,7 @@ impl Typer {
                         self.get_type(rhs_type_id),
                     )
                 {
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!(
                             "Cannot assign {} to variable of type {}",
                             self.registry.fmt(self.get_type(rhs_type_id)),
@@ -1643,7 +1659,7 @@ impl Typer {
                     self.store_type(ctx, call.id, &Type::Never);
 
                     if call.args.items.len() != 0 || call.type_args.len() != 0 {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(): never`",
                                 call.fn_name.repr
@@ -1659,7 +1675,7 @@ impl Typer {
                     self.store_type(ctx, call.id, &Type::I32);
 
                     if call.args.items.len() != 0 || call.type_args.len() != 0 {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(): i32`",
                                 call.fn_name.repr
@@ -1692,7 +1708,7 @@ impl Typer {
                     return Ok(());
 
                     fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
-                        self_.report_error(&Error {
+                        self_.report_error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(num_pages: u32): i32`",
                                 call.fn_name.repr
@@ -1729,7 +1745,7 @@ impl Typer {
                     return Ok(());
 
                     fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
-                        self_.report_error(&Error {
+                        self_.report_error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(dest: u32, source: u32: num_bytes: u32)`",
                                 call.fn_name.repr
@@ -1743,7 +1759,7 @@ impl Typer {
                     self.store_type(ctx, call.id, &Type::U32);
 
                     if call.type_args.len() != 0 || call.args.items.len() != 0 {
-                        self.reporter.error(&Error {
+                        self.reporter.error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(): u32`",
                                 call.fn_name.repr
@@ -1753,7 +1769,7 @@ impl Typer {
                     }
 
                     if let Some(_) = ctx.fn_index {
-                        self.reporter.error(&Error {
+                        self.reporter.error(Error {
                             message: format!(
                                 "`@{}(): u32` can only be used in globals",
                                 call.fn_name.repr
@@ -1785,7 +1801,7 @@ impl Typer {
                     };
 
                     fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
-                        self_.reporter.error(&Error {
+                        self_.reporter.error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(relative_file_path: str): &*u8`",
                                 call.fn_name.repr,
@@ -1816,7 +1832,7 @@ impl Typer {
                     return Ok(());
 
                     fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
-                        self_.reporter.error(&Error {
+                        self_.reporter.error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(items: const T[]): u32`",
                                 call.fn_name.repr,
@@ -1843,7 +1859,7 @@ impl Typer {
                     }
 
                     if !inside_of_inline_fn {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Forbidden use of `@{}()` outside of inline fn",
                                 call.fn_name.repr
@@ -1918,7 +1934,7 @@ impl Typer {
                     return Ok(());
                 }
 
-                self.report_error(&Error {
+                self.report_error(Error {
                     message: format!("Unknown intrinsic: {}", call.fn_name.repr),
                     loc: call.fn_name.loc,
                 });
@@ -1928,7 +1944,7 @@ impl Typer {
                 self.store_type(ctx, return_expr.id, &Type::Never);
 
                 if let None = ctx.fn_index {
-                    self.reporter.error(&Error {
+                    self.reporter.error(Error {
                         message: format!("Cannot use `return` in const context"),
                         loc: return_expr.loc,
                     });
@@ -1942,7 +1958,7 @@ impl Typer {
 
                 let fn_return_type = &self.registry.functions[ctx.fn_index.unwrap()].type_.output;
                 if !is_type_compatible(&self.registry, fn_return_type, return_type) {
-                    self.reporter.error(&Error {
+                    self.reporter.error(Error {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
                             self.registry.fmt(&return_type),
@@ -1963,7 +1979,7 @@ impl Typer {
                             self.report_if_err(self.type_code_expr_and_load(ctx, &cond_expr))
                             && *self.get_type(cond_type_id) != Type::Bool
                         {
-                            self.report_error(&Error {
+                            self.report_error(Error {
                                 message: format!(
                                     "Invalid condition type: {}, expected: {}",
                                     self.registry.fmt(self.get_type(cond_type_id)),
@@ -1976,7 +1992,7 @@ impl Typer {
                     IfCond::Match(match_header) => {
                         let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
                         if let Err(err) = self.type_match_header(then_ctx, match_header) {
-                            self.report_error(&err)
+                            self.report_error(err)
                         }
                         updated_then_ctx = Some(then_ctx);
                     }
@@ -2019,7 +2035,7 @@ impl Typer {
                         self.report_if_err(self.type_code_expr_and_load(ctx, &cond))
                         && *self.get_type(cond_type) != Type::Bool
                     {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Invalid condition type: {}, expected: {}",
                                 self.registry.fmt(self.get_type(cond_type)),
@@ -2046,7 +2062,7 @@ impl Typer {
                     && let Some(end_type_id) = maybe_end_type_id
                     && start_type_id != end_type_id
                 {
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!(
                             "Invalid range end type: {}, expected: {}",
                             self.registry.fmt(self.get_type(end_type_id)),
@@ -2067,7 +2083,7 @@ impl Typer {
                     );
 
                     if is_wide_int(self.get_type(counter_type_id)).is_none() {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Invalid counter. Type must be a number, got {} instead",
                                 self.registry.fmt(self.get_type(counter_type_id))
@@ -2110,7 +2126,7 @@ impl Typer {
 
                 let catch_type = self.type_code_block(ctx, &catch.catch_body, true);
                 if catch_type != Type::Never {
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!("Catch expression must resolve to never, got other type"),
                         loc: catch.catch_loc,
                     });
@@ -2130,7 +2146,7 @@ impl Typer {
                 let else_ctx = self.child_ctx(ctx, ScopeKind::Block);
                 let else_type = self.type_code_block(else_ctx, &match_expr.else_branch, true);
                 if else_type != Type::Never {
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!(
                             "Match's else block must resolve to never, got other type"
                         ),
@@ -2139,7 +2155,7 @@ impl Typer {
                 }
 
                 if let Err(err) = self.type_match_header(ctx, &match_expr.header) {
-                    self.report_error(&err)
+                    self.report_error(err)
                 }
 
                 self.store_type(ctx, match_expr.id, &Type::Void);
@@ -2158,7 +2174,7 @@ impl Typer {
                 self.store_type(ctx, do_with.id, &Type::Void);
 
                 if do_with.args.items.len() == 0 {
-                    self.report_error(&Error {
+                    self.report_error(Error {
                         message: format!("do-with expressions must have at least one argument"),
                         loc: do_with.with_loc.clone(),
                     });
@@ -2180,7 +2196,7 @@ impl Typer {
                     if let Some(arg_type_id) = self.load_type(ctx, arg)
                         && arg_type_id != it_type_id
                     {
-                        self.report_error(&Error {
+                        self.report_error(Error {
                             message: format!(
                                 "do-with argument type mismatch. expected: {}, got: {}",
                                 self.registry.fmt(self.get_type(it_type_id)),
@@ -2431,7 +2447,7 @@ impl Typer {
                 &expected_expr_to_match_type,
                 &expr_to_match_type,
             ) {
-                self.report_error(&Error {
+                self.report_error(Error {
                     message: format!(
                         "Unexpected type to match, expected: {}, got: {}",
                         self.registry.fmt(&expected_expr_to_match_type),
@@ -2955,7 +2971,7 @@ impl Typer {
             has_self_param = true;
 
             if fn_name.parts.len() == 1 {
-                self.report_error(&Error {
+                self.report_error(Error {
                     message: format!("Cannot use self param in non-method function"),
                     loc: fn_param.loc,
                 });
@@ -2983,7 +2999,7 @@ impl Typer {
             self.get_type_id_or_err(ctx, &self_type_name, &self_type_loc),
             err,
             {
-                self.report_error(&err);
+                self.report_error(err);
                 return None;
             }
         );
@@ -3276,7 +3292,7 @@ impl Typer {
             _ => { /* fallthrough */ }
         }
 
-        self.report_error(&Error {
+        self.report_error(Error {
             message: format!("Expression not allowed in const context"),
             loc: expr.loc(),
         });
@@ -3334,7 +3350,7 @@ impl Typer {
         if let Some(existing_symbol) = self.get_symbol(ctx, symbol_name)
             && existing_symbol.ctx_id == ctx.id
         {
-            self.report_error(&Error {
+            self.report_error(Error {
                 message: format!(
                     "Cannot redefine {}, previously defined at {}",
                     symbol_name,
@@ -3415,14 +3431,14 @@ impl Typer {
         match res {
             Ok(value) => Some(value),
             Err(err) => {
-                self.report_error(&err);
+                self.report_error(err);
                 None
             }
         }
     }
 
-    fn report_error(&self, err: &Error) {
-        self.reporter.error(&err);
+    fn report_error(&self, err: Error) {
+        self.reporter.error(err);
     }
 }
 
