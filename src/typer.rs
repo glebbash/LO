@@ -12,13 +12,14 @@ pub enum Type {
     I16,
     U32,
     I32,
-    F32,
     U64,
     I64,
+    F32,
     F64,
     Pointer(PointerType),
     Struct { struct_index: usize },
     Enum { enum_index: usize },
+    Seg(SegType),
     Result(ResultType),
     Container(ContainerType),
 }
@@ -28,6 +29,11 @@ pub struct PointerType {
     pub pointee: TypeId,
     pub is_sequence: bool,
     pub is_nullable: bool,
+}
+
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct SegType {
+    pub item: TypeId,
 }
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
@@ -67,6 +73,7 @@ impl Type {
 #[derive(Clone)]
 pub struct TypeLayout {
     pub primitives_count: u32,
+    pub primitives: Option<Vec<Type>>,
     pub byte_size: u32,
     pub alignment: u32,
 }
@@ -75,6 +82,7 @@ impl TypeLayout {
     pub fn new() -> Self {
         Self {
             primitives_count: 0,
+            primitives: None,
             byte_size: 0,
             alignment: 0,
         }
@@ -1469,6 +1477,7 @@ impl Typer {
                             | Type::Struct { struct_index: _ }
                             | Type::Enum { enum_index: _ }
                             | Type::Result(_)
+                            | Type::Seg(_)
                             | Type::Container(_) => {
                                 return Err(Error {
                                     message: format!(
@@ -1491,11 +1500,8 @@ impl Typer {
                 if let Some(castee_type_id) = castee_type_id {
                     let castee_type = self.get_type(castee_type_id);
 
-                    let mut castee_type_components = Vec::new();
-                    self.get_primitives(castee_type, &mut castee_type_components);
-
-                    let mut casted_to_type_components = Vec::new();
-                    self.get_primitives(&casted_to_type, &mut casted_to_type_components);
+                    let castee_type_components = self.get_primitives(castee_type);
+                    let casted_to_type_components = self.get_primitives(&casted_to_type);
 
                     let noop_local_cast =
                         is_noop_cast(&castee_type_components, &casted_to_type_components);
@@ -1554,7 +1560,21 @@ impl Typer {
             CodeExpr::FieldAccess(field_access) => {
                 let lhs_type_id = self.type_code_expr_and_load(ctx, &field_access.lhs)?;
                 let field =
-                    self.get_struct_or_struct_ref_field(self.get_type(lhs_type_id), field_access)?;
+                    get_struct_field(&self.registry, self.get_type(lhs_type_id), field_access)?;
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(InspectInfo {
+                        message: format!(
+                            "{}.{}: {}",
+                            self.registry.fmt(&self.get_type(lhs_type_id)),
+                            field.field_name,
+                            self.registry.fmt(&field.field_type),
+                        ),
+                        loc: field_access.field_name.loc,
+                        linked_loc: Some(field.loc),
+                    })
+                };
+
                 self.store_type(ctx, field_access.id, &field.field_type);
                 return Ok(());
             }
@@ -2410,20 +2430,16 @@ impl Typer {
     }
 
     fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
-        let receiver_type_base = deref_rec(&self.registry, receiver_type);
+        let receiver_type = deref_rec(&self.registry, receiver_type);
 
-        if let Type::Container(ContainerType {
-            container,
-            items: _,
-        }) = receiver_type_base
-        {
-            return format!(
+        match receiver_type {
+            Type::Seg(_) => format!("seg::{method_name}",),
+            Type::Container(ctr) => format!(
                 "{}::{method_name}",
-                self.registry.fmt(self.get_type(*container))
-            );
+                self.registry.fmt(self.get_type(ctr.container))
+            ),
+            _ => format!("{}::{method_name}", self.registry.fmt(receiver_type)),
         }
-
-        format!("{}::{method_name}", self.registry.fmt(receiver_type_base))
     }
 
     fn type_match_header(
@@ -2524,8 +2540,7 @@ impl Typer {
             });
         };
 
-        let mut err_type_components = Vec::new();
-        self.get_primitives(self.get_type(result.err), &mut err_type_components);
+        let err_type_components = self.get_primitives(self.get_type(result.err));
         if err_type_components.len() != 1 || !is_noop_cast(&err_type_components, &[Type::U32]) {
             return Err(Error {
                 message: format!(
@@ -2540,102 +2555,13 @@ impl Typer {
     }
 
     // emits a sequence of `Bool | I* | U* | F*` primitive types
-    fn get_primitives(&self, type_: &Type, primitives: &mut Vec<Type>) {
-        match type_ {
-            Type::Never | Type::Void => {}
-            Type::Bool
-            | Type::U8
-            | Type::I8
-            | Type::U16
-            | Type::I16
-            | Type::U32
-            | Type::I32
-            | Type::U64
-            | Type::I64
-            | Type::F32
-            | Type::F64 => primitives.push(type_.clone()),
-            Type::Null | Type::Pointer { .. } => primitives.push(Type::U32),
-            Type::Struct { struct_index } => {
-                let struct_def = &self.registry.structs[*struct_index];
+    fn get_primitives(&self, type_: &Type) -> Vec<Type> {
+        let mut layout = TypeLayout::new();
+        layout.primitives = Some(Vec::new());
 
-                for field in &struct_def.fields {
-                    self.get_primitives(&field.field_type, primitives);
-                }
-            }
-            Type::Enum { enum_index } => {
-                let enum_def = &self.registry.enums[*enum_index];
+        get_type_layout(&self.registry, type_, &mut layout);
 
-                self.get_primitives(&Type::U32, primitives);
-                self.get_primitives(&enum_def.variant_type, primitives);
-            }
-            Type::Result(result) => {
-                self.get_primitives(self.get_type(result.ok), primitives);
-                self.get_primitives(self.get_type(result.err), primitives);
-            }
-            Type::Container(ctr) => {
-                self.get_primitives(self.get_type(ctr.container), primitives);
-            }
-        }
-    }
-
-    fn get_struct_or_struct_ref_field(
-        &self,
-        mut lhs_type: &Type,
-        field_access: &FieldAccessExpr,
-    ) -> Result<&StructField, Error> {
-        if let Type::Pointer(ptr) = &lhs_type
-            && !ptr.is_sequence
-        {
-            lhs_type = self.get_type(ptr.pointee);
-        }
-
-        let struct_index: usize;
-        if let Type::Struct { struct_index: si } = lhs_type {
-            struct_index = *si;
-        } else if let Type::Container(ctr) = lhs_type
-            && let Type::Struct { struct_index: si } = self.get_type(ctr.container)
-        {
-            struct_index = *si;
-        } else {
-            return Err(Error {
-                message: format!(
-                    "Cannot get field '{}' on non struct: {}",
-                    field_access.field_name.repr,
-                    self.registry.fmt(lhs_type),
-                ),
-                loc: field_access.field_name.loc,
-            });
-        };
-
-        let struct_def = &self.registry.structs[struct_index];
-        let Some(field) = struct_def
-            .fields
-            .iter()
-            .find(|f| &f.field_name == &field_access.field_name.repr)
-        else {
-            return Err(Error {
-                message: format!(
-                    "Unknown field {} in struct {}",
-                    field_access.field_name.repr, struct_def.struct_name
-                ),
-                loc: field_access.field_name.loc,
-            });
-        };
-
-        if self.reporter.in_inspection_mode {
-            self.reporter.print_inspection(InspectInfo {
-                message: format!(
-                    "{}.{}: {}",
-                    self.registry.fmt(&lhs_type),
-                    field.field_name,
-                    self.registry.fmt(&field.field_type),
-                ),
-                loc: field_access.field_name.loc,
-                linked_loc: Some(field.loc),
-            })
-        };
-
-        Ok(field)
+        layout.primitives.unwrap()
     }
 
     fn type_fn_call(
@@ -3142,6 +3068,25 @@ impl Typer {
                 }
 
                 if let TypeExpr::Named(ident) = &*ctr.container
+                    && ident.repr == "seg"
+                {
+                    if ctr.items.len() != 1 {
+                        return Err(Error {
+                            message: format!(
+                                "Expected exactly 2 type arguments, {} was found",
+                                ctr.items.len()
+                            ),
+                            loc: ident.loc,
+                        });
+                    }
+
+                    let item = self.build_type_(ctx, &ctr.items[0], false, loc)?;
+
+                    self.store_type(ctx, ctr.id, &Type::Seg(SegType { item }));
+                    return Ok(());
+                }
+
+                if let TypeExpr::Named(ident) = &*ctr.container
                     && ident.repr == "typeof"
                 {
                     if ctr.items.len() != 1 {
@@ -3551,27 +3496,43 @@ pub fn count_primitive_components(registry: &Registry, type_: &Type) -> u32 {
     layout.primitives_count
 }
 
-pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLayout) {
-    match lo_type {
+pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayout) {
+    match type_ {
         Type::Never | Type::Void => {
             layout.alignment = u32::max(layout.alignment, 1);
         }
         Type::Bool | Type::U8 | Type::I8 => {
+            if let Some(primitives) = &mut layout.primitives {
+                primitives.push(type_.clone())
+            }
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 1);
             layout.byte_size = align(layout.byte_size, 1) + 1;
         }
         Type::U16 | Type::I16 => {
+            if let Some(primitives) = &mut layout.primitives {
+                primitives.push(type_.clone())
+            }
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 2);
             layout.byte_size = align(layout.byte_size, 2) + 2;
         }
         Type::U32 | Type::I32 | Type::F32 | Type::Null | Type::Pointer { .. } => {
+            if let Some(primitives) = &mut layout.primitives {
+                if let Type::Null | Type::Pointer { .. } = type_ {
+                    primitives.push(Type::U32)
+                } else {
+                    primitives.push(type_.clone())
+                }
+            }
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 4);
             layout.byte_size = align(layout.byte_size, 4) + 4;
         }
         Type::U64 | Type::I64 | Type::F64 => {
+            if let Some(primitives) = &mut layout.primitives {
+                primitives.push(type_.clone())
+            }
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 8);
             layout.byte_size = align(layout.byte_size, 8) + 8;
@@ -3597,6 +3558,12 @@ pub fn get_type_layout(registry: &Registry, lo_type: &Type, layout: &mut TypeLay
         Type::Result(result) => {
             get_type_layout(registry, registry.get_type(result.ok), layout);
             get_type_layout(registry, registry.get_type(result.err), layout);
+
+            layout.byte_size = align(layout.byte_size, layout.alignment);
+        }
+        Type::Seg(seg) => {
+            get_type_layout(registry, &Type::U32, layout);
+            get_type_layout(registry, registry.get_type(seg.item), layout);
 
             layout.byte_size = align(layout.byte_size, layout.alignment);
         }
@@ -3637,6 +3604,50 @@ pub fn is_wide_int(type_: &Type) -> Option<bool> {
         | Type::Pointer { .. } => Some(false),
         _ => None,
     }
+}
+
+pub fn get_struct_field<'a>(
+    registry: &'a Registry,
+    mut lhs_type: &Type,
+    field_access: &FieldAccessExpr,
+) -> Result<&'a StructField, Error> {
+    if let Type::Pointer(ptr) = &lhs_type
+        && !ptr.is_sequence
+    {
+        lhs_type = registry.get_type(ptr.pointee);
+    }
+
+    if let Type::Container(ctr) = &lhs_type {
+        lhs_type = registry.get_type(ctr.container);
+    }
+
+    let Type::Struct { struct_index } = lhs_type else {
+        return Err(Error {
+            message: format!(
+                "Cannot get field '{}' on non struct: {}",
+                field_access.field_name.repr,
+                registry.fmt(lhs_type),
+            ),
+            loc: field_access.field_name.loc,
+        });
+    };
+
+    let struct_def = &registry.structs[*struct_index];
+    let Some(field) = struct_def
+        .fields
+        .iter()
+        .find(|f| &f.field_name == &field_access.field_name.repr)
+    else {
+        return Err(Error {
+            message: format!(
+                "Unknown field {} in struct {}",
+                field_access.field_name.repr, struct_def.struct_name
+            ),
+            loc: field_access.field_name.loc,
+        });
+    };
+
+    Ok(field)
 }
 
 pub fn get_infer_type_name(fn_param: &FnParam) -> Result<Option<&'static str>, Error> {
@@ -3830,6 +3841,13 @@ impl<'a> core::fmt::Display for TypeFmt<'a> {
                     "Result({}, {})",
                     self.registry.fmt(self.registry.get_type(result.ok)),
                     self.registry.fmt(self.registry.get_type(result.err))
+                )
+            }
+            Type::Seg(seg) => {
+                write!(
+                    f,
+                    "seg({})",
+                    self.registry.fmt(self.registry.get_type(seg.item)),
                 )
             }
             Type::Container(ctr) => {

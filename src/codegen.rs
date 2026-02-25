@@ -1683,16 +1683,17 @@ impl CodeGenerator {
             Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
-                let mut tag_layout = TypeLayout::new();
-                get_type_layout(&self.registry, &Type::U32, &mut tag_layout);
-
-                self.codegen_load_or_store(
-                    instrs,
-                    &enum_def.variant_type,
-                    offset + tag_layout.byte_size,
-                    is_store,
-                );
+                self.codegen_load_or_store(instrs, &enum_def.variant_type, offset + 4, is_store);
                 self.codegen_load_or_store(instrs, &Type::U32, offset, is_store);
+            }
+            Type::Seg(seg) => {
+                let ptr_type = Type::Pointer(PointerType {
+                    pointee: seg.item,
+                    is_sequence: true,
+                    is_nullable: false,
+                });
+                self.codegen_load_or_store(instrs, &Type::U32, offset + 4, is_store);
+                self.codegen_load_or_store(instrs, &ptr_type, offset, is_store);
             }
             Type::Result(result) => {
                 let ok = self.get_type(result.ok);
@@ -2054,8 +2055,9 @@ impl CodeGenerator {
     ) -> VarInfo {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref());
 
-        let field = self
-            .get_struct_or_struct_ref_field(&lhs_type, field_access)
+        let field = get_struct_field(&self.registry, &lhs_type, field_access)
+            .ok()
+            .unwrap()
             .relax();
 
         if let Type::Pointer(ptr) = lhs_type
@@ -2136,43 +2138,6 @@ impl CodeGenerator {
             var_type: field.field_type.clone(),
             loc: field_access.field_name.loc,
         });
-    }
-
-    fn get_struct_or_struct_ref_field(
-        &self,
-        mut lhs_type: &Type,
-        field_access: &FieldAccessExpr,
-    ) -> &StructField {
-        if let Type::Pointer(ptr) = &lhs_type
-            && !ptr.is_sequence
-        {
-            lhs_type = self.get_type(ptr.pointee);
-        }
-
-        let struct_index: usize;
-        if let Type::Struct { struct_index: si } = lhs_type {
-            struct_index = *si;
-        } else if let Type::Container(ContainerType {
-            container,
-            items: _,
-        }) = lhs_type
-            && let Type::Struct { struct_index: si } = self.get_type(*container)
-        {
-            struct_index = *si;
-        } else {
-            unreachable!()
-        };
-
-        let struct_def = &self.registry.structs[struct_index];
-        let Some(field) = struct_def
-            .fields
-            .iter()
-            .find(|f| &f.field_name == &field_access.field_name.repr)
-        else {
-            unreachable!()
-        };
-
-        field
     }
 
     fn var_from_deref(&mut self, ctx: &mut ExprContext, addr_expr: &CodeExpr) -> VarInfo {
@@ -2277,6 +2242,15 @@ impl CodeGenerator {
                 self.codegen_default_value(ctx, instrs, self.get_type(result.ok));
                 self.codegen_default_value(ctx, instrs, self.get_type(result.err));
             }
+            Type::Seg(seg) => {
+                let ptr_type = Type::Pointer(PointerType {
+                    pointee: seg.item,
+                    is_sequence: false,
+                    is_nullable: false,
+                });
+                self.codegen_default_value(ctx, instrs, &ptr_type);
+                self.codegen_default_value(ctx, instrs, &Type::U32);
+            }
             Type::Container(ctr) => {
                 self.codegen_default_value(ctx, instrs, self.get_type(ctr.container));
             }
@@ -2326,6 +2300,7 @@ impl CodeGenerator {
             | Type::Enum { enum_index: _ }
             | Type::Struct { struct_index: _ }
             | Type::Result(_)
+            | Type::Seg(_)
             | Type::Container(_) => {
                 // TODO!: move to typer
                 self.registry.reporter.abort_due_to_compiler_bug(
@@ -2520,6 +2495,15 @@ impl CodeGenerator {
                 self.lower_type(self.get_type(result.ok), wasm_types);
                 self.lower_type(self.get_type(result.err), wasm_types);
             }
+            Type::Seg(seg) => {
+                let ptr_type = Type::Pointer(PointerType {
+                    pointee: seg.item,
+                    is_sequence: false,
+                    is_nullable: false,
+                });
+                self.lower_type(&Type::U32, wasm_types);
+                self.lower_type(&ptr_type, wasm_types);
+            }
             Type::Container(ctr) => {
                 self.lower_type(self.get_type(ctr.container), wasm_types);
             }
@@ -2628,6 +2612,27 @@ impl CodeGenerator {
                     local_index,
                     self.get_type(result_type.err),
                     alloc::format!("{}#err", local_name),
+                );
+            }
+            Type::Seg(seg) => {
+                let ptr_type = Type::Pointer(PointerType {
+                    pointee: seg.item,
+                    is_sequence: false,
+                    is_nullable: false,
+                });
+
+                self.push_wasm_dbg_name_section_locals(
+                    output,
+                    local_index,
+                    &Type::U32,
+                    alloc::format!("{}.len", local_name),
+                );
+
+                self.push_wasm_dbg_name_section_locals(
+                    output,
+                    local_index,
+                    &ptr_type,
+                    alloc::format!("{}.ptr", local_name),
                 );
             }
             Type::Container(ctr) => {
