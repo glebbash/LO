@@ -1938,38 +1938,26 @@ impl Typer {
                     return Ok(());
                 }
 
-                if call.fn_name.repr == "get_ok" {
-                    if call.args.items.len() == 1 {
-                        let arg_type = self.type_code_expr_and_load(ctx, &call.args.items[0])?;
+                if call.fn_name.repr == "seg" {
+                    if call.args.items.len() == 2 {
+                        let ptr_type = self.type_code_expr_and_load(ctx, &call.args.items[0])?;
+                        let len_type = self.type_code_expr_and_load(ctx, &call.args.items[1])?;
 
-                        if let Type::Result(result) = self.get_type(arg_type) {
-                            self.store_type(ctx, call.id, self.get_type(result.ok));
+                        if let Type::Pointer(PointerType {
+                            pointee,
+                            is_sequence: true,
+                            is_nullable: false,
+                        }) = self.get_type(ptr_type)
+                            && let Type::U32 = self.get_type(len_type)
+                        {
+                            self.store_type(ctx, call.id, &Type::Seg(SegType { item: *pointee }));
                             return Ok(());
                         };
                     }
 
                     return Err(Error {
                         message: format!(
-                            "Invalid arguments for `@{}(res: Result(T, E)): T`",
-                            call.fn_name.repr,
-                        ),
-                        loc: call.fn_name.loc,
-                    });
-                }
-
-                if call.fn_name.repr == "get_err" {
-                    if call.args.items.len() == 1 {
-                        let arg_type = self.type_code_expr_and_load(ctx, &call.args.items[0])?;
-
-                        if let Type::Result(result) = self.get_type(arg_type) {
-                            self.store_type(ctx, call.id, self.get_type(result.err));
-                            return Ok(());
-                        };
-                    }
-
-                    return Err(Error {
-                        message: format!(
-                            "Invalid arguments for `@{}(res: Result(T, E)): E`",
+                            "Invalid arguments for `@{}(ptr: &[]T, len: u32): seg(T)`",
                             call.fn_name.repr,
                         ),
                         loc: call.fn_name.loc,
@@ -3086,7 +3074,7 @@ impl Typer {
                     if ctr.items.len() != 1 {
                         return Err(Error {
                             message: format!(
-                                "Expected exactly 2 type arguments, {} was found",
+                                "Expected exactly 1 type argument, {} was found",
                                 ctr.items.len()
                             ),
                             loc: ident.loc,
@@ -3669,6 +3657,38 @@ pub fn get_struct_field_info<'a>(
                 field_type: Type::U32,
                 field_index: 1,
                 byte_offset: 4,
+                loc: None,
+            });
+        }
+
+        return Err(Error {
+            message: format!(
+                "Unknown field {} in {}",
+                field_access.field_name.repr,
+                registry.fmt(lhs_type)
+            ),
+            loc: field_access.field_name.loc,
+        });
+    }
+
+    if let Type::Result(result) = &lhs_type {
+        if field_access.field_name.repr == "ok" {
+            return Ok(StructFieldInfo {
+                field_type: registry.get_type(result.ok).clone(),
+                field_index: 0,
+                byte_offset: 0,
+                loc: None,
+            });
+        }
+
+        if field_access.field_name.repr == "err" {
+            let mut ok_layout = TypeLayout::new();
+            get_type_layout(registry, registry.get_type(result.ok), &mut ok_layout);
+
+            return Ok(StructFieldInfo {
+                field_type: registry.get_type(result.err).clone(),
+                field_index: ok_layout.primitives_count,
+                byte_offset: ok_layout.byte_size,
                 loc: None,
             });
         }

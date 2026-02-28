@@ -940,8 +940,8 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     let op_token = self.current()
     if !op_token.is_terminal() {
         let maybe_op = PrefixOp::parse(op_token.get_value(self.source))
-        if @get_err(maybe_op) == null {
-            let op = @get_ok(maybe_op)
+        if maybe_op.err == null {
+            let op = maybe_op.ok
             if op.tag != PrefixOpTag::Reference \
                 && op.tag != PrefixOpTag::Dereference \
                 && op.tag != PrefixOpTag::Not \

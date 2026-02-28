@@ -931,53 +931,6 @@ impl CodeGenerator {
                     return;
                 }
 
-                if call.fn_name.repr == "get_ok" {
-                    let arg_type = self.get_expr_type(ctx, &call.args.items[0]);
-
-                    let Type::Result(ResultType { ok: _, err }) = arg_type else {
-                        unreachable!()
-                    };
-
-                    self.codegen(ctx, instrs, &call.args.items[0]);
-
-                    // drop `err` leaving only `ok` on the stack
-                    for _ in 0..count_primitive_components(&self.registry, self.get_type(*err)) {
-                        instrs.push(WasmInstr::Drop);
-                    }
-
-                    return;
-                }
-
-                if call.fn_name.repr == "get_err" {
-                    let arg_type = self.get_expr_type(ctx, &call.args.items[0]);
-
-                    let Type::Result(result) = arg_type else {
-                        unreachable!()
-                    };
-                    let ok = self.get_type(result.ok);
-                    let err = self.get_type(result.err);
-
-                    self.codegen(ctx, instrs, &call.args.items[0]);
-
-                    // push `err` to temp local
-                    let tmp_local_index = self.define_unnamed_local(ctx, Loc::internal(), err);
-                    let tmp_local = VarInfo::Local(VarInfoLocal {
-                        local_index: tmp_local_index,
-                        var_type: err.clone(),
-                    });
-                    self.codegen_local_set(instrs, err, tmp_local_index);
-
-                    // drop `ok`
-                    for _ in 0..count_primitive_components(&self.registry, ok) {
-                        instrs.push(WasmInstr::Drop);
-                    }
-
-                    // pop `err` back
-                    self.codegen_var_get(ctx, instrs, &tmp_local);
-
-                    return;
-                }
-
                 self.registry.reporter.abort_due_to_compiler_bug(
                     &format!("Unknown intrinsic: {}", call.fn_name.repr),
                     call.fn_name.loc,
