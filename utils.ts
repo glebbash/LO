@@ -257,6 +257,15 @@ async function commandTest() {
         assert.strictEqual(result, 138);
     });
 
+    it("compiles for-each-loop.lo", async () => {
+        const output = await compile("./examples/test/for-each-loop.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 9);
+    });
+
     it("compiles methods.lo", async () => {
         const output = await compile("./examples/test/methods.lo");
 

@@ -477,7 +477,7 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
 
     ident.repr = ident.loc.read_span(self.source)
     if ident.repr.contains(" ") {
-        // TODO: report error this error instead of throwing
+        // TODO: report this error instead of throwing
         return Err(self.error_arena.new!(Error {
             message: String::from_str_in(self.error_arena, "Unexpected space in identifier"),
             loc: ident.loc,
@@ -797,11 +797,37 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         self.push_ctx(ParsingContext { struct_literal_allowed: false })
-        let counter = self.parse_ident()?
+
+        let ref_token = self.eat(Operator, "&")
+
+        let item = self.parse_ident()?
         let _ = self.expect(Symbol, "in")?
+
+        let iterator = ForExprIterator::Range(null)
+
         let start = self.parse_code_expr(0)?
-        let op = self.expect(Operator, "..")?
-        let end = self.parse_code_expr(0)?
+        if self.eat(Operator, "..") != null {
+            let op_loc = self.prev().loc
+            let end = self.parse_code_expr(0)?
+
+            iterator = ForExprIterator::Range(self.ast_arena.new!(ForExprIteratorRange {
+                start: start,
+                end: end,
+            }))
+
+            if ref_token != null {
+                // TODO: report this error instead of throwing
+                return Err(self.error_arena.new!(Error {
+                    message: String::from_str_in(self.error_arena, "Cannot reference items of range"),
+                    loc: ref_token.loc,
+                }))
+            }
+        } else {
+            iterator = ForExprIterator::Segment(self.ast_arena.new!(ForExprIteratorSegment {
+                expr: start,
+            }))
+        }
+
         self.pop_ctx()
 
         let body = self.parse_code_block()?
@@ -809,11 +835,10 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::For(self.ast_arena.new!(ForExpr {
-            counter: counter,
-            start: start,
-            end: end,
+            item: item,
+            iterator: iterator,
+            ref_only: ref_token != null,
             body: body,
-            op_loc: op.loc,
             loc: loc,
         })))
     }

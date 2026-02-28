@@ -729,11 +729,33 @@ impl Parser {
                 struct_literal_allowed: false,
             });
 
-            let counter = self.parse_ident()?;
+            let ref_token = self.eat(Operator, "&").cloned();
+
+            let item = self.parse_ident()?;
             self.expect(Symbol, "in")?;
+
+            let iterator;
+
             let start = self.parse_code_expr(0)?;
-            let op = self.expect(Operator, "..")?.clone();
-            let end = self.parse_code_expr(0)?;
+            if self.eat(Operator, "..").is_some() {
+                let end = self.parse_code_expr(0)?;
+
+                iterator = ForExprIterator::Range {
+                    start: Box::new(start),
+                    end: Box::new(end),
+                };
+
+                if let Some(ref_token) = &ref_token {
+                    self.reporter.error(Error {
+                        message: format!("Cannot reference items of range"),
+                        loc: ref_token.loc,
+                    });
+                }
+            } else {
+                iterator = ForExprIterator::Segment {
+                    expr: Box::new(start),
+                };
+            }
 
             self.pop_ctx();
 
@@ -743,11 +765,10 @@ impl Parser {
 
             return Ok(CodeExpr::For(ForExpr {
                 id: self.next_expr_id(),
-                counter,
-                start: Box::new(start),
-                end: Box::new(end),
+                item,
+                iterator,
+                ref_only: ref_token.is_some(),
                 body: Box::new(body),
-                op_loc: op.loc,
                 loc,
             }));
         }

@@ -376,7 +376,7 @@ fn Arena::free(&self) {
 
 // vec
 type Vec = struct {
-    ptr: &void,
+    ptr: &[]void,
     len: u32,
     capacity: u32,
     item_size: u32,
@@ -409,7 +409,7 @@ inline fn Vec::with_capacity_in!<T>(a: Alloc, capacity: u32): &Vec(T) {
 
 fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
     return new!(a, Vec {
-        ptr: alloc(a, capacity * item_size),
+        ptr: alloc(a, capacity * item_size) as &[]void,
         len: 0,
         capacity: capacity,
         item_size: item_size,
@@ -418,6 +418,7 @@ fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
 }
 
 inline fn Vec::free_deep!<T>(&self) {
+    // TODO: use for each
     for i in 0..self.len {
         self.get!(i).free()
     }
@@ -427,6 +428,11 @@ inline fn Vec::free_deep!<T>(&self) {
 fn Vec::free(&self) {
     free!<Vec>(self.alloc, self)
     free(self.alloc, self.ptr, self.capacity)
+}
+
+// TODO: test this
+inline fn Vec::iter!(&self): seg(itemof(typeof(self))) {
+    @seg(self.ptr, self.len) as seg(itemof(typeof(self)))
 }
 
 inline fn Vec::at!(&self, index: u32): &itemof(typeof(self)) {
@@ -504,7 +510,7 @@ fn Vec::_grow_to_len(&self, new_len: u32) {
     let old = *self
 
     let new_capacity = u32::max!(old.capacity * 2, new_len)
-    let new_ptr = alloc(old.alloc, new_capacity * old.item_size)
+    let new_ptr = alloc(old.alloc, new_capacity * old.item_size) as &[]void
 
     if old.capacity != 0 {
         mem::copy!(old.ptr, new_ptr, old.len * old.item_size)

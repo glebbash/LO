@@ -8,12 +8,15 @@ fn main() {
     let numbers = parse_numbers(input)
     defer numbers.free()
 
+    // TODO: use for each
     for i in 0..numbers.len {
         let a = numbers.get!(i)
 
+        // TODO: use for each
         for j in i + 1..numbers.len {
             let b = numbers.get!(j)
 
+            // TODO: use for each
             for k in j + 1..numbers.len {
                 let c = numbers.get!(k)
 

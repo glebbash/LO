@@ -579,19 +579,28 @@ impl Printer {
             }
             CodeExpr::For(ForExpr {
                 id: _,
-                counter,
-                start,
-                end,
+                item,
+                iterator,
+                ref_only,
                 body,
-                op_loc: _,
                 loc: _,
             }) => {
                 stdout_write("for ");
-                stdout_write(&counter.repr);
+                if *ref_only {
+                    stdout_write("&");
+                }
+                stdout_write(&item.repr);
                 stdout_write(" in ");
-                self.print_code_expr(&start);
-                stdout_write("..");
-                self.print_code_expr(&end);
+                match iterator {
+                    ForExprIterator::Range { start, end, .. } => {
+                        self.print_code_expr(&start);
+                        stdout_write("..");
+                        self.print_code_expr(&end);
+                    }
+                    ForExprIterator::Segment { expr } => {
+                        self.print_code_expr(expr);
+                    }
+                }
                 self.print_code_block(&body);
             }
             CodeExpr::Break(BreakExpr { id: _, loc: _ }) => {

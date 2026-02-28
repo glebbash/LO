@@ -283,13 +283,22 @@ pub struct BreakExpr {
     pub loc: Loc,
 }
 
+pub enum ForExprIterator {
+    Range {
+        start: Box<CodeExpr>,
+        end: Box<CodeExpr>,
+    },
+    Segment {
+        expr: Box<CodeExpr>,
+    },
+}
+
 pub struct ForExpr {
     pub id: ExprId,
-    pub counter: IdentExpr,
-    pub start: Box<CodeExpr>,
-    pub end: Box<CodeExpr>,
+    pub item: IdentExpr,
+    pub iterator: ForExprIterator,
+    pub ref_only: bool,
     pub body: Box<CodeBlock>,
-    pub op_loc: Loc,
     pub loc: Loc,
 }
 

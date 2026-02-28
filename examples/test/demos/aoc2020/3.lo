@@ -37,6 +37,7 @@ type Map = struct {
 fn Map::parse(input: String): Map {
     let rows = Vec::new!<&Vec(Tile)>()
     let current_row = Vec::new!<Tile>()
+    // TODO: use for each
     for i in 0..input.len() {
         let c = input.char_at(i)
         if c == '#' {
@@ -60,6 +61,7 @@ fn Map::get(self, i: u32, j: u32): Tile {
 }
 
 fn Map::free(self) {
+    // TODO: use for each
     for i in 0..self.rows.len {
         let row = self.rows.get!(i)
         row.free()

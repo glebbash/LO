@@ -15,6 +15,7 @@ fn main() {
     }
     selection_sort(seat_ids)
     let prev_seat_id = 0
+    // TODO: use for each
     for i in 0..tickets_count {
         let seat_id = seat_ids.get!(i)
         if prev_seat_id + 2 == seat_id {
@@ -44,6 +45,7 @@ fn parse_seat_id(input: str): u32 {
     let row_max = 128
     let row_hi = row_max - 1
     let row_lo = 0
+    // TODO: use for each?
     for row_i in 0..7 {
         let c = input.char_at(row_i)
         if c == 'F' {
@@ -58,6 +60,7 @@ fn parse_seat_id(input: str): u32 {
     let col_max = 8
     let col_hi = col_max - 1
     let col_lo = 0
+    // TODO: use for each?
     for col_i in 0..3 {
         let c = input.char_at(col_i + 7)
         if c == 'L' {

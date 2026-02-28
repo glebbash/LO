@@ -115,6 +115,7 @@ fn render() {
     }
 
     render_trail(trail)
+    // TODO: use for each
     for i in 0..showing_trails.len {
         render_trail(showing_trails.get!(i))
     }
@@ -124,6 +125,7 @@ fn render_trail(trail: &Trail) {
     if trail.len > 0 {
         let prev_pos = trail.get!(0)
 
+        // TODO: use for each?
         for i in 1..trail.len {
             let pos = trail.get!(i)
 
@@ -137,6 +139,7 @@ fn flip_trail_randomly(trail: &Trail) {
     let flip_x = rand_u32(1) == 1
     let flip_y = rand_u32(1) == 1
 
+    // TODO: use for each
     for i in 0..trail.len {
         let pos = trail.at!(i)
         if flip_x {

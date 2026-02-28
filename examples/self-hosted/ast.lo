@@ -286,12 +286,23 @@ type BreakExpr = struct {
     loc: Loc,
 }
 
-type ForExpr = struct {
-    counter: IdentExpr,
+type ForExprIterator = enum (&void) {
+    Range(&ForExprIteratorRange),
+    Segment(&ForExprIteratorSegment),
+}
+type ForExprIteratorRange = struct {
     start: CodeExpr,
     end: CodeExpr,
+}
+type ForExprIteratorSegment = struct {
+    expr: CodeExpr,
+}
+
+type ForExpr = struct {
+    item: IdentExpr,
+    iterator: ForExprIterator,
+    ref_only: bool,
     body: CodeBlock,
-    op_loc: Loc,
     loc: Loc,
 }
 

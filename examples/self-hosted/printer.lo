@@ -37,6 +37,7 @@ fn Printer::free(&self) {
 fn Printer::print_file(&self) {
     stdout_enable_buffering()
 
+    // TODO: use for each
     for i in 0..self.parser.ast.len {
         let expr = self.parser.ast.get!(i)
         self.print_top_level_expr(expr)
@@ -113,6 +114,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
             stdout_writeln(" {")
             self.indent += 1
+            // TODO: use for each
             for i in 0..struct_value.fields.len {
                 let field = struct_value.fields.get!(i)
                 self.print_comments_before(field.loc.pos)
@@ -149,6 +151,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
             stdout_writeln(" {")
             self.indent += 1
+            // TODO: use for each
             for i in 0..enum_value.variants.len {
                 let variant = enum_value.variants.get!(i)
                 self.print_comments_before(variant.loc.pos)
@@ -322,6 +325,7 @@ fn Printer::print_code_block(&self, code_block: CodeBlock) {
 
     self.indent += 1
 
+    // TODO: use for each
     for i in 0..code_block.exprs.len {
         let expr = code_block.exprs.get!(i)
 
@@ -528,11 +532,20 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
 
     if match CodeExpr::For(for_expr) = expr {
         stdout_write("for ")
-        stdout_write(for_expr.counter.repr)
+        if for_expr.ref_only {
+            stdout_write("&")
+        }
+        stdout_write(for_expr.item.repr)
         stdout_write(" in ")
-        self.print_code_expr(for_expr.start)
-        stdout_write("..")
-        self.print_code_expr(for_expr.end)
+        if match ForExprIterator::Range(range) = for_expr.iterator {
+            self.print_code_expr(range.start)
+            stdout_write("..")
+            self.print_code_expr(range.end)
+        } else if match ForExprIterator::Segment(seg) = for_expr.iterator {
+            self.print_code_expr(seg.expr)
+        } else {
+            @unreachable()
+        }
         self.print_code_block(for_expr.body)
         return
     }
@@ -677,6 +690,7 @@ fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
 
         self.indent += 1
 
+        // TODO: use for each
         for i in 0..map.fields.len {
             let field = map.fields.get!(i)
             self.print_comments_before(field.loc.pos)
@@ -876,6 +890,7 @@ fn Printer::print_indent(&self) {
         stdout_write("    ")
     }
 
+    // TODO: use for each
     for i in 0..self.backslash_stack.len {
         if self.backslash_stack.get!(i) {
             stdout_write("    ")

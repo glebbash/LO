@@ -908,6 +908,13 @@ impl CodeGenerator {
                     return;
                 }
 
+                if call.fn_name.repr == "seg" {
+                    for arg in &call.args.items {
+                        self.codegen(ctx, instrs, arg);
+                    }
+                    return;
+                }
+
                 if call.fn_name.repr == "inline_fn_call_loc" {
                     let mut inline_fn_call_loc = None;
                     // NOTE: iterating in not-reverse to get the first inline scope
@@ -1087,28 +1094,90 @@ impl CodeGenerator {
                 instrs.push(WasmInstr::BlockEnd);
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::For(ForExpr {
-                id: _,
-                counter,
-                start,
-                end,
-                body,
-                op_loc,
-                loc: _,
-            }) => {
-                let counter_type = self.get_expr_type(ctx, start);
+            CodeExpr::For(for_expr) => {
+                let item_expr_info = self.get_expr_info(ctx, for_expr.item.id, for_expr.item.loc);
+                let item_value_info = &self.registry.value_info[item_expr_info];
+                let item_type = self.get_type(item_value_info.type_id);
 
                 self.enter_scope(ctx, ScopeKind::ForLoop);
 
-                // define counter and set value to start
-                let local_index = self.define_local(ctx, counter.loc, counter.repr, &counter_type);
-                let counter_var = VarInfo::Local(VarInfoLocal {
-                    local_index,
-                    var_type: counter_type.clone(),
-                });
-                self.codegen_var_set_prepare(instrs, &counter_var);
-                self.codegen(ctx, instrs, start);
-                self.codegen_var_set(ctx, instrs, &counter_var);
+                let counter_type;
+                let counter_local_index;
+                let range_end_local_index;
+                let mut item_local_index = None;
+
+                match &for_expr.iterator {
+                    ForExprIterator::Range { start, end } => {
+                        counter_type = item_type.clone();
+                        counter_local_index = self.define_local(
+                            ctx,
+                            for_expr.item.loc,
+                            for_expr.item.repr,
+                            &counter_type,
+                        );
+                        range_end_local_index =
+                            self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
+
+                        self.codegen(ctx, instrs, &start);
+                        instrs.push(WasmInstr::LocalSet {
+                            local_index: counter_local_index,
+                        });
+
+                        self.codegen(ctx, instrs, &end);
+                        instrs.push(WasmInstr::LocalSet {
+                            local_index: range_end_local_index,
+                        });
+                    }
+                    ForExprIterator::Segment { expr } => {
+                        counter_type = Type::U32;
+                        range_end_local_index =
+                            self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
+
+                        if for_expr.ref_only {
+                            counter_local_index = self.define_local(
+                                ctx,
+                                for_expr.item.loc,
+                                for_expr.item.repr,
+                                &item_type,
+                            );
+                        } else {
+                            counter_local_index =
+                                self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
+
+                            item_local_index = Some(self.define_local(
+                                ctx,
+                                for_expr.item.loc,
+                                for_expr.item.repr,
+                                &item_type,
+                            ));
+                        }
+
+                        self.codegen(ctx, instrs, expr);
+
+                        // counter, range_end = segment.ptr, segment.len
+                        instrs.push(WasmInstr::LocalSet {
+                            local_index: range_end_local_index,
+                        });
+                        instrs.push(WasmInstr::LocalSet {
+                            local_index: counter_local_index,
+                        });
+
+                        // set range_end to segment end (segment.ptr + segment.len)
+                        instrs.push(WasmInstr::LocalGet {
+                            // TODO: optimize with local.tee
+                            local_index: counter_local_index,
+                        });
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: range_end_local_index,
+                        });
+                        instrs.push(WasmInstr::BinaryOp {
+                            kind: WasmBinaryOpKind::I32_ADD,
+                        });
+                        instrs.push(WasmInstr::LocalSet {
+                            local_index: range_end_local_index,
+                        });
+                    }
+                }
 
                 {
                     instrs.push(WasmInstr::BlockStart {
@@ -1123,15 +1192,21 @@ impl CodeGenerator {
                         });
 
                         // break if counter is equal to end
-                        self.codegen(ctx, instrs, end);
-                        self.codegen_var_get(ctx, instrs, &counter_var);
-                        self.codegen_binary_op(
-                            ctx,
-                            instrs,
-                            &InfixOpTag::Equal,
-                            &counter_type,
-                            op_loc,
-                        );
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: counter_local_index,
+                        });
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: range_end_local_index,
+                        });
+                        if is_wide_int(&counter_type).unwrap() {
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::I64_EQ,
+                            });
+                        } else {
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::I32_EQ,
+                            });
+                        }
                         instrs.push(WasmInstr::BranchIf { label_index: 1 });
 
                         {
@@ -1140,27 +1215,46 @@ impl CodeGenerator {
                                 block_type: WasmBlockType::NoOut,
                             });
 
-                            self.codegen_code_block(ctx, instrs, body, true);
+                            // item = load item_type at counter
+                            if let Some(item_local_index) = item_local_index {
+                                self.codegen_var_get(
+                                    ctx,
+                                    instrs,
+                                    &VarInfo::Stored(VarInfoStored {
+                                        address: CodeUnit {
+                                            instrs: vec![WasmInstr::LocalGet {
+                                                local_index: counter_local_index,
+                                            }],
+                                        },
+                                        offset: 0,
+                                        var_type: item_type.clone(),
+                                    }),
+                                );
+
+                                self.codegen_local_set(instrs, item_type, item_local_index);
+                            }
+
+                            self.codegen_code_block(ctx, instrs, &for_expr.body, true);
 
                             instrs.push(WasmInstr::BlockEnd);
                         }
 
                         // increment counter
-                        self.codegen_var_get(ctx, instrs, &counter_var);
-                        self.codegen_var_set_prepare(instrs, &counter_var);
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: counter_local_index,
+                        });
                         if is_wide_int(&counter_type).unwrap() {
                             instrs.push(WasmInstr::I64Const { value: 1 });
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::I64_ADD,
+                            });
                         } else {
                             instrs.push(WasmInstr::I32Const { value: 1 });
+                            instrs.push(WasmInstr::BinaryOp {
+                                kind: WasmBinaryOpKind::I32_ADD,
+                            });
                         }
-                        self.codegen_binary_op(
-                            ctx,
-                            instrs,
-                            &InfixOpTag::Add,
-                            &counter_type,
-                            op_loc,
-                        );
-                        self.codegen_var_set(ctx, instrs, &counter_var);
+                        self.codegen_local_set(instrs, &counter_type, counter_local_index);
 
                         // implicit continue
                         instrs.push(WasmInstr::Branch { label_index: 0 });

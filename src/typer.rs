@@ -1357,9 +1357,9 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Ident(ident) => {
-                let var_symbol = self.get_value_info(ctx, &ident)?;
+                let value_info = self.get_value_info(ctx, &ident)?;
                 self.store_expr_info(ctx, ident.id, self.registry.value_info.len());
-                self.registry.be_mut().value_info.push(var_symbol);
+                self.registry.be_mut().value_info.push(value_info);
                 return Ok(());
             }
             CodeExpr::Let(let_expr) => {
@@ -2098,44 +2098,81 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::For(for_expr) => {
-                let maybe_start_type_id =
-                    self.report_if_err(self.type_code_expr_and_load(ctx, &for_expr.start));
-                let maybe_end_type_id =
-                    self.report_if_err(self.type_code_expr_and_load(ctx, &for_expr.end));
+                let mut item_type_id = None;
 
-                if let Some(start_type_id) = maybe_start_type_id
-                    && let Some(end_type_id) = maybe_end_type_id
-                    && start_type_id != end_type_id
-                {
-                    self.report_error(Error {
-                        message: format!(
-                            "Invalid range end type: {}, expected: {}",
-                            self.registry.fmt(self.get_type(end_type_id)),
-                            self.registry.fmt(self.get_type(start_type_id)),
-                        ),
-                        loc: for_expr.end.loc(),
-                    });
+                match &for_expr.iterator {
+                    ForExprIterator::Range { start, end } => {
+                        item_type_id =
+                            self.report_if_err(self.type_code_expr_and_load(ctx, &start));
+                        let range_end_type_id =
+                            self.report_if_err(self.type_code_expr_and_load(ctx, &end));
+
+                        if let Some(item_type_id) = item_type_id {
+                            if is_wide_int(self.get_type(item_type_id)).is_none() {
+                                self.report_error(Error {
+                                    message: format!(
+                                        "Invalid counter. Type must be an integer, got {} instead",
+                                        self.registry.fmt(self.get_type(item_type_id))
+                                    ),
+                                    loc: start.loc(),
+                                });
+                            }
+                        }
+
+                        if let Some(item_type_id) = item_type_id
+                            && let Some(range_end_type_id) = range_end_type_id
+                            && item_type_id != range_end_type_id
+                        {
+                            self.report_error(Error {
+                                message: format!(
+                                    "Invalid range end type: {}, expected: {}",
+                                    self.registry.fmt(self.get_type(range_end_type_id)),
+                                    self.registry.fmt(self.get_type(item_type_id)),
+                                ),
+                                loc: end.loc(),
+                            });
+                        }
+                    }
+                    ForExprIterator::Segment { expr } => {
+                        let seg_type_id =
+                            self.report_if_err(self.type_code_expr_and_load(ctx, &expr));
+                        if let Some(iter_type_id) = seg_type_id {
+                            match self.get_type(iter_type_id) {
+                                Type::Seg(seg) => {
+                                    if for_expr.ref_only {
+                                        item_type_id =
+                                            Some(self.intern_type(&Type::Pointer(PointerType {
+                                                pointee: seg.item,
+                                                is_sequence: false,
+                                                is_nullable: false,
+                                            })))
+                                    } else {
+                                        item_type_id = Some(seg.item)
+                                    }
+                                }
+                                other_iter_type => self.report_error(Error {
+                                    message: format!(
+                                        "Expected seg(T), found {}",
+                                        self.registry.fmt(other_iter_type)
+                                    ),
+                                    loc: expr.loc(),
+                                }),
+                            }
+                        }
+                    }
                 }
 
                 let ctx = self.child_ctx(ctx, ScopeKind::ForLoop);
 
-                if let Some(counter_type_id) = self.load_type(ctx, &for_expr.start) {
-                    self.define_local(
-                        ctx,
-                        for_expr.counter.repr,
-                        counter_type_id,
-                        for_expr.counter.loc,
-                    );
+                if let Some(item_type_id) = item_type_id {
+                    self.define_local(ctx, for_expr.item.repr, item_type_id, for_expr.item.loc);
 
-                    if is_wide_int(self.get_type(counter_type_id)).is_none() {
-                        self.report_error(Error {
-                            message: format!(
-                                "Invalid counter. Type must be a number, got {} instead",
-                                self.registry.fmt(self.get_type(counter_type_id))
-                            ),
-                            loc: for_expr.start.loc(),
-                        });
-                    }
+                    self.store_expr_info(ctx, for_expr.item.id, self.registry.value_info.len());
+                    self.registry.be_mut().value_info.push(ValueInfo {
+                        kind: ValueKind::Local,
+                        col_index: self.locals_types.len(),
+                        type_id: item_type_id,
+                    });
                 }
 
                 self.type_code_block(ctx, &for_expr.body, true);
@@ -3107,8 +3144,8 @@ impl Typer {
                         });
                     };
 
-                    let var_symbol = self.get_value_info(ctx, &ident)?;
-                    self.store_expr_info(ctx, ctr.id, var_symbol.type_id);
+                    let value_info = self.get_value_info(ctx, &ident)?;
+                    self.store_expr_info(ctx, ctr.id, value_info.type_id);
                     return Ok(());
                 }
 
