@@ -210,6 +210,8 @@ impl Typer {
             self.pass_build_type_def_values(module.ctx);
         }
 
+        self.pass_get_str_literal_type();
+
         for module in self.module_info.be_mut().relax_mut() {
             self.pass_process_top_level_exprs(module.ctx);
         }
@@ -677,6 +679,58 @@ impl Typer {
         }
     }
 
+    fn pass_get_str_literal_type(&mut self) {
+        // fallback
+        self.registry.str_literal_type = Some(Type::Seg(SegType {
+            item: self.intern_type(&Type::U8),
+        }));
+
+        let mut str_literal_def: Option<&TypeExpr> = None;
+
+        for module_info in self.module_info.be_mut().relax_mut() {
+            let module = self.registry.modules[module_info.ctx.module_id].relax_mut();
+            for expr in &*module.parser.ast {
+                let TopLevelExpr::Intrinsic(intrinsic) = expr else {
+                    continue;
+                };
+
+                if intrinsic.fn_name.repr != "str_literal_type" {
+                    continue;
+                }
+
+                if intrinsic.type_args.len() != 1 || intrinsic.args.items.len() != 0 {
+                    self.report_error(Error {
+                        message: format!(
+                            "Invalid call, expected signature: @<T>{}()",
+                            intrinsic.fn_name.repr
+                        ),
+                        loc: intrinsic.fn_name.loc,
+                    });
+                    continue;
+                }
+
+                if let Some(str_literal_def) = &str_literal_def {
+                    self.report_error(Error {
+                        message: format!(
+                            "Cannot redefine str literal type, first defined at {}",
+                            str_literal_def.loc().to_string(&self.registry)
+                        ),
+                        loc: intrinsic.fn_name.loc,
+                    });
+                    continue;
+                }
+                str_literal_def = Some(intrinsic.type_args[0].relax());
+
+                match self.build_type(module_info.ctx, str_literal_def.unwrap()) {
+                    Err(err) => self.report_error(err),
+                    Ok(type_id) => {
+                        self.registry.str_literal_type = Some(self.get_type(type_id).clone());
+                    }
+                }
+            }
+        }
+    }
+
     fn pass_process_top_level_exprs(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
 
@@ -787,6 +841,11 @@ impl Typer {
                 TopLevelExpr::Intrinsic(intrinsic) => {
                     if intrinsic.fn_name.repr == "include" {
                         // skip, was processed in `Compiler.include`
+                        continue;
+                    }
+
+                    if intrinsic.fn_name.repr == "str_literal_type" {
+                        // skip, was processed in `pass_get_str_literal_type`
                         continue;
                     }
 
@@ -1134,21 +1193,15 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::StringLiteral(str_literal) => {
-                let Some(symbol) = self.get_symbol(ctx, "str") else {
-                    return Err(Error {
-                        message: format!("Cannot use strings with no `str` struct defined"),
-                        loc: str_literal.loc,
-                    });
-                };
-
                 if let None = *self.first_string_usage {
                     *self.first_string_usage.be_mut() = Some(*&str_literal.loc);
                 }
 
-                let str_type = Type::Struct {
-                    struct_index: symbol.col_index,
-                };
-                self.store_type(ctx, str_literal.id, &str_type);
+                self.store_type(
+                    ctx,
+                    str_literal.id,
+                    self.registry.str_literal_type.as_ref().unwrap(),
+                );
                 return Ok(());
             }
             CodeExpr::StructLiteral(struct_literal) => {
@@ -1908,9 +1961,7 @@ impl Typer {
                     self.store_type(
                         ctx,
                         call.id,
-                        &Type::Struct {
-                            struct_index: self.get_symbol(ctx, "str").unwrap().col_index,
-                        },
+                        self.registry.str_literal_type.as_ref().unwrap(),
                     );
                     return Ok(());
                 }

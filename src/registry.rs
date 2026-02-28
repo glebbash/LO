@@ -212,6 +212,8 @@ pub struct Registry {
     pub memory: Option<MemoryInfo>,
     pub data_size: UBCell<u32>,
 
+    pub str_literal_type: Option<Type>,
+
     pub expr_id_count: usize,
 }
 

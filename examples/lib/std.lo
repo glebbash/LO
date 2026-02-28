@@ -1,8 +1,8 @@
-// str literal type
 type str = struct {
     ptr: &[]u8,
     len: u32,
 }
+@str_literal_type<str>()
 
 // constants
 

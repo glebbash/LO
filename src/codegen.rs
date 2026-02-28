@@ -486,9 +486,7 @@ impl CodeGenerator {
 
                         bytes.push(value as u8);
                     }
-                } else if let Type::Struct { struct_index } = item_type
-                    && self.registry.structs[*struct_index].struct_name == "str"
-                {
+                } else if item_type == self.registry.str_literal_type.as_ref().unwrap() {
                     for item in items {
                         let current_item_type = self.get_expr_type(ctx, item);
                         if current_item_type != item_type {

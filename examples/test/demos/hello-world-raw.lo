@@ -7,16 +7,12 @@ fn fd_write(
     nwritten: &u32,
 ): u32 = @import_from("wasi_snapshot_preview1")
 
-type str = struct {
-    data: u32,
-    size: u32,
-}
 inline let message = "Hello World!\n"
 
 export fn _start() {
     let nwritten = 0 as &u32
 
-    let iovs = 4 as &str
+    let iovs = 4 as &seg(u8)
     *iovs = message
 
     let _ = fd_write(1, iovs, 1, nwritten)
