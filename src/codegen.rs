@@ -102,7 +102,6 @@ pub struct CodeGenerator {
     wasm_fn_types: UBCell<Vec<WasmFnType>>,
     datas: UBCell<Vec<WasmData>>,
     string_pool: UBCell<Vec<PooledString>>,
-    const_slice_lens: Vec<ConstSliceLen>,
 
     // output
     pub wasm_module: UBCell<WasmModule>,
@@ -533,10 +532,8 @@ impl CodeGenerator {
 
                 let ptr = self.append_data(bytes);
                 instrs.push(WasmInstr::I32Const { value: ptr as i32 });
-
-                self.const_slice_lens.be_mut().push(ConstSliceLen {
-                    slice_ptr: ptr,
-                    slice_len: items.len(),
+                instrs.push(WasmInstr::I32Const {
+                    value: items.len() as i32,
                 });
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
@@ -904,32 +901,11 @@ impl CodeGenerator {
                     instrs.push(WasmInstr::I32Const {
                         value: bytes_ptr as i32,
                     });
-
-                    self.const_slice_lens.be_mut().push(ConstSliceLen {
-                        slice_ptr: bytes_ptr,
-                        slice_len: bytes_len,
+                    instrs.push(WasmInstr::I32Const {
+                        value: bytes_len as i32,
                     });
 
                     return;
-                }
-
-                // TODO: move the len extraction to typer?
-                if call.fn_name.repr == "const_slice_len" {
-                    let mut slice_ptr_instrs = Vec::new();
-                    self.codegen(ctx, &mut slice_ptr_instrs, &call.args.items[0]);
-                    let WasmInstr::I32Const { value: slice_ptr } = &slice_ptr_instrs[0] else {
-                        unreachable!()
-                    };
-
-                    for const_slice_len in &self.const_slice_lens {
-                        if const_slice_len.slice_ptr == *slice_ptr as u32 {
-                            instrs.push(WasmInstr::I32Const {
-                                value: const_slice_len.slice_len as i32,
-                            });
-                            return;
-                        }
-                    }
-                    unreachable!();
                 }
 
                 if call.fn_name.repr == "inline_fn_call_loc" {
@@ -2053,10 +2029,9 @@ impl CodeGenerator {
     ) -> VarInfo {
         let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref());
 
-        let field = get_struct_field(&self.registry, &lhs_type, field_access)
+        let field = get_struct_field_info(&self.registry, &lhs_type, field_access)
             .ok()
-            .unwrap()
-            .relax();
+            .unwrap();
 
         if let Type::Pointer(ptr) = lhs_type
             && !ptr.is_sequence

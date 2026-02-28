@@ -978,10 +978,9 @@ fn call_host_fn(eval: &mut WasmEval, fn_index: u32) -> Result<(), EvalError> {
             stderr_writeln(format!("{value}"));
         }
         "utils::debug_str" => {
-            let message_len = eval.pop_i32() as u32;
-            let message_ptr = eval.pop_i32() as u32;
-            let message_bytes = &eval.memory.bytes
-                [message_ptr as usize..message_ptr as usize + message_len as usize];
+            let message_len = eval.pop_i32() as usize;
+            let message_ptr = eval.pop_i32() as usize;
+            let message_bytes = &eval.memory.bytes[message_ptr..(message_ptr + message_len)];
 
             let message = str::from_utf8(message_bytes).unwrap();
             stderr_write(message);

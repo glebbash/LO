@@ -95,11 +95,6 @@ pub struct CodeUnit {
     pub instrs: Vec<WasmInstr>,
 }
 
-pub struct ConstSliceLen {
-    pub slice_ptr: u32,
-    pub slice_len: usize,
-}
-
 pub struct StructDef {
     pub struct_name: &'static str,
     pub fields: Vec<StructField>,

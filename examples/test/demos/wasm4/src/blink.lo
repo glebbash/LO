@@ -17,7 +17,7 @@ export fn update() {
 
     wasm4::text("Hello from LO!\0".ptr, +10, +10)
 
-    wasm4::blit(SMILEY, +76, +76, 8, 8, wasm4::BLIT_1BPP)
+    wasm4::blit(SMILEY.ptr, +76, +76, 8, 8, wasm4::BLIT_1BPP)
 
     wasm4::text("Press X to blink\0".ptr, +16, +90)
 }

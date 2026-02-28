@@ -552,12 +552,7 @@ impl Typer {
                                 }
 
                                 let field_index = struct_primitives_count;
-                                let field_type_id = self.build_type_(
-                                    ctx,
-                                    &field.field_type,
-                                    false,
-                                    &field.field_type.loc(),
-                                );
+                                let field_type_id = self.build_type_(ctx, &field.field_type, false);
                                 let field_type_id = catch!(field_type_id, err, {
                                     self.report_error(err);
                                     continue 'exprs;
@@ -754,8 +749,14 @@ impl Typer {
 
                     let fn_info = self.registry.functions[symbol.col_index].relax_mut();
 
-                    let self_type_id =
-                        self.get_fn_self_type(ctx, &fn_def.decl.fn_name, &fn_def.decl.params);
+                    let self_type_id = catch!(
+                        self.get_fn_self_type(ctx, &fn_def.decl.fn_name, &fn_def.decl.params),
+                        err,
+                        {
+                            self.report_error(err);
+                            continue;
+                        }
+                    );
 
                     if let Some(return_type) = &fn_def.decl.return_type {
                         let type_id = catch!(self.build_type(ctx, return_type), err, {
@@ -1303,14 +1304,13 @@ impl Typer {
                     self.report_if_err(self.type_code_expr(ctx, &item_expr));
                 }
 
-                let item_type_id = self.build_type(ctx, &array_literal.item_type)?;
+                let item_type = self.build_type(ctx, &array_literal.item_type)?;
 
-                let array_type = Type::Pointer(PointerType {
-                    pointee: item_type_id,
-                    is_sequence: true,
-                    is_nullable: false,
-                });
-                self.store_type(ctx, array_literal.id, &array_type);
+                self.store_type(
+                    ctx,
+                    array_literal.id,
+                    &Type::Seg(SegType { item: item_type }),
+                );
                 return Ok(());
             }
             CodeExpr::ResultLiteral(result_literal) => {
@@ -1612,19 +1612,22 @@ impl Typer {
             }
             CodeExpr::FieldAccess(field_access) => {
                 let lhs_type_id = self.type_code_expr_and_load(ctx, &field_access.lhs)?;
-                let field =
-                    get_struct_field(&self.registry, self.get_type(lhs_type_id), field_access)?;
+                let field = get_struct_field_info(
+                    &self.registry,
+                    self.get_type(lhs_type_id),
+                    field_access,
+                )?;
 
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "{}.{}: {}",
                             self.registry.fmt(&self.get_type(lhs_type_id)),
-                            field.field_name,
+                            field_access.field_name.repr,
                             self.registry.fmt(&field.field_type),
                         ),
                         loc: field_access.field_name.loc,
-                        linked_loc: Some(field.loc),
+                        linked_loc: field.loc,
                     })
                 };
 
@@ -1874,10 +1877,8 @@ impl Typer {
                     self.store_type(
                         ctx,
                         call.id,
-                        &Type::Pointer(PointerType {
-                            pointee: self.intern_type(&Type::U8),
-                            is_sequence: true,
-                            is_nullable: false,
+                        &Type::Seg(SegType {
+                            item: self.intern_type(&Type::U8),
                         }),
                     );
 
@@ -1901,35 +1902,6 @@ impl Typer {
                     }
 
                     return Ok(());
-                }
-
-                if call.fn_name.repr == "const_slice_len" {
-                    self.store_type(ctx, call.id, &Type::U32);
-
-                    if call.type_args.len() != 0 && call.args.items.len() != 1 {
-                        report_bad_args(self, call);
-                    }
-
-                    self.type_code_expr(ctx, &call.args.items[0])?;
-
-                    if let Some(const_value) = self.get_const_value(ctx, &call.args.items[0])
-                        && let CodeExpr::ArrayLiteral(_) = const_value
-                    {
-                    } else {
-                        report_bad_args(self, call);
-                    };
-
-                    return Ok(());
-
-                    fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
-                        self_.reporter.error(Error {
-                            message: format!(
-                                "Invalid arguments for `@{}(items: const T[]): u32`",
-                                call.fn_name.repr,
-                            ),
-                            loc: call.fn_name.loc,
-                        });
-                    }
                 }
 
                 if call.fn_name.repr == "inline_fn_call_loc" {
@@ -2248,7 +2220,7 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Paren(paren) => {
-                self.report_if_err(self.type_code_expr(ctx, &paren.expr));
+                self.type_code_expr(ctx, &paren.expr)?;
 
                 if let Some(expr_type_id) = self.load_type(ctx, &paren.expr) {
                     self.store_expr_info(ctx, paren.id, expr_type_id);
@@ -2652,18 +2624,6 @@ impl Typer {
             return_type_id: self.intern_type(&fn_info.type_.output),
         });
 
-        if all_good && !is_types_compatible(&self.registry, &fn_info.type_.inputs, &arg_types) {
-            return Err(Error {
-                message: format!(
-                    "Invalid function arguments for function {}: [{}], expected [{}]",
-                    fn_info.name,
-                    self.registry.fmt_many(&arg_types),
-                    self.registry.fmt_many(&fn_info.type_.inputs),
-                ),
-                loc: *loc,
-            });
-        }
-
         if self.reporter.in_inspection_mode {
             let mut message = String::new();
 
@@ -2686,6 +2646,18 @@ impl Typer {
                 message,
                 loc: *loc,
                 linked_loc: Some(fn_info.definition_loc.clone()),
+            });
+        }
+
+        if all_good && !is_types_compatible(&self.registry, &fn_info.type_.inputs, &arg_types) {
+            return Err(Error {
+                message: format!(
+                    "Invalid function arguments for function {}: [{}], expected [{}]",
+                    fn_info.name,
+                    self.registry.fmt_many(&arg_types),
+                    self.registry.fmt_many(&fn_info.type_.inputs),
+                ),
+                loc: *loc,
             });
         }
 
@@ -2823,7 +2795,7 @@ impl Typer {
             parent_ctx,
             &inline_fn_def.decl.fn_name,
             &inline_fn_def.decl.params,
-        );
+        )?;
 
         // TODO!: figure out why this is needed
         ctx.expr_id_offset = 0;
@@ -2951,7 +2923,7 @@ impl Typer {
         ctx: TyContextRef,
         fn_name: &IdentExpr,
         fn_params: &Vec<FnParam>,
-    ) -> Option<TypeId> {
+    ) -> Result<Option<TypeId>, Error> {
         let mut has_self_param = false;
         for fn_param in fn_params {
             let (FnParamType::Self_ | FnParamType::SelfRef) = fn_param.param_type else {
@@ -2961,15 +2933,14 @@ impl Typer {
             has_self_param = true;
 
             if fn_name.parts.len() == 1 {
-                self.report_error(Error {
+                return Err(Error {
                     message: format!("Cannot use self param in non-method function"),
                     loc: fn_param.loc,
                 });
-                return None;
             }
         }
         if !has_self_param {
-            return None;
+            return Ok(None);
         }
 
         let mut fn_module = &self.registry.modules[ctx.module_id];
@@ -2985,16 +2956,9 @@ impl Typer {
 
         let self_type_name = self_type_loc.read_span(fn_module.source);
 
-        let self_type_id = catch!(
-            self.get_type_id_or_err(ctx, &self_type_name, &self_type_loc),
-            err,
-            {
-                self.report_error(err);
-                return None;
-            }
-        );
+        let self_type_id = self.get_type_id_or_err(ctx, &self_type_name, &self_type_loc)?;
 
-        Some(self_type_id)
+        Ok(Some(self_type_id))
     }
 
     fn define_type(&self, ctx: TyContextRef, name: &'static str, type_: &Type, loc: Loc) {
@@ -3035,7 +2999,7 @@ impl Typer {
     }
 
     fn build_type(&self, ctx: TyContextRef, expr: &TypeExpr) -> Result<TypeId, Error> {
-        self.build_type_(ctx, expr, true, &Loc::internal())
+        self.build_type_(ctx, expr, true)
     }
 
     fn build_type_(
@@ -3043,9 +3007,8 @@ impl Typer {
         ctx: TyContextRef,
         expr: &TypeExpr,
         is_referenced: bool,
-        loc: &Loc,
     ) -> Result<TypeId, Error> {
-        self.type_type_expr(ctx, expr, is_referenced, loc)?;
+        self.type_type_expr(ctx, expr, is_referenced)?;
 
         let Some(type_id) = self.registry.get_expr_info(ctx.expr_id_offset, expr.id()) else {
             self.reporter.abort_due_to_compiler_bug(
@@ -3063,7 +3026,6 @@ impl Typer {
         ctx: TyContextRef,
         expr: &TypeExpr,
         is_referenced: bool,
-        loc: &Loc,
     ) -> Result<(), Error> {
         match expr {
             TypeExpr::Named(ident) => {
@@ -3076,7 +3038,7 @@ impl Typer {
                                 "Cannot use partially defined struct '{}' here",
                                 struct_def.struct_name
                             ),
-                            loc: *loc,
+                            loc: ident.loc,
                         });
                     }
                 }
@@ -3084,7 +3046,7 @@ impl Typer {
                 Ok(())
             }
             TypeExpr::Pointer(ptr) => {
-                let pointee = self.build_type_(ctx, &ptr.pointee, true, loc)?;
+                let pointee = self.build_type_(ctx, &ptr.pointee, true)?;
 
                 self.store_type(
                     ctx,
@@ -3111,8 +3073,8 @@ impl Typer {
                         });
                     }
 
-                    let ok = self.build_type_(ctx, &ctr.items[0], false, loc)?;
-                    let err = self.build_type_(ctx, &ctr.items[1], false, loc)?;
+                    let ok = self.build_type_(ctx, &ctr.items[0], false)?;
+                    let err = self.build_type_(ctx, &ctr.items[1], false)?;
 
                     self.store_type(ctx, ctr.id, &Type::Result(ResultType { ok, err }));
                     return Ok(());
@@ -3131,7 +3093,7 @@ impl Typer {
                         });
                     }
 
-                    let item = self.build_type_(ctx, &ctr.items[0], false, loc)?;
+                    let item = self.build_type_(ctx, &ctr.items[0], true)?;
 
                     self.store_type(ctx, ctr.id, &Type::Seg(SegType { item }));
                     return Ok(());
@@ -3175,7 +3137,7 @@ impl Typer {
                         });
                     }
 
-                    let container = self.build_type_(ctx, &ctr.items[0], true, loc)?;
+                    let container = self.build_type_(ctx, &ctr.items[0], true)?;
                     let container = deref_rec(&self.registry, self.get_type(container));
 
                     let Type::Container(ctr_type) = container else {
@@ -3189,11 +3151,11 @@ impl Typer {
                     return Ok(());
                 }
 
-                let container = self.build_type_(ctx, &ctr.container, is_referenced, loc)?;
+                let container = self.build_type_(ctx, &ctr.container, is_referenced)?;
 
                 let mut items = Vec::new();
                 for item in &ctr.items {
-                    items.push(self.build_type_(ctx, item, true, loc)?);
+                    items.push(self.build_type_(ctx, item, true)?);
                 }
 
                 self.store_type(
@@ -3614,7 +3576,15 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
         }
         Type::Seg(seg) => {
             get_type_layout(registry, &Type::U32, layout);
-            get_type_layout(registry, registry.get_type(seg.item), layout);
+            get_type_layout(
+                registry,
+                &Type::Pointer(PointerType {
+                    pointee: seg.item,
+                    is_sequence: true,
+                    is_nullable: false,
+                }),
+                layout,
+            );
 
             layout.byte_size = align(layout.byte_size, layout.alignment);
         }
@@ -3657,11 +3627,19 @@ pub fn is_wide_int(type_: &Type) -> Option<bool> {
     }
 }
 
-pub fn get_struct_field<'a>(
+#[derive(Clone)]
+pub struct StructFieldInfo {
+    pub field_type: Type,
+    pub field_index: u32,
+    pub byte_offset: u32,
+    pub loc: Option<Loc>,
+}
+
+pub fn get_struct_field_info<'a>(
     registry: &'a Registry,
     mut lhs_type: &Type,
     field_access: &FieldAccessExpr,
-) -> Result<&'a StructField, Error> {
+) -> Result<StructFieldInfo, Error> {
     if let Type::Pointer(ptr) = &lhs_type
         && !ptr.is_sequence
     {
@@ -3670,6 +3648,39 @@ pub fn get_struct_field<'a>(
 
     if let Type::Container(ctr) = &lhs_type {
         lhs_type = registry.get_type(ctr.container);
+    }
+
+    if let Type::Seg(seg) = &lhs_type {
+        if field_access.field_name.repr == "ptr" {
+            return Ok(StructFieldInfo {
+                field_type: Type::Pointer(PointerType {
+                    pointee: seg.item,
+                    is_sequence: true,
+                    is_nullable: false,
+                }),
+                field_index: 0,
+                byte_offset: 0,
+                loc: None,
+            });
+        }
+
+        if field_access.field_name.repr == "len" {
+            return Ok(StructFieldInfo {
+                field_type: Type::U32,
+                field_index: 1,
+                byte_offset: 4,
+                loc: None,
+            });
+        }
+
+        return Err(Error {
+            message: format!(
+                "Unknown field {} in {}",
+                field_access.field_name.repr,
+                registry.fmt(lhs_type)
+            ),
+            loc: field_access.field_name.loc,
+        });
     }
 
     let Type::Struct { struct_index } = lhs_type else {
@@ -3698,7 +3709,12 @@ pub fn get_struct_field<'a>(
         });
     };
 
-    Ok(field)
+    Ok(StructFieldInfo {
+        field_type: field.field_type.clone(),
+        field_index: field.field_index,
+        byte_offset: field.byte_offset,
+        loc: Some(field.loc),
+    })
 }
 
 pub fn get_infer_type_name(fn_param: &FnParam) -> Result<Option<&'static str>, Error> {

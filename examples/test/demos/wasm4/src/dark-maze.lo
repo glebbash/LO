@@ -135,14 +135,14 @@ fn game_screen_update() {
 
 fn end1_screen_update() {
     set_draw_colors(Color::BLACK, Color::GRAY, Color::RED, Color::WHITE)
-    wasm4::blit(END1_IMAGE, +0, +0, 160, 160, wasm4::BLIT_2BPP)
-    play_notes(END1_NOTES, @const_slice_len(END1_NOTES), END1_NOTE_DURATION)
+    wasm4::blit(END1_IMAGE.ptr, +0, +0, 160, 160, wasm4::BLIT_2BPP)
+    play_notes(END1_NOTES, END1_NOTE_DURATION)
 }
 
 fn end2_screen_update() {
     set_draw_colors(Color::BLACK, Color::RED, Color::GRAY, Color::WHITE)
-    wasm4::blit(END2_IMAGE, +0, +0, 160, 160, wasm4::BLIT_2BPP)
-    play_notes(END2_NOTES, @const_slice_len(END2_NOTES), END2_NOTE_DURATION)
+    wasm4::blit(END2_IMAGE.ptr, +0, +0, 160, 160, wasm4::BLIT_2BPP)
+    play_notes(END2_NOTES, END2_NOTE_DURATION)
 }
 
 fn spread_light(x: i32, y: i32, brightness: u32, checked: &Vec(u32)) {
@@ -178,7 +178,7 @@ fn is_wall(x: i32, y: i32): bool {
         return false
     }
 
-    return *array_at!<u8>(MAZE, y as u32 * 88 + x as u32) == 0 as u8
+    return *array_at!<u8>(MAZE.ptr, y as u32 * 88 + x as u32) == 0 as u8
 }
 
 fn light_block(block_x: i32, block_y: i32, brightness: u32) {
@@ -198,9 +198,9 @@ fn light_block(block_x: i32, block_y: i32, brightness: u32) {
     }
 }
 
-fn play_notes(notes: &[]u8, notes_len: u32, note_duration: u32) {
+fn play_notes(notes: seg(u8), note_duration: u32) {
     if notes_ticker >= note_duration {
-        let note = (*array_at!<u8>(notes, notes_index)) as u32
+        let note = (*array_at!<u8>(notes.ptr, notes_index)) as u32
         wasm4::tone(
             note,
             note_duration,
@@ -208,7 +208,7 @@ fn play_notes(notes: &[]u8, notes_len: u32, note_duration: u32) {
             wasm4::TONE_PULSE1 | wasm4::TONE_NOTE_MODE,
         )
 
-        notes_index = (notes_index + 1) % notes_len
+        notes_index = (notes_index + 1) % notes.len
         notes_ticker = 0
     }
     notes_ticker += 1
