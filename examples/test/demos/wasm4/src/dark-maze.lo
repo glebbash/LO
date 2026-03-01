@@ -163,9 +163,8 @@ fn spread_light(x: i32, y: i32, brightness: u32, checked: &Vec(u32)) {
 fn mark_checked(x: i32, y: i32, checked: &Vec(u32)): bool {
     let pos = x as u32 * 88 + y as u32
 
-    // TODO: use for each
-    for i in 0..checked.len {
-        if checked.get!(i) == pos {
+    for checked_pos in checked.iter!() {
+        if checked_pos == pos {
             return false
         }
     }

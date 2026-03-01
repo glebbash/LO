@@ -30,9 +30,7 @@ type Map = struct {
 fn Map::parse(input: String): Map {
     let rows = Vec::new!<&Vec(Tile)>()
     let current_row = Vec::new!<Tile>()
-    // TODO: use for each
-    for i in 0..input.len() {
-        let c = input.char_at(i)
+    for c in input.chars.iter!() {
         if c == '#' {
             current_row.push!(Tile::TREE)
         }
@@ -68,9 +66,7 @@ fn Map::get(self, i: u32, j: u32): Tile {
 }
 
 fn Map::free(self) {
-    // TODO: use for each
-    for i in 0..self.rows.len {
-        let row = self.rows.get!(i)
+    for row in self.rows.iter!() {
         row.free()
     }
     self.rows.free()

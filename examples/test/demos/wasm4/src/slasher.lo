@@ -115,9 +115,8 @@ fn render() {
     }
 
     render_trail(trail)
-    // TODO: use for each
-    for i in 0..showing_trails.len {
-        render_trail(showing_trails.get!(i))
+    for trail in showing_trails.iter!() {
+        render_trail(trail)
     }
 }
 
@@ -125,10 +124,7 @@ fn render_trail(trail: &Trail) {
     if trail.len > 0 {
         let prev_pos = trail.get!(0)
 
-        // TODO: use for each?
-        for i in 1..trail.len {
-            let pos = trail.get!(i)
-
+        for pos in trail.iter!().skip!(1) {
             wasm4::line(prev_pos.x, prev_pos.y, pos.x, pos.y)
             prev_pos = pos
         }
@@ -139,9 +135,7 @@ fn flip_trail_randomly(trail: &Trail) {
     let flip_x = rand_u32(1) == 1
     let flip_y = rand_u32(1) == 1
 
-    // TODO: use for each
-    for i in 0..trail.len {
-        let pos = trail.at!(i)
+    for &pos in trail.iter!() {
         if flip_x {
             pos.x = +159 - pos.x
         }

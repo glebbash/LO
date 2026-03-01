@@ -1105,6 +1105,7 @@ impl CodeGenerator {
                 let counter_local_index;
                 let range_end_local_index;
                 let mut item_local_index = None;
+                let mut step = 1;
 
                 match &for_expr.iterator {
                     ForExprIterator::Range { start, end } => {
@@ -1134,6 +1135,18 @@ impl CodeGenerator {
                             self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
 
                         if for_expr.ref_only {
+                            let Type::Pointer(PointerType { pointee, .. }) = item_type else {
+                                unreachable!()
+                            };
+
+                            let mut item_layout = TypeLayout::new();
+                            get_type_layout(
+                                &self.registry,
+                                self.get_type(*pointee),
+                                &mut item_layout,
+                            );
+                            step = item_layout.byte_size;
+
                             counter_local_index = self.define_local(
                                 ctx,
                                 for_expr.item.loc,
@@ -1141,6 +1154,10 @@ impl CodeGenerator {
                                 &item_type,
                             );
                         } else {
+                            let mut item_layout = TypeLayout::new();
+                            get_type_layout(&self.registry, item_type, &mut item_layout);
+                            step = item_layout.byte_size;
+
                             counter_local_index =
                                 self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
 
@@ -1154,21 +1171,32 @@ impl CodeGenerator {
 
                         self.codegen(ctx, instrs, expr);
 
-                        // counter, range_end = segment.ptr, segment.len
+                        // needed:
+                        // ```
+                        // counter = segment.ptr
+                        // range_end = segment.ptr + (segment.len * item_size)
+                        // ```
+                        //
+                        // which is done like this to save on locals:
+                        // ```
+                        // counter, range_end = segment
+                        // range_end = counter + (range_end * item_size)
+                        // ```
                         instrs.push(WasmInstr::LocalSet {
                             local_index: range_end_local_index,
                         });
                         instrs.push(WasmInstr::LocalSet {
                             local_index: counter_local_index,
                         });
-
-                        // set range_end to segment end (segment.ptr + segment.len)
-                        instrs.push(WasmInstr::LocalGet {
-                            // TODO: optimize with local.tee
-                            local_index: counter_local_index,
-                        });
                         instrs.push(WasmInstr::LocalGet {
                             local_index: range_end_local_index,
+                        });
+                        instrs.push(WasmInstr::I32Const { value: step as i32 });
+                        instrs.push(WasmInstr::BinaryOp {
+                            kind: WasmBinaryOpKind::I32_MUL,
+                        });
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: counter_local_index,
                         });
                         instrs.push(WasmInstr::BinaryOp {
                             kind: WasmBinaryOpKind::I32_ADD,
@@ -1244,12 +1272,12 @@ impl CodeGenerator {
                             local_index: counter_local_index,
                         });
                         if is_wide_int(&counter_type).unwrap() {
-                            instrs.push(WasmInstr::I64Const { value: 1 });
+                            instrs.push(WasmInstr::I64Const { value: step as i64 });
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I64_ADD,
                             });
                         } else {
-                            instrs.push(WasmInstr::I32Const { value: 1 });
+                            instrs.push(WasmInstr::I32Const { value: step as i32 });
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I32_ADD,
                             });

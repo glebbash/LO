@@ -37,9 +37,7 @@ fn Printer::free(&self) {
 fn Printer::print_file(&self) {
     stdout_enable_buffering()
 
-    // TODO: use for each
-    for i in 0..self.parser.ast.len {
-        let expr = self.parser.ast.get!(i)
+    for expr in self.parser.ast.iter!() {
         self.print_top_level_expr(expr)
     }
 
@@ -114,9 +112,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
             stdout_writeln(" {")
             self.indent += 1
-            // TODO: use for each
-            for i in 0..struct_value.fields.len {
-                let field = struct_value.fields.get!(i)
+            for field in struct_value.fields.iter!() {
                 self.print_comments_before(field.loc.pos)
                 self.print_indent()
                 stdout_write(field.field_name.repr)
@@ -151,9 +147,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
 
             stdout_writeln(" {")
             self.indent += 1
-            // TODO: use for each
-            for i in 0..enum_value.variants.len {
-                let variant = enum_value.variants.get!(i)
+            for variant in enum_value.variants.iter!() {
                 self.print_comments_before(variant.loc.pos)
                 self.print_indent()
                 stdout_write(variant.variant_name.repr)
@@ -325,10 +319,7 @@ fn Printer::print_code_block(&self, code_block: CodeBlock) {
 
     self.indent += 1
 
-    // TODO: use for each
-    for i in 0..code_block.exprs.len {
-        let expr = code_block.exprs.get!(i)
-
+    for expr in code_block.exprs.iter!() {
         let continues = self.print_double_backslashes_before(expr.loc().pos.offset)
         if continues {
             stdout_write(" ")
@@ -690,9 +681,7 @@ fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
 
         self.indent += 1
 
-        // TODO: use for each
-        for i in 0..map.fields.len {
-            let field = map.fields.get!(i)
+        for field in map.fields.iter!() {
             self.print_comments_before(field.loc.pos)
             self.print_indent()
             stdout_write(field.key)
@@ -890,9 +879,8 @@ fn Printer::print_indent(&self) {
         stdout_write("    ")
     }
 
-    // TODO: use for each
-    for i in 0..self.backslash_stack.len {
-        if self.backslash_stack.get!(i) {
+    for backslash in self.backslash_stack.iter!() {
+        if backslash {
             stdout_write("    ")
         }
     }

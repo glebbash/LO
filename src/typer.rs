@@ -1148,6 +1148,7 @@ impl Typer {
             }
         }
 
+        // TODO: check why this doesn't work for `fn main(): u32 {}`
         if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
             let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.type_.output != Type::Void {
@@ -2993,6 +2994,13 @@ impl Typer {
 
         let self_type_name = self_type_loc.read_span(fn_module.source);
 
+        // this workaround is needed because `seg` itself is not a valid type
+        if self_type_name == "seg" {
+            return Ok(Some(self.intern_type(&Type::Seg(SegType {
+                item: self.intern_type(&Type::Never),
+            }))));
+        }
+
         let self_type_id = self.get_type_id_or_err(ctx, &self_type_name, &self_type_loc)?;
 
         Ok(Some(self_type_id))
@@ -3176,6 +3184,11 @@ impl Typer {
 
                     let container = self.build_type_(ctx, &ctr.items[0], true)?;
                     let container = deref_rec(&self.registry, self.get_type(container));
+
+                    if let Type::Seg(seg) = container {
+                        self.store_expr_info(ctx, ctr.id, seg.item);
+                        return Ok(());
+                    }
 
                     let Type::Container(ctr_type) = container else {
                         return Err(Error {

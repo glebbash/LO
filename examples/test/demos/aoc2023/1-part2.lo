@@ -7,7 +7,6 @@ fn main() {
     let calibration_sum = 0
     let first_digit = 0
     let last_digit = 0
-    // TODO: use for each
     for i in 0..input.len() {
         let c = input.char_at(i)
         let digit = 0

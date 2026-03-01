@@ -320,9 +320,7 @@ fn Lexer::parse_int_literal_value(int_literal: str): i64 {
     }
 
     let value = 0 as i64
-    // TODO: use for each
-    for i in 0..int_literal.len {
-        let digit = int_literal.char_at(i)
+    for digit in int_literal.iter!() {
         if digit == '_' {
             continue
         }
@@ -371,10 +369,7 @@ fn Lexer::lex_operator(&self): Result(Token, &Error) {
         let current_op = self.source.slice(loc.pos.offset, self.source_pos.offset + 1)
 
         let is_start_of_operator = false
-        // TODO: use for each
-        for i in 0..OPERATORS.len {
-            let operator = *array_at!<str>(OPERATORS.ptr, i)
-
+        for operator in OPERATORS {
             if operator.starts_with(current_op) {
                 is_start_of_operator = true
                 break
@@ -394,10 +389,7 @@ fn Lexer::lex_operator(&self): Result(Token, &Error) {
     let op = self.source.slice(loc.pos.offset, self.source_pos.offset)
 
     let matched_fully = false
-    // TODO: use for each
-    for i in 0..OPERATORS.len {
-        let operator = *array_at!<str>(OPERATORS.ptr, i)
-
+    for operator in OPERATORS {
         if operator.equals(op) {
             matched_fully = true
             break
@@ -649,10 +641,7 @@ inline let OPERATORS = [str][
 ]
 
 fn Lexer::is_operator_start_char(c: u8): bool {
-    // TODO: use for each
-    for i in 0..OPERATORS.len {
-        let operator = *array_at!<str>(OPERATORS.ptr, i)
-
+    for operator in OPERATORS {
         if operator.char_at(0) == c {
             return true
         }

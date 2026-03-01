@@ -418,9 +418,8 @@ fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
 }
 
 inline fn Vec::free_deep!<T>(&self) {
-    // TODO: use for each
-    for i in 0..self.len {
-        self.get!(i).free()
+    for item in self.iter!() {
+        item.free()
     }
     self.free()
 }
@@ -430,7 +429,6 @@ fn Vec::free(&self) {
     free(self.alloc, self.ptr, self.capacity)
 }
 
-// TODO: test this
 inline fn Vec::iter!(&self): seg(itemof(typeof(self))) {
     @seg(self.ptr, self.len) as seg(itemof(typeof(self)))
 }
@@ -635,6 +633,10 @@ fn String::as_str(self): str {
 
 // str utils
 
+inline fn str::iter!(self): seg(u8) {
+    self as seg(u8)
+}
+
 fn str::char_at(self, index: u32): u8 {
     return *array_at!<u8>(self.ptr, index)
 }
@@ -798,4 +800,15 @@ inline fn u32::max!(a: u32, b: u32): u32 {
         max = b
     }
     max
+}
+
+inline fn seg::skip!(self: infer(Self), amount: u32): Self {
+    @seg(
+        (self.ptr as u32 + amount * sizeof itemof(Self)) as &[]void,
+        self.len - amount,
+    ) as Self
+}
+
+inline fn seg::take!(self: infer(Self), amount: u32): Self {
+    @seg(self.ptr, amount)
 }

@@ -38,6 +38,12 @@ pub extern "C" fn _start() {
 
     let mut registry = Registry::new();
 
+    for i in 3..args.size {
+        if args.get(i).unwrap() == "--dbg" {
+            registry.should_emit_dbg_local_names = true;
+        }
+    }
+
     if command == "format" {
         registry.in_single_file_mode = true;
 

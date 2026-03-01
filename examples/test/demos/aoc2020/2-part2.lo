@@ -35,7 +35,6 @@ fn main() {
     let valid_passwords_count = 0
     let state = initial_check_state()
 
-    // TODO: use for each
     for i in 0..input.len() {
         let c = input.char_at(i)
         if state.step == Step::READ_START_INDEX {

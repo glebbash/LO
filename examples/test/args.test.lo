@@ -3,7 +3,6 @@
 
 fn main() {
     let args = Args::load()
-    // TODO: use for each
     for i in 0..args.argc {
         let arg = args.get(i)
         println(arg)
