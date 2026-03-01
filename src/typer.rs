@@ -680,7 +680,7 @@ impl Typer {
             item: self.intern_type(&Type::U8),
         }));
 
-        let mut str_literal_def: Option<&TypeExpr> = None;
+        let mut slt_def: Option<&TypeExpr> = None;
 
         for module_info in self.module_info.be_mut().relax_mut() {
             let module = self.registry.modules[module_info.ctx.module_id].relax_mut();
@@ -704,22 +704,34 @@ impl Typer {
                     continue;
                 }
 
-                if let Some(str_literal_def) = &str_literal_def {
+                if let Some(slt_def) = &slt_def {
                     self.report_error(Error {
                         message: format!(
                             "Cannot redefine str literal type, first defined at {}",
-                            str_literal_def.loc().to_string(&self.registry)
+                            slt_def.loc().to_string(&self.registry)
                         ),
                         loc: intrinsic.fn_name.loc,
                     });
                     continue;
                 }
-                str_literal_def = Some(intrinsic.type_args[0].relax());
+                slt_def = Some(intrinsic.type_args[0].relax());
 
-                match self.build_type(module_info.ctx, str_literal_def.unwrap()) {
+                match self.build_type(module_info.ctx, slt_def.unwrap()) {
                     Err(err) => self.report_error(err),
                     Ok(type_id) => {
-                        self.registry.str_literal_type = Some(self.get_type(type_id).clone());
+                        let custom_str_literal_type = self.get_type(type_id).clone();
+                        let slt_components = self.get_primitives(&custom_str_literal_type);
+
+                        if !is_noop_cast(&slt_components, &vec![Type::U32, Type::U32]) {
+                            self.report_error(Error {
+                                message: format!(
+                                    "str literal type must be compatible with (u32, u32)"
+                                ),
+                                loc: slt_def.unwrap().loc(),
+                            });
+                        }
+
+                        self.registry.str_literal_type = Some(custom_str_literal_type);
                     }
                 }
             }
