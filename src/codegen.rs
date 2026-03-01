@@ -446,94 +446,19 @@ impl CodeGenerator {
                     self.codegen(ctx, instrs, &field.value);
                 }
             }
-            // TODO?: support sequences of any type
-            CodeExpr::ArrayLiteral(ArrayLiteralExpr {
-                id: _,
-                item_type,
-                items,
-                has_trailing_comma: _,
-                loc,
-            }) => {
-                let item_type = self.get_type_expr_value(ctx, item_type);
+            CodeExpr::ArrayLiteral(arr_literal) => {
+                let item_type = self.get_type_expr_value(ctx, &arr_literal.item_type);
 
                 let mut bytes = Vec::new();
-                let mut tmp_instrs = Vec::new();
 
-                if let Type::U8 = item_type {
-                    for item in items {
-                        let current_item_type = self.get_expr_type(ctx, item);
-                        if current_item_type != item_type {
-                            // TODO!: move to typer
-                            self.registry.reporter.abort_due_to_compiler_bug(
-                                &format!(
-                                    "Unexpected array element type: {}, expected: {}",
-                                    self.registry.fmt(current_item_type),
-                                    self.registry.fmt(item_type),
-                                ),
-                                item.loc(),
-                            );
-                        }
-
-                        self.codegen(ctx, &mut tmp_instrs, item);
-                        let WasmInstr::I32Const { value } = tmp_instrs.pop().unwrap() else {
-                            // TODO!: move to typer
-                            self.registry.reporter.abort_due_to_compiler_bug(
-                                &format!("Unexpected array element value"),
-                                item.loc(),
-                            );
-                        };
-
-                        bytes.push(value as u8);
-                    }
-                } else if item_type == self.registry.str_literal_type.as_ref().unwrap() {
-                    for item in items {
-                        let current_item_type = self.get_expr_type(ctx, item);
-                        if current_item_type != item_type {
-                            // TODO!: move to typer
-                            self.registry.reporter.abort_due_to_compiler_bug(
-                                &format!(
-                                    "Unexpected array element type: {}, expected: {}",
-                                    self.registry.fmt(current_item_type),
-                                    self.registry.fmt(item_type),
-                                ),
-                                item.loc(),
-                            );
-                        }
-
-                        self.codegen(ctx, &mut tmp_instrs, item);
-                        let WasmInstr::I32Const { value: len } = tmp_instrs.pop().unwrap() else {
-                            // TODO!: move to typer
-                            self.registry.reporter.abort_due_to_compiler_bug(
-                                &format!("Unexpected array element value"),
-                                item.loc(),
-                            );
-                        };
-                        let WasmInstr::I32Const { value: ptr } = tmp_instrs.pop().unwrap() else {
-                            // TODO!: move to typer
-                            self.registry.reporter.abort_due_to_compiler_bug(
-                                &format!("Unexpected array element value"),
-                                item.loc(),
-                            );
-                        };
-
-                        bytes.extend_from_slice(&ptr.to_le_bytes());
-                        bytes.extend_from_slice(&len.to_le_bytes());
-                    }
-                } else {
-                    // TODO!: move to typer
-                    self.registry.reporter.abort_due_to_compiler_bug(
-                        &format!(
-                            "Unsupported array literal element type: {}",
-                            self.registry.fmt(item_type)
-                        ),
-                        *loc,
-                    );
+                for item in &arr_literal.items {
+                    self.push_const_expr_bytes(ctx, &mut bytes, item, item_type);
                 }
 
                 let ptr = self.append_data(bytes);
                 instrs.push(WasmInstr::I32Const { value: ptr as i32 });
                 instrs.push(WasmInstr::I32Const {
-                    value: items.len() as i32,
+                    value: arr_literal.items.len() as i32,
                 });
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
@@ -2301,6 +2226,87 @@ impl CodeGenerator {
             }
             Type::Container(ctr) => {
                 self.codegen_default_value(ctx, instrs, self.get_type(ctr.container));
+            }
+        }
+    }
+
+    fn push_const_expr_bytes(
+        &mut self,
+        ctx: &mut ExprContext,
+        output: &mut Vec<u8>,
+        item: &CodeExpr,
+        item_type: &Type,
+    ) {
+        match item {
+            CodeExpr::Cast(cast) => self.push_const_expr_bytes(ctx, output, &cast.expr, item_type),
+            CodeExpr::Paren(paren) => {
+                self.push_const_expr_bytes(ctx, output, &paren.expr, item_type)
+            }
+
+            CodeExpr::IntLiteral(int) => match item_type {
+                Type::U8 => output.extend_from_slice(&(int.value as u8).to_le_bytes()),
+                Type::I8 => output.extend_from_slice(&(int.value as i8).to_le_bytes()),
+                Type::U16 => output.extend_from_slice(&(int.value as u16).to_le_bytes()),
+                Type::I16 => output.extend_from_slice(&(int.value as i16).to_le_bytes()),
+                Type::U32 => output.extend_from_slice(&(int.value as u32).to_le_bytes()),
+                Type::I32 => output.extend_from_slice(&(int.value as i32).to_le_bytes()),
+                Type::U64 => output.extend_from_slice(&(int.value as u64).to_le_bytes()),
+                Type::I64 => output.extend_from_slice(&(int.value as i64).to_le_bytes()),
+                Type::F32 => output.extend_from_slice(&(int.value as f32).to_le_bytes()),
+                Type::F64 => output.extend_from_slice(&(int.value as f64).to_le_bytes()),
+
+                Type::Never
+                | Type::Null
+                | Type::Void
+                | Type::Bool
+                | Type::Pointer(_)
+                | Type::Struct { .. }
+                | Type::Enum { .. }
+                | Type::Seg(_)
+                | Type::Result(_)
+                | Type::Container(_) => todo!(),
+            },
+            CodeExpr::StringLiteral(str_literal) => {
+                let str = self.process_const_string(&str_literal.value);
+                output.extend_from_slice(&str.ptr.to_le_bytes());
+                output.extend_from_slice(&str.len.to_le_bytes());
+            }
+
+            CodeExpr::BoolLiteral(_)
+            | CodeExpr::CharLiteral(_)
+            | CodeExpr::NullLiteral(_)
+            | CodeExpr::StructLiteral(_)
+            | CodeExpr::ArrayLiteral(_)
+            | CodeExpr::ResultLiteral(_)
+            | CodeExpr::Ident(_)
+            | CodeExpr::InfixOp(_)
+            | CodeExpr::PrefixOp(_)
+            | CodeExpr::Assign(_)
+            | CodeExpr::FieldAccess(_)
+            | CodeExpr::Sizeof(_) => todo!(),
+
+            CodeExpr::Let(_)
+            | CodeExpr::PropagateError(_)
+            | CodeExpr::FnCall(_)
+            | CodeExpr::MethodCall(_)
+            | CodeExpr::InlineFnCall(_)
+            | CodeExpr::InlineMethodCall(_)
+            | CodeExpr::IntrinsicCall(_)
+            | CodeExpr::Return(_)
+            | CodeExpr::If(_)
+            | CodeExpr::While(_)
+            | CodeExpr::For(_)
+            | CodeExpr::Break(_)
+            | CodeExpr::Continue(_)
+            | CodeExpr::Catch(_)
+            | CodeExpr::Match(_)
+            | CodeExpr::DoWith(_)
+            | CodeExpr::Defer(_)
+            | CodeExpr::Pipe(_) => {
+                // TODO!: move to typer
+                self.registry
+                    .reporter
+                    .abort_due_to_compiler_bug(&format!("Not a const expression"), item.loc())
             }
         }
     }

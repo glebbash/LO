@@ -1,15 +1,15 @@
 @use_memory(min_pages = 1)
 
-let xs = [u8][1 as u8, 2 as u8, 3 as u8]
-
 export fn main(): u32 {
+    let xs = [u32][1, 2, 3]
+
     for &x in xs {
-        *x += 1 as u8
+        *x += 1
     }
 
     let sum = 0
     for x in xs {
-        sum += x as u32
+        sum += x
     }
     return sum
 }

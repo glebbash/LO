@@ -1312,17 +1312,33 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::ArrayLiteral(array_literal) => {
-                // TODO: check items match array item type
-                for item_expr in &array_literal.items {
-                    self.report_if_err(self.type_code_expr(ctx, &item_expr));
-                }
+                let item_type_id = self.build_type(ctx, &array_literal.item_type)?;
+                let item_type = self.get_type(item_type_id);
 
-                let item_type = self.build_type(ctx, &array_literal.item_type)?;
+                for item_expr in &array_literal.items {
+                    let Some(current_item_type_id) =
+                        self.report_if_err(self.type_code_expr_and_load(ctx, &item_expr))
+                    else {
+                        continue;
+                    };
+                    let current_item_type = self.get_type(current_item_type_id);
+
+                    if !is_type_compatible(&self.registry, item_type, current_item_type) {
+                        self.report_error(Error {
+                            message: format!(
+                                "Unexpected array element type: {}, expected: {}",
+                                self.registry.fmt(current_item_type),
+                                self.registry.fmt(item_type),
+                            ),
+                            loc: item_expr.loc(),
+                        });
+                    }
+                }
 
                 self.store_type(
                     ctx,
                     array_literal.id,
-                    &Type::Seg(SegType { item: item_type }),
+                    &Type::Seg(SegType { item: item_type_id }),
                 );
                 return Ok(());
             }
