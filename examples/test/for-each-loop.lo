@@ -1,8 +1,8 @@
 @use_memory(min_pages = 1)
 
-export fn main(): u32 {
-    let xs = [u32][1, 2, 3]
+let xs = [u32][1, 2, 3]
 
+export fn main(): u32 {
     for &x in xs {
         *x += 1
     }
