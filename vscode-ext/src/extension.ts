@@ -11,7 +11,7 @@ export type WebShellCommandHandler = (
     args: string[],
     cwd: string,
     stdio: Stdio,
-    rootFileSystem: RootFileSystem
+    rootFileSystem: RootFileSystem,
 ) => Promise<number>;
 
 type DiagnisticItem =
@@ -33,7 +33,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         return new vscode.Range(
             new vscode.Position(startLine - 1, startCol - 1),
-            new vscode.Position(endLine - 1, endCol - 1)
+            new vscode.Position(endLine - 1, endCol - 1),
         );
     };
 
@@ -61,7 +61,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     workspaceUri,
                     analysis,
                     stderr,
-                    compilerResult.exitCode
+                    compilerResult.exitCode,
                 );
             }
         }
@@ -69,7 +69,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const diagnostics: DiagnisticItem[] = [];
         try {
             diagnostics.push(
-                ...JSON.parse(new TextDecoder().decode(compilerResult.stdout))
+                ...JSON.parse(new TextDecoder().decode(compilerResult.stdout)),
             );
         } catch {
             return showCompilerError(
@@ -77,7 +77,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 analysis,
                 "Inspect output is not a valid JSON array: " +
                     new TextDecoder().decode(compilerResult.stdout),
-                compilerResult.exitCode
+                compilerResult.exitCode,
             );
         }
 
@@ -123,10 +123,10 @@ export async function activate(context: vscode.ExtensionContext) {
                         new vscode.Hover(
                             new vscode.MarkdownString().appendCodeblock(
                                 d.hover,
-                                "lo"
+                                "lo",
                             ),
-                            sourceRange
-                        )
+                            sourceRange,
+                        ),
                     );
                 }
                 continue;
@@ -145,7 +145,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
 
                 fileDiagnostic.messages.push(
-                    new vscode.Diagnostic(sourceRange, d.content, severity)
+                    new vscode.Diagnostic(sourceRange, d.content, severity),
                 );
 
                 continue;
@@ -165,7 +165,7 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand("lo.initProject", async () => {
             const initDir = vscode.Uri.joinPath(
                 context.extensionUri,
-                "assets/initial-project"
+                "assets/initial-project",
             );
 
             const initFiles = ["lo.wasm", "main.lo", "lib"];
@@ -173,12 +173,12 @@ export async function activate(context: vscode.ExtensionContext) {
             for (const file of initFiles) {
                 await vscode.workspace.fs.copy(
                     vscode.Uri.joinPath(initDir, file),
-                    vscode.Uri.joinPath(workspaceUri, file)
+                    vscode.Uri.joinPath(workspaceUri, file),
                 );
             }
 
             await vscode.window.showInformationMessage("Project initialized");
-        })
+        }),
     );
 
     context.subscriptions.push(
@@ -194,7 +194,7 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
             const compileLatency = new Latency(
-                "Compile " + currentFile.fileName
+                "Compile " + currentFile.fileName,
             );
             const compilerResult = await wasi.runWasiProgram({
                 processName: "lo",
@@ -213,14 +213,14 @@ export async function activate(context: vscode.ExtensionContext) {
                     workspaceUri,
                     analysis,
                     new TextDecoder().decode(compilerResult.stderr),
-                    compilerResult.exitCode
+                    compilerResult.exitCode,
                 );
             }
 
             let programModule: WebAssembly.Module;
             try {
                 programModule = await WebAssembly.compile(
-                    compilerResult.stdout
+                    compilerResult.stdout as never,
                 );
             } catch (err) {
                 return vscode.window.showErrorMessage("Program loading error", {
@@ -240,7 +240,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     {
                         modal: true,
                         detail: new TextDecoder().decode(programResult.stderr),
-                    }
+                    },
                 );
             }
 
@@ -248,7 +248,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 modal: true,
                 detail: new TextDecoder().decode(programResult.stdout),
             });
-        })
+        }),
     );
 
     context.subscriptions.push(
@@ -257,15 +257,15 @@ export async function activate(context: vscode.ExtensionContext) {
             _args,
             _cwd,
             stdio,
-            _rootFileSystem
+            _rootFileSystem,
         ) => {
             if (stdio.out?.kind === "terminal") {
                 await stdio.out.terminal.write(
-                    new TextEncoder().encode("\x1b[2J\x1b[H")
+                    new TextEncoder().encode("\x1b[2J\x1b[H"),
                 );
             }
             return 0;
-        }) satisfies WebShellCommandHandler)
+        }) satisfies WebShellCommandHandler),
     );
 
     context.subscriptions.push(
@@ -274,7 +274,7 @@ export async function activate(context: vscode.ExtensionContext) {
             args,
             cwd,
             stdio,
-            _rootFileSystem
+            _rootFileSystem,
         ) => {
             const wasm = await Wasm.load();
 
@@ -317,10 +317,12 @@ export async function activate(context: vscode.ExtensionContext) {
                     vscode.Uri.joinPath(
                         workspaceUri,
                         cwd.slice("/workspace".length),
-                        programPath
-                    )
+                        programPath,
+                    ),
                 );
-                programModule = await WebAssembly.compile(programBytes);
+                programModule = await WebAssembly.compile(
+                    programBytes as never,
+                );
             } catch (err) {
                 await logError(`Error loading ${programPath}: ${err}`);
                 return 1;
@@ -340,7 +342,7 @@ export async function activate(context: vscode.ExtensionContext) {
                                 mountPoint: "/",
                             },
                         ],
-                    }
+                    },
                 );
                 return await process.run();
             } catch (err) {
@@ -352,14 +354,14 @@ export async function activate(context: vscode.ExtensionContext) {
                         await vscode.workspace.fs.writeFile(
                             vscode.Uri.joinPath(
                                 workspaceUri,
-                                stdoutRedirect.fileName
+                                stdoutRedirect.fileName,
                             ),
-                            stdoutRedirect.pipe.get()
+                            stdoutRedirect.pipe.get(),
                         );
                     } catch (err) {
                         console.error(
                             `error redirecting stdout to ${stdoutRedirect.fileName}`,
-                            err
+                            err,
                         );
                     }
                 }
@@ -370,7 +372,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     await stdio.err.terminal.write(errorMessage + "\n");
                 }
             }
-        }) satisfies WebShellCommandHandler)
+        }) satisfies WebShellCommandHandler),
     );
 
     const config = vscode.workspace.getConfiguration("lo");
@@ -379,33 +381,54 @@ export async function activate(context: vscode.ExtensionContext) {
             vscode.languages.registerDocumentFormattingEditProvider("lo", {
                 async provideDocumentFormattingEdits(currentFile) {
                     const formatLatency = new Latency(
-                        "Format " + currentFile.fileName
+                        "Format " + currentFile.fileName,
                     );
                     const edits = await formatFile(
                         workspaceUri,
                         currentFile,
-                        analysis
+                        analysis,
                     );
                     formatLatency.measureAndLog(logChannel);
                     return edits;
                 },
-            })
+            }),
         );
     }
 
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (doc) => {
-            if (doc.languageId === "lo") {
-                await inspectDocument(doc);
+            if (doc.languageId !== "lo") {
+                return;
             }
-        })
+
+            let pinnedDoc: vscode.TextDocument | undefined;
+
+            _: for (const group of [
+                vscode.window.tabGroups.activeTabGroup,
+                ...vscode.window.tabGroups.all,
+            ]) {
+                for (const tab of group.tabs) {
+                    if (
+                        tab.isPinned &&
+                        tab.input instanceof vscode.TabInputText
+                    ) {
+                        pinnedDoc = await vscode.workspace.openTextDocument(
+                            tab.input.uri,
+                        );
+                        break _;
+                    }
+                }
+            }
+
+            await inspectDocument(pinnedDoc ?? doc);
+        }),
     );
 }
 
 async function formatFile(
     workspaceUri: vscode.Uri,
     currentFile: vscode.TextDocument,
-    analysis: FileAnalysisCollection
+    analysis: FileAnalysisCollection,
 ) {
     const ctx = await loadCompilerCtx();
     if (!ctx) {
@@ -435,7 +458,7 @@ async function formatFile(
             workspaceUri,
             analysis,
             errorMessage,
-            compilerResult.exitCode
+            compilerResult.exitCode,
         );
         return [];
     }
@@ -445,9 +468,9 @@ async function formatFile(
         new vscode.TextEdit(
             new vscode.Range(
                 new vscode.Position(0, 0),
-                currentFile.lineAt(currentFile.lineCount - 1).range.end
+                currentFile.lineAt(currentFile.lineCount - 1).range.end,
             ),
-            formattedFile
+            formattedFile,
         ),
     ];
 }
@@ -461,9 +484,9 @@ async function loadCompilerCtx() {
     let compilerModule: WebAssembly.Module;
     try {
         compilerModule = await WebAssembly.compile(
-            await vscode.workspace.fs.readFile(
-                vscode.Uri.joinPath(workspaceUri, compilerPath)
-            )
+            (await vscode.workspace.fs.readFile(
+                vscode.Uri.joinPath(workspaceUri, compilerPath),
+            )) as never,
         );
     } catch (err) {
         vscode.window.showErrorMessage("Compiler loading error", {
@@ -480,13 +503,13 @@ async function showCompilerError(
     workspaceUri: vscode.Uri,
     analysis: FileAnalysisCollection,
     errorMessage: string,
-    exitCode: number
+    exitCode: number,
 ) {
     const match = errorMessage.match(/^(?:ERROR: )?(.+):(\d+):(\d+) - (.+)\n$/);
     if (match === null) {
         return vscode.window.showErrorMessage(
             `Compiler errored (exit code: ${exitCode})`,
-            { modal: true, detail: errorMessage }
+            { modal: true, detail: errorMessage },
         );
     }
 
@@ -499,13 +522,13 @@ async function showCompilerError(
 
     const range = new vscode.Range(
         new vscode.Position(lineNumber - 1, columnNumber - 1),
-        new vscode.Position(lineNumber - 1, columnNumber - 1)
+        new vscode.Position(lineNumber - 1, columnNumber - 1),
     );
 
     const diagnostic = new vscode.Diagnostic(
         range,
         message,
-        vscode.DiagnosticSeverity.Error
+        vscode.DiagnosticSeverity.Error,
     );
 
     analysis.diagnosticCollection.set(fileUri, [
