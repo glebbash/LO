@@ -30,8 +30,8 @@ fn main() {
     err = wasi::path_open(
         dir_fd,
         1,
-        file_path.data,
-        file_path.size,
+        file_path.ptr,
+        file_path.len,
         0,
         264240830u64,
         268435455u64,
