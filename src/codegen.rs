@@ -2196,15 +2196,7 @@ impl CodeGenerator {
             | Type::Result(_)
             | Type::Seg(_)
             | Type::Container(_) => {
-                // TODO!: move to typer
-                self.registry.reporter.abort_due_to_compiler_bug(
-                    &format!(
-                        "Operator `{}` is incompatible with operands of type {}",
-                        op_loc.read_span(&self.registry.modules[ctx.module_id].source),
-                        self.registry.fmt(operand_type)
-                    ),
-                    op_loc.clone(),
-                );
+                incompatible_op_err(self, ctx, operand_type, op_loc);
             }
         }
 
