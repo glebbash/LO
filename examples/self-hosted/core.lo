@@ -213,7 +213,7 @@ fn stdout_write(message: str) {
 }
 
 inline fn todo!(message: str): never {
-    stderr_write(@inline_fn_call_loc())
+    stderr_write(@inline_fn_call_loc(""))
     stderr_write(" - ")
     stderr_write(message)
     stderr_write("not implemented")

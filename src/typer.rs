@@ -1,4 +1,4 @@
-use crate::{ast::*, common::*, lexer::*, registry::*};
+use crate::{ast::*, common::*, lexer::*, registry::*, wasm::*};
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Type {
@@ -102,6 +102,7 @@ struct TyContext {
     parent: Option<TyContextRef>,
     kind: ScopeKind,
     fn_index: Option<usize>,
+    inline_fn_call_loc: Option<Loc>,
     expr_id_offset: usize,
     symbols: Vec<TySymbol>,
 }
@@ -165,6 +166,7 @@ impl Typer {
             parent: None,
             module_id: usize::MAX, // global scope has no module
             fn_index: None,
+            inline_fn_call_loc: None,
             expr_id_offset: 0,
             kind: ScopeKind::Global,
             symbols: Vec::new(),
@@ -676,9 +678,9 @@ impl Typer {
 
     fn pass_get_str_literal_type(&mut self) {
         // fallback
-        self.registry.str_literal_type = Some(Type::Seg(SegType {
+        self.registry.str_literal_type_id = Some(self.intern_type(&Type::Seg(SegType {
             item: self.intern_type(&Type::U8),
-        }));
+        })));
 
         let mut slt_def: Option<&TypeExpr> = None;
 
@@ -719,8 +721,7 @@ impl Typer {
                 match self.build_type(module_info.ctx, slt_def.unwrap()) {
                     Err(err) => self.report_error(err),
                     Ok(type_id) => {
-                        let custom_str_literal_type = self.get_type(type_id).clone();
-                        let slt_components = self.get_primitives(&custom_str_literal_type);
+                        let slt_components = self.get_primitives(self.get_type(type_id));
 
                         if !is_noop_cast(&slt_components, &vec![Type::U32, Type::U32]) {
                             self.report_error(Error {
@@ -731,7 +732,7 @@ impl Typer {
                             });
                         }
 
-                        self.registry.str_literal_type = Some(custom_str_literal_type);
+                        self.registry.str_literal_type_id = Some(type_id);
                     }
                 }
             }
@@ -1211,11 +1212,14 @@ impl Typer {
                     *self.first_string_usage.be_mut() = Some(*&str_literal.loc);
                 }
 
-                self.store_type(
-                    ctx,
-                    str_literal.id,
-                    self.registry.str_literal_type.as_ref().unwrap(),
-                );
+                let bytes_info = self.process_const_string(&str_literal.value);
+
+                self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len());
+                self.registry.be_mut().stored_bytes.push(StoredExprBytes {
+                    info: bytes_info,
+                    expr_type_id: *self.registry.str_literal_type_id.as_ref().unwrap(),
+                });
+
                 return Ok(());
             }
             CodeExpr::StructLiteral(struct_literal) => {
@@ -1315,6 +1319,8 @@ impl Typer {
                 let item_type_id = self.build_type(ctx, &array_literal.item_type)?;
                 let item_type = self.get_type(item_type_id);
 
+                let mut bytes = Vec::new();
+
                 for item_expr in &array_literal.items {
                     let Some(current_item_type_id) =
                         self.report_if_err(self.type_code_expr_and_load(ctx, &item_expr))
@@ -1333,13 +1339,23 @@ impl Typer {
                             loc: item_expr.loc(),
                         });
                     }
+
+                    self.report_if_err(
+                        self.push_const_expr_bytes(&mut bytes, item_expr, item_type),
+                    );
                 }
 
-                self.store_type(
-                    ctx,
-                    array_literal.id,
-                    &Type::Seg(SegType { item: item_type_id }),
-                );
+                let mut bytes_info = self.append_data(bytes);
+
+                // seg.len is an amount of elements, not total byte size
+                bytes_info.len = array_literal.items.len() as u32;
+
+                self.store_expr_info(ctx, array_literal.id, self.registry.stored_bytes.len());
+                self.registry.be_mut().stored_bytes.push(StoredExprBytes {
+                    info: bytes_info,
+                    expr_type_id: self.intern_type(&Type::Seg(SegType { item: item_type_id })),
+                });
+
                 return Ok(());
             }
             CodeExpr::ResultLiteral(result_literal) => {
@@ -1911,34 +1927,55 @@ impl Typer {
                         }),
                     );
 
-                    if call.type_args.len() != 0 && call.args.items.len() != 1 {
-                        report_bad_args(self, call);
+                    if call.type_args.len() != 0 || call.args.items.len() != 1 {
+                        return Err(bad_args(call));
                     }
 
-                    if let CodeExpr::StringLiteral(_) = &call.args.items[0] {
-                    } else {
-                        report_bad_args(self, call);
+                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
+                        return Err(bad_args(call));
                     };
 
-                    fn report_bad_args(self_: &Typer, call: &InlineFnCallExpr) {
-                        self_.reporter.error(Error {
+                    let absolute_path = self
+                        .registry
+                        .resolve_path(&str_literal.value, &call.fn_name.loc);
+                    let bytes = match fs::file_read(&absolute_path) {
+                        Ok(value) => value,
+                        Err(err_message) => {
+                            return Err(Error {
+                                message: err_message,
+                                loc: call.args.items[0].loc(),
+                            });
+                        }
+                    };
+
+                    let bytes_info = self.append_data(bytes);
+
+                    self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len());
+                    self.registry.be_mut().stored_bytes.push(StoredExprBytes {
+                        info: bytes_info,
+                        expr_type_id: *self.registry.str_literal_type_id.as_ref().unwrap(),
+                    });
+
+                    return Ok(());
+
+                    fn bad_args(call: &InlineFnCallExpr) -> Error {
+                        Error {
                             message: format!(
                                 "Invalid arguments for `@{}(relative_file_path: str): &*u8`",
                                 call.fn_name.repr,
                             ),
                             loc: call.fn_name.loc,
-                        });
+                        }
                     }
-
-                    return Ok(());
                 }
 
+                // TODO: string parameter is only needed to attach stored bytes, improve
                 if call.fn_name.repr == "inline_fn_call_loc" {
-                    let mut inside_of_inline_fn = false;
+                    let mut inline_fn_call_loc = None;
                     let mut currrent_ctx = ctx;
                     loop {
                         if currrent_ctx.kind == ScopeKind::InlineFn {
-                            inside_of_inline_fn = true;
+                            inline_fn_call_loc = currrent_ctx.inline_fn_call_loc;
                             break;
                         }
 
@@ -1949,7 +1986,7 @@ impl Typer {
                         }
                     }
 
-                    if !inside_of_inline_fn {
+                    if let None = inline_fn_call_loc {
                         self.report_error(Error {
                             message: format!(
                                 "Forbidden use of `@{}()` outside of inline fn",
@@ -1959,12 +1996,41 @@ impl Typer {
                         });
                     };
 
-                    self.store_type(
+                    if call.type_args.len() != 0 || call.args.items.len() != 1 {
+                        return Err(bad_args(call));
+                    }
+
+                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
+                        return Err(bad_args(call));
+                    };
+
+                    let bytes_info = self.process_const_string(
+                        &inline_fn_call_loc.unwrap().to_string(&self.registry),
+                    );
+
+                    self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len());
+                    self.registry.be_mut().stored_bytes.push(StoredExprBytes {
+                        info: bytes_info,
+                        expr_type_id: *self.registry.str_literal_type_id.as_ref().unwrap(),
+                    });
+
+                    self.store_expr_info(
                         ctx,
                         call.id,
-                        self.registry.str_literal_type.as_ref().unwrap(),
+                        *self.registry.str_literal_type_id.as_ref().unwrap(),
                     );
+
                     return Ok(());
+
+                    fn bad_args(call: &InlineFnCallExpr) -> Error {
+                        Error {
+                            message: format!(
+                                "Invalid arguments for `@{}(\"\"): &*u8`",
+                                call.fn_name.repr,
+                            ),
+                            loc: call.fn_name.loc,
+                        }
+                    }
                 }
 
                 if call.fn_name.repr == "seg" {
@@ -2068,9 +2134,7 @@ impl Typer {
                     }
                     IfCond::Match(match_header) => {
                         let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
-                        if let Err(err) = self.type_match_header(then_ctx, match_header) {
-                            self.report_error(err)
-                        }
+                        self.report_if_err(self.type_match_header(then_ctx, match_header));
                         updated_then_ctx = Some(then_ctx);
                     }
                 }
@@ -2265,9 +2329,7 @@ impl Typer {
                     });
                 }
 
-                if let Err(err) = self.type_match_header(ctx, &match_expr.header) {
-                    self.report_error(err)
-                }
+                self.report_if_err(self.type_match_header(ctx, &match_expr.header));
 
                 self.store_type(ctx, match_expr.id, &Type::Void);
 
@@ -2768,6 +2830,7 @@ impl Typer {
 
         let parent_ctx = ctx;
         let mut ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
+        ctx.inline_fn_call_loc = Some(*loc);
 
         let mut type_args = Vec::new();
         for type_arg in type_arg_exprs {
@@ -3343,6 +3406,128 @@ impl Typer {
         str_ref
     }
 
+    fn process_const_string(&self, value: &str) -> BytesSlice {
+        let string_len = value.as_bytes().len() as u32;
+
+        for pooled_str in self.registry.string_pool.iter() {
+            if pooled_str.value == value {
+                return BytesSlice {
+                    ptr: pooled_str.ptr,
+                    len: string_len,
+                };
+            }
+        }
+
+        let bytes_slice = self.append_data(String::from(value).into_bytes());
+
+        self.registry.string_pool.be_mut().push(PooledString {
+            value: String::from(value),
+            ptr: bytes_slice.ptr,
+        });
+
+        return bytes_slice;
+    }
+
+    fn append_data(&self, bytes: Vec<u8>) -> BytesSlice {
+        let bytes_len = bytes.len() as u32;
+        let offset = *self.registry.data_size;
+        let mut instrs = Vec::new();
+        instrs.push(WasmInstr::I32Const {
+            value: offset as i32,
+        });
+
+        *self.registry.data_size.be_mut() += bytes.len() as u32;
+        self.registry.datas.be_mut().push(WasmData::Active {
+            offset: WasmExpr { instrs },
+            bytes,
+        });
+
+        BytesSlice {
+            ptr: offset,
+            len: bytes_len,
+        }
+    }
+
+    fn push_const_expr_bytes(
+        &self,
+        output: &mut Vec<u8>,
+        item: &CodeExpr,
+        item_type: &Type,
+    ) -> Result<(), Error> {
+        match item {
+            CodeExpr::Cast(cast) => self.push_const_expr_bytes(output, &cast.expr, item_type)?,
+            CodeExpr::Paren(paren) => self.push_const_expr_bytes(output, &paren.expr, item_type)?,
+
+            CodeExpr::IntLiteral(int) => match item_type {
+                Type::U8 => output.extend_from_slice(&(int.value as u8).to_le_bytes()),
+                Type::I8 => output.extend_from_slice(&(int.value as i8).to_le_bytes()),
+                Type::U16 => output.extend_from_slice(&(int.value as u16).to_le_bytes()),
+                Type::I16 => output.extend_from_slice(&(int.value as i16).to_le_bytes()),
+                Type::U32 => output.extend_from_slice(&(int.value as u32).to_le_bytes()),
+                Type::I32 => output.extend_from_slice(&(int.value as i32).to_le_bytes()),
+                Type::U64 => output.extend_from_slice(&(int.value as u64).to_le_bytes()),
+                Type::I64 => output.extend_from_slice(&(int.value as i64).to_le_bytes()),
+                Type::F32 => output.extend_from_slice(&(int.value as f32).to_le_bytes()),
+                Type::F64 => output.extend_from_slice(&(int.value as f64).to_le_bytes()),
+
+                Type::Never
+                | Type::Null
+                | Type::Void
+                | Type::Bool
+                | Type::Pointer(_)
+                | Type::Struct { .. }
+                | Type::Enum { .. }
+                | Type::Seg(_)
+                | Type::Result(_)
+                | Type::Container(_) => todo!(),
+            },
+            CodeExpr::StringLiteral(str_literal) => {
+                let str = self.process_const_string(&str_literal.value);
+                output.extend_from_slice(&str.ptr.to_le_bytes());
+                output.extend_from_slice(&str.len.to_le_bytes());
+            }
+
+            CodeExpr::BoolLiteral(_)
+            | CodeExpr::CharLiteral(_)
+            | CodeExpr::NullLiteral(_)
+            | CodeExpr::StructLiteral(_)
+            | CodeExpr::ArrayLiteral(_)
+            | CodeExpr::ResultLiteral(_)
+            | CodeExpr::Ident(_)
+            | CodeExpr::InfixOp(_)
+            | CodeExpr::PrefixOp(_)
+            | CodeExpr::Assign(_)
+            | CodeExpr::FieldAccess(_)
+            | CodeExpr::Sizeof(_) => todo!(),
+
+            CodeExpr::Let(_)
+            | CodeExpr::PropagateError(_)
+            | CodeExpr::FnCall(_)
+            | CodeExpr::MethodCall(_)
+            | CodeExpr::InlineFnCall(_)
+            | CodeExpr::InlineMethodCall(_)
+            | CodeExpr::IntrinsicCall(_)
+            | CodeExpr::Return(_)
+            | CodeExpr::If(_)
+            | CodeExpr::While(_)
+            | CodeExpr::For(_)
+            | CodeExpr::Break(_)
+            | CodeExpr::Continue(_)
+            | CodeExpr::Catch(_)
+            | CodeExpr::Match(_)
+            | CodeExpr::DoWith(_)
+            | CodeExpr::Defer(_)
+            | CodeExpr::Pipe(_) => {
+                return Err(Error {
+                    message: format!("Not a const expression"),
+                    loc: item.loc(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
     fn extend_expr_info_storage(&self, expr_count: usize) {
         self.registry.be_mut().expr_info.resize(
             self.registry.expr_info.len() + expr_count,
@@ -3431,6 +3616,7 @@ impl Typer {
             kind: scope_kind,
             module_id: parent.module_id,
             fn_index: parent.fn_index,
+            inline_fn_call_loc: parent.inline_fn_call_loc,
             expr_id_offset: parent.expr_id_offset,
             symbols: Vec::new(),
         })

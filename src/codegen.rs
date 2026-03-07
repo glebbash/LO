@@ -1,15 +1,5 @@
 use crate::{ast::*, common::*, lexer::*, registry::*, typer::*, wasm::*};
 
-struct PooledStr {
-    ptr: u32,
-    len: u32,
-}
-
-struct PooledString {
-    value: String,
-    ptr: u32,
-}
-
 enum VarInfo {
     Local(VarInfoLocal),
     Global(VarInfoGlobal),
@@ -63,7 +53,6 @@ struct Scope {
     kind: ScopeKind,
     symbols: Vec<Symbol>,
     deferred_exprs: Vec<CodeUnit>,
-    inline_fn_call_loc: Option<Loc>,
 
     expr_id_offset: usize,
 }
@@ -100,8 +89,6 @@ pub struct CodeGenerator {
     // state
     module_info: Vec<CodegenModuleInfo>,
     wasm_fn_types: UBCell<Vec<WasmFnType>>,
-    datas: UBCell<Vec<WasmData>>,
-    string_pool: UBCell<Vec<PooledString>>,
 
     // output
     pub wasm_module: UBCell<WasmModule>,
@@ -359,10 +346,7 @@ impl CodeGenerator {
             }
         }
 
-        for static_data_store in &*self.datas {
-            self.wasm_module.datas.push(static_data_store.clone());
-        }
-
+        self.wasm_module.datas.append(self.registry.datas.be_mut());
         self.wasm_module.types.append(self.wasm_fn_types.be_mut());
     }
 
@@ -431,14 +415,14 @@ impl CodeGenerator {
                 }
             }
             CodeExpr::StringLiteral(str_literal) => {
-                let str = self.process_const_string(&str_literal.value);
+                let expr_info = self.get_expr_info(ctx, str_literal.id, str_literal.loc);
+                let stored_bytes = &self.registry.stored_bytes[expr_info];
 
-                // emit str struct values
                 instrs.push(WasmInstr::I32Const {
-                    value: str.ptr as i32,
+                    value: stored_bytes.info.ptr as i32,
                 });
                 instrs.push(WasmInstr::I32Const {
-                    value: str.len as i32,
+                    value: stored_bytes.info.len as i32,
                 });
             }
             CodeExpr::StructLiteral(struct_literal) => {
@@ -446,19 +430,15 @@ impl CodeGenerator {
                     self.codegen(ctx, instrs, &field.value);
                 }
             }
-            CodeExpr::ArrayLiteral(arr_literal) => {
-                let item_type = self.get_type_expr_value(ctx, &arr_literal.item_type);
+            CodeExpr::ArrayLiteral(array_literal) => {
+                let expr_info = self.get_expr_info(ctx, array_literal.id, array_literal.loc);
+                let stored_bytes = &self.registry.stored_bytes[expr_info];
 
-                let mut bytes = Vec::new();
-
-                for item in &arr_literal.items {
-                    self.push_const_expr_bytes(ctx, &mut bytes, item, item_type);
-                }
-
-                let ptr = self.append_data(bytes);
-                instrs.push(WasmInstr::I32Const { value: ptr as i32 });
                 instrs.push(WasmInstr::I32Const {
-                    value: arr_literal.items.len() as i32,
+                    value: stored_bytes.info.ptr as i32,
+                });
+                instrs.push(WasmInstr::I32Const {
+                    value: stored_bytes.info.len as i32,
                 });
             }
             CodeExpr::ResultLiteral(ResultLiteralExpr {
@@ -804,30 +784,18 @@ impl CodeGenerator {
                 }
 
                 if call.fn_name.repr == "embed_file" {
-                    let CodeExpr::StringLiteral(str_expr) = &call.args.items[0] else {
+                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
                         unreachable!()
                     };
 
-                    let absolute_path = self
-                        .registry
-                        .resolve_path(&str_expr.value, &call.fn_name.loc);
-                    let bytes = match fs::file_read(&absolute_path) {
-                        Ok(value) => value,
-                        // TODO!: move to typer?
-                        Err(err_message) => self
-                            .registry
-                            .reporter
-                            .abort_due_to_compiler_bug(&err_message, call.args.items[0].loc()),
-                    };
-
-                    let bytes_len = bytes.len();
-                    let bytes_ptr = self.append_data(bytes);
+                    let expr_info = self.get_expr_info(ctx, str_literal.id, str_literal.loc);
+                    let stored_bytes = &self.registry.stored_bytes[expr_info];
 
                     instrs.push(WasmInstr::I32Const {
-                        value: bytes_ptr as i32,
+                        value: stored_bytes.info.ptr as i32,
                     });
                     instrs.push(WasmInstr::I32Const {
-                        value: bytes_len as i32,
+                        value: stored_bytes.info.len as i32,
                     });
 
                     return;
@@ -841,23 +809,18 @@ impl CodeGenerator {
                 }
 
                 if call.fn_name.repr == "inline_fn_call_loc" {
-                    let mut inline_fn_call_loc = None;
-                    // NOTE: iterating in not-reverse to get the first inline scope
-                    for scope in &self.module_info[ctx.module_id].scope_stack {
-                        if scope.kind == ScopeKind::InlineFn {
-                            inline_fn_call_loc = scope.inline_fn_call_loc.clone();
-                        }
-                    }
+                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
+                        unreachable!()
+                    };
 
-                    let loc_str = self.process_const_string(
-                        &inline_fn_call_loc.unwrap().to_string(&self.registry),
-                    );
-                    // emit str struct values
+                    let expr_info = self.get_expr_info(ctx, str_literal.id, str_literal.loc);
+                    let stored_bytes = &self.registry.stored_bytes[expr_info];
+
                     instrs.push(WasmInstr::I32Const {
-                        value: loc_str.ptr as i32,
+                        value: stored_bytes.info.ptr as i32,
                     });
                     instrs.push(WasmInstr::I32Const {
-                        value: loc_str.len as i32,
+                        value: stored_bytes.info.len as i32,
                     });
 
                     return;
@@ -1424,7 +1387,6 @@ impl CodeGenerator {
         };
 
         self.enter_scope(ctx, ScopeKind::InlineFn);
-        self.current_scope(ctx).be_mut().inline_fn_call_loc = Some(*loc);
 
         self.current_scope(ctx).be_mut().expr_id_offset = call_info.inner_expr_id_offset;
 
@@ -2138,47 +2100,6 @@ impl CodeGenerator {
         code_unit
     }
 
-    fn process_const_string(&self, value: &str) -> PooledStr {
-        let string_len = value.as_bytes().len() as u32;
-
-        for pooled_str in self.string_pool.iter() {
-            if pooled_str.value == value {
-                return PooledStr {
-                    ptr: pooled_str.ptr,
-                    len: string_len,
-                };
-            }
-        }
-
-        let ptr = self.append_data(String::from(value).into_bytes());
-
-        self.string_pool.be_mut().push(PooledString {
-            value: String::from(value),
-            ptr,
-        });
-
-        return PooledStr {
-            ptr,
-            len: string_len,
-        };
-    }
-
-    fn append_data(&self, bytes: Vec<u8>) -> u32 {
-        let offset = *self.registry.data_size;
-        let mut instrs = Vec::new();
-        instrs.push(WasmInstr::I32Const {
-            value: offset as i32,
-        });
-
-        *self.registry.data_size.be_mut() += bytes.len() as u32;
-        self.datas.be_mut().push(WasmData::Active {
-            offset: WasmExpr { instrs },
-            bytes,
-        });
-
-        offset
-    }
-
     fn codegen_default_value(
         &self,
         ctx: &mut ExprContext,
@@ -2226,87 +2147,6 @@ impl CodeGenerator {
             }
             Type::Container(ctr) => {
                 self.codegen_default_value(ctx, instrs, self.get_type(ctr.container));
-            }
-        }
-    }
-
-    fn push_const_expr_bytes(
-        &mut self,
-        ctx: &mut ExprContext,
-        output: &mut Vec<u8>,
-        item: &CodeExpr,
-        item_type: &Type,
-    ) {
-        match item {
-            CodeExpr::Cast(cast) => self.push_const_expr_bytes(ctx, output, &cast.expr, item_type),
-            CodeExpr::Paren(paren) => {
-                self.push_const_expr_bytes(ctx, output, &paren.expr, item_type)
-            }
-
-            CodeExpr::IntLiteral(int) => match item_type {
-                Type::U8 => output.extend_from_slice(&(int.value as u8).to_le_bytes()),
-                Type::I8 => output.extend_from_slice(&(int.value as i8).to_le_bytes()),
-                Type::U16 => output.extend_from_slice(&(int.value as u16).to_le_bytes()),
-                Type::I16 => output.extend_from_slice(&(int.value as i16).to_le_bytes()),
-                Type::U32 => output.extend_from_slice(&(int.value as u32).to_le_bytes()),
-                Type::I32 => output.extend_from_slice(&(int.value as i32).to_le_bytes()),
-                Type::U64 => output.extend_from_slice(&(int.value as u64).to_le_bytes()),
-                Type::I64 => output.extend_from_slice(&(int.value as i64).to_le_bytes()),
-                Type::F32 => output.extend_from_slice(&(int.value as f32).to_le_bytes()),
-                Type::F64 => output.extend_from_slice(&(int.value as f64).to_le_bytes()),
-
-                Type::Never
-                | Type::Null
-                | Type::Void
-                | Type::Bool
-                | Type::Pointer(_)
-                | Type::Struct { .. }
-                | Type::Enum { .. }
-                | Type::Seg(_)
-                | Type::Result(_)
-                | Type::Container(_) => todo!(),
-            },
-            CodeExpr::StringLiteral(str_literal) => {
-                let str = self.process_const_string(&str_literal.value);
-                output.extend_from_slice(&str.ptr.to_le_bytes());
-                output.extend_from_slice(&str.len.to_le_bytes());
-            }
-
-            CodeExpr::BoolLiteral(_)
-            | CodeExpr::CharLiteral(_)
-            | CodeExpr::NullLiteral(_)
-            | CodeExpr::StructLiteral(_)
-            | CodeExpr::ArrayLiteral(_)
-            | CodeExpr::ResultLiteral(_)
-            | CodeExpr::Ident(_)
-            | CodeExpr::InfixOp(_)
-            | CodeExpr::PrefixOp(_)
-            | CodeExpr::Assign(_)
-            | CodeExpr::FieldAccess(_)
-            | CodeExpr::Sizeof(_) => todo!(),
-
-            CodeExpr::Let(_)
-            | CodeExpr::PropagateError(_)
-            | CodeExpr::FnCall(_)
-            | CodeExpr::MethodCall(_)
-            | CodeExpr::InlineFnCall(_)
-            | CodeExpr::InlineMethodCall(_)
-            | CodeExpr::IntrinsicCall(_)
-            | CodeExpr::Return(_)
-            | CodeExpr::If(_)
-            | CodeExpr::While(_)
-            | CodeExpr::For(_)
-            | CodeExpr::Break(_)
-            | CodeExpr::Continue(_)
-            | CodeExpr::Catch(_)
-            | CodeExpr::Match(_)
-            | CodeExpr::DoWith(_)
-            | CodeExpr::Defer(_)
-            | CodeExpr::Pipe(_) => {
-                // TODO!: move to typer
-                self.registry
-                    .reporter
-                    .abort_due_to_compiler_bug(&format!("Not a const expression"), item.loc())
             }
         }
     }

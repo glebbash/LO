@@ -182,6 +182,21 @@ pub struct InlineCallInfo {
     pub return_type_id: TypeId,
 }
 
+pub struct StoredExprBytes {
+    pub info: BytesSlice,
+    pub expr_type_id: TypeId,
+}
+
+pub struct BytesSlice {
+    pub ptr: u32,
+    pub len: u32,
+}
+
+pub struct PooledString {
+    pub value: String,
+    pub ptr: u32,
+}
+
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
@@ -196,18 +211,21 @@ pub struct Registry {
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
     pub value_info: Vec<ValueInfo>, //            indexed by `ExprInfo` for `::IdentExpr`
-    pub globals: Vec<GlobalDef>,  //              indexed by `col_index` when `kind = Global`
-    pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
-    pub functions: Vec<FnInfo>,   //              indexed by `col_index` when `kind = Function`
+    pub stored_bytes: Vec<StoredExprBytes>, //        indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
+    pub globals: Vec<GlobalDef>,            //        indexed by `col_index` when `kind = Global`
+    pub constants: Vec<ConstDef>,           //        indexed by `col_index` when `kind = Const`
+    pub functions: Vec<FnInfo>, //                indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>, //      indexed by `col_index` when `kind = InlineFn`
-    pub structs: Vec<StructDef>,  //              indexed by `col_index` when `kind = Struct`
-    pub enums: Vec<EnumDef>,      //              indexed by `col_index` when `kind = Enum`
+    pub structs: Vec<StructDef>, //               indexed by `col_index` when `kind = Struct`
+    pub enums: Vec<EnumDef>,    //                indexed by `col_index` when `kind = Enum`
     pub enum_ctors: Vec<EnumConstructor>, //      indexed by `col_index` when `kind = EnumConstructor`
 
     pub memory: Option<MemoryInfo>,
     pub data_size: UBCell<u32>,
+    pub datas: UBCell<Vec<WasmData>>,
+    pub string_pool: UBCell<Vec<PooledString>>,
 
-    pub str_literal_type: Option<Type>,
+    pub str_literal_type_id: Option<TypeId>,
 
     pub expr_id_count: usize,
 }
@@ -385,6 +403,10 @@ impl Registry {
             CodeExpr::InlineFnCall(_) | CodeExpr::InlineMethodCall(_) => {
                 let call_info = &self.inline_call_info[expr_info];
                 call_info.return_type_id
+            }
+            CodeExpr::StringLiteral(_) | CodeExpr::ArrayLiteral(_) => {
+                let stored_bytes = &self.stored_bytes[expr_info];
+                stored_bytes.expr_type_id
             }
             _ => expr_info,
         })

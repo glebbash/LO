@@ -5,7 +5,7 @@ fn main() {
 }
 
 inline fn trace!(message: str) {
-    print(@inline_fn_call_loc())
+    print(@inline_fn_call_loc(""))
     print(" - ")
     println(message)
 }
