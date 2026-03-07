@@ -1183,56 +1183,21 @@ impl CodeGenerator {
 
                 self.exit_scope(ctx);
             }
-            CodeExpr::Break(BreakExpr { id: _, loc }) => {
-                let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
+            CodeExpr::Break(break_expr) => {
+                let expr_info = self.registry.expr_info[break_expr.id];
+                let break_info = &self.registry.breaks[expr_info];
 
-                for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
-                    match scope.kind {
-                        ScopeKind::Block => {
-                            label_index += 1;
-                        }
-                        ScopeKind::Function => {
-                            // TODO!: move to typer
-                            self.registry.reporter.abort_due_to_compiler_bug(
-                                &format!("Cannot break outside of a loop"),
-                                *loc,
-                            );
-                        }
-                        ScopeKind::Loop => break,
-                        ScopeKind::ForLoop => {
-                            label_index += 1;
-                            break;
-                        }
-                        ScopeKind::InlineFn => continue,
-                        ScopeKind::Global => unreachable!(),
-                    }
-                }
-
-                instrs.push(WasmInstr::Branch { label_index });
+                instrs.push(WasmInstr::Branch {
+                    label_index: break_info.label_index,
+                });
             }
-            CodeExpr::Continue(ContinueExpr { id: _, loc }) => {
-                let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
+            CodeExpr::Continue(continue_expr) => {
+                let expr_info = self.registry.expr_info[continue_expr.id];
+                let break_info = &self.registry.breaks[expr_info];
 
-                for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
-                    match scope.kind {
-                        ScopeKind::Block => {
-                            label_index += 1;
-                        }
-                        ScopeKind::Function => {
-                            // TODO!: move to typer
-                            self.registry.reporter.abort_due_to_compiler_bug(
-                                &format!("Cannot continue outside of a loop"),
-                                *loc,
-                            );
-                        }
-                        ScopeKind::Loop => break,
-                        ScopeKind::ForLoop => break,
-                        ScopeKind::InlineFn => continue,
-                        ScopeKind::Global => unreachable!(),
-                    }
-                }
-
-                instrs.push(WasmInstr::Branch { label_index });
+                instrs.push(WasmInstr::Branch {
+                    label_index: break_info.label_index,
+                });
             }
             CodeExpr::DoWith(DoWithExpr {
                 id: _,

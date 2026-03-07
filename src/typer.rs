@@ -1114,8 +1114,6 @@ impl Typer {
     }
 
     fn type_code_block(&self, ctx: TyContextRef, block: &CodeBlock, void_only: bool) -> Type {
-        let ctx = self.child_ctx(ctx, ScopeKind::Block);
-
         let mut diverges = false;
         let mut diverges_naturally = false;
 
@@ -1972,6 +1970,7 @@ impl Typer {
                 // TODO: string parameter is only needed to attach stored bytes, improve
                 if call.fn_name.repr == "inline_fn_call_loc" {
                     let mut inline_fn_call_loc = None;
+
                     let mut currrent_ctx = ctx;
                     loop {
                         if currrent_ctx.kind == ScopeKind::InlineFn {
@@ -2114,7 +2113,7 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::If(if_expr) => {
-                let mut updated_then_ctx = None;
+                let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
 
                 match &if_expr.cond {
                     IfCond::Expr(cond_expr) => {
@@ -2133,28 +2132,25 @@ impl Typer {
                         };
                     }
                     IfCond::Match(match_header) => {
-                        let then_ctx = self.child_ctx(ctx, ScopeKind::Block);
                         self.report_if_err(self.type_match_header(then_ctx, match_header));
-                        updated_then_ctx = Some(then_ctx);
                     }
                 }
 
-                let then_type;
-                if let Some(updated_then_ctx) = updated_then_ctx {
-                    then_type = self.type_code_block(updated_then_ctx, &if_expr.then_block, true);
-                } else {
-                    then_type = self.type_code_block(ctx, &if_expr.then_block, true);
-                }
+                let then_type = self.type_code_block(then_ctx, &if_expr.then_block, true);
 
                 let mut else_type = Type::Void;
                 match &if_expr.else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(code_block) => {
-                        else_type = self.type_code_block(ctx, code_block, true);
+                        let else_ctx = self.child_ctx(ctx, ScopeKind::Block);
+
+                        else_type = self.type_code_block(else_ctx, code_block, true);
                     }
                     ElseBlock::ElseIf(code_expr) => {
-                        self.report_if_err(self.type_code_expr(ctx, &code_expr));
-                        if let Some(type_id) = self.load_type(ctx, &code_expr) {
+                        let else_ctx = self.child_ctx(ctx, ScopeKind::Block);
+
+                        self.report_if_err(self.type_code_expr(else_ctx, &code_expr));
+                        if let Some(type_id) = self.load_type(else_ctx, &code_expr) {
                             else_type = self.get_type(type_id).clone();
                         }
                     }
@@ -2169,7 +2165,8 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::While(while_expr) => {
-                self.type_code_block(ctx, &while_expr.body, true);
+                let loop_ctx = self.child_ctx(ctx, ScopeKind::Loop);
+                self.type_code_block(loop_ctx, &while_expr.body, true);
 
                 if let Some(cond) = &while_expr.cond {
                     let cond_type = self.type_code_expr_and_load(ctx, &cond)?;
@@ -2275,13 +2272,73 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Break(break_expr) => {
-                // TODO: add validations
-                self.store_type(ctx, break_expr.id, &Type::Never);
+                let mut label_index = 1; // 0 = loop, 1 = loop wrapper block
+
+                let mut currrent_ctx = ctx;
+                loop {
+                    match currrent_ctx.kind {
+                        ScopeKind::Loop => break,
+                        ScopeKind::ForLoop => {
+                            label_index += 1;
+                            break;
+                        }
+                        ScopeKind::Block => {
+                            label_index += 1;
+                        }
+                        ScopeKind::InlineFn => { /* fallthrough */ }
+                        ScopeKind::Function | ScopeKind::Global => {
+                            return Err(Error {
+                                message: format!("Cannot break outside of a loop"),
+                                loc: break_expr.loc,
+                            });
+                        }
+                    }
+
+                    match currrent_ctx.parent {
+                        Some(parent) => currrent_ctx = parent,
+                        None => break,
+                    }
+                }
+
+                self.store_expr_info(ctx, break_expr.id, self.registry.breaks.len());
+                self.registry.be_mut().breaks.push(BreakInfo {
+                    label_index,
+                    expr_type_id: self.intern_type(&Type::Never),
+                });
+
                 return Ok(());
             }
             CodeExpr::Continue(continue_expr) => {
-                // TODO: add validations
-                self.store_type(ctx, continue_expr.id, &Type::Never);
+                let mut label_index = 0; // 0 = loop, 1 = loop wrapper block
+
+                let mut currrent_ctx = ctx;
+                loop {
+                    match currrent_ctx.kind {
+                        ScopeKind::Loop | ScopeKind::ForLoop => break,
+                        ScopeKind::Block => {
+                            label_index += 1;
+                        }
+                        ScopeKind::InlineFn => { /* fallthrough */ }
+                        ScopeKind::Function | ScopeKind::Global => {
+                            return Err(Error {
+                                message: format!("Cannot continue outside of a loop"),
+                                loc: continue_expr.loc,
+                            });
+                        }
+                    }
+
+                    match currrent_ctx.parent {
+                        Some(parent) => currrent_ctx = parent,
+                        None => break,
+                    }
+                }
+
+                self.store_expr_info(ctx, continue_expr.id, self.registry.breaks.len());
+                self.registry.be_mut().breaks.push(BreakInfo {
+                    label_index,
+                    expr_type_id: self.intern_type(&Type::Never),
+                });
+
                 return Ok(());
             }
             CodeExpr::Defer(defer) => {

@@ -197,6 +197,11 @@ pub struct PooledString {
     pub ptr: u32,
 }
 
+pub struct BreakInfo {
+    pub label_index: u32,
+    pub expr_type_id: usize,
+}
+
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
@@ -211,9 +216,10 @@ pub struct Registry {
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
     pub value_info: Vec<ValueInfo>, //            indexed by `ExprInfo` for `::IdentExpr`
-    pub stored_bytes: Vec<StoredExprBytes>, //        indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
-    pub globals: Vec<GlobalDef>,            //        indexed by `col_index` when `kind = Global`
-    pub constants: Vec<ConstDef>,           //        indexed by `col_index` when `kind = Const`
+    pub stored_bytes: Vec<StoredExprBytes>, //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
+    pub breaks: Vec<BreakInfo>, //                indexed by `ExprInfo` for `::Break` and `::Continue`
+    pub globals: Vec<GlobalDef>, //               indexed by `col_index` when `kind = Global`
+    pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>, //                indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>, //      indexed by `col_index` when `kind = InlineFn`
     pub structs: Vec<StructDef>, //               indexed by `col_index` when `kind = Struct`
@@ -407,6 +413,10 @@ impl Registry {
             CodeExpr::StringLiteral(_) | CodeExpr::ArrayLiteral(_) => {
                 let stored_bytes = &self.stored_bytes[expr_info];
                 stored_bytes.expr_type_id
+            }
+            CodeExpr::Break(_) | CodeExpr::Continue(_) => {
+                let break_info = &self.breaks[expr_info];
+                break_info.expr_type_id
             }
             _ => expr_info,
         })
