@@ -496,6 +496,7 @@ impl Printer {
                 id: _,
                 lhs,
                 rhs,
+                bind_id: _,
                 op_loc,
                 loc: _,
             }) => {
@@ -613,6 +614,7 @@ impl Printer {
                 id: _,
                 body,
                 args,
+                bind_id: _,
                 with_loc: _,
                 loc,
             }) => {
@@ -664,6 +666,7 @@ impl Printer {
             CodeExpr::Catch(CatchExpr {
                 id: _,
                 lhs,
+                ok_bind_id: _,
                 error_bind,
                 catch_body,
                 catch_loc: _,
@@ -770,6 +773,8 @@ impl Printer {
             CodeExpr::PropagateError(PropagateErrorExpr {
                 id: _,
                 expr,
+                ok_bind_id: _,
+                err_bind_id: _,
                 loc: _,
             }) => {
                 self.print_code_expr(expr);

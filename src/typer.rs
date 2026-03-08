@@ -145,7 +145,6 @@ pub struct Typer {
     type_lookup: UBCell<BTreeMap<Type, TypeId>>,
 
     type_aliases: UBCell<Vec<TypeId>>, // indexed by `TySymbol::col_index` when `kind = TypeAlias`
-    locals_types: Vec<TypeId>,         // indexed by `TySymbol::col_index` when `kind = Local`
 
     first_string_usage: UBCell<Option<Loc>>,
     allocated_strings: Vec<String>, // storage for all allocated `String` objects
@@ -409,7 +408,9 @@ impl Typer {
                                     body: body.relax(),
                                 },
                                 exported_as,
+                                locals_ids: Vec::new(),
                                 wasm_fn_index: u32::MAX, // placeholder
+                                wasm_locals_count: 0,
                                 definition_loc: fn_def.decl.fn_name.loc,
                             });
                         }
@@ -430,7 +431,9 @@ impl Typer {
                                     external_fn_name,
                                 },
                                 exported_as: Vec::new(),
+                                locals_ids: Vec::new(),
                                 wasm_fn_index: u32::MAX, // placeholder
+                                wasm_locals_count: 0,
                                 definition_loc: fn_def.decl.fn_name.loc,
                             });
                         }
@@ -797,9 +800,8 @@ impl Typer {
                         fn_info.type_.inputs.push(param_type_id);
 
                         fn_info.params.push(FnParameter {
-                            param_name: fn_param.param_name.repr,
+                            param_name: fn_param.param_name.relax(),
                             param_type: self.get_type(param_type_id).clone(),
-                            loc: fn_param.param_name.loc,
                         });
                     }
                 }
@@ -1103,9 +1105,11 @@ impl Typer {
             for param in &fn_def.params {
                 self.define_local(
                     ctx,
-                    &param.param_name,
+                    &param.param_name.repr,
                     self.intern_type(&param.param_type),
-                    param.loc,
+                    param.param_name.loc,
+                    param.param_name.id,
+                    true,
                 );
             }
 
@@ -1400,8 +1404,8 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Ident(ident) => {
-                let value_info = self.get_value_info(ctx, &ident)?;
                 self.store_expr_info(ctx, ident.id, self.registry.value_info.len());
+                let value_info = self.get_value_info(ctx, &ident)?;
                 self.registry.be_mut().value_info.push(value_info);
                 return Ok(());
             }
@@ -1419,7 +1423,14 @@ impl Typer {
                     self.store_type(ctx, let_expr.id, &Type::Void);
                 }
 
-                self.define_local(ctx, let_expr.name.repr, value_type_id, let_expr.name.loc);
+                self.define_local(
+                    ctx,
+                    let_expr.name.repr,
+                    value_type_id,
+                    let_expr.name.loc,
+                    let_expr.name.id,
+                    false,
+                );
 
                 return Ok(());
             }
@@ -2255,14 +2266,16 @@ impl Typer {
                 let ctx = self.child_ctx(ctx, ScopeKind::ForLoop);
 
                 if let Some(item_type_id) = item_type_id {
-                    self.define_local(ctx, for_expr.item.repr, item_type_id, for_expr.item.loc);
-
                     self.store_expr_info(ctx, for_expr.item.id, self.registry.value_info.len());
-                    self.registry.be_mut().value_info.push(ValueInfo {
-                        kind: ValueKind::Local,
-                        col_index: self.locals_types.len(),
-                        type_id: item_type_id,
-                    });
+
+                    self.define_local(
+                        ctx,
+                        for_expr.item.repr,
+                        item_type_id,
+                        for_expr.item.loc,
+                        for_expr.item.id,
+                        true,
+                    );
                 }
 
                 self.type_code_block(ctx, &for_expr.body, true);
@@ -2354,7 +2367,15 @@ impl Typer {
 
                 let ctx = self.child_ctx(ctx, ScopeKind::Block);
 
-                self.define_local(ctx, catch.error_bind.repr, result.err, catch.error_bind.loc);
+                self.define_local_no_symbol(ctx, None, result.ok, catch.ok_bind_id);
+                self.define_local(
+                    ctx,
+                    catch.error_bind.repr,
+                    result.err,
+                    catch.error_bind.loc,
+                    catch.error_bind.id,
+                    true,
+                );
 
                 let catch_type = self.type_code_block(ctx, &catch.catch_body, true);
                 if catch_type != Type::Never {
@@ -2368,10 +2389,15 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::PropagateError(prop_error) => {
-                let expr_type = self.type_code_expr_and_load(ctx, &prop_error.expr)?;
+                let expr_type_id = self.type_code_expr_and_load(ctx, &prop_error.expr)?;
                 let result =
-                    self.assert_catchable_type(self.get_type(expr_type), &prop_error.loc)?;
+                    self.assert_catchable_type(self.get_type(expr_type_id), &prop_error.loc)?;
+
+                self.define_local_no_symbol(ctx, None, result.ok, prop_error.ok_bind_id);
+                self.define_local_no_symbol(ctx, None, result.err, prop_error.err_bind_id);
+
                 self.store_expr_info(ctx, prop_error.id, result.ok);
+
                 return Ok(());
             }
             CodeExpr::Match(match_expr) => {
@@ -2420,7 +2446,14 @@ impl Typer {
                 };
 
                 let ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
-                self.define_local(ctx, "it", it_type_id, do_with.with_loc);
+                self.define_local(
+                    ctx,
+                    "it",
+                    it_type_id,
+                    do_with.with_loc,
+                    do_with.bind_id,
+                    true,
+                );
 
                 for arg in do_with.args.items.iter().skip(1) {
                     if let Some(arg_type_id) = self.load_type(ctx, arg)
@@ -2446,7 +2479,7 @@ impl Typer {
 
                 let ctx = self.child_ctx(ctx, ScopeKind::InlineFn);
                 if let Some(it_type_id) = self.load_type(ctx, &pipe.lhs) {
-                    self.define_local(ctx, "it", it_type_id, pipe.op_loc);
+                    self.define_local(ctx, "it", it_type_id, pipe.op_loc, pipe.bind_id, true);
                 }
 
                 self.report_if_err(self.type_code_expr(ctx, &pipe.rhs));
@@ -2512,14 +2545,14 @@ impl Typer {
 
         match symbol.kind {
             TySymbolKind::Local => {
-                let local_type_id = self.locals_types[symbol.col_index];
+                let local_def = &self.registry.locals[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
                     self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "let {}: {}",
                             var_name.repr,
-                            self.registry.fmt(self.get_type(local_type_id))
+                            self.registry.fmt(&local_def.local_type)
                         ),
                         loc: var_name.loc,
                         linked_loc: Some(symbol.loc),
@@ -2528,8 +2561,9 @@ impl Typer {
 
                 return Ok(ValueInfo {
                     kind: ValueKind::Local,
-                    col_index: self.locals_types.len(),
-                    type_id: local_type_id,
+                    col_index: symbol.col_index,
+                    // TODO: optimize
+                    type_id: self.intern_type(&local_def.local_type),
                 });
             }
             TySymbolKind::Global => {
@@ -2705,17 +2739,19 @@ impl Typer {
             match_header.variant_bind.repr,
             enum_variant.variant_type_id,
             match_header.variant_bind.loc,
+            match_header.variant_bind.id,
+            true,
         );
 
         self.store_expr_info(
             ctx,
-            match_header.variant_bind.id,
+            match_header.variant_name.id,
             self.registry.value_info.len(),
         );
         self.registry.value_info.be_mut().push(ValueInfo {
             kind: ValueKind::EnumConstructor,
             col_index: symbol.col_index,
-            type_id: match_header.variant_bind.id,
+            type_id: enum_variant.variant_type_id,
         });
 
         Ok(())
@@ -2807,7 +2843,7 @@ impl Typer {
                     message.push_str(", ");
                 }
 
-                message.push_str(&param.param_name);
+                message.push_str(&param.param_name.repr);
                 message.push_str(": ");
                 write!(&mut message, "{}", self.registry.fmt(&param.param_type)).unwrap();
             }
@@ -3148,7 +3184,15 @@ impl Typer {
         self.type_aliases.be_mut().push(type_id);
     }
 
-    fn define_local(&self, ctx: TyContextRef, name: &'static str, type_id: TypeId, loc: Loc) {
+    fn define_local(
+        &self,
+        ctx: TyContextRef,
+        name: &'static str,
+        type_id: TypeId,
+        loc: Loc,
+        bind_id: ExprId,
+        always_define: bool,
+    ) -> bool {
         if self.reporter.in_inspection_mode {
             self.reporter.print_inspection(InspectInfo {
                 message: format!(
@@ -3161,9 +3205,30 @@ impl Typer {
             })
         };
 
-        if name != "_" && self.define_symbol(ctx, name, TySymbolKind::Local, loc) {
-            self.locals_types.be_mut().push(type_id);
+        let defined = name != "_" && self.define_symbol(ctx, name, TySymbolKind::Local, loc);
+        if defined || always_define {
+            self.define_local_no_symbol(ctx, Some(name), type_id, bind_id);
         }
+
+        defined
+    }
+
+    fn define_local_no_symbol(
+        &self,
+        ctx: TyContextRef,
+        local_name: Option<&'static str>,
+        type_id: TypeId,
+        bind_id: ExprId,
+    ) {
+        self.registry
+            .add_local(ctx.fn_index.unwrap(), local_name, self.get_type(type_id));
+
+        self.store_expr_info(ctx, bind_id, self.registry.value_info.len());
+        self.registry.be_mut().value_info.push(ValueInfo {
+            kind: ValueKind::Local,
+            col_index: self.registry.locals.len() - 1,
+            type_id,
+        });
     }
 
     fn type_code_expr_and_load(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<TypeId, Error> {
@@ -3614,13 +3679,11 @@ impl Typer {
         symbol_loc: Loc,
     ) -> bool {
         let symbol_col_index = match &symbol_kind {
-            TySymbolKind::Local => self.locals_types.len(),
+            TySymbolKind::Local => self.registry.locals.len(),
             TySymbolKind::Global => self.registry.globals.len(),
             TySymbolKind::Const => self.registry.constants.len(),
-
             TySymbolKind::InlineFn => self.registry.inline_fns.len(),
             TySymbolKind::Function => self.registry.functions.len(),
-
             TySymbolKind::TypeAlias => self.type_aliases.len(),
             TySymbolKind::Struct => self.registry.structs.len(),
             TySymbolKind::Enum => self.registry.enums.len(),

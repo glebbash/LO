@@ -497,7 +497,7 @@ impl WasmModule {
     }
 
     fn write_names_custom_section(&self, output: &mut Vec<u8>, section: &mut Vec<u8>) {
-        if self.function_names.len() == 0 || self.local_names.len() == 0 {
+        if self.function_names.len() == 0 && self.local_names.len() == 0 {
             return;
         }
 

@@ -13,20 +13,27 @@ pub struct ValueInfo {
     pub type_id: TypeId,
 }
 
+pub struct LocalDef {
+    pub local_name: Option<&'static str>,
+    pub local_type: Type,
+    pub wasm_local_index: u32,
+}
+
 pub struct FnInfo {
     pub name: &'static str,
     pub type_: FnType,
     pub params: Vec<FnParameter>,
     pub source: FnSource,
     pub exported_as: Vec<String>,
+    pub locals_ids: Vec<usize>,
     pub wasm_fn_index: u32,
+    pub wasm_locals_count: u32,
     pub definition_loc: Loc,
 }
 
 pub struct FnParameter {
-    pub param_name: &'static str,
+    pub param_name: &'static IdentExpr,
     pub param_type: Type,
-    pub loc: Loc,
 }
 
 pub enum FnSource {
@@ -50,8 +57,6 @@ pub struct FnType {
 pub struct ExprContext {
     pub module_id: usize,
     pub fn_index: Option<usize>,
-    pub locals: Vec<Local>,
-    pub next_local_index: u32,
     pub addr_local_index: Option<u32>,
 }
 
@@ -60,18 +65,9 @@ impl ExprContext {
         Self {
             module_id,
             fn_index,
-            locals: Vec::new(),
-            next_local_index: 0,
             addr_local_index: None,
         }
     }
-}
-
-#[derive(Clone)]
-pub struct Local {
-    pub local_index: u32,
-    pub local_type: Type,
-    pub definition_loc: Loc,
 }
 
 #[derive(Clone, PartialEq)]
@@ -219,6 +215,7 @@ pub struct Registry {
     pub stored_bytes: Vec<StoredExprBytes>, //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
     pub breaks: Vec<BreakInfo>, //                indexed by `ExprInfo` for `::Break` and `::Continue`
     pub globals: Vec<GlobalDef>, //               indexed by `col_index` when `kind = Global`
+    pub locals: Vec<LocalDef>,  //                indexed by `col_index` when `kind = Local`
     pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
     pub functions: Vec<FnInfo>, //                indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>, //      indexed by `col_index` when `kind = InlineFn`
@@ -230,7 +227,6 @@ pub struct Registry {
     pub data_size: UBCell<u32>,
     pub datas: UBCell<Vec<WasmData>>,
     pub string_pool: UBCell<Vec<PooledString>>,
-
     pub str_literal_type_id: Option<TypeId>,
 
     pub expr_id_count: usize,
@@ -344,6 +340,27 @@ impl Registry {
         });
 
         Ok(file_id)
+    }
+
+    pub fn add_local(
+        &self,
+        fn_index: usize,
+        local_name: Option<&'static str>,
+        local_type: &Type,
+    ) -> u32 {
+        let fn_info = self.functions[fn_index].be_mut();
+
+        let wasm_local_index = fn_info.wasm_locals_count;
+
+        fn_info.locals_ids.push(self.locals.len());
+        self.locals.be_mut().push(LocalDef {
+            local_name,
+            local_type: local_type.clone(),
+            wasm_local_index,
+        });
+        fn_info.wasm_locals_count += count_primitive_components(&self, local_type);
+
+        wasm_local_index
     }
 
     pub fn resolve_path(&self, file_path: &str, loc: &Loc) -> String {

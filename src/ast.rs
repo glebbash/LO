@@ -317,6 +317,7 @@ pub struct DoWithExpr {
     pub body: Box<CodeExpr>,
     pub args: CodeExprList,
     pub with_loc: Loc,
+    pub bind_id: ExprId,
     pub loc: Loc,
 }
 
@@ -325,6 +326,7 @@ pub struct PipeExpr {
     pub lhs: Box<CodeExpr>,
     pub rhs: Box<CodeExpr>,
     pub op_loc: Loc,
+    pub bind_id: ExprId,
     pub loc: Loc,
 }
 
@@ -399,6 +401,7 @@ pub struct FieldAccessExpr {
 pub struct CatchExpr {
     pub id: ExprId,
     pub lhs: Box<CodeExpr>,
+    pub ok_bind_id: ExprId,
     pub error_bind: IdentExpr,
     pub catch_body: CodeBlock,
     pub catch_loc: Loc,
@@ -414,6 +417,8 @@ pub struct MatchExpr {
 
 pub struct PropagateErrorExpr {
     pub id: ExprId,
+    pub ok_bind_id: ExprId,
+    pub err_bind_id: ExprId,
     pub expr: Box<CodeExpr>,
     pub loc: Loc,
 }

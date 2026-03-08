@@ -42,16 +42,9 @@ struct VarInfoStructValueField {
     loc: Loc,
 }
 
-#[derive(Clone)]
-struct Symbol {
-    name: &'static str,
-    col_index: usize,
-}
-
 #[derive(Clone, Default)]
 struct Scope {
     kind: ScopeKind,
-    symbols: Vec<Symbol>,
     deferred_exprs: Vec<CodeUnit>,
 
     expr_id_offset: usize,
@@ -63,16 +56,6 @@ impl Scope {
             kind: scope_type,
             ..Default::default()
         }
-    }
-
-    fn get_symbol(&self, symbol_name: &str) -> Option<&Symbol> {
-        for symbol in self.symbols.iter().rev() {
-            if symbol.name == symbol_name {
-                return Some(symbol);
-            }
-        }
-
-        None
     }
 }
 
@@ -225,29 +208,18 @@ impl CodeGenerator {
             let ctx = &mut ExprContext::new(*module_id, Some(*lo_fn_index));
             let mut wasm_expr = WasmExpr { instrs: Vec::new() };
 
-            let constants_len = self.registry.constants.len();
-
             self.enter_scope(ctx, ScopeKind::Function);
-
-            for fn_param in &fn_info.params {
-                self.define_local(ctx, fn_param.loc, fn_param.param_name, &fn_param.param_type);
-            }
 
             self.codegen_code_block(ctx, &mut wasm_expr.instrs, body, true);
 
             self.exit_scope(ctx);
 
-            // remove any constants/types created by inline fn calls
-            self.registry.constants.truncate(constants_len);
-
             let mut wasm_locals_flat = Vec::new();
-            for (i, local) in ctx.locals.iter().enumerate() {
-                let is_fn_param = i < fn_info.params.len();
-                if is_fn_param {
-                    continue;
-                }
-
-                self.lower_type(&local.local_type, &mut wasm_locals_flat);
+            for i in fn_info.params.len()..fn_info.locals_ids.len() {
+                self.lower_type(
+                    &self.registry.locals[fn_info.locals_ids[i]].local_type,
+                    &mut wasm_locals_flat,
+                );
             }
 
             let mut wasm_locals = Vec::<WasmLocals>::new();
@@ -277,26 +249,17 @@ impl CodeGenerator {
                     locals: Vec::new(),
                 };
 
-                for local in &ctx.locals {
-                    let local_file_id = local.definition_loc.file_id;
-                    if local_file_id == 0 {
-                        continue;
+                for local_id in &fn_info.locals_ids {
+                    let local_def = &self.registry.locals[*local_id];
+
+                    if let Some(local_name) = local_def.local_name {
+                        self.push_wasm_dbg_name_section_locals(
+                            &mut local_names_item.locals,
+                            local_def.wasm_local_index,
+                            &local_def.local_type,
+                            local_name,
+                        );
                     }
-
-                    let mut local_module = &self.registry.modules[ctx.module_id];
-
-                    // local defined by inline fn from another module
-                    if local_file_id != local_module.parser.lexer.file_id {
-                        let module_id = self.registry.get_module_id_by_file_id(local_file_id);
-                        local_module = &self.registry.modules[module_id];
-                    }
-
-                    self.push_wasm_dbg_name_section_locals(
-                        &mut local_names_item.locals,
-                        local.local_index,
-                        &local.local_type,
-                        String::from(local.definition_loc.read_span(local_module.source)),
-                    );
                 }
 
                 self.wasm_module.local_names.push(local_names_item);
@@ -471,22 +434,16 @@ impl CodeGenerator {
                 let var = self.var_from_ident(ctx, ident);
                 self.codegen_var_get(ctx, instrs, &var);
             }
-            CodeExpr::Let(LetExpr {
-                id: _,
-                is_inline,
-                name,
-                value,
-                loc: _,
-            }) => {
-                if *is_inline {
+            CodeExpr::Let(let_expr) => {
+                if let_expr.is_inline {
                     // already handled in typer
                     return;
                 }
 
-                let var_type = self.get_expr_type(ctx, &value);
+                let var_type = self.get_expr_type(ctx, &let_expr.value);
 
-                if name.repr == "_" {
-                    self.codegen(ctx, instrs, value);
+                if let_expr.name.repr == "_" {
+                    self.codegen(ctx, instrs, &let_expr.value);
 
                     for _ in 0..count_primitive_components(&self.registry, &var_type) {
                         instrs.push(WasmInstr::Drop);
@@ -494,13 +451,9 @@ impl CodeGenerator {
                     return;
                 }
 
-                let local_index = self.define_local(ctx, name.loc, name.repr, &var_type);
-                let var = VarInfo::Local(VarInfoLocal {
-                    local_index,
-                    var_type: var_type.clone(),
-                });
+                let var = self.var_from_ident(ctx, &let_expr.name);
                 self.codegen_var_set_prepare(instrs, &var);
-                self.codegen(ctx, instrs, value);
+                self.codegen(ctx, instrs, &let_expr.value);
                 self.codegen_var_set(ctx, instrs, &var);
             }
             CodeExpr::Cast(CastExpr {
@@ -998,14 +951,14 @@ impl CodeGenerator {
                 match &for_expr.iterator {
                     ForExprIterator::Range { start, end } => {
                         counter_type = item_type.clone();
-                        counter_local_index = self.define_local(
-                            ctx,
-                            for_expr.item.loc,
-                            for_expr.item.repr,
-                            &counter_type,
-                        );
-                        range_end_local_index =
-                            self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
+                        let VarInfo::Local(counter_local) =
+                            self.var_from_ident(ctx, &for_expr.item)
+                        else {
+                            unreachable!()
+                        };
+                        counter_local_index = counter_local.local_index;
+
+                        range_end_local_index = self.define_unnamed_local(ctx, &counter_type);
 
                         self.codegen(ctx, instrs, &start);
                         instrs.push(WasmInstr::LocalSet {
@@ -1019,8 +972,7 @@ impl CodeGenerator {
                     }
                     ForExprIterator::Segment { expr } => {
                         counter_type = Type::U32;
-                        range_end_local_index =
-                            self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
+                        range_end_local_index = self.define_unnamed_local(ctx, &counter_type);
 
                         if for_expr.ref_only {
                             let Type::Pointer(PointerType { pointee, .. }) = item_type else {
@@ -1035,26 +987,25 @@ impl CodeGenerator {
                             );
                             step = item_layout.byte_size;
 
-                            counter_local_index = self.define_local(
-                                ctx,
-                                for_expr.item.loc,
-                                for_expr.item.repr,
-                                &item_type,
-                            );
+                            let VarInfo::Local(counter_local) =
+                                self.var_from_ident(ctx, &for_expr.item)
+                            else {
+                                unreachable!()
+                            };
+                            counter_local_index = counter_local.local_index;
                         } else {
                             let mut item_layout = TypeLayout::new();
                             get_type_layout(&self.registry, item_type, &mut item_layout);
                             step = item_layout.byte_size;
 
-                            counter_local_index =
-                                self.define_unnamed_local(ctx, Loc::internal(), &counter_type);
+                            counter_local_index = self.define_unnamed_local(ctx, &counter_type);
 
-                            item_local_index = Some(self.define_local(
-                                ctx,
-                                for_expr.item.loc,
-                                for_expr.item.repr,
-                                &item_type,
-                            ));
+                            let VarInfo::Local(item_local) =
+                                self.var_from_ident(ctx, &for_expr.item)
+                            else {
+                                unreachable!()
+                            };
+                            item_local_index = Some(item_local.local_index);
                         }
 
                         self.codegen(ctx, instrs, expr);
@@ -1199,45 +1150,27 @@ impl CodeGenerator {
                     label_index: break_info.label_index,
                 });
             }
-            CodeExpr::DoWith(DoWithExpr {
-                id: _,
-                args,
-                body,
-                with_loc,
-                loc: _,
-            }) => {
-                let arg_type = self.get_expr_type(ctx, args.items.first().unwrap());
+            CodeExpr::DoWith(do_with) => {
+                let arg_type = self.get_expr_type(ctx, do_with.args.items.first().unwrap());
+                let arg_local = self.get_local_info(ctx, do_with.bind_id, do_with.with_loc);
 
-                for arg in &args.items {
+                for arg in &do_with.args.items {
                     self.enter_scope(ctx, ScopeKind::InlineFn);
 
                     self.codegen(ctx, instrs, arg);
 
-                    let arg_local_index = self.define_local(ctx, with_loc.clone(), "it", &arg_type);
-
-                    self.codegen_local_set(instrs, &arg_type, arg_local_index);
-                    self.codegen(ctx, instrs, body);
+                    self.codegen_local_set(instrs, &arg_type, arg_local.local_index);
+                    self.codegen(ctx, instrs, &do_with.body);
 
                     self.exit_scope(ctx);
                 }
             }
-            CodeExpr::Pipe(PipeExpr {
-                id: _,
-                lhs,
-                rhs,
-                op_loc,
-                loc: _,
-            }) => {
-                let lhs_type = self.get_expr_type(ctx, lhs);
-                self.codegen(ctx, instrs, lhs);
+            CodeExpr::Pipe(pipe) => {
+                self.codegen(ctx, instrs, &pipe.lhs);
 
-                self.enter_scope(ctx, ScopeKind::InlineFn);
-
-                let lhs_local_index = self.define_local(ctx, op_loc.clone(), "it", &lhs_type);
-
-                self.codegen_local_set(instrs, &lhs_type, lhs_local_index);
-                self.codegen(ctx, instrs, rhs);
-                self.exit_scope(ctx);
+                let lhs_var = self.get_local_info(ctx, pipe.bind_id, pipe.op_loc);
+                self.codegen_var_set(ctx, instrs, &VarInfo::Local(lhs_var));
+                self.codegen(ctx, instrs, &pipe.rhs);
             }
             CodeExpr::Defer(DeferExpr {
                 id: _,
@@ -1261,25 +1194,25 @@ impl CodeGenerator {
 
                 scope_to_defer.deferred_exprs.push(code_unit);
             }
-            CodeExpr::Catch(CatchExpr {
-                id: _,
-                lhs,
-                error_bind,
-                catch_body,
-                catch_loc,
-                loc: _,
-            }) => {
+            CodeExpr::Catch(catch) => {
                 self.codegen_catch(
                     ctx,
                     instrs,
-                    lhs,
-                    Some(&error_bind),
-                    Some(catch_body),
-                    catch_loc,
+                    &catch.lhs,
+                    catch.ok_bind_id,
+                    catch.error_bind.id,
+                    Some(&catch.catch_body),
                 );
             }
-            CodeExpr::PropagateError(PropagateErrorExpr { id: _, expr, loc }) => {
-                self.codegen_catch(ctx, instrs, expr, None, None, loc);
+            CodeExpr::PropagateError(prop_error) => {
+                self.codegen_catch(
+                    ctx,
+                    instrs,
+                    &prop_error.expr,
+                    prop_error.ok_bind_id,
+                    prop_error.err_bind_id,
+                    None,
+                );
             }
         };
     }
@@ -1291,26 +1224,14 @@ impl CodeGenerator {
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
     ) -> &EnumConstructor {
-        let expr_info = self.get_expr_info(ctx, header.variant_bind.id, header.variant_bind.loc);
-        let value_info = &self.registry.value_info[expr_info];
-        let enum_ctor = &self.registry.enum_ctors[value_info.col_index].relax();
-        let enum_def = &self.registry.enums[enum_ctor.enum_index].relax();
-        let enum_variant = &enum_def.variants[enum_ctor.variant_index].relax();
-
-        let local_index = self.define_local(
-            ctx,
-            header.variant_bind.loc,
-            header.variant_bind.repr,
-            self.get_type(enum_variant.variant_type_id),
-        );
-        let local = VarInfo::Local(VarInfoLocal {
-            local_index,
-            var_type: self.get_type(enum_variant.variant_type_id).clone(),
-        });
-
+        let local = self.var_from_ident(ctx, &header.variant_bind);
         self.codegen_var_set_prepare(instrs, &local);
         self.codegen(ctx, instrs, &header.expr_to_match);
         self.codegen_var_set(ctx, instrs, &local);
+
+        let expr_info = self.get_expr_info(ctx, header.variant_name.id, header.variant_name.loc);
+        let value_info = &self.registry.value_info[expr_info];
+        let enum_ctor = &self.registry.enum_ctors[value_info.col_index].relax();
 
         enum_ctor
     }
@@ -1365,44 +1286,27 @@ impl CodeGenerator {
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         expr: &CodeExpr,
-        error_bind: Option<&IdentExpr>,
+        ok_bind_id: ExprId,
+        err_bind_id: ExprId,
         catch_body: Option<&CodeBlock>,
-        loc: &Loc,
     ) {
-        let expr_type = self.get_expr_type(ctx, expr);
-        let Type::Result(result) = expr_type else {
-            unreachable!()
-        };
-        let ok = self.get_type(result.ok);
-        let err = self.get_type(result.err);
-
         self.enter_scope(ctx, ScopeKind::Block); // enter catch scope
 
         // put result on the stack
         self.codegen(ctx, instrs, expr);
 
         // pop error
-        let (error_bind, error_bind_loc) = if let Some(error_bind) = error_bind {
-            (error_bind.repr, error_bind.loc)
-        } else {
-            ("<err>", Loc::internal())
-        };
-        let err_local_index = self.define_local(ctx, error_bind_loc.clone(), error_bind, err);
-        let err_var = VarInfo::Local(VarInfoLocal {
-            local_index: err_local_index,
-            var_type: err.clone(),
-        });
-        self.codegen_var_set_prepare(instrs, &err_var);
+        let err_var = VarInfo::Local(self.get_local_info(ctx, err_bind_id, expr.loc()));
         self.codegen_var_set(ctx, instrs, &err_var);
 
         // pop ok
-        let ok_local_index = self.define_local(ctx, *loc, "<ok>", ok);
-        self.codegen_local_set(instrs, ok, ok_local_index);
+        let ok_local = self.get_local_info(ctx, ok_bind_id, expr.loc());
+        self.codegen_local_set(instrs, &ok_local.var_type, ok_local.local_index);
 
         // cond: error != 0
         self.codegen_var_get(ctx, instrs, &err_var);
 
-        let in_out_type_index = self.get_block_inout_type(&[], ok);
+        let in_out_type_index = self.get_block_inout_type(&[], &ok_local.var_type);
         instrs.push(WasmInstr::BlockStart {
             block_kind: WasmBlockKind::If,
             block_type: WasmBlockType::InOut {
@@ -1429,11 +1333,7 @@ impl CodeGenerator {
         instrs.push(WasmInstr::Else);
 
         // no error, push ok value
-        let ok_var = VarInfo::Local(VarInfoLocal {
-            local_index: ok_local_index,
-            var_type: ok.clone(),
-        });
-        self.codegen_var_get(ctx, instrs, &ok_var);
+        self.codegen_var_get(ctx, instrs, &VarInfo::Local(ok_local));
 
         instrs.push(WasmInstr::BlockEnd);
 
@@ -1709,7 +1609,7 @@ impl CodeGenerator {
                 drops_before,
                 drops_after,
                 var_type,
-                loc,
+                loc: _,
             }) => {
                 for instr in &struct_value.instrs {
                     instrs.push(instr.clone());
@@ -1719,7 +1619,7 @@ impl CodeGenerator {
                 }
 
                 if *drops_after > 0 {
-                    let local_index = self.define_unnamed_local(ctx, *loc, var_type);
+                    let local_index = self.define_unnamed_local(ctx, var_type);
 
                     let var = VarInfo::Local(VarInfoLocal {
                         local_index,
@@ -1785,8 +1685,7 @@ impl CodeGenerator {
                 self.codegen_load_or_store(&mut stores, &var_type, *offset, true);
 
                 if stores.len() > 1 {
-                    let tmp_value_local_index =
-                        self.define_unnamed_local(ctx, Loc::internal(), var_type);
+                    let tmp_value_local_index = self.define_unnamed_local(ctx, var_type);
                     self.codegen_local_set(instrs, var_type, tmp_value_local_index);
 
                     let addr_local_index = self.create_or_get_addr_local(ctx);
@@ -1818,34 +1717,20 @@ impl CodeGenerator {
         };
     }
 
-    fn define_local(
-        &self,
-        ctx: &mut ExprContext,
-        loc: Loc,
-        local_name: &'static str,
-        local_type: &Type,
-    ) -> u32 {
-        let current_scope = self.current_scope(ctx).relax().be_mut();
+    fn get_local_info(&self, ctx: &ExprContext, bind_id: ExprId, bind_loc: Loc) -> VarInfoLocal {
+        let expr_info = self.get_expr_info(ctx, bind_id, bind_loc);
+        let value_info = &self.registry.value_info[expr_info];
+        let local_info = &self.registry.locals[value_info.col_index];
 
-        current_scope.symbols.push(Symbol {
-            name: local_name,
-            col_index: ctx.locals.len(),
-        });
-
-        let local_index = self.define_unnamed_local(ctx, loc, local_type);
-        local_index
+        VarInfoLocal {
+            local_index: local_info.wasm_local_index,
+            var_type: local_info.local_type.clone(),
+        }
     }
 
-    fn define_unnamed_local(&self, ctx: &mut ExprContext, loc: Loc, local_type: &Type) -> u32 {
-        let local_index = ctx.next_local_index;
-        ctx.locals.push(Local {
-            local_index,
-            local_type: local_type.clone(),
-            definition_loc: loc,
-        });
-        ctx.next_local_index += count_primitive_components(&self.registry, local_type);
-
-        local_index
+    fn define_unnamed_local(&self, ctx: &mut ExprContext, local_type: &Type) -> u32 {
+        self.registry
+            .add_local(ctx.fn_index.unwrap(), None, local_type)
     }
 
     fn create_or_get_addr_local(&self, ctx: &mut ExprContext) -> u32 {
@@ -1853,7 +1738,7 @@ impl CodeGenerator {
             return addr_local_index;
         }
 
-        let addr_local_index = self.define_unnamed_local(ctx, Loc::internal(), &Type::U32);
+        let addr_local_index = self.define_unnamed_local(ctx, &Type::U32);
 
         return addr_local_index;
     }
@@ -1909,44 +1794,41 @@ impl CodeGenerator {
     fn var_from_ident(&self, ctx: &ExprContext, var_name: &IdentExpr) -> VarInfo {
         let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc);
         let value_info = &self.registry.value_info[expr_info];
+
         match value_info.kind {
             ValueKind::Global => {
                 let global = &self.registry.globals[value_info.col_index];
 
-                return VarInfo::Global(VarInfoGlobal {
+                VarInfo::Global(VarInfoGlobal {
                     global_index: global.wasm_global_index,
                     var_type: self.get_type(global.type_id).clone(),
-                });
+                })
             }
             ValueKind::Const => {
                 let const_def = &self.registry.constants[value_info.col_index];
 
-                return VarInfo::Const(VarInfoConst {
+                VarInfo::Const(VarInfoConst {
                     const_def: const_def.relax(),
                     loc: var_name.loc,
-                });
+                })
             }
             ValueKind::EnumConstructor => {
                 let enum_ctor = &self.registry.enum_ctors[value_info.col_index];
 
-                return VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
+                VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
                     variant_index: enum_ctor.variant_index,
                     loc: var_name.loc,
-                });
+                })
             }
-            ValueKind::Local => { /* processed separately */ }
+            ValueKind::Local => {
+                let local = &self.registry.locals[value_info.col_index];
+
+                VarInfo::Local(VarInfoLocal {
+                    local_index: local.wasm_local_index,
+                    var_type: local.local_type.clone(),
+                })
+            }
         }
-
-        let Some(symbol) = self.current_scope(ctx).get_symbol(var_name.repr) else {
-            unreachable!()
-        };
-
-        let local = &ctx.locals[symbol.col_index];
-
-        VarInfo::Local(VarInfoLocal {
-            local_index: local.local_index,
-            var_type: local.local_type.clone(),
-        })
     }
 
     fn var_from_field_access(
@@ -2386,7 +2268,6 @@ impl CodeGenerator {
     ) {
         let mut new_scope = Scope::new(scope_type);
         if let Some(parent) = scope_stack.last() {
-            new_scope.symbols.extend_from_slice(&parent.symbols);
             new_scope.expr_id_offset = parent.expr_id_offset;
         };
         scope_stack.push(new_scope);
@@ -2397,7 +2278,7 @@ impl CodeGenerator {
         output: &mut Vec<WasmLocalInfo>,
         local_index: u32,
         local_type: &Type,
-        local_name: String,
+        local_name: &str,
     ) {
         // TODO: fix unnamed locals breaking wasm2wat
         if !self.registry.should_emit_dbg_local_names {
@@ -2421,7 +2302,7 @@ impl CodeGenerator {
             | Type::F64
             | Type::Pointer { .. } => output.push(WasmLocalInfo {
                 local_index,
-                local_name,
+                local_name: String::from(local_name),
             }),
             Type::Struct { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
@@ -2430,7 +2311,7 @@ impl CodeGenerator {
                         output,
                         local_index + field.field_index,
                         &field.field_type,
-                        alloc::format!("{}.{}", local_name, field.field_name),
+                        &format!("{}.{}", local_name, field.field_name),
                     );
                 }
             }
@@ -2439,7 +2320,7 @@ impl CodeGenerator {
                     output,
                     local_index,
                     &Type::U32,
-                    alloc::format!("{}#tag", local_name),
+                    &format!("{}#tag", local_name),
                 );
 
                 let enum_def = &self.registry.enums[*enum_index];
@@ -2447,7 +2328,7 @@ impl CodeGenerator {
                     output,
                     local_index,
                     &enum_def.variant_type,
-                    alloc::format!("{}#payload", local_name),
+                    &format!("{}#payload", local_name),
                 );
             }
             Type::Result(result_type) => {
@@ -2455,14 +2336,14 @@ impl CodeGenerator {
                     output,
                     local_index,
                     self.get_type(result_type.ok),
-                    alloc::format!("{}#ok", local_name),
+                    &format!("{}#ok", local_name),
                 );
 
                 self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     self.get_type(result_type.err),
-                    alloc::format!("{}#err", local_name),
+                    &format!("{}#err", local_name),
                 );
             }
             Type::Seg(seg) => {
@@ -2476,14 +2357,14 @@ impl CodeGenerator {
                     output,
                     local_index,
                     &Type::U32,
-                    alloc::format!("{}.len", local_name),
+                    &format!("{}.len", local_name),
                 );
 
                 self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &ptr_type,
-                    alloc::format!("{}.ptr", local_name),
+                    &format!("{}.ptr", local_name),
                 );
             }
             Type::Container(ctr) => {

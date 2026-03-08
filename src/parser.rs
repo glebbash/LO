@@ -804,6 +804,7 @@ impl Parser {
                 id: self.next_expr_id(),
                 body,
                 args,
+                bind_id: self.next_expr_id(),
                 with_loc: with.loc,
                 loc,
             }));
@@ -1154,6 +1155,7 @@ impl Parser {
                 Ok(CodeExpr::Catch(CatchExpr {
                     id: self.next_expr_id(),
                     lhs: Box::new(primary),
+                    ok_bind_id: self.next_expr_id(),
                     error_bind,
                     catch_body,
                     catch_loc: *op_loc,
@@ -1167,6 +1169,8 @@ impl Parser {
                 Ok(CodeExpr::PropagateError(PropagateErrorExpr {
                     id: self.next_expr_id(),
                     expr: Box::new(primary),
+                    ok_bind_id: self.next_expr_id(),
+                    err_bind_id: self.next_expr_id(),
                     loc,
                 }))
             }
@@ -1181,6 +1185,7 @@ impl Parser {
                     id: self.next_expr_id(),
                     lhs: Box::new(primary),
                     rhs: Box::new(rhs),
+                    bind_id: self.next_expr_id(),
                     op_loc: *op_loc,
                     loc,
                 }))
