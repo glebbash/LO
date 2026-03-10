@@ -592,7 +592,7 @@ fn is_operator_start_char(c: char) -> bool {
     return false;
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum InfixOpTag {
     Equal,
     NotEqual,

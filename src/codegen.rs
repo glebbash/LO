@@ -582,37 +582,35 @@ impl CodeGenerator {
                     }
                 }
             },
-            CodeExpr::InfixOp(InfixOpExpr {
-                id: _,
-                op_tag,
-                op_loc,
-                lhs,
-                rhs,
-                loc: _,
-            }) => {
-                let operand_type = self.get_expr_type(ctx, lhs);
+            CodeExpr::InfixOp(infix_op) => {
+                let expr_info = self.get_expr_info(ctx, infix_op.id, infix_op.loc);
+                let op_info = self.registry.binary_op_info[expr_info].relax();
 
-                if let Some(base_op) = self.get_compound_assignment_base_op(op_tag) {
-                    let Some(var) = self.var_from_expr(ctx, &lhs) else {
+                if op_info.is_compound_assignment {
+                    let Some(var) = self.var_from_expr(ctx, &infix_op.lhs) else {
                         // TODO!: move to typer
                         self.registry.reporter.abort_due_to_compiler_bug(
                             &format!("Cannot perform compound assignment: invalid lhs"),
-                            *op_loc,
+                            infix_op.op_loc,
                         );
                     };
 
                     self.codegen_var_set_prepare(instrs, &var);
                     self.codegen_var_get(ctx, instrs, &var);
-                    self.codegen(ctx, instrs, rhs);
-                    self.codegen_binary_op(ctx, instrs, &base_op, &operand_type, op_loc);
+                    self.codegen(ctx, instrs, &infix_op.rhs);
+                    instrs.push(WasmInstr::BinaryOp {
+                        kind: op_info.op_kind.clone(),
+                    });
 
                     self.codegen_var_set(ctx, instrs, &var);
                     return;
                 }
 
-                self.codegen(ctx, instrs, lhs);
-                self.codegen(ctx, instrs, rhs);
-                self.codegen_binary_op(ctx, instrs, &op_tag, &operand_type, op_loc);
+                self.codegen(ctx, instrs, &infix_op.lhs);
+                self.codegen(ctx, instrs, &infix_op.rhs);
+                instrs.push(WasmInstr::BinaryOp {
+                    kind: op_info.op_kind.clone(),
+                });
             }
 
             CodeExpr::Assign(AssignExpr {
@@ -701,11 +699,6 @@ impl CodeGenerator {
                 }
 
                 if call.fn_name.repr == "memory_grow" {
-                    let mut arg_types = Vec::new();
-                    for arg in &call.args.items {
-                        arg_types.push(self.get_expr_type(ctx, arg).clone());
-                    }
-
                     for arg in &call.args.items {
                         self.codegen(ctx, instrs, arg);
                     }
@@ -1988,203 +1981,6 @@ impl CodeGenerator {
             Type::Container(ctr) => {
                 self.codegen_default_value(ctx, instrs, self.get_type(ctr.container));
             }
-        }
-    }
-
-    fn codegen_binary_op(
-        &self,
-        ctx: &ExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        op_tag: &InfixOpTag,
-        operand_type: &Type,
-        op_loc: &Loc,
-    ) {
-        let kind = self.get_binary_op_kind(ctx, op_tag, operand_type, op_loc);
-        instrs.push(WasmInstr::BinaryOp { kind });
-    }
-
-    fn get_binary_op_kind(
-        &self,
-        ctx: &ExprContext,
-        op_tag: &InfixOpTag,
-        operand_type: &Type,
-        op_loc: &Loc,
-    ) -> WasmBinaryOpKind {
-        let mut signed = false;
-        let mut wasm_op_type = WasmType::I32;
-
-        match operand_type {
-            Type::Null | Type::Bool | Type::U8 | Type::U16 | Type::U32 | Type::Pointer { .. } => {}
-            Type::Enum { enum_index }
-                if self.registry.enums[*enum_index].variant_type == Type::Void => {}
-
-            Type::I8 | Type::I16 | Type::I32 => signed = true,
-
-            Type::I64 => {
-                wasm_op_type = WasmType::I64;
-                signed = true;
-            }
-            Type::U64 => wasm_op_type = WasmType::I64,
-
-            Type::F32 => wasm_op_type = WasmType::F32,
-            Type::F64 => wasm_op_type = WasmType::F64,
-
-            Type::Never
-            | Type::Void
-            | Type::Enum { enum_index: _ }
-            | Type::Struct { struct_index: _ }
-            | Type::Result(_)
-            | Type::Seg(_)
-            | Type::Container(_) => {
-                incompatible_op_err(self, ctx, operand_type, op_loc);
-            }
-        }
-
-        use InfixOpTag::*;
-        use WasmBinaryOpKind::*;
-
-        return match wasm_op_type {
-            WasmType::I32 => match op_tag {
-                Equal => I32_EQ,
-                NotEqual => I32_NE,
-                Less if signed => I32_LT_S,
-                Less => I32_LT_U,
-                Greater if signed => I32_GT_S,
-                Greater => I32_GT_U,
-                LessEqual if signed => I32_LE_S,
-                LessEqual => I32_LE_U,
-                GreaterEqual if signed => I32_GE_S,
-                GreaterEqual => I32_GE_U,
-                Add => I32_ADD,
-                Sub => I32_SUB,
-                Mul => I32_MUL,
-                Div if signed => I32_DIV_S,
-                Div => I32_DIV_U,
-                Mod if signed => I32_REM_S,
-                Mod => I32_REM_U,
-                And => I32_AND,
-                BitAnd => I32_AND,
-                Or => I32_OR,
-                BitOr => I32_OR,
-                ShiftLeft => I32_SHL,
-                ShiftRight if signed => I32_SHR_S,
-                ShiftRight => I32_SHR_U,
-                _ => unreachable!(),
-            },
-            WasmType::I64 => match op_tag {
-                Equal => I64_EQ,
-                NotEqual => I64_NE,
-                Less if signed => I64_LT_S,
-                Less => I64_LT_U,
-                Greater if signed => I64_GT_S,
-                Greater => I64_GT_U,
-                LessEqual if signed => I64_LE_S,
-                LessEqual => I64_LE_U,
-                GreaterEqual if signed => I64_GE_S,
-                GreaterEqual => I64_GE_U,
-                Add => I64_ADD,
-                Sub => I64_SUB,
-                Mul => I64_MUL,
-                Div if signed => I64_DIV_S,
-                Div => I64_DIV_U,
-                Mod if signed => I64_REM_S,
-                Mod => I64_REM_U,
-                And => I64_AND,
-                BitAnd => I64_AND,
-                Or => I64_OR,
-                BitOr => I64_OR,
-                ShiftLeft => I64_SHL,
-                ShiftRight if signed => I64_SHR_S,
-                ShiftRight => I64_SHR_U,
-                _ => unreachable!(),
-            },
-            WasmType::F32 => match op_tag {
-                Equal => F32_EQ,
-                NotEqual => F32_NE,
-                Less => F32_LT,
-                Greater => F32_GT,
-                LessEqual => F32_LE,
-                GreaterEqual => F32_GE,
-                Add => F32_ADD,
-                Sub => F32_SUB,
-                Mul => F32_MUL,
-                Div => F32_DIV,
-                Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
-                    incompatible_op_err(self, ctx, operand_type, op_loc);
-                }
-                _ => unreachable!(),
-            },
-            WasmType::F64 => match op_tag {
-                Equal => F64_EQ,
-                NotEqual => F64_NE,
-                Less => F64_LT,
-                Greater => F64_GT,
-                LessEqual => F64_LE,
-                GreaterEqual => F64_GE,
-                Add => F64_ADD,
-                Sub => F64_SUB,
-                Mul => F64_MUL,
-                Div => F64_DIV,
-                Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
-                    incompatible_op_err(self, ctx, operand_type, op_loc);
-                }
-                _ => unreachable!(),
-            },
-        };
-
-        fn incompatible_op_err(
-            self_: &CodeGenerator,
-            ctx: &ExprContext,
-            op_type: &Type,
-            op_loc: &Loc,
-        ) -> ! {
-            // TODO!: move to typer
-            self_.registry.reporter.abort_due_to_compiler_bug(
-                &format!(
-                    "Operator `{}` is incompatible with operands of type {}",
-                    op_loc.read_span(&self_.registry.modules[ctx.module_id].source),
-                    self_.registry.fmt(op_type)
-                ),
-                op_loc.clone(),
-            );
-        }
-    }
-
-    fn get_compound_assignment_base_op(&self, op_tag: &InfixOpTag) -> Option<InfixOpTag> {
-        match op_tag {
-            InfixOpTag::AddAssign => Some(InfixOpTag::Add),
-            InfixOpTag::SubAssign => Some(InfixOpTag::Sub),
-            InfixOpTag::MulAssign => Some(InfixOpTag::Mul),
-            InfixOpTag::DivAssign => Some(InfixOpTag::Div),
-            InfixOpTag::ModAssign => Some(InfixOpTag::Mod),
-            InfixOpTag::BitAndAssign => Some(InfixOpTag::BitAnd),
-            InfixOpTag::BitOrAssign => Some(InfixOpTag::BitOr),
-            InfixOpTag::ShiftLeftAssign => Some(InfixOpTag::ShiftLeft),
-            InfixOpTag::ShiftRightAssign => Some(InfixOpTag::ShiftRight),
-
-            InfixOpTag::Equal
-            | InfixOpTag::NotEqual
-            | InfixOpTag::Less
-            | InfixOpTag::Greater
-            | InfixOpTag::LessEqual
-            | InfixOpTag::GreaterEqual
-            | InfixOpTag::Add
-            | InfixOpTag::Sub
-            | InfixOpTag::Mul
-            | InfixOpTag::Div
-            | InfixOpTag::Mod
-            | InfixOpTag::And
-            | InfixOpTag::BitAnd
-            | InfixOpTag::Or
-            | InfixOpTag::BitOr
-            | InfixOpTag::ShiftLeft
-            | InfixOpTag::ShiftRight
-            | InfixOpTag::Cast
-            | InfixOpTag::Assign
-            | InfixOpTag::FieldAccess
-            | InfixOpTag::Catch
-            | InfixOpTag::ErrorPropagation
-            | InfixOpTag::Pipe => None,
         }
     }
 

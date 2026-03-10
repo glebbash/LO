@@ -38,7 +38,7 @@ pub struct FnParameter {
 
 pub enum FnSource {
     Guest {
-        module_id: usize,
+        module_id: ModuleId,
         lo_fn_index: usize,
         body: &'static CodeBlock,
     },
@@ -55,13 +55,13 @@ pub struct FnType {
 
 #[derive(Clone)]
 pub struct ExprContext {
-    pub module_id: usize,
+    pub module_id: ModuleId,
     pub fn_index: Option<usize>,
     pub addr_local_index: Option<u32>,
 }
 
 impl ExprContext {
-    pub fn new(module_id: usize, fn_index: Option<usize>) -> Self {
+    pub fn new(module_id: ModuleId, fn_index: Option<usize>) -> Self {
         Self {
             module_id,
             fn_index,
@@ -146,7 +146,7 @@ pub struct Module {
     pub includes: Vec<ModuleInclude>,
 }
 
-type ModuleId = usize;
+pub type ModuleId = usize;
 
 pub struct ModuleInclude {
     pub module_id: ModuleId,
@@ -202,6 +202,12 @@ pub struct BlockInfo {
     pub needs_explicit_trap: bool,
 }
 
+pub struct BinaryOpInfo {
+    pub is_compound_assignment: bool,
+    pub op_kind: WasmBinaryOpKind,
+    pub result_type_id: TypeId,
+}
+
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
@@ -209,9 +215,11 @@ pub struct Registry {
 
     pub reporter: Box<Reporter>,
 
-    pub files: Vec<FileInfo>,                  // indexed by `Loc::file_id`
-    pub modules: Vec<Module>,                  // indexed by `*::module_id`
-    pub expr_info: Vec<ExprInfo>,              // indexed by `CodeExpr.id()` and `TypeExpr.id()`
+    pub files: Vec<FileInfo>, // indexed by `Loc::file_id`
+    pub modules: Vec<Module>, // indexed by `ModuleId`
+
+    pub expr_id_count: usize,
+    pub expr_info: Vec<ExprInfo>,              // indexed by `ExprId`
     pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
@@ -219,13 +227,15 @@ pub struct Registry {
     pub stored_bytes: Vec<StoredExprBytes>, //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
     pub breaks: Vec<BreakInfo>, //                indexed by `ExprInfo` for `::Break` and `::Continue`
     pub block_info: Vec<BlockInfo>, //            indexed by `ExprInfo` for `::CodeBlock`
+    pub binary_op_info: Vec<BinaryOpInfo>, //     indexed by `ExprInfo` for `::InfixOp`
+
     pub globals: Vec<GlobalDef>, //               indexed by `col_index` when `kind = Global`
-    pub locals: Vec<LocalDef>,  //                indexed by `col_index` when `kind = Local`
+    pub locals: Vec<LocalDef>,   //               indexed by `col_index` when `kind = Local`
     pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
-    pub functions: Vec<FnInfo>, //                indexed by `col_index` when `kind = Function`
+    pub functions: Vec<FnInfo>,  //               indexed by `col_index` when `kind = Function`
     pub inline_fns: Vec<&'static FnExpr>, //      indexed by `col_index` when `kind = InlineFn`
     pub structs: Vec<StructDef>, //               indexed by `col_index` when `kind = Struct`
-    pub enums: Vec<EnumDef>,    //                indexed by `col_index` when `kind = Enum`
+    pub enums: Vec<EnumDef>,     //               indexed by `col_index` when `kind = Enum`
     pub enum_ctors: Vec<EnumConstructor>, //      indexed by `col_index` when `kind = EnumConstructor`
 
     pub memory: Option<MemoryInfo>,
@@ -233,8 +243,6 @@ pub struct Registry {
     pub datas: UBCell<Vec<WasmData>>,
     pub string_pool: UBCell<Vec<PooledString>>,
     pub str_literal_type_id: Option<TypeId>,
-
-    pub expr_id_count: usize,
 }
 
 impl Registry {
@@ -439,6 +447,10 @@ impl Registry {
             CodeExpr::Break(_) | CodeExpr::Continue(_) => {
                 let break_info = &self.breaks[expr_info];
                 break_info.expr_type_id
+            }
+            CodeExpr::InfixOp(_) => {
+                let binary_op_info = &self.binary_op_info[expr_info];
+                binary_op_info.result_type_id
             }
             _ => expr_info,
         })

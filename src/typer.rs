@@ -97,7 +97,7 @@ pub type TypeId = usize;
 type TyContextRef = UBRef<TyContext>;
 
 struct TyContext {
-    module_id: usize,
+    module_id: ModuleId,
     id: usize,
     parent: Option<TyContextRef>,
     kind: ScopeKind,
@@ -1445,7 +1445,7 @@ impl Typer {
                     });
                 }
 
-                match infix_op.op_tag {
+                let result_type_id = match infix_op.op_tag {
                     InfixOpTag::Equal
                     | InfixOpTag::NotEqual
                     | InfixOpTag::Less
@@ -1453,10 +1453,7 @@ impl Typer {
                     | InfixOpTag::LessEqual
                     | InfixOpTag::GreaterEqual
                     | InfixOpTag::And
-                    | InfixOpTag::Or => {
-                        self.store_type(ctx, infix_op.id, &Type::Bool);
-                        return Ok(());
-                    }
+                    | InfixOpTag::Or => self.intern_type(&Type::Bool),
 
                     InfixOpTag::Add
                     | InfixOpTag::Sub
@@ -1466,10 +1463,7 @@ impl Typer {
                     | InfixOpTag::BitAnd
                     | InfixOpTag::BitOr
                     | InfixOpTag::ShiftLeft
-                    | InfixOpTag::ShiftRight => {
-                        self.store_expr_info(ctx, infix_op.id, lhs_type_id);
-                        return Ok(());
-                    }
+                    | InfixOpTag::ShiftRight => lhs_type_id,
 
                     InfixOpTag::AddAssign
                     | InfixOpTag::SubAssign
@@ -1479,10 +1473,7 @@ impl Typer {
                     | InfixOpTag::BitAndAssign
                     | InfixOpTag::BitOrAssign
                     | InfixOpTag::ShiftLeftAssign
-                    | InfixOpTag::ShiftRightAssign => {
-                        self.store_type(ctx, infix_op.id, &Type::Void);
-                        return Ok(());
-                    }
+                    | InfixOpTag::ShiftRightAssign => self.intern_type(&Type::Void),
 
                     // have their own CodeExpr variants
                     InfixOpTag::Cast
@@ -1491,7 +1482,31 @@ impl Typer {
                     | InfixOpTag::Catch
                     | InfixOpTag::ErrorPropagation
                     | InfixOpTag::Pipe => unreachable!(),
+                };
+
+                let mut is_compound_assignment = false;
+                let mut base_op = infix_op.op_tag;
+
+                if let Some(base_op_) = self.get_compound_assignment_base_op(&infix_op.op_tag) {
+                    is_compound_assignment = true;
+                    base_op = base_op_;
                 }
+
+                let op_kind = self.get_binary_op_kind(
+                    ctx,
+                    base_op,
+                    self.get_type(lhs_type_id),
+                    &infix_op.op_loc,
+                )?;
+
+                self.store_expr_info(ctx, infix_op.id, self.registry.binary_op_info.len());
+                self.registry.be_mut().binary_op_info.push(BinaryOpInfo {
+                    is_compound_assignment,
+                    op_kind,
+                    result_type_id,
+                });
+
+                return Ok(());
             }
             CodeExpr::PrefixOp(prefix_op) => {
                 let expr_type_id = self.type_code_expr_and_load(ctx, &prefix_op.expr)?;
@@ -2643,6 +2658,190 @@ impl Typer {
                     loc: var_name.loc,
                 });
             }
+        }
+    }
+
+    fn get_binary_op_kind(
+        &self,
+        ctx: TyContextRef,
+        op_tag: InfixOpTag,
+        operand_type: &Type,
+        op_loc: &Loc,
+    ) -> Result<WasmBinaryOpKind, Error> {
+        let mut signed = false;
+        let mut wasm_op_type = WasmType::I32;
+
+        match operand_type {
+            Type::Null | Type::Bool | Type::U8 | Type::U16 | Type::U32 | Type::Pointer { .. } => {}
+            Type::Enum { enum_index }
+                if self.registry.enums[*enum_index].variant_type == Type::Void => {}
+
+            Type::I8 | Type::I16 | Type::I32 => signed = true,
+
+            Type::I64 => {
+                wasm_op_type = WasmType::I64;
+                signed = true;
+            }
+            Type::U64 => wasm_op_type = WasmType::I64,
+
+            Type::F32 => wasm_op_type = WasmType::F32,
+            Type::F64 => wasm_op_type = WasmType::F64,
+
+            Type::Never
+            | Type::Void
+            | Type::Enum { enum_index: _ }
+            | Type::Struct { struct_index: _ }
+            | Type::Result(_)
+            | Type::Seg(_)
+            | Type::Container(_) => {
+                return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+            }
+        }
+
+        use InfixOpTag::*;
+        use WasmBinaryOpKind::*;
+
+        return Ok(match wasm_op_type {
+            WasmType::I32 => match op_tag {
+                Equal => I32_EQ,
+                NotEqual => I32_NE,
+                Less if signed => I32_LT_S,
+                Less => I32_LT_U,
+                Greater if signed => I32_GT_S,
+                Greater => I32_GT_U,
+                LessEqual if signed => I32_LE_S,
+                LessEqual => I32_LE_U,
+                GreaterEqual if signed => I32_GE_S,
+                GreaterEqual => I32_GE_U,
+                Add => I32_ADD,
+                Sub => I32_SUB,
+                Mul => I32_MUL,
+                Div if signed => I32_DIV_S,
+                Div => I32_DIV_U,
+                Mod if signed => I32_REM_S,
+                Mod => I32_REM_U,
+                And => I32_AND,
+                BitAnd => I32_AND,
+                Or => I32_OR,
+                BitOr => I32_OR,
+                ShiftLeft => I32_SHL,
+                ShiftRight if signed => I32_SHR_S,
+                ShiftRight => I32_SHR_U,
+                _ => unreachable!(),
+            },
+            WasmType::I64 => match op_tag {
+                Equal => I64_EQ,
+                NotEqual => I64_NE,
+                Less if signed => I64_LT_S,
+                Less => I64_LT_U,
+                Greater if signed => I64_GT_S,
+                Greater => I64_GT_U,
+                LessEqual if signed => I64_LE_S,
+                LessEqual => I64_LE_U,
+                GreaterEqual if signed => I64_GE_S,
+                GreaterEqual => I64_GE_U,
+                Add => I64_ADD,
+                Sub => I64_SUB,
+                Mul => I64_MUL,
+                Div if signed => I64_DIV_S,
+                Div => I64_DIV_U,
+                Mod if signed => I64_REM_S,
+                Mod => I64_REM_U,
+                And => I64_AND,
+                BitAnd => I64_AND,
+                Or => I64_OR,
+                BitOr => I64_OR,
+                ShiftLeft => I64_SHL,
+                ShiftRight if signed => I64_SHR_S,
+                ShiftRight => I64_SHR_U,
+                _ => unreachable!(),
+            },
+            WasmType::F32 => match op_tag {
+                Equal => F32_EQ,
+                NotEqual => F32_NE,
+                Less => F32_LT,
+                Greater => F32_GT,
+                LessEqual => F32_LE,
+                GreaterEqual => F32_GE,
+                Add => F32_ADD,
+                Sub => F32_SUB,
+                Mul => F32_MUL,
+                Div => F32_DIV,
+                Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
+                    return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+                }
+                _ => unreachable!(),
+            },
+            WasmType::F64 => match op_tag {
+                Equal => F64_EQ,
+                NotEqual => F64_NE,
+                Less => F64_LT,
+                Greater => F64_GT,
+                LessEqual => F64_LE,
+                GreaterEqual => F64_GE,
+                Add => F64_ADD,
+                Sub => F64_SUB,
+                Mul => F64_MUL,
+                Div => F64_DIV,
+                Mod | And | BitAnd | Or | BitOr | ShiftLeft | ShiftRight => {
+                    return Err(incompatible_op_err(self, ctx, operand_type, op_loc));
+                }
+                _ => unreachable!(),
+            },
+        });
+
+        fn incompatible_op_err(
+            self_: &Typer,
+            ctx: TyContextRef,
+            op_type: &Type,
+            op_loc: &Loc,
+        ) -> Error {
+            Error {
+                message: format!(
+                    "Operator `{}` is incompatible with operands of type {}",
+                    op_loc.read_span(&self_.registry.modules[ctx.module_id].source),
+                    self_.registry.fmt(op_type)
+                ),
+                loc: op_loc.clone(),
+            }
+        }
+    }
+
+    fn get_compound_assignment_base_op(&self, op_tag: &InfixOpTag) -> Option<InfixOpTag> {
+        match op_tag {
+            InfixOpTag::AddAssign => Some(InfixOpTag::Add),
+            InfixOpTag::SubAssign => Some(InfixOpTag::Sub),
+            InfixOpTag::MulAssign => Some(InfixOpTag::Mul),
+            InfixOpTag::DivAssign => Some(InfixOpTag::Div),
+            InfixOpTag::ModAssign => Some(InfixOpTag::Mod),
+            InfixOpTag::BitAndAssign => Some(InfixOpTag::BitAnd),
+            InfixOpTag::BitOrAssign => Some(InfixOpTag::BitOr),
+            InfixOpTag::ShiftLeftAssign => Some(InfixOpTag::ShiftLeft),
+            InfixOpTag::ShiftRightAssign => Some(InfixOpTag::ShiftRight),
+
+            InfixOpTag::Equal
+            | InfixOpTag::NotEqual
+            | InfixOpTag::Less
+            | InfixOpTag::Greater
+            | InfixOpTag::LessEqual
+            | InfixOpTag::GreaterEqual
+            | InfixOpTag::Add
+            | InfixOpTag::Sub
+            | InfixOpTag::Mul
+            | InfixOpTag::Div
+            | InfixOpTag::Mod
+            | InfixOpTag::And
+            | InfixOpTag::BitAnd
+            | InfixOpTag::Or
+            | InfixOpTag::BitOr
+            | InfixOpTag::ShiftLeft
+            | InfixOpTag::ShiftRight
+            | InfixOpTag::Cast
+            | InfixOpTag::Assign
+            | InfixOpTag::FieldAccess
+            | InfixOpTag::Catch
+            | InfixOpTag::ErrorPropagation
+            | InfixOpTag::Pipe => None,
         }
     }
 
