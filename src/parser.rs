@@ -443,7 +443,7 @@ impl Parser {
 
         let mut code_block = CodeBlock {
             exprs: Vec::new(),
-            expr_id_start: *self.expr_id_count,
+            block_expr_id: self.next_expr_id(),
             expr_id_count: 0, // placeholder
             loc: self.prev().loc,
         };
@@ -453,7 +453,7 @@ impl Parser {
             code_block.exprs.push(expr);
         }
 
-        code_block.expr_id_count = *self.expr_id_count - code_block.expr_id_start;
+        code_block.expr_id_count = *self.expr_id_count - code_block.block_expr_id;
 
         // closing curly pos
         code_block.loc.end_pos = self.prev().loc.end_pos;

@@ -637,8 +637,7 @@ impl Typer {
                                     variant_type_id = self.intern_type(&Type::Void);
                                 }
 
-                                if !is_type_compatible(
-                                    &self.registry,
+                                if !self.is_type_compatible(
                                     &enum_def.variant_type,
                                     self.get_type(variant_type_id),
                                 ) {
@@ -1151,7 +1150,6 @@ impl Typer {
             }
         }
 
-        // TODO: check why this doesn't work for `fn main(): u32 {}`
         if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
             let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
             if fn_info.type_.output != Type::Void {
@@ -1163,12 +1161,12 @@ impl Typer {
             }
         }
 
-        if diverges {
-            return Type::Never;
-        }
+        self.store_expr_info(ctx, block.block_expr_id, self.registry.block_info.len());
+        self.registry.be_mut().block_info.push(BlockInfo {
+            needs_explicit_trap: void_only && diverges && !diverges_naturally,
+        });
 
-        // TODO: store type in code_block.id?
-        Type::Void
+        if diverges { Type::Never } else { Type::Void }
     }
 
     fn type_code_expr(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<(), Error> {
@@ -1285,11 +1283,7 @@ impl Typer {
                     };
                     let field_value_type = self.get_type(field_value_type_id);
 
-                    if !is_type_compatible(
-                        &self.registry,
-                        &struct_field.field_type,
-                        &field_value_type,
-                    ) {
+                    if !self.is_type_compatible(&struct_field.field_type, &field_value_type) {
                         self.report_error(Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
@@ -1331,7 +1325,7 @@ impl Typer {
                     };
                     let current_item_type = self.get_type(current_item_type_id);
 
-                    if !is_type_compatible(&self.registry, item_type, current_item_type) {
+                    if !self.is_type_compatible(item_type, current_item_type) {
                         self.report_error(Error {
                             message: format!(
                                 "Unexpected array element type: {}, expected: {}",
@@ -1377,7 +1371,7 @@ impl Typer {
                 let ok = self.get_type(result.ok);
                 let err = self.get_type(result.err);
 
-                if result_literal.is_ok && !is_type_compatible(&self.registry, ok, value_type) {
+                if result_literal.is_ok && !self.is_type_compatible(ok, value_type) {
                     self.report_error(Error {
                         message: format!(
                             "Cannot create result, Ok type mismatch. Got {}, expected: {}",
@@ -1388,7 +1382,7 @@ impl Typer {
                     });
                 }
 
-                if !result_literal.is_ok && !is_type_compatible(&self.registry, err, value_type) {
+                if !result_literal.is_ok && !self.is_type_compatible(err, value_type) {
                     return Err(Error {
                         message: format!(
                             "Cannot create result, Err type mismatch. Got {}, expected: {}",
@@ -1439,11 +1433,8 @@ impl Typer {
                 let rhs_type_id = self.type_code_expr_and_load(ctx, &infix_op.rhs)?;
                 let lhs_type_id = lhs_type_id_res?;
 
-                if !is_type_compatible(
-                    &self.registry,
-                    self.get_type(lhs_type_id),
-                    self.get_type(rhs_type_id),
-                ) {
+                if !self.is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id))
+                {
                     self.report_error(Error {
                         message: format!(
                             "Operands are not of the same type: lhs = {}, rhs = {}",
@@ -1644,11 +1635,8 @@ impl Typer {
 
                 if let Some(lhs_type_id) = lhs_type_id
                     && let Some(rhs_type_id) = rhs_type_id
-                    && !is_type_compatible(
-                        &self.registry,
-                        self.get_type(lhs_type_id),
-                        self.get_type(rhs_type_id),
-                    )
+                    && !self
+                        .is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id))
                 {
                     self.report_error(Error {
                         message: format!(
@@ -1721,8 +1709,7 @@ impl Typer {
                     }
 
                     if let Some(expr_type_id) = self.load_type(ctx, &call.args.items[0])
-                        && !is_type_compatible(
-                            &self.registry,
+                        && !self.is_type_compatible(
                             self.get_type(variant.variant_type_id),
                             self.get_type(expr_type_id),
                         )
@@ -1978,7 +1965,6 @@ impl Typer {
                     }
                 }
 
-                // TODO: string parameter is only needed to attach stored bytes, improve
                 if call.fn_name.repr == "inline_fn_call_loc" {
                     let mut inline_fn_call_loc = None;
 
@@ -2010,13 +1996,14 @@ impl Typer {
                         return Err(bad_args(call));
                     }
 
-                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
-                        return Err(bad_args(call));
-                    };
-
                     let bytes_info = self.process_const_string(
                         &inline_fn_call_loc.unwrap().to_string(&self.registry),
                     );
+
+                    // TODO: string parameter is only needed to attach stored bytes, improve
+                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
+                        return Err(bad_args(call));
+                    };
 
                     self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len());
                     self.registry.be_mut().stored_bytes.push(StoredExprBytes {
@@ -2110,7 +2097,7 @@ impl Typer {
                 }
 
                 let fn_return_type = &self.registry.functions[ctx.fn_index.unwrap()].type_.output;
-                if !is_type_compatible(&self.registry, fn_return_type, return_type) {
+                if !self.is_type_compatible(fn_return_type, return_type) {
                     self.reporter.error(Error {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
@@ -2660,7 +2647,7 @@ impl Typer {
     }
 
     fn get_fn_name_from_method(&self, receiver_type: &Type, method_name: &str) -> String {
-        let receiver_type = deref_rec(&self.registry, receiver_type);
+        let receiver_type = self.deref_rec(receiver_type);
 
         match receiver_type {
             Type::Seg(_) => format!("seg::{method_name}",),
@@ -2702,11 +2689,7 @@ impl Typer {
             let expected_expr_to_match_type = Type::Enum {
                 enum_index: enum_ctor.enum_index,
             };
-            if !is_type_compatible(
-                &self.registry,
-                &expected_expr_to_match_type,
-                &expr_to_match_type,
-            ) {
+            if !self.is_type_compatible(&expected_expr_to_match_type, &expr_to_match_type) {
                 self.report_error(Error {
                     message: format!(
                         "Unexpected type to match, expected: {}, got: {}",
@@ -2858,7 +2841,7 @@ impl Typer {
             });
         }
 
-        if all_good && !is_types_compatible(&self.registry, &fn_info.type_.inputs, &arg_types) {
+        if all_good && !self.is_types_compatible(&fn_info.type_.inputs, &arg_types) {
             return Err(Error {
                 message: format!(
                     "Invalid function arguments for function {}: [{}], expected [{}]",
@@ -2954,10 +2937,6 @@ impl Typer {
             );
         }
 
-        // TODO!: figure out why this has to be done here and not near `type_code_block` call
-        let inner_expr_id_offset = self.registry.expr_info.len() - body.expr_id_start;
-        self.extend_expr_info_storage(body.expr_id_count);
-
         let mut has_receiver = false;
         let mut arg_type_ids = Vec::new();
         if let Some(receiver_arg) = receiver_arg {
@@ -3016,7 +2995,7 @@ impl Typer {
             inline_fn_param_types.push(inline_fn_type);
         }
 
-        if !is_types_compatible(&self.registry, &inline_fn_param_types, &arg_type_ids) {
+        if !self.is_types_compatible(&inline_fn_param_types, &arg_type_ids) {
             return Err(Error {
                 message: format!(
                     "Invalid inline fn args, expected [{}], got [{}]",
@@ -3033,7 +3012,8 @@ impl Typer {
             &Type::Void
         };
 
-        ctx.expr_id_offset = inner_expr_id_offset;
+        ctx.expr_id_offset = self.registry.expr_info.len() - body.block_expr_id;
+        self.extend_expr_info_storage(body.expr_id_count);
 
         self.type_code_block(ctx, body, false);
 
@@ -3047,7 +3027,7 @@ impl Typer {
             .be_mut()
             .push(InlineCallInfo {
                 inline_fn_index: symbol.col_index,
-                inner_expr_id_offset,
+                inner_expr_id_offset: ctx.expr_id_offset,
                 return_type_id: self.intern_type(&return_type),
             });
 
@@ -3384,7 +3364,7 @@ impl Typer {
                     }
 
                     let container = self.build_type_(ctx, &ctr.items[0], true)?;
-                    let container = deref_rec(&self.registry, self.get_type(container));
+                    let container = self.deref_rec(self.get_type(container));
 
                     if let Type::Seg(seg) = container {
                         self.store_expr_info(ctx, ctr.id, seg.item);
@@ -3568,6 +3548,71 @@ impl Typer {
             ptr: offset,
             len: bytes_len,
         }
+    }
+
+    fn deref_rec<'a>(&self, type_: &'a Type) -> &'a Type {
+        match type_ {
+            Type::Pointer(ptr) => self.deref_rec(self.registry.get_type(ptr.pointee)),
+            _ => type_,
+        }
+    }
+
+    fn is_types_compatible(&self, slots: &[TypeId], values: &[TypeId]) -> bool {
+        if slots.len() != values.len() {
+            return false;
+        }
+
+        for i in 0..slots.len() {
+            if !self.is_type_compatible(
+                self.registry.get_type(slots[i]),
+                self.registry.get_type(values[i]),
+            ) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn is_type_compatible(&self, slot: &Type, value: &Type) -> bool {
+        if let Type::Pointer(ptr) = slot
+            && !ptr.is_sequence
+        {
+            if *value == Type::Null {
+                return true;
+            }
+
+            if let Type::Void = self.registry.get_type(ptr.pointee) {
+                if let Type::Pointer(_) = value {
+                    return true;
+                }
+            }
+
+            if let Type::Pointer(value_ptr) = value {
+                return self.is_type_compatible(
+                    self.registry.get_type(ptr.pointee),
+                    self.registry.get_type(value_ptr.pointee),
+                );
+            }
+        }
+
+        if let Type::Container(ctr) = value {
+            if let Type::Container(slot_ctr) = slot {
+                return self.is_type_compatible(
+                    self.registry.get_type(slot_ctr.container),
+                    self.registry.get_type(ctr.container),
+                ) && self.is_types_compatible(&slot_ctr.items, &ctr.items);
+            }
+
+            // TODO: allow this for self arguments only
+            return self.is_type_compatible(slot, self.registry.get_type(ctr.container));
+        }
+
+        if *value == Type::Never {
+            return true;
+        }
+
+        slot == value
     }
 
     fn push_const_expr_bytes(
@@ -3857,7 +3902,7 @@ pub fn get_include_info(expr: &TopLevelExpr) -> Result<Option<IncludeInfo>, Erro
     }
 }
 
-pub fn is_noop_cast(primitives1: &[Type], primitives2: &[Type]) -> bool {
+fn is_noop_cast(primitives1: &[Type], primitives2: &[Type]) -> bool {
     if primitives1.len() != primitives2.len() {
         return false;
     }
@@ -3963,13 +4008,6 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
         Type::Container(ctr) => {
             get_type_layout(registry, registry.get_type(ctr.container), layout);
         }
-    }
-}
-
-pub fn deref_rec<'a>(registry: &'a Registry, type_: &'a Type) -> &'a Type {
-    match type_ {
-        Type::Pointer(ptr) => deref_rec(registry, registry.get_type(ptr.pointee)),
-        _ => type_,
     }
 }
 
@@ -4121,7 +4159,7 @@ pub fn get_struct_field_info<'a>(
     })
 }
 
-pub fn get_infer_type_name(fn_param: &FnParam) -> Result<Option<&'static str>, Error> {
+fn get_infer_type_name(fn_param: &FnParam) -> Result<Option<&'static str>, Error> {
     let FnParamType::Type {
         expr: TypeExpr::Container(ctr),
     } = &fn_param.param_type
@@ -4154,68 +4192,7 @@ pub fn get_infer_type_name(fn_param: &FnParam) -> Result<Option<&'static str>, E
     Ok(Some(ident.repr))
 }
 
-pub fn is_types_compatible(registry: &Registry, slots: &[TypeId], values: &[TypeId]) -> bool {
-    if slots.len() != values.len() {
-        return false;
-    }
-
-    for i in 0..slots.len() {
-        if !is_type_compatible(
-            registry,
-            registry.get_type(slots[i]),
-            registry.get_type(values[i]),
-        ) {
-            return false;
-        }
-    }
-
-    true
-}
-
-pub fn is_type_compatible(registry: &Registry, slot: &Type, value: &Type) -> bool {
-    if let Type::Pointer(ptr) = slot
-        && !ptr.is_sequence
-    {
-        if *value == Type::Null {
-            return true;
-        }
-
-        if let Type::Void = registry.get_type(ptr.pointee) {
-            if let Type::Pointer(_) = value {
-                return true;
-            }
-        }
-
-        if let Type::Pointer(value_ptr) = value {
-            return is_type_compatible(
-                registry,
-                registry.get_type(ptr.pointee),
-                registry.get_type(value_ptr.pointee),
-            );
-        }
-    }
-
-    if let Type::Container(ctr) = value {
-        if let Type::Container(slot_ctr) = slot {
-            return is_type_compatible(
-                registry,
-                registry.get_type(slot_ctr.container),
-                registry.get_type(ctr.container),
-            ) && is_types_compatible(registry, &slot_ctr.items, &ctr.items);
-        }
-
-        // TODO: allow this for self arguments only
-        return is_type_compatible(registry, slot, registry.get_type(ctr.container));
-    }
-
-    if *value == Type::Never {
-        return true;
-    }
-
-    slot == value
-}
-
-pub fn is_naturally_divergent(expr: &CodeExpr) -> bool {
+fn is_naturally_divergent(expr: &CodeExpr) -> bool {
     match expr {
         CodeExpr::BoolLiteral(_)
         | CodeExpr::CharLiteral(_)

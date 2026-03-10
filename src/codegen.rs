@@ -210,7 +210,7 @@ impl CodeGenerator {
 
             self.enter_scope(ctx, ScopeKind::Function);
 
-            self.codegen_code_block(ctx, &mut wasm_expr.instrs, body, true);
+            self.codegen_code_block(ctx, &mut wasm_expr.instrs, body);
 
             self.exit_scope(ctx);
 
@@ -317,25 +317,18 @@ impl CodeGenerator {
         &mut self,
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
-        body: &CodeBlock,
-        void_only: bool,
+        block: &CodeBlock,
     ) {
-        let mut diverges = false;
-        let mut diverges_naturally = false;
-
-        for expr in &body.exprs {
-            if let Type::Never = self.get_expr_type(ctx, expr) {
-                diverges = true;
-                diverges_naturally = diverges_naturally || is_naturally_divergent(expr);
-            }
-
+        for expr in &block.exprs {
             self.codegen(ctx, instrs, expr);
         }
 
         self.emit_deferred(self.current_scope(ctx), instrs);
 
-        // TODO: move this decision to Typer, only emit if needed here
-        if void_only && diverges && !diverges_naturally {
+        let expr_info = self.get_expr_info(ctx, block.block_expr_id, block.loc);
+        let block_info = &self.registry.block_info[expr_info];
+
+        if block_info.needs_explicit_trap {
             instrs.push(WasmInstr::Unreachable);
         }
     }
@@ -853,7 +846,7 @@ impl CodeGenerator {
                     block_type: WasmBlockType::NoOut,
                 });
 
-                self.codegen_code_block(ctx, instrs, &then_block, true);
+                self.codegen_code_block(ctx, instrs, &then_block);
                 self.exit_scope(ctx);
 
                 match else_block {
@@ -861,7 +854,7 @@ impl CodeGenerator {
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
                         self.enter_scope(ctx, ScopeKind::Block);
-                        self.codegen_code_block(ctx, instrs, &code_block_expr, true);
+                        self.codegen_code_block(ctx, instrs, &code_block_expr);
                         self.exit_scope(ctx);
                     }
                     ElseBlock::ElseIf(code_expr) => {
@@ -897,7 +890,7 @@ impl CodeGenerator {
                 });
 
                 self.enter_scope(ctx, ScopeKind::Block);
-                self.codegen_code_block(ctx, instrs, &else_branch, true);
+                self.codegen_code_block(ctx, instrs, &else_branch);
                 self.exit_scope(ctx);
                 instrs.push(WasmInstr::BlockEnd);
             }
@@ -926,7 +919,7 @@ impl CodeGenerator {
                 }
 
                 self.enter_scope(ctx, ScopeKind::Loop);
-                self.codegen_code_block(ctx, instrs, body, true);
+                self.codegen_code_block(ctx, instrs, body);
                 self.exit_scope(ctx);
 
                 // implicit continue
@@ -1101,7 +1094,7 @@ impl CodeGenerator {
                                 self.codegen_local_set(instrs, item_type, item_local_index);
                             }
 
-                            self.codegen_code_block(ctx, instrs, &for_expr.body, true);
+                            self.codegen_code_block(ctx, instrs, &for_expr.body);
 
                             instrs.push(WasmInstr::BlockEnd);
                         }
@@ -1276,7 +1269,7 @@ impl CodeGenerator {
 
         self.current_scope(ctx).be_mut().expr_id_offset = call_info.inner_expr_id_offset;
 
-        self.codegen_code_block(ctx, instrs, body, false);
+        self.codegen_code_block(ctx, instrs, body);
 
         self.exit_scope(ctx);
     }
@@ -1316,7 +1309,7 @@ impl CodeGenerator {
 
         // catch error
         if let Some(catch_body) = catch_body {
-            self.codegen_code_block(ctx, instrs, catch_body, true);
+            self.codegen_code_block(ctx, instrs, catch_body);
         } else {
             // return default ok_type of function's result and caught error
             let fn_def = &self.registry.functions[ctx.fn_index.unwrap()];

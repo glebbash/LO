@@ -82,7 +82,7 @@ pub struct EnumDefVariant {
 
 pub struct CodeBlock {
     pub exprs: Vec<CodeExpr>,
-    pub expr_id_start: usize,
+    pub block_expr_id: usize,
     pub expr_id_count: usize,
     pub loc: Loc,
 }

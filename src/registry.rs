@@ -195,7 +195,11 @@ pub struct PooledString {
 
 pub struct BreakInfo {
     pub label_index: u32,
-    pub expr_type_id: usize,
+    pub expr_type_id: TypeId,
+}
+
+pub struct BlockInfo {
+    pub needs_explicit_trap: bool,
 }
 
 #[derive(Default)]
@@ -214,6 +218,7 @@ pub struct Registry {
     pub value_info: Vec<ValueInfo>, //            indexed by `ExprInfo` for `::IdentExpr`
     pub stored_bytes: Vec<StoredExprBytes>, //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
     pub breaks: Vec<BreakInfo>, //                indexed by `ExprInfo` for `::Break` and `::Continue`
+    pub block_info: Vec<BlockInfo>, //            indexed by `ExprInfo` for `::CodeBlock`
     pub globals: Vec<GlobalDef>, //               indexed by `col_index` when `kind = Global`
     pub locals: Vec<LocalDef>,  //                indexed by `col_index` when `kind = Local`
     pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
