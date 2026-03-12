@@ -423,13 +423,19 @@ impl CodeGenerator {
                 self.codegen(ctx, instrs, value.as_ref().unwrap());
             }
 
-            CodeExpr::Ident(ident) => {
-                let var = self.var_from_ident(ctx, ident);
+            CodeExpr::Ident(_)
+            | CodeExpr::FieldAccess(_)
+            | CodeExpr::PrefixOp(PrefixOpExpr {
+                op_tag: PrefixOpTag::Dereference,
+                ..
+            }) => {
+                let var = self.var_from_expr(ctx, expr).unwrap();
                 self.codegen_var_get(ctx, instrs, &var);
             }
+
             CodeExpr::Let(let_expr) => {
                 if let_expr.is_inline {
-                    // already handled in typer
+                    // was handled in typer
                     return;
                 }
 
@@ -444,10 +450,9 @@ impl CodeGenerator {
                     return;
                 }
 
-                let var = self.var_from_ident(ctx, &let_expr.name);
-                self.codegen_var_set_prepare(instrs, &var);
+                let local = self.get_local_info(ctx, let_expr.name.id, let_expr.name.loc);
                 self.codegen(ctx, instrs, &let_expr.value);
-                self.codegen_var_set(ctx, instrs, &var);
+                self.codegen_local_set(instrs, &local.var_type, local.local_index);
             }
             CodeExpr::Cast(CastExpr {
                 id: _,
@@ -464,26 +469,23 @@ impl CodeGenerator {
                     instrs.push(cast_op);
                 }
             }
-            CodeExpr::PrefixOp(PrefixOpExpr {
-                id: _,
-                op_tag,
-                expr,
-                op_loc: _,
-                loc,
-            }) => match op_tag {
+            CodeExpr::PrefixOp(prefix_op) => match prefix_op.op_tag {
+                // handled separately
+                PrefixOpTag::Dereference => unreachable!(),
+
                 PrefixOpTag::Reference => {
                     let Some(VarInfo::Stored(VarInfoStored {
                         mut address,
                         offset,
                         var_type: _,
-                    })) = self.var_from_expr(ctx, expr)
+                    })) = self.var_from_expr(ctx, &prefix_op.expr)
                     else {
                         // TODO!: move to typer
                         self.registry.reporter.abort_due_to_compiler_bug(
                             &format!(
                                 "Invalid reference expression. Only struct reference fields allowed.",
                             ),
-                            *loc,
+                            prefix_op.loc,
                         );
                     };
 
@@ -495,14 +497,10 @@ impl CodeGenerator {
                         kind: WasmBinaryOpKind::I32_ADD,
                     });
                 }
-                PrefixOpTag::Dereference => {
-                    let var = self.var_from_deref(ctx, expr);
-                    self.codegen_var_get(ctx, instrs, &var);
-                }
                 PrefixOpTag::Not => {
-                    self.codegen(ctx, instrs, expr);
+                    self.codegen(ctx, instrs, &prefix_op.expr);
 
-                    let operand_type = self.get_expr_type(ctx, expr);
+                    let operand_type = self.get_expr_type(ctx, &prefix_op.expr);
                     let mut wasm_components = Vec::new();
                     self.lower_type(&operand_type, &mut wasm_components);
 
@@ -532,12 +530,12 @@ impl CodeGenerator {
                     }
                 }
                 PrefixOpTag::Positive => {
-                    self.codegen(ctx, instrs, expr);
+                    self.codegen(ctx, instrs, &prefix_op.expr);
                 }
                 PrefixOpTag::Negative => {
-                    let operand_type = self.get_expr_type(ctx, expr);
+                    let operand_type = self.get_expr_type(ctx, &prefix_op.expr);
 
-                    if let CodeExpr::IntLiteral(int) = expr.as_ref() {
+                    if let CodeExpr::IntLiteral(int) = &prefix_op.expr.as_ref() {
                         if is_wide_int(operand_type).unwrap() {
                             instrs.push(WasmInstr::I64Const {
                                 value: -(int.value as i64),
@@ -555,26 +553,26 @@ impl CodeGenerator {
                     match wasm_components[0] {
                         WasmType::I32 => {
                             instrs.push(WasmInstr::I32Const { value: 0 });
-                            self.codegen(ctx, instrs, expr);
+                            self.codegen(ctx, instrs, &prefix_op.expr);
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I32_SUB,
                             });
                         }
                         WasmType::I64 => {
                             instrs.push(WasmInstr::I64Const { value: 0 });
-                            self.codegen(ctx, instrs, expr);
+                            self.codegen(ctx, instrs, &prefix_op.expr);
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I64_SUB,
                             });
                         }
                         WasmType::F32 => {
-                            self.codegen(ctx, instrs, expr);
+                            self.codegen(ctx, instrs, &prefix_op.expr);
                             instrs.push(WasmInstr::UnaryOp {
                                 kind: WasmUnaryOpKind::F32_NEG,
                             });
                         }
                         WasmType::F64 => {
-                            self.codegen(ctx, instrs, expr);
+                            self.codegen(ctx, instrs, &prefix_op.expr);
                             instrs.push(WasmInstr::UnaryOp {
                                 kind: WasmUnaryOpKind::F64_NEG,
                             });
@@ -596,12 +594,13 @@ impl CodeGenerator {
                     };
 
                     self.codegen_var_set_prepare(instrs, &var);
-                    self.codegen_var_get(ctx, instrs, &var);
-                    self.codegen(ctx, instrs, &infix_op.rhs);
-                    instrs.push(WasmInstr::BinaryOp {
-                        kind: op_info.op_kind.clone(),
-                    });
-
+                    {
+                        self.codegen_var_get(ctx, instrs, &var);
+                        self.codegen(ctx, instrs, &infix_op.rhs);
+                        instrs.push(WasmInstr::BinaryOp {
+                            kind: op_info.op_kind.clone(),
+                        });
+                    }
                     self.codegen_var_set(ctx, instrs, &var);
                     return;
                 }
@@ -613,28 +612,18 @@ impl CodeGenerator {
                 });
             }
 
-            CodeExpr::Assign(AssignExpr {
-                id: _,
-                op_loc,
-                lhs,
-                rhs,
-                loc: _,
-            }) => {
-                let Some(var) = self.var_from_expr(ctx, lhs) else {
+            CodeExpr::Assign(assign) => {
+                let Some(var) = self.var_from_expr(ctx, &assign.lhs) else {
                     // TODO!: move to typer
                     self.registry.reporter.abort_due_to_compiler_bug(
                         &format!("Cannot perform assignment: invalid lhs"),
-                        *op_loc,
+                        assign.op_loc,
                     );
                 };
 
                 self.codegen_var_set_prepare(instrs, &var);
-                self.codegen(ctx, instrs, rhs);
+                self.codegen(ctx, instrs, &assign.rhs);
                 self.codegen_var_set(ctx, instrs, &var);
-            }
-            CodeExpr::FieldAccess(field_access) => {
-                let var = self.var_from_field_access(ctx, field_access);
-                self.codegen_var_get(ctx, instrs, &var);
             }
 
             CodeExpr::FnCall(FnCallExpr {
@@ -659,20 +648,20 @@ impl CodeGenerator {
                     }
                 }
             }
-            CodeExpr::MethodCall(MethodCallExpr {
-                id: call_expr_id,
-                lhs,
-                field_name: _,
-                args,
-                loc,
-            }) => {
-                let call_info_id = self.get_expr_info(ctx, *call_expr_id, *loc);
+            CodeExpr::MethodCall(method_call) => {
+                let call_info_id = self.get_expr_info(ctx, method_call.id, method_call.loc);
                 let call_info = &self.registry.call_info[call_info_id];
 
                 match call_info.value {
                     CallInfoValue::EnumCtor(_) => unreachable!(),
                     CallInfoValue::FnCall(fn_index) => {
-                        self.codegen_fn_call(ctx, instrs, fn_index, Some(lhs), &args.items);
+                        self.codegen_fn_call(
+                            ctx,
+                            instrs,
+                            fn_index,
+                            Some(&method_call.lhs),
+                            &method_call.args.items,
+                        );
                     }
                 }
             }
@@ -770,12 +759,8 @@ impl CodeGenerator {
                     call.fn_name.loc,
                 );
             }
-            CodeExpr::Sizeof(SizeofExpr {
-                id: _,
-                type_expr,
-                loc: _,
-            }) => {
-                let type_ = self.get_type_expr_value(ctx, type_expr);
+            CodeExpr::Sizeof(sizeof) => {
+                let type_ = self.get_type_expr_value(ctx, &sizeof.type_expr);
                 let mut type_layout = TypeLayout::new();
                 get_type_layout(&self.registry, &type_, &mut type_layout);
 
@@ -784,34 +769,19 @@ impl CodeGenerator {
                 });
             }
 
-            CodeExpr::Paren(ParenExpr {
-                id: _,
-                expr,
-                has_trailing_comma: _,
-                loc: _,
-            }) => {
-                self.codegen(ctx, instrs, expr);
+            CodeExpr::Paren(paren) => {
+                self.codegen(ctx, instrs, &paren.expr);
             }
-            CodeExpr::Return(ReturnExpr {
-                id: _,
-                expr,
-                loc: _,
-            }) => {
-                if let Some(return_expr) = expr {
+            CodeExpr::Return(return_expr) => {
+                if let Some(return_expr) = &return_expr.expr {
                     self.codegen(ctx, instrs, return_expr);
                 };
 
                 self.emit_deferred_for_return(ctx, instrs);
                 instrs.push(WasmInstr::Return);
             }
-            CodeExpr::If(IfExpr {
-                id: _,
-                cond,
-                then_block,
-                else_block,
-                loc: _,
-            }) => {
-                match cond {
+            CodeExpr::If(if_expr) => {
+                match &if_expr.cond {
                     IfCond::Expr(expr) => {
                         self.codegen(ctx, instrs, expr);
 
@@ -839,10 +809,10 @@ impl CodeGenerator {
                     block_type: WasmBlockType::NoOut,
                 });
 
-                self.codegen_code_block(ctx, instrs, &then_block);
+                self.codegen_code_block(ctx, instrs, &if_expr.then_block);
                 self.exit_scope(ctx);
 
-                match else_block {
+                match &if_expr.else_block {
                     ElseBlock::None => {}
                     ElseBlock::Else(code_block_expr) => {
                         instrs.push(WasmInstr::Else);
@@ -860,13 +830,8 @@ impl CodeGenerator {
 
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::Match(MatchExpr {
-                id: _,
-                header,
-                else_branch,
-                loc: _,
-            }) => {
-                let enum_ctor = self.codegen_match_header(ctx, instrs, header);
+            CodeExpr::Match(match_expr) => {
+                let enum_ctor = self.codegen_match_header(ctx, instrs, &match_expr.header);
 
                 // pop enum's variant from the stack and compare it to the expected variant
                 // if it's not equal then `else_branch`` must run
@@ -883,16 +848,11 @@ impl CodeGenerator {
                 });
 
                 self.enter_scope(ctx, ScopeKind::Block);
-                self.codegen_code_block(ctx, instrs, &else_branch);
+                self.codegen_code_block(ctx, instrs, &match_expr.else_branch);
                 self.exit_scope(ctx);
                 instrs.push(WasmInstr::BlockEnd);
             }
-            CodeExpr::While(WhileExpr {
-                id: _,
-                cond,
-                body,
-                loc: _,
-            }) => {
+            CodeExpr::While(while_expr) => {
                 instrs.push(WasmInstr::BlockStart {
                     block_kind: WasmBlockKind::Block,
                     block_type: WasmBlockType::NoOut,
@@ -902,7 +862,7 @@ impl CodeGenerator {
                     block_type: WasmBlockType::NoOut,
                 });
 
-                if let Some(cond) = cond {
+                if let Some(cond) = &while_expr.cond {
                     self.codegen(ctx, instrs, cond);
 
                     instrs.push(WasmInstr::UnaryOp {
@@ -912,7 +872,7 @@ impl CodeGenerator {
                 }
 
                 self.enter_scope(ctx, ScopeKind::Loop);
-                self.codegen_code_block(ctx, instrs, body);
+                self.codegen_code_block(ctx, instrs, &while_expr.body);
                 self.exit_scope(ctx);
 
                 // implicit continue
@@ -922,9 +882,8 @@ impl CodeGenerator {
                 instrs.push(WasmInstr::BlockEnd);
             }
             CodeExpr::For(for_expr) => {
-                let item_expr_info = self.get_expr_info(ctx, for_expr.item.id, for_expr.item.loc);
-                let item_value_info = &self.registry.value_info[item_expr_info];
-                let item_type = self.get_type(item_value_info.type_id);
+                let item_local = self.get_local_info(ctx, for_expr.item.id, for_expr.item.loc);
+                let item_type = &item_local.var_type;
 
                 self.enter_scope(ctx, ScopeKind::ForLoop);
 
@@ -936,13 +895,8 @@ impl CodeGenerator {
 
                 match &for_expr.iterator {
                     ForExprIterator::Range { start, end } => {
-                        counter_type = item_type.clone();
-                        let VarInfo::Local(counter_local) =
-                            self.var_from_ident(ctx, &for_expr.item)
-                        else {
-                            unreachable!()
-                        };
-                        counter_local_index = counter_local.local_index;
+                        counter_type = item_local.var_type.clone();
+                        counter_local_index = item_local.local_index;
 
                         range_end_local_index = self.define_unnamed_local(ctx, &counter_type);
 
@@ -973,12 +927,7 @@ impl CodeGenerator {
                             );
                             step = item_layout.byte_size;
 
-                            let VarInfo::Local(counter_local) =
-                                self.var_from_ident(ctx, &for_expr.item)
-                            else {
-                                unreachable!()
-                            };
-                            counter_local_index = counter_local.local_index;
+                            counter_local_index = item_local.local_index;
                         } else {
                             let mut item_layout = TypeLayout::new();
                             get_type_layout(&self.registry, item_type, &mut item_layout);
@@ -986,11 +935,6 @@ impl CodeGenerator {
 
                             counter_local_index = self.define_unnamed_local(ctx, &counter_type);
 
-                            let VarInfo::Local(item_local) =
-                                self.var_from_ident(ctx, &for_expr.item)
-                            else {
-                                unreachable!()
-                            };
                             item_local_index = Some(item_local.local_index);
                         }
 
@@ -1155,7 +1099,7 @@ impl CodeGenerator {
                 self.codegen(ctx, instrs, &pipe.lhs);
 
                 let lhs_var = self.get_local_info(ctx, pipe.bind_id, pipe.op_loc);
-                self.codegen_var_set(ctx, instrs, &VarInfo::Local(lhs_var));
+                self.codegen_local_set(instrs, &lhs_var.var_type, lhs_var.local_index);
                 self.codegen(ctx, instrs, &pipe.rhs);
             }
             CodeExpr::Defer(DeferExpr {
@@ -1210,10 +1154,9 @@ impl CodeGenerator {
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
     ) -> &EnumConstructor {
-        let local = self.var_from_ident(ctx, &header.variant_bind);
-        self.codegen_var_set_prepare(instrs, &local);
+        let local = self.get_local_info(ctx, header.variant_bind.id, header.variant_bind.loc);
         self.codegen(ctx, instrs, &header.expr_to_match);
-        self.codegen_var_set(ctx, instrs, &local);
+        self.codegen_local_set(instrs, &local.var_type, local.local_index);
 
         let expr_info = self.get_expr_info(ctx, header.variant_name.id, header.variant_name.loc);
         let value_info = &self.registry.value_info[expr_info];
@@ -1282,15 +1225,15 @@ impl CodeGenerator {
         self.codegen(ctx, instrs, expr);
 
         // pop error
-        let err_var = VarInfo::Local(self.get_local_info(ctx, err_bind_id, expr.loc()));
-        self.codegen_var_set(ctx, instrs, &err_var);
+        let err_local = self.get_local_info(ctx, err_bind_id, expr.loc());
+        self.codegen_local_set(instrs, &err_local.var_type, err_local.local_index);
 
         // pop ok
         let ok_local = self.get_local_info(ctx, ok_bind_id, expr.loc());
         self.codegen_local_set(instrs, &ok_local.var_type, ok_local.local_index);
 
         // cond: error != 0
-        self.codegen_var_get(ctx, instrs, &err_var);
+        self.codegen_local_get(instrs, &err_local.var_type, err_local.local_index);
 
         let in_out_type_index = self.get_block_inout_type(&[], &ok_local.var_type);
         instrs.push(WasmInstr::BlockStart {
@@ -1310,7 +1253,7 @@ impl CodeGenerator {
                 unreachable!()
             };
             self.codegen_default_value(ctx, instrs, self.get_type(fn_result.ok));
-            self.codegen_var_get(ctx, instrs, &err_var);
+            self.codegen_local_get(instrs, &err_local.var_type, err_local.local_index);
 
             self.emit_deferred_for_return(ctx, instrs);
             instrs.push(WasmInstr::Return);
@@ -1319,11 +1262,381 @@ impl CodeGenerator {
         instrs.push(WasmInstr::Else);
 
         // no error, push ok value
-        self.codegen_var_get(ctx, instrs, &VarInfo::Local(ok_local));
+        self.codegen_local_get(instrs, &ok_local.var_type, ok_local.local_index);
 
         instrs.push(WasmInstr::BlockEnd);
 
         self.exit_scope(ctx); // exit catch scope
+    }
+
+    fn get_block_inout_type(&self, inputs: &[Type], output: &Type) -> u32 {
+        let mut inout_fn_type = WasmFnType {
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        };
+        for input in inputs {
+            self.lower_type(input, &mut inout_fn_type.inputs);
+        }
+        self.lower_type(output, &mut inout_fn_type.outputs);
+
+        for (fn_type, type_index) in self.wasm_fn_types.iter().zip(0..) {
+            if *fn_type == inout_fn_type {
+                return type_index;
+            }
+        }
+
+        self.wasm_fn_types.be_mut().push(inout_fn_type);
+        self.wasm_fn_types.len() as u32 - 1
+    }
+
+    fn var_from_expr(&mut self, ctx: &mut ExprContext, expr: &CodeExpr) -> Option<VarInfo> {
+        Some(match expr {
+            CodeExpr::Paren(paren) => return self.var_from_expr(ctx, &paren.expr),
+
+            CodeExpr::Ident(var_name) => {
+                let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc);
+                let value_info = &self.registry.value_info[expr_info];
+
+                match value_info.kind {
+                    ValueKind::Global => {
+                        let global = &self.registry.globals[value_info.col_index];
+
+                        VarInfo::Global(VarInfoGlobal {
+                            global_index: global.wasm_global_index,
+                            var_type: self.get_type(global.type_id).clone(),
+                        })
+                    }
+                    ValueKind::Const => {
+                        let const_def = &self.registry.constants[value_info.col_index];
+
+                        VarInfo::Const(VarInfoConst {
+                            const_def: const_def.relax(),
+                            loc: var_name.loc,
+                        })
+                    }
+                    ValueKind::EnumConstructor => {
+                        let enum_ctor = &self.registry.enum_ctors[value_info.col_index];
+
+                        VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
+                            variant_index: enum_ctor.variant_index,
+                            loc: var_name.loc,
+                        })
+                    }
+                    ValueKind::Local => {
+                        let local = &self.registry.locals[value_info.col_index];
+
+                        VarInfo::Local(VarInfoLocal {
+                            local_index: local.wasm_local_index,
+                            var_type: local.local_type.clone(),
+                        })
+                    }
+                }
+            }
+            CodeExpr::PrefixOp(prefix_op) => match prefix_op.op_tag {
+                PrefixOpTag::Dereference => {
+                    let addr_type = self.get_expr_type(ctx, &prefix_op.expr);
+
+                    let Type::Pointer(PointerType {
+                        pointee,
+                        is_sequence: false,
+                        is_nullable: _,
+                    }) = &addr_type
+                    else {
+                        unreachable!()
+                    };
+
+                    VarInfo::Stored(VarInfoStored {
+                        address: self.build_code_unit(ctx, &prefix_op.expr),
+                        offset: 0,
+                        var_type: self.get_type(*pointee).clone(),
+                    })
+                }
+                _ => return None,
+            },
+            CodeExpr::FieldAccess(field_access) => {
+                let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref());
+
+                let field = get_struct_field_info(&self.registry, &lhs_type, field_access)
+                    .ok()
+                    .unwrap();
+
+                if let Type::Pointer(ptr) = lhs_type
+                    && !ptr.is_sequence
+                {
+                    return Some(VarInfo::Stored(VarInfoStored {
+                        address: self.build_code_unit(ctx, &field_access.lhs),
+                        offset: field.byte_offset,
+                        var_type: field.field_type.clone(),
+                    }));
+                }
+
+                if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref()) {
+                    match var {
+                        // these are handled as struct values
+                        VarInfo::Const(_) | VarInfo::VoidEnumValue(_) => {}
+                        VarInfo::Global(VarInfoGlobal {
+                            global_index,
+                            var_type: _,
+                        }) => {
+                            return Some(VarInfo::Global(VarInfoGlobal {
+                                global_index: global_index + field.field_index,
+                                var_type: field.field_type.clone(),
+                            }));
+                        }
+                        VarInfo::Local(VarInfoLocal {
+                            local_index,
+                            var_type: _,
+                        }) => {
+                            return Some(VarInfo::Local(VarInfoLocal {
+                                local_index: local_index + field.field_index,
+                                var_type: field.field_type.clone(),
+                            }));
+                        }
+                        VarInfo::Stored(VarInfoStored {
+                            address,
+                            offset,
+                            var_type: _,
+                        }) => {
+                            return Some(VarInfo::Stored(VarInfoStored {
+                                address,
+                                offset: offset + field.byte_offset,
+                                var_type: field.field_type.clone(),
+                            }));
+                        }
+                        VarInfo::StructValueField(VarInfoStructValueField {
+                            struct_value,
+                            drops_before,
+                            drops_after,
+                            var_type: _,
+                            loc: _,
+                        }) => {
+                            let struct_components_count =
+                                count_primitive_components(&self.registry, &lhs_type);
+                            let field_components_count =
+                                count_primitive_components(&self.registry, &field.field_type);
+
+                            return Some(VarInfo::StructValueField(VarInfoStructValueField {
+                                struct_value,
+                                drops_before: drops_before + struct_components_count
+                                    - field.field_index
+                                    - field_components_count,
+                                drops_after: drops_after + field.field_index,
+                                var_type: field.field_type.clone(),
+                                loc: field_access.field_name.loc,
+                            }));
+                        }
+                    };
+                };
+
+                let struct_components_count = count_primitive_components(&self.registry, &lhs_type);
+                let field_components_count =
+                    count_primitive_components(&self.registry, &field.field_type);
+
+                VarInfo::StructValueField(VarInfoStructValueField {
+                    struct_value: self.build_code_unit(ctx, &field_access.lhs),
+                    drops_before: struct_components_count
+                        - field.field_index
+                        - field_components_count,
+                    drops_after: field.field_index,
+                    var_type: field.field_type.clone(),
+                    loc: field_access.field_name.loc,
+                })
+            }
+
+            _ => return None,
+        })
+    }
+
+    fn codegen_var_get(
+        &mut self,
+        ctx: &mut ExprContext,
+        instrs: &mut Vec<WasmInstr>,
+        var: &VarInfo,
+    ) {
+        match var {
+            VarInfo::Local(VarInfoLocal {
+                local_index,
+                var_type,
+            }) => {
+                self.codegen_local_get(instrs, var_type, *local_index);
+            }
+            VarInfo::Global(VarInfoGlobal {
+                global_index,
+                var_type,
+            }) => {
+                for i in 0..count_primitive_components(&self.registry, var_type) {
+                    instrs.push(WasmInstr::GlobalGet {
+                        global_index: global_index + i,
+                    });
+                }
+            }
+            VarInfo::Const(VarInfoConst { const_def, loc: _ }) => {
+                self.enter_scope(ctx, ScopeKind::InlineFn);
+                self.current_scope(ctx).be_mut().expr_id_offset = const_def.inner_expr_id_offset;
+
+                self.codegen(ctx, instrs, &const_def.expr);
+
+                self.exit_scope(ctx);
+            }
+            VarInfo::VoidEnumValue(VarInfoVoidEnumValue { variant_index, .. }) => {
+                instrs.push(WasmInstr::I32Const {
+                    value: *variant_index as i32,
+                })
+            }
+            VarInfo::Stored(VarInfoStored {
+                address,
+                offset,
+                var_type,
+            }) => {
+                let mut loads = Vec::new();
+                self.codegen_load_or_store(&mut loads, &var_type, *offset, false);
+
+                if loads.len() == 0 {
+                    return;
+                }
+
+                for instr in &address.instrs {
+                    instrs.push(instr.clone());
+                }
+
+                if loads.len() > 1 {
+                    let addr_local_index = self.create_or_get_addr_local(ctx);
+                    instrs.push(WasmInstr::LocalSet {
+                        local_index: addr_local_index,
+                    });
+
+                    for load in loads.into_iter().rev() {
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: addr_local_index,
+                        });
+                        instrs.push(load);
+                    }
+                } else {
+                    instrs.append(&mut loads);
+                }
+            }
+            VarInfo::StructValueField(VarInfoStructValueField {
+                struct_value,
+                drops_before,
+                drops_after,
+                var_type,
+                loc: _,
+            }) => {
+                for instr in &struct_value.instrs {
+                    instrs.push(instr.clone());
+                }
+                for _ in 0..*drops_before {
+                    instrs.push(WasmInstr::Drop);
+                }
+
+                if *drops_after > 0 {
+                    let local_index = self.define_unnamed_local(ctx, var_type);
+
+                    self.codegen_local_set(instrs, &var_type, local_index);
+
+                    for _ in 0..*drops_after {
+                        instrs.push(WasmInstr::Drop);
+                    }
+
+                    self.codegen_local_get(instrs, &var_type, local_index);
+                }
+            }
+        }
+    }
+
+    fn codegen_local_get(&self, instrs: &mut Vec<WasmInstr>, local_type: &Type, local_index: u32) {
+        for i in 0..count_primitive_components(&self.registry, local_type) {
+            instrs.push(WasmInstr::LocalGet {
+                local_index: local_index + i,
+            });
+        }
+    }
+
+    // should be called before set's value is pushed to the stack
+    fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
+        match var {
+            VarInfo::Stored(VarInfoStored {
+                address,
+                offset: _,
+                var_type,
+            }) => {
+                if count_primitive_components(&self.registry, var_type) == 0 {
+                    return;
+                }
+
+                for instr in &address.instrs {
+                    instrs.push(instr.clone());
+                }
+            }
+            _ => {}
+        };
+    }
+
+    fn codegen_var_set(&self, ctx: &mut ExprContext, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
+        match var {
+            VarInfo::Local(VarInfoLocal {
+                local_index,
+                var_type,
+            }) => {
+                self.codegen_local_set(instrs, var_type, *local_index);
+            }
+            VarInfo::Global(VarInfoGlobal {
+                global_index,
+                var_type,
+            }) => {
+                for i in (0..count_primitive_components(&self.registry, var_type)).rev() {
+                    instrs.push(WasmInstr::GlobalSet {
+                        global_index: global_index + i,
+                    });
+                }
+            }
+            VarInfo::Stored(VarInfoStored {
+                address: _,
+                offset,
+                var_type,
+            }) => {
+                let mut stores = Vec::new();
+                self.codegen_load_or_store(&mut stores, &var_type, *offset, true);
+
+                if stores.len() > 1 {
+                    let tmp_value_local_index = self.define_unnamed_local(ctx, var_type);
+                    self.codegen_local_set(instrs, var_type, tmp_value_local_index);
+
+                    let addr_local_index = self.create_or_get_addr_local(ctx);
+                    instrs.push(WasmInstr::LocalSet {
+                        local_index: addr_local_index,
+                    });
+
+                    for (store, i) in stores.into_iter().rev().zip(0..) {
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: addr_local_index,
+                        });
+                        instrs.push(WasmInstr::LocalGet {
+                            local_index: tmp_value_local_index + i,
+                        });
+                        instrs.push(store);
+                    }
+                } else {
+                    instrs.append(&mut stores);
+                }
+            }
+            VarInfo::Const(VarInfoConst { loc, .. })
+            | VarInfo::VoidEnumValue(VarInfoVoidEnumValue { loc, .. })
+            | VarInfo::StructValueField(VarInfoStructValueField { loc, .. }) => {
+                // TODO!: move to typer
+                self.registry
+                    .reporter
+                    .abort_due_to_compiler_bug(&format!("Cannot mutate a constant"), *loc);
+            }
+        };
+    }
+
+    fn codegen_local_set(&self, instrs: &mut Vec<WasmInstr>, local_type: &Type, local_index: u32) {
+        for i in (0..count_primitive_components(&self.registry, local_type)).rev() {
+            instrs.push(WasmInstr::LocalSet {
+                local_index: local_index + i,
+            });
+        }
     }
 
     fn codegen_load_or_store(
@@ -1498,211 +1811,6 @@ impl CodeGenerator {
         }
     }
 
-    fn get_block_inout_type(&self, inputs: &[Type], output: &Type) -> u32 {
-        let mut inout_fn_type = WasmFnType {
-            inputs: Vec::new(),
-            outputs: Vec::new(),
-        };
-        for input in inputs {
-            self.lower_type(input, &mut inout_fn_type.inputs);
-        }
-        self.lower_type(output, &mut inout_fn_type.outputs);
-
-        for (fn_type, type_index) in self.wasm_fn_types.iter().zip(0..) {
-            if *fn_type == inout_fn_type {
-                return type_index;
-            }
-        }
-
-        self.wasm_fn_types.be_mut().push(inout_fn_type);
-        self.wasm_fn_types.len() as u32 - 1
-    }
-
-    fn codegen_var_get(
-        &mut self,
-        ctx: &mut ExprContext,
-        instrs: &mut Vec<WasmInstr>,
-        var: &VarInfo,
-    ) {
-        match var {
-            VarInfo::Local(VarInfoLocal {
-                local_index,
-                var_type,
-            }) => {
-                for i in 0..count_primitive_components(&self.registry, var_type) {
-                    instrs.push(WasmInstr::LocalGet {
-                        local_index: local_index + i,
-                    });
-                }
-            }
-            VarInfo::Global(VarInfoGlobal {
-                global_index,
-                var_type,
-            }) => {
-                for i in 0..count_primitive_components(&self.registry, var_type) {
-                    instrs.push(WasmInstr::GlobalGet {
-                        global_index: global_index + i,
-                    });
-                }
-            }
-            VarInfo::Const(VarInfoConst { const_def, loc: _ }) => {
-                self.enter_scope(ctx, ScopeKind::InlineFn);
-                self.current_scope(ctx).be_mut().expr_id_offset = const_def.inner_expr_id_offset;
-
-                self.codegen(ctx, instrs, &const_def.expr);
-
-                self.exit_scope(ctx);
-            }
-            VarInfo::VoidEnumValue(VarInfoVoidEnumValue { variant_index, .. }) => {
-                instrs.push(WasmInstr::I32Const {
-                    value: *variant_index as i32,
-                })
-            }
-            VarInfo::Stored(VarInfoStored {
-                address,
-                offset,
-                var_type,
-            }) => {
-                let mut loads = Vec::new();
-                self.codegen_load_or_store(&mut loads, &var_type, *offset, false);
-
-                if loads.len() == 0 {
-                    return;
-                }
-
-                for instr in &address.instrs {
-                    instrs.push(instr.clone());
-                }
-
-                if loads.len() > 1 {
-                    let addr_local_index = self.create_or_get_addr_local(ctx);
-                    instrs.push(WasmInstr::LocalSet {
-                        local_index: addr_local_index,
-                    });
-
-                    for load in loads.into_iter().rev() {
-                        instrs.push(WasmInstr::LocalGet {
-                            local_index: addr_local_index,
-                        });
-                        instrs.push(load);
-                    }
-                } else {
-                    instrs.append(&mut loads);
-                }
-            }
-            VarInfo::StructValueField(VarInfoStructValueField {
-                struct_value,
-                drops_before,
-                drops_after,
-                var_type,
-                loc: _,
-            }) => {
-                for instr in &struct_value.instrs {
-                    instrs.push(instr.clone());
-                }
-                for _ in 0..*drops_before {
-                    instrs.push(WasmInstr::Drop);
-                }
-
-                if *drops_after > 0 {
-                    let local_index = self.define_unnamed_local(ctx, var_type);
-
-                    let var = VarInfo::Local(VarInfoLocal {
-                        local_index,
-                        var_type: var_type.clone(),
-                    });
-                    self.codegen_var_set_prepare(instrs, &var);
-                    self.codegen_var_set(ctx, instrs, &var);
-
-                    for _ in 0..*drops_after {
-                        instrs.push(WasmInstr::Drop);
-                    }
-
-                    self.codegen_var_get(ctx, instrs, &var);
-                }
-            }
-        }
-    }
-
-    // should be called before set's value is pushed to the stack
-    fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
-        match var {
-            VarInfo::Stored(VarInfoStored {
-                address,
-                offset: _,
-                var_type,
-            }) => {
-                if count_primitive_components(&self.registry, var_type) == 0 {
-                    return;
-                }
-
-                for instr in &address.instrs {
-                    instrs.push(instr.clone());
-                }
-            }
-            _ => {}
-        };
-    }
-
-    fn codegen_var_set(&self, ctx: &mut ExprContext, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
-        match var {
-            VarInfo::Local(VarInfoLocal {
-                local_index,
-                var_type,
-            }) => {
-                self.codegen_local_set(instrs, var_type, *local_index);
-            }
-            VarInfo::Global(VarInfoGlobal {
-                global_index,
-                var_type,
-            }) => {
-                for i in (0..count_primitive_components(&self.registry, var_type)).rev() {
-                    instrs.push(WasmInstr::GlobalSet {
-                        global_index: global_index + i,
-                    });
-                }
-            }
-            VarInfo::Stored(VarInfoStored {
-                address: _,
-                offset,
-                var_type,
-            }) => {
-                let mut stores = Vec::new();
-                self.codegen_load_or_store(&mut stores, &var_type, *offset, true);
-
-                if stores.len() > 1 {
-                    let tmp_value_local_index = self.define_unnamed_local(ctx, var_type);
-                    self.codegen_local_set(instrs, var_type, tmp_value_local_index);
-
-                    let addr_local_index = self.create_or_get_addr_local(ctx);
-                    instrs.push(WasmInstr::LocalSet {
-                        local_index: addr_local_index,
-                    });
-
-                    for (store, i) in stores.into_iter().rev().zip(0..) {
-                        instrs.push(WasmInstr::LocalGet {
-                            local_index: addr_local_index,
-                        });
-                        instrs.push(WasmInstr::LocalGet {
-                            local_index: tmp_value_local_index + i,
-                        });
-                        instrs.push(store);
-                    }
-                } else {
-                    instrs.append(&mut stores);
-                }
-            }
-            VarInfo::Const(VarInfoConst { loc, .. })
-            | VarInfo::VoidEnumValue(VarInfoVoidEnumValue { loc, .. })
-            | VarInfo::StructValueField(VarInfoStructValueField { loc, .. }) => {
-                // TODO!: move to typer
-                self.registry
-                    .reporter
-                    .abort_due_to_compiler_bug(&format!("Cannot mutate a constant"), *loc);
-            }
-        };
-    }
-
     fn get_local_info(&self, ctx: &ExprContext, bind_id: ExprId, bind_loc: Loc) -> VarInfoLocal {
         let expr_info = self.get_expr_info(ctx, bind_id, bind_loc);
         let value_info = &self.registry.value_info[expr_info];
@@ -1729,14 +1837,6 @@ impl CodeGenerator {
         return addr_local_index;
     }
 
-    fn codegen_local_set(&self, instrs: &mut Vec<WasmInstr>, local_type: &Type, local_index: u32) {
-        for i in (0..count_primitive_components(&self.registry, local_type)).rev() {
-            instrs.push(WasmInstr::LocalSet {
-                local_index: local_index + i,
-            });
-        }
-    }
-
     fn emit_deferred(&self, scope: &Scope, instrs: &mut Vec<WasmInstr>) {
         for expr in scope.deferred_exprs.iter().rev() {
             for instr in &expr.instrs {
@@ -1749,182 +1849,6 @@ impl CodeGenerator {
         for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
             self.emit_deferred(scope, instrs);
         }
-    }
-
-    fn var_from_expr(&mut self, ctx: &mut ExprContext, expr: &CodeExpr) -> Option<VarInfo> {
-        match expr {
-            CodeExpr::Ident(ident) => Some(self.var_from_ident(ctx, ident)),
-            CodeExpr::FieldAccess(field_access) => {
-                Some(self.var_from_field_access(ctx, field_access))
-            }
-            CodeExpr::Paren(ParenExpr {
-                id: _,
-                expr,
-                has_trailing_comma: _,
-                loc: _,
-            }) => self.var_from_expr(ctx, expr),
-            CodeExpr::PrefixOp(PrefixOpExpr {
-                id: _,
-                op_tag,
-                expr,
-                op_loc: _,
-                loc: _,
-            }) => match op_tag {
-                PrefixOpTag::Dereference => Some(self.var_from_deref(ctx, expr)),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    fn var_from_ident(&self, ctx: &ExprContext, var_name: &IdentExpr) -> VarInfo {
-        let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc);
-        let value_info = &self.registry.value_info[expr_info];
-
-        match value_info.kind {
-            ValueKind::Global => {
-                let global = &self.registry.globals[value_info.col_index];
-
-                VarInfo::Global(VarInfoGlobal {
-                    global_index: global.wasm_global_index,
-                    var_type: self.get_type(global.type_id).clone(),
-                })
-            }
-            ValueKind::Const => {
-                let const_def = &self.registry.constants[value_info.col_index];
-
-                VarInfo::Const(VarInfoConst {
-                    const_def: const_def.relax(),
-                    loc: var_name.loc,
-                })
-            }
-            ValueKind::EnumConstructor => {
-                let enum_ctor = &self.registry.enum_ctors[value_info.col_index];
-
-                VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
-                    variant_index: enum_ctor.variant_index,
-                    loc: var_name.loc,
-                })
-            }
-            ValueKind::Local => {
-                let local = &self.registry.locals[value_info.col_index];
-
-                VarInfo::Local(VarInfoLocal {
-                    local_index: local.wasm_local_index,
-                    var_type: local.local_type.clone(),
-                })
-            }
-        }
-    }
-
-    fn var_from_field_access(
-        &mut self,
-        ctx: &mut ExprContext,
-        field_access: &FieldAccessExpr,
-    ) -> VarInfo {
-        let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref());
-
-        let field = get_struct_field_info(&self.registry, &lhs_type, field_access)
-            .ok()
-            .unwrap();
-
-        if let Type::Pointer(ptr) = lhs_type
-            && !ptr.is_sequence
-        {
-            return VarInfo::Stored(VarInfoStored {
-                address: self.build_code_unit(ctx, &field_access.lhs),
-                offset: field.byte_offset,
-                var_type: field.field_type.clone(),
-            });
-        }
-
-        if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref()) {
-            match var {
-                // these are handled as struct values
-                VarInfo::Const(_) | VarInfo::VoidEnumValue(_) => {}
-                VarInfo::Global(VarInfoGlobal {
-                    global_index,
-                    var_type: _,
-                }) => {
-                    return VarInfo::Global(VarInfoGlobal {
-                        global_index: global_index + field.field_index,
-                        var_type: field.field_type.clone(),
-                    });
-                }
-                VarInfo::Local(VarInfoLocal {
-                    local_index,
-                    var_type: _,
-                }) => {
-                    return VarInfo::Local(VarInfoLocal {
-                        local_index: local_index + field.field_index,
-                        var_type: field.field_type.clone(),
-                    });
-                }
-                VarInfo::Stored(VarInfoStored {
-                    address,
-                    offset,
-                    var_type: _,
-                }) => {
-                    return VarInfo::Stored(VarInfoStored {
-                        address,
-                        offset: offset + field.byte_offset,
-                        var_type: field.field_type.clone(),
-                    });
-                }
-                VarInfo::StructValueField(VarInfoStructValueField {
-                    struct_value,
-                    drops_before,
-                    drops_after,
-                    var_type: _,
-                    loc: _,
-                }) => {
-                    let struct_components_count =
-                        count_primitive_components(&self.registry, &lhs_type);
-                    let field_components_count =
-                        count_primitive_components(&self.registry, &field.field_type);
-
-                    return VarInfo::StructValueField(VarInfoStructValueField {
-                        struct_value,
-                        drops_before: drops_before + struct_components_count
-                            - field.field_index
-                            - field_components_count,
-                        drops_after: drops_after + field.field_index,
-                        var_type: field.field_type.clone(),
-                        loc: field_access.field_name.loc,
-                    });
-                }
-            };
-        };
-
-        let struct_components_count = count_primitive_components(&self.registry, &lhs_type);
-        let field_components_count = count_primitive_components(&self.registry, &field.field_type);
-
-        return VarInfo::StructValueField(VarInfoStructValueField {
-            struct_value: self.build_code_unit(ctx, &field_access.lhs),
-            drops_before: struct_components_count - field.field_index - field_components_count,
-            drops_after: field.field_index,
-            var_type: field.field_type.clone(),
-            loc: field_access.field_name.loc,
-        });
-    }
-
-    fn var_from_deref(&mut self, ctx: &mut ExprContext, addr_expr: &CodeExpr) -> VarInfo {
-        let addr_type = self.get_expr_type(ctx, addr_expr);
-
-        let Type::Pointer(PointerType {
-            pointee,
-            is_sequence: false,
-            is_nullable: _,
-        }) = &addr_type
-        else {
-            unreachable!()
-        };
-
-        return VarInfo::Stored(VarInfoStored {
-            address: self.build_code_unit(ctx, addr_expr),
-            offset: 0,
-            var_type: self.get_type(*pointee).clone(),
-        });
     }
 
     fn build_code_unit(&mut self, ctx: &mut ExprContext, expr: &CodeExpr) -> CodeUnit {
