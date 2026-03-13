@@ -109,12 +109,14 @@ export async function activate(context: vscode.ExtensionContext) {
                         originSelectionRange: sourceRange,
                         targetUri: analysisPerIndex.get(targetIndex)!.uri,
                         targetRange: targetRange,
+                        pointsTo: "definition",
                     });
 
                     analysisPerIndex.get(targetIndex)!.links.push({
                         originSelectionRange: targetRange,
                         targetUri: fileDiagnostic.uri,
                         targetRange: sourceRange,
+                        pointsTo: "usage",
                     });
                 }
 
