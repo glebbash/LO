@@ -793,7 +793,7 @@ impl Printer {
             self.indent += 1;
 
             for field in &map.fields {
-                self.print_comments_before(field.loc.pos);
+                self.print_comments_before(field.key_loc.pos);
                 self.print_indent();
                 stdout_write(&field.key);
                 stdout_write(": ");

@@ -1268,18 +1268,14 @@ impl Parser {
         let mut loc = self.expect(Delim, "{")?.loc;
 
         while let None = self.eat(Delim, "}") {
-            let mut field_loc = self.current().loc;
-
             let field_name = self.expect_any(Symbol)?.clone();
             self.expect(Operator, ":")?;
             let value = self.parse_code_expr(0)?;
 
-            field_loc.end_pos = self.prev().loc.end_pos;
-
             fields.push(CodeExprMapField {
                 key: field_name.get_value(self.source),
                 value,
-                loc: field_loc,
+                key_loc: field_name.loc,
             });
 
             if !self.current().is(Delim, "}", self.source) {

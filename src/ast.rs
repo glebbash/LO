@@ -380,7 +380,7 @@ pub struct ResultTypeExpr {
 pub struct CodeExprMapField {
     pub key: &'static str,
     pub value: CodeExpr,
-    pub loc: Loc,
+    pub key_loc: Loc,
 }
 
 pub struct AssignExpr {

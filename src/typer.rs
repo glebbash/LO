@@ -577,6 +577,19 @@ impl Typer {
                                     byte_offset: 0, // will be set during field alignment
                                     loc: field.field_name.loc,
                                 });
+
+                                if self.reporter.in_inspection_mode {
+                                    self.reporter.print_inspection(InspectInfo {
+                                        message: format!(
+                                            "{}.{}: {}",
+                                            type_def.name.repr,
+                                            field.field_name.repr,
+                                            self.registry.fmt(field_type)
+                                        ),
+                                        loc: field.field_name.loc,
+                                        linked_loc: None,
+                                    });
+                                }
                             }
 
                             // align fields
@@ -1262,7 +1275,7 @@ impl Typer {
                     let Some(struct_field) = struct_def.fields.get(field_index) else {
                         self.report_error(Error {
                             message: format!("Excess field values"),
-                            loc: field_literal.loc,
+                            loc: field_literal.key_loc,
                         });
                         continue;
                     };
@@ -1273,7 +1286,7 @@ impl Typer {
                                 "Unexpected struct field name, expecting: `{}`",
                                 struct_field.field_name
                             ),
-                            loc: field_literal.loc,
+                            loc: field_literal.key_loc,
                         });
                     }
 
@@ -1293,6 +1306,19 @@ impl Typer {
                                 self.registry.fmt(&field_value_type),
                             ),
                             loc: field_literal.value.loc(),
+                        });
+                    }
+
+                    if self.reporter.in_inspection_mode {
+                        self.reporter.print_inspection(InspectInfo {
+                            message: format!(
+                                "{}.{}: {}",
+                                struct_literal.struct_name.repr,
+                                struct_field.field_name,
+                                self.registry.fmt(field_value_type)
+                            ),
+                            loc: field_literal.key_loc,
+                            linked_loc: Some(struct_field.loc),
                         });
                     }
                 }
