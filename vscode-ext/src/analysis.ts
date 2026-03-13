@@ -78,6 +78,27 @@ export class FileAnalysisCollection
         return outRefs.length === 0 ? null : outRefs;
     }
 
+    prepareRename(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        _token: vscode.CancellationToken,
+    ): vscode.ProviderResult<
+        vscode.Range | { range: vscode.Range; placeholder: string }
+    > {
+        const analysis = this.analysisPerUri.get(document.uri.toString(true));
+        if (!analysis) {
+            return null;
+        }
+
+        for (const hover of analysis.hovers) {
+            if (hover.range!.contains(position)) {
+                return hover.range;
+            }
+        }
+
+        return null;
+    }
+
     provideRenameEdits(
         document: vscode.TextDocument,
         position: vscode.Position,
