@@ -86,11 +86,6 @@ impl Default for ScopeKind {
     }
 }
 
-#[derive(Clone)]
-pub struct CodeUnit {
-    pub instrs: Vec<WasmInstr>,
-}
-
 pub struct StructDef {
     pub struct_name: &'static str,
     pub fields: Vec<StructField>,

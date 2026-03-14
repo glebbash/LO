@@ -135,6 +135,12 @@ struct TyModuleInfo {
     ctx: TyContextRef,
 }
 
+enum VariableKind {
+    Readonly,
+    ReadWrite,
+    ReadWriteStored,
+}
+
 #[derive(Default)]
 pub struct Typer {
     pub registry: UBRef<Registry>,
@@ -1454,6 +1460,33 @@ impl Typer {
 
                 return Ok(());
             }
+            CodeExpr::Assign(assign) => {
+                let lhs_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &assign.lhs));
+                let rhs_type_id =
+                    self.report_if_err(self.type_code_expr_and_load(ctx, &assign.rhs));
+
+                if let Some(lhs_type_id) = lhs_type_id
+                    && let Some(rhs_type_id) = rhs_type_id
+                    && !self
+                        .is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id))
+                {
+                    self.report_error(Error {
+                        message: format!(
+                            "Cannot assign {} to variable of type {}",
+                            self.registry.fmt(self.get_type(rhs_type_id)),
+                            self.registry.fmt(self.get_type(lhs_type_id)),
+                        ),
+                        loc: assign.op_loc.clone(),
+                    });
+                }
+
+                self.store_type(ctx, assign.id, &Type::Void);
+
+                self.assert_lhs_writable(ctx, &assign.lhs)?;
+
+                return Ok(());
+            }
             CodeExpr::InfixOp(infix_op) => {
                 let lhs_type_id_res = self.type_code_expr_and_load(ctx, &infix_op.lhs);
                 let rhs_type_id = self.type_code_expr_and_load(ctx, &infix_op.rhs)?;
@@ -1516,6 +1549,8 @@ impl Typer {
                 if let Some(base_op_) = self.get_compound_assignment_base_op(&infix_op.op_tag) {
                     is_compound_assignment = true;
                     base_op = base_op_;
+
+                    self.assert_lhs_writable(ctx, &infix_op.lhs)?;
                 }
 
                 let op_kind = self.get_binary_op_kind(
@@ -1555,12 +1590,24 @@ impl Typer {
                         return Ok(());
                     }
                     PrefixOpTag::Reference => {
+                        let Some(VariableKind::ReadWriteStored) =
+                            self.get_variable_kind(ctx, &prefix_op.expr)
+                        else {
+                            return Err(Error {
+                                message: format!(
+                                    "Invalid reference expression. Only struct reference fields allowed.",
+                                ),
+                                loc: prefix_op.expr.loc(),
+                            });
+                        };
+
                         let type_ = Type::Pointer(PointerType {
                             pointee: expr_type_id,
                             is_sequence: false,
                             is_nullable: false,
                         });
                         self.store_type(ctx, prefix_op.id, &type_);
+
                         return Ok(());
                     }
                     PrefixOpTag::Dereference => {
@@ -1570,7 +1617,7 @@ impl Typer {
                                     "Cannot dereference expr of type {}",
                                     self.registry.fmt(self.get_type(expr_type_id))
                                 ),
-                                loc: prefix_op.loc,
+                                loc: prefix_op.expr.loc(),
                             });
                         };
 
@@ -1663,33 +1710,6 @@ impl Typer {
                 }
 
                 self.store_type(ctx, cast.id, &casted_to_type);
-
-                return Ok(());
-            }
-            CodeExpr::Assign(assign) => {
-                // TODO: assert that lhs is writable
-
-                let lhs_type_id =
-                    self.report_if_err(self.type_code_expr_and_load(ctx, &assign.lhs));
-                let rhs_type_id =
-                    self.report_if_err(self.type_code_expr_and_load(ctx, &assign.rhs));
-
-                if let Some(lhs_type_id) = lhs_type_id
-                    && let Some(rhs_type_id) = rhs_type_id
-                    && !self
-                        .is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id))
-                {
-                    self.report_error(Error {
-                        message: format!(
-                            "Cannot assign {} to variable of type {}",
-                            self.registry.fmt(self.get_type(rhs_type_id)),
-                            self.registry.fmt(self.get_type(lhs_type_id)),
-                        ),
-                        loc: assign.op_loc.clone(),
-                    });
-                }
-
-                self.store_type(ctx, assign.id, &Type::Void);
 
                 return Ok(());
             }
@@ -2526,6 +2546,60 @@ impl Typer {
                 return Ok(());
             }
         }
+    }
+
+    fn assert_lhs_writable(&self, ctx: UBRef<TyContext>, lhs: &CodeExpr) -> Result<(), Error> {
+        let Some(var) = self.get_variable_kind(ctx, &lhs) else {
+            return Err(Error {
+                message: format!("Invalid lhs"),
+                loc: lhs.loc(),
+            });
+        };
+
+        if let VariableKind::Readonly = var {
+            return Err(Error {
+                message: format!("Cannot mutate a constant"),
+                loc: lhs.loc(),
+            });
+        }
+
+        return Ok(());
+    }
+
+    fn get_variable_kind(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<VariableKind> {
+        Some(match expr {
+            CodeExpr::Paren(paren) => return self.get_variable_kind(ctx, &paren.expr),
+            CodeExpr::Ident(var_name) => {
+                let expr_info = self
+                    .registry
+                    .get_expr_info(ctx.expr_id_offset, var_name.id)
+                    .unwrap();
+
+                match &self.registry.value_info[expr_info].kind {
+                    ValueKind::Global | ValueKind::Local => VariableKind::ReadWrite,
+                    ValueKind::Const | ValueKind::EnumConstructor => VariableKind::Readonly,
+                }
+            }
+            CodeExpr::PrefixOp(prefix_op) if prefix_op.op_tag == PrefixOpTag::Dereference => {
+                VariableKind::ReadWriteStored
+            }
+            CodeExpr::FieldAccess(field_access) => {
+                let lhs_type =
+                    self.get_type(self.load_type(ctx, field_access.lhs.as_ref()).unwrap());
+
+                if let Type::Pointer(ptr) = lhs_type
+                    && !ptr.is_sequence
+                {
+                    return Some(VariableKind::ReadWriteStored);
+                }
+
+                match self.get_variable_kind(ctx, &field_access.lhs.as_ref()) {
+                    Some(var) => var,
+                    None => VariableKind::Readonly,
+                }
+            }
+            _ => return None,
+        })
     }
 
     fn get_result_literal_type(

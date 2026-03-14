@@ -701,6 +701,7 @@ impl InfixOp {
     }
 }
 
+#[derive(PartialEq)]
 pub enum PrefixOpTag {
     Not,
     Reference,

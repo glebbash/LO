@@ -8,6 +8,7 @@ enum VarInfo {
     Stored(VarInfoStored),
     StructValueField(VarInfoStructValueField),
 }
+
 struct VarInfoLocal {
     local_index: u32,
     var_type: Type,
@@ -20,33 +21,32 @@ struct VarInfoGlobal {
 
 struct VarInfoConst {
     const_def: &'static ConstDef,
-    loc: Loc,
 }
 
 struct VarInfoVoidEnumValue {
     variant_index: usize,
-    loc: Loc,
 }
 
+// TODO(optimize): codegen on demand instead of building an extra vec
+type CompiledExpr = Vec<WasmInstr>;
+
 struct VarInfoStored {
-    address: CodeUnit,
+    address_instrs: CompiledExpr,
     offset: u32,
     var_type: Type,
 }
 
 struct VarInfoStructValueField {
-    struct_value: CodeUnit,
+    lhs_instrs: CompiledExpr,
     drops_before: u32,
     drops_after: u32,
     var_type: Type,
-    loc: Loc,
 }
 
 #[derive(Clone, Default)]
 struct Scope {
     kind: ScopeKind,
-    deferred_exprs: Vec<CodeUnit>,
-
+    deferred_exprs: Vec<CompiledExpr>,
     expr_id_offset: usize,
 }
 
@@ -474,22 +474,16 @@ impl CodeGenerator {
                 PrefixOpTag::Dereference => unreachable!(),
 
                 PrefixOpTag::Reference => {
-                    let Some(VarInfo::Stored(VarInfoStored {
-                        mut address,
+                    let VarInfo::Stored(VarInfoStored {
+                        mut address_instrs,
                         offset,
                         var_type: _,
-                    })) = self.var_from_expr(ctx, &prefix_op.expr)
+                    }) = self.var_from_expr(ctx, &prefix_op.expr).unwrap()
                     else {
-                        // TODO!: move to typer
-                        self.registry.reporter.abort_due_to_compiler_bug(
-                            &format!(
-                                "Invalid reference expression. Only struct reference fields allowed.",
-                            ),
-                            prefix_op.loc,
-                        );
+                        unreachable!()
                     };
 
-                    instrs.append(&mut address.instrs);
+                    instrs.append(&mut address_instrs);
                     instrs.push(WasmInstr::I32Const {
                         value: offset as i32,
                     });
@@ -585,13 +579,7 @@ impl CodeGenerator {
                 let op_info = self.registry.binary_op_info[expr_info].relax();
 
                 if op_info.is_compound_assignment {
-                    let Some(var) = self.var_from_expr(ctx, &infix_op.lhs) else {
-                        // TODO!: move to typer
-                        self.registry.reporter.abort_due_to_compiler_bug(
-                            &format!("Cannot perform compound assignment: invalid lhs"),
-                            infix_op.op_loc,
-                        );
-                    };
+                    let var = self.var_from_expr(ctx, &infix_op.lhs).unwrap();
 
                     self.codegen_var_set_prepare(instrs, &var);
                     {
@@ -613,13 +601,7 @@ impl CodeGenerator {
             }
 
             CodeExpr::Assign(assign) => {
-                let Some(var) = self.var_from_expr(ctx, &assign.lhs) else {
-                    // TODO!: move to typer
-                    self.registry.reporter.abort_due_to_compiler_bug(
-                        &format!("Cannot perform assignment: invalid lhs"),
-                        assign.op_loc,
-                    );
-                };
+                let var = self.var_from_expr(ctx, &assign.lhs).unwrap();
 
                 self.codegen_var_set_prepare(instrs, &var);
                 self.codegen(ctx, instrs, &assign.rhs);
@@ -1018,11 +1000,9 @@ impl CodeGenerator {
                                     ctx,
                                     instrs,
                                     &VarInfo::Stored(VarInfoStored {
-                                        address: CodeUnit {
-                                            instrs: vec![WasmInstr::LocalGet {
-                                                local_index: counter_local_index,
-                                            }],
-                                        },
+                                        address_instrs: vec![WasmInstr::LocalGet {
+                                            local_index: counter_local_index,
+                                        }],
                                         offset: 0,
                                         var_type: item_type.clone(),
                                     }),
@@ -1107,8 +1087,6 @@ impl CodeGenerator {
                 expr,
                 loc: _,
             }) => {
-                let code_unit = self.build_code_unit(ctx, expr);
-
                 // find first non-inline-fn scope
                 let mut scope_to_defer = self.module_info[ctx.module_id]
                     .scope_stack
@@ -1117,12 +1095,14 @@ impl CodeGenerator {
                     .unwrap();
                 for scope in self.module_info[ctx.module_id].scope_stack.iter_mut().rev() {
                     if scope.kind != ScopeKind::InlineFn {
-                        scope_to_defer = scope;
+                        scope_to_defer = scope.relax_mut();
                         break;
                     }
                 }
 
-                scope_to_defer.deferred_exprs.push(code_unit);
+                let mut expr_instrs = Vec::new();
+                self.codegen(ctx, &mut expr_instrs, expr);
+                scope_to_defer.deferred_exprs.push(expr_instrs);
             }
             CodeExpr::Catch(catch) => {
                 self.codegen_catch(
@@ -1311,7 +1291,6 @@ impl CodeGenerator {
 
                         VarInfo::Const(VarInfoConst {
                             const_def: const_def.relax(),
-                            loc: var_name.loc,
                         })
                     }
                     ValueKind::EnumConstructor => {
@@ -1319,7 +1298,6 @@ impl CodeGenerator {
 
                         VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
                             variant_index: enum_ctor.variant_index,
-                            loc: var_name.loc,
                         })
                     }
                     ValueKind::Local => {
@@ -1332,27 +1310,27 @@ impl CodeGenerator {
                     }
                 }
             }
-            CodeExpr::PrefixOp(prefix_op) => match prefix_op.op_tag {
-                PrefixOpTag::Dereference => {
-                    let addr_type = self.get_expr_type(ctx, &prefix_op.expr);
+            CodeExpr::PrefixOp(prefix_op) if prefix_op.op_tag == PrefixOpTag::Dereference => {
+                let addr_type = self.get_expr_type(ctx, &prefix_op.expr);
 
-                    let Type::Pointer(PointerType {
-                        pointee,
-                        is_sequence: false,
-                        is_nullable: _,
-                    }) = &addr_type
-                    else {
-                        unreachable!()
-                    };
+                let Type::Pointer(PointerType {
+                    pointee,
+                    is_sequence: false,
+                    is_nullable: _,
+                }) = &addr_type
+                else {
+                    unreachable!()
+                };
 
-                    VarInfo::Stored(VarInfoStored {
-                        address: self.build_code_unit(ctx, &prefix_op.expr),
-                        offset: 0,
-                        var_type: self.get_type(*pointee).clone(),
-                    })
-                }
-                _ => return None,
-            },
+                let mut address_instrs = Vec::new();
+                self.codegen(ctx, &mut address_instrs, &prefix_op.expr);
+
+                VarInfo::Stored(VarInfoStored {
+                    address_instrs,
+                    offset: 0,
+                    var_type: self.get_type(*pointee).clone(),
+                })
+            }
             CodeExpr::FieldAccess(field_access) => {
                 let lhs_type = self.get_expr_type(ctx, field_access.lhs.as_ref());
 
@@ -1363,8 +1341,11 @@ impl CodeGenerator {
                 if let Type::Pointer(ptr) = lhs_type
                     && !ptr.is_sequence
                 {
+                    let mut address_instrs = Vec::new();
+                    self.codegen(ctx, &mut address_instrs, &field_access.lhs);
+
                     return Some(VarInfo::Stored(VarInfoStored {
-                        address: self.build_code_unit(ctx, &field_access.lhs),
+                        address_instrs,
                         offset: field.byte_offset,
                         var_type: field.field_type.clone(),
                     }));
@@ -1393,22 +1374,21 @@ impl CodeGenerator {
                             }));
                         }
                         VarInfo::Stored(VarInfoStored {
-                            address,
+                            address_instrs: address,
                             offset,
                             var_type: _,
                         }) => {
                             return Some(VarInfo::Stored(VarInfoStored {
-                                address,
+                                address_instrs: address,
                                 offset: offset + field.byte_offset,
                                 var_type: field.field_type.clone(),
                             }));
                         }
                         VarInfo::StructValueField(VarInfoStructValueField {
-                            struct_value,
+                            lhs_instrs,
                             drops_before,
                             drops_after,
                             var_type: _,
-                            loc: _,
                         }) => {
                             let struct_components_count =
                                 count_primitive_components(&self.registry, &lhs_type);
@@ -1416,13 +1396,12 @@ impl CodeGenerator {
                                 count_primitive_components(&self.registry, &field.field_type);
 
                             return Some(VarInfo::StructValueField(VarInfoStructValueField {
-                                struct_value,
+                                lhs_instrs,
                                 drops_before: drops_before + struct_components_count
                                     - field.field_index
                                     - field_components_count,
                                 drops_after: drops_after + field.field_index,
                                 var_type: field.field_type.clone(),
-                                loc: field_access.field_name.loc,
                             }));
                         }
                     };
@@ -1432,14 +1411,16 @@ impl CodeGenerator {
                 let field_components_count =
                     count_primitive_components(&self.registry, &field.field_type);
 
+                let mut lhs_instrs = Vec::new();
+                self.codegen(ctx, &mut lhs_instrs, &field_access.lhs);
+
                 VarInfo::StructValueField(VarInfoStructValueField {
-                    struct_value: self.build_code_unit(ctx, &field_access.lhs),
+                    lhs_instrs,
                     drops_before: struct_components_count
                         - field.field_index
                         - field_components_count,
                     drops_after: field.field_index,
                     var_type: field.field_type.clone(),
-                    loc: field_access.field_name.loc,
                 })
             }
 
@@ -1470,7 +1451,7 @@ impl CodeGenerator {
                     });
                 }
             }
-            VarInfo::Const(VarInfoConst { const_def, loc: _ }) => {
+            VarInfo::Const(VarInfoConst { const_def }) => {
                 self.enter_scope(ctx, ScopeKind::InlineFn);
                 self.current_scope(ctx).be_mut().expr_id_offset = const_def.inner_expr_id_offset;
 
@@ -1484,7 +1465,7 @@ impl CodeGenerator {
                 })
             }
             VarInfo::Stored(VarInfoStored {
-                address,
+                address_instrs,
                 offset,
                 var_type,
             }) => {
@@ -1495,9 +1476,7 @@ impl CodeGenerator {
                     return;
                 }
 
-                for instr in &address.instrs {
-                    instrs.push(instr.clone());
-                }
+                instrs.extend_from_slice(address_instrs);
 
                 if loads.len() > 1 {
                     let addr_local_index = self.create_or_get_addr_local(ctx);
@@ -1516,15 +1495,12 @@ impl CodeGenerator {
                 }
             }
             VarInfo::StructValueField(VarInfoStructValueField {
-                struct_value,
+                lhs_instrs,
                 drops_before,
                 drops_after,
                 var_type,
-                loc: _,
             }) => {
-                for instr in &struct_value.instrs {
-                    instrs.push(instr.clone());
-                }
+                instrs.extend_from_slice(lhs_instrs);
                 for _ in 0..*drops_before {
                     instrs.push(WasmInstr::Drop);
                 }
@@ -1556,7 +1532,7 @@ impl CodeGenerator {
     fn codegen_var_set_prepare(&self, instrs: &mut Vec<WasmInstr>, var: &VarInfo) {
         match var {
             VarInfo::Stored(VarInfoStored {
-                address,
+                address_instrs,
                 offset: _,
                 var_type,
             }) => {
@@ -1564,9 +1540,7 @@ impl CodeGenerator {
                     return;
                 }
 
-                for instr in &address.instrs {
-                    instrs.push(instr.clone());
-                }
+                instrs.extend_from_slice(address_instrs);
             }
             _ => {}
         };
@@ -1591,7 +1565,7 @@ impl CodeGenerator {
                 }
             }
             VarInfo::Stored(VarInfoStored {
-                address: _,
+                address_instrs: _,
                 offset,
                 var_type,
             }) => {
@@ -1620,13 +1594,8 @@ impl CodeGenerator {
                     instrs.append(&mut stores);
                 }
             }
-            VarInfo::Const(VarInfoConst { loc, .. })
-            | VarInfo::VoidEnumValue(VarInfoVoidEnumValue { loc, .. })
-            | VarInfo::StructValueField(VarInfoStructValueField { loc, .. }) => {
-                // TODO!: move to typer
-                self.registry
-                    .reporter
-                    .abort_due_to_compiler_bug(&format!("Cannot mutate a constant"), *loc);
+            VarInfo::Const(_) | VarInfo::VoidEnumValue(_) | VarInfo::StructValueField(_) => {
+                unreachable!()
             }
         };
     }
@@ -1838,8 +1807,8 @@ impl CodeGenerator {
     }
 
     fn emit_deferred(&self, scope: &Scope, instrs: &mut Vec<WasmInstr>) {
-        for expr in scope.deferred_exprs.iter().rev() {
-            for instr in &expr.instrs {
+        for expr_instrs in scope.deferred_exprs.iter().rev() {
+            for instr in expr_instrs {
                 instrs.push(instr.clone());
             }
         }
@@ -1849,12 +1818,6 @@ impl CodeGenerator {
         for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
             self.emit_deferred(scope, instrs);
         }
-    }
-
-    fn build_code_unit(&mut self, ctx: &mut ExprContext, expr: &CodeExpr) -> CodeUnit {
-        let mut code_unit = CodeUnit { instrs: Vec::new() };
-        self.codegen(ctx, &mut code_unit.instrs, expr);
-        code_unit
     }
 
     fn codegen_default_value(
