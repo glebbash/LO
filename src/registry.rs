@@ -224,14 +224,14 @@ pub struct Registry {
     pub block_info: Vec<BlockInfo>, //            indexed by `ExprInfo` for `::CodeBlock`
     pub binary_op_info: Vec<BinaryOpInfo>, //     indexed by `ExprInfo` for `::InfixOp`
 
-    pub globals: Vec<GlobalDef>, //               indexed by `col_index` when `kind = Global`
-    pub locals: Vec<LocalDef>,   //               indexed by `col_index` when `kind = Local`
-    pub constants: Vec<ConstDef>, //              indexed by `col_index` when `kind = Const`
-    pub functions: Vec<FnInfo>,  //               indexed by `col_index` when `kind = Function`
-    pub inline_fns: Vec<&'static FnExpr>, //      indexed by `col_index` when `kind = InlineFn`
-    pub structs: Vec<StructDef>, //               indexed by `col_index` when `kind = Struct`
-    pub enums: Vec<EnumDef>,     //               indexed by `col_index` when `kind = Enum`
-    pub enum_ctors: Vec<EnumConstructor>, //      indexed by `col_index` when `kind = EnumConstructor`
+    pub globals: Vec<GlobalDef>, //          indexed by `col_index` when `kind = Global`
+    pub locals: Vec<LocalDef>,   //          indexed by `col_index` when `kind = Local`
+    pub constants: Vec<ConstDef>, //         indexed by `col_index` when `kind = Const`
+    pub functions: Vec<FnInfo>,  //          indexed by `col_index` when `kind = Function`
+    pub inline_fns: Vec<&'static FnExpr>, // indexed by `col_index` when `kind = InlineFn`
+    pub structs: Vec<StructDef>, //          indexed by `col_index` when `kind = Struct`
+    pub enums: Vec<EnumDef>,     //          indexed by `col_index` when `kind = Enum`
+    pub enum_ctors: Vec<EnumConstructor>, // indexed by `col_index` when `kind = EnumConstructor`
 
     pub memory: Option<MemoryInfo>,
     pub data_size: UBCell<u32>,

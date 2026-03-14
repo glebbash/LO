@@ -45,8 +45,8 @@ pub struct Lexer {
     pub source: &'static [u8],
 
     // state
-    pub source_pos: Pos,
-    pub current_char: Result<char, UTF8ReadError>,
+    source_pos: Pos,
+    current_char: Result<char, UTF8ReadError>,
 
     // output
     pub tokens: Vec<Token>,

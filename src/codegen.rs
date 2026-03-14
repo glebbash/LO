@@ -67,7 +67,7 @@ struct CodegenModuleInfo {
 #[derive(Default)]
 pub struct CodeGenerator {
     // context
-    pub registry: UBRef<Registry>,
+    registry: UBRef<Registry>,
 
     // state
     module_info: Vec<CodegenModuleInfo>,

@@ -10,11 +10,11 @@ pub struct Parser {
     // context
     pub lexer: Lexer,
     pub source: &'static [u8],
-    pub reporter: UBRef<Reporter>,
+    reporter: UBRef<Reporter>,
 
     // state
-    pub context_stack: UBCell<Vec<ParsingContext>>,
-    pub tokens_processed: UBCell<usize>,
+    context_stack: UBCell<Vec<ParsingContext>>,
+    tokens_processed: UBCell<usize>,
     pub expr_id_count: UBCell<usize>,
 
     // output

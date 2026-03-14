@@ -143,15 +143,15 @@ enum VariableKind {
 
 #[derive(Default)]
 pub struct Typer {
-    pub registry: UBRef<Registry>,
-    pub reporter: UBRef<Reporter>,
+    // context
+    registry: UBRef<Registry>,
+    reporter: UBRef<Reporter>,
 
+    // state
     contexts: UBCell<StableVec<TyContext>>,
     module_info: UBCell<Vec<TyModuleInfo>>,
     type_lookup: UBCell<BTreeMap<Type, TypeId>>,
-
     type_aliases: UBCell<Vec<TypeId>>, // indexed by `TySymbol::col_index` when `kind = TypeAlias`
-
     first_string_usage: UBCell<Option<Loc>>,
     allocated_strings: Vec<String>, // storage for all allocated `String` objects
 }
