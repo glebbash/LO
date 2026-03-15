@@ -1483,7 +1483,9 @@ impl Typer {
 
                 self.store_type(ctx, assign.id, &Type::Void);
 
-                self.assert_lhs_writable(ctx, &assign.lhs)?;
+                if lhs_type_id.is_some() {
+                    self.assert_lhs_writable(ctx, &assign.lhs)?;
+                }
 
                 return Ok(());
             }
