@@ -19,7 +19,7 @@ fn Module::free(&self) {
     self.parser.free()
 }
 
-type Compiler = struct {
+type Registry = struct {
     in_single_file_mode: bool,
 
     fm: FileManager,
@@ -27,10 +27,10 @@ type Compiler = struct {
     error_arena: &Arena,
 }
 
-fn Compiler::new(): &Compiler {
+fn Registry::new(): &Registry {
     let error_arena = Arena::new(128)
 
-    return heap::new!(Compiler {
+    return heap::new!(Registry {
         in_single_file_mode: false,
         fm: FileManager::new(error_arena),
         modules: Vec::new!<&Module>(),
@@ -38,14 +38,14 @@ fn Compiler::new(): &Compiler {
     })
 }
 
-fn Compiler::free(&self) {
+fn Registry::free(&self) {
     self.fm.free()
     self.modules.free_deep!<&Module>()
     self.error_arena.free()
     heap::free(self)
 }
 
-fn Compiler::include(
+fn Registry::include(
     &self, \\ file_name: str, \\ loc: Loc,
 ): Result(&Module, &VoidError) {
     let file_index = self.fm.include(file_name, loc) catch err {
@@ -73,7 +73,7 @@ fn Compiler::include(
     return Ok(module)
 }
 
-fn Compiler::report_error(&self, err: &Error) {
+fn Registry::report_error(&self, err: &Error) {
     stderr_write("ERROR: ")
     stderr_write(err.to_string_in(self.error_arena, self.fm).as_str())
     stderr_write("\n")

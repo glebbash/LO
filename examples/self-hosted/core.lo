@@ -128,6 +128,7 @@ fn resolve_path(file_path: str, relative_to: str): String {
     }
 
     let path_items = relative_to.split('/', Vec::new!<str>())
+    defer path_items.free()
 
     // remove filename
     path_items.pop()
