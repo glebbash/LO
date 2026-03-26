@@ -24,7 +24,7 @@ LO - small programming language targeting WASM that aims to be as simple as poss
 
 ## 🪵 DevLog + Docs
 
-The journey is documented in the [LO DevLog](https://carrot-blog.deno.dev/?tag=lo).
+The journey is documented in the [LO DevLog](https://blog.glebbash.dev/?tag=lo).
 
 And the actual docs for the compiler are in the [docs](./docs/README.md) folder.
 
