@@ -1330,6 +1330,7 @@ impl Typer {
                 }
 
                 if struct_literal.body.fields.len() < struct_def.fields.len() {
+                    // TODO: fix to report missing fields at any position, not assume they are at the start
                     let mut missing_fields = Vec::new();
                     for i in struct_literal.body.fields.len()..struct_def.fields.len() {
                         missing_fields.push(&struct_def.fields[i].field_name)
