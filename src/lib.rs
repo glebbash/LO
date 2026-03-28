@@ -12,15 +12,13 @@ mod printer;
 mod registry;
 mod typer;
 mod wasm;
-mod wasm_eval;
 
-use crate::{codegen::*, common::*, printer::*, registry::*, typer::*, wasm_eval::*};
+use crate::{codegen::*, common::*, printer::*, registry::*, typer::*};
 
 static USAGE: &str = "Usage:
   lo compile <input.lo>
   lo inspect <input.lo>
-  lo format <input.lo>
-  lo eval <input.lo> (experimental)";
+  lo format <input.lo>";
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() {
@@ -85,18 +83,6 @@ pub extern "C" fn _start() {
         let mut binary = Vec::new();
         codegen.wasm_module.dump(&mut binary);
         stdout_write(binary.as_slice());
-        return;
-    }
-
-    if command == "eval" {
-        let mut eval = WasmEval::new(&mut codegen.wasm_module);
-        eval.wasi_args = Some(args);
-        eval.wasi_args_skip = 2;
-
-        catch!(eval.eval(), err, {
-            stderr_writeln(err.message);
-            proc_exit(1);
-        });
         return;
     }
 
