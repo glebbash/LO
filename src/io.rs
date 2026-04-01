@@ -1,12 +1,5 @@
 use crate::common::*;
 
-pub struct FileInfo {
-    pub index: usize,
-    pub included_times: usize,
-    pub absolute_path: String,
-    pub source: String,
-}
-
 const CWD_PREOPEN_FD: u32 = 3;
 
 pub struct WasiArgs {

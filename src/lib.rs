@@ -45,7 +45,7 @@ pub extern "C" fn _start() {
     if command == "format" {
         registry.in_single_file_mode = true;
 
-        let Some(module_id) = registry.include_file(file_name, &Loc::internal()) else {
+        let Some(module_id) = registry.include(file_name, &Loc::internal()) else {
             proc_exit(1);
         };
 
@@ -59,7 +59,7 @@ pub extern "C" fn _start() {
         registry.reporter.begin_inspection();
     }
 
-    registry.include_file(file_name, &Loc::internal());
+    registry.include(file_name, &Loc::internal());
 
     let mut typer = Typer::new(&mut registry);
     typer.type_all();

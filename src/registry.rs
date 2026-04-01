@@ -136,9 +136,15 @@ pub struct ConstDef {
 
 pub struct Module {
     pub id: usize,
+    pub absolute_path: String,
+
     pub source: &'static [u8],
-    pub parser: Parser,
+    pub _source: String,
+
     pub includes: Vec<ModuleInclude>,
+    pub included_times: usize,
+
+    pub parser: Parser,
 }
 
 pub type ModuleId = usize;
@@ -210,8 +216,8 @@ pub struct Registry {
 
     pub reporter: Box<Reporter>,
 
-    pub files: Vec<FileInfo>, // indexed by `Loc::file_id`
     pub modules: Vec<Module>, // indexed by `ModuleId`
+    pub module_import_order: Vec<ModuleId>,
 
     pub expr_id_count: usize,
     pub expr_info: Vec<ExprInfo>,              // indexed by `ExprId`
@@ -244,35 +250,42 @@ impl Registry {
     pub fn new() -> Box<Self> {
         let mut it = Box::new(Self::default());
         it.reporter.registry = UBRef::new(&*it);
-        it.files.push(FileInfo {
-            index: 0,
-            included_times: 0,
+        it.modules.push(Module {
+            id: 0,
             absolute_path: String::from("<internal>"),
-            source: String::from(""),
+            source: "".as_bytes(),
+            _source: String::from(""),
+            includes: Vec::new(),
+            included_times: 0,
+            parser: Parser::new(Lexer::new("".as_bytes(), 0), &mut it.reporter),
         });
         it
     }
 
-    pub fn include_file(&mut self, relative_path: &str, loc: &Loc) -> Option<ModuleId> {
-        let file_id = catch!(self.include_file_contents(relative_path, loc), err, {
-            self.reporter.error(err);
+    pub fn include(&mut self, relative_path: &str, loc: &Loc) -> Option<ModuleId> {
+        let absolute_path = self.resolve_path(relative_path, loc);
+
+        for module in &mut self.modules {
+            if module.absolute_path == absolute_path {
+                module.included_times += 1;
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_include_info(false, module.id, loc);
+                }
+
+                return Some(module.id);
+            }
+        }
+
+        let module_id = self.modules.len();
+
+        let _source = catch!(fs::file_read_utf8(&absolute_path), message, {
+            self.reporter.error(Error { message, loc: *loc });
             return None;
         });
+        let source = _source.as_bytes().relax();
 
-        let file_is_newly_added = self.files[file_id].included_times == 1;
-
-        if self.reporter.in_inspection_mode {
-            self.reporter
-                .print_include_info(file_is_newly_added, file_id, loc);
-        }
-
-        if !file_is_newly_added {
-            return Some(self.get_module_id_by_file_id(file_id));
-        }
-
-        let source = self.files[file_id].source.as_bytes().relax();
-
-        let mut lexer = Lexer::new(source, file_id);
+        let mut lexer = Lexer::new(source, module_id);
         catch!(lexer.lex_file(), err, {
             self.reporter.error(err);
             return None;
@@ -289,10 +302,22 @@ impl Registry {
 
         self.expr_id_count = *parser.expr_id_count;
 
-        let mut includes = Vec::new();
+        self.modules.push(Module {
+            id: module_id,
+            absolute_path,
+            source,
+            _source,
+            parser,
+            includes: Vec::new(),
+            included_times: 0,
+        });
+
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_include_info(true, module_id, loc);
+        }
 
         if !self.in_single_file_mode {
-            for expr in &*parser.ast {
+            for expr in &*self.modules[module_id].relax().parser.ast {
                 let Some(include_info) = catch!(get_include_info(expr), err, {
                     self.reporter.error(err);
                     continue;
@@ -300,54 +325,23 @@ impl Registry {
                     continue;
                 };
 
-                let Some(module_id) =
-                    self.include_file(&include_info.file_path.value, &include_info.file_path.loc)
+                let Some(included_module_id) =
+                    self.include(&include_info.file_path.value, &include_info.file_path.loc)
                 else {
                     continue;
                 };
 
-                includes.push(ModuleInclude {
-                    module_id,
+                self.modules[module_id].includes.push(ModuleInclude {
+                    module_id: included_module_id,
                     alias: include_info.alias,
                     with_extern: include_info.with_extern,
                 });
             }
         }
 
-        let module_id = self.modules.len();
-
-        self.modules.push(Module {
-            id: module_id,
-            source: parser.source,
-            parser,
-            includes,
-        });
+        self.module_import_order.push(module_id);
 
         Some(module_id)
-    }
-
-    fn include_file_contents(&mut self, relative_path: &str, loc: &Loc) -> Result<usize, Error> {
-        let absolute_path = self.resolve_path(relative_path, loc);
-
-        for file in &mut self.files {
-            if file.absolute_path == absolute_path {
-                file.included_times += 1;
-                return Ok(file.index);
-            }
-        }
-
-        let file_contents =
-            fs::file_read_utf8(&absolute_path).map_err(|message| Error { message, loc: *loc })?;
-
-        let file_id = self.files.len();
-        self.files.push(FileInfo {
-            index: file_id,
-            included_times: 1,
-            absolute_path: absolute_path.into(),
-            source: file_contents,
-        });
-
-        Ok(file_id)
     }
 
     pub fn add_local(
@@ -372,11 +366,11 @@ impl Registry {
     }
 
     pub fn resolve_path(&self, file_path: &str, loc: &Loc) -> String {
-        let relative_to = &self.files[loc.file_id].absolute_path;
-
         if !file_path.starts_with('.') {
             return file_path.into();
         }
+
+        let relative_to = &self.modules[loc.module_id].absolute_path;
 
         let mut path_items = relative_to.split('/').collect::<Vec<_>>();
         path_items.pop(); // remove `relative_to`'s file name
@@ -405,16 +399,6 @@ impl Registry {
         }
 
         path_items.join("/")
-    }
-
-    pub fn get_module_id_by_file_id(&self, file_id: usize) -> ModuleId {
-        for module in &self.modules {
-            if module.parser.lexer.file_id == file_id {
-                return module.id;
-            }
-        }
-
-        unreachable!()
     }
 
     pub fn get_expr_type(&self, expr_id_offset: usize, expr: &CodeExpr) -> Option<TypeId> {

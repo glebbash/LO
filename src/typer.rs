@@ -205,22 +205,22 @@ impl Typer {
     }
 
     pub fn type_all(&mut self) {
-        for module in self.module_info.be_mut().relax_mut() {
-            self.pass_collect_own_symbols(module.ctx);
+        for &module_id in self.registry.module_import_order.relax() {
+            self.pass_collect_own_symbols(self.module_info[module_id].ctx);
         }
 
-        for module in self.module_info.be_mut().relax_mut() {
-            self.pass_collect_included_symbols(module.ctx);
+        for &module_id in self.registry.module_import_order.relax() {
+            self.pass_collect_included_symbols(self.module_info[module_id].ctx);
         }
 
-        for module in self.module_info.be_mut().relax_mut() {
-            self.pass_build_type_def_values(module.ctx);
+        for &module_id in self.registry.module_import_order.relax() {
+            self.pass_build_type_def_values(self.module_info[module_id].ctx);
         }
 
         self.pass_get_str_literal_type();
 
-        for module in self.module_info.be_mut().relax_mut() {
-            self.pass_process_top_level_exprs(module.ctx);
+        for &module_id in self.registry.module_import_order.relax() {
+            self.pass_process_top_level_exprs(self.module_info[module_id].ctx);
         }
 
         self.pass_type_fns();
@@ -239,13 +239,8 @@ impl Typer {
                     }
 
                     let mut lines = 0;
-                    for file in &self.registry.files {
-                        lines += file
-                            .source
-                            .as_bytes()
-                            .iter()
-                            .filter(|&&b| b == b'\n')
-                            .count()
+                    for module in &self.registry.modules {
+                        lines += module.source.iter().filter(|&&b| b == b'\n').count()
                     }
 
                     let mut msg = String::new();
@@ -705,8 +700,10 @@ impl Typer {
 
         let mut slt_def: Option<&TypeExpr> = None;
 
-        for module_info in self.module_info.be_mut().relax_mut() {
-            let module = self.registry.modules[module_info.ctx.module_id].relax_mut();
+        for &module_id in self.registry.module_import_order.relax() {
+            let ctx = self.module_info[module_id].ctx;
+            let module = self.registry.modules[module_id].relax_mut();
+
             for expr in &*module.parser.ast {
                 let TopLevelExpr::Intrinsic(intrinsic) = expr else {
                     continue;
@@ -739,7 +736,7 @@ impl Typer {
                 }
                 slt_def = Some(intrinsic.type_args[0].relax());
 
-                match self.build_type(module_info.ctx, slt_def.unwrap()) {
+                match self.build_type(ctx, slt_def.unwrap()) {
                     Err(err) => self.report_error(err),
                     Ok(type_id) => {
                         let slt_components = self.get_primitives(self.get_type(type_id));
@@ -1041,7 +1038,7 @@ impl Typer {
 
                         let mut target_ctx = ctx;
                         if from_root {
-                            target_ctx = self.module_info.last().unwrap().ctx;
+                            target_ctx = self.module_info[1].ctx;
                         }
 
                         let Ok(fn_index) =
@@ -2120,11 +2117,24 @@ impl Typer {
                     });
                 }
 
-                if call.fn_name.repr.starts_with("inspect_symbols") {
+                if call.fn_name.repr == "inspect_symbols" {
                     if self.reporter.in_inspection_mode {
                         let mut message = String::new();
-                        for symbol in &ctx.symbols {
-                            write!(message, "{} : {:?}\n", symbol.name, symbol.kind).unwrap();
+
+                        let mut ctx = ctx;
+
+                        loop {
+                            for symbol in &ctx.symbols {
+                                write!(message, "{} : {:?}\n", symbol.name, symbol.kind).unwrap();
+                            }
+
+                            if let Some(parent) = ctx.parent
+                                && parent.module_id != usize::MAX
+                            {
+                                ctx = parent;
+                            } else {
+                                break;
+                            }
                         }
 
                         self.reporter.print_inspection(InspectInfo {
@@ -3435,13 +3445,7 @@ impl Typer {
             return Ok(None);
         }
 
-        let mut fn_module = &self.registry.modules[ctx.module_id];
-
-        // fn imported from other module
-        if fn_name.loc.file_id != fn_module.parser.lexer.file_id {
-            let module_id = self.registry.get_module_id_by_file_id(fn_name.loc.file_id);
-            fn_module = &self.registry.modules[module_id];
-        }
+        let fn_module = &self.registry.modules[fn_name.loc.module_id];
 
         let mut self_type_loc = fn_name.parts[0];
         self_type_loc.end_pos = fn_name.parts[fn_name.parts.len() - 2].end_pos;
@@ -3745,7 +3749,7 @@ impl Typer {
                 let type_id = self.type_aliases[symbol.col_index];
 
                 // don't print inspection for built-ins
-                if self.reporter.in_inspection_mode && symbol.loc.file_id != 0 {
+                if self.reporter.in_inspection_mode && symbol.loc.module_id != 0 {
                     self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "type {type_name} = {}",

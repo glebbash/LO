@@ -5,22 +5,6 @@ pub(crate) use alloc::{
 };
 pub(crate) use core::{cell::UnsafeCell, ffi::CStr, str};
 
-#[derive(PartialEq, Clone)]
-pub struct Error {
-    pub message: String,
-    pub loc: Loc,
-}
-
-impl Error {
-    pub fn to_string(&self, registry: &Registry) -> String {
-        let mut out = String::new();
-        self.loc.format(&mut out, registry);
-        out.push_str(" - ");
-        out.push_str(&self.message);
-        out
-    }
-}
-
 #[derive(PartialEq, Clone, Copy)]
 pub struct Pos {
     pub offset: usize,
@@ -30,7 +14,7 @@ pub struct Pos {
 
 #[derive(PartialEq, Clone, Copy)]
 pub struct Loc {
-    pub file_id: usize,
+    pub module_id: usize,
     pub pos: Pos,
     pub end_pos: Pos,
 }
@@ -38,7 +22,7 @@ pub struct Loc {
 impl Loc {
     pub fn internal() -> Self {
         Loc {
-            file_id: 0, // internal
+            module_id: 0, // internal
             pos: Pos {
                 offset: 0,
                 line: 1,
@@ -57,13 +41,29 @@ impl Loc {
     }
 
     pub fn format(&self, out: &mut String, registry: &Registry) {
-        let file_path = &registry.files[self.file_id].absolute_path;
+        let file_path = &registry.modules[self.module_id].absolute_path;
         write!(out, "{}:{}:{}", file_path, self.pos.line, self.pos.col).unwrap();
     }
 
     pub fn to_string(&self, registry: &Registry) -> String {
         let mut out = String::new();
         self.format(&mut out, registry);
+        out
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Error {
+    pub message: String,
+    pub loc: Loc,
+}
+
+impl Error {
+    pub fn to_string(&self, registry: &Registry) -> String {
+        let mut out = String::new();
+        self.loc.format(&mut out, registry);
+        out.push_str(" - ");
+        out.push_str(&self.message);
         out
     }
 }
@@ -104,7 +104,7 @@ impl Reporter {
         *self.error_count.be_mut() += 1;
 
         if self.in_inspection_mode {
-            let source_index = err.loc.file_id;
+            let source_index = err.loc.module_id;
             let source_range = RangeFmt(&err.loc);
             let content = json_str_escape(&err.message);
             stdout_writeln(format!(
@@ -125,7 +125,7 @@ impl Reporter {
         *self.warning_count.be_mut() += 1;
 
         if self.in_inspection_mode {
-            let source_index = err.loc.file_id;
+            let source_index = err.loc.module_id;
             let source_range = RangeFmt(&err.loc);
             let content = json_str_escape(&err.message);
             stdout_writeln(format!(
@@ -143,13 +143,13 @@ impl Reporter {
     }
 
     pub fn print_inspection(&self, inspect_info: InspectInfo) {
-        let source_index = inspect_info.loc.file_id;
+        let source_index = inspect_info.loc.module_id;
         let source_range = RangeFmt(&inspect_info.loc);
         let message = json_str_escape(&inspect_info.message);
 
         if let Some(linked_loc) = &inspect_info.linked_loc {
-            if linked_loc.file_id != 0 {
-                let target_index = linked_loc.file_id;
+            if linked_loc.module_id != 0 {
+                let target_index = linked_loc.module_id;
                 let target_range = RangeFmt(&linked_loc);
                 stdout_writeln(format!(
                     "{{ \"type\": \"info\", \
@@ -168,21 +168,20 @@ impl Reporter {
         ));
     }
 
-    pub fn print_include_info(&self, file_is_newly_added: bool, file_id: usize, loc: &Loc) {
+    pub fn print_include_info(&self, file_is_newly_added: bool, module_id: usize, loc: &Loc) {
         if file_is_newly_added {
-            let file_id = file_id;
-            let file_path = &self.registry.files[file_id].absolute_path;
+            let file_path = &self.registry.modules[module_id].absolute_path;
             stdout_writeln(format!(
                 "{{ \"type\": \"file\", \
-                    \"index\": {file_id}, \
+                    \"index\": {module_id}, \
                     \"path\": \"{file_path}\" }},",
             ));
         }
 
-        if loc.file_id != 0 {
-            let source_index = loc.file_id;
+        if loc.module_id != 0 {
+            let source_index = loc.module_id;
             let source_range = RangeFmt(loc);
-            let target_index = file_id;
+            let target_index = module_id;
             let target_range = "1:1-1:1";
 
             stdout_writeln(format!(
