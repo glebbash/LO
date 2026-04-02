@@ -1,4 +1,4 @@
-@include("./core.lo")
+@include("./common.lo")
 @include("./ast.lo")
 @include("./parser.lo")
 @include("./lexer.lo")

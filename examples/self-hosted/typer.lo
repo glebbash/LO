@@ -1,0 +1,11 @@
+@include("./common.lo")
+
+// TODO: implement module
+
+type Typer = struct {}
+
+fn Typer::new(registry: &Registry): &Typer {
+    return heap::new!(Typer {})
+}
+
+fn Typer::type_all(&self) {}

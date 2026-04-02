@@ -3,6 +3,8 @@
 @include("../lib/wasi.lo")
 @include("../lib/print.lo")
 
+@include("./registry.lo")
+
 type VoidError = u32
 inline let VoidError::VALUE = 1 as &VoidError
 
@@ -59,6 +61,19 @@ fn Error::to_string_in(&self, a: Alloc, fm: FileManager): String {
     return out
 }
 
+type Reporter = struct {
+    registry: &Registry,
+    in_inspection_mode: bool,
+    error_count: u32,
+    warning_count: u32,
+}
+
+// TODO: implement
+fn Reporter::begin_inspection(&self) {}
+
+// TODO: implement
+fn Reporter::end_inspection(&self) {}
+
 type FileInfo = struct {
     index: u32,
     included_times: u32,
@@ -71,6 +86,7 @@ fn FileInfo::free(self) {
     self.source.free()
 }
 
+// TODO: merge into Registry
 type FileManager = struct {
     files: &Vec(FileInfo),
     error_arena: &Arena,

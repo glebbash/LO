@@ -1,0 +1,11 @@
+@include("./common.lo")
+
+// TODO: implement module
+
+type WasmModule = struct {}
+
+fn WasmModule::new(): &WasmModule {
+    return heap::new!(WasmModule {})
+}
+
+fn WasmModule::dump(&self, binary: &Vec(u8)) {}

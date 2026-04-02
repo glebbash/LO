@@ -1,4 +1,4 @@
-@include("./core.lo")
+@include("./common.lo")
 
 type Token = struct {
     type_: TokenType,

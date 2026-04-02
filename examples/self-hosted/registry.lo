@@ -1,4 +1,4 @@
-@include("./core.lo")
+@include("./common.lo")
 @include("./lexer.lo")
 @include("./parser.lo")
 
@@ -21,6 +21,9 @@ fn Module::free(&self) {
 
 type Registry = struct {
     in_single_file_mode: bool,
+    should_emit_dbg_local_names: bool,
+
+    reporter: &Reporter,
 
     fm: FileManager,
     modules: &Vec(&Module),
@@ -32,6 +35,9 @@ fn Registry::new(): &Registry {
 
     return heap::new!(Registry {
         in_single_file_mode: false,
+        should_emit_dbg_local_names: false,
+        // TODO: implement
+        reporter: 0 as &Reporter,
         fm: FileManager::new(error_arena),
         modules: Vec::new!<&Module>(),
         error_arena: error_arena,

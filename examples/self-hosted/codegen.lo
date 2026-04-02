@@ -1,0 +1,16 @@
+@include("./common.lo")
+@include("./wasm.lo")
+
+// TODO: implement module
+
+type CodeGenerator = struct {
+    wasm_module: &WasmModule,
+}
+
+fn CodeGenerator::new(registry: &Registry): &CodeGenerator {
+    return heap::new!(CodeGenerator {
+        wasm_module: WasmModule::new(),
+    })
+}
+
+fn CodeGenerator::codegen_all(&self) {}
