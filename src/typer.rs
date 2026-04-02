@@ -84,7 +84,7 @@ impl TypeLayout {
             primitives_count: 0,
             primitives: None,
             byte_size: 0,
-            alignment: 0,
+            alignment: 1,
         }
     }
 }
@@ -93,19 +93,6 @@ pub type ExprInfo = usize;
 pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
 
 pub type TypeId = usize;
-
-type TyContextRef = UBRef<TyContext>;
-
-struct TyContext {
-    module_id: ModuleId,
-    id: usize,
-    parent: Option<TyContextRef>,
-    kind: ScopeKind,
-    fn_index: Option<usize>,
-    inline_fn_call_loc: Option<Loc>,
-    expr_id_offset: usize,
-    symbols: Vec<TySymbol>,
-}
 
 #[derive(Clone, Debug, PartialEq, Copy)]
 enum TySymbolKind {
@@ -129,6 +116,27 @@ struct TySymbol {
     kind: TySymbolKind,
     col_index: usize,
     loc: Loc,
+}
+
+type TyContextRef = UBRef<TyContext>;
+
+struct TyContext {
+    module_id: ModuleId,
+    id: usize,
+    parent: Option<TyContextRef>,
+    kind: ScopeKind,
+    fn_index: Option<usize>,
+    inline_fn_call_loc: Option<Loc>,
+    expr_id_offset: usize,
+    symbols: Vec<TySymbol>,
+    symbols_lookup: BTreeMap<&'static str, usize>,
+}
+
+impl TyContext {
+    fn add_symbol(&mut self, symbol: TySymbol) {
+        self.symbols_lookup.insert(symbol.name, self.symbols.len());
+        self.symbols.push(symbol);
+    }
 }
 
 struct TyModuleInfo {
@@ -175,6 +183,7 @@ impl Typer {
             expr_id_offset: 0,
             kind: ScopeKind::Global,
             symbols: Vec::new(),
+            symbols_lookup: BTreeMap::new(),
         });
 
         self.module_info.reserve(self.registry.modules.len());
@@ -216,6 +225,8 @@ impl Typer {
         for &module_id in self.registry.module_import_order.relax() {
             self.pass_build_type_def_values(self.module_info[module_id].ctx);
         }
+
+        self.pass_resolve_struct_layouts();
 
         self.pass_get_str_literal_type();
 
@@ -300,7 +311,7 @@ impl Typer {
                             self.registry.structs.push(StructDef {
                                 struct_name: type_def.name.repr,
                                 fields: Vec::new(),
-                                fully_defined: false,
+                                resolution: StructResolution::NotStarted,
                             });
                         }
                         TypeDefValue::Enum {
@@ -489,27 +500,29 @@ impl Typer {
         if includer.module_id != includee.module_id {
             for symbol in includee.symbols.relax() {
                 let mut included_symbol = symbol.clone();
-                if prefix.len() != 0 {
+                if !prefix.is_empty() {
                     included_symbol.name = self.alloc_str(format!("{}{}", prefix, symbol.name));
                 }
 
-                // TODO: optimize this
-                for existing_symbol in &includer.symbols {
-                    if existing_symbol.ctx_id != included_symbol.ctx_id
-                        && existing_symbol.name == included_symbol.name
-                    {
+                if let Some(&existing_symbol_id) =
+                    includer.symbols_lookup.get(&included_symbol.name)
+                {
+                    let existing = &includer.symbols[existing_symbol_id];
+
+                    if existing.ctx_id != included_symbol.ctx_id {
                         self.report_error(Error {
                             message: format!(
                                 "Cannot redefine {}, already defined at {}",
-                                existing_symbol.name,
+                                existing.name,
                                 included_symbol.loc.to_string(&self.registry)
                             ),
-                            loc: existing_symbol.loc,
+                            loc: existing.loc,
                         });
+                        continue;
                     }
                 }
 
-                includer.be_mut().symbols.push(included_symbol)
+                includer.be_mut().add_symbol(included_symbol);
             }
         }
 
@@ -520,7 +533,7 @@ impl Typer {
             }
 
             if let Some(alias) = &include.alias {
-                prefix.push_str(&alias);
+                prefix.push_str(alias);
                 prefix.push_str("::");
             }
 
@@ -539,8 +552,6 @@ impl Typer {
                     match &type_def.value {
                         TypeDefValue::Struct { fields } => {
                             let mut struct_fields = Vec::<StructField>::new();
-                            let mut struct_primitives_count = 0;
-                            let mut struct_aligment = 1;
 
                             'fields: for field in fields {
                                 for existing_field in &struct_fields {
@@ -557,25 +568,19 @@ impl Typer {
                                     }
                                 }
 
-                                let field_index = struct_primitives_count;
-                                let field_type_id = self.build_type_(ctx, &field.field_type, false);
+                                let field_type_id = self.build_type(ctx, &field.field_type);
                                 let field_type_id = catch!(field_type_id, err, {
                                     self.report_error(err);
                                     continue 'exprs;
                                 });
                                 let field_type = self.get_type(field_type_id);
-                                let mut field_layout = TypeLayout::new();
-                                get_type_layout(&self.registry, field_type, &mut field_layout);
-
-                                struct_aligment = u32::max(struct_aligment, field_layout.alignment);
-                                struct_primitives_count += field_layout.primitives_count;
 
                                 struct_fields.push(StructField {
                                     field_name: field.field_name.repr,
                                     field_type: field_type.clone(),
-                                    field_layout,
-                                    field_index,
-                                    byte_offset: 0, // will be set during field alignment
+                                    field_layout: TypeLayout::new(), // placeholder, will be updated in `resolve_struct_layout`
+                                    field_index: 0, // placeholder, will be updated in `resolve_struct_layout`
+                                    byte_offset: 0, // placeholder, will be updated in `resolve_struct_layout`
                                     loc: field.field_name.loc,
                                 });
 
@@ -593,16 +598,6 @@ impl Typer {
                                 }
                             }
 
-                            // align fields
-                            let mut byte_offset = 0;
-                            for field in &mut struct_fields {
-                                byte_offset = align(byte_offset, field.field_layout.alignment);
-
-                                field.byte_offset = byte_offset;
-
-                                byte_offset += field.field_layout.byte_size;
-                            }
-
                             let symbol = self.get_symbol(ctx, type_def.name.repr).unwrap().relax();
 
                             let TySymbolKind::Struct = symbol.kind else {
@@ -611,7 +606,6 @@ impl Typer {
 
                             let struct_def = &mut self.registry.structs[symbol.col_index];
                             struct_def.fields.append(&mut struct_fields);
-                            struct_def.fully_defined = true;
                         }
                         TypeDefValue::Enum {
                             variant_type: _,
@@ -690,6 +684,62 @@ impl Typer {
                 _ => {} // skip, not interested
             }
         }
+    }
+
+    fn pass_resolve_struct_layouts(&mut self) {
+        for struct_def in self.registry.structs.relax_mut() {
+            if struct_def.resolution == StructResolution::NotStarted {
+                self.resolve_struct_layout(struct_def);
+            }
+        }
+    }
+
+    fn resolve_struct_layout(&self, struct_def: &mut StructDef) {
+        struct_def.resolution = StructResolution::InProgress;
+
+        let mut struct_layout = TypeLayout::new();
+
+        for field in struct_def.fields.relax_mut() {
+            if let Type::Struct { struct_index } = field.field_type {
+                match self.registry.structs[struct_index].resolution {
+                    StructResolution::Resolved => {}
+                    StructResolution::NotStarted => {
+                        self.resolve_struct_layout(
+                            self.registry.be_mut().structs[struct_index].relax_mut(),
+                        );
+                    }
+                    StructResolution::InProgress => {
+                        struct_def.resolution = StructResolution::Resolved;
+
+                        self.report_error(Error {
+                            message: format!(
+                                "Field type not supported as it leads to infinite struct size"
+                            ),
+                            loc: field.loc,
+                        });
+                        return;
+                    }
+                }
+            }
+
+            get_type_layout(&self.registry, &field.field_type, &mut field.field_layout);
+            struct_layout.alignment =
+                u32::max(struct_layout.alignment, field.field_layout.alignment);
+
+            field.field_index = struct_layout.primitives_count;
+            struct_layout.primitives_count += field.field_layout.primitives_count;
+        }
+
+        // align fields
+        for field in &mut struct_def.fields {
+            struct_layout.byte_size = align(struct_layout.byte_size, field.field_layout.alignment);
+
+            field.byte_offset = struct_layout.byte_size;
+
+            struct_layout.byte_size += field.field_layout.byte_size;
+        }
+
+        struct_def.resolution = StructResolution::Resolved;
     }
 
     fn pass_get_str_literal_type(&mut self) {
@@ -798,7 +848,7 @@ impl Typer {
                     }
 
                     for fn_param in &fn_def.decl.params {
-                        if fn_param.param_name.repr == "" {
+                        if fn_param.param_name.repr == "_" {
                             self.report_error(Error {
                                 message: format!("Invalid fn param name `_` is not allowed here"),
                                 loc: fn_param.param_name.loc,
@@ -1428,9 +1478,10 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Ident(ident) => {
-                self.store_expr_info(ctx, ident.id, self.registry.value_info.len());
                 let value_info = self.get_value_info(ctx, &ident)?;
                 self.registry.be_mut().value_info.push(value_info);
+
+                self.store_expr_info(ctx, ident.id, self.registry.value_info.len() - 1);
                 return Ok(());
             }
             CodeExpr::Let(let_expr) => {
@@ -3531,16 +3582,7 @@ impl Typer {
     }
 
     fn build_type(&self, ctx: TyContextRef, expr: &TypeExpr) -> Result<TypeId, Error> {
-        self.build_type_(ctx, expr, true)
-    }
-
-    fn build_type_(
-        &self,
-        ctx: TyContextRef,
-        expr: &TypeExpr,
-        is_referenced: bool,
-    ) -> Result<TypeId, Error> {
-        self.type_type_expr(ctx, expr, is_referenced)?;
+        self.type_type_expr(ctx, expr)?;
 
         let Some(type_id) = self.registry.get_expr_info(ctx.expr_id_offset, expr.id()) else {
             self.reporter.abort_due_to_compiler_bug(
@@ -3552,33 +3594,15 @@ impl Typer {
         Ok(type_id)
     }
 
-    // builds a type, asserting that it doesn't have infinite size
-    fn type_type_expr(
-        &self,
-        ctx: TyContextRef,
-        expr: &TypeExpr,
-        is_referenced: bool,
-    ) -> Result<(), Error> {
+    fn type_type_expr(&self, ctx: TyContextRef, expr: &TypeExpr) -> Result<(), Error> {
         match expr {
             TypeExpr::Named(ident) => {
                 let type_id = self.get_type_id_or_err(ctx, &ident.repr, &ident.loc)?;
-                if let Type::Struct { struct_index } = self.get_type(type_id) {
-                    let struct_def = &self.registry.structs[*struct_index];
-                    if !is_referenced && !struct_def.fully_defined {
-                        return Err(Error {
-                            message: format!(
-                                "Cannot use partially defined struct '{}' here",
-                                struct_def.struct_name
-                            ),
-                            loc: ident.loc,
-                        });
-                    }
-                }
                 self.store_expr_info(ctx, ident.id, type_id);
                 Ok(())
             }
             TypeExpr::Pointer(ptr) => {
-                let pointee = self.build_type_(ctx, &ptr.pointee, true)?;
+                let pointee = self.build_type(ctx, &ptr.pointee)?;
 
                 self.store_type(
                     ctx,
@@ -3605,8 +3629,8 @@ impl Typer {
                         });
                     }
 
-                    let ok = self.build_type_(ctx, &ctr.items[0], false)?;
-                    let err = self.build_type_(ctx, &ctr.items[1], false)?;
+                    let ok = self.build_type(ctx, &ctr.items[0])?;
+                    let err = self.build_type(ctx, &ctr.items[1])?;
 
                     self.store_type(ctx, ctr.id, &Type::Result(ResultType { ok, err }));
                     return Ok(());
@@ -3625,7 +3649,7 @@ impl Typer {
                         });
                     }
 
-                    let item = self.build_type_(ctx, &ctr.items[0], true)?;
+                    let item = self.build_type(ctx, &ctr.items[0])?;
 
                     self.store_type(ctx, ctr.id, &Type::Seg(SegType { item }));
                     return Ok(());
@@ -3669,7 +3693,7 @@ impl Typer {
                         });
                     }
 
-                    let container = self.build_type_(ctx, &ctr.items[0], true)?;
+                    let container = self.build_type(ctx, &ctr.items[0])?;
                     let container = self.deref_rec(self.get_type(container));
 
                     if let Type::Seg(seg) = container {
@@ -3688,11 +3712,11 @@ impl Typer {
                     return Ok(());
                 }
 
-                let container = self.build_type_(ctx, &ctr.container, is_referenced)?;
+                let container = self.build_type(ctx, &ctr.container)?;
 
                 let mut items = Vec::new();
                 for item in &ctr.items {
-                    items.push(self.build_type_(ctx, item, true)?);
+                    items.push(self.build_type(ctx, item)?);
                 }
 
                 self.store_type(
@@ -4010,7 +4034,7 @@ impl Typer {
 
     #[inline]
     fn add_builtin_type(&mut self, ctx: &mut TyContext, type_: Type) {
-        ctx.symbols.push(TySymbol {
+        ctx.add_symbol(TySymbol {
             ctx_id: 0,
             name: type_.to_str().unwrap(),
             kind: TySymbolKind::TypeAlias,
@@ -4055,7 +4079,7 @@ impl Typer {
             return false;
         }
 
-        ctx.symbols.be_mut().push(TySymbol {
+        ctx.be_mut().add_symbol(TySymbol {
             ctx_id: ctx.id,
             name: symbol_name,
             kind: symbol_kind,
@@ -4067,10 +4091,8 @@ impl Typer {
     }
 
     fn get_symbol(&self, ctx: TyContextRef, symbol_name: &str) -> Option<&'static TySymbol> {
-        for symbol in ctx.symbols.iter().rev() {
-            if symbol.name == symbol_name {
-                return Some(symbol.relax());
-            }
+        if let Some(&symbol_id) = ctx.symbols_lookup.get(symbol_name) {
+            return Some(ctx.symbols[symbol_id].relax());
         }
 
         if let Some(parent) = ctx.parent {
@@ -4090,6 +4112,7 @@ impl Typer {
             inline_fn_call_loc: parent.inline_fn_call_loc,
             expr_id_offset: parent.expr_id_offset,
             symbols: Vec::new(),
+            symbols_lookup: BTreeMap::new(),
         })
     }
 
@@ -4232,17 +4255,15 @@ pub fn count_primitive_components(registry: &Registry, type_: &Type) -> u32 {
     layout.primitives_count
 }
 
+// TODO: look into proper alignment rules
 pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayout) {
     match type_ {
-        Type::Never | Type::Void => {
-            layout.alignment = u32::max(layout.alignment, 1);
-        }
+        Type::Never | Type::Void => {}
         Type::Bool | Type::U8 | Type::I8 => {
             if let Some(primitives) = &mut layout.primitives {
                 primitives.push(type_.clone())
             }
             layout.primitives_count += 1;
-            layout.alignment = u32::max(layout.alignment, 1);
             layout.byte_size = align(layout.byte_size, 1) + 1;
         }
         Type::U16 | Type::I16 => {
@@ -4280,7 +4301,6 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
                 get_type_layout(registry, &field.field_type, layout);
             }
 
-            layout.alignment = u32::max(layout.alignment, 1);
             layout.byte_size = align(layout.byte_size, layout.alignment);
         }
         Type::Enum { enum_index } => {
@@ -4391,7 +4411,7 @@ pub fn get_struct_field_info<'a>(
 
         return Err(Error {
             message: format!(
-                "Unknown field {} in {}",
+                "Unknown field `{}` in `{}`",
                 field_access.field_name.repr,
                 registry.fmt(lhs_type)
             ),
@@ -4423,7 +4443,7 @@ pub fn get_struct_field_info<'a>(
 
         return Err(Error {
             message: format!(
-                "Unknown field {} in {}",
+                "Unknown field `{}` in `{}`",
                 field_access.field_name.repr,
                 registry.fmt(lhs_type)
             ),
@@ -4450,7 +4470,7 @@ pub fn get_struct_field_info<'a>(
     else {
         return Err(Error {
             message: format!(
-                "Unknown field {} in struct {}",
+                "Unknown field `{}` in struct `{}`",
                 field_access.field_name.repr, struct_def.struct_name
             ),
             loc: field_access.field_name.loc,

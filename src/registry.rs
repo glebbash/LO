@@ -86,10 +86,17 @@ impl Default for ScopeKind {
     }
 }
 
+#[derive(PartialEq)]
+pub enum StructResolution {
+    NotStarted,
+    InProgress,
+    Resolved,
+}
+
 pub struct StructDef {
     pub struct_name: &'static str,
     pub fields: Vec<StructField>,
-    pub fully_defined: bool, // used for self-reference checks
+    pub resolution: StructResolution,
 }
 
 #[derive(Clone)]
@@ -285,24 +292,9 @@ impl Registry {
         });
         let source = _source.as_bytes().relax();
 
-        let mut lexer = Lexer::new(source, module_id);
-        catch!(lexer.lex_file(), err, {
-            self.reporter.error(err);
-            return None;
-        });
-
+        let lexer = Lexer::new(source, module_id);
         let parser = Parser::new(lexer, &mut self.reporter);
-
-        *parser.expr_id_count.be_mut() = self.expr_id_count;
-
-        catch!(parser.parse_file(), err, {
-            self.reporter.error(err);
-            return None;
-        });
-
-        self.expr_id_count = *parser.expr_id_count;
-
-        self.modules.push(Module {
+        let module = Module {
             id: module_id,
             absolute_path,
             source,
@@ -310,7 +302,24 @@ impl Registry {
             parser,
             includes: Vec::new(),
             included_times: 0,
+        };
+        self.modules.push(module);
+
+        catch!(self.modules[module_id].parser.lexer.lex_file(), err, {
+            self.reporter.error(err);
+            return None;
         });
+
+        {
+            *self.modules[module_id].parser.expr_id_count = self.expr_id_count;
+
+            catch!(self.modules[module_id].parser.parse_file(), err, {
+                self.reporter.error(err);
+                return None;
+            });
+
+            self.expr_id_count = *self.modules[module_id].parser.expr_id_count;
+        }
 
         if self.reporter.in_inspection_mode {
             self.reporter.print_include_info(true, module_id, loc);

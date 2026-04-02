@@ -349,5 +349,10 @@ pub mod wasi {
         // @param fd -- The file descriptor whose metadata will be accessed.
         // @param buf - A WebAssembly pointer to a memory location where the metadata will be written.
         pub fn fd_fdstat_get(fd: u32, buf: *mut Fdstat) -> Err;
+
+        // @param clock_id -- The ID of the clock to query.
+        // @param precision - The maximum amount of error the reading may have.
+        // @param time ---- A WebAssembly pointer to a memory location where the value of the clock will be written.
+        pub fn clock_time_get(clock_id: u32, precision: u32, time: *mut u32) -> Err;
     }
 }

@@ -840,8 +840,13 @@ async function commandTest() {
         return;
     }
 
-    describe("self-hosted", async () => {
-        const lo = await loadLoCompiler(await compile(SH_COMPILER_SOURCE_PATH));
+    describe("self-hosted", () => {
+        let lo: Awaited<ReturnType<typeof loadLoCompiler>>;
+
+        it("builds", async () => {
+            const loBinary = await compile(SH_COMPILER_SOURCE_PATH);
+            lo = await loadLoCompiler(loBinary);
+        });
 
         describe("formatter", async () => {
             const format = async (fileName = "-i") => {

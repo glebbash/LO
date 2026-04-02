@@ -335,3 +335,27 @@ impl<T> core::ops::DerefMut for UBRef<T> {
         unsafe { &mut *(self.0 as *mut T) }
     }
 }
+
+pub struct Latency {
+    now: u32,
+}
+
+#[allow(unused)] // kept for occasional perf checks
+impl Latency {
+    pub fn new() -> Self {
+        let mut time = 0;
+        unsafe { wasi::clock_time_get(1, 0, &mut time) };
+
+        Self {
+            now: time / 1_000_000,
+        }
+    }
+
+    pub fn measure(&mut self) -> u32 {
+        let then = self.now;
+
+        self.now = Self::new().now;
+
+        self.now - then
+    }
+}

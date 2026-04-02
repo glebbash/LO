@@ -43,7 +43,7 @@ class SysFD implements FD {
     constructor(
         sysFileFd: number | null,
         sysDirName: string,
-        sysCalls: WASISysCalls
+        sysCalls: WASISysCalls,
     ) {
         this.sysFileFd = sysFileFd;
         this.sysDirName = sysDirName;
@@ -124,10 +124,13 @@ class VirtualFD implements FD {
 
         const bytesRead = Math.min(
             buffer.length,
-            this.contents.length - this.readCursor
+            this.contents.length - this.readCursor,
         );
         buffer.set(
-            this.contents.subarray(this.readCursor, this.readCursor + bytesRead)
+            this.contents.subarray(
+                this.readCursor,
+                this.readCursor + bytesRead,
+            ),
         );
 
         this.readCursor += bytesRead;
@@ -207,7 +210,7 @@ export class WASI {
             this.fds.push(this.options.stdin);
         } else {
             this.fds.push(
-                new SysFD(this.options.stdin ?? 0, "<stdin>", this.sysCalls)
+                new SysFD(this.options.stdin ?? 0, "<stdin>", this.sysCalls),
             );
         }
 
@@ -215,7 +218,7 @@ export class WASI {
             this.fds.push(this.options.stdout);
         } else {
             this.fds.push(
-                new SysFD(this.options.stdout ?? 1, "<stdout>", this.sysCalls)
+                new SysFD(this.options.stdout ?? 1, "<stdout>", this.sysCalls),
             );
         }
 
@@ -223,7 +226,7 @@ export class WASI {
             this.fds.push(this.options.stderr);
         } else {
             this.fds.push(
-                new SysFD(this.options.stderr ?? 2, "<stderr>", this.sysCalls)
+                new SysFD(this.options.stderr ?? 2, "<stderr>", this.sysCalls),
             );
         }
 
@@ -279,7 +282,7 @@ export class WASI {
             pathOpen: (path, mode) => {
                 const file = Deno.openSync(
                     path,
-                    mode === "r" ? { read: true } : { write: true }
+                    mode === "r" ? { read: true } : { write: true },
                 );
 
                 const fd = files.size + 3;
@@ -338,7 +341,7 @@ export class WASI {
         }
 
         for (const [fnName, fn] of Object.entries(
-            imports.wasi_snapshot_preview1
+            imports.wasi_snapshot_preview1,
         )) {
             imports.wasi_snapshot_preview1[fnName] = (...args: unknown[]) => {
                 console.log(`[WASI] ${fnName}(${args.join(", ")})`);
@@ -363,7 +366,7 @@ export class WASI {
                     _fs_rights_base: number,
                     _fs_rights_inheriting: number,
                     _fdflags: number,
-                    fd_ptr: number
+                    fd_ptr: number,
                 ) => {
                     const dir = this.fds[dirfd];
                     if (dir === undefined) {
@@ -373,7 +376,7 @@ export class WASI {
                     const pathBytes = new Uint8Array(
                         this.memory.buffer,
                         path_ptr,
-                        path_len
+                        path_len,
                     );
                     const path = new TextDecoder()
                         .decode(pathBytes)
@@ -381,7 +384,7 @@ export class WASI {
 
                     const { code: err, fd: childFile } = dir.openChild(
                         path,
-                        "r"
+                        "r",
                     );
                     if (childFile !== undefined) {
                         this.fds.push(childFile);
@@ -397,7 +400,7 @@ export class WASI {
                     fd: number,
                     iovs_ptr: number,
                     iovs_len: number,
-                    nread_ptr: number
+                    nread_ptr: number,
                 ) => {
                     const file = this.fds[fd];
                     if (file === undefined) {
@@ -416,7 +419,7 @@ export class WASI {
                         const buffer = new Uint8Array(
                             this.memory.buffer,
                             bufPtr,
-                            bufLen
+                            bufLen,
                         );
 
                         const { code, nread } = file.read(buffer);
@@ -438,7 +441,7 @@ export class WASI {
                     fd: number,
                     iovs_ptr: number,
                     iovs_len: number,
-                    nwritten_ptr: number
+                    nwritten_ptr: number,
                 ) => {
                     const file = this.fds[fd];
                     if (file === undefined) {
@@ -457,7 +460,7 @@ export class WASI {
                         const buffer = new Uint8Array(
                             this.memory.buffer,
                             bufPtr,
-                            bufLen
+                            bufLen,
                         );
 
                         const { code, nwritten } = file.write(buffer);
@@ -498,7 +501,7 @@ export class WASI {
                 },
                 args_sizes_get: (
                     argc_ptr: number,
-                    argv_buf_size_ptr: number
+                    argv_buf_size_ptr: number,
                 ) => {
                     const memory = new DataView(this.memory.buffer);
 
@@ -507,7 +510,7 @@ export class WASI {
 
                     const argvBufferSize = this.args.reduce(
                         (acc, arg) => acc + arg.length + 1,
-                        0
+                        0,
                     );
                     memory.setUint32(argv_buf_size_ptr, argvBufferSize, true);
 
@@ -524,12 +527,12 @@ export class WASI {
                         new Uint8Array(
                             this.memory.buffer,
                             bufferOffset,
-                            argBytes.length
+                            argBytes.length,
                         ).set(argBytes);
                         memory.setUint32(
                             argv_ptr + Number(i) * 4,
                             bufferOffset,
-                            true
+                            true,
                         );
                         bufferOffset += argBytes.length;
                     }
@@ -562,7 +565,7 @@ export class WASI {
                 fd_prestat_dir_name: (
                     fd: number,
                     path_ptr: number,
-                    path_len: number
+                    path_len: number,
                 ) => {
                     // don't allow touching non-preopens
                     if (fd >= this.preopenCount) {
@@ -578,7 +581,7 @@ export class WASI {
 
                     const bytesToWrite = Math.min(
                         path_len,
-                        preopenDirName.length
+                        preopenDirName.length,
                     );
 
                     const encoder = new TextEncoder();
@@ -586,7 +589,7 @@ export class WASI {
                     new Uint8Array(
                         this.memory.buffer,
                         path_ptr,
-                        bytesToWrite
+                        bytesToWrite,
                     ).set(dirBytes.subarray(0, bytesToWrite));
 
                     return WASI_ERRNO_SUCCESS;
@@ -611,6 +614,22 @@ export class WASI {
                     const rights_inheriting = 0n;
                     memory.setBigUint64(buf_ptr + 16, rights_inheriting, true);
 
+                    return WASI_ERRNO_SUCCESS;
+                },
+                clock_time_get: (
+                    clock_id: number,
+                    _precision: number,
+                    time: number,
+                ) => {
+                    if (clock_id !== 1) {
+                        return WASI_ERRNO_INVAL;
+                    }
+
+                    const now = BigInt(
+                        Math.floor(performance.now() * 1_000_000),
+                    );
+                    const memory = new DataView(this.memory.buffer);
+                    memory.setBigUint64(time, now, true);
                     return WASI_ERRNO_SUCCESS;
                 },
             },
