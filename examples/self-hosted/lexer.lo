@@ -1,11 +1,6 @@
 @include("./common.lo")
 
-type Token = struct {
-    type_: TokenType,
-    loc: Loc,
-}
-
-type TokenType = enum {
+type TokenKind = enum {
     StringLiteral,
     CharLiteral,
     IntLiteral,
@@ -15,56 +10,52 @@ type TokenType = enum {
     Terminal,
 }
 
-fn TokenType::to_str(self): str {
-    if self == TokenType::StringLiteral {
+fn TokenKind::to_str(self): str {
+    if self == TokenKind::StringLiteral {
         return "StringLiteral"
-    } else if self == TokenType::CharLiteral {
+    } else if self == TokenKind::CharLiteral {
         return "CharLiteral"
-    } else if self == TokenType::IntLiteral {
+    } else if self == TokenKind::IntLiteral {
         return "IntLiteral"
-    } else if self == TokenType::Symbol {
+    } else if self == TokenKind::Symbol {
         return "Symbol"
-    } else if self == TokenType::Delim {
+    } else if self == TokenKind::Delim {
         return "Delim"
-    } else if self == TokenType::Operator {
+    } else if self == TokenKind::Operator {
         return "Operator"
-    } else if self == TokenType::Terminal {
+    } else if self == TokenKind::Terminal {
         return "Terminal"
     } else {
         @unreachable()
     }
 }
 
+type Token = struct {
+    kind: TokenKind,
+    loc: Loc,
+}
+
 fn Token::get_value(&self, source: str): str {
-    if self.is_terminal() {
+    if self.kind == TokenKind::Terminal {
         return "<EOF>"
     }
 
     return self.loc.read_span(source)
 }
 
-fn Token::is(&self, type_: TokenType, value: str, source: str): bool {
-    return self.is_any(type_) && self.get_value(source).equals(value)
-}
-
-fn Token::is_any(&self, type_: TokenType): bool {
-    return self.type_ == type_
-}
-
-fn Token::is_terminal(&self): bool {
-    return self.is_any(TokenType::Terminal)
+fn Token::is(&self, kind: TokenKind, value: str, source: str): bool {
+    return self.kind == kind && self.get_value(source).equals(value)
 }
 
 type Lexer = struct {
     // context
+    module_id: u32,
     source: str,
-    file_index: u32,
     error_arena: &Arena,
 
     // state
     source_pos: Pos,
     current_char: Result(u32, UTF8ReadError),
-    was_newline: bool,
 
     // output
     tokens: &Vec(Token),
@@ -73,15 +64,14 @@ type Lexer = struct {
     double_backslashes: &Vec(Loc),
 }
 
-fn Lexer::new(error_arena: &Arena, source: str, file_index: u32): &Lexer {
+fn Lexer::new(error_arena: &Arena, source: str, module_id: u32): &Lexer {
     return heap::new!(Lexer {
+        module_id: module_id,
         source: source,
-        file_index: file_index,
         error_arena: error_arena,
 
         source_pos: Pos { offset: 0, line: 1, col: 1 },
         current_char: read_utf8_codepoint(source, 0),
-        was_newline: false,
 
         tokens: Vec::new!<Token>(),
         comments: Vec::new!<Loc>(),
@@ -109,7 +99,7 @@ fn Lexer::lex_file(&self): Result(void, &Error) {
     }
 
     self.tokens.push!(Token {
-        type_: TokenType::Terminal,
+        kind: TokenKind::Terminal,
         loc: self.loc(),
     })
 
@@ -180,13 +170,10 @@ fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
                 loc: self.loc(),
             }))
         }
-
-        // skip escaped character
-        self.next_char()
-    } else {
-        // skip actual character
-        self.next_char()
     }
+
+    // skip `char` or escaped char `c`
+    self.next_char()
 
     let end_quote = self.current_char()? as u8
     if end_quote != '\'' {
@@ -209,7 +196,7 @@ fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::CharLiteral,
+        kind: TokenKind::CharLiteral,
         loc: loc,
     })
 }
@@ -272,7 +259,7 @@ fn Lexer::lex_string_literal(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::StringLiteral,
+        kind: TokenKind::StringLiteral,
         loc: loc,
     })
 }
@@ -307,7 +294,7 @@ fn Lexer::lex_int_literal(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::IntLiteral,
+        kind: TokenKind::IntLiteral,
         loc: loc,
     })
 }
@@ -344,7 +331,7 @@ fn Lexer::lex_symbol(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::Symbol,
+        kind: TokenKind::Symbol,
         loc: loc,
     })
 }
@@ -352,12 +339,13 @@ fn Lexer::lex_symbol(&self): Result(Token, &Error) {
 fn Lexer::lex_delim(&self): Result(Token, &Error) {
     let loc = self.loc()
 
+    // skip delimiter char
     self.next_char()
 
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::Delim,
+        kind: TokenKind::Delim,
         loc: loc,
     })
 }
@@ -413,7 +401,7 @@ fn Lexer::lex_operator(&self): Result(Token, &Error) {
     loc.end_pos = self.source_pos
 
     return Ok(Token {
-        type_: TokenType::Operator,
+        kind: TokenKind::Operator,
         loc: loc,
     })
 }
@@ -448,6 +436,7 @@ fn Lexer::skip_space(&self) {
         if next_char as u8 == '\\' {
             self.next_char()
             loc.end_pos = self.source_pos
+
             self.double_backslashes.push!(loc)
         } else {
             self.backslashes.push!(loc)
@@ -469,8 +458,8 @@ fn Lexer::skip_space(&self) {
 
         let loc = self.loc()
 
-        self.next_char()
-        self.next_char()
+        // skip `//`
+        self.next_char() \\ self.next_char()
 
         loop {
             let comment_char = self.current_char() catch _ {
@@ -531,13 +520,13 @@ fn Lexer::current_char(&self): Result(u32, &Error) {
 }
 
 fn Lexer::peek_next_char(&self): Result(u32, &Error) {
-    let char = self.current_char catch _ {
+    let current_char = self.current_char catch _ {
         return self.current_char()
     }
 
     return self.map_utf8_read_err(read_utf8_codepoint(
         self.source,
-        self.source_pos.offset + char_len_utf8(char),
+        self.source_pos.offset + char_len_utf8(current_char),
     ))
 }
 
@@ -563,7 +552,7 @@ fn Lexer::loc(&self): Loc {
     end_pos.col += 1
 
     return Loc {
-        file_index: self.file_index,
+        file_index: self.module_id,
         pos: pos,
         end_pos: end_pos,
     }
@@ -585,7 +574,7 @@ fn QuotedString::get_value(self, source: str): String {
     let repr = self.get_repr(source)
     let value = String::new(16)
 
-    // skip start quote
+    // start from 1 to skip start quote
     let i = 1
     loop {
         let char = repr.char_at(i)
@@ -593,27 +582,30 @@ fn QuotedString::get_value(self, source: str): String {
 
         if char == '"' {
             break
-        } else if char == '\\' {
-            let next_char = repr.char_at(i)
-            i += 1
+        }
 
-            if next_char == 'n' {
-                value.push('\n')
-            } else if next_char == 'r' {
-                value.push('\r')
-            } else if next_char == 't' {
-                value.push('\t')
-            } else if next_char == '0' {
-                value.push('\0')
-            } else if next_char == '\\' {
-                value.push('\\')
-            } else if next_char == '"' {
-                value.push('"')
-            } else {
-                @unreachable()
-            }
-        } else {
+        if char != '\\' {
             value.push(char)
+            continue
+        }
+
+        let next_char = repr.char_at(i)
+        i += 1
+
+        if next_char == 'n' {
+            value.push('\n')
+        } else if next_char == 'r' {
+            value.push('\r')
+        } else if next_char == 't' {
+            value.push('\t')
+        } else if next_char == '0' {
+            value.push('\0')
+        } else if next_char == '\\' {
+            value.push('\\')
+        } else if next_char == '"' {
+            value.push('"')
+        } else {
+            @unreachable()
         }
     }
 
@@ -623,6 +615,7 @@ fn QuotedString::get_value(self, source: str): String {
 inline let OPERATORS = [str][
     "=", \\ "==", \\ "!=",
     "&&", \\ "||", \\ "!",
+
     "<", \\ "<=",
     ">", \\ ">=",
     "+", \\ "+=",
@@ -631,10 +624,10 @@ inline let OPERATORS = [str][
     "/", \\ "/=",
     "%", \\ "%=",
     "&", \\ "&=",
+    "|", \\ "|=",
+    "^", \\ "^=",
     "<<", \\ "<<=",
     ">>", \\ ">>=",
-    "^", \\ "^=",
-    "|", \\ "|=",
 
     "*&", \\ "|>", \\ ".", \\ "..",
     ":", \\ "::", \\ "@", \\ "?",
@@ -687,7 +680,7 @@ type InfixOpTag = enum {
 
     ErrorPropagation,
 
-    ExprPipe,
+    Pipe,
 }
 
 type InfixOp = struct {
@@ -761,7 +754,7 @@ fn InfixOp::parse(repr: str): Result(InfixOp, &void) {
         return Ok(InfixOp::left_assoc(InfixOpTag::Or, 3))
     }
     if repr.equals("|>") {
-        return Ok(InfixOp::left_assoc(InfixOpTag::ExprPipe, 2))
+        return Ok(InfixOp::left_assoc(InfixOpTag::Pipe, 2))
     }
     if repr.equals("=") {
         return Ok(InfixOp::none_assoc(InfixOpTag::Assign, 1))
@@ -818,6 +811,12 @@ type PrefixOp = struct {
 }
 
 fn PrefixOp::parse(repr: str): Result(PrefixOp, &void) {
+    if repr.equals("+") {
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Positive, 9))
+    }
+    if repr.equals("-") {
+        return Ok(PrefixOp::left_assoc(PrefixOpTag::Negative, 9))
+    }
     if repr.equals("!") {
         return Ok(PrefixOp::left_assoc(PrefixOpTag::Not, 8))
     }
@@ -826,12 +825,6 @@ fn PrefixOp::parse(repr: str): Result(PrefixOp, &void) {
     }
     if repr.equals("*") {
         return Ok(PrefixOp::left_assoc(PrefixOpTag::Dereference, 8))
-    }
-    if repr.equals("+") {
-        return Ok(PrefixOp::left_assoc(PrefixOpTag::Positive, 9))
-    }
-    if repr.equals("-") {
-        return Ok(PrefixOp::left_assoc(PrefixOpTag::Negative, 9))
     }
     return Err(1 as &void)
 }

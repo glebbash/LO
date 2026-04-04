@@ -1,7 +1,7 @@
 use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
-pub enum TokenType {
+pub enum TokenKind {
     StringLiteral,
     CharLiteral,
     IntLiteral,
@@ -13,29 +13,21 @@ pub enum TokenType {
 
 #[derive(Clone)]
 pub struct Token {
-    pub type_: TokenType,
+    pub kind: TokenKind,
     pub loc: Loc,
 }
 
 impl Token {
     pub fn get_value(&self, source: &'static [u8]) -> &'static str {
-        if self.type_ == TokenType::Terminal {
+        if self.kind == TokenKind::Terminal {
             return "<EOF>";
         }
 
         return self.loc.read_span(source);
     }
 
-    pub fn is_terminal(&self) -> bool {
-        self.type_ == TokenType::Terminal
-    }
-
-    pub fn is_any(&self, type_: TokenType) -> bool {
-        self.type_ == type_
-    }
-
-    pub fn is(&self, type_: TokenType, value: &str, source: &'static [u8]) -> bool {
-        self.is_any(type_) && self.get_value(source) == value
+    pub fn is(&self, kind: TokenKind, value: &str, source: &'static [u8]) -> bool {
+        self.kind == kind && self.get_value(source) == value
     }
 }
 
@@ -86,7 +78,7 @@ impl Lexer {
         }
 
         self.tokens.push(Token {
-            type_: TokenType::Terminal,
+            kind: TokenKind::Terminal,
             loc: self.loc(),
         });
 
@@ -104,7 +96,7 @@ impl Lexer {
             return self.lex_string_literal();
         }
 
-        if char.is_numeric() {
+        if char >= '0' && char <= '9' {
             return self.lex_int_literal();
         }
 
@@ -132,22 +124,24 @@ impl Lexer {
 
         self.next_char(); // skip start quote
 
-        if self.current_char()? == '\\' {
+        let char = self.current_char()?;
+        if char == '\\' {
             self.next_char(); // skip `\`
-            match self.current_char()? {
-                'n' | 'r' | 't' | '0' | '\\' | '\'' => {
-                    self.next_char(); // skip escaped character
-                }
-                c => {
-                    return Err(Error {
-                        message: format!("ParseError: Invalid escape sequence: \\{c}"),
-                        loc: self.loc(),
-                    });
-                }
+
+            let c = self.current_char()?;
+
+            let correct_escape =
+                c == 'n' || c == 'r' || c == 't' || c == '0' || c == '\\' || c == '\'';
+
+            if !correct_escape {
+                return Err(Error {
+                    message: format!("ParseError: Invalid escape sequence: \\{c}"),
+                    loc: self.loc(),
+                });
             }
-        } else {
-            self.next_char(); // skip actual character
         }
+
+        self.next_char(); // skip `char` or escaped char
 
         let end_quote = self.current_char()?;
         if end_quote != '\'' {
@@ -161,7 +155,7 @@ impl Lexer {
         loc.end_pos = self.source_pos;
 
         Ok(Token {
-            type_: TokenType::CharLiteral,
+            kind: TokenKind::CharLiteral,
             loc,
         })
     }
@@ -183,24 +177,26 @@ impl Lexer {
         self.next_char(); // skip start quote
 
         loop {
-            match self.current_char()? {
-                '"' => break,
-                '\\' => {
-                    self.next_char();
+            let char = self.current_char()?;
+            if char == '"' {
+                break;
+            }
 
-                    let c = self.current_char()?;
-                    let correct_escape =
-                        c == 'n' || c == 'r' || c == 't' || c == '0' || c == '\\' || c == '"';
+            if char == '\\' {
+                self.next_char();
 
-                    if !correct_escape {
-                        return Err(Error {
-                            message: format!("ParseError: Invalid escape sequence: \\{c}"),
-                            loc: self.loc(),
-                        });
-                    }
+                let c = self.current_char()?;
+                let correct_escape =
+                    c == 'n' || c == 'r' || c == 't' || c == '0' || c == '\\' || c == '"';
+
+                if !correct_escape {
+                    return Err(Error {
+                        message: format!("ParseError: Invalid escape sequence: \\{c}"),
+                        loc: self.loc(),
+                    });
                 }
-                _ => {}
-            };
+            }
+
             self.next_char();
         }
 
@@ -209,7 +205,7 @@ impl Lexer {
         loc.end_pos = self.source_pos;
 
         Ok(Token {
-            type_: TokenType::StringLiteral,
+            kind: TokenKind::StringLiteral,
             loc,
         })
     }
@@ -241,7 +237,7 @@ impl Lexer {
         loc.end_pos = self.source_pos;
 
         Ok(Token {
-            type_: TokenType::IntLiteral,
+            kind: TokenKind::IntLiteral,
             loc,
         })
     }
@@ -280,7 +276,7 @@ impl Lexer {
         loc.end_pos = self.source_pos;
 
         Ok(Token {
-            type_: TokenType::Symbol,
+            kind: TokenKind::Symbol,
             loc,
         })
     }
@@ -293,7 +289,7 @@ impl Lexer {
         loc.end_pos = self.source_pos;
 
         Ok(Token {
-            type_: TokenType::Delim,
+            kind: TokenKind::Delim,
             loc,
         })
     }
@@ -344,7 +340,7 @@ impl Lexer {
         loc.end_pos = self.source_pos;
 
         Ok(Token {
-            type_: TokenType::Operator,
+            kind: TokenKind::Operator,
             loc,
         })
     }
@@ -455,13 +451,13 @@ impl Lexer {
     }
 
     fn peek_next_char(&mut self) -> Result<char, Error> {
-        let Ok(char) = self.current_char else {
+        let Ok(current_char) = self.current_char else {
             return self.current_char();
         };
 
         self.map_utf8_read_err(read_utf8_codepoint(
             self.source,
-            self.source_pos.offset + char.len_utf8(),
+            self.source_pos.offset + current_char.len_utf8(),
         ))
     }
 
@@ -542,45 +538,22 @@ impl QuotedString {
 }
 
 static OPERATORS: &[&str] = &[
-    "=",   // Assignment
-    "==",  // Equality comparison
-    "!=",  // Nonequality comparison
-    "!",   // Logical NOT
-    "&&",  // Short-circuiting logical AND
-    "||",  // Short-circuiting logical OR
-    "<",   // Less than comparison
-    "<=",  // Less than or equal to comparison
-    ">",   // Greater than comparison
-    ">=",  // Greater than or equal to comparison
-    "+",   // Arithmetic addition
-    "+=",  // Arithmetic addition and assignment
-    "-",   // Arithmetic subtraction
-    "-=",  // Arithmetic subtraction and assignment
-    "*",   // Arithmetic multiplication
-    "*=",  // Arithmetic multiplication and assignment
-    "/",   // Arithmetic division
-    "/=",  // Arithmetic division and assignment
-    "%",   // Arithmetic remainder
-    "%=",  // Arithmetic remainder and assignment
-    "&",   // Bitwise AND / Pointer to one
-    "*&",  // Pointer to any amount
-    "&=",  // Bitwise AND and assignment
-    "<<",  // Left-shift
-    "<<=", // Left-shift and assignment
-    "=>",  // Part of match arm syntax
-    ">>",  // Right-shift
-    ">>=", // Right-shift and assignment
-    "^",   // Bitwise exclusive OR
-    "^=",  // Bitwise exclusive OR and assignment
-    "|",   // Bitwise OR
-    "|=",  // Bitwise OR and assignment
-    "|>",  // Expression piping
-    ".",   // Member access
-    "..",  // Range operator
-    ":",   // Type separator
-    "::",  // Path separator
-    "@",   // Memory index separator, defer label prefix
-    "?",   // Error propagation
+    "=", "==", "!=", //
+    "&&", "||", "!", //
+    "<", "<=", //
+    ">", ">=", //
+    "+", "+=", //
+    "-", "-=", //
+    "*", "*=", //
+    "/", "/=", //
+    "%", "%=", //
+    "&", "&=", //
+    "|", "|=", //
+    "^", "^=", //
+    "<<", "<<=", //
+    ">>", ">>=", //
+    "*&", "|>", ".", "..", //
+    ":", "::", "@", "?", //
 ];
 
 fn is_operator_start_char(c: char) -> bool {
@@ -718,11 +691,11 @@ pub struct PrefixOp {
 impl PrefixOp {
     pub fn parse(repr: &'static str) -> Option<Self> {
         Some(match repr {
+            "+" => Self::left_assoc(PrefixOpTag::Positive, 9),
+            "-" => Self::left_assoc(PrefixOpTag::Negative, 9),
             "!" => Self::left_assoc(PrefixOpTag::Not, 8),
             "&" => Self::left_assoc(PrefixOpTag::Reference, 8),
             "*" => Self::left_assoc(PrefixOpTag::Dereference, 8),
-            "+" => Self::left_assoc(PrefixOpTag::Positive, 9),
-            "-" => Self::left_assoc(PrefixOpTag::Negative, 9),
             _ => return Option::None,
         })
     }

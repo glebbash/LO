@@ -2,14 +2,14 @@
 @include("./lexer.lo")
 @include("./ast.lo")
 
-// TODO?: support `@use(TokenType::_)`
-inline let StringLiteral = TokenType::StringLiteral
-inline let CharLiteral = TokenType::CharLiteral
-inline let IntLiteral = TokenType::IntLiteral
-inline let Symbol = TokenType::Symbol
-inline let Delim = TokenType::Delim
-inline let Operator = TokenType::Operator
-inline let Terminal = TokenType::Terminal
+// TODO?: support `@use(TokenKind::_)`
+inline let StringLiteral = TokenKind::StringLiteral
+inline let CharLiteral = TokenKind::CharLiteral
+inline let IntLiteral = TokenKind::IntLiteral
+inline let Symbol = TokenKind::Symbol
+inline let Delim = TokenKind::Delim
+inline let Operator = TokenKind::Operator
+inline let Terminal = TokenKind::Terminal
 
 type ParsingContext = struct {
     struct_literal_allowed: bool,
@@ -57,7 +57,7 @@ fn Parser::free(&self) {
 }
 
 fn Parser::parse_file(&self): Result(void, &Error) {
-    while !self.current().is_terminal() {
+    while self.current().kind != Terminal {
         let expr = self.parse_top_level_expr()?
         self.ast.push!(expr)
     }
@@ -548,7 +548,7 @@ fn Parser::parse_code_expr(&self, min_bp: u32): Result(CodeExpr, &Error) {
     let primary = self.parse_code_expr_primary()?
     let backslash_start_hint = ref!(0)
 
-    while !self.current().is_terminal() {
+    while self.current().kind != Terminal {
         let op_symbol = self.current()
 
         let backslash_between = self.has_backslashes_between(
@@ -963,7 +963,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     let op_token = self.current()
-    if !op_token.is_terminal() {
+    if op_token.kind != Terminal {
         let maybe_op = PrefixOp::parse(op_token.get_value(self.source))
         if maybe_op.err == null {
             let op = maybe_op.ok
@@ -1229,7 +1229,7 @@ fn Parser::parse_code_expr_postfix(
         })))
     }
 
-    if op.tag == InfixOpTag::ExprPipe {
+    if op.tag == InfixOpTag::Pipe {
         let loc = primary.loc()
 
         let rhs = self.parse_code_expr(op.bp_next)?
@@ -1340,9 +1340,9 @@ fn Parser::pop_ctx(&self) {
     self.context_stack.pop()
 }
 
-fn Parser::expect(&self, type_: TokenType, value: str): Result(&Token, &Error) {
+fn Parser::expect(&self, kind: TokenKind, value: str): Result(&Token, &Error) {
     let token = self.current()
-    if !token.is(type_, value, self.lexer.source) {
+    if !token.is(kind, value, self.lexer.source) {
         let message = String::from_str_in(
             self.error_arena,
             "Unexpected token '",
@@ -1361,16 +1361,16 @@ fn Parser::expect(&self, type_: TokenType, value: str): Result(&Token, &Error) {
     return Ok(self.next())
 }
 
-fn Parser::expect_any(&self, type_: TokenType): Result(&Token, &Error) {
+fn Parser::expect_any(&self, kind: TokenKind): Result(&Token, &Error) {
     let token = self.current()
-    if !token.is_any(type_) {
+    if token.kind != kind {
         let message = String::from_str_in(
             self.error_arena,
             "Unexpected token '",
         )
         message.push_str(token.get_value(self.lexer.source))
         message.push_str("', wanted '")
-        message.push_str(type_.to_str())
+        message.push_str(kind.to_str())
         message.push_str("'")
 
         return Err(self.error_arena.new!(Error {
@@ -1382,16 +1382,16 @@ fn Parser::expect_any(&self, type_: TokenType): Result(&Token, &Error) {
     return Ok(self.next())
 }
 
-fn Parser::eat(&self, type_: TokenType, value: str): &?Token {
-    if !self.current().is(type_, value, self.lexer.source) {
+fn Parser::eat(&self, kind: TokenKind, value: str): &?Token {
+    if !self.current().is(kind, value, self.lexer.source) {
         return null
     }
 
     return self.next()
 }
 
-fn Parser::eat_any(&self, type_: TokenType): &?Token {
-    if !self.current().is_any(type_) {
+fn Parser::eat_any(&self, kind: TokenKind): &?Token {
+    if self.current().kind != kind {
         return null
     }
 

@@ -1,6 +1,6 @@
 use crate::{ast::*, common::*, lexer::*};
 
-use TokenType::*;
+use TokenKind::*;
 
 pub struct ParsingContext {
     pub struct_literal_allowed: bool,
@@ -40,7 +40,7 @@ impl Parser {
     }
 
     pub fn parse_file(&self) -> Result<(), Error> {
-        while !self.current().is_terminal() {
+        while self.current().kind != Terminal {
             let expr = self.parse_top_level_expr()?;
             self.ast.be_mut().push(expr);
         }
@@ -465,7 +465,7 @@ impl Parser {
         let mut primary = self.parse_code_expr_primary()?;
         let mut backslash_start_hint = 0;
 
-        while !self.current().is_terminal() {
+        while self.current().kind != Terminal {
             let op_symbol = self.current().clone();
 
             let backslash_between = self.has_backslashes_between(
@@ -535,7 +535,7 @@ impl Parser {
         if let Some(int) = self.eat_any(IntLiteral).cloned() {
             let mut tag = None;
             let tag_token = self.current();
-            if tag_token.is_any(Symbol) && tag_token.loc.pos.offset == int.loc.end_pos.offset {
+            if tag_token.kind == Symbol && tag_token.loc.pos.offset == int.loc.end_pos.offset {
                 tag = Some(tag_token.get_value(self.source));
                 self.next();
             }
@@ -902,7 +902,7 @@ impl Parser {
         }
 
         let op_token = self.current();
-        if !op_token.is_terminal() {
+        if op_token.kind != Terminal {
             if let Some(op) = PrefixOp::parse(op_token.get_value(self.source)) {
                 self.next(); // skip operator
 
@@ -1356,12 +1356,12 @@ impl Parser {
         self.context_stack.be_mut().pop();
     }
 
-    fn expect_any(&self, type_: TokenType) -> Result<&Token, Error> {
+    fn expect_any(&self, kind: TokenKind) -> Result<&Token, Error> {
         let token = self.current();
-        if !token.is_any(type_) {
+        if token.kind != kind {
             return Err(Error {
                 message: format!(
-                    "Unexpected token '{}', wanted {type_:?}",
+                    "Unexpected token '{}', wanted {kind:?}",
                     token.get_value(self.source)
                 ),
                 loc: token.loc,
@@ -1371,9 +1371,9 @@ impl Parser {
         Ok(self.next())
     }
 
-    fn expect(&self, type_: TokenType, value: &str) -> Result<&Token, Error> {
+    fn expect(&self, kind: TokenKind, value: &str) -> Result<&Token, Error> {
         let token = self.current();
-        if !token.is(type_, value, self.source) {
+        if !token.is(kind, value, self.source) {
             return Err(Error {
                 message: format!(
                     "Unexpected token '{}', wanted '{value}'",
@@ -1386,16 +1386,16 @@ impl Parser {
         Ok(self.next())
     }
 
-    fn eat_any(&self, type_: TokenType) -> Option<&Token> {
-        if !self.current().is_any(type_) {
+    fn eat_any(&self, kind: TokenKind) -> Option<&Token> {
+        if self.current().kind != kind {
             return None;
         }
 
         Some(self.next())
     }
 
-    fn eat(&self, type_: TokenType, value: &str) -> Option<&Token> {
-        if !self.current().is(type_, value, self.source) {
+    fn eat(&self, kind: TokenKind, value: &str) -> Option<&Token> {
+        if !self.current().is(kind, value, self.source) {
             return None;
         }
 
