@@ -403,9 +403,11 @@ export async function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
+            // NOTE: when there is a pinned `.lo` file it acts as a project root
+            //   and is inspected instead of the currently opened file
             let pinnedDoc: vscode.TextDocument | undefined;
 
-            _: for (const group of [
+            pinSearchLoop: for (const group of [
                 vscode.window.tabGroups.activeTabGroup,
                 ...vscode.window.tabGroups.all,
             ]) {
@@ -417,7 +419,7 @@ export async function activate(context: vscode.ExtensionContext) {
                         pinnedDoc = await vscode.workspace.openTextDocument(
                             tab.input.uri,
                         );
-                        break _;
+                        break pinSearchLoop;
                     }
                 }
             }

@@ -61,7 +61,7 @@ export fn main(): u32 {
 ### Include
 
 ```lo
-include "./file.lo"
+@include("./file.lo")
 ```
 
 Include pathes are relative to the file they are included to.
@@ -73,8 +73,8 @@ File paths are fully resolved before including.
 Example:
 
 ```lo
-include "./abc.lo" // will include
-include "./some-folder/../abc.lo" // will skip
+@include("./abc.lo") // will include
+@include("./some-folder/../abc.lo") // will skip
 ```
 
 ## 🧑‍💻 Code Expressions
