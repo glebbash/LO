@@ -438,6 +438,36 @@ impl Parser {
         return Ok(TypeExpr::Named(ident));
     }
 
+    fn parse_ident(&self) -> Result<IdentExpr, Error> {
+        let mut ident = IdentExpr {
+            id: self.next_expr_id(),
+            repr: "", // stub
+            parts: Vec::new(),
+            loc: self.current().loc,
+        };
+
+        loop {
+            let ident_part = self.expect_any(Symbol)?;
+            ident.parts.push(ident_part.loc);
+
+            if let None = self.eat(Operator, "::") {
+                break;
+            }
+        }
+
+        ident.loc.end_pos = self.prev().loc.end_pos;
+
+        ident.repr = ident.loc.read_span(self.source);
+        if ident.repr.contains(" ") {
+            self.reporter.error(Error {
+                message: format!("Unexpected space in identifier"),
+                loc: ident.loc,
+            });
+        }
+
+        Ok(ident)
+    }
+
     fn parse_code_block(&self) -> Result<CodeBlock, Error> {
         self.expect(Delim, "{")?;
 
@@ -487,6 +517,7 @@ impl Parser {
             }
 
             self.next(); // skip operator
+
             primary = self.parse_code_expr_postfix(primary, op, &op_symbol.loc)?;
         }
 
@@ -1193,74 +1224,6 @@ impl Parser {
         }
     }
 
-    fn has_backslashes_between(
-        &self,
-        start_hint: &mut usize,
-        offset_start: usize,
-        offset_end: usize,
-    ) -> bool {
-        let mut i = *start_hint;
-
-        while i < self.lexer.backslashes.len() {
-            let backslash = &self.lexer.backslashes[i];
-            if backslash.pos.offset < offset_start {
-                i += 1;
-                continue;
-            }
-
-            *start_hint = i;
-            return backslash.end_pos.offset <= offset_end;
-        }
-
-        *start_hint = i;
-        false
-    }
-
-    fn parse_match_header(&self) -> Result<MatchHeader, Error> {
-        let variant_name = self.parse_ident()?;
-        self.expect(Delim, "(")?;
-        let variant_bind = self.parse_ident()?;
-        self.expect(Delim, ")")?;
-        self.expect(Operator, "=")?;
-        let expr_to_match = self.parse_code_expr(0)?;
-
-        Ok(MatchHeader {
-            variant_name,
-            variant_bind,
-            expr_to_match,
-        })
-    }
-
-    fn parse_ident(&self) -> Result<IdentExpr, Error> {
-        let mut ident = IdentExpr {
-            id: self.next_expr_id(),
-            repr: "", // stub
-            parts: Vec::new(),
-            loc: self.current().loc,
-        };
-
-        loop {
-            let ident_part = self.expect_any(Symbol)?;
-            ident.parts.push(ident_part.loc);
-
-            if let None = self.eat(Operator, "::") {
-                break;
-            }
-        }
-
-        ident.loc.end_pos = self.prev().loc.end_pos;
-
-        ident.repr = ident.loc.read_span(self.source);
-        if ident.repr.contains(" ") {
-            self.reporter.error(Error {
-                message: format!("Unexpected space in identifier"),
-                loc: ident.loc,
-            });
-        }
-
-        Ok(ident)
-    }
-
     fn parse_code_expr_map(&self) -> Result<CodeExprMap, Error> {
         let mut fields = Vec::new();
         let mut has_trailing_comma = false;
@@ -1335,17 +1298,52 @@ impl Parser {
         return Ok(type_args);
     }
 
+    fn parse_match_header(&self) -> Result<MatchHeader, Error> {
+        let variant_name = self.parse_ident()?;
+        self.expect(Delim, "(")?;
+        let variant_bind = self.parse_ident()?;
+        self.expect(Delim, ")")?;
+        self.expect(Operator, "=")?;
+        let expr_to_match = self.parse_code_expr(0)?;
+
+        Ok(MatchHeader {
+            variant_name,
+            variant_bind,
+            expr_to_match,
+        })
+    }
+
+    fn has_backslashes_between(
+        &self,
+        start_hint: &mut usize,
+        offset_start: usize,
+        offset_end: usize,
+    ) -> bool {
+        let mut i = *start_hint;
+
+        while i < self.lexer.backslashes.len() {
+            let backslash = &self.lexer.backslashes[i];
+            if backslash.pos.offset < offset_start {
+                i += 1;
+                continue;
+            }
+
+            *start_hint = i;
+            return backslash.end_pos.offset <= offset_end;
+        }
+
+        *start_hint = i;
+        false
+    }
+
     fn extend_ident(&self, ident: &mut IdentExpr, new_end_pos: Pos) {
         ident.loc.end_pos = new_end_pos;
         ident.repr = ident.loc.read_span(self.source);
     }
 
-    // utils
-
     fn next_expr_id(&self) -> usize {
-        let expr_id = *self.expr_id_count;
-        *self.expr_id_count.be_mut() = expr_id + 1;
-        expr_id
+        *self.expr_id_count.be_mut() += 1;
+        *self.expr_id_count - 1
     }
 
     fn push_ctx(&self, ctx: ParsingContext) {
@@ -1354,21 +1352,6 @@ impl Parser {
 
     fn pop_ctx(&self) {
         self.context_stack.be_mut().pop();
-    }
-
-    fn expect_any(&self, kind: TokenKind) -> Result<&Token, Error> {
-        let token = self.current();
-        if token.kind != kind {
-            return Err(Error {
-                message: format!(
-                    "Unexpected token '{}', wanted {kind:?}",
-                    token.get_value(self.source)
-                ),
-                loc: token.loc,
-            });
-        }
-
-        Ok(self.next())
     }
 
     fn expect(&self, kind: TokenKind, value: &str) -> Result<&Token, Error> {
@@ -1386,16 +1369,31 @@ impl Parser {
         Ok(self.next())
     }
 
-    fn eat_any(&self, kind: TokenKind) -> Option<&Token> {
-        if self.current().kind != kind {
+    fn expect_any(&self, kind: TokenKind) -> Result<&Token, Error> {
+        let token = self.current();
+        if token.kind != kind {
+            return Err(Error {
+                message: format!(
+                    "Unexpected token '{}', wanted {kind:?}",
+                    token.get_value(self.source)
+                ),
+                loc: token.loc,
+            });
+        }
+
+        Ok(self.next())
+    }
+
+    fn eat(&self, kind: TokenKind, value: &str) -> Option<&Token> {
+        if !self.current().is(kind, value, self.source) {
             return None;
         }
 
         Some(self.next())
     }
 
-    fn eat(&self, kind: TokenKind, value: &str) -> Option<&Token> {
-        if !self.current().is(kind, value, self.source) {
+    fn eat_any(&self, kind: TokenKind) -> Option<&Token> {
+        if self.current().kind != kind {
             return None;
         }
 

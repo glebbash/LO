@@ -123,7 +123,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
         let unexpected = self.current()
         let message = String::from_str_in(self.error_arena, "Unexpected exportable: ")
-        message.push_str(unexpected.get_value(self.lexer.source))
+        message.push_str(unexpected.get_value(self.source))
 
         return Err(self.error_arena.new!(Error {
             message: message,
@@ -161,7 +161,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
         let unexpected = self.current()
         let message = String::from_str_in(self.error_arena, "Unexpected inlineable: ")
-        message.push_str(unexpected.get_value(self.lexer.source))
+        message.push_str(unexpected.get_value(self.source))
 
         return Err(self.error_arena.new!(Error {
             message: message,
@@ -277,6 +277,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(TopLevelExpr::Intrinsic(self.ast_arena.new!(InlineFnCallExpr {
+            id: self.next_expr_id(),
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -286,7 +287,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
     let unexpected = self.current()
     let message = String::from_str_in(self.error_arena, "Unexpected top level token: ")
-    message.push_str(unexpected.get_value(self.lexer.source))
+    message.push_str(unexpected.get_value(self.source))
 
     return Err(self.error_arena.new!(Error {
         message: message,
@@ -302,6 +303,7 @@ fn Parser::parse_let(&self, is_inline: bool, loc: Loc): Result(LetExpr, &Error) 
     loc.end_pos = self.prev().loc.end_pos
 
     return Ok(LetExpr {
+        id: self.next_expr_id(),
         is_inline: is_inline,
         name: name,
         value: value,
@@ -412,6 +414,7 @@ fn Parser::parse_type_expr(&self): Result(TypeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(TypeExpr::Container(self.ast_arena.new!(TypeExprContainer {
+            id: self.next_expr_id(),
             container: container,
             items: items,
             loc: loc,
@@ -440,6 +443,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         let result = TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
+            id: self.next_expr_id(),
             pointee: pointee,
             is_sequence: is_sequence,
             is_nullable: is_nullable,
@@ -448,6 +452,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
 
         if is_ptr_ptr {
             return Ok(TypeExpr::Pointer(self.ast_arena.new!(TypeExprPointer {
+                id: self.next_expr_id(),
                 pointee: result,
                 is_sequence: false,
                 is_nullable: false,
@@ -464,6 +469,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
 
 fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     let ident = IdentExpr {
+        id: self.next_expr_id(),
         // stub
         repr: "",
         parts: Vec::new!<Loc>(),
@@ -483,8 +489,7 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
 
     ident.repr = ident.loc.read_span(self.source)
     if ident.repr.contains(" ") {
-        // TODO: report this error instead of throwing
-        return Err(self.error_arena.new!(Error {
+        self.reporter.error(self.error_arena.new!(Error {
             message: String::from_str_in(self.error_arena, "Unexpected space in identifier"),
             loc: ident.loc,
         }))
@@ -493,49 +498,14 @@ fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     return Ok(ident)
 }
 
-fn Parser::parse_code_expr_map(&self): Result(CodeExprMap, &Error) {
-    let fields = Vec::new!<CodeExprMapField>()
-    let has_trailing_comma = false
-
-    let loc = self.expect(Delim, "{")?.loc
-
-    while self.eat(Delim, "}") == null {
-        let field_loc = self.current().loc
-
-        let field_name = self.expect_any(Symbol)?
-        let _ = self.expect(Operator, ":")?
-        let value = self.parse_code_expr(0)?
-
-        field_loc.end_pos = self.prev().loc.end_pos
-
-        fields.push!(CodeExprMapField {
-            key: field_name.get_value(self.source),
-            value: value,
-            loc: field_loc,
-        })
-
-        if !self.current().is(Delim, "}", self.source) {
-            let _ = self.expect(Delim, ",")?
-            has_trailing_comma = true
-        } else {
-            has_trailing_comma = false
-        }
-    }
-
-    loc.end_pos = self.prev().loc.end_pos
-
-    return Ok(CodeExprMap {
-        fields: fields,
-        has_trailing_comma: has_trailing_comma,
-        loc: loc,
-    })
-}
-
 fn Parser::parse_code_block(&self): Result(CodeBlock, &Error) {
     let _ = self.expect(Delim, "{")?
 
     let code_block = CodeBlock {
         exprs: Vec::new!<CodeExpr>(),
+        block_expr_id: self.next_expr_id(),
+        // placeholder
+        expr_id_count: 0,
         loc: self.prev().loc,
     }
 
@@ -543,6 +513,8 @@ fn Parser::parse_code_block(&self): Result(CodeBlock, &Error) {
         let expr = self.parse_code_expr(0)?
         code_block.exprs.push!(expr)
     }
+
+    code_block.expr_id_count = self.expr_id_count - code_block.block_expr_id
 
     // closing curly pos
     code_block.loc.end_pos = self.prev().loc.end_pos
@@ -577,6 +549,7 @@ fn Parser::parse_code_expr(&self, min_bp: u32): Result(CodeExpr, &Error) {
 
         // skip operator
         let _ = self.next()
+
         primary = self.parse_code_expr_postfix(primary, op, op_symbol.loc)?
     }
 
@@ -588,7 +561,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         return Ok(CodeExpr::BoolLiteral(self.ast_arena.new!(
-            BoolLiteralExpr { value: true, loc: loc },
+            BoolLiteralExpr { id: self.next_expr_id(), value: true, loc: loc },
         )))
     }
 
@@ -596,7 +569,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         return Ok(CodeExpr::BoolLiteral(self.ast_arena.new!(
-            BoolLiteralExpr { value: false, loc: loc },
+            BoolLiteralExpr { id: self.next_expr_id(), value: false, loc: loc },
         )))
     }
 
@@ -604,13 +577,14 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         return Ok(CodeExpr::NullLiteral(self.ast_arena.new!(
-            NullLiteralExpr { loc: loc },
+            NullLiteralExpr { id: self.next_expr_id(), loc: loc },
         )))
     }
 
     if self.eat_any(CharLiteral) != null {
         let char = self.prev()
         return Ok(CodeExpr::CharLiteral(self.ast_arena.new!(CharLiteralExpr {
+            id: self.next_expr_id(),
             repr: char.get_value(self.source),
             value: Lexer::parse_char_literal_value(char.get_value(self.source)) as u32,
             loc: char.loc,
@@ -618,18 +592,23 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat_any(IntLiteral) != null {
+        // TODO: figure out why rename doesn't work here, rename to `int` once fixed
         let int_literal = self.prev()
 
         let tag = null as &str
-        if self.eat(Symbol, "u64") != null {
-            tag = self.ast_arena.new!(self.prev().get_value(self.lexer.source))
+        let tag_token = self.current()
+        if tag_token.kind == Symbol && tag_token.loc.pos.offset == int_literal.loc.end_pos.offset {
+            tag = self.ast_arena.new!(tag_token.get_value(self.source))
+            let _ = self.next()
         }
 
-        let repr = int_literal.get_value(self.lexer.source)
+        // TODO: figure out why inspection on `int_literal` is emitted twice here breaking rename
+        let repr = int_literal.get_value(self.source)
         let value = Lexer::parse_int_literal_value(repr)
 
         return Ok(CodeExpr::IntLiteral(
             self.ast_arena.new!(IntLiteralExpr {
+                id: self.next_expr_id(),
                 repr: repr,
                 value: value,
                 tag: tag,
@@ -642,6 +621,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let string = QuotedString::new(self.prev().loc)
 
         return Ok(CodeExpr::StringLiteral(self.ast_arena.new!(StringLiteralExpr {
+            id: self.next_expr_id(),
             repr: string.get_repr(self.source),
             value: string.get_value(self.source),
             loc: string.loc,
@@ -661,6 +641,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::Paren(self.ast_arena.new!(ParenExpr {
+            id: self.next_expr_id(),
             expr: expr,
             has_trailing_comma: has_trailing_comma,
             loc: loc,
@@ -678,15 +659,13 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         if self.eat(Symbol, "let") != null {
-            let loc = self.prev().loc
-
             let let_expr = self.parse_let(true, loc)?
             return Ok(CodeExpr::Let(self.ast_arena.new!(let_expr)))
         }
 
         let unexpected = self.current()
         let message = String::from_str_in(self.error_arena, "Unexpected inlineable: ")
-        message.push_str(unexpected.get_value(self.lexer.source))
+        message.push_str(unexpected.get_value(self.source))
 
         return Err(self.error_arena.new!(Error {
             message: message,
@@ -706,6 +685,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
         return Ok(CodeExpr::Return(
             self.ast_arena.new!(ReturnExpr {
+                id: self.next_expr_id(),
                 expr: expr,
                 loc: loc,
             }),
@@ -744,6 +724,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::If(self.ast_arena.new!(IfExpr {
+            id: self.next_expr_id(),
             cond: cond,
             then_block: then_block,
             else_block: else_block,
@@ -761,6 +742,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::Match(self.ast_arena.new!(MatchExpr {
+            id: self.next_expr_id(),
             header: match_header,
             else_branch: else_branch,
             loc: loc,
@@ -775,6 +757,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::While(self.ast_arena.new!(WhileExpr {
+            id: self.next_expr_id(),
             cond: null,
             body: body,
             loc: loc,
@@ -793,6 +776,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::While(self.ast_arena.new!(WhileExpr {
+            id: self.next_expr_id(),
             cond: self.ast_arena.new!(cond),
             body: body,
             loc: loc,
@@ -822,8 +806,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
             }))
 
             if ref_token != null {
-                // TODO: report this error instead of throwing
-                return Err(self.error_arena.new!(Error {
+                self.reporter.error(self.error_arena.new!(Error {
                     message: String::from_str_in(self.error_arena, "Cannot reference items of range"),
                     loc: ref_token.loc,
                 }))
@@ -841,6 +824,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::For(self.ast_arena.new!(ForExpr {
+            id: self.next_expr_id(),
             item: item,
             iterator: iterator,
             ref_only: ref_token != null,
@@ -853,7 +837,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         return Ok(CodeExpr::Break(self.ast_arena.new!(
-            BreakExpr { loc: loc },
+            BreakExpr { id: self.next_expr_id(), loc: loc },
         )))
     }
 
@@ -861,7 +845,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         let loc = self.prev().loc
 
         return Ok(CodeExpr::Continue(self.ast_arena.new!(
-            ContinueExpr { loc: loc },
+            ContinueExpr { id: self.next_expr_id(), loc: loc },
         )))
     }
 
@@ -875,6 +859,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::DoWith(self.ast_arena.new!(DoWithExpr {
+            id: self.next_expr_id(),
             body: body,
             args: args,
             with_loc: with_.loc,
@@ -892,6 +877,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::IntrinsicCall(self.ast_arena.new!(InlineFnCallExpr {
+            id: self.next_expr_id(),
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -907,6 +893,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::Defer(self.ast_arena.new!(DeferExpr {
+            id: self.next_expr_id(),
             expr: expr,
             loc: loc,
         })))
@@ -920,6 +907,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::Sizeof(self.ast_arena.new!(SizeofExpr {
+            id: self.next_expr_id(),
             type_expr: type_expr,
             loc: loc,
         })))
@@ -950,6 +938,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::ArrayLiteral(self.ast_arena.new!(ArrayLiteralExpr {
+            id: self.next_expr_id(),
             item_type: item_type,
             items: items,
             has_trailing_comma: has_trailing_comma,
@@ -990,6 +979,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
             loc.end_pos = self.prev().loc.end_pos
 
             return Ok(CodeExpr::PrefixOp(self.ast_arena.new!(PrefixOpExpr {
+                id: self.next_expr_id(),
                 op_tag: op.tag,
                 expr: expr,
                 op_loc: op_token.loc,
@@ -1024,6 +1014,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::ResultLiteral(self.ast_arena.new!(ResultLiteralExpr {
+            id: self.next_expr_id(),
             is_ok: ident.repr.equals("Ok"),
             result_type: result_type,
             value: value,
@@ -1038,6 +1029,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = body.loc.end_pos
 
         return Ok(CodeExpr::StructLiteral(self.ast_arena.new!(StructLiteralExpr {
+            id: self.next_expr_id(),
             struct_name: ident,
             body: body,
             loc: loc,
@@ -1058,6 +1050,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::FnCall(self.ast_arena.new!(FnCallExpr {
+            id: self.next_expr_id(),
             fn_name: ident,
             args: args,
             loc: loc,
@@ -1076,6 +1069,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::InlineFnCall(self.ast_arena.new!(InlineFnCallExpr {
+            id: self.next_expr_id(),
             fn_name: *fn_name,
             type_args: type_args,
             args: args,
@@ -1126,6 +1120,7 @@ fn Parser::parse_code_expr_postfix(
         loc.end_pos = rhs.loc().end_pos
 
         return Ok(CodeExpr::InfixOp(self.ast_arena.new!(InfixOpExpr {
+            id: self.next_expr_id(),
             op_tag: op.tag,
             op_loc: op_loc,
             lhs: lhs,
@@ -1142,6 +1137,7 @@ fn Parser::parse_code_expr_postfix(
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::Cast(self.ast_arena.new!(CastExpr {
+            id: self.next_expr_id(),
             expr: primary,
             casted_to: casted_to,
             loc: loc,
@@ -1159,6 +1155,7 @@ fn Parser::parse_code_expr_postfix(
             loc.end_pos = self.prev().loc.end_pos
 
             return Ok(CodeExpr::MethodCall(self.ast_arena.new!(MethodCallExpr {
+                id: self.next_expr_id(),
                 lhs: primary,
                 field_name: field_name,
                 args: args,
@@ -1176,6 +1173,7 @@ fn Parser::parse_code_expr_postfix(
             loc.end_pos = self.prev().loc.end_pos
 
             return Ok(CodeExpr::InlineFnMethodCall(self.ast_arena.new!(InlineFnMethodCallExpr {
+                id: self.next_expr_id(),
                 lhs: primary,
                 field_name: *method_name,
                 type_args: type_args,
@@ -1187,6 +1185,7 @@ fn Parser::parse_code_expr_postfix(
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::FieldAccess(self.ast_arena.new!(FieldAccessExpr {
+            id: self.next_expr_id(),
             lhs: primary,
             field_name: field_name,
             loc: loc,
@@ -1201,6 +1200,7 @@ fn Parser::parse_code_expr_postfix(
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::Assign(self.ast_arena.new!(AssignExpr {
+            id: self.next_expr_id(),
             op_loc: op_loc,
             lhs: primary,
             rhs: value,
@@ -1217,6 +1217,7 @@ fn Parser::parse_code_expr_postfix(
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::Catch(self.ast_arena.new!(CatchExpr {
+            id: self.next_expr_id(),
             lhs: primary,
             error_bind: error_bind,
             catch_body: catch_body,
@@ -1230,7 +1231,10 @@ fn Parser::parse_code_expr_postfix(
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::PropagateError(self.ast_arena.new!(PropagateErrorExpr {
+            id: self.next_expr_id(),
             expr: primary,
+            ok_bind_id: self.next_expr_id(),
+            err_bind_id: self.next_expr_id(),
             loc: loc,
         })))
     }
@@ -1243,14 +1247,50 @@ fn Parser::parse_code_expr_postfix(
         loc.end_pos = self.prev().loc.end_pos
 
         return Ok(CodeExpr::ExprPipe(self.ast_arena.new!(ExprPipeExpr {
+            id: self.next_expr_id(),
             lhs: primary,
             rhs: rhs,
+            bind_id: self.next_expr_id(),
             op_loc: op_loc,
             loc: loc,
         })))
     }
 
     @unreachable()
+}
+
+fn Parser::parse_code_expr_map(&self): Result(CodeExprMap, &Error) {
+    let fields = Vec::new!<CodeExprMapField>()
+    let has_trailing_comma = false
+
+    let loc = self.expect(Delim, "{")?.loc
+
+    while self.eat(Delim, "}") == null {
+        let field_name = self.expect_any(Symbol)?
+        let _ = self.expect(Operator, ":")?
+        let value = self.parse_code_expr(0)?
+
+        fields.push!(CodeExprMapField {
+            key: field_name.get_value(self.source),
+            value: value,
+            key_loc: field_name.loc,
+        })
+
+        if !self.current().is(Delim, "}", self.source) {
+            let _ = self.expect(Delim, ",")?
+            has_trailing_comma = true
+        } else {
+            has_trailing_comma = false
+        }
+    }
+
+    loc.end_pos = self.prev().loc.end_pos
+
+    return Ok(CodeExprMap {
+        fields: fields,
+        has_trailing_comma: has_trailing_comma,
+        loc: loc,
+    })
 }
 
 fn Parser::parse_fn_args(&self): Result(CodeExprList, &Error) {
@@ -1336,7 +1376,10 @@ fn Parser::extend_ident(&self, ident: &IdentExpr, new_end_pos: Pos) {
     ident.repr = ident.loc.read_span(self.source)
 }
 
-// utils
+fn Parser::next_expr_id(&self): u32 {
+    self.expr_id_count += 1
+    return self.expr_id_count - 1
+}
 
 fn Parser::push_ctx(&self, ctx: ParsingContext) {
     self.context_stack.push!(ctx)
@@ -1348,15 +1391,12 @@ fn Parser::pop_ctx(&self) {
 
 fn Parser::expect(&self, kind: TokenKind, value: str): Result(&Token, &Error) {
     let token = self.current()
-    if !token.is(kind, value, self.lexer.source) {
-        let message = String::from_str_in(
-            self.error_arena,
-            "Unexpected token '",
+    if !token.is(kind, value, self.source) {
+        let message = String::from_str_in(self.error_arena, "")
+        do message.push_str(it) with (
+            "Unexpected token '", \\ token.get_value(self.source), \\ "'",
+            ", wanted '", \\ value, \\ "'",
         )
-        message.push_str(token.get_value(self.lexer.source))
-        message.push_str("', wanted '")
-        message.push_str(value)
-        message.push_str("'")
 
         return Err(self.error_arena.new!(Error {
             message: message,
@@ -1370,14 +1410,11 @@ fn Parser::expect(&self, kind: TokenKind, value: str): Result(&Token, &Error) {
 fn Parser::expect_any(&self, kind: TokenKind): Result(&Token, &Error) {
     let token = self.current()
     if token.kind != kind {
-        let message = String::from_str_in(
-            self.error_arena,
-            "Unexpected token '",
+        let message = String::from_str_in(self.error_arena, "")
+        do message.push_str(it) with (
+            "Unexpected token '", \\ token.get_value(self.source), \\ "'",
+            ", wanted ", \\ kind.to_str(),
         )
-        message.push_str(token.get_value(self.lexer.source))
-        message.push_str("', wanted '")
-        message.push_str(kind.to_str())
-        message.push_str("'")
 
         return Err(self.error_arena.new!(Error {
             message: message,
@@ -1389,7 +1426,7 @@ fn Parser::expect_any(&self, kind: TokenKind): Result(&Token, &Error) {
 }
 
 fn Parser::eat(&self, kind: TokenKind, value: str): &?Token {
-    if !self.current().is(kind, value, self.lexer.source) {
+    if !self.current().is(kind, value, self.source) {
         return null
     }
 

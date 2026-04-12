@@ -74,6 +74,9 @@ fn Reporter::begin_inspection(&self) {}
 // TODO: implement
 fn Reporter::end_inspection(&self) {}
 
+// TODO: implement
+fn Reporter::error(&self, error: &Error) {}
+
 type FileInfo = struct {
     index: u32,
     included_times: u32,
