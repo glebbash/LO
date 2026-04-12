@@ -305,6 +305,10 @@ impl Registry {
         };
         self.modules.push(module);
 
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_include_info(true, module_id, loc);
+        }
+
         catch!(self.modules[module_id].parser.lexer.lex_file(), err, {
             self.reporter.error(err);
             return None;
@@ -319,10 +323,6 @@ impl Registry {
             });
 
             self.expr_id_count = *self.modules[module_id].parser.expr_id_count;
-        }
-
-        if self.reporter.in_inspection_mode {
-            self.reporter.print_include_info(true, module_id, loc);
         }
 
         if !self.in_single_file_mode {
