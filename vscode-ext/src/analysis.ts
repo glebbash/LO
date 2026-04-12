@@ -30,14 +30,6 @@ export class FileAnalysisCollection
         this.analysisPerUri.set(fileAnalysis.uri.toString(true), fileAnalysis);
     }
 
-    registerProviders(context: vscode.ExtensionContext) {
-        context.subscriptions.push(
-            vscode.languages.registerDefinitionProvider(this.name, this),
-            vscode.languages.registerHoverProvider(this.name, this),
-            vscode.languages.registerRenameProvider(this.name, this),
-        );
-    }
-
     provideHover(
         document: vscode.TextDocument,
         position: vscode.Position,

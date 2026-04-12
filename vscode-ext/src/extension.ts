@@ -20,11 +20,32 @@ type DiagnisticItem =
     | { type: "message"; loc: string; content: string; severity?: string }
     | { type: "end" };
 
+const ID = "lo";
+
 export async function activate(context: vscode.ExtensionContext) {
     const logChannel = vscode.window.createOutputChannel("LO extension");
-    const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri!;
-    const analysis = new FileAnalysisCollection("lo");
-    analysis.registerProviders(context);
+    const analysisPerWorkspace = new Map<string, FileAnalysisCollection>();
+
+    const getDefaultWorkspaceUri = () => {
+        return vscode.workspace.workspaceFolders?.[0]?.uri;
+    };
+
+    const getWorkspaceFolderUri = (uri: vscode.Uri) => {
+        return vscode.workspace.getWorkspaceFolder(uri)?.uri;
+    };
+
+    const getAnalysisForWorkspace = (workspaceUri: vscode.Uri) => {
+        const key = workspaceUri.toString(true);
+
+        let analysis = analysisPerWorkspace.get(key);
+
+        if (!analysis) {
+            analysis = new FileAnalysisCollection(ID);
+            analysisPerWorkspace.set(key, analysis);
+        }
+
+        return analysis;
+    };
 
     const parseRange = (raw: string) => {
         const [startPos, endPos] = raw.split("-");
@@ -38,16 +59,25 @@ export async function activate(context: vscode.ExtensionContext) {
     };
 
     const inspectDocument = async (document: vscode.TextDocument) => {
-        const ctx = await loadCompilerCtx();
+        const workspaceUri = getWorkspaceFolderUri(document.uri);
+        if (!workspaceUri) {
+            return;
+        }
+
+        const analysis = getAnalysisForWorkspace(workspaceUri);
+        const ctx = await loadCompilerCtx(workspaceUri);
         if (!ctx) {
             return;
         }
 
         const inspectLatency = new Latency("Inspect " + document.fileName);
         const compilerResult = await wasi.runWasiProgram({
-            processName: "lo",
+            processName: ID,
             cwdUri: workspaceUri,
-            args: ["inspect", vscode.workspace.asRelativePath(document.uri)],
+            args: [
+                "inspect",
+                vscode.workspace.asRelativePath(document.uri, false),
+            ],
             module: ctx.compilerModule,
         });
         inspectLatency.measureAndLog(logChannel);
@@ -128,7 +158,7 @@ export async function activate(context: vscode.ExtensionContext) {
                         new vscode.Hover(
                             new vscode.MarkdownString().appendCodeblock(
                                 diagnostic.hover,
-                                "lo",
+                                ID,
                             ),
                             sourceRange,
                         ),
@@ -172,6 +202,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand("lo.initProject", async () => {
+            let workspaceUri = getDefaultWorkspaceUri();
+            if (!workspaceUri) {
+                return vscode.window.showErrorMessage("No folder open");
+            }
+
             const initDir = vscode.Uri.joinPath(
                 context.extensionUri,
                 "assets/initial-project",
@@ -192,25 +227,34 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand("lo.runFile", async () => {
-            const ctx = await loadCompilerCtx();
-            if (!ctx) {
-                return;
-            }
-
             const currentFile = vscode.window.activeTextEditor?.document;
             if (currentFile === undefined) {
                 return vscode.window.showErrorMessage("No files opened");
+            }
+
+            const workspaceUri = getWorkspaceFolderUri(currentFile.uri);
+            if (!workspaceUri) {
+                return vscode.window.showErrorMessage(
+                    "Document is not in any workspace folder",
+                );
+            }
+
+            const analysis = getAnalysisForWorkspace(workspaceUri);
+
+            const ctx = await loadCompilerCtx(workspaceUri);
+            if (!ctx) {
+                return;
             }
 
             const compileLatency = new Latency(
                 "Compile " + currentFile.fileName,
             );
             const compilerResult = await wasi.runWasiProgram({
-                processName: "lo",
+                processName: ID,
                 cwdUri: workspaceUri,
                 args: [
                     "compile",
-                    vscode.workspace.asRelativePath(currentFile.uri),
+                    vscode.workspace.asRelativePath(currentFile.uri, false),
                 ],
                 module: ctx.compilerModule,
             });
@@ -285,6 +329,12 @@ export async function activate(context: vscode.ExtensionContext) {
             stdio,
             _rootFileSystem,
         ) => {
+            const workspaceUri = getDefaultWorkspaceUri();
+            if (!workspaceUri) {
+                await logError("No workspace folder found");
+                return 1;
+            }
+
             const wasm = await Wasm.load();
 
             const programPath = args[0];
@@ -384,17 +434,23 @@ export async function activate(context: vscode.ExtensionContext) {
         }) satisfies WebShellCommandHandler),
     );
 
-    const config = vscode.workspace.getConfiguration("lo");
+    const config = vscode.workspace.getConfiguration(ID);
     if (config.get<boolean>("enableFormatting") ?? true) {
         context.subscriptions.push(
-            vscode.languages.registerDocumentFormattingEditProvider("lo", {
-                async provideDocumentFormattingEdits(currentFile) {
+            vscode.languages.registerDocumentFormattingEditProvider(ID, {
+                async provideDocumentFormattingEdits(document) {
+                    const workspaceUri = getWorkspaceFolderUri(document.uri);
+                    if (!workspaceUri) {
+                        return null;
+                    }
+
+                    const analysis = getAnalysisForWorkspace(workspaceUri);
                     const formatLatency = new Latency(
-                        "Format " + currentFile.fileName,
+                        "Format " + document.fileName,
                     );
                     const edits = await formatFile(
                         workspaceUri,
-                        currentFile,
+                        document,
                         analysis,
                     );
                     formatLatency.measureAndLog(logChannel);
@@ -405,8 +461,53 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     context.subscriptions.push(
+        vscode.languages.registerDefinitionProvider(ID, {
+            provideDefinition(document, position, token) {
+                const workspaceUri = getWorkspaceFolderUri(document.uri);
+                if (!workspaceUri) {
+                    return null;
+                }
+
+                const analysis = getAnalysisForWorkspace(workspaceUri);
+                return analysis.provideDefinition(document, position, token);
+            },
+        }),
+        vscode.languages.registerHoverProvider(ID, {
+            provideHover(document, position, token) {
+                const workspaceUri = getWorkspaceFolderUri(document.uri);
+                if (!workspaceUri) {
+                    return null;
+                }
+
+                const analysis = getAnalysisForWorkspace(workspaceUri);
+                return analysis.provideHover(document, position, token);
+            },
+        }),
+        vscode.languages.registerRenameProvider(ID, {
+            prepareRename(document, position, token) {
+                const workspaceUri = getWorkspaceFolderUri(document.uri);
+                if (!workspaceUri) {
+                    return null;
+                }
+
+                const analysis = getAnalysisForWorkspace(workspaceUri);
+                return analysis.prepareRename(document, position, token);
+            },
+            provideRenameEdits(document, position, newName) {
+                const workspaceUri = getWorkspaceFolderUri(document.uri);
+                if (!workspaceUri) {
+                    return null;
+                }
+
+                const analysis = getAnalysisForWorkspace(workspaceUri);
+                return analysis.provideRenameEdits(document, position, newName);
+            },
+        }),
+    );
+
+    context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (doc) => {
-            if (doc.languageId !== "lo") {
+            if (doc.languageId !== ID) {
                 return;
             }
 
@@ -441,7 +542,7 @@ async function formatFile(
     currentFile: vscode.TextDocument,
     analysis: FileAnalysisCollection,
 ) {
-    const ctx = await loadCompilerCtx();
+    const ctx = await loadCompilerCtx(workspaceUri);
     if (!ctx) {
         return [];
     }
@@ -449,7 +550,7 @@ async function formatFile(
     const tmpFileName = crypto.randomUUID() + ".lo";
 
     const compilerResult = await wasi.runWasiProgram({
-        processName: "lo",
+        processName: ID,
         cwdUri: workspaceUri,
         args: ["format", tmpFileName],
         module: ctx.compilerModule,
@@ -486,10 +587,8 @@ async function formatFile(
     ];
 }
 
-async function loadCompilerCtx() {
-    const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri!;
-
-    const config = vscode.workspace.getConfiguration("lo");
+async function loadCompilerCtx(workspaceUri: vscode.Uri) {
+    const config = vscode.workspace.getConfiguration(ID);
     const compilerPath = config.get<string>("compilerPath")!;
 
     let compilerModule: WebAssembly.Module;
