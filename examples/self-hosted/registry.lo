@@ -67,7 +67,7 @@ fn Registry::include(
         return Err(VoidError::VALUE)
     }
 
-    let parser = Parser::new(lexer)
+    let parser = Parser::new(lexer, self.reporter)
     parser.parse_file() catch err {
         self.report_error(err)
         return Err(VoidError::VALUE)

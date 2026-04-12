@@ -20,17 +20,19 @@ type Parser = struct {
     error_arena: &Arena,
     lexer: &Lexer,
     source: str,
+    reporter: &Reporter,
 
     // state
-    tokens_processed: u32,
     context_stack: &Vec(ParsingContext),
+    tokens_processed: u32,
+    expr_id_count: u32,
 
     // output
     ast_arena: &Arena,
     ast: &Vec(TopLevelExpr),
 }
 
-fn Parser::new(lexer: &Lexer): &Parser {
+fn Parser::new(lexer: &Lexer, reporter: &Reporter): &Parser {
     let context_stack = Vec::new!<ParsingContext>()
     context_stack.push!(ParsingContext {
         struct_literal_allowed: true,
@@ -40,8 +42,11 @@ fn Parser::new(lexer: &Lexer): &Parser {
         error_arena: lexer.error_arena,
         lexer: lexer,
         source: lexer.source,
-        tokens_processed: 0,
+        reporter: reporter,
+
         context_stack: context_stack,
+        tokens_processed: 0,
+        expr_id_count: 0,
 
         ast_arena: Arena::new(512),
         ast: Vec::new!<TopLevelExpr>(),
@@ -68,6 +73,7 @@ fn Parser::parse_file(&self): Result(void, &Error) {
 fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
     if self.eat(Symbol, "fn") != null {
         let loc = self.prev().loc
+
         let decl = self.parse_fn_decl(false)?
 
         if self.eat(Operator, "=") != null {
