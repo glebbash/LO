@@ -68,9 +68,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const diagnostics: DiagnisticItem[] = [];
         try {
-            diagnostics.push(
-                ...JSON.parse(new TextDecoder().decode(compilerResult.stdout)),
+            const items = JSON.parse(
+                new TextDecoder().decode(compilerResult.stdout),
             );
+            diagnostics.push(...items);
         } catch {
             return showCompilerError(
                 workspaceUri,
@@ -82,28 +83,30 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         const analysisPerIndex = new Map<number, FileAnalysis>();
-        for (const d of diagnostics) {
-            if (d.type === "file") {
-                const uri = vscode.Uri.joinPath(workspaceUri, d.path);
-                const diag = {
+        for (const diagnostic of diagnostics) {
+            if (diagnostic.type === "file") {
+                const uri = vscode.Uri.joinPath(workspaceUri, diagnostic.path);
+                const analysisItem = {
                     uri,
                     hovers: [],
                     links: [],
                     messages: [],
                 } satisfies FileAnalysis;
-                analysis.push(diag);
-                analysisPerIndex.set(d.index, diag);
+                analysis.push(analysisItem);
+                analysisPerIndex.set(diagnostic.index, analysisItem);
                 continue;
             }
 
-            if (d.type === "info") {
-                const sourceIndex = Number(d.loc.split("/")[0]);
-                const sourceRange = parseRange(d.loc.split("/")[1]);
+            if (diagnostic.type === "info") {
+                const sourceIndex = Number(diagnostic.loc.split("/")[0]);
+                const sourceRange = parseRange(diagnostic.loc.split("/")[1]);
                 const fileDiagnostic = analysisPerIndex.get(sourceIndex)!;
 
-                if (d.link) {
-                    const targetIndex = Number(d.link.split("/")[0]);
-                    const targetRange = parseRange(d.link.split("/")[1]);
+                if (diagnostic.link) {
+                    const targetIndex = Number(diagnostic.link.split("/")[0]);
+                    const targetRange = parseRange(
+                        diagnostic.link.split("/")[1],
+                    );
 
                     fileDiagnostic.links.push({
                         originSelectionRange: sourceRange,
@@ -120,11 +123,11 @@ export async function activate(context: vscode.ExtensionContext) {
                     });
                 }
 
-                if (d.hover) {
+                if (diagnostic.hover) {
                     fileDiagnostic.hovers.push(
                         new vscode.Hover(
                             new vscode.MarkdownString().appendCodeblock(
-                                d.hover,
+                                diagnostic.hover,
                                 "lo",
                             ),
                             sourceRange,
@@ -134,30 +137,34 @@ export async function activate(context: vscode.ExtensionContext) {
                 continue;
             }
 
-            if (d.type === "message") {
-                const sourceIndex = Number(d.loc.split("/")[0]);
-                const sourceRange = parseRange(d.loc.split("/")[1]);
+            if (diagnostic.type === "message") {
+                const sourceIndex = Number(diagnostic.loc.split("/")[0]);
+                const sourceRange = parseRange(diagnostic.loc.split("/")[1]);
                 const fileDiagnostic = analysisPerIndex.get(sourceIndex)!;
 
                 let severity = vscode.DiagnosticSeverity.Information;
-                if (d.severity === "error") {
+                if (diagnostic.severity === "error") {
                     severity = vscode.DiagnosticSeverity.Error;
-                } else if (d.severity === "warning") {
+                } else if (diagnostic.severity === "warning") {
                     severity = vscode.DiagnosticSeverity.Warning;
                 }
 
                 fileDiagnostic.messages.push(
-                    new vscode.Diagnostic(sourceRange, d.content, severity),
+                    new vscode.Diagnostic(
+                        sourceRange,
+                        diagnostic.content,
+                        severity,
+                    ),
                 );
 
                 continue;
             }
 
-            if (d.type === "end") {
+            if (diagnostic.type === "end") {
                 continue;
             }
 
-            d satisfies never;
+            diagnostic satisfies never;
         }
 
         analysis.showMessages();

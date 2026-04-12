@@ -10,7 +10,7 @@ main() {
     cp ../lo.wasm assets/initial-project/lo.wasm
 
     npm version patch
-    npm run package
+    npm run build
     npx vsce package -o lo.vsix
 
     rm -rf assets/initial-project
