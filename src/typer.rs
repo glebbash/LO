@@ -1,6 +1,6 @@
 use crate::{ast::*, common::*, lexer::*, registry::*, wasm::*};
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
     Never,
     Null,
@@ -24,7 +24,7 @@ pub enum Type {
     Container(ContainerType),
 }
 
-#[derive(Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PointerType {
     pub pointee: TypeId,
     pub is_sequence: bool,
@@ -169,11 +169,10 @@ impl Typer {
         let mut it = Self::default();
         it.registry = UBRef::new(&mut *registry);
         it.reporter = UBRef::new(&mut *registry.reporter);
-        it.init();
         it
     }
 
-    pub fn init(&mut self) {
+    pub fn type_all(&mut self) {
         let mut global_ctx = self.contexts.push(TyContext {
             id: 0,
             parent: None,
@@ -211,9 +210,7 @@ impl Typer {
         self.add_builtin_type(&mut global_ctx, Type::U64);
         self.add_builtin_type(&mut global_ctx, Type::I64);
         self.add_builtin_type(&mut global_ctx, Type::F64);
-    }
 
-    pub fn type_all(&mut self) {
         for &module_id in self.registry.module_import_order.relax() {
             self.pass_collect_own_symbols(self.module_info[module_id].ctx);
         }
@@ -237,58 +234,6 @@ impl Typer {
         self.pass_type_fns();
 
         self.run_delayed_actions();
-    }
-
-    fn run_delayed_actions(&self) {
-        for module in &self.registry.modules {
-            for expr in &*module.parser.ast {
-                if let TopLevelExpr::Intrinsic(intrinsic) = expr
-                    && intrinsic.fn_name.repr == "inspect_stats"
-                {
-                    if !self.reporter.in_inspection_mode {
-                        return;
-                    }
-
-                    let mut lines = 0;
-                    for module in &self.registry.modules {
-                        lines += module.source.iter().filter(|&&b| b == b'\n').count()
-                    }
-
-                    let mut msg = String::new();
-                    write!(&mut msg, "LOC: {}\n", lines).unwrap();
-                    write!(
-                        &mut msg,
-                        "expr count (original): {}\n",
-                        self.registry.expr_id_count
-                    )
-                    .unwrap();
-                    write!(
-                        &mut msg,
-                        "expr count (after expansion): {}\n",
-                        self.registry.expr_info.len()
-                    )
-                    .unwrap();
-                    write!(&mut msg, "unique types: {}\n", self.registry.types.len()).unwrap();
-
-                    self.reporter.print_inspection(InspectInfo {
-                        message: msg,
-                        loc: intrinsic.fn_name.loc,
-                        linked_loc: None,
-                    });
-                }
-            }
-        }
-
-        if let Some(string_usage_loc) = *self.first_string_usage
-            && self.registry.memory.is_none()
-            // TODO: find a way to also report this in inspection mode
-            && !self.reporter.in_inspection_mode
-        {
-            self.report_error(Error {
-                message: format!("Cannot use strings with no memory defined"),
-                loc: string_usage_loc,
-            });
-        }
     }
 
     fn pass_collect_own_symbols(&mut self, ctx: TyContextRef) {
@@ -1179,6 +1124,58 @@ impl Typer {
             }
 
             self.type_code_block(ctx, &body, true);
+        }
+    }
+
+    fn run_delayed_actions(&self) {
+        for module in &self.registry.modules {
+            for expr in &*module.parser.ast {
+                if let TopLevelExpr::Intrinsic(intrinsic) = expr
+                    && intrinsic.fn_name.repr == "inspect_stats"
+                {
+                    if !self.reporter.in_inspection_mode {
+                        return;
+                    }
+
+                    let mut lines = 0;
+                    for module in &self.registry.modules {
+                        lines += module.source.iter().filter(|&&b| b == b'\n').count()
+                    }
+
+                    let mut msg = String::new();
+                    write!(&mut msg, "LOC: {}\n", lines).unwrap();
+                    write!(
+                        &mut msg,
+                        "expr count (original): {}\n",
+                        self.registry.expr_id_count
+                    )
+                    .unwrap();
+                    write!(
+                        &mut msg,
+                        "expr count (after expansion): {}\n",
+                        self.registry.expr_info.len()
+                    )
+                    .unwrap();
+                    write!(&mut msg, "unique types: {}\n", self.registry.types.len()).unwrap();
+
+                    self.reporter.print_inspection(InspectInfo {
+                        message: msg,
+                        loc: intrinsic.fn_name.loc,
+                        linked_loc: None,
+                    });
+                }
+            }
+        }
+
+        if let Some(string_usage_loc) = *self.first_string_usage
+            && self.registry.memory.is_none()
+            // TODO: find a way to also report this in inspection mode
+            && !self.reporter.in_inspection_mode
+        {
+            self.report_error(Error {
+                message: format!("Cannot use strings with no memory defined"),
+                loc: string_usage_loc,
+            });
         }
     }
 

@@ -2,10 +2,17 @@
 
 // TODO: implement module
 
-type Typer = struct {}
+type Typer = struct {
+    // context
+    registry: &Registry,
+    reporter: &Reporter,
+}
 
 fn Typer::new(registry: &Registry): &Typer {
-    return heap::new!(Typer {})
+    return heap::new!(Typer {
+        registry: registry,
+        reporter: registry.reporter,
+    })
 }
 
 fn Typer::type_all(&self) {}
