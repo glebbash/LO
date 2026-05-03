@@ -818,7 +818,12 @@ impl Typer {
                 TopLevelExpr::Let(let_expr) => {
                     let symbol = self.get_symbol(ctx, &let_expr.name.repr).unwrap().relax();
 
-                    // TODO: check for valid const expression (in case of global)
+                    if !let_expr.is_inline
+                        && let None = self.get_const_value_or_err(ctx, &let_expr.value)
+                    {
+                        return;
+                    }
+
                     let value_type_id =
                         catch!(self.type_code_expr_and_load(ctx, &let_expr.value), err, {
                             self.report_error(err);
@@ -925,7 +930,7 @@ impl Typer {
                                     value,
                                     tag: None,
                                     ..
-                                })) = self.get_const_value(ctx, value)
+                                })) = self.get_const_value_or_err(ctx, value)
                                 else {
                                     self.report_error(bad_signature(&intrinsic.fn_name));
                                     continue;
@@ -942,7 +947,7 @@ impl Typer {
                                     value,
                                     tag: None,
                                     ..
-                                })) = self.get_const_value(ctx, value)
+                                })) = self.get_const_value_or_err(ctx, value)
                                 else {
                                     self.report_error(bad_signature(&intrinsic.fn_name));
                                     continue;
@@ -3795,7 +3800,7 @@ impl Typer {
         }
     }
 
-    fn get_const_value(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<&CodeExpr> {
+    fn get_const_value_or_err(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<&CodeExpr> {
         match expr {
             CodeExpr::BoolLiteral(_)
             | CodeExpr::CharLiteral(_)
@@ -3805,28 +3810,53 @@ impl Typer {
             | CodeExpr::StructLiteral(_)
             | CodeExpr::ArrayLiteral(_)
             | CodeExpr::ResultLiteral(_) => {
-                // all literals are valid const values
+                return Some(expr.relax());
+            }
+
+            CodeExpr::IntrinsicCall(call) if call.fn_name.repr == "data_size" => {
                 return Some(expr.relax());
             }
 
             CodeExpr::Ident(ident_expr) => {
                 let Some(symbol) = self.get_symbol(ctx, ident_expr.repr) else {
-                    return None;
+                    return none_and_report(self, expr);
                 };
 
-                if let TySymbolKind::Const = symbol.kind {
-                    return Some(&self.registry.constants[symbol.col_index].expr);
+                match symbol.kind {
+                    TySymbolKind::Const => {
+                        return Some(&self.registry.constants[symbol.col_index].expr);
+                    }
+                    TySymbolKind::EnumConstructor => {
+                        return Some(expr.relax());
+                    }
+                    _ => return none_and_report(self, expr),
                 }
             }
 
-            _ => { /* fallthrough */ }
-        }
+            CodeExpr::PrefixOp(prefix_op) => {
+                if prefix_op.op_tag == PrefixOpTag::Positive
+                    && let CodeExpr::IntLiteral(_) = &*prefix_op.expr
+                {
+                    return Some(expr.relax());
+                }
 
-        self.report_error(Error {
-            message: format!("Expression not allowed in const context"),
-            loc: expr.loc(),
-        });
-        None
+                return none_and_report(self, expr);
+            }
+
+            CodeExpr::Cast(cast) => {
+                return self.get_const_value_or_err(ctx, &cast.expr);
+            }
+
+            _ => return none_and_report(self, expr),
+        };
+
+        fn none_and_report(typer: &Typer, expr: &CodeExpr) -> Option<&'static CodeExpr> {
+            typer.report_error(Error {
+                message: format!("Expression not allowed in const context"),
+                loc: expr.loc(),
+            });
+            None
+        }
     }
 
     fn alloc_str(&mut self, value: String) -> &'static str {
