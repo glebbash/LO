@@ -740,15 +740,15 @@ async function commandTest() {
 
     it("compiler reports multiple errors in fault-tolerance.lo", async () => {
         try {
-            await compile("./examples/test/fault-tolerance.lo");
+            await compile("./examples/test/compile-errors/fault-tolerance.lo");
         } catch (err) {
             assert.strictEqual(
                 (err as Error).message,
                 m`
-                    ERROR: examples/test/fault-tolerance.lo:10:4 - Cannot redefine main, previously defined at examples/test/fault-tolerance.lo:2:4
-                    ERROR: examples/test/fault-tolerance.lo:2:17 - Cannot redefine a, previously defined at examples/test/fault-tolerance.lo:2:9
-                    ERROR: examples/test/fault-tolerance.lo:5:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:3:9
-                    ERROR: examples/test/fault-tolerance.lo:13:9 - Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:11:9
+                    ERROR: examples/test/compile-errors/fault-tolerance.lo:10:4 - Cannot redefine main, previously defined at examples/test/compile-errors/fault-tolerance.lo:2:4
+                    ERROR: examples/test/compile-errors/fault-tolerance.lo:2:17 - Cannot redefine a, previously defined at examples/test/compile-errors/fault-tolerance.lo:2:9
+                    ERROR: examples/test/compile-errors/fault-tolerance.lo:5:9 - Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:3:9
+                    ERROR: examples/test/compile-errors/fault-tolerance.lo:13:9 - Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:11:9
 
                     `,
             );
@@ -759,9 +759,13 @@ async function commandTest() {
         it("emits partial diagnostics and multiple errors in fault-tolerance.lo", async () => {
             const stdout = new WASI.VirtualFD();
             try {
-                await lo(["inspect", "./examples/test/fault-tolerance.lo"], {
-                    stdout,
-                });
+                await lo(
+                    [
+                        "inspect",
+                        "./examples/test/compile-errors/fault-tolerance.lo",
+                    ],
+                    { stdout },
+                );
             } catch (err) {
                 assert.strictEqual((err as Error).message, "");
 
@@ -769,21 +773,87 @@ async function commandTest() {
                     stdout.flushAndReadUtf8(),
                     m`
                     [
-                    { "type": "file", "index": 1, "path": "examples/test/fault-tolerance.lo" },
-                    { "type": "message", "content": "Cannot redefine main, previously defined at examples/test/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
+                    { "type": "file", "index": 1, "path": "examples/test/compile-errors/fault-tolerance.lo" },
+                    { "type": "message", "content": "Cannot redefine main, previously defined at examples/test/compile-errors/fault-tolerance.lo:2:4", "severity": "error", "loc": "1/10:4-10:8" },
                     { "type": "info", "hover": "let a: u32", "loc": "1/2:9-2:10" },
                     { "type": "info", "hover": "let a: u32", "loc": "1/2:17-2:18" },
-                    { "type": "message", "content": "Cannot redefine a, previously defined at examples/test/fault-tolerance.lo:2:9", "severity": "error", "loc": "1/2:17-2:18" },
+                    { "type": "message", "content": "Cannot redefine a, previously defined at examples/test/compile-errors/fault-tolerance.lo:2:9", "severity": "error", "loc": "1/2:17-2:18" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/3:9-3:10" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/5:9-5:10" },
-                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
+                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:3:9", "severity": "error", "loc": "1/5:9-5:10" },
                     { "type": "info", "link": "1/3:9-3:10", "hover": "let x: u32", "loc": "1/6:13-6:14" },
                     { "type": "info", "hover": "let y: u32", "loc": "1/6:9-6:10" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/11:9-11:10" },
                     { "type": "info", "hover": "let x: u32", "loc": "1/13:9-13:10" },
-                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
+                    { "type": "message", "content": "Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:11:9", "severity": "error", "loc": "1/13:9-13:10" },
                     { "type": "info", "link": "1/11:9-11:10", "hover": "let x: u32", "loc": "1/14:13-14:14" },
                     { "type": "info", "hover": "let y: u32", "loc": "1/14:9-14:10" },
+                    { "type": "end" }
+                    ]
+
+                    `,
+                );
+            }
+        });
+
+        it("handles struct literal errors", async () => {
+            const stdout = new WASI.VirtualFD();
+            try {
+                await lo(
+                    [
+                        "inspect",
+                        "./examples/test/compile-errors/struct-literal.bad.lo",
+                    ],
+                    { stdout },
+                );
+            } catch (err) {
+                assert.strictEqual((err as Error).message, "");
+
+                console.log(stdout.flushAndReadUtf8());
+                assert.strictEqual(
+                    stdout.flushAndReadUtf8(),
+                    m`
+                    [
+                    { "type": "file", "index": 1, "path": "examples/test/compile-errors/struct-literal.bad.lo" },
+                    { "type": "info", "hover": "Point3D.x: u32", "loc": "1/2:5-2:6" },
+                    { "type": "info", "hover": "Point3D.y: u32", "loc": "1/3:5-3:6" },
+                    { "type": "info", "hover": "Point3D.z: u32", "loc": "1/4:5-4:6" },
+                    { "type": "info", "link": "1/1:6-1:13", "hover": "struct { ... }", "loc": "1/8:13-8:20" },
+                    { "type": "info", "link": "1/2:5-2:6", "hover": "Point3D.x: u32", "loc": "1/8:23-8:24" },
+                    { "type": "message", "content": "Missing struct fields: y, z", "severity": "error", "loc": "1/8:13-8:20" },
+                    { "type": "info", "hover": "let _: Point3D", "loc": "1/8:9-8:10" },
+                    { "type": "info", "link": "1/1:6-1:13", "hover": "struct { ... }", "loc": "1/9:13-9:20" },
+                    { "type": "info", "link": "1/2:5-2:6", "hover": "Point3D.x: u32", "loc": "1/9:23-9:24" },
+                    { "type": "info", "link": "1/3:5-3:6", "hover": "Point3D.y: u32", "loc": "1/9:29-9:30" },
+                    { "type": "message", "content": "Missing struct fields: z", "severity": "error", "loc": "1/9:13-9:20" },
+                    { "type": "info", "hover": "let _: Point3D", "loc": "1/9:9-9:10" },
+                    { "type": "info", "link": "1/1:6-1:13", "hover": "struct { ... }", "loc": "1/10:13-10:20" },
+                    { "type": "info", "link": "1/2:5-2:6", "hover": "Point3D.x: u32", "loc": "1/10:23-10:24" },
+                    { "type": "message", "content": "Unexpected struct field name, expecting: \`y\`", "severity": "error", "loc": "1/10:29-10:30" },
+                    { "type": "info", "link": "1/3:5-3:6", "hover": "Point3D.y: u32", "loc": "1/10:29-10:30" },
+                    { "type": "message", "content": "Missing struct fields: y", "severity": "error", "loc": "1/10:13-10:20" },
+                    { "type": "info", "hover": "let _: Point3D", "loc": "1/10:9-10:10" },
+                    { "type": "info", "link": "1/1:6-1:13", "hover": "struct { ... }", "loc": "1/11:13-11:20" },
+                    { "type": "message", "content": "Unexpected struct field name, expecting: \`x\`", "severity": "error", "loc": "1/11:23-11:24" },
+                    { "type": "info", "link": "1/2:5-2:6", "hover": "Point3D.x: u32", "loc": "1/11:23-11:24" },
+                    { "type": "message", "content": "Unexpected struct field name, expecting: \`y\`", "severity": "error", "loc": "1/11:29-11:30" },
+                    { "type": "info", "link": "1/3:5-3:6", "hover": "Point3D.y: u32", "loc": "1/11:29-11:30" },
+                    { "type": "message", "content": "Missing struct fields: x", "severity": "error", "loc": "1/11:13-11:20" },
+                    { "type": "info", "hover": "let _: Point3D", "loc": "1/11:9-11:10" },
+                    { "type": "info", "link": "1/1:6-1:13", "hover": "struct { ... }", "loc": "1/12:13-12:20" },
+                    { "type": "message", "content": "Unexpected struct field name, expecting: \`x\`", "severity": "error", "loc": "1/12:23-12:24" },
+                    { "type": "info", "link": "1/2:5-2:6", "hover": "Point3D.x: u32", "loc": "1/12:23-12:24" },
+                    { "type": "message", "content": "Unexpected struct field name, expecting: \`y\`", "severity": "error", "loc": "1/12:29-12:30" },
+                    { "type": "info", "link": "1/3:5-3:6", "hover": "Point3D.y: u32", "loc": "1/12:29-12:30" },
+                    { "type": "message", "content": "Unexpected struct field name, expecting: \`z\`", "severity": "error", "loc": "1/12:35-12:36" },
+                    { "type": "info", "link": "1/4:5-4:6", "hover": "Point3D.z: u32", "loc": "1/12:35-12:36" },
+                    { "type": "info", "hover": "let _: Point3D", "loc": "1/12:9-12:10" },
+                    { "type": "info", "link": "1/1:6-1:13", "hover": "struct { ... }", "loc": "1/13:13-13:20" },
+                    { "type": "info", "link": "1/2:5-2:6", "hover": "Point3D.x: u32", "loc": "1/13:23-13:24" },
+                    { "type": "info", "link": "1/3:5-3:6", "hover": "Point3D.y: u32", "loc": "1/13:29-13:30" },
+                    { "type": "info", "link": "1/4:5-4:6", "hover": "Point3D.z: u32", "loc": "1/13:35-13:36" },
+                    { "type": "message", "content": "Excess field values", "severity": "error", "loc": "1/13:41-13:42" },
+                    { "type": "info", "hover": "let _: Point3D", "loc": "1/13:9-13:10" },
                     { "type": "end" }
                     ]
 

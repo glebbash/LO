@@ -1,0 +1,14 @@
+type Point3D = struct {
+    x: u32,
+    y: u32,
+    z: u32,
+}
+
+export fn main(): void {
+    let _ = Point3D { x: 1 }
+    let _ = Point3D { x: 1, y: 2 }
+    let _ = Point3D { x: 1, z: 3 }
+    let _ = Point3D { y: 2, z: 3 }
+    let _ = Point3D { y: 2, z: 3, w: 4 }
+    let _ = Point3D { x: 1, y: 2, z: 3, w: 4 }
+}
