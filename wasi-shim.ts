@@ -107,7 +107,7 @@ class SysFD implements FD {
 }
 
 class VirtualFD implements FD {
-    contents: Uint8Array;
+    contents: Uint8Array<ArrayBuffer>;
     readCursor: number;
     writes: Uint8Array[];
 

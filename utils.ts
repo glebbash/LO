@@ -686,7 +686,7 @@ async function commandTest() {
         });
 
         async function runAoc(
-            compile: (sourcePath: string) => Promise<Uint8Array>,
+            compile: (sourcePath: string) => Promise<Uint8Array<ArrayBuffer>>,
             path: string,
         ) {
             const program = await compile(path);
@@ -873,7 +873,9 @@ async function commandTest() {
 // utils
 
 async function loadLoCompiler(compilerWasmBinary: Uint8Array) {
-    const mod = await WebAssembly.compile(compilerWasmBinary);
+    const mod = await WebAssembly.compile(
+        compilerWasmBinary as Uint8Array<ArrayBuffer>,
+    );
 
     return async (
         args = ["help"],
@@ -924,7 +926,10 @@ async function loadLoCompiler(compilerWasmBinary: Uint8Array) {
     };
 }
 
-async function loadWasm(data: Uint8Array, imports?: WebAssembly.Imports) {
+async function loadWasm(
+    data: Uint8Array<ArrayBuffer>,
+    imports?: WebAssembly.Imports,
+) {
     const mod = await WebAssembly.instantiate(data, imports);
     // deno-lint-ignore no-explicit-any
     return mod.instance.exports as any;
@@ -941,7 +946,7 @@ async function runWASI(
         ...wasiOptions,
     });
 
-    const wasm = await WebAssembly.compile(data);
+    const wasm = await WebAssembly.compile(data as Uint8Array<ArrayBuffer>);
     const instance = await WebAssembly.instantiate(wasm, {
         ...wasi.getImportObject(),
         ...{ console: { ...console } },
