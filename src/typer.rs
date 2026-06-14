@@ -2473,7 +2473,6 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::Catch(catch) => {
-                // TODO: improve error tolerance
                 let expr_type_id = self.type_code_expr_and_load(ctx, &catch.lhs)?;
                 let result =
                     self.assert_catchable_type(self.get_type(expr_type_id), &catch.catch_loc)?;
