@@ -251,6 +251,7 @@ impl Parser {
 
             return Ok(TopLevelExpr::Intrinsic(InlineFnCallExpr {
                 id: self.next_expr_id(),
+                extra_id: self.next_expr_id(),
                 fn_name,
                 args,
                 type_args,
@@ -852,6 +853,7 @@ impl Parser {
 
             return Ok(CodeExpr::IntrinsicCall(InlineFnCallExpr {
                 id: self.next_expr_id(),
+                extra_id: self.next_expr_id(),
                 fn_name,
                 args,
                 type_args,
@@ -1042,6 +1044,7 @@ impl Parser {
 
             return Ok(CodeExpr::InlineFnCall(InlineFnCallExpr {
                 id: self.next_expr_id(),
+                extra_id: self.next_expr_id(),
                 fn_name: ident,
                 args,
                 type_args,

@@ -447,6 +447,7 @@ pub struct MethodCallExpr {
 
 pub struct InlineFnCallExpr {
     pub id: ExprId,
+    pub extra_id: ExprId, // NOTE: used for `inline_fn_call_loc` only
     pub fn_name: IdentExpr,
     pub type_args: Vec<TypeExpr>,
     pub args: CodeExprList,

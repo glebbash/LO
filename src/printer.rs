@@ -174,6 +174,7 @@ impl Printer {
             }
             TopLevelExpr::Intrinsic(InlineFnCallExpr {
                 id: _,
+                extra_id: _,
                 fn_name,
                 type_args,
                 args,
@@ -726,6 +727,7 @@ impl Printer {
             }
             CodeExpr::InlineFnCall(InlineFnCallExpr {
                 id: _,
+                extra_id: _,
                 fn_name,
                 args,
                 type_args,
@@ -737,6 +739,7 @@ impl Printer {
             }
             CodeExpr::IntrinsicCall(InlineFnCallExpr {
                 id: _,
+                extra_id: _,
                 fn_name,
                 args,
                 type_args,

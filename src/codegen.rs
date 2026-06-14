@@ -719,11 +719,7 @@ impl CodeGenerator {
                 }
 
                 if call.fn_name.repr == "inline_fn_call_loc" {
-                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
-                        unreachable!()
-                    };
-
-                    let expr_info = self.get_expr_info(ctx, str_literal.id, str_literal.loc);
+                    let expr_info = self.get_expr_info(ctx, call.extra_id, call.loc);
                     let stored_bytes = &self.registry.stored_bytes[expr_info];
 
                     instrs.push(WasmInstr::I32Const {

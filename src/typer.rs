@@ -2110,7 +2110,7 @@ impl Typer {
                         });
                     };
 
-                    if call.type_args.len() != 0 || call.args.items.len() != 1 {
+                    if call.type_args.len() != 0 || call.args.items.len() != 0 {
                         return Err(bad_args(call));
                     }
 
@@ -2118,12 +2118,7 @@ impl Typer {
                         &inline_fn_call_loc.unwrap().to_string(&self.registry),
                     );
 
-                    // TODO: string parameter is only needed to attach stored bytes, improve
-                    let CodeExpr::StringLiteral(str_literal) = &call.args.items[0] else {
-                        return Err(bad_args(call));
-                    };
-
-                    self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len());
+                    self.store_expr_info(ctx, call.extra_id, self.registry.stored_bytes.len());
                     self.registry.be_mut().stored_bytes.push(StoredExprBytes {
                         info: bytes_info,
                         expr_type_id: *self.registry.str_literal_type_id.as_ref().unwrap(),
@@ -2140,7 +2135,7 @@ impl Typer {
                     fn bad_args(call: &InlineFnCallExpr) -> Error {
                         Error {
                             message: format!(
-                                "Invalid arguments for `@{}(\"\"): &*u8`",
+                                "Invalid arguments for `@{}(): &*u8`",
                                 call.fn_name.repr,
                             ),
                             loc: call.fn_name.loc,
@@ -4199,6 +4194,7 @@ pub struct IncludeInfo {
 pub fn get_include_info(expr: &TopLevelExpr) -> Result<Option<IncludeInfo>, Error> {
     let TopLevelExpr::Intrinsic(InlineFnCallExpr {
         id: _,
+        extra_id: _,
         fn_name: intrinsic,
         type_args,
         args,
