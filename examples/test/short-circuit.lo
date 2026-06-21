@@ -1,0 +1,15 @@
+export fn main(): u32 {
+    let result = 2
+
+    if true || @unreachable() {
+        result *= 2
+    }
+
+    if false && @unreachable() {
+        @unreachable()
+    } else {
+        result *= 3
+    }
+
+    return result
+}

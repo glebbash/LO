@@ -165,6 +165,15 @@ async function commandTest() {
         assert.strictEqual(program.add(2, 3), 5);
     });
 
+    it("compiles short-circuit.lo", async () => {
+        const output = await compile("./examples/test/short-circuit.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 12);
+    });
+
     it("compiles factorial.lo", async () => {
         const output = await compile("./examples/test/factorial.lo");
 

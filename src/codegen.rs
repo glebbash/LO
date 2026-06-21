@@ -578,6 +578,38 @@ impl CodeGenerator {
                 let expr_info = self.get_expr_info(ctx, infix_op.id, infix_op.loc);
                 let op_info = self.registry.binary_op_info[expr_info].relax();
 
+                // short-circuiting AND
+                if infix_op.op_tag == InfixOpTag::And {
+                    self.codegen(ctx, instrs, &infix_op.lhs);
+                    instrs.push(WasmInstr::BlockStart {
+                        block_kind: WasmBlockKind::If,
+                        block_type: WasmBlockType::SingleOut {
+                            out_type: WasmType::I32,
+                        },
+                    });
+                    self.codegen(ctx, instrs, &infix_op.rhs);
+                    instrs.push(WasmInstr::Else);
+                    instrs.push(WasmInstr::I32Const { value: 0 });
+                    instrs.push(WasmInstr::BlockEnd);
+                    return;
+                }
+
+                // short-circuiting OR
+                if infix_op.op_tag == InfixOpTag::Or {
+                    self.codegen(ctx, instrs, &infix_op.lhs);
+                    instrs.push(WasmInstr::BlockStart {
+                        block_kind: WasmBlockKind::If,
+                        block_type: WasmBlockType::SingleOut {
+                            out_type: WasmType::I32,
+                        },
+                    });
+                    instrs.push(WasmInstr::I32Const { value: 1 });
+                    instrs.push(WasmInstr::Else);
+                    self.codegen(ctx, instrs, &infix_op.rhs);
+                    instrs.push(WasmInstr::BlockEnd);
+                    return;
+                }
+
                 if op_info.is_compound_assignment {
                     let var = self.var_from_expr(ctx, &infix_op.lhs).unwrap();
 

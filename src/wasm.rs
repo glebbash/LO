@@ -172,6 +172,7 @@ pub enum WasmStoreKind {
 #[derive(Clone, Debug, PartialEq)]
 pub enum WasmBlockType {
     NoOut,
+    SingleOut { out_type: WasmType },
     InOut { type_index: u32 },
 }
 
@@ -573,6 +574,9 @@ fn write_instr(out: &mut Vec<u8>, instr: &WasmInstr) {
             match block_type {
                 WasmBlockType::NoOut => {
                     write_u8(out, 0x40); // no value
+                }
+                WasmBlockType::SingleOut { out_type } => {
+                    write_u8(out, out_type.clone() as u8);
                 }
                 WasmBlockType::InOut { type_index } => {
                     write_i32(out, *type_index as i32);
