@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(alloc_error_handler, thread_local)]
+#![feature(thread_local)]
 
 extern crate alloc;
 mod ast;
@@ -96,14 +96,9 @@ mod no_std_options {
     #[global_allocator]
     static ALLOCATOR: LolAlloc = LolAlloc::new();
 
-    #[alloc_error_handler]
-    fn oom(_: core::alloc::Layout) -> ! {
-        core::arch::wasm32::unreachable()
-    }
-
     #[cfg(not(test))]
     #[panic_handler]
-    fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
+    fn panic(info: &core::panic::PanicInfo) -> ! {
         crate::io::stderr_write(alloc::format!("{info}\n"));
         core::arch::wasm32::unreachable();
     }
