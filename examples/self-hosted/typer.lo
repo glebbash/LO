@@ -2,17 +2,57 @@
 
 // TODO: implement module
 
+// TODO: add other fields
+type TyContext = struct {
+    module_id: u32,
+}
+
 type Typer = struct {
     // context
     registry: &Registry,
     reporter: &Reporter,
+
+    // state
+    contexts: StableVec(TyContext),
 }
 
 fn Typer::new(registry: &Registry): &Typer {
     return heap::new!(Typer {
         registry: registry,
         reporter: registry.reporter,
+
+        contexts: StableVec::new!<TyContext>(),
     })
 }
 
-fn Typer::type_all(&self) {}
+fn Typer::type_all(&self) {
+    let global_ctx = self.contexts.push!(TyContext {
+        module_id: u32::MAX,
+    })
+}
+
+// utils
+
+type StableVec = struct {
+    chunks: &Vec(&Vec),
+    chunk_size: u32,
+}
+
+inline fn StableVec::new!<T>(): StableVec(T) {
+    StableVec {
+        chunks: Vec::new!<&Vec>(),
+        chunk_size: 8,
+    }
+}
+
+inline fn StableVec::push!(self, item: itemof(typeof(self))): &typeof(item) {
+    if self.chunks.len == 0 \
+        || self.chunks.get!(self.chunks.len - 1).len == self.chunk_size
+    {
+        self.chunks.push!(Vec::with_capacity!<typeof(item)>(self.chunk_size))
+    }
+
+    let last_chunk = self.chunks.get!(self.chunks.len - 1)
+    (last_chunk as &Vec(typeof(item))).push!(item)
+    last_chunk
+}
