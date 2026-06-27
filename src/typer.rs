@@ -126,10 +126,12 @@ struct TyContext {
     parent: Option<TyContextRef>,
     kind: ScopeKind,
     fn_index: Option<usize>,
-    inline_fn_call_loc: Option<Loc>,
     expr_id_offset: usize,
     symbols: Vec<TySymbol>,
     symbols_lookup: BTreeMap<&'static str, usize>,
+
+    inline_fn_call_loc: Option<Loc>,
+    is_expr_referenced: bool,
 }
 
 impl TyContext {
@@ -160,8 +162,9 @@ pub struct Typer {
     module_info: UBCell<Vec<TyModuleInfo>>,
     type_lookup: UBCell<BTreeMap<Type, TypeId>>,
     type_aliases: UBCell<Vec<TypeId>>, // indexed by `TySymbol::col_index` when `kind = TypeAlias`
-    first_string_usage: UBCell<Option<Loc>>,
-    allocated_strings: Vec<String>, // storage for all allocated `String` objects
+    allocated_strings: Vec<String>,    // storage for all allocated `String` objects
+    forbid_memory_loc: Option<Loc>,
+    autodefine_memory: UBCell<bool>,
 }
 
 impl Typer {
@@ -178,11 +181,13 @@ impl Typer {
             parent: None,
             module_id: usize::MAX, // global scope has no module
             fn_index: None,
-            inline_fn_call_loc: None,
             expr_id_offset: 0,
             kind: ScopeKind::Global,
             symbols: Vec::new(),
             symbols_lookup: BTreeMap::new(),
+
+            inline_fn_call_loc: None,
+            is_expr_referenced: false,
         });
 
         self.module_info.reserve(self.registry.modules.len());
@@ -970,6 +975,17 @@ impl Typer {
                             self.report_error(bad_signature(&intrinsic.fn_name));
                         }
 
+                        if let Some(forbid_loc) = &self.forbid_memory_loc {
+                            self.report_error(Error {
+                                message: format!(
+                                    "Cannot both forbid and define a memory, forbidden at {}",
+                                    forbid_loc.to_string(&self.registry)
+                                ),
+                                loc: intrinsic.fn_name.loc,
+                            });
+                            continue;
+                        }
+
                         self.registry.memory = Some(memory);
 
                         continue;
@@ -983,6 +999,22 @@ impl Typer {
                                 loc: fn_name.loc,
                             }
                         }
+                    }
+
+                    if intrinsic.fn_name.repr == "forbid_memory" {
+                        if let Some(existing_memory) = &self.registry.memory {
+                            self.report_error(Error {
+                                message: format!(
+                                    "Cannot both forbid and define a memory, defined at {}",
+                                    existing_memory.loc.to_string(&self.registry)
+                                ),
+                                loc: intrinsic.fn_name.loc,
+                            });
+                            continue;
+                        }
+
+                        self.forbid_memory_loc = Some(intrinsic.fn_name.loc);
+                        continue;
                     }
 
                     if intrinsic.fn_name.repr == "export_existing" {
@@ -1172,14 +1204,13 @@ impl Typer {
             }
         }
 
-        // TODO: replace this with auto memory definition
-        if let Some(string_usage_loc) = *self.first_string_usage
-            && self.registry.memory.is_none()
-            && !self.reporter.in_inspection_mode
-        {
-            self.report_error(Error {
-                message: format!("Cannot use strings with no memory defined"),
-                loc: string_usage_loc,
+        if self.registry.memory.is_none() && *self.autodefine_memory {
+            self.registry.be_mut().memory = Some(MemoryInfo {
+                min_pages: Some(1),
+                data_start: None,
+                exported: false,
+                imported_from: None,
+                loc: Loc::internal(),
             });
         }
     }
@@ -1276,9 +1307,7 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::StringLiteral(str_literal) => {
-                if let None = *self.first_string_usage {
-                    *self.first_string_usage.be_mut() = Some(*&str_literal.loc);
-                }
+                self.process_memory_op(&str_literal.loc);
 
                 let bytes_info = self.process_const_string(&str_literal.value);
 
@@ -1398,6 +1427,8 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::ArrayLiteral(array_literal) => {
+                self.process_memory_op(&array_literal.loc);
+
                 let item_type_id = self.build_type(ctx, &array_literal.item_type)?;
                 let item_type = self.get_type(item_type_id);
 
@@ -1539,7 +1570,7 @@ impl Typer {
                 self.store_type(ctx, assign.id, &Type::Void);
 
                 if lhs_type_id.is_some() {
-                    self.assert_lhs_writable(ctx, &assign.lhs)?;
+                    self.process_var_write(ctx, &assign.lhs)?;
                 }
 
                 return Ok(());
@@ -1607,7 +1638,7 @@ impl Typer {
                     is_compound_assignment = true;
                     base_op = base_op_;
 
-                    self.assert_lhs_writable(ctx, &infix_op.lhs)?;
+                    self.process_var_write(ctx, &infix_op.lhs)?;
                 }
 
                 let op_kind = self.get_binary_op_kind(
@@ -1627,7 +1658,14 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::PrefixOp(prefix_op) => {
+                let is_ref_prev = ctx.is_expr_referenced;
+                if let PrefixOpTag::Reference = prefix_op.op_tag {
+                    ctx.be_mut().is_expr_referenced = true;
+                }
+
                 let expr_type_id = self.type_code_expr_and_load(ctx, &prefix_op.expr)?;
+
+                ctx.be_mut().is_expr_referenced = is_ref_prev;
 
                 match &prefix_op.op_tag {
                     PrefixOpTag::Not => {
@@ -1677,6 +1715,8 @@ impl Typer {
                                 loc: prefix_op.expr.loc(),
                             });
                         };
+
+                        self.process_memory_op(&prefix_op.loc);
 
                         if self.reporter.in_inspection_mode {
                             self.reporter.print_inspection(InspectInfo {
@@ -1771,7 +1811,19 @@ impl Typer {
                 return Ok(());
             }
             CodeExpr::FieldAccess(field_access) => {
+                let is_ref_prev = ctx.is_expr_referenced;
+                ctx.be_mut().is_expr_referenced = false;
+
                 let lhs_type_id = self.type_code_expr_and_load(ctx, &field_access.lhs)?;
+
+                ctx.be_mut().is_expr_referenced = is_ref_prev;
+
+                if let Type::Pointer(_) = self.registry.get_type(lhs_type_id)
+                    && !ctx.is_expr_referenced
+                {
+                    self.process_memory_op(&field_access.field_name.loc);
+                }
+
                 let field = get_struct_field_info(
                     &self.registry,
                     self.get_type(lhs_type_id),
@@ -2612,13 +2664,17 @@ impl Typer {
         }
     }
 
-    fn assert_lhs_writable(&self, ctx: UBRef<TyContext>, lhs: &CodeExpr) -> Result<(), Error> {
+    fn process_var_write(&self, ctx: UBRef<TyContext>, lhs: &CodeExpr) -> Result<(), Error> {
         let Some(var) = self.get_variable_kind(ctx, &lhs) else {
             return Err(Error {
                 message: format!("Invalid lhs"),
                 loc: lhs.loc(),
             });
         };
+
+        if let VariableKind::ReadWriteStored = var {
+            self.process_memory_op(&lhs.loc());
+        }
 
         if let VariableKind::Readonly = var {
             return Err(Error {
@@ -3432,6 +3488,25 @@ impl Typer {
         Ok(())
     }
 
+    fn process_memory_op(&self, loc: &Loc) {
+        if self.registry.memory.is_some() {
+            return;
+        }
+
+        if let Some(forbid_loc) = &self.forbid_memory_loc {
+            self.report_error(Error {
+                message: format!(
+                    "Memory operations forbidden, see {}",
+                    forbid_loc.to_string(&self.registry)
+                ),
+                loc: *loc,
+            });
+            return;
+        }
+
+        *self.autodefine_memory.be_mut() = true;
+    }
+
     fn get_fn_param_type(
         &self,
         ctx: TyContextRef,
@@ -4134,10 +4209,12 @@ impl Typer {
             kind: scope_kind,
             module_id: parent.module_id,
             fn_index: parent.fn_index,
-            inline_fn_call_loc: parent.inline_fn_call_loc,
             expr_id_offset: parent.expr_id_offset,
             symbols: Vec::new(),
             symbols_lookup: BTreeMap::new(),
+
+            inline_fn_call_loc: parent.inline_fn_call_loc,
+            is_expr_referenced: parent.is_expr_referenced,
         })
     }
 

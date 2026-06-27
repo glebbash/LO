@@ -1,0 +1,30 @@
+@forbid_memory()
+
+// error
+@use_memory()
+
+type S = struct {
+    x: u32,
+}
+
+fn main() {
+    let p = 0 as &S
+
+    // error
+    let _ = "Hello there"
+
+    // error
+    let _ = [u32][1, 2, 3]
+
+    // error
+    let _ = p.x
+
+    // error
+    p.x = 1
+
+    // no error, this is allowed
+    let _ = &p.x
+
+    // error, although this won't produce any operations due to zero sized type
+    let x2 = *(null as &void)
+}

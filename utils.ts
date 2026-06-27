@@ -811,7 +811,7 @@ async function commandTest() {
                 await lo(
                     [
                         "inspect",
-                        "./examples/test/compile-errors/struct-literal.bad.lo",
+                        "./examples/test/compile-errors/malformed-struct-literal.lo",
                     ],
                     { stdout },
                 );
@@ -822,7 +822,7 @@ async function commandTest() {
                     stdout.flushAndReadUtf8(),
                     m`
                     [
-                    { "type": "file", "index": 1, "path": "examples/test/compile-errors/struct-literal.bad.lo" },
+                    { "type": "file", "index": 1, "path": "examples/test/compile-errors/malformed-struct-literal.lo" },
                     { "type": "info", "hover": "Point3D.x: u32", "loc": "1/2:5-2:6" },
                     { "type": "info", "hover": "Point3D.y: u32", "loc": "1/3:5-3:6" },
                     { "type": "info", "hover": "Point3D.z: u32", "loc": "1/4:5-4:6" },
@@ -862,6 +862,54 @@ async function commandTest() {
                     { "type": "info", "link": "1/4:5-4:6", "hover": "Point3D.z: u32", "loc": "1/13:35-13:36" },
                     { "type": "message", "content": "Excess field values", "severity": "error", "loc": "1/13:41-13:42" },
                     { "type": "info", "hover": "let _: Point3D", "loc": "1/13:9-13:10" },
+                    { "type": "end" }
+                    ]
+
+                    `,
+                );
+            }
+        });
+
+        it("handles memory forbids", async () => {
+            const stdout = new WASI.VirtualFD();
+            try {
+                await lo(
+                    [
+                        "inspect",
+                        "./examples/test/compile-errors/forbid-memory.lo",
+                    ],
+                    { stdout },
+                );
+            } catch (err) {
+                assert.strictEqual((err as Error).message, "");
+
+                assert.strictEqual(
+                    stdout.flushAndReadUtf8(),
+                    m`
+                    [
+                    { "type": "file", "index": 1, "path": "examples/test/compile-errors/forbid-memory.lo" },
+                    { "type": "info", "hover": "S.x: u32", "loc": "1/7:5-7:6" },
+                    { "type": "message", "content": "Cannot both forbid and define a memory, forbidden at examples/test/compile-errors/forbid-memory.lo:1:2", "severity": "error", "loc": "1/4:2-4:12" },
+                    { "type": "info", "link": "1/6:6-6:7", "hover": "struct S { ... }", "loc": "1/11:19-11:20" },
+                    { "type": "info", "hover": "let p: &S", "loc": "1/11:9-11:10" },
+                    { "type": "message", "content": "Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2", "severity": "error", "loc": "1/14:13-14:26" },
+                    { "type": "info", "hover": "let _: seg(u8)", "loc": "1/14:9-14:10" },
+                    { "type": "message", "content": "Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2", "severity": "error", "loc": "1/17:13-17:27" },
+                    { "type": "info", "hover": "let _: seg(u32)", "loc": "1/17:9-17:10" },
+                    { "type": "info", "link": "1/11:9-11:10", "hover": "let p: &S", "loc": "1/20:13-20:14" },
+                    { "type": "message", "content": "Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2", "severity": "error", "loc": "1/20:15-20:16" },
+                    { "type": "info", "link": "1/7:5-7:6", "hover": "&S.x: u32", "loc": "1/20:15-20:16" },
+                    { "type": "info", "hover": "let _: u32", "loc": "1/20:9-20:10" },
+                    { "type": "info", "link": "1/11:9-11:10", "hover": "let p: &S", "loc": "1/23:5-23:6" },
+                    { "type": "message", "content": "Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2", "severity": "error", "loc": "1/23:7-23:8" },
+                    { "type": "info", "link": "1/7:5-7:6", "hover": "&S.x: u32", "loc": "1/23:7-23:8" },
+                    { "type": "message", "content": "Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2", "severity": "error", "loc": "1/23:5-23:8" },
+                    { "type": "info", "link": "1/11:9-11:10", "hover": "let p: &S", "loc": "1/26:14-26:15" },
+                    { "type": "info", "link": "1/7:5-7:6", "hover": "&S.x: u32", "loc": "1/26:16-26:17" },
+                    { "type": "info", "hover": "let _: &u32", "loc": "1/26:9-26:10" },
+                    { "type": "message", "content": "Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2", "severity": "error", "loc": "1/29:14-29:30" },
+                    { "type": "info", "hover": "<deref>: void", "loc": "1/29:14-29:15" },
+                    { "type": "info", "hover": "let x2: void", "loc": "1/29:9-29:11" },
                     { "type": "end" }
                     ]
 

@@ -719,7 +719,7 @@ impl CodeGenerator {
                 }
 
                 if call.fn_name.repr == "data_size" {
-                    // placeholder, filled in in `generate`
+                    // placeholder, will be patched later
                     instrs.push(WasmInstr::I32Const { value: 0 });
                     return;
                 }
