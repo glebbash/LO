@@ -1172,9 +1172,9 @@ impl Typer {
             }
         }
 
+        // TODO: replace this with auto memory definition
         if let Some(string_usage_loc) = *self.first_string_usage
             && self.registry.memory.is_none()
-            // TODO: find a way to also report this in inspection mode
             && !self.reporter.in_inspection_mode
         {
             self.report_error(Error {

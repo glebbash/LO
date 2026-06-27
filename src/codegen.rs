@@ -27,7 +27,6 @@ struct VarInfoVoidEnumValue {
     variant_index: usize,
 }
 
-// TODO(optimize): codegen on demand instead of building an extra vec
 type CompiledExpr = Vec<WasmInstr>;
 
 struct VarInfoStored {
