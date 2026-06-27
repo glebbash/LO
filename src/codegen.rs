@@ -1980,19 +1980,13 @@ impl CodeGenerator {
     fn push_wasm_dbg_name_section_locals(
         &self,
         output: &mut Vec<WasmLocalInfo>,
-        local_index: u32,
+        mut local_index: u32,
         local_type: &Type,
         local_name: &str,
-    ) {
-        // TODO: fix unnamed locals breaking wasm2wat
-        if !self.registry.should_emit_dbg_local_names {
-            return;
-        }
-
+    ) -> u32 {
         match local_type {
-            Type::Never
-            | Type::Null
-            | Type::Void
+            Type::Never | Type::Void => {} // skip
+            Type::Null
             | Type::Bool
             | Type::U8
             | Type::I8
@@ -2004,23 +1998,26 @@ impl CodeGenerator {
             | Type::U64
             | Type::I64
             | Type::F64
-            | Type::Pointer { .. } => output.push(WasmLocalInfo {
-                local_index,
-                local_name: String::from(local_name),
-            }),
+            | Type::Pointer { .. } => {
+                output.push(WasmLocalInfo {
+                    local_index,
+                    local_name: String::from(local_name),
+                });
+                local_index += 1;
+            }
             Type::Struct { struct_index } => {
                 let struct_def = &self.registry.structs[*struct_index];
                 for field in &struct_def.fields {
-                    self.push_wasm_dbg_name_section_locals(
+                    local_index = self.push_wasm_dbg_name_section_locals(
                         output,
-                        local_index + field.field_index,
+                        local_index,
                         &field.field_type,
                         &format!("{}.{}", local_name, field.field_name),
                     );
                 }
             }
             Type::Enum { enum_index } => {
-                self.push_wasm_dbg_name_section_locals(
+                local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &Type::U32,
@@ -2028,7 +2025,7 @@ impl CodeGenerator {
                 );
 
                 let enum_def = &self.registry.enums[*enum_index];
-                self.push_wasm_dbg_name_section_locals(
+                local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &enum_def.variant_type,
@@ -2036,14 +2033,14 @@ impl CodeGenerator {
                 );
             }
             Type::Result(result_type) => {
-                self.push_wasm_dbg_name_section_locals(
+                local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     self.get_type(result_type.ok),
                     &format!("{}#ok", local_name),
                 );
 
-                self.push_wasm_dbg_name_section_locals(
+                local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     self.get_type(result_type.err),
@@ -2057,14 +2054,14 @@ impl CodeGenerator {
                     is_nullable: false,
                 });
 
-                self.push_wasm_dbg_name_section_locals(
+                local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &Type::U32,
                     &format!("{}.len", local_name),
                 );
 
-                self.push_wasm_dbg_name_section_locals(
+                local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     &ptr_type,
@@ -2072,7 +2069,7 @@ impl CodeGenerator {
                 );
             }
             Type::Container(ctr) => {
-                self.push_wasm_dbg_name_section_locals(
+                local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
                     self.get_type(ctr.container),
@@ -2080,6 +2077,8 @@ impl CodeGenerator {
                 );
             }
         }
+
+        local_index
     }
 
     fn get_expr_type(&self, ctx: &ExprContext, expr: &CodeExpr) -> &'static Type {

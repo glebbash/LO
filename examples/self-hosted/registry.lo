@@ -21,7 +21,6 @@ fn Module::free(&self) {
 
 type Registry = struct {
     in_single_file_mode: bool,
-    should_emit_dbg_local_names: bool,
 
     reporter: &Reporter,
 
@@ -35,7 +34,6 @@ fn Registry::new(): &Registry {
 
     return heap::new!(Registry {
         in_single_file_mode: false,
-        should_emit_dbg_local_names: false,
         // TODO: implement
         reporter: 0 as &Reporter,
         fm: FileManager::new(error_arena),

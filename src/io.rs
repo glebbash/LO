@@ -221,13 +221,13 @@ pub fn stdout_write(message: impl AsRef<[u8]>) {
     buffer.extend(message_bytes);
 }
 
-pub fn stderr_writeln(message: impl AsRef<str>) {
+pub fn stderr_writeln(message: impl AsRef<[u8]>) {
     stderr_write(message);
     stderr_write("\n");
 }
 
-pub fn stderr_write(message: impl AsRef<str>) {
-    fputs(wasi::FD_STDERR, message.as_ref().as_bytes());
+pub fn stderr_write(message: impl AsRef<[u8]>) {
+    fputs(wasi::FD_STDERR, message.as_ref());
 }
 
 pub fn fputs(fd: u32, message: &[u8]) {

@@ -36,12 +36,6 @@ export fn _start() {
     let registry = Registry::new()
     defer registry.free()
 
-    for i in 3..args.argc {
-        if args.get(i).equals("--dbg") {
-            registry.should_emit_dbg_local_names = true
-        }
-    }
-
     if command.equals("format") {
         registry.in_single_file_mode = true
 

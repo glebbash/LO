@@ -818,7 +818,6 @@ async function commandTest() {
             } catch (err) {
                 assert.strictEqual((err as Error).message, "");
 
-                console.log(stdout.flushAndReadUtf8());
                 assert.strictEqual(
                     stdout.flushAndReadUtf8(),
                     m`

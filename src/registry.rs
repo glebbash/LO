@@ -219,7 +219,6 @@ pub struct BinaryOpInfo {
 #[derive(Default)]
 pub struct Registry {
     pub in_single_file_mode: bool,
-    pub should_emit_dbg_local_names: bool,
 
     pub reporter: Box<Reporter>,
 
