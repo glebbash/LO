@@ -160,7 +160,6 @@ pub struct Typer {
     // state
     contexts: UBCell<StableVec<TyContext>>,
     module_info: UBCell<Vec<TyModuleInfo>>,
-    type_lookup: UBCell<BTreeMap<Type, TypeId>>,
     type_aliases: UBCell<Vec<TypeId>>, // indexed by `TySymbol::col_index` when `kind = TypeAlias`
     allocated_strings: Vec<String>,    // storage for all allocated `String` objects
     forbid_memory_loc: Option<Loc>,
@@ -277,12 +276,12 @@ impl Typer {
                                 continue;
                             };
 
-                            let mut variant_type = &Type::Void;
+                            let mut variant_type_id = self.intern_type(&Type::Void);
                             if let Some(type_expr) = &variant_type_in_decl {
                                 match self.build_type(ctx, type_expr) {
-                                    Ok(type_id) => variant_type = self.get_type(type_id).relax(),
+                                    Ok(type_id) => variant_type_id = type_id,
                                     Err(err) => {
-                                        variant_type = &Type::Never;
+                                        variant_type_id = self.intern_type(&Type::Never);
                                         self.report_error(err);
                                     }
                                 }
@@ -290,7 +289,7 @@ impl Typer {
 
                             self.registry.enums.push(EnumDef {
                                 enum_name: type_def.name.repr,
-                                variant_type: variant_type.clone(),
+                                variant_type_id,
                                 variants: Vec::new(), // placeholder
                             });
 
@@ -361,7 +360,7 @@ impl Typer {
                                 name: fn_def.decl.fn_name.repr,
                                 type_: FnType {
                                     inputs: Vec::new(),
-                                    output: Type::Void,
+                                    output: self.intern_type(&Type::Void),
                                 },
                                 params: Vec::new(),
                                 source: FnSource::Guest {
@@ -380,12 +379,13 @@ impl Typer {
                             let module_name = imported_from.get_value(module.source);
                             let method_name = fn_def.decl.fn_name.parts.last().unwrap();
                             let external_fn_name = method_name.read_span(module.source);
+                            let placeholder_fn_output = self.intern_type(&Type::Void);
 
                             self.registry.functions.push(FnInfo {
                                 name: fn_def.decl.fn_name.repr,
                                 type_: FnType {
                                     inputs: Vec::new(),
-                                    output: Type::Void,
+                                    output: placeholder_fn_output,
                                 },
                                 params: Vec::new(),
                                 source: FnSource::Host {
@@ -523,11 +523,10 @@ impl Typer {
                                     self.report_error(err);
                                     continue 'exprs;
                                 });
-                                let field_type = self.get_type(field_type_id);
 
                                 struct_fields.push(StructField {
                                     field_name: field.field_name.repr,
-                                    field_type: field_type.clone(),
+                                    field_type_id,
                                     field_layout: TypeLayout::new(), // placeholder, will be updated in `resolve_struct_layout`
                                     field_index: 0, // placeholder, will be updated in `resolve_struct_layout`
                                     byte_offset: 0, // placeholder, will be updated in `resolve_struct_layout`
@@ -540,7 +539,7 @@ impl Typer {
                                             "{}.{}: {}",
                                             type_def.name.repr,
                                             field.field_name.repr,
-                                            self.registry.fmt(field_type)
+                                            self.registry.fmt(self.get_type(field_type_id))
                                         ),
                                         loc: field.field_name.loc,
                                         linked_loc: None,
@@ -596,13 +595,14 @@ impl Typer {
                                 }
 
                                 if !self.is_type_compatible(
-                                    &enum_def.variant_type,
+                                    self.get_type(enum_def.variant_type_id),
                                     self.get_type(variant_type_id),
                                 ) {
                                     self.report_error(Error {
                                         message: format!(
                                             "Enum variant is not compatible with {}",
-                                            self.registry.fmt(&enum_def.variant_type)
+                                            self.registry
+                                                .fmt(self.get_type(enum_def.variant_type_id))
                                         ),
                                         loc: variant.variant_name.loc,
                                     });
@@ -650,7 +650,7 @@ impl Typer {
         let mut struct_layout = TypeLayout::new();
 
         for field in struct_def.fields.relax_mut() {
-            if let Type::Struct { struct_index } = field.field_type {
+            if let &Type::Struct { struct_index } = self.get_type(field.field_type_id) {
                 match self.registry.structs[struct_index].resolution {
                     StructResolution::Resolved => {}
                     StructResolution::NotStarted => {
@@ -672,7 +672,11 @@ impl Typer {
                 }
             }
 
-            get_type_layout(&self.registry, &field.field_type, &mut field.field_layout);
+            get_type_layout(
+                &self.registry,
+                self.get_type(field.field_type_id),
+                &mut field.field_layout,
+            );
             struct_layout.alignment =
                 u32::max(struct_layout.alignment, field.field_layout.alignment);
 
@@ -794,7 +798,7 @@ impl Typer {
                             self.report_error(err);
                             continue;
                         });
-                        fn_info.type_.output = self.get_type(type_id).clone();
+                        fn_info.type_.output = type_id;
                     }
 
                     for fn_param in &fn_def.decl.params {
@@ -816,7 +820,7 @@ impl Typer {
 
                         fn_info.params.push(FnParameter {
                             param_name: fn_param.param_name.relax(),
-                            param_type: self.get_type(param_type_id).clone(),
+                            param_type_id,
                         });
                     }
                 }
@@ -1153,7 +1157,7 @@ impl Typer {
                 self.define_local(
                     ctx,
                     &param.param_name.repr,
-                    self.intern_type(&param.param_type),
+                    param.param_type_id,
                     param.param_name.loc,
                     param.param_name.id,
                     true,
@@ -1251,7 +1255,7 @@ impl Typer {
 
         if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
             let fn_info = &self.registry.functions[ctx.fn_index.unwrap()];
-            if fn_info.type_.output != Type::Void {
+            if *self.get_type(fn_info.type_.output) != Type::Void {
                 self.report_error(Error {
                     // error message stolen from clang
                     message: format!("Control reaches end of non-void function"),
@@ -1380,13 +1384,16 @@ impl Typer {
                     };
                     let field_value_type = self.get_type(field_value_type_id);
 
-                    if !self.is_type_compatible(&struct_field.field_type, &field_value_type) {
+                    if !self.is_type_compatible(
+                        self.get_type(struct_field.field_type_id),
+                        &field_value_type,
+                    ) {
                         self.report_error(Error {
                             message: format!(
                                 "Invalid type for struct field {}.{}, expected: {}, got: {}",
                                 struct_literal.struct_name.repr,
                                 struct_field.field_name,
-                                self.registry.fmt(&struct_field.field_type,),
+                                self.registry.fmt(self.get_type(struct_field.field_type_id)),
                                 self.registry.fmt(&field_value_type),
                             ),
                             loc: field_literal.value.loc(),
@@ -1836,14 +1843,14 @@ impl Typer {
                             "{}.{}: {}",
                             self.registry.fmt(&self.get_type(lhs_type_id)),
                             field_access.field_name.repr,
-                            self.registry.fmt(&field.field_type),
+                            self.registry.fmt(self.get_type(field.field_type_id)),
                         ),
                         loc: field_access.field_name.loc,
                         linked_loc: field.loc,
                     })
                 };
 
-                self.store_type(ctx, field_access.id, &field.field_type);
+                self.store_type(ctx, field_access.id, self.get_type(field.field_type_id));
                 return Ok(());
             }
             CodeExpr::FnCall(call) => {
@@ -2274,7 +2281,8 @@ impl Typer {
                     return_type = self.get_type(return_type_id);
                 }
 
-                let fn_return_type = &self.registry.functions[ctx.fn_index.unwrap()].type_.output;
+                let fn_return_type =
+                    self.get_type(self.registry.functions[ctx.fn_index.unwrap()].type_.output);
                 if !self.is_type_compatible(fn_return_type, return_type) {
                     self.reporter.error(Error {
                         message: format!(
@@ -2742,7 +2750,7 @@ impl Typer {
         };
 
         let fn_info = &self.registry.functions[fn_index];
-        let Type::Result(result) = &fn_info.type_.output else {
+        let Type::Result(result) = self.get_type(fn_info.type_.output) else {
             return Err(Error {
                 message: format!(
                     "Cannot create implicitly typed result: function does not return result"
@@ -2774,7 +2782,8 @@ impl Typer {
                         message: format!(
                             "let {}: {}",
                             var_name.repr,
-                            self.registry.fmt(&local_def.local_type)
+                            self.registry
+                                .fmt(self.registry.get_type(local_def.local_type_id))
                         ),
                         loc: var_name.loc,
                         linked_loc: Some(symbol.loc),
@@ -2784,8 +2793,7 @@ impl Typer {
                 return Ok(ValueInfo {
                     kind: ValueKind::Local,
                     col_index: symbol.col_index,
-                    // TODO: optimize
-                    type_id: self.intern_type(&local_def.local_type),
+                    type_id: local_def.local_type_id,
                 });
             }
             TySymbolKind::Global => {
@@ -2835,7 +2843,7 @@ impl Typer {
                 let enum_def = &self.registry.enums[enum_ctor.enum_index];
                 let enum_variant = &enum_def.variants[enum_ctor.variant_index];
 
-                let Type::Void = enum_def.variant_type else {
+                let Type::Void = self.get_type(enum_def.variant_type_id) else {
                     return Err(Error {
                         message: format!(
                             "Cannot construct {}, expected payload of type {}",
@@ -2894,7 +2902,8 @@ impl Typer {
         match operand_type {
             Type::Null | Type::Bool | Type::U8 | Type::U16 | Type::U32 | Type::Pointer { .. } => {}
             Type::Enum { enum_index }
-                if self.registry.enums[*enum_index].variant_type == Type::Void => {}
+                if *self.get_type(self.registry.enums[*enum_index].variant_type_id)
+                    == Type::Void => {}
 
             Type::I8 | Type::I16 | Type::I32 => signed = true,
 
@@ -3232,7 +3241,7 @@ impl Typer {
         self.store_expr_info(ctx, call_expr_id, self.registry.call_info.len());
         self.registry.be_mut().call_info.push(CallInfo {
             value: CallInfoValue::FnCall(fn_index),
-            return_type_id: self.intern_type(&fn_info.type_.output),
+            return_type_id: fn_info.type_.output,
         });
 
         if self.reporter.in_inspection_mode {
@@ -3247,10 +3256,15 @@ impl Typer {
 
                 message.push_str(&param.param_name.repr);
                 message.push_str(": ");
-                write!(&mut message, "{}", self.registry.fmt(&param.param_type)).unwrap();
+                write!(
+                    &mut message,
+                    "{}",
+                    self.registry.fmt(self.get_type(param.param_type_id))
+                )
+                .unwrap();
             }
 
-            let return_type = self.registry.fmt(&fn_info.type_.output);
+            let return_type = self.registry.fmt(self.get_type(fn_info.type_.output));
             write!(&mut message, "): {}", return_type).unwrap();
 
             self.reporter.print_inspection(InspectInfo {
@@ -3633,7 +3647,7 @@ impl Typer {
         bind_id: ExprId,
     ) {
         self.registry
-            .add_local(ctx.fn_index.unwrap(), local_name, self.get_type(type_id));
+            .add_local(ctx.fn_index.unwrap(), local_name, type_id);
 
         self.store_expr_info(ctx, bind_id, self.registry.value_info.len());
         self.registry.be_mut().value_info.push(ValueInfo {
@@ -4233,14 +4247,7 @@ impl Typer {
     }
 
     fn intern_type(&self, type_: &Type) -> TypeId {
-        if let Some(&id) = self.type_lookup.get(type_) {
-            return id;
-        }
-
-        let id = self.registry.types.len();
-        self.type_lookup.be_mut().insert(type_.clone(), id);
-        self.registry.be_mut().types.push(type_.clone());
-        id
+        self.registry.intern_type(type_)
     }
 
     fn get_type(&self, type_id: TypeId) -> &'static Type {
@@ -4401,7 +4408,7 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
             let struct_def = &registry.structs[*struct_index];
 
             for field in &struct_def.fields {
-                get_type_layout(registry, &field.field_type, layout);
+                get_type_layout(registry, registry.get_type(field.field_type_id), layout);
             }
 
             layout.byte_size = align(layout.byte_size, layout.alignment);
@@ -4410,7 +4417,11 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
             let enum_def = &registry.enums[*enum_index];
 
             get_type_layout(registry, &Type::U32, layout);
-            get_type_layout(registry, &enum_def.variant_type, layout);
+            get_type_layout(
+                registry,
+                registry.get_type(enum_def.variant_type_id),
+                layout,
+            );
 
             layout.byte_size = align(layout.byte_size, layout.alignment);
         }
@@ -4468,7 +4479,7 @@ pub fn is_wide_int(type_: &Type) -> Option<bool> {
 
 #[derive(Clone)]
 pub struct StructFieldInfo {
-    pub field_type: Type,
+    pub field_type_id: TypeId,
     pub field_index: u32,
     pub byte_offset: u32,
     pub loc: Option<Loc>,
@@ -4492,11 +4503,11 @@ pub fn get_struct_field_info<'a>(
     if let Type::Seg(seg) = &lhs_type {
         if field_access.field_name.repr == "ptr" {
             return Ok(StructFieldInfo {
-                field_type: Type::Pointer(PointerType {
+                field_type_id: registry.intern_type(&Type::Pointer(PointerType {
                     pointee: seg.item,
                     is_sequence: true,
                     is_nullable: false,
-                }),
+                })),
                 field_index: 0,
                 byte_offset: 0,
                 loc: None,
@@ -4505,7 +4516,7 @@ pub fn get_struct_field_info<'a>(
 
         if field_access.field_name.repr == "len" {
             return Ok(StructFieldInfo {
-                field_type: Type::U32,
+                field_type_id: registry.intern_type(&Type::U32),
                 field_index: 1,
                 byte_offset: 4,
                 loc: None,
@@ -4525,7 +4536,7 @@ pub fn get_struct_field_info<'a>(
     if let Type::Result(result) = &lhs_type {
         if field_access.field_name.repr == "ok" {
             return Ok(StructFieldInfo {
-                field_type: registry.get_type(result.ok).clone(),
+                field_type_id: result.ok,
                 field_index: 0,
                 byte_offset: 0,
                 loc: None,
@@ -4537,7 +4548,7 @@ pub fn get_struct_field_info<'a>(
             get_type_layout(registry, registry.get_type(result.ok), &mut ok_layout);
 
             return Ok(StructFieldInfo {
-                field_type: registry.get_type(result.err).clone(),
+                field_type_id: result.err,
                 field_index: ok_layout.primitives_count,
                 byte_offset: ok_layout.byte_size,
                 loc: None,
@@ -4581,7 +4592,7 @@ pub fn get_struct_field_info<'a>(
     };
 
     Ok(StructFieldInfo {
-        field_type: field.field_type.clone(),
+        field_type_id: field.field_type_id,
         field_index: field.field_index,
         byte_offset: field.byte_offset,
         loc: Some(field.loc),

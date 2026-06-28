@@ -15,7 +15,7 @@ pub struct ValueInfo {
 
 pub struct LocalDef {
     pub local_name: Option<&'static str>,
-    pub local_type: Type,
+    pub local_type_id: TypeId,
     pub wasm_local_index: u32,
 }
 
@@ -33,7 +33,7 @@ pub struct FnInfo {
 
 pub struct FnParameter {
     pub param_name: &'static IdentExpr,
-    pub param_type: Type,
+    pub param_type_id: TypeId,
 }
 
 pub enum FnSource {
@@ -50,7 +50,7 @@ pub enum FnSource {
 
 pub struct FnType {
     pub inputs: Vec<TypeId>,
-    pub output: Type,
+    pub output: TypeId,
 }
 
 #[derive(Clone)]
@@ -102,7 +102,7 @@ pub struct StructDef {
 #[derive(Clone)]
 pub struct StructField {
     pub field_name: &'static str,
-    pub field_type: Type,
+    pub field_type_id: TypeId,
     pub field_layout: TypeLayout,
     pub field_index: u32,
     pub byte_offset: u32,
@@ -111,7 +111,7 @@ pub struct StructField {
 
 pub struct EnumDef {
     pub enum_name: &'static str,
-    pub variant_type: Type,
+    pub variant_type_id: TypeId,
     pub variants: Vec<EnumVariant>,
 }
 
@@ -226,8 +226,9 @@ pub struct Registry {
     pub module_import_order: Vec<ModuleId>,
 
     pub expr_id_count: usize,
-    pub expr_info: Vec<ExprInfo>,              // indexed by `ExprId`
+    pub expr_info: Vec<ExprInfo>, // indexed by `ExprId`
     pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
+    pub type_lookup: UBCell<BTreeMap<Type, TypeId>>,
     pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
     pub value_info: Vec<ValueInfo>, //            indexed by `ExprInfo` for `::IdentExpr`
@@ -356,7 +357,7 @@ impl Registry {
         &self,
         fn_index: usize,
         local_name: Option<&'static str>,
-        local_type: &Type,
+        local_type_id: TypeId,
     ) -> u32 {
         let fn_info = self.functions[fn_index].be_mut();
 
@@ -365,10 +366,11 @@ impl Registry {
         fn_info.locals_ids.push(self.locals.len());
         self.locals.be_mut().push(LocalDef {
             local_name,
-            local_type: local_type.clone(),
+            local_type_id,
             wasm_local_index,
         });
-        fn_info.wasm_locals_count += count_primitive_components(&self, local_type);
+        fn_info.wasm_locals_count +=
+            count_primitive_components(&self, self.get_type(local_type_id));
 
         wasm_local_index
     }
@@ -453,6 +455,17 @@ impl Registry {
 
     pub fn get_type(&self, type_id: TypeId) -> &'static Type {
         self.types[type_id].relax()
+    }
+
+    pub fn intern_type(&self, type_: &Type) -> TypeId {
+        if let Some(&id) = self.type_lookup.get(type_) {
+            return id;
+        }
+
+        let id = self.types.len();
+        self.type_lookup.be_mut().insert(type_.clone(), id);
+        self.be_mut().types.push(type_.clone());
+        id
     }
 
     pub fn fmt<'a>(&'a self, type_: &'a Type) -> TypeFmt<'a> {

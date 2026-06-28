@@ -11,12 +11,12 @@ enum VarInfo {
 
 struct VarInfoLocal {
     local_index: u32,
-    var_type: Type,
+    var_type_id: TypeId,
 }
 
 struct VarInfoGlobal {
     global_index: u32,
-    var_type: Type,
+    var_type_id: TypeId,
 }
 
 struct VarInfoConst {
@@ -32,14 +32,14 @@ type CompiledExpr = Vec<WasmInstr>;
 struct VarInfoStored {
     address_instrs: CompiledExpr,
     offset: u32,
-    var_type: Type,
+    var_type_id: TypeId,
 }
 
 struct VarInfoStructValueField {
     lhs_instrs: CompiledExpr,
     drops_before: u32,
     drops_after: u32,
-    var_type: Type,
+    var_type_id: TypeId,
 }
 
 #[derive(Clone, Default)]
@@ -111,7 +111,10 @@ impl CodeGenerator {
             for input_type in &fn_info.type_.inputs {
                 self.lower_type(self.get_type(*input_type), &mut wasm_fn_type.inputs);
             }
-            self.lower_type(&fn_info.type_.output, &mut wasm_fn_type.outputs);
+            self.lower_type(
+                self.get_type(fn_info.type_.output),
+                &mut wasm_fn_type.outputs,
+            );
 
             let mut fn_type_index = self.wasm_fn_types.len() as u32;
             for (existing_fn_type, existing_type_index) in self.wasm_fn_types.iter().zip(0..) {
@@ -216,7 +219,7 @@ impl CodeGenerator {
             let mut wasm_locals_flat = Vec::new();
             for i in fn_info.params.len()..fn_info.locals_ids.len() {
                 self.lower_type(
-                    &self.registry.locals[fn_info.locals_ids[i]].local_type,
+                    self.get_type(self.registry.locals[fn_info.locals_ids[i]].local_type_id),
                     &mut wasm_locals_flat,
                 );
             }
@@ -255,7 +258,7 @@ impl CodeGenerator {
                         self.push_wasm_dbg_name_section_locals(
                             &mut local_names_item.locals,
                             local_def.wasm_local_index,
-                            &local_def.local_type,
+                            self.get_type(local_def.local_type_id),
                             local_name,
                         );
                     }
@@ -451,7 +454,7 @@ impl CodeGenerator {
 
                 let local = self.get_local_info(ctx, let_expr.name.id, let_expr.name.loc);
                 self.codegen(ctx, instrs, &let_expr.value);
-                self.codegen_local_set(instrs, &local.var_type, local.local_index);
+                self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index);
             }
             CodeExpr::Cast(CastExpr {
                 id: _,
@@ -476,7 +479,7 @@ impl CodeGenerator {
                     let VarInfo::Stored(VarInfoStored {
                         mut address_instrs,
                         offset,
-                        var_type: _,
+                        var_type_id: _,
                     }) = self.var_from_expr(ctx, &prefix_op.expr).unwrap()
                     else {
                         unreachable!()
@@ -892,11 +895,11 @@ impl CodeGenerator {
             }
             CodeExpr::For(for_expr) => {
                 let item_local = self.get_local_info(ctx, for_expr.item.id, for_expr.item.loc);
-                let item_type = &item_local.var_type;
+                let item_type_id = item_local.var_type_id;
 
                 self.enter_scope(ctx, ScopeKind::ForLoop);
 
-                let counter_type;
+                let counter_type_id;
                 let counter_local_index;
                 let range_end_local_index;
                 let mut item_local_index = None;
@@ -904,10 +907,10 @@ impl CodeGenerator {
 
                 match &for_expr.iterator {
                     ForExprIterator::Range { start, end } => {
-                        counter_type = item_local.var_type.clone();
+                        counter_type_id = item_local.var_type_id;
                         counter_local_index = item_local.local_index;
 
-                        range_end_local_index = self.define_unnamed_local(ctx, &counter_type);
+                        range_end_local_index = self.define_unnamed_local(ctx, counter_type_id);
 
                         self.codegen(ctx, instrs, &start);
                         instrs.push(WasmInstr::LocalSet {
@@ -920,11 +923,13 @@ impl CodeGenerator {
                         });
                     }
                     ForExprIterator::Segment { expr } => {
-                        counter_type = Type::U32;
-                        range_end_local_index = self.define_unnamed_local(ctx, &counter_type);
+                        counter_type_id = self.registry.intern_type(&Type::U32);
+                        range_end_local_index = self.define_unnamed_local(ctx, counter_type_id);
 
                         if for_expr.ref_only {
-                            let Type::Pointer(PointerType { pointee, .. }) = item_type else {
+                            let Type::Pointer(PointerType { pointee, .. }) =
+                                self.get_type(item_type_id)
+                            else {
                                 unreachable!()
                             };
 
@@ -939,10 +944,14 @@ impl CodeGenerator {
                             counter_local_index = item_local.local_index;
                         } else {
                             let mut item_layout = TypeLayout::new();
-                            get_type_layout(&self.registry, item_type, &mut item_layout);
+                            get_type_layout(
+                                &self.registry,
+                                self.get_type(item_type_id),
+                                &mut item_layout,
+                            );
                             step = item_layout.byte_size;
 
-                            counter_local_index = self.define_unnamed_local(ctx, &counter_type);
+                            counter_local_index = self.define_unnamed_local(ctx, counter_type_id);
 
                             item_local_index = Some(item_local.local_index);
                         }
@@ -1004,7 +1013,7 @@ impl CodeGenerator {
                         instrs.push(WasmInstr::LocalGet {
                             local_index: range_end_local_index,
                         });
-                        if is_wide_int(&counter_type).unwrap() {
+                        if is_wide_int(self.get_type(counter_type_id)).unwrap() {
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I64_EQ,
                             });
@@ -1031,11 +1040,15 @@ impl CodeGenerator {
                                             local_index: counter_local_index,
                                         }],
                                         offset: 0,
-                                        var_type: item_type.clone(),
+                                        var_type_id: item_type_id,
                                     }),
                                 );
 
-                                self.codegen_local_set(instrs, item_type, item_local_index);
+                                self.codegen_local_set(
+                                    instrs,
+                                    self.get_type(item_type_id),
+                                    item_local_index,
+                                );
                             }
 
                             self.codegen_code_block(ctx, instrs, &for_expr.body);
@@ -1047,7 +1060,7 @@ impl CodeGenerator {
                         instrs.push(WasmInstr::LocalGet {
                             local_index: counter_local_index,
                         });
-                        if is_wide_int(&counter_type).unwrap() {
+                        if is_wide_int(self.get_type(counter_type_id)).unwrap() {
                             instrs.push(WasmInstr::I64Const { value: step as i64 });
                             instrs.push(WasmInstr::BinaryOp {
                                 kind: WasmBinaryOpKind::I64_ADD,
@@ -1058,7 +1071,11 @@ impl CodeGenerator {
                                 kind: WasmBinaryOpKind::I32_ADD,
                             });
                         }
-                        self.codegen_local_set(instrs, &counter_type, counter_local_index);
+                        self.codegen_local_set(
+                            instrs,
+                            self.get_type(counter_type_id),
+                            counter_local_index,
+                        );
 
                         // implicit continue
                         instrs.push(WasmInstr::Branch { label_index: 0 });
@@ -1106,7 +1123,11 @@ impl CodeGenerator {
                 self.codegen(ctx, instrs, &pipe.lhs);
 
                 let lhs_var = self.get_local_info(ctx, pipe.bind_id, pipe.op_loc);
-                self.codegen_local_set(instrs, &lhs_var.var_type, lhs_var.local_index);
+                self.codegen_local_set(
+                    instrs,
+                    self.get_type(lhs_var.var_type_id),
+                    lhs_var.local_index,
+                );
                 self.codegen(ctx, instrs, &pipe.rhs);
             }
             CodeExpr::Defer(DeferExpr {
@@ -1163,7 +1184,7 @@ impl CodeGenerator {
     ) -> &EnumConstructor {
         let local = self.get_local_info(ctx, header.variant_bind.id, header.variant_bind.loc);
         self.codegen(ctx, instrs, &header.expr_to_match);
-        self.codegen_local_set(instrs, &local.var_type, local.local_index);
+        self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index);
 
         let expr_info = self.get_expr_info(ctx, header.variant_name.id, header.variant_name.loc);
         let value_info = &self.registry.value_info[expr_info];
@@ -1233,16 +1254,28 @@ impl CodeGenerator {
 
         // pop error
         let err_local = self.get_local_info(ctx, err_bind_id, expr.loc());
-        self.codegen_local_set(instrs, &err_local.var_type, err_local.local_index);
+        self.codegen_local_set(
+            instrs,
+            self.get_type(err_local.var_type_id),
+            err_local.local_index,
+        );
 
         // pop ok
         let ok_local = self.get_local_info(ctx, ok_bind_id, expr.loc());
-        self.codegen_local_set(instrs, &ok_local.var_type, ok_local.local_index);
+        self.codegen_local_set(
+            instrs,
+            self.get_type(ok_local.var_type_id),
+            ok_local.local_index,
+        );
 
         // cond: error != 0
-        self.codegen_local_get(instrs, &err_local.var_type, err_local.local_index);
+        self.codegen_local_get(
+            instrs,
+            self.get_type(err_local.var_type_id),
+            err_local.local_index,
+        );
 
-        let in_out_type_index = self.get_block_inout_type(&[], &ok_local.var_type);
+        let in_out_type_index = self.get_block_inout_type(&[], self.get_type(ok_local.var_type_id));
         instrs.push(WasmInstr::BlockStart {
             block_kind: WasmBlockKind::If,
             block_type: WasmBlockType::InOut {
@@ -1256,11 +1289,15 @@ impl CodeGenerator {
         } else {
             // return default ok_type of function's result and caught error
             let fn_def = &self.registry.functions[ctx.fn_index.unwrap()];
-            let Type::Result(fn_result) = &fn_def.type_.output else {
+            let Type::Result(fn_result) = self.get_type(fn_def.type_.output) else {
                 unreachable!()
             };
             self.codegen_default_value(ctx, instrs, self.get_type(fn_result.ok));
-            self.codegen_local_get(instrs, &err_local.var_type, err_local.local_index);
+            self.codegen_local_get(
+                instrs,
+                self.get_type(err_local.var_type_id),
+                err_local.local_index,
+            );
 
             self.emit_deferred_for_return(ctx, instrs);
             instrs.push(WasmInstr::Return);
@@ -1269,7 +1306,11 @@ impl CodeGenerator {
         instrs.push(WasmInstr::Else);
 
         // no error, push ok value
-        self.codegen_local_get(instrs, &ok_local.var_type, ok_local.local_index);
+        self.codegen_local_get(
+            instrs,
+            self.get_type(ok_local.var_type_id),
+            ok_local.local_index,
+        );
 
         instrs.push(WasmInstr::BlockEnd);
 
@@ -1310,7 +1351,7 @@ impl CodeGenerator {
 
                         VarInfo::Global(VarInfoGlobal {
                             global_index: global.wasm_global_index,
-                            var_type: self.get_type(global.type_id).clone(),
+                            var_type_id: global.type_id,
                         })
                     }
                     ValueKind::Const => {
@@ -1332,7 +1373,7 @@ impl CodeGenerator {
 
                         VarInfo::Local(VarInfoLocal {
                             local_index: local.wasm_local_index,
-                            var_type: local.local_type.clone(),
+                            var_type_id: local.local_type_id,
                         })
                     }
                 }
@@ -1355,7 +1396,7 @@ impl CodeGenerator {
                 VarInfo::Stored(VarInfoStored {
                     address_instrs,
                     offset: 0,
-                    var_type: self.get_type(*pointee).clone(),
+                    var_type_id: *pointee,
                 })
             }
             CodeExpr::FieldAccess(field_access) => {
@@ -1374,7 +1415,7 @@ impl CodeGenerator {
                     return Some(VarInfo::Stored(VarInfoStored {
                         address_instrs,
                         offset: field.byte_offset,
-                        var_type: field.field_type.clone(),
+                        var_type_id: field.field_type_id,
                     }));
                 }
 
@@ -1384,43 +1425,45 @@ impl CodeGenerator {
                         VarInfo::Const(_) | VarInfo::VoidEnumValue(_) => {}
                         VarInfo::Global(VarInfoGlobal {
                             global_index,
-                            var_type: _,
+                            var_type_id: _,
                         }) => {
                             return Some(VarInfo::Global(VarInfoGlobal {
                                 global_index: global_index + field.field_index,
-                                var_type: field.field_type.clone(),
+                                var_type_id: field.field_type_id,
                             }));
                         }
                         VarInfo::Local(VarInfoLocal {
                             local_index,
-                            var_type: _,
+                            var_type_id: _,
                         }) => {
                             return Some(VarInfo::Local(VarInfoLocal {
                                 local_index: local_index + field.field_index,
-                                var_type: field.field_type.clone(),
+                                var_type_id: field.field_type_id,
                             }));
                         }
                         VarInfo::Stored(VarInfoStored {
                             address_instrs: address,
                             offset,
-                            var_type: _,
+                            var_type_id: _,
                         }) => {
                             return Some(VarInfo::Stored(VarInfoStored {
                                 address_instrs: address,
                                 offset: offset + field.byte_offset,
-                                var_type: field.field_type.clone(),
+                                var_type_id: field.field_type_id,
                             }));
                         }
                         VarInfo::StructValueField(VarInfoStructValueField {
                             lhs_instrs,
                             drops_before,
                             drops_after,
-                            var_type: _,
+                            var_type_id: _,
                         }) => {
                             let struct_components_count =
                                 count_primitive_components(&self.registry, &lhs_type);
-                            let field_components_count =
-                                count_primitive_components(&self.registry, &field.field_type);
+                            let field_components_count = count_primitive_components(
+                                &self.registry,
+                                self.get_type(field.field_type_id),
+                            );
 
                             return Some(VarInfo::StructValueField(VarInfoStructValueField {
                                 lhs_instrs,
@@ -1428,7 +1471,7 @@ impl CodeGenerator {
                                     - field.field_index
                                     - field_components_count,
                                 drops_after: drops_after + field.field_index,
-                                var_type: field.field_type.clone(),
+                                var_type_id: field.field_type_id,
                             }));
                         }
                     };
@@ -1436,7 +1479,7 @@ impl CodeGenerator {
 
                 let struct_components_count = count_primitive_components(&self.registry, &lhs_type);
                 let field_components_count =
-                    count_primitive_components(&self.registry, &field.field_type);
+                    count_primitive_components(&self.registry, self.get_type(field.field_type_id));
 
                 let mut lhs_instrs = Vec::new();
                 self.codegen(ctx, &mut lhs_instrs, &field_access.lhs);
@@ -1447,7 +1490,7 @@ impl CodeGenerator {
                         - field.field_index
                         - field_components_count,
                     drops_after: field.field_index,
-                    var_type: field.field_type.clone(),
+                    var_type_id: field.field_type_id,
                 })
             }
 
@@ -1464,15 +1507,16 @@ impl CodeGenerator {
         match var {
             VarInfo::Local(VarInfoLocal {
                 local_index,
-                var_type,
+                var_type_id,
             }) => {
-                self.codegen_local_get(instrs, var_type, *local_index);
+                self.codegen_local_get(instrs, self.get_type(*var_type_id), *local_index);
             }
             VarInfo::Global(VarInfoGlobal {
                 global_index,
-                var_type,
+                var_type_id,
             }) => {
-                for i in 0..count_primitive_components(&self.registry, var_type) {
+                for i in 0..count_primitive_components(&self.registry, self.get_type(*var_type_id))
+                {
                     instrs.push(WasmInstr::GlobalGet {
                         global_index: global_index + i,
                     });
@@ -1494,10 +1538,10 @@ impl CodeGenerator {
             VarInfo::Stored(VarInfoStored {
                 address_instrs,
                 offset,
-                var_type,
+                var_type_id,
             }) => {
                 let mut loads = Vec::new();
-                self.codegen_load_or_store(&mut loads, &var_type, *offset, false);
+                self.codegen_load_or_store(&mut loads, self.get_type(*var_type_id), *offset, false);
 
                 if loads.len() == 0 {
                     return;
@@ -1525,23 +1569,25 @@ impl CodeGenerator {
                 lhs_instrs,
                 drops_before,
                 drops_after,
-                var_type,
+                var_type_id,
             }) => {
+                let var_type = self.get_type(*var_type_id);
+
                 instrs.extend_from_slice(lhs_instrs);
                 for _ in 0..*drops_before {
                     instrs.push(WasmInstr::Drop);
                 }
 
                 if *drops_after > 0 {
-                    let local_index = self.define_unnamed_local(ctx, var_type);
+                    let local_index = self.define_unnamed_local(ctx, *var_type_id);
 
-                    self.codegen_local_set(instrs, &var_type, local_index);
+                    self.codegen_local_set(instrs, var_type, local_index);
 
                     for _ in 0..*drops_after {
                         instrs.push(WasmInstr::Drop);
                     }
 
-                    self.codegen_local_get(instrs, &var_type, local_index);
+                    self.codegen_local_get(instrs, var_type, local_index);
                 }
             }
         }
@@ -1561,9 +1607,9 @@ impl CodeGenerator {
             VarInfo::Stored(VarInfoStored {
                 address_instrs,
                 offset: _,
-                var_type,
+                var_type_id,
             }) => {
-                if count_primitive_components(&self.registry, var_type) == 0 {
+                if count_primitive_components(&self.registry, self.get_type(*var_type_id)) == 0 {
                     return;
                 }
 
@@ -1577,15 +1623,18 @@ impl CodeGenerator {
         match var {
             VarInfo::Local(VarInfoLocal {
                 local_index,
-                var_type,
+                var_type_id,
             }) => {
-                self.codegen_local_set(instrs, var_type, *local_index);
+                self.codegen_local_set(instrs, self.get_type(*var_type_id), *local_index);
             }
             VarInfo::Global(VarInfoGlobal {
                 global_index,
-                var_type,
+                var_type_id,
             }) => {
-                for i in (0..count_primitive_components(&self.registry, var_type)).rev() {
+                for i in
+                    (0..count_primitive_components(&self.registry, self.get_type(*var_type_id)))
+                        .rev()
+                {
                     instrs.push(WasmInstr::GlobalSet {
                         global_index: global_index + i,
                     });
@@ -1594,14 +1643,18 @@ impl CodeGenerator {
             VarInfo::Stored(VarInfoStored {
                 address_instrs: _,
                 offset,
-                var_type,
+                var_type_id,
             }) => {
                 let mut stores = Vec::new();
-                self.codegen_load_or_store(&mut stores, &var_type, *offset, true);
+                self.codegen_load_or_store(&mut stores, self.get_type(*var_type_id), *offset, true);
 
                 if stores.len() > 1 {
-                    let tmp_value_local_index = self.define_unnamed_local(ctx, var_type);
-                    self.codegen_local_set(instrs, var_type, tmp_value_local_index);
+                    let tmp_value_local_index = self.define_unnamed_local(ctx, *var_type_id);
+                    self.codegen_local_set(
+                        instrs,
+                        self.get_type(*var_type_id),
+                        tmp_value_local_index,
+                    );
 
                     let addr_local_index = self.create_or_get_addr_local(ctx);
                     instrs.push(WasmInstr::LocalSet {
@@ -1770,7 +1823,7 @@ impl CodeGenerator {
                 for struct_field in struct_def.fields.iter().rev() {
                     self.codegen_load_or_store(
                         instrs,
-                        &struct_field.field_type,
+                        self.get_type(struct_field.field_type_id),
                         offset + struct_field.byte_offset,
                         is_store,
                     );
@@ -1779,7 +1832,12 @@ impl CodeGenerator {
             Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
-                self.codegen_load_or_store(instrs, &enum_def.variant_type, offset + 4, is_store);
+                self.codegen_load_or_store(
+                    instrs,
+                    self.get_type(enum_def.variant_type_id),
+                    offset + 4,
+                    is_store,
+                );
                 self.codegen_load_or_store(instrs, &Type::U32, offset, is_store);
             }
             Type::Seg(seg) => {
@@ -1814,13 +1872,13 @@ impl CodeGenerator {
 
         VarInfoLocal {
             local_index: local_info.wasm_local_index,
-            var_type: local_info.local_type.clone(),
+            var_type_id: local_info.local_type_id,
         }
     }
 
-    fn define_unnamed_local(&self, ctx: &mut ExprContext, local_type: &Type) -> u32 {
+    fn define_unnamed_local(&self, ctx: &mut ExprContext, local_type_id: TypeId) -> u32 {
         self.registry
-            .add_local(ctx.fn_index.unwrap(), None, local_type)
+            .add_local(ctx.fn_index.unwrap(), None, local_type_id)
     }
 
     fn create_or_get_addr_local(&self, ctx: &mut ExprContext) -> u32 {
@@ -1828,7 +1886,8 @@ impl CodeGenerator {
             return addr_local_index;
         }
 
-        let addr_local_index = self.define_unnamed_local(ctx, &Type::U32);
+        let addr_local_index =
+            self.define_unnamed_local(ctx, self.registry.intern_type(&Type::U32));
 
         return addr_local_index;
     }
@@ -1870,14 +1929,14 @@ impl CodeGenerator {
             Type::Struct { struct_index } => {
                 let struct_ref = &self.registry.structs[*struct_index];
                 for field in &struct_ref.fields {
-                    self.codegen_default_value(ctx, instrs, &field.field_type);
+                    self.codegen_default_value(ctx, instrs, self.get_type(field.field_type_id));
                 }
             }
             Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
                 self.codegen_default_value(ctx, instrs, &Type::U32);
-                self.codegen_default_value(ctx, instrs, &enum_def.variant_type);
+                self.codegen_default_value(ctx, instrs, self.get_type(enum_def.variant_type_id));
             }
             Type::Result(result) => {
                 self.codegen_default_value(ctx, instrs, self.get_type(result.ok));
@@ -1918,14 +1977,14 @@ impl CodeGenerator {
                 let struct_def = &self.registry.structs[*struct_index];
 
                 for field in &struct_def.fields {
-                    self.lower_type(&field.field_type, wasm_types);
+                    self.lower_type(self.get_type(field.field_type_id), wasm_types);
                 }
             }
             Type::Enum { enum_index } => {
                 let enum_def = &self.registry.enums[*enum_index];
 
                 self.lower_type(&Type::U32, wasm_types);
-                self.lower_type(&enum_def.variant_type, wasm_types);
+                self.lower_type(self.get_type(enum_def.variant_type_id), wasm_types);
             }
             Type::Result(result) => {
                 self.lower_type(self.get_type(result.ok), wasm_types);
@@ -2010,7 +2069,7 @@ impl CodeGenerator {
                     local_index = self.push_wasm_dbg_name_section_locals(
                         output,
                         local_index,
-                        &field.field_type,
+                        self.get_type(field.field_type_id),
                         &format!("{}.{}", local_name, field.field_name),
                     );
                 }
@@ -2027,7 +2086,7 @@ impl CodeGenerator {
                 local_index = self.push_wasm_dbg_name_section_locals(
                     output,
                     local_index,
-                    &enum_def.variant_type,
+                    self.get_type(enum_def.variant_type_id),
                     &format!("{}#payload", local_name),
                 );
             }
