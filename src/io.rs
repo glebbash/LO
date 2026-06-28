@@ -230,23 +230,33 @@ pub fn stderr_write(message: impl AsRef<[u8]>) {
     fputs(wasi::FD_STDERR, message.as_ref());
 }
 
-pub fn fputs(fd: u32, message: &[u8]) {
-    let mut nwritten = 0u32;
-    let out_vec = wasi::IOVec {
-        base: message.as_ptr(),
-        size: message.len() as u32,
-    };
-    let err = unsafe {
-        wasi::fd_write(
-            fd,
-            &out_vec as *const wasi::IOVec,
-            1,
-            &mut nwritten as *mut u32,
-        )
-    };
-    if err != wasi::ERR_SUCCESS {
-        unreachable!()
-    };
+pub fn fputs(fd: u32, mut message: &[u8]) {
+    while !message.is_empty() {
+        let mut nwritten = 0u32;
+        let out_vec = wasi::IOVec {
+            base: message.as_ptr(),
+            size: message.len() as u32,
+        };
+
+        let err = unsafe {
+            wasi::fd_write(
+                fd,
+                &out_vec as *const wasi::IOVec,
+                1,
+                &mut nwritten as *mut u32,
+            )
+        };
+
+        if err != wasi::ERR_SUCCESS {
+            unreachable!();
+        }
+
+        if nwritten == 0 {
+            unreachable!();
+        }
+
+        message = &message[nwritten as usize..];
+    }
 }
 
 pub mod wasi {
