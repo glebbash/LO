@@ -45,7 +45,8 @@ inline fn StableVec::new!<T>(): StableVec(T) {
     }
 }
 
-inline fn StableVec::push!(self, item: itemof(typeof(self))): &typeof(item) {
+// TODO: check why &typeof(item) in return type doesn't work
+inline fn StableVec::push!(self, item: itemof(typeof(self))): &itemof(typeof(self)) {
     if self.chunks.len == 0 \
         || self.chunks.get!(self.chunks.len - 1).len == self.chunk_size
     {
