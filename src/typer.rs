@@ -176,12 +176,12 @@ impl Typer {
 
     pub fn type_all(&mut self) {
         let mut global_ctx = self.contexts.push(TyContext {
+            module_id: usize::MAX, // global scope has no module
             id: 0,
             parent: None,
-            module_id: usize::MAX, // global scope has no module
+            kind: ScopeKind::Global,
             fn_index: None,
             expr_id_offset: 0,
-            kind: ScopeKind::Global,
             symbols: Vec::new(),
             symbols_lookup: BTreeMap::new(),
 

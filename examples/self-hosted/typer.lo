@@ -2,9 +2,55 @@
 
 // TODO: implement module
 
-// TODO: add other fields
+type ScopeKind = enum {
+    Global,
+    Function,
+    Block,
+    Loop,
+    ForLoop,
+    InlineFn,
+}
+
+type TypeId = u32
+
+type TySymbolKind = enum {
+    TypeAlias,
+    Struct,
+    Enum,
+
+    Local,
+    Global,
+    Const,
+
+    InlineFn,
+    Function,
+    EnumConstructor,
+}
+
+type TySymbol = struct {
+    ctx_id: u32,
+    name: &str,
+    kind: TySymbolKind,
+    col_index: u32,
+    loc: Loc,
+}
+
 type TyContext = struct {
     module_id: u32,
+    id: u32,
+    parent: Option(&TyContext),
+    kind: ScopeKind,
+    fn_index: Option(u32),
+    expr_id_offset: u32,
+    symbols: &Vec(TySymbol),
+    symbols_lookup: &Map(&str, u32),
+
+    inline_fn_call_loc: Option(Loc),
+    is_expr_referenced: bool,
+}
+
+type TyModuleInfo = struct {
+    ctx: &TyContext,
 }
 
 type Typer = struct {
@@ -14,6 +60,11 @@ type Typer = struct {
 
     // state
     contexts: StableVec(TyContext),
+    module_info: &Vec(TyModuleInfo),
+    type_aliases: &Vec(TypeId),
+    allocated_strings: &Vec(String),
+    forbid_memory_loc: Option(Loc),
+    autodefine_memory: bool,
 }
 
 fn Typer::new(registry: &Registry): &Typer {
@@ -22,12 +73,29 @@ fn Typer::new(registry: &Registry): &Typer {
         reporter: registry.reporter,
 
         contexts: StableVec::new!<TyContext>(),
+        module_info: Vec::new!<TyModuleInfo>(),
+        type_aliases: Vec::new!<TypeId>(),
+        allocated_strings: Vec::new!<String>(),
+        forbid_memory_loc: Option::none!<Loc>(),
+        autodefine_memory: false,
     })
 }
 
 fn Typer::type_all(&self) {
     let global_ctx = self.contexts.push!(TyContext {
+        // global scope has no module
         module_id: u32::MAX,
+
+        id: 0,
+        parent: Option::none!<&TyContext>(),
+        kind: ScopeKind::Global,
+        fn_index: Option::none!<u32>(),
+        expr_id_offset: 0,
+        symbols: Vec::new!<TySymbol>(),
+        symbols_lookup: Map::new!<&str, u32>(),
+
+        inline_fn_call_loc: Option::none!<Loc>(),
+        is_expr_referenced: false,
     })
 }
 
@@ -56,4 +124,21 @@ inline fn StableVec::push!(self, item: itemof(typeof(self))): &itemof(typeof(sel
     let last_chunk = self.chunks.get!(self.chunks.len - 1)
     (last_chunk as &Vec(typeof(item))).push!(item)
     last_chunk
+}
+
+// TODO: implement
+type Option = struct {
+    value: &void,
+}
+
+inline fn Option::none!<T>(): Option(T) {
+    Option { value: null }
+}
+
+// TODO: implement
+type Map = struct {}
+
+// TODO: implement
+inline fn Map::new!<K,V>(): &Map(K, V) {
+    0 as &Map(K, V)
 }
