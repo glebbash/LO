@@ -32,14 +32,15 @@ type Registry = struct {
 fn Registry::new(): &Registry {
     let error_arena = Arena::new(128)
 
-    return heap::new!(Registry {
+    let self = heap::alloc!<Registry>()
+    *self = Registry {
         in_single_file_mode: false,
-        // TODO: implement
-        reporter: 0 as &Reporter,
+        reporter: Reporter::new(self),
         fm: FileManager::new(error_arena),
         modules: Vec::new!<&Module>(),
         error_arena: error_arena,
-    })
+    }
+    return self
 }
 
 fn Registry::free(&self) {

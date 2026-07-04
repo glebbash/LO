@@ -68,6 +68,15 @@ type Reporter = struct {
     warning_count: u32,
 }
 
+fn Reporter::new(registry: &Registry): &Reporter {
+    return heap::new!(Reporter {
+        registry: registry,
+        in_inspection_mode: false,
+        error_count: 0,
+        warning_count: 0,
+    })
+}
+
 // TODO: implement
 fn Reporter::begin_inspection(&self) {}
 
