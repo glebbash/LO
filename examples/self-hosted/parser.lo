@@ -470,8 +470,7 @@ fn Parser::parse_type_expr_primary(&self): Result(TypeExpr, &Error) {
 fn Parser::parse_ident(&self): Result(IdentExpr, &Error) {
     let ident = IdentExpr {
         id: self.next_expr_id(),
-        // stub
-        repr: "",
+        repr: "", // stub
         parts: Vec::new!<Loc>(),
         loc: self.current().loc,
     }
@@ -504,8 +503,7 @@ fn Parser::parse_code_block(&self): Result(CodeBlock, &Error) {
     let code_block = CodeBlock {
         exprs: Vec::new!<CodeExpr>(),
         block_expr_id: self.next_expr_id(),
-        // placeholder
-        expr_id_count: 0,
+        expr_id_count: 0, // placeholder
         loc: self.prev().loc,
     }
 
@@ -547,8 +545,7 @@ fn Parser::parse_code_expr(&self, min_bp: u32): Result(CodeExpr, &Error) {
             break
         }
 
-        // skip operator
-        let _ = self.next()
+        let _ = self.next() // skip operator
 
         primary = self.parse_code_expr_postfix(primary, op, op_symbol.loc)?
     }
@@ -971,8 +968,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
                 @unreachable()
             }
 
-            // skip operator
-            let loc = self.next().loc
+            let loc = self.next().loc // skip operator
 
             let expr = self.parse_code_expr(op.bp_next)?
 

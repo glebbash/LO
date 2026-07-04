@@ -8,6 +8,5 @@ inline fn heap::alloc_many!<T>(count: u32): &[]T {
 }
 
 fn heap::alloc(bytes: u32): &void {
-    // stub
-    return bytes as &void
+    return bytes as &void // stub
 }

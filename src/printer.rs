@@ -32,8 +32,9 @@ impl Printer {
 
         for expr in &*self.parser.relax().ast {
             self.print_top_level_expr(expr);
-            stdout_write("\n");
             self.last_printed_item_line = expr.loc().end_pos.line;
+            self.print_same_line_comments();
+            stdout_write("\n");
         }
 
         // print the rest of the comments
@@ -230,6 +231,7 @@ impl Printer {
 
             if is_multiline && !continues {
                 if index != 0 {
+                    self.print_same_line_comments();
                     stdout_write("\n");
                 }
 
@@ -258,7 +260,9 @@ impl Printer {
         }
 
         if is_multiline {
-            stdout_writeln(",");
+            stdout_write(",");
+            self.print_same_line_comments();
+            stdout_write("\n");
             self.indent -= 1;
             self.print_indent();
         }
@@ -318,6 +322,7 @@ impl Printer {
             if continues {
                 stdout_write(" ");
             } else {
+                self.print_same_line_comments();
                 stdout_write("\n");
                 self.print_comments_before(expr.loc().pos);
                 self.print_indent();
@@ -326,6 +331,7 @@ impl Printer {
             self.print_code_expr(expr);
             self.last_stmt_had_backslash = false;
         }
+        self.print_same_line_comments();
         stdout_write("\n");
 
         // print the rest of the comments
@@ -801,7 +807,9 @@ impl Printer {
                 stdout_write(&field.key);
                 stdout_write(": ");
                 self.print_code_expr(&field.value);
-                stdout_writeln(",");
+                stdout_write(",");
+                self.print_same_line_comments();
+                stdout_write("\n");
             }
 
             self.print_comments_before(map.loc.end_pos);
@@ -867,6 +875,7 @@ impl Printer {
 
             if is_multiline && !continues {
                 if index != 0 {
+                    self.print_same_line_comments();
                     stdout_write("\n");
                 }
 
@@ -879,6 +888,7 @@ impl Printer {
             self.print_code_expr(arg);
         }
         if !is_multiline && self.backslashes_printed != prev_backslashes_printed {
+            self.print_same_line_comments();
             stdout_write("\n");
             self.print_indent();
         }
@@ -924,6 +934,19 @@ impl Printer {
         if pos.line != usize::MAX {
             self.print_blank_line_before(pos.line);
             self.last_printed_item_line = pos.line;
+        }
+    }
+
+    fn print_same_line_comments(&mut self) {
+        while self.comments_printed < self.parser.lexer.comments.len() {
+            let comment = self.parser.lexer.comments[self.comments_printed].relax();
+            if comment.pos.line != self.last_printed_item_line {
+                break;
+            }
+
+            stdout_write(" ");
+            stdout_write(&comment.read_span(self.parser.lexer.source));
+            self.comments_printed += 1;
         }
     }
 

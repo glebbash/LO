@@ -146,13 +146,11 @@ fn Lexer::lex_token(&self): Result(Token, &Error) {
 fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
     let loc = self.loc()
 
-    // skip start quote
-    self.next_char()
+    self.next_char() // skip start quote
 
     let char = self.current_char()? as u8
     if char == '\\' {
-        // skip `\`
-        self.next_char()
+        self.next_char() // skip `\`
 
         let c = self.current_char()? as u8
         let correct_escape = c == 'n' || c == 'r' || c == 't' \
@@ -172,8 +170,7 @@ fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
         }
     }
 
-    // skip `char` or escaped char `c`
-    self.next_char()
+    self.next_char() // skip `char` or escaped char `c`
 
     let end_quote = self.current_char()? as u8
     if end_quote != '\'' {
@@ -190,8 +187,7 @@ fn Lexer::lex_char_literal(&self): Result(Token, &Error) {
         }))
     }
 
-    // skip end quote
-    self.next_char()
+    self.next_char() // skip end quote
 
     loc.end_pos = self.source_pos
 
@@ -220,8 +216,7 @@ fn Lexer::parse_char_literal_value(char_literal: str): u8 {
 fn Lexer::lex_string_literal(&self): Result(Token, &Error) {
     let loc = self.loc()
 
-    // skip start quote
-    self.next_char()
+    self.next_char() // skip start quote
 
     loop {
         let char = self.current_char()? as u8
@@ -253,8 +248,7 @@ fn Lexer::lex_string_literal(&self): Result(Token, &Error) {
         self.next_char()
     }
 
-    // skip end quote
-    self.next_char()
+    self.next_char() // skip end quote
 
     loc.end_pos = self.source_pos
 
@@ -339,8 +333,7 @@ fn Lexer::lex_symbol(&self): Result(Token, &Error) {
 fn Lexer::lex_delim(&self): Result(Token, &Error) {
     let loc = self.loc()
 
-    // skip delimiter char
-    self.next_char()
+    self.next_char() // skip delimiter char
 
     loc.end_pos = self.source_pos
 
@@ -370,8 +363,7 @@ fn Lexer::lex_operator(&self): Result(Token, &Error) {
 
         self.next_char()
 
-        // EOF check
-        let _ = self.current_char()?
+        let _ = self.current_char()? // EOF check
     }
 
     let op = self.source.slice(loc.pos.offset, self.source_pos.offset)
@@ -458,8 +450,7 @@ fn Lexer::skip_space(&self) {
 
         let loc = self.loc()
 
-        // skip `//`
-        self.next_char() \\ self.next_char()
+        self.next_char() \\ self.next_char() // skip `//`
 
         loop {
             let comment_char = self.current_char() catch _ {

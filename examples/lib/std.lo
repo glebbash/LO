@@ -22,8 +22,7 @@ inline let AbortCode::VEC_OUT_OF_BOUNDS = 4
 inline let AbortCode::STACK_VECTOR_GROW = 5
 
 fn abort(abort_code: AbortCode): never {
-    // error indicator
-    *(0 as &u32) = 69420
+    *(0 as &u32) = 69420 // error indicator
     *(4 as &u32) = abort_code
     @unreachable()
 }
@@ -112,12 +111,8 @@ fn free(a: Alloc, ptr: &void, size: u32) {
 
 // stack allocator
 
-// 1MB, ~20 pages (65_536b)
-let stack::SIZE = 1_048_576
-
-// not initialized yet marker
-let stack::MIN = u32::MAX
-
+let stack::SIZE = 1_048_576 // 1MB, ~20 pages (65_536b)
+let stack::MIN = u32::MAX // not initialized yet marker
 let stack::NOW = 0
 
 inline fn stack::align_for_wasmtime!(alignment: u32) {
@@ -375,6 +370,7 @@ fn Arena::free(&self) {
 }
 
 // vec
+
 type Vec = struct {
     ptr: &[]void,
     len: u32,
@@ -527,6 +523,7 @@ inline fn Vec::_panic_if_out_of_bounds!(&self, index: u32) {
 }
 
 // string
+
 type String = struct {
     chars: &Vec(u8),
 }

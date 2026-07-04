@@ -83,8 +83,7 @@ fn Typer::new(registry: &Registry): &Typer {
 
 fn Typer::type_all(&self) {
     let global_ctx = self.contexts.push!(TyContext {
-        // global scope has no module
-        module_id: u32::MAX,
+        module_id: u32::MAX, // global scope has no module
 
         id: 0,
         parent: Option::none!<&TyContext>(),

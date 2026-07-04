@@ -10,17 +10,12 @@ type Point2DPair = struct {
 
 export fn main(): i32 {
     let res = +0
-    // +1
-    res += Point2D { x: +1, y: +2 }.x
-    // +4
-    res += get_pos().y
+    res += Point2D { x: +1, y: +2 }.x // +1
+    res += get_pos().y // +4
     let tmp = get_point_pair().p1
-    // +6
-    res += tmp.y
-    // +7
-    res += get_point_pair().p2.x
-    // = 18
-    return res
+    res += tmp.y // +6
+    res += get_point_pair().p2.x // +7
+    return res // = 18
 }
 
 fn get_point_pair(): Point2DPair {

@@ -379,7 +379,7 @@ async function commandTest() {
     });
 
     it("compiles std.lo", async () => {
-        const output = await compile("./examples/test/std.test.lo");
+        const output = await compile("./examples/lib/std.lo");
 
         await loadWasm(output);
     });

@@ -55,8 +55,7 @@ fn main() {
         }
         if state.step == Step::READ_CHAR_TO_FIND {
             state.char_to_check = c
-            // skip `${c}: `, (+1 will be skipped by loop)
-            i += 2
+            i += 2 // skip `${c}: `, (+1 will be skipped by loop)
             state.step = Step::CHECK_PASSWORD
             continue
         }

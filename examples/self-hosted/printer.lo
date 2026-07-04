@@ -53,8 +53,9 @@ fn Printer::print_file(&self) {
 
 fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     defer if true {
-        stdout_write("\n")
         self.last_printed_item_line = expr.loc().end_pos.line
+        self.print_same_line_comments()
+        stdout_write("\n")
     }
 
     self.print_comments_before(expr.loc().pos)
@@ -228,6 +229,7 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
 
         if is_multiline && !continues {
             if i != 0 {
+                self.print_same_line_comments()
                 stdout_write("\n")
             }
 
@@ -258,7 +260,9 @@ fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
     }
 
     if is_multiline {
-        stdout_writeln(",")
+        stdout_write(",")
+        self.print_same_line_comments()
+        stdout_write("\n")
         self.indent -= 1
         self.print_indent()
     }
@@ -324,6 +328,7 @@ fn Printer::print_code_block(&self, code_block: CodeBlock) {
         if continues {
             stdout_write(" ")
         } else {
+            self.print_same_line_comments()
             stdout_write("\n")
             self.print_comments_before(expr.loc().pos)
             self.print_indent()
@@ -332,6 +337,7 @@ fn Printer::print_code_block(&self, code_block: CodeBlock) {
         self.print_code_expr(expr)
         self.last_stmt_had_backslash = false
     }
+    self.print_same_line_comments()
     stdout_write("\n")
 
     self.print_comments_before(code_block.loc.end_pos)
@@ -687,7 +693,9 @@ fn Printer::print_code_expr_map(&self, map: CodeExprMap) {
             stdout_write(field.key)
             stdout_write(": ")
             self.print_code_expr(field.value)
-            stdout_writeln(",")
+            stdout_write(",")
+            self.print_same_line_comments()
+            stdout_write("\n")
         }
 
         self.print_comments_before(map.loc.end_pos)
@@ -752,6 +760,7 @@ fn Printer::print_expr_list(
 
         if is_multiline && !continues {
             if i != 0 {
+                self.print_same_line_comments()
                 stdout_write("\n")
             }
 
@@ -764,6 +773,7 @@ fn Printer::print_expr_list(
         self.print_code_expr(arg)
     }
     if !is_multiline && self.backslashes_printed != prev_backslashes_printed {
+        self.print_same_line_comments()
         stdout_write("\n")
         self.print_indent()
     }
@@ -819,6 +829,19 @@ fn Printer::print_comments_before(&self, pos: Pos) {
 
     self.print_blank_line_before(pos.line)
     self.last_printed_item_line = pos.line
+}
+
+fn Printer::print_same_line_comments(&self) {
+    while self.comments_printed < self.parser.lexer.comments.len {
+        let comment = self.parser.lexer.comments.get!(self.comments_printed)
+        if comment.pos.line != self.last_printed_item_line {
+            break
+        }
+
+        stdout_write(" ")
+        stdout_write(comment.read_span(self.parser.lexer.source))
+        self.comments_printed += 1
+    }
 }
 
 fn Printer::print_blank_line_before(&self, line: u32) {

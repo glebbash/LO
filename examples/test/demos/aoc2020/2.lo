@@ -53,8 +53,7 @@ fn main() {
         }
         if state.step == Step::READ_CHAR_TO_COUNT {
             state.char_to_count = c
-            // skip `${c}: `, (+1 will be skipped by loop)
-            i += 2
+            i += 2 // skip `${c}: `, (+1 will be skipped by loop)
             state.step = Step::COUNT_OCCURANCES
             continue
         }
