@@ -516,6 +516,12 @@ fn Vec::_grow_to_len(&self, new_len: u32) {
     self.len = new_len
 }
 
+fn Vec::reserve(&self, capacity: u32) {
+    let len = self.len
+    self._grow_to_len(capacity)
+    self.len = len
+}
+
 inline fn Vec::_panic_if_out_of_bounds!(&self, index: u32) {
     if index < 0 || index >= self.len {
         abort(AbortCode::VEC_OUT_OF_BOUNDS)
