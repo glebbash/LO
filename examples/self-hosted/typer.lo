@@ -97,10 +97,34 @@ fn Typer::type_all(&self) {
     })
 
     self.module_info.reserve(self.registry.modules.len)
+    for module in self.registry.modules.iter!() {
+        let module_ctx = self.child_context(global_ctx, ScopeKind::Global)
+        module_ctx.module_id = module.id
+
+        self.module_info.push!(TyModuleInfo { ctx: module_ctx })
+    }
+
+    // TODO: port
 }
 
-fn Typer::child_context(&self, parent: &TyContext): &TyContext {
-    return todo!("implement")
+fn Typer::child_context(
+    &self,
+    parent: &TyContext,
+    scope_kind: ScopeKind,
+): &TyContext {
+    return self.contexts.push!(TyContext {
+        module_id: parent.module_id,
+        id: self.contexts.len(),
+        parent: parent,
+        kind: scope_kind,
+        fn_index: parent.fn_index,
+        expr_id_offset: parent.expr_id_offset,
+        symbols: Vec::new!<TySymbol>(),
+        symbols_lookup: Map::new!<&str, u32>(),
+
+        inline_fn_call_loc: parent.inline_fn_call_loc,
+        is_expr_referenced: parent.is_expr_referenced,
+    })
 }
 
 // utils
@@ -128,6 +152,16 @@ inline fn StableVec::push!(self, item: itemof(typeof(self))): &itemof(typeof(sel
     let last_chunk = self.chunks.get!(self.chunks.len - 1)
     (last_chunk as &Vec(typeof(item))).push!(item)
     last_chunk
+}
+
+fn StableVec::len(self): u32 {
+    let chunks_len = self.chunks.len
+    if chunks_len == 0 {
+        return 0
+    }
+
+    return (chunks_len - 1) * self.chunk_size \
+        + self.chunks.get!(chunks_len - 1).len
 }
 
 // TODO: implement

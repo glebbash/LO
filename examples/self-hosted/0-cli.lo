@@ -39,11 +39,11 @@ export fn _start() {
     if command.equals("format") {
         registry.in_single_file_mode = true
 
-        let module = registry.include(file_name, Loc::internal()) catch _ {
+        let module_id = registry.include(file_name, Loc::internal()) catch _ {
             wasi::proc_exit(1)
         }
 
-        let printer = Printer::new(module.parser)
+        let printer = Printer::new(registry.modules.get!(module_id).parser)
         defer printer.free()
 
         printer.print_file()

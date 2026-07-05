@@ -15,37 +15,37 @@ type Pos = struct {
 }
 
 type Loc = struct {
-    file_index: u32,
+    module_id: u32,
     pos: Pos,
     end_pos: Pos,
 }
 
-inline let Loc::FILE_INDEX_INTERNAL = 0
+inline let Loc::MODULE_ID_INTERNAL = 0
 
 fn Loc::internal(): Loc {
     return Loc {
-        file_index: Loc::FILE_INDEX_INTERNAL,
+        module_id: Loc::MODULE_ID_INTERNAL,
         pos: Pos { offset: 0, line: 1, col: 1 },
         end_pos: Pos { offset: 0, line: 1, col: 1 },
     }
 }
 
-fn Loc::format(self, out: String, fm: FileManager) {
+fn Loc::read_span(self, source: str): str {
+    return source.slice(self.pos.offset, self.end_pos.offset)
+}
+
+fn Loc::format(self, out: String, registry: &Registry) {
     do out.push_str(it) with (
-        fm.get(self.file_index).absolute_path.as_str(),
+        registry.modules.get!(self.module_id).absolute_path.as_str(),
         ":", \\ self.pos.line.to_tmp_str!(),
         ":", \\ self.pos.col.to_tmp_str!(),
     )
 }
 
-fn Loc::to_string_in(self, a: Alloc, fm: FileManager): String {
+fn Loc::to_string_in(self, a: Alloc, registry: &Registry): String {
     let out = String::new_in(a, 32)
-    self.format(out, fm)
+    self.format(out, registry)
     return out
-}
-
-fn Loc::read_span(self, source: str): str {
-    return source.slice(self.pos.offset, self.end_pos.offset)
 }
 
 type Error = struct {
@@ -53,9 +53,9 @@ type Error = struct {
     loc: Loc,
 }
 
-fn Error::to_string_in(&self, a: Alloc, fm: FileManager): String {
+fn Error::to_string_in(&self, a: Alloc, registry: &Registry): String {
     let out = String::new_in(a, 32)
-    self.loc.format(out, fm)
+    self.loc.format(out, registry)
     out.push_str(" - ")
     out.push_str(self.message.as_str())
     return out
@@ -83,107 +83,27 @@ fn Reporter::begin_inspection(&self) {}
 // TODO: implement
 fn Reporter::end_inspection(&self) {}
 
+fn Reporter::error(&self, error: &Error) {
+    self.error_count += 1
+
+    if self.in_inspection_mode {
+        // TODO: port
+    }
+
+    let reg = self.registry
+
+    stderr_write("ERROR: ")
+    stderr_write(error.to_string_in(reg.error_arena, reg).as_str())
+    stderr_write("\n")
+}
+
 // TODO: implement
-fn Reporter::error(&self, error: &Error) {}
-
-type FileInfo = struct {
-    index: u32,
-    included_times: u32,
-    absolute_path: String,
-    source: String,
-}
-
-fn FileInfo::free(self) {
-    self.absolute_path.free()
-    self.source.free()
-}
-
-// TODO: merge into Registry
-type FileManager = struct {
-    files: &Vec(FileInfo),
-    error_arena: &Arena,
-}
-
-fn FileManager::new(error_arena: &Arena): FileManager {
-    let files = Vec::new!<FileInfo>()
-    files.push!(FileInfo {
-        index: 0,
-        included_times: 0,
-        absolute_path: String::from_str("<internal>"),
-        source: String::new(0),
-    })
-    return FileManager { files: files, error_arena: error_arena }
-}
-
-fn FileManager::get(self, file_index: u32): &FileInfo {
-    return self.files.at!(file_index)
-}
-
-fn FileManager::include(self, relative_path: str, loc: Loc): Result(u32, &Error) {
-    let parent_path = self.files.get!(loc.file_index).absolute_path
-    let absolute_path = resolve_path(relative_path, parent_path.as_str())
-
-    let source = fs::read_file(absolute_path.as_str()) catch err {
-        let message = String::new_in(self.error_arena, 64)
-        do message.push_str(it) with (
-            "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
-            err.to_tmp_str!(),
-        )
-
-        return Err(self.error_arena.new!(Error {
-            message: message,
-            loc: loc,
-        }))
-    }
-
-    self.files.push!(FileInfo {
-        index: self.files.len - 1,
-        included_times: 1,
-        absolute_path: absolute_path,
-        source: source,
-    })
-
-    return Ok(self.files.len - 1)
-}
-
-fn FileManager::free(self) {
-    self.files.free_deep!<FileInfo>()
-}
-
-fn resolve_path(file_path: str, relative_to: str): String {
-    if !file_path.starts_with(".") {
-        return String::from_str(file_path)
-    }
-
-    let path_items = relative_to.split('/', Vec::new!<str>())
-    defer path_items.free()
-
-    path_items.pop() // remove filename
-
-    let _ = file_path.split('/', path_items)
-
-    let normalized = Vec::new!<str>()
-    defer normalized.free()
-
-    for i in 0..path_items.len {
-        let item = path_items.get!(i)
-
-        if item.equals(".") {
-            continue
-        }
-
-        if item.equals("..") {
-            if normalized.len > 0 {
-                normalized.pop()
-            }
-            continue
-        }
-
-        normalized.push!(item)
-    }
-
-    return String::join(normalized, '/')
-}
+fn Reporter::print_include_info(
+    &self,
+    file_is_newly_added: bool,
+    module_id: u32,
+    loc: Loc,
+) {}
 
 // utils
 

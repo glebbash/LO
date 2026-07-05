@@ -2,16 +2,20 @@
 @include("./lexer.lo")
 @include("./parser.lo")
 
-type Module = struct {
-    error_arena: &Arena,
-    parser: &Parser,
-}
+type ModuleId = u32
 
-fn Module::new(parser: &Parser): &Module {
-    return heap::new!(Module {
-        error_arena: parser.error_arena,
-        parser: parser,
-    })
+type Module = struct {
+    id: ModuleId,
+    absolute_path: String,
+
+    source: str,
+    _source: String,
+
+    includes: &Vec(ModuleInclude),
+    included_times: u32,
+
+    parser: &Parser,
+    error_arena: &Arena,
 }
 
 fn Module::free(&self) {
@@ -19,13 +23,22 @@ fn Module::free(&self) {
     self.parser.free()
 }
 
+type ModuleInclude = struct {
+    module_id: ModuleId,
+    alias: &?String,
+    with_extern: bool,
+}
+
 type Registry = struct {
     in_single_file_mode: bool,
 
     reporter: &Reporter,
 
-    fm: FileManager,
     modules: &Vec(&Module),
+    module_import_order: &Vec(ModuleId),
+
+    expr_id_count: u32,
+
     error_arena: &Arena,
 }
 
@@ -36,50 +49,143 @@ fn Registry::new(): &Registry {
     *self = Registry {
         in_single_file_mode: false,
         reporter: Reporter::new(self),
-        fm: FileManager::new(error_arena),
         modules: Vec::new!<&Module>(),
+        module_import_order: Vec::new!<ModuleId>(),
+        expr_id_count: 0,
         error_arena: error_arena,
     }
+
+    self.modules.push!(heap::new!(Module {
+        id: 0,
+        absolute_path: String::from_str("<internal>"),
+        source: "",
+        _source: String::from_str(""),
+        includes: Vec::new!<ModuleInclude>(),
+        included_times: 0,
+        parser: Parser::new(Lexer::new(error_arena, "", 0), self.reporter),
+        error_arena: error_arena,
+    }))
+
     return self
 }
 
 fn Registry::free(&self) {
-    self.fm.free()
     self.modules.free_deep!<&Module>()
     self.error_arena.free()
     heap::free(self)
 }
 
 fn Registry::include(
-    &self, \\ file_name: str, \\ loc: Loc,
-): Result(&Module, &VoidError) {
-    let file_index = self.fm.include(file_name, loc) catch err {
-        self.report_error(err)
-        return Err(VoidError::VALUE)
+    &self, \\ relative_path: str, \\ loc: Loc,
+): Result(ModuleId, &VoidError) {
+    let absolute_path = self.resolve_path(relative_path, loc)
+
+    for module in self.modules.iter!() {
+        if module.absolute_path.as_str().equals(absolute_path.as_str()) {
+            module.included_times += 1
+
+            if self.reporter.in_inspection_mode {
+                self.reporter.print_include_info(false, module.id, loc)
+            }
+
+            return Ok(module.id)
+        }
     }
 
-    let source = self.fm.get(file_index).source.as_str()
+    let module_id = self.modules.len
 
-    let lexer = Lexer::new(self.error_arena, source, file_index)
-    lexer.lex_file() catch err {
-        self.report_error(err)
+    let _source = fs::read_file(absolute_path.as_str()) catch err {
+        let message = String::new_in(self.error_arena, 64)
+        do message.push_str(it) with (
+            "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
+            err.to_tmp_str!(),
+        )
+
+        self.reporter.error(self.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+
         return Err(VoidError::VALUE)
     }
+    let source = _source.as_str()
 
+    let lexer = Lexer::new(self.error_arena, source, module_id)
     let parser = Parser::new(lexer, self.reporter)
-    parser.parse_file() catch err {
-        self.report_error(err)
-        return Err(VoidError::VALUE)
-    }
-
-    let module = Module::new(parser)
+    let module = heap::new!(Module {
+        id: module_id,
+        absolute_path: absolute_path,
+        source: source,
+        _source: _source,
+        includes: Vec::new!<ModuleInclude>(),
+        included_times: 0,
+        parser: parser,
+        error_arena: self.error_arena,
+    })
     self.modules.push!(module)
 
-    return Ok(module)
+    if self.reporter.in_inspection_mode {
+        self.reporter.print_include_info(true, module_id, loc)
+    }
+
+    lexer.lex_file() catch err {
+        self.reporter.error(err)
+        return Err(VoidError::VALUE)
+    }
+
+    self.modules.get!(module_id).parser.expr_id_count = self.expr_id_count
+
+    parser.parse_file() catch err {
+        self.reporter.error(err)
+        return Err(VoidError::VALUE)
+    }
+
+    self.expr_id_count = self.modules.get!(module_id).parser.expr_id_count
+
+    if !self.in_single_file_mode {
+        for &expr in self.modules.get!(module_id).parser.ast.iter!() {
+            // TODO: port
+        }
+    }
+
+    self.module_import_order.push!(module_id)
+
+    return Ok(module_id)
 }
 
-fn Registry::report_error(&self, err: &Error) {
-    stderr_write("ERROR: ")
-    stderr_write(err.to_string_in(self.error_arena, self.fm).as_str())
-    stderr_write("\n")
+fn Registry::resolve_path(&self, file_path: str, loc: Loc): String {
+    if !file_path.starts_with(".") {
+        return String::from_str(file_path)
+    }
+
+    let relative_to = self.modules.get!(loc.module_id).absolute_path
+
+    let path_items = relative_to.as_str().split('/', Vec::new!<str>())
+    defer path_items.free()
+
+    path_items.pop() // remove `relative_to`'s filename
+
+    let _ = file_path.split('/', path_items)
+
+    let normalized = Vec::new!<str>()
+    defer normalized.free()
+
+    for i in 0..path_items.len {
+        let item = path_items.get!(i)
+
+        if item.equals(".") {
+            continue
+        }
+
+        if item.equals("..") {
+            if normalized.len > 0 {
+                normalized.pop()
+            }
+            continue
+        }
+
+        normalized.push!(item)
+    }
+
+    return String::join(normalized, '/')
 }

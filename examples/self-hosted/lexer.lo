@@ -543,7 +543,7 @@ fn Lexer::loc(&self): Loc {
     end_pos.col += 1
 
     return Loc {
-        file_index: self.module_id,
+        module_id: self.module_id,
         pos: pos,
         end_pos: end_pos,
     }

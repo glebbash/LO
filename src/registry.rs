@@ -141,8 +141,10 @@ pub struct ConstDef {
     pub inner_expr_id_offset: usize,
 }
 
+pub type ModuleId = usize;
+
 pub struct Module {
-    pub id: usize,
+    pub id: ModuleId,
     pub absolute_path: String,
 
     pub source: &'static [u8],
@@ -153,8 +155,6 @@ pub struct Module {
 
     pub parser: Parser,
 }
-
-pub type ModuleId = usize;
 
 pub struct ModuleInclude {
     pub module_id: ModuleId,
@@ -299,9 +299,9 @@ impl Registry {
             absolute_path,
             source,
             _source,
-            parser,
             includes: Vec::new(),
             included_times: 0,
+            parser,
         };
         self.modules.push(module);
 

@@ -507,13 +507,13 @@ impl Typer {
                                 for existing_field in &struct_fields {
                                     if existing_field.field_name == field.field_name.repr {
                                         self.report_error(Error {
-                                        message: format!(
-                                            "Cannot redefine struct field '{}', previously defined at {}",
-                                            field.field_name.repr,
-                                            existing_field.loc.to_string(&self.registry),
-                                        ),
-                                        loc: field.field_name.loc,
-                                    });
+                                            message: format!(
+                                                "Cannot redefine struct field '{}', previously defined at {}",
+                                                field.field_name.repr,
+                                                existing_field.loc.to_string(&self.registry),
+                                            ),
+                                            loc: field.field_name.loc,
+                                        });
                                         continue 'fields;
                                     }
                                 }

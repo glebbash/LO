@@ -54,7 +54,6 @@ fn Parser::new(lexer: &Lexer, reporter: &Reporter): &Parser {
 }
 
 fn Parser::free(&self) {
-    self.lexer.free()
     self.context_stack.free()
     self.ast_arena.free()
     self.ast.free()

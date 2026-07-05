@@ -426,7 +426,7 @@ fn Vec::free(&self) {
 }
 
 inline fn Vec::iter!(&self): seg(itemof(typeof(self))) {
-    @seg(self.ptr, self.len) as seg(itemof(typeof(self)))
+    @seg(self.ptr as &[]itemof(typeof(self)), self.len)
 }
 
 inline fn Vec::at!(&self, index: u32): &itemof(typeof(self)) {
