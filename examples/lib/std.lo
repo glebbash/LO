@@ -188,9 +188,9 @@ inline fn heap::Block::next!(&self): &heap::Block {
     (self.data!() as u32 + self.size) as &heap::Block
 }
 
-let heap::FIRST_BLOCK = null as &heap::Block
+let heap::FIRST_BLOCK = null as &?heap::Block
 
-let heap::CURRENT_BLOCK = null as &heap::Block
+let heap::CURRENT_BLOCK = null as &?heap::Block
 
 inline fn heap::new!(value: infer(T)): &T {
     let ptr = heap::alloc!<T>()
@@ -251,7 +251,7 @@ fn heap::get_block(ptr: &void): &heap::Block {
 }
 
 // first fit
-fn heap::find_free_block(size: u32): &heap::Block {
+fn heap::find_free_block(size: u32): &?heap::Block {
     let block = heap::FIRST_BLOCK
     if block == null {
         return null
@@ -278,7 +278,7 @@ type Arena = struct {
 }
 
 type Arena::Block = struct {
-    next: &Arena::Block,
+    next: &?Arena::Block,
     size: u32,
     used: u32,
     data: &void,

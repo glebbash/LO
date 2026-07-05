@@ -46,8 +46,8 @@ type FnParam = struct {
 }
 
 type FnParamType = enum (&void) {
-    Self(&void),
-    SelfRef(&void),
+    Self(&?void),
+    SelfRef(&?void),
     Type(&FnParamTypeType),
     Infer(&FnParamTypeInfer),
 }

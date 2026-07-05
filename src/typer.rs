@@ -4022,7 +4022,7 @@ impl Typer {
         if let Type::Pointer(ptr) = slot
             && !ptr.is_sequence
         {
-            if *value == Type::Null {
+            if *value == Type::Null && ptr.is_nullable {
                 return true;
             }
 

@@ -801,7 +801,7 @@ type PrefixOp = struct {
     bp_next: u32,
 }
 
-fn PrefixOp::parse(repr: str): Result(PrefixOp, &void) {
+fn PrefixOp::parse(repr: str): Result(PrefixOp, &VoidError) {
     if repr.equals("+") {
         return Ok(PrefixOp::left_assoc(PrefixOpTag::Positive, 9))
     }
@@ -817,7 +817,7 @@ fn PrefixOp::parse(repr: str): Result(PrefixOp, &void) {
     if repr.equals("*") {
         return Ok(PrefixOp::left_assoc(PrefixOpTag::Dereference, 8))
     }
-    return Err(1 as &void)
+    return Err(VoidError::VALUE)
 }
 
 fn PrefixOp::left_assoc(tag: PrefixOpTag, bp: u32): PrefixOp {
