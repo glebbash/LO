@@ -29,6 +29,9 @@ type ModuleInclude = struct {
     with_extern: bool,
 }
 
+type ExprInfo = u32
+let EXPR_INFO_INVALID = u32::MAX as ExprInfo
+
 type Registry = struct {
     in_single_file_mode: bool,
 
@@ -38,6 +41,7 @@ type Registry = struct {
     module_import_order: &Vec(ModuleId),
 
     expr_id_count: u32,
+    expr_info: &Vec(ExprInfo), // indexed by `ExprId`
 
     error_arena: &Arena,
 }
@@ -52,6 +56,7 @@ fn Registry::new(): &Registry {
         modules: Vec::new!<&Module>(),
         module_import_order: Vec::new!<ModuleId>(),
         expr_id_count: 0,
+        expr_info: Vec::new!<ExprInfo>(),
         error_arena: error_arena,
     }
 

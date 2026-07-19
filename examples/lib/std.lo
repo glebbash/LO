@@ -522,6 +522,15 @@ fn Vec::reserve(&self, capacity: u32) {
     self.len = len
 }
 
+inline fn Vec::resize!(&self, new_len: u32, value: itemof(typeof(self))) {
+    let fill_count = new_len - self.len
+    self.reserve(new_len)
+
+    for i in 0..fill_count {
+        self.push!(value)
+    }
+}
+
 inline fn Vec::_panic_if_out_of_bounds!(&self, index: u32) {
     if index < 0 || index >= self.len {
         abort(AbortCode::VEC_OUT_OF_BOUNDS)
@@ -814,4 +823,10 @@ inline fn seg::skip!(self: infer(Self), amount: u32): Self {
 
 inline fn seg::take!(self: infer(Self), amount: u32): Self {
     @seg(self.ptr, amount)
+}
+
+inline fn Result::unwrap!(self: infer(Self)): itemof(Self) {
+    self catch err {
+        @unreachable()
+    }
 }

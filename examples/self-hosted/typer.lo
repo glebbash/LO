@@ -2,6 +2,64 @@
 
 // TODO: implement module
 
+type TypeId = u32
+
+type Type = enum (&?void) {
+    Never(&?void),
+    Null(&?void),
+    Void(&?void),
+    Bool(&?void),
+    U8(&?void),
+    I8(&?void),
+    U16(&?void),
+    I16(&?void),
+    U32(&?void),
+    I32(&?void),
+    U64(&?void),
+    I64(&?void),
+    F32(&?void),
+    F64(&?void),
+    Pointer(&PointerType),
+    Struct(&StructType),
+    Enum(&EnumType),
+    Seg(&SegType),
+    Result(&ResultType),
+    Container(&ContainerType),
+}
+
+// TODO: implement
+fn Type::to_str(self): Result(str, VoidError) {
+    return Ok("")
+}
+
+type PointerType = struct {
+    pointee: TypeId,
+    is_sequence: bool,
+    is_nullable: bool,
+}
+
+type StructType = struct {
+    struct_index: u32,
+}
+
+type EnumType = struct {
+    enum_index: u32,
+}
+
+type SegType = struct {
+    item: TypeId,
+}
+
+type ResultType = struct {
+    ok: TypeId,
+    err: TypeId,
+}
+
+type ContainerType = struct {
+    container: TypeId,
+    items: &Vec(TypeId),
+}
+
 type ScopeKind = enum {
     Global,
     Function,
@@ -10,8 +68,6 @@ type ScopeKind = enum {
     ForLoop,
     InlineFn,
 }
-
-type TypeId = u32
 
 type TySymbolKind = enum {
     TypeAlias,
@@ -29,7 +85,7 @@ type TySymbolKind = enum {
 
 type TySymbol = struct {
     ctx_id: u32,
-    name: &str,
+    name: str,
     kind: TySymbolKind,
     col_index: u32,
     loc: Loc,
@@ -48,6 +104,9 @@ type TyContext = struct {
     inline_fn_call_loc: &?Loc,
     is_expr_referenced: bool,
 }
+
+// TODO: implement
+fn TyContext::add_symbol(&self, symbol: TySymbol) {}
 
 type TyModuleInfo = struct {
     ctx: &TyContext,
@@ -104,6 +163,22 @@ fn Typer::type_all(&self) {
         self.module_info.push!(TyModuleInfo { ctx: module_ctx })
     }
 
+    self.extend_expr_info_storage(self.registry.expr_id_count)
+
+    self.add_builtin_type(global_ctx, Type::Never(null))
+    self.add_builtin_type(global_ctx, Type::Void(null))
+    self.add_builtin_type(global_ctx, Type::Bool(null))
+    self.add_builtin_type(global_ctx, Type::U8(null))
+    self.add_builtin_type(global_ctx, Type::I8(null))
+    self.add_builtin_type(global_ctx, Type::U16(null))
+    self.add_builtin_type(global_ctx, Type::I16(null))
+    self.add_builtin_type(global_ctx, Type::U32(null))
+    self.add_builtin_type(global_ctx, Type::I32(null))
+    self.add_builtin_type(global_ctx, Type::F32(null))
+    self.add_builtin_type(global_ctx, Type::U64(null))
+    self.add_builtin_type(global_ctx, Type::I64(null))
+    self.add_builtin_type(global_ctx, Type::F64(null))
+
     // TODO: port
 }
 
@@ -125,6 +200,31 @@ fn Typer::child_context(
         inline_fn_call_loc: parent.inline_fn_call_loc,
         is_expr_referenced: parent.is_expr_referenced,
     })
+}
+
+fn Typer::extend_expr_info_storage(&self, expr_count: u32) {
+    self.registry.expr_info.resize!(
+        self.registry.expr_info.len + expr_count,
+        EXPR_INFO_INVALID,
+    )
+}
+
+fn Typer::add_builtin_type(&self, ctx: &TyContext, type_: Type) {
+    ctx.add_symbol(TySymbol {
+        ctx_id: 0,
+        name: type_.to_str().unwrap!(),
+        kind: TySymbolKind::TypeAlias,
+        col_index: self.type_aliases.len,
+        loc: Loc::internal(),
+    })
+
+    let type_id = self.intern_type(type_)
+    self.type_aliases.push!(type_id)
+}
+
+// TODO: implement
+fn Typer::intern_type(&self, type_: Type): u32 {
+    return 0
 }
 
 // utils

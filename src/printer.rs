@@ -118,7 +118,9 @@ impl Printer {
                             stdout_write(&field.field_name.repr);
                             stdout_write(": ");
                             self.print_type_expr(&field.field_type);
-                            stdout_writeln(",");
+                            stdout_write(",");
+                            self.print_same_line_comments();
+                            stdout_write("\n");
                         }
 
                         // print the rest of the comments

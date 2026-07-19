@@ -3078,7 +3078,8 @@ impl Typer {
         let receiver_type = self.deref_rec(receiver_type);
 
         match receiver_type {
-            Type::Seg(_) => format!("seg::{method_name}",),
+            Type::Seg(_) => format!("seg::{method_name}"),
+            Type::Result(_) => format!("Result::{method_name}"),
             Type::Container(ctr) => format!(
                 "{}::{method_name}",
                 self.registry.fmt(self.get_type(ctr.container))
@@ -3599,6 +3600,14 @@ impl Typer {
             }))));
         }
 
+        // this workaround is needed because `Result` itself is not a valid type
+        if self_type_name == "Result" {
+            return Ok(Some(self.intern_type(&Type::Result(ResultType {
+                ok: self.intern_type(&Type::Never),
+                err: self.intern_type(&Type::Never),
+            }))));
+        }
+
         let self_type_id = self.get_type_id_or_err(ctx, &self_type_name, &self_type_loc)?;
 
         Ok(Some(self_type_id))
@@ -3787,6 +3796,11 @@ impl Typer {
 
                     if let Type::Seg(seg) = container {
                         self.store_expr_info(ctx, ctr.id, seg.item);
+                        return Ok(());
+                    }
+
+                    if let Type::Result(res) = container {
+                        self.store_expr_info(ctx, ctr.id, res.ok);
                         return Ok(());
                     }
 
@@ -4019,22 +4033,22 @@ impl Typer {
     }
 
     fn is_type_compatible(&self, slot: &Type, value: &Type) -> bool {
-        if let Type::Pointer(ptr) = slot
-            && !ptr.is_sequence
+        if let Type::Pointer(slot_ptr) = slot
+            && !slot_ptr.is_sequence
         {
-            if *value == Type::Null && ptr.is_nullable {
+            if *value == Type::Null && slot_ptr.is_nullable {
                 return true;
             }
 
-            if let Type::Void = self.registry.get_type(ptr.pointee) {
-                if let Type::Pointer(_) = value {
-                    return true;
+            if let Type::Void = self.registry.get_type(slot_ptr.pointee) {
+                if let Type::Pointer(value_ptr) = value {
+                    return slot_ptr.is_nullable || !value_ptr.is_nullable;
                 }
             }
 
             if let Type::Pointer(value_ptr) = value {
                 return self.is_type_compatible(
-                    self.registry.get_type(ptr.pointee),
+                    self.registry.get_type(slot_ptr.pointee),
                     self.registry.get_type(value_ptr.pointee),
                 );
             }
