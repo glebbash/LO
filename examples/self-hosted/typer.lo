@@ -2,8 +2,6 @@
 
 // TODO: implement module
 
-type TypeId = u32
-
 type Type = enum (&?void) {
     Never(&?void),
     Null(&?void),
@@ -27,9 +25,8 @@ type Type = enum (&?void) {
     Container(&ContainerType),
 }
 
-// TODO: implement
 fn Type::to_str(self): Result(str, VoidError) {
-    return Ok("")
+    return Ok("") // TODO: implement
 }
 
 type PointerType = struct {
@@ -105,8 +102,12 @@ type TyContext = struct {
     is_expr_referenced: bool,
 }
 
-// TODO: implement
-fn TyContext::add_symbol(&self, symbol: TySymbol) {}
+fn TyContext::add_symbol(&self, symbol: TySymbol) {
+    // TODO: implement the following:
+    // self.symbols_lookup.insert(symbol.name, self.symbols.len)
+
+    self.symbols.push!(symbol)
+}
 
 type TyModuleInfo = struct {
     ctx: &TyContext,
@@ -157,7 +158,7 @@ fn Typer::type_all(&self) {
 
     self.module_info.reserve(self.registry.modules.len)
     for module in self.registry.modules.iter!() {
-        let module_ctx = self.child_context(global_ctx, ScopeKind::Global)
+        let module_ctx = self.child_ctx(global_ctx, ScopeKind::Global)
         module_ctx.module_id = module.id
 
         self.module_info.push!(TyModuleInfo { ctx: module_ctx })
@@ -179,27 +180,158 @@ fn Typer::type_all(&self) {
     self.add_builtin_type(global_ctx, Type::I64(null))
     self.add_builtin_type(global_ctx, Type::F64(null))
 
-    // TODO: port
+    for module_id in self.registry.module_import_order.iter!() {
+        self.collect_own_symbols(self.module_info.get!(module_id).ctx)
+    }
+
+    for module_id in self.registry.module_import_order.iter!() {
+        self.collect_included_symbols(self.module_info.get!(module_id).ctx)
+    }
+
+    for module_id in self.registry.module_import_order.iter!() {
+        self.build_type_def_values(self.module_info.get!(module_id).ctx)
+    }
+
+    self.resolve_struct_layouts()
+
+    self.resolve_str_literal_type()
+
+    for module_id in self.registry.module_import_order.iter!() {
+        self.process_top_level_exprs(self.module_info.get!(module_id).ctx)
+    }
+
+    self.type_fns()
+
+    self.run_delayed_actions()
 }
 
-fn Typer::child_context(
-    &self,
-    parent: &TyContext,
-    scope_kind: ScopeKind,
-): &TyContext {
-    return self.contexts.push!(TyContext {
-        module_id: parent.module_id,
-        id: self.contexts.len(),
-        parent: parent,
-        kind: scope_kind,
-        fn_index: parent.fn_index,
-        expr_id_offset: parent.expr_id_offset,
-        symbols: Vec::new!<TySymbol>(),
-        symbols_lookup: Map::new!<&str, u32>(),
+fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
+    let module = self.registry.modules.get!(ctx.module_id)
 
-        inline_fn_call_loc: parent.inline_fn_call_loc,
-        is_expr_referenced: parent.is_expr_referenced,
-    })
+    for expr in module.parser.ast.iter!() {
+        if match TopLevelExpr::Intrinsic(_) = expr {
+            continue // skip, not interested
+        }
+
+        if match TopLevelExpr::Type(_) = expr {
+            continue // TODO: implement
+        }
+
+        if match TopLevelExpr::Fn(fn_def) = expr {
+            if fn_def.is_inline {
+                continue // TODO: implement
+            }
+
+            let _ = self.define_symbol(
+                ctx,
+                fn_def.decl.fn_name.repr,
+                TySymbolKind::Function,
+                fn_def.decl.fn_name.loc,
+            )
+
+            if match FnExprValue::Body(body) = fn_def.value {
+                let exported_as = Vec::new!<String>()
+                if fn_def.exported {
+                    exported_as.push!(String::from_str(fn_def.decl.fn_name.repr))
+                }
+
+                self.registry.functions.push!(FnInfo {
+                    name: fn_def.decl.fn_name.repr,
+                    type_: FnType {
+                        inputs: Vec::new!<TypeId>(),
+                        output: self.intern_type(Type::Void(null)),
+                    },
+                    params: Vec::new!<FnParameter>(),
+                    source: FnSource::Guest(heap::new!(FnSourceGuest {
+                        module_id: module.id,
+                        lo_fn_index: self.registry.functions.len,
+                        body: body,
+                    })),
+                    exported_as: exported_as,
+                    locals_ids: Vec::new!<u32>(),
+                    wasm_fn_index: u32::MAX, // placeholder
+                    wasm_locals_count: 0,
+                    definition_loc: fn_def.decl.fn_name.loc,
+                })
+            }
+
+            if match FnExprValue::ImportFrom(body) = fn_def.value {
+                continue // TODO: implement
+            }
+        }
+
+        // TODO: implement
+    }
+}
+
+fn Typer::collect_included_symbols(&self, ctx: &TyContext) {
+    // TODO: implement
+}
+
+fn Typer::build_type_def_values(&self, ctx: &TyContext) {
+    // TODO: implement
+}
+
+fn Typer::resolve_struct_layouts(&self) {
+    // TODO: implement
+}
+
+fn Typer::resolve_str_literal_type(&self) {
+    // TODO: implement
+}
+
+fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
+    let module = self.registry.modules.get!(ctx.module_id)
+
+    for expr in module.parser.ast.iter!() {
+        if match TopLevelExpr::Type(_) = expr {
+            continue // skip, processed in previous passes
+        }
+
+        if match TopLevelExpr::Fn(fn_def) = expr {
+            if fn_def.is_inline {
+                continue // skip, processed in pass_collect_all_symbols
+            }
+
+            let symbol = self.get_symbol(ctx, fn_def.decl.fn_name.repr)
+            if symbol == null {
+                @unreachable()
+            }
+            if symbol.kind != TySymbolKind::Function {
+                continue
+            }
+
+            let fn_info = self.registry.functions.get!(symbol.col_index)
+
+            // TODO: implement
+            // let self_type_id = ...
+
+            if fn_def.decl.return_type != null {
+                let type_id = self.build_type(ctx, fn_def.decl.return_type) catch err {
+                    self.report_error(err)
+                    continue
+                }
+                fn_info.type_.output = type_id
+            }
+
+            // TODO: implement
+            // for fn_param in &fn_def.decl.param ...
+        }
+
+        // TODO: implement
+    }
+}
+
+fn Typer::type_fns(&self) {
+    // TODO: implement
+}
+
+fn Typer::run_delayed_actions(&self) {
+    // TODO: implement
+}
+
+fn Typer::build_type(&self, ctx: &TyContext, expr: &TypeExpr): Result(TypeId, &Error) {
+    return Ok(0) // TODO: implement
 }
 
 fn Typer::extend_expr_info_storage(&self, expr_count: u32) {
@@ -222,9 +354,93 @@ fn Typer::add_builtin_type(&self, ctx: &TyContext, type_: Type) {
     self.type_aliases.push!(type_id)
 }
 
-// TODO: implement
+fn Typer::define_symbol(
+    &self,
+    ctx: &TyContext,
+    symbol_name: str,
+    symbol_kind: TySymbolKind,
+    symbol_loc: Loc,
+): bool {
+    let symbol_col_index = 0
+    if TySymbolKind::Local == symbol_kind {
+        symbol_col_index = self.registry.locals.len
+    } else if TySymbolKind::Global == symbol_kind {
+        symbol_col_index = self.registry.globals.len
+    } else if TySymbolKind::Const == symbol_kind {
+        symbol_col_index = self.registry.constants.len
+    } else if TySymbolKind::InlineFn == symbol_kind {
+        symbol_col_index = self.registry.inline_fns.len
+    } else if TySymbolKind::Function == symbol_kind {
+        symbol_col_index = self.registry.functions.len
+    } else if TySymbolKind::TypeAlias == symbol_kind {
+        symbol_col_index = self.type_aliases.len
+    } else if TySymbolKind::Struct == symbol_kind {
+        symbol_col_index = self.registry.structs.len
+    } else if TySymbolKind::Enum == symbol_kind {
+        symbol_col_index = self.registry.enums.len
+    } else if TySymbolKind::EnumConstructor == symbol_kind {
+        symbol_col_index = self.registry.enum_ctors.len
+    } else {
+        @unreachable()
+    }
+
+    let existing_symbol = self.get_symbol(ctx, symbol_name)
+    if existing_symbol != null && existing_symbol.ctx_id == ctx.id {
+        // TODO: implement
+    }
+
+    ctx.add_symbol(TySymbol {
+        ctx_id: ctx.id,
+        name: symbol_name,
+        kind: symbol_kind,
+        col_index: symbol_col_index,
+        loc: symbol_loc,
+    })
+
+    return true
+}
+
+fn Typer::get_symbol(&self, ctx: &TyContext, symbol_name: str): &?TySymbol {
+    // TODO: change to `ctx.symbols_lookup.get(symbol_name)`
+    for &symbol in ctx.symbols.iter!() {
+        if symbol.name.equals(symbol_name) {
+            return symbol
+        }
+    }
+
+    if ctx.parent != null {
+        return self.get_symbol(ctx.parent, symbol_name)
+    }
+
+    return null
+}
+
+fn Typer::child_ctx(
+    &self,
+    parent: &TyContext,
+    scope_kind: ScopeKind,
+): &TyContext {
+    return self.contexts.push!(TyContext {
+        module_id: parent.module_id,
+        id: self.contexts.len(),
+        parent: parent,
+        kind: scope_kind,
+        fn_index: parent.fn_index,
+        expr_id_offset: parent.expr_id_offset,
+        symbols: Vec::new!<TySymbol>(),
+        symbols_lookup: Map::new!<&str, u32>(),
+
+        inline_fn_call_loc: parent.inline_fn_call_loc,
+        is_expr_referenced: parent.is_expr_referenced,
+    })
+}
+
 fn Typer::intern_type(&self, type_: Type): u32 {
-    return 0
+    return 0 // TODO: implement
+}
+
+fn Typer::report_error(&self, err: &Error) {
+    self.reporter.error(err)
 }
 
 // utils
@@ -241,17 +457,17 @@ inline fn StableVec::new!<T>(): StableVec(T) {
     }
 }
 
-// TODO: check why &typeof(item) in return type doesn't work
-inline fn StableVec::push!(self, item: itemof(typeof(self))): &itemof(typeof(self)) {
+inline fn StableVec::push!(self: infer(Self), item: itemof(Self)): &typeof(item) {
     if self.chunks.len == 0 \
         || self.chunks.get!(self.chunks.len - 1).len == self.chunk_size
     {
         self.chunks.push!(Vec::with_capacity!<typeof(item)>(self.chunk_size))
     }
 
-    let last_chunk = self.chunks.get!(self.chunks.len - 1)
-    (last_chunk as &Vec(typeof(item))).push!(item)
-    last_chunk
+    let last_chunk = self.chunks.get!(self.chunks.len - 1) as &Vec(typeof(item))
+    last_chunk.push!(item)
+
+    last_chunk.at!(last_chunk.len - 1)
 }
 
 fn StableVec::len(self): u32 {
@@ -264,10 +480,8 @@ fn StableVec::len(self): u32 {
         + self.chunks.get!(chunks_len - 1).len
 }
 
-// TODO: implement
-type Map = struct {}
+type Map = struct {} // TODO: implement
 
-// TODO: implement
 inline fn Map::new!<K,V>(): &Map(K, V) {
-    0 as &Map(K, V)
+    0 as &Map(K, V) // TODO: implement
 }

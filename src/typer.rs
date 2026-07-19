@@ -216,36 +216,38 @@ impl Typer {
         self.add_builtin_type(&mut global_ctx, Type::F64);
 
         for &module_id in self.registry.module_import_order.relax() {
-            self.pass_collect_own_symbols(self.module_info[module_id].ctx);
+            self.collect_own_symbols(self.module_info[module_id].ctx);
         }
 
         for &module_id in self.registry.module_import_order.relax() {
-            self.pass_collect_included_symbols(self.module_info[module_id].ctx);
+            self.collect_included_symbols(self.module_info[module_id].ctx);
         }
 
         for &module_id in self.registry.module_import_order.relax() {
-            self.pass_build_type_def_values(self.module_info[module_id].ctx);
+            self.build_type_def_values(self.module_info[module_id].ctx);
         }
 
-        self.pass_resolve_struct_layouts();
+        self.resolve_struct_layouts();
 
-        self.pass_get_str_literal_type();
+        self.resolve_str_literal_type();
 
         for &module_id in self.registry.module_import_order.relax() {
-            self.pass_process_top_level_exprs(self.module_info[module_id].ctx);
+            self.process_top_level_exprs(self.module_info[module_id].ctx);
         }
 
-        self.pass_type_fns();
+        self.type_fns();
 
         self.run_delayed_actions();
     }
 
-    fn pass_collect_own_symbols(&mut self, ctx: TyContextRef) {
+    fn collect_own_symbols(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
 
         for expr in &*module.parser.ast {
             match expr {
-                TopLevelExpr::Intrinsic(_) => {} // skip, not interested
+                TopLevelExpr::Intrinsic(_) => {
+                    continue; // skip, not interested
+                }
 
                 TopLevelExpr::Type(type_def) => {
                     match &type_def.value {
@@ -436,11 +438,11 @@ impl Typer {
         }
     }
 
-    fn pass_collect_included_symbols(&mut self, ctx: TyContextRef) {
-        self.collect_included_symbols(ctx, ctx, &mut String::from(""), true);
+    fn collect_included_symbols(&mut self, ctx: TyContextRef) {
+        self.collect_included_symbols_(ctx, ctx, &mut String::from(""), true);
     }
 
-    fn collect_included_symbols(
+    fn collect_included_symbols_(
         &mut self,
         includer: TyContextRef,
         includee: TyContextRef,
@@ -488,12 +490,12 @@ impl Typer {
             }
 
             let sub_includee = self.module_info[include.module_id].relax();
-            self.collect_included_symbols(includer, sub_includee.ctx, prefix, false);
+            self.collect_included_symbols_(includer, sub_includee.ctx, prefix, false);
             prefix.truncate(original_prefix_len);
         }
     }
 
-    fn pass_build_type_def_values(&mut self, ctx: TyContextRef) {
+    fn build_type_def_values(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
 
         'exprs: for expr in &*module.parser.ast {
@@ -636,7 +638,7 @@ impl Typer {
         }
     }
 
-    fn pass_resolve_struct_layouts(&mut self) {
+    fn resolve_struct_layouts(&mut self) {
         for struct_def in self.registry.structs.relax_mut() {
             if struct_def.resolution == StructResolution::NotStarted {
                 self.resolve_struct_layout(struct_def);
@@ -696,7 +698,7 @@ impl Typer {
         struct_def.resolution = StructResolution::Resolved;
     }
 
-    fn pass_get_str_literal_type(&mut self) {
+    fn resolve_str_literal_type(&mut self) {
         // fallback
         self.registry.str_literal_type_id = Some(self.intern_type(&Type::Seg(SegType {
             item: self.intern_type(&Type::U8),
@@ -761,17 +763,18 @@ impl Typer {
         }
     }
 
-    fn pass_process_top_level_exprs(&mut self, ctx: TyContextRef) {
+    fn process_top_level_exprs(&mut self, ctx: TyContextRef) {
         let module = self.registry.modules[ctx.module_id].relax_mut();
 
         for expr in &*module.parser.ast {
             match expr {
-                TopLevelExpr::Type(_) => {} // skip, processed in previous passes
+                TopLevelExpr::Type(_) => {
+                    continue; // skip, processed in previous passes
+                }
 
                 TopLevelExpr::Fn(fn_def) => {
                     if fn_def.is_inline {
-                        // skip, processed in pass_collect_all_symbols
-                        continue;
+                        continue; // skip, processed in pass_collect_all_symbols
                     }
 
                     let symbol = self
@@ -880,13 +883,11 @@ impl Typer {
                 }
                 TopLevelExpr::Intrinsic(intrinsic) => {
                     if intrinsic.fn_name.repr == "include" {
-                        // skip, was processed in `Compiler.include`
-                        continue;
+                        continue; // skip, was processed in `Compiler.include`
                     }
 
                     if intrinsic.fn_name.repr == "str_literal_type" {
-                        // skip, was processed in `pass_get_str_literal_type`
-                        continue;
+                        continue; // skip, was processed in `pass_get_str_literal_type`
                     }
 
                     if intrinsic.fn_name.repr == "use_memory" {
@@ -1137,7 +1138,7 @@ impl Typer {
         }
     }
 
-    fn pass_type_fns(&mut self) {
+    fn type_fns(&mut self) {
         for fn_def in &self.registry.functions {
             let FnSource::Guest {
                 module_id,

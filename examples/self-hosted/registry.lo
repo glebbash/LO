@@ -29,8 +29,56 @@ type ModuleInclude = struct {
     with_extern: bool,
 }
 
+type TypeId = u32
+
 type ExprInfo = u32
 let EXPR_INFO_INVALID = u32::MAX as ExprInfo
+
+type GlobalDef = void // TODO: implement
+type LocalDef = void // TODO: implement
+
+type FnInfo = struct {
+    name: str,
+    type_: FnType,
+    params: &Vec(FnParameter),
+    source: FnSource,
+    exported_as: &Vec(String),
+    locals_ids: &Vec(u32),
+    wasm_fn_index: u32,
+    wasm_locals_count: u32,
+    definition_loc: Loc,
+}
+
+type FnParameter = struct {
+    param_name: &IdentExpr,
+    param_type_id: TypeId,
+}
+
+type FnSource = enum (&void) {
+    Guest(&FnSourceGuest),
+    Host(&FnSourceHost),
+}
+
+type FnSourceGuest = struct {
+    module_id: ModuleId,
+    lo_fn_index: u32,
+    body: &CodeBlock,
+}
+
+type FnSourceHost = struct {
+    module_name: String,
+    external_fn_name: str,
+}
+
+type FnType = struct {
+    inputs: &Vec(TypeId),
+    output: TypeId,
+}
+
+type ConstDef = void // TODO: implement
+type StructDef = void // TODO: implement
+type EnumDef = void // TODO: implement
+type EnumConstructor = void // TODO: implement
 
 type Registry = struct {
     in_single_file_mode: bool,
@@ -42,6 +90,15 @@ type Registry = struct {
 
     expr_id_count: u32,
     expr_info: &Vec(ExprInfo), // indexed by `ExprId`
+
+    globals: &Vec(GlobalDef), //          indexed by `col_index` when `kind = Global`
+    locals: &Vec(LocalDef), //            indexed by `col_index` when `kind = Local`
+    constants: &Vec(ConstDef), //         indexed by `col_index` when `kind = Const`
+    functions: &Vec(FnInfo), //           indexed by `col_index` when `kind = Function`
+    inline_fns: &Vec(&FnExpr), //         indexed by `col_index` when `kind = InlineFn`
+    structs: &Vec(StructDef), //          indexed by `col_index` when `kind = Struct`
+    enums: &Vec(EnumDef), //              indexed by `col_index` when `kind = Enum`
+    enum_ctors: &Vec(EnumConstructor), // indexed by `col_index` when `kind = EnumConstructor`
 
     error_arena: &Arena,
 }
@@ -57,6 +114,14 @@ fn Registry::new(): &Registry {
         module_import_order: Vec::new!<ModuleId>(),
         expr_id_count: 0,
         expr_info: Vec::new!<ExprInfo>(),
+        globals: Vec::new!<GlobalDef>(),
+        locals: Vec::new!<LocalDef>(),
+        constants: Vec::new!<ConstDef>(),
+        functions: Vec::new!<FnInfo>(),
+        inline_fns: Vec::new!<&FnExpr>(),
+        structs: Vec::new!<StructDef>(),
+        enums: Vec::new!<EnumDef>(),
+        enum_ctors: Vec::new!<EnumConstructor>(),
         error_arena: error_arena,
     }
 
