@@ -307,7 +307,7 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
             // let self_type_id = ...
 
             if fn_def.decl.return_type != null {
-                let type_id = self.build_type(ctx, fn_def.decl.return_type) catch err {
+                let type_id = self.build_type(ctx, *fn_def.decl.return_type) catch err {
                     self.report_error(err)
                     continue
                 }
@@ -330,8 +330,22 @@ fn Typer::run_delayed_actions(&self) {
     // TODO: implement
 }
 
-fn Typer::build_type(&self, ctx: &TyContext, expr: &TypeExpr): Result(TypeId, &Error) {
-    return Ok(0) // TODO: implement
+fn Typer::build_type(&self, ctx: &TyContext, expr: TypeExpr): Result(TypeId, &Error) {
+    self.type_type_expr(ctx, expr)?
+
+    let expr_info = self.registry.get_expr_info(ctx.expr_id_offset, expr.id())
+    if expr_info == null {
+        self.reporter.abort_due_to_compiler_bug(
+            "Type expression should only return ok if it stored a type",
+            expr.loc(),
+        )
+    }
+
+    return Ok(*expr_info)
+}
+
+fn Typer::type_type_expr(&self, ctx: &TyContext, expr: TypeExpr): Result(void, &Error) {
+    return Ok() // TODO: implement
 }
 
 fn Typer::extend_expr_info_storage(&self, expr_count: u32) {

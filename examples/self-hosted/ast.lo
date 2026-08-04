@@ -136,6 +136,19 @@ type TypeExpr = enum (&void) {
     Container(&TypeExprContainer),
 }
 
+fn TypeExpr::id(self): u32 {
+    if match TypeExpr::Named(e) = self {
+        return e.id
+    }
+    if match TypeExpr::Pointer(e) = self {
+        return e.id
+    }
+    if match TypeExpr::Container(e) = self {
+        return e.id
+    }
+    @unreachable()
+}
+
 fn TypeExpr::loc(self): Loc {
     if match TypeExpr::Named(e) = self {
         return e.loc

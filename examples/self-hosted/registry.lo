@@ -259,3 +259,11 @@ fn Registry::resolve_path(&self, file_path: str, loc: Loc): String {
 
     return String::join(normalized, '/')
 }
+
+fn Registry::get_expr_info(&self, expr_id_offset: u32, expr_id: u32): &?ExprInfo {
+    let expr_info = self.expr_info.at!(expr_id_offset + expr_id)
+    if *expr_info == EXPR_INFO_INVALID {
+        return null
+    }
+    return expr_info
+}
