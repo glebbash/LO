@@ -106,12 +106,12 @@ fn Reporter::print_include_info(
 ) {}
 
 fn Reporter::abort_due_to_compiler_bug(&self, message: str, loc: Loc) {
-    let a = self.registry.error_arena
+    let alloc = self.registry.error_arena
 
-    let full_message = String::from_str_in(a, "Compiler bug: ")
+    let full_message = String::from_str_in(alloc, "Compiler bug: ")
     full_message.push_str(message)
 
-    self.error(a.new!(Error { message: full_message, loc: loc }))
+    self.error(alloc.new!(Error { message: full_message, loc: loc }))
     self.end_inspection()
     wasi::proc_exit(1)
 }

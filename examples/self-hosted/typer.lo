@@ -25,8 +25,50 @@ type Type = enum (&?void) {
     Container(&ContainerType),
 }
 
-fn Type::to_str(self): Result(str, VoidError) {
-    return Ok("") // TODO: implement
+fn Type::to_str(self): Result(str, &VoidError) {
+    if match Type::Never(_) = self {
+        return Ok("never")
+    }
+    if match Type::Null(_) = self {
+        return Ok("null")
+    }
+    if match Type::Void(_) = self {
+        return Ok("void")
+    }
+    if match Type::Bool(_) = self {
+        return Ok("bool")
+    }
+    if match Type::U8(_) = self {
+        return Ok("u8")
+    }
+    if match Type::I8(_) = self {
+        return Ok("i8")
+    }
+    if match Type::U16(_) = self {
+        return Ok("u16")
+    }
+    if match Type::I16(_) = self {
+        return Ok("i16")
+    }
+    if match Type::U32(_) = self {
+        return Ok("u32")
+    }
+    if match Type::I32(_) = self {
+        return Ok("i32")
+    }
+    if match Type::F32(_) = self {
+        return Ok("f32")
+    }
+    if match Type::U64(_) = self {
+        return Ok("u64")
+    }
+    if match Type::I64(_) = self {
+        return Ok("i64")
+    }
+    if match Type::F64(_) = self {
+        return Ok("f64")
+    }
+    return Err(VoidError::VALUE)
 }
 
 type PointerType = struct {
@@ -345,7 +387,56 @@ fn Typer::build_type(&self, ctx: &TyContext, expr: TypeExpr): Result(TypeId, &Er
 }
 
 fn Typer::type_type_expr(&self, ctx: &TyContext, expr: TypeExpr): Result(void, &Error) {
-    return Ok() // TODO: implement
+    if match TypeExpr::Named(ident) = expr {
+        let type_id = self.get_type_id_or_err(ctx, ident.repr, ident.loc)?
+        self.store_expr_info(ctx, ident.id, type_id)
+        return Ok()
+    }
+
+    if match TypeExpr::Pointer(e) = expr {
+        todo!()
+    }
+
+    if match TypeExpr::Container(e) = expr {
+        todo!()
+    }
+
+    @unreachable()
+}
+
+fn Typer::get_type_id_or_err(
+    &self,
+    ctx: &TyContext,
+    type_name: str,
+    loc: Loc,
+): Result(TypeId, &Error) {
+    let symbol = self.get_symbol(ctx, type_name)
+    if symbol == null {
+        let alloc = self.registry.error_arena
+
+        let full_message = String::from_str_in(alloc, "Unknown type: ")
+        full_message.push_str(type_name)
+
+        return Err(alloc.new!(Error { message: full_message, loc: loc }))
+    }
+
+    if symbol.kind == TySymbolKind::TypeAlias {
+        let type_id = self.type_aliases.get!(symbol.col_index)
+
+        // don't print inspection for built-ins
+        if self.reporter.in_inspection_mode && symbol.loc.module_id != 0 {
+            // TODO: implement
+            // self.reporter.print_inspection(InspectInfo {
+            //     message: format!("type {type_name} = {}", self.registry.fmt(self.get_type(type_id))),
+            //     loc: *loc,
+            //     linked_loc: Some(symbol.loc),
+            // })
+        }
+
+        return Ok(type_id)
+    }
+
+    todo!()
 }
 
 fn Typer::extend_expr_info_storage(&self, expr_count: u32) {
@@ -447,6 +538,11 @@ fn Typer::child_ctx(
         inline_fn_call_loc: parent.inline_fn_call_loc,
         is_expr_referenced: parent.is_expr_referenced,
     })
+}
+
+fn Typer::store_expr_info(&self, ctx: &TyContext, expr_id: ExprId, expr_info: ExprInfo) {
+    let absolute_expr_id = ctx.expr_id_offset + expr_id
+    *self.registry.expr_info.at!(absolute_expr_id) = expr_info
 }
 
 fn Typer::intern_type(&self, type_: Type): u32 {

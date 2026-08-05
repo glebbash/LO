@@ -3,6 +3,8 @@
 
 // TODO: impl proper cleanup for all &Vec fields here
 
+type ExprId = u32
+
 type TopLevelExpr = enum (&void) {
     Let(&LetExpr),
     Fn(&FnExpr),
