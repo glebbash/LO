@@ -71,6 +71,22 @@ fn Type::to_str(self): Result(str, &VoidError) {
     return Err(VoidError::VALUE)
 }
 
+type TypeLayout = struct {
+    primitives_count: u32,
+    primitives: &?Vec(Type),
+    byte_size: u32,
+    alignment: u32,
+}
+
+fn TypeLayout::new(): TypeLayout {
+    return TypeLayout {
+        primitives_count: 0,
+        primitives: null,
+        byte_size: 0,
+        alignment: 1,
+    }
+}
+
 type PointerType = struct {
     pointee: TypeId,
     is_sequence: bool,
@@ -365,11 +381,86 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
 }
 
 fn Typer::type_fns(&self) {
-    // TODO: implement
+    for fn_def in self.registry.functions.iter!() {
+        match FnSource::Guest(fn_info) = fn_def.source else {
+            continue
+        }
+
+        let module_ctx = self.module_info.get!(fn_info.module_id).ctx
+
+        let ctx = self.child_ctx(module_ctx, ScopeKind::Function)
+        ctx.fn_index = &fn_info.lo_fn_index
+
+        for param in fn_def.params.iter!() {
+            let _ = self.define_local(
+                ctx,
+                &param.param_name.repr,
+                param.param_type_id,
+                param.param_name.loc,
+                param.param_name.id,
+                true,
+            )
+        }
+
+        let _ = self.type_code_block(ctx, fn_info.body, true)
+    }
 }
 
 fn Typer::run_delayed_actions(&self) {
     // TODO: implement
+}
+
+fn Typer::type_code_block(
+    &self,
+    ctx: &TyContext,
+    block: &CodeBlock,
+    void_only: bool,
+): Type {
+    // TODO: implement
+    return Type::Void(null)
+}
+
+fn Typer::define_local(
+    &self,
+    ctx: &TyContext,
+    name: &str,
+    type_id: TypeId,
+    loc: Loc,
+    bind_id: ExprId,
+    always_define: bool,
+): bool {
+    if self.reporter.in_inspection_mode {
+        // TODO: implement
+        // self.reporter.print_inspection(InspectInfo {
+        //     message: format!("let {}: {}", name, self.registry.fmt(self.get_type(type_id))),
+        //     loc: loc,
+        //     linked_loc: None,
+        // })
+    }
+
+    let defined = !(*name).equals("_") && self.define_symbol(ctx, *name, TySymbolKind::Local, loc)
+    if defined || always_define {
+        self.define_local_no_symbol(ctx, name, type_id, bind_id)
+    }
+
+    return defined
+}
+
+fn Typer::define_local_no_symbol(
+    &self,
+    ctx: &TyContext,
+    local_name: &?str,
+    type_id: TypeId,
+    bind_id: ExprId,
+) {
+    let _ = self.registry.add_local(*ctx.fn_index, local_name, type_id)
+
+    self.store_expr_info(ctx, bind_id, self.registry.value_info.len)
+    self.registry.value_info.push!(ValueInfo {
+        kind: ValueKind::Local,
+        col_index: self.registry.locals.len - 1,
+        type_id: type_id,
+    })
 }
 
 fn Typer::build_type(&self, ctx: &TyContext, expr: TypeExpr): Result(TypeId, &Error) {
@@ -551,6 +642,17 @@ fn Typer::intern_type(&self, type_: Type): u32 {
 
 fn Typer::report_error(&self, err: &Error) {
     self.reporter.error(err)
+}
+
+fn Typer::count_primitive_components(registry: &Registry, type_: &Type): u32 {
+    let layout = ref!(TypeLayout::new())
+
+    Typer::get_type_layout(registry, type_, layout)
+    return layout.primitives_count
+}
+
+fn Typer::get_type_layout(registry: &Registry, type_: &Type, layout: &TypeLayout) {
+    // TODO: implement
 }
 
 // utils
