@@ -118,9 +118,9 @@ struct TySymbol {
     loc: Loc,
 }
 
-type TyContextRef = UBRef<TyContext>;
+pub type TyContextRef = UBRef<TyContext>;
 
-struct TyContext {
+pub struct TyContext {
     module_id: ModuleId,
     id: usize,
     parent: Option<TyContextRef>,
@@ -151,6 +151,20 @@ enum VariableKind {
     ReadWriteStored,
 }
 
+#[derive(PartialEq)]
+pub enum TypeResolution {
+    NotStarted,
+    InProgress,
+    Resolved,
+}
+
+struct TyTypeAlias {
+    ctx: TyContextRef,
+    type_id: TypeId,
+    expr: UBRef<TypeExpr>,
+    resolution: TypeResolution,
+}
+
 #[derive(Default)]
 pub struct Typer {
     // context
@@ -160,8 +174,8 @@ pub struct Typer {
     // state
     contexts: UBCell<StableVec<TyContext>>,
     module_info: UBCell<Vec<TyModuleInfo>>,
-    type_aliases: UBCell<Vec<TypeId>>, // indexed by `TySymbol::col_index` when `kind = TypeAlias`
-    allocated_strings: Vec<String>,    // storage for all allocated `String` objects
+    type_aliases: UBCell<Vec<TyTypeAlias>>, // indexed by `TySymbol::col_index` when `kind = TypeAlias`
+    allocated_strings: Vec<String>,         // storage for all allocated `String` objects
     forbid_memory_loc: Option<Loc>,
     autodefine_memory: UBCell<bool>,
 }
@@ -223,20 +237,17 @@ impl Typer {
             self.collect_included_symbols(self.module_info[module_id].ctx);
         }
 
-        // TODO!: implement better algorithm for type convergence
-        for _ in 0..2 {
-            let prev_aliases = self.type_aliases.be_mut().clone();
-
-            for &module_id in self.registry.module_import_order.relax() {
-                self.build_type_def_values(self.module_info[module_id].ctx);
-            }
-
-            if *self.type_aliases == prev_aliases {
-                break;
-            }
+        for type_alias in self.type_aliases.be_mut() {
+            self.resolve_type_alias(type_alias);
         }
 
-        self.resolve_struct_layouts();
+        for struct_def in self.registry.structs.relax_mut() {
+            self.resolve_struct_layout(struct_def);
+        }
+
+        for enum_def in self.registry.enums.relax_mut() {
+            self.resolve_enum_body(enum_def);
+        }
 
         self.resolve_str_literal_type();
 
@@ -258,9 +269,9 @@ impl Typer {
                     continue; // skip, not interested
                 }
 
-                TopLevelExpr::Type(type_def) => {
+                TopLevelExpr::TypeDef(type_def) => {
                     match &type_def.value {
-                        TypeDefValue::Struct { .. } => {
+                        TypeDefValue::Struct { fields } => {
                             let _ = self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
@@ -269,9 +280,11 @@ impl Typer {
                             );
 
                             self.registry.structs.push(StructDef {
+                                ctx,
                                 struct_name: type_def.name.repr,
+                                field_defs: UBRef::new(fields),
                                 fields: Vec::new(),
-                                resolution: StructResolution::NotStarted,
+                                resolution: TypeResolution::NotStarted,
                             });
                         }
                         TypeDefValue::Enum {
@@ -299,9 +312,11 @@ impl Typer {
                             }
 
                             self.registry.enums.push(EnumDef {
+                                ctx,
                                 enum_name: type_def.name.repr,
                                 variant_type_id,
                                 variants: Vec::new(), // placeholder
+                                variant_defs: UBRef::new(variants),
                             });
 
                             for (variant, variant_index) in variants.iter().zip(0..) {
@@ -326,7 +341,7 @@ impl Typer {
                                 });
                             }
                         }
-                        TypeDefValue::Alias(_) => {
+                        TypeDefValue::Alias(expr) => {
                             let _ = self.define_symbol(
                                 ctx,
                                 type_def.name.repr,
@@ -334,9 +349,12 @@ impl Typer {
                                 type_def.name.loc,
                             );
 
-                            self.relax_mut()
-                                .type_aliases
-                                .push(self.intern_type(&Type::Never)); // placeholder
+                            self.type_aliases.be_mut().push(TyTypeAlias {
+                                ctx,
+                                type_id: self.intern_type(&Type::Never), // placeholder
+                                expr: UBRef::new(expr),
+                                resolution: TypeResolution::NotStarted,
+                            });
                         }
                     }
                 }
@@ -504,200 +522,132 @@ impl Typer {
         }
     }
 
-    fn build_type_def_values(&mut self, ctx: TyContextRef) {
-        let module = self.registry.modules[ctx.module_id].relax_mut();
+    fn resolve_type_alias(&self, type_alias: &mut TyTypeAlias) {
+        if type_alias.resolution == TypeResolution::Resolved {
+            return;
+        }
 
-        'exprs: for expr in &*module.parser.ast {
-            let TopLevelExpr::Type(type_def) = expr else {
-                continue;
-            };
+        if type_alias.resolution == TypeResolution::InProgress {
+            type_alias.resolution = TypeResolution::Resolved;
+            self.report_error(Error {
+                message: format!("Cannot determite size of recursive type"),
+                loc: type_alias.expr.loc(),
+            });
+            return;
+        }
 
-            match &type_def.value {
-                TypeDefValue::Struct { fields } => {
-                    let mut struct_fields = Vec::<StructField>::new();
+        type_alias.resolution = TypeResolution::InProgress;
 
-                    'fields: for field in fields {
-                        for existing_field in &struct_fields {
-                            if existing_field.field_name == field.field_name.repr {
-                                self.report_error(Error {
-                                    message: format!(
-                                        "Cannot redefine struct field '{}', previously defined at {}",
-                                        field.field_name.repr,
-                                        existing_field.loc.to_string(&self.registry),
-                                    ),
-                                    loc: field.field_name.loc,
-                                });
-                                continue 'fields;
-                            }
-                        }
+        self.resolve_type_alias_(type_alias);
 
-                        let field_type_id = self.build_type(ctx, &field.field_type);
-                        let field_type_id = catch!(field_type_id, err, {
-                            self.report_error(err);
-                            continue 'exprs;
-                        });
+        type_alias.resolution = TypeResolution::Resolved;
+    }
 
-                        struct_fields.push(StructField {
-                            field_name: field.field_name.repr,
-                            field_type_id,
-                            field_layout: TypeLayout::new(), // placeholder, will be updated in `resolve_struct_layout`
-                            field_index: 0, // placeholder, will be updated in `resolve_struct_layout`
-                            byte_offset: 0, // placeholder, will be updated in `resolve_struct_layout`
-                            loc: field.field_name.loc,
-                        });
+    // TODO: figure out why this can't be inlined into `resolve_type_alias`
+    fn resolve_type_alias_(&self, type_alias: &mut TyTypeAlias) {
+        match &*type_alias.expr {
+            TypeExpr::Pointer(_) => {} // not interested
 
-                        if self.reporter.in_inspection_mode {
-                            self.reporter.print_inspection(InspectInfo {
-                                message: format!(
-                                    "{}.{}: {}",
-                                    type_def.name.repr,
-                                    field.field_name.repr,
-                                    self.registry.fmt(self.get_type(field_type_id))
-                                ),
-                                loc: field.field_name.loc,
-                                linked_loc: None,
-                            });
-                        }
-                    }
-
-                    let symbol = self.get_symbol(ctx, type_def.name.repr).unwrap().relax();
-
-                    let TySymbolKind::Struct = symbol.kind else {
-                        continue;
-                    };
-
-                    let struct_def = &mut self.registry.structs[symbol.col_index];
-
-                    // TODO!: implement better algorithm for type convergence
-                    struct_def.fields.clear();
-
-                    struct_def.fields.append(&mut struct_fields);
-                }
-                TypeDefValue::Enum {
-                    variant_type: _,
-                    variants,
-                } => {
-                    let symbol = self.get_symbol(ctx, &type_def.name.repr).unwrap().relax();
-                    let TySymbolKind::Enum = symbol.kind else {
-                        continue;
-                    };
-                    let enum_def = self.registry.enums[symbol.col_index].relax_mut();
-
-                    // TODO!: implement better algorithm for type convergence
-                    enum_def.variants.clear();
-
-                    'variants: for variant in variants.iter() {
-                        for existing_variant in &enum_def.variants {
-                            if existing_variant.variant_name == variant.variant_name.repr {
-                                self.report_error(Error {
-                                    message: format!(
-                                        "Cannot redefine enum variant '{}', previously defined at {}",
-                                        variant.variant_name.repr,
-                                        existing_variant.loc.to_string(&self.registry),
-                                    ),
-                                    loc: variant.variant_name.loc,
-                                });
-                                continue 'variants;
-                            }
-                        }
-
-                        let variant_type_id;
-                        if let Some(variant_type_expr) = &variant.variant_type {
-                            match self.build_type(ctx, variant_type_expr) {
-                                Ok(t) => variant_type_id = t,
-                                Err(err) => {
-                                    self.report_error(err);
-                                    variant_type_id = self.intern_type(&Type::Never);
-                                }
-                            }
-                        } else {
-                            variant_type_id = self.intern_type(&Type::Void);
-                        }
-
-                        if !self.is_type_compatible(
-                            self.get_type(enum_def.variant_type_id),
-                            self.get_type(variant_type_id),
-                        ) {
-                            self.report_error(Error {
-                                message: format!(
-                                    "Enum variant is not compatible with {}",
-                                    self.registry.fmt(self.get_type(enum_def.variant_type_id))
-                                ),
-                                loc: variant.variant_name.loc,
-                            });
-                        }
-
-                        enum_def.variants.push(EnumVariant {
-                            variant_name: variant.variant_name.repr,
-                            variant_type_id,
-                            loc: variant.variant_name.loc,
-                        });
+            TypeExpr::Named(ident) => {
+                if let Some(symbol) = self.get_symbol(type_alias.ctx, ident.repr) {
+                    if let TySymbolKind::TypeAlias = symbol.kind {
+                        self.resolve_type_alias(&mut self.type_aliases.be_mut()[symbol.col_index]);
                     }
                 }
-                TypeDefValue::Alias(type_expr) => {
-                    let type_id = self.build_type(ctx, &type_expr);
-                    let type_id = catch!(type_id, err, {
-                        self.report_error(err);
-                        continue;
-                    });
+            }
+            TypeExpr::Container(ctr) => {
+                let TypeExpr::Named(ident) = &*ctr.container else {
+                    unreachable!();
+                };
 
-                    let symbol = self.get_symbol(ctx, &type_def.name.repr).unwrap().relax();
-                    let TySymbolKind::TypeAlias = symbol.kind else {
-                        continue;
-                    };
-
-                    self.type_aliases[symbol.col_index] = type_id;
+                if let Some(symbol) = self.get_symbol(type_alias.ctx, ident.repr) {
+                    if let TySymbolKind::TypeAlias = symbol.kind {
+                        self.resolve_type_alias(&mut self.type_aliases.be_mut()[symbol.col_index]);
+                    }
                 }
             }
         }
+
+        type_alias.type_id = catch!(self.build_type(type_alias.ctx, &type_alias.expr), _err, {
+            return;
+        });
     }
 
-    fn resolve_struct_layouts(&mut self) {
-        for struct_def in self.registry.structs.relax_mut() {
-            if struct_def.resolution == StructResolution::NotStarted {
-                self.resolve_struct_layout(struct_def);
-            }
+    fn resolve_struct_layout(&self, struct_def: &mut StructDef) -> bool {
+        if struct_def.resolution == TypeResolution::Resolved {
+            return true;
         }
-    }
 
-    fn resolve_struct_layout(&self, struct_def: &mut StructDef) {
-        struct_def.resolution = StructResolution::InProgress;
+        if struct_def.resolution == TypeResolution::InProgress {
+            struct_def.resolution = TypeResolution::Resolved;
+            return false;
+        }
+
+        struct_def.resolution = TypeResolution::InProgress;
 
         let mut struct_layout = TypeLayout::new();
 
-        for field in struct_def.fields.relax_mut() {
-            if let &Type::Struct { struct_index } = self.get_type(field.field_type_id) {
-                match self.registry.structs[struct_index].resolution {
-                    StructResolution::Resolved => {}
-                    StructResolution::NotStarted => {
-                        self.resolve_struct_layout(
-                            self.registry.be_mut().structs[struct_index].relax_mut(),
-                        );
-                    }
-                    StructResolution::InProgress => {
-                        struct_def.resolution = StructResolution::Resolved;
-
-                        self.report_error(Error {
-                            message: format!(
-                                "Field type not supported as it leads to infinite struct size"
-                            ),
-                            loc: field.loc,
-                        });
-                        return;
-                    }
+        'fields: for field in &*struct_def.field_defs {
+            for existing_field in &struct_def.fields {
+                if existing_field.field_name == field.field_name.repr {
+                    self.report_error(Error {
+                        message: format!(
+                            "Cannot redefine struct field '{}', previously defined at {}",
+                            field.field_name.repr,
+                            existing_field.loc.to_string(&self.registry),
+                        ),
+                        loc: field.field_name.loc,
+                    });
+                    continue 'fields;
                 }
             }
 
+            let field_type_id = catch!(self.build_type(struct_def.ctx, &field.field_type), err, {
+                self.report_error(err);
+                self.intern_type(&Type::Never)
+            });
+
+            if self.reporter.in_inspection_mode {
+                self.reporter.print_inspection(InspectInfo {
+                    message: format!(
+                        "{}.{}: {}",
+                        struct_def.struct_name,
+                        field.field_name.repr,
+                        self.registry.fmt(self.get_type(field_type_id))
+                    ),
+                    loc: field.field_name.loc,
+                    linked_loc: None,
+                });
+            }
+
+            let ok = self.resolve_type_size(struct_def.ctx, field_type_id);
+            if !ok {
+                self.report_error(Error {
+                    message: format!("Cannot determite size of recursive type"),
+                    loc: field.field_type.loc(),
+                });
+                continue;
+            }
+
+            let mut field_layout = TypeLayout::new();
             get_type_layout(
                 &self.registry,
-                self.get_type(field.field_type_id),
-                &mut field.field_layout,
+                self.get_type(field_type_id),
+                &mut field_layout,
             );
-            struct_layout.alignment =
-                u32::max(struct_layout.alignment, field.field_layout.alignment);
 
-            field.field_index = struct_layout.primitives_count;
-            struct_layout.primitives_count += field.field_layout.primitives_count;
+            let field_index = struct_layout.primitives_count;
+            struct_layout.primitives_count += field_layout.primitives_count;
+            struct_layout.alignment = u32::max(struct_layout.alignment, field_layout.alignment);
+
+            struct_def.fields.push(StructField {
+                field_name: field.field_name.repr,
+                field_type_id,
+                field_layout,
+                field_index,
+                byte_offset: 0, // placeholder, updated when fields are aligned
+                loc: field.field_name.loc,
+            });
         }
 
         // align fields
@@ -705,11 +655,78 @@ impl Typer {
             struct_layout.byte_size = align(struct_layout.byte_size, field.field_layout.alignment);
 
             field.byte_offset = struct_layout.byte_size;
-
             struct_layout.byte_size += field.field_layout.byte_size;
         }
 
-        struct_def.resolution = StructResolution::Resolved;
+        struct_def.resolution = TypeResolution::Resolved;
+        true
+    }
+
+    fn resolve_enum_body(&self, enum_def: &mut EnumDef) {
+        'variants: for variant in enum_def.variant_defs.iter() {
+            for existing_variant in &enum_def.variants {
+                if existing_variant.variant_name == variant.variant_name.repr {
+                    self.report_error(Error {
+                        message: format!(
+                            "Cannot redefine enum variant '{}', previously defined at {}",
+                            variant.variant_name.repr,
+                            existing_variant.loc.to_string(&self.registry),
+                        ),
+                        loc: variant.variant_name.loc,
+                    });
+                    continue 'variants;
+                }
+            }
+
+            let variant_type_id;
+            if let Some(variant_type_expr) = &variant.variant_type {
+                match self.build_type(enum_def.ctx, variant_type_expr) {
+                    Ok(t) => variant_type_id = t,
+                    Err(err) => {
+                        self.report_error(err);
+                        variant_type_id = self.intern_type(&Type::Never);
+                    }
+                }
+            } else {
+                variant_type_id = self.intern_type(&Type::Void);
+            }
+
+            if !self.is_type_compatible(
+                self.get_type(enum_def.variant_type_id),
+                self.get_type(variant_type_id),
+            ) {
+                self.report_error(Error {
+                    message: format!(
+                        "Enum variant is not compatible with {}",
+                        self.registry.fmt(self.get_type(enum_def.variant_type_id))
+                    ),
+                    loc: variant.variant_name.loc,
+                });
+            }
+
+            enum_def.variants.push(EnumVariant {
+                variant_name: variant.variant_name.repr,
+                variant_type_id,
+                loc: variant.variant_name.loc,
+            });
+        }
+    }
+
+    fn resolve_type_size(&self, ctx: TyContextRef, type_id: TypeId) -> bool {
+        match self.get_type(type_id) {
+            Type::Result(result) => {
+                return self.resolve_type_size(ctx, result.ok)
+                    && self.resolve_type_size(ctx, result.err);
+            }
+            Type::Container(ctr) => {
+                return self.resolve_type_size(ctx, ctr.container);
+            }
+            &Type::Struct { struct_index } => {
+                let struct_def = &mut self.registry.be_mut().structs[struct_index];
+                return self.resolve_struct_layout(struct_def);
+            }
+            _ => return true,
+        }
     }
 
     fn resolve_str_literal_type(&mut self) {
@@ -782,7 +799,7 @@ impl Typer {
 
         for expr in &*module.parser.ast {
             match expr {
-                TopLevelExpr::Type(_) => {
+                TopLevelExpr::TypeDef(_) => {
                     continue; // skip, processed in previous passes
                 }
 
@@ -3629,9 +3646,15 @@ impl Typer {
     }
 
     fn define_type(&self, ctx: TyContextRef, name: &'static str, type_: &Type, loc: Loc) {
-        let _ = self.define_symbol(ctx, name, TySymbolKind::TypeAlias, loc);
+        self.define_symbol(ctx, name, TySymbolKind::TypeAlias, loc);
+
         let type_id = self.intern_type(type_);
-        self.type_aliases.be_mut().push(type_id);
+        self.type_aliases.be_mut().push(TyTypeAlias {
+            ctx,
+            type_id,
+            expr: UBRef::new(core::ptr::null()), // shouldn't be accessed since alias is already resolved
+            resolution: TypeResolution::Resolved,
+        });
     }
 
     fn define_local(
@@ -3888,21 +3911,22 @@ impl Typer {
                 }))
             }
             TySymbolKind::TypeAlias => {
-                let type_id = self.type_aliases[symbol.col_index];
+                let type_alias = &mut self.type_aliases.be_mut()[symbol.col_index];
+                self.resolve_type_alias(type_alias);
 
-                // don't print inspection for built-ins
+                // only print inspection if it's not a built-in type
                 if self.reporter.in_inspection_mode && symbol.loc.module_id != 0 {
                     self.reporter.print_inspection(InspectInfo {
                         message: format!(
                             "type {type_name} = {}",
-                            self.registry.fmt(self.get_type(type_id))
+                            self.registry.fmt(self.get_type(type_alias.type_id))
                         ),
                         loc: *loc,
                         linked_loc: Some(symbol.loc),
                     });
                 }
 
-                Ok(type_id)
+                Ok(type_alias.type_id)
             }
             TySymbolKind::Local
             | TySymbolKind::Global
@@ -4177,16 +4201,12 @@ impl Typer {
 
     #[inline]
     fn add_builtin_type(&mut self, ctx: &mut TyContext, type_: Type) {
-        ctx.add_symbol(TySymbol {
-            ctx_id: 0,
-            name: type_.to_str().unwrap(),
-            kind: TySymbolKind::TypeAlias,
-            col_index: self.type_aliases.len(),
-            loc: Loc::internal(),
-        });
-
-        let type_id = self.intern_type(&type_);
-        self.type_aliases.push(type_id);
+        self.define_type(
+            UBRef::new(ctx),
+            type_.to_str().unwrap(),
+            &type_,
+            Loc::internal(),
+        );
     }
 
     fn define_symbol<'a>(

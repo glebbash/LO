@@ -5,7 +5,7 @@ pub type ExprId = usize;
 pub enum TopLevelExpr {
     Let(LetExpr),
     Fn(FnExpr),
-    Type(TypeDefExpr),
+    TypeDef(TypeDefExpr),
     Intrinsic(InlineFnCallExpr),
 }
 
@@ -92,7 +92,7 @@ impl TopLevelExpr {
         match self {
             TopLevelExpr::Let(e) => e.loc,
             TopLevelExpr::Fn(e) => e.loc,
-            TopLevelExpr::Type(e) => e.loc,
+            TopLevelExpr::TypeDef(e) => e.loc,
             TopLevelExpr::Intrinsic(e) => e.loc,
         }
     }
@@ -114,7 +114,7 @@ pub struct TypeExprPointer {
 
 pub struct TypeExprContainer {
     pub id: ExprId,
-    pub container: Box<TypeExpr>,
+    pub container: Box<TypeExpr>, // TODO!!!!: change this to ident expr
     pub items: Vec<TypeExpr>,
     pub loc: Loc,
 }

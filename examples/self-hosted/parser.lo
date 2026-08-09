@@ -200,7 +200,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
             loc.end_pos = self.prev().loc.end_pos
 
-            return Ok(TopLevelExpr::Type(self.ast_arena.new!(TypeDefExpr {
+            return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
                 name: name,
                 value: TypeDefValue::Struct(self.ast_arena.new!(TypeDefValueStruct {
                     fields: fields,
@@ -245,7 +245,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
             loc.end_pos = self.prev().loc.end_pos
 
-            return Ok(TopLevelExpr::Type(self.ast_arena.new!(TypeDefExpr {
+            return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
                 name: name,
                 value: TypeDefValue::Enum(self.ast_arena.new!(TypeDefValueEnum {
                     variant_type: variant_type,
@@ -259,7 +259,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(TopLevelExpr::Type(self.ast_arena.new!(TypeDefExpr {
+        return Ok(TopLevelExpr::TypeDef(self.ast_arena.new!(TypeDefExpr {
             name: name,
             value: TypeDefValue::Alias(self.ast_arena.new!(type_value)),
             loc: loc,

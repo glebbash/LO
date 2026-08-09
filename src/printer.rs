@@ -92,7 +92,7 @@ impl Printer {
                 stdout_write(" = ");
                 self.print_code_expr(value);
             }
-            TopLevelExpr::Type(TypeDefExpr {
+            TopLevelExpr::TypeDef(TypeDefExpr {
                 name: type_name,
                 value: type_value,
                 loc,

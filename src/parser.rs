@@ -176,7 +176,7 @@ impl Parser {
 
                 loc.end_pos = self.prev().loc.end_pos;
 
-                return Ok(TopLevelExpr::Type(TypeDefExpr {
+                return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
                     name,
                     value: TypeDefValue::Struct { fields },
                     loc,
@@ -219,7 +219,7 @@ impl Parser {
 
                 loc.end_pos = self.prev().loc.end_pos;
 
-                return Ok(TopLevelExpr::Type(TypeDefExpr {
+                return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
                     name,
                     value: TypeDefValue::Enum {
                         variant_type,
@@ -233,7 +233,7 @@ impl Parser {
 
             loc.end_pos = self.prev().loc.end_pos;
 
-            return Ok(TopLevelExpr::Type(TypeDefExpr {
+            return Ok(TopLevelExpr::TypeDef(TypeDefExpr {
                 name,
                 value: TypeDefValue::Alias(type_value),
                 loc,

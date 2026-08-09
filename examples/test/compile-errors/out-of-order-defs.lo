@@ -1,0 +1,23 @@
+type Y = X
+type X = Vec(Pos)
+type Vec = struct {
+    x: u32,
+}
+type Pos = u32
+
+let res = 0 as X
+
+type A = B // error
+type B = A
+
+type T1 = T2 // error
+type T2 = T3
+type T3 = T1
+
+type S1 = struct {
+    f: S2,
+}
+
+type S2 = struct {
+    f: S1, // error
+}

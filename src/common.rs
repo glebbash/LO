@@ -304,7 +304,7 @@ impl<T> core::ops::DerefMut for UBCell<T> {
 }
 
 #[derive(Default)]
-pub struct UBRef<T: ?Sized>(pub *const T);
+pub struct UBRef<T: ?Sized>(*const T);
 
 impl<T: ?Sized> UBRef<T> {
     pub const fn new(value: *const T) -> Self {

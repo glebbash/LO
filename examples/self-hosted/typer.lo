@@ -273,7 +273,7 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
             continue // skip, not interested
         }
 
-        if match TopLevelExpr::Type(_) = expr {
+        if match TopLevelExpr::TypeDef(_) = expr {
             continue // TODO: implement
         }
 
@@ -344,7 +344,7 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
     let module = self.registry.modules.get!(ctx.module_id)
 
     for expr in module.parser.ast.iter!() {
-        if match TopLevelExpr::Type(_) = expr {
+        if match TopLevelExpr::TypeDef(_) = expr {
             continue // skip, processed in previous passes
         }
 

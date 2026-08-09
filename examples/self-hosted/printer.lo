@@ -93,7 +93,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         return
     }
 
-    if match TopLevelExpr::Type(type_def) = expr {
+    if match TopLevelExpr::TypeDef(type_def) = expr {
         stdout_write("type ")
         stdout_write(type_def.name.repr)
         stdout_write(" = ")

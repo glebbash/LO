@@ -86,17 +86,12 @@ impl Default for ScopeKind {
     }
 }
 
-#[derive(PartialEq)]
-pub enum StructResolution {
-    NotStarted,
-    InProgress,
-    Resolved,
-}
-
 pub struct StructDef {
+    pub ctx: TyContextRef,
     pub struct_name: &'static str,
     pub fields: Vec<StructField>,
-    pub resolution: StructResolution,
+    pub field_defs: UBRef<Vec<StructDefField>>,
+    pub resolution: TypeResolution,
 }
 
 #[derive(Clone)]
@@ -110,9 +105,11 @@ pub struct StructField {
 }
 
 pub struct EnumDef {
+    pub ctx: TyContextRef,
     pub enum_name: &'static str,
     pub variant_type_id: TypeId,
     pub variants: Vec<EnumVariant>,
+    pub variant_defs: UBRef<Vec<EnumDefVariant>>,
 }
 
 pub struct EnumVariant {

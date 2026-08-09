@@ -747,7 +747,7 @@ async function commandTest() {
         });
     });
 
-    it("compiler reports multiple errors in fault-tolerance.lo", async () => {
+    it("reports multiple errors in fault-tolerance.lo", async () => {
         try {
             await compile("./examples/test/compile-errors/fault-tolerance.lo");
         } catch (err) {
@@ -758,6 +758,24 @@ async function commandTest() {
                     ERROR: examples/test/compile-errors/fault-tolerance.lo:2:17 - Cannot redefine a, previously defined at examples/test/compile-errors/fault-tolerance.lo:2:9
                     ERROR: examples/test/compile-errors/fault-tolerance.lo:5:9 - Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:3:9
                     ERROR: examples/test/compile-errors/fault-tolerance.lo:13:9 - Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:11:9
+
+                    `,
+            );
+        }
+    });
+
+    it("resolves types defined out of order and reports errors in case of unsizable types", async () => {
+        try {
+            await compile(
+                "./examples/test/compile-errors/out-of-order-defs.lo",
+            );
+        } catch (err) {
+            assert.strictEqual(
+                (err as Error).message,
+                m`
+                    ERROR: examples/test/compile-errors/out-of-order-defs.lo:10:10 - Cannot determite size of recursive type
+                    ERROR: examples/test/compile-errors/out-of-order-defs.lo:13:11 - Cannot determite size of recursive type
+                    ERROR: examples/test/compile-errors/out-of-order-defs.lo:22:8 - Cannot determite size of recursive type
 
                     `,
             );
