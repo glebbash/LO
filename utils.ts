@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node
 
 import process from "node:process";
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { WASI, type WASIOptions } from "./wasi-shim.ts";
@@ -966,13 +966,9 @@ async function commandTest() {
         return;
     }
 
-    describe("self-hosted", () => {
-        let lo: Awaited<ReturnType<typeof loadLoCompiler>>;
-
-        it("builds", async () => {
-            const loBinary = await compile(SH_COMPILER_SOURCE_PATH);
-            lo = await loadLoCompiler(loBinary);
-        });
+    test("self-hosted", async () => {
+        const loBinary = await compile(SH_COMPILER_SOURCE_PATH);
+        const lo = await loadLoCompiler(loBinary);
 
         describe("formatter", async () => {
             const format = async (fileName = "-i") => {

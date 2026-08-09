@@ -1,6 +1,7 @@
 @include("./common.lo")
 @include("./lexer.lo")
 @include("./parser.lo")
+@include("./typer.lo")
 
 type TypeId = u32
 type ModuleId = u32
@@ -107,7 +108,7 @@ type Registry = struct {
 
     expr_id_count: u32,
     expr_info: &Vec(ExprInfo), // indexed by `ExprId`
-    // types: &Vec(Type), //                     indexed by `ExprInfo` for most of the expressions
+    types: &Vec(Type), //                     indexed by `ExprInfo` for most of the expressions
     // type_lookup: UBCell<BTreeMap<Type, TypeId>>,
     // inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     // call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
@@ -140,7 +141,7 @@ fn Registry::new(): &Registry {
         module_import_order: Vec::new!<ModuleId>(),
         expr_id_count: 0,
         expr_info: Vec::new!<ExprInfo>(),
-        // types: Vec::new!<Type>(), // TODO: implement
+        types: Vec::new!<Type>(),
         value_info: Vec::new!<ValueInfo>(),
         globals: Vec::new!<GlobalDef>(),
         locals: Vec::new!<LocalDef>(),
@@ -267,11 +268,10 @@ fn Registry::add_local(
         local_type_id: local_type_id,
         wasm_local_index: wasm_local_index,
     })
-    // TODO: implement
-    // fn_info.wasm_locals_count += Typer::count_primitive_components(
-    //     self,
-    //     self.get_type(local_type_id),
-    // )
+    fn_info.wasm_locals_count += Typer::count_primitive_components(
+        self,
+        self.get_type(local_type_id),
+    )
 
     return wasm_local_index
 }
@@ -321,7 +321,6 @@ fn Registry::get_expr_info(&self, expr_id_offset: u32, expr_id: u32): &?ExprInfo
     return expr_info
 }
 
-// TODO: implement
-// fn Registry::get_type(&self, type_id: TypeId): &Type {
-//     return self.types.at!(type_id)
-// }
+fn Registry::get_type(&self, type_id: TypeId): &Type {
+    return self.types.at!(type_id)
+}

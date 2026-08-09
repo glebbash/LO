@@ -223,8 +223,17 @@ impl Typer {
             self.collect_included_symbols(self.module_info[module_id].ctx);
         }
 
-        for &module_id in self.registry.module_import_order.relax() {
-            self.build_type_def_values(self.module_info[module_id].ctx);
+        // TODO!: implement better algorithm for type convergence
+        for _ in 0..2 {
+            let prev_aliases = self.type_aliases.be_mut().clone();
+
+            for &module_id in self.registry.module_import_order.relax() {
+                self.build_type_def_values(self.module_info[module_id].ctx);
+            }
+
+            if *self.type_aliases == prev_aliases {
+                break;
+            }
         }
 
         self.resolve_struct_layouts();
@@ -558,6 +567,10 @@ impl Typer {
                     };
 
                     let struct_def = &mut self.registry.structs[symbol.col_index];
+
+                    // TODO!: implement better algorithm for type convergence
+                    struct_def.fields.clear();
+
                     struct_def.fields.append(&mut struct_fields);
                 }
                 TypeDefValue::Enum {
@@ -569,6 +582,9 @@ impl Typer {
                         continue;
                     };
                     let enum_def = self.registry.enums[symbol.col_index].relax_mut();
+
+                    // TODO!: implement better algorithm for type convergence
+                    enum_def.variants.clear();
 
                     'variants: for variant in variants.iter() {
                         for existing_variant in &enum_def.variants {

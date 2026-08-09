@@ -1,4 +1,6 @@
 @include("./common.lo")
+@include("./ast.lo")
+@include("./registry.lo")
 
 // TODO: implement module
 
