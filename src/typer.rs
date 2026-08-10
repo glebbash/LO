@@ -1263,10 +1263,10 @@ impl Typer {
                 });
             }
 
-            self.report_if_err(self.type_code_expr(ctx, expr));
-            let Some(type_id) = self.load_type(ctx, expr) else {
+            let type_id = catch!(self.type_code_expr_and_load(ctx, expr), err, {
+                self.report_error(err);
                 continue;
-            };
+            });
 
             let expr_type = self.get_type(type_id);
 
@@ -1301,7 +1301,11 @@ impl Typer {
             needs_explicit_trap: void_only && diverges && !diverges_naturally,
         });
 
-        if diverges { Type::Never } else { Type::Void }
+        if diverges {
+            return Type::Never;
+        }
+
+        return Type::Void;
     }
 
     fn type_code_expr(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<(), Error> {
@@ -3645,18 +3649,6 @@ impl Typer {
         Ok(Some(self_type_id))
     }
 
-    fn define_type(&self, ctx: TyContextRef, name: &'static str, type_: &Type, loc: Loc) {
-        self.define_symbol(ctx, name, TySymbolKind::TypeAlias, loc);
-
-        let type_id = self.intern_type(type_);
-        self.type_aliases.be_mut().push(TyTypeAlias {
-            ctx,
-            type_id,
-            expr: UBRef::new(core::ptr::null()), // shouldn't be accessed since alias is already resolved
-            resolution: TypeResolution::Resolved,
-        });
-    }
-
     fn define_local(
         &self,
         ctx: TyContextRef,
@@ -3940,6 +3932,28 @@ impl Typer {
         }
     }
 
+    #[inline]
+    fn add_builtin_type(&mut self, ctx: &mut TyContext, type_: Type) {
+        self.define_type(
+            UBRef::new(ctx),
+            type_.to_str().unwrap(),
+            &type_,
+            Loc::internal(),
+        );
+    }
+
+    fn define_type(&self, ctx: TyContextRef, name: &'static str, type_: &Type, loc: Loc) {
+        self.define_symbol(ctx, name, TySymbolKind::TypeAlias, loc);
+
+        let type_id = self.intern_type(type_);
+        self.type_aliases.be_mut().push(TyTypeAlias {
+            ctx,
+            type_id,
+            expr: UBRef::new(core::ptr::null()), // shouldn't be accessed since alias is already resolved
+            resolution: TypeResolution::Resolved,
+        });
+    }
+
     fn get_const_value_or_err(&self, ctx: TyContextRef, expr: &CodeExpr) -> Option<&CodeExpr> {
         match expr {
             CodeExpr::BoolLiteral(_)
@@ -4196,16 +4210,6 @@ impl Typer {
         self.registry.be_mut().expr_info.resize(
             self.registry.expr_info.len() + expr_count,
             EXPR_INFO_INVALID,
-        );
-    }
-
-    #[inline]
-    fn add_builtin_type(&mut self, ctx: &mut TyContext, type_: Type) {
-        self.define_type(
-            UBRef::new(ctx),
-            type_.to_str().unwrap(),
-            &type_,
-            Loc::internal(),
         );
     }
 

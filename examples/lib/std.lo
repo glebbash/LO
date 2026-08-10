@@ -460,7 +460,10 @@ fn Vec::swap(&self, index1: u32, index2: u32) {
 }
 
 inline fn Vec::push!(&self, item: itemof(typeof(self))) {
-    *(self.push() as &itemof(typeof(self))) = item
+    // TODO!: this is really bad, figure out a good solution
+    let _item = item // evaluate item before inserting
+
+    *(self.push() as &itemof(typeof(self))) = _item
 }
 
 fn Vec::push(&self): &void {

@@ -53,7 +53,7 @@ type ModuleInclude = struct {
 type ExprInfo = u32
 let EXPR_INFO_INVALID = u32::MAX as ExprInfo
 
-type GlobalDef = void // TODO: implement
+type GlobalDef = void // TODO: port
 
 type FnInfo = struct {
     name: str,
@@ -93,10 +93,16 @@ type FnType = struct {
     output: TypeId,
 }
 
-type ConstDef = void // TODO: implement
-type StructDef = void // TODO: implement
-type EnumDef = void // TODO: implement
-type EnumConstructor = void // TODO: implement
+type ConstDef = never // TODO: port
+type StructDef = never // TODO: port
+type EnumDef = never // TODO: port
+type EnumConstructor = never // TODO: port
+
+type BlockInfo = struct {
+    needs_explicit_trap: bool,
+}
+
+type BinaryOpInfo = never // TODO: port
 
 type Registry = struct {
     in_single_file_mode: bool,
@@ -110,13 +116,13 @@ type Registry = struct {
     expr_info: &Vec(ExprInfo), // indexed by `ExprId`
     types: &Vec(Type), //                     indexed by `ExprInfo` for most of the expressions
     // type_lookup: UBCell<BTreeMap<Type, TypeId>>,
-    // inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
-    // call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
+    // inline_call_info: &Vec(InlineCallInfo), // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
+    // call_info: &Vec(CallInfo), //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
     value_info: &Vec(ValueInfo), //            indexed by `ExprInfo` for `::IdentExpr`
-    // stored_bytes: Vec<StoredExprBytes>, //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
-    // breaks: Vec<BreakInfo>, //                indexed by `ExprInfo` for `::Break` and `::Continue`
-    // block_info: Vec<BlockInfo>, //            indexed by `ExprInfo` for `::CodeBlock`
-    // binary_op_info: Vec<BinaryOpInfo>, //     indexed by `ExprInfo` for `::InfixOp`
+    // stored_bytes: &Vec(StoredExprBytes), //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
+    // breaks: &Vec(BreakInfo), //                indexed by `ExprInfo` for `::Break` and `::Continue`
+    block_info: &Vec(BlockInfo), //           indexed by `ExprInfo` for `::CodeBlock`
+    // binary_op_info: &Vec(BinaryOpInfo), //     indexed by `ExprInfo` for `::InfixOp`
 
     globals: &Vec(GlobalDef), //          indexed by `col_index` when `kind = Global`
     locals: &Vec(LocalDef), //            indexed by `col_index` when `kind = Local`
@@ -143,6 +149,7 @@ fn Registry::new(): &Registry {
         expr_info: Vec::new!<ExprInfo>(),
         types: Vec::new!<Type>(),
         value_info: Vec::new!<ValueInfo>(),
+        block_info: Vec::new!<BlockInfo>(),
         globals: Vec::new!<GlobalDef>(),
         locals: Vec::new!<LocalDef>(),
         constants: Vec::new!<ConstDef>(),
@@ -313,6 +320,17 @@ fn Registry::resolve_path(&self, file_path: str, loc: Loc): String {
     return String::join(normalized, '/')
 }
 
+fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId {
+    let expr_info = self.get_expr_info(expr_id_offset, expr.id())
+    if expr_info == null {
+        return null
+    }
+
+    // TODO: port
+
+    return expr_info
+}
+
 fn Registry::get_expr_info(&self, expr_id_offset: u32, expr_id: u32): &?ExprInfo {
     let expr_info = self.expr_info.at!(expr_id_offset + expr_id)
     if *expr_info == EXPR_INFO_INVALID {
@@ -321,6 +339,20 @@ fn Registry::get_expr_info(&self, expr_id_offset: u32, expr_id: u32): &?ExprInfo
     return expr_info
 }
 
-fn Registry::get_type(&self, type_id: TypeId): &Type {
-    return self.types.at!(type_id)
+fn Registry::get_type(&self, type_id: TypeId): Type {
+    return self.types.get!(type_id)
+}
+
+// TODO: use a better data structure
+fn Registry::intern_type(&self, type_: Type): TypeId {
+    for type_id in 0..self.types.len {
+        let interned_type = self.types.get!(type_id)
+        if interned_type.equals(type_) {
+            return type_id
+        }
+    }
+
+    let type_id = self.types.len
+    self.types.push!(type_)
+    return type_id
 }

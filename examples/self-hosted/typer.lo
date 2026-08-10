@@ -27,6 +27,23 @@ type Type = enum (&?void) {
     Container(&ContainerType),
 }
 
+// TODO: complete and maybe find a better way to do this
+fn Type::equals(self, other): bool {
+    if match Type::Never(_) = self {
+        if match Type::Never(_) = other {
+            return true
+        }
+    }
+
+    if match Type::U32(_) = self {
+        if match Type::U32(_) = other {
+            return true
+        }
+    }
+
+    return false
+}
+
 fn Type::to_str(self): Result(str, &VoidError) {
     if match Type::Never(_) = self {
         return Ok("never")
@@ -163,7 +180,7 @@ type TyContext = struct {
 }
 
 fn TyContext::add_symbol(&self, symbol: TySymbol) {
-    // TODO: implement the following:
+    // TODO: port:
     // self.symbols_lookup.insert(symbol.name, self.symbols.len)
 
     self.symbols.push!(symbol)
@@ -171,6 +188,19 @@ fn TyContext::add_symbol(&self, symbol: TySymbol) {
 
 type TyModuleInfo = struct {
     ctx: &TyContext,
+}
+
+type TypeResolution = enum {
+    NotStarted,
+    InProgress,
+    Resolved,
+}
+
+type TyTypeAlias = struct {
+    ctx: &TyContext,
+    type_id: TypeId,
+    expr: &TypeExpr,
+    resolution: TypeResolution,
 }
 
 type Typer = struct {
@@ -181,7 +211,7 @@ type Typer = struct {
     // state
     contexts: StableVec(TyContext),
     module_info: &Vec(TyModuleInfo),
-    type_aliases: &Vec(TypeId),
+    type_aliases: &Vec(TyTypeAlias),
     allocated_strings: &Vec(String),
     forbid_memory_loc: &?Loc,
     autodefine_memory: bool,
@@ -194,7 +224,7 @@ fn Typer::new(registry: &Registry): &Typer {
 
         contexts: StableVec::new!<TyContext>(),
         module_info: Vec::new!<TyModuleInfo>(),
-        type_aliases: Vec::new!<TypeId>(),
+        type_aliases: Vec::new!<TyTypeAlias>(),
         allocated_strings: Vec::new!<String>(),
         forbid_memory_loc: null,
         autodefine_memory: false,
@@ -248,11 +278,17 @@ fn Typer::type_all(&self) {
         self.collect_included_symbols(self.module_info.get!(module_id).ctx)
     }
 
-    for module_id in self.registry.module_import_order.iter!() {
-        self.build_type_def_values(self.module_info.get!(module_id).ctx)
+    for &type_alias in self.type_aliases.iter!() {
+        self.resolve_type_alias(type_alias)
     }
 
-    self.resolve_struct_layouts()
+    for &struct_def in self.registry.structs.iter!() {
+        let _ = self.resolve_struct_layout(struct_def)
+    }
+
+    for &enum_def in self.registry.enums.iter!() {
+        self.resolve_enum_body(enum_def)
+    }
 
     self.resolve_str_literal_type()
 
@@ -274,12 +310,12 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
         }
 
         if match TopLevelExpr::TypeDef(_) = expr {
-            continue // TODO: implement
+            continue // TODO: port
         }
 
         if match TopLevelExpr::Fn(fn_def) = expr {
             if fn_def.is_inline {
-                continue // TODO: implement
+                continue // TODO: port
             }
 
             let _ = self.define_symbol(
@@ -316,28 +352,33 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
             }
 
             if match FnExprValue::ImportFrom(body) = fn_def.value {
-                continue // TODO: implement
+                continue // TODO: port
             }
         }
 
-        // TODO: implement
+        // TODO: port
     }
 }
 
 fn Typer::collect_included_symbols(&self, ctx: &TyContext) {
-    // TODO: implement
+    // TODO: port
 }
 
-fn Typer::build_type_def_values(&self, ctx: &TyContext) {
-    // TODO: implement
+fn Typer::resolve_type_alias(&self, type_alias: &TyTypeAlias) {
+    // TODO: port
 }
 
-fn Typer::resolve_struct_layouts(&self) {
-    // TODO: implement
+fn Typer::resolve_struct_layout(&self, struct_def: &StructDef): bool {
+    // TODO: port
+    return true
+}
+
+fn Typer::resolve_enum_body(&self, enum_def: &EnumDef) {
+    // TODO: port
 }
 
 fn Typer::resolve_str_literal_type(&self) {
-    // TODO: implement
+    // TODO: port
 }
 
 fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
@@ -363,7 +404,7 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
 
             let fn_info = self.registry.functions.get!(symbol.col_index)
 
-            // TODO: implement
+            // TODO: port
             // let self_type_id = ...
 
             if fn_def.decl.return_type != null {
@@ -374,11 +415,11 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 fn_info.type_.output = type_id
             }
 
-            // TODO: implement
+            // TODO: port
             // for fn_param in &fn_def.decl.param ...
         }
 
-        // TODO: implement
+        // TODO: port
     }
 }
 
@@ -409,7 +450,7 @@ fn Typer::type_fns(&self) {
 }
 
 fn Typer::run_delayed_actions(&self) {
-    // TODO: implement
+    // TODO: port
 }
 
 fn Typer::type_code_block(
@@ -418,8 +459,52 @@ fn Typer::type_code_block(
     block: &CodeBlock,
     void_only: bool,
 ): Type {
-    // TODO: implement
+    let diverges = false
+    let diverges_naturally = false
+
+    for expr in block.exprs.iter!() {
+        if diverges {
+            // TODO: port
+        }
+
+        let type_id = self.type_code_expr_and_load(ctx, expr) catch err {
+            self.report_error(err)
+            continue
+        }
+
+        let expr_type = self.get_type(type_id)
+
+        if Typer::count_primitive_components(self.registry, expr_type) > 0 && void_only {
+            // TODO: port
+        }
+
+        if expr_type.equals(Type::Never(null)) {
+            // TODO: port
+        }
+    }
+
+    if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
+        let fn_info = self.registry.functions.get!(*ctx.fn_index)
+
+        // TODO: port
+    }
+
+    self.store_expr_info(ctx, block.block_expr_id, self.registry.block_info.len)
+    self.registry.block_info.push!(BlockInfo {
+        needs_explicit_trap: void_only && diverges && !diverges_naturally,
+    })
+
+    if diverges {
+        return Type::Never(null)
+    }
+
     return Type::Void(null)
+}
+
+// TODO: port
+fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &Error) {
+    self.store_type(ctx, expr.id(), Type::Never(null))
+    return Ok()
 }
 
 fn Typer::define_local(
@@ -432,7 +517,7 @@ fn Typer::define_local(
     always_define: bool,
 ): bool {
     if self.reporter.in_inspection_mode {
-        // TODO: implement
+        // TODO: port:
         // self.reporter.print_inspection(InspectInfo {
         //     message: format!("let {}: {}", name, self.registry.fmt(self.get_type(type_id))),
         //     loc: loc,
@@ -463,6 +548,21 @@ fn Typer::define_local_no_symbol(
         col_index: self.registry.locals.len - 1,
         type_id: type_id,
     })
+}
+
+fn Typer::type_code_expr_and_load(&self, ctx: &TyContext, expr: CodeExpr): Result(TypeId, &Error) {
+    self.type_code_expr(ctx, expr)?
+
+    let type_id = self.load_type(ctx, expr)
+    if type_id == null {
+        // TODO: port
+        // self.reporter.abort_due_to_compiler_bug(
+        //     "Expression should only return ok if it stored a type",
+        //     expr.loc(),
+        // );
+    }
+
+    return Ok(*type_id)
 }
 
 fn Typer::build_type(&self, ctx: &TyContext, expr: TypeExpr): Result(TypeId, &Error) {
@@ -514,11 +614,11 @@ fn Typer::get_type_id_or_err(
     }
 
     if symbol.kind == TySymbolKind::TypeAlias {
-        let type_id = self.type_aliases.get!(symbol.col_index)
+        let type_alias = self.type_aliases.get!(symbol.col_index)
 
         // don't print inspection for built-ins
         if self.reporter.in_inspection_mode && symbol.loc.module_id != 0 {
-            // TODO: implement
+            // TODO: port:
             // self.reporter.print_inspection(InspectInfo {
             //     message: format!("type {type_name} = {}", self.registry.fmt(self.get_type(type_id))),
             //     loc: *loc,
@@ -526,10 +626,31 @@ fn Typer::get_type_id_or_err(
             // })
         }
 
-        return Ok(type_id)
+        return Ok(type_alias.type_id)
     }
 
     todo!()
+}
+
+fn Typer::add_builtin_type(&self, ctx: &TyContext, type_: Type) {
+    self.define_type(
+        ctx,
+        type_.to_str().ok, // safe "unwrap"
+        type_,
+        Loc::internal(),
+    )
+}
+
+fn Typer::define_type(&self, ctx: &TyContext, name: str, type_: Type, loc: Loc) {
+    let _ = self.define_symbol(ctx, name, TySymbolKind::TypeAlias, loc)
+
+    let type_id = self.intern_type(type_)
+    self.type_aliases.push!(TyTypeAlias {
+        ctx: ctx,
+        type_id: type_id,
+        expr: null as &TypeExpr, // shouldn't be accessed since alias is already resolved
+        resolution: TypeResolution::Resolved,
+    })
 }
 
 fn Typer::extend_expr_info_storage(&self, expr_count: u32) {
@@ -537,19 +658,6 @@ fn Typer::extend_expr_info_storage(&self, expr_count: u32) {
         self.registry.expr_info.len + expr_count,
         EXPR_INFO_INVALID,
     )
-}
-
-fn Typer::add_builtin_type(&self, ctx: &TyContext, type_: Type) {
-    ctx.add_symbol(TySymbol {
-        ctx_id: 0,
-        name: type_.to_str().unwrap!(),
-        kind: TySymbolKind::TypeAlias,
-        col_index: self.type_aliases.len,
-        loc: Loc::internal(),
-    })
-
-    let type_id = self.intern_type(type_)
-    self.type_aliases.push!(type_id)
 }
 
 fn Typer::define_symbol(
@@ -584,7 +692,7 @@ fn Typer::define_symbol(
 
     let existing_symbol = self.get_symbol(ctx, symbol_name)
     if existing_symbol != null && existing_symbol.ctx_id == ctx.id {
-        // TODO: implement
+        // TODO: port
     }
 
     ctx.add_symbol(TySymbol {
@@ -633,28 +741,43 @@ fn Typer::child_ctx(
     })
 }
 
+fn Typer::load_type(&self, ctx: &TyContext, expr: CodeExpr): &?TypeId {
+    return self.registry.get_expr_type(ctx.expr_id_offset, expr)
+}
+
+fn Typer::store_type(&self, ctx: &TyContext, expr_id: ExprId, type_: Type) {
+    let type_id = self.intern_type(type_)
+    return self.store_expr_info(ctx, expr_id, type_id)
+}
+
 fn Typer::store_expr_info(&self, ctx: &TyContext, expr_id: ExprId, expr_info: ExprInfo) {
     let absolute_expr_id = ctx.expr_id_offset + expr_id
     *self.registry.expr_info.at!(absolute_expr_id) = expr_info
 }
 
-fn Typer::intern_type(&self, type_: Type): u32 {
-    return 0 // TODO: implement
+fn Typer::intern_type(&self, type_: Type): TypeId {
+    return self.registry.intern_type(type_)
+}
+
+fn Typer::get_type(&self, type_id: TypeId): Type {
+    return self.registry.get_type(type_id)
 }
 
 fn Typer::report_error(&self, err: &Error) {
     self.reporter.error(err)
 }
 
-fn Typer::count_primitive_components(registry: &Registry, type_: &Type): u32 {
+// statics
+
+fn Typer::count_primitive_components(registry: &Registry, type_: Type): u32 {
     let layout = ref!(TypeLayout::new())
 
     Typer::get_type_layout(registry, type_, layout)
     return layout.primitives_count
 }
 
-fn Typer::get_type_layout(registry: &Registry, type_: &Type, layout: &TypeLayout) {
-    // TODO: implement
+fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout) {
+    // TODO: port
 }
 
 // utils

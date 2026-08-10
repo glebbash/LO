@@ -497,6 +497,112 @@ type SizeofExpr = struct {
     loc: Loc,
 }
 
+fn CodeExpr::id(self): u32 {
+    if match CodeExpr::BoolLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::CharLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::NullLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::IntLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::StringLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::ArrayLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::ResultLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Return(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Ident(e) = self {
+        return e.id
+    }
+    if match CodeExpr::InfixOp(e) = self {
+        return e.id
+    }
+    if match CodeExpr::If(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Let(e) = self {
+        return e.id
+    }
+    if match CodeExpr::While(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Break(e) = self {
+        return e.id
+    }
+    if match CodeExpr::For(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Continue(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Defer(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Cast(e) = self {
+        return e.id
+    }
+    if match CodeExpr::StructLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Assign(e) = self {
+        return e.id
+    }
+    if match CodeExpr::FieldAccess(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Catch(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Match(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Paren(e) = self {
+        return e.id
+    }
+    if match CodeExpr::FnCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::MethodCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::InlineFnCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::IntrinsicCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::InlineFnMethodCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Sizeof(e) = self {
+        return e.id
+    }
+    if match CodeExpr::PropagateError(e) = self {
+        return e.id
+    }
+    if match CodeExpr::PrefixOp(e) = self {
+        return e.id
+    }
+    if match CodeExpr::DoWith(e) = self {
+        return e.id
+    }
+    if match CodeExpr::ExprPipe(e) = self {
+        return e.id
+    }
+    @unreachable()
+}
+
 fn CodeExpr::loc(self): Loc {
     if match CodeExpr::BoolLiteral(e) = self {
         return e.loc
