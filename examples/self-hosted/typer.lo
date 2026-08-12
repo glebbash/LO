@@ -503,6 +503,24 @@ fn Typer::type_code_block(
 
 // TODO: port
 fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &Error) {
+    // TODO: port
+
+    if match CodeExpr::IntLiteral(int_literal) = expr {
+        // TODO: port the full version
+        self.store_type(ctx, int_literal.id, Type::U32(null))
+        return Ok()
+    }
+
+    // TODO: port
+
+    if match CodeExpr::Return(return_expr) = expr {
+        // TODO: port the full version
+        self.store_type(ctx, return_expr.id, Type::Never(null))
+        return Ok()
+    }
+
+    // TODO: port
+
     self.store_type(ctx, expr.id(), Type::Never(null))
     return Ok()
 }
