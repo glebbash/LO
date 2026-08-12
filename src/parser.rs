@@ -204,11 +204,18 @@ impl Parser {
                         self.expect(Delim, ")")?;
                     }
 
+                    let mut variant_tag_value = None;
+                    if let Some(_) = self.eat(Operator, "=") {
+                        let int = self.expect_any(IntLiteral)?;
+                        variant_tag_value = Some(self.parse_int_literal(int)?);
+                    }
+
                     variant_loc.end_pos = self.prev().loc.end_pos;
 
                     variants.push(EnumDefVariant {
                         variant_name,
                         variant_type,
+                        variant_tag_value,
                         loc: variant_loc,
                     });
 
@@ -564,24 +571,8 @@ impl Parser {
             }));
         };
 
-        if let Some(int) = self.eat_any(IntLiteral).cloned() {
-            let mut tag = None;
-            let tag_token = self.current();
-            if tag_token.kind == Symbol && tag_token.loc.pos.offset == int.loc.end_pos.offset {
-                tag = Some(tag_token.get_value(self.source));
-                self.next();
-            }
-
-            let repr = int.get_value(self.source);
-            let value = Lexer::parse_int_literal_value(repr);
-
-            return Ok(CodeExpr::IntLiteral(IntLiteralExpr {
-                id: self.next_expr_id(),
-                repr,
-                value,
-                tag,
-                loc: int.loc,
-            }));
+        if let Some(int) = self.eat_any(IntLiteral) {
+            return Ok(CodeExpr::IntLiteral(self.parse_int_literal(int)?));
         };
 
         if let Some(_) = self.eat_any(StringLiteral) {
@@ -1225,6 +1216,26 @@ impl Parser {
                 }))
             }
         }
+    }
+
+    fn parse_int_literal(&self, int: &Token) -> Result<IntLiteralExpr, Error> {
+        let mut tag = None;
+        let tag_token = self.current();
+        if tag_token.kind == Symbol && tag_token.loc.pos.offset == int.loc.end_pos.offset {
+            tag = Some(tag_token.get_value(self.source));
+            self.next();
+        }
+
+        let repr = int.get_value(self.source);
+        let value = Lexer::parse_int_literal_value(repr);
+
+        return Ok(IntLiteralExpr {
+            id: self.next_expr_id(),
+            repr,
+            value,
+            tag,
+            loc: int.loc,
+        });
     }
 
     fn parse_code_expr_map(&self) -> Result<CodeExprMap, Error> {

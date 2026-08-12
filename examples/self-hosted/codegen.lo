@@ -4,13 +4,37 @@
 // TODO: implement module
 
 type CodeGenerator = struct {
+    // context
+    registry: &Registry,
+
+    // output
     wasm_module: &WasmModule,
 }
 
 fn CodeGenerator::new(registry: &Registry): &CodeGenerator {
     return heap::new!(CodeGenerator {
+        registry: registry,
         wasm_module: WasmModule::new(),
     })
 }
 
-fn CodeGenerator::codegen_all(&self) {}
+fn CodeGenerator::codegen_all(&self) {
+    // TODO: port
+
+    let fn_imports_count = 0
+    for fn_info in self.registry.functions.iter!() {
+        if match FnSource::Host(_) = fn_info.source {
+            fn_imports_count += 1
+        }
+    }
+
+    let wasm_import_fn_index = 0
+    let wasm_fn_index = fn_imports_count
+    for fn_index in 0..self.registry.functions.len {
+        let fn_info = self.registry.functions.get!(fn_index)
+
+        // TODO: port
+    }
+
+    // TODO: port
+}

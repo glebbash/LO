@@ -230,11 +230,18 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
                     let _ = self.expect(Delim, ")")?
                 }
 
+                let variant_tag_value = null as &IntLiteralExpr
+                if self.eat(Operator, "=") != null {
+                    let int = self.expect_any(IntLiteral)?
+                    variant_tag_value = self.parse_int_literal(int)?
+                }
+
                 variant_loc.end_pos = self.prev().loc.end_pos
 
                 variants.push!(EnumDefVariant {
                     variant_name: variant_name,
                     variant_type: variant_type,
+                    variant_tag_value: variant_tag_value,
                     loc: variant_loc,
                 })
 
@@ -588,29 +595,8 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
     }
 
     if self.eat_any(IntLiteral) != null {
-        // TODO: figure out why rename doesn't work here, rename to `int` once fixed
-        let int_literal = self.prev()
-
-        let tag = null as &str
-        let tag_token = self.current()
-        if tag_token.kind == Symbol && tag_token.loc.pos.offset == int_literal.loc.end_pos.offset {
-            tag = self.ast_arena.new!(tag_token.get_value(self.source))
-            let _ = self.next()
-        }
-
-        // TODO: figure out why inspection on `int_literal` is emitted twice here breaking rename
-        let repr = int_literal.get_value(self.source)
-        let value = Lexer::parse_int_literal_value(repr)
-
-        return Ok(CodeExpr::IntLiteral(
-            self.ast_arena.new!(IntLiteralExpr {
-                id: self.next_expr_id(),
-                repr: repr,
-                value: value,
-                tag: tag,
-                loc: int_literal.loc,
-            }),
-        ))
+        let int = self.prev()
+        return Ok(CodeExpr::IntLiteral(self.parse_int_literal(int)?))
     }
 
     if self.eat_any(StringLiteral) != null {
@@ -1255,6 +1241,30 @@ fn Parser::parse_code_expr_postfix(
     }
 
     @unreachable()
+}
+
+fn Parser::parse_int_literal(&self, int: &Token): Result(&IntLiteralExpr, &Error) {
+    // TODO: figure out why rename doesn't work here, rename to `int` once fixed
+    let int_literal = int
+
+    let tag = null as &str
+    let tag_token = self.current()
+    if tag_token.kind == Symbol && tag_token.loc.pos.offset == int_literal.loc.end_pos.offset {
+        tag = self.ast_arena.new!(tag_token.get_value(self.source))
+        let _ = self.next()
+    }
+
+    // TODO: figure out why inspection on `int_literal` is emitted twice here breaking rename
+    let repr = int_literal.get_value(self.source)
+    let value = Lexer::parse_int_literal_value(repr)
+
+    return Ok(self.ast_arena.new!(IntLiteralExpr {
+        id: self.next_expr_id(),
+        repr: repr,
+        value: value,
+        tag: tag,
+        loc: int_literal.loc,
+    }))
 }
 
 fn Parser::parse_code_expr_map(&self): Result(CodeExprMap, &Error) {

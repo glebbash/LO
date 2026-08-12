@@ -115,6 +115,7 @@ pub struct EnumDef {
 pub struct EnumVariant {
     pub variant_name: &'static str,
     pub variant_type_id: TypeId,
+    pub variant_tag_value: u32,
     pub loc: Loc,
 }
 

@@ -663,6 +663,9 @@ impl Typer {
     }
 
     fn resolve_enum_body(&self, enum_def: &mut EnumDef) {
+        let mut next_variant_tag_value = 0;
+        let mut using_implicit_tag_values = true;
+
         'variants: for variant in enum_def.variant_defs.iter() {
             for existing_variant in &enum_def.variants {
                 if existing_variant.variant_name == variant.variant_name.repr {
@@ -691,6 +694,29 @@ impl Typer {
                 variant_type_id = self.intern_type(&Type::Void);
             }
 
+            let variant_tag_value: u32;
+            if let Some(explicit_tag_value) = &variant.variant_tag_value {
+                if using_implicit_tag_values && next_variant_tag_value > 0 {
+                    self.report_error(Error {
+                        message: format!("Forbidden mix of implicit and explicit variant values"),
+                        loc: variant.loc,
+                    });
+                }
+
+                variant_tag_value = explicit_tag_value.value as u32;
+                using_implicit_tag_values = false;
+            } else {
+                if !using_implicit_tag_values {
+                    self.report_error(Error {
+                        message: format!("Forbidden mix of implicit and explicit variant values"),
+                        loc: variant.loc,
+                    });
+                }
+
+                variant_tag_value = next_variant_tag_value;
+                next_variant_tag_value += 1;
+            }
+
             if !self.is_type_compatible(
                 self.get_type(enum_def.variant_type_id),
                 self.get_type(variant_type_id),
@@ -707,6 +733,7 @@ impl Typer {
             enum_def.variants.push(EnumVariant {
                 variant_name: variant.variant_name.repr,
                 variant_type_id,
+                variant_tag_value,
                 loc: variant.variant_name.loc,
             });
         }

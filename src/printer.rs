@@ -159,6 +159,13 @@ impl Printer {
                                 self.print_type_expr(variant_type);
                                 stdout_write(")");
                             }
+                            if let Some(tag_value) = &variant.variant_tag_value {
+                                stdout_write(" = ");
+                                stdout_write(tag_value.repr);
+                                if let Some(tag) = tag_value.tag {
+                                    stdout_write(tag);
+                                }
+                            }
                             stdout_writeln(",");
                         }
 

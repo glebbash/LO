@@ -24,7 +24,7 @@ struct VarInfoConst {
 }
 
 struct VarInfoVoidEnumValue {
-    variant_index: usize,
+    variant_tag_value: i32,
 }
 
 type CompiledExpr = Vec<WasmInstr>;
@@ -804,11 +804,12 @@ impl CodeGenerator {
                         // `if match` condition runs inside of then_branch's scope
                         self.enter_scope(ctx, ScopeKind::Block);
 
-                        let enum_ctor = self.codegen_match_header(ctx, instrs, match_header);
+                        let enum_variant_tag_value =
+                            self.codegen_match_header(ctx, instrs, match_header);
 
                         // pop enum's variant from the stack and compare it to the expected variant
                         instrs.push(WasmInstr::I32Const {
-                            value: enum_ctor.variant_index as i32,
+                            value: enum_variant_tag_value,
                         });
                         instrs.push(WasmInstr::BinaryOp {
                             kind: WasmBinaryOpKind::I32_EQ,
@@ -843,12 +844,13 @@ impl CodeGenerator {
                 instrs.push(WasmInstr::BlockEnd);
             }
             CodeExpr::Match(match_expr) => {
-                let enum_ctor = self.codegen_match_header(ctx, instrs, &match_expr.header);
+                let enum_variant_tag_value =
+                    self.codegen_match_header(ctx, instrs, &match_expr.header);
 
                 // pop enum's variant from the stack and compare it to the expected variant
                 // if it's not equal then `else_branch`` must run
                 instrs.push(WasmInstr::I32Const {
-                    value: enum_ctor.variant_index as i32,
+                    value: enum_variant_tag_value,
                 });
                 instrs.push(WasmInstr::BinaryOp {
                     kind: WasmBinaryOpKind::I32_NE,
@@ -1181,7 +1183,7 @@ impl CodeGenerator {
         ctx: &mut ExprContext,
         instrs: &mut Vec<WasmInstr>,
         header: &Box<MatchHeader>,
-    ) -> &EnumConstructor {
+    ) -> i32 {
         let local = self.get_local_info(ctx, header.variant_bind.id, header.variant_bind.loc);
         self.codegen(ctx, instrs, &header.expr_to_match);
         self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index);
@@ -1189,8 +1191,10 @@ impl CodeGenerator {
         let expr_info = self.get_expr_info(ctx, header.variant_name.id, header.variant_name.loc);
         let value_info = &self.registry.value_info[expr_info];
         let enum_ctor = &self.registry.enum_ctors[value_info.col_index].relax();
+        let enum_def = &self.registry.enums[enum_ctor.enum_index];
+        let enum_variant = &enum_def.variants[enum_ctor.variant_index];
 
-        enum_ctor
+        enum_variant.variant_tag_value as i32
     }
 
     fn codegen_fn_call(
@@ -1363,9 +1367,11 @@ impl CodeGenerator {
                     }
                     ValueKind::EnumConstructor => {
                         let enum_ctor = &self.registry.enum_ctors[value_info.col_index];
+                        let enum_def = &self.registry.enums[enum_ctor.enum_index];
+                        let enum_variant = &enum_def.variants[enum_ctor.variant_index];
 
                         VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
-                            variant_index: enum_ctor.variant_index,
+                            variant_tag_value: enum_variant.variant_tag_value as i32,
                         })
                     }
                     ValueKind::Local => {
@@ -1530,11 +1536,11 @@ impl CodeGenerator {
 
                 self.exit_scope(ctx);
             }
-            VarInfo::VoidEnumValue(VarInfoVoidEnumValue { variant_index, .. }) => {
-                instrs.push(WasmInstr::I32Const {
-                    value: *variant_index as i32,
-                })
-            }
+            VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
+                variant_tag_value, ..
+            }) => instrs.push(WasmInstr::I32Const {
+                value: *variant_tag_value,
+            }),
             VarInfo::Stored(VarInfoStored {
                 address_instrs,
                 offset,

@@ -159,6 +159,13 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
                     self.print_type_expr(*variant.variant_type)
                     stdout_write(")")
                 }
+                if variant.variant_tag_value != null {
+                    stdout_write(" = ")
+                    stdout_write(variant.variant_tag_value.repr)
+                    if variant.variant_tag_value.tag != null {
+                        stdout_write(*variant.variant_tag_value.tag)
+                    }
+                }
                 stdout_writeln(",")
             }
 

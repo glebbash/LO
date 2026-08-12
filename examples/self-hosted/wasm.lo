@@ -2,10 +2,26 @@
 
 // TODO: implement module
 
-type WasmModule = struct {}
+type WasmModule = struct {
+    types: &Vec(WasmFnType),
+}
+
+type WasmFnType = struct {
+    inputs: &Vec(WasmType),
+    outputs: &Vec(WasmType),
+}
+
+type WasmType = enum {
+    I32 = 0x7F,
+    I64 = 0x7E,
+    F32 = 0x7D,
+    F64 = 0x7C,
+}
 
 fn WasmModule::new(): &WasmModule {
-    return heap::new!(WasmModule {})
+    return heap::new!(WasmModule {
+        types: Vec::new!<WasmFnType>(),
+    })
 }
 
 fn WasmModule::dump(&self, binary: &Vec(u8)) {}

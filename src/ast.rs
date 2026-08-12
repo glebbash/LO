@@ -77,6 +77,7 @@ pub struct StructDefField {
 pub struct EnumDefVariant {
     pub variant_name: IdentExpr,
     pub variant_type: Option<TypeExpr>,
+    pub variant_tag_value: Option<IntLiteralExpr>,
     pub loc: Loc,
 }
 

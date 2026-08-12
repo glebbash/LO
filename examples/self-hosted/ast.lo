@@ -100,6 +100,7 @@ type TypeDefValueEnum = struct {
 type EnumDefVariant = struct {
     variant_name: IdentExpr,
     variant_type: &?TypeExpr,
+    variant_tag_value: &?IntLiteralExpr,
     loc: Loc,
 }
 
