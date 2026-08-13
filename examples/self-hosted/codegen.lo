@@ -116,7 +116,22 @@ fn CodeGenerator::codegen_all(&self) {
         self.codegen_code_block(ctx, wasm_expr.instrs, guest_info.body)
 
         // TODO: port
+
+        let wasm_locals = Vec::new!<WasmLocals>()
+
+        // TODO: port
+
+        self.wasm_module.codes.push!(WasmFn {
+            locals: wasm_locals,
+            expr: wasm_expr,
+        })
+
+        // TODO: port
     }
+
+    // TODO: port
+
+    self.wasm_module.types.append!(self.wasm_fn_types)
 }
 
 fn CodeGenerator::codegen_code_block(
@@ -188,6 +203,7 @@ fn CodeGenerator::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
     }
 
     // TODO: port
+    todo!()
 }
 
 // TODO: port proper

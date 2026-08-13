@@ -1,14 +1,14 @@
 @include("./common.lo")
 
-// TODO: implement module
-
 type WasmModule = struct {
     types: &Vec(WasmFnType),
     functions: &Vec(u32),
     exports: &Vec(WasmExport),
+    codes: &Vec(WasmFn),
 
     // debug info
     function_names: &Vec(WasmFnNameItem),
+    local_names: &Vec(WasmLocalNameItem),
 }
 
 type WasmFnType = struct {
@@ -21,6 +21,16 @@ type WasmType = enum {
     I64 = 0x7E,
     F32 = 0x7D,
     F64 = 0x7C,
+}
+
+type WasmFn = struct {
+    locals: &Vec(WasmLocals),
+    expr: WasmExpr,
+}
+
+type WasmLocals = struct {
+    count: u32,
+    value_type: WasmType,
 }
 
 type WasmExpr = struct {
@@ -54,13 +64,308 @@ type WasmFnNameItem = struct {
     fn_name: String,
 }
 
+type WasmLocalNameItem = struct {
+    fn_index: u32,
+    locals: &Vec(WasmLocalInfo),
+}
+
+type WasmLocalInfo = struct {
+    local_index: u32,
+    local_name: String,
+}
+
 fn WasmModule::new(): &WasmModule {
     return heap::new!(WasmModule {
         types: Vec::new!<WasmFnType>(),
         functions: Vec::new!<u32>(),
         exports: Vec::new!<WasmExport>(),
+        codes: Vec::new!<WasmFn>(),
         function_names: Vec::new!<WasmFnNameItem>(),
+        local_names: Vec::new!<WasmLocalNameItem>(),
     })
 }
 
-fn WasmModule::dump(&self, binary: &Vec(u8)) {}
+fn WasmModule::dump(&self, output: &Vec(u8)) {
+    let section_buffer = Vec::new!<u8>()
+    defer section_buffer.free()
+
+    self.dump_using_section_buffer(output, section_buffer)
+}
+
+fn WasmModule::dump_using_section_buffer(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    write_all(output, "\0asm".iter!()) // wasm magic number
+    write_all(output, [u8][0x01u8, 0x00u8, 0x00u8, 0x00u8]) // version
+
+    self.write_type_section(output, section)
+
+    self.write_import_section(output, section)
+
+    self.write_function_section(output, section)
+
+    self.write_memory_section(output, section)
+
+    self.write_global_section(output, section)
+
+    self.write_export_section(output, section)
+
+    self.write_code_section(output, section)
+
+    self.write_data_section(output, section)
+
+    self.write_names_custom_section(output, section)
+}
+
+fn WasmModule::write_type_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.types.len == 0 {
+        return
+    }
+
+    write_u32(section, self.types.len)
+    for fn_type in self.types.iter!() {
+        write_u8(section, 0x60u8) // func type
+
+        write_u32(section, fn_type.inputs.len)
+        for fn_input in fn_type.inputs.iter!() {
+            write_u8(section, fn_input as u8)
+        }
+
+        write_u32(section, fn_type.outputs.len)
+        for fn_output in fn_type.outputs.iter!() {
+            write_u8(section, fn_output as u8)
+        }
+    }
+
+    write_section(output, section, 0x01u8)
+}
+
+fn WasmModule::write_import_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    // TODO: port
+}
+
+fn WasmModule::write_function_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.functions.len == 0 {
+        return
+    }
+
+    write_u32(section, self.functions.len)
+    for type_index in self.functions.iter!() {
+        write_u32(section, type_index)
+    }
+
+    write_section(output, section, 0x03u8)
+}
+
+fn WasmModule::write_memory_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    // TODO: port
+}
+
+fn WasmModule::write_global_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    // TODO: port
+}
+
+fn WasmModule::write_export_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.exports.len == 0 {
+        return
+    }
+
+    write_u32(section, self.exports.len)
+    for export_ in self.exports.iter!() {
+        write_u32(section, export_.export_name.len())
+        write_all(section, export_.export_name.as_str().iter!())
+
+        write_u8(section, export_.export_type as u8)
+
+        write_u32(section, export_.exported_item_index)
+    }
+
+    write_section(output, section, 0x07u8)
+}
+
+fn WasmModule::write_code_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.codes.len == 0 {
+        return
+    }
+
+    let fn_section = Vec::new!<u8>()
+
+    write_u32(section, self.codes.len as u32)
+    for fn_code in self.codes.iter!() {
+        write_u32(fn_section, fn_code.locals.len as u32)
+        for locals_of_some_type in fn_code.locals.iter!() {
+            write_u32(fn_section, locals_of_some_type.count as u32)
+            write_u8(
+                fn_section,
+                locals_of_some_type.value_type as u8,
+            )
+        }
+        write_expr(fn_section, fn_code.expr)
+
+        write_u32(section, fn_section.len as u32)
+        section.append!(fn_section)
+    }
+
+    write_section(output, section, 0x0Au8)
+}
+
+fn WasmModule::write_data_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    // TODO: port
+}
+
+fn WasmModule::write_names_custom_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.function_names.len == 0 && self.local_names.len == 0 {
+        return
+    }
+
+    let section_name = "name"
+    write_u32(section, section_name.len)
+    write_all(section, section_name.iter!())
+
+    // function names:
+    if true {
+        let subsection = Vec::new!<u8>()
+        write_u32(subsection, self.function_names.len)
+        for fn_info in self.function_names.iter!() {
+            write_u32(subsection, fn_info.fn_index)
+            write_u32(subsection, fn_info.fn_name.len())
+            write_all(subsection, fn_info.fn_name.as_str().iter!())
+        }
+        write_section(section, subsection, 1u8)
+    }
+
+    // local names:
+    if true {
+        let subsection = Vec::new!<u8>()
+        write_u32(subsection, self.local_names.len)
+        for fn_info in self.local_names.iter!() {
+            write_u32(subsection, fn_info.fn_index)
+
+            write_u32(subsection, fn_info.locals.len)
+            for local_info in fn_info.locals.iter!() {
+                write_u32(subsection, local_info.local_index)
+                write_u32(subsection, local_info.local_name.len())
+                write_all(subsection, local_info.local_name.as_str().iter!())
+            }
+        }
+        write_section(section, subsection, 2u8)
+    }
+
+    write_section(output, section, 0x00u8)
+}
+
+fn write_section(out: &Vec(u8), section: &Vec(u8), section_code: u8) {
+    write_u8(out, section_code)
+    write_u32(out, section.len as u32)
+    out.append!(section)
+}
+
+fn write_expr(out: &Vec(u8), expr: WasmExpr) {
+    for instr in expr.instrs.iter!() {
+        write_instr(out, instr)
+    }
+
+    write_u8(out, 0x0Bu8) // end
+}
+
+fn write_instr(out: &Vec(u8), instr: WasmInstr) {
+    if match WasmInstr::Unreachable(_) = instr {
+        write_u8(out, 0x00u8)
+        return
+    }
+
+    // TODO: port
+
+    if match WasmInstr::Return(_) = instr {
+        write_u8(out, 0x0Fu8)
+        return
+    }
+
+    // TODO: port
+
+    if match WasmInstr::I32Const(i32_const) = instr {
+        write_u8(out, 0x41u8)
+        write_i32(out, i32_const.value)
+        return
+    }
+
+    // TODO: port
+    todo!()
+}
+
+fn write_u8(out: &Vec(u8), value: u8) {
+    out.push!(value)
+}
+
+fn write_u32(out: &Vec(u8), value: u32) {
+    leb128_write_unsigned(out, value as u64)
+}
+
+fn write_i32(out: &Vec(u8), value: i32) {
+    leb128_write_signed(out, value as i64)
+}
+
+fn write_all(out: &Vec(u8), value: seg(u8)) {
+    out.push_all!(value)
+}
+
+// LEB128
+
+inline let CONTINUATION_BIT = (1 << 7) as u8
+inline let CONTINUATION_BIT_INV = 0xFF as u8 - CONTINUATION_BIT
+
+fn leb128_write_signed(output: &Vec(u8), val: i64) {
+    while val != 0i64 && val != -1i64 {
+        let byte = (val as u8) & CONTINUATION_BIT_INV
+        val >>= 7i64
+        output.push!(byte | CONTINUATION_BIT)
+    }
+    output.push!((val as u8) & CONTINUATION_BIT_INV)
+}
+
+fn leb128_write_unsigned(output: &Vec(u8), val: u64) {
+    while val > 0u64 {
+        let byte = (val as u8) & CONTINUATION_BIT_INV
+        val >>= 7u64
+        output.push!(byte | CONTINUATION_BIT)
+    }
+    output.push!((val as u8) & CONTINUATION_BIT_INV)
+}

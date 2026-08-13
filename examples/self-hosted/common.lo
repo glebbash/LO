@@ -127,11 +127,11 @@ fn stderr_write(message: str) {
     eprint(message)
 }
 
-let STDOUT_BUFFER = null as &?Vec
+let STDOUT_BUFFER = null as &?Vec(u8)
 inline let STDOUT_BUFFER_SIZE = 4096
 
 fn stdout_enable_buffering() {
-    STDOUT_BUFFER = Vec::with_capacity(STDOUT_BUFFER_SIZE, sizeof u8)
+    STDOUT_BUFFER = Vec::with_capacity!<u8>(STDOUT_BUFFER_SIZE)
 }
 
 fn stdout_disable_buffering() {
@@ -168,11 +168,22 @@ fn stdout_write(message: str) {
         return
     }
 
-    STDOUT_BUFFER.push_all(message.ptr, message.len)
+    STDOUT_BUFFER.push_all!(message.iter!())
 }
 
 inline fn todo!(): never {
     stderr_write(@inline_fn_call_loc())
     stderr_write(" - not implemented\n")
     @unreachable()
+}
+
+inline fn trace!(message: str) {
+    stderr_write(@inline_fn_call_loc())
+    stderr_write(" - ")
+    stderr_write(message)
+}
+
+inline fn traceln!(message: str) {
+    trace!(message)
+    stderr_write("\n")
 }

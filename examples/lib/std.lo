@@ -471,11 +471,21 @@ fn Vec::push(&self): &void {
     return self.at_unchecked(self.len - 1)
 }
 
+inline fn Vec::push_all!(&self, items: seg(itemof(typeof(self)))) {
+    self.push_all(items.ptr, items.len)
+}
+
 fn Vec::push_all(&self, items: &void, items_len: u32) {
     let prev_len = self.len
     self._grow_to_len(prev_len + items_len)
     let items_dest = (self.ptr as u32 + prev_len * self.item_size) as &void
     mem::copy!(items, items_dest, items_len * self.item_size)
+}
+
+// moves all elements of `other` into `self`, leaving `other` empty
+inline fn Vec::append!(&self, other: &Vec(itemof(typeof(self)))) {
+    self.push_all!(other.iter!())
+    other.len = 0
 }
 
 fn Vec::pop(&self) {
@@ -568,7 +578,7 @@ fn String::from_str(value: str): String {
 
 fn String::from_str_in(a: Alloc, value: str): String {
     let string = String::new_in(a, value.len)
-    string.chars.push_all(value.ptr, value.len)
+    string.chars.push_all!(value.iter!())
     return string
 }
 
@@ -585,7 +595,7 @@ fn String::len(self): u32 {
 }
 
 fn String::push_str(self, value: str) {
-    self.chars.push_all(value.ptr, value.len)
+    self.chars.push_all!(value.iter!())
 }
 
 fn String::push(self, c: u8) {
