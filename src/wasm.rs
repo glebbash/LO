@@ -23,6 +23,15 @@ pub struct WasmFnType {
     pub outputs: Vec<WasmType>,
 }
 
+#[repr(u8)]
+#[derive(Clone, Debug, PartialEq)]
+pub enum WasmType {
+    I32 = 0x7F,
+    I64 = 0x7E,
+    F32 = 0x7D,
+    F64 = 0x7C,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct WasmImport {
     pub module_name: String,
@@ -56,6 +65,74 @@ pub struct WasmLocals {
 #[derive(Clone, Debug, PartialEq)]
 pub struct WasmExpr {
     pub instrs: Vec<WasmInstr>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum WasmInstr {
+    Unreachable,
+    Drop,
+    UnaryOp {
+        kind: WasmUnaryOpKind,
+    },
+    BinaryOp {
+        kind: WasmBinaryOpKind,
+    },
+    MemorySize,
+    MemoryGrow,
+    MemoryCopy,
+    I32Const {
+        value: i32,
+    },
+    I64Const {
+        value: i64,
+    },
+    F32Const {
+        value: f32,
+    },
+    F64Const {
+        value: f64,
+    },
+    I32WrapI64,
+    I64ExtendI32s,
+    I64ExtendI32u,
+    LocalGet {
+        local_index: u32,
+    },
+    LocalSet {
+        local_index: u32,
+    },
+    GlobalGet {
+        global_index: u32,
+    },
+    GlobalSet {
+        global_index: u32,
+    },
+    Load {
+        kind: WasmLoadKind,
+        align: u32,
+        offset: u32,
+    },
+    Store {
+        kind: WasmStoreKind,
+        align: u32,
+        offset: u32,
+    },
+    Return,
+    BlockStart {
+        block_kind: WasmBlockKind,
+        block_type: WasmBlockType,
+    },
+    Else,
+    BlockEnd,
+    Branch {
+        label_index: u32,
+    },
+    BranchIf {
+        label_index: u32,
+    },
+    Call {
+        fn_index: u32,
+    },
 }
 
 #[repr(u8)]
@@ -176,89 +253,12 @@ pub enum WasmBlockType {
     InOut { type_index: u32 },
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum WasmInstr {
-    Unreachable,
-    Drop,
-    UnaryOp {
-        kind: WasmUnaryOpKind,
-    },
-    BinaryOp {
-        kind: WasmBinaryOpKind,
-    },
-    MemorySize,
-    MemoryGrow,
-    MemoryCopy,
-    I32Const {
-        value: i32,
-    },
-    I64Const {
-        value: i64,
-    },
-    F32Const {
-        value: f32,
-    },
-    F64Const {
-        value: f64,
-    },
-    I32WrapI64,
-    I64ExtendI32s,
-    I64ExtendI32u,
-    LocalGet {
-        local_index: u32,
-    },
-    LocalSet {
-        local_index: u32,
-    },
-    GlobalGet {
-        global_index: u32,
-    },
-    GlobalSet {
-        global_index: u32,
-    },
-    Load {
-        kind: WasmLoadKind,
-        align: u32,
-        offset: u32,
-    },
-    Store {
-        kind: WasmStoreKind,
-        align: u32,
-        offset: u32,
-    },
-    Return,
-    BlockStart {
-        block_kind: WasmBlockKind,
-        block_type: WasmBlockType,
-    },
-    Else,
-    BlockEnd,
-    Branch {
-        label_index: u32,
-    },
-    BranchIf {
-        label_index: u32,
-    },
-    Call {
-        fn_index: u32,
-    },
-}
-
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum WasmBlockKind {
     Block = 0x02,
     Loop = 0x03,
     If = 0x04,
-}
-
-#[repr(u8)]
-#[derive(Clone, Debug, PartialEq)]
-pub enum WasmType {
-    I32 = 0x7F,
-    I64 = 0x7E,
-    F32 = 0x7D,
-    F64 = 0x7C,
 }
 
 #[derive(Clone, Debug, PartialEq)]

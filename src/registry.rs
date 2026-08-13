@@ -53,23 +53,6 @@ pub struct FnType {
     pub output: TypeId,
 }
 
-#[derive(Clone)]
-pub struct ExprContext {
-    pub module_id: ModuleId,
-    pub fn_index: Option<usize>,
-    pub addr_local_index: Option<u32>,
-}
-
-impl ExprContext {
-    pub fn new(module_id: ModuleId, fn_index: Option<usize>) -> Self {
-        Self {
-            module_id,
-            fn_index,
-            addr_local_index: None,
-        }
-    }
-}
-
 #[derive(Clone, PartialEq)]
 pub enum ScopeKind {
     Global,

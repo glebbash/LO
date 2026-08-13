@@ -58,6 +58,23 @@ impl Scope {
     }
 }
 
+#[derive(Clone)]
+struct ExprContext {
+    pub module_id: ModuleId,
+    pub fn_index: Option<usize>,
+    pub addr_local_index: Option<u32>,
+}
+
+impl ExprContext {
+    pub fn new(module_id: ModuleId, fn_index: Option<usize>) -> Self {
+        Self {
+            module_id,
+            fn_index,
+            addr_local_index: None,
+        }
+    }
+}
+
 struct CodegenModuleInfo {
     scope_stack: Vec<Scope>,
     ctx: ExprContext,

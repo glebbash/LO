@@ -4,6 +4,7 @@
 
 // TODO: implement module
 
+// TODO: check if payloadless variants can be allowed
 type Type = enum (&?void) {
     Never(&?void),
     Null(&?void),

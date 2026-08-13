@@ -3,9 +3,26 @@
 
 // TODO: implement module
 
+type ExprContext = struct {
+    module_id: ModuleId,
+    fn_index: &?u32,
+    addr_local_index: &?u32,
+}
+
+fn ExprContext::new(module_id: u32, fn_index: &?u32): &ExprContext {
+    return heap::new!(ExprContext {
+        module_id: module_id,
+        fn_index: fn_index,
+        addr_local_index: null,
+    })
+}
+
 type CodeGenerator = struct {
     // context
     registry: &Registry,
+
+    // state
+    wasm_fn_types: &Vec(WasmFnType),
 
     // output
     wasm_module: &WasmModule,
@@ -14,6 +31,7 @@ type CodeGenerator = struct {
 fn CodeGenerator::new(registry: &Registry): &CodeGenerator {
     return heap::new!(CodeGenerator {
         registry: registry,
+        wasm_fn_types: Vec::new!<WasmFnType>(),
         wasm_module: WasmModule::new(),
     })
 }
@@ -33,8 +51,160 @@ fn CodeGenerator::codegen_all(&self) {
     for fn_index in 0..self.registry.functions.len {
         let fn_info = self.registry.functions.get!(fn_index)
 
-        // TODO: port
+        let wasm_fn_type = WasmFnType {
+            inputs: Vec::new!<WasmType>(),
+            outputs: Vec::new!<WasmType>(),
+        }
+        for input_type in fn_info.type_.inputs.iter!() {
+            self.lower_type(self.get_type(input_type), wasm_fn_type.inputs)
+        }
+        self.lower_type(
+            self.get_type(fn_info.type_.output),
+            wasm_fn_type.outputs,
+        )
+
+        let fn_type_index = self.wasm_fn_types.len
+        for existing_type_index in 0..self.wasm_fn_types.len {
+            let existing_fn_type = self.wasm_fn_types.get!(existing_type_index)
+
+            // TODO: port
+            // if wasm_fn_type == existing_fn_type {
+            //     fn_type_index = existing_type_index
+            // }
+        }
+        if fn_type_index == self.wasm_fn_types.len {
+            self.wasm_fn_types.push!(wasm_fn_type)
+        }
+
+        if match FnSource::Guest(_) = fn_info.source {
+            self.wasm_module.functions.push!(fn_type_index)
+            self.wasm_module.function_names.push!(WasmFnNameItem {
+                fn_index: wasm_fn_index,
+                fn_name: String::from_str(fn_info.name),
+            })
+
+            fn_info.wasm_fn_index = wasm_fn_index
+
+            wasm_fn_index += 1
+        } else if match FnSource::Host(_) = fn_info.source {
+            // TODO: port
+        } else {
+            @unreachable()
+        }
+
+        for export_name in fn_info.exported_as.iter!() {
+            self.wasm_module.exports.push!(WasmExport {
+                export_type: WasmExportType::Func,
+                export_name: export_name.clone(),
+                exported_item_index: fn_info.wasm_fn_index,
+            })
+        }
     }
 
     // TODO: port
+
+    for fn_info in self.registry.functions.iter!() {
+        match FnSource::Guest(guest_info) = fn_info.source else {
+            continue
+        }
+
+        let ctx = ExprContext::new(guest_info.module_id, ref!(guest_info.lo_fn_index))
+        let wasm_expr = WasmExpr { instrs: Vec::new!<WasmInstr>() }
+
+        // TODO: port
+
+        self.codegen_code_block(ctx, wasm_expr.instrs, guest_info.body)
+
+        // TODO: port
+    }
+}
+
+fn CodeGenerator::codegen_code_block(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+    block: &CodeBlock,
+) {
+    for expr in block.exprs.iter!() {
+        self.codegen(ctx, instrs, expr)
+    }
+
+    // TODO: port
+
+    let expr_info = self.get_expr_info(ctx, block.block_expr_id, block.loc)
+    let block_info = self.registry.block_info.get!(expr_info)
+
+    if block_info.needs_explicit_trap {
+        instrs.push!(WasmInstr::Unreachable(null))
+    }
+}
+
+fn CodeGenerator::codegen(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+    expr: CodeExpr,
+) {
+    // TODO: port
+
+    // TODO: port proper
+    if match CodeExpr::IntLiteral(int) = expr {
+        instrs.push!(WasmInstr::I32Const(
+            // TODO: use arena allocation attached to WasmModule
+            heap::new!(WasmInstrI32Const { value: int.value as i32 }),
+        ))
+        return
+    }
+
+    // TODO: port
+
+    if match CodeExpr::Return(return_expr) = expr {
+        if return_expr.expr != null {
+            self.codegen(ctx, instrs, *return_expr.expr)
+        }
+
+        self.emit_deferred_for_return(ctx, instrs)
+        instrs.push!(WasmInstr::Return(null))
+        return
+    }
+
+    // TODO: port
+}
+
+fn CodeGenerator::emit_deferred_for_return(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+) {
+    // TODO: port
+}
+
+fn CodeGenerator::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
+    // TODO: port
+
+    if match Type::U32(_) = type_ {
+        wasm_types.push!(WasmType::I32)
+        return
+    }
+
+    // TODO: port
+}
+
+// TODO: port proper
+fn CodeGenerator::get_expr_info(
+    &self,
+    ctx: &ExprContext,
+    expr_id: u32,
+    expr_loc: Loc,
+): ExprId {
+    let expr_info = self.registry.get_expr_info(0, expr_id)
+    if expr_info == null {
+        todo!()
+    }
+
+    return *expr_info
+}
+
+fn CodeGenerator::get_type(&self, type_id: u32): Type {
+    return self.registry.get_type(type_id)
 }

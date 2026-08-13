@@ -4,6 +4,11 @@
 
 type WasmModule = struct {
     types: &Vec(WasmFnType),
+    functions: &Vec(u32),
+    exports: &Vec(WasmExport),
+
+    // debug info
+    function_names: &Vec(WasmFnNameItem),
 }
 
 type WasmFnType = struct {
@@ -18,9 +23,43 @@ type WasmType = enum {
     F64 = 0x7C,
 }
 
+type WasmExpr = struct {
+    instrs: &Vec(WasmInstr),
+}
+
+// TODO: port other variants
+type WasmInstr = enum (&?void) {
+    Unreachable(&?void),
+    I32Const(&WasmInstrI32Const),
+    Return(&?void),
+}
+
+type WasmInstrI32Const = struct {
+    value: i32,
+}
+
+type WasmExport = struct {
+    export_type: WasmExportType,
+    export_name: String,
+    exported_item_index: u32,
+}
+
+type WasmExportType = enum {
+    Func = 0x00,
+    Mem = 0x02,
+}
+
+type WasmFnNameItem = struct {
+    fn_index: u32,
+    fn_name: String,
+}
+
 fn WasmModule::new(): &WasmModule {
     return heap::new!(WasmModule {
         types: Vec::new!<WasmFnType>(),
+        functions: Vec::new!<u32>(),
+        exports: Vec::new!<WasmExport>(),
+        function_names: Vec::new!<WasmFnNameItem>(),
     })
 }
 
