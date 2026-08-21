@@ -18,7 +18,7 @@ fn main() {
             }
             continue
         }
-        
+
         if c == '\n' {
             let calibration_value = first_digit * 10 + last_digit
             calibration_sum += calibration_value

@@ -49,7 +49,7 @@ fn CodeGenerator::codegen_all(&self) {
     let wasm_import_fn_index = 0
     let wasm_fn_index = fn_imports_count
     for fn_index in 0..self.registry.functions.len {
-        let fn_info = self.registry.functions.get!(fn_index)
+        let fn_info = self.registry.functions.at!(fn_index)
 
         let wasm_fn_type = WasmFnType {
             inputs: Vec::new!<WasmType>(),
@@ -126,7 +126,17 @@ fn CodeGenerator::codegen_all(&self) {
             expr: wasm_expr,
         })
 
-        // TODO: port
+        // emit debug info for local names
+        if true {
+            let local_names_item = WasmLocalNameItem {
+                fn_index: fn_info.wasm_fn_index,
+                locals: Vec::new!<WasmLocalInfo>(),
+            }
+
+            // TODO: port
+
+            self.wasm_module.local_names.push!(local_names_item)
+        }
     }
 
     // TODO: port

@@ -986,11 +986,11 @@ async function commandTest() {
 
     test("self-hosted", async () => {
         const loBinary = await compile(SH_COMPILER_SOURCE_PATH);
-        const lo = await loadLoCompiler(loBinary);
+        const loSelfHosted = await loadLoCompiler(loBinary);
 
         describe("formatter", async () => {
             const format = async (fileName = "-i") => {
-                const output = await lo(["format", fileName]);
+                const output = await loSelfHosted(["format", fileName]);
                 return new TextDecoder().decode(output);
             };
 
@@ -1004,6 +1004,19 @@ async function commandTest() {
                     const expected = await fs.readFile(fileName, "utf8");
 
                     assert.strictEqual(formatted, expected);
+                });
+            }
+        });
+
+        describe("compiler matches initial", () => {
+            const files = ["examples/test/42.lo"];
+
+            for (const fileName of files) {
+                it(`compiles ${fileName}`, async () => {
+                    const compiled1 = await loSelfHosted(["compile", fileName]);
+                    const compiled2 = await lo(["compile", fileName]);
+
+                    assert.deepStrictEqual(compiled1, compiled2);
                 });
             }
         });
