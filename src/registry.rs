@@ -99,6 +99,7 @@ pub struct EnumVariant {
     pub variant_name: &'static str,
     pub variant_type_id: TypeId,
     pub variant_tag_value: u32,
+    pub has_payload: bool,
     pub loc: Loc,
 }
 

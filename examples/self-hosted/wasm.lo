@@ -38,10 +38,10 @@ type WasmExpr = struct {
 }
 
 // TODO: port other variants
-type WasmInstr = enum (&?void) {
-    Unreachable(&?void),
+type WasmInstr = enum (&void) {
+    Unreachable,
     I32Const(&WasmInstrI32Const),
-    Return(&?void),
+    Return,
 }
 
 type WasmInstrI32Const = struct {

@@ -681,8 +681,10 @@ impl Typer {
                 }
             }
 
+            let has_payload;
             let variant_type_id;
             if let Some(variant_type_expr) = &variant.variant_type {
+                has_payload = true;
                 match self.build_type(enum_def.ctx, variant_type_expr) {
                     Ok(t) => variant_type_id = t,
                     Err(err) => {
@@ -691,7 +693,8 @@ impl Typer {
                     }
                 }
             } else {
-                variant_type_id = self.intern_type(&Type::Void);
+                has_payload = false;
+                variant_type_id = enum_def.variant_type_id;
             }
 
             let variant_tag_value: u32;
@@ -734,6 +737,7 @@ impl Typer {
                 variant_name: variant.variant_name.repr,
                 variant_type_id,
                 variant_tag_value,
+                has_payload,
                 loc: variant.variant_name.loc,
             });
         }
@@ -2906,7 +2910,7 @@ impl Typer {
                 let enum_def = &self.registry.enums[enum_ctor.enum_index];
                 let enum_variant = &enum_def.variants[enum_ctor.variant_index];
 
-                let Type::Void = self.get_type(enum_def.variant_type_id) else {
+                if enum_variant.has_payload {
                     return Err(Error {
                         message: format!(
                             "Cannot construct {}, expected payload of type {}",
@@ -2916,7 +2920,7 @@ impl Typer {
                         ),
                         loc: var_name.loc,
                     });
-                };
+                }
 
                 let var_type = &Type::Enum {
                     enum_index: enum_ctor.enum_index,

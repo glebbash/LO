@@ -4,7 +4,7 @@ enum VarInfo {
     Local(VarInfoLocal),
     Global(VarInfoGlobal),
     Const(VarInfoConst),
-    VoidEnumValue(VarInfoVoidEnumValue),
+    PayloadlessEnum(VarInfoPayloadlessEnum),
     Stored(VarInfoStored),
     StructValueField(VarInfoStructValueField),
 }
@@ -23,8 +23,9 @@ struct VarInfoConst {
     const_def: &'static ConstDef,
 }
 
-struct VarInfoVoidEnumValue {
+struct VarInfoPayloadlessEnum {
     variant_tag_value: i32,
+    variant_type_id: TypeId,
 }
 
 type CompiledExpr = Vec<WasmInstr>;
@@ -1387,8 +1388,9 @@ impl CodeGenerator {
                         let enum_def = &self.registry.enums[enum_ctor.enum_index];
                         let enum_variant = &enum_def.variants[enum_ctor.variant_index];
 
-                        VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
+                        VarInfo::PayloadlessEnum(VarInfoPayloadlessEnum {
                             variant_tag_value: enum_variant.variant_tag_value as i32,
+                            variant_type_id: enum_variant.variant_type_id,
                         })
                     }
                     ValueKind::Local => {
@@ -1445,7 +1447,7 @@ impl CodeGenerator {
                 if let Some(var) = self.var_from_expr(ctx, &field_access.lhs.as_ref()) {
                     match var {
                         // these are handled as struct values
-                        VarInfo::Const(_) | VarInfo::VoidEnumValue(_) => {}
+                        VarInfo::Const(_) | VarInfo::PayloadlessEnum(_) => {}
                         VarInfo::Global(VarInfoGlobal {
                             global_index,
                             var_type_id: _,
@@ -1553,11 +1555,15 @@ impl CodeGenerator {
 
                 self.exit_scope(ctx);
             }
-            VarInfo::VoidEnumValue(VarInfoVoidEnumValue {
-                variant_tag_value, ..
-            }) => instrs.push(WasmInstr::I32Const {
-                value: *variant_tag_value,
-            }),
+            VarInfo::PayloadlessEnum(VarInfoPayloadlessEnum {
+                variant_tag_value,
+                variant_type_id,
+            }) => {
+                instrs.push(WasmInstr::I32Const {
+                    value: *variant_tag_value,
+                });
+                self.codegen_default_value(ctx, instrs, self.get_type(*variant_type_id));
+            }
             VarInfo::Stored(VarInfoStored {
                 address_instrs,
                 offset,
@@ -1697,7 +1703,7 @@ impl CodeGenerator {
                     instrs.append(&mut stores);
                 }
             }
-            VarInfo::Const(_) | VarInfo::VoidEnumValue(_) | VarInfo::StructValueField(_) => {
+            VarInfo::Const(_) | VarInfo::PayloadlessEnum(_) | VarInfo::StructValueField(_) => {
                 unreachable!()
             }
         };

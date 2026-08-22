@@ -372,9 +372,9 @@ fn Parser::parse_fn_params(
 
         let loc = self.current().loc
 
-        let param_type = FnParamType::Self(null)
+        let param_type = FnParamType::Self
         if self.eat(Operator, "&") != null {
-            param_type = FnParamType::SelfRef(null)
+            param_type = FnParamType::SelfRef
         }
 
         let param_name = self.parse_ident()?

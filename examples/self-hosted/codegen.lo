@@ -160,7 +160,7 @@ fn CodeGenerator::codegen_code_block(
     let block_info = self.registry.block_info.get!(expr_info)
 
     if block_info.needs_explicit_trap {
-        instrs.push!(WasmInstr::Unreachable(null))
+        instrs.push!(WasmInstr::Unreachable)
     }
 }
 
@@ -189,7 +189,7 @@ fn CodeGenerator::codegen(
         }
 
         self.emit_deferred_for_return(ctx, instrs)
-        instrs.push!(WasmInstr::Return(null))
+        instrs.push!(WasmInstr::Return)
         return
     }
 

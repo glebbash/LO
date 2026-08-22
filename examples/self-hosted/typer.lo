@@ -2,22 +2,21 @@
 @include("./ast.lo")
 @include("./registry.lo")
 
-// TODO: check if payloadless variants can be allowed
-type Type = enum (&?void) {
-    Never(&?void),
-    Null(&?void),
-    Void(&?void),
-    Bool(&?void),
-    U8(&?void),
-    I8(&?void),
-    U16(&?void),
-    I16(&?void),
-    U32(&?void),
-    I32(&?void),
-    U64(&?void),
-    I64(&?void),
-    F32(&?void),
-    F64(&?void),
+type Type = enum (&void) {
+    Never,
+    Null,
+    Void,
+    Bool,
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
+    F32,
+    F64,
     Pointer(&PointerType),
     Struct(&StructType),
     Enum(&EnumType),
@@ -255,19 +254,19 @@ fn Typer::type_all(&self) {
 
     self.extend_expr_info_storage(self.registry.expr_id_count)
 
-    self.add_builtin_type(global_ctx, Type::Never(null))
-    self.add_builtin_type(global_ctx, Type::Void(null))
-    self.add_builtin_type(global_ctx, Type::Bool(null))
-    self.add_builtin_type(global_ctx, Type::U8(null))
-    self.add_builtin_type(global_ctx, Type::I8(null))
-    self.add_builtin_type(global_ctx, Type::U16(null))
-    self.add_builtin_type(global_ctx, Type::I16(null))
-    self.add_builtin_type(global_ctx, Type::U32(null))
-    self.add_builtin_type(global_ctx, Type::I32(null))
-    self.add_builtin_type(global_ctx, Type::F32(null))
-    self.add_builtin_type(global_ctx, Type::U64(null))
-    self.add_builtin_type(global_ctx, Type::I64(null))
-    self.add_builtin_type(global_ctx, Type::F64(null))
+    self.add_builtin_type(global_ctx, Type::Never)
+    self.add_builtin_type(global_ctx, Type::Void)
+    self.add_builtin_type(global_ctx, Type::Bool)
+    self.add_builtin_type(global_ctx, Type::U8)
+    self.add_builtin_type(global_ctx, Type::I8)
+    self.add_builtin_type(global_ctx, Type::U16)
+    self.add_builtin_type(global_ctx, Type::I16)
+    self.add_builtin_type(global_ctx, Type::U32)
+    self.add_builtin_type(global_ctx, Type::I32)
+    self.add_builtin_type(global_ctx, Type::F32)
+    self.add_builtin_type(global_ctx, Type::U64)
+    self.add_builtin_type(global_ctx, Type::I64)
+    self.add_builtin_type(global_ctx, Type::F64)
 
     for module_id in self.registry.module_import_order.iter!() {
         self.collect_own_symbols(self.module_info.get!(module_id).ctx)
@@ -334,7 +333,7 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
                     name: fn_def.decl.fn_name.repr,
                     type_: FnType {
                         inputs: Vec::new!<TypeId>(),
-                        output: self.intern_type(Type::Void(null)),
+                        output: self.intern_type(Type::Void),
                     },
                     params: Vec::new!<FnParameter>(),
                     source: FnSource::Guest(heap::new!(FnSourceGuest {
@@ -478,7 +477,7 @@ fn Typer::type_code_block(
             // TODO: port
         }
 
-        if expr_type.equals(Type::Never(null)) {
+        if expr_type.equals(Type::Never) {
             // TODO: port
         }
     }
@@ -495,10 +494,10 @@ fn Typer::type_code_block(
     })
 
     if diverges {
-        return Type::Never(null)
+        return Type::Never
     }
 
-    return Type::Void(null)
+    return Type::Void
 }
 
 // TODO: port
@@ -507,7 +506,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
     if match CodeExpr::IntLiteral(int_literal) = expr {
         // TODO: port the full version
-        self.store_type(ctx, int_literal.id, Type::U32(null))
+        self.store_type(ctx, int_literal.id, Type::U32)
         return Ok()
     }
 
@@ -515,13 +514,13 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
     if match CodeExpr::Return(return_expr) = expr {
         // TODO: port the full version
-        self.store_type(ctx, return_expr.id, Type::Never(null))
+        self.store_type(ctx, return_expr.id, Type::Never)
         return Ok()
     }
 
     // TODO: port
 
-    self.store_type(ctx, expr.id(), Type::Never(null))
+    self.store_type(ctx, expr.id(), Type::Never)
     return Ok()
 }
 
