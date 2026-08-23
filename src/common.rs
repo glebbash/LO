@@ -94,68 +94,64 @@ impl Reporter {
     pub fn end_inspection(&self) {
         self.be_mut().in_inspection_mode = false;
         // this item is a stub to make json array valid
-        //   as last inspection ended with a comma
+        //   as last inspection will end with a comma
         stdout_writeln("{ \"type\": \"end\" }");
         stdout_writeln("]");
         stdout_disable_buffering();
     }
 
-    pub fn error(&self, err: Error) {
+    pub fn error(&self, error: Error) {
         *self.error_count.be_mut() += 1;
 
         if self.in_inspection_mode {
-            let source_index = err.loc.module_id;
-            let source_range = RangeFmt(&err.loc);
-            let content = json_str_escape(&err.message);
+            let source_loc = LocFmt(&error.loc);
+            let content = json_str_escape(&error.message);
             stdout_writeln(format!(
                 "{{ \"type\": \"message\", \
                     \"content\": \"{content}\", \
                     \"severity\": \"error\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
+                    \"loc\": \"{source_loc}\" }},",
             ));
             return;
         }
 
         stderr_write("ERROR: ");
-        stderr_write(err.to_string(&*self.registry));
+        stderr_write(error.to_string(&*self.registry));
         stderr_write("\n");
     }
 
-    pub fn warning(&self, err: &Error) {
+    pub fn warning(&self, error: &Error) {
         *self.warning_count.be_mut() += 1;
 
         if self.in_inspection_mode {
-            let source_index = err.loc.module_id;
-            let source_range = RangeFmt(&err.loc);
-            let content = json_str_escape(&err.message);
+            let source_loc = LocFmt(&error.loc);
+            let content = json_str_escape(&error.message);
             stdout_writeln(format!(
                 "{{ \"type\": \"message\", \
                     \"content\": \"{content}\", \
                     \"severity\": \"warning\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
+                    \"loc\": \"{source_loc}\" }},",
             ));
             return;
         }
 
         stderr_write("WARNING: ");
-        stderr_write(err.to_string(&self.registry));
+        stderr_write(error.to_string(&self.registry));
         stderr_write("\n");
     }
 
     pub fn print_inspection(&self, inspect_info: InspectInfo) {
-        let source_index = inspect_info.loc.module_id;
-        let source_range = RangeFmt(&inspect_info.loc);
+        let source_loc = LocFmt(&inspect_info.loc);
         let message = json_str_escape(&inspect_info.message);
 
         if let Some(linked_loc) = &inspect_info.linked_loc {
             if linked_loc.module_id != 0 {
-                let target_index = linked_loc.module_id;
-                let target_range = RangeFmt(&linked_loc);
+                let target_loc = LocFmt(&linked_loc);
                 stdout_writeln(format!(
                     "{{ \"type\": \"info\", \
-                        \"link\": \"{target_index}/{target_range}\", \
+                        \"link\": \"{target_loc}\", \
                         \"hover\": \"{message}\", \
-                        \"loc\": \"{source_index}/{source_range}\" }},",
+                        \"loc\": \"{source_loc}\" }},",
                 ));
                 return;
             }
@@ -164,7 +160,7 @@ impl Reporter {
         stdout_writeln(format!(
             "{{ \"type\": \"info\", \
                 \"hover\": \"{message}\", \
-                \"loc\": \"{source_index}/{source_range}\" }},",
+                \"loc\": \"{source_loc}\" }},",
         ));
     }
 
@@ -179,15 +175,12 @@ impl Reporter {
         }
 
         if loc.module_id != 0 {
-            let source_index = loc.module_id;
-            let source_range = RangeFmt(loc);
-            let target_index = module_id;
-            let target_range = "1:1-1:1";
+            let source_loc = LocFmt(loc);
 
             stdout_writeln(format!(
                 "{{ \"type\": \"info\", \
-                    \"link\": \"{target_index}/{target_range}\", \
-                    \"loc\": \"{source_index}/{source_range}\" }},",
+                    \"link\": \"{module_id}/1:1-1:1\", \
+                    \"loc\": \"{source_loc}\" }},",
             ));
         }
     }
@@ -224,19 +217,22 @@ impl<'a, T: core::fmt::Display> core::fmt::Display for ListFmt<'a, T> {
     }
 }
 
-pub struct RangeFmt<'a>(pub &'a Loc);
+pub struct LocFmt<'a>(pub &'a Loc);
 
-impl<'a> core::fmt::Display for RangeFmt<'a> {
+impl<'a> core::fmt::Display for LocFmt<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mi = self.0.module_id;
         let sl = self.0.pos.line;
         let sc = self.0.pos.col;
         let el = self.0.end_pos.line;
         let ec = self.0.end_pos.col;
 
-        write!(f, "{sl}:{sc}-{el}:{ec}")?;
+        write!(f, "{mi}/{sl}:{sc}-{el}:{ec}")?;
         Ok(())
     }
 }
+
+// extra
 
 macro_rules! catch {
     ($result:expr, $err_var:ident, $err_block:block) => {

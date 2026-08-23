@@ -5,9 +5,6 @@
 
 @include("./registry.lo")
 
-type VoidError = u32
-inline let VoidError::VALUE = 1 as &VoidError
-
 type Pos = struct {
     offset: u32,
     line: u32,
@@ -20,11 +17,9 @@ type Loc = struct {
     end_pos: Pos,
 }
 
-inline let Loc::MODULE_ID_INTERNAL = 0
-
 fn Loc::internal(): Loc {
     return Loc {
-        module_id: Loc::MODULE_ID_INTERNAL,
+        module_id: 0, // internal
         pos: Pos { offset: 0, line: 1, col: 1 },
         end_pos: Pos { offset: 0, line: 1, col: 1 },
     }
@@ -61,9 +56,17 @@ fn Error::to_string_in(&self, a: Alloc, registry: &Registry): String {
     return out
 }
 
+type InspectInfo = struct {
+    message: String,
+    loc: Loc,
+    linked_loc: &?Loc,
+}
+
 type Reporter = struct {
     registry: &Registry,
+
     in_inspection_mode: bool,
+
     error_count: u32,
     warning_count: u32,
 }
@@ -77,17 +80,37 @@ fn Reporter::new(registry: &Registry): &Reporter {
     })
 }
 
-// TODO: implement
-fn Reporter::begin_inspection(&self) {}
+fn Reporter::begin_inspection(&self) {
+    self.in_inspection_mode = true
+    stdout_enable_buffering()
+    stdout_writeln("[")
+}
 
-// TODO: implement
-fn Reporter::end_inspection(&self) {}
+fn Reporter::end_inspection(&self) {
+    self.in_inspection_mode = false
+    // this item is a stub to make json array valid
+    //   as last inspection will end with a comma
+    stdout_writeln("{ \"type\": \"end\" }")
+    stdout_writeln("]")
+    stdout_disable_buffering()
+}
 
 fn Reporter::error(&self, error: &Error) {
     self.error_count += 1
 
     if self.in_inspection_mode {
-        // TODO: port
+        let source_loc = Reporter::loc_to_tmp_str!(error.loc)
+        let content = Reporter::json_str_escape(error.message).as_str()
+
+        do stdout_write(it) with (
+            "{{ ",
+            "\"type\": \"message\", ",
+            "\"content\": \"", \\ content, \\ "\", ",
+            "\"severity\": \"error\", ",
+            "\"loc\": \"", \\ source_loc, \\ "\" ",
+            "}},",
+        )
+        return
     }
 
     let reg = self.registry
@@ -97,13 +120,89 @@ fn Reporter::error(&self, error: &Error) {
     stderr_write("\n")
 }
 
-// TODO: implement
+fn Reporter::warning(&self, error: &Error) {
+    self.warning_count += 1
+
+    if self.in_inspection_mode {
+        let source_loc = Reporter::loc_to_tmp_str!(error.loc)
+        let content = Reporter::json_str_escape(error.message).as_str()
+
+        do stdout_write(it) with (
+            "{{ ",
+            "\"type\": \"message\", ",
+            "\"content\": \"", \\ content, \\ "\", ",
+            "\"severity\": \"warning\", ",
+            "\"loc\": \"", \\ source_loc, \\ "\" ",
+            "}},",
+        )
+        return
+    }
+
+    let reg = self.registry
+
+    stderr_write("WARNING: ")
+    stderr_write(error.to_string_in(reg.error_arena, reg).as_str())
+    stderr_write("\n")
+}
+
+fn Reporter::print_inspection(&self, inspect_info: InspectInfo) {
+    let source_loc = Reporter::loc_to_tmp_str!(inspect_info.loc)
+    let message = Reporter::json_str_escape(inspect_info.message).as_str()
+
+    if inspect_info.linked_loc != null {
+        if inspect_info.linked_loc.module_id != 0 {
+            let target_loc = Reporter::loc_to_tmp_str!(*inspect_info.linked_loc)
+            do stdout_write(it) with (
+                "{{ ",
+                "\"type\": \"info\", ",
+                "\"link\": \"", \\ target_loc, \\ "\", ",
+                "\"hover\": \"", \\ message, \\ "\", ",
+                "\"loc\": \"", \\ source_loc, \\ "\" ",
+                "}},",
+            )
+            return
+        }
+    }
+
+    do stdout_write(it) with (
+        "{{ ",
+        "\"type\": \"info\", ",
+        "\"hover\": \"", \\ message, \\ "\", ",
+        "\"loc\": \"", \\ source_loc, \\ "\" ",
+        "}},",
+    )
+}
+
 fn Reporter::print_include_info(
     &self,
     file_is_newly_added: bool,
     module_id: u32,
     loc: Loc,
-) {}
+) {
+    if file_is_newly_added {
+        let file_path = self.registry.modules.get!(module_id).absolute_path.as_str()
+
+        do stdout_write(it) with (
+            "{{ ",
+            "\"type\": \"file\", ",
+            "\"index\": ", \\ module_id.to_tmp_str!(), \\ ", ",
+            "\"path\": \"", \\ file_path, \\ "\" ",
+            "}},",
+        )
+    }
+
+    if loc.module_id != 0 {
+        let source_loc = Reporter::loc_to_tmp_str!(loc)
+
+        do stdout_write(it) with (
+            "{{ ",
+            "\"type\": \"info\", ",
+            "\"link\": \"", \\ module_id.to_tmp_str!(), \\ "/1:1-1:1\", ",
+            "\"loc\": \"", \\ source_loc, \\ "\" ",
+            "}},",
+        )
+    }
+}
 
 fn Reporter::abort_due_to_compiler_bug(&self, message: str, loc: Loc) {
     let alloc = self.registry.error_arena
@@ -116,7 +215,34 @@ fn Reporter::abort_due_to_compiler_bug(&self, message: str, loc: Loc) {
     wasi::proc_exit(1)
 }
 
-// utils
+inline fn Reporter::loc_to_tmp_str!(loc: Loc): str {
+    let out = String::new_in(Alloc::STACK, 54)
+    defer out.free()
+
+    do out.push_str(it) with (
+        loc.module_id.to_tmp_str!(),
+        "/",
+        loc.pos.line.to_tmp_str!(),
+        ":",
+        loc.pos.col.to_tmp_str!(),
+        "-",
+        loc.end_pos.line.to_tmp_str!(),
+        ":",
+        loc.end_pos.col.to_tmp_str!(),
+    )
+
+    out.as_str()
+}
+
+// TODO: check if this leaks memory
+fn Reporter::json_str_escape(value: String): String {
+    return value \
+        .replace("\\", "\\\\") \
+        .replace("\"", "\\\"") \
+        .replace("\n", "\\n")
+}
+
+// io
 
 fn stderr_writeln(message: str) {
     stderr_write(message)
@@ -170,6 +296,11 @@ fn stdout_write(message: str) {
 
     STDOUT_BUFFER.push_all!(message.iter!())
 }
+
+// extra
+
+type VoidError = u32
+inline let VoidError::VALUE = 1 as &VoidError
 
 inline fn todo!(): never {
     stderr_write(@inline_fn_call_loc())
