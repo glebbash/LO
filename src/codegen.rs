@@ -673,7 +673,7 @@ impl CodeGenerator {
                 match call_info.value {
                     CallInfoValue::EnumCtor(variant_index) => {
                         instrs.push(WasmInstr::I32Const {
-                            value: variant_index,
+                            value: variant_index as i32,
                         });
 
                         self.codegen(ctx, instrs, &args.items[0]);

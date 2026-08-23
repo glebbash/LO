@@ -1,5 +1,11 @@
 use crate::{ast::*, common::*, lexer::*, parser::*, typer::*, wasm::*};
 
+pub type TypeId = usize;
+pub type ModuleId = usize;
+
+pub type ExprInfo = usize;
+pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
+
 pub enum ValueKind {
     Local,
     Global,
@@ -51,22 +57,6 @@ pub enum FnSource {
 pub struct FnType {
     pub inputs: Vec<TypeId>,
     pub output: TypeId,
-}
-
-#[derive(Clone, PartialEq)]
-pub enum ScopeKind {
-    Global,
-    Function,
-    Block,
-    Loop,
-    ForLoop,
-    InlineFn,
-}
-
-impl Default for ScopeKind {
-    fn default() -> Self {
-        ScopeKind::Block
-    }
 }
 
 pub struct StructDef {
@@ -123,8 +113,6 @@ pub struct ConstDef {
     pub inner_expr_id_offset: usize,
 }
 
-pub type ModuleId = usize;
-
 pub struct Module {
     pub id: ModuleId,
     pub absolute_path: String,
@@ -152,14 +140,14 @@ pub struct MemoryInfo {
     pub loc: Loc,
 }
 
-pub enum CallInfoValue {
-    FnCall(/* fn_index */ usize),
-    EnumCtor(/* variant_index */ i32),
-}
-
 pub struct CallInfo {
     pub value: CallInfoValue,
     pub return_type_id: TypeId,
+}
+
+pub enum CallInfoValue {
+    FnCall(usize),   // holds fn_index
+    EnumCtor(usize), // holds variant_index
 }
 
 pub struct InlineCallInfo {
@@ -209,11 +197,12 @@ pub struct Registry {
 
     pub expr_id_count: usize,
     pub expr_info: Vec<ExprInfo>, // indexed by `ExprId`
-    pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
+
     pub type_lookup: UBCell<BTreeMap<Type, TypeId>>,
-    pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
+    pub types: Vec<Type>, //                      indexed by `ExprInfo` for most of the expressions
     pub call_info: Vec<CallInfo>, //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
-    pub value_info: Vec<ValueInfo>, //            indexed by `ExprInfo` for `::IdentExpr`
+    pub inline_call_info: Vec<InlineCallInfo>, // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
+    pub value_info: Vec<ValueInfo>,            //            indexed by `ExprInfo` for `::IdentExpr`
     pub stored_bytes: Vec<StoredExprBytes>, //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
     pub breaks: Vec<BreakInfo>, //                indexed by `ExprInfo` for `::Break` and `::Continue`
     pub block_info: Vec<BlockInfo>, //            indexed by `ExprInfo` for `::CodeBlock`
@@ -463,8 +452,4 @@ impl Registry {
             type_ids,
         }
     }
-}
-
-pub fn align(value: u32, alignment: u32) -> u32 {
-    return (value + alignment - 1) / alignment * alignment;
 }

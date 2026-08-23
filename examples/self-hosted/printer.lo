@@ -166,7 +166,9 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
                         stdout_write(*variant.variant_tag_value.tag)
                     }
                 }
-                stdout_writeln(",")
+                stdout_write(",")
+                self.print_same_line_comments()
+                stdout_write("\n")
             }
 
             // print the rest of the comments

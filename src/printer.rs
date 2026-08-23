@@ -166,7 +166,9 @@ impl Printer {
                                     stdout_write(tag);
                                 }
                             }
-                            stdout_writeln(",");
+                            stdout_write(",");
+                            self.print_same_line_comments();
+                            stdout_write("\n");
                         }
 
                         // print the rest of the comments

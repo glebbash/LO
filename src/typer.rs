@@ -89,11 +89,6 @@ impl TypeLayout {
     }
 }
 
-pub type ExprInfo = usize;
-pub const EXPR_INFO_INVALID: ExprInfo = usize::MAX;
-
-pub type TypeId = usize;
-
 #[derive(Clone, Debug, PartialEq, Copy)]
 enum TySymbolKind {
     TypeAlias,
@@ -116,6 +111,22 @@ struct TySymbol {
     kind: TySymbolKind,
     col_index: usize,
     loc: Loc,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum ScopeKind {
+    Global,
+    Function,
+    Block,
+    Loop,
+    ForLoop,
+    InlineFn,
+}
+
+impl Default for ScopeKind {
+    fn default() -> Self {
+        ScopeKind::Block
+    }
 }
 
 pub type TyContextRef = UBRef<TyContext>;
@@ -182,7 +193,7 @@ pub struct Typer {
 
 impl Typer {
     pub fn new(registry: &mut Registry) -> Self {
-        let mut it = Self::default();
+        let mut it = Typer::default();
         it.registry = UBRef::new(&mut *registry);
         it.reporter = UBRef::new(&mut *registry.reporter);
         it
@@ -652,7 +663,8 @@ impl Typer {
 
         // align fields
         for field in &mut struct_def.fields {
-            struct_layout.byte_size = align(struct_layout.byte_size, field.field_layout.alignment);
+            struct_layout.byte_size =
+                Typer::align(struct_layout.byte_size, field.field_layout.alignment);
 
             field.byte_offset = struct_layout.byte_size;
             struct_layout.byte_size += field.field_layout.byte_size;
@@ -1983,7 +1995,7 @@ impl Typer {
 
                     self.store_expr_info(ctx, call.id, self.registry.call_info.len());
                     self.registry.be_mut().call_info.push(CallInfo {
-                        value: CallInfoValue::EnumCtor(enum_ctor.variant_index as i32),
+                        value: CallInfoValue::EnumCtor(enum_ctor.variant_index),
                         return_type_id: self.intern_type(&Type::Enum {
                             enum_index: enum_ctor.enum_index,
                         }),
@@ -4301,6 +4313,10 @@ impl Typer {
         None
     }
 
+    fn align(value: u32, alignment: u32) -> u32 {
+        return (value + alignment - 1) / alignment * alignment;
+    }
+
     fn child_ctx(&self, parent: TyContextRef, scope_kind: ScopeKind) -> TyContextRef {
         self.contexts.be_mut().push(TyContext {
             id: self.contexts.len(),
@@ -4459,7 +4475,7 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
                 primitives.push(type_.clone())
             }
             layout.primitives_count += 1;
-            layout.byte_size = align(layout.byte_size, 1) + 1;
+            layout.byte_size = Typer::align(layout.byte_size, 1) + 1;
         }
         Type::U16 | Type::I16 => {
             if let Some(primitives) = &mut layout.primitives {
@@ -4467,7 +4483,7 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
             }
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 2);
-            layout.byte_size = align(layout.byte_size, 2) + 2;
+            layout.byte_size = Typer::align(layout.byte_size, 2) + 2;
         }
         Type::U32 | Type::I32 | Type::F32 | Type::Null | Type::Pointer { .. } => {
             if let Some(primitives) = &mut layout.primitives {
@@ -4479,7 +4495,7 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
             }
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 4);
-            layout.byte_size = align(layout.byte_size, 4) + 4;
+            layout.byte_size = Typer::align(layout.byte_size, 4) + 4;
         }
         Type::U64 | Type::I64 | Type::F64 => {
             if let Some(primitives) = &mut layout.primitives {
@@ -4487,7 +4503,7 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
             }
             layout.primitives_count += 1;
             layout.alignment = u32::max(layout.alignment, 8);
-            layout.byte_size = align(layout.byte_size, 8) + 8;
+            layout.byte_size = Typer::align(layout.byte_size, 8) + 8;
         }
         Type::Struct { struct_index } => {
             let struct_def = &registry.structs[*struct_index];
@@ -4496,7 +4512,7 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
                 get_type_layout(registry, registry.get_type(field.field_type_id), layout);
             }
 
-            layout.byte_size = align(layout.byte_size, layout.alignment);
+            layout.byte_size = Typer::align(layout.byte_size, layout.alignment);
         }
         Type::Enum { enum_index } => {
             let enum_def = &registry.enums[*enum_index];
@@ -4508,13 +4524,13 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
                 layout,
             );
 
-            layout.byte_size = align(layout.byte_size, layout.alignment);
+            layout.byte_size = Typer::align(layout.byte_size, layout.alignment);
         }
         Type::Result(result) => {
             get_type_layout(registry, registry.get_type(result.ok), layout);
             get_type_layout(registry, registry.get_type(result.err), layout);
 
-            layout.byte_size = align(layout.byte_size, layout.alignment);
+            layout.byte_size = Typer::align(layout.byte_size, layout.alignment);
         }
         Type::Seg(seg) => {
             get_type_layout(registry, &Type::U32, layout);
@@ -4528,7 +4544,7 @@ pub fn get_type_layout(registry: &Registry, type_: &Type, layout: &mut TypeLayou
                 layout,
             );
 
-            layout.byte_size = align(layout.byte_size, layout.alignment);
+            layout.byte_size = Typer::align(layout.byte_size, layout.alignment);
         }
         Type::Container(ctr) => {
             get_type_layout(registry, registry.get_type(ctr.container), layout);

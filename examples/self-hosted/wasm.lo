@@ -5,6 +5,7 @@ type WasmModule = struct {
     functions: &Vec(u32),
     exports: &Vec(WasmExport),
     codes: &Vec(WasmFn),
+    datas: &Vec(WasmData),
 
     // debug info
     function_names: &Vec(WasmFnNameItem),
@@ -64,6 +65,15 @@ type WasmExportType = enum {
     Mem = 0x02,
 }
 
+type WasmData = enum (&void) {
+    Active(&WasmDataActive),
+}
+
+type WasmDataActive = struct {
+    offset: WasmExpr,
+    bytes: &Vec(u8),
+}
+
 type WasmFnNameItem = struct {
     fn_index: u32,
     fn_name: String,
@@ -85,6 +95,7 @@ fn WasmModule::new(): &WasmModule {
         functions: Vec::new!<u32>(),
         exports: Vec::new!<WasmExport>(),
         codes: Vec::new!<WasmFn>(),
+        datas: Vec::new!<WasmData>(),
         function_names: Vec::new!<WasmFnNameItem>(),
         local_names: Vec::new!<WasmLocalNameItem>(),
     })

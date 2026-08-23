@@ -7,6 +7,9 @@
 type TypeId = u32
 type ModuleId = u32
 
+type ExprInfo = u32
+let EXPR_INFO_INVALID = u32::MAX as ExprInfo
+
 type ValueKind = enum {
     Local,
     Global,
@@ -25,36 +28,6 @@ type LocalDef = struct {
     local_type_id: TypeId,
     wasm_local_index: u32,
 }
-
-type Module = struct {
-    id: ModuleId,
-    absolute_path: String,
-
-    source: str,
-    _source: String,
-
-    includes: &Vec(ModuleInclude),
-    included_times: u32,
-
-    parser: &Parser,
-    error_arena: &Arena,
-}
-
-fn Module::free(&self) {
-    self.parser.lexer.free()
-    self.parser.free()
-}
-
-type ModuleInclude = struct {
-    module_id: ModuleId,
-    alias: &?String,
-    with_extern: bool,
-}
-
-type ExprInfo = u32
-let EXPR_INFO_INVALID = u32::MAX as ExprInfo
-
-type GlobalDef = void // TODO: port
 
 type FnInfo = struct {
     name: str,
@@ -94,10 +67,126 @@ type FnType = struct {
     output: TypeId,
 }
 
-type ConstDef = never // TODO: port
-type StructDef = never // TODO: port
-type EnumDef = never // TODO: port
-type EnumConstructor = never // TODO: port
+type StructDef = struct {
+    ctx: &TyContext,
+    struct_name: str,
+    fields: &Vec(StructField),
+    field_defs: &Vec(StructDefField),
+    resolution: TypeResolution,
+}
+
+type StructField = struct {
+    field_name: str,
+    field_type_id: TypeId,
+    field_layout: TypeLayout,
+    field_index: u32,
+    byte_offset: u32,
+    loc: Loc,
+}
+
+type EnumDef = struct {
+    ctx: &TyContext,
+    enum_name: str,
+    variant_type_id: TypeId,
+    variants: &Vec(EnumVariant),
+    variant_defs: &Vec(EnumDefVariant),
+}
+
+type EnumVariant = struct {
+    variant_name: str,
+    variant_type_id: TypeId,
+    variant_tag_value: u32,
+    has_payload: bool,
+    loc: Loc,
+}
+
+type EnumConstructor = struct {
+    enum_index: u32,
+    variant_index: u32,
+    loc: Loc,
+}
+
+type GlobalDef = struct {
+    module_id: ModuleId,
+    value: CodeExpr,
+    type_id: TypeId,
+    wasm_global_index: u32,
+}
+
+type ConstDef = struct {
+    type_id: TypeId,
+    expr: CodeExpr,
+    inner_expr_id_offset: u32,
+}
+
+type Module = struct {
+    id: ModuleId,
+    absolute_path: String,
+
+    source: str,
+    _source: String,
+
+    includes: &Vec(ModuleInclude),
+    included_times: u32,
+
+    parser: &Parser,
+    error_arena: &Arena,
+}
+
+fn Module::free(&self) {
+    self.parser.lexer.free()
+    self.parser.free()
+}
+
+type ModuleInclude = struct {
+    module_id: ModuleId,
+    alias: &?String,
+    with_extern: bool,
+}
+
+type MemoryInfo = struct {
+    min_pages: &?u32,
+    data_start: &?u32,
+    exported: bool,
+    imported_from: &?String,
+    loc: Loc,
+}
+
+type CallInfo = struct {
+    value: CallInfoValue,
+    return_type_id: TypeId,
+}
+
+type CallInfoValue = enum (u32) {
+    FnCall(u32), // holds fn_index
+    EnumCtor(u32), // holds variant_index
+}
+
+type InlineCallInfo = struct {
+    inline_fn_index: u32,
+    inner_expr_id_offset: u32,
+    return_type_id: TypeId,
+}
+
+type StoredExprBytes = struct {
+    info: BytesSlice,
+    expr_type_id: TypeId,
+}
+
+type BytesSlice = struct {
+    ptr: u32,
+    len: u32,
+}
+
+type PooledString = struct {
+    value: String,
+    ptr: u32,
+}
+
+type BreakInfo = struct {
+    label_index: u32,
+    expr_type_id: TypeId,
+}
 
 type BlockInfo = struct {
     needs_explicit_trap: bool,
@@ -119,14 +208,15 @@ type Registry = struct {
 
     expr_id_count: u32,
     expr_info: &Vec(ExprInfo), // indexed by `ExprId`
-    types: &Vec(Type), //                     indexed by `ExprInfo` for most of the expressions
-    // type_lookup: UBCell<BTreeMap<Type, TypeId>>,
-    // inline_call_info: &Vec(InlineCallInfo), // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
-    // call_info: &Vec(CallInfo), //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
+
+    type_lookup: &?void, // TODO: implement BTreeMap<Type, TypeId>
+    types: &Vec(Type), //                      indexed by `ExprInfo` for most of the expressions
+    call_info: &Vec(CallInfo), //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
+    inline_call_info: &Vec(InlineCallInfo), // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
     value_info: &Vec(ValueInfo), //            indexed by `ExprInfo` for `::IdentExpr`
-    // stored_bytes: &Vec(StoredExprBytes), //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
-    // breaks: &Vec(BreakInfo), //                indexed by `ExprInfo` for `::Break` and `::Continue`
-    block_info: &Vec(BlockInfo), //           indexed by `ExprInfo` for `::CodeBlock`
+    stored_bytes: &Vec(StoredExprBytes), //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
+    breaks: &Vec(BreakInfo), //                indexed by `ExprInfo` for `::Break` and `::Continue`
+    block_info: &Vec(BlockInfo), //            indexed by `ExprInfo` for `::CodeBlock`
     binary_op_info: &Vec(BinaryOpInfo), //     indexed by `ExprInfo` for `::InfixOp`
 
     globals: &Vec(GlobalDef), //          indexed by `col_index` when `kind = Global`
@@ -137,6 +227,12 @@ type Registry = struct {
     structs: &Vec(StructDef), //          indexed by `col_index` when `kind = Struct`
     enums: &Vec(EnumDef), //              indexed by `col_index` when `kind = Enum`
     enum_ctors: &Vec(EnumConstructor), // indexed by `col_index` when `kind = EnumConstructor`
+
+    memory_info: &?MemoryInfo,
+    data_size: u32,
+    datas: &Vec(WasmData),
+    string_pool: &Vec(PooledString),
+    str_literal_type_id: &?TypeId,
 
     error_arena: &Arena,
 }
@@ -152,8 +248,13 @@ fn Registry::new(): &Registry {
         module_import_order: Vec::new!<ModuleId>(),
         expr_id_count: 0,
         expr_info: Vec::new!<ExprInfo>(),
+        type_lookup: null,
         types: Vec::new!<Type>(),
+        call_info: Vec::new!<CallInfo>(),
+        inline_call_info: Vec::new!<InlineCallInfo>(),
         value_info: Vec::new!<ValueInfo>(),
+        stored_bytes: Vec::new!<StoredExprBytes>(),
+        breaks: Vec::new!<BreakInfo>(),
         block_info: Vec::new!<BlockInfo>(),
         binary_op_info: Vec::new!<BinaryOpInfo>(),
         globals: Vec::new!<GlobalDef>(),
@@ -164,6 +265,11 @@ fn Registry::new(): &Registry {
         structs: Vec::new!<StructDef>(),
         enums: Vec::new!<EnumDef>(),
         enum_ctors: Vec::new!<EnumConstructor>(),
+        memory_info: null,
+        data_size: 0,
+        datas: Vec::new!<WasmData>(),
+        string_pool: Vec::new!<PooledString>(),
+        str_literal_type_id: null,
         error_arena: error_arena,
     }
 
@@ -366,4 +472,8 @@ fn Registry::intern_type(&self, type_: Type): TypeId {
 fn Registry::fmt(&self, type_: Type): str {
     // TODO: port
     return "<?>"
+}
+
+fn Registry::fmt_many() {
+    todo!()
 }
