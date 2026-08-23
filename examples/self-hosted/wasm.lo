@@ -242,7 +242,11 @@ type WasmLocalInfo = struct {
 fn WasmModule::new(): &WasmModule {
     return heap::new!(WasmModule {
         types: Vec::new!<WasmFnType>(),
+        imports: Vec::new!<WasmImport>(),
         functions: Vec::new!<u32>(),
+        tables: Vec::new!<WasmTable>(),
+        memories: Vec::new!<WasmLimits>(),
+        globals: Vec::new!<WasmGlobal>(),
         exports: Vec::new!<WasmExport>(),
         codes: Vec::new!<WasmFn>(),
         datas: Vec::new!<WasmData>(),
@@ -258,23 +262,23 @@ fn WasmModule::dump(&self, output: &Vec(u8)) {
     write_all(output, "\0asm".iter!()) // wasm magic number
     write_all(output, [u8][0x01u8, 0x00u8, 0x00u8, 0x00u8]) // version
 
-    self.write_type_section(output, section)
+    self.write_type_section(output, section_buffer)
 
-    self.write_import_section(output, section)
+    self.write_import_section(output, section_buffer)
 
-    self.write_function_section(output, section)
+    self.write_function_section(output, section_buffer)
 
-    self.write_memory_section(output, section)
+    self.write_memory_section(output, section_buffer)
 
-    self.write_global_section(output, section)
+    self.write_global_section(output, section_buffer)
 
-    self.write_export_section(output, section)
+    self.write_export_section(output, section_buffer)
 
-    self.write_code_section(output, section)
+    self.write_code_section(output, section_buffer)
 
-    self.write_data_section(output, section)
+    self.write_data_section(output, section_buffer)
 
-    self.write_names_custom_section(output, section)
+    self.write_names_custom_section(output, section_buffer)
 }
 
 fn WasmModule::write_type_section(
