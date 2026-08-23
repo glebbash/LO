@@ -313,10 +313,8 @@ pub struct WasmLocalInfo {
 
 impl WasmModule {
     pub fn dump(&self, output: &mut Vec<u8>) {
-        self.dump_using_section_buffer(output, &mut Vec::new());
-    }
+        let section_buffer = &mut Vec::new();
 
-    pub fn dump_using_section_buffer(&self, output: &mut Vec<u8>, section_buffer: &mut Vec<u8>) {
         write_all(output, b"\0asm"); // wasm magic number
         write_all(output, &[0x01, 0x00, 0x00, 0x00]); // version
 
