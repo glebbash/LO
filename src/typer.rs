@@ -1339,6 +1339,19 @@ impl Typer {
         return Type::Void;
     }
 
+    fn type_code_expr_and_load(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<TypeId, Error> {
+        self.type_code_expr(ctx, expr)?;
+
+        let Some(type_id) = self.load_type(ctx, expr) else {
+            self.reporter.abort_due_to_compiler_bug(
+                "Expression should only return ok if it stored a type",
+                expr.loc(),
+            );
+        };
+
+        Ok(type_id)
+    }
+
     fn type_code_expr(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<(), Error> {
         match expr {
             CodeExpr::BoolLiteral(bool_literal) => {
@@ -2136,7 +2149,7 @@ impl Typer {
                     self.store_type(ctx, call.id, &Type::U32);
 
                     if call.type_args.len() != 0 || call.args.items.len() != 0 {
-                        self.reporter.error(Error {
+                        self.report_error(Error {
                             message: format!(
                                 "Invalid arguments for `@{}(): u32`",
                                 call.fn_name.repr
@@ -2146,7 +2159,7 @@ impl Typer {
                     }
 
                     if let Some(_) = ctx.fn_index {
-                        self.reporter.error(Error {
+                        self.report_error(Error {
                             message: format!(
                                 "`@{}(): u32` can only be used in globals",
                                 call.fn_name.repr
@@ -2335,23 +2348,24 @@ impl Typer {
             CodeExpr::Return(return_expr) => {
                 self.store_type(ctx, return_expr.id, &Type::Never);
 
-                if let None = ctx.fn_index {
-                    self.reporter.error(Error {
-                        message: format!("Cannot use `return` in const context"),
-                        loc: return_expr.loc,
-                    });
-                };
-
                 let mut return_type = &Type::Void;
                 if let Some(return_value) = &return_expr.expr {
                     let return_type_id = self.type_code_expr_and_load(ctx, &return_value)?;
                     return_type = self.get_type(return_type_id);
                 }
 
+                if let None = ctx.fn_index {
+                    self.report_error(Error {
+                        message: format!("Cannot use `return` in const context"),
+                        loc: return_expr.loc,
+                    });
+                    return Ok(());
+                };
+
                 let fn_return_type =
                     self.get_type(self.registry.functions[ctx.fn_index.unwrap()].type_.output);
                 if !self.is_type_compatible(fn_return_type, return_type) {
-                    self.reporter.error(Error {
+                    self.report_error(Error {
                         message: format!(
                             "Invalid return type: {}, expected: {}",
                             self.registry.fmt(&return_type),
@@ -3725,19 +3739,6 @@ impl Typer {
             col_index: self.registry.locals.len() - 1,
             type_id,
         });
-    }
-
-    fn type_code_expr_and_load(&self, ctx: TyContextRef, expr: &CodeExpr) -> Result<TypeId, Error> {
-        self.type_code_expr(ctx, expr)?;
-
-        let Some(type_id) = self.load_type(ctx, expr) else {
-            self.reporter.abort_due_to_compiler_bug(
-                "Expression should only return ok if it stored a type",
-                expr.loc(),
-            );
-        };
-
-        Ok(type_id)
     }
 
     fn build_type(&self, ctx: TyContextRef, expr: &TypeExpr) -> Result<TypeId, Error> {

@@ -172,12 +172,14 @@ fn CodeGenerator::codegen(
 ) {
     // TODO: port
 
-    // TODO: port proper
     if match CodeExpr::IntLiteral(int) = expr {
+        // TODO: port proper
+
         instrs.push!(WasmInstr::I32Const(
             // TODO: use arena allocation attached to WasmModule
             heap::new!(WasmInstrI32Const { value: int.value as i32 }),
         ))
+
         return
     }
 
@@ -194,6 +196,8 @@ fn CodeGenerator::codegen(
     }
 
     // TODO: port
+
+    todo!()
 }
 
 fn CodeGenerator::emit_deferred_for_return(

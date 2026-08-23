@@ -1009,7 +1009,7 @@ async function commandTest() {
         });
 
         describe("compiler matches initial", () => {
-            const files = ["examples/test/42.lo"];
+            const files = ["examples/test/42.lo", "examples/test/add.lo"];
 
             for (const fileName of files) {
                 it(`compiles ${fileName}`, async () => {

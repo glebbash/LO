@@ -413,7 +413,7 @@ fn Vec::with_capacity_in(a: Alloc, capacity: u32, item_size: u32): &Vec {
     })
 }
 
-inline fn Vec::free_deep!<T>(&self) {
+inline fn Vec::free_deep!(&self) {
     for item in self.iter!() {
         item.free()
     }

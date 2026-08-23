@@ -1,6 +1,7 @@
 @include("./common.lo")
 @include("./ast.lo")
 @include("./registry.lo")
+@include("./wasm.lo")
 
 type Type = enum (&void) {
     Never,
@@ -500,6 +501,20 @@ fn Typer::type_code_block(
     return Type::Void
 }
 
+fn Typer::type_code_expr_and_load(&self, ctx: &TyContext, expr: CodeExpr): Result(TypeId, &Error) {
+    self.type_code_expr(ctx, expr)?
+
+    let type_id = self.load_type(ctx, expr)
+    if type_id == null {
+        self.reporter.abort_due_to_compiler_bug(
+            "Expression should only return ok if it stored a type",
+            expr.loc(),
+        )
+    }
+
+    return Ok(*type_id)
+}
+
 // TODO: port
 fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &Error) {
     // TODO: port
@@ -507,21 +522,102 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     if match CodeExpr::IntLiteral(int_literal) = expr {
         // TODO: port the full version
         self.store_type(ctx, int_literal.id, Type::U32)
+
+        return Ok()
+    }
+
+    // TODO: port
+
+    if match CodeExpr::Ident(ident) = expr {
+        let value_info = self.get_value_info(ctx, *ident)?
+        self.registry.value_info.push!(value_info)
+
+        self.store_expr_info(ctx, ident.id, self.registry.value_info.len - 1)
+        return Ok()
+    }
+
+    // TODO: port
+
+    if match CodeExpr::InfixOp(infix_op) = expr {
+        let lhs_type_id_res = self.type_code_expr_and_load(ctx, infix_op.lhs)
+        let rhs_type_id = self.type_code_expr_and_load(ctx, infix_op.rhs)?
+        let lhs_type_id = lhs_type_id_res?
+
+        if !self.is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id)) {
+            let message = String::new_in(self.registry.error_arena, 16)
+            do message.push_str(it) with (
+                "Operands are not of the same type: lhs = ",
+                self.registry.fmt(self.get_type(lhs_type_id)),
+                ", rhs = ",
+                self.registry.fmt(self.get_type(rhs_type_id)),
+            )
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: infix_op.op_loc,
+            }))
+        }
+
+        // TODO: port proper
+        self.store_expr_info(ctx, infix_op.id, self.registry.binary_op_info.len)
+        self.registry.binary_op_info.push!(BinaryOpInfo {
+            is_compound_assignment: false,
+            op_kind: WasmBinaryOpKind::I32_ADD,
+            result_type_id: self.intern_type(Type::U32),
+        })
+
         return Ok()
     }
 
     // TODO: port
 
     if match CodeExpr::Return(return_expr) = expr {
-        // TODO: port the full version
         self.store_type(ctx, return_expr.id, Type::Never)
+
+        let return_type = Type::Void
+        if return_expr.expr != null {
+            let return_type_id = self.type_code_expr_and_load(ctx, *return_expr.expr)?
+            return_type = self.get_type(return_type_id)
+        }
+
+        if ctx.fn_index == null {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str("Cannot use `return` in const context"),
+                loc: return_expr.loc,
+            }))
+            return Ok()
+        }
+
+        let fn_return_type = self.get_type(self.registry.functions.at!(*ctx.fn_index).type_.output)
+        if !self.is_type_compatible(fn_return_type, return_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Invalid return type: ",
+            )
+            message.push_str(self.registry.fmt(return_type))
+            message.push_str(", expected: ")
+            message.push_str(self.registry.fmt(fn_return_type))
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: return_expr.loc,
+            }))
+        }
+
         return Ok()
     }
 
     // TODO: port
 
-    self.store_type(ctx, expr.id(), Type::Never)
-    return Ok()
+    todo!()
+}
+
+fn Typer::get_value_info(
+    &self,
+    ctx: &TyContext,
+    var_name: IdentExpr,
+): Result(ValueInfo, &Error) {
+    todo!()
 }
 
 fn Typer::define_local(
@@ -565,21 +661,6 @@ fn Typer::define_local_no_symbol(
         col_index: self.registry.locals.len - 1,
         type_id: type_id,
     })
-}
-
-fn Typer::type_code_expr_and_load(&self, ctx: &TyContext, expr: CodeExpr): Result(TypeId, &Error) {
-    self.type_code_expr(ctx, expr)?
-
-    let type_id = self.load_type(ctx, expr)
-    if type_id == null {
-        // TODO: port
-        // self.reporter.abort_due_to_compiler_bug(
-        //     "Expression should only return ok if it stored a type",
-        //     expr.loc(),
-        // );
-    }
-
-    return Ok(*type_id)
 }
 
 fn Typer::build_type(&self, ctx: &TyContext, expr: TypeExpr): Result(TypeId, &Error) {
@@ -668,6 +749,11 @@ fn Typer::define_type(&self, ctx: &TyContext, name: str, type_: Type, loc: Loc) 
         expr: null as &TypeExpr, // shouldn't be accessed since alias is already resolved
         resolution: TypeResolution::Resolved,
     })
+}
+
+fn Typer::is_type_compatible(&self, slot: Type, value: Type): bool {
+    // TODO: port
+    return true
 }
 
 fn Typer::extend_expr_info_storage(&self, expr_count: u32) {

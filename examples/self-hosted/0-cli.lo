@@ -1,4 +1,4 @@
-// NOTE: this file is a project entry point. '0-' prefix is used to
+// NOTE: this file is the project entry point. '0-' prefix is used to
 //   force it to the top of `ls` output
 
 @include("../lib/args.lo")
