@@ -1,5 +1,8 @@
 use crate::{ast::*, common::*, lexer::*, registry::*, typer::*, wasm::*};
 
+// temporary container for compiled instructions
+type CompiledExpr = Vec<WasmInstr>;
+
 enum VarInfo {
     Local(VarInfoLocal),
     Global(VarInfoGlobal),
@@ -28,8 +31,6 @@ struct VarInfoPayloadlessEnum {
     variant_type_id: TypeId,
 }
 
-type CompiledExpr = Vec<WasmInstr>;
-
 struct VarInfoStored {
     address_instrs: CompiledExpr,
     offset: u32,
@@ -51,9 +52,9 @@ struct Scope {
 }
 
 impl Scope {
-    fn new(scope_type: ScopeKind) -> Self {
+    fn new(scope_kind: ScopeKind) -> Self {
         Self {
-            kind: scope_type,
+            kind: scope_kind,
             ..Default::default()
         }
     }
@@ -485,7 +486,7 @@ impl CodeGenerator {
                 let castee_type = self.get_expr_type(ctx, expr);
                 let casted_to_type = self.get_type_expr_value(ctx, casted_to);
 
-                if let Some(cast_op) = get_cast_instr(castee_type, &casted_to_type) {
+                if let Some(cast_op) = Self::get_cast_instr(castee_type, &casted_to_type) {
                     instrs.push(cast_op);
                 }
             }
@@ -2196,30 +2197,30 @@ impl CodeGenerator {
     fn get_type(&self, type_id: TypeId) -> &'static Type {
         self.registry.get_type(type_id)
     }
-}
 
-fn get_cast_instr(casted_from: &Type, casted_to: &Type) -> Option<WasmInstr> {
-    if *casted_to == Type::I64 || *casted_to == Type::U64 {
-        if *casted_from == Type::I8 || *casted_from == Type::I16 || *casted_from == Type::I32 {
-            return Some(WasmInstr::I64ExtendI32s);
+    fn get_cast_instr(casted_from: &Type, casted_to: &Type) -> Option<WasmInstr> {
+        if *casted_to == Type::I64 || *casted_to == Type::U64 {
+            if *casted_from == Type::I8 || *casted_from == Type::I16 || *casted_from == Type::I32 {
+                return Some(WasmInstr::I64ExtendI32s);
+            }
+
+            if *casted_from == Type::U8 || *casted_from == Type::U16 || *casted_from == Type::U32 {
+                return Some(WasmInstr::I64ExtendI32u);
+            }
         }
 
-        if *casted_from == Type::U8 || *casted_from == Type::U16 || *casted_from == Type::U32 {
-            return Some(WasmInstr::I64ExtendI32u);
+        if *casted_to == Type::I8
+            || *casted_to == Type::U8
+            || *casted_to == Type::I16
+            || *casted_to == Type::U16
+            || *casted_to == Type::I32
+            || *casted_to == Type::U32
+        {
+            if *casted_from == Type::I64 || *casted_from == Type::U64 {
+                return Some(WasmInstr::I32WrapI64);
+            }
         }
+
+        None
     }
-
-    if *casted_to == Type::I8
-        || *casted_to == Type::U8
-        || *casted_to == Type::I16
-        || *casted_to == Type::U16
-        || *casted_to == Type::I32
-        || *casted_to == Type::U32
-    {
-        if *casted_from == Type::I64 || *casted_from == Type::U64 {
-            return Some(WasmInstr::I32WrapI64);
-        }
-    }
-
-    None
 }

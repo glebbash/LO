@@ -1,7 +1,63 @@
 @include("./common.lo")
 @include("./wasm.lo")
 
-// TODO: implement module
+// temporary container for compiled instructions
+type CompiledExpr = &Vec(WasmInstr)
+
+type VarInfo = enum (&void) {
+    Local(&VarInfoLocal),
+    Global(&VarInfoGlobal),
+    Const(&VarInfoConst),
+    PayloadlessEnum(&VarInfoPayloadlessEnum),
+    Stored(&VarInfoStored),
+    StructValueField(&VarInfoStructValueField),
+}
+
+type VarInfoLocal = struct {
+    local_index: u32,
+    var_type_id: TypeId,
+}
+
+type VarInfoGlobal = struct {
+    global_index: u32,
+    var_type_id: TypeId,
+}
+
+type VarInfoConst = struct {
+    const_def: &ConstDef,
+}
+
+type VarInfoPayloadlessEnum = struct {
+    variant_tag_value: i32,
+    variant_type_id: TypeId,
+}
+
+type VarInfoStored = struct {
+    address_instrs: CompiledExpr,
+    offset: u32,
+    var_type_id: TypeId,
+}
+
+type VarInfoStructValueField = struct {
+    lhs_instrs: CompiledExpr,
+    drops_before: u32,
+    drops_after: u32,
+    var_type_id: TypeId,
+}
+
+type Scope = struct {
+    kind: ScopeKind,
+    deferred_exprs: &Vec(CompiledExpr),
+    expr_id_offset: u32,
+}
+
+fn Scope::new(scope_kind: ScopeKind): Scope {
+    return Scope {
+        kind: scope_kind,
+        deferred_exprs: Vec::new!<CompiledExpr>(),
+        expr_id_offset: 0,
+    }
+}
 
 type ExprContext = struct {
     module_id: ModuleId,
@@ -15,6 +71,11 @@ fn ExprContext::new(module_id: u32, fn_index: &?u32): &ExprContext {
         fn_index: fn_index,
         addr_local_index: null,
     })
+}
+
+type CodegenModuleInfo = struct {
+    scope_stack: &Vec(Scope),
+    ctx: ExprContext,
 }
 
 type CodeGenerator = struct {
@@ -200,12 +261,80 @@ fn CodeGenerator::codegen(
     todo!()
 }
 
+fn CodeGenerator::codegen_match_header(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_fn_call(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_inline_fn_call(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_catch(&self) {
+    todo!()
+}
+
+fn CodeGenerator::get_block_inout_type(&self) {
+    todo!()
+}
+
+fn CodeGenerator::var_from_expr(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_var_get(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_local_get(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_var_set_prepare(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_var_set(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_local_set(&self) {
+    todo!()
+}
+
+fn CodeGenerator::codegen_load_or_store(&self) {
+    todo!()
+}
+
+fn CodeGenerator::get_local_info(&self) {
+    todo!()
+}
+
+fn CodeGenerator::define_unnamed_local(&self) {
+    todo!()
+}
+
+fn CodeGenerator::create_or_get_addr_local(&self) {
+    todo!()
+}
+
+fn CodeGenerator::emit_deferred(&self) {
+    todo!()
+}
+
 fn CodeGenerator::emit_deferred_for_return(
     &self,
     ctx: &ExprContext,
     instrs: &Vec(WasmInstr),
 ) {
     // TODO: port
+}
+
+fn CodeGenerator::codegen_default_value(&self) {
+    todo!()
 }
 
 fn CodeGenerator::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
@@ -217,6 +346,35 @@ fn CodeGenerator::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
     }
 
     // TODO: port
+
+    todo!()
+}
+
+fn CodeGenerator::enter_scope(&self) {
+    todo!()
+}
+
+fn CodeGenerator::exit_scope(&self) {
+    todo!()
+}
+
+fn CodeGenerator::current_scope(&self) {
+    todo!()
+}
+
+fn CodeGenerator::init_scope_from_parent_and_push(&self) {
+    todo!()
+}
+
+fn CodeGenerator::push_wasm_dbg_name_section_locals(&self) {
+    todo!()
+}
+
+fn CodeGenerator::get_expr_type(&self) {
+    todo!()
+}
+
+fn CodeGenerator::get_type_expr_value(&self) {
     todo!()
 }
 
@@ -237,4 +395,8 @@ fn CodeGenerator::get_expr_info(
 
 fn CodeGenerator::get_type(&self, type_id: u32): Type {
     return self.registry.get_type(type_id)
+}
+
+fn CodeGenerator::get_cast_instr() {
+    todo!()
 }
