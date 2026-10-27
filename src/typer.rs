@@ -3533,10 +3533,10 @@ impl Typer {
             });
         }
 
-        let return_type = if let Some(return_type) = &inline_fn_def.decl.return_type {
-            self.get_type(self.build_type(ctx, return_type)?)
+        let return_type_id = if let Some(return_type) = &inline_fn_def.decl.return_type {
+            self.build_type(ctx, return_type)?
         } else {
-            &Type::Void
+            self.intern_type(&Type::Void)
         };
 
         ctx.expr_id_offset = self.registry.expr_info.len() - body.block_expr_id;
@@ -3555,7 +3555,7 @@ impl Typer {
             .push(InlineCallInfo {
                 inline_fn_index: symbol.col_index,
                 inner_expr_id_offset: ctx.expr_id_offset,
-                return_type_id: self.intern_type(&return_type),
+                return_type_id,
             });
 
         if self.reporter.in_inspection_mode {
@@ -3584,7 +3584,12 @@ impl Typer {
                 }
             }
 
-            write!(&mut message, "): {}", self.registry.fmt(&return_type)).unwrap();
+            write!(
+                &mut message,
+                "): {}",
+                self.registry.fmt(self.get_type(return_type_id))
+            )
+            .unwrap();
 
             self.reporter.print_inspection(InspectInfo {
                 message,
