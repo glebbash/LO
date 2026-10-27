@@ -2320,6 +2320,33 @@ impl Typer {
                     });
                 }
 
+                if call.fn_name.repr == "enum_tag" {
+                    if call.args.items.len() == 1 {
+                        let arg_type = self.type_code_expr_and_load(ctx, &call.args.items[0])?;
+
+                        let Type::Enum { enum_index: _ } = self.get_type(arg_type) else {
+                            return Err(Error {
+                                message: format!(
+                                    "Argument must be an enum type, got: {}",
+                                    self.registry.fmt(self.get_type(arg_type)),
+                                ),
+                                loc: call.fn_name.loc,
+                            });
+                        };
+
+                        self.store_type(ctx, call.id, &Type::U32);
+                        return Ok(());
+                    }
+
+                    return Err(Error {
+                        message: format!(
+                            "Invalid arguments for `@{}(value: T): u32`",
+                            call.fn_name.repr,
+                        ),
+                        loc: call.fn_name.loc,
+                    });
+                }
+
                 if call.fn_name.repr == "inspect_symbols" {
                     if self.reporter.in_inspection_mode {
                         let mut message = String::new();
