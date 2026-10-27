@@ -403,8 +403,10 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
 
             let fn_info = self.registry.functions.at!(symbol.col_index)
 
-            // TODO: port
-            // let self_type_id = ...
+            let self_type_id = self.get_fn_self_type(ctx, fn_def.decl.fn_name, fn_def.decl.params) catch err {
+                self.report_error(err)
+                continue
+            }
 
             if fn_def.decl.return_type != null {
                 let type_id = self.build_type(ctx, *fn_def.decl.return_type) catch err {
@@ -415,12 +417,59 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 fn_info.type_.output = type_id
             }
 
-            // TODO: port
-            // for fn_param in &fn_def.decl.param ...
+            for &fn_param in fn_def.decl.params.iter!() {
+                if fn_param.param_name.repr.equals("_") {
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: String::from_str_in(
+                            self.registry.error_arena,
+                            "Invalid fn param name `_` is not allowed here",
+                        ),
+                        loc: fn_param.param_name.loc,
+                    }))
+                }
+
+                let param_type_id = self.get_fn_param_type(ctx, fn_param, self_type_id, false) catch err {
+                    self.report_error(err)
+                    continue
+                }
+
+                fn_info.type_.inputs.push!(param_type_id)
+
+                fn_info.params.push!(FnParameter {
+                    param_name: &fn_param.param_name,
+                    param_type_id: param_type_id,
+                })
+            }
         }
 
         // TODO: port
     }
+}
+
+fn Typer::get_fn_param_type(
+    &self,
+    ctx: &TyContext,
+    fn_param: &FnParam,
+    self_type_id: &?TypeId,
+    infer_allowed: bool,
+): Result(TypeId, &Error) {
+    // TODO: port self and infer params
+
+    if match FnParamType::Type(param_type) = fn_param.param_type {
+        return self.build_type(ctx, param_type.expr)
+    }
+
+    todo!()
+}
+
+fn Typer::get_fn_self_type(
+    &self,
+    ctx: &TyContext,
+    fn_name: IdentExpr,
+    fn_params: &Vec(FnParam),
+): Result(&?TypeId, &Error) {
+    // TODO: port
+    return Ok(null)
 }
 
 fn Typer::type_fns(&self) {
@@ -558,12 +607,20 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             }))
         }
 
-        // TODO: port proper
+        // TODO: port result type for comparison ops, compound assignment
+
+        let op_kind = self.get_binary_op_kind(
+            ctx,
+            infix_op.op_tag,
+            self.get_type(lhs_type_id),
+            infix_op.op_loc,
+        )?
+
         self.store_expr_info(ctx, infix_op.id, self.registry.binary_op_info.len)
         self.registry.binary_op_info.push!(BinaryOpInfo {
             is_compound_assignment: false,
-            op_kind: WasmBinaryOpKind::I32_ADD,
-            result_type_id: self.intern_type(Type::U32),
+            op_kind: op_kind,
+            result_type_id: lhs_type_id,
         })
 
         return Ok()
@@ -582,7 +639,10 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
         if ctx.fn_index == null {
             self.report_error(self.registry.error_arena.new!(Error {
-                message: String::from_str("Cannot use `return` in const context"),
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot use `return` in const context",
+                ),
                 loc: return_expr.loc,
             }))
             return Ok()
@@ -612,11 +672,62 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     todo!()
 }
 
+fn Typer::get_binary_op_kind(
+    &self,
+    ctx: &TyContext,
+    op_tag: InfixOpTag,
+    operand_type: Type,
+    op_loc: Loc,
+): Result(WasmBinaryOpKind, &Error) {
+    // TODO: port
+    let signed = false
+    let wasm_op_type = WasmType::I32
+
+    // TODO: port other types
+    match Type::U32(_) = operand_type else {
+        todo!()
+    }
+
+    // TODO: port
+    if wasm_op_type == WasmType::I32 {
+        if op_tag == InfixOpTag::Add {
+            return Ok(WasmBinaryOpKind::I32_ADD)
+        }
+    }
+
+    // TODO: port
+    todo!()
+}
+
 fn Typer::get_value_info(
     &self,
     ctx: &TyContext,
     var_name: IdentExpr,
 ): Result(ValueInfo, &Error) {
+    let symbol = self.get_symbol(ctx, var_name.repr)
+    if symbol == null {
+        let message = String::from_str_in(self.registry.error_arena, "Unknown variable: ")
+        message.push_str(var_name.repr)
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: var_name.loc,
+        }))
+    }
+
+    if symbol.kind == TySymbolKind::Local {
+        let local_def = self.registry.locals.at!(symbol.col_index)
+
+        // TODO: port inspection
+
+        return Ok(ValueInfo {
+            kind: ValueKind::Local,
+            col_index: symbol.col_index,
+            type_id: local_def.local_type_id,
+        })
+    }
+
+    // TODO: port
     todo!()
 }
 
@@ -881,6 +992,22 @@ fn Typer::count_primitive_components(registry: &Registry, type_: Type): u32 {
 
 fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout) {
     // TODO: port
+
+    if match Type::U32(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    // TODO: port
+}
+
+fn Typer::align(value: u32, alignment: u32): u32 {
+    return (value + alignment - 1) / alignment * alignment
 }
 
 // utils

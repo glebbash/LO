@@ -66,10 +66,20 @@ type WasmInstr = enum (&void) {
     Unreachable,
     I32Const(&WasmInstrI32Const),
     Return,
+    BinaryOp(&WasmInstrBinaryOp),
+    LocalGet(&WasmInstrLocalGet),
+}
+
+type WasmInstrLocalGet = struct {
+    local_index: u32,
 }
 
 type WasmInstrI32Const = struct {
     value: i32,
+}
+
+type WasmInstrBinaryOp = struct {
+    kind: WasmBinaryOpKind,
 }
 
 type WasmUnaryOpKind = enum {
@@ -481,7 +491,16 @@ fn write_instr(out: &Vec(u8), instr: WasmInstr) {
         return
     }
 
-    // TODO: port
+    if match WasmInstr::BinaryOp(binary_op) = instr {
+        write_u8(out, binary_op.kind as u8)
+        return
+    }
+
+    if match WasmInstr::LocalGet(local_get) = instr {
+        write_u8(out, 0x20u8)
+        write_u32(out, local_get.local_index)
+        return
+    }
 
     if match WasmInstr::I32Const(i32_const) = instr {
         write_u8(out, 0x41u8)

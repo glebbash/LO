@@ -180,7 +180,7 @@ fn CodeGenerator::codegen_all(&self) {
 
         let wasm_locals = Vec::new!<WasmLocals>()
 
-        // TODO: port
+        // TODO: port locals other than params
 
         self.wasm_module.codes.push!(WasmFn {
             locals: wasm_locals,
@@ -194,7 +194,18 @@ fn CodeGenerator::codegen_all(&self) {
                 locals: Vec::new!<WasmLocalInfo>(),
             }
 
-            // TODO: port
+            for local_id in fn_info.locals_ids.iter!() {
+                let local_def = self.registry.locals.at!(local_id)
+
+                if local_def.local_name != null {
+                    let _ = self.push_wasm_dbg_name_section_locals(
+                        local_names_item.locals,
+                        local_def.wasm_local_index,
+                        self.get_type(local_def.local_type_id),
+                        *local_def.local_name,
+                    )
+                }
+            }
 
             self.wasm_module.local_names.push!(local_names_item)
         }
@@ -256,6 +267,29 @@ fn CodeGenerator::codegen(
         return
     }
 
+    if match CodeExpr::InfixOp(infix_op) = expr {
+        let expr_info = self.get_expr_info(ctx, infix_op.id, infix_op.loc)
+        let op_info = self.registry.binary_op_info.at!(expr_info)
+
+        // TODO: port short-circuiting AND and OR
+        // TODO: port compound assignment
+
+        self.codegen(ctx, instrs, infix_op.lhs)
+        self.codegen(ctx, instrs, infix_op.rhs)
+        instrs.push!(WasmInstr::BinaryOp(
+            // TODO: use arena allocation attached to WasmModule
+            heap::new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
+        ))
+
+        return
+    }
+
+    if match CodeExpr::Ident(_) = expr {
+        let var = self.var_from_expr(ctx, expr)
+        self.codegen_var_get(ctx, instrs, var)
+        return
+    }
+
     // TODO: port
 
     todo!()
@@ -281,16 +315,60 @@ fn CodeGenerator::get_block_inout_type(&self) {
     todo!()
 }
 
-fn CodeGenerator::var_from_expr(&self) {
+fn CodeGenerator::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarInfo {
+    // TODO: port
+
+    if match CodeExpr::Ident(var_name) = expr {
+        let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc)
+        let value_info = self.registry.value_info.at!(expr_info)
+
+        // TODO: port
+
+        if value_info.kind == ValueKind::Local {
+            let local = self.registry.locals.at!(value_info.col_index)
+
+            return VarInfo::Local(heap::new!(VarInfoLocal {
+                local_index: local.wasm_local_index,
+                var_type_id: local.local_type_id,
+            }))
+        }
+
+        todo!()
+    }
+
+    // TODO: port
+
     todo!()
 }
 
-fn CodeGenerator::codegen_var_get(&self) {
+fn CodeGenerator::codegen_var_get(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+    var: VarInfo,
+) {
+    if match VarInfo::Local(local) = var {
+        self.codegen_local_get(instrs, self.get_type(local.var_type_id), local.local_index)
+        return
+    }
+
+    // TODO: port
+
     todo!()
 }
 
-fn CodeGenerator::codegen_local_get(&self) {
-    todo!()
+fn CodeGenerator::codegen_local_get(
+    &self,
+    instrs: &Vec(WasmInstr),
+    local_type: Type,
+    local_index: u32,
+) {
+    for i in 0..Typer::count_primitive_components(self.registry, local_type) {
+        instrs.push!(WasmInstr::LocalGet(
+            // TODO: use arena allocation attached to WasmModule
+            heap::new!(WasmInstrLocalGet { local_index: local_index + i }),
+        ))
+    }
 }
 
 fn CodeGenerator::codegen_var_set_prepare(&self) {
@@ -366,7 +444,25 @@ fn CodeGenerator::init_scope_from_parent_and_push(&self) {
     todo!()
 }
 
-fn CodeGenerator::push_wasm_dbg_name_section_locals(&self) {
+fn CodeGenerator::push_wasm_dbg_name_section_locals(
+    &self,
+    output: &Vec(WasmLocalInfo),
+    local_index: u32,
+    local_type: Type,
+    local_name: str,
+): u32 {
+    // TODO: port
+
+    if match Type::U32(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    // TODO: port
+
     todo!()
 }
 

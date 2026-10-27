@@ -377,7 +377,7 @@ fn Registry::add_local(
     local_name: &?str,
     local_type_id: TypeId,
 ): u32 {
-    let fn_info = self.functions.get!(fn_index)
+    let fn_info = self.functions.at!(fn_index)
 
     let wasm_local_index = fn_info.wasm_locals_count
 
@@ -438,7 +438,17 @@ fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId
         return null
     }
 
-    // TODO: port
+    if match CodeExpr::Ident(_) = expr {
+        let symbol = self.value_info.at!(*expr_info)
+        return &symbol.type_id
+    }
+
+    if match CodeExpr::InfixOp(_) = expr {
+        let binary_op_info = self.binary_op_info.at!(*expr_info)
+        return &binary_op_info.result_type_id
+    }
+
+    // TODO: port other expr kinds
 
     return expr_info
 }
