@@ -771,19 +771,6 @@ impl CodeGenerator {
                     return;
                 }
 
-                if call.fn_name.repr == "enum_tag" {
-                    self.codegen(ctx, instrs, &call.args.items[0]);
-
-                    let arg_type = self.get_expr_type(ctx, &call.args.items[0]);
-
-                    // drop all components but the I32 enum tag
-                    for _ in 0..count_primitive_components(&self.registry, &arg_type) - 1 {
-                        instrs.push(WasmInstr::Drop);
-                    }
-
-                    return;
-                }
-
                 if call.fn_name.repr == "inline_fn_call_loc" {
                     let expr_info = self.get_expr_info(ctx, call.extra_id, call.loc);
                     let stored_bytes = &self.registry.stored_bytes[expr_info];

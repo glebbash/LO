@@ -2320,33 +2320,6 @@ impl Typer {
                     });
                 }
 
-                if call.fn_name.repr == "enum_tag" {
-                    if call.args.items.len() == 1 {
-                        let arg_type = self.type_code_expr_and_load(ctx, &call.args.items[0])?;
-
-                        let Type::Enum { enum_index: _ } = self.get_type(arg_type) else {
-                            return Err(Error {
-                                message: format!(
-                                    "Argument must be an enum type, got: {}",
-                                    self.registry.fmt(self.get_type(arg_type)),
-                                ),
-                                loc: call.fn_name.loc,
-                            });
-                        };
-
-                        self.store_type(ctx, call.id, &Type::U32);
-                        return Ok(());
-                    }
-
-                    return Err(Error {
-                        message: format!(
-                            "Invalid arguments for `@{}(value: T): u32`",
-                            call.fn_name.repr,
-                        ),
-                        loc: call.fn_name.loc,
-                    });
-                }
-
                 if call.fn_name.repr == "inspect_symbols" {
                     if self.reporter.in_inspection_mode {
                         let mut message = String::new();
@@ -4684,6 +4657,26 @@ pub fn get_struct_field_info<'a>(
                 field_type_id: result.err,
                 field_index: ok_layout.primitives_count,
                 byte_offset: ok_layout.byte_size,
+                loc: None,
+            });
+        }
+
+        return Err(Error {
+            message: format!(
+                "Unknown field `{}` in `{}`",
+                field_access.field_name.repr,
+                registry.fmt(lhs_type)
+            ),
+            loc: field_access.field_name.loc,
+        });
+    }
+
+    if let Type::Enum { enum_index: _ } = &lhs_type {
+        if field_access.field_name.repr == "tag" {
+            return Ok(StructFieldInfo {
+                field_type_id: registry.intern_type(&Type::U32),
+                field_index: 0,
+                byte_offset: 0,
                 loc: None,
             });
         }

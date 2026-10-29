@@ -1048,6 +1048,7 @@ async function commandTest() {
                 // "examples/test/errors.lo",
                 // "examples/test/do-with.lo",
                 // "examples/test/enums.lo",
+                // "examples/test/special-field-access.lo",
                 // "examples/test/if-match-chain.lo",
                 // "examples/test/demos/aoc2020/1.lo",
                 // "examples/test/demos/aoc2020/1-part2.lo",

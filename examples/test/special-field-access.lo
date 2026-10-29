@@ -1,0 +1,39 @@
+type Message = struct {
+    body: seg(u8),
+}
+
+type Shape = enum (u32) {
+    Circle(u32),
+    Square(u32),
+}
+
+export fn main(): u32 {
+    let res = 0
+
+    // `seg(T)` is a "fat pointer", `.ptr` and `.len` read its two raw parts
+    let msg = Message { body: "hi" }
+    res += msg.body.len // 2
+    res += (*(msg.body.ptr as &u8)) as u32 // +104 ('h')
+
+    // `Result(Ok, Err)` stores both branches inline; `.ok`/`.err` read either one directly, without a `catch`
+    res += parse_digit('7').ok // 7
+    res += parse_digit('x').err as u32 // 1
+
+    // `.tag` reads an enum's raw discriminant without matching a specific variant
+    res += Shape::Circle(0).tag // 0
+    res += Shape::Square(0).tag // 1
+
+    return res // = 2 + 104 + 7 + 1 + 0 + 1 = 115
+}
+
+type ParseError = u8
+
+inline let ParseError::NOT_A_DIGIT = 1 as ParseError
+
+fn parse_digit(ch: u8): Result(u32, ParseError) {
+    if ch < '0' || ch > '9' {
+        return Err(ParseError::NOT_A_DIGIT)
+    }
+
+    return Ok((ch - '0') as u32)
+}
